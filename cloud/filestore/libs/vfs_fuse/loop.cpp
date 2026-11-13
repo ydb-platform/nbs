@@ -60,10 +60,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Upper bound for MaxWritePages (4 MiB with 4 KiB pages). The guest never
+// Upper bound for MaxRequestPages (4 MiB with 4 KiB pages). The guest never
 // uses more: it caps pages per request below the virtqueue size, which is at
 // most 1024.
-constexpr ui32 MaxWritePagesLimit = 1024;
+constexpr ui32 MaxRequestPagesLimit = 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -350,7 +350,7 @@ public:
             ui32 threadsCount,
             const fuse_lowlevel_ops& ops,
             const TString& state,
-            ui32 maxWrite,
+            ui32 maxWriteSize,
             void* context)
         : Args(config, threadsCount)
     {
@@ -358,10 +358,10 @@ public:
         Y_ENSURE(Session, "fuse_session_new() failed");
 
         TryLoadSessionState(state);
-        // After the restore: bufsize = max(restored, maxWrite + header), so
-        // the size negotiated before restart keeps being accepted and a
-        // future FUSE_INIT can still offer maxWrite
-        fuse_session_set_max_write(Session, maxWrite);
+        // After the restore: bufsize = max(restored, maxWriteSize + header),
+        // so the size negotiated before restart keeps being accepted and a
+        // future FUSE_INIT can still offer maxWriteSize
+        fuse_session_update_bufsize(Session, maxWriteSize);
 
         int error = fuse_session_mount(Session);
         Y_ENSURE(!error, "fuse_session_mount() failed");
@@ -472,13 +472,13 @@ public:
             ui32 threadsCount,
             const fuse_lowlevel_ops& ops,
             const TString& state,
-            ui32 maxWrite,
+            ui32 maxWriteSize,
             void* context)
         : Args(config, threadsCount)
         , MountPath(config.GetMountPath())
     {
         Y_UNUSED(state);
-        Y_UNUSED(maxWrite);
+        Y_UNUSED(maxWriteSize);
 
         Channel = fuse_mount(MountPath.c_str(), Args);
         Y_ENSURE(Channel, "fuse_mount() failed");
@@ -626,10 +626,10 @@ public:
             ui32 threadsCount,
             const fuse_lowlevel_ops& ops,
             const TString& state,
-            ui32 maxWrite,
+            ui32 maxWriteSize,
             void* context)
         : Log(std::move(log))
-        , Session(config, threadsCount, ops, state, maxWrite, context)
+        , Session(config, threadsCount, ops, state, maxWriteSize, context)
         , BackendQueueThreads(threadsCount)
     {
         static std::atomic<ui64> NextFuseLoopIndex = 0;
@@ -1204,7 +1204,7 @@ private:
                      .FlushWritesInParallelEnabled =
                          FileSystemConfig
                              ->GetServerWriteBackCacheFlushWritesInParallelEnabled(),
-                     .MaxCachedWriteRequestSize =
+                     .MaxGuestWriteRequestSize =
                          FileSystemConfig->GetMaxBufferSize()});
 
                 if (!FileSystemConfig->GetServerWriteBackCacheEnabled()) {
@@ -1376,7 +1376,7 @@ private:
                 fuseLoopThreadCount,
                 ops,
                 SessionState,
-                FileSystemConfig->GetMaxWritePages() *
+                FileSystemConfig->GetMaxRequestPages() *
                     NSystemInfo::GetPageSize(),
                 this);
 
@@ -1411,11 +1411,11 @@ private:
         const auto& features = filestore.GetFeatures();
 
         const ui32 pages = Min<ui32>(
-            features.GetMaxWritePages() ? features.GetMaxWritePages()
-                                        : Config->GetMaxWritePages(),
-            MaxWritePagesLimit);
+            features.GetMaxRequestPages() ? features.GetMaxRequestPages()
+                                          : Config->GetMaxWritePages(),
+            MaxRequestPagesLimit);
         if (pages) {
-            config.SetMaxWritePages(pages);
+            config.SetMaxRequestPages(pages);
 
             // The guest keeps the max_write negotiated before a vhost restart
             // (no new FUSE_INIT), so accept max(config, restored).
@@ -1541,7 +1541,7 @@ private:
         // Cap the number of scatter-gather segments per request to virtqueue
         // size, taking FUSE own headers into account (see FUSE_HEADER_OVERHEAD
         // in linux:fs/fuse/virtio_fs.c)
-        const size_t maxPages = FileSystemConfig->GetMaxWritePages();
+        const size_t maxPages = FileSystemConfig->GetMaxRequestPages();
 
         // libfuse doesn't allow to configure max_pages directly but infers it
         // from fuse_conn_info.max_write, dividing it by page size.

@@ -207,7 +207,7 @@ struct TBootstrap
     bool FlushWritesInParallelEnabled = false;
     bool DisableExpectedDataValidation = false;
     ui64 CacheCapacityBytes = DefaultCacheCapacityBytes;
-    ui64 MaxCachedWriteRequestSize = 1_MB;
+    ui64 MaxGuestWriteRequestSize = 1_MB;
     size_t ThreadCount = 0;
 
     TCallContextPtr CallContext;
@@ -335,7 +335,7 @@ struct TBootstrap
              .FlushMaxSumWriteRequestsSize = MaxSumWriteRequestsSize,
              .ZeroCopyWriteEnabled = ZeroCopyWriteEnabled,
              .FlushWritesInParallelEnabled = FlushWritesInParallelEnabled,
-             .MaxCachedWriteRequestSize = MaxCachedWriteRequestSize},
+             .MaxGuestWriteRequestSize = MaxGuestWriteRequestSize},
             ThreadCount);
 
         ModuleStats = Cache.CreateModuleStats();
@@ -2183,7 +2183,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(drain.HasValue());
     }
 
-    Y_UNIT_TEST(ShouldDrainIfMaxCachedWriteRequestDoesNotFit)
+    Y_UNIT_TEST(ShouldDrainIfMaxGuestWriteRequestDoesNotFit)
     {
         TBootstrap b;
         TManualProceedHandlers write(b.Session->WriteDataHandler);
@@ -2191,7 +2191,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(1, 0, "abc");
 
         // The state file fits 1 MiB requests but not 4 MiB ones
-        b.MaxCachedWriteRequestSize = 4_MB;
+        b.MaxGuestWriteRequestSize = 4_MB;
         b.RecreateCache();
 
         // The restored data is flushed, not stranded

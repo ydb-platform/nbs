@@ -65,7 +65,7 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
             Config->GetServerWriteBackCacheEnabled());
         features->SetMaxBackground(Config->GetMaxBackground());
         features->SetMaxFuseLoopThreads(Config->GetMaxFuseLoopThreads());
-        features->SetMaxWritePages(Config->GetMaxWritePages());
+        features->SetMaxRequestPages(Config->GetMaxRequestPages());
         features->SetFSyncQueueDisabled(Config->GetFSyncQueueDisabled());
         features->SetEntryTimeout(
             Config->GetEntryTimeout(cloudId, folderId, fsId).MilliSeconds());

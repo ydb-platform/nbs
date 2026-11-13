@@ -151,6 +151,7 @@ message TFileSystemConfig
     // values returned by the backend.
     optional uint32 NodeAttrsCacheLimit = 44;
 
-    // Max FUSE request size in pages offered to the guest in FUSE_INIT.
-    optional uint32 MaxWritePages = 45;
+    // Max FUSE read / write request size in pages offered to the guest in
+    // FUSE_INIT (max_pages).
+    optional uint32 MaxRequestPages = 45;
 }

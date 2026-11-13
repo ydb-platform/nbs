@@ -81,7 +81,7 @@ private:
     const TString FileSystemId;
     const TString FilePath;
     const IPersistentStoragePtr PersistentStorage;
-    const ui64 MaxCachedWriteRequestSize;
+    const ui64 MaxGuestWriteRequestSize;
 
     TWriteBackCacheState State;
 
@@ -115,7 +115,7 @@ public:
               {.FilePath = args.FilePath, .StateFileSize = args.StateFileSize},
               Log,
               LogTag))
-        , MaxCachedWriteRequestSize(args.MaxCachedWriteRequestSize)
+        , MaxGuestWriteRequestSize(args.MaxGuestWriteRequestSize)
         , State(
               *this,
               PersistentStorage,
@@ -144,7 +144,7 @@ public:
         // The ring buffer must fit any WriteData request: one that doesn't fit
         // stays pending forever and blocks the following ones. Plus some room
         // for the headers (assume 1 KiB is enough).
-        const ui64 required = MaxCachedWriteRequestSize + 1016;
+        const ui64 required = MaxGuestWriteRequestSize + 1016;
         const ui64 supported =
             PersistentStorage->GetMaxSupportedAllocationByteCount();
 
@@ -155,7 +155,7 @@ public:
                 << LogTag << " WriteBackCache is drained: max supported "
                 << "allocation " << supported << " is less than " << required
                 << ", increase the state file size or decrease "
-                << "MaxWritePages, FilePath: " << FilePath.Quote());
+                << "MaxRequestPages, FilePath: " << FilePath.Quote());
             Y_UNUSED(Drain());
             return;
         }

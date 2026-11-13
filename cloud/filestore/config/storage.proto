@@ -1008,8 +1008,9 @@ message TStorageConfig
     // New files are subject to the vhost minimum size and total size limit.
     optional uint64 ServerWriteBackCacheStateFileSize = 562;
 
-    // Max FUSE request size in pages (max_write / max_pages negotiated with
-    // the guest). Zero means the vhost default (TVFSConfig.MaxWritePages).
+    // Max FUSE read / write request size in pages (max_pages negotiated with
+    // the guest, max_write = MaxRequestPages * page size). Zero means the
+    // vhost default (TVFSConfig.MaxWritePages).
     // Applies after vhost restart and guest remount.
-    optional uint32 MaxWritePages = 563;
+    optional uint32 MaxRequestPages = 563;
 }

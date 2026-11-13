@@ -28,10 +28,10 @@ void fuse_session_getparams(
     struct fuse_session* se,
     struct fuse_session_params* params);
 
-// Lets the next FUSE_INIT offer up to max_write bytes per request. Only grows
-// the session buffer size, never shrinks it: a restored (already negotiated)
-// size must keep being accepted.
-void fuse_session_set_max_write(struct fuse_session* se, uint32_t max_write);
+// Raises the session buffer size so a future FUSE_INIT can offer up to the
+// given max_write. Never shrinks: a restored (already negotiated) size must
+// keep being accepted.
+void fuse_session_update_bufsize(struct fuse_session* se, uint32_t max_write);
 
 // Converts a session buffer size (fuse_session_params.bufsize) to the max_write
 // it can carry, i.e. strips the FUSE request header room.

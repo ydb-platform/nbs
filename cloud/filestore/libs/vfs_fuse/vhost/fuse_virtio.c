@@ -398,7 +398,7 @@ void fuse_session_getparams(
     params->bufsize = se->bufsize;
 }
 
-void fuse_session_set_max_write(struct fuse_session* se, uint32_t max_write)
+void fuse_session_update_bufsize(struct fuse_session* se, uint32_t max_write)
 {
     size_t bufsize = (size_t)max_write + FUSE_BUFFER_HEADER_SIZE;
     if (se->bufsize < bufsize) {

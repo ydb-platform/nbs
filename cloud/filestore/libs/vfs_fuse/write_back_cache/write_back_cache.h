@@ -84,11 +84,11 @@ struct TWriteBackCacheArgs
     // With parallel writes off, only sequential writes will be optimized.
     bool FlushWritesInParallelEnabled = false;
 
-    // Max WriteData request size (in bytes) the cache must be able to store
-    // (the negotiated FUSE max_write). If the state file is too small for it,
+    // Negotiated FUSE max_write (in bytes). The cache must be able to store
+    // any WriteData request up to this size; if the state file is too small,
     // the cache is drained on init: saved data is flushed and new requests
     // bypass the cache.
-    ui64 MaxCachedWriteRequestSize = 1_MB;
+    ui64 MaxGuestWriteRequestSize = 1_MB;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

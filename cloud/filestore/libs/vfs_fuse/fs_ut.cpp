@@ -3454,42 +3454,42 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldRejectRequestsLargerThanDefaultMaxWritePages)
+    Y_UNIT_TEST(ShouldRejectRequestsLargerThanDefaultMaxRequestPages)
     {
         TBootstrap bootstrap;
         CheckLargeRequests(bootstrap, true, false);
     }
 
-    Y_UNIT_TEST(ShouldAcceptLargeRequestsWithMaxWritePages)
+    Y_UNIT_TEST(ShouldAcceptLargeRequestsWithMaxRequestPages)
     {
         NProto::TFileStoreFeatures features;
-        features.SetMaxWritePages(1024);
+        features.SetMaxRequestPages(1024);
         TBootstrap bootstrap(CreateWallClockTimer(), CreateScheduler(), features);
         CheckLargeRequests(bootstrap, true, true);
     }
 
-    Y_UNIT_TEST(ShouldClampMaxWritePages)
+    Y_UNIT_TEST(ShouldClampMaxRequestPages)
     {
         // Bytes instead of pages: must be clamped, not wrapped to 0
         NProto::TFileStoreFeatures features;
-        features.SetMaxWritePages(4_MB);
+        features.SetMaxRequestPages(4_MB);
         TBootstrap bootstrap(CreateWallClockTimer(), CreateScheduler(), features);
         CheckLargeRequests(bootstrap, true, true);
     }
 
-    // Sends a write of maxWritePages pages: the cache is used only if the
+    // Sends a write of maxRequestPages pages: the cache is used only if the
     // state file can fit a request of that size
     void CheckLargeWriteWithWriteBackCache(
-        ui32 maxWritePages,
+        ui32 maxRequestPages,
         ui64 stateFileSize,
         bool expectCached)
     {
         const ui64 nodeId = 123;
         const ui64 handleId = 456;
-        const ui64 writeSize = maxWritePages * 4_KB;
+        const ui64 writeSize = maxRequestPages * 4_KB;
 
         NProto::TFileStoreFeatures features;
-        features.SetMaxWritePages(maxWritePages);
+        features.SetMaxRequestPages(maxRequestPages);
         features.SetServerWriteBackCacheEnabled(true);
         features.SetServerWriteBackCacheStateFileSize(stateFileSize);
         TBootstrap bootstrap(CreateWallClockTimer(), CreateScheduler(), features);
@@ -3535,11 +3535,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(expectCached ? 0 : 1, counter->Val());
     }
 
-    Y_UNIT_TEST(ShouldCacheLargeWritesWithMaxWritePages)
+    Y_UNIT_TEST(ShouldCacheLargeWritesWithMaxRequestPages)
     {
         // 4 MiB requests fit into the 8 MiB state file
         CheckLargeWriteWithWriteBackCache(
-            1024 /* maxWritePages */,
+            1024 /* maxRequestPages */,
             8_MB /* stateFileSize */,
             true /* expectCached */);
     }
@@ -3548,7 +3548,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         // 4 MiB requests don't fit into the 1 MiB + 4 KiB state file
         CheckLargeWriteWithWriteBackCache(
-            1024        /* maxWritePages */,
+            1024        /* maxRequestPages */,
             1_MB + 4_KB /* stateFileSize */,
             false       /* expectCached */);
     }
