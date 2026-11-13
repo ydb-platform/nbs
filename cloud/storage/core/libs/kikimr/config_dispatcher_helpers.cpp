@@ -26,7 +26,7 @@ TRegisterDynamicNodeOptions::TNodeLabels GetLabels(
     return result;
 }
 
-// Allow a required kind while preserving the configured rule representation.
+// Extend an existing allow list; preserve deny lists and unrestricted rules.
 void AllowConfigItem(
     ui32 kind,
     NKikimr::NConfig::TConfigsDispatcherInitInfo* info)
@@ -35,11 +35,6 @@ void AllowConfigItem(
             std::get_if<NKikimr::NConfig::TAllowList>(&info->ItemsServeRules))
     {
         allowList->Items.insert(kind);
-    } else if (auto* denyList =
-                   std::get_if<NKikimr::NConfig::TDenyList>(
-                       &info->ItemsServeRules))
-    {
-        denyList->Items.erase(kind);
     }
 }
 

@@ -89,6 +89,7 @@
 #include <library/cpp/monlib/service/pages/mon_page.h>
 
 #include <util/digest/city.h>
+#include <util/generic/algorithm.h>
 #include <util/system/hostname.h>
 
 #include <ranges>
@@ -605,6 +606,19 @@ void TBootstrapYdb::InitKikimrService()
     if (privateDatabaseConfigEnabled) {
         registerOpts.PrivateDatabaseConfigParser =
             CreateBlockstoreOpaqueConfigParser();
+
+        const auto& deniedConfigNames =
+            staticBlockstoreConfig.GetStorageService()
+                .GetConfigDispatcherSettings()
+                .GetDenyList()
+                .GetNames();
+        if (FindPtr(deniedConfigNames, "PrivateDatabaseConfigItem")) {
+            STORAGE_WARN(
+                "ConfigsDispatcher will not deliver PrivateDatabaseConfig "
+                "updates because ConfigDispatcherSettings.DenyList explicitly "
+                "contains PrivateDatabaseConfigItem; startup "
+                "PrivateDatabaseConfig loading remains enabled");
+        }
     }
 
     STORAGE_INFO("Configs initialized");

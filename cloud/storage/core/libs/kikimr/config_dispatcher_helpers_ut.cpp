@@ -36,8 +36,8 @@ auto SetupCriticalEvent()
 
 Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
 {
-    // Verify that allowing the opaque kind preserves unrelated allow/deny
-    // rules and leaves unrestricted delivery unrestricted.
+    // Verify that adding the opaque kind to an allow list preserves explicit
+    // denies and leaves unrestricted delivery unrestricted.
     Y_UNIT_TEST(ShouldAllowOpaqueConfigItemInDispatcherRules)
     {
         constexpr ui32 kind =
@@ -52,12 +52,12 @@ Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
         UNIT_ASSERT(allowed.Items.contains(kind));
         UNIT_ASSERT(allowed.Items.contains(otherKind));
 
-        // Remove only the required kind from an explicit deny list.
+        // Preserve the explicit deny for the required kind and other kinds.
         TConfigsDispatcherInitInfo denyInfo;
         denyInfo.ItemsServeRules = TDenyList{{kind, otherKind}};
         AllowConfigItem(kind, &denyInfo);
         const auto& denied = std::get<TDenyList>(denyInfo.ItemsServeRules);
-        UNIT_ASSERT(!denied.Items.contains(kind));
+        UNIT_ASSERT(denied.Items.contains(kind));
         UNIT_ASSERT(denied.Items.contains(otherKind));
 
         // Preserve the default policy that already serves every kind.
