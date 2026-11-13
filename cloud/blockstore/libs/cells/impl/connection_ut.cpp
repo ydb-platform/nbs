@@ -475,10 +475,12 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         UNIT_ASSERT_VALUES_EQUAL("cell-1", env.GrpcClient->Service->LastRequestCellId);
         UNIT_ASSERT(!write->GetHeaders().HasInternal());
 
-        // Retried requests retain the forwarding marker as well.
-        read->MutableHeaders()->SetRetryNumber(1);
+        // A fresh retry must be stamped even without the first call's headers.
+        auto retry = std::make_shared<NProto::TReadBlocksLocalRequest>();
+        retry->MutableHeaders()->SetRetryNumber(1);
+        env.GrpcClient->Service->LastRequestCellId.clear();
         UNIT_ASSERT(!HasError(storage->ReadBlocksLocal(
-            MakeIntrusive<TCallContext>(), read).GetValue()));
+            MakeIntrusive<TCallContext>(), retry).GetValue()));
         UNIT_ASSERT_VALUES_EQUAL("cell-1", env.GrpcClient->Service->LastRequestCellId);
     }
 

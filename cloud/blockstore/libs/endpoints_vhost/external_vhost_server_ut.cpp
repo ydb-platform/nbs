@@ -1,4 +1,4 @@
-#include "external_vhost_server.h"
+#include "external_vhost_server.cpp"
 
 #include <cloud/blockstore/libs/client/session_test.h>
 #include <cloud/blockstore/libs/common/constants.h>
@@ -13,7 +13,9 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/string/vector.h>
+#include <util/system/env.h>
 
+#include <optional>
 #include <variant>
 
 namespace NCloud::NBlockStore::NServer {
@@ -411,6 +413,54 @@ TVector<TString> GetArgN(const TVector<TString>& args, TStringBuf name)
 
 Y_UNIT_TEST_SUITE(TExternalEndpointTest)
 {
+    Y_UNIT_TEST(ShouldPassLatencyConfigThroughExecEnvironment)
+    {
+        const auto previous = TryGetEnv("NBS_LATENCY_SLI_CONFIG");
+        const auto inherited = TryGetEnv("NBS_SLI_TEST_INHERITED");
+        Y_DEFER {
+            if (previous) {
+                SetEnv("NBS_LATENCY_SLI_CONFIG", *previous);
+            } else {
+                UnsetEnv("NBS_LATENCY_SLI_CONFIG");
+            }
+            if (inherited) {
+                SetEnv("NBS_SLI_TEST_INHERITED", *inherited);
+            } else {
+                UnsetEnv("NBS_SLI_TEST_INHERITED");
+            }
+        };
+        const TString parentConfig = "1;1:1:8193:2000";
+        SetEnv("NBS_LATENCY_SLI_CONFIG", parentConfig);
+        SetEnv("NBS_SLI_TEST_INHERITED", "preserved value");
+
+        // An older child must not receive --latency-sli in argv. The real
+        // exec path must replace only this environment variable and preserve
+        // unrelated arguments, inherited variables and the parent PID option.
+        const TVector<std::optional<TString>> configs{
+            TString("1;0:1:8193:1000"), TString{}, std::nullopt};
+        for (const auto& config: configs) {
+            const TString expected = config.value_or(parentConfig);
+            TString script = TStringBuilder()
+                << "set -eu\n"
+                << "test \"$NBS_LATENCY_SLI_CONFIG\" = '" << expected << "'\n"
+                << "test \"$NBS_SLI_TEST_INHERITED\" = 'preserved value'\n"
+                << "test \"$#\" = 3\n"
+                << "test \"$1\" = '--existing-option'\n"
+                << "test \"$2\" = 'value with spaces'\n"
+                << "test \"$3\" = '--blockstore-service-pid=" << getpid() << "'\n";
+            TVector<TString> args{
+                "-c", script, "child", "--existing-option", "value with spaces"};
+            if (config) {
+                args.push_back("--latency-sli");
+                args.push_back(*config);
+            }
+            auto child = SpawnChild("/bin/sh", std::move(args));
+            const auto error = child.Wait();
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(parentConfig, GetEnv("NBS_LATENCY_SLI_CONFIG"));
+        }
+    }
+
     Y_UNIT_TEST_F(ShouldStartAioExternalEndpoint, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, History.size());

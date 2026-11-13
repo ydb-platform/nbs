@@ -121,8 +121,11 @@ public:
 
 class TRdmaBackend final: public IBackend
 {
+    using TCreateRdmaClient = decltype(&NCloud::NBlockStore::NRdma::CreateRdmaClient);
+
 private:
     const ILoggingServicePtr Logging;
+    const TCreateRdmaClient RdmaClientFactory;
     TLog Log;
     IClientPtr RdmaClient;
     IStorageProviderPtr StorageProvider;
@@ -138,7 +141,10 @@ private:
     ui32 SectorsToBlockShift = 0;
 
 public:
-    explicit TRdmaBackend(ILoggingServicePtr logging);
+    explicit TRdmaBackend(
+        ILoggingServicePtr logging,
+        TCreateRdmaClient rdmaClientFactory = NCloud::NBlockStore::NRdma::CreateRdmaClient,
+        IBlockStorePtr dataClient = {});
 
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
@@ -161,8 +167,13 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRdmaBackend::TRdmaBackend(ILoggingServicePtr logging)
+TRdmaBackend::TRdmaBackend(
+        ILoggingServicePtr logging,
+        TCreateRdmaClient rdmaClientFactory,
+        IBlockStorePtr dataClient)
     : Logging{std::move(logging)}
+    , RdmaClientFactory{rdmaClientFactory}
+    , DataClient{std::move(dataClient)}
 {
     Log = Logging->CreateLog("RDMA");
 }
@@ -193,7 +204,7 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
     rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
 
     auto monitoring = NCloud::CreateMonitoringServiceStub();
-    RdmaClient = NCloud::NBlockStore::NRdma::CreateRdmaClient(
+    RdmaClient = RdmaClientFactory(
         Logging,
         std::move(monitoring),
         std::move(rdmaClientConfig));

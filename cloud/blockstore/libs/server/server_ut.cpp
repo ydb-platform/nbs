@@ -25,6 +25,8 @@
 #include <util/generic/scope.h>
 
 #include <array>
+#include <atomic>
+#include <tuple>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -99,17 +101,22 @@ Y_UNIT_TEST_SUITE(TServerTest)
             std::bind_front(&IServerStats::RequestStarted, stats.get());
         observed->ResponseSentHandler =
             std::bind_front(&IServerStats::ResponseSent, stats.get());
-        std::array<TPromise<std::pair<bool, bool>>, 6> completed;
+        using TObservation = std::tuple<ui64, bool, bool>;
+        std::array<TPromise<TObservation>, 6> completed;
+        std::atomic<size_t> completionIndex = 0;
         for (auto& promise: completed) {
-            promise = NewPromise<std::pair<bool, bool>>();
+            promise = NewPromise<TObservation>();
         }
         observed->RequestCompletedHandler = [&](
             TLog& log, TMetricRequest& metric, TCallContext& context,
             const NProto::TError& error)
         {
             stats->RequestCompleted(log, metric, context, error);
-            completed.at(context.RequestId - 1).SetValue(
-                {metric.ForwardedRequest, metric.CellRequest});
+            const auto index = completionIndex.fetch_add(1);
+            if (index < completed.size()) {
+                completed[index].TrySetValue(
+                    {context.RequestId, metric.ForwardedRequest, metric.CellRequest});
+            }
         };
 
         auto service = std::make_shared<TTestService>();
@@ -170,10 +177,13 @@ Y_UNIT_TEST_SUITE(TServerTest)
                     MakeIntrusive<TCallContext>(), request).GetValue(TDuration::Seconds(5));
                 UNIT_ASSERT_VALUES_EQUAL(failed, HasError(response));
             }
-            const auto flags = completed[i].GetFuture().GetValue(TDuration::Seconds(5));
-            UNIT_ASSERT_VALUES_EQUAL(forwarded, flags.first);
-            UNIT_ASSERT(!flags.second); // legacy error accounting stays enabled
+            const auto [requestId, forwardedFlag, cellFlag] =
+                completed[i].GetFuture().GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL(i + 1, requestId);
+            UNIT_ASSERT_VALUES_EQUAL(forwarded, forwardedFlag);
+            UNIT_ASSERT(!cellFlag); // legacy error accounting stays enabled
         }
+        UNIT_ASSERT_VALUES_EQUAL(completed.size(), completionIndex.load());
 
         stats->UpdateStats(false);
         auto group = factory.Monitoring->GetCounters()
