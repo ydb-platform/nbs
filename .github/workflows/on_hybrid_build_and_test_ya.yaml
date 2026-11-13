@@ -249,6 +249,16 @@ jobs:
         use_network_cache: ${{ inputs.use_network_cache }}
         target_platform: ${{ inputs.target_platform }}
 
+    - name: mark workload build passed
+      if: ${{ steps.build.outcome == 'success' && (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') }}
+      uses: ./.github/actions/workload_comment
+      with:
+        command: update
+        build_preset: ${{ inputs.build_preset }}
+        target_platform: ${{ inputs.target_platform }}
+        component: ${{ inputs.component == '' && 'all' || inputs.component }}
+        workload_check_status: built
+
     - name: Run tests
       uses: ./.github/actions/test
       id: test

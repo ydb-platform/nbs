@@ -343,7 +343,9 @@ def test_update_pr_comment_creates_new_comment(monkeypatch) -> None:
     assert "This is a simulation, not a real result" in body
     assert "<!-- workload-status -->" in body
     assert "Workload for **linux** is not finished yet" in body
-    assert "all tests PASSED for commit deadbeef." in body
+    assert "<table>" in body
+    assert "commit deadbeef" in body
+    assert 'href="https://summary/ya-test.html#PASS"' in body
 
 
 def test_update_pr_comment_updates_existing_comment() -> None:
@@ -660,10 +662,11 @@ def test_initialize_pr_comment_creates_workload_checks_block() -> None:
 
     assert len(pr.created) == 1
     body = pr.created[0]
-    assert gs.WORKLOAD_CHECKS_START in body
-    assert "Planned checks for **linux**." in body
+    assert gs.Plaque.from_comment(body) is not None
+    assert "<th>Status</th>" in body
     assert "blockstore" in body
-    assert "tasks + storage" in body
+    assert "cloud/tasks/" in body
+    assert "cloud/storage/" in body
 
 
 def test_update_pr_comment_workload_check_creates_minimal_comment_when_missing(
@@ -711,8 +714,8 @@ def test_update_pr_comment_workload_check_creates_minimal_comment_when_missing(
 
     assert len(pr.comments) == 1
     body = pr.comments[0].body
-    assert gs.WORKLOAD_CHECKS_START in body
-    assert "Planned checks for **linux**." in body
+    assert gs.Plaque.from_comment(body) is not None
+    assert "<th>Status</th>" in body
     assert gs.get_workload_check_status(body, "blockstore") == "completed"
     assert "https://github.example/job/123" in body
     assert gs.get_comment_revision(body) == 1

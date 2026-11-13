@@ -54,6 +54,7 @@ def main() -> None:
         "--workload-check-status",
         choices=(
             "running",
+            "built",
             "completed",
             "failed_build",
             "failed",
