@@ -559,17 +559,22 @@ struct TFixture: public TFixtureBase
             .Wait();
     }
 
-    void TestRefreshDuringDriverSwitch(
-        bool release,
-        bool missingDevice,
-        bool switchFinishesBeforeResponse,
-        bool failSwitch = false)
+    struct TRefreshDuringDriverSwitchParams
     {
-        const size_t deviceIndex = release ? 1 : 0;
+        bool Release = false;
+        bool MissingDevice = false;
+        bool SwitchFinishesBeforeResponse = false;
+        bool FailSwitch = false;
+    };
+
+    void TestRefreshDuringDriverSwitch(
+        const TRefreshDuringDriverSwitchParams& params)
+    {
+        const size_t deviceIndex = params.Release ? 1 : 0;
         const auto& device = Devices[deviceIndex];
         const auto& pciAddr = device.GetPCIAddress();
         const auto& serialNumber = device.GetSerialNumber();
-        const TString ctrlPath = release ? "/dev/nvme1" : "/dev/nvme0";
+        const TString ctrlPath = params.Release ? "/dev/nvme1" : "/dev/nvme0";
 
         TPromise<TVector<NProto::TNVMeDevice>> responses[]{
             NewPromise<TVector<NProto::TNVMeDevice>>(),
@@ -605,7 +610,7 @@ struct TFixture: public TFixtureBase
         }
 
         SysFs->BindPCIDeviceToDriverImpl =
-            [switchStarted, finishSwitch, failSwitch](
+            [switchStarted, finishSwitch, failSwitch = params.FailSwitch](
                 const TString&, const TString&)
         {
             switchStarted->Signal();
@@ -619,12 +624,12 @@ struct TFixture: public TFixtureBase
 
         // Cover both a fetch already in flight when switching starts and a
         // fetch that starts while the background switch is blocked.
-        if (switchFinishesBeforeResponse) {
+        if (params.SwitchFinishesBeforeResponse) {
             UNIT_ASSERT(fetchRequested.WaitT(DefaultTimeout));
         }
 
         TFuture<NProto::TError> operation;
-        if (release) {
+        if (params.Release) {
             SysFs->AddrToDriver[pciAddr] = "vfio-pci";
             operation =
                 Service->ReleaseNVMeDevice(serialNumber, EmptyIdempotenceId);
@@ -639,18 +644,18 @@ struct TFixture: public TFixtureBase
         auto completeSwitch = [&]
         {
             finishSwitch->Signal();
-            if (release && !failSwitch) {
+            if (params.Release && !params.FailSwitch) {
                 NVMeManager->WaitSanitizeRequested();
                 UNIT_ASSERT(!operation.HasValue());
             } else {
                 UNIT_ASSERT(operation.Wait(DefaultTimeout));
                 const auto& error = operation.GetValue();
                 UNIT_ASSERT_VALUES_EQUAL_C(
-                    failSwitch, HasError(error), FormatError(error));
+                    params.FailSwitch, HasError(error), FormatError(error));
             }
         };
 
-        if (switchFinishesBeforeResponse) {
+        if (params.SwitchFinishesBeforeResponse) {
             completeSwitch();
         } else {
             UNIT_ASSERT(fetchRequested.WaitT(DefaultTimeout));
@@ -659,7 +664,7 @@ struct TFixture: public TFixtureBase
         TVector<NProto::TNVMeDevice> failedDeviceList;
         for (size_t i = 0; i != Devices.size(); ++i) {
             // An unrelated missing device must still become offline.
-            if (i != 3 && (!missingDevice || i != deviceIndex)) {
+            if (i != 3 && (!params.MissingDevice || i != deviceIndex)) {
                 failedDeviceList.push_back(Devices[i]);
             }
         }
@@ -679,7 +684,7 @@ struct TFixture: public TFixtureBase
                 .GetValueSync();
         };
 
-        if (!missingDevice) {
+        if (!params.MissingDevice) {
             setSysFsAvailable(false);
         }
         responses[0].SetValue(failedDeviceList);
@@ -700,7 +705,7 @@ struct TFixture: public TFixtureBase
         }
 
         setSysFsAvailable(true);
-        if (!switchFinishesBeforeResponse) {
+        if (!params.SwitchFinishesBeforeResponse) {
             completeSwitch();
         }
 
@@ -708,7 +713,7 @@ struct TFixture: public TFixtureBase
         responses[1].SetValue(Devices);
         UNIT_ASSERT(fetchRequested.WaitT(DefaultTimeout));
 
-        if (!missingDevice) {
+        if (!params.MissingDevice) {
             setSysFsAvailable(false);
         }
         responses[2].SetValue(failedDeviceList);
@@ -722,7 +727,7 @@ struct TFixture: public TFixtureBase
                 NProto::NVME_DEVICE_STATE_OFFLINE,
             devices[deviceIndex].DebugString());
 
-        if (release && !failSwitch) {
+        if (params.Release && !params.FailSwitch) {
             // Protection must end with the driver switch, not with sanitize.
             UNIT_ASSERT(!operation.HasValue());
             NVMeManager->UpdateSanitizeStatus(ctrlPath, MakeError(S_OK), 100.0);
@@ -2399,38 +2404,67 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
 
     Y_UNIT_TEST_F(ShouldKeepMissingDeviceOnlineWhileAcquiring, TFixture)
     {
-        TestRefreshDuringDriverSwitch(false, true, false);
+        TestRefreshDuringDriverSwitch({
+            .Release = false,
+            .MissingDevice = true,
+            .SwitchFinishesBeforeResponse = false,
+        });
     }
 
     Y_UNIT_TEST_F(ShouldKeepMissingDeviceOnlineAfterDriverSwitch, TFixture)
     {
-        TestRefreshDuringDriverSwitch(false, true, true);
+        TestRefreshDuringDriverSwitch({
+            .Release = false,
+            .MissingDevice = true,
+            .SwitchFinishesBeforeResponse = true,
+        });
     }
 
     Y_UNIT_TEST_F(ShouldKeepMissingDeviceInMaintenanceWhileReleasing, TFixture)
     {
-        TestRefreshDuringDriverSwitch(true, true, false);
+        TestRefreshDuringDriverSwitch({
+            .Release = true,
+            .MissingDevice = true,
+            .SwitchFinishesBeforeResponse = false,
+        });
     }
 
     Y_UNIT_TEST_F(
         ShouldKeepMissingDeviceInMaintenanceAfterDriverSwitch, TFixture)
     {
-        TestRefreshDuringDriverSwitch(true, true, true);
+        TestRefreshDuringDriverSwitch({
+            .Release = true,
+            .MissingDevice = true,
+            .SwitchFinishesBeforeResponse = true,
+        });
     }
 
     Y_UNIT_TEST_F(ShouldPreserveDeviceOnSysFsErrorDuringDriverSwitch, TFixture)
     {
-        TestRefreshDuringDriverSwitch(true, false, false);
+        TestRefreshDuringDriverSwitch({
+            .Release = true,
+            .MissingDevice = false,
+            .SwitchFinishesBeforeResponse = false,
+        });
     }
 
     Y_UNIT_TEST_F(ShouldPreserveDeviceOnSysFsErrorAfterDriverSwitch, TFixture)
     {
-        TestRefreshDuringDriverSwitch(false, false, true);
+        TestRefreshDuringDriverSwitch({
+            .Release = false,
+            .MissingDevice = false,
+            .SwitchFinishesBeforeResponse = true,
+        });
     }
 
     Y_UNIT_TEST_F(ShouldResumeDeviceRefreshAfterFailedDriverSwitch, TFixture)
     {
-        TestRefreshDuringDriverSwitch(false, true, true, true);
+        TestRefreshDuringDriverSwitch({
+            .Release = false,
+            .MissingDevice = true,
+            .SwitchFinishesBeforeResponse = true,
+            .FailSwitch = true,
+        });
     }
 
     Y_UNIT_TEST_F(ShouldReconcileDevices, TFixture)
