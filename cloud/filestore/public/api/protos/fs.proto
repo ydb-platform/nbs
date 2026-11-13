@@ -76,6 +76,9 @@ message TFileStoreFeatures
 
     // Server WriteBackCache state file size in bytes per session.
     uint64 ServerWriteBackCacheStateFileSize = 58;
+
+    // Max FUSE read / write request size in pages.
+    uint32 MaxRequestPages = 59;
 }
 
 message TFileStore

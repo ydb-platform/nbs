@@ -3388,6 +3388,232 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_EXCEPTION(read.GetValueSync(), yexception);
     }
 
+    void CheckLargeRequests(
+        TBootstrap& bootstrap,
+        bool sendInitRequest,
+        bool expectSuccess)
+    {
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        bootstrap.Service->ReadDataHandler = [&] (auto, auto request) {
+            NProto::TReadDataResponse result;
+            result.MutableBuffer()->assign(TString(request->GetLength(), 'a'));
+            return MakeFuture(result);
+        };
+        std::atomic<int> writeCount = 0;
+        bootstrap.Service->WriteDataHandler = [&] (auto, auto) {
+            ++writeCount;
+            return MakeFuture(NProto::TWriteDataResponse());
+        };
+
+        // The default client can't send buffers larger than 8 KiB
+        bootstrap.Fuse = std::make_shared<TFuseVirtioClient>(
+            bootstrap.SocketPath,
+            WaitTimeout,
+            4_MB + 8_KB);
+
+        bootstrap.Start(/* sendInitRequest */ false);
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        if (sendInitRequest) {
+            // The guest kernel sizes its requests by max_pages
+            const ui32 maxWrite = expectSuccess ? 4_MB : 1_MB;
+            auto init = std::make_shared<TInitRequest>();
+            bootstrap.Fuse->SendRequest(init).GetValue(WaitTimeout);
+            UNIT_ASSERT_VALUES_EQUAL(maxWrite, init->Out->Body.max_write);
+            UNIT_ASSERT_VALUES_EQUAL(
+                maxWrite / 4_KB,
+                init->Out->Body.max_pages);
+        }
+
+        auto read = bootstrap.Fuse->SendRequest<TReadRequest>(
+            nodeId, handleId, 0, 4_MB);
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            nodeId, handleId, 0, CreateBuffer(4_MB, 'a'));
+
+        if (expectSuccess) {
+            UNIT_ASSERT_VALUES_EQUAL(4_MB, read.GetValue(WaitTimeout));
+            UNIT_ASSERT_VALUES_EQUAL(4_MB, write.GetValue(WaitTimeout));
+        } else {
+            // Rejected by the filesystem: larger than MaxBufferSize
+            UNIT_ASSERT_EXCEPTION_SATISFIES(
+                read.GetValue(WaitTimeout),
+                TSystemError,
+                [](const TSystemError& e) { return e.Status() == EINVAL; });
+
+            // Dropped by the vhost without a reply: larger than the session
+            // buffer, so it never reaches the service
+            UNIT_ASSERT_EXCEPTION_CONTAINS(
+                write.GetValue(WaitTimeout),
+                yexception,
+                "Header.unique mismatch");
+            UNIT_ASSERT_VALUES_EQUAL(0, writeCount.load());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectRequestsLargerThanDefaultMaxRequestPages)
+    {
+        TBootstrap bootstrap;
+        CheckLargeRequests(bootstrap, true, false);
+    }
+
+    Y_UNIT_TEST(ShouldAcceptLargeRequestsWithMaxRequestPages)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetMaxRequestPages(1024);
+        TBootstrap bootstrap(CreateWallClockTimer(), CreateScheduler(), features);
+        CheckLargeRequests(bootstrap, true, true);
+    }
+
+    Y_UNIT_TEST(ShouldClampMaxRequestPages)
+    {
+        // Bytes instead of pages: must be clamped, not wrapped to 0
+        NProto::TFileStoreFeatures features;
+        features.SetMaxRequestPages(4_MB);
+        TBootstrap bootstrap(CreateWallClockTimer(), CreateScheduler(), features);
+        CheckLargeRequests(bootstrap, true, true);
+    }
+
+    // Sends a write of maxRequestPages pages: the cache is used only if the
+    // state file can fit a request of that size
+    void CheckLargeWriteWithWriteBackCache(
+        ui32 maxRequestPages,
+        ui64 stateFileSize,
+        bool expectCached)
+    {
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+        const ui64 writeSize = maxRequestPages * 4_KB;
+
+        NProto::TFileStoreFeatures features;
+        features.SetMaxRequestPages(maxRequestPages);
+        features.SetServerWriteBackCacheEnabled(true);
+        features.SetServerWriteBackCacheStateFileSize(stateFileSize);
+        TBootstrap bootstrap(CreateWallClockTimer(), CreateScheduler(), features);
+
+        std::atomic<int> writeCount = 0;
+        bootstrap.Service->WriteDataHandler = [&] (auto, auto) {
+            ++writeCount;
+            return MakeFuture(NProto::TWriteDataResponse());
+        };
+
+        bootstrap.Fuse = std::make_shared<TFuseVirtioClient>(
+            bootstrap.SocketPath,
+            WaitTimeout,
+            writeSize + 8_KB);
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto write = std::make_shared<TWriteRequest>(
+            nodeId, handleId, 0, CreateBuffer(writeSize, 'a'));
+        write->In->Body.flags |= O_WRONLY;
+        UNIT_ASSERT_VALUES_EQUAL(
+            writeSize,
+            bootstrap.Fuse->SendRequest(write).GetValue(WaitTimeout));
+
+        if (expectCached) {
+            UNIT_ASSERT_VALUES_EQUAL(0, writeCount.load());
+            bootstrap.Fuse->SendRequest<TFlushRequest>(nodeId, handleId)
+                .GetValue(WaitTimeout);
+            UNIT_ASSERT_LT(0, writeCount.load());
+        } else {
+            // The cache is drained: the write goes to the service directly
+            UNIT_ASSERT_VALUES_EQUAL(1, writeCount.load());
+        }
+
+        auto counter =
+            bootstrap.Counters->GetSubgroup("component", "fs_ut")
+                ->GetCounter(
+                    GetCriticalEventForWriteBackCacheInitializationError(),
+                    true);
+        UNIT_ASSERT_VALUES_EQUAL(expectCached ? 0 : 1, counter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldCacheLargeWritesWithMaxRequestPages)
+    {
+        // 4 MiB requests fit into the 8 MiB state file
+        CheckLargeWriteWithWriteBackCache(
+            1024 /* maxRequestPages */,
+            8_MB /* stateFileSize */,
+            true /* expectCached */);
+    }
+
+    Y_UNIT_TEST(ShouldDrainWriteBackCacheIfLargeWritesDoNotFit)
+    {
+        // 4 MiB requests don't fit into the 1 MiB + 4 KiB state file
+        CheckLargeWriteWithWriteBackCache(
+            1024        /* maxRequestPages */,
+            1_MB + 4_KB /* stateFileSize */,
+            false       /* expectCached */);
+    }
+
+    void SetRestoredBufferSize(TBootstrap& bootstrap, ui32 bufferSize)
+    {
+        bootstrap.Service->CreateSessionHandler = [=] (auto, auto) {
+            NProto::TVfsSessionState state;
+            state.SetProtoMajor(7);
+            state.SetProtoMinor(33);
+            state.SetBufferSize(bufferSize);
+
+            NProto::TCreateSessionResponse response;
+            response.MutableSession()->SetSessionId(SessionId);
+            response.MutableFileStore()->SetBlockSize(4096);
+            response.MutableFileStore()->SetFileSystemId(FileSystemId);
+            Y_ABORT_UNLESS(state.SerializeToString(
+                response.MutableSession()->MutableSessionState()));
+            return MakeFuture(response);
+        };
+    }
+
+    Y_UNIT_TEST(ShouldKeepNegotiatedRequestSizeAfterRestart)
+    {
+        // The guest negotiated 4 MiB before the restart, the config is the
+        // default (1 MiB) now. No FUSE_INIT after restart.
+        TBootstrap bootstrap;
+        SetRestoredBufferSize(bootstrap, 4_MB + 4_KB);
+
+        CheckLargeRequests(bootstrap, false, true);
+    }
+
+    Y_UNIT_TEST(ShouldPersistNegotiatedBufferSizeOnInit)
+    {
+        // The guest negotiated 4 MiB before the restart, the config is the
+        // default (1 MiB) now. FUSE_INIT after restart negotiates 1 MiB and
+        // the persisted state must say so, not the restored 4 MiB.
+        TMutex lock;
+        TVector<TString> states;
+
+        TBootstrap bootstrap;
+        SetRestoredBufferSize(bootstrap, 4_MB + 4_KB);
+        bootstrap.Service->ResetSessionHandler = [&] (auto, auto request) {
+            with_lock (lock) {
+                states.push_back(request->GetSessionState());
+            }
+            return MakeFuture(NProto::TResetSessionResponse());
+        };
+
+        bootstrap.Start(/* sendInitRequest */ true);
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        TString lastState;
+        with_lock (lock) {
+            UNIT_ASSERT(!states.empty());
+            lastState = states.back();
+        }
+
+        NProto::TVfsSessionState state;
+        UNIT_ASSERT(state.ParseFromString(lastState));
+        UNIT_ASSERT_VALUES_EQUAL(1_MB + 4_KB, state.GetBufferSize());
+    }
+
     Y_UNIT_TEST(ShouldUpdateFilesystemMetricsWithInFlight)
     {
         TBootstrap bootstrap;

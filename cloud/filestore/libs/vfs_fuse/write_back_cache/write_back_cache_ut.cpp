@@ -207,6 +207,7 @@ struct TBootstrap
     bool FlushWritesInParallelEnabled = false;
     bool DisableExpectedDataValidation = false;
     ui64 CacheCapacityBytes = DefaultCacheCapacityBytes;
+    ui64 MaxGuestWriteRequestSize = 1_MB;
     size_t ThreadCount = 0;
 
     TCallContextPtr CallContext;
@@ -333,7 +334,8 @@ struct TBootstrap
              .FlushMaxWriteRequestsCount = MaxWriteRequestsCount,
              .FlushMaxSumWriteRequestsSize = MaxSumWriteRequestsSize,
              .ZeroCopyWriteEnabled = ZeroCopyWriteEnabled,
-             .FlushWritesInParallelEnabled = FlushWritesInParallelEnabled},
+             .FlushWritesInParallelEnabled = FlushWritesInParallelEnabled,
+             .MaxGuestWriteRequestSize = MaxGuestWriteRequestSize},
             ThreadCount);
 
         ModuleStats = Cache.CreateModuleStats();
@@ -2179,6 +2181,24 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(HasError(error));
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
         UNIT_ASSERT(drain.HasValue());
+    }
+
+    Y_UNIT_TEST(ShouldDrainIfMaxGuestWriteRequestDoesNotFit)
+    {
+        TBootstrap b;
+        TManualProceedHandlers write(b.Session->WriteDataHandler);
+
+        b.WriteToCacheSync(1, 0, "abc");
+
+        // The state file fits 1 MiB requests but not 4 MiB ones
+        b.MaxGuestWriteRequestSize = 4_MB;
+        b.RecreateCache();
+
+        // The restored data is flushed, not stranded
+        UNIT_ASSERT(!b.Cache.IsDrained());
+        write.ProceedAll();
+        UNIT_ASSERT(b.Cache.IsDrained());
+        UNIT_ASSERT_VALUES_EQUAL("abc", b.FlushedData.ReadAll(1));
     }
 
     Y_UNIT_TEST(ShouldReportOperationalStateMetrics)
