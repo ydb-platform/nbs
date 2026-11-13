@@ -862,8 +862,16 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
                     static_cast<int>(i) == failedPart ? VHD_BDEV_IOERR
                                                       : VHD_BDEV_SUCCESS,
                     stats);
+                if (i != order.back()) {
+                    EXPECT_TRUE(CompletedBios.empty());
+                }
             }
 
+            // The backend submits one original request to libvhost. Final
+            // guest status and latency are observed there, after cancellation.
+            EXPECT_EQ(0u, stats.Requests[VHD_BDEV_WRITE].LatencyGood.load());
+            EXPECT_EQ(0u, stats.Requests[VHD_BDEV_WRITE].LatencyBad.load());
+            EXPECT_EQ(0u, stats.Requests[VHD_BDEV_WRITE].LatencyUnknown.load());
             ASSERT_EQ(1u, CompletedBios.size());
             EXPECT_EQ(&bio.io, CompletedBios[0].Io);
             EXPECT_EQ(

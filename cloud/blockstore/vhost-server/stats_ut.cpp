@@ -1,5 +1,8 @@
 #include "stats.h"
+
 #include "critical_event.h"
+
+#include <cloud/blockstore/libs/common/latency_sli_fingerprint.h>
 
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -9,6 +12,7 @@
 #include <util/stream/str.h>
 
 #include <chrono>
+#include <thread>
 #include <tuple>
 
 using namespace std::chrono_literals;
@@ -18,6 +22,171 @@ using namespace NCloud::NBlockStore::NVHostServer;
 
 Y_UNIT_TEST_SUITE(TStatsTest)
 {
+    Y_UNIT_TEST(ShouldSnapshotConcurrentCompletions)
+    {
+        using namespace NCloud::NBlockStore;
+        const auto config = TLatencySliConfig::TryParse(
+            "1;0:1:8193:1000;1:1:8193:1000").value();
+        TAtomicStats producer;
+        constexpr ui64 workerCount = 4;
+        constexpr ui64 iterations = 3000;
+        const auto elapsed = DurationToCyclesSafe(TDuration::MicroSeconds(500));
+        std::atomic<bool> start = false;
+        std::atomic<ui64> running = workerCount;
+        TVector<std::thread> workers;
+        for (ui64 worker = 0; worker < workerCount; ++worker) {
+            workers.emplace_back([&, write = worker % 2] {
+                while (!start.load()) {
+                    std::this_thread::yield();
+                }
+                for (ui64 i = 0; i < iterations; ++i) {
+                    const bool failed = i % 3 == 1;
+                    const ui64 bytes = i % 3 == 2 ? 16384 : 4096;
+                    ++producer.Completed;
+                    if (failed) {
+                        ++producer.Requests[write].Errors;
+                    } else {
+                        ++producer.Requests[write].Count;
+                        producer.Requests[write].Bytes += bytes;
+                        producer.Times[write].Increment(elapsed);
+                        producer.Sizes[write].Increment(bytes);
+                    }
+                    producer.RecordFinalOutcome(write, bytes, failed, 500, &config);
+                }
+                --running;
+            });
+        }
+
+        bool monotonic = true;
+        TSimpleStats previous;
+        start = true;
+        do {
+            const auto snapshot = TSimpleStats(producer);
+            monotonic &= snapshot.Completed >= previous.Completed;
+            for (size_t write = 0; write < 2; ++write) {
+                const auto& current = snapshot.Requests[write];
+                const auto& old = previous.Requests[write];
+                monotonic &= current.LatencyGood >= old.LatencyGood &&
+                    current.LatencyBad >= old.LatencyBad &&
+                    current.LatencyUnknown >= old.LatencyUnknown;
+            }
+            previous = snapshot;
+        } while (running.load());
+        for (auto& worker: workers) {
+            worker.join();
+        }
+
+        UNIT_ASSERT(monotonic);
+        const auto snapshot = TSimpleStats(producer);
+        UNIT_ASSERT_VALUES_EQUAL(workerCount * iterations, snapshot.Completed);
+        constexpr ui64 perOutcome = workerCount / 2 * iterations / 3;
+        for (size_t write = 0; write < 2; ++write) {
+            const auto& stats = snapshot.Requests[write];
+            UNIT_ASSERT_VALUES_EQUAL(perOutcome, stats.LatencyGood);
+            UNIT_ASSERT_VALUES_EQUAL(perOutcome, stats.LatencyBad);
+            UNIT_ASSERT_VALUES_EQUAL(perOutcome, stats.LatencyUnknown);
+            UNIT_ASSERT_VALUES_EQUAL(perOutcome, stats.Errors);
+            UNIT_ASSERT_VALUES_EQUAL(2 * perOutcome, stats.Count);
+            UNIT_ASSERT_VALUES_EQUAL(perOutcome * (4096 + 16384), stats.Bytes);
+            ui64 times = 0;
+            ui64 sizes = 0;
+            snapshot.Times[write].IterateBuckets(
+                [&](ui64, ui64, ui64 count) { times += count; });
+            snapshot.Sizes[write].IterateBuckets(
+                [&](ui64, ui64, ui64 count) { sizes += count; });
+            UNIT_ASSERT_VALUES_EQUAL(2 * perOutcome, times);
+            UNIT_ASSERT_VALUES_EQUAL(2 * perOutcome, sizes);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldPickUpPendingSnapshotAfterTimeout)
+    {
+        auto completion = CreateCompletionStats();
+        UNIT_ASSERT(!completion->Get(TDuration::Zero()));
+        TAtomicStats producer;
+        producer.Requests[0].LatencyGood = 1;
+        completion->Sync(producer);
+        producer.Requests[0].LatencyGood = 2;
+        completion->Sync(producer); // Do not overwrite an unconsumed snapshot.
+        auto snapshot = completion->Get(TDuration::Zero());
+        UNIT_ASSERT(snapshot);
+        UNIT_ASSERT_VALUES_EQUAL(1, snapshot->Requests[0].LatencyGood);
+        UNIT_ASSERT(!completion->Get(TDuration::Zero()));
+        completion->Sync(producer);
+        snapshot = completion->Get(TDuration::Zero());
+        UNIT_ASSERT(snapshot);
+        UNIT_ASSERT_VALUES_EQUAL(2, snapshot->Requests[0].LatencyGood);
+    }
+
+    Y_UNIT_TEST(ShouldDumpCumulativeLatencyDecisions)
+    {
+        using namespace NCloud;
+        using namespace NCloud::NBlockStore;
+        auto config = TLatencySliConfig::TryParse("1;0:1:8193:1000").value();
+        TAtomicStats producer;
+        producer.RecordFinalOutcome(false, 4096, false, 500, &config);
+        producer.RecordFinalOutcome(false, 4096, false, 1500, &config);
+        producer.RecordFinalOutcome(false, 4096, true, 500, &config);
+        producer.RecordFinalOutcome(true, 4096, false, 0, &config);
+        TSimpleStats previous;
+        TCompleteStats complete;
+        complete.SimpleStats += producer;
+        TStringStream stream;
+        DumpStats(complete, previous, TDuration::Seconds(1), stream,
+            GetCyclesPerMillisecond(), &config);
+        NJson::TJsonValue first;
+        NJson::ReadJsonTree(stream.Str(), &first, true);
+        UNIT_ASSERT_VALUES_EQUAL(1, first["read"]["latency_good"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(2, first["read"]["latency_bad"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(1, first["write"]["latency_unknown"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(2, first["latency_sli"].GetMap().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2, first["latency_sli"]["version"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetLatencySliConfigFingerprint(config),
+            first["latency_sli"]["config_id"].GetString());
+        TStringStream next;
+        DumpStats(complete, previous, TDuration::Seconds(1), next,
+            GetCyclesPerMillisecond(), &config);
+        NJson::TJsonValue second;
+        NJson::ReadJsonTree(next.Str(), &second, true);
+        UNIT_ASSERT_VALUES_EQUAL(1, second["read"]["latency_good"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(2, second["read"]["latency_bad"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(1, second["write"]["latency_unknown"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(2, second["latency_sli"].GetMap().size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetLatencySliConfigFingerprint(config),
+            second["latency_sli"]["config_id"].GetString());
+    }
+
+    Y_UNIT_TEST(ShouldBoundSnapshotSizeForLargeThresholdTables)
+    {
+        using namespace NCloud::NBlockStore;
+        TLatencySliConfig config;
+        config.Enabled = true;
+        for (ui64 i = 0; i < 4096; ++i) {
+            config.Thresholds[0].push_back({i, i + 1, 1000});
+        }
+        UNIT_ASSERT(config.Validate());
+        UNIT_ASSERT(config.Serialize().size() > 65536);
+        TSimpleStats previous;
+        TCompleteStats current;
+        TStringStream output;
+        DumpStats(
+            current,
+            previous,
+            TDuration::Seconds(1),
+            output, GetCyclesPerMillisecond(), &config, true);
+        // A frame must fit even the minimum nonblocking pipe capacity.
+        UNIT_ASSERT_C(output.Str().size() <= 4096, output.Str().size());
+        NJson::TJsonValue value;
+        UNIT_ASSERT(NJson::ReadJsonTree(output.Str(), &value));
+        UNIT_ASSERT_VALUES_EQUAL(1, value["final"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetLatencySliConfigFingerprint(config),
+            value["latency_sli"]["config_id"].GetString());
+    }
+
     Y_UNIT_TEST(ShouldDumpStats)
     {
         constexpr ui64 cyclesPerSecond = 2000000000;

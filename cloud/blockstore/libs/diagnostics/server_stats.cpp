@@ -3,6 +3,7 @@
 #include "config.h"
 #include "dumpable.h"
 #include "hostname.h"
+#include "latency_sli.h"
 #include "probes.h"
 #include "profile_log.h"
 #include "request_stats.h"
@@ -87,6 +88,12 @@ public:
         const TString& diskId,
         const TString& cloudId,
         const TString& folderId) override;
+
+    TLatencySliConfig GetLatencySliConfig(ui32 mediaKind) const override
+    {
+        return DiagnosticsConfig ? DiagnosticsConfig->GetLatencySliConfig(mediaKind)
+                                 : TLatencySliConfig{};
+    }
 
     ui32 GetBlockSize(const TString& diskId) const override;
 
@@ -283,6 +290,7 @@ void TServerStats::PrepareMetricRequest(
     metricRequest.DiskId = std::move(diskId);
     metricRequest.StartIndex = startIndex;
     metricRequest.RequestBytes = requestBytes;
+    metricRequest.OriginalRequestBytes = requestBytes;
     metricRequest.Unaligned = unaligned;
 
     if (metricRequest.DiskId) {
@@ -443,6 +451,25 @@ void TServerStats::RequestCompleted(
         responseSentCycles,
         req.AccessMode,
         req.MountMode);
+
+    if (req.VolumeInfo && !req.ForwardedRequest) {
+        const auto type = TranslateLocalRequestType(req.RequestType);
+        if (type == EBlockStoreRequest::ReadBlocks ||
+            type == EBlockStoreRequest::WriteBlocks)
+        {
+            if (auto* sli = req.VolumeInfo->GetLatencySli()) {
+                // Classify the full original request latency, including
+                // throttling, shaping, backpressure, retry backoff and sending
+                // the response. ResponseSent is stamped before the send.
+                // Every error is Bad, including client errors and cancellation.
+                // Retries issued as separate gRPC calls are separate samples.
+                sli->Complete(
+                    type == EBlockStoreRequest::WriteBlocks,
+                    req.OriginalRequestBytes,
+                    requestTime.MicroSeconds(), HasError(error));
+            }
+        }
+    }
 
     ui32 blockSize = DefaultBlockSize;
 

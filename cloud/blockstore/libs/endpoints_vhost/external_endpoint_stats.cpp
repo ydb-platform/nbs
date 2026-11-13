@@ -1,6 +1,8 @@
 #include "external_endpoint_stats.h"
 
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
+#include <cloud/blockstore/libs/diagnostics/latency_sli.h>
+#include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/max_calculator.h>
 
@@ -77,8 +79,102 @@ void BatchCompleted(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats)
+{
+    TMetricRequest request{EBlockStoreRequest::ReadBlocks};
+    ServerStats->PrepareMetricRequest(request, ClientId, DiskId, 0, 0, false);
+    auto* counters = request.VolumeInfo
+        ? request.VolumeInfo->GetLatencySli() : nullptr;
+    const auto& meta = stats["latency_sli"];
+    const auto version = meta["version"].GetUInteger();
+    const bool matching = counters && version == 2 &&
+        meta["config_id"].IsString() &&
+        meta["config_id"].GetString() == counters->GetConfigFingerprint();
+
+    // Old children count successful AIO reads before decryption, but add a
+    // timing sample only after decryption succeeds. Recover that split when
+    // the legacy histogram is available; new children report final outcomes.
+    const ui64 encryptorErrors = stats["encryptor_errors"].GetUInteger();
+    ui64 readEncryptorErrors = 0;
+    const auto& times = stats["read"]["times"];
+    if (encryptorErrors && times.IsArray()) {
+        ui64 successfulReads = 0;
+        bool valid = true;
+        const ui64 reads = stats["read"]["count"].GetUInteger();
+        for (const auto& bucket: times.GetArray()) {
+            if (!bucket.IsArray() || bucket.GetArray().size() != 2 ||
+                !bucket[1].IsUInteger() ||
+                bucket[1].GetUInteger() > reads - successfulReads)
+            {
+                valid = false;
+                break;
+            }
+            successfulReads += bucket[1].GetUInteger();
+        }
+        if (valid) {
+            readEncryptorErrors = Min(encryptorErrors, reads - successfulReads);
+        }
+    }
+
+    for (size_t write = 0; write < 2; ++write) {
+        const auto& value = stats[write ? "write" : "read"];
+        std::array<ui64, 3> current = {
+            value["latency_good"].GetUInteger(),
+            value["latency_bad"].GetUInteger(),
+            value["latency_unknown"].GetUInteger()};
+        auto& previous = LatencyPrevious[write];
+        const bool present = value["latency_good"].IsUInteger() &&
+            value["latency_bad"].IsUInteger() && value["latency_unknown"].IsUInteger();
+        const bool usable = matching && present;
+        if (!usable || LatencyNeedsBaseline[write]) {
+            // Legacy counts preserve failures even without usable thresholds.
+            // Rebaseline before resuming cumulative SLI counts to avoid replay.
+            if (counters) {
+                if (value["final_count"].IsUInteger() &&
+                    value["final_errors"].IsUInteger())
+                {
+                    counters->Add(
+                        0,
+                        value["final_errors"].GetUInteger(),
+                        value["final_count"].GetUInteger());
+                } else {
+                    const ui64 cryptoErrors =
+                        write ? encryptorErrors - readEncryptorErrors
+                              : readEncryptorErrors;
+                    counters->Add(
+                        0,
+                        value["errors"].GetUInteger() + cryptoErrors,
+                        value["count"].GetUInteger() -
+                            (write ? 0 : readEncryptorErrors));
+                }
+            }
+            LatencyNeedsBaseline[write] = !usable;
+            if (usable) {
+                previous = current;
+            }
+            continue;
+        }
+        if (current[0] < previous[0] || current[1] < previous[1] ||
+            current[2] < previous[2])
+        {
+            // A reader belongs to one child: counters cannot reset. Ignore a
+            // regressing snapshot without moving the baseline backwards.
+            continue;
+        }
+        const ui64 good = current[0] - previous[0];
+        const ui64 bad = current[1] - previous[1];
+        const ui64 unknown = current[2] - previous[2];
+        previous = current;
+        if (counters) {
+            counters->Add(good, bad, unknown);
+        }
+    }
+}
+
 void TEndpointStats::Update(const NJson::TJsonValue& stats)
 {
+    UpdateLatency(stats);
+
     BatchCompleted(
         *ServerStats,
         EBlockStoreRequest::ReadBlocks,

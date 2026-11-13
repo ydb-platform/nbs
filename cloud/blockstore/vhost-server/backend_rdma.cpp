@@ -121,8 +121,11 @@ public:
 
 class TRdmaBackend final: public IBackend
 {
+    using TCreateRdmaClient = decltype(&NCloud::NBlockStore::NRdma::CreateRdmaClient);
+
 private:
     const ILoggingServicePtr Logging;
+    const TCreateRdmaClient RdmaClientFactory;
     TLog Log;
     IClientPtr RdmaClient;
     IStorageProviderPtr StorageProvider;
@@ -131,14 +134,16 @@ private:
     ITimerPtr Timer;
     NProto::TVolume Volume;
     TString ClientId;
-    ICompletionStatsPtr CompletionStats;
-    TSimpleStats CompletionStatsData;
+    TAtomicStats CompletionStatsData;
     bool ReadOnly = false;
     ui32 BlockSize = 0;
     ui32 SectorsToBlockShift = 0;
 
 public:
-    explicit TRdmaBackend(ILoggingServicePtr logging);
+    explicit TRdmaBackend(
+        ILoggingServicePtr logging,
+        TCreateRdmaClient rdmaClientFactory = NCloud::NBlockStore::NRdma::CreateRdmaClient,
+        IBlockStorePtr dataClient = {});
 
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
@@ -161,9 +166,13 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRdmaBackend::TRdmaBackend(ILoggingServicePtr logging)
+TRdmaBackend::TRdmaBackend(
+        ILoggingServicePtr logging,
+        TCreateRdmaClient rdmaClientFactory,
+        IBlockStorePtr dataClient)
     : Logging{std::move(logging)}
-    , CompletionStats(CreateCompletionStats())
+    , RdmaClientFactory{rdmaClientFactory}
+    , DataClient{std::move(dataClient)}
 {
     Log = Logging->CreateLog("RDMA");
 }
@@ -192,7 +201,7 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
     rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
 
     auto monitoring = NCloud::CreateMonitoringServiceStub();
-    RdmaClient = NCloud::NBlockStore::NRdma::CreateRdmaClient(
+    RdmaClient = RdmaClientFactory(
         Logging,
         std::move(monitoring),
         std::move(rdmaClientConfig));
@@ -344,7 +353,8 @@ void TRdmaBackend::ProcessQueue(
 
 std::optional<TSimpleStats> TRdmaBackend::GetCompletionStats(TDuration timeout)
 {
-    return CompletionStats->Get(timeout);
+    Y_UNUSED(timeout);
+    return TSimpleStats(CompletionStatsData);
 }
 
 TSgList ConvertVhdSgList(const vhd_sglist& vhdSglist)
@@ -461,8 +471,6 @@ void TRdmaBackend::CompleteRequest(
     }
 
     vhd_complete_bio(io, isError ? VHD_BDEV_IOERR : VHD_BDEV_SUCCESS);
-
-    CompletionStats->Sync(CompletionStatsData);
 }
 
 }   // namespace

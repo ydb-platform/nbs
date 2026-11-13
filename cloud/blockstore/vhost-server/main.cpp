@@ -17,6 +17,7 @@
 #include <util/datetime/base.h>
 #include <util/system/thread.h>
 
+#include <poll.h>
 #include <pthread.h>
 #include <signal.h>
 #include <sys/prctl.h>
@@ -34,6 +35,38 @@ timespec ToTimeSpec(TDuration t)
     return timespec{
         .tv_sec = static_cast<int>(t.Seconds()),
         .tv_nsec = t.MicroSecondsOfSecond() * 1000};
+}
+
+// The last snapshot has no later cumulative report to repair a short write.
+// Allow the parent reader to drain a full nonblocking pipe, with a bounded wait
+// for older parents that stop reading as soon as they send SIGINT.
+bool WriteFinalStats(TStringBuf data)
+{
+    const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+    while (data) {
+        const auto written = ::write(STDOUT_FILENO, data.data(), data.size());
+        if (written > 0) {
+            data.Skip(written);
+            continue;
+        }
+        if (written < 0 && errno == EINTR) {
+            continue;
+        }
+        if (written >= 0 || (errno != EAGAIN && errno != EWOULDBLOCK)) {
+            return false;
+        }
+        const auto remaining = deadline - TInstant::Now();
+        if (!remaining) {
+            return false;
+        }
+        pollfd descriptor{STDOUT_FILENO, POLLOUT, 0};
+        if (::poll(&descriptor, 1, remaining.MilliSeconds()) < 0 &&
+            errno != EINTR)
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 class TCerrJsonLogBackend
@@ -286,7 +319,8 @@ int main(int argc, char** argv)
                         prevStats,
                         now - ts,
                         Cout,
-                        GetCyclesPerMillisecond());
+                        GetCyclesPerMillisecond(),
+                        options.LatencySli.get());
                 } catch (const TSystemError& e) {
                     STORAGE_INFO("DumpStats error: " << e.AsStrBuf());
                 }
@@ -322,6 +356,21 @@ int main(int argc, char** argv)
     }
 
     server->Stop();
+
+    try {
+        TStringStream finalStats;
+        DumpStats(
+            server->GetStats(prevStats),
+            prevStats,
+            Now() - ts,
+            finalStats,
+            GetCyclesPerMillisecond(), options.LatencySli.get(), true);
+        if (!WriteFinalStats(finalStats.Str())) {
+            STORAGE_INFO("Could not deliver final stats to parent");
+        }
+    } catch (const TSystemError& e) {
+        STORAGE_INFO("Final DumpStats error: " << e.AsStrBuf());
+    }
 
     return 0;
 }

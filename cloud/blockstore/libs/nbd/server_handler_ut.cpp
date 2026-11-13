@@ -460,6 +460,107 @@ void ProcessUnalignedRequests(
 
 Y_UNIT_TEST_SUITE(TServerHandlerTest)
 {
+    Y_UNIT_TEST(ShouldCompleteRejectedAndUndeliverableWritesExactlyOnce)
+    {
+        enum EFailure
+        {
+            Checkpoint,
+            Payload,
+            Send,
+            Shutdown
+        };
+
+        for (auto failure: {Checkpoint, Payload, Send, Shutdown}) {
+            auto storage = std::make_shared<TTestStorage>();
+            SetupStorage(*storage);
+            auto stats = std::make_shared<TTestServerStats>();
+            ui32 started = 0;
+            TVector<ui32> errors;
+            stats->RequestStartedHandler = [&](auto&, auto&, auto&, const auto&)
+            {
+                ++started;
+            };
+            stats->RequestCompletedHandler =
+                [&](auto&, auto&, auto&, const auto& error)
+            {
+                errors.push_back(error.GetCode());
+            };
+            TStorageOptions options;
+            options.DiskId = DefaultDiskId;
+            options.BlockSize = DefaultBlockSize;
+            options.BlocksCount = DefaultBlocksCount;
+            if (failure == Checkpoint) {
+                options.CheckpointId = "checkpoint";
+            }
+            auto handler =
+                CreateServerHandlerFactory(
+                    CreateDefaultDeviceHandlerFactory(),
+                    CreateLoggingService("console"),
+                    storage, stats, CreateErrorHandlerStub(), options)
+                    ->CreateHandler();
+            TStringStream in;
+            TStringStream out;
+            NegotiateClient(*handler, in, out);
+
+            struct TCaptureContext: TServerContext
+            {
+                TServerResponsePtr Response;
+                using TServerContext::TServerContext;
+
+                void SendResponse(TServerResponsePtr response) override
+                {
+                    Response = std::move(response);
+                }
+            };
+
+            auto ctx = MakeIntrusive<TCaptureContext>(in);
+            TRequest request{};
+            request.Magic = NBD_REQUEST_MAGIC;
+            request.Type = NBD_CMD_WRITE;
+            request.Handle = 1;
+            request.Length = failure == Checkpoint ? 0 : 4096;
+            TRequestWriter writer(out);
+            writer.WriteRequest(request);
+            if (failure == Send || failure == Shutdown) {
+                out.Write(TString(request.Length, 'a'));
+            }
+            if (failure == Payload) {
+                UNIT_ASSERT_EXCEPTION(
+                    handler->ProcessRequests(ctx, out, in, nullptr),
+                    yexception);
+            } else {
+                handler->ProcessRequests(ctx, out, in, nullptr);
+            }
+            if (failure == Send || failure == Shutdown) {
+                UNIT_ASSERT(ctx->Response);
+                UNIT_ASSERT(errors.empty());
+                if (failure == Send) {
+                    struct TBrokenOutput: IOutputStream
+                    {
+                        void DoWrite(const void*, size_t) override
+                        {
+                            ythrow yexception() << "disconnected";
+                        }
+                    } broken;
+
+                    UNIT_ASSERT_EXCEPTION(
+                        handler->SendResponse(broken, *ctx->Response),
+                        yexception);
+                } else {
+                    handler->CancelResponse(*ctx->Response);
+                }
+            }
+            UNIT_ASSERT_VALUES_EQUAL(1, started);
+            UNIT_ASSERT_VALUES_EQUAL(1, errors.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                failure == Checkpoint ? E_ARGUMENT : E_CANCELLED, errors[0]);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                handler->CollectRequests(
+                    [](const auto&, const auto&, auto) {}));
+        }
+    }
+
     Y_UNIT_TEST(ShouldNegotiateClient)
     {
         auto storage = std::make_shared<TTestStorage>();
@@ -661,6 +762,17 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
             ++requestCounter;
         };
 
+        ui32 startedRequests = 0;
+        serverStats->RequestStartedHandler = [&](TLog&, TMetricRequest& request,
+                                                TCallContext&, const TString&) {
+            const ui64 bytes = !expectedUnaligned ? DefaultBlockSize
+                : request.RequestType == EBlockStoreRequest::ReadBlocks ? 11 * 512
+                : request.RequestType == EBlockStoreRequest::WriteBlocks ? 13 * 512
+                : 8 * 512;
+            UNIT_ASSERT_VALUES_EQUAL(bytes, request.OriginalRequestBytes);
+            ++startedRequests;
+        };
+
         auto factory = CreateServerHandlerFactory(
             CreateDefaultDeviceHandlerFactory(),
             bootstrap->GetLogging(),
@@ -689,6 +801,7 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
         expectedBlockCount = 2;
         expectedRequestCounter += 3;
         ProcessUnalignedRequests(*handler, in, out);
+        UNIT_ASSERT_VALUES_EQUAL(expectedRequestCounter, startedRequests);
 
         bootstrap->Stop();
     }

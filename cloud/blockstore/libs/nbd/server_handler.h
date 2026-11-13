@@ -97,6 +97,8 @@ struct IServerHandler
         IOutputStream& out,
         TServerResponse& response) = 0;
 
+    virtual void CancelResponse(TServerResponse& response) = 0;
+
     virtual void ProcessRequests(
         IServerContextPtr ctx,
         IInputStream& in,

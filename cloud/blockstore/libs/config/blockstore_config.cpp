@@ -8,6 +8,8 @@ the features wrapper created from the merged protobuf configuration.
 
 #include "blockstore_config.h"
 
+#include <cloud/blockstore/config/latency_sli.pb.h>
+
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
@@ -29,7 +31,9 @@ public:
         const NProto::TBlockstoreConfig& config,
         NFeatures::TFeaturesConfigConstPtr featuresConfig,
         NStorage::TStorageConfigConstPtr storageConfig,
-        NStorage::TDiskAgentConfigConstPtr diskAgentConfig);
+        NStorage::TDiskAgentConfigConstPtr diskAgentConfig,
+        std::shared_ptr<const NProto::TLatencySliThresholdsConfig>
+            latencySliOverride = {});
 
     const NServer::TServerAppConfigConstPtr& GetServerConfig() const override;
 
@@ -39,6 +43,12 @@ public:
     const NStorage::TStorageConfigConstPtr& GetStorageConfig() const override;
 
     const TDiagnosticsConfigConstPtr& GetDiagnosticsConfig() const override;
+
+    const std::shared_ptr<const NProto::TLatencySliThresholdsConfig>&
+    GetLatencySliOverride() const noexcept override
+    {
+        return LatencySliOverride;
+    }
 
     const NDiscovery::TDiscoveryConfigConstPtr&
     GetDiscoveryServiceConfig() const override;
@@ -96,22 +106,25 @@ private:
     const TRootKmsConfigConstPtr RootKmsConfig;
     const NCells::TCellsConfigConstPtr CellsConfig;
     const TLocalNVMeConfigConstPtr LocalNVMeConfig;
+    const std::shared_ptr<const NProto::TLatencySliThresholdsConfig>
+        LatencySliOverride;
 };
 
 TBlockstoreConfigImpl::TBlockstoreConfigImpl(
     const NProto::TBlockstoreConfig& config,
     NFeatures::TFeaturesConfigConstPtr featuresConfig,
     NStorage::TStorageConfigConstPtr storageConfig,
-    NStorage::TDiskAgentConfigConstPtr diskAgentConfig)
+    NStorage::TDiskAgentConfigConstPtr diskAgentConfig,
+    std::shared_ptr<const NProto::TLatencySliThresholdsConfig>
+        latencySliOverride)
     : ServerConfig(
           std::make_shared<NServer::TServerAppConfig>(config.GetServer()))
     , FeaturesConfig(std::move(featuresConfig))
     , StorageConfig(std::move(storageConfig))
     , DiagnosticsConfig(
           std::make_shared<TDiagnosticsConfig>(config.GetDiagnostics()))
-    , DiscoveryServiceConfig(
-          std::make_shared<NDiscovery::TDiscoveryConfig>(
-              config.GetDiscoveryService()))
+    , DiscoveryServiceConfig(std::make_shared<NDiscovery::TDiscoveryConfig>(
+          config.GetDiscoveryService()))
     , EndpointConfig(
           std::make_shared<NClient::TClientAppConfig>(config.GetEndpoint()))
     , DiskAgentConfig(std::move(diskAgentConfig))
@@ -130,13 +143,13 @@ TBlockstoreConfigImpl::TBlockstoreConfigImpl(
           std::make_shared<NIamClient::TIamClientConfig>(config.GetIamClient()))
     , KmsClientConfig(
           std::make_shared<NProto::TGrpcClientConfig>(config.GetKmsClient()))
-    , ComputeClientConfig(
-          std::make_shared<NProto::TGrpcClientConfig>(
-              config.GetComputeClient()))
+    , ComputeClientConfig(std::make_shared<NProto::TGrpcClientConfig>(
+          config.GetComputeClient()))
     , RootKmsConfig(
           std::make_shared<NProto::TRootKmsConfig>(config.GetRootKms()))
     , CellsConfig(std::make_shared<NCells::TCellsConfig>(config.GetCells()))
     , LocalNVMeConfig(std::make_shared<TLocalNVMeConfig>(config.GetLocalNVMe()))
+    , LatencySliOverride(std::move(latencySliOverride))
 {
     Y_ABORT_UNLESS(FeaturesConfig);
     Y_ABORT_UNLESS(StorageConfig);
@@ -330,10 +343,13 @@ TBlockstoreConfigExtraParameters GetBlockstoreConfigExtraParameters(
 {
     const auto& diskAgentConfig = currentConfig.GetDiskAgentConfig();
     return {
-        .DiskAgent = {
-            .Rack = diskAgentConfig->GetRack(),
-            .NetworkMbitThroughput = diskAgentConfig->GetNetworkMbitThroughput(),
-        },
+        .DiskAgent =
+            {
+                .Rack = diskAgentConfig->GetRack(),
+                .NetworkMbitThroughput =
+                    diskAgentConfig->GetNetworkMbitThroughput(),
+            },
+        .LatencySliOverride = currentConfig.GetLatencySliOverride(),
     };
 }
 
@@ -346,6 +362,10 @@ IBlockstoreConfigPtr MakeBlockstoreConfig(
     Y_ABORT_UNLESS(controls);
 
     auto config = MergeBlockstoreConfig(staticConfig, dynamicConfig);
+    if (extraParameters.LatencySliOverride) {
+        config.MutableDiagnostics()->MutableLatencySliThresholds()->CopyFrom(
+            extraParameters.LatencySliOverride->GetThresholds());
+    }
     auto featuresConfig =
         std::make_shared<NFeatures::TFeaturesConfig>(config.GetFeatures());
     auto storageConfig = std::make_shared<NStorage::TStorageConfig>(
@@ -361,7 +381,8 @@ IBlockstoreConfigPtr MakeBlockstoreConfig(
         config,
         std::move(featuresConfig),
         std::move(storageConfig),
-        std::move(diskAgentConfig));
+        std::move(diskAgentConfig),
+        std::move(extraParameters.LatencySliOverride));
 }
 
 IBlockstoreConfigPtr MakeBlockstoreConfig(

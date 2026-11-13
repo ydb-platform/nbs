@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 
+#include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -105,7 +106,7 @@ struct TFixture
     TString ClientId = "client";
     TString DiskId = "volume";
 
-    TFixture()
+    TFixture(bool latencySli = false)
     {
         auto monitoring = CreateMonitoringServiceStub();
 
@@ -113,15 +114,24 @@ struct TFixture
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "server");
 
+        NProto::TDiagnosticsConfig proto;
+        proto.SetEnableLatencySli(latencySli);
+        auto* row = proto.AddLatencySliThresholds();
+        row->SetMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
+        row->SetStartBytes(1);
+        row->SetEndBytes(8193);
+        row->SetThresholdUs(1000);
+        auto config = std::make_shared<TDiagnosticsConfig>(proto);
         auto volumeStats = CreateVolumeStats(
             Monitoring,
+            config,
             {},
             EVolumeStatsType::EServerStats,
             CreateWallClockTimer());
 
         ServerStats = CreateServerStats(
             std::make_shared<TTestDumpable>(),
-            std::make_shared<TDiagnosticsConfig>(),
+            config,
             Monitoring,
             CreateProfileLogStub(),
             CreateServerRequestStats(
@@ -138,6 +148,15 @@ struct TFixture
         ServerStats->MountVolume(volume, ClientId, "instance");
     }
 
+    NMonitoring::TDynamicCountersPtr GetLatencyCounters()
+    {
+        return Monitoring->GetCounters()->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", DiskId)->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", "")->GetSubgroup("folder", "")
+            ->GetSubgroup("type", MediaKindToComputeType(NProto::STORAGE_MEDIA_SSD_LOCAL));
+    }
+
     void UpdateStats(
         TEndpointStats& stats,
         const TVolumeStats& volumeStats)
@@ -149,12 +168,178 @@ struct TFixture
     }
 };
 
+auto LatencySnapshot(ui64 good, ui64 bad = 0)
+{
+    return NJson::TJsonMap{
+        {"latency_sli", NJson::TJsonMap{
+            {"version", ui64(2)},
+            {"config_id", GetLatencySliConfigFingerprint(
+                TLatencySliConfig::TryParse("1;0:1:8193:1000").value())}}},
+        {"read", NJson::TJsonMap{
+            {"latency_good", good}, {"latency_bad", bad},
+            {"latency_unknown", ui64(0)}}},
+        {"write", NJson::TJsonMap{
+            {"latency_good", ui64(0)}, {"latency_bad", ui64(0)},
+            {"latency_unknown", ui64(0)}}}};
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TEndpointStatsTest)
 {
+    Y_UNIT_TEST(ShouldPreserveFailuresAfterIdleSnapshots)
+    {
+        TFixture f(true);
+        TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
+        auto group = f.GetLatencyCounters();
+        reader.Update(LatencySnapshot(0)); // idle before the first request
+        reader.Update(LatencySnapshot(0, 1));
+        reader.Update(LatencySnapshot(0, 1)); // idle between failures
+        reader.Update(LatencySnapshot(0, 2));
+        reader.Update(LatencySnapshot(0, 2)); // idle after the last failure
+        UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyTotalOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyUnknownOps", true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldPreserveEncryptionFailuresInLegacyFallback)
+    {
+        for (bool finalOutcomes: {false, true}) {
+            TFixture f(true);
+            TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
+            auto snapshot = LatencySnapshot(0);
+            snapshot["latency_sli"]["version"] = ui64(0);
+            snapshot["encryptor_errors"] = ui64(3);
+            // Five reads reached decryption; two failed. One write failed
+            // encryption before submission. Legacy errors contain neither.
+            snapshot["read"]["count"] = ui64(5);
+            snapshot["read"]["errors"] = ui64(1);
+            NJson::TJsonArray times;
+            times.AppendValue(NJson::TJsonArray{{ui64(500), ui64(3)}});
+            snapshot["read"]["times"] = std::move(times);
+            snapshot["write"]["count"] = ui64(4);
+            snapshot["write"]["errors"] = ui64(2);
+            if (finalOutcomes) {
+                snapshot["read"]["final_count"] = ui64(3);
+                snapshot["read"]["final_errors"] = ui64(3);
+                snapshot["write"]["final_count"] = ui64(4);
+                snapshot["write"]["final_errors"] = ui64(3);
+            }
+            reader.Update(snapshot);
+            auto group = f.GetLatencyCounters();
+            UNIT_ASSERT_VALUES_EQUAL(
+                0, group->GetCounter("LatencyGoodOps", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                6, group->GetCounter("LatencyBadOps", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                6, group->GetCounter("LatencyTotalOps", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                7, group->GetCounter("LatencyUnknownOps", true)->Val());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldProtectLatencyBatches)
+    {
+        TFixture f(true);
+        TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
+        auto group = f.GetLatencyCounters();
+        reader.Update(LatencySnapshot(5));
+        reader.Update(LatencySnapshot(5)); // duplicate
+        reader.Update(LatencySnapshot(7));
+        reader.Update(LatencySnapshot(5)); // regression: retain the old baseline
+        reader.Update(LatencySnapshot(8));
+        UNIT_ASSERT_VALUES_EQUAL(8, group->GetCounter("LatencyGoodOps", true)->Val());
+
+        auto delayed = LatencySnapshot(11);
+        delayed["elapsed_ms"] = ui64(60000);
+        reader.Update(delayed); // cumulative counts preserve decisions across gaps
+        UNIT_ASSERT_VALUES_EQUAL(11, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyUnknownOps", true)->Val());
+        auto mismatched = LatencySnapshot(12);
+        mismatched["latency_sli"]["config_id"] = "different-config";
+        mismatched["read"]["count"] = ui64(1);
+        reader.Update(mismatched);
+        auto matching = LatencySnapshot(13);
+        matching["read"]["count"] = ui64(1);
+        reader.Update(matching);
+        reader.Update(LatencySnapshot(0)); // no unsigned underflow or replay
+        reader.Update(LatencySnapshot(13));
+        UNIT_ASSERT_VALUES_EQUAL(11, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyUnknownOps", true)->Val());
+
+        // A restarted child owns a fresh stats pipe and a new reader.
+        TEndpointStats restarted{f.ClientId, f.DiskId, f.ServerStats};
+        restarted.Update(LatencySnapshot(3));
+        UNIT_ASSERT_VALUES_EQUAL(14, group->GetCounter("LatencyGoodOps", true)->Val());
+        auto legacy = NJson::TJsonMap{{"read", NJson::TJsonMap{
+            {"count", ui64(2)}, {"errors", ui64(1)}}}};
+        restarted.Update(legacy);
+        UNIT_ASSERT_VALUES_EQUAL(4, group->GetCounter("LatencyUnknownOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, group->GetCounter("LatencyBadOps", true)->Val());
+        auto baseline = LatencySnapshot(5);
+        baseline["read"]["count"] = ui64(1);
+        restarted.Update(baseline); // do not replay legacy operations as Good
+        restarted.Update(LatencySnapshot(6));
+        UNIT_ASSERT_VALUES_EQUAL(15, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(5, group->GetCounter("LatencyUnknownOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, group->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(16, group->GetCounter("LatencyTotalOps", true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldKeepFailuresWithIncompatibleLatencyConfig)
+    {
+        for (const auto* operation: {"read", "write"}) {
+            for (const char* configId: {"", "different-config"}) {
+                TFixture f(true);
+                TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
+                auto snapshot = LatencySnapshot(0);
+                snapshot["latency_sli"]["config_id"] = configId;
+                snapshot[operation]["count"] = ui64(3);
+                snapshot[operation]["errors"] = ui64(2);
+                snapshot[operation]["latency_bad"] = ui64(5);
+                reader.Update(snapshot);
+                auto group = f.GetLatencyCounters();
+                UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyGoodOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyBadOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyTotalOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(3, group->GetCounter("LatencyUnknownOps", true)->Val());
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRecoverFromMalformedLatencyCounts)
+    {
+        for (const auto* field: {"latency_good", "latency_bad", "latency_unknown"}) {
+            for (const NJson::TJsonValue& invalid: {
+                     NJson::TJsonValue{}, NJson::TJsonValue(i64(-1)),
+                     NJson::TJsonValue("invalid")})
+            {
+                TFixture f(true);
+                TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
+                auto group = f.GetLatencyCounters();
+                reader.Update(LatencySnapshot(2));
+                auto malformed = LatencySnapshot(3, 1);
+                malformed["read"][field] = invalid;
+                malformed["read"]["count"] = ui64(1);
+                malformed["read"]["errors"] = ui64(1);
+                reader.Update(malformed);
+                auto baseline = LatencySnapshot(4, 2);
+                baseline["read"]["count"] = ui64(1);
+                baseline["read"]["errors"] = ui64(1);
+                reader.Update(baseline);
+                auto next = LatencySnapshot(5, 2);
+                next["read"]["latency_good"] = i64(5); // nonnegative signed JSON is valid
+                reader.Update(next);
+                UNIT_ASSERT_VALUES_EQUAL(3, group->GetCounter("LatencyGoodOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyUnknownOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyBadOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(5, group->GetCounter("LatencyTotalOps", true)->Val());
+            }
+        }
+    }
+
     Y_UNIT_TEST_F(ShouldCalcMaxValues, TFixture)
     {
         TEndpointStats stats {ClientId, DiskId, ServerStats};

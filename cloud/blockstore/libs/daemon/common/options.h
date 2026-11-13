@@ -28,6 +28,7 @@ public:
     TString EndpointConfig;
     TString RdmaConfig;
     TString CellsConfig;
+    TString LatencySliThresholdsFile;
 
     enum class EServiceKind {
         Null   /* "null"   */ ,

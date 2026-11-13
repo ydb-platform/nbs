@@ -61,10 +61,8 @@ void CompleteRequestImpl(
         }
     }
 
-    const TCpuCycles now = GetCycleCount();
-
     if (status == VHD_BDEV_SUCCESS) {
-        stats.Times[bio->type].Increment(now - req->SubmitTs);
+        stats.Times[bio->type].Increment(GetCycleCount() - req->SubmitTs);
         stats.Sizes[bio->type].Increment(bytes);
     }
 

@@ -24,8 +24,11 @@
 #include <util/datetime/base.h>
 #include <util/stream/file.h>
 #include <util/stream/str.h>
+#include <util/string/builder.h>
 #include <util/string/cast.h>
 #include <util/system/hostname.h>
+
+#include <map>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -63,11 +66,63 @@ void TConfigInitializerCommon::InitDiagnosticsConfig()
             diagnosticsConfig);
     }
 
+    SetupDiagnosticsConfig(diagnosticsConfig);
+    DiagnosticsConfig = std::make_shared<TDiagnosticsConfig>(diagnosticsConfig);
+}
+
+void TConfigInitializerCommon::SetupDiagnosticsConfig(
+    NProto::TDiagnosticsConfig& diagnosticsConfig)
+{
     if (Options->MonitoringPort) {
         diagnosticsConfig.SetNbsMonPort(Options->MonitoringPort);
     }
 
-    DiagnosticsConfig = std::make_shared<TDiagnosticsConfig>(diagnosticsConfig);
+    if (Options->LatencySliThresholdsFile) {
+        if (!LatencySliThresholds) {
+            NProto::TLatencySliThresholdsConfig thresholds;
+            ParseProtoTextFromFileRobust(
+                Options->LatencySliThresholdsFile,
+                thresholds);
+            LatencySliThresholds =
+                std::make_shared<const NProto::TLatencySliThresholdsConfig>(
+                    std::move(thresholds));
+        }
+        diagnosticsConfig.MutableLatencySliThresholds()->CopyFrom(
+            LatencySliThresholds->GetThresholds());
+    }
+
+    // Diagnose both configuration sources once when settings are applied,
+    // without adding logging to the request path.
+    auto warn = [&](const TString& message) {
+        if (Log.IsNotNullLog()) {
+            STORAGE_WARN("%s", message.c_str());
+        } else {
+            Cerr << message << Endl;
+        }
+    };
+    std::map<ui32, TLatencySliConfig> tables;
+    for (const auto& row: diagnosticsConfig.GetLatencySliThresholds()) {
+        if (!row.HasMediaKind()) {
+            warn("Ignoring latency SLI threshold without MediaKind");
+            continue;
+        }
+        tables[row.GetMediaKind()].Thresholds[row.GetWrite()].push_back({
+            row.GetStartBytes(), row.GetEndBytes(), row.GetThresholdUs()});
+    }
+    for (auto& [mediaKind, config]: tables) {
+        const std::array<bool, 2> populated = {
+            !config.Thresholds[0].empty(), !config.Thresholds[1].empty()};
+        if (!config.Validate()) {
+            for (size_t write = 0; write < config.Thresholds.size(); ++write) {
+                if (populated[write] && config.Thresholds[write].empty()) {
+                    warn(TStringBuilder()
+                        << "Invalid or overlapping latency SLI thresholds for MediaKind="
+                        << mediaKind << ", Write=" << write
+                        << "; successful requests in this table will be Unknown");
+                }
+            }
+        }
+    }
 }
 
 void TConfigInitializerCommon::InitDiskAgentConfig()

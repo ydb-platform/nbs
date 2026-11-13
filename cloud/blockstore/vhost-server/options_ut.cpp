@@ -1,6 +1,8 @@
 #include "options.h"
 
 #include <library/cpp/testing/unittest/registar.h>
+#include <util/generic/scope.h>
+#include <util/system/env.h>
 
 namespace NCloud::NBlockStore::NVHostServer {
 
@@ -8,6 +10,43 @@ namespace NCloud::NBlockStore::NVHostServer {
 
 Y_UNIT_TEST_SUITE(TOptionsTest)
 {
+    Y_UNIT_TEST(ShouldReadLatencySliFromEnvironment)
+    {
+        const auto previous = TryGetEnv("NBS_LATENCY_SLI_CONFIG");
+        Y_SCOPE_EXIT(previous) {
+            if (previous) {
+                SetEnv("NBS_LATENCY_SLI_CONFIG", *previous);
+            } else {
+                UnsetEnv("NBS_LATENCY_SLI_CONFIG");
+            }
+        };
+        SetEnv("NBS_LATENCY_SLI_CONFIG", "1;0:1:8193:1000");
+        TVector<TString> params{
+            "binary-path", "--socket-path", "vhost.sock", "--serial", "id",
+            "--device", "disk:1048576:0"};
+        auto parse = [&] {
+            TVector<char*> argv;
+            for (auto& value: params) {
+                argv.push_back(value.Detach());
+            }
+            TOptions options;
+            options.Parse(argv.size(), argv.data());
+            return options;
+        };
+        UNIT_ASSERT_VALUES_EQUAL("1;0:1:8193:1000", parse().LatencySli->Serialize());
+        SetEnv("NBS_LATENCY_SLI_CONFIG", "");
+        UNIT_ASSERT(!parse().LatencySli);
+        UnsetEnv("NBS_LATENCY_SLI_CONFIG");
+        UNIT_ASSERT(!parse().LatencySli);
+        for (const TString value: {";", "2;0:1:8193:1000", "1;0:1:8193:bad"}) {
+            SetEnv("NBS_LATENCY_SLI_CONFIG", value);
+            const auto options = parse();
+            UNIT_ASSERT_C(!options.LatencySli, value);
+            UNIT_ASSERT_VALUES_EQUAL("vhost.sock", options.SocketPath);
+            UNIT_ASSERT_VALUES_EQUAL(1, options.Layout.size());
+        }
+    }
+
     Y_UNIT_TEST(ShouldParseOptions)
     {
         TOptions options;

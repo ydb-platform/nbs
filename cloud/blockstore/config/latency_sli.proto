@@ -1,0 +1,16 @@
+syntax = "proto2";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
+
+import "cloud/blockstore/config/diagnostics.proto";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TLatencySliThresholdsConfig
+{
+    // Loaded once from --latency-sli-thresholds-file. Replaces embedded
+    // thresholds; EnableLatencySli remains in the diagnostics configuration.
+    repeated TDiagnosticsConfig.TLatencySliThreshold Thresholds = 1;
+}

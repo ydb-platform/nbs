@@ -97,6 +97,10 @@ private:
 
     TVector<vhd_request_queue*> Queues;
     std::unique_ptr<TAtomicStats[]> QueueStats;
+    TAtomicStats FinalStats;
+    TLatencySliConfigPtr LatencySli;
+    std::optional<TCompleteStats> StoppedStats;
+    TSimpleStats LastStats;
 
     TVector<std::thread> QueueThreads;
 
@@ -128,7 +132,18 @@ void TServer::Start(const TOptions& options)
 
     SocketPath = options.SocketPath;
 
+    LatencySli = options.LatencySli;
     Info = Backend->Init(options);
+    Info.io_completed_opaque = this;
+    Info.measure_latency = LatencySli && LatencySli->Enabled;
+    Info.io_completed_cb =
+        [](void* opaque,
+           bool write, uint64_t bytes, bool failed, uint64_t elapsedUs) noexcept
+    {
+        auto* server = static_cast<TServer*>(opaque);
+        server->FinalStats.RecordFinalOutcome(
+            write, bytes, failed, elapsedUs, server->LatencySli.get());
+    };
 
     for (ui32 i = 0; i != options.QueueCount; ++i) {
         auto* queue = vhd_create_request_queue();
@@ -187,6 +202,10 @@ void TServer::Stop()
 
     promise.GetFuture().Wait();
 
+    // Unregister has drained guest I/O, while the backend statistics thread
+    // is still available. Preserve this snapshot for the final parent report.
+    StoppedStats = GetStats(LastStats);
+
     // 2. Stop request queues. For each do:
     // 2.1 Stop a request queue
     for (vhd_request_queue* queue: Queues) {
@@ -216,22 +235,35 @@ void TServer::Stop()
 
 TCompleteStats TServer::GetStats(const TSimpleStats& prevStats)
 {
+    if (StoppedStats) {
+        return *StoppedStats;
+    }
     auto completionStats =
         Backend->GetCompletionStats(COMPLETION_STATS_WAIT_DURATION);
-    if (!completionStats) {
-        return TCompleteStats{
-            .SimpleStats{prevStats},
-            .CriticalEvents{TakeAccumulatedCriticalEvents()}};
-    }
 
     TCompleteStats result{
-        .SimpleStats{*completionStats},
+        .SimpleStats{completionStats ? *completionStats : prevStats},
         .CriticalEvents = TakeAccumulatedCriticalEvents()};
 
-    for (ui32 i = 0; i != Queues.size(); ++i) {
-        result.SimpleStats += QueueStats[i];
+    if (completionStats) {
+        for (ui32 i = 0; i != Queues.size(); ++i) {
+            result.SimpleStats += QueueStats[i];
+        }
     }
 
+    // Final outcomes do not depend on the backend snapshot being ready. Assign
+    // rather than add: prevStats already contains the previous final counters.
+    for (size_t i = 0; i < 2; ++i) {
+        auto& request = result.SimpleStats.Requests[i];
+        const auto& final = FinalStats.Requests[i];
+        request.FinalCount = final.FinalCount.load();
+        request.FinalErrors = final.FinalErrors.load();
+        request.LatencyGood = final.LatencyGood.load();
+        request.LatencyBad = final.LatencyBad.load();
+        request.LatencyUnknown = final.LatencyUnknown.load();
+    }
+
+    LastStats = result.SimpleStats;
     return result;
 }
 

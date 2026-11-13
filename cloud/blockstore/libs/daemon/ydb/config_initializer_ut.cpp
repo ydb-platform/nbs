@@ -25,6 +25,7 @@
 #include <contrib/ydb/core/protos/feature_flags.pb.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/logger/stream.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -189,6 +190,242 @@ void ShouldLoadKikimrFeaturesFromCms(
 
 Y_UNIT_TEST_SUITE(TConfigInitializerTest)
 {
+    Y_UNIT_TEST(ShouldLoadLatencySliThresholdsFromFile)
+    {
+        TTempDir dir;
+        const auto path = dir.Path() / "nbs-latency-sli.txt";
+        TOFStream(path.GetPath()).Write(R"(
+            Thresholds {
+                MediaKind: STORAGE_MEDIA_SSD Write: false
+                StartBytes: 1 EndBytes: 4097 ThresholdUs: 1000
+            }
+            Thresholds {
+                MediaKind: STORAGE_MEDIA_SSD Write: true
+                StartBytes: 1 EndBytes: 4097 ThresholdUs: 2000
+            }
+            Thresholds {
+                MediaKind: STORAGE_MEDIA_HDD Write: false
+                StartBytes: 1 EndBytes: 8193 ThresholdUs: 5000
+            }
+        )");
+        const auto diagnosticsPath = dir.Path() / "nbs-diag.txt";
+        TOFStream(diagnosticsPath.GetPath()).Write(R"(
+            EnableLatencySli: true NbsMonPort: 12345
+            LatencySliThresholds {
+                MediaKind: STORAGE_MEDIA_SSD
+                StartBytes: 1 EndBytes: 4097 ThresholdUs: 10
+            }
+        )");
+        auto options = CreateOptions();
+        const char* argv[] = {
+            "nbs", "--latency-sli-thresholds-file", path.c_str()};
+        NLastGetopt::TOptsParseResult parsed(&options->Opts, 3, argv);
+        UNIT_ASSERT_VALUES_EQUAL(path.GetPath(), options->LatencySliThresholdsFile);
+        options->DiagnosticsConfig = diagnosticsPath.GetPath();
+        options->MonitoringPort = 23456;
+        auto ci = TConfigInitializerYdb(options);
+        ci.InitDiagnosticsConfig();
+
+        UNIT_ASSERT_VALUES_EQUAL(23456, ci.DiagnosticsConfig->GetNbsMonPort());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            ci.DiagnosticsConfig->GetLatencySliThresholds().size());
+        const auto ssd = ci.DiagnosticsConfig->GetLatencySliConfig(
+            NProto::STORAGE_MEDIA_SSD);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1;0:1:4097:1000;1:1:4097:2000", ssd.Serialize());
+        const auto hdd = ci.DiagnosticsConfig->GetLatencySliConfig(
+            NProto::STORAGE_MEDIA_HDD);
+        UNIT_ASSERT_VALUES_EQUAL("1;0:1:8193:5000", hdd.Serialize());
+    }
+
+    Y_UNIT_TEST(ShouldKeepLatencySliFileSnapshotWhenApplyingCmsConfig)
+    {
+        TTempDir dir;
+        const auto path = dir.Path() / "nbs-latency-sli.txt";
+        TOFStream(path.GetPath()).Write(R"(Thresholds {
+            MediaKind: STORAGE_MEDIA_SSD Write: false
+            StartBytes: 1 EndBytes: 4097 ThresholdUs: 1000
+        })");
+        auto options = CreateOptions();
+        options->LatencySliThresholdsFile = path.GetPath();
+        auto ci = TConfigInitializerYdb(options);
+        ci.InitDiagnosticsConfig();
+        // A thresholds file does not implicitly enable the metrics.
+        UNIT_ASSERT(!ci.DiagnosticsConfig->GetEnableLatencySli());
+
+        TOFStream(path.GetPath()).Write("invalid replacement");
+        NKikimrConfig::TAppConfig cms;
+        auto* diagnostics = cms.AddNamedConfigs();
+        diagnostics->SetName("Cloud.NBS.DiagnosticsConfig");
+        diagnostics->SetConfig(R"(
+            EnableLatencySli: true NbsMonPort: 34567
+            LatencySliThresholds {
+                MediaKind: STORAGE_MEDIA_SSD Write: false
+                StartBytes: 1 EndBytes: 4097 ThresholdUs: 10
+            }
+        )");
+        ci.ApplyCustomCMSConfigs(cms);
+        const auto config = ci.DiagnosticsConfig->GetLatencySliConfig(
+            NProto::STORAGE_MEDIA_SSD);
+        UNIT_ASSERT_VALUES_EQUAL("1;0:1:4097:1000", config.Serialize());
+        UNIT_ASSERT_VALUES_EQUAL(34567, ci.DiagnosticsConfig->GetNbsMonPort());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1000,
+            ci.GetCurrentBlockstoreConfig().GetDiagnostics()
+                .GetLatencySliThresholds(0).GetThresholdUs());
+
+        path.DeleteIfExists();
+        ci.ApplyDiagnosticsConfig("EnableLatencySli: true");
+        UNIT_ASSERT_VALUES_EQUAL(
+            config.Serialize(),
+            ci.DiagnosticsConfig->GetLatencySliConfig(
+                NProto::STORAGE_MEDIA_SSD).Serialize());
+    }
+
+    Y_UNIT_TEST(ShouldKeepEmbeddedLatencySliThresholdsWithoutFile)
+    {
+        auto ci = TConfigInitializerYdb(CreateOptions());
+        ci.ApplyDiagnosticsConfig(R"(
+            EnableLatencySli: true
+            LatencySliThresholds {
+                MediaKind: STORAGE_MEDIA_SSD Write: true
+                StartBytes: 1 EndBytes: 4097 ThresholdUs: 2000
+            }
+        )");
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1;1:1:4097:2000",
+            ci.DiagnosticsConfig->GetLatencySliConfig(
+                NProto::STORAGE_MEDIA_SSD).Serialize());
+    }
+
+    Y_UNIT_TEST(ShouldTreatEmptyLatencySliFileAsAnExplicitEmptyTable)
+    {
+        TTempDir dir;
+        const auto path = dir.Path() / "nbs-latency-sli.txt";
+        TOFStream(path.GetPath()).Write("");
+        auto options = CreateOptions();
+        options->LatencySliThresholdsFile = path.GetPath();
+        auto ci = TConfigInitializerYdb(options);
+        ci.ApplyDiagnosticsConfig(R"(
+            EnableLatencySli: true
+            LatencySliThresholds {
+                MediaKind: STORAGE_MEDIA_SSD
+                StartBytes: 1 EndBytes: 4097 ThresholdUs: 1000
+            }
+        )");
+        const auto config = ci.DiagnosticsConfig->GetLatencySliConfig(
+            NProto::STORAGE_MEDIA_SSD);
+        UNIT_ASSERT(config.Enabled);
+        UNIT_ASSERT(ci.DiagnosticsConfig->GetLatencySliThresholds().empty());
+    }
+
+    Y_UNIT_TEST(ShouldRejectUnreadableOrMalformedLatencySliFiles)
+    {
+        TTempDir dir;
+        const auto path = dir.Path() / "nbs-latency-sli.txt";
+        auto options = CreateOptions();
+        options->LatencySliThresholdsFile = path.GetPath();
+        auto ci = TConfigInitializerYdb(options);
+        UNIT_ASSERT_EXCEPTION(ci.InitDiagnosticsConfig(), yexception);
+        for (const TString text: {
+                 "Thresholds {",
+                 "Thresholds { MediaKind: UNKNOWN_MEDIA }",
+                 "Thresholds { ThresholdUs: -1 }"})
+        {
+            TOFStream(path.GetPath()).Write(text);
+            UNIT_ASSERT_EXCEPTION(ci.InitDiagnosticsConfig(), yexception);
+        }
+        // Failed parsing must not cache a partially populated configuration.
+        TOFStream(path.GetPath()).Write(R"(Thresholds {
+            MediaKind: STORAGE_MEDIA_SSD
+            StartBytes: 1 EndBytes: 4097 ThresholdUs: 1000
+        })");
+        ci.ApplyDiagnosticsConfig("EnableLatencySli: true");
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1;0:1:4097:1000",
+            ci.DiagnosticsConfig->GetLatencySliConfig(
+                NProto::STORAGE_MEDIA_SSD).Serialize());
+    }
+
+    Y_UNIT_TEST(ShouldAcceptUnknownLatencySliFields)
+    {
+        TTempDir dir;
+        const auto path = dir.Path() / "nbs-latency-sli.txt";
+        TOFStream(path.GetPath()).Write(R"(
+            FutureSetting: true
+            Thresholds {
+                MediaKind: STORAGE_MEDIA_SSD
+                StartBytes: 1 EndBytes: 4097 ThresholdUs: 1000
+                FutureThresholdSetting: 123
+            }
+        )");
+        auto options = CreateOptions();
+        options->LatencySliThresholdsFile = path.GetPath();
+        auto ci = TConfigInitializerYdb(options);
+        ci.ApplyDiagnosticsConfig("EnableLatencySli: true NbsMonPort: 34567");
+        UNIT_ASSERT_VALUES_EQUAL(34567, ci.DiagnosticsConfig->GetNbsMonPort());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1;0:1:4097:1000",
+            ci.DiagnosticsConfig->GetLatencySliConfig(
+                NProto::STORAGE_MEDIA_SSD).Serialize());
+    }
+
+    Y_UNIT_TEST(ShouldWarnAboutInvalidEmbeddedLatencySliThresholds)
+    {
+        TStringStream messages;
+        auto ci = TConfigInitializerYdb(CreateOptions());
+        ci.Log = TLog(MakeHolder<TStreamLogBackend>(&messages));
+        ci.ApplyDiagnosticsConfig(R"(
+            EnableLatencySli: true
+            LatencySliThresholds {
+                MediaKind: STORAGE_MEDIA_SSD
+                StartBytes: 1 EndBytes: 4097 ThresholdUs: 0
+            }
+            LatencySliThresholds { StartBytes: 1 EndBytes: 4097 ThresholdUs: 100 }
+        )");
+        UNIT_ASSERT_STRING_CONTAINS(messages.Str(), "Write=0");
+        UNIT_ASSERT_STRING_CONTAINS(messages.Str(), "will be Unknown");
+        UNIT_ASSERT_STRING_CONTAINS(messages.Str(), "without MediaKind");
+    }
+
+    Y_UNIT_TEST(ShouldApplyExistingIntervalValidationToLatencySliFiles)
+    {
+        TTempDir dir;
+        const auto path = dir.Path() / "nbs-latency-sli.txt";
+        for (const TString rows: {
+                 "StartBytes: 4097 EndBytes: 1 ThresholdUs: 1000",
+                 "StartBytes: 1 EndBytes: 4097 ThresholdUs: 0",
+                 "StartBytes: 1 EndBytes: 4097",
+                 "StartBytes: 1 EndBytes: 4097 ThresholdUs: 1000 } "
+                 "Thresholds { MediaKind: STORAGE_MEDIA_SSD "
+                 "StartBytes: 4096 EndBytes: 8193 ThresholdUs: 2000"})
+        {
+            TOFStream(path.GetPath()).Write(TStringBuilder()
+                << "Thresholds { MediaKind: STORAGE_MEDIA_SSD " << rows << " } "
+                << "Thresholds { MediaKind: STORAGE_MEDIA_SSD Write: true "
+                << "StartBytes: 1 EndBytes: 4097 ThresholdUs: 2000 }");
+            auto options = CreateOptions();
+            options->LatencySliThresholdsFile = path.GetPath();
+            TStringStream messages;
+            auto ci = TConfigInitializerYdb(options);
+            ci.Log = TLog(MakeHolder<TStreamLogBackend>(&messages));
+            ci.ApplyDiagnosticsConfig("EnableLatencySli: true");
+            const auto config = ci.DiagnosticsConfig->GetLatencySliConfig(
+                NProto::STORAGE_MEDIA_SSD);
+            UNIT_ASSERT_C(config.Thresholds[0].empty(), rows);
+            UNIT_ASSERT_STRING_CONTAINS(messages.Str(), "Write=0");
+            UNIT_ASSERT_STRING_CONTAINS(messages.Str(), "will be Unknown");
+            UNIT_ASSERT(!messages.Str().Contains("Write=1"));
+            UNIT_ASSERT_C(
+                config.Classify(false, 4096, 1, false) == ELatencySliResult::Unknown,
+                rows);
+            UNIT_ASSERT_C(
+                config.Classify(true, 4096, 2000, false) == ELatencySliResult::Good,
+                rows);
+        }
+    }
+
     // Verify that the initializer exposes the default YAML mode before loading
     // ServerConfig and captures the local value in InitServerConfig.
     Y_UNIT_TEST(ShouldExposeDynamicYamlConfigurationFlag)

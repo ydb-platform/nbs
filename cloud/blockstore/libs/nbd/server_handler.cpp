@@ -83,17 +83,28 @@ public:
         IOutputStream& out,
         TServerResponse& response) override
     {
-        out.Write(
-            response.HeaderBuffer.Data(),
-            response.HeaderBuffer.Size());
-
-        if (response.DataBuffer) {
+        try {
             out.Write(
-                response.DataBuffer.get(),
-                response.RequestBytes);
+                response.HeaderBuffer.Data(), response.HeaderBuffer.Size());
+
+            if (response.DataBuffer) {
+                out.Write(response.DataBuffer.get(), response.RequestBytes);
+            }
+        } catch (...) {
+            CancelResponse(response);
+            throw;
         }
 
         UnregisterRequest(response.RequestContext, response.Error);
+    }
+
+    void CancelResponse(TServerResponse& response) override
+    {
+        UnregisterRequest(
+            response.RequestContext,
+            HasError(response.Error)
+                ? response.Error
+                : MakeError(E_CANCELLED, "NBD response was not delivered"));
     }
 
     void ProcessRequests(
@@ -557,14 +568,15 @@ void TServerHandler::ProcessRequests(
             }
 
             case NBD_CMD_WRITE: {
+                auto requestCtx =
+                    RegisterRequest(request, EBlockStoreRequest::WriteBlocks);
                 if (Options.CheckpointId) {
+                    UnregisterRequest(
+                        requestCtx,
+                        MakeError(E_ARGUMENT, "invalid write request"));
                     replyError(E_ARGUMENT, "invalid write request");
                     break;
                 }
-
-                auto requestCtx = RegisterRequest(
-                    request,
-                    EBlockStoreRequest::WriteBlocks);
 
                 if (!ctx->AcquireRequest(request.Length)) {
                     // no need to reply, cause server is shutting down
@@ -576,9 +588,15 @@ void TServerHandler::ProcessRequests(
                     requestCtx->MetricRequest,
                     *requestCtx->CallContext);
 
-                auto requestData = DeviceHandler->AllocateBuffer(request.Length);
-                if (request.Length) {
-                    in.ReadOrFail(requestData.get(), request.Length);
+                TStorageBuffer requestData;
+                try {
+                    requestData = DeviceHandler->AllocateBuffer(request.Length);
+                    if (request.Length) {
+                        in.ReadOrFail(requestData.get(), request.Length);
+                    }
+                } catch (...) {
+                    UnregisterRequest(requestCtx, cancelError);
+                    throw;
                 }
 
                 ctx->ExecuteSimple(
@@ -840,6 +858,8 @@ TRequestContextPtr TServerHandler::RegisterRequest(
         startIndex,
         ServerStats->GetBlockSize(Options.DiskId) * (endIndex - startIndex),
         unaligned);
+
+    requestCtx->MetricRequest.OriginalRequestBytes = request.Length;
 
     ServerStats->RequestStarted(
         Log,

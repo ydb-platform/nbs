@@ -564,7 +564,10 @@ public:
 
     IStoragePtr GetStorage() override
     {
-        return CreateRemoteStorage(DataRouter, shared_from_this());
+        return CreateRemoteStorage(
+            DataRouter,
+            shared_from_this(),
+            Pool->GetCellId());
     }
 
     // Builds whatever of the data path can still fail, and touches nothing

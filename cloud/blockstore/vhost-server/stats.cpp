@@ -2,6 +2,8 @@
 
 #include "critical_event.h"
 
+#include <cloud/blockstore/libs/common/latency_sli_fingerprint.h>
+
 #include <library/cpp/json/json_writer.h>
 
 #include <util/datetime/cputimer.h>
@@ -41,24 +43,6 @@ public:
         IsCompletionStatsWaitTimeout = false;
 
         return CompletionStats;
-    }
-
-    void Sync(const TSimpleStats& stats) override
-    {
-        if (!NeedUpdateCompletionStats) {
-            return;
-        }
-
-        CompletionStats.Completed = stats.Completed;
-        CompletionStats.CompFailed = stats.CompFailed;
-        CompletionStats.EncryptorErrors = stats.EncryptorErrors;
-
-        CompletionStats.Requests = stats.Requests;
-        CompletionStats.Times = stats.Times;
-        CompletionStats.Sizes = stats.Sizes;
-
-        NeedUpdateCompletionStats = false;
-        CompletionStatsEvent.Signal();
     }
 
     void Sync(const TAtomicStats& stats) override
@@ -150,7 +134,7 @@ void DumpStats(
     TSimpleStats& old,
     TDuration elapsed,
     IOutputStream& stream,
-    ui64 cyclesPerMs)
+    ui64 cyclesPerMs, const TLatencySliConfig* latencySli, bool final)
 {
     const auto & stats = completeStats.SimpleStats;
 
@@ -170,6 +154,15 @@ void DumpStats(
         write("bytes", r.Bytes);
         write("errors", r.Errors);
         write("unaligned", r.Unaligned);
+        write("final_count", r.FinalCount);
+        write("final_errors", r.FinalErrors);
+
+        if (latencySli && latencySli->Enabled) {
+            // Cumulative, disjoint counts: a skipped snapshot loses no data.
+            write("latency_good", stats.Requests[kind].LatencyGood);
+            write("latency_bad", stats.Requests[kind].LatencyBad);
+            write("latency_unknown", stats.Requests[kind].LatencyUnknown);
+        }
 
         WriteTimes(buf, stats.Times[kind], old.Times[kind], cyclesPerMs);
         WriteSizes(buf, stats.Sizes[kind], old.Sizes[kind]);
@@ -178,6 +171,18 @@ void DumpStats(
     };
 
     buf.BeginObject();
+
+    if (final) {
+        write("final", 1);
+    }
+    if (latencySli && latencySli->Enabled) {
+        buf.WriteKey("latency_sli");
+        buf.BeginObject();
+        write("version", 2);
+        buf.WriteKey("config_id");
+        buf.WriteString(GetLatencySliConfigFingerprint(*latencySli));
+        buf.EndObject();
+    }
 
     write("elapsed_ms", elapsed.MilliSeconds());
     write("dequeued", stats.Dequeued - old.Dequeued);

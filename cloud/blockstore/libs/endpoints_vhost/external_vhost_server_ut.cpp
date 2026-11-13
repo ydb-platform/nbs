@@ -1,19 +1,28 @@
-#include "external_vhost_server.h"
+#include "external_vhost_server.cpp"
 
 #include <cloud/blockstore/libs/client/session_test.h>
 #include <cloud/blockstore/libs/common/constants.h>
+#include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
+#include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
+#include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/server/config.h>
 
 #include <cloud/storage/core/libs/common/random.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/string/vector.h>
+#include <util/system/env.h>
 
+#include <poll.h>
+
+#include <thread>
 #include <variant>
 
 namespace NCloud::NBlockStore::NServer {
@@ -53,6 +62,7 @@ struct TCreateExternalEndpoint
     TString DiskId;
     TVector<TString> CmdArgs;
     TVector<TString> Cgroups;
+    TString LatencySli;
 };
 
 struct TPrepareStartExternalEndpoint
@@ -266,7 +276,8 @@ struct TFixture
 public:
     IEndpointListenerPtr CreateEndpointListener(
         bool isAlignedDataEnabled,
-        const NProto::TServerConfig& configPatch)
+        const NProto::TServerConfig& configPatch,
+        IServerStatsPtr serverStats = {})
     {
         TServerAppConfigPtr serverConfigPtr;
         NProto::TServerAppConfig config;
@@ -280,7 +291,7 @@ public:
         return CreateExternalVhostEndpointListener(
             std::make_shared<TServerAppConfig>(config),
             Logging,
-            ServerStats,
+            serverStats ? std::move(serverStats) : ServerStats,
             Executor,
             LocalAgentId,
             isAlignedDataEnabled,
@@ -411,6 +422,158 @@ TVector<TString> GetArgN(const TVector<TString>& args, TStringBuf name)
 
 Y_UNIT_TEST_SUITE(TExternalEndpointTest)
 {
+    Y_UNIT_TEST_F(ShouldPassVolumeLatencyConfigSeparatelyFromArguments, TFixture)
+    {
+        NProto::TDiagnosticsConfig proto;
+        proto.SetEnableLatencySli(true);
+        auto* row = proto.AddLatencySliThresholds();
+        row->SetMediaKind(Volume.GetStorageMediaKind());
+        row->SetStartBytes(1);
+        row->SetEndBytes(8193);
+        row->SetThresholdUs(1000);
+        auto stats = CreateServerStats(
+            nullptr, std::make_shared<TDiagnosticsConfig>(proto),
+            CreateMonitoringServiceStub(), nullptr, CreateRequestStatsStub(),
+            CreateVolumeStatsStub());
+        auto listener = CreateEndpointListener(false, {}, stats);
+        const auto error = listener->StartEndpoint(
+            CreateDefaultStartEndpointRequest(), Volume, Session).GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), error);
+        UNIT_ASSERT_VALUES_EQUAL(3, History.size());
+        const auto* create = std::get_if<TCreateExternalEndpoint>(&History[0]);
+        UNIT_ASSERT(create);
+        UNIT_ASSERT_VALUES_EQUAL("1;0:1:8193:1000", create->LatencySli);
+        UNIT_ASSERT(GetArgN(create->CmdArgs, "--latency-sli").empty());
+    }
+
+    Y_UNIT_TEST(ShouldDrainFinalStatsBeforeReturningFromWait)
+    {
+        for (bool finalRecord: {false, true}) {
+            auto stats = std::make_shared<TTestServerStats>();
+            auto baseline = NewPromise<void>();
+            ui64 errors = 0;
+            stats->BatchCompletedHandler =
+                [&](auto&, ui64, ui64, ui64 failed, auto, auto)
+            {
+                errors += failed;
+                baseline.TrySetValue();
+            };
+            const TString script =
+                TStringBuilder()
+                << "trap 'echo \"{\\\"read\\\":{},\\\"write\\\":{}}\"' USR1\n"
+                << "trap 'sleep 3; "
+                << (finalRecord ? "echo "
+                                  "\"{\\\"final\\\":1,\\\"read\\\":{"
+                                  "\\\"errors\\\":3},\\\"write\\\":{}}\"; "
+                                : "")
+                << "exit 0' INT\n"
+                << "echo ready >&2\n"
+                << "while :; do sleep 0.1; done\n";
+            auto child = SpawnChild("/bin/sh", {"-c", script}, "");
+            Y_DEFER
+            {
+                if (child.Pid) {
+                    child.Terminate();
+                    child.Wait();
+                }
+            };
+            // Wait until signal handlers exist before starting the stats
+            // poller.
+            pollfd descriptor{child.StdErr, POLLIN, 0};
+            UNIT_ASSERT_C(
+                poll(&descriptor, 1, 5000) > 0, "child did not start");
+            char ready[16];
+            UNIT_ASSERT(child.StdErr.Read(ready, sizeof(ready)) > 0);
+            auto process = MakeIntrusive<TEndpointProcess>(
+                "client",
+                CreateLoggingService("console"),
+                TEndpointStats{"client", "disk", stats}, std::move(child));
+            auto executor = TExecutor::Create("stats-test");
+            executor->Start();
+            executor->ExecuteSimple(
+                [=] { process->Start(executor->GetContExecutor()); });
+            auto stopped = NewPromise<NProto::TError>();
+            std::thread waiter([=]() mutable
+                               { stopped.SetValue(process->Wait()); });
+            Y_DEFER
+            {
+                if (!stopped.HasValue()) {
+                    process->Stop();
+                }
+                waiter.join();
+                executor->Stop();
+            };
+            baseline.GetFuture().GetValue(TDuration::Seconds(5));
+            process->Stop();
+            const auto error =
+                stopped.GetFuture().GetValue(TDuration::Seconds(10));
+            UNIT_ASSERT_C(!HasError(error), error);
+            UNIT_ASSERT_VALUES_EQUAL(finalRecord ? 3 : 0, errors);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldPassLatencyConfigThroughExecEnvironment)
+    {
+        const auto previous = TryGetEnv("NBS_LATENCY_SLI_CONFIG");
+        const auto inherited = TryGetEnv("NBS_SLI_TEST_INHERITED");
+        Y_DEFER {
+            if (previous) {
+                SetEnv("NBS_LATENCY_SLI_CONFIG", *previous);
+            } else {
+                UnsetEnv("NBS_LATENCY_SLI_CONFIG");
+            }
+            if (inherited) {
+                SetEnv("NBS_SLI_TEST_INHERITED", *inherited);
+            } else {
+                UnsetEnv("NBS_SLI_TEST_INHERITED");
+            }
+        };
+        const TString parentConfig = "1;1:1:8193:2000";
+        SetEnv("NBS_LATENCY_SLI_CONFIG", parentConfig);
+        SetEnv("NBS_SLI_TEST_INHERITED", "preserved value");
+
+        // An older child must not receive --latency-sli in argv. The real
+        // exec path must replace only this environment variable and preserve
+        // unrelated arguments, inherited variables and the parent PID option.
+        TLatencySliConfig oversized;
+        oversized.Enabled = true;
+        // Exceed Linux's per-string exec limit with a valid threshold table.
+        const auto execStringLimit = static_cast<size_t>(sysconf(_SC_PAGESIZE)) * 32;
+        for (size_t i = 0; i < execStringLimit; ++i) {
+            oversized.Thresholds[0].push_back({i, i + 1, 1000});
+        }
+        UNIT_ASSERT(oversized.Validate());
+        const auto serialized = oversized.Serialize();
+        UNIT_ASSERT(serialized.size() > execStringLimit);
+        const TVector<TString> configs{"1;0:1:8193:1000", "", serialized};
+        for (const auto& config: configs) {
+            const TString expected = config.size() > execStringLimit ? "" : config;
+            TString script = TStringBuilder()
+                << "set -eu\n"
+                << "test \"$NBS_LATENCY_SLI_CONFIG\" = '" << expected << "'\n"
+                << "test \"$NBS_SLI_TEST_INHERITED\" = 'preserved value'\n"
+                << "test \"$#\" = 3\n"
+                << "test \"$1\" = '--existing-option'\n"
+                << "test \"$2\" = 'value with spaces'\n"
+                << "test \"$3\" = '--blockstore-service-pid=" << getpid() << "'\n";
+            TVector<TString> args{
+                "-c", script, "child", "--existing-option", "value with spaces"};
+            auto child = SpawnChild("/bin/sh", std::move(args), config);
+            const auto error = child.Wait();
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+            if (config.size() > execStringLimit) {
+                char message[512];
+                const auto size = child.StdErr.Read(message, sizeof(message));
+                UNIT_ASSERT(size > 0);
+                NJson::TJsonValue warning;
+                UNIT_ASSERT(NJson::ReadJsonTree(TStringBuf(message, size), &warning));
+                UNIT_ASSERT_VALUES_EQUAL(TLOG_WARNING, warning["priority"].GetInteger());
+                UNIT_ASSERT_STRING_CONTAINS(warning["message"].GetString(), "SLI disabled");
+            }
+            UNIT_ASSERT_VALUES_EQUAL(parentConfig, GetEnv("NBS_LATENCY_SLI_CONFIG"));
+        }
+    }
+
     Y_UNIT_TEST_F(ShouldStartAioExternalEndpoint, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, History.size());

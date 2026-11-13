@@ -485,6 +485,10 @@ public:
         if (!ok) {
             auto prevState = AtomicSwap(&RequestState, RequestCompleted);
             if (prevState != WaitingForRequest) {
+                if (!HasError(Error)) {
+                    Error =
+                        MakeError(E_CANCELLED, "gRPC response delivery failed");
+                }
                 CompleteRequest();
             }
         }
@@ -739,6 +743,13 @@ private:
             Context->peer(),
             authToken,
             *Request->MutableHeaders());
+
+        if constexpr (IsReadWriteRequest(TMethod::Request)) {
+            // CellId marks inter-cell I/O on both secure and plaintext gRPC.
+            // This is an accounting marker, not an authorization decision.
+            MetricRequest.ForwardedRequest =
+                !Request->GetHeaders().GetCellId().empty();
+        }
 
         if constexpr (std::is_same<TMethod, TDescribeVolumeMethod>()) {
             const auto& cellId = Request->GetHeaders().GetCellId();
