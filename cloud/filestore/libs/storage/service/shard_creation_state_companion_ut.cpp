@@ -335,9 +335,18 @@ private:
     TVector<NKikimrFileStore::TConfig> ShardConfigs = MakeShardConfigs();
 
 public:
-    explicit TShardSchedulingActor(ui32 topologyShardCount)
+    explicit TShardSchedulingActor(
+        ui32 topologyShardCount,
+        bool loadCreatedShardBitmap = false)
         : TActor(&TThis::StateWork)
     {
+        if (loadCreatedShardBitmap) {
+            Companion.SetShardCreationState(MakeState(42, {1, 4}));
+            const auto error = Companion.SetupCreatedShardBitmap(
+                topologyShardCount,
+                ShardConfigs);
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        }
         Companion.InitializeShardCreation(topologyShardCount, ShardCount);
     }
 
@@ -485,6 +494,40 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
         assertNextShard(5);
         UNIT_ASSERT(schedule(true, 2));
         UNIT_ASSERT(!schedule(true, 2));
+    }
+
+    Y_UNIT_TEST(ShouldSkipCreatedShardsWithoutUsingRequestLimit)
+    {
+        TActorSystem runtime;
+        runtime.Start();
+        const auto sender = runtime.AllocateEdgeActor();
+        const auto ssProxy = runtime.AllocateEdgeActor();
+        runtime.RegisterService(MakeSSProxyServiceId(), ssProxy);
+        const auto actorId = runtime.Register(new TShardSchedulingActor(0, true));
+
+        auto schedule = [&](bool complete) {
+            runtime.Send(new IEventHandle(
+                actorId,
+                sender,
+                new TEvScheduleShardCreation(complete, 2)));
+            return runtime.GrabEdgeEvent<TEvShardCreationScheduled>(sender)
+                ->Get()->HasShardsToCreate;
+        };
+        auto assertNextShard = [&](ui32 shardIndex) {
+            const auto request = runtime.GrabEdgeEvent<
+                TEvSSProxy::TEvCreateFileStoreRequest>(ssProxy);
+            UNIT_ASSERT_VALUES_EQUAL(shardIndex, request->Cookie);
+        };
+
+        UNIT_ASSERT(schedule(false));
+        assertNextShard(0);
+        assertNextShard(2);
+        UNIT_ASSERT(schedule(true));
+        assertNextShard(3);
+        UNIT_ASSERT(schedule(true));
+        assertNextShard(5);
+        UNIT_ASSERT(schedule(true));
+        UNIT_ASSERT(!schedule(true));
     }
 
     Y_UNIT_TEST(ShouldIgnoreVolatileShardConfigFieldsInNewShardConfigsHash)

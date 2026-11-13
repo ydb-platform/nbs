@@ -130,8 +130,8 @@ public:
     // Set the range [topologyShardCount, targetShardCount) of shards to create.
     // topologyShardCount is the current committed topology size.
     void InitializeShardCreation(ui32 topologyShardCount, ui32 targetShardCount);
-    // Send creation requests for up to limit shards. Zero means no limit.
-    // Advance the cursor after each request is sent.
+    // Send creation requests for up to limit uncreated shards. Already-created
+    // shards do not consume the limit. Zero means no limit.
     void StartShardCreation(
         const NActors::TActorContext& ctx,
         const TVector<NKikimrFileStore::TConfig>& shardConfigs,
