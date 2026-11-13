@@ -34,5 +34,6 @@ RECURSE_FOR_TESTS(
     registration
     scheme_cache
     service
+    update_certificates
     xfs_suite
 )
