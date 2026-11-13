@@ -383,4 +383,9 @@ TMap<TString, TString> ParseTags(const TString& tags)
     return result;
 }
 
+TString MakeTag(TStringBuf key, TStringBuf value)
+{
+    return TStringBuilder() << key << '=' << value;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

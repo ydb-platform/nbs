@@ -178,6 +178,20 @@ bool Connects(
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TGrpcShutdownFixture: public NUnitTest::TBaseFixture
+{
+    void TearDown(NUnitTest::TTestContext& /* context */) override
+    {
+        // A failed TLS handshake leaves a subchannel retry timer on the
+        // default EventEngine. The subchannel owns SSL_CTX and releases the
+        // last gRPC reference asynchronously, so wait for it here. Otherwise
+        // it can be destroyed concurrently with OPENSSL_cleanup at exit.
+        UNIT_ASSERT(WaitForGrpcShutdown(TDuration::Seconds(10)));
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -347,7 +361,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             yexception);
     }
 
-    Y_UNIT_TEST(ShouldPublishWatcherUpdatesToGrpc)
+    Y_UNIT_TEST_F(ShouldPublishWatcherUpdatesToGrpc, TGrpcShutdownFixture)
     {
         TGrpcInitializer grpcInitializer;
         TProviderContext context;

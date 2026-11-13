@@ -209,6 +209,13 @@ struct TScrubbingInfo
 
 class TVolumeState
 {
+public:
+    struct TPendingLeadershipTransfer
+    {
+        TLeaderFollowerLink Link;
+        TRequestInfoPtr Request;
+    };
+
 private:
     TStorageConfigConstPtr StorageConfig;
     const TDiagnosticsConfigConstPtr DiagnosticsConfig;
@@ -275,7 +282,12 @@ private:
     TLeaderDisks LeaderDisks;
     TString PrincipalDiskId;   // Set when in ELeadershipStatus::Outdated
     ELeadershipStatus LeadershipStatus = ELeadershipStatus::Principal;
-    bool CreateLeaderRequestInProgress = false;
+    std::optional<TLeaderFollowerLink> LeaderLinkBeingCreated;
+
+    std::optional<TOutdatedLeaderDestruction> OutdatedLeaderDestruction;
+    bool SourceDiskIdTagRemovalInProgress = false;
+    std::optional<TString> LeaderLinkBeingRemoved;
+    std::optional<TPendingLeadershipTransfer> PendingLeadershipTransfer;
 
     struct TLaggingAgentMigrationInfo
     {
@@ -861,8 +873,10 @@ public:
     void RemoveFollower(const TLeaderFollowerLink& link);
     const TFollowerDisks& GetAllFollowers() const;
 
-    void StartCreateLeaderRequest();
+    void StartCreateLeaderRequest(const TLeaderFollowerLink& link);
     void FinishCreateLeaderRequest();
+    std::optional<TLeaderFollowerLink> FindCreatingLeaderLink(
+        const TLeaderFollowerLink& link) const;
 
     std::optional<TLeaderDiskInfo> FindLeader(
         const TLeaderFollowerLink& link) const;
@@ -872,6 +886,22 @@ public:
     const TLeaderDisks& GetAllLeaders() const;
     TString GetPrincipalDiskId() const;
     ELeadershipStatus GetLeadershipStatus() const;
+
+    const TOutdatedLeaderDestruction& StartOutdatedLeaderDestructionAttempt();
+    void IncreaseOutdatedLeaderDestructionDelay();
+
+    bool IsSourceDiskIdTagRemovalInProgress() const;
+    void StartSourceDiskIdTagRemoval();
+    void FinishSourceDiskIdTagRemoval();
+
+    bool IsLeaderLinkBeingRemoved(const TLeaderFollowerLink& link) const;
+    void StartRemovingLeaderLink(const TLeaderFollowerLink& link);
+    void FinishRemovingLeaderLink(const TLeaderFollowerLink& link);
+
+    [[nodiscard]] bool TryAddPendingLeadershipTransferRequest(
+        TRequestInfoPtr requestInfo,
+        const TLeaderFollowerLink& link);
+    std::optional<TPendingLeadershipTransfer> TakePendingLeadershipTransfer();
 
     //
     // Scrubbing

@@ -980,6 +980,8 @@ void TServerSession::RejectRequest(
     ui32 status,
     TStringBuf message) noexcept
 {
+    const ui32 clientOutLength = req->Out.Length;
+
     req->State = ERequestState::ExecuteRequest;
     req->Status = status;
     req->In.Length = 0;
@@ -988,12 +990,16 @@ void TServerSession::RejectRequest(
     req->ResponseBytes = SerializeError(
         E_REJECTED,
         message,
-        static_cast<TStringBuf>(req->OutBuffer));
+        static_cast<TStringBuf>(req->OutBuffer).Head(clientOutLength));
 
     MaxInflightBytes -= req->Out.Length;
 
     if (auto* send = SendQueue.Pop()) {
-        WriteResponseData(std::move(req), send);
+        if (req->ResponseBytes) {
+            WriteResponseData(std::move(req), send);
+        } else {
+            SendResponse(std::move(req), send);
+        }
     } else {
         // no more WRs available
         Counters->RequestEnqueued();
@@ -1259,7 +1265,7 @@ public:
         req->ResponseBytes = SerializeError(
             error,
             message,
-            static_cast<TStringBuf>(req->OutBuffer));
+            static_cast<TStringBuf>(req->OutBuffer).Head(req->Out.Length));
 
         if (auto session = req->Session.lock()) {
             session->EnqueueRequest(std::move(req));

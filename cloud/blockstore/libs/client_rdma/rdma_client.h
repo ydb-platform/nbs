@@ -50,6 +50,6 @@ TResultOrError<IBlockStorePtr> CreateRdmaDataEndpoint(
     ITraceSerializerPtr traceSerializer,
     ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config,
-    NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler);
+    NCloud::IClientEndpointHandlerPtr handler);
 
 }   // namespace NCloud::NBlockStore::NClient

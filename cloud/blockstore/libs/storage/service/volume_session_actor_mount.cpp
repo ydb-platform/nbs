@@ -1404,11 +1404,7 @@ void TVolumeSessionActor::HandleInternalMountVolume(
     auto bindingType = msg->BindingType;
     bool isBindingChanging = msg->PreemptionSource != NProto::SOURCE_NONE;
 
-    bool shouldReply = false;
-
-    if (error.Defined() && FAILED(error->GetCode())) {
-        shouldReply = true;
-    }
+    bool shouldReply = error.Defined() && HasError(*error);
 
     TClientInfo* clientInfo = nullptr;
 
@@ -1448,6 +1444,12 @@ void TVolumeSessionActor::HandleInternalMountVolume(
     }
 
     if (shouldReply) {
+        if (isBindingChanging) {
+            // The binding change ends without a mount, so OnMountFinished
+            // won't reset the flag.
+            VolumeInfo->RebindingIsInflight = false;
+        }
+
         SendInternalMountVolumeResponse(
             ctx,
             requestInfo,

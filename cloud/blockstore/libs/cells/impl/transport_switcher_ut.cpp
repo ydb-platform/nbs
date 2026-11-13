@@ -104,8 +104,7 @@ struct TTestEnv
 
     TEndpointFactory AlwaysSucceeds()
     {
-        return [this](
-                   NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
+        return [this](NCloud::IClientEndpointHandlerPtr handler)
         {
             Y_UNUSED(handler);
             ++FactoryCalls;
@@ -116,8 +115,7 @@ struct TTestEnv
 
     TEndpointFactory AlwaysFails()
     {
-        return [this](
-                   NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
+        return [this](NCloud::IClientEndpointHandlerPtr handler)
         {
             Y_UNUSED(handler);
             ++FactoryCalls;

@@ -209,13 +209,13 @@ struct TTestJournal final: public IJournal
 
     // IJournal
 
-    TFuture<TResultOrError<ui64>> Restore() override
+    TResultOrError<ui64> Restore() override
     {
         with_lock (Mutex) {
             ++RestoreCount;
         }
 
-        return MakeFuture(RestoreResponse);
+        return RestoreResponse;
     }
 
     TFuture<NCloud::NProto::TWriteLogRecordResponse> Write(

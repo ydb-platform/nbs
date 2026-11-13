@@ -55,14 +55,7 @@ TResultOrError<std::unique_ptr<TCompressedBitmap>> LoadCompressedBitmap(
 
     auto bitmap = std::make_unique<TCompressedBitmap>(bitCount);
 
-    const auto serializedChunkCount =
-        GetCompressedBitmapChunkCount(proto.GetBitCount());
-
     for (const auto& chunk: proto.GetChunks()) {
-        if (chunk.GetChunkIdx() >= serializedChunkCount || !chunk.GetData()) {
-            continue;
-        }
-
         bitmap->Update({chunk.GetChunkIdx(), chunk.GetData()});
     }
 

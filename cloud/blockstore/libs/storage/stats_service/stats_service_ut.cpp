@@ -142,7 +142,9 @@ void RegisterVolume(
     const TString& diskId,
     NProto::EStorageMediaKind kind,
     bool isSystem,
-    ui64 volumeTabletID = 0)
+    ui64 volumeTabletID = 0,
+    TVector<NKikimr::TTabletChannelInfo> channels = {},
+    TActorId volumeActorId = {})
 {
     NProto::TVolume volume;
     volume.SetDiskId(diskId);
@@ -156,7 +158,8 @@ void RegisterVolume(
         diskId,
         volumeTabletID,
         std::move(volume),
-        runtime.AllocateEdgeActor());
+        volumeActorId ? volumeActorId : runtime.AllocateEdgeActor(),
+        std::move(channels));
     runtime.Send(
         new IEventHandle(
             MakeStorageStatsServiceId(),
@@ -170,9 +173,16 @@ void RegisterVolume(
 void RegisterVolume(
     TTestActorRuntime& runtime,
     const TString& diskId,
-    ui64 volumeTabletId)
+    ui64 volumeTabletId,
+    TVector<NKikimr::TTabletChannelInfo> channels = {})
 {
-    RegisterVolume(runtime, diskId, NProto::STORAGE_MEDIA_SSD, false, volumeTabletId);
+    RegisterVolume(
+        runtime,
+        diskId,
+        NProto::STORAGE_MEDIA_SSD,
+        false,
+        volumeTabletId,
+        std::move(channels));
 }
 
 void RegisterVolume(
@@ -1586,7 +1596,16 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         TTestBasicRuntime runtime;
         TTestEnv env(runtime, std::move(storageServiceConfig), std::move(ydbStats));
 
-        RegisterVolume(runtime, "vol0", 0 /* volumeTabletId */);
+        TVector<NKikimr::TTabletChannelInfo> volumeChannels(2);
+        volumeChannels[0].Channel = 0;
+        volumeChannels[0].History = {{1, 4}, {3, 5}};
+        volumeChannels[1].Channel = 1;
+        volumeChannels[1].History = {{2, 6}};
+        RegisterVolume(runtime, "vol0", 40, std::move(volumeChannels));
+        TVector<NKikimr::TTabletChannelInfo> copyChannels(1);
+        copyChannels[0].Channel = 0;
+        copyChannels[0].History = {{5, 8}};
+        RegisterVolume(runtime, "vol0-copy", 41, std::move(copyChannels));
         RegisterVolume(runtime, "vol1", 10 /* volumeTabletId */);
         RegisterVolume(runtime, "vol2", 20 /* volumeTabletId */);
         RegisterVolume(runtime, "vol3", 30 /* volumeTabletId */);
@@ -1651,7 +1670,17 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(30, partitions[29].first);
         UNIT_ASSERT_VALUES_EQUAL("vol3", partitions[29].second);
 
-        UNIT_ASSERT_VALUES_EQUAL(7, groups.size());
+        UNIT_ASSERT(!partitions.contains(40));
+        UNIT_ASSERT(!partitions.contains(41));
+        UNIT_ASSERT_VALUES_EQUAL(11, groups.size());
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(41, 0, 8, 5)));
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 0, 4, 1)));
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 0, 5, 3)));
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 1, 6, 2)));
         UNIT_ASSERT(groups.contains(
             std::make_tuple<ui64, ui32, ui32, ui32>(9, 0, 0, 0)));
         UNIT_ASSERT(groups.contains(
@@ -1666,6 +1695,53 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             std::make_tuple<ui64, ui32, ui32, ui32>(19, 0, 3, 0)));
         UNIT_ASSERT(groups.contains(
             std::make_tuple<ui64, ui32, ui32, ui32>(19, 0, 2, 2)));
+
+        groups.clear();
+        partitions.clear();
+        TVector<NKikimr::TTabletChannelInfo> updatedVolumeChannels(1);
+        updatedVolumeChannels[0].Channel = 0;
+        updatedVolumeChannels[0].History = {{4, 7}};
+        RegisterVolume(runtime, "vol0", 40, std::move(updatedVolumeChannels));
+        ForceYdbStatsUpdate(runtime, {"vol0", "vol1", "vol2", "vol3"}, 1, 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(4, partitions.size());
+        UNIT_ASSERT(!partitions.contains(40));
+        UNIT_ASSERT(!partitions.contains(41));
+        UNIT_ASSERT_VALUES_EQUAL(9, groups.size());
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(41, 0, 8, 5)));
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 0, 7, 4)));
+        UNIT_ASSERT(!groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 0, 4, 1)));
+        UNIT_ASSERT(!groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 0, 5, 3)));
+        UNIT_ASSERT(!groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 1, 6, 2)));
+
+        groups.clear();
+        const auto expectedPartitions = partitions;
+        partitions.clear();
+        UnregisterVolume(runtime, "vol0-copy");
+        ForceYdbStatsUpdate(runtime, {"vol0", "vol1", "vol2", "vol3"}, 1, 1);
+
+        UNIT_ASSERT(partitions == expectedPartitions);
+        UNIT_ASSERT_VALUES_EQUAL(8, groups.size());
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 0, 7, 4)));
+        UNIT_ASSERT(!groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(41, 0, 8, 5)));
+
+        auto expectedGroups = groups;
+        expectedGroups.erase(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 0, 7, 4));
+        groups.clear();
+        partitions.clear();
+        RegisterVolume(runtime, "vol0", 40, {});
+        ForceYdbStatsUpdate(runtime, {"vol0", "vol1", "vol2", "vol3"}, 1, 1);
+
+        UNIT_ASSERT(groups == expectedGroups);
+        UNIT_ASSERT(partitions == expectedPartitions);
     }
 
     Y_UNIT_TEST(ShouldSplitRowsIntoMultipleRequests)
@@ -2025,6 +2101,63 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                                ->GetCounter("RequestBytes");
             UNIT_ASSERT_VALUES_EQUAL(201000, actual);
         }
+    }
+
+    Y_UNIT_TEST(ShouldPullStatisticsOncePerVolumeActor)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetUsePullSchemeForVolumeStatistics(true);
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            std::move(storageServiceConfig),
+            NYdbStats::CreateVolumesStatsUploaderStub());
+
+        // A volume registers its shadow disks with its own actor id.
+        const auto volumeActorId = runtime.AllocateEdgeActor();
+        const auto otherVolumeActorId = runtime.AllocateEdgeActor();
+        const TVector<std::pair<TString, TActorId>> volumes = {
+            {"vol0", volumeActorId},
+            {"vol0-cp1", volumeActorId},
+            {"vol0-cp2", volumeActorId},
+            {"vol1", otherVolumeActorId}};
+        for (const auto& [diskId, actorId]: volumes) {
+            RegisterVolume(
+                runtime,
+                diskId,
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                false,   // isSystem
+                0,       // volumeTabletID
+                {},      // channels
+                actorId);
+        }
+
+        runtime.Send(
+            new IEventHandle(
+                MakeStorageStatsServiceId(),
+                MakeStorageStatsServiceId(),
+                new TEvents::TEvWakeup()),
+            0);
+
+        // Stay well below UpdateCountersInterval so that neither the next
+        // wakeup nor the collector's timeout fires.
+        const auto timeout = TDuration::Seconds(1);
+        auto countRequests = [&](const TActorId& actorId)
+        {
+            ui32 count = 0;
+            while (runtime.GrabEdgeEvent<
+                   TEvStatsService::TEvGetServiceStatisticsRequest>(
+                actorId,
+                timeout))
+            {
+                ++count;
+            }
+            return count;
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(1, countRequests(volumeActorId));
+        UNIT_ASSERT_VALUES_EQUAL(1, countRequests(otherVolumeActorId));
     }
 
     Y_UNIT_TEST(ShouldNotCrashCrashWhenDiskCountersIsNullptrPullScheme)

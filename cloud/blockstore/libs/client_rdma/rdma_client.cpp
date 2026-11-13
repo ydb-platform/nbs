@@ -924,7 +924,7 @@ TResultOrError<IBlockStorePtr> CreateRdmaDataEndpoint(
     ITraceSerializerPtr traceSerializer,
     ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config,
-    NRdma::IClientEndpointHandlerPtr handler)
+    NCloud::IClientEndpointHandlerPtr handler)
 {
     auto endpoint = std::make_shared<TRdmaDataEndpoint>(
         std::move(logging),

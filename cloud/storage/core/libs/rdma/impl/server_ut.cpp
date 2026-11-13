@@ -477,6 +477,155 @@ TEST(TRdmaServerTest, ShouldHandleErrors)
     }
 }
 
+TEST(TRdmaServerTest, ShouldBoundErrorResponsesByClientBuffer)
+{
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    struct TCapturingHandler final
+        : IServerHandler
+    {
+        std::atomic<void*> Context{nullptr};
+
+        TCallContextBasePtr CreateCallContext() override
+        {
+            return MakeIntrusive<TCallContextBase>(ui64{0});
+        }
+
+        void HandleRequest(
+            void* requestContext,
+            TCallContextBasePtr callContext,
+            TStringBuf in,
+            TStringBuf out) override
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(in);
+            Y_UNUSED(out);
+
+            Context = requestContext;
+        }
+    };
+
+    context->ModifyQP = [&](ibv_qp* qp, ibv_qp_attr* attr, int mask)
+    {
+        Y_UNUSED(qp);
+        if ((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR) {
+            NVerbs::Flush(context);
+        }
+    };
+
+    std::atomic<size_t> writes{0};
+    std::atomic<ui32> writeBytes{0};
+    std::atomic<size_t> responses{0};
+    std::atomic<ui32> responseStatus{0};
+    std::atomic<ui32> responseBytes{0};
+
+    context->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
+    {
+        if (wr->opcode == IBV_WR_RDMA_WRITE) {
+            writeBytes = wr->sg_list[0].length;
+            ++writes;
+        } else if (wr->opcode == IBV_WR_SEND) {
+            const auto* msg =
+                reinterpret_cast<const TResponseMessage*>(wr->sg_list[0].addr);
+            responseStatus = msg->Status;
+            responseBytes = msg->ResponseBytes;
+            ++responses;
+        }
+        PostSend<TResponseMessage>(context, qp, wr);
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
+    server->Start();
+    Y_DEFER {
+        server->Stop();
+    };
+
+    auto handler = std::make_shared<TCapturingHandler>();
+    auto endpoint = server->StartEndpoint("::", 10020, handler);
+
+    NVerbs::CreateConnection(context);
+
+    auto activeRecv = GetServerCounters(monitoring)->GetCounter("ActiveRecv");
+    while (activeRecv->Val() != serverConfig->QueueSize) {
+        SpinLockPause();
+    }
+
+    auto receive = [&](ui16 reqId, ui32 inLength, ui32 outLength)
+    {
+        with_lock (context->CompletionLock) {
+            ASSERT_FALSE(context->RecvEvents.empty());
+
+            auto* recv = context->RecvEvents.back();
+            context->RecvEvents.pop_back();
+
+            auto* msg =
+                reinterpret_cast<TRequestMessage*>(recv->sg_list[0].addr);
+            memset(msg, 0, sizeof(*msg));
+            InitMessageHeader(msg, RDMA_PROTO_VERSION);
+            msg->ReqId = reqId;
+            msg->In.Length = inLength;
+            msg->Out.Length = outLength;
+
+            context->ProcessedRecvEvents.push_back(recv);
+            context->CompletionHandle.Set();
+        }
+    };
+
+    auto waitRequest = [&]
+    {
+        while (!handler->Context.load()) {
+            SpinLockPause();
+        }
+        return handler->Context.exchange(nullptr);
+    };
+
+    auto waitResponses = [&](size_t count)
+    {
+        while (responses.load() != count) {
+            SpinLockPause();
+        }
+    };
+
+    // no response buffer: the error goes without data
+
+    receive(1, 0, 0);
+    endpoint->SendError(waitRequest(), E_REJECTED, "rejected");
+
+    waitResponses(1);
+    EXPECT_EQ(0u, writes.load());
+    EXPECT_EQ(RDMA_PROTO_FAIL, responseStatus.load());
+    EXPECT_EQ(0u, responseBytes.load());
+
+    // the error is shortened to the client's response buffer, not to the
+    // page-aligned server buffer
+
+    receive(2, 0, 64);
+    endpoint->SendError(waitRequest(), E_REJECTED, TString(1_KB, 'x'));
+
+    waitResponses(2);
+    EXPECT_EQ(1u, writes.load());
+    EXPECT_GE(64u, writeBytes.load());
+    EXPECT_NE(0u, writeBytes.load());
+    EXPECT_EQ(RDMA_PROTO_FAIL, responseStatus.load());
+    EXPECT_EQ(writeBytes.load(), responseBytes.load());
+
+    // the server rejects a request without a response buffer
+
+    receive(3, serverConfig->MaxBufferSize + 1, 0);
+
+    waitResponses(3);
+    EXPECT_EQ(1u, writes.load());
+    EXPECT_EQ(RDMA_PROTO_INVALID_REQUEST, responseStatus.load());
+    EXPECT_EQ(0u, responseBytes.load());
+}
+
 TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
 {
     NThreading::TPromise<void> done = NThreading::NewPromise<void>();

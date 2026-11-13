@@ -9,12 +9,23 @@ option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/protos";
 
 message TCompressedBitmapChunk
 {
+    // Zero-based index of a 1024-bit range. The final range may contain fewer
+    // than 1024 bits of the bitmap. ChunkIdx must be less than
+    // ceil(BitCount / 1024) in the enclosing TCompressedBitmapData.
     uint32 ChunkIdx = 1;
+    // Nonempty serialized data for this range, produced by
+    // TCompressedBitmap::RangeSerializer.
     bytes Data = 2;
 }
 
+// Sparse serialization of a bitmap: ranges with no set bits may be omitted.
 message TCompressedBitmapData
 {
+    // Number of bits represented by this message. Valid bit indices are
+    // [0, BitCount); BitCount == 0 requires Chunks to be empty.
     uint64 BitCount = 1;
+    // At most ceil(BitCount / 1024) chunks, each with an in-range ChunkIdx and
+    // nonempty Data. Omitted chunks decode as zero. Validation does not require
+    // unique or sorted ChunkIdx values.
     repeated TCompressedBitmapChunk Chunks = 2;
 }

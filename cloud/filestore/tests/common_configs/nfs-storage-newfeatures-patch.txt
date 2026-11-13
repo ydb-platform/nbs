@@ -36,4 +36,3 @@ MaxShardManagementRequestsInFlight: 3
 FakeTxPageFaultsProbability: 0.001
 AvailabilityTrackingEnabled: true
 AvailabilityTrackingInterval: 15000
-GuestPosixAclEnabled: true

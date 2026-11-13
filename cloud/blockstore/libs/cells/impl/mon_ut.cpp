@@ -25,7 +25,7 @@ Y_UNIT_TEST_SUITE(TCellsMonTest)
              .DataTransport = "grpc fallback",
              .TabletHost = "localhost",
              .SelectedTransport = NProto::CELL_DATA_TRANSPORT_RDMA,
-             .CanSelectRdma = true});
+             .GrpcDataFallbackEnabled = true});
         TStringStream out;
         RenderCellsPage(out, config, snapshot, TDiagnosticsConfig());
         const auto html = out.Str();
@@ -68,7 +68,33 @@ Y_UNIT_TEST_SUITE(TCellsMonTest)
             html,
             "name='ConnectionId' value='connection'");
         UNIT_ASSERT_STRING_CONTAINS(html, "CELL_DATA_TRANSPORT_RDMA' disabled");
+        UNIT_ASSERT_STRING_CONTAINS(html, "CELL_DATA_TRANSPORT_ICV2' disabled");
         UNIT_ASSERT_STRING_CONTAINS(html, "Requires gRPC data fallback");
+    }
+
+    Y_UNIT_TEST(ShouldOfferIcV2NextToRdma)
+    {
+        const TCellsConfig config(NProto::TCellsConfig{});
+        TCellsSnapshot snapshot;
+        snapshot.Mounts.push_back({
+            .ConnectionId = "connection",
+            .DiskId = "disk",
+            .ClientId = "client",
+            .CellId = "remote",
+            .Host = "localhost",
+            .DataTransport = "icv2",
+            .SelectedTransport = NProto::CELL_DATA_TRANSPORT_ICV2,
+            .GrpcDataFallbackEnabled = true,
+        });
+        TStringStream out;
+        RenderCellsPage(out, config, snapshot, TDiagnosticsConfig());
+        const auto html = out.Str();
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "value='CELL_DATA_TRANSPORT_ICV2' selected>IC V2</option>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<span class='label label-success'>icv2</span>");
     }
 }
 

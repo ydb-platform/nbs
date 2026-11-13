@@ -556,6 +556,162 @@ struct TTestIamTokenClient: public IIamTokenClient
 
 Y_UNIT_TEST_SUITE(TYdbStatsUploadTest)
 {
+    Y_UNIT_TEST(ShouldRequireConnectionSettingsAndAnyTable)
+    {
+        NProto::TYdbStatsConfig config;
+        UNIT_ASSERT(!TYdbStatsConfig(config).IsValid());
+
+        config.SetDatabaseName("/Root");
+        config.SetServerAddress("localhost:2135");
+        UNIT_ASSERT(!TYdbStatsConfig(config).IsValid());
+
+        TVector<NProto::TYdbStatsConfig> configs(6);
+        configs[0].SetStatsTableName("stats");
+        configs[1].SetHistoryTablePrefix("history");
+        configs[2].SetArchiveStatsTableName("archive");
+        configs[3].SetBlobLoadMetricsTableName("metrics");
+        configs[4].SetGroupsTableName("groups");
+        configs[5].SetPartitionsTableName("partitions");
+
+        for (auto& tableConfig: configs) {
+            UNIT_ASSERT(!TYdbStatsConfig(tableConfig).IsValid());
+
+            tableConfig.SetDatabaseName("/Root");
+            UNIT_ASSERT(!TYdbStatsConfig(tableConfig).IsValid());
+
+            tableConfig.SetServerAddress("localhost:2135");
+            UNIT_ASSERT(TYdbStatsConfig(tableConfig).IsValid());
+
+            tableConfig.ClearDatabaseName();
+            UNIT_ASSERT(!TYdbStatsConfig(tableConfig).IsValid());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUploadGroupsAndPartitionsWithoutStatsAndHistory)
+    {
+        NProto::TYdbStatsConfig configProto;
+        configProto.SetDatabaseName("/Root");
+        configProto.SetServerAddress("localhost:2135");
+        configProto.SetGroupsTableName("groups");
+        configProto.SetPartitionsTableName("partitions");
+        auto config = std::make_shared<TYdbStatsConfig>(configProto);
+        auto ydbTestStorage = YdbCreateTestStorage(config);
+        auto uploader = CreateYdbVolumesStatsUploader(
+            config,
+            CreateLoggingService("console"),
+            ydbTestStorage,
+            CreateTestSchemes());
+        uploader->Start();
+
+        THashMap<TString, ui32> uploads;
+        ydbTestStorage->UploadTestFunc = [&](TString tableName, NYdb::TValue)
+        {
+            ++uploads[tableName];
+            return MakeFuture(MakeError(S_OK));
+        };
+
+        for (ui32 i = 0; i < 2; ++i) {
+            auto response =
+                uploader->UploadStats(BuildTestYdbRowData()).GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetCode());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(2, uploads.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, uploads["/Root/groups"]);
+        UNIT_ASSERT_VALUES_EQUAL(2, uploads["/Root/partitions"]);
+        UNIT_ASSERT_VALUES_EQUAL(2, ydbTestStorage->DescribeTableCalls);
+        UNIT_ASSERT_VALUES_EQUAL(2, ydbTestStorage->CreateTableCalls);
+        UNIT_ASSERT_VALUES_EQUAL(4, ydbTestStorage->UpsertCalls);
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->GetHistoryTablesCalls);
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->DropTableCalls);
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->AlterTableCalls);
+    }
+
+    Y_UNIT_TEST(ShouldCompleteUploadWithoutConfiguredTables)
+    {
+        NProto::TYdbStatsConfig configProto;
+        configProto.SetDatabaseName("/Root");
+        configProto.SetServerAddress("localhost:2135");
+        auto config = std::make_shared<TYdbStatsConfig>(configProto);
+        auto ydbTestStorage = YdbCreateTestStorage(config);
+        auto uploader = CreateYdbVolumesStatsUploader(
+            config,
+            CreateLoggingService("console"),
+            ydbTestStorage,
+            CreateTestSchemes());
+        uploader->Start();
+
+        auto response = uploader->UploadStats(BuildTestYdbRowData());
+        UNIT_ASSERT(response.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetValue().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->DescribeTableCalls);
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->CreateTableCalls);
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->UpsertCalls);
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->GetHistoryTablesCalls);
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->DropTableCalls);
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->AlterTableCalls);
+    }
+
+    Y_UNIT_TEST(ShouldCompleteUploadWithoutRows)
+    {
+        auto config = CreateAllTablesTestConfig();
+        auto ydbTestStorage = YdbCreateTestStorage(config);
+        auto uploader = CreateYdbVolumesStatsUploader(
+            config,
+            CreateLoggingService("console"),
+            ydbTestStorage,
+            CreateTestSchemes());
+        uploader->Start();
+
+        auto response = uploader->UploadStats({});
+        UNIT_ASSERT(response.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetValue().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, ydbTestStorage->UpsertCalls);
+    }
+
+    Y_UNIT_TEST(ShouldUploadOnlyNonEmptyRowSets)
+    {
+        auto config = CreateAllTablesTestConfig();
+        auto ydbTestStorage = YdbCreateTestStorage(config);
+        auto uploader = CreateYdbVolumesStatsUploader(
+            config,
+            CreateLoggingService("console"),
+            ydbTestStorage,
+            CreateTestSchemes());
+        uploader->Start();
+
+        THashSet<TString> tables;
+        ydbTestStorage->UploadTestFunc = [&](TString tableName, NYdb::TValue)
+        {
+            // Ignore the date suffix of the rotating history table.
+            if (tableName.StartsWith("/Root/test-")) {
+                tableName = "/Root/history";
+            }
+            tables.insert(std::move(tableName));
+            return MakeFuture(MakeError(S_OK));
+        };
+
+        const TVector<std::pair<TYdbRowData, THashSet<TString>>> testCases = {
+            {{{BuildTestStats()}, {}, {}, {}},
+             {"/Root/test", "/Root/history", "/Root/archive-test"}},
+            {{{}, {BuildTestMetrics()}, {}, {}}, {"/Root/metrics"}},
+            {{{}, {}, {BuildTestGroups()}, {}}, {"/Root/groups"}},
+            {{{}, {}, {}, {BuildTestPartitions()}}, {"/Root/partitions"}},
+        };
+
+        for (const auto& [rows, expectedTables]: testCases) {
+            tables.clear();
+            ydbTestStorage->UpsertCalls = 0;
+
+            auto response = uploader->UploadStats(rows);
+            UNIT_ASSERT(response.HasValue());
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetValue().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedTables.size(), ydbTestStorage->UpsertCalls);
+            UNIT_ASSERT(tables == expectedTables);
+        }
+    }
+
     Y_UNIT_TEST(ShouldCreateTablesIfNessesary)
     {
         auto config = CreateTestConfig();

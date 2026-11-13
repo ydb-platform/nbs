@@ -286,6 +286,7 @@ ICellManagerPtr CreateCellManager(
     IServerStatsPtr serverStats,
     ICertificateProviderPtr certificateProvider,
     NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+    NIcV2::IDataEndpointFactoryPtr icV2EndpointFactory,
     IBlockStorePtr localService)
 {
     auto appConfig = std::make_shared<NClient::TClientAppConfig>(
@@ -320,6 +321,7 @@ ICellManagerPtr CreateCellManager(
         .CertProvider = std::move(certificateProvider),
         .GrpcClient = std::move(result.ExtractResult()),
         .RdmaClient = std::move(rdmaClient),
+        .IcV2EndpointFactory = std::move(icV2EndpointFactory),
         .LocalService = std::move(localService),
         .RdmaTaskQueue = std::move(rdmaTaskQueue),
         .EndpointsSetup = CreateCellHostEndpointBootstrap(),

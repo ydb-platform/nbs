@@ -1442,11 +1442,16 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         ui32 nodeIdx = env.AddDynamicNode();
         ui64 tabletId = env.BootIndexTablet(nodeIdx);
 
+        TFileSystemConfig fileSystemConfig;
+        fileSystemConfig.NodeCount = 1024;
+        fileSystemConfig.BlockCount =
+            env.GetStorageConfig()->GetSizeToNodesRatio() *
+            fileSystemConfig.NodeCount / fileSystemConfig.BlockSize;
         TIndexTabletClient tablet(
             env.GetRuntime(),
             nodeIdx,
             tabletId,
-            TFileSystemConfig{.NodeCount = 1024});
+            fileSystemConfig);
         tablet.RebootTablet();
 
         tablet.SendRequest(tablet.CreateUpdateCounters());

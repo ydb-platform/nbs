@@ -252,17 +252,26 @@ void BuildGroupsInfoForUpload(
 {
     auto timestamp = ctx.Now();
 
-    for (const auto& [partitionTabletId, channels]: volume.ChannelInfos) {
+    auto addChannels =
+        [&](ui64 tabletId, const TVector<NKikimr::TTabletChannelInfo>& channels)
+    {
         for (const auto& channel: channels) {
             for (const auto& historyEntry: channel.History) {
                 rows.emplace_back(
-                    partitionTabletId,
+                    tabletId,
                     channel.Channel,
                     historyEntry.GroupID,
                     historyEntry.FromGeneration,
                     timestamp);
             }
         }
+    };
+
+    for (const auto& [_, tabletChannels]: volume.VolumeChannelsByDiskId) {
+        addChannels(tabletChannels.TabletId, tabletChannels.Channels);
+    }
+    for (const auto& [partitionTabletId, channels]: volume.ChannelInfos) {
+        addChannels(partitionTabletId, channels);
     }
 }
 

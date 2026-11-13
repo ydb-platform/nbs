@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -14,6 +15,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Cancel the link on the follower before unlinking the source. The follower
+// may already own the disk while the source is waiting for its acknowledgment.
+// If the follower rejects cancellation, keep the source link so source I/O
+// stays blocked. Unlink the source only after cancellation succeeds or the
+// follower no longer exists.
 class TDestroyVolumeLinkActor final
     : public TActorBootstrapped<TDestroyVolumeLinkActor>
 {
@@ -24,6 +30,8 @@ private:
     const TString LeaderCellId;
     const TString FollowerDiskId;
     const TString FollowerCellId;
+
+    NProto::TError FollowerUnlinkResult;
 
 public:
     TDestroyVolumeLinkActor(
@@ -77,7 +85,7 @@ void TDestroyVolumeLinkActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    UnlinkLeaderVolumeFromFollower(ctx);
+    RemoveLinkOnFollower(ctx);
 }
 
 void TDestroyVolumeLinkActor::UnlinkLeaderVolumeFromFollower(
@@ -114,32 +122,25 @@ void TDestroyVolumeLinkActor::HandleUnlinkLeaderVolumeFromFollowerResponse(
     const TActorContext& ctx)
 {
     const auto* message = ev->Get();
-    const auto& error = message->GetError();
+    auto error = message->GetError();
 
-    if (FAILED(error.GetCode())) {
+    if (IsNotFoundSchemeShardError(error)) {
+        error = FollowerUnlinkResult;
+    }
+
+    if (HasError(error)) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
             "Remove link on leader %s failed: %s",
             LeaderDiskId.Quote().data(),
             FormatError(error).data());
-
-        if (FACILITY_FROM_CODE(error.GetCode()) == FACILITY_SCHEMESHARD) {
-            auto status = static_cast<NKikimrScheme::EStatus>(
-                STATUS_FROM_CODE(error.GetCode()));
-            // TODO: return E_NOT_FOUND instead of StatusPathDoesNotExist
-            if (status == NKikimrScheme::StatusPathDoesNotExist) {
-                // Leader disk not found. Try to remove on follower.
-                RemoveLinkOnFollower(ctx);
-                return;
-            }
-        }
     }
 
     ReplyAndDie(
         ctx,
         std::make_unique<TEvService::TEvDestroyVolumeLinkResponse>(
-            message->GetError()));
+            std::move(error)));
 }
 
 void TDestroyVolumeLinkActor::HandleLinkRemovedOnFollower(
@@ -148,20 +149,22 @@ void TDestroyVolumeLinkActor::HandleLinkRemovedOnFollower(
 {
     auto* message = ev->Get();
     const auto& error = message->GetError();
+    FollowerUnlinkResult = error;
 
-    if (FAILED(error.GetCode())) {
+    if (HasError(error) && !IsNotFoundSchemeShardError(error)) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
             "Remove link on follower %s failed: %s",
             FollowerDiskId.Quote().data(),
             FormatError(error).data());
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TEvService::TEvDestroyVolumeLinkResponse>(error));
+        return;
     }
 
-    ReplyAndDie(
-        ctx,
-        std::make_unique<TEvService::TEvDestroyVolumeLinkResponse>(
-            message->GetError()));
+    UnlinkLeaderVolumeFromFollower(ctx);
 }
 
 void TDestroyVolumeLinkActor::ReplyAndDie(
