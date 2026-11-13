@@ -9,6 +9,7 @@
 #include <util/stream/str.h>
 
 #include <chrono>
+#include <thread>
 #include <tuple>
 
 using namespace std::chrono_literals;
@@ -18,6 +19,167 @@ using namespace NCloud::NBlockStore::NVHostServer;
 
 Y_UNIT_TEST_SUITE(TStatsTest)
 {
+    Y_UNIT_TEST(ShouldPreserveIoSizeInSnapshots)
+    {
+        TAtomicStats atomic;
+        atomic.Requests[0].AddIoSize(8_GB);
+        atomic.Requests[0].AddIoSize(0);
+        atomic.Requests[1].AddIoSize(512);
+        TSimpleStats snapshot;
+        for (size_t i = 0; i != 2; ++i) {
+            snapshot.Requests[i] = TRequestStats<ui64>(atomic.Requests[i]);
+        }
+        TSimpleStats sum;
+        sum += atomic;
+        sum += snapshot;
+        for (size_t i = 0; i != 2; ++i) {
+            TRequestStats<ui64> assigned;
+            assigned = atomic.Requests[i];
+            TRequestStats<std::atomic<ui64>> atomicCopy(atomic.Requests[i]);
+            TRequestStats<std::atomic<ui64>> atomicAssigned;
+            atomicAssigned = atomicCopy;
+            TRequestStats<ui64> simpleCopy(assigned);
+            TRequestStats<ui64> simpleAssigned;
+            simpleAssigned = simpleCopy;
+            auto delta = sum.Requests[i] - snapshot.Requests[i];
+            UNIT_ASSERT_VALUES_EQUAL(i == 0 ? 2 : 1, assigned.IoSizeCount);
+            UNIT_ASSERT_VALUES_EQUAL(i == 0 ? 8_GB : 512, assigned.IoSizeBytes);
+            UNIT_ASSERT_VALUES_EQUAL(assigned.IoSizeCount, delta.IoSizeCount);
+            UNIT_ASSERT_VALUES_EQUAL(assigned.IoSizeBytes, delta.IoSizeBytes);
+            UNIT_ASSERT_VALUES_EQUAL(
+                assigned.IoSizeCount, snapshot.Requests[i].IoSizeCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                assigned.IoSizeBytes, snapshot.Requests[i].IoSizeBytes);
+            UNIT_ASSERT_VALUES_EQUAL(
+                assigned.IoSizeCount, atomicAssigned.IoSizeCount.load());
+            UNIT_ASSERT_VALUES_EQUAL(
+                assigned.IoSizeBytes, atomicAssigned.IoSizeBytes.load());
+            UNIT_ASSERT_VALUES_EQUAL(
+                assigned.IoSizeCount, simpleAssigned.IoSizeCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                assigned.IoSizeBytes, simpleAssigned.IoSizeBytes);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldKeepConcurrentIoSizeSnapshotsConsistent)
+    {
+        constexpr ui64 requestBytes = 4_KB;
+        constexpr size_t writerCount = 4;
+        constexpr size_t snapshotCount = 128;
+
+        TAtomicStats atomic;
+        // Subtract live counters from a larger fixed snapshot to exercise
+        // atomic subtraction without underflow during concurrent updates.
+        constexpr ui64 subtractionCount = ui64{1} << 40;
+        TRequestStats<std::atomic<ui64>> subtractionBase;
+        subtractionBase.IoSizeCount = subtractionCount;
+        subtractionBase.IoSizeBytes = subtractionCount * requestBytes;
+        auto completionStats = CreateCompletionStats();
+        std::atomic_bool stop = false;
+        std::atomic<size_t> writersStarted = 0;
+
+        // Exercise the same atomic -> plain assignment used by Sync while
+        // several AIO completion workers update the shared request counters.
+        std::thread synchronizer(
+            [&]
+            {
+                while (!stop.load()) {
+                    completionStats->Sync(atomic);
+                    std::this_thread::yield();
+                }
+            });
+        std::array<std::thread, writerCount> writers;
+        for (size_t i = 0; i != writerCount; ++i) {
+            writers[i] = std::thread(
+                [&, i]
+                {
+                    auto& stats = atomic.Requests[i % atomic.Requests.size()];
+                    stats.AddIoSize(requestBytes);
+                    ++writersStarted;
+                    while (!stop.load()) {
+                        stats.AddIoSize(requestBytes);
+                    }
+                });
+        }
+
+        bool consistent = true;
+        bool timedOut = false;
+        bool hasTraffic = false;
+        size_t snapshots = 0;
+        std::array<TRequestStats<ui64>, 2> previous;
+        auto check = [&](const TRequestStats<ui64>& stats)
+        {
+            consistent &= stats.IoSizeBytes == stats.IoSizeCount * requestBytes;
+            hasTraffic |= stats.IoSizeCount != 0;
+        };
+        const auto deadline = TInstant::Now() + TDuration::Seconds(10);
+        while (writersStarted.load() != writerCount &&
+               TInstant::Now() < deadline)
+        {
+            std::this_thread::yield();
+        }
+        const bool writersReady = writersStarted.load() == writerCount;
+        std::array<ui64, 2> initialCounts;
+        for (size_t i = 0; i != atomic.Requests.size(); ++i) {
+            initialCounts[i] = atomic.Requests[i].GetIoSize().first;
+        }
+        auto hasUpdates = [&]
+        {
+            for (size_t i = 0; i != previous.size(); ++i) {
+                if (previous[i].IoSizeCount <= initialCounts[i]) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        while (writersReady && (snapshots < snapshotCount || !hasUpdates()) &&
+               TInstant::Now() < deadline)
+        {
+            auto snapshot = completionStats->Get(TDuration::Seconds(1));
+            if (!snapshot) {
+                timedOut = true;
+                break;
+            }
+            ++snapshots;
+            for (size_t i = 0; i != atomic.Requests.size(); ++i) {
+                check(snapshot->Requests[i]);
+                check(snapshot->Requests[i] - previous[i]);
+                previous[i] = snapshot->Requests[i];
+
+                TRequestStats<ui64> constructed(atomic.Requests[i]);
+                check(constructed);
+                TRequestStats<ui64> assigned;
+                assigned = atomic.Requests[i];
+                check(assigned);
+                TRequestStats<ui64> sum;
+                sum += atomic.Requests[i];
+                check(sum);
+
+                const auto [count, bytes] =
+                    (subtractionBase - atomic.Requests[i]).GetIoSize();
+                consistent &= bytes == count * requestBytes;
+            }
+        }
+
+        // Join all threads before assertions, including on a failed snapshot.
+        // A broken implementation must fail the test rather than leave a
+        // waiter or worker running against destroyed stats.
+        stop = true;
+        for (auto& writer: writers) {
+            writer.join();
+        }
+        synchronizer.join();
+
+        UNIT_ASSERT_C(writersReady, "Completion workers did not start");
+        UNIT_ASSERT_C(!timedOut, "Completion stats snapshot timed out");
+        UNIT_ASSERT_C(snapshots >= snapshotCount, "Not enough snapshots");
+        UNIT_ASSERT_C(hasTraffic, "No concurrent completion updates observed");
+        UNIT_ASSERT_C(
+            hasUpdates(), "Completion updates did not overlap the snapshots");
+        UNIT_ASSERT_C(
+            consistent, "IoSizeCount / IoSizeBytes snapshot was torn");
+    }
+
     Y_UNIT_TEST(ShouldDumpStats)
     {
         constexpr ui64 cyclesPerSecond = 2000000000;
