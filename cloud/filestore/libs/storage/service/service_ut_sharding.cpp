@@ -29,25 +29,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProtoPrivate::TGetFileSystemTopologyResponse GetFileSystemTopology(
-    TServiceClient& service,
-    const TString& fsId)
-{
-    NProtoPrivate::TGetFileSystemTopologyRequest request;
-    request.SetFileSystemId(fsId);
-
-    TString buf;
-    google::protobuf::util::MessageToJsonString(request, &buf);
-    const auto actionResponse =
-        service.ExecuteAction("getfilesystemtopology", buf);
-    NProtoPrivate::TGetFileSystemTopologyResponse response;
-    auto status = google::protobuf::util::JsonStringToMessage(
-        actionResponse->Record.GetOutput(),
-        &response);
-
-    return response;
-}
-
 void CheckShardsSize(
     const TShardedFileSystemConfig& fsConfig,
     TServiceClient& service,

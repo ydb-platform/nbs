@@ -219,6 +219,12 @@ message TCreateFileStoreRequest
 
     // Explicitly specified shard count.
     uint32 ShardCount = 10;
+
+    // Explicitly specified fast shard count.
+    uint32 FastShardCount = 11;
+
+    // Storage kind of the fast shards.
+    EFastShardStorageKind FastShardStorageKind = 12;
 }
 
 message TCreateFileStoreResponse
@@ -316,6 +322,9 @@ message TResizeFileStoreRequest
     // Force directory creation in shards for the whole filesystem. Overrides
     // the LastNodeId check in the main tablet.
     bool ForceDirectoryCreationInShards = 10;
+
+    // New number of fast shards.
+    uint32 FastShardCount = 11;
 }
 
 message TResizeFileStoreResponse

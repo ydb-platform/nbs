@@ -1266,6 +1266,8 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
 
     *response->Record.MutableShardFileSystemIds() =
         GetFileSystem().GetShardFileSystemIds();
+    *response->Record.MutableFileShardFileSystemIds() =
+        GetFileSystem().GetFileShardFileSystemIds();
     response->Record.SetShardNo(GetFileSystem().GetShardNo());
     response->Record.SetDirectoryCreationInShardsEnabled(
         GetFileSystem().GetDirectoryCreationInShardsEnabled());
@@ -1276,6 +1278,9 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
     response->Record.SetMaxShardCount(Config->GetMaxShardCount());
     response->Record.SetCompressNodeRef(GetCompressNodeRef());
     response->Record.SetMainFileSystemId(GetMainFileSystemId());
+    if (GetFileSystem().HasFastShardTopology()) {
+        *response->Record.MutableFastShardTopology() = GetFileSystem().GetFastShardTopology();
+    }
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,

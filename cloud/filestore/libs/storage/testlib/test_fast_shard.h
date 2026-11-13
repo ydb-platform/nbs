@@ -6,6 +6,7 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <util/generic/string.h>
 #include <util/generic/vector.h>
 
 #include <memory>
@@ -56,6 +57,7 @@ struct TTestFastShard: TNotImplementedFastShard
     NThreading::TPromise<NCloud::NProto::TError> InitResult =
         NThreading::NewPromise<NCloud::NProto::TError>();
     bool TornDown = false;
+    TString FileSystemId;
     ui64 Generation = 0;
     NProtoPrivate::TFastShardConfig Config;
 

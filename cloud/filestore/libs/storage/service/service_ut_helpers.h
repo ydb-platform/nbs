@@ -215,6 +215,10 @@ NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
     const NProtoPrivate::EStatsRequestMode mode =
         NProtoPrivate::STATS_REQUEST_MODE_DEFAULT);
 
+NProtoPrivate::TGetFileSystemTopologyResponse GetFileSystemTopology(
+    TServiceClient& service,
+    const TString& fsId);
+
 void CreateOrResizeFilesystem(
     TServiceClient& service,
     const TString& fsId,

@@ -1,13 +1,19 @@
 #include "service_actor.h"
 
+#include "service_actor_fastshard.h"
+
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/filestore/public/api/protos/fs.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+
+#include <util/generic/hash.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -42,12 +48,20 @@ namespace {
 // non-zero, we cap number of in-flight requests.
 // 7. Create shards if needed. If MaxShardManagementRequestsInFlight is
 // non-zero, we cap number of in-flight requests.
-// 8. Configure shards if we created some new ones. Done in two phases: the
+// 8. Allocate devices for the new fast shards if needed.
+// 9. Configure shards if we created some new ones. Done in two phases: the
 // newly created shards first, the pre-existing shards next.
 // If MaxShardManagementRequestsInFlight is non-zero, we cap number of in-flight
 // requests within each phase.
-// 9. Configure main filestore if new shards were created.
+// 10. Configure main filestore if new shards were created.
 // The end!
+
+struct TAlterFastShardConfigs
+{
+    NProtoPrivate::TFastShardTopology Topology;
+    TVector<TString> NewShardIds;
+    THashMap<TString, TEvServicePrivate::TAllocatedFastShardConfig> NewShards;
+};
 
 class TAlterFileStoreActor final
     : public TActorBootstrapped<TAlterFileStoreActor>
@@ -64,6 +78,7 @@ private:
     const bool EnableStrictFileSystemSizeEnforcement;
 
     ui32 ExplicitShardCount;
+    ui32 ExplicitFastShardCount = 0;
 
     NKikimrFileStore::TConfig TargetConfig;
     NKikimrFileStore::TConfig MainFileStoreOriginalConfig;
@@ -71,6 +86,8 @@ private:
     TMultiShardFileStoreConfig FileStoreConfig;
 
     TVector<TString> ExistingShardIds;
+    TVector<TString> FileShardIds;
+    TAlterFastShardConfigs FastShards;
     ui32 NextShardToCreate = 0;
     ui32 ShardsToCreate = 0;
 
@@ -128,6 +145,7 @@ private:
     void GetFileSystemTopology(const TActorContext& ctx);
     void CreateShards(const TActorContext& ctx);
     void CreateShard(const TActorContext& ctx, const ui32 shardIndex);
+    void AllocateFastShardsIfNeeded(const TActorContext& ctx);
     void ConfigureShards(const TActorContext& ctx);
     void ConfigureShardRange(
         const TActorContext& ctx,
@@ -138,6 +156,7 @@ private:
     void ConfigureMainFileStore(const TActorContext& ctx);
 
     void PatchStorageConfig();
+    NProto::TError ValidateFastShardsConfig() const;
     void FillMultiShardFileStoreConfig(const TActorContext& ctx);
 
     void HandleDescribeFileStoreForAlterResponse(
@@ -146,6 +165,10 @@ private:
 
     void HandleDescribeFileStoreResponse(
         const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleFastShardsAllocated(
+        const TEvServicePrivate::TEvFastShardsAllocated::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleGetStorageStatsResponse(
@@ -262,6 +285,7 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , EnableStrictFileSystemSizeEnforcement(
           request.GetEnableStrictFileSystemSizeEnforcement())
     , ExplicitShardCount(request.GetShardCount())
+    , ExplicitFastShardCount(request.GetFastShardCount())
 {
     TargetConfig.SetBlocksCount(request.GetBlocksCount());
     TargetConfig.SetVersion(request.GetConfigVersion());
@@ -428,6 +452,39 @@ void TAlterFileStoreActor::PatchStorageConfig()
         StrictFileSystemSizeEnforcementEnabled);
     protoConfig.SetMaxShardCount(MaxShardCount);
     StorageConfig->Merge(protoConfig);
+}
+
+NProto::TError TAlterFileStoreActor::ValidateFastShardsConfig() const
+{
+    const ui32 fastShardCount = FastShards.Topology.ShardsSize();
+
+    if (fastShardCount && TargetConfig.GetBlocksCount() != MainFileStoreOriginalConfig.GetBlocksCount()) {
+        return MakeError(E_ARGUMENT, "Cannot change the size of a filesystem with fast shards");
+    }
+
+    // The request does not change the fast shards.
+    if (!ExplicitFastShardCount) {
+        return {};
+    }
+
+    if (!StorageConfig->GetFastShardRuntimeEnabled()) {
+        return MakeError(E_PRECONDITION_FAILED, "fast shards are disabled");
+    }
+
+    if (!fastShardCount) {
+        return MakeError(E_ARGUMENT, "Cannot add fast shards to a filesystem created without them");
+    }
+
+    if (ExplicitFastShardCount < fastShardCount) {
+        return MakeError(E_ARGUMENT, "Cannot decrease number of fast shards");
+    }
+
+    if (ExplicitFastShardCount - fastShardCount > ShardsToCreate) {
+        return MakeError(E_ARGUMENT, "ShardCount is too small for the new fast shards");
+    }
+
+    const auto& config = MainFileStoreOriginalConfig;
+    return ValidateFastShardCapacity(*StorageConfig, config.GetBlocksCount() * config.GetBlockSize());
 }
 
 void TAlterFileStoreActor::FillMultiShardFileStoreConfig(
@@ -625,6 +682,10 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
     for (auto& shardId: *msg->Record.MutableShardFileSystemIds()) {
         ExistingShardIds.push_back(std::move(shardId));
     }
+    for (auto& shardId: *msg->Record.MutableFileShardFileSystemIds()) {
+        FileShardIds.push_back(std::move(shardId));
+    }
+    FastShards.Topology = msg->Record.GetFastShardTopology();
 
     // Intentionally called after the ExistingShardIds are filled because this
     // vector is used in FillMultiShardFileStoreConfig
@@ -751,6 +812,23 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         }
     }
 
+    // Nothing is changed yet.
+    auto error = ValidateFastShardsConfig();
+    if (HasError(error)) {
+        ReplyAndDie(ctx, error);
+        return;
+    }
+
+    // The new fast shards are the last ones.
+    if (ExplicitFastShardCount) {
+        const auto& shards = FileStoreConfig.ShardConfigs;
+        const ui32 newShardCount = ExplicitFastShardCount - FastShards.Topology.ShardsSize();
+        for (ui32 i = shards.size() - newShardCount; i < shards.size(); ++i) {
+            FastShards.NewShardIds.push_back(shards[i].GetFileSystemId());
+            FileShardIds.push_back(shards[i].GetFileSystemId());
+        }
+    }
+
     DescribeShards(ctx);
 }
 
@@ -826,13 +904,58 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
 
     Y_DEBUG_ABORT_UNLESS(ShardsToCreate);
     if (--ShardsToCreate == 0) {
-        ConfigureShards(ctx);
+        AllocateFastShardsIfNeeded(ctx);
     } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
         if (NextShardToCreate < FileStoreConfig.ShardConfigs.size()) {
             CreateShard(ctx, NextShardToCreate);
             ++NextShardToCreate;
         }
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TAlterFileStoreActor::AllocateFastShardsIfNeeded(const TActorContext& ctx)
+{
+    if (FastShards.NewShardIds.empty()) {
+        ConfigureShards(ctx);
+        return;
+    }
+
+    const auto& config = MainFileStoreOriginalConfig;
+    NCloud::Register(
+        ctx,
+        CreateAllocateFastShardsActor(
+            StorageConfig,
+            SelfId(),
+            FileSystemId,
+            FastShards.NewShardIds,
+            FastShards.Topology.GetStorageKind(),
+            config.GetCloudId(),
+            config.GetFolderId(),
+            config.GetBlocksCount() * config.GetBlockSize()));
+}
+
+void TAlterFileStoreActor::HandleFastShardsAllocated(
+    const TEvServicePrivate::TEvFastShardsAllocated::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    FastShards.NewShards = std::move(msg->FastShards);
+    for (const auto& shardId: FastShards.NewShardIds) {
+        if (const auto* fastShard = FastShards.NewShards.FindPtr(shardId)) {
+            auto& shard = *FastShards.Topology.AddShards();
+            shard.SetShardId(shardId);
+            shard.SetTabletId(fastShard->TabletId);
+        }
+    }
+
+    ConfigureShards(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -910,6 +1033,15 @@ void TAlterFileStoreActor::ConfigureShard(
         for (const auto& shard: FileStoreConfig.ShardConfigs) {
             request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
         }
+        for (const auto& shardId: FileShardIds) {
+            request->Record.AddFileShardFileSystemIds(shardId);
+        }
+    }
+
+    const auto* fastShard = FastShards.NewShards.FindPtr(request->Record.GetFileSystemId());
+    if (fastShard) {
+        request->Record.SetIsFastShard(true);
+        *request->Record.MutableFastShardConfig()->MutablePersistentConfig() = fastShard->Config;
     }
 
     LOG_INFO(
@@ -1005,6 +1137,12 @@ void TAlterFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
 
     for (const auto& shard: FileStoreConfig.ShardConfigs) {
         request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
+    }
+    for (const auto& shardId: FileShardIds) {
+        request->Record.AddFileShardFileSystemIds(shardId);
+    }
+    if (FastShards.Topology.ShardsSize()) {
+        *request->Record.MutableFastShardTopology() = FastShards.Topology;
     }
 
     LOG_INFO(
@@ -1184,6 +1322,9 @@ STFUNC(TAlterFileStoreActor::ResizeStateWork)
         HFunc(
             TEvSSProxy::TEvCreateFileStoreResponse,
             HandleCreateFileStoreResponse);
+        HFunc(
+            TEvServicePrivate::TEvFastShardsAllocated,
+            HandleFastShardsAllocated);
         HFunc(
             TEvIndexTablet::TEvConfigureAsShardResponse,
             HandleConfigureShardResponse);
