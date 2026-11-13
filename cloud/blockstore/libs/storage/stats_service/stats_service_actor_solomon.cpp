@@ -449,9 +449,9 @@ void TStatsServiceActor::UpdateVolumePartCounters(
     volume->PerfCounters.DiskCounters.Add(*partCounters.DiskCounters);
     volume->PerfCounters.YdbDiskCounters.Add(*partCounters.DiskCounters);
 
-    if (volume->RealDiskIds.contains(partCounters.DiskId)) {
-        auto& realDiskStat = volume->RealDiskStats[partCounters.DiskId];
-        realDiskStat.BlobLoadCountersDiff.Add(
+    if (auto* realDiskStat = volume->RealDiskStats.FindPtr(partCounters.DiskId))
+    {
+        realDiskStat->BlobLoadCountersDiff.Add(
             partCounters.DiskCounters->RequestCounters);
     }
 

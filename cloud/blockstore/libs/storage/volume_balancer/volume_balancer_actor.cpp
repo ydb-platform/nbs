@@ -147,14 +147,13 @@ TVolumeBalancerActor::TVolumeBalancerActor(
     IVolumeBalancerSwitchPtr volumeBalancerSwitch,
     TActorId serviceActorId)
     : StorageConfig(std::move(storageConfig))
-    , DiagnosticsConfig(std::move(diagnosticsConfig))
     , VolumeStats(std::move(volumeStats))
     , StatsFetcher(std::move(statsFetcher))
     , ServiceActorId(serviceActorId)
     , State(
           std::make_unique<TVolumeBalancerState>(
               StorageConfig,
-              DiagnosticsConfig,
+              std::move(diagnosticsConfig),
               std::move(volumeBalancerSwitch)))
 {}
 

@@ -22,7 +22,7 @@ TVolumePerfSettings GetAdaptedPerfSettings(
     const TDiagnosticsConfig& config,
     NProto::EStorageMediaKind kind)
 {
-    // Cast hdd perf settings to sdd, otherwise hdd tablet will be estimated as
+    // Cast hdd perf settings to ssd, otherwise hdd tablet will be estimated as
     // significantly more expensive than ssd
     switch (kind) {
         case NProto::EStorageMediaKind::STORAGE_MEDIA_HDD:
