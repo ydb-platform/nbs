@@ -8,6 +8,8 @@ SRCS(
     delete_backup_meta_task.go
     delete_snapshot_task.go
     interface.go
+    export.go
+    export_snapshot_task.go
     register.go
     schedule_backup_snapshot_tasks.go
     service.go
@@ -15,6 +17,7 @@ SRCS(
 
 GO_TEST_SRCS(
     collect_backup_queue_metrics_task_test.go
+    export_snapshot_task_test.go
     schedule_backup_snapshot_tasks_test.go
 )
 
