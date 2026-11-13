@@ -210,6 +210,58 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyUnknownOps", true)->Val());
     }
 
+    Y_UNIT_TEST(ShouldAcceptBoundedConfigIdentity)
+    {
+        TFixture f(true);
+        TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
+        auto snapshot = LatencySnapshot(3, 2);
+        snapshot["latency_sli"]["version"] = ui64(2);
+        snapshot["latency_sli"]["config_id"] = GetLatencySliConfigFingerprint(
+            *TLatencySliConfig::TryParse("1;0:1:8193:1000"));
+        reader.Update(snapshot);
+        auto group = f.GetLatencyCounters();
+        UNIT_ASSERT_VALUES_EQUAL(
+            3, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2, group->GetCounter("LatencyBadOps", true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldPreserveEncryptionFailuresInLegacyFallback)
+    {
+        for (bool finalOutcomes: {false, true}) {
+            TFixture f(true);
+            TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
+            auto snapshot = LatencySnapshot(0);
+            snapshot["latency_sli"]["version"] = ui64(0);
+            snapshot["encryptor_errors"] = ui64(3);
+            // Five reads reached decryption; two failed. One write failed
+            // encryption before submission. Legacy errors contain neither.
+            snapshot["read"]["count"] = ui64(5);
+            snapshot["read"]["errors"] = ui64(1);
+            NJson::TJsonArray times;
+            times.AppendValue(NJson::TJsonArray{{ui64(500), ui64(3)}});
+            snapshot["read"]["times"] = std::move(times);
+            snapshot["write"]["count"] = ui64(4);
+            snapshot["write"]["errors"] = ui64(2);
+            if (finalOutcomes) {
+                snapshot["read"]["final_count"] = ui64(3);
+                snapshot["read"]["final_errors"] = ui64(3);
+                snapshot["write"]["final_count"] = ui64(4);
+                snapshot["write"]["final_errors"] = ui64(3);
+            }
+            reader.Update(snapshot);
+            auto group = f.GetLatencyCounters();
+            UNIT_ASSERT_VALUES_EQUAL(
+                0, group->GetCounter("LatencyGoodOps", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                6, group->GetCounter("LatencyBadOps", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                6, group->GetCounter("LatencyTotalOps", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                7, group->GetCounter("LatencyUnknownOps", true)->Val());
+        }
+    }
+
     Y_UNIT_TEST(ShouldProtectLatencyBatches)
     {
         TFixture f(true);

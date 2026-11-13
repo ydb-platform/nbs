@@ -34,8 +34,6 @@ void DiscardRequest(vhd_io* io, TSimpleStats& queueStats)
     requestStat.Errors += 1;
     requestStat.Bytes += bytes;
 
-    queueStats.RecordLatency(
-        bio->type == VHD_BDEV_WRITE, bytes, 0, true);
     vhd_complete_bio(io, VHD_BDEV_IOERR);
 }
 
@@ -163,9 +161,6 @@ void PrepareCompoundIO(
             bio->first_sector);
         if (!success) {
             ++queueStats.EncryptorErrors;
-            queueStats.RecordLatency(
-                true, bio->total_sectors * VHD_SECTOR_SIZE,
-                0, true);
             vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
             return;
         }
@@ -392,9 +387,6 @@ void PrepareIO(
                 bio->first_sector);
             if (!success) {
                 ++queueStats.EncryptorErrors;
-                queueStats.RecordLatency(
-                    true, bio->total_sectors * VHD_SECTOR_SIZE,
-                    0, true);
                 vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
                 return;
             }
@@ -485,9 +477,6 @@ void CompleteCompoundRequestImpl(
             stats.Sizes[bio->type].Increment(bytes);
         }
 
-        stats.RecordLatency(
-            bio->type == VHD_BDEV_WRITE, bytes, elapsed,
-            status != VHD_BDEV_SUCCESS);
         completeBio(req->Io, status);
     }
 }

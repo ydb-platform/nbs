@@ -20,6 +20,7 @@
 #include <library/cpp/threading/future/subscription/wait_all.h>
 
 #include <util/generic/hash_set.h>
+#include <util/generic/scope.h>
 #include <util/generic/size_literals.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
@@ -27,8 +28,10 @@
 #include <util/system/tempfile.h>
 #include <util/system/thread.h>
 
+#include <unistd.h>
 #include <vhost/blockdev.h>
 
+#include <array>
 #include <span>
 
 IOutputStream& operator<<(
@@ -451,6 +454,88 @@ TString MakeRandomPattern(size_t size) {
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TEST(TFinalLatencySliTest, ShouldAccountOriginalCompoundAndRejectedRequests)
+{
+    enum ECase
+    {
+        Success,
+        ReadOnly,
+        EncryptFailure,
+        DecryptFailure
+    };
+
+    for (auto scenario: {Success, ReadOnly, EncryptFailure, DecryptFailure}) {
+        SCOPED_TRACE(static_cast<int>(scenario));
+        const bool write = scenario != DecryptFailure;
+        auto logging = CreateLoggingService("console");
+        TOptions options;
+        options.SocketPath = TStringBuilder()
+                             << "latency-sli-" << getpid() << ".sock";
+        options.Serial = "sli-test";
+        options.BlockSize = 4096;
+        options.QueueCount = 1;
+        options.NoSync = true;
+        options.NoChmod = true;
+        options.ReadOnly = scenario == ReadOnly;
+        // Match only the 80 KiB parent, excluding its 8/64/8 KiB parts.
+        options.LatencySli = std::make_shared<const TLatencySliConfig>(
+            TLatencySliConfig::TryParse(
+                "1;0:81920:81921:1000000000000;1:81920:81921:1000000000000")
+                .value());
+        std::array<TTempFileHandle, 3> files;
+        for (auto& file: files) {
+            // Nonzero input forces the decryptor to run.
+            const TString content(64_KB, 'x');
+            file.Write(content.data(), content.size());
+            options.Layout.push_back(
+                {.DevicePath = file.GetName(), .ByteCount = 64_KB});
+        }
+        IEncryptorPtr encryptor;
+        if (scenario == EncryptFailure || scenario == DecryptFailure) {
+            encryptor = std::make_shared<TMockEncryptor>(
+                TMockEncryptor::EBehaviour::ReturnError);
+        }
+        auto server =
+            CreateServer(logging, CreateAioBackend(encryptor, logging, 0));
+        server->Start(options);
+        NVHost::TClient client(options.SocketPath, {.QueueCount = 1});
+        bool stopped = false;
+        Y_DEFER
+        {
+            client.DeInit();
+            if (!stopped) {
+                server->Stop();
+            }
+        };
+        ASSERT_TRUE(client.Init());
+        TMonotonicBufferResource memory(client.GetMemory());
+        auto header =
+            Hdr(memory,
+                {.type = static_cast<ui32>(
+                     write ? VIRTIO_BLK_T_OUT : VIRTIO_BLK_T_IN),
+                 .sector = (64_KB - 8_KB) / VHD_SECTOR_SIZE});
+        auto data = memory.Allocate(80_KB, 4096);
+        auto status = memory.Allocate(1);
+        std::fill(data.begin(), data.end(), 'w');
+        auto result = write ? client.WriteAsync(0, {header, data}, {status})
+                            : client.WriteAsync(0, {header}, {data, status});
+        result.GetValue(TDuration::Seconds(5));
+        ASSERT_EQ(
+            scenario == Success ? VIRTIO_BLK_S_OK : VIRTIO_BLK_S_IOERR,
+            status[0]);
+        client.DeInit();
+        server->Stop();
+        stopped = true;
+        const auto snapshot = server->GetStats({});
+        const auto& stats = snapshot.SimpleStats.Requests[write];
+        EXPECT_EQ(scenario == Success ? 1u : 0u, stats.FinalCount);
+        EXPECT_EQ(scenario == Success ? 0u : 1u, stats.FinalErrors);
+        EXPECT_EQ(scenario == Success ? 1u : 0u, stats.LatencyGood);
+        EXPECT_EQ(scenario == Success ? 0u : 1u, stats.LatencyBad);
+        EXPECT_EQ(0u, stats.LatencyUnknown);
+    }
+}
 
 TEST_P(TServerTest, ShouldGetDeviceID)
 {

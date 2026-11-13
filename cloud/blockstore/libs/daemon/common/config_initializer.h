@@ -66,6 +66,11 @@ struct TConfigInitializerCommon
     // initialization.
     bool GetDynamicYamlConfigurationStaticallyEnabled() const;
 
+    const auto& GetLatencySliOverride() const
+    {
+        return LatencySliThresholds;
+    }
+
 protected:
     std::optional<NJson::TJsonValue> ReadJsonFile(const TString& filename);
 
@@ -75,7 +80,8 @@ protected:
 
 private:
     // Keep the same file snapshot when CMS replaces diagnostics settings.
-    std::optional<NProto::TLatencySliThresholdsConfig> LatencySliThresholds;
+    std::shared_ptr<const NProto::TLatencySliThresholdsConfig>
+        LatencySliThresholds;
 
     // YAML mode from the local ServerConfig, captured by InitServerConfig.
     // Holds the default before initialization; CMS does not change this value.

@@ -6,13 +6,14 @@
 #include "histogram.h"
 
 #include <cloud/blockstore/libs/common/latency_sli.h>
-#include <util/datetime/cputimer.h>
 
 #include <util/datetime/base.h>
+#include <util/datetime/cputimer.h>
 #include <util/system/types.h>
 
 #include <array>
 #include <atomic>
+#include <limits>
 #include <optional>
 
 class IOutputStream;
@@ -39,6 +40,8 @@ struct TRequestStats
     T LatencyGood = {};
     T LatencyBad = {};
     T LatencyUnknown = {};
+    T FinalCount = {};
+    T FinalErrors = {};
 
     TRequestStats() = default;
 
@@ -51,6 +54,8 @@ struct TRequestStats
         , LatencyGood{rhs.LatencyGood}
         , LatencyBad{rhs.LatencyBad}
         , LatencyUnknown{rhs.LatencyUnknown}
+        , FinalCount{rhs.FinalCount}
+        , FinalErrors{rhs.FinalErrors}
     {}
 
     template <typename U>
@@ -63,6 +68,8 @@ struct TRequestStats
         LatencyGood = rhs.LatencyGood;
         LatencyBad = rhs.LatencyBad;
         LatencyUnknown = rhs.LatencyUnknown;
+        FinalCount = rhs.FinalCount;
+        FinalErrors = rhs.FinalErrors;
 
         return *this;
     }
@@ -77,6 +84,8 @@ struct TRequestStats
         LatencyGood += rhs.LatencyGood;
         LatencyBad += rhs.LatencyBad;
         LatencyUnknown += rhs.LatencyUnknown;
+        FinalCount += rhs.FinalCount;
+        FinalErrors += rhs.FinalErrors;
 
         return *this;
     }
@@ -92,6 +101,8 @@ TRequestStats<T> operator-(TRequestStats<T> lhs, TRequestStats<T>& rhs) noexcept
     lhs.LatencyGood -= rhs.LatencyGood;
     lhs.LatencyBad -= rhs.LatencyBad;
     lhs.LatencyUnknown -= rhs.LatencyUnknown;
+    lhs.FinalCount -= rhs.FinalCount;
+    lhs.FinalErrors -= rhs.FinalErrors;
 
     return lhs;
 }
@@ -118,21 +129,18 @@ struct TStats
         LatencySli = config && config->Enabled ? std::move(config) : nullptr;
     }
 
-    void RecordLatency(
-        bool write,
-        ui64 bytes,
-        ui64 elapsedCycles,
-        bool failed)
+    void RecordFinalOutcome(
+        bool write, ui64 bytes, bool failed, ui64 elapsedUs) noexcept
     {
+        auto& stats = Requests[write];
+        ++(failed ? stats.FinalErrors : stats.FinalCount);
         if (!LatencySli) {
             return;
         }
-        // AIO and direct-agent RDMA have no volume throttler. Retries and
-        // device waits are included in the original request's elapsed time.
-        const auto result = LatencySli->Classify(
-            write, bytes, failed ? 0 : CyclesToDurationSafe(elapsedCycles).MicroSeconds(),
-            failed);
-        auto& stats = Requests[write];
+        const auto result =
+            !failed && elapsedUs == std::numeric_limits<ui64>::max()
+                ? ELatencySliResult::Unknown
+                : LatencySli->Classify(write, bytes, elapsedUs, failed);
         auto& counter = result == ELatencySliResult::Good ? stats.LatencyGood
                       : result == ELatencySliResult::Bad ? stats.LatencyBad
                                                         : stats.LatencyUnknown;
@@ -244,6 +252,6 @@ void DumpStats(
     TDuration elapsed,
     IOutputStream& stream,
     ui64 cyclesPerMs,
-    const TLatencySliConfig* latencySli = nullptr);
+    const TLatencySliConfig* latencySli = nullptr, bool final = false);
 
 }   // namespace NCloud::NBlockStore::NVHostServer

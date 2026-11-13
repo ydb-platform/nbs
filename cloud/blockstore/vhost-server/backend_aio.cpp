@@ -69,9 +69,6 @@ void CompleteRequestImpl(
         stats.Sizes[bio->type].Increment(bytes);
     }
 
-    stats.RecordLatency(
-        bio->type == VHD_BDEV_WRITE, bytes, elapsed,
-        status != VHD_BDEV_SUCCESS);
     vhd_complete_bio(req->Io, status);
 }
 
@@ -88,7 +85,6 @@ private:
 
     io_context_t Io = {};
     ui32 BlockSize = 0;
-    TLatencySliConfigPtr LatencySli;
 
     ui32 BatchSize = 0;
     TVector<TVector<iocb*>> Batches;
@@ -189,7 +185,6 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
         STORAGE_INFO("Encryption enabled");
     }
     BatchSize = options.BatchSize;
-    LatencySli = options.LatencySli;
 
     IoSetup();
 
@@ -363,7 +358,6 @@ void TAioBackend::ProcessQueue(
             ++queueStats.SubFailed;
 
             TAtomicStats stats;
-            stats.SetLatencySli(LatencySli);
 
             if (batch[0]->data) {
                 CompleteCompoundRequestImpl(
@@ -500,7 +494,6 @@ void TAioBackend::CompletionThreadFunc()
     TVector<io_event> events(BatchSize);
 
     TAtomicStats stats;
-    stats.SetLatencySli(LatencySli);
 
     timespec timeout{.tv_sec = 1, .tv_nsec = 0};
 

@@ -458,18 +458,15 @@ void TServerStats::RequestCompleted(
             type == EBlockStoreRequest::WriteBlocks)
         {
             if (auto* sli = req.VolumeInfo->GetLatencySli()) {
-                const auto elapsed = responseSentCycles
-                    ? CyclesToDurationSafe(responseSentCycles - started)
-                    : requestTime;
                 // Classify the full original request latency, including
-                // throttling, shaping, backpressure and retry backoff.
+                // throttling, shaping, backpressure, retry backoff and sending
+                // the response. ResponseSent is stamped before the send.
                 // Every error is Bad, including client errors and cancellation.
                 // Retries issued as separate gRPC calls are separate samples.
                 sli->Complete(
                     type == EBlockStoreRequest::WriteBlocks,
                     req.OriginalRequestBytes,
-                    elapsed.MicroSeconds(),
-                    HasError(error));
+                    requestTime.MicroSeconds(), HasError(error));
             }
         }
     }

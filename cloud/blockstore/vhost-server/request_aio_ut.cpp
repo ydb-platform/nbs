@@ -832,8 +832,8 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
     TVector<char> guest(size, 'W');
     std::array buffers{vhd_buffer{.base = guest.data(), .len = size}};
 
-    // Negative means all parts succeed; -2 also makes the parent slow.
-    for (int failedPart: {-2, -1, 0, 1, 2}) {
+    // A negative index means that all parts succeed.
+    for (int failedPart: {-1, 0, 1, 2}) {
         std::array<size_t, 3> order{0, 1, 2};
         do {
             SCOPED_TRACE(
@@ -855,17 +855,7 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
             auto subs = PrepareCompoundIO(bio);
             ASSERT_EQ(3u, subs.size());
 
-            auto latencySli = TLatencySliConfig::TryParse(
-                "1;1:1:1048576:1000000000000000").value();
-            if (failedPart == -2) {
-                const auto elapsed = DurationToCyclesSafe(TDuration::Seconds(1));
-                const auto now = GetCycleCount();
-                ASSERT_GT(now, elapsed);
-                subs[0]->GetParentRequest()->SubmitTs = now - elapsed;
-                latencySli.Thresholds[1][0].ThresholdUs = 100000;
-            }
             TAtomicStats stats;
-            stats.SetLatencySli(std::make_shared<const TLatencySliConfig>(latencySli));
             for (size_t i: order) {
                 CompleteSubRequest(
                     subs[i],
@@ -879,10 +869,10 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
                 }
             }
 
-            EXPECT_EQ(failedPart == -1 ? 1u : 0u,
-                stats.Requests[VHD_BDEV_WRITE].LatencyGood.load());
-            EXPECT_EQ(failedPart == -1 ? 0u : 1u,
-                stats.Requests[VHD_BDEV_WRITE].LatencyBad.load());
+            // The backend submits one original request to libvhost. Final
+            // guest status and latency are observed there, after cancellation.
+            EXPECT_EQ(0u, stats.Requests[VHD_BDEV_WRITE].LatencyGood.load());
+            EXPECT_EQ(0u, stats.Requests[VHD_BDEV_WRITE].LatencyBad.load());
             EXPECT_EQ(0u, stats.Requests[VHD_BDEV_WRITE].LatencyUnknown.load());
             ASSERT_EQ(1u, CompletedBios.size());
             EXPECT_EQ(&bio.io, CompletedBios[0].Io);

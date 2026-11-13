@@ -83,7 +83,9 @@ void TConfigInitializerCommon::SetupDiagnosticsConfig(
             ParseProtoTextFromFileRobust(
                 Options->LatencySliThresholdsFile,
                 thresholds);
-            LatencySliThresholds = std::move(thresholds);
+            LatencySliThresholds =
+                std::make_shared<const NProto::TLatencySliThresholdsConfig>(
+                    std::move(thresholds));
         }
         diagnosticsConfig.MutableLatencySliThresholds()->CopyFrom(
             LatencySliThresholds->GetThresholds());

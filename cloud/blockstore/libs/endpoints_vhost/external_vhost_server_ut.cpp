@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
+#include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/server/config.h>
@@ -19,6 +20,9 @@
 #include <util/string/vector.h>
 #include <util/system/env.h>
 
+#include <poll.h>
+
+#include <thread>
 #include <variant>
 
 namespace NCloud::NBlockStore::NServer {
@@ -440,6 +444,72 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
         UNIT_ASSERT(create);
         UNIT_ASSERT_VALUES_EQUAL("1;0:1:8193:1000", create->LatencySli);
         UNIT_ASSERT(GetArgN(create->CmdArgs, "--latency-sli").empty());
+    }
+
+    Y_UNIT_TEST(ShouldDrainFinalStatsBeforeReturningFromWait)
+    {
+        for (bool finalRecord: {false, true}) {
+            auto stats = std::make_shared<TTestServerStats>();
+            auto baseline = NewPromise<void>();
+            ui64 errors = 0;
+            stats->BatchCompletedHandler =
+                [&](auto&, ui64, ui64, ui64 failed, auto, auto)
+            {
+                errors += failed;
+                baseline.TrySetValue();
+            };
+            const TString script =
+                TStringBuilder()
+                << "trap 'echo \"{\\\"read\\\":{},\\\"write\\\":{}}\"' USR1\n"
+                << "trap 'sleep 3; "
+                << (finalRecord ? "echo "
+                                  "\"{\\\"final\\\":1,\\\"read\\\":{"
+                                  "\\\"errors\\\":3},\\\"write\\\":{}}\"; "
+                                : "")
+                << "exit 0' INT\n"
+                << "echo ready >&2\n"
+                << "while :; do sleep 0.1; done\n";
+            auto child = SpawnChild("/bin/sh", {"-c", script}, "");
+            Y_DEFER
+            {
+                if (child.Pid) {
+                    child.Terminate();
+                    child.Wait();
+                }
+            };
+            // Wait until signal handlers exist before starting the stats
+            // poller.
+            pollfd descriptor{child.StdErr, POLLIN, 0};
+            UNIT_ASSERT_C(
+                poll(&descriptor, 1, 5000) > 0, "child did not start");
+            char ready[16];
+            UNIT_ASSERT(child.StdErr.Read(ready, sizeof(ready)) > 0);
+            auto process = MakeIntrusive<TEndpointProcess>(
+                "client",
+                CreateLoggingService("console"),
+                TEndpointStats{"client", "disk", stats}, std::move(child));
+            auto executor = TExecutor::Create("stats-test");
+            executor->Start();
+            executor->ExecuteSimple(
+                [=] { process->Start(executor->GetContExecutor()); });
+            auto stopped = NewPromise<NProto::TError>();
+            std::thread waiter([=]() mutable
+                               { stopped.SetValue(process->Wait()); });
+            Y_DEFER
+            {
+                if (!stopped.HasValue()) {
+                    process->Stop();
+                }
+                waiter.join();
+                executor->Stop();
+            };
+            baseline.GetFuture().GetValue(TDuration::Seconds(5));
+            process->Stop();
+            const auto error =
+                stopped.GetFuture().GetValue(TDuration::Seconds(10));
+            UNIT_ASSERT_C(!HasError(error), error);
+            UNIT_ASSERT_VALUES_EQUAL(finalRecord ? 3 : 0, errors);
+        }
     }
 
     Y_UNIT_TEST(ShouldPassLatencyConfigThroughExecEnvironment)

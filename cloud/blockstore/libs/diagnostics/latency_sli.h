@@ -1,6 +1,7 @@
 #pragma once
 
-#include <cloud/blockstore/libs/common/latency_sli.h>
+#include <cloud/blockstore/libs/common/latency_sli_fingerprint.h>
+
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 namespace NCloud::NBlockStore {
@@ -10,6 +11,7 @@ class TLatencySliCounters
 private:
     const TLatencySliConfig Config;
     const TString SerializedConfig;
+    const TString ConfigFingerprint;
     struct TCounters
     {
         NMonitoring::TDynamicCounters::TCounterPtr Good;
@@ -21,10 +23,10 @@ private:
 
 public:
     TLatencySliCounters(
-        TLatencySliConfig config,
-        NMonitoring::TDynamicCounters& group)
+        TLatencySliConfig config, NMonitoring::TDynamicCounters& group)
         : Config(std::move(config))
         , SerializedConfig(Config.Serialize())
+        , ConfigFingerprint(GetLatencySliConfigFingerprint(Config))
     {
         Counters = {
             group.GetCounter("LatencyGoodOps", true),
@@ -36,6 +38,11 @@ public:
     const TString& GetSerializedConfig() const
     {
         return SerializedConfig;
+    }
+
+    const TString& GetConfigFingerprint() const
+    {
+        return ConfigFingerprint;
     }
 
     void Add(ui64 good, ui64 bad, ui64 unknown)

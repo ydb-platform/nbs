@@ -26,12 +26,123 @@ struct TDumpable final: IDumpable
     void DumpHtml(IOutputStream&) const override {}
 };
 
+// Forward the production counters, but control the SLI completion duration.
+struct TControlledRequestStats final: IRequestStats
+{
+    IRequestStatsPtr Delegate;
+    TDuration Elapsed;
+
+    explicit TControlledRequestStats(IRequestStatsPtr delegate)
+        : Delegate(std::move(delegate))
+    {}
+
+    ui64 RequestStarted(
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        EBlockStoreRequest requestType,
+        ui64 requestBytes,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) override
+    {
+        return Delegate->RequestStarted(
+            mediaKind, requestType, requestBytes, accessMode, mountMode);
+    }
+
+    TDuration RequestCompleted(
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        EBlockStoreRequest requestType,
+        ui64 requestStarted,
+        TDuration postponedTime,
+        TDuration backoffTime,
+        TDuration shapingTime,
+        ui64 requestBytes,
+        EDiagnosticsErrorKind errorKind,
+        ui32 errorFlags,
+        bool unaligned,
+        ECalcMaxTime calcMaxTime,
+        ui64 responseSent,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) override
+    {
+        Delegate->RequestCompleted(
+            mediaKind,
+            requestType,
+            requestStarted,
+            postponedTime,
+            backoffTime,
+            shapingTime,
+            requestBytes,
+            errorKind,
+            errorFlags,
+            unaligned, calcMaxTime, responseSent, accessMode, mountMode);
+        return Elapsed;
+    }
+
+    void AddIncompleteStats(
+        const TMetricRequest& metricRequest,
+        TRequestTime requestTime, ECalcMaxTime calcMaxTime) override
+    {
+        Delegate->AddIncompleteStats(metricRequest, requestTime, calcMaxTime);
+    }
+
+    void AddRetryStats(
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        EBlockStoreRequest requestType,
+        EDiagnosticsErrorKind errorKind, ui32 errorFlags) override
+    {
+        Delegate->AddRetryStats(mediaKind, requestType, errorKind, errorFlags);
+    }
+
+    void RequestPostponed(EBlockStoreRequest requestType) override
+    {
+        Delegate->RequestPostponed(requestType);
+    }
+
+    void RequestPostponedServer(EBlockStoreRequest requestType) override
+    {
+        Delegate->RequestPostponedServer(requestType);
+    }
+
+    void RequestAdvanced(EBlockStoreRequest requestType) override
+    {
+        Delegate->RequestAdvanced(requestType);
+    }
+
+    void RequestAdvancedServer(EBlockStoreRequest requestType) override
+    {
+        Delegate->RequestAdvancedServer(requestType);
+    }
+
+    void RequestFastPathHit(EBlockStoreRequest requestType) override
+    {
+        Delegate->RequestFastPathHit(requestType);
+    }
+
+    void BatchCompleted(
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        EBlockStoreRequest requestType,
+        ui64 count,
+        ui64 bytes,
+        ui64 errors,
+        std::span<TTimeBucket> timeHist,
+        std::span<TSizeBucket> sizeHist) override
+    {
+        Delegate->BatchCompleted(
+            mediaKind, requestType, count, bytes, errors, timeHist, sizeHist);
+    }
+
+    void UpdateStats(bool updateIntervalFinished) override
+    {
+        Delegate->UpdateStats(updateIntervalFinished);
+    }
+};
+
 struct TFixture
 {
     IMonitoringServicePtr Monitoring = CreateMonitoringServiceStub();
     std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
     IVolumeStatsPtr Volumes;
     IServerStatsPtr Server;
+    std::shared_ptr<TControlledRequestStats> RequestStats;
     NMonitoring::TDynamicCountersPtr Sli;
 
     explicit TFixture(
@@ -55,9 +166,15 @@ struct TFixture
         auto config = std::make_shared<TDiagnosticsConfig>(proto);
         Volumes = CreateVolumeStats(Monitoring, config, TDuration::Minutes(15),
             EVolumeStatsType::EServerStats, Timer);
-        Server = CreateServerStats(std::make_shared<TDumpable>(), config,
-            Monitoring, nullptr, CreateServerRequestStats(Monitoring->GetCounters(),
-                Timer, EHistogramCounterOption::ReportMultipleCounters, {}), Volumes);
+        RequestStats =
+            std::make_shared<TControlledRequestStats>(CreateServerRequestStats(
+                Monitoring->GetCounters(),
+                Timer,
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}));
+        Server = CreateServerStats(
+            std::make_shared<TDumpable>(),
+            config, Monitoring, nullptr, RequestStats, Volumes);
         NProto::TVolume volume;
         volume.SetDiskId("disk");
         volume.SetBlockSize(4096);
@@ -73,10 +190,15 @@ struct TFixture
         Sli = group;
     }
 
-    void Complete(ui64 elapsedUs, ui64 postponedUs = 0, ui32 error = S_OK,
-                  bool write = false, ui64 bytes = 4096, bool forwarded = false,
-                  ui64 backoff = 0, ui64 shaping = 0,
-                  ui64 originalBytes = 0)
+    void Complete(
+        ui64 elapsedUs,
+        ui64 postponedUs = 0,
+        ui32 error = S_OK,
+        bool write = false,
+        ui64 bytes = 4096,
+        bool forwarded = false,
+        ui64 backoff = 0,
+        ui64 shaping = 0, ui64 originalBytes = 0, ui64 sendDelayUs = 0)
     {
         TMetricRequest metric{write ? EBlockStoreRequest::WriteBlocksLocal
                                     : EBlockStoreRequest::ReadBlocksLocal};
@@ -96,6 +218,8 @@ struct TFixture
         ctx->AddTime(EProcessingStage::Backoff, TDuration::MicroSeconds(backoff));
         ctx->AddTime(EProcessingStage::Shaping, TDuration::MicroSeconds(shaping));
         ctx->SetSilenceRetriableErrors(true);
+        RequestStats->Elapsed =
+            TDuration::MicroSeconds(elapsedUs + sendDelayUs);
         Server->RequestCompleted(log, metric, *ctx, MakeError(error));
     }
 };
@@ -132,6 +256,12 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
     Y_UNIT_TEST(ShouldRelabelAndTrimLatencyCountersWithTheirVolume)
     {
         TFixture f;
+        TMetricRequest pending{EBlockStoreRequest::ReadBlocks};
+        auto context = CreateCallContext();
+        TLog log;
+        f.Server->PrepareMetricRequest(
+            pending, "client", "disk", 0, 4096, false);
+        f.Server->RequestStarted(log, pending, *context);
         auto root = f.Monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "sli_volume")
@@ -147,9 +277,12 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
             ->GetSubgroup("folder", "folder")
             ->GetSubgroup("type", "network-ssd-nonreplicated");
         UNIT_ASSERT(group->FindCounter("LatencyTotalOps"));
+        f.Server->RequestCompleted(log, pending, *context, MakeError(E_IO));
+        UNIT_ASSERT_VALUES_EQUAL(1, group->FindCounter("LatencyBadOps")->Val());
         f.Complete(500);
         f.Server->UpdateStats(false);
-        UNIT_ASSERT_VALUES_EQUAL(1, group->FindCounter("LatencyTotalOps")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2, group->FindCounter("LatencyTotalOps")->Val());
 
         f.Timer->AdvanceTime(TDuration::Minutes(8));
         auto volume = f.Volumes->GetVolumeInfo("disk", "client")->GetInfo();
@@ -349,6 +482,18 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         UNIT_ASSERT_VALUES_EQUAL(2, f.Sli->GetCounter("LatencyBadOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(3, f.Sli->GetCounter("LatencyTotalOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, f.Sli->GetCounter("LatencyUnknownOps", true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldIncludeResponseDeliveryTime)
+    {
+        TFixture f;
+        f.Complete(500, 0, S_OK, false, 4096, false, 0, 0, 0, 1500);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, f.Sli->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, f.Sli->GetCounter("LatencyTotalOps", true)->Val());
     }
 
     Y_UNIT_TEST(ShouldPublishAllOutcomesImmediately)

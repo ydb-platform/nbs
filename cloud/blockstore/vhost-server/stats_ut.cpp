@@ -1,5 +1,8 @@
 #include "stats.h"
+
 #include "critical_event.h"
+
+#include <cloud/blockstore/libs/common/latency_sli_fingerprint.h>
 
 #include <library/cpp/json/json_reader.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -7,6 +10,10 @@
 #include <util/datetime/cputimer.h>
 #include <util/generic/size_literals.h>
 #include <util/stream/str.h>
+#include <util/system/file.h>
+
+#include <fcntl.h>
+#include <unistd.h>
 
 #include <chrono>
 #include <thread>
@@ -26,7 +33,7 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         TSimpleStats producer;
         producer.SetLatencySli(std::make_shared<const TLatencySliConfig>(config));
         std::weak_ptr<const TLatencySliConfig> lifetime = producer.LatencySli;
-        producer.RecordLatency(false, 4096, 0, true);
+        producer.RecordFinalOutcome(false, 4096, true, 0);
 
         TSimpleStats copied(producer);
         TSimpleStats assigned;
@@ -43,7 +50,7 @@ Y_UNIT_TEST_SUITE(TStatsTest)
                               &convertedAssignment, &accumulated})
         {
             UNIT_ASSERT(!snapshot->LatencySli);
-            snapshot->RecordLatency(false, 4096, 0, true);
+            snapshot->RecordFinalOutcome(false, 4096, true, 0);
             UNIT_ASSERT_VALUES_EQUAL(1, snapshot->Requests[0].LatencyBad);
         }
         UNIT_ASSERT(!atomic.LatencySli);
@@ -66,7 +73,7 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         UNIT_ASSERT(!producer.LatencySli);
         producer = std::move(moved);
         UNIT_ASSERT(!moved.LatencySli);
-        producer.RecordLatency(false, 4096, 0, true);
+        producer.RecordFinalOutcome(false, 4096, true, 0);
         UNIT_ASSERT_VALUES_EQUAL(1, producer.Requests[0].LatencyBad);
     }
 
@@ -82,7 +89,7 @@ Y_UNIT_TEST_SUITE(TStatsTest)
 
         ++producer.Completed;
         ++producer.Requests[0].Errors;
-        producer.RecordLatency(false, 4096, 0, true);
+        producer.RecordFinalOutcome(false, 4096, true, 0);
         const auto failed = TSimpleStats(producer);
         UNIT_ASSERT_VALUES_EQUAL(1, failed.Completed);
         UNIT_ASSERT_VALUES_EQUAL(1, failed.Requests[0].Errors);
@@ -94,7 +101,7 @@ Y_UNIT_TEST_SUITE(TStatsTest)
 
         ++producer.Completed;
         ++producer.Requests[0].Errors;
-        producer.RecordLatency(false, 4096, 0, true);
+        producer.RecordFinalOutcome(false, 4096, true, 0);
         const auto nextFailed = TSimpleStats(producer);
         UNIT_ASSERT_VALUES_EQUAL(2, nextFailed.Completed);
         UNIT_ASSERT_VALUES_EQUAL(2, nextFailed.Requests[0].Errors);
@@ -132,7 +139,7 @@ Y_UNIT_TEST_SUITE(TStatsTest)
                         producer.Times[write].Increment(elapsed);
                         producer.Sizes[write].Increment(bytes);
                     }
-                    producer.RecordLatency(write, bytes, elapsed, failed);
+                    producer.RecordFinalOutcome(write, bytes, failed, 500);
                 }
                 --running;
             });
@@ -206,10 +213,10 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         auto config = TLatencySliConfig::TryParse("1;0:1:8193:1000").value();
         TAtomicStats producer;
         producer.SetLatencySli(std::make_shared<const TLatencySliConfig>(config));
-        producer.RecordLatency(false, 4096, DurationToCyclesSafe(TDuration::MicroSeconds(500)), false);
-        producer.RecordLatency(false, 4096, DurationToCyclesSafe(TDuration::MicroSeconds(1500)), false);
-        producer.RecordLatency(false, 4096, DurationToCyclesSafe(TDuration::MicroSeconds(500)), true);
-        producer.RecordLatency(true, 4096, 0, false);
+        producer.RecordFinalOutcome(false, 4096, false, 500);
+        producer.RecordFinalOutcome(false, 4096, false, 1500);
+        producer.RecordFinalOutcome(false, 4096, true, 500);
+        producer.RecordFinalOutcome(true, 4096, false, 0);
         TSimpleStats previous;
         TCompleteStats complete;
         complete.SimpleStats += producer;
@@ -222,8 +229,11 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(2, first["read"]["latency_bad"].GetUInteger());
         UNIT_ASSERT_VALUES_EQUAL(1, first["write"]["latency_unknown"].GetUInteger());
         UNIT_ASSERT_VALUES_EQUAL(2, first["latency_sli"].GetMap().size());
-        UNIT_ASSERT_VALUES_EQUAL(1, first["latency_sli"]["version"].GetUInteger());
-        UNIT_ASSERT_VALUES_EQUAL(config.Serialize(), first["latency_sli"]["config"].GetString());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2, first["latency_sli"]["version"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetLatencySliConfigFingerprint(config),
+            first["latency_sli"]["config_id"].GetString());
         TStringStream next;
         DumpStats(complete, previous, TDuration::Seconds(1), next,
             GetCyclesPerMillisecond(), &config);
@@ -233,7 +243,50 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(2, second["read"]["latency_bad"].GetUInteger());
         UNIT_ASSERT_VALUES_EQUAL(1, second["write"]["latency_unknown"].GetUInteger());
         UNIT_ASSERT_VALUES_EQUAL(2, second["latency_sli"].GetMap().size());
-        UNIT_ASSERT_VALUES_EQUAL(config.Serialize(), second["latency_sli"]["config"].GetString());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetLatencySliConfigFingerprint(config),
+            second["latency_sli"]["config_id"].GetString());
+    }
+
+    Y_UNIT_TEST(ShouldBoundSnapshotSizeForLargeThresholdTables)
+    {
+        using namespace NCloud::NBlockStore;
+        TLatencySliConfig config;
+        config.Enabled = true;
+        for (ui64 i = 0; i < 4096; ++i) {
+            config.Thresholds[0].push_back({i, i + 1, 1000});
+        }
+        UNIT_ASSERT(config.Validate());
+        UNIT_ASSERT(config.Serialize().size() > 65536);
+        UNIT_ASSERT(
+            config.Serialize().size() <
+            static_cast<size_t>(sysconf(_SC_PAGESIZE)) * 32);
+        TSimpleStats previous;
+        TCompleteStats current;
+        TStringStream output;
+        DumpStats(
+            current,
+            previous,
+            TDuration::Seconds(1),
+            output, GetCyclesPerMillisecond(), &config, true);
+        // A frame must fit even the minimum nonblocking pipe capacity.
+        UNIT_ASSERT_C(output.Str().size() <= 4096, output.Str().size());
+        int fds[2];
+        UNIT_ASSERT_VALUES_EQUAL(0, pipe2(fds, O_NONBLOCK | O_CLOEXEC));
+        TFileHandle readEnd(fds[0]);
+        TFileHandle writeEnd(fds[1]);
+        UNIT_ASSERT(fcntl(fds[1], F_SETPIPE_SZ, 4096) >= 4096);
+        UNIT_ASSERT_VALUES_EQUAL(
+            output.Str().size(),
+            writeEnd.Write(output.Str().data(), output.Str().size()));
+        char data[4096];
+        const auto count = readEnd.Read(data, sizeof(data));
+        NJson::TJsonValue value;
+        UNIT_ASSERT(NJson::ReadJsonTree(TStringBuf(data, count), &value));
+        UNIT_ASSERT_VALUES_EQUAL(1, value["final"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetLatencySliConfigFingerprint(config),
+            value["latency_sli"]["config_id"].GetString());
     }
 
     Y_UNIT_TEST(ShouldDumpStats)

@@ -86,9 +86,38 @@ void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats)
     auto* counters = request.VolumeInfo
         ? request.VolumeInfo->GetLatencySli() : nullptr;
     const auto& meta = stats["latency_sli"];
-    const bool versioned = meta["version"].GetUInteger() == 1;
-    const bool matching = counters && meta["config"].IsString() &&
-        meta["config"].GetString() == counters->GetSerializedConfig();
+    const auto version = meta["version"].GetUInteger();
+    const bool matching =
+        counters &&
+        ((version == 1 && meta["config"].IsString() &&
+          meta["config"].GetString() == counters->GetSerializedConfig()) ||
+         (version == 2 && meta["config_id"].IsString() &&
+          meta["config_id"].GetString() == counters->GetConfigFingerprint()));
+
+    // Old children count successful AIO reads before decryption, but add a
+    // timing sample only after decryption succeeds. Recover that split when
+    // the legacy histogram is available; new children report final outcomes.
+    const ui64 encryptorErrors = stats["encryptor_errors"].GetUInteger();
+    ui64 readEncryptorErrors = 0;
+    const auto& times = stats["read"]["times"];
+    if (encryptorErrors && times.IsArray()) {
+        ui64 successfulReads = 0;
+        bool valid = true;
+        const ui64 reads = stats["read"]["count"].GetUInteger();
+        for (const auto& bucket: times.GetArray()) {
+            if (!bucket.IsArray() || bucket.GetArray().size() != 2 ||
+                !bucket[1].IsUInteger() ||
+                bucket[1].GetUInteger() > reads - successfulReads)
+            {
+                valid = false;
+                break;
+            }
+            successfulReads += bucket[1].GetUInteger();
+        }
+        if (valid) {
+            readEncryptorErrors = Min(encryptorErrors, reads - successfulReads);
+        }
+    }
 
     for (size_t write = 0; write < 2; ++write) {
         const auto& value = stats[write ? "write" : "read"];
@@ -99,13 +128,28 @@ void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats)
         auto& previous = LatencyPrevious[write];
         const bool present = value["latency_good"].IsUInteger() &&
             value["latency_bad"].IsUInteger() && value["latency_unknown"].IsUInteger();
-        const bool usable = versioned && matching && present;
+        const bool usable = matching && present;
         if (!usable || LatencyNeedsBaseline[write]) {
             // Legacy counts preserve failures even without usable thresholds.
             // Rebaseline before resuming cumulative SLI counts to avoid replay.
             if (counters) {
-                counters->Add(
-                    0, value["errors"].GetUInteger(), value["count"].GetUInteger());
+                if (value["final_count"].IsUInteger() &&
+                    value["final_errors"].IsUInteger())
+                {
+                    counters->Add(
+                        0,
+                        value["final_errors"].GetUInteger(),
+                        value["final_count"].GetUInteger());
+                } else {
+                    const ui64 cryptoErrors =
+                        write ? encryptorErrors - readEncryptorErrors
+                              : readEncryptorErrors;
+                    counters->Add(
+                        0,
+                        value["errors"].GetUInteger() + cryptoErrors,
+                        value["count"].GetUInteger() -
+                            (write ? 0 : readEncryptorErrors));
+                }
             }
             LatencyNeedsBaseline[write] = !usable;
             if (usable) {

@@ -762,6 +762,68 @@ Y_UNIT_TEST_SUITE(TServerTest)
         );
     }
 
+    Y_UNIT_TEST(ShouldReportFailedDeliveryAfterSuccessfulBackendCompletion)
+    {
+        TPortManager ports;
+        const ui16 port = ports.GetPort();
+        TTestFactory factory;
+        auto received = NewPromise<void>();
+        auto response = NewPromise<NProto::TWriteBlocksResponse>();
+        auto completion = NewPromise<ui32>();
+        auto service = std::make_shared<TTestService>();
+        service->WriteBlocksHandler = [&](const auto&)
+        {
+            received.SetValue();
+            return response.GetFuture();
+        };
+        auto stats = std::make_shared<TTestServerStats>();
+        stats->RequestCompletedHandler =
+            [&](auto&, auto&, auto&, const auto& error)
+        {
+            completion.TrySetValue(error.GetCode());
+        };
+        NProto::TServerAppConfig proto;
+        proto.MutableServerConfig()->SetPort(port);
+        proto.MutableServerConfig()->SetDataPort(0);
+        auto server = CreateServer(
+            std::make_shared<TServerAppConfig>(proto),
+            factory.Logging,
+            stats,
+            service,
+            nullptr,
+            {}, nullptr);
+        auto client = factory.CreateClientBuilder()
+                          .SetPort(port)
+                          .SetDataPort(0)
+                          .BuildClient();
+        server->Start();
+        client->Start();
+        Y_DEFER
+        {
+            client->Stop();
+            server->Stop();
+        };
+        auto endpoint = client->CreateEndpoint();
+        endpoint->Start();
+        Y_DEFER
+        {
+            endpoint->Stop();
+        };
+        auto request = std::make_shared<NProto::TWriteBlocksRequest>();
+        request->MutableBlocks()->AddBuffers(TString(4096, 'x'));
+        auto result =
+            endpoint->WriteBlocks(MakeIntrusive<TCallContext>(), request);
+        received.GetFuture().GetValue(TDuration::Seconds(5));
+        endpoint->Stop();
+        client->Stop();
+        UNIT_ASSERT(HasError(result.GetValue(TDuration::Seconds(5))));
+        // The backend succeeds only after the client has closed the RPC.
+        response.SetValue(NProto::TWriteBlocksResponse());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_CANCELLED,
+            completion.GetFuture().GetValue(TDuration::Seconds(5)));
+    }
+
     Y_UNIT_TEST(ShouldCancelRequestsOnServerShutdown)
     {
         TPortManager portManager;

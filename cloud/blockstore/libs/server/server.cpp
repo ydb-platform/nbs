@@ -485,6 +485,10 @@ public:
         if (!ok) {
             auto prevState = AtomicSwap(&RequestState, RequestCompleted);
             if (prevState != WaitingForRequest) {
+                if (!HasError(Error)) {
+                    Error =
+                        MakeError(E_CANCELLED, "gRPC response delivery failed");
+                }
                 CompleteRequest();
             }
         }

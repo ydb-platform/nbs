@@ -1,5 +1,6 @@
-#include "latency_sli.h"
+#include "latency_sli_fingerprint.h"
 
+#include <util/digest/city.h>
 #include <util/string/builder.h>
 #include <util/string/cast.h>
 #include <util/string/split.h>
@@ -44,6 +45,13 @@ TString TLatencySliConfig::Serialize() const
         }
     }
     return out;
+}
+
+TString GetLatencySliConfigFingerprint(const TLatencySliConfig& config)
+{
+    const auto hash = CityHash128(config.Serialize());
+    return TStringBuilder()
+           << "city128-v1:" << hash.first << ':' << hash.second;
 }
 
 std::optional<TLatencySliConfig> TLatencySliConfig::TryParse(const TString& value)

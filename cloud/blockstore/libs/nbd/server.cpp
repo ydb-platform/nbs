@@ -258,6 +258,7 @@ private:
     void DoSendResponse(TCont* c, TServerResponse& response)
     {
         if (IsShutdownError(response.Error)) {
+            Handler->CancelResponse(response);
             return;
         }
 

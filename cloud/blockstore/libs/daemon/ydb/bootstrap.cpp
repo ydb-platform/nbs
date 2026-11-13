@@ -669,6 +669,8 @@ void TBootstrapYdb::InitKikimrService()
             cmsBlockstoreConfig);
 
         TBlockstoreConfigExtraParameters extraParameters;
+        extraParameters.LatencySliOverride =
+            ConfigInitializer->GetLatencySliOverride();
         extraParameters.DiskAgent.Rack = ConfigInitializer->DiskAgentConfig->GetRack();
         extraParameters.DiskAgent.NetworkMbitThroughput =
             ConfigInitializer->DiskAgentConfig->GetNetworkMbitThroughput();

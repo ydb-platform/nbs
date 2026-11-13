@@ -265,6 +265,7 @@ private:
 
     TRequestCounters RequestCounters;
     std::unique_ptr<TLatencySliCounters> LatencySli;
+    TDynamicCountersPtr SliCountersGroup;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
 
     struct TServingCellHost
@@ -699,7 +700,8 @@ public:
     bool MountVolumeImpl(
         NProto::TVolume volume,
         const TRealInstanceId& realInstanceId,
-        size_t pinCountForNewInstance)
+        size_t pinCountForNewInstance,
+        TDynamicCountersPtr sliCountersGroup = {})
     {
         bool inserted = false;
 
@@ -716,8 +718,9 @@ public:
 
         auto volumeInfoIt = infos.find(realInstanceId);
         if (volumeInfoIt == infos.end()) {
-            auto volumeInfo =
-                RegisterInstance(volumeIt->second.VolumeBase, realInstanceId);
+            auto volumeInfo = RegisterInstance(
+                volumeIt->second.VolumeBase,
+                realInstanceId, std::move(sliCountersGroup));
             volumeInfoIt = infos.emplace(realInstanceId, volumeInfo).first;
             inserted = true;
             volumeInfoIt->second->PinCount = pinCountForNewInstance;
@@ -807,7 +810,9 @@ public:
 
         for (const auto& item: holder.VolumeInfos) {
             TVolumeInfo& info = *item.second;
-            MountVolumeImpl(volumeConfig, info.RealInstanceId, info.PinCount);
+            MountVolumeImpl(
+                volumeConfig,
+                info.RealInstanceId, info.PinCount, info.SliCountersGroup);
 
             Volumes.at(volumeConfig.GetDiskId())
                 .VolumeInfos.at(info.RealInstanceId)
@@ -1268,7 +1273,8 @@ private:
 
     TVolumeInfoPtr RegisterInstance(
         TVolumeBasePtr volumeBase,
-        const TRealInstanceId& realInstanceId)
+        const TRealInstanceId& realInstanceId,
+        TDynamicCountersPtr previousSliCountersGroup)
     {
         auto info = std::make_shared<TVolumeInfo>(
             volumeBase,
@@ -1308,15 +1314,20 @@ private:
         // produces elsewhere in the codebase.
         // All per-instance trees are rebuilt when a remount changes any label
         // used in their subgroup chains.
-        auto sliCountersGroup =
-            SliCounters
-                ->GetSubgroup("volume", volumeConfig.GetDiskId())
+        auto sliFolder =
+            SliCounters->GetSubgroup("volume", volumeConfig.GetDiskId())
                 ->GetSubgroup("instance", realInstanceId.GetRealInstanceId())
                 ->GetSubgroup("cloud", volumeConfig.GetCloudId())
-                ->GetSubgroup("folder", volumeConfig.GetFolderId())
-                ->GetSubgroup(
-                    "type",
-                    MediaKindToComputeType(volumeConfig.GetStorageMediaKind()));
+                ->GetSubgroup("folder", volumeConfig.GetFolderId());
+        const auto type =
+            MediaKindToComputeType(volumeConfig.GetStorageMediaKind());
+        if (previousSliCountersGroup) {
+            // Keep the counter objects reachable for requests that captured
+            // the previous VolumeInfo. No redirection or lock on completion.
+            sliFolder->RegisterSubgroup("type", type, previousSliCountersGroup);
+        }
+        auto sliCountersGroup = sliFolder->GetSubgroup("type", type);
+        info->SliCountersGroup = sliCountersGroup;
 
         auto latencySliConfig = DiagnosticsConfig->GetLatencySliConfig(
             volumeConfig.GetStorageMediaKind());

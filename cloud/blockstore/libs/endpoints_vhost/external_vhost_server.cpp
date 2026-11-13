@@ -379,6 +379,8 @@ private:
     const TString LogPrefix;
 
     std::atomic_bool ShouldStop = false;
+    std::atomic_bool Exited = false;
+    TPromise<void> StatsReadFinished = NewPromise<void>();
 
 public:
     TEndpointProcess(
@@ -398,7 +400,7 @@ public:
 
     ~TEndpointProcess() override
     {
-        if (!ShouldStop) {
+        if (!ShouldStop && !Exited) {
             Process.Terminate();
         }
     }
@@ -412,29 +414,40 @@ public:
     void Stop()
     {
         ShouldStop = true;
-        Process.SendSignal(SIGINT);
+        if (!Exited) {
+            Process.SendSignal(SIGINT);
+        }
     }
 
     NProto::TError Wait()
     {
-        return Process.Wait();
+        auto error = Process.Wait();
+        Exited = true;
+        StatsReadFinished.GetFuture().Wait();
+        return error;
     }
 
 private:
     void ReadStats(TCont* c)
     {
         TIntrusivePtr<TEndpointProcess> holder{this};
+        Y_DEFER
+        {
+            StatsReadFinished.TrySetValue();
+        };
         // Since it is not guaranteed that the vhost-server will receive first
         // signal to generate statistics, we need to read the response with a
         // timeout.
         TContIOWithTimeout io{Process.StdOut, c, StatReadDuration * 2};
 
         bool firstRead = true;
-        for (ui64 i = 0; !ShouldStop; ++i) {
+        for (ui64 i = 0;; ++i) {
             const auto startReadStatAt = TInstant::Now();
 
             try {
-                ReadStatsImpl(io);
+                if (ReadStatsImpl(io)) {
+                    break;
+                }
                 firstRead = false;
             } catch (...) {
                 const bool shouldContinue = HandleReadStatsError(firstRead, i);
@@ -452,7 +465,12 @@ private:
 
     bool HandleReadStatsError(bool firstRead, ui64 i)
     {
-        if (ShouldStop) {
+        if (ShouldStop && !Exited) {
+            // Draining backend requests may take longer than a stats timeout.
+            // Keep the pipe reader alive until the final record or child exit.
+            return true;
+        }
+        if (Exited) {
             STORAGE_INFO(
                 LogPrefix << "Read stats error: " << CurrentExceptionMessage());
             return false;
@@ -477,9 +495,11 @@ private:
         return false;
     }
 
-    void ReadStatsImpl(TContIOWithTimeout& io)
+    bool ReadStatsImpl(TContIOWithTimeout& io)
     {
-        Process.SendSignal(SIGUSR1);
+        if (!ShouldStop && !Exited) {
+            Process.SendSignal(SIGUSR1);
+        }
 
         NJson::TJsonValue stats;
         NJson::ReadJsonTree(io.ReadLine(), &stats, true);
@@ -487,6 +507,7 @@ private:
         STORAGE_DEBUG(LogPrefix << stats);
 
         Stats.Update(stats);
+        return stats["final"].GetUInteger() == 1;
     }
 
     void ReadStdErr(TCont* c)

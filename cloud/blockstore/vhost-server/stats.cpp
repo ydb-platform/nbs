@@ -2,6 +2,8 @@
 
 #include "critical_event.h"
 
+#include <cloud/blockstore/libs/common/latency_sli_fingerprint.h>
+
 #include <library/cpp/json/json_writer.h>
 
 #include <util/datetime/cputimer.h>
@@ -132,8 +134,7 @@ void DumpStats(
     TSimpleStats& old,
     TDuration elapsed,
     IOutputStream& stream,
-    ui64 cyclesPerMs,
-    const TLatencySliConfig* latencySli)
+    ui64 cyclesPerMs, const TLatencySliConfig* latencySli, bool final)
 {
     const auto & stats = completeStats.SimpleStats;
 
@@ -153,6 +154,8 @@ void DumpStats(
         write("bytes", r.Bytes);
         write("errors", r.Errors);
         write("unaligned", r.Unaligned);
+        write("final_count", r.FinalCount);
+        write("final_errors", r.FinalErrors);
 
         if (latencySli && latencySli->Enabled) {
             // Cumulative, disjoint counts: a skipped snapshot loses no data.
@@ -169,12 +172,15 @@ void DumpStats(
 
     buf.BeginObject();
 
+    if (final) {
+        write("final", 1);
+    }
     if (latencySli && latencySli->Enabled) {
         buf.WriteKey("latency_sli");
         buf.BeginObject();
-        write("version", 1);
-        buf.WriteKey("config");
-        buf.WriteString(latencySli->Serialize());
+        write("version", 2);
+        buf.WriteKey("config_id");
+        buf.WriteString(GetLatencySliConfigFingerprint(*latencySli));
         buf.EndObject();
     }
 
