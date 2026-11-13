@@ -705,10 +705,20 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                 Tablet,
                 std::move(request));
         } else {
+            const auto& content = rc.BlobContent.Get();
+            using TWriteBlobRequest =
+                TEvPartitionCommonPrivate::TWriteBlobRequest;
+            auto data = content.IsContiguous()
+                            ? TWriteBlobRequest::TData(
+                                  TWriteBlobRequest::TOwnedBuffer{
+                                      content.ShareContent(),
+                                      rc.BlobContent.GetGuardedSgList()})
+                            : TWriteBlobRequest::TData(
+                                  rc.BlobContent.GetGuardedSgList());
             auto request =
                 std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
                     rc.DataBlobId,
-                    rc.BlobContent.GetGuardedSgList(),
+                    std::move(data),
                     0,           // blockSizeForChecksums
                     true,        // async
                     rc.ChannelDataKind == EChannelDataKind::Merged,

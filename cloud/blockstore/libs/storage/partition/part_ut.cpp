@@ -45,6 +45,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/bitmap.h>
+#include <util/generic/hash.h>
 #include <util/generic/size_literals.h>
 #include <util/generic/variant.h>
 
@@ -6080,6 +6081,442 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+
+    Y_UNIT_TEST(ShouldPersistMixedChecksumsFromFinalCopyOfExternalSg)
+    {
+        constexpr ui32 blockSize = DefaultBlockSize;
+        constexpr ui32 blocksCount = 2;
+        const auto range = TBlockRange32::WithLength(0, blocksCount);
+        auto config = DefaultConfig();
+        config.SetWriteRequestBatchingEnabled(true);
+        config.SetFreshBlocksWriterEnabled(false);
+        config.SetFreshChannelWriteRequestsEnabled(false);
+        config.SetWriteBlobThreshold(4 * blockSize);
+        config.SetWriteMixedBlobThresholdHDD(blockSize);
+        config.SetFlushThresholdHDD(1_GB);
+        config.SetCheckBlockChecksumsInBlobsUponRead(true);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            128,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID});
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TString external(blocksCount * blockSize, 'a');
+        char* const source = external.begin();
+        TGuardedSgList access({
+            {source, blockSize},
+            {source + blockSize, blockSize}});
+        TLogoBlobID blobId;
+        ui64 writeCookie = 0;
+        ui32 writeRequests = 0;
+        ui32 puts = 0;
+        ui32 writeResponses = 0;
+        ::TRcBuf acceptedPayload;
+        TString putSnapshot;
+        TVector<ui32> expectedChecksums;
+        TVector<ui32> returnedChecksums;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvWriteBlobRequest)
+                {
+                    auto* msg = event->Get<
+                        TEvPartitionCommonPrivate::TEvWriteBlobRequest>();
+                    UNIT_ASSERT_VALUES_EQUAL(0, writeRequests);
+                    ++writeRequests;
+                    UNIT_ASSERT_VALUES_EQUAL(blockSize, msg->BlockSizeForChecksums);
+                    auto* sglist = std::get_if<TGuardedSgList>(&msg->Data);
+                    UNIT_ASSERT(sglist);
+                    blobId = MakeBlobId(TestTabletId, msg->BlobId);
+                    writeCookie = event->Cookie;
+                    {
+                        auto guard = sglist->Acquire();
+                        UNIT_ASSERT(guard);
+                        UNIT_ASSERT_VALUES_EQUAL(blocksCount, guard.Get().size());
+                        for (ui32 i = 0; i < blocksCount; ++i) {
+                            UNIT_ASSERT(guard.Get()[i].Data() == source + i * blockSize);
+                        }
+                    }
+                    // Observer callbacks are sequential: change external data
+                    // before the write actor copies it, without a thread race.
+                    for (ui32 i = 0; i < blocksCount; ++i) {
+                        memset(source + i * blockSize, 'b' + i, blockSize);
+                    }
+                } else if (event->GetTypeRewrite() == TEvBlobStorage::EvPut) {
+                    const auto* msg = event->Get<TEvBlobStorage::TEvPut>();
+                    if (msg->Id == blobId) {
+                        UNIT_ASSERT_VALUES_EQUAL(1, writeRequests);
+                        UNIT_ASSERT_VALUES_EQUAL(0, puts);
+                        ++puts;
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            blocksCount * blockSize,
+                            msg->Buffer.GetSize());
+                        acceptedPayload = msg->Buffer;
+                        putSnapshot.assign(
+                            msg->Buffer.GetData(),
+                            msg->Buffer.GetSize());
+                        expectedChecksums.reserve(blocksCount);
+                        for (ui32 i = 0; i < blocksCount; ++i) {
+                            UNIT_ASSERT(msg->Buffer.GetData() != source + i * blockSize);
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                TString(blockSize, 'b' + i),
+                                TStringBuf(putSnapshot.data() + i * blockSize, blockSize));
+                            expectedChecksums.push_back(ComputeDefaultDigest({
+                                msg->Buffer.GetData() + i * blockSize,
+                                blockSize}));
+                        }
+                        // Change the same external storage after copying and
+                        // CRC calculation, before BlobStorage handles the Put.
+                        memset(source, 'x', external.size());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            putSnapshot,
+                            TStringBuf(acceptedPayload.GetData(), acceptedPayload.GetSize()));
+                    }
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvWriteBlobResponse)
+                {
+                    const auto* msg = event->Get<
+                        TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
+                    UNIT_ASSERT_VALUES_EQUAL(1, puts);
+                    UNIT_ASSERT_VALUES_EQUAL(0, writeResponses);
+                    ++writeResponses;
+                    UNIT_ASSERT_VALUES_EQUAL(writeCookie, event->Cookie);
+                    UNIT_ASSERT_VALUES_EQUAL(S_OK, msg->GetError().GetCode());
+                    returnedChecksums = msg->BlockChecksums;
+                    UNIT_ASSERT_VALUES_EQUAL(blocksCount, returnedChecksums.size());
+                    for (ui32 i = 0; i < blocksCount; ++i) {
+                        UNIT_ASSERT_VALUES_EQUAL(expectedChecksums[i], returnedChecksums[i]);
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
+        request->Record.SetStartIndex(range.Start);
+        request->Record.SetBlockSize(blockSize);
+        request->Record.BlocksCount = blocksCount;
+        request->Record.Sglist = access;
+        partition.SendToPipe(std::move(request));
+        const auto response = partition.RecvWriteBlocksLocalResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, writeRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, puts);
+        UNIT_ASSERT_VALUES_EQUAL(1, writeResponses);
+        UNIT_ASSERT_VALUES_EQUAL(TString(external.size(), 'x'), external);
+        runtime->SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+
+        const auto stats = partition.StatPartition()->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(blocksCount, stats.GetMixedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+        const auto read = partition.ReadBlocks(range);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, read->GetStatus());
+        const auto& blocks = read->Record.GetBlocks();
+        UNIT_ASSERT_VALUES_EQUAL(blocksCount, blocks.BuffersSize());
+        for (ui32 i = 0; i < blocksCount; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                TStringBuf(putSnapshot.data() + i * blockSize, blockSize),
+                blocks.GetBuffers(i));
+            UNIT_ASSERT_VALUES_EQUAL(
+                returnedChecksums[i],
+                ComputeDefaultDigest({
+                    acceptedPayload.GetData() + i * blockSize,
+                    blockSize}));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            putSnapshot,
+            TStringBuf(acceptedPayload.GetData(), acceptedPayload.GetSize()));
+    }
+
+    Y_UNIT_TEST(ShouldCancelMixedWriteWhenExternalSgClosesBeforeAcquire)
+    {
+        constexpr ui32 blockSize = DefaultBlockSize;
+        constexpr ui32 blocksCount = 2;
+        auto config = DefaultConfig();
+        config.SetWriteRequestBatchingEnabled(true);
+        config.SetFreshBlocksWriterEnabled(false);
+        config.SetFreshChannelWriteRequestsEnabled(false);
+        config.SetWriteBlobThreshold(4 * blockSize);
+        config.SetWriteMixedBlobThresholdHDD(blockSize);
+        config.SetFlushThresholdHDD(1_GB);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            128,
+            {},
+            {.MediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID});
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TString external(blocksCount * blockSize, 'a');
+        char* const source = external.begin();
+        TGuardedSgList access({
+            {source, blockSize},
+            {source + blockSize, blockSize}});
+        TLogoBlobID blobId;
+        ui64 writeCookie = 0;
+        ui32 writeRequests = 0;
+        ui32 puts = 0;
+        ui32 writeResponses = 0;
+        ui32 addBlobsRequests = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvWriteBlobRequest)
+                {
+                    auto* msg = event->Get<
+                        TEvPartitionCommonPrivate::TEvWriteBlobRequest>();
+                    UNIT_ASSERT_VALUES_EQUAL(0, writeRequests);
+                    ++writeRequests;
+                    UNIT_ASSERT_VALUES_EQUAL(blockSize, msg->BlockSizeForChecksums);
+                    auto* sglist = std::get_if<TGuardedSgList>(&msg->Data);
+                    UNIT_ASSERT(sglist);
+                    blobId = MakeBlobId(TestTabletId, msg->BlobId);
+                    writeCookie = event->Cookie;
+                    {
+                        auto guard = sglist->Acquire();
+                        UNIT_ASSERT(guard);
+                        UNIT_ASSERT_VALUES_EQUAL(blocksCount, guard.Get().size());
+                        for (ui32 i = 0; i < blocksCount; ++i) {
+                            UNIT_ASSERT(guard.Get()[i].Data() == source + i * blockSize);
+                        }
+                    }
+                    // Close the original external owner after verification,
+                    // before delivery to the write actor. No thread race.
+                    access.Close();
+                    UNIT_ASSERT(!sglist->Acquire());
+                } else if (event->GetTypeRewrite() == TEvBlobStorage::EvPut) {
+                    const auto* msg = event->Get<TEvBlobStorage::TEvPut>();
+                    if (msg->Id == blobId) {
+                        ++puts;
+                    }
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvAddBlobsRequest)
+                {
+                    ++addBlobsRequests;
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvWriteBlobResponse)
+                {
+                    const auto* msg = event->Get<
+                        TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
+                    UNIT_ASSERT_VALUES_EQUAL(0, writeResponses);
+                    ++writeResponses;
+                    UNIT_ASSERT_VALUES_EQUAL(writeCookie, event->Cookie);
+                    UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, msg->GetError().GetCode());
+                    UNIT_ASSERT(msg->BlockChecksums.empty());
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto request = std::make_unique<TEvService::TEvWriteBlocksLocalRequest>();
+        request->Record.SetStartIndex(0);
+        request->Record.SetBlockSize(blockSize);
+        request->Record.BlocksCount = blocksCount;
+        request->Record.Sglist = access;
+        partition.SendToPipe(std::move(request));
+        const auto response = partition.RecvWriteBlocksLocalResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, writeRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, writeResponses);
+        UNIT_ASSERT_VALUES_EQUAL(0, puts);
+        UNIT_ASSERT(!access.Acquire());
+        UNIT_ASSERT_VALUES_EQUAL(0, addBlobsRequests);
+        // MaxWriteBlobErrorsBeforeSuicide defaults to 1, so this error
+        // poisons the tablet. Do not query Stat through the dying pipe.
+        runtime->SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+    }
+
+    Y_UNIT_TEST(ShouldKeepZeroTailAndOwnedPayloadDuringRepairCompaction)
+    {
+        const ui32 blockSize = 2 * DefaultBlockSize;
+        const ui32 blocksCount = 8;
+        const auto range = TBlockRange32::WithLength(0, blocksCount);
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        config.SetBlobPatchingEnabled(false);
+        config.SetHDDMaxBlobsPerRange(999);
+        config.SetSSDMaxBlobsPerRange(999);
+        config.SetCompactionGarbageThreshold(999);
+        config.SetCompactionRangeGarbageThreshold(999);
+        TTestPartitionInfo info;
+        info.BlockSize = blockSize;
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            128,
+            {},
+            info,
+            {},
+            EStorageAccessMode::Repair);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        WriteBlocksWithBlockSize(partition, range, 'a', blockSize);
+        WriteBlocksWithBlockSize(
+            partition,
+            TBlockRange32::WithLength(2, 2),
+            'b',
+            blockSize);
+
+        const auto marker = GetBrokenDataMarker();
+        UNIT_ASSERT(marker.size() < blockSize);
+        TString expectedBlock(blockSize, 0);
+        memcpy(expectedBlock.begin(), marker.data(), marker.size());
+        bool repairedRead = false;
+        struct TOwnedPutExpectation
+        {
+            const char* Data;
+            size_t Size;
+            ui32 Puts = 0;
+        };
+        THashMap<TLogoBlobID, TOwnedPutExpectation> ownedPuts;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvGetResult) {
+                    auto* msg = event->Get<TEvBlobStorage::TEvGetResult>();
+                    for (ui32 i = 0; i < msg->ResponseSz; ++i) {
+                        auto& response = msg->Responses[i];
+                        if (response.Id.TabletID() == info.TabletId &&
+                            response.Buffer.size())
+                        {
+                            response.Status = NKikimrProto::NODATA;
+                            repairedRead = true;
+                        }
+                    }
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvWriteBlobRequest)
+                {
+                    const auto* msg = event->Get<
+                        TEvPartitionCommonPrivate::TEvWriteBlobRequest>();
+                    const auto* owned = std::get_if<
+                        TEvPartitionCommonPrivate::TWriteBlobRequest::
+                            TOwnedBuffer>(&msg->Data);
+                    UNIT_ASSERT(owned);
+                    auto guard = owned->Access.Acquire();
+                    UNIT_ASSERT(guard);
+                    const auto& sglist = guard.Get();
+                    UNIT_ASSERT_VALUES_EQUAL(blocksCount, sglist.size());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        blocksCount * blockSize,
+                        owned->Buffer.GetSize());
+                    for (ui32 i = 0; i < blocksCount; ++i) {
+                        UNIT_ASSERT(
+                            owned->Buffer.GetData() + i * blockSize ==
+                            sglist[i].Data());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            expectedBlock,
+                            sglist[i].AsStringBuf());
+                    }
+                    const auto blobId = MakeBlobId(info.TabletId, msg->BlobId);
+                    const bool inserted = ownedPuts.emplace(
+                        blobId,
+                        TOwnedPutExpectation{
+                            owned->Buffer.GetData(),
+                            owned->Buffer.GetSize(),
+                            0}).second;
+                    UNIT_ASSERT_C(inserted, "duplicate owned WriteBlob: " << blobId);
+                } else if (event->GetTypeRewrite() == TEvBlobStorage::EvPut) {
+                    const auto* msg = event->Get<TEvBlobStorage::TEvPut>();
+                    auto it = ownedPuts.find(msg->Id);
+                    if (it != ownedPuts.end()) {
+                        auto& expected = it->second;
+                        UNIT_ASSERT_VALUES_EQUAL_C(
+                            expected.Size,
+                            msg->Buffer.GetSize(),
+                            "blob: " << msg->Id);
+                        UNIT_ASSERT_C(
+                            msg->Buffer.GetData() == expected.Data,
+                            "owned payload was copied for blob: " << msg->Id);
+                        ++expected.Puts;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        partition.Compaction();
+        UNIT_ASSERT(repairedRead);
+        UNIT_ASSERT(!ownedPuts.empty());
+        for (const auto& [blobId, expected]: ownedPuts) {
+            UNIT_ASSERT_C(expected.Puts > 0, "missing Put for owned blob: " << blobId);
+        }
+
+        runtime->SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+        const auto response = partition.ReadBlocks(range);
+        const auto& buffers = response->Record.GetBlocks();
+        UNIT_ASSERT_VALUES_EQUAL(blocksCount, buffers.BuffersSize());
+        for (ui32 i = 0; i < blocksCount; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(expectedBlock, buffers.GetBuffers(i));
+        }
+    }
+
+
+    Y_UNIT_TEST(ShouldCancelOwnedCompactionWriteBeforeAcquiringItsBuffer)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        config.SetBlobPatchingEnabled(false);
+        config.SetHDDMaxBlobsPerRange(999);
+        config.SetSSDMaxBlobsPerRange(999);
+        config.SetCompactionGarbageThreshold(999);
+        config.SetCompactionRangeGarbageThreshold(999);
+        auto runtime = PrepareTestActorRuntime(config, 128);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 8), 'a');
+        partition.WriteBlocks(TBlockRange32::WithLength(2, 2), 'b');
+
+        bool accessClosed = false;
+        bool cancelledResponse = false;
+        TLogoBlobID cancelledBlobId;
+        ui32 cancelledPuts = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvWriteBlobRequest)
+                {
+                    auto* msg = event->Get<
+                        TEvPartitionCommonPrivate::TEvWriteBlobRequest>();
+                    auto* owned = std::get_if<
+                        TEvPartitionCommonPrivate::TWriteBlobRequest::
+                            TOwnedBuffer>(&msg->Data);
+                    UNIT_ASSERT(owned);
+                    UNIT_ASSERT(!accessClosed);
+                    cancelledBlobId = MakeBlobId(TestTabletId, msg->BlobId);
+                    // No guard is held: Close must finish before the write
+                    // actor attempts Acquire, while the real owner stays live.
+                    owned->Access.Close();
+                    accessClosed = true;
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvWriteBlobResponse)
+                {
+                    const auto* msg = event->Get<
+                        TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
+                    cancelledResponse =
+                        msg->GetError().GetCode() == E_CANCELLED;
+                } else if (event->GetTypeRewrite() == TEvBlobStorage::EvPut) {
+                    const auto* msg = event->Get<TEvBlobStorage::TEvPut>();
+                    if (accessClosed && msg->Id == cancelledBlobId) {
+                        ++cancelledPuts;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.SendCompactionRequest();
+        const auto response = partition.RecvCompactionResponse();
+        UNIT_ASSERT(accessClosed);
+        UNIT_ASSERT(cancelledResponse);
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, response->GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, cancelledPuts);
+    }
     Y_UNIT_TEST(ShouldRejectRequestForBlockOutOfRange)
     {
         auto runtime = PrepareTestActorRuntime();

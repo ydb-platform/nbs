@@ -4,12 +4,14 @@
 #include "part_state.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
+#include <cloud/storage/core/libs/common/alloc.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
@@ -200,9 +202,174 @@ TPrepareCompleteResult RunPrepareAndComplete(
     };
 }
 
+TPrepareCompleteResult CompleteCompactionForTest(
+    TTxPartition::TRangeCompaction& args,
+    bool blobPatchingEnabled = false)
+{
+    auto state = MakeState();
+    auto storageInfo = MakeStorageInfo(5);
+    TPrepareCompleteResult result;
+    CompleteRangeCompaction(
+        blobPatchingEnabled,
+        0,   // mergedBlobThreshold
+        CommitId + 2,
+        TTestExecutor::TabletId,
+        false,   // shouldRecreateBlobMetas
+        storageInfo,
+        state,
+        args,
+        result.Requests,
+        result.RangeCompactionInfos,
+        0);   // maxDiffPercentageForBlobPatching
+    result.Ready = true;
+    return result;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+Y_UNIT_TEST_SUITE(TCompactionBlobContentTest)
+{
+    Y_UNIT_TEST(ShouldPackFreshAndReadBlocksIntoFinalOwnedBuffer)
+    {
+        TTxPartition::TRangeCompaction args(
+            0,
+            TBlockRange32::MakeClosedInterval(10, 17));
+        const TPartialBlobId sourceBlob(0, 1, 3, 8 * DefaultBlockSize, 1, 0);
+        const TString firstFresh(DefaultBlockSize, 'a');
+        const TString secondFresh(DefaultBlockSize, 'b');
+        args.ChecksumsEnabled = true;
+        args.MarkBlock(10, CommitId, firstFresh);
+        args.MarkBlock(11, CommitId, sourceBlob, 2, true);
+        args.MarkBlock(12, CommitId, TStringBuf());
+        args.MarkBlock(14, CommitId, secondFresh);
+        args.MarkBlock(15, CommitId, sourceBlob, 4, true);
+        args.MarkBlock(17, CommitId, TStringBuf());
+
+        auto result = CompleteCompactionForTest(args);
+        UNIT_ASSERT_VALUES_EQUAL(1, result.RangeCompactionInfos.size());
+        auto& rc = result.RangeCompactionInfos.front();
+        const auto& content = rc.BlobContent.Get();
+        UNIT_ASSERT(content.IsContiguous());
+        UNIT_ASSERT(!rc.OriginalBlobId);
+        UNIT_ASSERT_VALUES_EQUAL(4, content.GetBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(4 * DefaultBlockSize, content.GetBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(content.GetBytesCount(), rc.DataBlobId.BlobSize());
+
+        const auto owned = content.ShareContent();
+        for (size_t i = 0; i < content.GetBlocksCount(); ++i) {
+            UNIT_ASSERT(
+                owned.GetData() + i * DefaultBlockSize ==
+                content.GetBlock(i).Data());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(firstFresh, content.GetBlock(0).AsStringBuf());
+        UNIT_ASSERT_VALUES_EQUAL(secondFresh, content.GetBlock(2).AsStringBuf());
+        const TString zeroes(DefaultBlockSize, 0);
+        UNIT_ASSERT_VALUES_EQUAL(zeroes, content.GetBlock(1).AsStringBuf());
+        UNIT_ASSERT_VALUES_EQUAL(zeroes, content.GetBlock(3).AsStringBuf());
+
+        UNIT_ASSERT_VALUES_EQUAL(4, rc.BlockChecksums.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            ComputeDefaultDigest(content.GetBlock(0)),
+            *rc.BlockChecksums[0]);
+        UNIT_ASSERT(!rc.BlockChecksums[1]);
+        UNIT_ASSERT_VALUES_EQUAL(
+            ComputeDefaultDigest(content.GetBlock(2)),
+            *rc.BlockChecksums[2]);
+        UNIT_ASSERT(!rc.BlockChecksums[3]);
+        UNIT_ASSERT_VALUES_EQUAL(2, rc.ChecksumFixups.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, rc.ChecksumFixups[0].ChecksumIndex);
+        UNIT_ASSERT_VALUES_EQUAL(2, rc.ChecksumFixups[0].BlobOffset);
+        UNIT_ASSERT_VALUES_EQUAL(3, rc.ChecksumFixups[1].ChecksumIndex);
+        UNIT_ASSERT_VALUES_EQUAL(4, rc.ChecksumFixups[1].BlobOffset);
+
+        for (ui32 i = 0; i < 8; ++i) {
+            const bool isData = i == 0 || i == 1 || i == 4 || i == 5;
+            const bool isZero = i == 2 || i == 7;
+            UNIT_ASSERT_VALUES_EQUAL(!isData, rc.DataBlobSkipMask.Get(i));
+            UNIT_ASSERT_VALUES_EQUAL(!isZero, rc.ZeroBlobSkipMask.Get(i));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(2, rc.ZeroBlocks.size());
+        UNIT_ASSERT_VALUES_EQUAL(12, rc.ZeroBlocks[0]);
+        UNIT_ASSERT_VALUES_EQUAL(17, rc.ZeroBlocks[1]);
+
+        // The final blob owns fresh data independently of the TX's strings.
+        args.GetBlockMark(10).BlockContent.assign(DefaultBlockSize, 'x');
+        UNIT_ASSERT_VALUES_EQUAL(firstFresh, content.GetBlock(0).AsStringBuf());
+    }
+
+    Y_UNIT_TEST(ShouldKeepProfiledPayloadAliveAfterCompactionOwnerIsDestroyed)
+    {
+        auto* allocator = TProfilingAllocator::Instance();
+        const auto bytesBefore = allocator->GetBytesAllocated();
+        ::TRcBuf owned;
+        const TString expected(DefaultBlockSize, 'a');
+        {
+            TTxPartition::TRangeCompaction args(
+                0,
+                TBlockRange32::MakeOneBlock(0));
+            args.MarkBlock(0, CommitId, expected);
+            auto result = CompleteCompactionForTest(args);
+            const auto& content = result.RangeCompactionInfos[0].BlobContent.Get();
+            owned = content.ShareContent();
+            UNIT_ASSERT(owned.GetData() == content.GetBlock(0).Data());
+            UNIT_ASSERT(allocator->GetBytesAllocated() >= bytesBefore + DefaultBlockSize);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expected,
+            TStringBuf(owned.GetData(), owned.GetSize()));
+        UNIT_ASSERT(allocator->GetBytesAllocated() >= bytesBefore + DefaultBlockSize);
+        owned = {};
+        UNIT_ASSERT_VALUES_EQUAL(bytesBefore, allocator->GetBytesAllocated());
+    }
+
+    Y_UNIT_TEST(ShouldLeavePatchCandidateOnLegacyBufferPath)
+    {
+        TTxPartition::TRangeCompaction args(
+            0,
+            TBlockRange32::MakeClosedInterval(0, 3));
+        const TPartialBlobId sourceBlob(0, 1, 3, 4 * DefaultBlockSize, 1, 0);
+        for (ui32 i = 0; i < 4; ++i) {
+            args.MarkBlock(i, CommitId, sourceBlob, i, true);
+        }
+        args.MarkBlock(1, CommitId + 1, TString(DefaultBlockSize, 'b'));
+
+        auto result = CompleteCompactionForTest(args, true);
+        const auto& rc = result.RangeCompactionInfos[0];
+        UNIT_ASSERT_VALUES_EQUAL(sourceBlob, rc.OriginalBlobId);
+        UNIT_ASSERT(!rc.BlobContent.Get().IsContiguous());
+        UNIT_ASSERT_VALUES_EQUAL(4, rc.BlobContent.Get().GetBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(DefaultBlockSize, 'b'),
+            rc.BlobContent.Get().GetBlock(1).AsStringBuf());
+    }
+
+    Y_UNIT_TEST(ShouldNotAllocatePayloadForZeroOnlyCompaction)
+    {
+        TTxPartition::TRangeCompaction args(
+            0,
+            TBlockRange32::MakeClosedInterval(0, 2));
+        args.MarkBlock(0, CommitId, TStringBuf());
+        args.MarkBlock(2, CommitId, TStringBuf());
+        const auto bytesBefore = TProfilingAllocator::Instance()->GetBytesAllocated();
+
+        auto result = CompleteCompactionForTest(args);
+        const auto& rc = result.RangeCompactionInfos[0];
+        UNIT_ASSERT(!rc.DataBlobId);
+        UNIT_ASSERT(rc.ZeroBlobId);
+        UNIT_ASSERT(!rc.BlobContent.Get());
+        UNIT_ASSERT(!rc.BlobContent.Get().IsContiguous());
+        UNIT_ASSERT_VALUES_EQUAL(0, rc.BlobContent.Get().GetBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, result.Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            bytesBefore,
+            TProfilingAllocator::Instance()->GetBytesAllocated());
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
