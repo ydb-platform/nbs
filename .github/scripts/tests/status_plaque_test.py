@@ -183,7 +183,7 @@ def test_retries_share_target_and_keep_each_report(pr):
     assert comment.body.count("<table>") == 1
     assert texts(rows[0]) == [
         "🔴",
-        "cloud/filestore/",
+        "filestore",
         "🟢 2m 5s",
         "0",
         "🔴 1h 55m 25s",

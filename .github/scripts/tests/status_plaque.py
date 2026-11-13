@@ -84,6 +84,8 @@ class Report:
     history_url: str = ""
     elapsed: str = "0"
     exit_code: int | None = None
+    trace_report_url: str = ""
+    trace_otlp_url: str = ""
 
     @property
     def failed(self) -> bool:
@@ -127,10 +129,10 @@ class Report:
 def target_for_component(component: str) -> str:
     for group in JOIN_GROUPS:
         if component == "_".join(group):
-            return ",".join(f"cloud/{name}/" for name in group)
+            return ",".join(group)
     if component in ("all", "none"):
         return "All targets" if component == "all" else "Sanitized targets"
-    return f"cloud/{component}/"
+    return component
 
 
 def component_for_target(target: str) -> str:
@@ -189,9 +191,13 @@ class Workload:
 
     @property
     def target(self) -> str:
-        return next(
+        target = next(
             (report.target for report in self.reports if report.target),
             target_for_component(self.component),
+        )
+        return ",".join(
+            part.strip().removeprefix("cloud/").removesuffix("/")
+            for part in target.split(",")
         )
 
     def update(

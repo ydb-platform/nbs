@@ -665,8 +665,7 @@ def test_initialize_pr_comment_creates_workload_checks_block() -> None:
     assert gs.Plaque.from_comment(body) is not None
     assert "<th>Status</th>" in body
     assert "blockstore" in body
-    assert "cloud/tasks/" in body
-    assert "cloud/storage/" in body
+    assert "tasks,<br />storage" in body
 
 
 def test_update_pr_comment_workload_check_creates_minimal_comment_when_missing(

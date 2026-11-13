@@ -1214,6 +1214,8 @@ def update_pr_comment(
     component: str = "",
     test_iteration: int = 0,
     test_exit_code: int | None = None,
+    trace_report_url: str = "",
+    trace_otlp_url: str = "",
 ) -> None:
     header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
     header_prefix = get_comment_header_prefix(
@@ -1244,6 +1246,8 @@ def update_pr_comment(
                 history_url=test_history_url or "",
                 elapsed=test_time,
                 exit_code=test_exit_code,
+                trace_report_url=trace_report_url,
+                trace_otlp_url=trace_otlp_url,
             )
             for line in summary.lines or [None]
         ]
@@ -1515,6 +1519,7 @@ def main() -> None:
     parser.add_argument("--test-time", default="0", required=False)
     parser.add_argument("--build-error-log-url", default="", required=False)
     parser.add_argument("--trace-report-url", default="", required=False)
+    parser.add_argument("--trace-otlp-url", default="")
     parser.add_argument(
         "--workload-status",
         choices=("in_progress", "completed"),
@@ -1592,6 +1597,8 @@ def main() -> None:
             component=args.component,
             test_iteration=args.test_iteration,
             test_exit_code=args.test_exit_code,
+            trace_report_url=args.trace_report_url,
+            trace_otlp_url=args.trace_otlp_url,
         )
 
 

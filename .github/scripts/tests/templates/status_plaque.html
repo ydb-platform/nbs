@@ -25,7 +25,11 @@
 {% set build_state = workload.build_state(report) %}
 {% set build_error_url = report.build_error_url if report.count('FAIL_BUILD') else workload.build_error_url %}
 <td align="center">{% if build_state %}{{ icon(build_state) }}{% if build_error_url %} {{ link('log', build_error_url) }}{% endif %}{% if loop.first %}{{ duration(workload.build_duration_seconds, 'Build') }}{% endif %}{% else %}—{% endif %}</td>
-<td align="center" title="{{ report.title }}; commit {{ report.commit }}; test time {{ report.elapsed }}s">{{ report.iteration }}{% if report.history_url %} {{ link('history', report.history_url) }}{% endif %}</td>
+<td align="center" title="{{ report.title }}; commit {{ report.commit }}; test time {{ report.elapsed }}s">{{ report.iteration }}{% if report.history_url %} {{ link('history', report.history_url) }}{% endif %}
+{% if report.trace_report_url or report.trace_otlp_url %}
+<br />{% if report.trace_report_url %}{{ link('trace', report.trace_report_url) }}{% endif %}{% if report.trace_report_url and report.trace_otlp_url %} · {% endif %}{% if report.trace_otlp_url %}{{ link('OTLP', report.trace_otlp_url) }}{% endif %}
+{% endif %}
+</td>
 {% if report.message %}
 <td colspan="8">🔴 {{ report.message }}{% if report.build_error_url %} — {{ link('log', report.build_error_url) }}{% endif %}{{ duration(report.elapsed, 'Tests') }}</td>
 {% else %}
