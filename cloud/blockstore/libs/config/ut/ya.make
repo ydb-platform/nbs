@@ -6,6 +6,8 @@ UNITTEST_FOR(cloud/blockstore/libs/config)
 SRCS(
     blockstore_config_ut.cpp
     opaque_config_parser_ut.cpp
+    sections_update_ut.cpp
+    sections_update/features_ut.cpp
 )
 
 PEERDIR(

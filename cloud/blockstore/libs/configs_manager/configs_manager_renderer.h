@@ -28,8 +28,10 @@ namespace NCloud::NBlockStore {
 enum class EConfigUpdateStatus
 {
     Startup,
+    StartupPartiallyApplied,
     Runtime,
     RuntimeUnchanged,
+    RuntimePartiallyApplied,
 };
 
 // Monitoring metadata owned by the renderer and updated by ConfigsManager.
@@ -43,11 +45,12 @@ struct TBlockstoreConfigRendererData
     // Zero until ConfigsManager initializes the renderer during Bootstrap().
     TInstant LastUpdateTime;
 
-    // Accepted source origin: startup, runtime or runtime (unchanged).
+    // Accepted delivery outcome: startup, runtime, unchanged or partially
+    // applied.
     EConfigUpdateStatus UpdateStatus = EConfigUpdateStatus::Startup;
 
-    // Last rejected delivery reason; owned and empty after an accepted
-    // delivery.
+    // Last rejected delivery or section reason; owned and empty after a fully
+    // accepted delivery.
     TString RejectedUpdateReason;
 
     // Presence of private_database_config, including an empty section.
