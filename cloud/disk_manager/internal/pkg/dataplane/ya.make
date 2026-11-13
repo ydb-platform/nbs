@@ -22,6 +22,9 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    backup_progress_test.go
+    backup_registration_test.go
+    backup_failure_test.go
     collect_snapshots_task_test.go
     replicate_disk_task_test.go
 )

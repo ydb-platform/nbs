@@ -16,6 +16,8 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    backup_control_test.go
+    backup_registration_test.go
     delete_image_task_test.go
     schedule_backup_image_tasks_test.go
 )
