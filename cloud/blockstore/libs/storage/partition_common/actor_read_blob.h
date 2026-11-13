@@ -84,9 +84,9 @@ private:
 
     void ReplyError(
         const NActors::TActorContext& ctx,
-        const NKikimr::TEvBlobStorage::TEvGetResult& response,
         const NProto::TError& error,
-        EErrorSource errorSource);
+        EErrorSource errorSource,
+        const NKikimr::TEvBlobStorage::TEvGetResult* response);
 
     void ReplyError(
         const NActors::TActorContext& ctx,
@@ -105,7 +105,7 @@ private:
         const NKikimr::TEvBlobStorage::TEvGetResult* msg,
         const TSgList& sglist,
         const NActors::TActorContext& ctx,
-        TDataThatCanBeProcessed& dataThatCanBeProcessed) const;
+        TDataThatCanBeProcessed* dataThatCanBeProcessed) const;
 
     TResultOrError<TVector<ui32>> DecompressReadResultToSglist(
         std::span<NKikimr::TEvBlobStorage::TEvGetResult::TResponse> responses,

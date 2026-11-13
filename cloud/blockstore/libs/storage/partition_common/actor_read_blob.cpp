@@ -152,7 +152,7 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
             {{"tabletId", PartitionTabletId},
              {"blobId", Request->BlobId.ToString()},
              {"error", FormatError(planOrError.GetError())}});
-        ReplyAndDie(ctx, std::make_unique<TResponse>(planOrError.GetError()));
+        ReplyError(ctx, planOrError.GetError(), EErrorSource::Local, nullptr);
         return;
     }
     auto [queries, queryCount, queryBlockRanges] = planOrError.ExtractResult();
@@ -231,9 +231,9 @@ void TReadBlobActor::ReplyAndDie(
 
 void TReadBlobActor::ReplyError(
     const NActors::TActorContext& ctx,
-    const NKikimr::TEvBlobStorage::TEvGetResult& response,
     const NProto::TError& error,
-    EErrorSource errorSource)
+    EErrorSource errorSource,
+    const NKikimr::TEvBlobStorage::TEvGetResult* response)
 {
     LOG_ERROR(
         ctx,
@@ -241,9 +241,9 @@ void TReadBlobActor::ReplyError(
         "[%lu] TEvBlobStorage::TEvGet failed: %s\n%s",
         PartitionTabletId,
         FormatError(error).data(),
-        response.Print(false).data());
+        response ? response->Print(false).data() : "");
 
-    if (response.Status == NKikimrProto::DEADLINE) {
+    if (response && response->Status == NKikimrProto::DEADLINE) {
         DeadlineSeen = true;
     }
 
@@ -260,16 +260,16 @@ void TReadBlobActor::ReplyError(
 {
     ReplyError(
         ctx,
-        response,
         MakeError(E_REJECTED, "TEvBlobStorage::TEvGet failed: " + description),
-        errorSource);
+        errorSource,
+        &response);
 }
 
 bool TReadBlobActor::FillBrokenDataAndFilterItOut(
     const NKikimr::TEvBlobStorage::TEvGetResult* msg,
     const TSgList& sglist,
     const NActors::TActorContext& ctx,
-    TDataThatCanBeProcessed& dataThatCanBeProcessed) const
+    TDataThatCanBeProcessed* dataThatCanBeProcessed) const
 {
     if (StorageAccessMode != EStorageAccessMode::Repair) {
         return false;
@@ -293,10 +293,10 @@ bool TReadBlobActor::FillBrokenDataAndFilterItOut(
         return false;
     }
 
-    dataThatCanBeProcessed.Responses.clear();
-    dataThatCanBeProcessed.Responses.reserve(msg->ResponseSz);
+    dataThatCanBeProcessed->Responses.clear();
+    dataThatCanBeProcessed->Responses.reserve(msg->ResponseSz);
     for (size_t i = 0; i < msg->ResponseSz; ++i) {
-        dataThatCanBeProcessed.Responses.push_back(msg->Responses[i]);
+        dataThatCanBeProcessed->Responses.push_back(msg->Responses[i]);
     }
 
     const auto markerBlock = GetBrokenDataMarkerBlock(BlockSize);
@@ -307,10 +307,10 @@ bool TReadBlobActor::FillBrokenDataAndFilterItOut(
 
     size_t blockIndex = 0;
     for (size_t requestIndex = 0;
-         requestIndex < dataThatCanBeProcessed.Responses.size();
+         requestIndex < dataThatCanBeProcessed->Responses.size();
          ++requestIndex)
     {
-        const auto& response = dataThatCanBeProcessed.Responses[requestIndex];
+        const auto& response = dataThatCanBeProcessed->Responses[requestIndex];
         if (isBroken(response)) {
             LOG_WARN(
                 ctx,
@@ -341,17 +341,17 @@ bool TReadBlobActor::FillBrokenDataAndFilterItOut(
                     markerBlock.data(),
                     markerBlock.size());
             } else {
-                dataThatCanBeProcessed.Sglist.push_back(block);
-                dataThatCanBeProcessed.BlockOffsets.push_back(
+                dataThatCanBeProcessed->Sglist.push_back(block);
+                dataThatCanBeProcessed->BlockOffsets.push_back(
                     Request->BlobOffsets[blockIndex]);
             }
         }
     }
 
     auto toRemove =
-        std::ranges::remove_if(dataThatCanBeProcessed.Responses, isBroken);
+        std::ranges::remove_if(dataThatCanBeProcessed->Responses, isBroken);
 
-    dataThatCanBeProcessed.Responses.erase(toRemove.begin(), toRemove.end());
+    dataThatCanBeProcessed->Responses.erase(toRemove.begin(), toRemove.end());
 
     return true;
 }
@@ -537,7 +537,7 @@ void TReadBlobActor::HandleGetResult(
             msg,
             sglist,
             ctx,
-            dataThatCanBeProcessed);
+            &dataThatCanBeProcessed);
 
         std::span<TEvBlobStorage::TEvGetResult::TResponse> responsesToProcess;
         std::span<const TBlockDataRef> sglistToProcess;
