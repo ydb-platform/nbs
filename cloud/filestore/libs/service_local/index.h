@@ -261,6 +261,11 @@ public:
         Init();
     }
 
+    [[nodiscard]] bool HasNodeLoader() const
+    {
+        return NodeLoader != nullptr;
+    }
+
     TIndexNodePtr LookupNode(ui64 nodeId)
     {
         TReadGuard rGuard(NodesLock);

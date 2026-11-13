@@ -1,6 +1,7 @@
 #include "service.h"
 
 #include "config.h"
+#include "session.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -22,6 +23,7 @@
 #include <util/random/random.h>
 
 #include <algorithm>
+#include <fcntl.h>
 #include <sys/statfs.h>
 
 namespace NCloud::NFileStore {
@@ -1347,6 +1349,19 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
                 // check open handles
                 auto buffer = other.ReadData(handles[i], 0, 100).GetBuffer();
                 UNIT_ASSERT_VALUES_EQUAL(buffer, expectedData);
+
+                const ui64 nodeId =
+                    other.GetNodeAttr(RootNodeId, files[i]).GetNode().GetId();
+                other.UnlinkNode(
+                    RootNodeId,
+                    files[i],
+                    false /* unlinkDirectory */);
+                const auto stat = other.GetNodeAttr(nodeId).GetNode();
+                UNIT_ASSERT_VALUES_EQUAL(expectedData.size(), stat.GetSize());
+                UNIT_ASSERT_VALUES_EQUAL(0, stat.GetLinks());
+
+                other.DestroyHandle(handles[i]);
+                other.AssertGetNodeAttrFailed(nodeId);
             }
         }
     }
@@ -1623,6 +1638,99 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         auto nodes = ListNames(bootstrap, RootNodeId);
         UNIT_ASSERT_VALUES_EQUAL(nodes.size(), 1);
         UNIT_ASSERT_VALUES_EQUAL(nodes[0], "file");
+    }
+
+    Y_UNIT_TEST(ShouldKeepUnlinkedNodesUntilLastHandleCloses)
+    {
+        TTestBootstrap bootstrap(
+            "fs",
+            "client",
+            {},
+            1000,   // maxNodeCount
+            2);     // maxHandlePerSessionCount
+        const auto opened = bootstrap.CreateHandle(
+            RootNodeId,
+            "file",
+            TCreateHandleArgs::CREATE);
+        const ui64 nodeId = opened.GetNodeAttr().GetId();
+        const ui64 first = opened.GetHandle();
+        const ui64 second =
+            bootstrap.CreateHandle(nodeId, "", TCreateHandleArgs::RDWR)
+                .GetHandle();
+        bootstrap.AssertCreateHandleFailed(nodeId, "", TCreateHandleArgs::RDWR);
+        bootstrap.WriteData(first, 0, "contents");
+
+        bootstrap.UnlinkNode(RootNodeId, "file", false /* unlinkDirectory */);
+        bootstrap.AssertGetNodeAttrFailed(RootNodeId, "file");
+
+        auto stat = bootstrap.GetNodeAttr(nodeId).GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, stat.GetId());
+        UNIT_ASSERT_VALUES_EQUAL(8, stat.GetSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, stat.GetLinks());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "contents",
+            bootstrap.ReadData(first, 0, 8).GetBuffer());
+
+        bootstrap.DestroyHandle(first);
+        bootstrap.WriteData(second, 8, "!");
+        stat = bootstrap.GetNodeAttr(nodeId).GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(9, stat.GetSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, stat.GetLinks());
+
+        bootstrap.SetNodeAttr(TSetNodeAttrArgs(nodeId).SetSize(4));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "cont",
+            bootstrap.ReadData(second, 0, 9).GetBuffer());
+
+        bootstrap.DestroyHandle(second);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_FS_NOENT,
+            bootstrap.AssertGetNodeAttrFailed(nodeId).GetError().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldRetainOnlyUnlinkedOpenNodes)
+    {
+        TTempDirectory directory;
+        TSession session(
+            "fs",
+            directory,
+            directory,
+            "client",
+            1000,    // maxNodeCount
+            100,     // maxHandleCount
+            false,   // openNodeByHandleEnabled
+            1000,    // nodeCleanupBatchSize
+            false,   // snapshotsDirEnabled
+            TDuration::Zero(),
+            CreateLoggingService("console", {TLOG_RESOURCES}));
+        session.Init(false /* restoreClientSession */);
+
+        auto root = session.LookupNode(RootNodeId);
+        auto node = root->CreateFile("file", 0644);
+        const ui64 nodeId = node->GetNodeId();
+        const bool inserted = session.TryInsertNode(node, RootNodeId, "file");
+        UNIT_ASSERT(inserted);
+
+        // Nodes without open handles are not retained.
+        UNIT_ASSERT(!session.HasOpenHandles(nodeId));
+        session.ForgetNode(nodeId);
+        session.RetainUnlinkedNode(node);
+        UNIT_ASSERT(!session.LookupNode(nodeId));
+
+        auto [handleId, error] =
+            session.InsertHandle(node->OpenHandle(O_RDONLY), nodeId, O_RDONLY);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        UNIT_ASSERT(session.HasOpenHandles(nodeId));
+
+        // Open but linked nodes are not retained after cache eviction.
+        UNIT_ASSERT(!session.LookupNode(nodeId));
+
+        session.RetainUnlinkedNode(node);
+        UNIT_ASSERT(session.LookupNode(nodeId) == node);
+
+        session.DeleteHandle(handleId);
+        UNIT_ASSERT(!session.HasOpenHandles(nodeId));
+        UNIT_ASSERT(!session.LookupNode(nodeId));
     }
 
     Y_UNIT_TEST(ShouldReadAndWriteData)
@@ -2192,7 +2300,14 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         const TString state = "abcde";
 
         TTestBootstrap bootstrap("fs");
+        const auto opened = bootstrap.CreateHandle(
+            RootNodeId,
+            "file",
+            TCreateHandleArgs::CREATE);
+        bootstrap.UnlinkNode(RootNodeId, "file", false /* unlinkDirectory */);
         bootstrap.ResetSession(state);
+        bootstrap.AssertGetNodeAttrFailed(opened.GetNodeAttr().GetId());
+        bootstrap.AssertReadDataFailed(opened.GetHandle(), 0, 1);
 
         auto response = bootstrap.CreateSession("fs", "client", "", true);
         UNIT_ASSERT_VALUES_EQUAL(response.GetSession().GetSessionState(), state);
@@ -2400,7 +2515,9 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         }
 
         // b c -> c
-        bootstrap.CreateHandle(id1, "", TCreateHandleArgs::RDWR);
+        const ui64 handle =
+            bootstrap.CreateHandle(id1, "", TCreateHandleArgs::RDWR)
+                .GetHandle();
         bootstrap.RenameNode(RootNodeId, "b", RootNodeId, "c", 0);
         {
             auto response = bootstrap.ListNodes(RootNodeId);
@@ -2411,7 +2528,11 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
             auto link = bootstrap.ReadLink(id2);
             UNIT_ASSERT_VALUES_EQUAL(link.GetSymLink(), "b");
 
-            auto stat = bootstrap.AssertGetNodeAttrFailed(id1);
+            const auto stat = bootstrap.GetNodeAttr(id1).GetNode();
+            UNIT_ASSERT_VALUES_EQUAL(0, stat.GetLinks());
+
+            bootstrap.DestroyHandle(handle);
+            bootstrap.AssertGetNodeAttrFailed(id1);
         }
 
         // non-existing to existing

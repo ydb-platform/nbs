@@ -40,6 +40,14 @@ private:
         ui64 RecordIndex = -1;
     };
 
+    struct TOpenNode
+    {
+        ui32 HandleCount = 0;
+        // Set only after the last link is removed, so linked files do not
+        // hold extra node file descriptors.
+        TIndexNodePtr UnlinkedNode;
+    };
+
     struct THandleTableHeader
     {
     };
@@ -56,6 +64,7 @@ private:
 
     THashMap<TString, TString> Attrs;
     THashMap<ui64, THandle> Handles;
+    THashMap<ui64, TOpenNode> OpenNodes;
     std::unique_ptr<THandleTable> HandleTable;
     std::atomic<ui64> NextHandleId = 0;
     TString FuseState;
@@ -70,6 +79,9 @@ private:
     const ui32 NodeCleanupBatchSize;
 
     TLocalIndex Index;
+    // NodeLoader reopens unlinked inodes by handle while an fd keeps them
+    // alive, so open-node tracking is needed only without it.
+    const bool TrackOpenNodes;
     THashMap<ui64, std::pair<bool, TInstant>> SubSessions;
 public:
     TSession(
@@ -102,6 +114,7 @@ public:
               snapshotsDirEnabled,
               snapshotsDirRefreshInterval,
               Log)
+        , TrackOpenNodes(!Index.HasNodeLoader())
     {}
 
     void Init(bool restoreClientSession)
@@ -166,6 +179,10 @@ public:
                     inserted,
                     "dup file handle for: %lu",
                     it->HandleId);
+
+                if (TrackOpenNodes) {
+                    ++OpenNodes[it->NodeId].HandleCount;
+                }
             } catch (...) {
                 STORAGE_ERROR(
                     "Failed to open Handle, HandleId=" << it->HandleId <<
@@ -206,6 +223,10 @@ public:
         Handles.emplace(handleId, THandle{std::move(handle), recordIndex});
         HandleTable->CommitRecord(recordIndex);
 
+        if (TrackOpenNodes) {
+            ++OpenNodes[nodeId].HandleCount;
+        }
+
         return handleId;
     }
 
@@ -227,6 +248,17 @@ public:
 
         auto it = Handles.find(handleId);
         if (it != Handles.end()) {
+            if (TrackOpenNodes) {
+                const ui64 nodeId =
+                    HandleTable->RecordData(it->second.RecordIndex)->NodeId;
+                auto nodeIt = OpenNodes.find(nodeId);
+                if (nodeIt != OpenNodes.end() &&
+                    --nodeIt->second.HandleCount == 0)
+                {
+                    OpenNodes.erase(nodeIt);
+                }
+            }
+
             HandleTable->DeleteRecord(it->second.RecordIndex);
             Handles.erase(it);
         }
@@ -234,7 +266,38 @@ public:
 
     TIndexNodePtr LookupNode(ui64 nodeId)
     {
-        return Index.LookupNode(nodeId);
+        if (!TrackOpenNodes) {
+            return Index.LookupNode(nodeId);
+        }
+
+        if (auto node = Index.LookupNode(nodeId)) {
+            return node;
+        }
+
+        TReadGuard guard(Lock);
+        auto it = OpenNodes.find(nodeId);
+        return it != OpenNodes.end() ? it->second.UnlinkedNode : nullptr;
+    }
+
+    [[nodiscard]] bool IsTrackingOpenNodes() const
+    {
+        return TrackOpenNodes;
+    }
+
+    bool HasOpenHandles(ui64 nodeId)
+    {
+        TReadGuard guard(Lock);
+        return OpenNodes.contains(nodeId);
+    }
+
+    // Keeps an unlinked node accessible until its last handle is closed.
+    void RetainUnlinkedNode(TIndexNodePtr node)
+    {
+        TWriteGuard guard(Lock);
+        auto it = OpenNodes.find(node->GetNodeId());
+        if (it != OpenNodes.end()) {
+            it->second.UnlinkedNode = std::move(node);
+        }
     }
 
     TNodeMapper::TRemapResult RemapNode(
@@ -289,6 +352,7 @@ public:
 
         HandleTable->Clear();
         Handles.clear();
+        OpenNodes.clear();
 
         Index.Clear();
 

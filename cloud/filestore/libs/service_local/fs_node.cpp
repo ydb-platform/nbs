@@ -24,6 +24,31 @@ TIndexNodePtr TryCreateChildNode(const TIndexNode& parent, const TString& name)
     return nullptr;
 }
 
+// Returns the node to keep after its last link is removed, or nullptr if it
+// is not the last link or has no open handles.
+TIndexNodePtr GetNodeToRetain(
+    TSession& session,
+    const TIndexNode& parent,
+    const TString& name,
+    const NLowLevel::TFileStatEx& stat)
+{
+    const bool isLastLink = (!stat.IsDir() && stat.NLinks == 1) ||
+                            (stat.IsDir() && stat.NLinks <= 2);
+    const ui64 nodeId = stat.INode;
+    if (!isLastLink || !session.HasOpenHandles(nodeId)) {
+        return nullptr;
+    }
+
+    if (auto node = session.LookupNode(nodeId)) {
+        return node;
+    }
+
+    // The node may have been evicted, and a concurrent rename may have
+    // changed which inode the name refers to.
+    auto node = TryCreateChildNode(parent, name);
+    return node && node->GetNodeId() == nodeId ? node : nullptr;
+}
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -147,7 +172,20 @@ NProto::TUnlinkNodeResponse TLocalFileSystem::UnlinkNode(
     }
 
     auto stat = parent->Stat(request.GetName());
+
+    TIndexNodePtr nodeToRetain;
+    if (session->IsTrackingOpenNodes()) {
+        nodeToRetain =
+            GetNodeToRetain(*session, *parent, request.GetName(), stat);
+    }
+
     parent->Unlink(request.GetName(), request.GetUnlinkDirectory());
+
+    // Publish the fallback before removing the indexed node so concurrent
+    // lookups can still find it while handles remain open.
+    if (nodeToRetain) {
+        session->RetainUnlinkedNode(std::move(nodeToRetain));
+    }
 
     if ((!stat.IsDir() && stat.NLinks == 1) || (stat.IsDir() && stat.NLinks <= 2)) {
         session->ForgetNode(stat.INode);
@@ -180,8 +218,25 @@ NProto::TRenameNodeResponse TLocalFileSystem::RenameNode(
     } catch (...) {
     }
 
+    TIndexNodePtr nodeToRetain;
+    if (session->IsTrackingOpenNodes() && stat.has_value() &&
+        !HasFlag(request.GetFlags(), NProto::TRenameNodeRequest::F_EXCHANGE))
+    {
+        nodeToRetain = GetNodeToRetain(
+            *session,
+            *newparent,
+            request.GetNewName(),
+            stat.value());
+    }
+
     const int flags = RenameFlagsToSystem(request.GetFlags());
     parent->Rename(request.GetName(), newparent, request.GetNewName(), flags);
+
+    // Publish the fallback before removing the indexed node so concurrent
+    // lookups can still find it while handles remain open.
+    if (nodeToRetain) {
+        session->RetainUnlinkedNode(std::move(nodeToRetain));
+    }
 
     if (stat.has_value() &&
         !HasFlag(request.GetFlags(), NProto::TRenameNodeRequest::F_EXCHANGE) &&

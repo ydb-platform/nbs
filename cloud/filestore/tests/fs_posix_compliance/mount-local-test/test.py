@@ -1,3 +1,6 @@
+import os
+import tempfile
+
 import pytest
 
 import cloud.filestore.tools.testing.fs_posix_compliance.pylib.test as compliance
@@ -17,3 +20,22 @@ def test_posix_compliance(suite):
 
     ret = common.canonical_file(results_path, local=True)
     return ret
+
+
+def test_unlinked_open_file():
+    data = b"contents"
+    with tempfile.TemporaryDirectory(dir=get_filestore_mount_path()) as directory:
+        path = os.path.join(directory, "file")
+        with open(path, "w+b", buffering=0) as file:
+            assert file.write(data) == len(data)
+            os.unlink(path)
+            assert not os.path.exists(path)
+
+            # fstat may be cached; ftruncate forces an inode-based service call.
+            os.ftruncate(file.fileno(), len(data))
+            stat = os.fstat(file.fileno())
+            assert stat.st_size == len(data)
+            assert stat.st_nlink == 0
+
+            file.seek(0)
+            assert file.read() == data
