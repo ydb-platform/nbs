@@ -57,6 +57,7 @@
 #include <cloud/blockstore/libs/service/overlapping_requests_guard_service.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/libs/service/service_actions.h>
 #include <cloud/blockstore/libs/service/service_error_transform.h>
 #include <cloud/blockstore/libs/service/service_filtered.h>
 #include <cloud/blockstore/libs/service/service_null.h>
@@ -751,6 +752,15 @@ void TBootstrapBase::Init()
         STORAGE_INFO("ThrottlingService initialized");
     }
 
+    // Wrapped by the auth service below, so over gRPC the actions need admin
+    // rights. The unix socket rejects them unless AllowAllRequestsViaUDS is set.
+    Service = CreateActionsService(
+        std::move(Service),
+        {{"updatecertificates",
+          CreateUpdateCertificatesAction(
+              [watcher = CertificateWatcher]
+              { return watcher->UpdateCertificates(); })}});
+
     auto udsService = Service;
     if (!BootstrapConfig->ServerConfig->GetAllowAllRequestsViaUDS()) {
         udsService = CreateFilteredService(Service, {
@@ -1169,6 +1179,10 @@ void TBootstrapBase::Stop()
     }                                                                          \
 // STOP_KIKIMR_COMPONENT
 
+    // Before the scheduler: an on-demand certificate update needs it and would
+    // otherwise keep its request in flight until the server stops.
+    STOP_COMMON_COMPONENT(CertificateWatcher);
+
     // stopping scheduler before all other components to avoid races between
     // scheduled tasks and shutting down of component dependencies
     STOP_COMMON_COMPONENT(Scheduler);
@@ -1185,7 +1199,6 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(CriticalEventsStatsUpdater);
     STOP_COMMON_COMPONENT(Server);
     STOP_COMMON_COMPONENT(CertificateProvider);
-    STOP_COMMON_COMPONENT(CertificateWatcher);
     STOP_COMMON_COMPONENT(Executor);
     STOP_COMMON_COMPONENT(GrpcEndpointListener);
     STOP_COMMON_COMPONENT(NbdServer);

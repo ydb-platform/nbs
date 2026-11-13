@@ -28,3 +28,18 @@ message TGetNameserverNodesResponse
 {
     repeated TNodeInfo Nodes = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// UpdateCertificates request/response.
+
+// Re-reads all TLS files of the daemon right away instead of waiting for the
+// periodic check: certificates, private keys and root CAs, those of the cell
+// connections included. Call it once the files have been written completely.
+// Fails with E_TRY_AGAIN if another update is in progress.
+message TUpdateCertificatesRequest
+{
+}
+
+message TUpdateCertificatesResponse
+{
+}
