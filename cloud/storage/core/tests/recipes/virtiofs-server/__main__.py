@@ -66,7 +66,7 @@ def start_server(args, index):
         recipe_set_env("VIRTIOFS_SOCKET_{}".format(tag), socket, index)
 
         virtiofs_server_binary = common.binary_path(
-            "cloud/storage/core/tools/testing/virtiofs_server/bin/virtiofs-server")
+            "cloud/filestore/apps/vhost/filestore-vhost")
 
         virtiofs = VirtioFsServer(virtiofs_server_binary,
                                   socket,
