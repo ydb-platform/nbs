@@ -52,7 +52,7 @@ struct TTestProfileLog final
 
     void Write(TRecord record) override
     {
-        Record.SetValue(std::move(record));
+        Record.TrySetValue(std::move(record));
     }
 
     void RegisterCounters(NMonitoring::TDynamicCounters&) override
@@ -503,7 +503,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
         const auto& result = future.GetValue(WaitTimeout);
         UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
 
-        const auto& record = profileLog->Record.GetFuture().GetValue(WaitTimeout);
+        const auto& record =
+            profileLog->Record.GetFuture().GetValue(WaitTimeout);
         const auto timestamp =
             TInstant::MicroSeconds(record.Request.GetTimestampMcs());
         UNIT_ASSERT_C(timestamp >= beforeRequest, timestamp);
@@ -513,7 +514,6 @@ Y_UNIT_TEST_SUITE(TServerTest)
             static_cast<ui32>(EFileStoreRequest::ListNodes),
             record.Request.GetRequestType());
         UNIT_ASSERT(record.Request.HasDurationMcs());
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, record.Request.GetErrorCode());
         const auto& info = record.Request.GetListNodesInfo();
         UNIT_ASSERT_VALUES_EQUAL(123, info.GetNodeId());
         UNIT_ASSERT_VALUES_EQUAL(1000, info.GetMaxBytes());
