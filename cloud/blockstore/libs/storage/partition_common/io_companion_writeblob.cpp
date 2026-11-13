@@ -153,13 +153,44 @@ void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
 
 void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
 {
-    TString blobContent;
+    ::TRcBuf blobContent;
+    bool checksumsReady = false;
 
     if (const auto* guardedSgList = std::get_if<TGuardedSgList>(&Request->Data)) {
         if (auto guard = guardedSgList->Acquire()) {
             const auto& sgList = guard.Get();
-            blobContent.ReserveAndResize(SgListGetSize(sgList));
-            SgListCopy(sgList, { blobContent.data(), blobContent.size() });
+            TString content;
+            content.ReserveAndResize(SgListGetSize(sgList));
+            if (Request->BlockSizeForChecksums) {
+                STORAGE_VERIFY(
+                    content.size() % Request->BlockSizeForChecksums == 0,
+                    TWellKnownEntityTypes::TABLET,
+                    TabletId);
+                BlockChecksums = SgListCopyWithBlockChecksums(
+                    sgList,
+                    {content.data(), content.size()},
+                    Request->BlockSizeForChecksums);
+                checksumsReady = true;
+            } else {
+                SgListCopy(sgList, {content.data(), content.size()});
+            }
+            blobContent = ::TRcBuf(std::move(content));
+        } else {
+            auto error = MakeError(
+                E_CANCELLED,
+                "failed to acquire sglist in WriteBlobActor");
+            ReplyAndDie(ctx, std::make_unique<TResponse>(std::move(error)));
+            return;
+        }
+    } else if (auto* owned =
+        std::get_if<TRequest::TOwnedBuffer>(&Request->Data))
+    {
+        // The payload is already stable and owned. Keep the original producer
+        // cancellation gate: requests not accepted before Close still cancel.
+        if (auto guard = owned->Access.Acquire()) {
+            Y_DEBUG_ABORT_UNLESS(
+                SgListGetSize(guard.Get()) == owned->Buffer.GetSize());
+            blobContent = std::move(owned->Buffer);
         } else {
             auto error = MakeError(
                 E_CANCELLED,
@@ -168,30 +199,33 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
             return;
         }
     } else {
-        blobContent = std::move(std::get<TString>(Request->Data));
+        blobContent = ::TRcBuf(
+            std::move(std::get<TString>(Request->Data)));
     }
 
     STORAGE_VERIFY(
-        !blobContent.empty(),
+        blobContent.GetSize() != 0,
         TWellKnownEntityTypes::TABLET,
         TabletId);
 
     if (BlobCompressor && Request->CompressedSizeEstimationCandidate) {
         BlobCompressor->CalculateCompressionMetrics(
             Request->BlobId,
-            blobContent);
+            {blobContent.GetData(), blobContent.GetSize()});
     }
 
-    if (Request->BlockSizeForChecksums) {
+    if (Request->BlockSizeForChecksums && !checksumsReady) {
         STORAGE_VERIFY(
-            blobContent.size() % Request->BlockSizeForChecksums == 0,
+            blobContent.GetSize() % Request->BlockSizeForChecksums == 0,
             TWellKnownEntityTypes::TABLET,
             TabletId);
 
+        BlockChecksums.reserve(
+            blobContent.GetSize() / Request->BlockSizeForChecksums);
         ui32 offset = 0;
-        while (offset < blobContent.size()) {
+        while (offset < blobContent.GetSize()) {
             BlockChecksums.push_back(ComputeDefaultDigest({
-                blobContent.data() + offset,
+                blobContent.GetData() + offset,
                 Request->BlockSizeForChecksums}));
 
             offset += Request->BlockSizeForChecksums;

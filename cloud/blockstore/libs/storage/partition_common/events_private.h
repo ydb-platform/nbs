@@ -258,7 +258,16 @@ struct TEvPartitionCommonPrivate
         NActors::TActorId Proxy;
 
         const TPartialBlobId BlobId;
-        std::variant<TGuardedSgList, TString> Data;
+        struct TOwnedBuffer
+        {
+            ::TRcBuf Buffer;
+            // Retain the producer's cancellation protocol for requests that
+            // have not acquired access yet, independently of byte ownership.
+            TGuardedSgList Access;
+        };
+
+        using TData = std::variant<TGuardedSgList, TString, TOwnedBuffer>;
+        TData Data;
         // BlockSize is used to calculate checksums. If it's 0, checksums won't
         // be calculated.
         const ui32 BlockSizeForChecksums;
@@ -266,10 +275,10 @@ struct TEvPartitionCommonPrivate
         const bool CompressedSizeEstimationCandidate;
         const TInstant Deadline;
 
-        template <typename TData>
+        template <typename TContent>
         TWriteBlobRequest(
                 TPartialBlobId blobId,
-                TData data,
+                TContent data,
                 ui32 blockSizeForChecksums,
                 bool async,
                 bool compressedSizeEstimationCandidate,
