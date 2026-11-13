@@ -36,14 +36,14 @@ public:
     struct TRequest
     {
         TPartialBlobId BlobId;
-        TGuardedBuffer<TBlockBuffer> BlobContent;
+        TGuardedBuffer<TBlobBuffer> BlobContent;
         TVector<TBlock> Blocks;
         TVector<ui32> Checksums;
         ui8 CompactionRangeCount = 0;
 
         TRequest(
                 const TPartialBlobId& blobId,
-                TBlockBuffer blobContent,
+                TBlobBuffer blobContent,
                 TVector<TBlock> blocks,
                 TVector<ui32> checksums,
                 ui8 compactionRangeCount)
@@ -200,7 +200,9 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
         auto request =
             std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
                 req.BlobId,
-                req.BlobContent.GetGuardedSgList(),
+                TEvPartitionCommonPrivate::TWriteBlobRequest::TOwnedBuffer{
+                    req.BlobContent.Get().ShareContent(),
+                    req.BlobContent.GetGuardedSgList()},
                 0,      // blockSizeForChecksums
                 true,   // async
                 false,  // compressedSizeEstimationCandidate
@@ -656,6 +658,12 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
         State->FindFreshBlocks(visitor, TBlockRange32::Max(), commitId);
 
         visitor.Finish();
+
+        // The index is unchanged between these synchronous passes. Materialize
+        // directly into the planned final buffers before starting any worker.
+        TFlushBlocksMaterializer materializer(State->GetBlockSize(), blobs);
+        State->FindFreshBlocks(materializer, TBlockRange32::Max(), commitId);
+        materializer.Finish();
     }
 
     if (!blobs) {
