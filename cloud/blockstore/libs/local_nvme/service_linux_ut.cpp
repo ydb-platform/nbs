@@ -559,6 +559,180 @@ struct TFixture: public TFixtureBase
             .Wait();
     }
 
+    void TestRefreshDuringDriverSwitch(
+        bool release,
+        bool missingDevice,
+        bool switchFinishesBeforeResponse,
+        bool failSwitch = false)
+    {
+        const size_t deviceIndex = release ? 1 : 0;
+        const auto& device = Devices[deviceIndex];
+        const auto& pciAddr = device.GetPCIAddress();
+        const auto& serialNumber = device.GetSerialNumber();
+        const TString ctrlPath = release ? "/dev/nvme1" : "/dev/nvme0";
+
+        TPromise<TVector<NProto::TNVMeDevice>> responses[]{
+            NewPromise<TVector<NProto::TNVMeDevice>>(),
+            NewPromise<TVector<NProto::TNVMeDevice>>(),
+            NewPromise<TVector<NProto::TNVMeDevice>>(),
+            NewPromise<TVector<NProto::TNVMeDevice>>()};
+        TAutoEvent fetchRequested;
+        auto switchStarted = std::make_shared<TAutoEvent>();
+        auto finishSwitch = std::make_shared<TAutoEvent>();
+
+        Y_DEFER
+        {
+            finishSwitch->Signal();
+            Service->Stop();
+        };
+
+        DeviceProvider->ListNVMeDevicesImpl.SetValue(
+            [&, attempt = 0]() mutable
+            {
+                if (attempt++ == 0) {
+                    return MakeFuture(Devices);
+                }
+
+                fetchRequested.Signal();
+                return responses[attempt - 2].GetFuture();
+            });
+
+        {
+            const auto [devices, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK, error.GetCode(), FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(Devices.size(), devices.size());
+        }
+
+        SysFs->BindPCIDeviceToDriverImpl =
+            [switchStarted, finishSwitch, failSwitch](
+                const TString&, const TString&)
+        {
+            switchStarted->Signal();
+            Y_ENSURE(finishSwitch->WaitT(DefaultTimeout * 3));
+            Y_ENSURE(!failSwitch, "Driver switch failed");
+        };
+        SysFs->GetVfioDeviceForPCIDeviceImpl = [](const TString&)
+        {
+            return TString("vfio0");
+        };
+
+        // Cover both a fetch already in flight when switching starts and a
+        // fetch that starts while the background switch is blocked.
+        if (switchFinishesBeforeResponse) {
+            UNIT_ASSERT(fetchRequested.WaitT(DefaultTimeout));
+        }
+
+        TFuture<NProto::TError> operation;
+        if (release) {
+            SysFs->AddrToDriver[pciAddr] = "vfio-pci";
+            operation =
+                Service->ReleaseNVMeDevice(serialNumber, EmptyIdempotenceId);
+        } else {
+            operation =
+                Service->AcquireNVMeDevice(serialNumber, EmptyIdempotenceId)
+                    .Apply([](const auto& future)
+                           { return future.GetValue().GetError(); });
+        }
+        UNIT_ASSERT(switchStarted->WaitT(DefaultTimeout));
+
+        auto completeSwitch = [&]
+        {
+            finishSwitch->Signal();
+            if (release && !failSwitch) {
+                NVMeManager->WaitSanitizeRequested();
+                UNIT_ASSERT(!operation.HasValue());
+            } else {
+                UNIT_ASSERT(operation.Wait(DefaultTimeout));
+                const auto& error = operation.GetValue();
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    failSwitch, HasError(error), FormatError(error));
+            }
+        };
+
+        if (switchFinishesBeforeResponse) {
+            completeSwitch();
+        } else {
+            UNIT_ASSERT(fetchRequested.WaitT(DefaultTimeout));
+        }
+
+        TVector<NProto::TNVMeDevice> failedDeviceList;
+        for (size_t i = 0; i != Devices.size(); ++i) {
+            // An unrelated missing device must still become offline.
+            if (i != 3 && (!missingDevice || i != deviceIndex)) {
+                failedDeviceList.push_back(Devices[i]);
+            }
+        }
+
+        auto setSysFsAvailable = [&](bool available)
+        {
+            Executor
+                ->Execute(
+                    [&]
+                    {
+                        if (available) {
+                            SysFs->AddrToDevice[pciAddr] = device;
+                        } else {
+                            SysFs->AddrToDevice.erase(pciAddr);
+                        }
+                    })
+                .GetValueSync();
+        };
+
+        if (!missingDevice) {
+            setSysFsAvailable(false);
+        }
+        responses[0].SetValue(failedDeviceList);
+        // The next request is a barrier: the previous response was reconciled.
+        UNIT_ASSERT(fetchRequested.WaitT(DefaultTimeout));
+
+        {
+            const auto [devices, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK, error.GetCode(), FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(Devices.size(), devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                device.DebugString(), devices[deviceIndex].DebugString());
+            UNIT_ASSERT_C(
+                devices[3].GetDeviceState() ==
+                    NProto::NVME_DEVICE_STATE_OFFLINE,
+                devices[3].DebugString());
+        }
+
+        setSysFsAvailable(true);
+        if (!switchFinishesBeforeResponse) {
+            completeSwitch();
+        }
+
+        // Drain the request that may have started before switching finished.
+        responses[1].SetValue(Devices);
+        UNIT_ASSERT(fetchRequested.WaitT(DefaultTimeout));
+
+        if (!missingDevice) {
+            setSysFsAvailable(false);
+        }
+        responses[2].SetValue(failedDeviceList);
+        UNIT_ASSERT(fetchRequested.WaitT(DefaultTimeout));
+
+        const auto [devices, error] = ListNVMeDevices();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(Devices.size(), devices.size());
+        UNIT_ASSERT_C(
+            devices[deviceIndex].GetDeviceState() ==
+                NProto::NVME_DEVICE_STATE_OFFLINE,
+            devices[deviceIndex].DebugString());
+
+        if (release && !failSwitch) {
+            // Protection must end with the driver switch, not with sanitize.
+            UNIT_ASSERT(!operation.HasValue());
+            NVMeManager->UpdateSanitizeStatus(ctrlPath, MakeError(S_OK), 100.0);
+            UNIT_ASSERT(operation.Wait(DefaultTimeout));
+            const auto& error = operation.GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK, error.GetCode(), FormatError(error));
+        }
+    }
+
     void TestReconcileSerialNumber(
         bool knownDevice,
         const TString& sysFsSerialNumber)
@@ -2221,6 +2395,42 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                 error.GetCode(),
                 FormatError(error));
         }
+    }
+
+    Y_UNIT_TEST_F(ShouldKeepMissingDeviceOnlineWhileAcquiring, TFixture)
+    {
+        TestRefreshDuringDriverSwitch(false, true, false);
+    }
+
+    Y_UNIT_TEST_F(ShouldKeepMissingDeviceOnlineAfterDriverSwitch, TFixture)
+    {
+        TestRefreshDuringDriverSwitch(false, true, true);
+    }
+
+    Y_UNIT_TEST_F(ShouldKeepMissingDeviceInMaintenanceWhileReleasing, TFixture)
+    {
+        TestRefreshDuringDriverSwitch(true, true, false);
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldKeepMissingDeviceInMaintenanceAfterDriverSwitch, TFixture)
+    {
+        TestRefreshDuringDriverSwitch(true, true, true);
+    }
+
+    Y_UNIT_TEST_F(ShouldPreserveDeviceOnSysFsErrorDuringDriverSwitch, TFixture)
+    {
+        TestRefreshDuringDriverSwitch(true, false, false);
+    }
+
+    Y_UNIT_TEST_F(ShouldPreserveDeviceOnSysFsErrorAfterDriverSwitch, TFixture)
+    {
+        TestRefreshDuringDriverSwitch(false, false, true);
+    }
+
+    Y_UNIT_TEST_F(ShouldResumeDeviceRefreshAfterFailedDriverSwitch, TFixture)
+    {
+        TestRefreshDuringDriverSwitch(false, true, true, true);
     }
 
     Y_UNIT_TEST_F(ShouldReconcileDevices, TFixture)

@@ -15,6 +15,7 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/threading/future/future.h>
+#include <library/cpp/time_provider/monotonic.h>
 
 #include <util/folder/path.h>
 #include <util/generic/algorithm.h>
@@ -170,6 +171,17 @@ struct TOperation
 
 using TOperationPtr = std::shared_ptr<TOperation>;
 
+struct TDriverSwitch
+{
+    TMonotonic StartTime;
+    TMonotonic FinishTime = TMonotonic::Max();
+
+    bool Overlaps(TMonotonic startTime, TMonotonic finishTime) const
+    {
+        return StartTime <= finishTime && startTime <= FinishTime;
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TLocalNVMeService final
@@ -209,6 +221,7 @@ private:
     THashMap<TSerialNumber, NProto::TNVMeDevice> Devices;
     THashSet<TSerialNumber> AcquiredDevices;
     THashMap<TSerialNumber, TOperationPtr> Operations;
+    THashMap<TSerialNumber, TDriverSwitch> DriverSwitches;
 
 public:
     TLocalNVMeService(
@@ -276,7 +289,10 @@ private:
     auto ReloadDevice(const TSerialNumber& serialNumber)
         -> TResultOrError<NProto::TNVMeDevice>;
     auto UpdateDevices() -> NProto::TError;
-    void ReconcileDevices(TVector<NProto::TNVMeDevice> fetchedDevices);
+    void ReconcileDevices(
+        TVector<NProto::TNVMeDevice> fetchedDevices,
+        TMonotonic fetchStartTime,
+        TMonotonic fetchFinishTime);
     bool TryRestoreStateFromCache();
     void UpdateStateCache();
     auto CreateStateSnapshot() const -> NProto::TLocalNVMeServiceState;
@@ -644,9 +660,20 @@ auto TLocalNVMeService::EnsureIsReady(
 }
 
 void TLocalNVMeService::ReconcileDevices(
-    TVector<NProto::TNVMeDevice> fetchedDevices)
+    TVector<NProto::TNVMeDevice> fetchedDevices,
+    TMonotonic fetchStartTime,
+    TMonotonic fetchFinishTime)
 {
     SortBy(fetchedDevices, std::mem_fn(&NProto::TNVMeDevice::GetSerialNumber));
+
+    // Reconciliation does not yield, so the latest switch is sufficient to
+    // detect overlap even if multiple switches occurred during this fetch.
+    auto overlapsDriverSwitch = [&](const TSerialNumber& sn)
+    {
+        const auto* driverSwitch = DriverSwitches.FindPtr(sn);
+        return driverSwitch &&
+               driverSwitch->Overlaps(fetchStartTime, fetchFinishTime);
+    };
 
     // Add newly discovered devices and refresh the state of known ones.
     for (const auto& fetchedDevice: fetchedDevices) {
@@ -662,7 +689,7 @@ void TLocalNVMeService::ReconcileDevices(
                 "Failed to load NVMe device "
                 << serialNumber.Quote() << " at PCI address " << newAddr << ": "
                 << FormatError(loadError));
-            if (!oldDevice) {
+            if (!oldDevice || overlapsDriverSwitch(serialNumber)) {
                 continue;
             }
 
@@ -722,7 +749,8 @@ void TLocalNVMeService::ReconcileDevices(
             &NProto::TNVMeDevice::GetSerialNumber);
 
         if (!found &&
-            device.GetDeviceState() != NProto::NVME_DEVICE_STATE_OFFLINE)
+            device.GetDeviceState() != NProto::NVME_DEVICE_STATE_OFFLINE &&
+            !overlapsDriverSwitch(sn))
         {
             STORAGE_WARN(
                 "NVMe device " << sn.Quote()
@@ -735,12 +763,17 @@ void TLocalNVMeService::ReconcileDevices(
 
 auto TLocalNVMeService::UpdateDevices() -> NProto::TError
 {
+    const auto fetchStartTime = TMonotonic::Now();
     auto [fetchedDevices, error] = FetchDevices();
+    const auto fetchFinishTime = TMonotonic::Now();
     if (HasError(error)) {
         return error;
     }
 
-    ReconcileDevices(std::move(fetchedDevices));
+    ReconcileDevices(
+        std::move(fetchedDevices),
+        fetchStartTime,
+        fetchFinishTime);
 
     UpdateStateCache();
 
@@ -942,6 +975,14 @@ auto TLocalNVMeService::BindDeviceToDriver(
     STORAGE_INFO(
         "Bind " << device.GetSerialNumber().Quote() << " to " << driverName
                 << " driver");
+
+    const auto serialNumber = device.GetSerialNumber();
+    DriverSwitches[serialNumber] = {.StartTime = TMonotonic::Now()};
+    Y_DEFER
+    {
+        // Look up the entry again: other devices can switch while we wait.
+        DriverSwitches[serialNumber].FinishTime = TMonotonic::Now();
+    };
 
     auto future = BackgroundExecutor->Execute(
         [sysfs = SysFs, pciAddr = device.GetPCIAddress(), driverName]
