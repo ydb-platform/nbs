@@ -264,6 +264,8 @@ void TIndexTabletActor::HandleUpdateConfig(
         newConfig.SetAutomaticShardCreationEnabled(
             Config->GetAutomaticShardCreationEnabled());
         newConfig.SetShardAllocationUnit(Config->GetShardAllocationUnit());
+        newConfig.SetGuestPosixAclEnabled(
+            Config->GetGuestPosixAclEnabled());
 
         LOG_INFO(ctx,TFileStoreComponents::TABLET,
             "%s Starting tablet config initialization [txId: %d]"
@@ -301,6 +303,8 @@ void TIndexTabletActor::HandleUpdateConfig(
         oldConfig.GetForceDirectoryCreationInShards());
     newConfig.SetStrictFileSystemSizeEnforcementEnabled(
         oldConfig.GetStrictFileSystemSizeEnforcementEnabled());
+    newConfig.SetGuestPosixAclEnabled(
+        oldConfig.GetGuestPosixAclEnabled());
 
     // Config update occured due to alter/resize.
     if (auto error = ValidateUpdateConfigRequest(oldConfig, newConfig)) {

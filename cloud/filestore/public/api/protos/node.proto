@@ -211,6 +211,8 @@ message TCreateNodeRequest
     // The QuotaId this new node should inherit, resolved by whichever tablet
     // owns the real parent and carried along for the cross-shard operation.
     uint32 QuotaId = 20;
+
+    bool GuestPosixAclEnabled = 21;
 }
 
 message TCreateNodeResponse
