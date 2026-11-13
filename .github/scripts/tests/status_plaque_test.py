@@ -6,7 +6,8 @@ from xml.etree import ElementTree as ET
 import pytest
 
 from scripts.tests import generate_summary as gs
-from scripts.tests.status_plaque import Plaque, Report
+from scripts.tests import workload_comment as wc
+from scripts.tests.status_plaque import Plaque, Report, format_duration
 
 PRESET = "linux-x86_64-relwithdebinfo"
 
@@ -48,7 +49,7 @@ def pr(monkeypatch):
     return pr
 
 
-def publish(pr, component="filestore", iteration=0, failed=False):
+def publish(pr, component="filestore", iteration=0, failed=False, elapsed="1"):
     summary = gs.TestSummary()
     line = gs.TestSummaryLine("Tests")
     line.add(
@@ -70,7 +71,7 @@ def publish(pr, component="filestore", iteration=0, failed=False):
         PRESET,
         "",
         f"cloud/{component}/",
-        "1",
+        elapsed,
         False,
         "in_progress",
         component=component,
@@ -136,11 +137,14 @@ def test_no_results_uses_merged_message(status, message):
 
 def test_build_only_completion(pr):
     body = pr.comments[0].body
-    body = gs.update_workload_check_block(body, "filestore", "built")
+    body = gs.update_workload_check_block(
+        body, "filestore", "built", build_duration_seconds=65
+    )
     body = gs.update_workload_check_block(body, "filestore", "completed")
     row = parsed_table(Plaque.from_comment(body)).find("tbody/tr")
-    assert texts(row)[0] == texts(row)[5] == texts(row)[-1] == "🟢"
-    assert texts(row)[6] == "Tests not run"
+    assert texts(row)[0] == texts(row)[-1] == "🟢"
+    assert texts(row)[2] == "🟢 1m 5s"
+    assert texts(row)[3] == "Tests not run"
 
 
 def test_standalone_completed_summary_does_not_remain_running(pr):
@@ -161,11 +165,13 @@ def test_retries_share_target_and_keep_each_report(pr):
     comment.body = gs.update_workload_check_block(
         comment.body, "filestore", "running", "https://job/1"
     )
-    comment.body = gs.update_workload_check_block(comment.body, "filestore", "built")
-    publish(pr, iteration=0, failed=True)
-    publish(pr, iteration=1, failed=True)
-    publish(pr, iteration=2)
-    publish(pr, iteration=2)  # A retried comment update is idempotent.
+    comment.body = gs.update_workload_check_block(
+        comment.body, "filestore", "built", build_duration_seconds=125
+    )
+    publish(pr, iteration=0, failed=True, elapsed="6925")
+    publish(pr, iteration=1, failed=True, elapsed="241")
+    publish(pr, iteration=2, elapsed="87")
+    publish(pr, iteration=2, elapsed="87")  # A retried comment update is idempotent.
     gs.update_pr_comment_workload_check(12, pr, PRESET, "filestore", False, "completed")
 
     plaque = Plaque.from_comment(comment.body)
@@ -175,12 +181,9 @@ def test_retries_share_target_and_keep_each_report(pr):
     assert texts(rows[0]) == [
         "🔴",
         "cloud/filestore/",
-        "linux",
-        "x86_64",
-        "relwithdebinfo",
-        "🟢",
+        "🟢 2m 5s",
         "0",
-        "🔴",
+        "🔴 1h 55m 25s",
         "1",
         "0",
         "0",
@@ -191,10 +194,10 @@ def test_retries_share_target_and_keep_each_report(pr):
         "—",
     ]
     assert rows[0][1].get("rowspan") == "3"
-    assert texts(rows[1])[:4] == ["🔴", "—", "1", "🔴"]
-    assert texts(rows[2])[:4] == ["🟢", "—", "2", "🟢"]
+    assert texts(rows[1])[:4] == ["🔴", "—", "1", "🔴 4m 1s"]
+    assert texts(rows[2])[:4] == ["🟢", "—", "2", "🟢 1m 27s"]
     assert texts(rows[2])[-1] == "🟢"
-    assert rows[0][11].find("a").get("href") == "https://reports/filestore/0.html#FAIL"
+    assert rows[0][8].find("a").get("href") == "https://reports/filestore/0.html#FAIL"
     assert plaque.workload("filestore").reports[-1].commit == "abc123"
 
 
@@ -239,6 +242,9 @@ def test_workload_completion_keeps_concurrent_summary(pr):
 
 
 def test_rerun_clears_only_its_previous_attempt(pr):
+    pr.comments[0].body = gs.update_workload_check_block(
+        pr.comments[0].body, "filestore", "built", build_duration_seconds=125
+    )
     publish(pr, failed=True)
     publish(pr, component="blockstore")
     body = gs.update_workload_check_block(pr.comments[0].body, "filestore", "completed")
@@ -248,6 +254,7 @@ def test_rerun_clears_only_its_previous_attempt(pr):
     plaque = Plaque.from_comment(body)
     assert plaque.workload("filestore").reports == []
     assert plaque.workload("filestore").build == ""
+    assert plaque.workload("filestore").build_duration_seconds is None
     assert len(plaque.workload("blockstore").reports) == 1
     assert gs.is_workload_check_update_applied(
         body, "filestore", "running", "https://job/new", require_exact_match=True
@@ -299,12 +306,18 @@ def test_build_failure_and_log_survive_completion(pr):
         "filestore",
         "failed_build",
         build_error_log_url="https://logs/build.html",
+        build_duration_seconds=125,
     )
     body = gs.update_workload_check_block(body, "filestore", "completed")
     body = gs.complete_workload_checks_block(body)
     row = Plaque.from_comment(body).workload("filestore")
     assert row.status == "failed_build"
     assert row.build_error_url == "https://logs/build.html"
+    assert row.build_duration_seconds == 125
+    table = parsed_table(Plaque.from_comment(body))
+    assert (
+        table.find('.//td[@colspan="10"]/span[@title="Build duration"]').text == "2m 5s"
+    )
 
 
 @pytest.mark.parametrize("build_failed_count", [0, 2])
@@ -327,12 +340,13 @@ def test_empty_summary_is_an_error_with_merged_cells(
     plaque = Plaque.from_comment(pr.comments[0].body)
     row = parsed_table(plaque).find("tbody/tr")
     assert texts(row)[0] == "🔴"
-    assert row[7].get("colspan") == "8"
-    assert row[7].find("a").get("href") == "https://logs/build.html"
+    assert row[4].get("colspan") == "8"
+    assert row[4].find("a").get("href") == "https://logs/build.html"
+    assert row[4].find('span[@title="Tests duration"]').text == "3s"
     if build_failed_count:
-        assert "Build failed" in texts(row)[7]
+        assert "Build failed" in texts(row)[4]
     else:
-        assert "No test results" in texts(row)[7]
+        assert "No test results" in texts(row)[4]
 
 
 def test_counts_link_to_each_category_and_aggregate_build_log():
@@ -350,7 +364,7 @@ def test_counts_link_to_each_category_and_aggregate_build_log():
     row.add_report(report)
     table = parsed_table(plaque)
     cells = table.find("tbody/tr")
-    for idx, status in enumerate(gs.TestStatus.summary_table_order(), 9):
+    for idx, status in enumerate(gs.TestStatus.summary_table_order(), 6):
         assert (
             cells[idx].find("a").get("href")
             == f"https://reports/tests.html#{status.name}"
@@ -381,4 +395,98 @@ def test_html_and_hidden_state_escape_values():
     cells = parsed_table(plaque).find("tbody/tr")
     assert cells[1].find("a").get("href") == row.job_url
     assert texts(cells)[1] == report.target
-    assert texts(cells)[2:5] == ["linux", "arm64", "release-asan"]
+    html = ET.fromstring(f"<root>{plaque.render_table()}</root>")
+    assert html.find("p/strong").text == "linux-arm64-release-asan"
+    assert len(html.find("table/thead/tr")) == 13
+
+
+@pytest.mark.parametrize(
+    "seconds,expected",
+    [
+        (0, "0s"),
+        (59, "59s"),
+        (60, "1m 0s"),
+        (3600, "1h 0m 0s"),
+        ("3661", "1h 1m 1s"),
+        (None, "—"),
+        ("", "—"),
+        (-1, "—"),
+        ("invalid", "—"),
+    ],
+)
+def test_duration_format(seconds, expected):
+    assert format_duration(seconds) == expected
+
+
+@pytest.mark.parametrize("seconds", [None, 0, 3661])
+def test_workload_cli_records_build_duration(pr, monkeypatch, seconds):
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    monkeypatch.setenv("GITHUB_RUN_NUMBER", "12")
+    monkeypatch.setattr(wc, "github_client_from_env", lambda: None)
+    monkeypatch.setattr(wc, "load_github_event", lambda: {})
+    monkeypatch.setattr(wc, "pull_request_from_event", lambda *_: pr)  # noqa: U101
+    args = [
+        "workload_comment",
+        "update",
+        "--build-preset",
+        PRESET,
+        "--component",
+        "filestore",
+        "--workload-check-status",
+        "built",
+    ]
+    if seconds is not None:
+        args.extend(["--build-duration-seconds", str(seconds)])
+    monkeypatch.setattr("sys.argv", args)
+    wc.main()
+
+    plaque = Plaque.from_comment(pr.comments[0].body)
+    assert plaque.workload("filestore").build_duration_seconds == seconds
+    cell = parsed_table(plaque).find('tbody/tr/td/span[@title="Build duration"]')
+    if seconds is None:
+        assert cell is None
+    else:
+        assert cell.text == format_duration(seconds)
+
+
+def test_duration_update_retries_when_only_the_timing_is_lost(pr):
+    comment = pr.comments[0]
+    initial = gs.update_workload_check_block(comment.body, "filestore", "built")
+    comment.body = initial
+    original_edit = comment.edit
+
+    def edit(body):
+        original_edit(body)
+        if len(comment.edits) == 1:
+            comment.body = initial
+
+    comment.edit = edit
+    gs.update_pr_comment_workload_check(
+        12, pr, PRESET, "filestore", False, "built", build_duration_seconds=125
+    )
+    assert len(comment.edits) == 2
+    plaque = Plaque.from_comment(comment.body)
+    assert plaque.workload("filestore").build_duration_seconds == 125
+
+
+def test_existing_plaque_without_build_duration_still_loads(pr):
+    body = pr.comments[0].body.replace(',"build_duration_seconds":null', "")
+    plaque = Plaque.from_comment(body)
+    assert plaque.workload("filestore").build_duration_seconds is None
+    assert 'title="Build duration"' not in plaque.render_table()
+
+
+def test_repeated_build_failure_can_add_missing_duration(pr):
+    body = gs.update_workload_check_block(
+        pr.comments[0].body,
+        "filestore",
+        "failed_build",
+        build_error_log_url="https://logs/build.html",
+    )
+    body = gs.update_workload_check_block(
+        body, "filestore", "failed_build", build_duration_seconds=125
+    )
+    workload = Plaque.from_comment(body).workload("filestore")
+    assert workload.status == "failed_build"
+    assert workload.build_error_url == "https://logs/build.html"
+    assert workload.build_duration_seconds == 125

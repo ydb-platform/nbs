@@ -342,7 +342,7 @@ def test_update_pr_comment_creates_new_comment(monkeypatch) -> None:
     ) in body
     assert "This is a simulation, not a real result" in body
     assert "<!-- workload-status -->" in body
-    assert "Workload for **linux** is not finished yet" in body
+    assert "<!-- linux: in_progress -->" in body
     assert "<table>" in body
     assert "commit deadbeef" in body
     assert 'href="https://summary/ya-test.html#PASS"' in body
@@ -420,7 +420,7 @@ def test_update_pr_comment_updates_existing_comment() -> None:
     assert len(pr.created) == 0
     assert len(existing.edits) == 1
     assert "All workloads for **linux** have completed." not in existing.body
-    assert "Workload for **linux** is not finished yet" in existing.body
+    assert "<!-- linux: in_progress -->" in existing.body
     assert "old text" in existing.body
     assert "some tests FAILED for commit abc123." in existing.body
     assert gs.get_comment_revision(existing.body) == 4
@@ -570,7 +570,7 @@ def test_update_pr_comment_workload_status_only_preserves_existing_body() -> Non
 
     assert len(existing.edits) == 1
     assert "Workload for **linux** is not finished yet" not in existing.body
-    assert "All workloads for **linux** have completed." in existing.body
+    assert "<!-- linux: completed -->" in existing.body
     assert gs.get_comment_revision(existing.body) == 8
     assert (
         ":green_circle: **linux**: all tests PASSED for commit abc123." in existing.body
@@ -844,7 +844,7 @@ def test_update_pr_comment_workload_check_does_not_downgrade_workload_status(
         workload_check_status="completed",
     )
 
-    assert "All workloads for **linux** have completed." in existing.body
+    assert "<!-- linux: completed -->" in existing.body
     assert "is not finished yet" not in existing.body
     assert gs.get_workload_check_status(existing.body, "blockstore") == "completed"
 

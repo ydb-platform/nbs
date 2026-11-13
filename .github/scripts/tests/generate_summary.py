@@ -661,21 +661,11 @@ def get_workload_status_text(
     build_preset: str,
     workload_status: str,
 ) -> list[str]:
-    if workload_status == "in_progress":
-        status_note = [
-            "> [!IMPORTANT]",
-            (
-                f"> Workload for **{build_preset}** is not finished yet. "
-                "This comment will be updated after all workloads complete."
-            ),
-        ]
-    else:
-        status_note = [
-            "> [!NOTE]",
-            f"> All workloads for **{build_preset}** have completed.",
-        ]
-
-    return [WORKLOAD_STATUS_START, *status_note, WORKLOAD_STATUS_END]
+    return [
+        WORKLOAD_STATUS_START,
+        f"<!-- {build_preset}: {workload_status} -->",
+        WORKLOAD_STATUS_END,
+    ]
 
 
 def get_comment_header(
@@ -817,6 +807,10 @@ def replace_workload_status_block(
     build_preset: str,
     workload_status: str,
 ) -> str:
+    body = body.replace(
+        "> [!NOTE]\n> Build and test status. Updated as each workload progresses.\n",
+        "",
+    )
     status_block = "\n".join(get_workload_status_text(build_preset, workload_status))
     pattern = re.compile(
         rf"{re.escape(WORKLOAD_STATUS_START)}.*?{re.escape(WORKLOAD_STATUS_END)}",
@@ -943,16 +937,24 @@ def is_workload_check_update_applied(
     status: str,
     job_url: str = "",
     require_exact_match: bool = False,
+    build_duration_seconds: int | None = None,
 ) -> bool:
     current_status = get_workload_check_status(body, component)
     if current_status is None:
+        return False
+
+    plaque = Plaque.from_comment(body)
+    if (
+        plaque is not None
+        and build_duration_seconds is not None
+        and plaque.workload(component).build_duration_seconds != build_duration_seconds
+    ):
         return False
 
     if require_exact_match:
         if current_status != status:
             return False
 
-        plaque = Plaque.from_comment(body)
         if plaque is not None:
             return not job_url or plaque.workload(component).job_url == job_url
 
@@ -977,10 +979,13 @@ def update_workload_check_block(
     status: str,
     job_url: str = "",
     build_error_log_url: str = "",
+    build_duration_seconds: int | None = None,
 ) -> str:
     plaque = Plaque.from_comment(body)
     if plaque is not None:
-        plaque.workload(component).update(status, job_url, build_error_log_url)
+        plaque.workload(component).update(
+            status, job_url, build_error_log_url, build_duration_seconds
+        )
         return plaque.replace(body)
 
     match = get_workload_check_line_match(body, component)
@@ -1170,13 +1175,6 @@ def get_base_comment_body(
                 "",
             ]
         )
-    body.extend(
-        [
-            "> [!NOTE]",
-            "> Build and test status. Updated as each workload progresses.",
-            "",
-        ]
-    )
     body.extend(get_workload_status_text(build_preset, workload_status))
     body.append("")
     plaque = Plaque(build_preset)
@@ -1379,6 +1377,7 @@ def update_pr_comment_workload_check(
     workload_check_status: str,
     job_url: str = "",
     build_error_log_url: str = "",
+    build_duration_seconds: int | None = None,
 ) -> None:
     header_prefix = get_comment_header_prefix(
         pr.number,
@@ -1418,6 +1417,7 @@ def update_pr_comment_workload_check(
             workload_check_status,
             job_url,
             build_error_log_url,
+            build_duration_seconds,
         ),
         is_applied=lambda body: is_workload_check_update_applied(
             body,
@@ -1425,6 +1425,7 @@ def update_pr_comment_workload_check(
             workload_check_status,
             job_url,
             require_exact_match=workload_check_status in ("running", "completed"),
+            build_duration_seconds=build_duration_seconds,
         ),
         operation=f"workload check {component} -> {workload_check_status}",
     )
