@@ -11,7 +11,6 @@
 #include <util/generic/cast.h>
 #include <util/generic/yexception.h>
 #include <util/string/builder.h>
-#include <util/string/join.h>
 
 #include <cstring>
 #include <utility>
@@ -113,7 +112,7 @@ TError ValidateCompressionSettings(ui32 blockSize, ui32 chunkSize)
 TError ValidateCompressBlobInput(
     ui32 blockSize,
     ui32 chunkSize,
-    const TSgList& blobPayload)
+    std::span<const TBlockDataRef> blobPayload)
 {
     if (auto error = ValidateCompressionSettings(blockSize, chunkSize);
         HasError(error))
@@ -147,7 +146,7 @@ TError ValidateReadBlobInput(
     ui32 chunkSize,
     const TCompressionMetadata& compression,
     ui32 blobSize,
-    const TVector<ui16>& blockOffsets,
+    std::span<const ui16> blockOffsets,
     ui32& lastChunkSize)
 {
     if (auto error = ValidateCompressionSettings(blockSize, chunkSize);
@@ -189,8 +188,8 @@ TError ValidateDecompressBlobInput(
     ui32 chunkSize,
     const TCompressionMetadata& compression,
     ui32 blobSize,
-    const TVector<ui16>& blockOffsets,
-    const TSgList& outputBuffers,
+    std::span<const ui16> blockOffsets,
+    std::span<const TBlockDataRef> outputBuffers,
     ui32& lastChunkSize)
 {
     if (outputBuffers.size() != blockOffsets.size()) {
@@ -300,7 +299,7 @@ TResultOrError<TCompressedBlob> CompressBlob(
     ui32 blockSize,
     ui32 chunkSize,
     TCompressionMetadata::ECompressionType compressionType,
-    const TSgList& blobPayload)
+    std::span<const TBlockDataRef> blobPayload)
 {
     if (auto error =
             ValidateCompressBlobInput(blockSize, chunkSize, blobPayload);
@@ -326,9 +325,7 @@ TResultOrError<TCompressedBlob> CompressBlob(
         const size_t blockCount =
             Min(blocksPerChunk, blobPayload.size() - blockIndex);
 
-        auto subList = std::span<const TBlockDataRef>(
-            &blobPayload[blockIndex],
-            blockCount);
+        auto subList = blobPayload.subspan(blockIndex, blockCount);
 
         chunk.ReserveAndResize(blockCount * blockSize);
         SgListCopy(subList, TBlockDataRef(chunk.data(), chunk.size()));
@@ -357,11 +354,11 @@ TResultOrError<TCompressedBlob> CompressBlob(
 
 TError DecompressBlob(
     ui32 blockSize,
-    const TVector<TRope>& compressedBuffers,
+    const TRope& compressedData,
     const TCompressionMetadata& compression,
     ui32 blobSize,
-    const TVector<ui16>& blockOffsets,
-    const TSgList& outputBuffers,
+    std::span<const ui16> blockOffsets,
+    std::span<const TBlockDataRef> outputBuffers,
     TVector<ui32>* blockChecksums)
 {
     const ui32 chunkSize = compression.GetChunkSize();
@@ -379,7 +376,7 @@ TError DecompressBlob(
         return error;
     }
 
-    if (compressedBuffers.empty()) {
+    if (compressedData.empty()) {
         if (!blockOffsets.empty()) {
             return MakeError(E_REJECTED, "Missing compressed buffers");
         }
@@ -392,10 +389,6 @@ TError DecompressBlob(
     }
     const auto* codec = codecOrError.GetResult();
 
-    TRope compressedData;
-    for (const auto& buffer: compressedBuffers) {
-        compressedData.Insert(compressedData.End(), TRope(buffer));
-    }
     TRope::TConstIterator iter = compressedData.Begin();
     size_t remainingBytes = compressedData.GetSize();
 
@@ -469,7 +462,7 @@ TResultOrError<TReadPlan> PlanReadBlob(
     ui32 blockSize,
     const NKikimr::TLogoBlobID& blobId,
     const TCompressionMetadata& compression,
-    const TVector<ui16>& blockOffsets)
+    std::span<const ui16> blockOffsets)
 {
     if (blockOffsets.empty()) {
         return TReadPlan{};
@@ -493,7 +486,7 @@ TResultOrError<TReadPlan> PlanReadBlob(
     using TQuery = NKikimr::TEvBlobStorage::TEvGet::TQuery;
 
     size_t queryCount = 0;
-    std::optional<ui16> lastChunkIndex;
+    std::optional<size_t> lastChunkIndex;
     for (const auto blockOffset: blockOffsets) {
         const size_t chunk =
             (static_cast<ui64>(blockOffset) * blockSize) / chunkSize;
@@ -505,12 +498,13 @@ TResultOrError<TReadPlan> PlanReadBlob(
         lastChunkIndex = chunk;
     }
 
-    TArrayHolder<TQuery> queries(new TQuery[queryCount]);
-    size_t queriesCount = 0;
+    TVector<TQuery> queries;
+    queries.reserve(queryCount);
     size_t nextChunk = 0;
     ui64 offset = 0;
 
     TVector<TBlockRange32> queryBlocksRanges;
+    queryBlocksRanges.reserve(queryCount);
 
     for (const auto blockOffset: blockOffsets) {
         const ui64 blockStart = static_cast<ui64>(blockOffset) * blockSize;
@@ -528,16 +522,14 @@ TResultOrError<TReadPlan> PlanReadBlob(
         }
         const ui64 size =
             GetCompressedChunkSize(compression, lastChunkSize, chunk);
-        auto* previousQuery =
-            queriesCount ? &queries[queriesCount - 1] : nullptr;
+        auto* previousQuery = queries.empty() ? nullptr : &queries.back();
         if (previousQuery &&
             static_cast<ui64>(previousQuery->Shift) + previousQuery->Size ==
                 offset)
         {
             previousQuery->Size += SafeIntegerCast<ui32>(size);
         } else {
-            Y_ABORT_UNLESS(queriesCount < queryCount);
-            queries[queriesCount++].Set(
+            queries.emplace_back().Set(
                 blobId,
                 SafeIntegerCast<ui32>(offset),
                 SafeIntegerCast<ui32>(size));
@@ -549,16 +541,8 @@ TResultOrError<TReadPlan> PlanReadBlob(
         nextChunk = chunk + 1;
     }
 
-    Y_ABORT_UNLESS(
-        queriesCount == queryCount,
-        "Expected %zu requests, got %zu, offsets: %s",
-        queryCount,
-        queriesCount,
-        JoinSeq(", ", blockOffsets).c_str());
-
     return TReadPlan{
         .Queries = std::move(queries),
-        .QueryCount = queryCount,
         .QueryBlockRanges = std::move(queryBlocksRanges)};
 }
 

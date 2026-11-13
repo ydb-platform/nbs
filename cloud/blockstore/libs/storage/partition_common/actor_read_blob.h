@@ -48,6 +48,8 @@ private:
     const bool PassTraceIdToBlobstorage = false;
 
     TVector<TBlockRange32> QueryBlockRanges;
+    TVector<NKikimr::TEvBlobStorage::TEvGet::TQuery> Queries;
+    ui32 BytesCount = 0;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -71,7 +73,7 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    TReadPlan GetQueries() const;
+    TResultOrError<TReadPlan> GetQueries() const;
 
     void SendGetRequest(const NActors::TActorContext& ctx);
     void NotifyCompleted(
@@ -84,9 +86,9 @@ private:
 
     void ReplyError(
         const NActors::TActorContext& ctx,
-        const NKikimr::TEvBlobStorage::TEvGetResult& response,
         const NProto::TError& error,
-        EErrorSource errorSource);
+        EErrorSource errorSource,
+        const NKikimr::TEvBlobStorage::TEvGetResult& response);
 
     void ReplyError(
         const NActors::TActorContext& ctx,
@@ -105,7 +107,13 @@ private:
         const NKikimr::TEvBlobStorage::TEvGetResult* msg,
         const TSgList& sglist,
         const NActors::TActorContext& ctx,
-        TDataThatCanBeProcessed& dataThatCanBeProcessed) const;
+        TDataThatCanBeProcessed* dataThatCanBeProcessed) const;
+
+    TResultOrError<TVector<ui32>> DecompressReadResultToSglist(
+        std::span<const NKikimr::TEvBlobStorage::TEvGetResult::TResponse>
+            responses,
+        std::span<const TBlockDataRef> sglist,
+        std::span<const ui16> blockOffsets);
 
     TResultOrError<TVector<ui32>> CopyReadResultToSglist(
         std::span<NKikimr::TEvBlobStorage::TEvGetResult::TResponse> responses,

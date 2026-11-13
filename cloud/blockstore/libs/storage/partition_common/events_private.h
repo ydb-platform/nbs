@@ -106,18 +106,21 @@ struct TEvPartitionCommonPrivate
         bool Async = false;
         TInstant Deadline;
         bool ShouldCalculateChecksums = false;
+        std::optional<NProto::TCompressionMetadata> CompressionMetadata;
 
         TReadBlobRequest() = default;
 
         TReadBlobRequest(
-                const NKikimr::TLogoBlobID& blobId,
-                NActors::TActorId proxy,
-                TVector<ui16> blobOffsets,
-                TGuardedSgList sglist,
-                ui32 groupId,
-                bool async,
-                TInstant deadline,
-                bool shouldCalculateChecksums)
+            const NKikimr::TLogoBlobID& blobId,
+            NActors::TActorId proxy,
+            TVector<ui16> blobOffsets,
+            TGuardedSgList sglist,
+            ui32 groupId,
+            bool async,
+            TInstant deadline,
+            bool shouldCalculateChecksums,
+            std::optional<NProto::TCompressionMetadata> compressionMetadata =
+                std::nullopt)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))
@@ -126,6 +129,7 @@ struct TEvPartitionCommonPrivate
             , Async(async)
             , Deadline(deadline)
             , ShouldCalculateChecksums(shouldCalculateChecksums)
+            , CompressionMetadata(std::move(compressionMetadata))
         {}
     };
 
