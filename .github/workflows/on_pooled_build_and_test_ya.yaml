@@ -103,7 +103,7 @@ env:
 
 jobs:
   calculate-runs-on:
-    name: Calculate runs-on
+    name: Calculate runs-on [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}]
     runs-on: [ self-hosted, "self-hosted", "runner_light" ]
     outputs:
       runs-on: ${{ steps.set-runs-on.outputs.LABELS_LIST }}
@@ -350,7 +350,7 @@ jobs:
         component: ${{ inputs.component == '' && 'all' || inputs.component }}
         workload_check_status: completed
   debug:
-    name: Debug
+    name: Debug [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}]
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     needs:
       - calculate-runs-on

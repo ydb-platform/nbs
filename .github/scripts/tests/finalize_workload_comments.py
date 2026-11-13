@@ -94,12 +94,46 @@ def find_workload_job_conclusion(
     marker = workload_job_marker(build_preset, component, target_platform)
     matches = []
     for job in jobs:
-        job_name = getattr(job, "name", None) or ""
-        if marker in job_name and BUILD_AND_TEST_JOB_NAME_PREFIX in job_name:
+        job_name = (getattr(job, "name", None) or "").rsplit(" / ", 1)[-1]
+        if marker in job_name and job_name.startswith(BUILD_AND_TEST_JOB_NAME_PREFIX):
             matches.append(job)
     if len(matches) != 1:
         return None
     return getattr(matches[0], "conclusion", None)
+
+
+def find_workflow_conclusion(
+    jobs: WorkflowJobs,
+    build_preset: BuildPreset,
+    component: Component,
+    target_platform: TargetPlatform,
+    job_id: int | None = None,
+) -> JobConclusion:
+    marker = workload_job_marker(build_preset, component, target_platform)
+    conclusions = [
+        getattr(job, "conclusion", None)
+        for job in jobs
+        if marker in (getattr(job, "name", None) or "").rsplit(" / ", 1)[-1]
+        or (job_id is not None and getattr(job, "id", None) == job_id)
+    ]
+    for failure in (
+        "failure",
+        "action_required",
+        "startup_failure",
+        "timed_out",
+        "cancelled",
+    ):
+        if failure in conclusions:
+            return failure
+    if not conclusions or None in conclusions:
+        return None
+    if all(conclusion == "skipped" for conclusion in conclusions):
+        return "skipped"
+    if all(
+        conclusion in ("success", "neutral", "skipped") for conclusion in conclusions
+    ):
+        return "success"
+    return None
 
 
 def resolve_job_conclusion(
@@ -109,8 +143,23 @@ def resolve_job_conclusion(
     target_platform: TargetPlatform,
     current_run_id: WorkflowRunId,
     jobs_for_run: JobsForRun,
+    *,
+    include_related_jobs: bool = False,
 ) -> JobConclusion:
     job_ref = parse_actions_job_url(job_url)
+    if include_related_jobs:
+        # A successful build job can be followed by a failed VM cleanup job.
+        # Match the same component and platform without borrowing failures from
+        # other matrix entries or a different workflow run.
+        conclusion = find_workflow_conclusion(
+            jobs_for_run(job_ref[0] if job_ref else current_run_id),
+            build_preset,
+            component,
+            target_platform,
+            job_ref[1] if job_ref else None,
+        )
+        if conclusion is not None:
+            return conclusion
     if job_ref is not None:
         run_id, job_id = job_ref
         conclusion = None
@@ -204,6 +253,7 @@ def main() -> None:
             target_platform,
             current_run_id,
             jobs_for_run,
+            include_related_jobs=True,
         )
         job_conclusion_cache[cache_key] = conclusion
         return conclusion

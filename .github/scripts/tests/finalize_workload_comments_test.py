@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from scripts.tests import finalize_workload_comments as fwc
 
 
@@ -171,4 +173,89 @@ def test_find_workload_job_conclusion_distinguishes_target_platforms() -> None:
             "default-linux-armv9a_grace",
         )
         == "cancelled"
+    )
+
+
+@pytest.mark.parametrize("cleanup_conclusion", ["success", "failure", "timed_out"])
+def test_resolve_workflow_conclusion_includes_cleanup_in_the_linked_run(
+    cleanup_conclusion,
+):
+    marker = fwc.workload_job_marker("relwithdebinfo", "blockstore", "native")
+    jobs = [
+        SimpleNamespace(
+            id=123,
+            name=f"Build and test / Build and test {marker}",
+            conclusion="success",
+        ),
+        SimpleNamespace(
+            id=124,
+            name=f"Build and test / Release self-hosted runner {marker}",
+            conclusion=cleanup_conclusion,
+        ),
+    ]
+
+    def jobs_for_run(run_id):
+        assert run_id == 456
+        return jobs
+
+    assert (
+        fwc.resolve_job_conclusion(
+            "https://github.com/org/repo/actions/runs/456/job/123",
+            "relwithdebinfo",
+            "blockstore",
+            "native",
+            999,
+            jobs_for_run,
+            include_related_jobs=True,
+        )
+        == cleanup_conclusion
+    )
+    # Cleanup jobs must not make the build-job fallback ambiguous.
+    assert (
+        fwc.find_workload_job_conclusion(jobs, "relwithdebinfo", "blockstore", "native")
+        == "success"
+    )
+
+
+def test_workflow_conclusion_ignores_failures_in_other_matrix_entries():
+    marker = fwc.workload_job_marker("relwithdebinfo", "blockstore", "native")
+    jobs = [SimpleNamespace(name=f"Build and test {marker}", conclusion="success")]
+    for preset, component, platform in [
+        ("relwithdebinfo", "filestore", "native"),
+        ("release-asan", "blockstore", "native"),
+        ("relwithdebinfo", "blockstore", "default-linux-armv9a_grace"),
+    ]:
+        other = fwc.workload_job_marker(preset, component, platform)
+        jobs.append(
+            SimpleNamespace(
+                name=f"Build and test {marker} / Release self-hosted runner {other}",
+                conclusion="failure",
+            )
+        )
+    assert (
+        fwc.find_workflow_conclusion(jobs, "relwithdebinfo", "blockstore", "native")
+        == "success"
+    )
+
+
+@pytest.mark.parametrize(
+    "conclusions,expected",
+    [
+        (["success", "skipped"], "success"),
+        (["skipped", "skipped"], "skipped"),
+        (["success", "cancelled"], "cancelled"),
+        (["success", None], None),
+        (["success", "unknown"], None),
+        ([], None),
+    ],
+)
+def test_workflow_conclusion_handles_optional_or_unfinished_jobs(conclusions, expected):
+    marker = fwc.workload_job_marker("relwithdebinfo", "blockstore", "native")
+    jobs = [
+        SimpleNamespace(name=f"Job {marker}", conclusion=conclusion)
+        for conclusion in conclusions
+    ]
+    assert (
+        fwc.find_workflow_conclusion(jobs, "relwithdebinfo", "blockstore", "native")
+        == expected
     )
