@@ -147,14 +147,14 @@ Y_UNIT_TEST_SUITE(TServerTest)
                   (certs / "server.crt").GetPath()}}));
         auto client = factory.CreateClientBuilder()
             .SetSecureEndpoint(securePort, "certs/server.crt", "test")
-            .BuildMultiHostClient();
+            .BuildEndpointFactory();
         server->Start();
         client->Start();
         Y_DEFER {
             client->Stop();
             server->Stop();
         };
-        // Only a validated secure-control request can carry a forwarding marker.
+        // Cell forwarding supports both secure and plaintext control ports.
         auto endpoint = client->CreateIOEndpoint("localhost", port, false);
         endpoint->Start();
         Y_DEFER { endpoint->Stop(); };
@@ -162,7 +162,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         secureEndpoint->Start();
         Y_DEFER { secureEndpoint->Stop(); };
         for (size_t i = 0; i < completed.size(); ++i) {
-            const bool forwarded = i < 4;
+            const bool forwarded = i < 8;
             const bool spoofedInternal = i >= 12;
             const bool failed = i % 4 >= 2 || spoofedInternal;
             auto io = i < 4 || (i >= 8 && i < 10) || spoofedInternal
@@ -214,9 +214,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
             ->GetSubgroup("cloud", "")
             ->GetSubgroup("folder", "")
             ->GetSubgroup("type", "network-ssd-nonreplicated");
-        UNIT_ASSERT_VALUES_EQUAL(4, group->GetCounter("LatencyGoodOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(6, group->GetCounter("LatencyBadOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(10, group->GetCounter("LatencyTotalOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(4, group->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(6, group->GetCounter("LatencyTotalOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyUnknownOps", true)->Val());
     }
 

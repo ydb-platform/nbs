@@ -832,8 +832,8 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
     TVector<char> guest(size, 'W');
     std::array buffers{vhd_buffer{.base = guest.data(), .len = size}};
 
-    // -1 means that all the parts succeed.
-    for (int failedPart: {-1, 0, 1, 2}) {
+    // Negative means all parts succeed; -2 also makes the parent slow.
+    for (int failedPart: {-2, -1, 0, 1, 2}) {
         std::array<size_t, 3> order{0, 1, 2};
         do {
             SCOPED_TRACE(
@@ -857,6 +857,13 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
 
             auto latencySli = TLatencySliConfig::TryParse(
                 "1;1:1:1048576:1000000000000000").value();
+            if (failedPart == -2) {
+                const auto elapsed = DurationToCyclesSafe(TDuration::Seconds(1));
+                const auto now = GetCycleCount();
+                ASSERT_GT(now, elapsed);
+                subs[0]->GetParentRequest()->SubmitTs = now - elapsed;
+                latencySli.Thresholds[1][0].ThresholdUs = 100000;
+            }
             TAtomicStats stats;
             stats.SetLatencySli(std::make_shared<const TLatencySliConfig>(latencySli));
             for (size_t i: order) {
@@ -865,6 +872,11 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
                     static_cast<int>(i) == failedPart ? VHD_BDEV_IOERR
                                                       : VHD_BDEV_SUCCESS,
                     stats);
+                if (i != order.back()) {
+                    EXPECT_TRUE(CompletedBios.empty());
+                    EXPECT_EQ(0u, stats.Requests[VHD_BDEV_WRITE].LatencyGood.load());
+                    EXPECT_EQ(0u, stats.Requests[VHD_BDEV_WRITE].LatencyBad.load());
+                }
             }
 
             EXPECT_EQ(failedPart == -1 ? 1u : 0u,
@@ -875,7 +887,7 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
             ASSERT_EQ(1u, CompletedBios.size());
             EXPECT_EQ(&bio.io, CompletedBios[0].Io);
             EXPECT_EQ(
-                failedPart == -1 ? VHD_BDEV_SUCCESS : VHD_BDEV_IOERR,
+                failedPart < 0 ? VHD_BDEV_SUCCESS : VHD_BDEV_IOERR,
                 CompletedBios[0].Status);
         } while (std::next_permutation(order.begin(), order.end()));
     }

@@ -52,6 +52,24 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         UNIT_ASSERT(lifetime.expired());
     }
 
+    Y_UNIT_TEST(ShouldPreserveProducerConfigOnMoveAndSelfAssignment)
+    {
+        using namespace NCloud::NBlockStore;
+        TSimpleStats producer;
+        producer.SetLatencySli(std::make_shared<const TLatencySliConfig>(
+            TLatencySliConfig::TryParse("1;0:1:8193:1000").value()));
+        auto* alias = &producer;
+        producer = *alias;
+        producer = std::move(*alias);
+        UNIT_ASSERT(producer.LatencySli);
+        TSimpleStats moved(std::move(producer));
+        UNIT_ASSERT(!producer.LatencySli);
+        producer = std::move(moved);
+        UNIT_ASSERT(!moved.LatencySli);
+        producer.RecordLatency(false, 4096, 0, true);
+        UNIT_ASSERT_VALUES_EQUAL(1, producer.Requests[0].LatencyBad);
+    }
+
     Y_UNIT_TEST(ShouldSnapshotIdleAndFailedCompletions)
     {
         using namespace NCloud::NBlockStore;

@@ -661,6 +661,17 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
             ++requestCounter;
         };
 
+        ui32 startedRequests = 0;
+        serverStats->RequestStartedHandler = [&](TLog&, TMetricRequest& request,
+                                                TCallContext&, const TString&) {
+            const ui64 bytes = !expectedUnaligned ? DefaultBlockSize
+                : request.RequestType == EBlockStoreRequest::ReadBlocks ? 11 * 512
+                : request.RequestType == EBlockStoreRequest::WriteBlocks ? 13 * 512
+                : 8 * 512;
+            UNIT_ASSERT_VALUES_EQUAL(bytes, request.OriginalRequestBytes);
+            ++startedRequests;
+        };
+
         auto factory = CreateServerHandlerFactory(
             CreateDefaultDeviceHandlerFactory(),
             bootstrap->GetLogging(),
@@ -689,6 +700,7 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
         expectedBlockCount = 2;
         expectedRequestCounter += 3;
         ProcessUnalignedRequests(*handler, in, out);
+        UNIT_ASSERT_VALUES_EQUAL(expectedRequestCounter, startedRequests);
 
         bootstrap->Stop();
     }

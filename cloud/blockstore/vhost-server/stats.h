@@ -141,6 +141,9 @@ struct TStats
 
     TStats() = default;
 
+    TStats(TStats&&) noexcept requires std::is_same_v<T, ui64> = default;
+    TStats& operator=(TStats&&) noexcept requires std::is_same_v<T, ui64> = default;
+
     TStats(const TStats& rhs) noexcept
         requires std::is_same_v<T, ui64>
     {
@@ -150,7 +153,7 @@ struct TStats
     TStats& operator=(const TStats& rhs) noexcept
         requires std::is_same_v<T, ui64>
     {
-        return operator=<T>(rhs);
+        return this == &rhs ? *this : operator=<T>(rhs);
     }
 
     template <typename U>

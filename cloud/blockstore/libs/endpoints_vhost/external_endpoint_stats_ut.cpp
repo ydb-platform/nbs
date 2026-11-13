@@ -229,27 +229,54 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyUnknownOps", true)->Val());
         auto mismatched = LatencySnapshot(12);
         mismatched["latency_sli"]["config"] = "1;0:1:8193:2000";
+        mismatched["read"]["count"] = ui64(1);
         reader.Update(mismatched);
-        reader.Update(LatencySnapshot(13));
+        auto matching = LatencySnapshot(13);
+        matching["read"]["count"] = ui64(1);
+        reader.Update(matching);
         reader.Update(LatencySnapshot(0)); // no unsigned underflow or replay
         reader.Update(LatencySnapshot(13));
-        UNIT_ASSERT_VALUES_EQUAL(12, group->GetCounter("LatencyGoodOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, group->GetCounter("LatencyUnknownOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(11, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyUnknownOps", true)->Val());
 
         // A restarted child owns a fresh stats pipe and a new reader.
         TEndpointStats restarted{f.ClientId, f.DiskId, f.ServerStats};
         restarted.Update(LatencySnapshot(3));
-        UNIT_ASSERT_VALUES_EQUAL(15, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(14, group->GetCounter("LatencyGoodOps", true)->Val());
         auto legacy = NJson::TJsonMap{{"read", NJson::TJsonMap{
             {"count", ui64(2)}, {"errors", ui64(1)}}}};
         restarted.Update(legacy);
         UNIT_ASSERT_VALUES_EQUAL(4, group->GetCounter("LatencyUnknownOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, group->GetCounter("LatencyBadOps", true)->Val());
         auto baseline = LatencySnapshot(5);
         baseline["read"]["count"] = ui64(1);
         restarted.Update(baseline); // do not replay legacy operations as Good
         restarted.Update(LatencySnapshot(6));
-        UNIT_ASSERT_VALUES_EQUAL(16, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(15, group->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(5, group->GetCounter("LatencyUnknownOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, group->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(16, group->GetCounter("LatencyTotalOps", true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldKeepFailuresWithIncompatibleLatencyConfig)
+    {
+        for (const auto* operation: {"read", "write"}) {
+            for (const char* config: {"", "1;0:1:8193:2000"}) {
+                TFixture f(true);
+                TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
+                auto snapshot = LatencySnapshot(0);
+                snapshot["latency_sli"]["config"] = config;
+                snapshot[operation]["count"] = ui64(3);
+                snapshot[operation]["errors"] = ui64(2);
+                snapshot[operation]["latency_bad"] = ui64(5);
+                reader.Update(snapshot);
+                auto group = f.GetLatencyCounters();
+                UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyGoodOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyBadOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyTotalOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(3, group->GetCounter("LatencyUnknownOps", true)->Val());
+            }
+        }
     }
 
     Y_UNIT_TEST(ShouldRecoverFromMalformedLatencyCounts)
@@ -263,19 +290,22 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
                 TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
                 auto group = f.GetLatencyCounters();
                 reader.Update(LatencySnapshot(2));
-                auto malformed = LatencySnapshot(3);
+                auto malformed = LatencySnapshot(3, 1);
                 malformed["read"][field] = invalid;
                 malformed["read"]["count"] = ui64(1);
+                malformed["read"]["errors"] = ui64(1);
                 reader.Update(malformed);
-                auto baseline = LatencySnapshot(4);
+                auto baseline = LatencySnapshot(4, 2);
                 baseline["read"]["count"] = ui64(1);
+                baseline["read"]["errors"] = ui64(1);
                 reader.Update(baseline);
-                auto next = LatencySnapshot(5);
+                auto next = LatencySnapshot(5, 2);
                 next["read"]["latency_good"] = i64(5); // nonnegative signed JSON is valid
                 reader.Update(next);
                 UNIT_ASSERT_VALUES_EQUAL(3, group->GetCounter("LatencyGoodOps", true)->Val());
                 UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyUnknownOps", true)->Val());
-                UNIT_ASSERT_VALUES_EQUAL(3, group->GetCounter("LatencyTotalOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyBadOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(5, group->GetCounter("LatencyTotalOps", true)->Val());
             }
         }
     }

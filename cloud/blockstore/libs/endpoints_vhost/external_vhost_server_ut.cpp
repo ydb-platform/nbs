@@ -465,9 +465,19 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
         // An older child must not receive --latency-sli in argv. The real
         // exec path must replace only this environment variable and preserve
         // unrelated arguments, inherited variables and the parent PID option.
-        const TVector<TString> configs{"1;0:1:8193:1000", ""};
+        TLatencySliConfig oversized;
+        oversized.Enabled = true;
+        // Exceed Linux's per-string exec limit with a valid threshold table.
+        const auto execStringLimit = static_cast<size_t>(sysconf(_SC_PAGESIZE)) * 32;
+        for (size_t i = 0; i < execStringLimit; ++i) {
+            oversized.Thresholds[0].push_back({i, i + 1, 1000});
+        }
+        UNIT_ASSERT(oversized.Validate());
+        const auto serialized = oversized.Serialize();
+        UNIT_ASSERT(serialized.size() > execStringLimit);
+        const TVector<TString> configs{"1;0:1:8193:1000", "", serialized};
         for (const auto& config: configs) {
-            const TString& expected = config;
+            const TString expected = config.size() > execStringLimit ? "" : config;
             TString script = TStringBuilder()
                 << "set -eu\n"
                 << "test \"$NBS_LATENCY_SLI_CONFIG\" = '" << expected << "'\n"
@@ -481,6 +491,15 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
             auto child = SpawnChild("/bin/sh", std::move(args), config);
             const auto error = child.Wait();
             UNIT_ASSERT_C(!HasError(error), FormatError(error));
+            if (config.size() > execStringLimit) {
+                char message[512];
+                const auto size = child.StdErr.Read(message, sizeof(message));
+                UNIT_ASSERT(size > 0);
+                NJson::TJsonValue warning;
+                UNIT_ASSERT(NJson::ReadJsonTree(TStringBuf(message, size), &warning));
+                UNIT_ASSERT_VALUES_EQUAL(TLOG_WARNING, warning["priority"].GetInteger());
+                UNIT_ASSERT_STRING_CONTAINS(warning["message"].GetString(), "SLI disabled");
+            }
             UNIT_ASSERT_VALUES_EQUAL(parentConfig, GetEnv("NBS_LATENCY_SLI_CONFIG"));
         }
     }

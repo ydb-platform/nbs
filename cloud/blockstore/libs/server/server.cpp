@@ -741,10 +741,9 @@ private:
             *Request->MutableHeaders());
 
         if constexpr (IsReadWriteRequest(TMethod::Request)) {
-            // Match the trusted source accepted by cell forwarding. Client
-            // headers alone must not exclude a request from latency SLI.
+            // CellId marks inter-cell I/O on both secure and plaintext gRPC.
+            // This is an accounting marker, not an authorization decision.
             MetricRequest.ForwardedRequest =
-                *source == NProto::SOURCE_SECURE_CONTROL_CHANNEL &&
                 !Request->GetHeaders().GetCellId().empty();
         }
 

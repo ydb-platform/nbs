@@ -286,7 +286,7 @@ TChild SpawnChild(
     const TString& latencySli)
 {
     // Use an environment extension so older external binaries can still run:
-    // they ignore the setting and their operations are reported as Unknown.
+    // they ignore the setting and successful operations are reported as Unknown.
     TString latencySliEnv = "NBS_LATENCY_SLI_CONFIG=" + latencySli;
     TVector<char*> qenv;
     for (char** entry = environ; *entry; ++entry) {
@@ -294,8 +294,10 @@ TChild SpawnChild(
             qenv.push_back(*entry);
         }
     }
+    const size_t latencySliIndex = qenv.size();
     qenv.push_back(latencySliEnv.Detach());
     qenv.push_back(nullptr);
+    char disabledLatencySli[] = "NBS_LATENCY_SLI_CONFIG=";
 
     args.push_back("--blockstore-service-pid=" + ToString(::getpid()));
 
@@ -344,6 +346,16 @@ TChild SpawnChild(
         qargs.emplace_back();
 
         ::execvpe(binaryPath.c_str(), qargs.data(), qenv.data());
+        if (errno == E2BIG && !latencySli.empty()) {
+            // Both the per-string and aggregate exec limits can be exceeded.
+            // This optional metric must not prevent the endpoint from starting.
+            constexpr char warning[] =
+                "{\"priority\":4,\"message\":\"Latency SLI config exceeds exec limits; "
+                "starting with SLI disabled\"}\n";
+            (void)::write(STDERR_FILENO, warning, sizeof(warning) - 1);
+            qenv[latencySliIndex] = disabledLatencySli;
+            ::execvpe(binaryPath.c_str(), qargs.data(), qenv.data());
+        }
     }
 
     int err = errno;

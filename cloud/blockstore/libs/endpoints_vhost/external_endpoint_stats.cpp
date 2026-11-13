@@ -92,17 +92,6 @@ void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats)
 
     for (size_t write = 0; write < 2; ++write) {
         const auto& value = stats[write ? "write" : "read"];
-        if (!versioned) {
-            LatencyNeedsBaseline[write] = true;
-            if (counters) {
-                // Old producers have separate size/time histograms, which
-                // cannot establish a per-request latency SLI decision.
-                counters->Add(0, 0,
-                    value["count"].GetUInteger() + value["errors"].GetUInteger());
-            }
-            continue;
-        }
-
         std::array<ui64, 3> current = {
             value["latency_good"].GetUInteger(),
             value["latency_bad"].GetUInteger(),
@@ -110,15 +99,16 @@ void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats)
         auto& previous = LatencyPrevious[write];
         const bool present = value["latency_good"].IsUInteger() &&
             value["latency_bad"].IsUInteger() && value["latency_unknown"].IsUInteger();
-        if (!present || LatencyNeedsBaseline[write]) {
-            // Re-establish a baseline after incomplete data without replaying
-            // operations already reported as Unknown from the legacy counters.
+        const bool usable = versioned && matching && present;
+        if (!usable || LatencyNeedsBaseline[write]) {
+            // Legacy counts preserve failures even without usable thresholds.
+            // Rebaseline before resuming cumulative SLI counts to avoid replay.
             if (counters) {
-                counters->Add(0, 0,
-                    value["count"].GetUInteger() + value["errors"].GetUInteger());
+                counters->Add(
+                    0, value["errors"].GetUInteger(), value["count"].GetUInteger());
             }
-            LatencyNeedsBaseline[write] = !present;
-            if (present) {
+            LatencyNeedsBaseline[write] = !usable;
+            if (usable) {
                 previous = current;
             }
             continue;
@@ -135,11 +125,7 @@ void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats)
         const ui64 unknown = current[2] - previous[2];
         previous = current;
         if (counters) {
-            if (matching) {
-                counters->Add(good, bad, unknown);
-            } else {
-                counters->Add(0, 0, good + bad + unknown);
-            }
+            counters->Add(good, bad, unknown);
         }
     }
 }
