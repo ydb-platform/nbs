@@ -6,6 +6,7 @@ from xml.etree import ElementTree as ET
 import pytest
 
 from scripts.tests import generate_summary as gs
+from scripts.tests import finalize_workload_comments as fwc
 from scripts.tests import workload_comment as wc
 from scripts.tests.status_plaque import Plaque, Report, format_duration
 
@@ -248,6 +249,9 @@ def test_rerun_clears_only_its_previous_attempt(pr):
     publish(pr, failed=True)
     publish(pr, component="blockstore")
     body = gs.update_workload_check_block(pr.comments[0].body, "filestore", "completed")
+    body = gs.complete_workload_checks_block(
+        body, lambda _url, _component: "failure"  # noqa: U101
+    )
     body = gs.update_workload_check_block(
         body, "filestore", "running", "https://job/new"
     )
@@ -255,6 +259,8 @@ def test_rerun_clears_only_its_previous_attempt(pr):
     assert plaque.workload("filestore").reports == []
     assert plaque.workload("filestore").build == ""
     assert plaque.workload("filestore").build_duration_seconds is None
+    assert plaque.workload("filestore").workflow_status == ""
+    assert not plaque.workload("filestore").workflow_failed
     assert len(plaque.workload("blockstore").reports) == 1
     assert gs.is_workload_check_update_applied(
         body, "filestore", "running", "https://job/new", require_exact_match=True
@@ -297,7 +303,68 @@ def test_finalization_keeps_reports_and_build_state(pr, conclusion):
     assert row.build == "completed"
     assert len(row.reports) == 1
     table = parsed_table(plaque)
-    assert texts(table.find("tbody/tr"))[0] != "🟢"
+    assert table.find("tbody/tr/td/span").text == "🟢"
+    assert row.workflow_state == (
+        "completed"
+        if conclusion == "success"
+        else gs.workload_check_status_for_job_conclusion(conclusion)
+    )
+    assert (table.find("tbody/tr/td/sup") is not None) == (
+        conclusion in ("failure", "timed_out")
+    )
+
+
+@pytest.mark.parametrize("result", ["passed", "failed", "build_only"])
+def test_vm_cleanup_failure_preserves_finished_build_test_result(pr, result):
+    if result == "build_only":
+        gs.update_pr_comment_workload_check(
+            12, pr, PRESET, "filestore", False, "built", build_duration_seconds=125
+        )
+    else:
+        publish(pr, failed=result == "failed")
+    gs.update_pr_comment_workload_check(12, pr, PRESET, "filestore", False, "completed")
+    marker = fwc.workload_job_marker("relwithdebinfo", "filestore", "native")
+    jobs = [
+        SimpleNamespace(
+            name=f"Build and test / Build and test {marker}", conclusion="success"
+        ),
+        SimpleNamespace(
+            name=f"Build and test / Release self-hosted runner {marker}",
+            conclusion="failure",
+        ),
+    ]
+
+    def jobs_for_run(run_id):
+        assert run_id == 123
+        return jobs
+
+    def resolve(job_url, component):
+        return fwc.resolve_job_conclusion(
+            job_url,
+            "relwithdebinfo",
+            component,
+            "native",
+            123,
+            jobs_for_run,
+            include_related_jobs=True,
+        )
+
+    gs.complete_pr_comment_workload_checks(12, pr, PRESET, False, resolve)
+    plaque = Plaque.from_comment(pr.comments[0].body)
+    workload = plaque.workload("filestore")
+    assert workload.status == "completed"
+    assert workload.workflow_status == "failed"
+    assert Plaque.from_comment(plaque.render()) == plaque
+    cells = parsed_table(plaque).find("tbody/tr")
+    assert cells[0].find("span").text == ("🔴" if result == "failed" else "🟢")
+    warning = cells[0].find("sup")
+    assert warning.text == "❗"
+    assert warning.get("title") == (
+        "Part of workflow failed"
+        if result == "failed"
+        else "Part of workflow failed but you can merge changes"
+    )
+    assert cells[-1].find("span").text == "🔴"
 
 
 def test_build_failure_and_log_survive_completion(pr):

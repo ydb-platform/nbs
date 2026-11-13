@@ -140,6 +140,15 @@ class Workload:
     build_error_url: str = ""
     reports: list[Report] = dataclasses.field(default_factory=list)
     build_duration_seconds: int | None = None
+    workflow_status: str = ""
+
+    @property
+    def workflow_state(self) -> str:
+        return self.workflow_status or self.status
+
+    @property
+    def workflow_failed(self) -> bool:
+        return self.workflow_state in ("failed", "failed_build", "timed_out")
 
     @property
     def target(self) -> str:
@@ -165,6 +174,7 @@ class Workload:
             self.build = ""
             self.build_error_url = ""
             self.build_duration_seconds = None
+            self.workflow_status = ""
         elif self.status == "failed_build" and status not in (
             "running",
             "failed_build",
@@ -195,13 +205,15 @@ class Workload:
             self.build = "completed"
 
     def overall(self, report: Report | None) -> str:
+        if self.build == "failed_build" or (report and report.failed):
+            return "failed"
+        if report or self.status == "completed":
+            return "completed"
         if self.status == "cancelled":
             return "cancelled"
         if self.status not in ("pending", "running", "built", "completed"):
             return "failed"
-        if self.build == "failed_build" or (report and report.failed):
-            return "failed"
-        return "completed" if self.status == "completed" else "running"
+        return "running"
 
 
 @dataclasses.dataclass

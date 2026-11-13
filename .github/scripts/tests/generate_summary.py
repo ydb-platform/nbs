@@ -1049,14 +1049,19 @@ def complete_workload_checks_block(
     plaque = Plaque.from_comment(body)
     if plaque is not None:
         for row in plaque.workloads:
-            if not is_stale_workload_check_status(row.status):
-                continue
             conclusion = (
                 job_conclusion_resolver(row.job_url, row.component)
                 if job_conclusion_resolver
                 else None
             )
-            row.update(workload_check_status_for_job_conclusion(conclusion), "", "")
+            if conclusion is not None:
+                row.workflow_status = (
+                    "completed"
+                    if conclusion in ("success", "neutral")
+                    else workload_check_status_for_job_conclusion(conclusion)
+                )
+            if is_stale_workload_check_status(row.status):
+                row.update(workload_check_status_for_job_conclusion(conclusion), "", "")
         return plaque.replace(body)
 
     pattern = re.compile(
