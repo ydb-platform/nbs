@@ -615,11 +615,11 @@ void TReadDataActor::HandleReadBlobResponse(
     const TEvBlobStorage::TEvGetResult::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (ui32(ev->Cookie >> 32) != RequestGeneration) {
+    if (static_cast<ui32>(ev->Cookie >> 32) != RequestGeneration) {
         return;
     }
 
-    const ui32 blobPieceId = ui32(ev->Cookie);
+    const ui32 blobPieceId = static_cast<ui32>(ev->Cookie);
     auto& state = GetState();
     const auto& LogTag = state.RequestContext.LogTag;
 
