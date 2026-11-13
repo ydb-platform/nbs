@@ -378,7 +378,8 @@ def test_dynamic_blockstore_config_lifecycle():
         )
         log = wait_runtime_rejection(nbs)
         updates = wait_config_delivery(nbs, updates, acknowledged=False)
-        # TODO: restore after fixing startup AppCriticalEvents regisgration
+        # TODO: restore after fixing startup AppCriticalEvents registration.
+        # https://github.com/ydb-platform/nbs/issues/7166
         # parse_errors = nbs.counters.find({
         #     "component": "server",
         #     "sensor": "AppCriticalEvents/GetConfigsFromCmsYamlParseError",
