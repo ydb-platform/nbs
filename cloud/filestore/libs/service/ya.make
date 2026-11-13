@@ -12,11 +12,13 @@ SRCS(
     filesystem_event.cpp
     mask.cpp
     request.cpp
+    service_actions.cpp
     service_auth.cpp
 )
 
 PEERDIR(
     cloud/filestore/config
+    cloud/filestore/private/api/protos
     cloud/filestore/public/api/protos
 
     cloud/storage/core/libs/common

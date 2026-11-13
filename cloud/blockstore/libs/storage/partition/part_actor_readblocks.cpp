@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_describe_base_disk_blocks.h>
+#include <cloud/blockstore/libs/storage/partition_common/actor_read_blob.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
 
@@ -270,6 +271,7 @@ private:
 
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const ui32 BlockSize;
+    const std::optional<ui32> RepairBlockChecksum;
     const ui32 CompactionRangeSize;
 
     const TActorId Tablet;
@@ -301,6 +303,7 @@ public:
         TRequestInfoPtr requestInfo,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         ui32 blockSize,
+        EStorageAccessMode storageAccessMode,
         ui32 compactionRangeSize,
         const TActorId& tablet,
         IReadBlocksHandlerPtr readHandler,
@@ -361,25 +364,27 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TReadBlocksActor::TReadBlocksActor(
-        TVolumeLabelsConstPtr volumeLabels,
-        TRequestInfoPtr requestInfo,
-        IBlockDigestGeneratorPtr blockDigestGenerator,
-        ui32 blockSize,
-        ui32 compactionRangeSize,
-        const TActorId& tablet,
-        IReadBlocksHandlerPtr readHandler,
-        const TBlockRange32& readRange,
-        bool replyLocal,
-        bool checksumsEnabled,
-        bool reportBlobIdsOnFailure,
-        ui64 commitId,
-        TReadBlocksRequests ownRequests,
-        TVector<IProfileLog::TBlockInfo> blockInfos,
-        bool waitBaseDiskRequests)
+    TVolumeLabelsConstPtr volumeLabels,
+    TRequestInfoPtr requestInfo,
+    IBlockDigestGeneratorPtr blockDigestGenerator,
+    ui32 blockSize,
+    EStorageAccessMode storageAccessMode,
+    ui32 compactionRangeSize,
+    const TActorId& tablet,
+    IReadBlocksHandlerPtr readHandler,
+    const TBlockRange32& readRange,
+    bool replyLocal,
+    bool checksumsEnabled,
+    bool reportBlobIdsOnFailure,
+    ui64 commitId,
+    TReadBlocksRequests ownRequests,
+    TVector<IProfileLog::TBlockInfo> blockInfos,
+    bool waitBaseDiskRequests)
     : VolumeLabels(std::move(volumeLabels))
     , RequestInfo(std::move(requestInfo))
     , BlockDigestGenerator(blockDigestGenerator)
     , BlockSize(blockSize)
+    , RepairBlockChecksum(GetRepairBlockChecksum(storageAccessMode, blockSize))
     , CompactionRangeSize(compactionRangeSize)
     , Tablet(tablet)
     , ReadHandler(std::move(readHandler))
@@ -572,6 +577,9 @@ bool TReadBlocksActor::VerifyChecksums(
 {
     const size_t n = Min(batch.Requests.size(), actualChecksums.size());
     for (ui32 i = 0; i < n; ++i) {
+        if (RepairBlockChecksum == actualChecksums[i]) {
+            continue;
+        }
         auto error = VerifyBlockChecksum(
             actualChecksums[i],
             batch.BlobId,
@@ -1266,6 +1274,7 @@ void TPartitionActor::CompleteReadBlocks(
             args.RequestInfo,
             BlockDigestGenerator,
             State->GetBlockSize(),
+            StorageAccessMode,
             State->GetCompactionMap().GetRangeSize(),
             SelfId(),
             args.ReadHandler,

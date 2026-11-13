@@ -7,9 +7,11 @@ SRCS(
     connection_ut.cpp
     describe_volume_ut.cpp
     detachable_target_ut.cpp
+    endpoint_bootstrap_impl_ut.cpp
     endpoint_router_ut.cpp
     forward_service_ut.cpp
     host_pool_ut.cpp
+    mon_ut.cpp
     inbound_activity_ut.cpp
     serving_host_observer_ut.cpp
     transport_switcher_ut.cpp
@@ -20,6 +22,7 @@ PEERDIR(
     cloud/blockstore/libs/cells/impl
     cloud/blockstore/libs/client
     cloud/blockstore/libs/client_rdma
+    cloud/blockstore/libs/icv2/testlib
     cloud/blockstore/libs/server
 
     cloud/storage/core/libs/common

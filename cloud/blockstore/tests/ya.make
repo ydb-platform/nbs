@@ -8,6 +8,7 @@ ENDIF()
 RECURSE(
     client
     config_dispatcher
+    configs_manager
     csi_driver
     direct_device_acquire
     disk_agent_config
@@ -41,6 +42,7 @@ RECURSE(
     stats_aggregator_perf
     storage_discovery
     tablets
+    update_certificates
     vhost-server
     vhost-server/run_and_die
 )

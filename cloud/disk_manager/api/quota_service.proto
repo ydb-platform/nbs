@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package cloud.disk_manager;
+
+import "cloud/disk_manager/api/filesystem_service.proto";
+import "cloud/disk_manager/api/operation.proto";
+import "cloud/disk_manager/api/quota.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
+
+service QuotaService {
+    // Returns operation with:
+    // response: CreateQuotaResponse
+    rpc Create(CreateQuotaRequest) returns (Operation);
+
+    // Returns operation with:
+    // response: google.protobuf.Empty
+    rpc Delete(DeleteQuotaRequest) returns (Operation);
+
+    // Returns operation with:
+    // response: google.protobuf.Empty
+    rpc Update(UpdateQuotaRequest) returns (Operation);
+
+    // Returns operation with:
+    // response: google.protobuf.Empty
+    rpc Attach(AttachQuotaRequest) returns (Operation);
+
+    rpc List(ListQuotasRequest) returns (ListQuotasResponse) {}
+}
+
+message CreateQuotaRequest {
+    FilesystemId filesystem_id = 1;
+    uint64 max_bytes = 2;
+    uint64 max_nodes = 3;
+}
+
+message CreateQuotaResponse {
+    uint32 quota_id = 1;
+}
+
+message DeleteQuotaRequest {
+    FilesystemId filesystem_id = 1;
+    uint32 quota_id = 2;
+}
+
+message UpdateQuotaRequest {
+    FilesystemId filesystem_id = 1;
+    uint32 quota_id = 2;
+    uint64 max_bytes = 3;
+    uint64 max_nodes = 4;
+}
+
+message AttachQuotaRequest {
+    FilesystemId filesystem_id = 1;
+    uint32 quota_id = 2;
+    string path = 3;
+}
+
+message ListQuotasRequest {
+    FilesystemId filesystem_id = 1;
+}
+
+message ListQuotasResponse {
+    repeated Quota quotas = 1;
+}

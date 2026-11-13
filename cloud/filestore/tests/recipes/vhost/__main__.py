@@ -175,6 +175,8 @@ def start(argv):
         bs_failure_probability=args.bs_failure_probability,
         enable_external_data_channel=args.enable_external_data_channel,
     )
+    if service_type != "kikimr":
+        vhost_configurator.generate_configs()
 
     filestore_vhost = FilestoreVhost(vhost_configurator)
     filestore_vhost.start()

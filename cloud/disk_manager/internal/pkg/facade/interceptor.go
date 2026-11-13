@@ -83,6 +83,14 @@ var (
 		{name: "FilesystemService.Create", permission: "disk-manager.filesystems.create"},
 		{name: "FilesystemService.Delete", permission: "disk-manager.filesystems.delete"},
 		{name: "FilesystemService.Resize", permission: "disk-manager.filesystems.update"},
+
+		// TODO: Maybe we should have separate permissions for quotas?
+		{name: "QuotaService.Create", permission: "disk-manager.filesystems.update"},
+		{name: "QuotaService.Delete", permission: "disk-manager.filesystems.update"},
+		{name: "QuotaService.Update", permission: "disk-manager.filesystems.update"},
+		{name: "QuotaService.Attach", permission: "disk-manager.filesystems.update"},
+		{name: "QuotaService.List", permission: "disk-manager.filesystems.list"},
+
 		{name: "FilesystemSnapshotService.Create", permission: "disk-manager.filesystem_snapshots.create"},
 		{name: "FilesystemSnapshotService.Delete", permission: "disk-manager.filesystem_snapshots.delete"},
 	}

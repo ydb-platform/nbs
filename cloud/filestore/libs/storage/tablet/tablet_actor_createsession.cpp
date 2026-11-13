@@ -196,6 +196,7 @@ TActorId DoRecoverSession(
 
 void Convert(
     const NProto::TFileSystem& fileSystem,
+    const ui64 nodesCount,
     NProto::TFileStore& fileStore)
 {
     fileStore.SetFileSystemId(fileSystem.GetFileSystemId());
@@ -205,7 +206,7 @@ void Convert(
     fileStore.SetBlockSize(fileSystem.GetBlockSize());
     fileStore.SetBlocksCount(fileSystem.GetBlocksCount());
     // TODO need set ConfigVersion?
-    fileStore.SetNodesCount(fileSystem.GetNodesCount());
+    fileStore.SetNodesCount(nodesCount);
     fileStore.SetStorageMediaKind(fileSystem.GetStorageMediaKind());
     fileStore.MutableShardFileSystemIds()->CopyFrom(
         fileSystem.GetShardFileSystemIds());
@@ -532,7 +533,7 @@ void TIndexTabletActor::CompleteTx_CreateSession(
     response->Record.SetOwnerGeneration(args.OwnerGeneration);
     if (!args.Request.GetNoFileStoreInfo()) {
         auto& fileStore = *response->Record.MutableFileStore();
-        Convert(GetFileSystem(), fileStore);
+        Convert(GetFileSystem(), GetNodesCount(), fileStore);
         FillFeatures(
             GetFileSystem(),
             GetFileSystemStats(),

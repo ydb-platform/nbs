@@ -68,6 +68,16 @@ struct TCellManagerStub: public ICellManager
         return NThreading::MakeFuture(TVector<TCellDescribeResult>());
     }
 
+    NThreading::TFuture<NProto::TError> SwitchDataTransport(
+        TString connectionId,
+        NProto::ECellDataTransport transport) override
+    {
+        Y_UNUSED(connectionId);
+        Y_UNUSED(transport);
+
+        return NThreading::MakeFuture(MakeError(E_NOT_IMPLEMENTED));
+    }
+
     void Start() override
     {}
 

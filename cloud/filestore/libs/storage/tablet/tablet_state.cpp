@@ -232,6 +232,8 @@ void TIndexTabletState::LoadState(
     FileSystemListingEventsEnabled =
         config.GetFileSystemListingEventsEnabled();
 
+    SizeToNodesRatio = config.GetSizeToNodesRatio();
+
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);
     TabletStorageInfo.CopyFrom(tabletStorageInfo);

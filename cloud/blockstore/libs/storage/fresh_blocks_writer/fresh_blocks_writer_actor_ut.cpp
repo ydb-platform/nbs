@@ -2057,6 +2057,113 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
 
         fbwClient.RecvDrainResponse();
     }
+
+    Y_UNIT_TEST(ShouldUpdateSharedCountersWhenTrimRemovesBlobsCapturedByFlush)
+    {
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv);
+        auto& runtime = testEnv.GetRuntime();
+
+        TVector<ui64> sizes;
+        TPartitionThreadSafeStatePtr sharedState;
+        bool holdAddBlobs = false;
+        std::unique_ptr<IEventHandle> addBlobs;
+        size_t flushedFreshBlobCount = 0;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvAddFreshBlocksRequest: {
+                        using TRequest =
+                            TEvPartitionCommonPrivate::TEvAddFreshBlocksRequest;
+                        sizes.push_back(event->Get<TRequest>()->BlobSize);
+                        break;
+                    }
+                    case TEvPartitionCommonPrivate::
+                        EvGetFreshChannelsInfoResponse: {
+                        using TResponse = TEvPartitionCommonPrivate::
+                            TEvGetFreshChannelsInfoResponse;
+                        sharedState = event->Get<TResponse>()->SharedState;
+                        break;
+                    }
+                    case TEvPartitionPrivate::EvAddBlobsRequest: {
+                        using TRequest =
+                            TEvPartitionPrivate::TEvAddBlobsRequest;
+                        const auto* msg = event->Get<TRequest>();
+                        if (holdAddBlobs &&
+                            msg->Mode == EAddBlobMode::ADD_FLUSH_RESULT)
+                        {
+                            holdAddBlobs = false;
+                            addBlobs.reset(event.Release());
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                    case TEvPartitionPrivate::EvFlushCompleted: {
+                        using TEvent = TEvPartitionPrivate::TEvFlushCompleted;
+                        flushedFreshBlobCount =
+                            event->Get<TEvent>()
+                                ->FlushedFreshBlobCommitIds.size();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+        UNIT_ASSERT(sharedState);
+
+        fbwClient.WriteBlocks(1, '1');
+        fbwClient.WriteBlocks(1, '2');
+        fbwClient.WriteBlocks(2, '3');
+        runtime.DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(3, sizes.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            sizes[0] + sizes[1] + sizes[2],
+            sharedState->UnflushedFreshBlobByteCount.load());
+
+        // The flush captures all three blobs, including the dead one.
+        holdAddBlobs = true;
+        partition.SendFlushRequest();
+        runtime.DispatchEvents({}, 10ms);
+        UNIT_ASSERT(addBlobs);
+
+        // The trim removes the dead blob while the flush runs.
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, partition.TrimFreshLog()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            sizes[1] + sizes[2],
+            sharedState->UnflushedFreshBlobByteCount.load());
+
+        // The flush subtracts only the untrimmed blobs.
+        runtime.Send(addBlobs.release());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.RecvFlushResponse()->GetStatus());
+        runtime.DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(3, flushedFreshBlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            sharedState->UnflushedFreshBlobByteCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            sharedState->UnflushedFreshBlocksCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            partition.StatPartition()->Record.GetStats().GetFreshBlobsCount());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('2'),
+            GetBlocksContent(
+                fbwClient.ReadBlocks(TBlockRange32::MakeOneBlock(1))));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('3'),
+            GetBlocksContent(
+                fbwClient.ReadBlocks(TBlockRange32::MakeOneBlock(2))));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

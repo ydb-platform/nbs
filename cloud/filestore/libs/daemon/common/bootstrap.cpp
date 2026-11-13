@@ -116,6 +116,10 @@ void TBootstrapCommon::Stop()
 {
     Drain();
 
+    // Before the scheduler: an on-demand certificate update needs it and would
+    // otherwise keep its request in flight until the server stops.
+    FILESTORE_LOG_STOP_COMPONENT(CertificateWatcher);
+
     // stopping scheduler before all other components to avoid races between
     // scheduled tasks and shutting down of component dependencies
     FILESTORE_LOG_STOP_COMPONENT(BackgroundScheduler);
@@ -124,7 +128,6 @@ void TBootstrapCommon::Stop()
     StopComponents();
 
     FILESTORE_LOG_STOP_COMPONENT(CertificateProvider);
-    FILESTORE_LOG_STOP_COMPONENT(CertificateWatcher);
     FILESTORE_LOG_STOP_COMPONENT(RequestStatsUpdater);
     FILESTORE_LOG_STOP_COMPONENT(ProfileLog);
     FILESTORE_LOG_STOP_COMPONENT(BackgroundThreadPool);
@@ -289,7 +292,7 @@ void TBootstrapCommon::InitActorSystem()
         Log);
 
     if (cmsConfig) {
-        Configs->ApplyCMSConfigs(std::move(*cmsConfig));
+        Configs->ApplyCMSConfigs(std::move(cmsConfig->AppConfig));
     }
 
     auto logging = std::make_shared<TLoggingProxy>();

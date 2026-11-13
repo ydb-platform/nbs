@@ -37,16 +37,19 @@ struct TEvStatsService
         const ui64 TabletId;
         const NProto::TVolume Config;
         const NActors::TActorId ActorId;
+        TVector<NKikimr::TTabletChannelInfo> ChannelInfos;
 
         TRegisterVolume(
                 TString diskId,
                 ui64 tabletId,
                 NProto::TVolume config,
-                NActors::TActorId actorId)
+                NActors::TActorId actorId,
+                TVector<NKikimr::TTabletChannelInfo> channelInfos)
             : DiskId(std::move(diskId))
             , TabletId(tabletId)
             , Config(std::move(config))
             , ActorId(actorId)
+            , ChannelInfos(std::move(channelInfos))
         {}
     };
 

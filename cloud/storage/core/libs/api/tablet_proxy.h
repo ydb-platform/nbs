@@ -20,10 +20,16 @@ struct TEvTabletProxy
     {
         const ui64 TabletId;
         NActors::IEventHandlePtr Request;
+        // Send TEvPipeClosed to the sender when the pipe goes away.
+        const bool Subscribe;
 
-        TForward(ui64 tabletId, NActors::IEventHandlePtr request)
+        TForward(
+                ui64 tabletId,
+                NActors::IEventHandlePtr request,
+                bool subscribe)
             : TabletId(tabletId)
             , Request(std::move(request))
+            , Subscribe(subscribe)
         {}
     };
 
@@ -33,6 +39,16 @@ struct TEvTabletProxy
         const ui64 TabletId;
 
         explicit TDisconnected(ui64 tabletId)
+            : TabletId(tabletId)
+        {}
+    };
+
+    // The pipe is gone; sent once to each subscriber of that pipe.
+    struct TPipeClosed
+    {
+        const ui64 TabletId;
+
+        explicit TPipeClosed(ui64 tabletId)
             : TabletId(tabletId)
         {}
     };
@@ -59,6 +75,7 @@ struct TEvTabletProxy
         EvDisconnected,
         EvKeepAliveRequest,
         EvKeepAliveResponse,
+        EvPipeClosed,
 
         EvEnd
     };
@@ -71,6 +88,7 @@ struct TEvTabletProxy
         TRequestEvent<TKeepAliveRequest, EvKeepAliveRequest>;
     using TEvKeepAliveResponse =
         TResponseEvent<TKeepAliveResponse, EvKeepAliveResponse>;
+    using TEvPipeClosed = TRequestEvent<TPipeClosed, EvPipeClosed>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -78,5 +96,11 @@ struct TEvTabletProxy
 NActors::TActorId MakeTabletProxyServiceId();
 
 void ForwardToTablet(ui64 tabletId, NActors::IEventHandlePtr request);
+
+// With @p subscribe the caller gets TEvPipeClosed when the pipe goes away.
+void ForwardToTablet(
+    ui64 tabletId,
+    NActors::IEventHandlePtr request,
+    bool subscribe);
 
 }   // namespace NCloud::NStorage

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/ydb-go-sdk/v3"
 	ydb_log "github.com/ydb-platform/ydb-go-sdk/v3/log"
 )
 
@@ -41,6 +42,20 @@ func toFields(fields []ydb_log.Field) []logging.Field {
 	return ff
 }
 
+func hasTransactionLocksInvalidated(fields []ydb_log.Field) bool {
+	for _, field := range fields {
+		if field.Type() != ydb_log.ErrorType {
+			continue
+		}
+
+		if ydb.IsOperationErrorTransactionLocksInvalidated(field.ErrorValue()) {
+			return true
+		}
+	}
+
+	return false
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 var _ ydb_log.Logger = (*logger)(nil)
@@ -71,8 +86,18 @@ func (l *logger) Log(ctx context.Context, msg string, fields ...ydb_log.Field) {
 	case ydb_log.INFO:
 		logging.Info(ctx, "%s", msg)
 	case ydb_log.WARN:
+		if hasTransactionLocksInvalidated(fields) {
+			logging.Debug(ctx, "%s", msg)
+			return
+		}
+
 		logging.Warn(ctx, "%s", msg)
 	case ydb_log.ERROR:
+		if hasTransactionLocksInvalidated(fields) {
+			logging.Debug(ctx, "%s", msg)
+			return
+		}
+
 		logging.Error(ctx, "%s", msg)
 	case ydb_log.FATAL:
 		logging.Fatal(ctx, "%s", msg)

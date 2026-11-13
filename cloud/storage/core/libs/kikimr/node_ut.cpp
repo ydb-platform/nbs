@@ -31,7 +31,7 @@ struct TMockRegistrant: public INodeRegistrant
         RegisterNode,
         (const TString&));
     MOCK_METHOD(
-        TResultOrError<NKikimrConfig::TAppConfig>,
+        TResultOrError<TCmsConfig>,
         GetConfigs,
         (const TString&, ui32));
 };
@@ -88,7 +88,7 @@ Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
                 Return(TRegistrationResult{DefaultNodeId, DefaultScopeId}));
 
         EXPECT_CALL(registrantRef, GetConfigs(_, DefaultNodeId))
-            .WillOnce(Return(NKikimrConfig::TAppConfig{}));
+            .WillOnce(Return(TCmsConfig{}));
 
         TRegisterDynamicNodeOptions options = CreateRegisterOptions(true);
 
@@ -116,7 +116,7 @@ Y_UNIT_TEST_SUITE(TRegisterDynamicNodeTest)
                 Return(TRegistrationResult{DefaultNodeId, DefaultScopeId}));
 
         EXPECT_CALL(registrantRef, GetConfigs(_, DefaultNodeId))
-            .WillOnce(Return(NKikimrConfig::TAppConfig{}));
+            .WillOnce(Return(TCmsConfig{}));
 
         TRegisterDynamicNodeOptions options = CreateRegisterOptions(true);
 
