@@ -776,9 +776,11 @@ TEvStatsService::TVolumeSelfCounters TVolumeActor::GetVolumeSelfCounters(
     }
     simple.DiskAgentCount.Set(allAgents.size());
 
+    const bool isLocalMount = !State->GetLocalMountClientId().empty() &&
+                              StartMode == EVolumeStartMode::MOUNTED;
     TEvStatsService::TVolumeSelfCounters volumeCounters(
         State->GetConfig().GetDiskId(),
-        /*IsLocalMount=*/!State->GetLocalMountClientId().empty(),
+        isLocalMount,
         State->HasActiveClients(ctx.Now()),
         State->IsPreempted(SelfId()),
         std::move(VolumeSelfCounters),
