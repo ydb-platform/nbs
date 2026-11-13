@@ -685,11 +685,22 @@ void TLocalNVMeService::ReconcileDevices(
         auto& newDevice = loaded.Device;
 
         if (HasError(loadError)) {
+            if (oldDevice && overlapsDriverSwitch(serialNumber)) {
+                STORAGE_INFO(
+                    "Ignoring load error for NVMe device "
+                    << serialNumber.Quote() << " at PCI address " << newAddr
+                    << ": device refresh overlaps a driver switch; "
+                       "preserving state "
+                    << NProto::ENVMeDeviceState_Name(oldDevice->GetDeviceState())
+                    << "; error: " << FormatError(loadError));
+                continue;
+            }
+
             STORAGE_WARN(
                 "Failed to load NVMe device "
                 << serialNumber.Quote() << " at PCI address " << newAddr << ": "
                 << FormatError(loadError));
-            if (!oldDevice || overlapsDriverSwitch(serialNumber)) {
+            if (!oldDevice) {
                 continue;
             }
 
@@ -749,9 +760,18 @@ void TLocalNVMeService::ReconcileDevices(
             &NProto::TNVMeDevice::GetSerialNumber);
 
         if (!found &&
-            device.GetDeviceState() != NProto::NVME_DEVICE_STATE_OFFLINE &&
-            !overlapsDriverSwitch(sn))
+            device.GetDeviceState() != NProto::NVME_DEVICE_STATE_OFFLINE)
         {
+            if (overlapsDriverSwitch(sn)) {
+                STORAGE_INFO(
+                    "Ignoring missing NVMe device "
+                    << sn.Quote() << " at PCI address " << device.GetPCIAddress()
+                    << ": device refresh overlaps a driver switch; "
+                       "preserving state "
+                    << NProto::ENVMeDeviceState_Name(device.GetDeviceState()));
+                continue;
+            }
+
             STORAGE_WARN(
                 "NVMe device " << sn.Quote()
                                << " is no longer reported; marking it offline");
