@@ -702,6 +702,7 @@ func (s *service) ResizeDisk(
 		"disks.ResizeDisk",
 		"",
 		&protos.ResizeDiskRequest{
+			UseDiskOperationGuard: s.config.GetEnableDiskOperationGuard(),
 			Disk: &types.Disk{
 				ZoneId: zoneID,
 				DiskId: req.DiskId.DiskId,
@@ -733,6 +734,7 @@ func (s *service) AlterDisk(
 		"disks.AlterDisk",
 		"",
 		&protos.AlterDiskRequest{
+			UseDiskOperationGuard: s.config.GetEnableDiskOperationGuard(),
 			Disk: &types.Disk{
 				ZoneId: zoneID,
 				DiskId: req.DiskId.DiskId,
@@ -970,6 +972,7 @@ func (s *service) MigrateDisk(
 		"disks.MigrateDisk",
 		"",
 		&protos.MigrateDiskRequest{
+			UseDiskOperationGuard: s.config.GetEnableDiskOperationGuard(),
 			Disk: &types.Disk{
 				ZoneId: zoneID,
 				DiskId: req.DiskId.DiskId,

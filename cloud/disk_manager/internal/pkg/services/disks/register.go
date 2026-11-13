@@ -122,18 +122,18 @@ func RegisterForExecution(
 	}
 
 	err = taskRegistry.RegisterForExecution("disks.ResizeDisk", func() tasks.Task {
-		return &resizeDiskTask{
+		return guardDiskOperation(&resizeDiskTask{
 			nbsFactory: nbsFactory,
-		}
+		}, resourceStorage, resources.DiskOperationResize)
 	})
 	if err != nil {
 		return err
 	}
 
 	err = taskRegistry.RegisterForExecution("disks.AlterDisk", func() tasks.Task {
-		return &alterDiskTask{
+		return guardDiskOperation(&alterDiskTask{
 			nbsFactory: nbsFactory,
-		}
+		}, resourceStorage, resources.DiskOperationAlter)
 	})
 	if err != nil {
 		return err
@@ -169,14 +169,14 @@ func RegisterForExecution(
 	}
 
 	err = taskRegistry.RegisterForExecution("disks.MigrateDisk", func() tasks.Task {
-		return &migrateDiskTask{
+		return guardDiskOperation(&migrateDiskTask{
 			disksConfig:     config,
 			scheduler:       taskScheduler,
 			poolService:     poolService,
 			resourceStorage: resourceStorage,
 			poolStorage:     poolStorage,
 			nbsFactory:      nbsFactory,
-		}
+		}, resourceStorage, resources.DiskOperationMigrate)
 	})
 	if err != nil {
 		return err
