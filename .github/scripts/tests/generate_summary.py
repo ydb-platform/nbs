@@ -29,7 +29,7 @@ from ..helpers import (
 )
 from ..set_build_and_test_targets import JOIN_GROUPS
 from .junit_utils import get_property_value, iter_xml_files
-from .status_plaque import Plaque, Report, component_for_target
+from .status_plaque import Plaque, Report, WorkflowOutcome, component_for_target
 
 LOGGER = logging.getLogger(__name__)
 TitlePathTriplet: TypeAlias = tuple[str, str, str]
@@ -1045,6 +1045,7 @@ def workload_check_status_for_job_conclusion(conclusion: str | None) -> str:
 def complete_workload_checks_block(
     body: str,
     job_conclusion_resolver: Callable[[str, str], str | None] | None = None,
+    workflow_outcome_resolver: Callable[[str, str], WorkflowOutcome] | None = None,
 ) -> str:
     plaque = Plaque.from_comment(body)
     if plaque is not None:
@@ -1054,11 +1055,22 @@ def complete_workload_checks_block(
                 if job_conclusion_resolver
                 else None
             )
-            if conclusion is not None:
+            workflow_conclusion = conclusion
+            if workflow_outcome_resolver is not None:
+                outcome = workflow_outcome_resolver(row.job_url, row.component)
+                conclusion = outcome.execution
+                workflow_conclusion = outcome.workflow
+                row.execution_status = (
+                    "completed"
+                    if outcome.execution == "success"
+                    else workload_check_status_for_job_conclusion(outcome.execution)
+                )
+                row.cleanup_only_failure = outcome.cleanup_only_failure
+            if workflow_conclusion is not None:
                 row.workflow_status = (
                     "completed"
-                    if conclusion in ("success", "neutral")
-                    else workload_check_status_for_job_conclusion(conclusion)
+                    if workflow_conclusion in ("success", "neutral")
+                    else workload_check_status_for_job_conclusion(workflow_conclusion)
                 )
             if is_stale_workload_check_status(row.status):
                 row.update(workload_check_status_for_job_conclusion(conclusion), "", "")
@@ -1201,6 +1213,7 @@ def update_pr_comment(
     workload_status: str,
     component: str = "",
     test_iteration: int = 0,
+    test_exit_code: int | None = None,
 ) -> None:
     header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
     header_prefix = get_comment_header_prefix(
@@ -1230,6 +1243,7 @@ def update_pr_comment(
                 build_failed_count=get_build_failed_count(),
                 history_url=test_history_url or "",
                 elapsed=test_time,
+                exit_code=test_exit_code,
             )
             for line in summary.lines or [None]
         ]
@@ -1442,6 +1456,7 @@ def complete_pr_comment_workload_checks(
     build_preset: str,
     is_dry_run: bool,
     job_conclusion_resolver: Callable[[str, str], str | None] | None = None,
+    workflow_outcome_resolver: Callable[[str, str], WorkflowOutcome] | None = None,
 ) -> None:
     header_prefix = get_comment_header_prefix(
         pr.number,
@@ -1458,7 +1473,9 @@ def complete_pr_comment_workload_checks(
     LOGGER.info("Completing workload checks for comment id=%s", comment.id)
     comment.edit(
         bump_comment_revision(
-            complete_workload_checks_block(comment.body, job_conclusion_resolver)
+            complete_workload_checks_block(
+                comment.body, job_conclusion_resolver, workflow_outcome_resolver
+            )
         )
     )
 
@@ -1488,6 +1505,7 @@ def main() -> None:
     parser.add_argument("--test-target", default="", required=False)
     parser.add_argument("--component", default="")
     parser.add_argument("--test-iteration", type=int, default=0)
+    parser.add_argument("--test-exit-code", type=int)
     parser.add_argument(
         "--is-dry-run",
         default=False,
@@ -1573,6 +1591,7 @@ def main() -> None:
             args.workload_status,
             component=args.component,
             test_iteration=args.test_iteration,
+            test_exit_code=args.test_exit_code,
         )
 
 

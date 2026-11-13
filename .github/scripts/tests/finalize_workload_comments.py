@@ -19,6 +19,7 @@ from ..helpers import (
     setup_logger,
 )
 from . import generate_summary as gs
+from .status_plaque import WorkflowOutcome
 
 JOB_LOOKUP_EXCEPTIONS = (AttributeError, ValueError) + PYGITHUB_RETRY_EXCEPTIONS
 
@@ -30,8 +31,8 @@ TargetPlatform = str
 JobConclusion = str | None
 WorkflowJobs = list[WorkflowJob]
 JobsCache = dict[WorkflowRunId, WorkflowJobs]
-JobsConclusionCacheKey = tuple[JobUrl, BuildPreset, Component, TargetPlatform]
-JobsConclusionCache = dict[JobsConclusionCacheKey, JobConclusion]
+WorkflowOutcomeCacheKey = tuple[JobUrl, BuildPreset, Component, TargetPlatform]
+WorkflowOutcomeCache = dict[WorkflowOutcomeCacheKey, WorkflowOutcome]
 JobsForRun = Callable[[WorkflowRunId], WorkflowJobs]
 NATIVE_TARGET_PLATFORM = "native"
 
@@ -102,6 +103,22 @@ def find_workload_job_conclusion(
     return getattr(matches[0], "conclusion", None)
 
 
+def matching_workflow_jobs(
+    jobs: WorkflowJobs,
+    build_preset: BuildPreset,
+    component: Component,
+    target_platform: TargetPlatform,
+    job_id: int | None = None,
+) -> WorkflowJobs:
+    marker = workload_job_marker(build_preset, component, target_platform)
+    return [
+        job
+        for job in jobs
+        if marker in (getattr(job, "name", None) or "").rsplit(" / ", 1)[-1]
+        or (job_id is not None and getattr(job, "id", None) == job_id)
+    ]
+
+
 def find_workflow_conclusion(
     jobs: WorkflowJobs,
     build_preset: BuildPreset,
@@ -109,12 +126,11 @@ def find_workflow_conclusion(
     target_platform: TargetPlatform,
     job_id: int | None = None,
 ) -> JobConclusion:
-    marker = workload_job_marker(build_preset, component, target_platform)
     conclusions = [
         getattr(job, "conclusion", None)
-        for job in jobs
-        if marker in (getattr(job, "name", None) or "").rsplit(" / ", 1)[-1]
-        or (job_id is not None and getattr(job, "id", None) == job_id)
+        for job in matching_workflow_jobs(
+            jobs, build_preset, component, target_platform, job_id
+        )
     ]
     for failure in (
         "failure",
@@ -182,6 +198,60 @@ def resolve_job_conclusion(
     )
 
 
+def resolve_workflow_outcome(
+    job_url: JobUrl,
+    build_preset: BuildPreset,
+    component: Component,
+    target_platform: TargetPlatform,
+    current_run_id: WorkflowRunId,
+    jobs_for_run: JobsForRun,
+) -> WorkflowOutcome:
+    job_ref = parse_actions_job_url(job_url)
+    jobs = jobs_for_run(job_ref[0] if job_ref else current_run_id)
+    related = matching_workflow_jobs(
+        jobs, build_preset, component, target_platform, job_ref[1] if job_ref else None
+    )
+    execution = resolve_job_conclusion(
+        job_url, build_preset, component, target_platform, current_run_id, jobs_for_run
+    )
+    cleanup = []
+    other = []
+    execution_job_found = False
+    for job in related:
+        name = (getattr(job, "name", None) or "").rsplit(" / ", 1)[-1]
+        if (
+            getattr(job, "id", None) == job_ref[1]
+            if job_ref
+            else name.startswith(BUILD_AND_TEST_JOB_NAME_PREFIX)
+        ):
+            execution_job_found = True
+        conclusion = getattr(job, "conclusion", None)
+        if name.startswith("Release self-hosted runner "):
+            cleanup.append(conclusion)
+        else:
+            other.append(conclusion)
+    successful = ("success", "neutral", "skipped")
+    failed = ("failure", "timed_out", "action_required", "startup_failure")
+    cleanup_only_failure = (
+        execution == "success"
+        and execution_job_found
+        and any(conclusion in failed for conclusion in cleanup)
+        and all(conclusion in successful + failed for conclusion in cleanup)
+        and all(conclusion in successful for conclusion in other)
+    )
+    return WorkflowOutcome(
+        execution=execution,
+        workflow=find_workflow_conclusion(
+            jobs,
+            build_preset,
+            component,
+            target_platform,
+            job_ref[1] if job_ref else None,
+        ),
+        cleanup_only_failure=cleanup_only_failure,
+    )
+
+
 def main() -> None:
     setup_logger(name=__name__, fmt="%(levelname)s %(message)s")
     setup_logger(name=gs.__name__, fmt="%(levelname)s %(message)s")
@@ -216,7 +286,7 @@ def main() -> None:
     run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
     current_run_id = int(os.environ.get("GITHUB_RUN_ID", "0"))
     jobs_cache: JobsCache = {}
-    job_conclusion_cache: JobsConclusionCache = {}
+    workflow_outcome_cache: WorkflowOutcomeCache = {}
 
     def jobs_for_run(run_id: WorkflowRunId) -> WorkflowJobs:
         if run_id in jobs_cache:
@@ -232,43 +302,42 @@ def main() -> None:
         jobs_cache[run_id] = jobs
         return jobs
 
-    def cached_job_conclusion(
+    def cached_workflow_outcome(
         job_url: JobUrl,
         build_preset: BuildPreset,
         component: Component,
         target_platform: TargetPlatform,
-    ) -> JobConclusion:
-        cache_key: JobsConclusionCacheKey = (
+    ) -> WorkflowOutcome:
+        cache_key: WorkflowOutcomeCacheKey = (
             job_url,
             build_preset,
             component,
             target_platform,
         )
-        if cache_key in job_conclusion_cache:
-            return job_conclusion_cache[cache_key]
-        conclusion = resolve_job_conclusion(
+        if cache_key in workflow_outcome_cache:
+            return workflow_outcome_cache[cache_key]
+        outcome = resolve_workflow_outcome(
             job_url,
             build_preset,
             component,
             target_platform,
             current_run_id,
             jobs_for_run,
-            include_related_jobs=True,
         )
-        job_conclusion_cache[cache_key] = conclusion
-        return conclusion
+        workflow_outcome_cache[cache_key] = outcome
+        return outcome
 
     for full_build_preset, build_preset, target_platform in iter_build_preset_contexts(
         args.matrix_include, args.platform_name
     ):
 
-        def job_conclusion_resolver(
+        def workflow_outcome_resolver(
             job_url: JobUrl,
             component: Component,
             preset: BuildPreset = build_preset,
             platform: TargetPlatform = target_platform,
-        ) -> JobConclusion:
-            return cached_job_conclusion(
+        ) -> WorkflowOutcome:
+            return cached_workflow_outcome(
                 job_url,
                 preset,
                 component,
@@ -280,7 +349,10 @@ def main() -> None:
             pr=pr,
             build_preset=full_build_preset,
             is_dry_run=args.is_dry_run,
-            job_conclusion_resolver=job_conclusion_resolver,
+            job_conclusion_resolver=lambda url, component: workflow_outcome_resolver(
+                url, component
+            ).execution,
+            workflow_outcome_resolver=workflow_outcome_resolver,
         )
         gs.update_pr_comment_workload_status(
             run_number=run_number,

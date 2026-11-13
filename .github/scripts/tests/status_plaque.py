@@ -83,16 +83,26 @@ class Report:
     build_failed_count: int = 0
     history_url: str = ""
     elapsed: str = "0"
+    exit_code: int | None = None
 
     @property
     def failed(self) -> bool:
         return (
             not self.total
+            or self.exit_code not in (None, 0)
             or self.build_failed_count > 0
             or any(
                 self.counts.get(status, 0) for status in ("ERROR", "FAIL", "FAIL_BUILD")
             )
         )
+
+    @property
+    def execution_message(self) -> str:
+        if self.exit_code in (None, 0):
+            return ""
+        if self.exit_code == 124:
+            return "Test execution timed out (exit code 124)"
+        return f"Test execution failed (exit code {self.exit_code})"
 
     @property
     def message(self) -> str:
@@ -131,6 +141,13 @@ def component_for_target(target: str) -> str:
     return match.group(1) if match else "all"
 
 
+@dataclasses.dataclass(frozen=True)
+class WorkflowOutcome:
+    execution: str | None = None
+    workflow: str | None = None
+    cleanup_only_failure: bool = False
+
+
 @dataclasses.dataclass
 class Workload:
     component: str
@@ -141,6 +158,8 @@ class Workload:
     reports: list[Report] = dataclasses.field(default_factory=list)
     build_duration_seconds: int | None = None
     workflow_status: str = ""
+    execution_status: str = ""
+    cleanup_only_failure: bool = False
 
     @property
     def workflow_state(self) -> str:
@@ -149,6 +168,24 @@ class Workload:
     @property
     def workflow_failed(self) -> bool:
         return self.workflow_state in ("failed", "failed_build", "timed_out")
+
+    def can_merge_after_cleanup_failure(self, report: Report | None) -> bool:
+        if not self.cleanup_only_failure or self.execution_status != "completed":
+            return False
+        if self.overall(report) != "completed":
+            return False
+        if not self.reports:
+            return self.status == "completed" and self.build == "completed"
+        latest_iteration = max(item.iteration for item in self.reports)
+        return (
+            report is not None
+            and report.exit_code == 0
+            and all(
+                item.exit_code == 0 and not item.failed
+                for item in self.reports
+                if item.iteration == latest_iteration
+            )
+        )
 
     @property
     def target(self) -> str:
@@ -175,6 +212,8 @@ class Workload:
             self.build_error_url = ""
             self.build_duration_seconds = None
             self.workflow_status = ""
+            self.execution_status = ""
+            self.cleanup_only_failure = False
         elif self.status == "failed_build" and status not in (
             "running",
             "failed_build",
@@ -191,6 +230,15 @@ class Workload:
             self.build_error_url = build_error_url or self.build_error_url
 
     def add_report(self, report: Report) -> None:
+        # Older plaques copied attempt build errors into the shared build state.
+        # An explicit failure of the separate build step remains authoritative.
+        if (
+            self.status != "failed_build"
+            and self.build == "failed_build"
+            and any(item.count("FAIL_BUILD") for item in self.reports)
+        ):
+            self.build = ""
+            self.build_error_url = ""
         self.reports = [
             old
             for old in self.reports
@@ -198,14 +246,23 @@ class Workload:
         ]
         self.reports.append(report)
         self.reports.sort(key=lambda item: (item.iteration, item.title))
-        if report.count("FAIL_BUILD"):
-            self.build = "failed_build"
-            self.build_error_url = report.build_error_url or self.build_error_url
-        elif report.total and self.build != "failed_build":
+        if report.total and not report.count("FAIL_BUILD") and not self.build:
             self.build = "completed"
+
+    def build_state(self, report: Report) -> str:
+        if report.count("FAIL_BUILD"):
+            return "failed_build"
+        return self.build if report.iteration == 0 else ""
 
     def overall(self, report: Report | None) -> str:
         if self.build == "failed_build" or (report and report.failed):
+            return "failed"
+        if (
+            report is not None
+            and report.exit_code is None
+            and report.iteration == max(item.iteration for item in self.reports)
+            and self.execution_status in ("failed", "timed_out", "cancelled")
+        ):
             return "failed"
         if report or self.status == "completed":
             return "completed"

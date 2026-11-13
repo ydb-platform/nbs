@@ -259,3 +259,48 @@ def test_workflow_conclusion_handles_optional_or_unfinished_jobs(conclusions, ex
         fwc.find_workflow_conclusion(jobs, "relwithdebinfo", "blockstore", "native")
         == expected
     )
+
+
+@pytest.mark.parametrize(
+    "execution,cleanup,other,cleanup_only",
+    [
+        ("success", "failure", None, True),
+        ("failure", "success", None, False),
+        ("failure", "failure", None, False),
+        ("timed_out", "failure", None, False),
+        ("success", "failure", "failure", False),
+        ("success", "failure", "skipped", True),
+        ("success", None, None, False),
+        ("success", "success", None, False),
+    ],
+)
+def test_workflow_outcome_separates_execution_and_cleanup(
+    execution, cleanup, other, cleanup_only
+):
+    marker = fwc.workload_job_marker("relwithdebinfo", "filestore", "native")
+    jobs = [
+        SimpleNamespace(id=1, name=f"Build and test {marker}", conclusion=execution),
+        SimpleNamespace(
+            id=2, name=f"Release self-hosted runner {marker}", conclusion=cleanup
+        ),
+    ]
+    if other is not None:
+        jobs.append(SimpleNamespace(id=3, name=f"Debug {marker}", conclusion=other))
+
+    def jobs_for_run(run_id):
+        assert run_id == 123
+        return jobs
+
+    result = fwc.resolve_workflow_outcome(
+        "https://github.com/org/repo/actions/runs/123/job/1",
+        "relwithdebinfo",
+        "filestore",
+        "native",
+        999,
+        jobs_for_run,
+    )
+    assert result.execution == execution
+    assert result.workflow == fwc.find_workflow_conclusion(
+        jobs, "relwithdebinfo", "filestore", "native"
+    )
+    assert result.cleanup_only_failure is cleanup_only

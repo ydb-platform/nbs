@@ -7,8 +7,7 @@ import pytest
 
 from scripts.tests import generate_summary as gs
 from scripts.tests import finalize_workload_comments as fwc
-from scripts.tests import workload_comment as wc
-from scripts.tests.status_plaque import Plaque, Report, format_duration
+from scripts.tests.status_plaque import Plaque, Report, WorkflowOutcome, format_duration
 
 PRESET = "linux-x86_64-relwithdebinfo"
 
@@ -50,7 +49,9 @@ def pr(monkeypatch):
     return pr
 
 
-def publish(pr, component="filestore", iteration=0, failed=False, elapsed="1"):
+def publish(
+    pr, component="filestore", iteration=0, failed=False, elapsed="1", exit_code=0
+):
     summary = gs.TestSummary()
     line = gs.TestSummaryLine("Tests")
     line.add(
@@ -77,6 +78,7 @@ def publish(pr, component="filestore", iteration=0, failed=False, elapsed="1"):
         "in_progress",
         component=component,
         test_iteration=iteration,
+        test_exit_code=exit_code,
     )
 
 
@@ -339,21 +341,24 @@ def test_vm_cleanup_failure_preserves_finished_build_test_result(pr, result):
         return jobs
 
     def resolve(job_url, component):
-        return fwc.resolve_job_conclusion(
+        return fwc.resolve_workflow_outcome(
             job_url,
             "relwithdebinfo",
             component,
             "native",
             123,
             jobs_for_run,
-            include_related_jobs=True,
         )
 
-    gs.complete_pr_comment_workload_checks(12, pr, PRESET, False, resolve)
+    gs.complete_pr_comment_workload_checks(
+        12, pr, PRESET, False, workflow_outcome_resolver=resolve
+    )
     plaque = Plaque.from_comment(pr.comments[0].body)
     workload = plaque.workload("filestore")
     assert workload.status == "completed"
     assert workload.workflow_status == "failed"
+    assert workload.execution_status == "completed"
+    assert workload.cleanup_only_failure
     assert Plaque.from_comment(plaque.render()) == plaque
     cells = parsed_table(plaque).find("tbody/tr")
     assert cells[0].find("span").text == ("🔴" if result == "failed" else "🟢")
@@ -486,26 +491,16 @@ def test_duration_format(seconds, expected):
 
 
 @pytest.mark.parametrize("seconds", [None, 0, 3661])
-def test_workload_cli_records_build_duration(pr, monkeypatch, seconds):
-    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
-    monkeypatch.setenv("GITHUB_RUN_NUMBER", "12")
-    monkeypatch.setattr(wc, "github_client_from_env", lambda: None)
-    monkeypatch.setattr(wc, "load_github_event", lambda: {})
-    monkeypatch.setattr(wc, "pull_request_from_event", lambda *_: pr)  # noqa: U101
-    args = [
-        "workload_comment",
-        "update",
-        "--build-preset",
-        PRESET,
-        "--component",
-        "filestore",
-        "--workload-check-status",
-        "built",
-    ]
-    if seconds is not None:
-        args.extend(["--build-duration-seconds", str(seconds)])
-    monkeypatch.setattr("sys.argv", args)
-    wc.main()
+def test_workload_update_records_build_duration(pr, seconds):
+    gs.update_pr_comment_workload_check(
+        run_number=12,
+        pr=pr,
+        build_preset=PRESET,
+        component="filestore",
+        is_dry_run=False,
+        workload_check_status="built",
+        build_duration_seconds=seconds,
+    )
 
     plaque = Plaque.from_comment(pr.comments[0].body)
     assert plaque.workload("filestore").build_duration_seconds == seconds
@@ -557,3 +552,142 @@ def test_repeated_build_failure_can_add_missing_duration(pr):
     assert workload.status == "failed_build"
     assert workload.build_error_url == "https://logs/build.html"
     assert workload.build_duration_seconds == 125
+
+
+@pytest.mark.parametrize("exit_code", [1, 12, 124, 137])
+def test_passing_partial_junit_does_not_hide_execution_failure(pr, exit_code):
+    publish(pr, exit_code=exit_code)
+    gs.update_pr_comment_workload_check(12, pr, PRESET, "filestore", False, "completed")
+    body = gs.complete_workload_checks_block(
+        pr.comments[0].body,
+        workflow_outcome_resolver=lambda *_: WorkflowOutcome(  # noqa: U101
+            "failure", "failure"
+        ),
+    )
+    plaque = Plaque.from_comment(body)
+    report = plaque.workload("filestore").reports[0]
+    assert report.exit_code == exit_code
+    assert report.count("PASS") == 1
+    assert report.failed
+    cells = parsed_table(plaque).find("tbody/tr")
+    assert cells[0].find("span").text == cells[4].find("span").text == "🔴"
+    assert f"exit code {exit_code}" in texts(cells)[4]
+    assert "you can merge" not in plaque.render_table()
+
+
+@pytest.mark.parametrize("exit_code", [None, 0])
+def test_failed_test_job_never_gets_merge_hint_from_passing_counts(pr, exit_code):
+    publish(pr, exit_code=exit_code)
+    body = gs.complete_workload_checks_block(
+        pr.comments[0].body,
+        workflow_outcome_resolver=lambda *_: WorkflowOutcome(  # noqa: U101
+            "failure", "failure"
+        ),
+    )
+    plaque = Plaque.from_comment(body)
+    assert "you can merge" not in plaque.render_table()
+    if exit_code is None:
+        assert parsed_table(plaque).find("tbody/tr/td/span").text == "🔴"
+
+
+def test_unverified_execution_does_not_get_cleanup_merge_hint(pr):
+    publish(pr, exit_code=None)
+    body = gs.complete_workload_checks_block(
+        pr.comments[0].body,
+        workflow_outcome_resolver=lambda *_: WorkflowOutcome(  # noqa: U101
+            "success", "failure", True
+        ),
+    )
+    assert "you can merge" not in Plaque.from_comment(body).render_table()
+
+
+@pytest.mark.parametrize("exit_codes,expected_hints", [([0, 124], 0), ([124, 0], 1)])
+def test_cleanup_merge_hint_requires_successful_latest_attempt(
+    pr, exit_codes, expected_hints
+):
+    for iteration, exit_code in enumerate(exit_codes):
+        publish(pr, iteration=iteration, exit_code=exit_code)
+    body = gs.complete_workload_checks_block(
+        pr.comments[0].body,
+        workflow_outcome_resolver=lambda *_: WorkflowOutcome(  # noqa: U101
+            "success", "failure", True
+        ),
+    )
+    assert (
+        Plaque.from_comment(body).render_table().count("you can merge")
+        == expected_hints
+    )
+
+
+@pytest.mark.parametrize("arrival_order", [(0, 1), (1, 0)])
+def test_attempt_build_errors_do_not_override_successful_retry(
+    pr, monkeypatch, arrival_order
+):
+    for iteration in arrival_order:
+        monkeypatch.setenv("BUILD_FAILED_COUNT", "2" if iteration == 0 else "0")
+        publish(pr, iteration=iteration, exit_code=8 if iteration == 0 else 0)
+    plaque = Plaque.from_comment(pr.comments[0].body)
+    row = plaque.workload("filestore")
+    assert row.build == "completed"
+    assert row.reports[0].count("FAIL_BUILD") == 2
+    assert row.reports[1].count("FAIL_BUILD") == 0
+    cells = parsed_table(plaque).findall("tbody/tr")
+    assert cells[0][0].find("span").text == "🔴"
+    assert cells[0][2].find("span").text == "🔴"
+    assert cells[1][0].find("span").text == cells[1][3].find("span").text == "🟢"
+    assert row.build_error_url == ""
+
+
+def test_existing_shared_attempt_failure_is_cleared_by_successful_retry(
+    pr, monkeypatch
+):
+    monkeypatch.setenv("BUILD_FAILED_COUNT", "1")
+    publish(pr, iteration=0, exit_code=8)
+    plaque = Plaque.from_comment(pr.comments[0].body)
+    row = plaque.workload("filestore")
+    row.build = "failed_build"
+    row.build_error_url = "https://logs/old-build-error.html"
+    pr.comments[0].body = plaque.replace(pr.comments[0].body)
+    monkeypatch.setenv("BUILD_FAILED_COUNT", "0")
+    publish(pr, iteration=1)
+    plaque = Plaque.from_comment(pr.comments[0].body)
+    row = plaque.workload("filestore")
+    assert row.overall(row.reports[0]) == "failed"
+    assert row.overall(row.reports[1]) == "completed"
+    assert row.build == "completed"
+    assert row.build_error_url == ""
+
+
+def test_dedicated_build_failure_is_not_cleared_by_a_test_report(pr):
+    gs.update_pr_comment_workload_check(
+        12, pr, PRESET, "filestore", False, "failed_build"
+    )
+    publish(pr)
+    row = Plaque.from_comment(pr.comments[0].body).workload("filestore")
+    assert row.build == "failed_build"
+    assert row.overall(row.reports[0]) == "failed"
+
+
+def test_junit_summary_records_execution_exit_code(
+    pr, tmp_path, mk_testcase, write_junit_xml
+):
+    junit = tmp_path / "junit.xml"
+    write_junit_xml(junit, mk_testcase())
+    summary = gs.gen_summary_counts([("Tests", str(junit))])
+    gs.update_pr_comment(
+        run_number=12,
+        pr=pr,
+        summary=summary,
+        build_preset=PRESET,
+        test_history_url="",
+        test_target="cloud/filestore/",
+        test_time="0",
+        is_dry_run=False,
+        workload_status="completed",
+        component="filestore",
+        test_exit_code=124,
+    )
+    row = Plaque.from_comment(pr.comments[0].body).workload("filestore")
+    assert row.reports[0].count("PASS") == 1
+    assert row.reports[0].exit_code == 124
+    assert row.overall(row.reports[0]) == "failed"
