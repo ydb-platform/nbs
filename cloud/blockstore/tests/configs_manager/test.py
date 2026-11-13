@@ -139,6 +139,23 @@ def wait_runtime_rejection(nbs, count=1, timeout=120):
     raise AssertionError("ConfigsManager did not report the rejected configuration")
 
 
+# Wait for a new ConfigsManager message and return its observed occurrence count.
+def wait_config_manager_log(nbs, message, previous_count=0, timeout=10):
+    # Count only this component so bootstrap messages cannot satisfy the wait.
+    def count_new_messages():
+        count = sum(
+            "BLOCKSTORE_CONFIGS_MANAGER" in line and message in line
+            for line in Path(nbs.stderr_file_name).read_text().splitlines()
+        )
+        return count if count > previous_count else None
+
+    return yatest_common.wait_for(
+        count_new_messages,
+        timeout=timeout,
+        fail_message=f"ConfigsManager did not report a new message: {message}",
+    )
+
+
 def start_dynamic_config_ydb():
     return start_ydb(
         extra_feature_flags=["database_yaml_config_allowed"],
@@ -281,8 +298,8 @@ def test_startup_configures_disk_agent_backend_and_listener(tmp_path, dedicated_
         ydb.stop()
 
 
-# Verify startup delivery, replacement, rejection, and removal when the static
-# dispatcher allow list does not include PrivateDatabaseConfigItem.
+# Verify startup delivery, runtime publication, rejection, and reset when the
+# static dispatcher allow list does not include PrivateDatabaseConfigItem.
 def test_dynamic_blockstore_config_lifecycle():
     ydb = start_dynamic_config_ydb()
     nbs = None
@@ -302,6 +319,7 @@ def test_dynamic_blockstore_config_lifecycle():
         config.files["storage"].ConfigDispatcherSettings.AllowList.Names.append(
             "NameserviceConfigItem"
         )
+        config.files["log"].Entry.add(Component=b"BLOCKSTORE_CONFIGS_MANAGER", Level=6)
         nbs = start_nbs(config)
 
         # Observe the applied seed in the configuration retained by a startup consumer.
@@ -311,9 +329,15 @@ def test_dynamic_blockstore_config_lifecycle():
         log = Path(nbs.stderr_file_name).read_text()
         assert re.search(r"BLOCKSTORE_SERVER.*Received CMS configuration for YAML mode", log)
         assert re.search(r"BLOCKSTORE_SERVER.*Applied startup PrivateDatabaseConfig", log)
-        updates = wait_config_delivery(nbs)
 
-        # Verify runtime delivery when the configured allow list
+        # Confirm that the first delivery matches the source already applied at startup.
+        updates = wait_config_delivery(nbs)
+        wait_config_manager_log(
+            nbs,
+            "PrivateDatabaseConfig is unchanged; skipping publication",
+        )
+
+        # Verify runtime publication when the configured allow list
         # does not include PrivateDatabaseConfigItem.
         replace_database_config(
             ydb,
@@ -321,6 +345,7 @@ def test_dynamic_blockstore_config_lifecycle():
             "storage_service:\n  write_blob_threshold: 300",
         )
         updates = wait_config_delivery(nbs, updates)
+        applied_count = wait_config_manager_log(nbs, "Applied PrivateDatabaseConfig")
 
         replace_database_config(
             ydb,
@@ -346,6 +371,11 @@ def test_dynamic_blockstore_config_lifecycle():
             "storage_service:\n  write_blob_threshold: 400",
         )
         updates = wait_config_delivery(nbs, updates)
+        wait_config_manager_log(
+            nbs,
+            "Applied PrivateDatabaseConfig",
+            previous_count=applied_count,
+        )
 
         # Remove an invalid source after another rejection.
         replace_database_config(ydb, 4, "storage_service: invalid")
@@ -353,6 +383,10 @@ def test_dynamic_blockstore_config_lifecycle():
         updates = wait_config_delivery(nbs, updates, acknowledged=False)
         replace_database_config(ydb, 5, "")
         wait_config_delivery(nbs, updates)
+        wait_config_manager_log(
+            nbs,
+            "Reset PrivateDatabaseConfig; restored static config",
+        )
     finally:
         if nbs:
             nbs.kill()
