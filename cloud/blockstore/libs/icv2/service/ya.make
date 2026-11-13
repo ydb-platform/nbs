@@ -1,13 +1,19 @@
 LIBRARY()
 
 SRCS(
+    host_endpoint.cpp
     peer_connections.cpp
+    request_client.cpp
 )
 
 PEERDIR(
     cloud/blockstore/libs/cells/iface
+    cloud/blockstore/libs/client
+    cloud/blockstore/libs/icv2/data
     cloud/blockstore/libs/icv2/iface
     cloud/storage/core/libs/icv2/request_channel
+    cloud/blockstore/libs/service
+    cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/icv2/handshake
     cloud/storage/core/libs/icv2/tcp
 )
