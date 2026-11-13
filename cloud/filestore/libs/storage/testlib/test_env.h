@@ -13,6 +13,7 @@
 #include <cloud/filestore/libs/storage/core/tablet_tx_rescheduler.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/factory/shard_factory.h>
 #include <cloud/filestore/libs/storage/tablet/tablet.h>
+#include <cloud/filestore/libs/storage/tablet_rdma/rdma_tablet_registry.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -29,7 +30,9 @@
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/hash.h>
 #include <util/generic/string.h>
+#include <util/system/spinlock.h>
 
 #include <functional>
 
@@ -116,6 +119,9 @@ private:
     // Shared by the IndexTabletProxy actors of all the nodes.
     IMultiFileSystemEventHandlerPtr MultiFileSystemEventHandler;
 
+    TAdaptiveLock RdmaTabletRegistriesLock;
+    THashMap<ui32, TRdmaTabletRegistryPtr> RdmaTabletRegistries;
+
 public:
     explicit TTestEnv(
         TTestEnvConfig config = {},
@@ -165,6 +171,8 @@ public:
     {
         return MultiFileSystemEventHandler;
     }
+
+    TRdmaTabletRegistryPtr GetRdmaTabletRegistry(ui32 nodeId);
 
     TLog CreateLog();
 
