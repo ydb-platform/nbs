@@ -68,20 +68,6 @@ func RegisterForExecution(
 		return err
 	}
 
-	scheduleBackupImageTasksScheduleInterval, err := time.ParseDuration(
-		config.GetScheduleBackupImageTasksScheduleInterval(),
-	)
-	if err != nil {
-		return err
-	}
-
-	deleteBackupMetaTaskScheduleInterval, err := time.ParseDuration(
-		config.GetDeleteBackupMetaTaskScheduleInterval(),
-	)
-	if err != nil {
-		return err
-	}
-
 	err = taskRegistry.RegisterForExecution("images.CreateImageFromURL", func() tasks.Task {
 		return &createImageFromURLTask{
 			config:      config,
@@ -132,21 +118,35 @@ func RegisterForExecution(
 		return err
 	}
 
-	collectBackupQueueMetricsTaskScheduleInterval, err := time.ParseDuration(
-		config.GetCollectBackupQueueMetricsTaskScheduleInterval(),
-	)
-	if err != nil {
-		return err
-	}
-
-	backupQueueMetricsCollectionInterval, err := time.ParseDuration(
-		config.GetBackupQueueMetricsCollectionInterval(),
-	)
-	if err != nil {
-		return err
-	}
-
 	if backupS3 != nil {
+		scheduleBackupImageTasksScheduleInterval, err := time.ParseDuration(
+			config.GetScheduleBackupImageTasksScheduleInterval(),
+		)
+		if err != nil {
+			return err
+		}
+
+		deleteBackupMetaTaskScheduleInterval, err := time.ParseDuration(
+			config.GetDeleteBackupMetaTaskScheduleInterval(),
+		)
+		if err != nil {
+			return err
+		}
+
+		collectBackupQueueMetricsTaskScheduleInterval, err := time.ParseDuration(
+			config.GetCollectBackupQueueMetricsTaskScheduleInterval(),
+		)
+		if err != nil {
+			return err
+		}
+
+		backupQueueMetricsCollectionInterval, err := time.ParseDuration(
+			config.GetBackupQueueMetricsCollectionInterval(),
+		)
+		if err != nil {
+			return err
+		}
+
 		err = taskRegistry.RegisterForExecution("images.BackupImage", func() tasks.Task {
 			return &backupImageTask{
 				scheduler: taskScheduler,

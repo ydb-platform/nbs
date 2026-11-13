@@ -152,6 +152,35 @@ func (s *storageCommon) unrefChunk(
 
 	// We use |referer| column to implement `exactly once` update semantics.
 	// Chunk with zero ref count is deleted.
+	var backupQuery string
+	if len(s.followerChunksTableName) != 0 {
+		backupQuery = fmt.Sprintf(`
+		-- The chunk dies with its last ref, and its follower object, queued
+		-- or copied, goes to backup_chunk_delete_queue. Chunk IDs are never
+		-- reused, so a late write or delete of the object cannot hit a live
+		-- chunk. Goes before the changes of chunk_blobs so that it reads the table
+		-- before they are made.
+		$dead = (
+			select chunk_id
+			from $to_delete
+			where referer = ""
+		);
+
+		$dead_follower_chunks = (
+			select chunk_id
+			from %[1]v
+			where chunk_id = $chunk_id and
+				$chunk_id in $dead
+		);
+
+		upsert into backup_chunk_delete_queue
+		select chunk_id from $dead_follower_chunks;
+
+		delete from %[1]v
+		on select chunk_id from $dead_follower_chunks;
+		`, s.followerChunksTableName)
+	}
+
 	res, err := s.db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%[1]v";
@@ -216,29 +245,7 @@ func (s *storageCommon) unrefChunk(
 			chunk_id = $chunk_id and
 			referer = $referer;
 
-		-- The chunk dies with its last ref, and its follower object, queued
-		-- or copied, goes to backup_chunk_delete_queue. Chunk IDs are never
-		-- reused, so a late write or delete of the object cannot hit a live
-		-- chunk. Goes before the changes of %[2]v so that it reads the table
-		-- before they are made.
-		$dead = (
-			select chunk_id
-			from $to_delete
-			where referer = ""
-		);
-
-		$dead_follower_chunks = (
-			select chunk_id
-			from %[4]v
-			where chunk_id = $chunk_id and
-				$chunk_id in $dead
-		);
-
-		upsert into backup_chunk_delete_queue
-		select chunk_id from $dead_follower_chunks;
-
-		delete from %[4]v
-		on select chunk_id from $dead_follower_chunks;
+		%[4]v
 
 		%[3]v
 	`, s.tablesPath, s.tableName, s.forEachTable(`
@@ -247,7 +254,7 @@ func (s *storageCommon) unrefChunk(
 
 		delete from %[1]v
 		on select * from $to_delete;
-	`), s.followerChunksTableName),
+	`), backupQuery),
 		persistence.ValueParam("$shard_id", persistence.Uint64Value(makeShardID(chunkID))),
 		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
 		persistence.ValueParam("$referer", persistence.UTF8Value(referer)),

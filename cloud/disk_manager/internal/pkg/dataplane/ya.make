@@ -31,6 +31,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    backup_disabled_test.go
     export_snapshot_checkpoint_test.go
     export_snapshot_errors_test.go
     export_image_task_test.go

@@ -788,6 +788,7 @@ func newSnapshotStorage(
 		metrics.NewEmptyRegistry(),
 		db,
 		nil, // do not need s3 here
+		false,
 	)
 	require.NoError(t, err)
 

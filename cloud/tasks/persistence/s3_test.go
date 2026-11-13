@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,6 +23,113 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 const maxRetriableErrorCount = 3
+
+func TestS3ObjectHeadersAreOptIn(t *testing.T) {
+	for _, compatibility := range []bool{false, true} {
+		name := "default"
+		if compatibility {
+			name = "backup/export"
+		}
+		t.Run(name, func(t *testing.T) {
+			requests := make(chan http.Header, 3)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests <- r.Header.Clone()
+				if r.Method == http.MethodGet {
+					_, _ = w.Write([]byte("data"))
+				}
+			}))
+			defer server.Close()
+			var options []S3ClientOption
+			if compatibility {
+				options = append(options, WithS3ExportCompatibility())
+			}
+			credentialsFile := filepath.Join(t.TempDir(), "credentials.json")
+			require.NoError(t, os.WriteFile(credentialsFile, []byte(`{"id":"id","secret":"secret"}`), 0600))
+			client, err := NewS3ClientFromConfig(&persistence_config.S3Config{
+				Endpoint:            proto.String(server.URL),
+				Region:              proto.String("region"),
+				CredentialsFilePath: proto.String(credentialsFile),
+				CallTimeout:         proto.String("1s"),
+			}, empty.NewRegistry(), nil, nil, options...)
+			require.NoError(t, err)
+			for _, put := range []func(context.Context, string, string, S3Object) error{
+				client.PutObject, client.putObject,
+			} {
+				require.NoError(t, put(newContext(), "bucket", "key", S3Object{Data: []byte("data")}))
+				headers := <-requests
+				if compatibility {
+					require.Empty(t, headers.Get("Content-Encoding"))
+					require.Equal(t, "application/octet-stream", headers.Get("Content-Type"))
+				} else {
+					require.Equal(t, "application/octet-stream", headers.Get("Content-Encoding"))
+				}
+			}
+			_, err = client.GetObject(newContext(), "bucket", "key")
+			require.NoError(t, err)
+			encoding := (<-requests).Get("Accept-Encoding")
+			if compatibility {
+				require.Equal(t, "identity", encoding)
+			} else {
+				require.NotEqual(t, "identity", encoding)
+			}
+		})
+	}
+}
+
+func TestS3DefaultBucketCheckKeepsRetriableErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+	client, err := NewS3Client(server.URL, "region", NewS3Credentials("id", "secret"),
+		time.Second, empty.NewRegistry(), 0, nil, nil, 0)
+	require.NoError(t, err)
+	_, err = client.BucketExists(newContext(), "bucket")
+	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
+	client, err = NewS3Client(server.URL, "region", NewS3Credentials("id", "secret"),
+		time.Second, empty.NewRegistry(), 0, nil, nil, 0, WithS3ExportCompatibility())
+	require.NoError(t, err)
+	_, err = client.BucketExists(newContext(), "bucket")
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+}
+
+func TestS3ObjectBodyRetriesAreOptIn(t *testing.T) {
+	for _, compatibility := range []bool{false, true} {
+		name := "default"
+		if compatibility {
+			name = "backup/export"
+		}
+		t.Run(name, func(t *testing.T) {
+			var attempts atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if attempts.Add(1) == 1 {
+					w.Header().Set("Content-Length", "100")
+					_, _ = w.Write([]byte("short"))
+					return
+				}
+				_, _ = w.Write([]byte("data"))
+			}))
+			defer server.Close()
+			var options []S3ClientOption
+			if compatibility {
+				options = append(options, WithS3ExportCompatibility())
+			}
+			client, err := NewS3Client(server.URL, "region", NewS3Credentials("id", "secret"),
+				5*time.Second, empty.NewRegistry(), 1, nil, nil, 0, options...)
+			require.NoError(t, err)
+			object, err := client.GetObject(newContext(), "bucket", "key")
+			if compatibility {
+				require.NoError(t, err)
+				require.Equal(t, []byte("data"), object.Data)
+				require.EqualValues(t, 2, attempts.Load())
+			} else {
+				require.Error(t, err)
+				require.EqualValues(t, 1, attempts.Load())
+			}
+		})
+	}
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

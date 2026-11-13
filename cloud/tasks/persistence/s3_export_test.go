@@ -43,6 +43,7 @@ func newExportTestS3Client(
 		nil,
 		0, // maxIdleConnsPerHost
 		WithS3EmptySigningRegion(),
+		WithS3ExportCompatibility(),
 	)
 	require.NoError(t, err)
 	return client

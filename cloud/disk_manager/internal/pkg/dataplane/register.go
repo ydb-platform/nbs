@@ -38,6 +38,7 @@ func RegisterForExecution(
 
 	err := taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromDisk", func() tasks.Task {
 		return &createSnapshotFromDiskTask{
+			backupEnabled:            backupS3 != nil,
 			config:                   config,
 			performanceConfig:        performanceConfig,
 			disabledZones:            disabledZones,
@@ -191,20 +192,6 @@ func RegisterForExecution(
 		return err
 	}
 
-	backupChunksTaskScheduleInterval, err := time.ParseDuration(
-		config.GetBackupChunksTaskScheduleInterval(),
-	)
-	if err != nil {
-		return err
-	}
-
-	deleteBackupChunksTaskScheduleInterval, err := time.ParseDuration(
-		config.GetDeleteBackupChunksTaskScheduleInterval(),
-	)
-	if err != nil {
-		return err
-	}
-
 	err = taskRegistry.RegisterForExecution(
 		"dataplane.CollectSnapshots",
 		func() tasks.Task {
@@ -296,6 +283,20 @@ func RegisterForExecution(
 	}
 
 	if backupS3 != nil {
+		backupChunksTaskScheduleInterval, err := time.ParseDuration(
+			config.GetBackupChunksTaskScheduleInterval(),
+		)
+		if err != nil {
+			return err
+		}
+
+		deleteBackupChunksTaskScheduleInterval, err := time.ParseDuration(
+			config.GetDeleteBackupChunksTaskScheduleInterval(),
+		)
+		if err != nil {
+			return err
+		}
+
 		err = taskRegistry.RegisterForExecution(
 			"dataplane.BackupSnapshotData",
 			func() tasks.Task {
@@ -415,8 +416,16 @@ func RegisterForExecution(
 	return nil
 }
 
-func Register(ctx context.Context, taskRegistry *tasks.Registry) error {
+func Register(ctx context.Context, taskRegistry *tasks.Registry, backupEnabled bool) error {
 	for taskType, newTask := range newTaskByTaskType {
+		if !backupEnabled {
+			switch taskType {
+			case "dataplane.BackupSnapshotData", "dataplane.BackupChunks",
+				"dataplane.ScheduleBackupChunksTasks", "dataplane.DeleteBackupSnapshotData",
+				"dataplane.DeleteBackupChunks", "dataplane.TransferFromBackupToDisk":
+				continue
+			}
+		}
 		err := taskRegistry.Register(taskType, newTask)
 		if err != nil {
 			return err
