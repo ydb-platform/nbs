@@ -631,7 +631,7 @@ private:
         auto& headers = *Request->MutableHeaders();
 
         auto now = TInstant::Now();
-        // Capture server wall time; CPU cycle counts have no Unix epoch.
+        // Record when the request arrived at the server.
         ProfileLogRecord.Request.SetTimestampMcs(now.MicroSeconds());
 
         auto timestamp = TInstant::MicroSeconds(headers.GetTimestamp());
@@ -810,44 +810,47 @@ private:
 
     void CompleteRequest()
     {
+        if (!Started) {
+            // Shutdown can cancel a request before PrepareRequestContext() and
+            // ExecuteRequest(). Completing it would unbalance request counters
+            // and write a profile record with no start timestamp.
+            return;
+        }
+
         auto& Log = AppCtx.Log;
 
         STORAGE_TRACE(TMethod::RequestName
             << " #" << RequestId
             << " request completed");
 
-        if (CallContext && Started) {
-            const ui64 now = GetCycleCount();
-            const auto ts = CallContext->CalcRequestTime(now);
+        const ui64 now = GetCycleCount();
+        const auto ts = CallContext->CalcRequestTime(now);
 
-            FILESTORE_TRACK(
-                RequestCompleted,
-                CallContext,
-                TString(TMethod::RequestName),
-                ts.TotalTime.MicroSeconds(),
-                ts.ExecutionTime.MicroSeconds());
+        FILESTORE_TRACK(
+            RequestCompleted,
+            CallContext,
+            TString(TMethod::RequestName),
+            ts.TotalTime.MicroSeconds(),
+            ts.ExecutionTime.MicroSeconds());
 
-            // Ids in public API requests come from the client, so E_NOT_FOUND
-            // is an expected outcome here (e.g. filesystem was never created
-            // or already destroyed) - report it as silent so it isn't counted
-            // as a fatal error. Internal lookups of entities that must exist
-            // don't go through this handler and stay loud.
-            if (Error.GetCode() == E_NOT_FOUND) {
-                SetErrorProtoFlag(Error, NCloud::NProto::EF_SILENT);
-            }
-
-            AppCtx.Stats->RequestCompleted(Log, *CallContext, Error);
-
-            ProfileLogRecord.FileSystemId = CallContext->FileSystemId;
-
-            auto request = &ProfileLogRecord.Request;
-            request->SetDurationMcs(ts.TotalTime.MicroSeconds());
-            request->SetRequestType(static_cast<ui32>(CallContext->RequestType));
-
-            AppCtx.ProfileLog->Write(std::move(ProfileLogRecord));
-        } else {
-            // request processing was aborted
+        // Ids in public API requests come from the client, so E_NOT_FOUND
+        // is an expected outcome here (e.g. filesystem was never created
+        // or already destroyed) - report it as silent so it isn't counted
+        // as a fatal error. Internal lookups of entities that must exist
+        // don't go through this handler and stay loud.
+        if (Error.GetCode() == E_NOT_FOUND) {
+            SetErrorProtoFlag(Error, NCloud::NProto::EF_SILENT);
         }
+
+        AppCtx.Stats->RequestCompleted(Log, *CallContext, Error);
+
+        ProfileLogRecord.FileSystemId = CallContext->FileSystemId;
+
+        auto request = &ProfileLogRecord.Request;
+        request->SetDurationMcs(ts.TotalTime.MicroSeconds());
+        request->SetRequestType(static_cast<ui32>(CallContext->RequestType));
+
+        AppCtx.ProfileLog->Write(std::move(ProfileLogRecord));
     }
 };
 
