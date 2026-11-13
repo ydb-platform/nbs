@@ -1152,9 +1152,7 @@ void TIndexTabletActor::HandleServerConnected(
 {
     Y_UNUSED(ctx);
 
-    if (RdmaTabletRegistry) {
-        RdmaTabletRegistry->RegisterPipe(ev->Get()->ServerId, SelfId());
-    }
+    RegisterRdmaPipe(ev->Get()->ServerId);
 }
 
 void TIndexTabletActor::HandleSessionDisconnected(
@@ -1166,7 +1164,7 @@ void TIndexTabletActor::HandleSessionDisconnected(
         LogTag.c_str(),
         ev->Sender.ToString().c_str());
 
-    UnregisterRdmaPipe(ev->Get()->ServerId);
+    UnregisterRdmaPipe(ev->Sender);
     RemoveFileSystemEventClient(ev->Sender);
     OrphanSession(ev->Sender, ctx.Now());
 }
@@ -2190,6 +2188,13 @@ void TIndexTabletActor::UnregisterFileStore(const NActors::TActorContext& ctx)
         GetGeneration());
 
     ctx.Send(MakeStorageServiceId(), request.release());
+}
+
+void TIndexTabletActor::RegisterRdmaPipe(const TActorId& pipeServerId)
+{
+    if (RdmaTabletRegistry) {
+        RdmaTabletRegistry->RegisterPipe(pipeServerId, SelfId());
+    }
 }
 
 void TIndexTabletActor::UnregisterRdmaPipe(const TActorId& pipeServerId)

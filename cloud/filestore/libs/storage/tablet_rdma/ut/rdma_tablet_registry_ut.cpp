@@ -108,11 +108,31 @@ Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
             registry.FindTablet(MakeActorId(2)));
 
         registry.UnregisterPipe(MakeActorId(2));
-        registry.UnregisterTablet(MakeActorId(10));
 
         UNIT_ASSERT_VALUES_EQUAL(
             TActorId(),
             registry.FindTablet(MakeActorId(2)));
+    }
+
+    Y_UNIT_TEST(ShouldMovePipeRegisteredForAnotherTablet)
+    {
+        TRdmaTabletRegistry registry;
+        registry.RegisterPipe(MakeActorId(1), MakeActorId(10));
+        registry.RegisterPipe(MakeActorId(1), MakeActorId(20));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            MakeActorId(20),
+            registry.FindTablet(MakeActorId(1)));
+
+        registry.UnregisterTablet(MakeActorId(10));
+        UNIT_ASSERT_VALUES_EQUAL(
+            MakeActorId(20),
+            registry.FindTablet(MakeActorId(1)));
+
+        registry.UnregisterTablet(MakeActorId(20));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TActorId(),
+            registry.FindTablet(MakeActorId(1)));
     }
 
     Y_UNIT_TEST(ShouldUnregisterOnlyPipesOfTablet)
@@ -155,7 +175,14 @@ Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
         tablet.DisconnectPipe();
 
         TDispatchOptions options;
-        options.FinalEvents.emplace_back(TEvTabletPipe::EvServerDisconnected);
+        options.FinalEvents.emplace_back(
+            [&](IEventHandle& ev)
+            {
+                return ev.GetTypeRewrite() ==
+                           TEvTabletPipe::EvServerDisconnected &&
+                       ev.Get<TEvTabletPipe::TEvServerDisconnected>()
+                               ->ServerId == pipeServerId;
+            });
         env.GetRuntime().DispatchEvents(options);
 
         UNIT_ASSERT_VALUES_EQUAL(
