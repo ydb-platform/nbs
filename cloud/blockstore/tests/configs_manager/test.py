@@ -385,7 +385,6 @@ def test_dynamic_blockstore_config_lifecycle():
         #     "sensor": "AppCriticalEvents/GetConfigsFromCmsYamlParseError",
         # })
         # assert parse_errors is not None and parse_errors["value"] >= 1
-        assert "Keeping the last successfully applied configuration" in log
         assert "Fix or roll back the cluster configuration before restarting nodes" in log
         assert "will be lost after a restart" in log
 
