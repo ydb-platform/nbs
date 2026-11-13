@@ -20,6 +20,8 @@ PEERDIR(
     cloud/filestore/public/sdk/python/client
     cloud/filestore/tests/python/lib
 
+    contrib/python/requests/py3
+
     library/python/testing/yatest_common
 )
 

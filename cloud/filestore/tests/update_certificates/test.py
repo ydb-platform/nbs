@@ -4,6 +4,7 @@ Periodic certificate checks are disabled, so filestore-server applies new
 certificate files only when the action asks for it.
 """
 
+import collections
 import json
 import os
 import shutil
@@ -12,6 +13,7 @@ import ssl
 import tempfile
 
 import pytest
+import requests
 
 import yatest.common as yatest_common
 
@@ -57,17 +59,55 @@ class CertificateFiles:
             os.replace(tmp_path, path)
 
 
-def get_server_certificate(port):
-    """Returns the certificate the server presents in a new TLS handshake."""
+def get_server_certificate(port, name):
+    """Returns the certificate the server presents in a new TLS handshake,
+    which must be certificate |name|."""
 
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
+    context = ssl.create_default_context(cafile=source_file(name))
     context.set_alpn_protocols(["h2"])
 
     with socket.create_connection(("localhost", port)) as sock:
         with context.wrap_socket(sock, server_hostname="localhost") as tls:
-            return tls.getpeercert(binary_form=True)
+            assert tls.getpeercert(binary_form=True) == read_certificate(name)
+            return tls.getpeercert()
+
+
+def get_expire_ts(cert):
+    return ssl.cert_time_to_seconds(cert["notAfter"])
+
+
+CertificateMetrics = collections.namedtuple(
+    "CertificateMetrics",
+    ["cert_version", "root_version", "expire_ts"])
+
+
+def get_certificate_metrics(filestore, certs):
+    """Returns what the metrics report for the files in use: the versions of
+    the certificate and the root certificates and the expiration time of the
+    certificate."""
+
+    r = requests.get(
+        f"http://localhost:{filestore.mon_port}"
+        "/counters/counters=filestore/json",
+        timeout=10)
+    r.raise_for_status()
+
+    metrics = {}
+    for sensor in r.json()["sensors"]:
+        labels = sensor["labels"]
+        if labels.get("component") == "certificates":
+            metrics[(labels.get("path"), labels.get("sensor"))] = \
+                sensor["value"]
+
+    def get(path, name):
+        value = metrics.get((path, name))
+        assert value is not None, f"No {name} metric for {path}"
+        return value
+
+    return CertificateMetrics(
+        cert_version=get(certs.cert_file, "Fingerprint"),
+        root_version=get(certs.root_certs_file, "Fingerprint"),
+        expire_ts=get(certs.cert_file, "ExpireTs"))
 
 
 @pytest.fixture
@@ -117,7 +157,9 @@ def update_certificates(filestore):
 
 def test_should_update_certificates(filestore, certs):
     port = filestore.secure_port
-    assert get_server_certificate(port) == read_certificate("server.crt")
+    cert = get_server_certificate(port, "server.crt")
+    old_metrics = get_certificate_metrics(filestore, certs)
+    assert old_metrics.expire_ts == get_expire_ts(cert)
 
     certs.install(
         cert="server_new.crt",
@@ -125,11 +167,19 @@ def test_should_update_certificates(filestore, certs):
         root_certs="server_new.crt")
 
     # The files are not read on their own.
-    assert get_server_certificate(port) == read_certificate("server.crt")
+    get_server_certificate(port, "server.crt")
+    assert get_certificate_metrics(filestore, certs) == old_metrics
 
     assert json.loads(update_certificates(filestore)) == {}
 
-    assert get_server_certificate(port) == read_certificate("server_new.crt")
+    cert = get_server_certificate(port, "server_new.crt")
+    metrics = get_certificate_metrics(filestore, certs)
+    assert metrics.cert_version != old_metrics.cert_version
+    assert metrics.root_version != old_metrics.root_version
+    # Both files hold the same certificate now.
+    assert metrics.cert_version == metrics.root_version
+    assert metrics.expire_ts == get_expire_ts(cert)
+    assert metrics.expire_ts != old_metrics.expire_ts
 
     # The new root certificate is in use too: the client certificate is
     # verified against it.
@@ -146,6 +196,7 @@ def test_should_update_certificates(filestore, certs):
 
 def test_should_keep_certificates_that_fail_validation(filestore, certs):
     port = filestore.secure_port
+    old_metrics = get_certificate_metrics(filestore, certs)
 
     # The new certificate does not match the private key.
     certs.install(
@@ -157,7 +208,8 @@ def test_should_keep_certificates_that_fail_validation(filestore, certs):
         update_certificates(filestore)
     assert e.value.code == EResult.E_INVALID_STATE.value
 
-    assert get_server_certificate(port) == read_certificate("server.crt")
+    get_server_certificate(port, "server.crt")
+    assert get_certificate_metrics(filestore, certs) == old_metrics
 
     # Once the files are fixed, the next update applies them.
     certs.install(
@@ -167,4 +219,9 @@ def test_should_keep_certificates_that_fail_validation(filestore, certs):
 
     update_certificates(filestore)
 
-    assert get_server_certificate(port) == read_certificate("server_new.crt")
+    cert = get_server_certificate(port, "server_new.crt")
+    metrics = get_certificate_metrics(filestore, certs)
+    assert metrics.cert_version != old_metrics.cert_version
+    assert metrics.root_version == old_metrics.root_version
+    assert metrics.expire_ts == get_expire_ts(cert)
+    assert metrics.expire_ts != old_metrics.expire_ts
