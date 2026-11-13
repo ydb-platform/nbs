@@ -466,6 +466,7 @@ class LocalNfsVhostRunner:
             kikimr_port=0,
             domain=None,
         )
+        vhost_configurator.generate_configs()
 
         self.daemon = FilestoreVhost(vhost_configurator)
         self.daemon.start()
