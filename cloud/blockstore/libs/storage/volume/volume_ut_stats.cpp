@@ -2272,6 +2272,18 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 TPartNonreplCountersData{});
         Send(*runtime, recipient, sender, std::move(request));
 
+        // The volume should still reply with the counters it already has.
+        {
+            auto response = volume.TryRecvResponse<
+                TEvStatsService::TEvGetServiceStatisticsResponse>();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(1, response->PartsCounters.size());
+        }
+
         volume.SendToPipe(
             std::make_unique<TEvStatsService::TEvGetServiceStatisticsRequest>());
         TDispatchOptions options;
@@ -2357,6 +2369,154 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         }
 
         UNIT_ASSERT_VALUES_EQUAL(0, partCountersRequestCount);
+    }
+
+    void DoShouldNotWaitForPartStatsCommitToReplyWithStatistics(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUsePullSchemeForVolumeStatistics(true);
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            MakeIntrusive<TDiskRegistryState>());
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(0, 0, 0, 0, false, 1, mediaKind);
+        volume.WaitReady();
+
+        ui32 partStatsSavedCount = 0;
+        auto partStatsSavedObserver =
+            runtime->AddObserver<TEvVolumePrivate::TEvPartStatsSaved>(
+                [&](TEvVolumePrivate::TEvPartStatsSaved::TPtr& ev)
+                {
+                    Y_UNUSED(ev);
+                    ++partStatsSavedCount;
+                });
+
+        // Hold back the volume tablet's writes to BlobStorage, so that none of
+        // its transactions can commit, as when its channels are degraded.
+        bool blockVolumeCommits = true;
+        TVector<std::unique_ptr<IEventHandle>> blockedPuts;
+        auto putObserver = runtime->AddObserver<TEvBlobStorage::TEvPut>(
+            [&](TEvBlobStorage::TEvPut::TPtr& ev)
+            {
+                if (blockVolumeCommits &&
+                    ev->Get()->Id.TabletID() == TestVolumeTablets[0])
+                {
+                    blockedPuts.emplace_back(ev.Release());
+                }
+            });
+
+        volume.SendToPipe(std::make_unique<
+                          TEvStatsService::TEvGetServiceStatisticsRequest>());
+
+        {
+            auto response = volume.TryRecvResponse<
+                TEvStatsService::TEvGetServiceStatisticsResponse>();
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(1, response->PartsCounters.size());
+        }
+
+        // Make sure the save transaction is really stuck in the commit.
+        runtime->DispatchEvents(
+            [&]
+            {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]
+                {
+                    return !blockedPuts.empty();
+                };
+                return options;
+            }(),
+            TDuration::Seconds(1));
+        UNIT_ASSERT(!blockedPuts.empty());
+        UNIT_ASSERT_VALUES_EQUAL(0, partStatsSavedCount);
+
+        // Once the writes go through, the part stats should get saved.
+        blockVolumeCommits = false;
+        for (auto& put: blockedPuts) {
+            runtime->SendAsync(put.release());
+        }
+        blockedPuts.clear();
+
+        runtime->DispatchEvents(
+            [&]
+            {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]
+                {
+                    return partStatsSavedCount > 0;
+                };
+                return options;
+            }());
+        UNIT_ASSERT_VALUES_EQUAL(1, partStatsSavedCount);
+    }
+
+    Y_UNIT_TEST(ShouldNotWaitForPartStatsCommitToReplyWithStatistics)
+    {
+        DoShouldNotWaitForPartStatsCommitToReplyWithStatistics(
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(
+        ShouldNotWaitForPartStatsCommitToReplyWithStatisticsForNonreplicatedVolume)
+    {
+        DoShouldNotWaitForPartStatsCommitToReplyWithStatistics(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    Y_UNIT_TEST(ShouldReplyWithStatisticsWhenPartCountersDoNotBelongToDisk)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetUsePullSchemeForVolumeStatistics(true);
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            MakeIntrusive<TDiskRegistryState>());
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+        volume.WaitReady();
+
+        ui32 partCountersResponseCount = 0;
+        auto _ = runtime->AddObserver<
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersResponse>(
+            [&](TEvNonreplPartitionPrivate::
+                    TEvGetDiskRegistryBasedPartCountersResponse::TPtr& ev)
+            {
+                for (auto& diskCounters: ev->Get()->DisksCounters) {
+                    diskCounters.DiskId = "unknown-disk";
+                }
+                ++partCountersResponseCount;
+            });
+
+        volume.SendToPipe(std::make_unique<
+                          TEvStatsService::TEvGetServiceStatisticsRequest>());
+
+        // The volume ignores the counters, but should still reply with the
+        // counters it already has.
+        auto response = volume.TryRecvResponse<
+            TEvStatsService::TEvGetServiceStatisticsResponse>();
+        UNIT_ASSERT(response);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            FormatError(response->GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(1, response->PartsCounters.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, partCountersResponseCount);
     }
 }
 
