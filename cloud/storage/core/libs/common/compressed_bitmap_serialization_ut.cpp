@@ -209,7 +209,7 @@ Y_UNIT_TEST_SUITE(TCompressedBitmapProtoTest)
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, result.GetError().GetCode());
         UNIT_ASSERT_C(
             result.GetError().GetMessage().Contains(
-                "Compressed bitmap chunk index is out of range"),
+                "Compressed bitmap chunk[0] index is out of range"),
             result.GetError().GetMessage());
     }
 

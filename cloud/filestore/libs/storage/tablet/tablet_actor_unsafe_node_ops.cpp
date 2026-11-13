@@ -2,6 +2,12 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/storage/core/helpers.h>
+
+#include <cloud/storage/core/libs/common/compressed_bitmap_serialization.h>
+
+#include <util/string/builder.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -886,7 +892,7 @@ void TIndexTabletActor::HandleUnsafeChangeTabletState(
         TFileStoreComponents::TABLET,
         "%s UnsafeChangeTabletState: %s",
         LogTag.c_str(),
-        msg->Record.DebugString().Quote().c_str());
+        DescribeChangeTabletStateRequest(msg->Record).Quote().c_str());
 
     ExecuteTx<TUnsafeChangeTabletState>(
         ctx,
@@ -908,14 +914,58 @@ bool TIndexTabletActor::PrepareTx_UnsafeChangeTabletState(
     return true;
 }
 
+NProto::TError TIndexTabletActor::TryUpdateShardCreationState(
+    IIndexTabletDatabase& db,
+    const NProtoPrivate::TFileSystemShardCreationState& requested)
+{
+    // An unset Version requests the current state without updating it. A
+    // version mismatch means this update lost the CAS, so leave the stored
+    // state unchanged. The response returns the current state for the caller
+    // to merge and retry.
+    if (!requested.HasVersion() ||
+        requested.GetVersion() !=
+            GetFileSystem().GetShardCreationState().GetVersion())
+    {
+        return {};
+    }
+
+    auto error = ValidateCompressedBitmapData(
+        requested.GetCreatedShardBitmap(),
+        Config->GetMaxShardCount());
+    if (HasError(error)) {
+        return error;
+    }
+
+    auto newState = requested;
+    newState.SetVersion(requested.GetVersion() + 1);
+    SetShardCreationState(db, newState);
+
+    return {};
+}
+
 void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
     const TActorContext& ctx,
     TTransactionContext& tx,
     TTxIndexTablet::TUnsafeChangeTabletState& args)
 {
-    Y_UNUSED(ctx);
-
     auto db = CreateIndexTabletDatabase(tx.DB);
+
+    if (args.Request.HasShardCreationState()) {
+        auto error = TryUpdateShardCreationState(
+            *db,
+            args.Request.GetShardCreationState());
+        if (HasError(error)) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET,
+                "%s Invalid shard creation state: %s",
+                LogTag.c_str(),
+                FormatError(error).c_str());
+
+            *args.Response.MutableError() = std::move(error);
+            return;
+        }
+    }
 
     if (args.Request.HasCompressNodeRef()) {
         SetCompressNodeRef(*db, args.Request.GetCompressNodeRef());
@@ -934,14 +984,22 @@ void TIndexTabletActor::CompleteTx_UnsafeChangeTabletState(
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>();
+    if (HasError(args.Response)) {
+        *response->Record.MutableError() = args.Response.GetError();
+    }
+
+    if (args.Request.HasShardCreationState()) {
+        *response->Record.MutableShardCreationState() =
+            GetFileSystem().GetShardCreationState();
+    }
 
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
         "%s UnsafeChangeTabletState: %s, result: %s",
         LogTag.c_str(),
-        args.Request.DebugString().Quote().c_str(),
-        response->Record.ShortUtf8DebugString().Quote().c_str());
+        DescribeChangeTabletStateRequest(args.Request).Quote().c_str(),
+        DescribeChangeTabletStateResponse(response->Record).Quote().c_str());
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

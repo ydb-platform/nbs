@@ -1,7 +1,9 @@
 #include "shard_creation_state_companion.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
+#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -86,9 +88,7 @@ TShardCreationStateCompanion::TShardCreationStateCompanion(
     : FileSystemId(std::move(fileSystemId))
     , LogTag(FileSystemId)
     , Mode(mode)
-{
-    Y_UNUSED(Mode);
-}
+{}
 
 bool TShardCreationStateCompanion::IsPersistentStateLoaded() const
 {
@@ -146,6 +146,132 @@ void TShardCreationStateCompanion::SetShardCreationState(
 {
     ShardCreationStateStatus = EShardCreationStateStatus::Supported;
     ShardCreationState = state;
+}
+
+TResultOrError<TShardCreationStateCompanion::EResponseAction>
+TShardCreationStateCompanion::HandleResponse(
+    const NProtoPrivate::TUnsafeChangeTabletStateResponse& response,
+    const TActorContext& ctx)
+{
+    if (HasError(response.GetError())) {
+        const auto* action = IsPersistentStateLoaded() ? "update" : "read";
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder() << "failed to " << action
+                             << " shard creation state");
+    }
+
+    if (!response.HasShardCreationState()) {
+        if (!IsPersistentStateLoaded()) {
+            // Older Tablets accept the request but do not return this state.
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "[%s] UnsafeChangeTabletState returned no shard creation "
+                "state, continuing without persistent shard creation state",
+                LogTag.c_str());
+            MarkPersistentStateUnsupported();
+            return EResponseAction::StartWithoutPersistentState;
+        }
+
+        if (IsPersistentStateSupported()) {
+            ReportShardCreationStateResponseMissing(
+                TStringBuilder() << "Filesystem " << LogTag.Quote()
+                                 << ": response is missing shard creation state"
+                                 << " after persistent state support was confirmed");
+            return MakeError(
+                E_REJECTED,
+                "shard creation state response is missing");
+        }
+
+        ReportShardCreationStateResponseMissing(
+            TStringBuilder() << "Filesystem " << LogTag.Quote()
+                             << ": unexpected response without shard creation"
+                             << " state after switching to non-persistent flow");
+        return MakeError(
+            E_INVALID_STATE,
+            "shard creation state response received after switching to "
+            "non-persistent flow");
+    }
+
+    const auto& state = response.GetShardCreationState();
+    if (!IsPersistentStateLoaded()) {
+        SetShardCreationState(state);
+        return EResponseAction::InitialStateLoaded;
+    }
+
+    if (!HasCreatedShardBitmap()) {
+        ReportShardCreationBitmapMissing(
+            TStringBuilder() << "Filesystem " << LogTag.Quote()
+                             << ": shard creation state response received"
+                             << " without an initialized shard bitmap");
+        return MakeError(
+            E_INVALID_STATE,
+            "shard creation bitmap is not initialized");
+    }
+
+    const auto mergeResult = MergeShardCreationState(state);
+    if (HasError(mergeResult)) {
+        return mergeResult.GetError();
+    }
+
+    switch (mergeResult.GetResult()) {
+        case EMergeAction::IgnoreStaleResponse:
+            return EResponseAction::IgnoreStaleResponse;
+        case EMergeAction::PersistLocalProgress:
+            return EResponseAction::PersistLocalProgress;
+        case EMergeAction::Continue:
+            return EResponseAction::Continue;
+    }
+    Y_ABORT("Unexpected shard creation merge action");
+}
+
+TResultOrError<TShardCreationStateCompanion::EMergeAction>
+TShardCreationStateCompanion::MergeShardCreationState(
+    const NProtoPrivate::TFileSystemShardCreationState& state)
+{
+    if (state.GetVersion() < ShardCreationState.GetVersion()) {
+        return EMergeAction::IgnoreStaleResponse;
+    }
+
+    // Merge shard bits only when the current request matches the persistent
+    // shard creation/resize plan (topology and target shard counts and config
+    // hash).
+    if (ShardCreationState.GetTopologyShardCount() !=
+            state.GetTopologyShardCount() ||
+        ShardCreationState.GetTargetShardCount() !=
+            state.GetTargetShardCount() ||
+        ShardCreationState.GetTargetShardConfigHash() !=
+            state.GetTargetShardConfigHash())
+    {
+        return MakeError(
+            E_INVALID_STATE,
+            TStringBuilder()
+                << "Shard creation/resize plan does not match the current request"
+                << " for filesystem " << FileSystemId.Quote()
+                << ": request topology="
+                << ShardCreationState.GetTopologyShardCount()
+                << ", target=" << ShardCreationState.GetTargetShardCount()
+                << ", hash=" << ShardCreationState.GetTargetShardConfigHash()
+                << "; stored topology=" << state.GetTopologyShardCount()
+                << ", target=" << state.GetTargetShardCount()
+                << ", hash=" << state.GetTargetShardConfigHash()
+                << ". Check the stored shard creation state before retrying");
+    }
+
+    if (CreatedShardBitmap) {
+        MergeCompressedBitmap(
+            *CreatedShardBitmap,
+            state.GetCreatedShardBitmap());
+    }
+    SetShardCreationState(state);
+    const auto unpersisted = HasUnpersistedCreatedShards();
+    if (HasError(unpersisted)) {
+        return unpersisted.GetError();
+    }
+    return unpersisted.GetResult()
+        ? EMergeAction::PersistLocalProgress
+        : EMergeAction::Continue;
 }
 
 NProto::TError TShardCreationStateCompanion::SetupCreatedShardBitmap(
@@ -278,6 +404,123 @@ void TShardCreationStateCompanion::CreateShard(
 bool TShardCreationStateCompanion::HasShardsToCreate() const
 {
     return ShardsToCreate != 0;
+}
+
+TResultOrError<bool>
+TShardCreationStateCompanion::HasUnpersistedCreatedShards() const
+{
+    if (!CreatedShardBitmap) {
+        return false;
+    }
+
+    const auto bitmap = LoadCompressedBitmap(
+        ShardCreationState.GetCreatedShardBitmap(),
+        ShardBitmapBitCount,
+        MaxShardCount);
+    if (HasError(bitmap)) {
+        return bitmap.GetError();
+    }
+    const auto& persisted = *bitmap.GetResult();
+
+    for (ui64 shardIndex = 0; shardIndex < ShardBitmapBitCount; ++shardIndex) {
+        if (CreatedShardBitmap->Test(shardIndex) && !persisted.Test(shardIndex))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void TShardCreationStateCompanion::ReadShardCreationState(
+    const TActorContext& ctx) const
+{
+    auto request =
+        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
+    request->Record.SetFileSystemId(FileSystemId);
+    // Unset Version means just return current state.
+    request->Record.MutableShardCreationState();
+
+    NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
+}
+
+void TShardCreationStateCompanion::UpdateShardCreationState(
+    const TActorContext& ctx) const
+{
+    if (!CreatedShardBitmap) {
+        LogStateUnavailable(ctx);
+        return;
+    }
+
+    auto request =
+        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
+    request->Record.SetFileSystemId(FileSystemId);
+    auto* shardCreationState = request->Record.MutableShardCreationState();
+    shardCreationState->SetVersion(ShardCreationState.GetVersion());
+    shardCreationState->SetTopologyShardCount(
+        ShardCreationState.GetTopologyShardCount());
+    shardCreationState->SetTargetShardCount(
+        ShardCreationState.GetTargetShardCount());
+    shardCreationState->SetTargetShardConfigHash(
+        ShardCreationState.GetTargetShardConfigHash());
+    SaveCompressedBitmap(
+        *CreatedShardBitmap,
+        ShardBitmapBitCount,
+        *shardCreationState->MutableCreatedShardBitmap());
+
+    NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
+}
+
+void TShardCreationStateCompanion::OnShardCreated(
+    const TActorContext& ctx,
+    const ui32 shardIndex)
+{
+    if (!CreatedShardBitmap) {
+        LogStateUnavailable(ctx);
+        return;
+    }
+
+    const bool validShardIndex =
+        shardIndex < ShardCreationState.GetTargetShardCount();
+    if (!validShardIndex) {
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] Invalid created shard index: %u, topology: %u, target: %u",
+            LogTag.c_str(),
+            shardIndex,
+            ShardCreationState.GetTopologyShardCount(),
+            ShardCreationState.GetTargetShardCount());
+        return;
+    }
+
+    CreatedShardBitmap->Set(shardIndex, shardIndex + 1);
+    UpdateShardCreationState(ctx);
+}
+
+void TShardCreationStateCompanion::LogStateUnavailable(
+    const TActorContext& ctx) const
+{
+    const char* message = "shard creation state unavailable";
+    switch (Mode) {
+        case EMode::Create:
+            message =
+                "Shard bitmap not initialized, "
+                "shard creation state unavailable";
+            break;
+        case EMode::Alter:
+            message =
+                "FS topology not yet read, "
+                "shard creation state unavailable";
+            break;
+    }
+
+    LOG_WARN(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] %s",
+        LogTag.c_str(),
+        message);
 }
 
 TResultOrError<bool> TShardCreationStateCompanion::CanResetFsShardCreationState(
