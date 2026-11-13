@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package dataplane;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum BackupSourceKind {
+    BACKUP_SOURCE_KIND_UNSPECIFIED = 0;
+    BACKUP_SOURCE_KIND_SNAPSHOT = 1;
+    BACKUP_SOURCE_KIND_IMAGE = 2;
+}

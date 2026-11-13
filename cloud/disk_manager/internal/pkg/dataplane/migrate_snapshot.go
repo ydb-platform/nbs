@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/golang/protobuf/proto"
+
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
@@ -60,6 +61,7 @@ func (t *migrateSnapshotTask) Run(
 	_, err = t.dstStorage.CreateSnapshot(
 		ctx,
 		storage.SnapshotMeta{
+			BlockSize:    srcMeta.BlockSize,
 			ID:           t.request.SrcSnapshotId,
 			Disk:         srcMeta.Disk,
 			CheckpointID: srcMeta.CheckpointID,

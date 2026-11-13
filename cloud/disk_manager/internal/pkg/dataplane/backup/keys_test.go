@@ -22,7 +22,7 @@ func TestKeys(t *testing.T) {
 func TestS3Key(t *testing.T) {
 	kek := make([]byte, keySize)
 
-	backupS3, err := NewS3(nil, "bucket", "p", "kek1", kek)
+	backupS3, err := newTestS3("p", "kek1", kek)
 	require.NoError(t, err)
 	require.Equal(
 		t,
@@ -30,7 +30,7 @@ func TestS3Key(t *testing.T) {
 		backupS3.Key(ImageMetaKey("image1")),
 	)
 
-	backupS3, err = NewS3(nil, "bucket", "", "kek1", kek)
+	backupS3, err = newTestS3("", "kek1", kek)
 	require.NoError(t, err)
 	require.Equal(
 		t,

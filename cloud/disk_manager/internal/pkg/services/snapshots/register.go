@@ -7,6 +7,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	snapshots_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -23,6 +24,7 @@ func RegisterForExecution(
 	nbsFactory nbs.Factory,
 	cellSelector cells.CellSelector,
 	backupS3 *backup.S3,
+	backupMetricsRegistry metrics.Registry,
 ) error {
 
 	deletedSnapshotExpirationTimeout, err := time.ParseDuration(
@@ -41,6 +43,27 @@ func RegisterForExecution(
 
 	scheduleBackupSnapshotTasksScheduleInterval, err := time.ParseDuration(
 		config.GetScheduleBackupSnapshotTasksScheduleInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
+	deleteBackupMetaTaskScheduleInterval, err := time.ParseDuration(
+		config.GetDeleteBackupMetaTaskScheduleInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
+	collectBackupQueueMetricsTaskScheduleInterval, err := time.ParseDuration(
+		config.GetCollectBackupQueueMetricsTaskScheduleInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
+	backupQueueMetricsCollectionInterval, err := time.ParseDuration(
+		config.GetBackupQueueMetricsCollectionInterval(),
 	)
 	if err != nil {
 		return err
@@ -74,7 +97,11 @@ func RegisterForExecution(
 			return &scheduleBackupSnapshotTasks{
 				scheduler: taskScheduler,
 				storage:   storage,
+				registry:  backupMetricsRegistry,
 				limit:     int(config.GetScheduleBackupSnapshotTasksLimit()),
+				inflightLimit: int(
+					config.GetBackupSnapshotsInflightLimit(),
+				),
 			}
 		})
 		if err != nil {
@@ -86,6 +113,55 @@ func RegisterForExecution(
 			"snapshots.ScheduleBackupSnapshotTasks",
 			tasks.TaskSchedule{
 				ScheduleInterval: scheduleBackupSnapshotTasksScheduleInterval,
+				MaxTasksInflight: 1,
+			},
+		)
+
+		err = taskRegistry.RegisterForExecution(
+			"snapshots.CollectBackupQueueMetrics",
+			func() tasks.Task {
+				return &collectBackupQueueMetricsTask{
+					storage:            storage,
+					registry:           backupMetricsRegistry,
+					collectionInterval: backupQueueMetricsCollectionInterval,
+				}
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		taskScheduler.ScheduleRegularTasks(
+			ctx,
+			"snapshots.CollectBackupQueueMetrics",
+			tasks.TaskSchedule{
+				ScheduleInterval: collectBackupQueueMetricsTaskScheduleInterval,
+				MaxTasksInflight: 1,
+			},
+		)
+
+		err = taskRegistry.RegisterForExecution(
+			"snapshots.DeleteBackupMeta",
+			func() tasks.Task {
+				return &deleteBackupMetaTask{
+					scheduler: taskScheduler,
+					storage:   storage,
+					backupS3:  backupS3,
+					batchSize: int(
+						config.GetDeleteBackupMetaTaskBatchSize(),
+					),
+				}
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		taskScheduler.ScheduleRegularTasks(
+			ctx,
+			"snapshots.DeleteBackupMeta",
+			tasks.TaskSchedule{
+				ScheduleInterval: deleteBackupMetaTaskScheduleInterval,
 				MaxTasksInflight: 1,
 			},
 		)
