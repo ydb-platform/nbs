@@ -168,7 +168,6 @@ void CheckRdmaLatency(bool enabled)
                 int(LastBioResult));
             const auto snapshot = backend.GetCompletionStats(TDuration::Zero());
             UNIT_ASSERT(snapshot);
-            UNIT_ASSERT(snapshot->CompletionSnapshotCycles);
             UNIT_ASSERT_VALUES_EQUAL(CompletedBios, snapshot->Completed);
             const auto& stats = snapshot->Requests[write];
             UNIT_ASSERT_VALUES_EQUAL(enabled ? good : 0, stats.LatencyGood);

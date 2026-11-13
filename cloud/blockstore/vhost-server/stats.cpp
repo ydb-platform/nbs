@@ -5,7 +5,6 @@
 #include <library/cpp/json/json_writer.h>
 
 #include <util/datetime/cputimer.h>
-#include <util/generic/guid.h>
 #include <util/stream/output.h>
 #include <util/system/event.h>
 
@@ -44,25 +43,6 @@ public:
         return CompletionStats;
     }
 
-    void Sync(const TSimpleStats& stats) override
-    {
-        if (!NeedUpdateCompletionStats) {
-            return;
-        }
-
-        CompletionStats.Completed = stats.Completed;
-        CompletionStats.CompFailed = stats.CompFailed;
-        CompletionStats.EncryptorErrors = stats.EncryptorErrors;
-
-        CompletionStats.Requests = stats.Requests;
-        CompletionStats.Times = stats.Times;
-        CompletionStats.Sizes = stats.Sizes;
-
-        CompletionStats.CompletionSnapshotCycles = GetCycleCount();
-        NeedUpdateCompletionStats = false;
-        CompletionStatsEvent.Signal();
-    }
-
     void Sync(const TAtomicStats& stats) override
     {
         if (!NeedUpdateCompletionStats) {
@@ -77,7 +57,6 @@ public:
         std::ranges::copy(stats.Times, CompletionStats.Times.begin());
         std::ranges::copy(stats.Sizes, CompletionStats.Sizes.begin());
 
-        CompletionStats.CompletionSnapshotCycles = GetCycleCount();
         NeedUpdateCompletionStats = false;
         CompletionStatsEvent.Signal();
     }
@@ -154,8 +133,7 @@ void DumpStats(
     TDuration elapsed,
     IOutputStream& stream,
     ui64 cyclesPerMs,
-    const TLatencySliConfig* latencySli,
-    TInstant collectedAt)
+    const TLatencySliConfig* latencySli)
 {
     const auto & stats = completeStats.SimpleStats;
 
@@ -192,19 +170,11 @@ void DumpStats(
     buf.BeginObject();
 
     if (latencySli && latencySli->Enabled) {
-        static const TString epoch = CreateGuidAsString();
-        static ui64 sequence = 0;
         buf.WriteKey("latency_sli");
         buf.BeginObject();
         write("version", 1);
-        write("sequence", ++sequence);
-        write("collected_at_us", collectedAt.MicroSeconds());
-        buf.WriteKey("epoch");
-        buf.WriteString(epoch);
         buf.WriteKey("config");
         buf.WriteString(latencySli->Serialize());
-        buf.WriteKey("fresh");
-        buf.WriteBool(completeStats.Fresh);
         buf.EndObject();
     }
 
@@ -242,14 +212,6 @@ void DumpStats(
 ICompletionStatsPtr CreateCompletionStats()
 {
     return std::make_shared<TCompletionStats>();
-}
-
-TSimpleStats SnapshotCompletionStats(const TAtomicStats& stats)
-{
-    TSimpleStats snapshot;
-    snapshot += stats;
-    snapshot.CompletionSnapshotCycles = GetCycleCount();
-    return snapshot;
 }
 
 }   // namespace NCloud::NBlockStore::NVHostServer

@@ -10,11 +10,15 @@ namespace NCloud::NBlockStore::NVHostServer {
 
 Y_UNIT_TEST_SUITE(TOptionsTest)
 {
-    Y_UNIT_TEST(ShouldReadLatencySliEnvironmentAndAllowExplicitOverride)
+    Y_UNIT_TEST(ShouldReadLatencySliFromEnvironment)
     {
-        const auto previous = GetEnv("NBS_LATENCY_SLI_CONFIG");
+        const auto previous = TryGetEnv("NBS_LATENCY_SLI_CONFIG");
         Y_SCOPE_EXIT(previous) {
-            SetEnv("NBS_LATENCY_SLI_CONFIG", previous);
+            if (previous) {
+                SetEnv("NBS_LATENCY_SLI_CONFIG", *previous);
+            } else {
+                UnsetEnv("NBS_LATENCY_SLI_CONFIG");
+            }
         };
         SetEnv("NBS_LATENCY_SLI_CONFIG", "1;0:1:8193:1000");
         TVector<TString> params{
@@ -30,9 +34,10 @@ Y_UNIT_TEST_SUITE(TOptionsTest)
             return options;
         };
         UNIT_ASSERT_VALUES_EQUAL("1;0:1:8193:1000", parse().LatencySli.Serialize());
-        params.push_back("--latency-sli");
-        params.push_back("1;1:1:8193:2000");
-        UNIT_ASSERT_VALUES_EQUAL("1;1:1:8193:2000", parse().LatencySli.Serialize());
+        SetEnv("NBS_LATENCY_SLI_CONFIG", "");
+        UNIT_ASSERT(!parse().LatencySli.Enabled);
+        UnsetEnv("NBS_LATENCY_SLI_CONFIG");
+        UNIT_ASSERT(!parse().LatencySli.Enabled);
     }
 
     Y_UNIT_TEST(ShouldParseOptions)

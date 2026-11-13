@@ -282,28 +282,20 @@ struct TPipe
 
 TChild SpawnChild(
     const TString& binaryPath,
-    TVector<TString> args)
+    TVector<TString> args,
+    const TString& latencySli)
 {
     // Use an environment extension so older external binaries can still run:
     // they ignore the setting and their operations are reported as Unknown.
-    TString latencySliEnv;
-    for (size_t i = 0; i + 1 < args.size(); ++i) {
-        if (args[i] == "--latency-sli") {
-            latencySliEnv = "NBS_LATENCY_SLI_CONFIG=" + args[i + 1];
-            args.erase(args.begin() + i, args.begin() + i + 2);
-            break;
-        }
-    }
+    TString latencySliEnv = "NBS_LATENCY_SLI_CONFIG=" + latencySli;
     TVector<char*> qenv;
-    if (latencySliEnv) {
-        for (char** entry = environ; *entry; ++entry) {
-            if (!TStringBuf(*entry).StartsWith("NBS_LATENCY_SLI_CONFIG=")) {
-                qenv.push_back(*entry);
-            }
+    for (char** entry = environ; *entry; ++entry) {
+        if (!TStringBuf(*entry).StartsWith("NBS_LATENCY_SLI_CONFIG=")) {
+            qenv.push_back(*entry);
         }
-        qenv.push_back(latencySliEnv.Detach());
-        qenv.push_back(nullptr);
     }
+    qenv.push_back(latencySliEnv.Detach());
+    qenv.push_back(nullptr);
 
     args.push_back("--blockstore-service-pid=" + ToString(::getpid()));
 
@@ -351,11 +343,7 @@ TChild SpawnChild(
         }
         qargs.emplace_back();
 
-        if (qenv) {
-            ::execvpe(binaryPath.c_str(), qargs.data(), qenv.data());
-        } else {
-            ::execvp(binaryPath.c_str(), qargs.data());
-        }
+        ::execvpe(binaryPath.c_str(), qargs.data(), qenv.data());
     }
 
     int err = errno;
@@ -588,6 +576,7 @@ private:
     const TString BinaryPath;
     const TVector<TString> Args;
     const TVector<TString> Cgroups;
+    const TString LatencySli;
 
     TLog Log;
 
@@ -611,13 +600,15 @@ public:
             TEndpointStats stats,
             TString binaryPath,
             TVector<TString> args,
-            TVector<TString> cgroups)
+            TVector<TString> cgroups,
+            TString latencySli)
         : Logging{std::move(logging)}
         , Executor{std::move(executor)}
         , ClientId{std::move(clientId)}
         , BinaryPath{std::move(binaryPath)}
         , Args{std::move(args)}
         , Cgroups{std::move(cgroups)}
+        , LatencySli{std::move(latencySli)}
         , Log{Logging->CreateLog("BLOCKSTORE_EXTERNAL_ENDPOINT")}
         , Stats{std::move(stats)}
         , LogPrefix{
@@ -705,7 +696,7 @@ private:
 
     TIntrusivePtr<TEndpointProcess> StartProcess()
     {
-        auto process = SpawnChild(BinaryPath, Args);
+        auto process = SpawnChild(BinaryPath, Args, LatencySli);
 
         STORAGE_INFO(
             LogPrefix << "Endpoint process has been started, PID:"
@@ -1098,10 +1089,6 @@ private:
 
         const auto latencySli = ServerStats->GetLatencySliConfig(
             volume.GetStorageMediaKind());
-        if (latencySli.Enabled) {
-            args.emplace_back("--latency-sli");
-            args.emplace_back(latencySli.Serialize());
-        }
 
         if (epType == EEndpointType::Rdma) {
             args.emplace_back("--client-id");
@@ -1175,7 +1162,8 @@ private:
             clientId,
             request.GetDiskId(),
             std::move(args),
-            std::move(cgroups)
+            std::move(cgroups),
+            latencySli.Serialize()
         );
 
         ep->PrepareToStart();
@@ -1300,7 +1288,8 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
         const TString& clientId,
         const TString& diskId,
         TVector<TString> args,
-        TVector<TString> cgroups)
+        TVector<TString> cgroups,
+        TString latencySli)
     {
         return std::make_shared<TEndpoint>(
             clientId,
@@ -1313,7 +1302,8 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
             },
             serverConfig->GetVhostServerPath(),
             std::move(args),
-            std::move(cgroups)
+            std::move(cgroups),
+            std::move(latencySli)
         );
     };
 

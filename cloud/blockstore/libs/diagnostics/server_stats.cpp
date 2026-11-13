@@ -51,7 +51,6 @@ class TServerStats final
 private:
     const IDumpableConstPtr Config;
     const TDiagnosticsConfigConstPtr DiagnosticsConfig;
-    const bool LatencySliEnabled;
     const IProfileLogPtr ProfileLog;
     const IRequestStatsPtr RequestStats;
     const IVolumeStatsPtr VolumeStats;
@@ -208,8 +207,6 @@ TServerStats::TServerStats(
         TString requestInstanceId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
-    , LatencySliEnabled(DiagnosticsConfig &&
-                        DiagnosticsConfig->GetConfigProto().GetEnableLatencySli())
     , ProfileLog(std::move(profileLog))
     , RequestStats(std::move(requestStats))
     , VolumeStats(std::move(volumeStats))
@@ -455,17 +452,13 @@ void TServerStats::RequestCompleted(
         req.AccessMode,
         req.MountMode);
 
-    if (LatencySliEnabled && req.VolumeInfo && !req.CellRequest &&
-        !req.ForwardedRequest)
-    {
+    if (req.VolumeInfo && !req.ForwardedRequest) {
         const auto type = TranslateLocalRequestType(req.RequestType);
         if (type == EBlockStoreRequest::ReadBlocks ||
             type == EBlockStoreRequest::WriteBlocks)
         {
             if (auto* sli = req.VolumeInfo->GetLatencySli()) {
-                const bool valid = started &&
-                    (!responseSentCycles || responseSentCycles >= started);
-                const auto elapsed = responseSentCycles && valid
+                const auto elapsed = responseSentCycles
                     ? CyclesToDurationSafe(responseSentCycles - started)
                     : requestTime;
                 // Classify the full original request latency, including
@@ -474,8 +467,7 @@ void TServerStats::RequestCompleted(
                     type == EBlockStoreRequest::WriteBlocks,
                     req.OriginalRequestBytes,
                     elapsed.MicroSeconds(),
-                    HasError(error),
-                    valid);
+                    HasError(error));
             }
         }
     }

@@ -223,17 +223,12 @@ TCompleteStats TServer::GetStats(const TSimpleStats& prevStats)
     if (!completionStats) {
         return TCompleteStats{
             .SimpleStats{prevStats},
-            .CriticalEvents{TakeAccumulatedCriticalEvents()},
-            .Fresh = false};
+            .CriticalEvents{TakeAccumulatedCriticalEvents()}};
     }
 
-    const auto captured = completionStats->CompletionSnapshotCycles;
-    const auto now = GetCycleCount();
     TCompleteStats result{
         .SimpleStats{*completionStats},
-        .CriticalEvents = TakeAccumulatedCriticalEvents(),
-        .Fresh = captured && now >= captured &&
-            now - captured <= DurationToCyclesSafe(COMPLETION_STATS_WAIT_DURATION)};
+        .CriticalEvents = TakeAccumulatedCriticalEvents()};
 
     for (ui32 i = 0; i != Queues.size(); ++i) {
         result.SimpleStats += QueueStats[i];

@@ -14,10 +14,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Polling normally takes one second, with up to two seconds to read a reply.
-// Allow scheduling jitter, but do not publish accumulated traffic after a stall.
-constexpr auto MaxLatencySnapshotAge = TDuration::Seconds(5);
-
 template <typename F>
 auto GetHist(const NJson::TJsonValue& value, F&& func)
 {
@@ -83,47 +79,18 @@ void BatchCompleted(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats, TInstant now)
+void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats)
 {
+    TMetricRequest request{EBlockStoreRequest::ReadBlocks};
+    ServerStats->PrepareMetricRequest(request, ClientId, DiskId, 0, 0, false);
+    auto* counters = request.VolumeInfo
+        ? request.VolumeInfo->GetLatencySli() : nullptr;
     const auto& meta = stats["latency_sli"];
-    const auto isCount = [](const NJson::TJsonValue& value) {
-        return value.IsUInteger() ||
-            (value.IsInteger() && value.GetInteger() >= 0);
-    };
-    const ui64 sequence = meta["sequence"].GetUInteger();
-    const auto epoch = meta["epoch"].GetString();
-    const bool versioned = meta["version"].GetUInteger() == 1 &&
-        isCount(meta["sequence"]) && sequence && epoch &&
-        meta["fresh"].IsBoolean();
-    if (versioned) {
-        if ((LatencyEpoch && LatencyEpoch != epoch) ||
-            sequence <= LatencySequence)
-        {
-            return;
-        }
-        if (!meta["fresh"].GetBoolean()) {
-            return;
-        }
-        LatencyEpoch = epoch;
-    }
-
-    const auto collectedAt =
-        TInstant::MicroSeconds(meta["collected_at_us"].GetUInteger());
-    const bool timely = isCount(meta["collected_at_us"]) && collectedAt &&
-        now >= collectedAt && now - collectedAt <= MaxLatencySnapshotAge &&
-        isCount(stats["elapsed_ms"]) &&
-        stats["elapsed_ms"].GetUInteger() <= MaxLatencySnapshotAge.MilliSeconds() &&
-        (!LatencyReceivedAt ||
-         (now >= LatencyReceivedAt &&
-          now - LatencyReceivedAt <= MaxLatencySnapshotAge));
+    const bool versioned = meta["version"].GetUInteger() == 1;
+    const bool matching = counters && meta["config"].IsString() &&
+        meta["config"].GetString() == counters->GetSerializedConfig();
 
     for (size_t write = 0; write < 2; ++write) {
-        TMetricRequest request{write ? EBlockStoreRequest::WriteBlocks
-                                    : EBlockStoreRequest::ReadBlocks};
-        ServerStats->PrepareMetricRequest(
-            request, ClientId, DiskId, 0, 0, false);
-        auto* counters = request.VolumeInfo
-            ? request.VolumeInfo->GetLatencySli() : nullptr;
         const auto& value = stats[write ? "write" : "read"];
         if (!versioned) {
             LatencyNeedsBaseline[write] = true;
@@ -141,13 +108,11 @@ void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats, TInstant now)
             value["latency_bad"].GetUInteger(),
             value["latency_unknown"].GetUInteger()};
         auto& previous = LatencyPrevious[write];
-        const bool present = isCount(value["latency_good"]) &&
-            isCount(value["latency_bad"]) && isCount(value["latency_unknown"]);
-        const bool valid = present && current[0] >= previous[0] &&
-            current[1] >= previous[1] && current[2] >= previous[2];
-        if (!valid || LatencyNeedsBaseline[write]) {
-            // Do not turn an unsigned reset/underflow into a huge delta.
-            // Re-establish a baseline; this batch cannot be classified.
+        const bool present = value["latency_good"].IsUInteger() &&
+            value["latency_bad"].IsUInteger() && value["latency_unknown"].IsUInteger();
+        if (!present || LatencyNeedsBaseline[write]) {
+            // Re-establish a baseline after incomplete data without replaying
+            // operations already reported as Unknown from the legacy counters.
             if (counters) {
                 counters->Add(0, 0,
                     value["count"].GetUInteger() + value["errors"].GetUInteger());
@@ -158,36 +123,30 @@ void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats, TInstant now)
             }
             continue;
         }
+        if (current[0] < previous[0] || current[1] < previous[1] ||
+            current[2] < previous[2])
+        {
+            // A reader belongs to one child: counters cannot reset. Ignore a
+            // regressing snapshot without moving the baseline backwards.
+            continue;
+        }
         const ui64 good = current[0] - previous[0];
         const ui64 bad = current[1] - previous[1];
         const ui64 unknown = current[2] - previous[2];
         previous = current;
         if (counters) {
-            const bool matching = meta["config"].GetString() ==
-                counters->GetConfig().Serialize();
-            // After a gap, preserve coverage without attributing old data to
-            // the current observation window. No history is retained.
-            if (matching && timely && sequence == LatencySequence + 1) {
+            if (matching) {
                 counters->Add(good, bad, unknown);
             } else {
                 counters->Add(0, 0, good + bad + unknown);
             }
         }
     }
-    if (versioned) {
-        LatencySequence = sequence;
-        LatencyReceivedAt = now;
-    }
 }
 
 void TEndpointStats::Update(const NJson::TJsonValue& stats)
 {
-    Update(stats, TInstant::Now());
-}
-
-void TEndpointStats::Update(const NJson::TJsonValue& stats, TInstant now)
-{
-    UpdateLatency(stats, now);
+    UpdateLatency(stats);
 
     BatchCompleted(
         *ServerStats,

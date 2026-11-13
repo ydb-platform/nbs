@@ -61,15 +61,16 @@ void CompleteRequestImpl(
         }
     }
 
-    const TCpuCycles now = GetCycleCount();
+    const TCpuCycles elapsed = status == VHD_BDEV_SUCCESS
+        ? GetCycleCount() - req->SubmitTs : 0;
 
     if (status == VHD_BDEV_SUCCESS) {
-        stats.Times[bio->type].Increment(now - req->SubmitTs);
+        stats.Times[bio->type].Increment(elapsed);
         stats.Sizes[bio->type].Increment(bytes);
     }
 
     stats.RecordLatency(
-        bio->type == VHD_BDEV_WRITE, bytes, now - req->SubmitTs,
+        bio->type == VHD_BDEV_WRITE, bytes, elapsed,
         status != VHD_BDEV_SUCCESS);
     vhd_complete_bio(req->Io, status);
 }

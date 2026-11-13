@@ -2,20 +2,23 @@
 
 #include <cloud/blockstore/libs/client/session_test.h>
 #include <cloud/blockstore/libs/common/constants.h>
+#include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
+#include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/server/config.h>
 
 #include <cloud/storage/core/libs/common/random.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/string/vector.h>
 #include <util/system/env.h>
 
-#include <optional>
 #include <variant>
 
 namespace NCloud::NBlockStore::NServer {
@@ -55,6 +58,7 @@ struct TCreateExternalEndpoint
     TString DiskId;
     TVector<TString> CmdArgs;
     TVector<TString> Cgroups;
+    TString LatencySli;
 };
 
 struct TPrepareStartExternalEndpoint
@@ -268,7 +272,8 @@ struct TFixture
 public:
     IEndpointListenerPtr CreateEndpointListener(
         bool isAlignedDataEnabled,
-        const NProto::TServerConfig& configPatch)
+        const NProto::TServerConfig& configPatch,
+        IServerStatsPtr serverStats = {})
     {
         TServerAppConfigPtr serverConfigPtr;
         NProto::TServerAppConfig config;
@@ -282,7 +287,7 @@ public:
         return CreateExternalVhostEndpointListener(
             std::make_shared<TServerAppConfig>(config),
             Logging,
-            ServerStats,
+            serverStats ? std::move(serverStats) : ServerStats,
             Executor,
             LocalAgentId,
             isAlignedDataEnabled,
@@ -413,6 +418,30 @@ TVector<TString> GetArgN(const TVector<TString>& args, TStringBuf name)
 
 Y_UNIT_TEST_SUITE(TExternalEndpointTest)
 {
+    Y_UNIT_TEST_F(ShouldPassVolumeLatencyConfigSeparatelyFromArguments, TFixture)
+    {
+        NProto::TDiagnosticsConfig proto;
+        proto.SetEnableLatencySli(true);
+        auto* row = proto.AddLatencySliThresholds();
+        row->SetMediaKind(Volume.GetStorageMediaKind());
+        row->SetStartBytes(1);
+        row->SetEndBytes(8193);
+        row->SetThresholdUs(1000);
+        auto stats = CreateServerStats(
+            nullptr, std::make_shared<TDiagnosticsConfig>(proto),
+            CreateMonitoringServiceStub(), nullptr, CreateRequestStatsStub(),
+            CreateVolumeStatsStub());
+        auto listener = CreateEndpointListener(false, {}, stats);
+        const auto error = listener->StartEndpoint(
+            CreateDefaultStartEndpointRequest(), Volume, Session).GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), error);
+        UNIT_ASSERT_VALUES_EQUAL(3, History.size());
+        const auto* create = std::get_if<TCreateExternalEndpoint>(&History[0]);
+        UNIT_ASSERT(create);
+        UNIT_ASSERT_VALUES_EQUAL("1;0:1:8193:1000", create->LatencySli);
+        UNIT_ASSERT(GetArgN(create->CmdArgs, "--latency-sli").empty());
+    }
+
     Y_UNIT_TEST(ShouldPassLatencyConfigThroughExecEnvironment)
     {
         const auto previous = TryGetEnv("NBS_LATENCY_SLI_CONFIG");
@@ -436,10 +465,9 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
         // An older child must not receive --latency-sli in argv. The real
         // exec path must replace only this environment variable and preserve
         // unrelated arguments, inherited variables and the parent PID option.
-        const TVector<std::optional<TString>> configs{
-            TString("1;0:1:8193:1000"), TString{}, std::nullopt};
+        const TVector<TString> configs{"1;0:1:8193:1000", ""};
         for (const auto& config: configs) {
-            const TString expected = config.value_or(parentConfig);
+            const TString& expected = config;
             TString script = TStringBuilder()
                 << "set -eu\n"
                 << "test \"$NBS_LATENCY_SLI_CONFIG\" = '" << expected << "'\n"
@@ -450,11 +478,7 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                 << "test \"$3\" = '--blockstore-service-pid=" << getpid() << "'\n";
             TVector<TString> args{
                 "-c", script, "child", "--existing-option", "value with spaces"};
-            if (config) {
-                args.push_back("--latency-sli");
-                args.push_back(*config);
-            }
-            auto child = SpawnChild("/bin/sh", std::move(args));
+            auto child = SpawnChild("/bin/sh", std::move(args), config);
             const auto error = child.Wait();
             UNIT_ASSERT_C(!HasError(error), FormatError(error));
             UNIT_ASSERT_VALUES_EQUAL(parentConfig, GetEnv("NBS_LATENCY_SLI_CONFIG"));

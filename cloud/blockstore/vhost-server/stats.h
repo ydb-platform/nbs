@@ -112,8 +112,6 @@ struct TStats
 
     // Set once before workers start; never copied into monitoring snapshots.
     const TLatencySliConfig* LatencySli = nullptr;
-    // Stamped when completion counters are copied into a monitoring snapshot.
-    ui64 CompletionSnapshotCycles = 0;
 
     void SetLatencySli(const TLatencySliConfig& config)
     {
@@ -132,17 +130,13 @@ struct TStats
         // AIO and direct-agent RDMA have no volume throttler. Retries and
         // device waits are included in the original request's elapsed time.
         const auto result = LatencySli->Classify(
-            write, bytes, CyclesToDurationSafe(elapsedCycles).MicroSeconds(),
+            write, bytes, failed ? 0 : CyclesToDurationSafe(elapsedCycles).MicroSeconds(),
             failed);
         auto& stats = Requests[write];
         auto& counter = result == ELatencySliResult::Good ? stats.LatencyGood
                       : result == ELatencySliResult::Bad ? stats.LatencyBad
                                                         : stats.LatencyUnknown;
-        if constexpr (std::is_same_v<T, std::atomic<ui64>>) {
-            counter.fetch_add(1, std::memory_order_relaxed);
-        } else {
-            ++counter;
-        }
+        ++counter;
     }
 
     TStats() = default;
@@ -155,10 +149,9 @@ struct TStats
         , Completed{rhs.Completed}
         , CompFailed{rhs.CompFailed}
         , EncryptorErrors{rhs.EncryptorErrors}
-        , Requests{rhs.Requests[0], rhs.Requests[1]}
-        , Times{rhs.Times[0], rhs.Times[1]}
-        , Sizes{rhs.Sizes[0], rhs.Sizes[1]}
-        , CompletionSnapshotCycles{rhs.CompletionSnapshotCycles}
+        , Requests{TRequestStats<T>(rhs.Requests[0]), TRequestStats<T>(rhs.Requests[1])}
+        , Times{TTimeHistogram<T>(rhs.Times[0]), TTimeHistogram<T>(rhs.Times[1])}
+        , Sizes{TSizeHistogram<T>(rhs.Sizes[0]), TSizeHistogram<T>(rhs.Sizes[1])}
     {}
 
     template <typename U>
@@ -173,7 +166,6 @@ struct TStats
         Requests = rhs.Requests;
         Times = rhs.Times;
         Sizes = rhs.Sizes;
-        CompletionSnapshotCycles = rhs.CompletionSnapshotCycles;
 
         return *this;
     }
@@ -211,7 +203,6 @@ using TSimpleStats = TStats<ui64>;
 struct TCompleteStats {
     TSimpleStats SimpleStats;
     TCriticalEvents CriticalEvents;
-    bool Fresh = true;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -222,8 +213,6 @@ struct ICompletionStats
 
     virtual std::optional<TSimpleStats> Get(TDuration timeout) = 0;
 
-    virtual void Sync(const TSimpleStats& stats) = 0;
-
     virtual void Sync(const TAtomicStats& stats) = 0;
 };
 
@@ -231,17 +220,12 @@ struct ICompletionStats
 
 ICompletionStatsPtr CreateCompletionStats();
 
-// RDMA callbacks can run on multiple queue threads. Snapshot their atomic
-// counters on demand, including during idle periods with no completions.
-TSimpleStats SnapshotCompletionStats(const TAtomicStats& stats);
-
 void DumpStats(
     const TCompleteStats& completeStats,
     TSimpleStats& old,
     TDuration elapsed,
     IOutputStream& stream,
     ui64 cyclesPerMs,
-    const TLatencySliConfig* latencySli = nullptr,
-    TInstant collectedAt = TInstant::Now());
+    const TLatencySliConfig* latencySli = nullptr);
 
 }   // namespace NCloud::NBlockStore::NVHostServer

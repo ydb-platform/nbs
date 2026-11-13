@@ -26,28 +26,25 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         TAtomicStats producer;
         producer.SetLatencySli(config);
 
-        const auto idle = SnapshotCompletionStats(producer);
-        UNIT_ASSERT(idle.CompletionSnapshotCycles);
+        const auto idle = TSimpleStats(producer);
         UNIT_ASSERT_VALUES_EQUAL(0, idle.Completed);
 
         ++producer.Completed;
         ++producer.Requests[0].Errors;
         producer.RecordLatency(false, 4096, 0, true);
-        const auto failed = SnapshotCompletionStats(producer);
-        UNIT_ASSERT(failed.CompletionSnapshotCycles >= idle.CompletionSnapshotCycles);
+        const auto failed = TSimpleStats(producer);
         UNIT_ASSERT_VALUES_EQUAL(1, failed.Completed);
         UNIT_ASSERT_VALUES_EQUAL(1, failed.Requests[0].Errors);
         UNIT_ASSERT_VALUES_EQUAL(1, failed.Requests[0].LatencyBad);
         UNIT_ASSERT_VALUES_EQUAL(0, failed.Requests[0].LatencyUnknown);
 
-        const auto nextIdle = SnapshotCompletionStats(producer);
-        UNIT_ASSERT(nextIdle.CompletionSnapshotCycles >= failed.CompletionSnapshotCycles);
+        const auto nextIdle = TSimpleStats(producer);
         UNIT_ASSERT_VALUES_EQUAL(1, nextIdle.Requests[0].LatencyBad);
 
         ++producer.Completed;
         ++producer.Requests[0].Errors;
         producer.RecordLatency(false, 4096, 0, true);
-        const auto nextFailed = SnapshotCompletionStats(producer);
+        const auto nextFailed = TSimpleStats(producer);
         UNIT_ASSERT_VALUES_EQUAL(2, nextFailed.Completed);
         UNIT_ASSERT_VALUES_EQUAL(2, nextFailed.Requests[0].Errors);
         UNIT_ASSERT_VALUES_EQUAL(2, nextFailed.Requests[0].LatencyBad);
@@ -94,7 +91,7 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         TSimpleStats previous;
         start = true;
         do {
-            const auto snapshot = SnapshotCompletionStats(producer);
+            const auto snapshot = TSimpleStats(producer);
             monotonic &= snapshot.Completed >= previous.Completed;
             for (size_t write = 0; write < 2; ++write) {
                 const auto& current = snapshot.Requests[write];
@@ -110,7 +107,7 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         }
 
         UNIT_ASSERT(monotonic);
-        const auto snapshot = SnapshotCompletionStats(producer);
+        const auto snapshot = TSimpleStats(producer);
         UNIT_ASSERT_VALUES_EQUAL(workerCount * iterations, snapshot.Completed);
         constexpr ui64 perOutcome = workerCount / 2 * iterations / 3;
         for (size_t write = 0; write < 2; ++write) {
@@ -132,20 +129,23 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldPreserveCaptureTimeWhenPickingUpALateSnapshot)
+    Y_UNIT_TEST(ShouldPickUpPendingSnapshotAfterTimeout)
     {
         auto completion = CreateCompletionStats();
         UNIT_ASSERT(!completion->Get(TDuration::Zero()));
-        TSimpleStats producer;
+        TAtomicStats producer;
         producer.Requests[0].LatencyGood = 1;
-        const auto beforeCapture = GetCycleCount();
         completion->Sync(producer);
-        const auto afterCapture = GetCycleCount();
+        producer.Requests[0].LatencyGood = 2;
+        completion->Sync(producer); // Do not overwrite an unconsumed snapshot.
         auto snapshot = completion->Get(TDuration::Zero());
         UNIT_ASSERT(snapshot);
-        UNIT_ASSERT(snapshot->CompletionSnapshotCycles >= beforeCapture);
-        UNIT_ASSERT(snapshot->CompletionSnapshotCycles <= afterCapture);
         UNIT_ASSERT_VALUES_EQUAL(1, snapshot->Requests[0].LatencyGood);
+        UNIT_ASSERT(!completion->Get(TDuration::Zero()));
+        completion->Sync(producer);
+        snapshot = completion->Get(TDuration::Zero());
+        UNIT_ASSERT(snapshot);
+        UNIT_ASSERT_VALUES_EQUAL(2, snapshot->Requests[0].LatencyGood);
     }
 
     Y_UNIT_TEST(ShouldDumpCumulativeLatencyDecisions)
@@ -164,28 +164,25 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         complete.SimpleStats += producer;
         TStringStream stream;
         DumpStats(complete, previous, TDuration::Seconds(1), stream,
-            GetCyclesPerMillisecond(), &config, TInstant::Seconds(10));
+            GetCyclesPerMillisecond(), &config);
         NJson::TJsonValue first;
         NJson::ReadJsonTree(stream.Str(), &first, true);
         UNIT_ASSERT_VALUES_EQUAL(1, first["read"]["latency_good"].GetUInteger());
         UNIT_ASSERT_VALUES_EQUAL(2, first["read"]["latency_bad"].GetUInteger());
         UNIT_ASSERT_VALUES_EQUAL(1, first["write"]["latency_unknown"].GetUInteger());
-        UNIT_ASSERT(first["latency_sli"]["fresh"].GetBoolean());
-        UNIT_ASSERT_VALUES_EQUAL(
-            TInstant::Seconds(10).MicroSeconds(),
-            first["latency_sli"]["collected_at_us"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(2, first["latency_sli"].GetMap().size());
+        UNIT_ASSERT_VALUES_EQUAL(1, first["latency_sli"]["version"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(config.Serialize(), first["latency_sli"]["config"].GetString());
         TStringStream next;
-        complete.Fresh = false;
         DumpStats(complete, previous, TDuration::Seconds(1), next,
             GetCyclesPerMillisecond(), &config);
         NJson::TJsonValue second;
         NJson::ReadJsonTree(next.Str(), &second, true);
         UNIT_ASSERT_VALUES_EQUAL(1, second["read"]["latency_good"].GetUInteger());
-        UNIT_ASSERT(!second["latency_sli"]["fresh"].GetBoolean());
-        UNIT_ASSERT_VALUES_EQUAL(first["latency_sli"]["epoch"].GetString(),
-            second["latency_sli"]["epoch"].GetString());
-        UNIT_ASSERT_VALUES_EQUAL(first["latency_sli"]["sequence"].GetUInteger() + 1,
-            second["latency_sli"]["sequence"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(2, second["read"]["latency_bad"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(1, second["write"]["latency_unknown"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(2, second["latency_sli"].GetMap().size());
+        UNIT_ASSERT_VALUES_EQUAL(config.Serialize(), second["latency_sli"]["config"].GetString());
     }
 
     Y_UNIT_TEST(ShouldDumpStats)

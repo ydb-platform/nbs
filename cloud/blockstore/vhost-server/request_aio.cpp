@@ -24,7 +24,7 @@ bool IsBrokenDevice(const TAioDevice& device)
     return !device.File.IsOpen();
 }
 
-void DiscardRequest(vhd_io* io, TSimpleStats& queueStats, TCpuCycles started)
+void DiscardRequest(vhd_io* io, TSimpleStats& queueStats)
 {
     ++queueStats.SubFailed;
     auto* bio = vhd_get_bdev_io(io);
@@ -35,7 +35,7 @@ void DiscardRequest(vhd_io* io, TSimpleStats& queueStats, TCpuCycles started)
     requestStat.Bytes += bytes;
 
     queueStats.RecordLatency(
-        bio->type == VHD_BDEV_WRITE, bytes, GetCycleCount() - started, true);
+        bio->type == VHD_BDEV_WRITE, bytes, 0, true);
     vhd_complete_bio(io, VHD_BDEV_IOERR);
 }
 
@@ -132,7 +132,7 @@ void PrepareCompoundIO(
     Y_DEBUG_ABORT_UNLESS(deviceCount > 1);
 
     if (std::any_of(it, end, IsBrokenDevice)) {
-        DiscardRequest(io, queueStats, now);
+        DiscardRequest(io, queueStats);
         return;
     }
 
@@ -165,7 +165,7 @@ void PrepareCompoundIO(
             ++queueStats.EncryptorErrors;
             queueStats.RecordLatency(
                 true, bio->total_sectors * VHD_SECTOR_SIZE,
-                GetCycleCount() - now, true);
+                0, true);
             vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
             return;
         }
@@ -349,7 +349,7 @@ void PrepareIO(
         !device.File.IsOpen());
 
     if (IsBrokenDevice(device)) {
-        DiscardRequest(io, queueStats, now);
+        DiscardRequest(io, queueStats);
         return;
     }
 
@@ -394,7 +394,7 @@ void PrepareIO(
                 ++queueStats.EncryptorErrors;
                 queueStats.RecordLatency(
                     true, bio->total_sectors * VHD_SECTOR_SIZE,
-                    GetCycleCount() - now, true);
+                    0, true);
                 vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
                 return;
             }
@@ -477,15 +477,16 @@ void CompleteCompoundRequestImpl(
             }
         }
 
-        const TCpuCycles now = GetCycleCount();
+        const TCpuCycles elapsed = status == VHD_BDEV_SUCCESS
+            ? GetCycleCount() - req->SubmitTs : 0;
 
         if (status == VHD_BDEV_SUCCESS) {
-            stats.Times[bio->type].Increment(now - req->SubmitTs);
+            stats.Times[bio->type].Increment(elapsed);
             stats.Sizes[bio->type].Increment(bytes);
         }
 
         stats.RecordLatency(
-            bio->type == VHD_BDEV_WRITE, bytes, now - req->SubmitTs,
+            bio->type == VHD_BDEV_WRITE, bytes, elapsed,
             status != VHD_BDEV_SUCCESS);
         completeBio(req->Io, status);
     }

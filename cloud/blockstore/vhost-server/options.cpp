@@ -36,12 +36,6 @@ void TOptions::Parse(int argc, char** argv)
     TOpts opts;
     opts.AddHelpOption();
 
-    opts.AddLongOption("latency-sli", "Manual latency SLI size thresholds")
-        .RequiredArgument("STR")
-        .Handler1T<TString>([this](const auto& value) {
-            LatencySli = TLatencySliConfig::Parse(value);
-        });
-
     opts.AddLongOption('s', "socket-path")
         .Required()
         .RequiredArgument("FILE")

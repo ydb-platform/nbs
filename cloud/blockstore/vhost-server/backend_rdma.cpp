@@ -357,7 +357,7 @@ void TRdmaBackend::ProcessQueue(
 std::optional<TSimpleStats> TRdmaBackend::GetCompletionStats(TDuration timeout)
 {
     Y_UNUSED(timeout);
-    return SnapshotCompletionStats(CompletionStatsData);
+    return TSimpleStats(CompletionStatsData);
 }
 
 TSgList ConvertVhdSgList(const vhd_sglist& vhdSglist)
@@ -461,25 +461,24 @@ void TRdmaBackend::CompleteRequest(
     auto* bio = vhd_get_bdev_io(io);
 
     ++CompletionStatsData.Completed;
+    TCpuCycles elapsed = 0;
 
     if (!isError) {
         const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
         CompletionStatsData.Requests[bio->type].Count += 1;
         CompletionStatsData.Requests[bio->type].Bytes += bytes;
         CompletionStatsData.Sizes[bio->type].Increment(bytes);
-        CompletionStatsData.Times[bio->type].Increment(
-            GetCycleCount() - startCycles);
+        elapsed = GetCycleCount() - startCycles;
+        CompletionStatsData.Times[bio->type].Increment(elapsed);
     } else {
         CompletionStatsData.Requests[bio->type].Errors += 1;
     }
 
-    if (LatencySli.Enabled) {
-        CompletionStatsData.RecordLatency(
-            bio->type == VHD_BDEV_WRITE,
-            bio->total_sectors * VHD_SECTOR_SIZE,
-            GetCycleCount() - startCycles,
-            isError);
-    }
+    CompletionStatsData.RecordLatency(
+        bio->type == VHD_BDEV_WRITE,
+        bio->total_sectors * VHD_SECTOR_SIZE,
+        elapsed,
+        isError);
     vhd_complete_bio(io, isError ? VHD_BDEV_IOERR : VHD_BDEV_SUCCESS);
 }
 

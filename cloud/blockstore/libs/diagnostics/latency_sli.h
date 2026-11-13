@@ -3,15 +3,13 @@
 #include <cloud/blockstore/libs/common/latency_sli.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
-#include <atomic>
-#include <mutex>
-
 namespace NCloud::NBlockStore {
 
 class TLatencySliCounters
 {
 private:
     const TLatencySliConfig Config;
+    const TString SerializedConfig;
     struct TCounters
     {
         NMonitoring::TDynamicCounters::TCounterPtr Good;
@@ -21,18 +19,12 @@ private:
     };
     TCounters Counters;
 
-    // Only the outcome is updated on the request path. Exported counters are
-    // advanced together by the periodic stats collector.
-    std::atomic<ui64> PendingGood = 0;
-    std::atomic<ui64> PendingBad = 0;
-    std::atomic<ui64> PendingUnknown = 0;
-    std::mutex PublishLock;
-
 public:
     TLatencySliCounters(
         TLatencySliConfig config,
         NMonitoring::TDynamicCounters& group)
         : Config(std::move(config))
+        , SerializedConfig(Config.Serialize())
     {
         Counters = {
             group.GetCounter("LatencyGoodOps", true),
@@ -41,37 +33,13 @@ public:
             group.GetCounter("LatencyUnknownOps", true)};
     }
 
-    ~TLatencySliCounters()
+    const TString& GetSerializedConfig() const
     {
-        Publish();
-    }
-
-    const TLatencySliConfig& GetConfig() const
-    {
-        return Config;
+        return SerializedConfig;
     }
 
     void Add(ui64 good, ui64 bad, ui64 unknown)
     {
-        if (good) {
-            PendingGood.fetch_add(good, std::memory_order_relaxed);
-        }
-        if (bad) {
-            PendingBad.fetch_add(bad, std::memory_order_relaxed);
-        }
-        if (unknown) {
-            PendingUnknown.fetch_add(unknown, std::memory_order_relaxed);
-        }
-    }
-
-    void Publish()
-    {
-        // Stats updates may overlap. Serialize publication, never completions.
-        const std::lock_guard guard(PublishLock);
-        const auto good = PendingGood.exchange(0, std::memory_order_relaxed);
-        const auto bad = PendingBad.exchange(0, std::memory_order_relaxed);
-        const auto unknown = PendingUnknown.exchange(0, std::memory_order_relaxed);
-
         // Add deltas to preserve existing values if the group is reused. Publish
         // Total first so the numerator cannot advance ahead of its denominator.
         // Dynamic counters do not provide an atomic multi-counter snapshot.
@@ -93,11 +61,10 @@ public:
         bool write,
         ui64 bytes,
         ui64 elapsedUs,
-        bool failed,
-        bool validTiming)
+        bool failed)
     {
         const auto result = Config.Classify(
-            write, bytes, elapsedUs, failed, validTiming);
+            write, bytes, elapsedUs, failed);
         Add(result == ELatencySliResult::Good,
             result == ELatencySliResult::Bad,
             result == ELatencySliResult::Unknown);

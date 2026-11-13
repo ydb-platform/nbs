@@ -148,6 +148,15 @@ struct TFixture
         ServerStats->MountVolume(volume, ClientId, "instance");
     }
 
+    NMonitoring::TDynamicCountersPtr GetLatencyCounters()
+    {
+        return Monitoring->GetCounters()->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", DiskId)->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", "")->GetSubgroup("folder", "")
+            ->GetSubgroup("type", MediaKindToComputeType(NProto::STORAGE_MEDIA_SSD_LOCAL));
+    }
+
     void UpdateStats(
         TEndpointStats& stats,
         const TVolumeStats& volumeStats)
@@ -159,6 +168,19 @@ struct TFixture
     }
 };
 
+auto LatencySnapshot(ui64 good, ui64 bad = 0)
+{
+    return NJson::TJsonMap{
+        {"latency_sli", NJson::TJsonMap{
+            {"version", ui64(1)}, {"config", "1;0:1:8193:1000"}}},
+        {"read", NJson::TJsonMap{
+            {"latency_good", good}, {"latency_bad", bad},
+            {"latency_unknown", ui64(0)}}},
+        {"write", NJson::TJsonMap{
+            {"latency_good", ui64(0)}, {"latency_bad", ui64(0)},
+            {"latency_unknown", ui64(0)}}}};
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -169,48 +191,19 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
     {
         TFixture f(true);
         TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
-        auto group = f.Monitoring->GetCounters()
-            ->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "sli_volume")
-            ->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", f.DiskId)
-            ->GetSubgroup("instance", "instance")
-            ->GetSubgroup("cloud", "")
-            ->GetSubgroup("folder", "")
-            ->GetSubgroup(
-                "type",
-                MediaKindToComputeType(NProto::STORAGE_MEDIA_SSD_LOCAL));
-        const auto now = TInstant::Seconds(100);
-        auto snapshot = [&](ui64 sequence, ui64 good, ui64 bad, bool completed) {
-            return NJson::TJsonMap{
-                {"elapsed_ms", ui64(1000)},
-                {"latency_sli", NJson::TJsonMap{
-                    {"version", ui64(1)}, {"epoch", "process-1"},
-                    {"sequence", sequence}, {"fresh", true},
-                    {"collected_at_us", now.MicroSeconds()},
-                    {"config", "1;0:1:8193:1000"}}},
-                {"read", NJson::TJsonMap{
-                    {"errors", ui64(completed)}, {"latency_good", good},
-                    {"latency_bad", bad}, {"latency_unknown", ui64(0)}}},
-                {"write", NJson::TJsonMap{
-                    {"latency_good", ui64(0)}, {"latency_bad", ui64(0)},
-                    {"latency_unknown", ui64(0)}}}};
-        };
-
-        reader.Update(snapshot(1, 0, 0, false), now); // idle before the first request
-        reader.Update(snapshot(2, 0, 1, true), now);
-        reader.Update(snapshot(3, 0, 1, false), now); // idle between failures
-        reader.Update(snapshot(4, 0, 1, false), now);
-        reader.Update(snapshot(5, 0, 2, true), now);
-        f.ServerStats->UpdateStats(false);
+        auto group = f.GetLatencyCounters();
+        reader.Update(LatencySnapshot(0)); // idle before the first request
+        reader.Update(LatencySnapshot(0, 1));
+        reader.Update(LatencySnapshot(0, 1)); // idle between failures
+        reader.Update(LatencySnapshot(0, 1));
+        reader.Update(LatencySnapshot(0, 2));
         UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyBadOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyTotalOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyUnknownOps", true)->Val());
 
-        reader.Update(snapshot(6, 1, 2, false), now);
-        reader.Update(snapshot(7, 1, 2, false), now); // idle after a successful request
-        reader.Update(snapshot(8, 1, 3, true), now);
-        f.ServerStats->UpdateStats(false);
+        reader.Update(LatencySnapshot(1, 2));
+        reader.Update(LatencySnapshot(1, 2)); // idle after a successful request
+        reader.Update(LatencySnapshot(1, 3));
         UNIT_ASSERT_VALUES_EQUAL(1, group->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(3, group->GetCounter("LatencyBadOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(4, group->GetCounter("LatencyTotalOps", true)->Val());
@@ -221,160 +214,69 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
     {
         TFixture f(true);
         TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
-        auto group = f.Monitoring->GetCounters()->GetSubgroup("counters", "blockstore")
-            ->GetSubgroup("component", "sli_volume")->GetSubgroup("host", "cluster")
-            ->GetSubgroup("volume", f.DiskId)->GetSubgroup("instance", "instance")
-            ->GetSubgroup("cloud", "")->GetSubgroup("folder", "")
-            ->GetSubgroup(
-                "type",
-                MediaKindToComputeType(NProto::STORAGE_MEDIA_SSD_LOCAL));
-        const auto now = TInstant::Seconds(100);
-        auto snapshot = [&](ui64 sequence, ui64 good, bool fresh = true) {
-            return NJson::TJsonMap{
-                {"elapsed_ms", ui64(1000)},
-                {"latency_sli", NJson::TJsonMap{
-                    {"version", ui64(1)}, {"epoch", "process-1"},
-                    {"sequence", sequence}, {"fresh", fresh},
-                    {"collected_at_us", now.MicroSeconds()},
-                    {"config", "1;0:1:8193:1000"}}},
-                {"read", NJson::TJsonMap{
-                    {"count", ui64(1)}, {"latency_good", good},
-                    {"latency_bad", ui64(0)}, {"latency_unknown", ui64(0)}}},
-                {"write", NJson::TJsonMap{
-                    {"latency_good", ui64(0)}, {"latency_bad", ui64(0)},
-                    {"latency_unknown", ui64(0)}}}};
-        };
-        reader.Update(snapshot(1, 5), now);
-        reader.Update(snapshot(1, 5), now); // duplicate
-        reader.Update(snapshot(2, 7), now);
-        reader.Update(snapshot(1, 5), now); // out of order
-        f.ServerStats->UpdateStats(false);
-        UNIT_ASSERT_VALUES_EQUAL(7, group->GetCounter("LatencyGoodOps", true)->Val());
-        reader.Update(snapshot(3, 9, false), now); // stale completion snapshot
-        reader.Update(snapshot(4, 11), now); // gap: four operations become Unknown
-        f.ServerStats->UpdateStats(false);
-        UNIT_ASSERT_VALUES_EQUAL(4, group->GetCounter("LatencyUnknownOps", true)->Val());
-        auto mismatched = snapshot(5, 12);
-        mismatched["latency_sli"]["config"] = "1;0:1:8193:2000";
-        reader.Update(mismatched, now);
-        reader.Update(snapshot(6, 1), now); // reset: no unsigned subtraction
-        reader.Update(snapshot(7, 2), now);
-        f.ServerStats->UpdateStats(false);
+        auto group = f.GetLatencyCounters();
+        reader.Update(LatencySnapshot(5));
+        reader.Update(LatencySnapshot(5)); // duplicate
+        reader.Update(LatencySnapshot(7));
+        reader.Update(LatencySnapshot(5)); // regression: retain the old baseline
+        reader.Update(LatencySnapshot(8));
         UNIT_ASSERT_VALUES_EQUAL(8, group->GetCounter("LatencyGoodOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(6, group->GetCounter("LatencyUnknownOps", true)->Val());
-        auto otherEpoch = snapshot(8, 999);
-        otherEpoch["latency_sli"]["epoch"] = "another-process";
-        reader.Update(otherEpoch, now);
-        f.ServerStats->UpdateStats(false);
-        UNIT_ASSERT_VALUES_EQUAL(8, group->GetCounter("LatencyTotalOps", true)->Val());
+
+        auto delayed = LatencySnapshot(11);
+        delayed["elapsed_ms"] = ui64(60000);
+        reader.Update(delayed); // cumulative counts preserve decisions across gaps
+        UNIT_ASSERT_VALUES_EQUAL(11, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyUnknownOps", true)->Val());
+        auto mismatched = LatencySnapshot(12);
+        mismatched["latency_sli"]["config"] = "1;0:1:8193:2000";
+        reader.Update(mismatched);
+        reader.Update(LatencySnapshot(13));
+        reader.Update(LatencySnapshot(0)); // no unsigned underflow or replay
+        reader.Update(LatencySnapshot(13));
+        UNIT_ASSERT_VALUES_EQUAL(12, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, group->GetCounter("LatencyUnknownOps", true)->Val());
+
         // A restarted child owns a fresh stats pipe and a new reader.
         TEndpointStats restarted{f.ClientId, f.DiskId, f.ServerStats};
-        restarted.Update(snapshot(1, 3), now);
-        f.ServerStats->UpdateStats(false);
-        UNIT_ASSERT_VALUES_EQUAL(11, group->GetCounter("LatencyGoodOps", true)->Val());
+        restarted.Update(LatencySnapshot(3));
+        UNIT_ASSERT_VALUES_EQUAL(15, group->GetCounter("LatencyGoodOps", true)->Val());
         auto legacy = NJson::TJsonMap{{"read", NJson::TJsonMap{
             {"count", ui64(2)}, {"errors", ui64(1)}}}};
-        restarted.Update(legacy, now);
-        f.ServerStats->UpdateStats(false);
-        UNIT_ASSERT_VALUES_EQUAL(9, group->GetCounter("LatencyUnknownOps", true)->Val());
-        auto missing = snapshot(2, 4);
-        missing["read"].EraseValue("latency_good");
-        restarted.Update(missing, now);
-        restarted.Update(snapshot(3, 5), now); // rebaseline, do not replay old Good
-        restarted.Update(snapshot(4, 6), now);
-        f.ServerStats->UpdateStats(false);
-        UNIT_ASSERT_VALUES_EQUAL(12, group->GetCounter("LatencyGoodOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(11, group->GetCounter("LatencyUnknownOps", true)->Val());
+        restarted.Update(legacy);
+        UNIT_ASSERT_VALUES_EQUAL(4, group->GetCounter("LatencyUnknownOps", true)->Val());
+        auto baseline = LatencySnapshot(5);
+        baseline["read"]["count"] = ui64(1);
+        restarted.Update(baseline); // do not replay legacy operations as Good
+        restarted.Update(LatencySnapshot(6));
+        UNIT_ASSERT_VALUES_EQUAL(16, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(5, group->GetCounter("LatencyUnknownOps", true)->Val());
     }
 
-    Y_UNIT_TEST(ShouldRejectDelayedLatencyBatchesAndResumeWithoutReplayingThem)
+    Y_UNIT_TEST(ShouldRecoverFromMalformedLatencyCounts)
     {
-        for (const TString scenario: {
-                 "normal", "polling-gap", "pipe-delay", "receiver-gap",
-                 "future-timestamp", "clock-rollback", "missing-timestamp",
-                 "missing-interval", "negative-interval", "late-first"})
-        {
-            TFixture f(true);
-            TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
-            auto group = f.Monitoring->GetCounters()
-                ->GetSubgroup("counters", "blockstore")
-                ->GetSubgroup("component", "sli_volume")
-                ->GetSubgroup("host", "cluster")
-                ->GetSubgroup("volume", f.DiskId)
-                ->GetSubgroup("instance", "instance")
-                ->GetSubgroup("cloud", "")
-                ->GetSubgroup("folder", "")
-                ->GetSubgroup(
-                    "type",
-                    MediaKindToComputeType(NProto::STORAGE_MEDIA_SSD_LOCAL));
-            auto snapshot = [](ui64 sequence, ui64 good, ui64 bad, TInstant now) {
-                return NJson::TJsonMap{
-                    {"elapsed_ms", ui64(1000)},
-                    {"latency_sli", NJson::TJsonMap{
-                        {"version", ui64(1)}, {"epoch", "process-1"},
-                        {"sequence", sequence}, {"fresh", true},
-                        {"collected_at_us", now.MicroSeconds()},
-                        {"config", "1;0:1:8193:1000"}}},
-                    {"read", NJson::TJsonMap{
-                        {"latency_good", good}, {"latency_bad", bad},
-                        {"latency_unknown", ui64(0)}}},
-                    {"write", NJson::TJsonMap{
-                        {"latency_good", ui64(0)}, {"latency_bad", ui64(0)},
-                        {"latency_unknown", ui64(0)}}}};
-            };
-
-            const auto firstAt = TInstant::Seconds(100);
-            const bool lateFirst = scenario == "late-first";
-            reader.Update(snapshot(1, 5, 0,
-                lateFirst ? firstAt - TDuration::Seconds(10) : firstAt), firstAt);
-            auto now = firstAt + TDuration::Seconds(1);
-            if (scenario == "receiver-gap") {
-                now += TDuration::Minutes(1);
-            } else if (scenario == "clock-rollback") {
-                now = firstAt - TDuration::Seconds(1);
+        for (const auto* field: {"latency_good", "latency_bad", "latency_unknown"}) {
+            for (const NJson::TJsonValue& invalid: {
+                     NJson::TJsonValue{}, NJson::TJsonValue(i64(-1)),
+                     NJson::TJsonValue("invalid")})
+            {
+                TFixture f(true);
+                TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
+                auto group = f.GetLatencyCounters();
+                reader.Update(LatencySnapshot(2));
+                auto malformed = LatencySnapshot(3);
+                malformed["read"][field] = invalid;
+                malformed["read"]["count"] = ui64(1);
+                reader.Update(malformed);
+                auto baseline = LatencySnapshot(4);
+                baseline["read"]["count"] = ui64(1);
+                reader.Update(baseline);
+                auto next = LatencySnapshot(5);
+                next["read"]["latency_good"] = i64(5); // nonnegative signed JSON is valid
+                reader.Update(next);
+                UNIT_ASSERT_VALUES_EQUAL(3, group->GetCounter("LatencyGoodOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyUnknownOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(3, group->GetCounter("LatencyTotalOps", true)->Val());
             }
-            auto delayed = snapshot(2, 12, 3, now);
-            if (scenario == "polling-gap") {
-                delayed["elapsed_ms"] = ui64(60000);
-            } else if (scenario == "pipe-delay") {
-                delayed["latency_sli"]["collected_at_us"] =
-                    (now - TDuration::Seconds(10)).MicroSeconds();
-            } else if (scenario == "future-timestamp") {
-                delayed["latency_sli"]["collected_at_us"] =
-                    (now + TDuration::Seconds(1)).MicroSeconds();
-            } else if (scenario == "missing-timestamp") {
-                delayed["latency_sli"].EraseValue("collected_at_us");
-            } else if (scenario == "missing-interval") {
-                delayed.EraseValue("elapsed_ms");
-            } else if (scenario == "negative-interval") {
-                delayed["elapsed_ms"] = i64(-1);
-            }
-            reader.Update(delayed, now);
-            f.ServerStats->UpdateStats(false);
-            const bool timely = scenario == "normal" || lateFirst;
-            const ui64 good = (lateFirst ? 0 : 5) + (timely ? 7 : 0);
-            const ui64 bad = timely ? 3 : 0;
-            const ui64 unknown = (lateFirst ? 5 : 0) + (timely ? 0 : 10);
-            UNIT_ASSERT_VALUES_EQUAL_C(good,
-                group->GetCounter("LatencyGoodOps", true)->Val(), scenario);
-            UNIT_ASSERT_VALUES_EQUAL_C(bad,
-                group->GetCounter("LatencyBadOps", true)->Val(), scenario);
-            UNIT_ASSERT_VALUES_EQUAL_C(unknown,
-                group->GetCounter("LatencyUnknownOps", true)->Val(), scenario);
-            UNIT_ASSERT_VALUES_EQUAL_C(good + bad,
-                group->GetCounter("LatencyTotalOps", true)->Val(), scenario);
-
-            now += TDuration::Seconds(1);
-            reader.Update(snapshot(3, 13, 4, now), now);
-            f.ServerStats->UpdateStats(false);
-            UNIT_ASSERT_VALUES_EQUAL_C(good + 1,
-                group->GetCounter("LatencyGoodOps", true)->Val(), scenario);
-            UNIT_ASSERT_VALUES_EQUAL_C(bad + 1,
-                group->GetCounter("LatencyBadOps", true)->Val(), scenario);
-            UNIT_ASSERT_VALUES_EQUAL_C(unknown,
-                group->GetCounter("LatencyUnknownOps", true)->Val(), scenario);
-            UNIT_ASSERT_VALUES_EQUAL_C(good + bad + 2,
-                group->GetCounter("LatencyTotalOps", true)->Val(), scenario);
         }
     }
 

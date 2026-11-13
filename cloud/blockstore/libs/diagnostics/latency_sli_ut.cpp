@@ -75,7 +75,7 @@ struct TFixture
 
     void Complete(ui64 elapsedUs, ui64 postponedUs = 0, ui32 error = S_OK,
                   bool write = false, ui64 bytes = 4096, bool forwarded = false,
-                  bool valid = true, ui64 backoff = 0, ui64 shaping = 0,
+                  ui64 backoff = 0, ui64 shaping = 0,
                   ui64 originalBytes = 0)
     {
         TMetricRequest metric{write ? EBlockStoreRequest::WriteBlocksLocal
@@ -89,9 +89,9 @@ struct TFixture
         TLog log;
         Server->RequestStarted(log, metric, *ctx);
         const auto start = GetCycleCount() - DurationToCyclesSafe(TDuration::Seconds(10));
-        ctx->SetRequestStartedCycles(valid ? start : 0);
-        ctx->SetResponseSentCycles(valid ? start + DurationToCyclesSafe(
-            TDuration::MicroSeconds(elapsedUs)) : 0);
+        ctx->SetRequestStartedCycles(start);
+        ctx->SetResponseSentCycles(start + DurationToCyclesSafe(
+            TDuration::MicroSeconds(elapsedUs)));
         ctx->AddTime(EProcessingStage::Postponed, TDuration::MicroSeconds(postponedUs));
         ctx->AddTime(EProcessingStage::Backoff, TDuration::MicroSeconds(backoff));
         ctx->AddTime(EProcessingStage::Shaping, TDuration::MicroSeconds(shaping));
@@ -254,13 +254,12 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         UNIT_ASSERT(config.GetLatencySliConfig(NProto::STORAGE_MEDIA_HDD).Thresholds[0].empty());
     }
 
-    Y_UNIT_TEST(ShouldCountFailuresWithoutCompleteTimingOrThresholds)
+    Y_UNIT_TEST(ShouldCountFailuresWithoutThresholds)
     {
         auto config = TLatencySliConfig::Parse("1;0:1:8193:100");
         for (bool failed: {false, true}) {
             const auto expected = failed ? ELatencySliResult::Bad
                                          : ELatencySliResult::Unknown;
-            UNIT_ASSERT(config.Classify(false, 4096, 100, failed, false) == expected);
             UNIT_ASSERT(config.Classify(true, 4096, 100, failed) == expected);
         }
         UNIT_ASSERT(config.Classify(false, 4096, 1000, false) == ELatencySliResult::Bad);
@@ -273,7 +272,7 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         f.Complete(500);
         f.Complete(1500);
         f.Complete(1500, 1000);
-        f.Complete(1500, 0, S_OK, false, 4096, false, true, 600, 600);
+        f.Complete(1500, 0, S_OK, false, 4096, false, 600, 600);
         f.Complete(1500, 0, S_OK, true);
         f.Complete(500, 0, S_OK, false, 4096, true); // forwarded cell
         f.Server->UpdateStats(false);
@@ -285,7 +284,7 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
     Y_UNIT_TEST(ShouldUseOriginalUnalignedLengthWithoutChangingLegacyBytes)
     {
         TFixture f;
-        f.Complete(500, 0, S_OK, false, 12288, false, true, 0, 0, 8192);
+        f.Complete(500, 0, S_OK, false, 12288, false, 0, 0, 8192);
         f.Complete(500, 0, S_OK, false, 12288);
         f.Server->UpdateStats(true);
         auto legacy = f.Monitoring->GetCounters()
@@ -303,7 +302,7 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyUnknownOps", true)->Val());
     }
 
-    Y_UNIT_TEST(ShouldCountErrorsWithoutExclusionsAndNeverGuessUnknownTiming)
+    Y_UNIT_TEST(ShouldCountErrorsWithoutExclusionsAndKeepUnknownSizesSeparate)
     {
         TFixture f;
         for (ui32 error: {E_REJECTED, E_CANCELLED, E_ARGUMENT, E_TIMEOUT}) {
@@ -311,12 +310,11 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         }
         f.Complete(500, 600);
         f.Complete(500, 0, E_REJECTED, false, 99999);
-        f.Complete(500, 0, S_OK, false, 4096, false, false);
-        f.Complete(500, 0, E_REJECTED, false, 4096, false, false);
+        f.Complete(500, 0, S_OK, false, 99999);
         f.Complete(2000, 1500, E_REJECTED);
         f.Server->UpdateStats(true);
-        UNIT_ASSERT_VALUES_EQUAL(7, f.Sli->GetCounter("LatencyBadOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(8, f.Sli->GetCounter("LatencyTotalOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(6, f.Sli->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(7, f.Sli->GetCounter("LatencyTotalOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyUnknownOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
     }
@@ -334,19 +332,12 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         UNIT_ASSERT_VALUES_EQUAL(0, f.Sli->GetCounter("LatencyUnknownOps", true)->Val());
     }
 
-    Y_UNIT_TEST(ShouldPublishAllOutcomesOnlyOnStatsUpdate)
+    Y_UNIT_TEST(ShouldPublishAllOutcomesImmediately)
     {
         TFixture f;
         f.Complete(500);
         f.Complete(1500);
         f.Complete(500, 0, S_OK, false, 16384);
-        for (const auto* name:
-             {"LatencyGoodOps",
-              "LatencyBadOps", "LatencyTotalOps", "LatencyUnknownOps"})
-        {
-            UNIT_ASSERT_VALUES_EQUAL(0, f.Sli->GetCounter(name, true)->Val());
-        }
-        f.Server->UpdateStats(false);
         UNIT_ASSERT_VALUES_EQUAL(
             1, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -364,21 +355,18 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
             3, f.Sli->GetCounter("LatencyTotalOps", true)->Val());
     }
 
-    Y_UNIT_TEST(ShouldFlushBatchesAndPreserveReusedCounters)
+    Y_UNIT_TEST(ShouldPreserveReusedCounters)
     {
         NMonitoring::TDynamicCounters group;
         const auto config = TLatencySliConfig::Parse("1;0:1:8193:100");
         {
             TLatencySliCounters counters(config, group);
             counters.Add(5, 3, 2);
-            counters.Publish();
             counters.Add(7, 0, 1);
         }
         {
             TLatencySliCounters counters(config, group);
             counters.Add(2, 4, 8);
-            counters.Publish();
-            counters.Publish();
         }
         UNIT_ASSERT_VALUES_EQUAL(
             14, group.GetCounter("LatencyGoodOps", true)->Val());
@@ -390,21 +378,11 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
             11, group.GetCounter("LatencyUnknownOps", true)->Val());
     }
 
-    Y_UNIT_TEST(ShouldNotLoseConcurrentCompletionsOrPublications)
+    Y_UNIT_TEST(ShouldNotLoseConcurrentCompletions)
     {
         NMonitoring::TDynamicCounters group;
         TLatencySliCounters counters({}, group);
         constexpr ui64 iterations = 10000;
-        std::atomic<bool> done = false;
-        auto publish = [&]
-        {
-            while (!done.load(std::memory_order_relaxed)) {
-                counters.Publish();
-                std::this_thread::yield();
-            }
-        };
-        std::thread collector1(publish);
-        std::thread collector2(publish);
         std::thread good(
             [&]
             {
@@ -429,10 +407,6 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         good.join();
         bad.join();
         unknown.join();
-        done.store(true, std::memory_order_relaxed);
-        collector1.join();
-        collector2.join();
-        counters.Publish();
         UNIT_ASSERT_VALUES_EQUAL(
             iterations, group.GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
