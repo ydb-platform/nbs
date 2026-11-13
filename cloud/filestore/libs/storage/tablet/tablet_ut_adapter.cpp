@@ -1059,6 +1059,66 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
         UNIT_ASSERT(shards->Created[1]->Config.HasMemConfig());
     }
 
+    TABLET_TEST_4K_ONLY(ShouldKeepFastShardLayout)
+    {
+        auto shards = std::make_shared<TTestFastShards>();
+        testEnvConfig.FastShardFactory = shards;
+        TTestEnv env(testEnvConfig);
+        auto& runtime = env.GetRuntime();
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto layout = [] (ui64 nodesPerGroup, ui64 expectedGroupCapacity) {
+            auto config = PersistentConfig();
+            config.MutablePersistentConfig()->SetNodesPerGroup(nodesPerGroup);
+            config.MutablePersistentConfig()->SetExpectedGroupCapacity(expectedGroupCapacity);
+            return config;
+        };
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            layout(1024, 1_GB),
+            true /* isFastShard */);
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 1; });
+        shards->Created[0]->InitResult.SetValue({});
+        tablet.ReconnectPipe();
+
+        // A retry of the filesystem creation sends the same layout.
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            layout(1024, 1_GB),
+            true /* isFastShard */);
+
+        for (const auto& config: {layout(512, 1_GB), layout(1024, 2_GB)}) {
+            tablet.SendConfigureAsShardRequest(
+                1 /* shardNo */,
+                "main_fs",
+                "main_fs_s1",
+                true /* directoryCreationInShardsEnabled */,
+                TVector<TString>() /* shardIds */,
+                config,
+                true /* isFastShard */);
+            auto response = tablet.RecvConfigureAsShardResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, response->GetStatus(), response->GetErrorReason());
+        }
+
+        tablet.RebootTablet();
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 2; });
+        const auto& config = shards->Created[1]->Config.GetPersistentConfig();
+        UNIT_ASSERT_VALUES_EQUAL(1024, config.GetNodesPerGroup());
+        UNIT_ASSERT_VALUES_EQUAL(1_GB, config.GetExpectedGroupCapacity());
+    }
+
     // A forced request is stored as sent, whatever the stored config says:
     // it can demote a fast shard or give it a new persistent config.
     TABLET_TEST_4K_ONLY(ShouldStoreForcedFastShardConfigAsIs)

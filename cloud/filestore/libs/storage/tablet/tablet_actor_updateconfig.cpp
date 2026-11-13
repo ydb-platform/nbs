@@ -159,7 +159,7 @@ NProto::TError ValidateFileShardList(
     return {};
 }
 
-// Kind and page size are fixed once set. SS operations do not handle fast shard
+// Kind and persistent layout are fixed once set. SS operations do not handle fast shard
 // configs so far, just preserve what is set. If page size is not explicitly set
 // it defaults to the block size.
 NProto::TError ValidateAndPrepareFastShardConfig(
@@ -230,6 +230,32 @@ NProto::TError ValidateAndPrepareFastShardConfig(
                     << "fast shard config page size mismatch: old "
                     << oldConfig.GetPersistentConfig().GetPageSize()
                     << ", new " << newPageSize);
+        }
+
+        if (oldConfig.HasPersistentConfig()) {
+            const auto& oldPersistentConfig = oldConfig.GetPersistentConfig();
+            if (persistentConfig.GetNodesPerGroup() !=
+                oldPersistentConfig.GetNodesPerGroup())
+            {
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "fast shard config nodes per group mismatch: old "
+                        << oldPersistentConfig.GetNodesPerGroup()
+                        << ", new " << persistentConfig.GetNodesPerGroup());
+            }
+
+            if (persistentConfig.GetExpectedGroupCapacity() !=
+                oldPersistentConfig.GetExpectedGroupCapacity())
+            {
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "fast shard config expected group capacity mismatch: old "
+                        << oldPersistentConfig.GetExpectedGroupCapacity()
+                        << ", new "
+                        << persistentConfig.GetExpectedGroupCapacity());
+            }
         }
     }
 
