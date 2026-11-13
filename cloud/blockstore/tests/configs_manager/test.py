@@ -113,10 +113,31 @@ def get_config_subscription(nbs):
 
 
 # Wait for a new PrivateDatabaseConfig delivery and its expected acknowledgement state.
-def wait_config_delivery(nbs, previous_updates=0, acknowledged=True, timeout=120):
+# Stop after three consecutive HTTP failures or when the overall timeout expires.
+def wait_config_delivery(nbs, previous_updates=0, acknowledged=True, timeout=30):
     deadline = time.monotonic() + timeout
+    subscription = None
+    consecutive_errors = 0
+    last_http_error = None
     while time.monotonic() < deadline:
-        subscription = get_config_subscription(nbs)
+        # Retry failed monitoring requests within the original delivery deadline.
+        try:
+            subscription = get_config_subscription(nbs)
+        except requests.exceptions.RequestException as error:
+            consecutive_errors += 1
+            last_http_error = error
+            if consecutive_errors >= 3:
+                raise AssertionError(
+                    "PrivateDatabaseConfig monitoring failed after "
+                    f"{consecutive_errors} consecutive HTTP errors; "
+                    f"last observed subscription: {subscription}"
+                ) from error
+            time.sleep(1)
+            continue
+
+        # Reset the failure streak after any successful HTTP response.
+        consecutive_errors = 0
+        last_http_error = None
         if subscription:
             match = re.search(r"UpdatesSent: (\d+)", subscription)
             assert match is not None, f"Missing UpdatesSent in subscription: {subscription}"
@@ -125,7 +146,10 @@ def wait_config_delivery(nbs, previous_updates=0, acknowledged=True, timeout=120
             if updates > previous_updates and pending != acknowledged:
                 return updates
         time.sleep(1)
-    raise AssertionError(f"PrivateDatabaseConfig delivery did not complete: {subscription}")
+    raise AssertionError(
+        "PrivateDatabaseConfig delivery did not complete; "
+        f"last observed subscription: {subscription}"
+    ) from last_http_error
 
 
 # Wait until ConfigsManager reports the requested number of runtime rejections.
