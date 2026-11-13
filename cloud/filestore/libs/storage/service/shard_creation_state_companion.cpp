@@ -70,9 +70,15 @@ TResultOrError<ui64> CalculateNewShardConfigsHash(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TShardCreationStateCompanion::TShardCreationStateCompanion(TString fileSystemId)
+TShardCreationStateCompanion::TShardCreationStateCompanion(
+    TString fileSystemId,
+    EMode mode)
     : FileSystemId(std::move(fileSystemId))
-{}
+    , LogTag(FileSystemId)
+    , Mode(mode)
+{
+    Y_UNUSED(Mode);
+}
 
 bool TShardCreationStateCompanion::IsPersistentStateLoaded() const
 {

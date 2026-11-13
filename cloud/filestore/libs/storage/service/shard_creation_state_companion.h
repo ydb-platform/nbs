@@ -36,6 +36,13 @@ TResultOrError<ui64> CalculateNewShardConfigsHash(
 // do not support persistent state. This companion does not handle actor events.
 class TShardCreationStateCompanion
 {
+public:
+    enum class EMode
+    {
+        Create,
+        Alter,
+    };
+
 private:
     enum class EShardCreationStateStatus
     {
@@ -48,6 +55,8 @@ private:
     };
 
     const TString FileSystemId;
+    const TString LogTag;
+    const EMode Mode;
 
     EShardCreationStateStatus ShardCreationStateStatus =
         EShardCreationStateStatus::Unknown;
@@ -56,8 +65,8 @@ private:
     std::unique_ptr<NCloud::TCompressedBitmap> CreatedShardBitmap;
 
 public:
-    // Track shard creation state for fileSystemId.
-    explicit TShardCreationStateCompanion(TString fileSystemId);
+    // Track shard creation state for fileSystemId in the given mode.
+    TShardCreationStateCompanion(TString fileSystemId, EMode mode);
 
     // Whether the initial read completed, including an unsupported response.
     bool IsPersistentStateLoaded() const;

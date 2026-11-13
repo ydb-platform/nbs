@@ -12,6 +12,8 @@ namespace NCloud::NFileStore::NStorage {
 
 namespace {
 
+using EMode = TShardCreationStateCompanion::EMode;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TStringBuf FileSystemId = "test-fs";
@@ -95,7 +97,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 {
     Y_UNIT_TEST(ShouldTrackPersistentShardCreationStateSupport)
     {
-        TShardCreationStateCompanion companion(TString{FileSystemId});
+        TShardCreationStateCompanion companion(TString{FileSystemId}, EMode::Create);
 
         UNIT_ASSERT(!companion.IsPersistentStateLoaded());
         UNIT_ASSERT(!companion.IsPersistentStateSupported());
@@ -145,7 +147,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 
     Y_UNIT_TEST(ShouldLoadPersistedCreatedShardBitmap)
     {
-        TShardCreationStateCompanion companion(TString{FileSystemId});
+        TShardCreationStateCompanion companion(TString{FileSystemId}, EMode::Create);
 
         const auto shardConfigs = MakeShardConfigs();
 
@@ -168,7 +170,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 
     Y_UNIT_TEST(ShouldRejectHugePersistedShardCreationBitmapOnSetup)
     {
-        TShardCreationStateCompanion companion(TString{FileSystemId});
+        TShardCreationStateCompanion companion(TString{FileSystemId}, EMode::Create);
 
         const auto shardConfigs = MakeShardConfigs();
         auto state = MakeState(42, {});
@@ -186,7 +188,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 
     Y_UNIT_TEST(ShouldRejectConflictingUncommittedShardCreationState)
     {
-        TShardCreationStateCompanion companion(TString{FileSystemId});
+        TShardCreationStateCompanion companion(TString{FileSystemId}, EMode::Create);
 
         const auto originalShardConfigs = MakeShardConfigs();
         auto conflictingShardConfigs = originalShardConfigs;
@@ -208,7 +210,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 
     Y_UNIT_TEST(ShouldResetStaleCommittedShardCreationState)
     {
-        TShardCreationStateCompanion companion(TString{FileSystemId});
+        TShardCreationStateCompanion companion(TString{FileSystemId}, EMode::Create);
 
         const auto originalShardConfigs = MakeShardConfigs();
         const auto nextShardConfigs = MakeShardConfigs(8);
