@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 
+#include <cloud/storage/core/libs/actors/public.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap_serialization.h>
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -32,8 +33,8 @@ TResultOrError<ui64> CalculateNewShardConfigsHash(
 // ShardCreationState holds the last received state, or the plan prepared by
 // SetupCreatedShardBitmap.
 //
-// The actor owns request scheduling, retries, and the fallback for Tablets that
-// do not support persistent state. This companion does not handle actor events.
+// The companion schedules shard creation requests. The actor handles responses,
+// retries, and the fallback for Tablets without persistent state support.
 class TShardCreationStateCompanion
 {
 public:
@@ -63,6 +64,9 @@ private:
     NProtoPrivate::TFileSystemShardCreationState ShardCreationState;
     ui64 ShardBitmapBitCount = 0;
     std::unique_ptr<NCloud::TCompressedBitmap> CreatedShardBitmap;
+    ui32 NextShardToCreate = 0;
+    ui32 ShardsToCreate = 0;
+    ui32 TargetShardCount = 0;
 
 public:
     // Track shard creation state for fileSystemId in the given mode.
@@ -98,7 +102,29 @@ public:
         ui32 topologyShardCount,
         const TVector<NKikimrFileStore::TConfig>& shardConfigs);
 
+    // Set the range [topologyShardCount, targetShardCount) of shards to create.
+    // topologyShardCount is the current committed topology size.
+    void InitializeShardCreation(ui32 topologyShardCount, ui32 targetShardCount);
+    // Send creation requests for up to limit shards. Zero means no limit.
+    // Advance the cursor after each request is sent.
+    void StartShardCreation(
+        const NActors::TActorContext& ctx,
+        const TVector<NKikimrFileStore::TConfig>& shardConfigs,
+        ui32 limit);
+    // Account for a successful creation response and send the next request
+    // when the number of in-flight requests is limited.
+    void OnShardCreated(
+        const NActors::TActorContext& ctx,
+        const TVector<NKikimrFileStore::TConfig>& shardConfigs,
+        ui32 limit);
+    // Whether any shards in the range still need to be created.
+    bool HasShardsToCreate() const;
+
 private:
+    void CreateShard(
+        const NActors::TActorContext& ctx,
+        const TVector<NKikimrFileStore::TConfig>& shardConfigs,
+        ui32 shardIndex);
     // Return whether the saved plan can be reset because its bitmap has no bits
     // outside the current topology. Reject a conflicting plan otherwise.
     TResultOrError<bool> CanResetFsShardCreationState(
