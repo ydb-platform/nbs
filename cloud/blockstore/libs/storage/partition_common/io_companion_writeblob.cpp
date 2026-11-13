@@ -247,8 +247,16 @@ void TWriteBlobActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TResponse> response)
 {
-    if (HasError(response->GetError()) && !response->ErrorSource) {
-        response->ErrorSource = EErrorSource::Local;
+    if (HasError(response->GetError())) {
+        if (!response->ErrorSource) {
+            response->ErrorSource = EErrorSource::Local;
+        }
+        if (response->ErrorSource == EErrorSource::Local) {
+            ReportLocalWriteBlobError(
+                FormatError(response->GetError()),
+                {{"tabletId", TabletId},
+                 {"blobId", MakeBlobId(TabletId, Request->BlobId).ToString()}});
+        }
     }
 
     NotifyCompleted(ctx, *response);

@@ -184,8 +184,19 @@ void TPatchBlobActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TResponse> response)
 {
-    if (HasError(response->GetError()) && !response->ErrorSource) {
-        response->ErrorSource = EErrorSource::Local;
+    if (HasError(response->GetError())) {
+        if (!response->ErrorSource) {
+            response->ErrorSource = EErrorSource::Local;
+        }
+        if (response->ErrorSource == EErrorSource::Local) {
+            ReportLocalPatchBlobError(
+                FormatError(response->GetError()),
+                {{"tabletId", TabletId},
+                 {"originalBlobId",
+                  MakeBlobId(TabletId, Request->OriginalBlobId).ToString()},
+                 {"patchedBlobId",
+                  MakeBlobId(TabletId, Request->PatchedBlobId).ToString()}});
+        }
     }
 
     NotifyCompleted(ctx, *response);
