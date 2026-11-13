@@ -16,8 +16,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
     Y_UNIT_TEST(ShouldRegisterVolumeWithChannelHistory)
     {
         auto runtime = PrepareTestActorRuntime();
-        auto expectedInfo = CreateTestTabletInfo(
-            TestVolumeTablets[0], TTabletTypes::BlockStoreVolume);
+        TTabletStorageInfoPtr expectedInfo = CreateTestTabletInfo(
+            TestVolumeTablets[0],
+            TTabletTypes::BlockStoreVolume);
         bool registered = false;
         auto observer =
             runtime->AddObserver<TEvStatsService::TEvRegisterVolume>(
