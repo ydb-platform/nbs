@@ -553,7 +553,7 @@ void TIndexTabletActor::CompleteTx_CreateSession(
             fileStore.GetFeatures().ShortDebugString().c_str());
     }
 
-    if (FastShard) {
+    if (GetFileSystem().GetIsFastShard()) {
         response->Record.SetAdapterModeEnabled(true);
         if (!args.Request.GetNoFileStoreInfo()) {
             auto* f = response->Record.MutableFileStore()->MutableFeatures();

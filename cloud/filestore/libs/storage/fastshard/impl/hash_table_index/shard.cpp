@@ -864,6 +864,34 @@ public:
         DumpLayoutComponentsJson(out, Layout, Config);
     }
 
+    [[nodiscard]] NCloud::NProto::TError ValidateConfigUpdate(
+        const NProtoPrivate::TFastShardConfig& oldConfig,
+        const NProtoPrivate::TFastShardConfig& newConfig) const
+    {
+        const auto& oldPersistentConfig = oldConfig.GetPersistentConfig();
+        const auto& newPersistentConfig = newConfig.GetPersistentConfig();
+
+        if (newPersistentConfig.GetNodesPerGroup() != oldPersistentConfig.GetNodesPerGroup()) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "fast shard config nodes per group mismatch: old "
+                    << oldPersistentConfig.GetNodesPerGroup()
+                    << ", new " << newPersistentConfig.GetNodesPerGroup());
+        }
+
+        if (newPersistentConfig.GetExpectedGroupCapacity() != oldPersistentConfig.GetExpectedGroupCapacity()) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "fast shard config expected group capacity mismatch: old "
+                    << oldPersistentConfig.GetExpectedGroupCapacity()
+                    << ", new " << newPersistentConfig.GetExpectedGroupCapacity());
+        }
+
+        return {};
+    }
+
 public:
     NProtoPrivate::TGetNodeAttrBatchResponse GetNodeAttrBatch(
         NProtoPrivate::TGetNodeAttrBatchRequest request)

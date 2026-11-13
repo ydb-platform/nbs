@@ -159,10 +159,8 @@ NProto::TError ValidateFileShardList(
     return {};
 }
 
-// Kind and page size are fixed once set. SS operations do not handle fast shard
-// configs so far, just preserve what is set. If page size is not explicitly set
-// it defaults to the block size.
 NProto::TError ValidateAndPrepareFastShardConfig(
+    const NFastShard::IFileSystemShardPtr& fastShard,
     const NProto::TFileSystem& config,
     NProtoPrivate::TConfigureAsShardRequest& request)
 {
@@ -181,7 +179,7 @@ NProto::TError ValidateAndPrepareFastShardConfig(
     }
 
     if (config.GetIsFastShard() && !request.GetIsFastShard()) {
-        return MakeError(E_ARGUMENT, "a fast shard cannot be demoted");
+        return MakeError(E_ARGUMENT, "fast shard cannot be demoted");
     }
 
     if (!hasNewConfig) {
@@ -213,6 +211,7 @@ NProto::TError ValidateAndPrepareFastShardConfig(
                     << " is not a multiple of " << DefaultBlockSize);
         }
 
+        // TODO-6957: find better way to handle this
         if (!oldConfig.HasPersistentConfig()) {
             if (!newPageSize) {
                 persistentConfig.SetPageSize(config.GetBlockSize());
@@ -221,9 +220,7 @@ NProto::TError ValidateAndPrepareFastShardConfig(
             // preserve the existing page size.
             persistentConfig.SetPageSize(
                 oldConfig.GetPersistentConfig().GetPageSize());
-        } else if (
-            newPageSize != oldConfig.GetPersistentConfig().GetPageSize())
-        {
+        } else if (newPageSize != oldConfig.GetPersistentConfig().GetPageSize()) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder()
@@ -233,7 +230,7 @@ NProto::TError ValidateAndPrepareFastShardConfig(
         }
     }
 
-    return {};
+    return fastShard->ValidateConfigUpdate(oldConfig, newConfig);
 }
 
 }   // namespace
@@ -560,7 +557,10 @@ void TIndexTabletActor::HandleConfigureAsShard(
     }
 
     if (!HasError(error) && !msg->Record.GetForce()) {
-        error = ValidateAndPrepareFastShardConfig(GetFileSystem(), msg->Record);
+        error = ValidateAndPrepareFastShardConfig(
+            FastShard,
+            GetFileSystem(),
+            msg->Record);
     }
 
     if (error.GetCode() != S_OK) {

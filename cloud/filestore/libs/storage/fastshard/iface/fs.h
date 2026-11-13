@@ -118,6 +118,17 @@ struct IFileSystemShard
      * @param out - Stream the document is written to.
      */
     virtual void DumpLayoutJson(IOutputStream& out) const = 0;
+
+    /**
+     *
+     * Validates proposed config update for fastshard.
+     *
+     * @param oldConfig - existing fastshard config.
+     * @param newConfig - proposed updated fastshard config.
+     */
+    [[nodiscard]] virtual NCloud::NProto::TError ValidateConfigUpdate(
+        const NProtoPrivate::TFastShardConfig& oldConfig,
+        const NProtoPrivate::TFastShardConfig& newConfig) const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

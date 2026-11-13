@@ -58,6 +58,7 @@ struct TTestFastShard: TNotImplementedFastShard
     bool TornDown = false;
     ui64 Generation = 0;
     NProtoPrivate::TFastShardConfig Config;
+    NCloud::NProto::TError ValidateConfigUpdateResult;
 
     NThreading::TFuture<NProtoPrivate::TCreateSessionResponse> CreateSession(
         NProtoPrivate::TCreateSessionRequest request) override;
@@ -73,6 +74,10 @@ struct TTestFastShard: TNotImplementedFastShard
         NFastShard::TFileSystemShardStats* stats) const override;
     void DumpLayoutHtml(IOutputStream& out) const override;
     void DumpLayoutJson(IOutputStream& out) const override;
+
+    NProto::TError ValidateConfigUpdate(
+        const NProtoPrivate::TFastShardConfig& oldConfig,
+        const NProtoPrivate::TFastShardConfig& newConfig) const override;
 };
 
 inline NProtoPrivate::TFastShardConfig MemConfig()
