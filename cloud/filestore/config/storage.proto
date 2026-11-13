@@ -1008,6 +1008,6 @@ message TStorageConfig
     // New files are subject to the vhost minimum size and total size limit.
     optional uint64 ServerWriteBackCacheStateFileSize = 562;
 
-    // Enables pre-allocated actors for reading / writing data
+    // Enables pre-allocated actors for reading data
     optional bool EnablePreallocatedDataActors = 563;
 }
