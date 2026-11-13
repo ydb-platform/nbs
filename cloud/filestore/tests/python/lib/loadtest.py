@@ -6,7 +6,10 @@ import tempfile
 import yatest.common as common
 
 from cloud.filestore.config.client_pb2 import TClientConfig
+from cloud.filestore.tools.testing.loadtest.protos.loadtest_pb2 import TTestGraph
 from cloud.storage.core.tests.common import expand_placeholders
+
+from google.protobuf import text_format
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +22,27 @@ def _expand_placeholders(config_path):
     if expanded == content:
         return config_path
 
-    tmp = tempfile.NamedTemporaryFile(
-        mode="w", suffix=".txt", delete=False, dir=common.output_path()
-    )
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, dir=common.output_path())
     tmp.write(expanded)
     tmp.close()
     return tmp.name
+
+
+def _disable_index_consistency_validation(config_path):
+    with open(config_path) as f:
+        config = text_format.Parse(f.read(), TTestGraph())
+
+    for test in config.Tests:
+        if test.HasField("LoadTest"):
+            logger.info(
+                f"Disabling IndexConsistencyValidation for test='{test.LoadTest.Name or '<empty>'}' "
+                "because sanitizer is enabled"
+            )
+            test.LoadTest.IndexConsistencyValidation.Enabled = False
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", dir=common.output_path(), delete=False) as f:
+        f.write(text_format.MessageToString(config))
+        return f.name
 
 
 def run_load_test(
@@ -37,6 +55,11 @@ def run_load_test(
     use_fast_shard_runtime=False,
 ):
     config = _expand_placeholders(config)
+    if common.context.sanitize:
+        # We've observed recurring test failures with enabled sanitizers because
+        # compaction could not finish within the deadline. Instead of  extenting
+        # the deadline, we disable the validation.
+        config = _disable_index_consistency_validation(config)
 
     cmd = [
         common.binary_path("cloud/filestore/tools/testing/loadtest/bin/filestore-loadtest"),

@@ -20,11 +20,17 @@ TActorId MakeTabletProxyServiceId()
 
 void ForwardToTablet(ui64 tabletId, IEventHandlePtr request)
 {
+    ForwardToTablet(tabletId, std::move(request), false);
+}
+
+void ForwardToTablet(ui64 tabletId, IEventHandlePtr request, bool subscribe)
+{
     const bool sent = TActivationContext::AsActorContext().Send(
         MakeTabletProxyServiceId(),
         std::make_unique<TEvTabletProxy::TEvForward>(
             tabletId,
-            std::move(request)));
+            std::move(request),
+            subscribe));
     Y_ABORT_UNLESS(sent, "tablet proxy service is not registered");
 }
 

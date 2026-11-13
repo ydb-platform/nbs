@@ -487,6 +487,7 @@ func initControlplane(
 		resourceStorage,
 		taskStorage,
 	)
+	facade.RegisterQuotaService(server)
 
 	if filesystemService != nil {
 		facade.RegisterFilesystemService(

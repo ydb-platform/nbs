@@ -15,6 +15,7 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/mon.h>
 
+#include <library/cpp/cgiparam/cgiparam.h>
 #include <library/cpp/html/pcdata/pcdata.h>
 #include <library/cpp/monlib/service/pages/index_mon_page.h>
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -23,8 +24,10 @@
 #include <util/generic/algorithm.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/utility.h>
-#include <util/string/builder.h>
 #include <util/stream/str.h>
+#include <util/string/builder.h>
+
+#include <array>
 
 namespace NCloud::NBlockStore::NCells {
 
@@ -48,6 +51,7 @@ struct TEvPrivate
     enum EEv
     {
         EvSearchCompleted = TBlockStorePrivateEvents::CELLS_START,
+        EvTransportChanged,
         EvEnd
     };
 
@@ -60,14 +64,28 @@ struct TEvPrivate
         const TVector<TCellDescribeResult> Results;
 
         TEvSearchCompleted(
-                TActorId replyTo,
-                ui64 cookie,
-                TString diskId,
-                TVector<TCellDescribeResult> results)
+            TActorId replyTo,
+            ui64 cookie,
+            TString diskId,
+            TVector<TCellDescribeResult> results)
             : ReplyTo(replyTo)
             , Cookie(cookie)
             , DiskId(std::move(diskId))
             , Results(std::move(results))
+        {}
+    };
+
+    struct TEvTransportChanged
+        : public TEventLocal<TEvTransportChanged, EvTransportChanged>
+    {
+        const TActorId ReplyTo;
+        const ui64 Cookie;
+        const NProto::TError Error;
+
+        TEvTransportChanged(TActorId replyTo, ui64 cookie, NProto::TError error)
+            : ReplyTo(replyTo)
+            , Cookie(cookie)
+            , Error(std::move(error))
         {}
     };
 };
@@ -242,6 +260,8 @@ TString DescribeTransport(
             return "grpc";
         case NProto::CELL_DATA_TRANSPORT_RDMA:
             return grpcDataFallbackEnabled ? "rdma + grpc fallback" : "rdma";
+        case NProto::CELL_DATA_TRANSPORT_ICV2:
+            return grpcDataFallbackEnabled ? "icv2 + grpc fallback" : "icv2";
         default:
             return "unknown";
     }
@@ -397,7 +417,7 @@ void RenderCells(
 
 TStringBuf TransportLabelKind(const TString& transport)
 {
-    if (transport == "rdma") {
+    if (transport == "rdma" || transport == "icv2") {
         return "success";
     }
     if (transport == "grpc fallback") {
@@ -406,13 +426,46 @@ TStringBuf TransportLabelKind(const TString& transport)
     return "default";
 }
 
+void RenderTransportControl(IOutputStream& out, const TCellMountStatus& mount)
+{
+    out << "<form method='post' action='cells' class='form-inline'>"
+        << "<input type='hidden' name='action' value='switchTransport'>"
+        << "<input type='hidden' name='ConnectionId' value='"
+        << EncodeHtmlPcdata(mount.ConnectionId) << "'>"
+        << "<select name='Transport' class='form-control input-sm'>";
+    constexpr std::array transports = {
+        NProto::CELL_DATA_TRANSPORT_GRPC,
+        NProto::CELL_DATA_TRANSPORT_RDMA,
+        NProto::CELL_DATA_TRANSPORT_ICV2};
+    constexpr std::array names = {"gRPC", "RDMA", "IC V2"};
+    for (size_t i = 0; i < transports.size(); ++i) {
+        out << "<option value='"
+            << NProto::ECellDataTransport_Name(transports[i]) << "'";
+        if (mount.SelectedTransport == transports[i]) {
+            out << " selected";
+        }
+        if (UsesEndpointHandler(transports[i]) &&
+            !mount.GrpcDataFallbackEnabled)
+        {
+            out << " disabled title='Requires gRPC data fallback'";
+        }
+        out << ">" << names[i] << "</option>";
+    }
+    out << "</select> <button type='submit' class='btn btn-default btn-sm'>"
+        << "Apply</button></form>";
+}
+
 void RenderMounts(
     IOutputStream& out,
     const TVector<TCellMountStatus>& mounts,
     const TDiagnosticsConfig& diagnosticsConfig)
 {
     out << "<h3>Intercell mounts <small>disks this node serves through other "
-           "cells</small></h3>";
+           "cells</small></h3>"
+        << "<p class='text-muted'>Transport selection applies to this "
+           "disk/client "
+           "on this node until the connection closes. RDMA and IC V2 keep "
+           "the configured gRPC fallback policy.</p>";
     if (mounts.empty()) {
         out << "<p class='text-muted'>None.</p>";
         return;
@@ -450,8 +503,9 @@ void RenderMounts(
                                 out,
                                 TransportLabelKind(mount.DataTransport),
                                 mount.DataTransport);
+                            RenderTransportControl(out, mount);
                         }
-                        TABLED() {
+                        TABLED () {
                             // empty when the cell is older than the field
                             if (mount.TabletHost == mount.Host) {
                                 out << "<span class='text-muted'>"
@@ -569,6 +623,7 @@ public:
         switch (ev->GetTypeRewrite()) {
             HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
             HFunc(TEvPrivate::TEvSearchCompleted, HandleSearchCompleted);
+            HFunc(TEvPrivate::TEvTransportChanged, HandleTransportChanged);
             default:
                 break;
         }
@@ -579,7 +634,14 @@ private:
         const NMon::TEvHttpInfo::TPtr& ev,
         const TActorContext& ctx)
     {
-        const auto& params = ev->Get()->Request.GetParams();
+        const auto& request = ev->Get()->Request;
+        const auto& params = request.GetMethod() == HTTP_METHOD_POST
+                                 ? request.GetPostParams()
+                                 : request.GetParams();
+        if (params.Get("action") == "switchTransport") {
+            HandleSwitchTransport(ev, ctx, params);
+            return;
+        }
 
         if (params.Get("action") == "search" && params.Get("Volume")) {
             StartSearch(ctx, ev->Sender, ev->Cookie, params.Get("Volume"));
@@ -587,6 +649,10 @@ private:
         }
 
         TStringStream out;
+        if (const auto& error = params.Get("TransportError")) {
+            out << "<div class='alert alert-danger'>" << EncodeHtmlPcdata(error)
+                << "</div>";
+        }
         RenderCellsPage(
             out,
             *CellManager->Config,
@@ -598,6 +664,80 @@ private:
             new NMon::TEvHttpInfoRes(out.Str()),
             0,
             ev->Cookie);
+    }
+
+    void HandleSwitchTransport(
+        const NMon::TEvHttpInfo::TPtr& ev,
+        const TActorContext& ctx,
+        const TCgiParameters& params)
+    {
+        const auto& request = ev->Get()->Request;
+        NProto::ECellDataTransport transport;
+        if (request.GetMethod() != HTTP_METHOD_POST ||
+            !NProto::ECellDataTransport_Parse(
+                params.Get("Transport"),
+                &transport) ||
+            (transport != NProto::CELL_DATA_TRANSPORT_GRPC &&
+             !UsesEndpointHandler(transport)) ||
+            params.Get("ConnectionId").empty())
+        {
+            ReplyTransportChanged(
+                ctx,
+                ev->Sender,
+                ev->Cookie,
+                MakeError(
+                    E_ARGUMENT,
+                    "Expected POST with connection and gRPC/RDMA/IC V2 "
+                    "transport"));
+            return;
+        }
+        auto* actorSystem = ctx.ActorSystem();
+        const auto self = SelfId();
+        CellManager->SwitchDataTransport(params.Get("ConnectionId"), transport)
+            .Subscribe(
+                [actorSystem, self, replyTo = ev->Sender, cookie = ev->Cookie](
+                    const auto& future)
+                {
+                    actorSystem->Send(
+                        self,
+                        new TEvPrivate::TEvTransportChanged(
+                            replyTo,
+                            cookie,
+                            future.GetValue()));
+                });
+    }
+
+    static void ReplyTransportChanged(
+        const TActorContext& ctx,
+        TActorId replyTo,
+        ui64 cookie,
+        const NProto::TError& error)
+    {
+        TStringBuilder location;
+        location << "/blockstore/cells";
+        if (HasError(error)) {
+            location << "?TransportError=" << CGIEscapeRet(FormatError(error));
+        }
+        // Land on a GET even after an error, so reload does not repeat Apply.
+        // Viewer prepends /node/<id> to this root-relative location.
+        ctx.Send(
+            replyTo,
+            new NMon::TEvHttpInfoRes(
+                TStringBuilder() << "HTTP/1.1 303 See Other\r\n"
+                                 << "Location: " << location << "\r\n"
+                                 << "Content-Length: 0\r\n\r\n",
+                0,
+                NMon::IEvHttpInfoRes::Custom),
+            0,
+            cookie);
+    }
+
+    void HandleTransportChanged(
+        const TEvPrivate::TEvTransportChanged::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        const auto& msg = *ev->Get();
+        ReplyTransportChanged(ctx, msg.ReplyTo, msg.Cookie, msg.Error);
     }
 
     void StartSearch(

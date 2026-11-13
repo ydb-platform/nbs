@@ -1,13 +1,13 @@
 #include "io_companion.h"
 
-#include "blobs_compressor.h"
+#include "blob_compressor.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
-#include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
@@ -50,7 +50,7 @@ private:
 
     const bool PassTraceIdToBlobstorage = false;
 
-    const std::shared_ptr<TBlobsCompressor> BlobsCompressor;
+    const TBlobCompressorPtr BlobCompressor;
 
     TInstant RequestSent;
     TInstant ResponseReceived;
@@ -71,14 +71,14 @@ public:
         TChildLogTitle logTitle,
         ui64 bsGroupOperationId,
         bool shouldSendTraceIdToBlobstorage,
-        std::shared_ptr<TBlobsCompressor> blobsCompressor);
+        TBlobCompressorPtr blobsCompressor);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
     void SendPutRequest(const TActorContext& ctx);
 
-    void NotifyCompleted(const TActorContext& ctx, const NProto::TError& error);
+    void NotifyCompleted(const TActorContext& ctx, const TResponse& response);
 
     void ReplyAndDie(
         const TActorContext& ctx,
@@ -87,7 +87,8 @@ private:
     void ReplyError(
         const TActorContext& ctx,
         const TEvBlobStorage::TEvPutResult& response,
-        const TString& description);
+        const TString& description,
+        EErrorSource errorSource);
 
 private:
     STFUNC(StateWork);
@@ -104,18 +105,18 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TWriteBlobActor::TWriteBlobActor(
-        const TActorId& tabletActorId,
-        const TActorId& volumeActorId,
-        TRequestInfoPtr requestInfo,
-        ui64 tabletId,
-        TString diskId,
-        std::unique_ptr<TRequest> request,
-        TDuration longRunningThreshold,
-        ui32 groupId,
-        TChildLogTitle logTitle,
-        ui64 bsGroupOperationId,
-        bool shouldSendTraceIdToBlobstorage,
-        std::shared_ptr<TBlobsCompressor> blobsCompressor)
+    const TActorId& tabletActorId,
+    const TActorId& volumeActorId,
+    TRequestInfoPtr requestInfo,
+    ui64 tabletId,
+    TString diskId,
+    std::unique_ptr<TRequest> request,
+    TDuration longRunningThreshold,
+    ui32 groupId,
+    TChildLogTitle logTitle,
+    ui64 bsGroupOperationId,
+    bool shouldSendTraceIdToBlobstorage,
+    TBlobCompressorPtr blobsCompressor)
     : TLongRunningOperationCompanion(
           tabletActorId,
           volumeActorId,
@@ -131,7 +132,7 @@ TWriteBlobActor::TWriteBlobActor(
     , LogTitle(std::move(logTitle))
     , BSGroupOperationId(bsGroupOperationId)
     , PassTraceIdToBlobstorage(shouldSendTraceIdToBlobstorage)
-    , BlobsCompressor(std::move(blobsCompressor))
+    , BlobCompressor(std::move(blobsCompressor))
 {}
 
 void TWriteBlobActor::Bootstrap(const TActorContext& ctx)
@@ -176,8 +177,8 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
         TWellKnownEntityTypes::TABLET,
         TabletId);
 
-    if (BlobsCompressor && Request->CompressedSizeEstimationCandidate) {
-        BlobsCompressor->CalculateCompressionMetrics(
+    if (BlobCompressor && Request->CompressedSizeEstimationCandidate) {
+        BlobCompressor->CalculateCompressionMetrics(
             Request->BlobId,
             blobContent);
     }
@@ -227,16 +228,17 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
 
 void TWriteBlobActor::NotifyCompleted(
     const TActorContext& ctx,
-    const NProto::TError& error)
+    const TResponse& response)
 {
     auto request =
         std::make_unique<TEvPartitionCommonPrivate::TEvWriteBlobCompleted>(
-            error,
+            response.GetError(),
             Request->BlobId,
             StorageStatusFlags,
             ApproximateFreeSpaceShare,
             ResponseReceived - RequestSent,
             BSGroupOperationId);
+    request->ErrorSource = response.ErrorSource;
 
     NCloud::Send(ctx, TabletActorId, std::move(request));
 }
@@ -245,7 +247,11 @@ void TWriteBlobActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TResponse> response)
 {
-    NotifyCompleted(ctx, response->GetError());
+    if (HasError(response->GetError()) && !response->ErrorSource) {
+        response->ErrorSource = EErrorSource::Local;
+    }
+
+    NotifyCompleted(ctx, *response);
 
     if (ResponseReceived) {
         LWTRACK(
@@ -264,7 +270,8 @@ void TWriteBlobActor::ReplyAndDie(
 void TWriteBlobActor::ReplyError(
     const TActorContext& ctx,
     const TEvBlobStorage::TEvPutResult& response,
-    const TString& description)
+    const TString& description,
+    EErrorSource errorSource)
 {
     LOG_ERROR(
         ctx,
@@ -274,11 +281,10 @@ void TWriteBlobActor::ReplyError(
         description.c_str(),
         response.Print(false).c_str());
 
-    ReplyAndDie(
-        ctx,
-        std::make_unique<TResponse>(MakeError(
-            E_REJECTED,
-            "TEvBlobStorage::TEvPut failed: " + description)));
+    auto reply = std::make_unique<TResponse>(
+        MakeError(E_REJECTED, "TEvBlobStorage::TEvPut failed: " + description));
+    reply->ErrorSource = errorSource;
+    ReplyAndDie(ctx, std::move(reply));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -297,13 +303,13 @@ void TWriteBlobActor::HandlePutResult(
     ApproximateFreeSpaceShare = msg->ApproximateFreeSpaceShare;
 
     if (msg->Status != NKikimrProto::OK) {
-        ReplyError(ctx, *msg, msg->ErrorReason);
+        ReplyError(ctx, *msg, msg->ErrorReason, EErrorSource::BlobStorage);
         return;
     }
 
     auto blobId = MakeBlobId(TabletId, Request->BlobId);
     if (msg->Id != blobId) {
-        ReplyError(ctx, *msg, "invalid response received");
+        ReplyError(ctx, *msg, "invalid response received", EErrorSource::Local);
         return;
     }
 
@@ -390,7 +396,7 @@ void TIOCompanion::HandleWriteBlob(
             LogTitle.GetChild(GetCycleCount()),
             bsGroupOperationId,
             DiagnosticsConfig->GetPassTraceIdToBlobstorage(),
-            BlobsCompressor),
+            BlobCompressor),
         bsGroupOperationId,
         groupId,
         TBSGroupOperationTimeTracker::EOperationType::Write,
@@ -452,8 +458,9 @@ void TIOCompanion::HandleWriteBlobCompleted(
             LogTitle.GetWithTime().c_str(),
             FormatError(msg->GetError()).c_str());
 
-        if (++WriteBlobErrorCount >=
-            Config->GetMaxWriteBlobErrorsBeforeSuicide())
+        if (msg->ErrorSource == EErrorSource::BlobStorage &&
+            ++WriteBlobErrorCount >=
+                Config->GetMaxWriteBlobErrorsBeforeSuicide())
         {
             ReportTabletBSFailure(
                 PartitionConfig.GetDiskId(),

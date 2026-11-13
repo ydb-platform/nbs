@@ -926,6 +926,9 @@ message TStorageServiceConfig
 
     // Blob compression experiment params. See NBS-3949.
     optional uint32 BlobCompressionRate = 298;
+
+    // Codec family: lz4, snappy or zstd.
+    // Uses the default preset for each family (zstd level 3).
     optional string BlobCompressionCodec = 299;
 
     // If set, writes will be additionally throttled by disk space score

@@ -8,6 +8,8 @@
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
 
+#include <util/generic/algorithm.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -129,6 +131,10 @@ void TStatsServiceActor::RegisterStatisticsCollectorActor(
             volumeActorIds.push_back(stats.VolumeActorId);
         }
     }
+    // Shadow disks are registered with the actor id of their source volume,
+    // and that volume reports their statistics in its own response. A second
+    // request to the same volume would make it reject the first one.
+    SortUnique(volumeActorIds);
 
     NCloud::Register<TServiceStatisticsCollectorActor>(
         ctx,

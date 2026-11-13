@@ -12,6 +12,7 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
 #include <util/generic/string.h>
 #include <util/string/builder.h>
@@ -57,6 +58,7 @@ private:
         const ui64 Generation = 0;
 
         TIntrusiveList<TInflightRequest> Inflight;
+        THashSet<TActorId> Subscribers;
         TInstant LastActivity = TInstant::Now();
         bool IdleCheckScheduled = false;
 
@@ -87,6 +89,7 @@ private:
     {
         switch (ev->GetTypeRewrite()) {
             HFunc(TEvTabletProxy::TEvForward, HandleForward);
+            HFunc(TEvTabletProxy::TEvKeepAliveRequest, HandleKeepAlive);
             HFunc(TEvTabletPipe::TEvClientConnected, HandleClientConnected);
             HFunc(TEvTabletPipe::TEvClientDestroyed, HandleClientDestroyed);
             HFunc(TEvents::TEvWakeup, HandleIdleCheck);
@@ -105,20 +108,10 @@ private:
         const ui64 tabletId = ev->Get()->TabletId;
         auto request = std::move(ev->Get()->Request);
 
-        auto it = Tablets.find(tabletId);
-        if (it == Tablets.end()) {
-            auto client = ctx.Register(NTabletPipe::CreateClient(
-                SelfId(),
-                tabletId,
-                NTabletPipe::TClientRetryPolicy{
-                    .RetryLimitCount = Config.PipeClientRetryCount,
-                    .MinRetryTime = Config.PipeClientMinRetryTime,
-                    .MaxRetryTime = Config.PipeClientMaxRetryTime}));
-
-            it = Tablets.try_emplace(tabletId, client, ++LastTabletGeneration).first;
+        auto& tablet = GetOrCreateTablet(ctx, tabletId);
+        if (ev->Get()->Subscribe) {
+            tablet.Subscribers.insert(ev->Sender);
         }
-
-        auto& tablet = it->second;
 
         const ui64 requestId = ++LastRequestId;
         auto [entry, inserted] = Requests.try_emplace(
@@ -148,6 +141,24 @@ private:
                 requestId,
                 std::move(request->TraceId));
         }
+    }
+
+    TTablet& GetOrCreateTablet(const TActorContext& ctx, ui64 tabletId)
+    {
+        auto it = Tablets.find(tabletId);
+        if (it == Tablets.end()) {
+            auto client = ctx.Register(NTabletPipe::CreateClient(
+                SelfId(),
+                tabletId,
+                NTabletPipe::TClientRetryPolicy{
+                    .RetryLimitCount = Config.PipeClientRetryCount,
+                    .MinRetryTime = Config.PipeClientMinRetryTime,
+                    .MaxRetryTime = Config.PipeClientMaxRetryTime}));
+
+            it = Tablets.try_emplace(tabletId, client, ++LastTabletGeneration).first;
+        }
+
+        return it->second;
     }
 
     void HandleTabletEvent(TAutoPtr<IEventHandle>& ev, const TActorContext& ctx)
@@ -193,10 +204,10 @@ private:
         auto tit = Tablets.find(tabletId);
 
         Y_ABORT_UNLESS(tit != Tablets.end(), "lost tablet state for [%lu]", tabletId);
-        ScheduleIdleCheck(ctx, tabletId, tit->second);
+        UpdateActivityAndScheduleCheck(ctx, tabletId, tit->second);
     }
 
-    void ScheduleIdleCheck(
+    void UpdateActivityAndScheduleCheck(
         const TActorContext& ctx,
         ui64 tabletId,
         TTablet& tablet)
@@ -256,7 +267,35 @@ private:
             tabletId);
 
         NTabletPipe::CloseClient(ctx, tablet.ClientId);
+        NotifySubscribers(ctx, tabletId, tablet);
         Tablets.erase(it);
+    }
+
+    void HandleKeepAlive(
+        const TEvTabletProxy::TEvKeepAliveRequest::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        const ui64 tabletId = ev->Get()->TabletId;
+
+        auto* tablet = Tablets.FindPtr(tabletId);
+        if (!tablet) {
+            ctx.Send(
+                ev->Sender,
+                new TEvTabletProxy::TEvKeepAliveResponse(MakeError(
+                    E_INVALID_STATE,
+                    TStringBuilder() << "no pipe to tablet " << tabletId)),
+                0,   // flags
+                ev->Cookie);
+            return;
+        }
+
+        UpdateActivityAndScheduleCheck(ctx, tabletId, *tablet);
+
+        ctx.Send(
+            ev->Sender,
+            new TEvTabletProxy::TEvKeepAliveResponse(),
+            0,   // flags
+            ev->Cookie);
     }
 
     void HandleClientConnected(
@@ -305,7 +344,18 @@ private:
 
         auto it = Tablets.find(tabletId);
         Fail(ctx, tabletId, it->second, reason);
+        NotifySubscribers(ctx, tabletId, it->second);
         Tablets.erase(it);
+    }
+
+    void NotifySubscribers(
+        const TActorContext& ctx,
+        ui64 tabletId,
+        const TTablet& tablet)
+    {
+        for (const auto& subscriber: tablet.Subscribers) {
+            ctx.Send(subscriber, new TEvTabletProxy::TEvPipeClosed(tabletId));
+        }
     }
 
     void Fail(
@@ -336,6 +386,7 @@ private:
         for (auto& [tabletId, tablet]: Tablets) {
             NTabletPipe::CloseClient(ctx, tablet.ClientId);
             Fail(ctx, tabletId, tablet, "tablet proxy is shutting down");
+            NotifySubscribers(ctx, tabletId, tablet);
         }
 
         Tablets.clear();

@@ -48,6 +48,7 @@ nonzero TTL means the client is subscribed to the corresponding key.
 | ListNodes, ListNodesInternal | + | + | - |
 | GetNodeAttrBatch | + | - (NodeRefs are shard-internal) | - |
 | GetNodeXAttr | - | - | + (also for "no such xattr") |
+| SetNodeXAttr | - | - | + (also for "no such xattr" upon F_REPLACE) |
 
 - TTL = seal period - `FileSystemEventSubscriptionsCacheTTLMargin` (the margin
   covers the delivery and processing delays)
@@ -57,6 +58,19 @@ nonzero TTL means the client is subscribed to the corresponding key.
   - GetNodeAttr: NodeRef TTL from the main tablet, Node TTL from the shard
   - ListNodes: Node TTL = min over the main tablet and the shards
 - Negative caching is allowed for XAttrs only
+- XAttr values carry a version (a per-tablet counter incremented upon each
+  XAttr write) which orders the values of the same XAttr; `E_FS_NOXATTR`
+  responses carry no version, so an absence can't be ordered against a value
+  by versions
+- Unlike the other local changes, the client's own SetNodeXAttr caches the
+  set value (if the response passes the race check). Like the other local
+  changes, it leaves a tombstone upon the response arrival - otherwise a
+  GetNodeXAttr processed by the backend before the SetNodeXAttr could cache
+  the older value or its absence and break read-after-write
+- The absence found out by the client's own SetNodeXAttr with `F_REPLACE` is
+  handled the same way
+- XAttrCacheTTL = 0: the client falls back to the legacy time-based
+  expiration (`XAttrCacheTimeout`) - the cache predates FileSystemEvents
 
 ## Write path: sending
 
@@ -70,8 +84,10 @@ nonzero TTL means the client is subscribed to the corresponding key.
     cached absence)
 - Events are sent only after the in-memory index cache is updated - otherwise
   the client could re-read stale data from that cache
-- TODO: XAttr removal -> `InvalidateNodeXAttr`; node removal should drop the
-  node's XAttrs on the client
+  - XAttr removed -> `InvalidateNodeXAttr`
+- Events are sent before the completion of the request that generated them,
+  so a writer subscribed by its own request (SetNodeXAttr) doesn't get its
+  own change; it does get the next one
 
 ## Correctness
 
@@ -93,9 +109,9 @@ sequenceDiagram
   - executor reads complete only after all the previously committed writes
     (`TLogicRedo::CommitROTransaction`) - a read that saw an uncommitted
     write replies after that write has completed
-- Client side TODO: the reply and the event reach the client cache via
-  different paths - a per-key version is needed so that an invalidation
-  applied before the reply is cached isn't lost
+- The reply and the event reach the client cache via different paths - the
+  client remembers the versions of the recent invalidations (tombstones) and
+  doesn't cache the replies to the requests started before them
 
 ## Subscription lifetime
 
@@ -107,7 +123,7 @@ sequenceDiagram
 
 | Field | Meaning |
 |-------|---------|
-| `FileSystemEventsEnabled` | generate, subscribe and send events; nonzero TTLs for GetNodeAttr and GetNodeXAttr |
+| `FileSystemEventsEnabled` | generate, subscribe and send events; nonzero TTLs for GetNodeAttr, GetNodeXAttr and SetNodeXAttr |
 | `FileSystemListingEventsEnabled` | also subscribe and return TTLs for ListNodes, ListNodesInternal, GetNodeAttrBatch |
 | `FileSystemEventsDryRunModeEnabled` | subscribe and count, don't send; TTLs are 0 |
 | `FileSystemEventSubscriptionsSealPeriod` | subscription generation period |

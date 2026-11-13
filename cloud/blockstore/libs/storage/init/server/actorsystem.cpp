@@ -593,6 +593,10 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
 {
     Y_ABORT_UNLESS(sArgs.StartupBlockstoreConfig);
 
+    const TStorageConfig staticStorageConfig(
+        sArgs.StaticBlockstoreConfigProto.GetStorageService(),
+        nullptr);
+
     const auto startupStorageConfig =
         sArgs.StartupBlockstoreConfig->GetStorageConfig();
 
@@ -609,9 +613,9 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
     auto prepareKikimrRunConfig = [&] (TKikimrRunConfig& runConfig) {
         if (enableConfigsDispatcher) {
             SetupConfigDispatcher(
-                startupStorageConfig->GetConfigDispatcherSettings(),
-                startupStorageConfig->GetSchemeShardDir(),
-                startupStorageConfig->GetNodeType(),
+                staticStorageConfig.GetConfigDispatcherSettings(),
+                staticStorageConfig.GetSchemeShardDir(),
+                staticStorageConfig.GetNodeType(),
                 &runConfig.ConfigsDispatcherInitInfo);
             runConfig.ConfigsDispatcherInitInfo.InitialConfig = runConfig.AppConfig;
         }

@@ -597,6 +597,11 @@ FILESTORE_STORAGE_CONFIG(FILESTORE_CONFIG_GETTER)
 
 #undef FILESTORE_CONFIG_GETTER
 
+ui32 TStorageConfig::GetDefaultSizeToNodesRatio()
+{
+    return DefaultSizeToNodesRatio;
+}
+
 #define FILESTORE_CONFIG_GETTER_REF(name, type, ...)                           \
 const type& TStorageConfig::Get##name() const                                  \
 {                                                                              \

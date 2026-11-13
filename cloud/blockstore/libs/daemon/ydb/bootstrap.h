@@ -108,9 +108,13 @@ private:
     std::shared_ptr<NKikimr::TModuleFactories> ModuleFactories;
     std::shared_ptr<TServerModuleFactories> ServerModuleFactories;
 
-    TConfigInitializerYdbPtr Configs;
+    TConfigInitializerYdbPtr ConfigInitializer;
 
-    // Static configuration with CMS applied
+    // Full startup snapshot for TBootstrapYdb logic specific to YDB service mode.
+    // Created by InitKikimrService after CMS and private YAML processing;
+    // retained for the bootstrap lifetime. Unset in Local and Null service modes.
+    // Shared methods, including TBootstrapYdb overrides used in Local and Null
+    // service modes, must read BootstrapConfig.
     IBlockstoreConfigPtr StartupBlockstoreConfig;
 
     IActorSystemPtr ActorSystem;

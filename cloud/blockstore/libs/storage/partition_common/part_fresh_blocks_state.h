@@ -125,6 +125,16 @@ public:
     }
 };
 
+struct TTrimFreshBlobsResult
+{
+    ui64 UnflushedBytesRemoved = 0;
+};
+
+struct TFlushFreshBlobResult
+{
+    ui64 UnflushedBytesRemoved = 0;
+};
+
 class TPartitionFreshBlobState
 {
 private:
@@ -138,10 +148,13 @@ private:
 
     ui64 UntrimmedFreshBlobByteCount = 0;
     TMap<ui64, ui64> UntrimmedFreshBlobByteCountByCommitId;
+    ui64 TrimmedToCommitId = 0;
 
     ui32 UnflushedFreshBlobCount = 0;
     ui64 UnflushedFreshBlobByteCount = 0;
-    TMap<ui64, TUnflushedFreshBlob> UnflushedFreshBlobsByCommitId;
+
+    using TUnflushedFreshBlobsByCommitId = TMap<ui64, TUnflushedFreshBlob>;
+    TUnflushedFreshBlobsByCommitId UnflushedFreshBlobsByCommitId;
 
 public:
     explicit TPartitionFreshBlobState(ui64 tabletID)
@@ -172,8 +185,13 @@ public:
         ui64 trimFreshLogToCommitId) const;
 
     void AddFreshBlob(ui64 commitId, ui64 blobSize, TInstant timestamp);
-    void TrimFreshBlobs(ui64 commitId);
-    ui64 FlushFreshBlob(ui64 commitId);
+
+    [[nodiscard]] TTrimFreshBlobsResult TrimFreshBlobs(ui64 commitId);
+
+    [[nodiscard]] TFlushFreshBlobResult FlushFreshBlob(ui64 commitId);
+
+private:
+    ui64 EraseUnflushedFreshBlob(TUnflushedFreshBlobsByCommitId::iterator it);
 };
 
 class TPartitionTrimFreshLogState

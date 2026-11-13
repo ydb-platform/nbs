@@ -136,6 +136,12 @@ public:
 
 struct TVolumeStatsInfo
 {
+    struct TTabletChannels
+    {
+        ui64 TabletId = 0;
+        TVector<NKikimr::TTabletChannelInfo> Channels;
+    };
+
     // A list of real disk identifiers that use this logical disk identifier.
     // For logical diskId "SomeDiskId" it can contain one or two names:
     // "SomeDiskId" and|or "SomeDiskId-copy". VolumeStatsInfo can be deleted
@@ -166,6 +172,8 @@ struct TVolumeStatsInfo
     TInstant ApproximateStartTs;
     TDuration ApproximateBootstrapTime;
 
+    // Real disk ID maps to its Volume tablet ID and channels.
+    THashMap<TString, TTabletChannels> VolumeChannelsByDiskId;
     THashMap<ui64, TVector<NKikimr::TTabletChannelInfo>> ChannelInfos;
 
     struct TRealDiskStatsInfo

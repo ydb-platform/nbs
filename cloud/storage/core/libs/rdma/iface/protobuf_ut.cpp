@@ -105,4 +105,22 @@ TEST(TProtoMessageSerializerTest, ShouldSerializeMessages)
     }
 }
 
+TEST(TProtoMessageSerializerTest, ShouldNotWriteErrorPastBuffer)
+{
+    auto buffer = TString(64, 'A');
+
+    EXPECT_EQ(
+        0u,
+        SerializeError(E_REJECTED, "rejected", TStringBuf(buffer).Head(4)));
+    EXPECT_EQ(TString(64, 'A'), buffer);
+
+    EXPECT_EQ(0u, SerializeError(E_REJECTED, "rejected", TStringBuf()));
+}
+
+TEST(TProtoMessageSerializerTest, ShouldParseEmptyErrorAsFailure)
+{
+    const auto error = ParseError(TStringBuf());
+    EXPECT_EQ(E_FAIL, error.GetCode());
+}
+
 }   // namespace NCloud::NStorage::NRdma

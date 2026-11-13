@@ -112,6 +112,8 @@ private:
 
     bool ForcedReAcquireInProgress = false;
 
+    TRequestInfoPtr StatisticRequestInfo;
+
 public:
     TShadowDiskActor(
         TChildLogTitle logTitle,
@@ -224,6 +226,16 @@ private:
 
     void HandleGetChangedBlocks(
         const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleGetDiskRegistryBasedPartCounters(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDiskRegistryBasedPartCountersCombined(
+        const TEvNonreplPartitionPrivate::
+            TEvDiskRegistryBasedPartCountersCombined::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

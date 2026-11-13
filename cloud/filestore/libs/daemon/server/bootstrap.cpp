@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/server/probes.h>
 #include <cloud/filestore/libs/server/server.h>
 #include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/libs/service/service_actions.h>
 #include <cloud/filestore/libs/service/service_auth.h>
 #include <cloud/filestore/libs/service_kikimr/auth_provider_kikimr.h>
 #include <cloud/filestore/libs/service_kikimr/service.h>
@@ -146,6 +147,15 @@ void TBootstrapServer::InitComponents()
     InitConfigs();
     SetGrpcThreadsLimit(Configs->ServerConfig->GetGrpcThreadsLimit());
 
+    CertificateWatcher = CreateCertificateWatcher(
+        Logging,
+        GetComponentName(
+            NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
+        Scheduler,
+        LongRunningTaskExecutor,
+        FilestoreCounters->GetSubgroup("component", "certificates"),
+        Configs->ServerConfig->GetRefreshCertsPeriod());
+
     switch (Configs->Options->Service) {
         case NDaemon::EServiceKind::Kikimr:
             InitKikimrService();
@@ -158,6 +168,23 @@ void TBootstrapServer::InitComponents()
             break;
     }
 
+    Service = CreateActionsService(
+        std::move(Service),
+        {{"updatecertificates",
+          CreateUpdateCertificatesAction(
+              [watcher = CertificateWatcher]
+              { return watcher->UpdateCertificates(); })}});
+
+    // Wraps the actions service, so the actions need admin rights.
+    if (Configs->Options->Service == NDaemon::EServiceKind::Kikimr) {
+        Service = CreateAuthService(
+            std::move(Service),
+            CreateKikimrAuthProvider(ActorSystem),
+            Configs->ServerConfig->GetActionsNoAuth());
+
+        STORAGE_INFO("AuthService initialized");
+    }
+
     auto serverCounters =
         FilestoreCounters->GetSubgroup("component", ServerMetricsComponent);
 
@@ -168,15 +195,6 @@ void TBootstrapServer::InitComponents()
             cert.CertFile
         });
     }
-
-    CertificateWatcher = CreateCertificateWatcher(
-        Logging,
-        GetComponentName(
-            NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
-        Scheduler,
-        LongRunningTaskExecutor,
-        FilestoreCounters->GetSubgroup("component", "certificates"),
-        Configs->ServerConfig->GetRefreshCertsPeriod());
 
     if (!Configs->ServerConfig->GetSecurePort()) {
         CertificateProvider = CreateCertificateProviderStub();
@@ -239,13 +257,6 @@ void TBootstrapServer::InitKikimrService()
         ActorSystem,
         nullptr /* sideChannel */,
         0 /* permanentActorCount */);
-
-    Service = CreateAuthService(
-        std::move(Service),
-        CreateKikimrAuthProvider(ActorSystem),
-        Configs->ServerConfig->GetActionsNoAuth());
-
-    STORAGE_INFO("AuthService initialized");
 }
 
 void TBootstrapServer::InitLocalService()

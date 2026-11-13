@@ -315,7 +315,7 @@ void TStatsServiceActor::HandleRegisterVolume(
 {
     Y_UNUSED(ctx);
 
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
 
     auto* volume = State.GetOrAddVolume(msg->DiskId, msg->Config);
     volume->RealDiskStats[msg->DiskId] = {
@@ -332,6 +332,13 @@ void TStatsServiceActor::HandleRegisterVolume(
 
     volume->VolumeTabletId = msg->TabletId;
     volume->VolumeActorId = msg->ActorId;
+    if (msg->ChannelInfos.empty()) {
+        volume->VolumeChannelsByDiskId.erase(msg->DiskId);
+    } else {
+        volume->VolumeChannelsByDiskId[msg->DiskId] = {
+            msg->TabletId,
+            std::move(msg->ChannelInfos)};
+    }
 }
 
 void TStatsServiceActor::HandleVolumeConfigUpdated(
@@ -393,6 +400,7 @@ void TStatsServiceActor::HandleUnregisterVolume(
         volume->RealDiskIds.erase(msg->DiskId);
         volume->RealDiskStats.erase(msg->DiskId);
 
+        volume->VolumeChannelsByDiskId.erase(msg->DiskId);
         if (volume->RealDiskIds.empty()) {
             UnregisterIsLocalMountCounter(AppData(ctx)->Counters, *volume);
             UnregisterServiceVolumeCounters(AppData(ctx)->Counters, *volume);

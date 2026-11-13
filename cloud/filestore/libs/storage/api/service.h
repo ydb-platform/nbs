@@ -293,11 +293,28 @@ struct TEvService
         EvToggleServiceStateRequest = EvBegin + 97,
         EvToggleServiceStateResponse,
 
-        EvEnd
+        EvEnd,
+
+        // SERVICE's own range (EvBegin..EvBegin+99) is full, so new events
+        // go in SERVICE_EXTRA instead.
+
+        EvSetQuotaRequest = TFileStoreEvents::SERVICE_EXTRA_START,
+        EvSetQuotaResponse,
+
+        EvDeleteQuotaRequest = TFileStoreEvents::SERVICE_EXTRA_START + 2,
+        EvDeleteQuotaResponse,
+
+        EvListQuotasRequest = TFileStoreEvents::SERVICE_EXTRA_START + 4,
+        EvListQuotasResponse,
+
+        EvExtraEnd,
     };
 
     static_assert(EvEnd < (int)TFileStoreEvents::SERVICE_END,
         "EvEnd expected to be < TFileStoreEvents::SERVICE_END");
+
+    static_assert(EvExtraEnd < (int)TFileStoreEvents::SERVICE_EXTRA_END,
+        "EvExtraEnd expected to be < TFileStoreEvents::SERVICE_EXTRA_END");
 
     FILESTORE_REMOTE_SERVICE(FILESTORE_DECLARE_PROTO_EVENTS, NProto)
 

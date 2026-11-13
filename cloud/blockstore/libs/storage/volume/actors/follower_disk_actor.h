@@ -2,9 +2,12 @@
 
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
+#include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_common_actor.h>
 #include <cloud/blockstore/libs/storage/volume/model/follower_disk.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -79,6 +82,9 @@ private:
     EState State = EState::DataTransferring;
     TFollowerDiskInfo FollowerDiskInfo;
     NActors::TActorId FollowerPartitionActorId;
+    TBackoffDelayProvider LeadershipTransferRetryDelayProvider{
+        TDuration::Seconds(1),
+        TDuration::Seconds(15)};
 
 public:
     TFollowerDiskActor(
@@ -128,6 +134,15 @@ private:
         const TEvVolume::TEvRdmaUnavailable::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void ForwardGetPartCounters(
+        const TEvPartitionCommonPrivate::TEvGetPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void ForwardGetDiskRegistryBasedPartCounters(
+        const TEvNonreplPartitionPrivate::
+            TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     bool HandleRWClientIdChanged(
         const TEvVolume::TEvRWClientIdChanged::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -142,6 +157,10 @@ private:
 
     void HandlePropagateLeadershipToFollowerResponse(
         const TEvVolumePrivate::TEvLinkOnFollowerDataTransferred::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRetryLeadershipTransfer(
+        const TEvVolumePrivate::TEvRetryLeadershipTransfer::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

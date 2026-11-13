@@ -600,6 +600,7 @@ type client struct {
 	sessionMetricsRegistry        metrics.Registry
 	metrics                       client_metrics.Metrics
 	enableThrottlingForMediaKinds []core_protos.EStorageMediaKind
+	proxyOverlayDiskMediaKind     core_protos.EStorageMediaKind
 	sessionRediscoverPeriodMin    time.Duration
 	sessionRediscoverPeriodMax    time.Duration
 	serverRequestTimeout          time.Duration
@@ -947,7 +948,7 @@ func (c *client) CreateProxyOverlayDisk(
 			// disk. Otherwise, the underlying GetChangedBlocks operation cannot
 			// work correctly.
 			BlockSize:        volume.BlockSize,
-			StorageMediaKind: core_protos.EStorageMediaKind_STORAGE_MEDIA_HYBRID,
+			StorageMediaKind: c.proxyOverlayDiskMediaKind,
 			PartitionsCount:  1,
 			IsSystem:         true,
 			EncryptionSpec: &protos.TEncryptionSpec{
@@ -1462,7 +1463,7 @@ func (c *client) MountRO(
 	ctx context.Context,
 	diskID string,
 	encryption *types.EncryptionDesc,
-) (session *Session, err error) {
+) (session Session, err error) {
 
 	defer c.metrics.StatRequest("MountRO")(&err)
 
@@ -1493,7 +1494,7 @@ func (c *client) MountLocalRO(
 	ctx context.Context,
 	diskID string,
 	encryption *types.EncryptionDesc,
-) (session *Session, err error) {
+) (session Session, err error) {
 
 	defer c.metrics.StatRequest("MountLocalRO")(&err)
 
@@ -1526,7 +1527,7 @@ func (c *client) MountRW(
 	fillGeneration uint64,
 	fillSeqNumber uint64,
 	encryption *types.EncryptionDesc,
-) (session *Session, err error) {
+) (session Session, err error) {
 
 	defer c.metrics.StatRequest("MountRW")(&err)
 

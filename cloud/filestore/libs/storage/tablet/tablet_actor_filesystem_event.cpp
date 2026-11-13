@@ -19,9 +19,10 @@ TActorId TIndexTabletActor::RegisterFileSystemEventClient(
     // Called only by the requests whose responses the client is allowed to
     // cache (see NodeCacheTTL, NodeRefCacheTTL and XAttrCacheTTL in their
     // responses): GetNodeAttr, GetNodeAttrBatch (attrs of shard-resident
-    // nodes upon ListNodes), ListNodes, ListNodesInternal and GetNodeXAttr.
-    // Upon completion these requests subscribe the client to the returned
-    // Nodes, NodeRefs and NodeXAttrs (see FileSystemEventSubscriptions);
+    // nodes upon ListNodes), ListNodes, ListNodesInternal, GetNodeXAttr and
+    // SetNodeXAttr. Upon completion these requests subscribe the client to
+    // the returned Nodes, NodeRefs and NodeXAttrs (see
+    // FileSystemEventSubscriptions);
     // GetNodeAttrBatch, ListNodes and ListNodesInternal do this only if
     // FileSystemListingEventsEnabled is set.
     // The other responses (e.g. CreateNode, CreateHandle) must not be cached.
