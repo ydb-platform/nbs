@@ -95,6 +95,16 @@ NCloud::NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(
     return request;
 }
 
+NCloud::NProto::TWritePagesRequest MakeWritePagesRequest(TStringBuf deviceUUID)
+{
+    NCloud::NProto::TWritePagesRequest request;
+    request.SetDeviceUUID(TString{deviceUUID});
+    *request.AddPageGroups() = MakeGroup(10, 2, "P");
+    *request.AddPageGroups() = MakeGroup(20, 1, "P");
+
+    return request;
+}
+
 NCloud::NProto::TReadPagesResponse MakeReadResponse(
     TVector<NCloud::NProto::TDevicePageGroup> groups,
     ui64 lastAckedLsn = 0)
@@ -791,6 +801,13 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
                 .GetError()
                 .GetCode());
 
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            Device->WritePages(MakeWritePagesRequest(otherUUID))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
         // none of them got anywhere near the journal or the device
 
         UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetReadRequests().size());
@@ -824,7 +841,15 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
                 .GetError()
                 .GetCode());
 
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            Device->WritePages(MakeWritePagesRequest(""))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
         UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetReadRequests().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetWriteRequests().size());
     }
 
     Y_UNIT_TEST_F(ShouldServeRequestForThisDevice, TFixture)
@@ -859,6 +884,45 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
                 .GetValueSync()
                 .GetError()
                 .GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldWritePagesToDataStorePastJournal, TFixture)
+    {
+        const auto response =
+            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID))
+                .GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
+
+        // the pages went to the data store as they are
+
+        const auto writeRequests = DataStore->GetWriteRequests();
+        UNIT_ASSERT_VALUES_EQUAL(1, writeRequests.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[P10,P11] 20:[P20]",
+            DescribeRanges(writeRequests[0]));
+
+        // the journal was not asked for anything
+
+        UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetReadRequests().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetFlushedLsns().size());
+    }
+
+    Y_UNIT_TEST_F(ShouldHandleDataStoreWritePagesError, TFixture)
+    {
+        DataStore->WriteHandler = [] (const auto& ranges) {
+            Y_UNUSED(ranges);
+            return MakeError(E_IO, "device is broken");
+        };
+
+        const auto response =
+            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID))
+                .GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, response.GetError().GetCode());
     }
 
     Y_UNIT_TEST_F(ShouldFlushJournalRecordsToDataStore, TFixture)
@@ -987,6 +1051,13 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             E_IO,
             Device
                 ->AdvanceLsnLowWatermark(MakeAdvanceRequest(DefaultDeviceUUID))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_IO,
+            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID))
                 .GetValueSync()
                 .GetError()
                 .GetCode());

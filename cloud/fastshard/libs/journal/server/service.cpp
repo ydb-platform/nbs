@@ -272,11 +272,17 @@ public:
     [[nodiscard]] auto WritePages(NProto::TWritePagesRequest request)
         -> TFuture<NProto::TWritePagesResponse> final
     {
-        Y_UNUSED(request);
+        auto [device, error] = GetDevice(
+            request.GetDeviceUUID(),
+            request.GetHeaders().GetClientId(),
+            NProto::ACCESS_READ_WRITE);
 
-        return MakeFuture<NProto::TWritePagesResponse>(TErrorResponse(
-            E_NOT_IMPLEMENTED,
-            "WritePages is not implemented"));
+        if (HasError(error)) {
+            return MakeFuture<NProto::TWritePagesResponse>(
+                TErrorResponse(error));
+        }
+
+        return device->WritePages(std::move(request));
     }
 
 private:

@@ -34,6 +34,11 @@ struct IJournalledDevice
     [[nodiscard]] virtual auto AdvanceLsnLowWatermark(
         NProto::TAdvanceLsnLowWatermarkRequest request)
         -> NThreading::TFuture<NProto::TAdvanceLsnLowWatermarkResponse> = 0;
+
+    // Writes the pages right to the data area, past the journal. The caller
+    // must not read or write the same pages at the same time.
+    [[nodiscard]] virtual auto WritePages(NProto::TWritePagesRequest request)
+        -> NThreading::TFuture<NProto::TWritePagesResponse> = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

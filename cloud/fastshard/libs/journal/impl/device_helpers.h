@@ -18,6 +18,9 @@ TVector<TPageRange> MakePageRanges(
     const NCloud::NProto::TWriteLogRecordRequest& request);
 
 TVector<TPageRange> MakePageRanges(
+    const NCloud::NProto::TWritePagesRequest& request);
+
+TVector<TPageRange> MakePageRanges(
     const NCloud::NProto::TJournalRecord& record);
 
 NCloud::NProto::TReadPagesResponse MakeReadPagesResponse(

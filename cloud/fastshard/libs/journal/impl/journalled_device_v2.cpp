@@ -251,6 +251,19 @@ public:
             });
     }
 
+    TFuture<NCloud::NProto::TWritePagesResponse> WritePages(
+        NCloud::NProto::TWritePagesRequest request) override
+    {
+        if (auto error = ValidateRequest(request); HasError(error)) {
+            return MakeFuture<NCloud::NProto::TWritePagesResponse>(
+                TErrorResponse(std::move(error)));
+        }
+
+        return DataStore->WritePages(MakePageRanges(request)).Apply(
+            [](const auto& future) -> NCloud::NProto::TWritePagesResponse
+            { return TErrorResponse(ExtractResponse(future)); });
+    }
+
 private:
     template <typename TRequest>
     NCloud::NProto::TError ValidateRequest(const TRequest& request) const
