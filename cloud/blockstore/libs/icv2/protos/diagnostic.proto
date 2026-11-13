@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package NCloud.NBlockStore.NProto;
+
+option go_package = "a.yandex-team.ru/cloud/blockstore/libs/icv2/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TIcV2PingRequest
+{
+    bytes Payload = 1;
+}
+
+message TIcV2PingResponse
+{
+    bytes Payload = 1;
+}
