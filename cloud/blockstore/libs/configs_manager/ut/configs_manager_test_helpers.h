@@ -56,6 +56,10 @@ protected:
     // The shared controls required when rebuilding storage adapters.
     NStorage::TStorageConfigControlsPtr Controls;
 
+    // Reasons for dynamic sections rejected before manager creation;
+    // empty when all startup sections were accepted.
+    TString StartupRejectedSectionsReason;
+
     // Initialize logging, runtime, dispatcher, and controls without a manager.
     void SetUp(NUnitTest::TTestContext&) override;
 

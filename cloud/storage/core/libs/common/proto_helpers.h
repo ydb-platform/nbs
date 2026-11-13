@@ -44,4 +44,7 @@ bool HasField(
     const google::protobuf::Message& message,
     const TProtoStringType& fieldName);
 
+// Check whether any known field is set, ignoring unknown fields.
+bool HasKnownFields(const google::protobuf::Message& message);
+
 }   // namespace NCloud

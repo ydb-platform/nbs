@@ -1,4 +1,5 @@
 #include <cloud/storage/core/config/markers.pb.h>
+#include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/config/config_schema_path.h>
 #include <cloud/storage/core/libs/config/runtime_config.h>
 #include <cloud/storage/core/libs/config/ut/protos/runtime_config.pb.h>
@@ -333,9 +334,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
             const auto diagnostics =
                 FilterRuntimeConfig(staticConfig, startup, requested);
             UNIT_ASSERT(requested.HasFixedMessage());
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                requested.GetFixedMessage().ByteSizeLong());
+            UNIT_ASSERT(!HasKnownFields(requested.GetFixedMessage()));
             UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
             UNIT_ASSERT(
                 diagnostics.IgnoredPaths.at("FixedChoice") ==
@@ -665,7 +664,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         {
             UNIT_ASSERT_VALUES_EQUAL(10, retained->GetValue());
             UNIT_ASSERT(retained->HasChild());
-            UNIT_ASSERT_VALUES_EQUAL(0, retained->GetChild().ByteSizeLong());
+            UNIT_ASSERT(!HasKnownFields(retained->GetChild()));
         }
         UNIT_ASSERT(requested.IsInitialized());
 
@@ -1263,7 +1262,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
                     EConfigIgnoreReason::RuntimeUpdateForbidden,
                 "Incorrect diagnostic reason for Parameter" << i);
         }
-        UNIT_ASSERT_VALUES_EQUAL(0, requested->ByteSizeLong());
+        UNIT_ASSERT(!HasKnownFields(*requested));
     }
 }
 
