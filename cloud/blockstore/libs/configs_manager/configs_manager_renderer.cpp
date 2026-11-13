@@ -24,7 +24,6 @@ Repeated values are aligned by index and map values by key across sources.
 #include <util/string/builder.h>
 #include <util/string/cast.h>
 #include <util/string/escape.h>
-#include <util/system/compiler.h>
 
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
