@@ -10,9 +10,12 @@
 
 #include <util/digest/numeric.h>
 #include <util/generic/utility.h>
+#include <util/random/fast.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
 #include <util/system/info.h>
+
+#include <cstddef>
 
 namespace NCloud::NBlockStore::NTesting {
 
@@ -54,12 +57,121 @@ bool IsZeroRequest(ui64 requestNumber, ui32 writeRate, ui32 zeroRate)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr ui64 SectorChecksumOffset =
+    offsetof(TSectorData, Header) + offsetof(TBlockData, Checksum);
+constexpr ui64 SectorIndexOffset = offsetof(TSectorData, SectorIndex);
+constexpr ui64 SectorPayloadOffset = offsetof(TSectorData, Payload);
+
+static_assert((TSectorData::Size - SectorPayloadOffset) % sizeof(ui64) == 0);
+
+ui32 CalculateSectorChecksum(const char* sector)
+{
+    constexpr ui64 ZeroChecksum = 0;
+    ui32 crc = Crc32c(sector, SectorChecksumOffset);
+    crc = Crc32cExtend(crc, &ZeroChecksum, sizeof(ZeroChecksum));
+    return Crc32cExtend(
+        crc,
+        sector + SectorChecksumOffset + sizeof(ZeroChecksum),
+        TSectorData::Size - SectorChecksumOffset - sizeof(ZeroChecksum));
+}
+
+void FillSectors(
+    char* data,
+    ui64 size,
+    TBlockData header,
+    ui64 firstSectorIndex,
+    TFastRng64& rng)
+{
+    header.Checksum = 0;
+    for (ui64 offset = 0; offset < size; offset += TSectorData::Size) {
+        char* sector = data + offset;
+        const ui64 sectorIndex = firstSectorIndex + offset / TSectorData::Size;
+
+        memcpy(sector, &header, sizeof(header));
+        memcpy(sector + SectorIndexOffset, &sectorIndex, sizeof(sectorIndex));
+        for (ui64 i = SectorPayloadOffset; i < TSectorData::Size;
+             i += sizeof(ui64))
+        {
+            const ui64 value = rng.GenRand();
+            memcpy(sector + i, &value, sizeof(value));
+        }
+
+        const ui64 checksum = CalculateSectorChecksum(sector);
+        memcpy(sector + SectorChecksumOffset, &checksum, sizeof(checksum));
+    }
+}
+
+struct TExpectedSectors
+{
+    ui64 RequestNumber = 0;
+    ui64 BlockIndex = 0;
+    ui64 RangeIdx = 0;
+    ui64 TestId = 0;
+    ui64 FirstSectorIndex = 0;
+    ui64 PartSize = 0;
+};
+
+TMaybe<TString>
+CheckSectors(const char* data, ui64 size, const TExpectedSectors& expected)
+{
+    ui64 badSectorCount = 0;
+    TStringBuilder firstBadSector;
+
+    for (ui64 offset = 0; offset < size; offset += TSectorData::Size) {
+        const char* sector = data + offset;
+        const ui64 expectedSectorIndex =
+            expected.FirstSectorIndex + offset / TSectorData::Size;
+
+        TBlockData header;
+        ui64 sectorIndex = 0;
+        memcpy(&header, sector, sizeof(header));
+        memcpy(&sectorIndex, sector + SectorIndexOffset, sizeof(sectorIndex));
+
+        TStringBuf problem;
+        if (header.Checksum != CalculateSectorChecksum(sector)) {
+            problem = "checksum mismatch";
+        } else if (header.TestId != expected.TestId) {
+            problem = "wrong TestId";
+        } else if (header.RequestNumber != expected.RequestNumber) {
+            problem = "wrong RequestNumber";
+        } else if (header.PartNumber != offset / expected.PartSize) {
+            problem = "wrong PartNumber";
+        } else if (
+            header.BlockIndex != expected.BlockIndex ||
+            header.RangeIdx != expected.RangeIdx ||
+            sectorIndex != expectedSectorIndex)
+        {
+            problem = "wrong location";
+        } else {
+            continue;
+        }
+
+        if (badSectorCount++ == 0) {
+            firstBadSector << "first bad sector at offset " << offset << " ("
+                           << problem << "): expected RequestNumber "
+                           << expected.RequestNumber << " SectorIndex "
+                           << expectedSectorIndex << ", actual TBlockData "
+                           << header << " SectorIndex " << sectorIndex;
+        }
+    }
+
+    if (badSectorCount == 0) {
+        return Nothing();
+    }
+    return TStringBuilder()
+           << badSectorCount << " of " << size / TSectorData::Size
+           << " sectors are bad, " << firstBadSector;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TRange
 {
     TRangeConfig& Config;
     ui64 Size;
     std::shared_ptr<char[]> Buf;
     ui64 StepInversion;
+    TFastRng64 Rng;
 
     TRange(TRangeConfig& config, ui64 size)
         : Config{config}
@@ -70,6 +182,7 @@ struct TRange
               std::free}
         , StepInversion{
               CalculateInverse(Config.GetStep(), Config.GetRequestCount())}
+        , Rng{RandomNumber<ui64>()}
     {
         memset(Buf.get(), '1', Size);
 
@@ -191,6 +304,9 @@ public:
         : TTestScenarioBase({}, std::move(configHolder), logTag, log)
     {
         auto& config = ConfigHolder->GetConfig();
+        Y_ABORT_UNLESS(
+            config.GetBlockSize() % TSectorData::Size == 0,
+            "block size must be a multiple of the sector size");
         for (ui16 i = 0; i < config.GetIoDepth(); ++i) {
             auto& rangeConfig = *config.MutableRanges(i);
             Ranges.emplace_back(
@@ -270,9 +386,15 @@ void TAlignedTestScenario::DoReadRequest(ui16 rangeIdx, IService& service)
 
     const auto startTs = Now();
 
-    auto readHandler =
-        [this, startTs, blockIdx, rangeIdx, expected, writeRate, zeroRate, &service]()
-            mutable
+    auto readHandler = [this,
+                        startTs,
+                        blockIdx,
+                        blockSize,
+                        rangeIdx,
+                        expected,
+                        writeRate,
+                        zeroRate,
+                        &service]() mutable
     {
         OnResponse(startTs, rangeIdx, "read", service);
 
@@ -300,20 +422,21 @@ void TAlignedTestScenario::DoReadRequest(ui16 rangeIdx, IService& service)
         }
 
         ui64 partSize = range.DataSize() / range.Config.GetWriteParts();
-        for (ui64 part = 0; part < range.Config.GetWriteParts(); ++part) {
-            TBlockData blockData;
-            memcpy(&blockData, range.Data(part * partSize), sizeof(blockData));
 
-            if (blockData.RequestNumber != *expected ||
-                blockData.PartNumber != part)
-            {
-                service.Fail(
-                    TStringBuilder()
-                    << LogTag << "[" << rangeIdx << "] Wrong data in block "
-                    << blockIdx << " expected RequestNumber " << expected
-                    << " actual TBlockData " << blockData);
-                return;
-            }
+        auto error = CheckSectors(
+            range.Data(),
+            range.DataSize(),
+            {.RequestNumber = *expected,
+             .BlockIndex = blockIdx,
+             .RangeIdx = rangeIdx,
+             .TestId = ConfigHolder->GetConfig().GetTestId(),
+             .FirstSectorIndex = blockIdx * blockSize / TSectorData::Size,
+             .PartSize = partSize});
+        if (error) {
+            service.Fail(
+                TStringBuilder()
+                << LogTag << "[" << rangeIdx << "] Wrong data in block "
+                << blockIdx << ": " << *error);
         }
     };
 
@@ -346,10 +469,13 @@ void TAlignedTestScenario::DoWriteRequest(
     ui64 partSize = range.DataSize() / range.Config.GetWriteParts();
     for (ui32 part = 0; part < range.Config.GetWriteParts(); ++part) {
         blockData.PartNumber = part;
-        blockData.Checksum = 0;
-        blockData.Checksum = Crc32c(&blockData, sizeof(blockData));
         ui64 partOffset = part * partSize;
-        memcpy(range.Data(partOffset), &blockData, sizeof(blockData));
+        FillSectors(
+            range.Data(partOffset),
+            partSize,
+            blockData,
+            (blockIdx * blockSize + partOffset) / TSectorData::Size,
+            range.Rng);
         service.Write(
             range.Data(partOffset),
             partSize,
