@@ -94,8 +94,6 @@ TCommand::TCommand()
 
 int TCommand::Run(int argc, const char** argv)
 {
-    ProfileLogPaths.clear();
-    ProfileLogFiles.clear();
     OptsParseResult.ConstructInPlace(&Opts, argc, argv);
     if (!OptsParseResult.Defined()) {
         Cerr << "Failed to parse cmd parameters" << Endl;
