@@ -23,7 +23,6 @@ Repeated values are aligned by index and map values by key across sources.
 #include <util/string/builder.h>
 #include <util/string/cast.h>
 #include <util/string/escape.h>
-#include <util/system/compiler.h>
 
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
@@ -267,8 +266,7 @@ bool IsDeferred(
     TStringBuf path,
     const NConfig::TRuntimeConfigDiagnostics& diagnostics)
 {
-    for (const auto& [ignoredPath, reason]: diagnostics.IgnoredPaths) {
-        Y_UNUSED(reason);
+    for (const auto& [ignoredPath, _]: diagnostics.IgnoredPaths) {
         // Collections are terminal schema paths; mark every displayed element.
         if (ignoredPath.EndsWith("[]")) {
             if (path.StartsWith(TStringBuf(ignoredPath).Chop(1))) {
@@ -348,8 +346,7 @@ ui32 CountPendingRestart(
 {
     const TString prefix = TStringBuilder() << section << '.';
     ui32 count = 0;
-    for (const auto& [path, reason]: diagnostics.IgnoredPaths) {
-        Y_UNUSED(reason);
+    for (const auto& [path, _]: diagnostics.IgnoredPaths) {
         count += path == section || path.StartsWith(prefix);
     }
     return count;
