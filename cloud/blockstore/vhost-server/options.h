@@ -23,7 +23,7 @@ struct TDeviceChunk
 
 struct TOptions
 {
-    TLatencySliConfig LatencySli;
+    TLatencySliConfigPtr LatencySli;
     TString SocketPath;
     TString DiskId;
     TString Serial;

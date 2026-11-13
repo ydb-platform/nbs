@@ -88,7 +88,7 @@ private:
 
     io_context_t Io = {};
     ui32 BlockSize = 0;
-    TLatencySliConfig LatencySli;
+    TLatencySliConfigPtr LatencySli;
 
     ui32 BatchSize = 0;
     TVector<TVector<iocb*>> Batches;

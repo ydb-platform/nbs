@@ -111,11 +111,11 @@ struct TStats
     std::array<TSizeHistogram<T>, 2> Sizes = {};
 
     // Set once before workers start; never copied into monitoring snapshots.
-    const TLatencySliConfig* LatencySli = nullptr;
+    TLatencySliConfigPtr LatencySli;
 
-    void SetLatencySli(const TLatencySliConfig& config)
+    void SetLatencySli(TLatencySliConfigPtr config)
     {
-        LatencySli = config.Enabled ? &config : nullptr;
+        LatencySli = config && config->Enabled ? std::move(config) : nullptr;
     }
 
     void RecordLatency(
@@ -141,6 +141,18 @@ struct TStats
 
     TStats() = default;
 
+    TStats(const TStats& rhs) noexcept
+        requires std::is_same_v<T, ui64>
+    {
+        operator=<T>(rhs);
+    }
+
+    TStats& operator=(const TStats& rhs) noexcept
+        requires std::is_same_v<T, ui64>
+    {
+        return operator=<T>(rhs);
+    }
+
     template <typename U>
     explicit TStats(const TStats<U>& rhs) noexcept
         : Dequeued{rhs.Dequeued}
@@ -163,9 +175,12 @@ struct TStats
         Completed = rhs.Completed;
         CompFailed = rhs.CompFailed;
         EncryptorErrors = rhs.EncryptorErrors;
-        Requests = rhs.Requests;
-        Times = rhs.Times;
-        Sizes = rhs.Sizes;
+        for (size_t i = 0; i != Requests.size(); ++i) {
+            Requests[i].template operator=<U>(rhs.Requests[i]);
+            Times[i].template operator=<U>(rhs.Times[i]);
+            Sizes[i].template operator=<U>(rhs.Sizes[i]);
+        }
+        LatencySli.reset();
 
         return *this;
     }

@@ -135,7 +135,6 @@ private:
     NProto::TVolume Volume;
     TString ClientId;
     TAtomicStats CompletionStatsData;
-    TLatencySliConfig LatencySli;
     bool ReadOnly = false;
     ui32 BlockSize = 0;
     ui32 SectorsToBlockShift = 0;
@@ -186,8 +185,7 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
     Timer = CreateWallClockTimer();
 
     ClientId = options.ClientId;
-    LatencySli = options.LatencySli;
-    CompletionStatsData.SetLatencySli(LatencySli);
+    CompletionStatsData.SetLatencySli(options.LatencySli);
     ReadOnly = options.ReadOnly;
 
     BlockSize = options.BlockSize;

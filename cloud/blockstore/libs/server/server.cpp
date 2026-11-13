@@ -650,7 +650,6 @@ private:
         ui64 requestBytes = 0;
 
         if constexpr (IsReadWriteRequest(TMethod::Request)) {
-            MetricRequest.ForwardedRequest = !headers.GetCellId().empty();
             startIndex = GetStartIndex(*Request);
             requestBytes = CalculateBytesCount(
                 *Request,
@@ -740,6 +739,14 @@ private:
             Context->peer(),
             authToken,
             *Request->MutableHeaders());
+
+        if constexpr (IsReadWriteRequest(TMethod::Request)) {
+            // Match the trusted source accepted by cell forwarding. Client
+            // headers alone must not exclude a request from latency SLI.
+            MetricRequest.ForwardedRequest =
+                *source == NProto::SOURCE_SECURE_CONTROL_CHANNEL &&
+                !Request->GetHeaders().GetCellId().empty();
+        }
 
         if constexpr (std::is_same<TMethod, TDescribeVolumeMethod>()) {
             const auto& cellId = Request->GetHeaders().GetCellId();

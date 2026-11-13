@@ -855,10 +855,10 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
             auto subs = PrepareCompoundIO(bio);
             ASSERT_EQ(3u, subs.size());
 
-            auto latencySli = TLatencySliConfig::Parse(
-                "1;1:1:1048576:1000000000000000");
+            auto latencySli = TLatencySliConfig::TryParse(
+                "1;1:1:1048576:1000000000000000").value();
             TAtomicStats stats;
-            stats.SetLatencySli(latencySli);
+            stats.SetLatencySli(std::make_shared<const TLatencySliConfig>(latencySli));
             for (size_t i: order) {
                 CompleteSubRequest(
                     subs[i],

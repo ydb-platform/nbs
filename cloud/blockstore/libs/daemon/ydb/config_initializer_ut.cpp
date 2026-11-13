@@ -25,6 +25,7 @@
 #include <contrib/ydb/core/protos/feature_flags.pb.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/logger/stream.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -242,7 +243,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT(hdd.Classify(true, 4096, 1, false) == ELatencySliResult::Unknown);
 
         // The VHost child receives the same resolved thresholds as its parent.
-        const auto child = TLatencySliConfig::Parse(ssd.Serialize());
+        const auto child = TLatencySliConfig::TryParse(ssd.Serialize()).value();
         UNIT_ASSERT_VALUES_EQUAL(ssd.Serialize(), child.Serialize());
         UNIT_ASSERT(child.Classify(true, 4096, 2001, false) == ELatencySliResult::Bad);
     }
@@ -340,7 +341,6 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT_EXCEPTION(ci.InitDiagnosticsConfig(), yexception);
         for (const TString text: {
                  "Thresholds {",
-                 "Thresholds { ThresholdMs: 1000 }",
                  "Thresholds { MediaKind: UNKNOWN_MEDIA }",
                  "Thresholds { ThresholdUs: -1 }"})
         {
@@ -357,6 +357,47 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             "1;0:1:4097:1000",
             ci.DiagnosticsConfig->GetLatencySliConfig(
                 NProto::STORAGE_MEDIA_SSD).Serialize());
+    }
+
+    Y_UNIT_TEST(ShouldAcceptUnknownLatencySliFields)
+    {
+        TTempDir dir;
+        const auto path = dir.Path() / "nbs-latency-sli.txt";
+        TOFStream(path.GetPath()).Write(R"(
+            FutureSetting: true
+            Thresholds {
+                MediaKind: STORAGE_MEDIA_SSD
+                StartBytes: 1 EndBytes: 4097 ThresholdUs: 1000
+                FutureThresholdSetting: 123
+            }
+        )");
+        auto options = CreateOptions();
+        options->LatencySliThresholdsFile = path.GetPath();
+        auto ci = TConfigInitializerYdb(options);
+        ci.ApplyDiagnosticsConfig("EnableLatencySli: true NbsMonPort: 34567");
+        UNIT_ASSERT_VALUES_EQUAL(34567, ci.DiagnosticsConfig->GetNbsMonPort());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1;0:1:4097:1000",
+            ci.DiagnosticsConfig->GetLatencySliConfig(
+                NProto::STORAGE_MEDIA_SSD).Serialize());
+    }
+
+    Y_UNIT_TEST(ShouldWarnAboutInvalidEmbeddedLatencySliThresholds)
+    {
+        TStringStream messages;
+        auto ci = TConfigInitializerYdb(CreateOptions());
+        ci.Log = TLog(MakeHolder<TStreamLogBackend>(&messages));
+        ci.ApplyDiagnosticsConfig(R"(
+            EnableLatencySli: true
+            LatencySliThresholds {
+                MediaKind: STORAGE_MEDIA_SSD
+                StartBytes: 1 EndBytes: 4097 ThresholdUs: 0
+            }
+            LatencySliThresholds { StartBytes: 1 EndBytes: 4097 ThresholdUs: 100 }
+        )");
+        UNIT_ASSERT_STRING_CONTAINS(messages.Str(), "Write=0");
+        UNIT_ASSERT_STRING_CONTAINS(messages.Str(), "will be Unknown");
+        UNIT_ASSERT_STRING_CONTAINS(messages.Str(), "without MediaKind");
     }
 
     Y_UNIT_TEST(ShouldApplyExistingIntervalValidationToLatencySliFiles)
@@ -377,11 +418,16 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
                 << "StartBytes: 1 EndBytes: 4097 ThresholdUs: 2000 }");
             auto options = CreateOptions();
             options->LatencySliThresholdsFile = path.GetPath();
+            TStringStream messages;
             auto ci = TConfigInitializerYdb(options);
+            ci.Log = TLog(MakeHolder<TStreamLogBackend>(&messages));
             ci.ApplyDiagnosticsConfig("EnableLatencySli: true");
             const auto config = ci.DiagnosticsConfig->GetLatencySliConfig(
                 NProto::STORAGE_MEDIA_SSD);
             UNIT_ASSERT_C(config.Thresholds[0].empty(), rows);
+            UNIT_ASSERT_STRING_CONTAINS(messages.Str(), "Write=0");
+            UNIT_ASSERT_STRING_CONTAINS(messages.Str(), "will be Unknown");
+            UNIT_ASSERT(!messages.Str().Contains("Write=1"));
             UNIT_ASSERT_C(
                 config.Classify(false, 4096, 1, false) == ELatencySliResult::Unknown,
                 rows);

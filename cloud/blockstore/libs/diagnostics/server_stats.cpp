@@ -463,6 +463,8 @@ void TServerStats::RequestCompleted(
                     : requestTime;
                 // Classify the full original request latency, including
                 // throttling, shaping, backpressure and retry backoff.
+                // Every error is Bad, including client errors and cancellation.
+                // Retries issued as separate gRPC calls are separate samples.
                 sli->Complete(
                     type == EBlockStoreRequest::WriteBlocks,
                     req.OriginalRequestBytes,

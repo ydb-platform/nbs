@@ -97,7 +97,7 @@ private:
 
     TVector<vhd_request_queue*> Queues;
     std::unique_ptr<TAtomicStats[]> QueueStats;
-    TLatencySliConfig LatencySli;
+    TLatencySliConfigPtr LatencySli;
 
     TVector<std::thread> QueueThreads;
 

@@ -5,6 +5,7 @@
 #include <library/cpp/getopt/small/last_getopt.h>
 
 #include <util/generic/strbuf.h>
+#include <util/stream/output.h>
 #include <util/string/cast.h>
 #include <util/string/join.h>
 #include <util/string/split.h>
@@ -31,7 +32,16 @@ void CheckOneOf(
 
 void TOptions::Parse(int argc, char** argv)
 {
-    LatencySli = TLatencySliConfig::Parse(GetEnv("NBS_LATENCY_SLI_CONFIG"));
+    LatencySli.reset();
+    auto latencySli = TLatencySliConfig::TryParse(GetEnv("NBS_LATENCY_SLI_CONFIG"));
+    if (!latencySli) {
+        // Logging is initialized after options parsing. A shadow metric must
+        // not prevent the endpoint from starting with otherwise valid options.
+        Cerr << "Invalid NBS_LATENCY_SLI_CONFIG; latency SLI disabled" << Endl;
+    } else if (latencySli->Enabled) {
+        LatencySli = std::make_shared<const TLatencySliConfig>(
+            std::move(*latencySli));
+    }
 
     TOpts opts;
     opts.AddHelpOption();

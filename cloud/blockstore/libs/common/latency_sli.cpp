@@ -8,8 +8,9 @@
 
 namespace NCloud::NBlockStore {
 
-void TLatencySliConfig::Validate()
+bool TLatencySliConfig::Validate()
 {
+    bool valid = true;
     for (auto& rows: Thresholds) {
         std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) {
             return a.StartBytes < b.StartBytes;
@@ -20,11 +21,13 @@ void TLatencySliConfig::Validate()
                 !row.ThresholdUs)
             {
                 rows.clear();
+                valid = false;
                 break;
             }
             end = row.EndBytes;
         }
     }
+    return valid;
 }
 
 TString TLatencySliConfig::Serialize() const
@@ -43,28 +46,36 @@ TString TLatencySliConfig::Serialize() const
     return out;
 }
 
-TLatencySliConfig TLatencySliConfig::Parse(const TString& value)
+std::optional<TLatencySliConfig> TLatencySliConfig::TryParse(const TString& value)
 {
     TLatencySliConfig result;
     if (!value) {
         return result;
     }
     TVector<TString> rows;
-    Split(value, ";", rows);
-    Y_ENSURE(rows[0] == "1", "Unsupported latency SLI configuration version");
+    StringSplitter(value).Split(';').Collect(&rows);
+    if (rows.empty() || rows[0] != "1") {
+        return std::nullopt;
+    }
     result.Enabled = true;
     for (size_t i = 1; i < rows.size(); ++i) {
         TVector<TString> fields;
-        Split(rows[i], ":", fields);
-        Y_ENSURE(fields.size() == 4, "Invalid latency SLI interval");
-        const auto write = FromString<ui32>(fields[0]);
-        Y_ENSURE(write < 2, "Invalid latency SLI operation");
-        result.Thresholds[write].push_back({
-            FromString<ui64>(fields[1]),
-            FromString<ui64>(fields[2]),
-            FromString<ui64>(fields[3])});
+        StringSplitter(rows[i]).Split(':').Collect(&fields);
+        ui32 write = 0;
+        TLatencySliThreshold row;
+        if (fields.size() != 4 || !TryFromString(fields[0], write) ||
+            write >= result.Thresholds.size() ||
+            !TryFromString(fields[1], row.StartBytes) ||
+            !TryFromString(fields[2], row.EndBytes) ||
+            !TryFromString(fields[3], row.ThresholdUs))
+        {
+            return std::nullopt;
+        }
+        result.Thresholds[write].push_back(row);
     }
-    result.Validate();
+    if (!result.Validate()) {
+        return std::nullopt;
+    }
     return result;
 }
 

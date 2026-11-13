@@ -5,6 +5,8 @@
 #include <util/system/types.h>
 
 #include <array>
+#include <memory>
+#include <optional>
 
 namespace NCloud::NBlockStore {
 
@@ -28,10 +30,11 @@ struct TLatencySliConfig
     bool Enabled = false;
     std::array<TVector<TLatencySliThreshold>, 2> Thresholds;
 
-    // Invalid or overlapping intervals invalidate that operation's table.
-    void Validate();
+    // Invalid or overlapping intervals clear that operation's table and
+    // return false; valid tables are preserved.
+    bool Validate();
     TString Serialize() const;
-    static TLatencySliConfig Parse(const TString& value);
+    static std::optional<TLatencySliConfig> TryParse(const TString& value);
 
     ELatencySliResult Classify(
         bool write,
@@ -52,5 +55,7 @@ struct TLatencySliConfig
         return ELatencySliResult::Unknown;
     }
 };
+
+using TLatencySliConfigPtr = std::shared_ptr<const TLatencySliConfig>;
 
 }   // namespace NCloud::NBlockStore

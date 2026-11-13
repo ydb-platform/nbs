@@ -287,7 +287,7 @@ int main(int argc, char** argv)
                         now - ts,
                         Cout,
                         GetCyclesPerMillisecond(),
-                        &options.LatencySli);
+                        options.LatencySli.get());
                 } catch (const TSystemError& e) {
                     STORAGE_INFO("DumpStats error: " << e.AsStrBuf());
                 }

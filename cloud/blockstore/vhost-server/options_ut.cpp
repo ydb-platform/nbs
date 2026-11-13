@@ -33,11 +33,18 @@ Y_UNIT_TEST_SUITE(TOptionsTest)
             options.Parse(argv.size(), argv.data());
             return options;
         };
-        UNIT_ASSERT_VALUES_EQUAL("1;0:1:8193:1000", parse().LatencySli.Serialize());
+        UNIT_ASSERT_VALUES_EQUAL("1;0:1:8193:1000", parse().LatencySli->Serialize());
         SetEnv("NBS_LATENCY_SLI_CONFIG", "");
-        UNIT_ASSERT(!parse().LatencySli.Enabled);
+        UNIT_ASSERT(!parse().LatencySli);
         UnsetEnv("NBS_LATENCY_SLI_CONFIG");
-        UNIT_ASSERT(!parse().LatencySli.Enabled);
+        UNIT_ASSERT(!parse().LatencySli);
+        for (const TString value: {";", "2;0:1:8193:1000", "1;0:1:8193:bad"}) {
+            SetEnv("NBS_LATENCY_SLI_CONFIG", value);
+            const auto options = parse();
+            UNIT_ASSERT_C(!options.LatencySli, value);
+            UNIT_ASSERT_VALUES_EQUAL("vhost.sock", options.SocketPath);
+            UNIT_ASSERT_VALUES_EQUAL(1, options.Layout.size());
+        }
     }
 
     Y_UNIT_TEST(ShouldParseOptions)

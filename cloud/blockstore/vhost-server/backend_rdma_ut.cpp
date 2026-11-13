@@ -52,7 +52,7 @@ namespace {
 struct TUnusedRdmaClient final: NCloud::NStorage::NRdma::IClient
 {
     using TEndpoint = NCloud::NStorage::NRdma::IClientEndpointPtr;
-    using THandler = NCloud::NStorage::NRdma::IClientEndpointHandlerPtr;
+    using THandler = NCloud::IClientEndpointHandlerPtr;
 
     void Start() override {}
     void Stop() override {}
@@ -83,8 +83,9 @@ void CheckRdmaLatency(bool enabled)
     TOptions options;
     options.BlockSize = 4096;
     options.ClientId = "client";
-    options.LatencySli = TLatencySliConfig::Parse(
-        enabled ? "1;0:1:8193:1000;1:1:8193:2000" : "");
+    options.LatencySli = std::make_shared<const TLatencySliConfig>(
+        TLatencySliConfig::TryParse(
+            enabled ? "1;0:1:8193:1000;1:1:8193:2000" : "").value());
     backend.Init(options);
     TSimpleStats queueStats;
     CompletedBios = 0;

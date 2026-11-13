@@ -19,12 +19,45 @@ using namespace NCloud::NBlockStore::NVHostServer;
 
 Y_UNIT_TEST_SUITE(TStatsTest)
 {
+    Y_UNIT_TEST(ShouldOwnConfigOnlyInProducers)
+    {
+        using namespace NCloud::NBlockStore;
+        const auto config = TLatencySliConfig::TryParse("1;0:1:8193:1000").value();
+        TSimpleStats producer;
+        producer.SetLatencySli(std::make_shared<const TLatencySliConfig>(config));
+        std::weak_ptr<const TLatencySliConfig> lifetime = producer.LatencySli;
+        producer.RecordLatency(false, 4096, 0, true);
+
+        TSimpleStats copied(producer);
+        TSimpleStats assigned;
+        assigned.SetLatencySli(producer.LatencySli);
+        assigned = producer;
+        TAtomicStats atomic(producer);
+        TSimpleStats converted(atomic);
+        TSimpleStats convertedAssignment;
+        convertedAssignment.SetLatencySli(producer.LatencySli);
+        convertedAssignment = atomic;
+        TSimpleStats accumulated;
+        accumulated += producer;
+        for (auto* snapshot: {&copied, &assigned, &converted,
+                              &convertedAssignment, &accumulated})
+        {
+            UNIT_ASSERT(!snapshot->LatencySli);
+            snapshot->RecordLatency(false, 4096, 0, true);
+            UNIT_ASSERT_VALUES_EQUAL(1, snapshot->Requests[0].LatencyBad);
+        }
+        UNIT_ASSERT(!atomic.LatencySli);
+        UNIT_ASSERT(!lifetime.expired());
+        producer.SetLatencySli({});
+        UNIT_ASSERT(lifetime.expired());
+    }
+
     Y_UNIT_TEST(ShouldSnapshotIdleAndFailedCompletions)
     {
         using namespace NCloud::NBlockStore;
-        const auto config = TLatencySliConfig::Parse("1;0:1:8193:1000");
+        const auto config = TLatencySliConfig::TryParse("1;0:1:8193:1000").value();
         TAtomicStats producer;
-        producer.SetLatencySli(config);
+        producer.SetLatencySli(std::make_shared<const TLatencySliConfig>(config));
 
         const auto idle = TSimpleStats(producer);
         UNIT_ASSERT_VALUES_EQUAL(0, idle.Completed);
@@ -54,10 +87,10 @@ Y_UNIT_TEST_SUITE(TStatsTest)
     Y_UNIT_TEST(ShouldSnapshotConcurrentCompletions)
     {
         using namespace NCloud::NBlockStore;
-        const auto config = TLatencySliConfig::Parse(
-            "1;0:1:8193:1000;1:1:8193:1000");
+        const auto config = TLatencySliConfig::TryParse(
+            "1;0:1:8193:1000;1:1:8193:1000").value();
         TAtomicStats producer;
-        producer.SetLatencySli(config);
+        producer.SetLatencySli(std::make_shared<const TLatencySliConfig>(config));
         constexpr ui64 workerCount = 4;
         constexpr ui64 iterations = 3000;
         const auto elapsed = DurationToCyclesSafe(TDuration::MicroSeconds(500));
@@ -152,9 +185,9 @@ Y_UNIT_TEST_SUITE(TStatsTest)
     {
         using namespace NCloud;
         using namespace NCloud::NBlockStore;
-        auto config = TLatencySliConfig::Parse("1;0:1:8193:1000");
+        auto config = TLatencySliConfig::TryParse("1;0:1:8193:1000").value();
         TAtomicStats producer;
-        producer.SetLatencySli(config);
+        producer.SetLatencySli(std::make_shared<const TLatencySliConfig>(config));
         producer.RecordLatency(false, 4096, DurationToCyclesSafe(TDuration::MicroSeconds(500)), false);
         producer.RecordLatency(false, 4096, DurationToCyclesSafe(TDuration::MicroSeconds(1500)), false);
         producer.RecordLatency(false, 4096, DurationToCyclesSafe(TDuration::MicroSeconds(500)), true);
