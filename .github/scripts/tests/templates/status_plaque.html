@@ -4,9 +4,13 @@
 {% macro link(label, url) -%}
 {% if url %}<a href="{{ url }}">{{ label }}</a>{% else %}{{ label }}{% endif %}
 {%- endmacro %}
+{% macro duration(seconds, label) -%}
+{% if seconds is not none and seconds != '' %}<br /> <span title="{{ label }} duration">{{ seconds|duration }}</span>{% endif %}
+{%- endmacro %}
+<p><strong>{{ build_preset }}</strong></p>
 <table>
 <thead>
-<tr><th>Status</th><th>Target</th><th>OS</th><th>Arch</th><th>Build type</th><th>Build</th><th>Attempt</th><th>Tests</th><th>Total</th><th>Passed</th><th>Errors</th><th>Failed</th><th>Failed build</th><th>Skipped</th><th>Muted<sup><a href="https://github.com/ydb-platform/nbs/tree/main/.github/config" title="Mute rules">?</a></sup></th><th>Workflow</th></tr>
+<tr><th>Status</th><th>Target</th><th>Build</th><th>Attempt</th><th>Tests</th><th>Total</th><th>Passed</th><th>Errors</th><th>Failed</th><th>Failed build</th><th>Skipped</th><th>Muted<sup><a href="https://github.com/ydb-platform/nbs/tree/main/.github/config" title="Mute rules">?</a></sup></th><th>Workflow</th></tr>
 </thead>
 <tbody>
 {% for workload in workloads %}
@@ -15,17 +19,14 @@
 <td align="center">{{ icon(workload.overall(report)) }}</td>
 {% if loop.first %}
 <td rowspan="{{ workload.reports|length or 1 }}">{% for target in workload.target.split(',') %}{{ link(target, workload.job_url) }}{% if not loop.last %},<br />{% endif %}{% endfor %}</td>
-<td rowspan="{{ workload.reports|length or 1 }}">{{ platform }}</td>
-<td rowspan="{{ workload.reports|length or 1 }}">{{ arch }}</td>
-<td rowspan="{{ workload.reports|length or 1 }}">{{ build_type }}</td>
 {% endif %}
 {% if report %}
-<td align="center">{% if loop.first and workload.build %}{{ icon(workload.build) }}{% if workload.build_error_url %} {{ link('log', workload.build_error_url) }}{% endif %}{% else %}—{% endif %}</td>
+<td align="center">{% if loop.first and workload.build %}{{ icon(workload.build) }}{% if workload.build_error_url %} {{ link('log', workload.build_error_url) }}{% endif %}{{ duration(workload.build_duration_seconds, 'Build') }}{% else %}—{% endif %}</td>
 <td align="center" title="{{ report.title }}; commit {{ report.commit }}; test time {{ report.elapsed }}s">{{ report.iteration }}{% if report.history_url %} {{ link('history', report.history_url) }}{% endif %}</td>
 {% if report.message %}
-<td colspan="8">🔴 {{ report.message }}{% if report.build_error_url %} — {{ link('log', report.build_error_url) }}{% endif %}</td>
+<td colspan="8">🔴 {{ report.message }}{% if report.build_error_url %} — {{ link('log', report.build_error_url) }}{% endif %}{{ duration(report.elapsed, 'Tests') }}</td>
 {% else %}
-<td align="center">{{ icon('failed' if report.failed else 'completed') }}</td>
+<td align="center">{{ icon('failed' if report.failed else 'completed') }}{{ duration(report.elapsed, 'Tests') }}</td>
 <td align="right">{{ link(report.total, report.url) }}</td>
 {% for status in count_statuses %}
 <td align="right">{{ link(report.count(status), report.count_url(status)) }}</td>
@@ -33,10 +34,10 @@
 {% endif %}
 {% else %}
 {% if workload.build == 'completed' %}
-<td align="center">{{ icon('completed') }}</td>
+<td align="center">{{ icon('completed') }}{{ duration(workload.build_duration_seconds, 'Build') }}</td>
 <td colspan="9">{{ messages[workload.status] }}</td>
 {% else %}
-<td colspan="10">{{ icon(workload.status) }} {{ messages[workload.status] }}{% if workload.build_error_url %} — {{ link('log', workload.build_error_url) }}{% endif %}</td>
+<td colspan="10">{{ icon(workload.status) }} {{ messages[workload.status] }}{% if workload.build_error_url %} — {{ link('log', workload.build_error_url) }}{% endif %}{{ duration(workload.build_duration_seconds, 'Build') }}</td>
 {% endif %}
 {% endif %}
 <td align="center">{% if loop.last %}{{ icon(workload.status) }}{% if report and workload.status not in ('pending', 'running', 'built', 'completed') %} {{ labels[workload.status] }}{% endif %}{% else %}—{% endif %}</td>

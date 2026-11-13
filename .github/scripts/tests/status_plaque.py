@@ -54,6 +54,22 @@ MESSAGES = {
 }
 
 
+def format_duration(seconds: int | str | None) -> str:
+    try:
+        seconds = int(seconds)
+    except (TypeError, ValueError):
+        return "—"
+    if seconds < 0:
+        return "—"
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    if hours:
+        return f"{hours}h {minutes}m {seconds}s"
+    if minutes:
+        return f"{minutes}m {seconds}s"
+    return f"{seconds}s"
+
+
 @dataclasses.dataclass
 class Report:
     iteration: int
@@ -123,6 +139,7 @@ class Workload:
     build: str = ""
     build_error_url: str = ""
     reports: list[Report] = dataclasses.field(default_factory=list)
+    build_duration_seconds: int | None = None
 
     @property
     def target(self) -> str:
@@ -131,7 +148,13 @@ class Workload:
             target_for_component(self.component),
         )
 
-    def update(self, status: str, job_url: str, build_error_url: str) -> None:
+    def update(
+        self,
+        status: str,
+        job_url: str,
+        build_error_url: str,
+        build_duration_seconds: int | None = None,
+    ) -> None:
         # A running update starts a new job attempt. Repeated notifications for
         # the same running job must not erase reports that have already arrived.
         if status == "running" and (
@@ -141,10 +164,16 @@ class Workload:
             self.reports.clear()
             self.build = ""
             self.build_error_url = ""
-        elif self.status == "failed_build" and status != "running":
+            self.build_duration_seconds = None
+        elif self.status == "failed_build" and status not in (
+            "running",
+            "failed_build",
+        ):
             return
         self.status = status
         self.job_url = job_url or self.job_url
+        if build_duration_seconds is not None:
+            self.build_duration_seconds = build_duration_seconds
         if status == "built":
             self.build = "completed"
         elif status == "failed_build":
@@ -218,9 +247,6 @@ class Plaque:
         return BLOCK_RE.sub(lambda _: self.render(), body, count=1)  # noqa: U101
 
     def render_table(self) -> str:
-        # The suffix may contain dashes (release-asan, for example).
-        parts = self.build_preset.split("-", 2)
-        platform, arch, build_type = (parts + ["—", "—"])[:3]
         env = Environment(
             loader=FileSystemLoader(str(Path(__file__).with_name("templates"))),
             undefined=StrictUndefined,
@@ -228,11 +254,10 @@ class Plaque:
             trim_blocks=True,
             lstrip_blocks=True,
         )
+        env.filters["duration"] = format_duration
         return env.get_template("status_plaque.html").render(
             workloads=self.workloads,
-            platform=platform,
-            arch=arch,
-            build_type=build_type,
+            build_preset=self.build_preset,
             icons=ICONS,
             labels=LABELS,
             messages=MESSAGES,

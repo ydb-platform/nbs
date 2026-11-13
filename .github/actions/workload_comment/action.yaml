@@ -44,6 +44,10 @@ inputs:
     required: false
     default: ""
     description: "URL to extracted build error log for failed build workload rows"
+  build_duration_seconds:
+    required: false
+    default: ""
+    description: "Elapsed build time in seconds, when available"
 
 outputs:
   job_url:
@@ -125,11 +129,17 @@ runs:
         CURRENT_JOB_NAME: ${{ inputs.current_job_name }}
         RUNNER_NAME: ${{ inputs.runner_name }}
         BUILD_ERROR_LOG_URL: ${{ inputs.build_error_log_url }}
+        BUILD_DURATION_SECONDS: ${{ inputs.build_duration_seconds }}
       run: |
         set -euo pipefail
         export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
         JOB_URL_OUT=$(mktemp)
+        duration_args=()
+        if [ -n "$BUILD_DURATION_SECONDS" ]; then
+            duration_args+=(--build-duration-seconds "$BUILD_DURATION_SECONDS")
+        fi
         if ! python3 -m scripts.tests.workload_comment update \
+            "${duration_args[@]}" \
             --build-preset "${FULL_BUILD_PRESET}" \
             --component "${COMPONENT}" \
             --workload-check-status "${WORKLOAD_CHECK_STATUS}" \

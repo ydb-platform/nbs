@@ -69,6 +69,7 @@ def main() -> None:
     update_parser.add_argument("--runner-name", default="")
     update_parser.add_argument("--job-url-out", default="")
     update_parser.add_argument("--build-error-log-url", default="")
+    update_parser.add_argument("--build-duration-seconds", type=int)
     update_parser.add_argument(
         "--is-dry-run",
         default=False,
@@ -111,6 +112,7 @@ def main() -> None:
         workload_check_status=args.workload_check_status,
         job_url=job_url,
         build_error_log_url=args.build_error_log_url,
+        build_duration_seconds=args.build_duration_seconds,
     )
 
 
