@@ -11,6 +11,7 @@ namespace NCloud::NFileStore::NStorage {
 struct TNodeAccessStats
 {
     ui64 NodeId = 0;
+    ui32 NodeType = 0;
     ui64 RequestCount = 0;
     double AccessScore = 0;
     TInstant LastAccessed;
@@ -58,7 +59,11 @@ public:
 
     void Reset(size_t maxEntries, TDuration halfLife);
 
-    bool UpdateAccessStats(ui64 nodeId, TInstant now);
+    bool UpdateAccessStats(ui64 nodeId, ui32 nodeType, TInstant now);
+    bool UpdateAccessStats(ui64 nodeId, TInstant now)
+    {
+        return UpdateAccessStats(nodeId, 0, now);
+    }
 
     TVector<TNodeAccessStats> GetStats(TInstant now, ui32 n) const;
 };
