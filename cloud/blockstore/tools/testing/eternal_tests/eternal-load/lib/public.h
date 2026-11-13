@@ -45,6 +45,22 @@ inline IOutputStream& operator<<(IOutputStream& out, const TBlockData& data)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Layout of every written sector. Header.Checksum is the CRC32C of the whole
+// sector, computed with Header.Checksum set to zero.
+struct TSectorData
+{
+    static constexpr ui64 Size = 512;
+
+    TBlockData Header;
+    // Device offset of the sector divided by Size.
+    ui64 SectorIndex = 0;
+    char Payload[Size - sizeof(TBlockData) - sizeof(ui64)];
+};
+
+static_assert(sizeof(TSectorData) == TSectorData::Size);
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IRequestGenerator;
 using IRequestGeneratorPtr = std::shared_ptr<IRequestGenerator>;
 

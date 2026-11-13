@@ -86,6 +86,11 @@ class LoadConfig(ITestCreateConfig):
     DEFAULT_LOG_NAME = 'eternal-load.log'
     DEFAULT_CONFIG_NAME = 'load-config.json'
 
+    DEFAULT_CONFIG_TEMPLATE = 'test-config.json'
+    CONFIG_TEMPLATES = {
+        32768: 'test-config-bs32k.json',
+    }
+
     use_requests_with_different_sizes: bool
     need_filling: bool
     io_depth: int
@@ -125,6 +130,10 @@ class LoadConfig(ITestCreateConfig):
         self.config_dir = self.DEFAULT_CONFIG_DIR
         self.config_name = self.DEFAULT_CONFIG_NAME
         self.log_name = self.DEFAULT_LOG_NAME
+
+    @property
+    def config_template(self) -> str:
+        return self.CONFIG_TEMPLATES.get(self.bs, self.DEFAULT_CONFIG_TEMPLATE)
 
     @property
     def config_path(self) -> str:
@@ -291,8 +300,21 @@ _DISK_CONFIGS = {
             encrypted=True),
     'eternal-relocation-network-ssd': DiskCreateConfig(size=32, bs=4096, type='network-ssd'),
 
-    'eternal-320gb-32k-block-size-ssd': DiskCreateConfig(320, 32768, 'network-ssd'),
-    'eternal-320gb-32k-block-size-hdd': DiskCreateConfig(320, 32768, 'network-hdd'),
+    'eternal-320gb-bs32k-ssd': DiskCreateConfig(320, 32768, 'network-ssd'),
+    'eternal-320gb-bs32k-hdd': DiskCreateConfig(320, 32768, 'network-hdd'),
+    'eternal-1tb-bs32k-ssd-different-size-requests':
+        DiskCreateConfig(1024, 32768, 'network-ssd'),
+    'eternal-1tb-bs32k-hdd-different-size-requests':
+        DiskCreateConfig(1024, 32768, 'network-hdd'),
+
+    'eternal-320gb-subblock': DiskCreateConfig(320, 4096, 'network-ssd'),
+    'eternal-320gb-bs32k-ssd-subblock':
+        DiskCreateConfig(320, 32768, 'network-ssd'),
+
+    'eternal-1tb-bs32k-ssd-unaligned-dsr':
+        DiskCreateConfig(1024, 32768, 'network-ssd'),
+    'eternal-1tb-bs32k-hdd-unaligned-dsr':
+        DiskCreateConfig(1024, 32768, 'network-hdd'),
 }
 
 _FS_CONFIGS = {
@@ -376,9 +398,23 @@ _LOAD_CONFIGS = {
     'eternal-1023gb-nonrepl-encrypted': LoadConfig(False, False, 32, 50, 1023, 4096),
     'eternal-relocation-network-ssd': LoadConfig(False, False, 32, 50, 32, 4096, run_in_systemd=True),
 
-    'eternal-320gb-32k-block-size-ssd': LoadConfig(False, True, 32, 50, 320, 32768),
+    'eternal-320gb-bs32k-ssd': LoadConfig(False, True, 32, 50, 320, 32768),
+    'eternal-320gb-bs32k-hdd': LoadConfig(False, True, 32, 50, 320, 32768),
 
-    'eternal-320gb-32k-block-size-hdd': LoadConfig(False, True, 32, 50, 320, 32768),
+    'eternal-1tb-bs32k-ssd-different-size-requests':
+        LoadConfig(True, True, 32, 50, 1024, 32768),
+    'eternal-1tb-bs32k-hdd-different-size-requests':
+        LoadConfig(True, True, 32, 50, 1024, 32768),
+
+    'eternal-320gb-subblock':
+        LoadConfig(False, True, 32, 50, 320, 4096, write_parts=8),
+    'eternal-320gb-bs32k-ssd-subblock':
+        LoadConfig(False, True, 32, 50, 320, 32768, write_parts=8),
+
+    'eternal-1tb-bs32k-ssd-unaligned-dsr':
+        LoadConfig(True, True, 32, 50, 1024, 512),
+    'eternal-1tb-bs32k-hdd-unaligned-dsr':
+        LoadConfig(True, True, 32, 50, 1024, 512),
 
     # NFS
 
