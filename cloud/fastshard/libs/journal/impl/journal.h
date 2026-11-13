@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/fastshard/libs/journal/iface/device.h>
 #include <cloud/fastshard/public/api/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -10,7 +11,17 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <util/generic/vector.h>
+
 namespace NCloud::NJournalled {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TJournalReadResponse
+{
+    TVector<TPageRangeRef> MissingPageNos;
+    NThreading::TFuture<NCloud::NProto::TReadPagesResponse> Future;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -34,9 +45,8 @@ struct IJournal
         NCloud::NProto::TWriteLogRecordRequest request)
         -> NThreading::TFuture<NCloud::NProto::TWriteLogRecordResponse> = 0;
 
-    [[nodiscard]] virtual auto Read(
-        NCloud::NProto::TReadPagesRequest request) const
-        -> NThreading::TFuture<NCloud::NProto::TReadPagesResponse> = 0;
+    [[nodiscard]] virtual TResultOrError<TJournalReadResponse> Read(
+        NCloud::NProto::TReadPagesRequest request) const = 0;
 
     [[nodiscard]] virtual auto ReadTail(
         NCloud::NProto::TReadJournalTailRequest request) const

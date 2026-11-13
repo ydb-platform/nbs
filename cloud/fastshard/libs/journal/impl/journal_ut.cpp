@@ -536,18 +536,44 @@ struct TFixture: public NUnitTest::TBaseFixture
         return Write(MakeWriteRequest(lsn, prevLsn, tag, groups));
     }
 
-    NCloud::NProto::TReadPagesResponse ReadPages(const TGroups& refs)
+    TResultOrError<TJournalReadResponse> StartRead(const TGroups& refs)
     {
-        return Run([&] { return Journal->Read(MakeReadRequest(refs)); })
-            .GetValueSync();
+        return Run([&] { return Journal->Read(MakeReadRequest(refs)); });
     }
 
+    NCloud::NProto::TReadPagesResponse ReadPages(const TGroups& refs)
+    {
+        auto result = StartRead(refs);
+        if (HasError(result)) {
+            return TErrorResponse(result.GetError());
+        }
+
+        return result.GetResult().Future.GetValueSync();
+    }
+
+    // "5+2, 20+1" - the page ranges the reader has to take from the device
+    TString MissingPageNos(const TGroups& refs)
+    {
+        auto result = StartRead(refs);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+
+        TVector<TString> ranges;
+        for (const auto& range: result.GetResult().MissingPageNos) {
+            ranges.push_back(
+                TStringBuilder() << range.FirstPageNo << "+" << range.PageCount);
+        }
+
+        return JoinSeq(", ", ranges);
+    }
+
+    // The journal read does not wait for the device, so the future is not
+    // set while the device holds the read.
     TFuture<NCloud::NProto::TReadPagesResponse> ReadPagesAsync(
         const TGroups& refs)
     {
-        return Executor->Execute(
-            [this, request = MakeReadRequest(refs)]() mutable
-            { return Journal->Read(std::move(request)); });
+        auto result = StartRead(refs);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+        return result.GetResult().Future;
     }
 
     NCloud::NProto::TReadJournalTailResponse ReadTail(
@@ -1559,6 +1585,73 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         auto response = ReadPages({{10, 1}, {20, 1}});
         UNIT_ASSERT_VALUES_EQUAL("20:[B020]", DescribeGroups(response));
         UNIT_ASSERT_VALUES_EQUAL(2, response.GetLastAckedLogSequenceNumber());
+    }
+
+    Y_UNIT_TEST_F(ShouldReturnMissingPageNos, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        // nothing is journalled yet, so every page is missing
+        UNIT_ASSERT_VALUES_EQUAL(
+            "5+2, 20+1",
+            MissingPageNos({{5, 2}, {20, 1}}));
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{16, 1}}));
+
+        // fully journalled ranges
+        UNIT_ASSERT_VALUES_EQUAL("", MissingPageNos({{10, 4}, {16, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL("", MissingPageNos({{11, 2}}));
+
+        // gaps before, between and after the journalled pages
+        UNIT_ASSERT_VALUES_EQUAL(
+            "8+2, 14+2, 17+3",
+            MissingPageNos({{8, 12}}));
+
+        // every range gets its own gaps, in the order of the request
+        UNIT_ASSERT_VALUES_EQUAL(
+            "17+1, 30+2, 9+1, 14+1",
+            MissingPageNos({{16, 2}, {30, 2}, {9, 6}}));
+    }
+
+    Y_UNIT_TEST_F(ShouldReturnFlushedPagesAsMissing, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 1}}));
+
+        UNIT_ASSERT_VALUES_EQUAL("", MissingPageNos({{10, 1}, {20, 1}}));
+
+        Journal->MarkRecordAsFlushed(1);
+
+        // lsn 1 is on the device now, the same pages Read stops returning
+        UNIT_ASSERT_VALUES_EQUAL("10+1", MissingPageNos({{10, 1}, {20, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "20:[B020]",
+            DescribeGroups(ReadPages({{10, 1}, {20, 1}})));
+    }
+
+    Y_UNIT_TEST_F(ShouldReturnMissingPageNosBeforeJournalIsRead, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 2}}));
+
+        Device->BlockReadsUntilReleased();
+
+        auto result = StartRead({{9, 4}});
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+
+        // the missing ranges are known while the journal pages are still
+        // being read
+        const auto& [missing, future] = result.GetResult();
+        UNIT_ASSERT_VALUES_EQUAL(2, missing.size());
+        UNIT_ASSERT(Device->ReadBlocked.WaitT(TDuration::Seconds(30)));
+        UNIT_ASSERT(!future.HasValue());
+
+        Device->ReleaseReads();
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010,A011]",
+            DescribeGroups(future.GetValueSync()));
     }
 
     Y_UNIT_TEST_F(ShouldFailReadWhenDeviceFails, TFixture)
