@@ -98,9 +98,10 @@ enum class EWriteBackCacheMode
     // WriteDataDirect instead of WriteData
     Draining,
 
-    // WriteBackCache was requested to drain and all the data is flushed
+    // WriteBackCache was requested to drain and no pending or unflushed writes
+    // remain
     // New cached WriteData requests are not accepted and will return E_REJECTED
-    // Since WriteBackCache contains no data, clients may safely stop using it
+    // New operations may bypass the cache
     Drained
 };
 
@@ -133,26 +134,28 @@ public:
      */
     EWriteBackCacheMode GetMode() const;
 
-    /* Puts WriteBackCache into draining mode - it prevents new WriteData
-     * requests from being added to the cache and triggers flush
-     * (WriteDataDirect calls will still be allowed).
+    /* Irreversibly stops accepting cached writes and starts asynchronous
+     * flushing. WriteDataDirect remains allowed.
      *
-     * WriteBackCache will remain in EWriteBackCacheMode::Draining mode until
-     * all pending and unflushed are flushed - then it will become
-     * EWriteBackCacheMode::Drained.
+     * Backend flush errors retain data for retries while live handles remain.
+     * Without live handles, data is discarded as during normal operation.
      *
-     * The returned future is completed successfully when WriteBackCache become
-     * drained. An error is returned if flush is failed. The returned future
-     * never completes if WriteBackCache is in failed state due to underlying
-     * storage corrption or logic failure.
-     *
-     * The call has no effect if WriteBackCache is already drained and will
-     * return a completed future immediately.
-     *
-     * Note: the call is not reversible (WriteBackCache cannot be returned to
-     * EWriteBackCacheMode::Normal mode without restart).
+     * Use IsDrained() to check completion. Storage corruption or an internal
+     * cache failure suspends draining.
      */
-    [[nodiscard]] NThreading::TFuture<NCloud::NProto::TError> Drain();
+    void SetDrainingMode();
+
+    /* Starts draining for session shutdown, allowing cached writes to be
+     * dropped after flush errors, even with live handles, once their node has
+     * no pending writes.
+     *
+     * The future completes successfully once the cache is healthy and no
+     * pending or unflushed writes remain, independently of FlushAllData().
+     * Storage corruption or an internal cache failure leaves it pending.
+     * Discarded writes count as drained, so completion does not guarantee
+     * persistence. Keep the cache alive until the future completes.
+     */
+    [[nodiscard]] NThreading::TFuture<void> Shutdown();
 
     // A reliable way to check that WriteBackCache has been drained
     bool IsDrained() const;

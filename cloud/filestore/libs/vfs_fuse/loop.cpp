@@ -1168,10 +1168,7 @@ private:
                              ->GetServerWriteBackCacheFlushWritesInParallelEnabled()});
 
                 if (!FileSystemConfig->GetServerWriteBackCacheEnabled()) {
-                    auto future = WriteBackCache.Drain();
-                    // Drain will run asynchronously in background
-                    // No need to wait for it
-                    Y_UNUSED(future);
+                    WriteBackCache.SetDrainingMode();
                 }
 
                 ModuleStatsRegistry->Register(
@@ -1532,18 +1529,17 @@ private:
         if (WriteBackCache && !WriteBackCache.IsDrained()) {
             STORAGE_INFO(
                 "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained, "
-                "executing Drain()",
+                "executing Shutdown()",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str());
 
-            WriteBackCache.Drain().Subscribe(
+            WriteBackCache.Shutdown().Subscribe(
                 [w = weak_from_this(),
-                 s = std::move(stopCompleted)](const auto& f) mutable
+                 s = std::move(stopCompleted)](const auto&) mutable
                 {
                     if (auto p = w.lock()) {
-                        p->StopAsyncOnWriteBackCacheDrained(
-                            std::move(s),
-                            f.GetValue());
+                        p->StopAsyncOnWriteBackCacheShutdownCompleted(
+                            std::move(s));
                     } else {
                         s.SetValue();
                     }
@@ -1553,35 +1549,14 @@ private:
         }
     }
 
-    void StopAsyncOnWriteBackCacheDrained(
-        TPromise<void> stopCompleted,
-        const NProto::TError& error)
+    void StopAsyncOnWriteBackCacheShutdownCompleted(
+        TPromise<void> stopCompleted)
     {
-        if (WriteBackCache.IsDrained()) {
-            // It is possible for WriteBackCache to become drained after
-            // unsuccessful FlushAllData call. This may happen if the data is
-            // dropped by WriteBackCache itself (for example, if ReleaseHandle
-            // was called). In this case, we do not report FlushAllData error
-            // because it should have been already reported by WriteBackCache
-            STORAGE_INFO(
-                "[f:%s][c:%s] (DestroySession) WriteBackCache is drained",
-                Config->GetFileSystemId().Quote().c_str(),
-                Config->GetClientId().Quote().c_str());
-        } else if (HasError(error)) {
-            STORAGE_WARN(
-                "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained"
-                " because of Drain() error, unflushed data will be lost."
-                " Error: %s",
-                Config->GetFileSystemId().Quote().c_str(),
-                Config->GetClientId().Quote().c_str(),
-                FormatError(error).c_str());
-        } else {
-            ReportWriteBackCacheDataLossError(Sprintf(
-                "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained "
-                "after successful Drain(), unflushed data will be lost",
-                Config->GetFileSystemId().Quote().c_str(),
-                Config->GetClientId().Quote().c_str()));
-        }
+        STORAGE_INFO(
+            "[f:%s][c:%s] (DestroySession) WriteBackCache "
+            "shutdown completed",
+            Config->GetFileSystemId().Quote().c_str(),
+            Config->GetClientId().Quote().c_str());
 
         StopAsyncFuseLoopUnmount(std::move(stopCompleted));
     }

@@ -7860,7 +7860,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(bootstrap.Fuse->SendRequest(writeDSync).Wait(WaitTimeout));
         UNIT_ASSERT(writeDSync->Out->Header.error);
 
-        // 4. Release - should fail because data is dropped
+        // 4. Release - should fail because cached data could not be flushed
         auto release = std::make_shared<TReleaseRequest>(
             NodeId,
             NodeId + 1,
@@ -7868,7 +7868,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(bootstrap.Fuse->SendRequest(release).Wait(WaitTimeout));
         UNIT_ASSERT(release->Out->Header.error);
 
-        // 5. Release again - success because of no data in the cache
+        // 5. Release again - success because the handle is no longer tracked
         auto release2 = std::make_shared<TReleaseRequest>(
             NodeId,
             NodeId + 1,
@@ -8184,10 +8184,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // We use WriteBackCache in order to prevent race and enforce strict
         // ordering between StopAsync and GetAttrRequest execution.
         //
-        // WriteBackCache::FlushAll is executed after CompletionQueue is stopped
+        // WriteBackCache::Shutdown is executed after CompletionQueue is stopped
         // (new requests will be canceled) and before FUSE loop is unmounted.
         //
-        // We catch the moment when FlushAll is called by listening to
+        // We catch the moment when Shutdown is called by listening to
         // WriteData requests.
 
         features.SetServerWriteBackCacheEnabled(true);
@@ -8198,7 +8198,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         TBootstrap bootstrap(
             CreateWallClockTimer(),
             CreateScheduler(),
-            features);
+            features,
+            /* handleOpsQueueStateFileSize= */ 1000,
+            /* writeBackCacheAutomaticFlushPeriodMs= */ 0);
 
         auto writeDataCalledPromise = NewPromise();
         auto responsePromise = NewPromise<NProto::TWriteDataResponse>();
@@ -8220,7 +8222,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         auto stopFuture = bootstrap.StopAsync();
 
-        // StopAsync triggers FlushAll
+        // StopAsync triggers shutdown flushing
         writeDataCalledPromise.GetFuture().GetValue(WaitTimeout);
 
         auto future = bootstrap.Fuse->SendRequest<TGetAttrRequest>(NodeId + 1);
@@ -8248,8 +8250,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             1000000000000,
             "got maxTime " << maxTime);
 
-        // Complete FlushAll so StopAsync can finish
-        responsePromise.SetValue(NProto::TWriteDataResponse());
+        // StopAsync must finish even if the shutdown flush fails.
+        responsePromise.SetValue(TErrorResponse(E_IO, "Flush failed"));
 
         UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
     }
@@ -8338,8 +8340,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         // Deadlock previously happened when:
         // - automatic flush was executed on a scheduler thread;
-        // - at the same time, Stop was requested and triggered FlushAllData;
-        // - FlushAllData continuation was called on the same scheduler thread;
+        // - at the same time, Stop was requested and triggered Shutdown;
+        // - Shutdown continuation was called on the same scheduler thread;
         // - Stop continuation was called on the same scheduler thread and tried
         //   to stop scheduler.
 
@@ -8366,13 +8368,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             writeDataCalled.SetValue();
 
             // Returns a pending future that will be completed manually on a
-            // scheduler thread after verifying FlushAll is in progress
+            // scheduler thread after verifying Shutdown is in progress
             return writeDataPromise.GetFuture();
         };
 
         bootstrap.Start();
         Y_DEFER
         {
+            writeDataPromise.TrySetValue({});
             bootstrap.Stop();
         };
 
@@ -8390,21 +8393,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(
             writeDataCalled.GetFuture().GetValue(WaitTimeout));
 
-        auto counter = bootstrap.Counters->FindSubgroup("component", "fs_ut_fs")
-                           ->FindSubgroup("host", "cluster")
-                           ->FindSubgroup("filesystem", FileSystemId)
-                           ->FindSubgroup("client", "")
-                           ->FindSubgroup("cloud", "")
-                           ->FindSubgroup("folder", "")
-                           ->FindSubgroup("module", "WriteBackCache")
-                           ->GetCounter("FlushAllRequests_InProgressCount");
-
-        // Automatic flush does not create a request internally
-        UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+        auto cacheCounters =
+            bootstrap.GetFileSystemStatsCounters()->FindSubgroup(
+                "module",
+                "WriteBackCache");
+        auto flushAllCounter =
+            cacheCounters->GetCounter("FlushAllRequests_InProgressCount");
+        auto stoppingCounter = cacheCounters->FindSubgroup("state", "Stopping")
+                                   ->GetCounter("OperationalState");
 
         auto stopFuture = bootstrap.StopAsync();
 
-        // Wait until FlushAll is triggered in session destroy handler
+        // Wait until Shutdown starts without creating a FlushAll request.
         UNIT_ASSERT(WaitForCondition(
             WaitTimeout,
             [&]
@@ -8412,14 +8412,15 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 // Stats are updated automatically with 1-second interval
                 // Update it manually to speed up the test
                 bootstrap.ModuleStatsRegistry->UpdateStats(true);
-                return counter->GetAtomic() > 0;
+                return stoppingCounter->GetAtomic() > 0;
             }));
+        UNIT_ASSERT_VALUES_EQUAL(0, flushAllCounter->GetAtomic());
 
         // WriteData completion should be done in a Scheduler thread, otherwise
         // the deadlock won't reproduce
         bootstrap.Scheduler->Schedule(
             TInstant::Zero(),
-            [writeDataPromise]() mutable { writeDataPromise.SetValue({}); });
+            [writeDataPromise]() mutable { writeDataPromise.TrySetValue({}); });
 
         UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
     }

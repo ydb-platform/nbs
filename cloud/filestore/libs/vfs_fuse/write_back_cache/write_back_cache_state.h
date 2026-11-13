@@ -15,6 +15,7 @@
 
 #include <cloud/storage/core/libs/common/timer.h>
 
+#include <library/cpp/logger/log.h>
 #include <library/cpp/threading/future/core/future.h>
 
 #include <util/generic/deque.h>
@@ -56,6 +57,7 @@ private:
     const ITimerPtr Timer;
     const IWriteBackCacheStateStatsPtr Stats;
     const TFlushBatchLimits FlushBatchLimits;
+    const TLog Log;
     const TString LogTag;
 
     TNodeStateHolder Nodes;
@@ -83,12 +85,25 @@ private:
     // It will be used in the future to prevent hanging on session destroy.
     THangingRequests HangingRequests;
 
-    // Either the persistent storage is corrupted or an internal problem in
-    // the logic has happened. This is fatal and should result in suspending all
-    // operations until manual resolution takes place.
+    // Persistent-storage or internal failure suspends normal operations and
+    // shutdown until manual resolution.
     bool IsFailed = false;
 
+    // Set by SetDrainingMode() or Shutdown(): reject new cached writes and
+    // flush existing data.
+    // Without ShutdownMode, flush errors retain data while live handles remain.
     bool DrainingMode = false;
+
+    // Enabled by Shutdown() and never cleared. Permits dropping cached data
+    // on flush errors once the node has no pending writes, even with live handles.
+    bool ShutdownMode = false;
+
+    // Counts all shutdown drops, including those without live handles.
+    ui64 ShutdownDroppedRequestCount = 0;
+
+    // Prevents queuing shutdown completion more than once
+    bool ShutdownCompletionQueued = false;
+    NThreading::TPromise<void> ShutdownPromise = NThreading::NewPromise<void>();
 
 public:
     using TEntryVisitor = TFunctionRef<void(const TCachedWriteDataRequest*)>;
@@ -101,15 +116,17 @@ public:
         IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
         INodeStateHolderStatsPtr nodeStateHolderStats,
         const TFlushBatchLimits& flushBatchLimits,
+        TLog log,
         TString logTag);
 
     // Reads state from the persistent storage and schedules node flush
     NProto::TError Init();
 
-    // Prevent new WriteData requests from being added to the cache - they
-    // will fail with E_REJECTED error.
-    // Note: exiting from draining mode is not possible.
+    // Stop accepting cached writes and flush pending and unflushed requests.
     void SetDrainingMode();
+
+    // Complete successfully after draining; stay pending in a failed state.
+    NThreading::TFuture<void> Shutdown();
 
     // Returns true if the cache is in draining mode and there are no more
     // unflushed requests.
@@ -221,6 +238,7 @@ private:
     bool GetBackpressureStatus(const TNodeState& nodeState) const;
     void UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState);
     void TriggerFlushCompletions(TNodeState& nodeState);
+    void CheckShutdownCompletion();
 
     void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
     void CheckAndAcquireBarriers(TNodeState& nodeState);
@@ -271,6 +289,9 @@ private:
         const NCloud::NProto::TError& error);
 
     void FailAllUnallocatedPendingRequests(const NCloud::NProto::TError& error);
+
+    // If shutdown is true, flush errors may drop cached data.
+    void SetDrainingMode(bool shutdown);
 
     void SetFailedFlag();
 };

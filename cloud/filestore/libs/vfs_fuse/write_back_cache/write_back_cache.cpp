@@ -122,6 +122,7 @@ public:
               args.Stats->GetWriteDataRequestManagerStats(),
               args.Stats->GetNodeStateHolderStats(),
               BuildFlushBatchLimits(args),
+              Log,
               LogTag)
     {}
 
@@ -179,14 +180,22 @@ public:
                            : EWriteBackCacheMode::Draining;
     }
 
-    NThreading::TFuture<NCloud::NProto::TError> Drain()
+    void SetDrainingMode()
     {
         if (!DrainRequested.exchange(true)) {
-            STORAGE_INFO(LogTag << " Start WriteBackCache draining");
+            STORAGE_INFO(LogTag << " Stop accepting cached WriteData requests");
         }
 
         State.SetDrainingMode();
-        return State.AddFlushAllRequest();
+    }
+
+    TFuture<void> Shutdown()
+    {
+        if (!DrainRequested.exchange(true)) {
+            STORAGE_INFO(LogTag << " Stop accepting cached WriteData requests");
+        }
+
+        return State.Shutdown();
     }
 
     bool IsDrained()
@@ -735,9 +744,14 @@ EWriteBackCacheMode TWriteBackCache::GetMode() const
     return Impl->GetMode();
 }
 
-NThreading::TFuture<NCloud::NProto::TError> TWriteBackCache::Drain()
+void TWriteBackCache::SetDrainingMode()
 {
-    return Impl->Drain();
+    Impl->SetDrainingMode();
+}
+
+TFuture<void> TWriteBackCache::Shutdown()
+{
+    return Impl->Shutdown();
 }
 
 bool TWriteBackCache::IsDrained() const
