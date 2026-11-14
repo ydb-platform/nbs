@@ -77,6 +77,7 @@ type testContext struct {
 	localFsOverrides        ExternalFsOverrideMap
 	nfsVhostReplicaCount    uint
 	nbsServerReplicaCount   uint
+	zoneIdToBackendIndex    map[string]uint
 }
 
 func getSourcePath(socketsDir string, vmMode bool, legacyMode bool) string {
@@ -160,6 +161,7 @@ func CreateTestContext(
 		localFsOverrides:        make(ExternalFsOverrideMap),
 		nfsVhostReplicaCount:    nfsVhostReplicaCount,
 		nbsServerReplicaCount:   nbsServerReplicaCount,
+		zoneIdToBackendIndex:    make(map[string]uint),
 	}
 }
 
@@ -288,6 +290,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.zoneIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -298,6 +301,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -546,6 +550,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.zoneIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -556,6 +561,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -931,6 +937,258 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 	}
 }
 
+func TestLoadZoneMappingReplicaCounts(t *testing.T) {
+	for _, tc := range []struct {
+		name                      string
+		configData                string
+		backendIndex              uint
+		nfsVhostReplicaCountUsed  uint
+		nbsServerReplicaCountUsed uint
+		errorMessage              string
+	}{
+		{name: "unknown field", configData: `[{"zone_id": "zone1", "backend_index": 0, "unknown": true}]`,
+			nfsVhostReplicaCountUsed: 1, nbsServerReplicaCountUsed: 1,
+			errorMessage: `json: unknown field "unknown"`},
+		{name: "trailing data", configData: `[{"zone_id": "zone1", "backend_index": 0}] []`,
+			nfsVhostReplicaCountUsed: 1, nbsServerReplicaCountUsed: 1,
+			errorMessage: "unexpected data after zone mapping"},
+		{name: "zero index", backendIndex: 0, nfsVhostReplicaCountUsed: 1, nbsServerReplicaCountUsed: 1},
+		{name: "last valid index", backendIndex: 1, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 2},
+		{name: "different valid counts", backendIndex: 1, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 3},
+		{name: "index equals nfs count", backendIndex: 2, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 3,
+			errorMessage: `zone_id "zone1": backend_index 2 must be less than NfsVhostReplicaCountUsed 2`},
+		{name: "index exceeds nfs count", backendIndex: 3, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 4,
+			errorMessage: `zone_id "zone1": backend_index 3 must be less than NfsVhostReplicaCountUsed 2`},
+		{name: "index equals nbs count", backendIndex: 2, nfsVhostReplicaCountUsed: 3, nbsServerReplicaCountUsed: 2,
+			errorMessage: `zone_id "zone1": backend_index 2 must be less than NbsServerReplicaCountUsed 2`},
+		{name: "index exceeds nbs count", backendIndex: 3, nfsVhostReplicaCountUsed: 4, nbsServerReplicaCountUsed: 2,
+			errorMessage: `zone_id "zone1": backend_index 3 must be less than NbsServerReplicaCountUsed 2`},
+		{name: "zero nfs count", backendIndex: 0, nfsVhostReplicaCountUsed: 0, nbsServerReplicaCountUsed: 1,
+			errorMessage: `zone_id "zone1": backend_index 0 must be less than NfsVhostReplicaCountUsed 0`},
+		{name: "zero nbs count", backendIndex: 0, nfsVhostReplicaCountUsed: 1, nbsServerReplicaCountUsed: 0,
+			errorMessage: `zone_id "zone1": backend_index 0 must be less than NbsServerReplicaCountUsed 0`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "zones.json")
+			data := tc.configData
+			if data == "" {
+				data = fmt.Sprintf(`[{"zone_id": "zone1", "backend_index": %d}]`, tc.backendIndex)
+			}
+			require.NoError(t, os.WriteFile(path, []byte(data), 0600))
+
+			mapping, err := loadZoneMapping(path, tc.nfsVhostReplicaCountUsed, tc.nbsServerReplicaCountUsed)
+			if tc.errorMessage != "" {
+				require.EqualError(t, err, tc.errorMessage)
+				require.Nil(t, mapping)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, map[string]uint{"zone1": tc.backendIndex}, mapping)
+		})
+	}
+}
+
+func TestNodeStageVolumeWithZoneMapping(t *testing.T) {
+	zoneIdConfigPath := filepath.Join(t.TempDir(), "zones.json")
+	require.NoError(t, os.WriteFile(zoneIdConfigPath, []byte(`[
+		{"zone_id": "", "backend_index": 0},
+		{"zone_id": "zone0", "backend_index": 0},
+		{"zone_id": "zone1", "backend_index": 1}
+	]`), 0600))
+	zoneIdToBackendIndex, err := loadZoneMapping(zoneIdConfigPath, 2, 2)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name        string
+		zoneId      string
+		clientIndex uint
+	}{
+		{name: "empty zone", zoneId: "", clientIndex: 0},
+		{name: "zone0", zoneId: "zone0", clientIndex: 0},
+		{name: "zone1", zoneId: "zone1", clientIndex: 1},
+		{name: "unknown zone", zoneId: "zone2", clientIndex: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testCtx := CreateTestContext(t, true, false, true, 1, 2)
+			service := newNodeService(
+				defaultNodeId,
+				defaultCientId,
+				true, // vmMode
+				testCtx.socketsDir,
+				testCtx.targetFsPathPattern,
+				testCtx.targetBlkPathPattern,
+				testCtx.localFsOverrides,
+				zoneIdToBackendIndex,
+				getNbsClients(testCtx.nbsClients),
+				getNfsClients(testCtx.nfsClients),
+				testCtx.nfsLocalClient,
+				testCtx.nfsLocalFilestoreClient,
+				testCtx.mounter,
+				nil,
+				false,
+				defaultStartEndpointRequestTimeout,
+				testCtx.nfsVhostReplicaCount,
+				testCtx.nbsServerReplicaCount,
+				false, // enableEndpointBalancing
+				false, // offlineResize
+			)
+
+			ctx := context.Background()
+			client := testCtx.nbsClients[tc.clientIndex]
+			client.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).
+				Return(&nbs.TListEndpointsResponse{}, nil).Once()
+			hostType := nbs.EHostType_HOST_TYPE_DEFAULT
+			client.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+				Headers:          getDefaultStartEndpointRequestHeaders(),
+				UnixSocketPath:   testCtx.nbsSocketPath,
+				DiskId:           defaultDiskId,
+				InstanceId:       defaultInstanceId,
+				ClientId:         testCtx.actualClientId,
+				DeviceName:       defaultDiskId,
+				IpcType:          nbs.EClientIpcType_IPC_VHOST,
+				VhostQueuesCount: defaultVhostQueuesCount,
+				VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
+				VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+				Persistent:       true,
+				NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
+					UseFreeNbdDeviceFile: false,
+				},
+				ClientProfile: &nbs.TClientProfile{HostType: &hostType},
+			}).Return(&nbs.TStartEndpointResponse{}, nil).Once()
+
+			_, err := service.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+				VolumeId:          testCtx.volumeId,
+				StagingTargetPath: testCtx.stagingTargetPath,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{}},
+					AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER},
+				},
+				VolumeContext: map[string]string{
+					backendVolumeContextKey: "nbs",
+					instanceIdKey:           defaultInstanceId,
+					zoneIdVolumeContextKey:  tc.zoneId,
+				},
+			})
+			require.NoError(t, err)
+
+			stageData, err := service.(*nodeService).readStageData(filepath.Join(testCtx.stagingTargetPath, defaultDiskId+".json"))
+			require.NoError(t, err)
+			assert.Equal(t, tc.clientIndex, stageData.ClientIndex)
+
+			client.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+				UnixSocketPath: testCtx.nbsSocketPath,
+			}).Return(&nbs.TStopEndpointResponse{}, nil).Once()
+			_, err = service.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
+				VolumeId:          testCtx.volumeId,
+				StagingTargetPath: testCtx.stagingTargetPath,
+			})
+			require.NoError(t, err)
+
+			for index, nbsClient := range testCtx.nbsClients {
+				nbsClient.AssertExpectations(t)
+				if uint(index) != tc.clientIndex {
+					assert.Empty(t, nbsClient.Calls, "unselected blockstore endpoint must not be called")
+				}
+			}
+		})
+	}
+}
+
+func TestNodeStageFilestoreVolumeWithZoneMapping(t *testing.T) {
+	zoneIdConfigPath := filepath.Join(t.TempDir(), "zones.json")
+	require.NoError(t, os.WriteFile(zoneIdConfigPath, []byte(`[
+		{"zone_id": "", "backend_index": 0},
+		{"zone_id": "zone0", "backend_index": 0},
+		{"zone_id": "zone1", "backend_index": 1}
+	]`), 0600))
+	zoneIdToBackendIndex, err := loadZoneMapping(zoneIdConfigPath, 2, 2)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name        string
+		zoneId      string
+		clientIndex uint
+	}{
+		{name: "empty zone", zoneId: "", clientIndex: 0},
+		{name: "zone0", zoneId: "zone0", clientIndex: 0},
+		{name: "zone1", zoneId: "zone1", clientIndex: 1},
+		{name: "unknown zone", zoneId: "zone2", clientIndex: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testCtx := CreateTestContext(t, true, false, true, 2, 1)
+			service := newNodeService(
+				defaultNodeId,
+				defaultCientId,
+				true, // vmMode
+				testCtx.socketsDir,
+				testCtx.targetFsPathPattern,
+				testCtx.targetBlkPathPattern,
+				testCtx.localFsOverrides,
+				zoneIdToBackendIndex,
+				getNbsClients(testCtx.nbsClients),
+				getNfsClients(testCtx.nfsClients),
+				testCtx.nfsLocalClient,
+				testCtx.nfsLocalFilestoreClient,
+				testCtx.mounter,
+				nil,
+				false,
+				defaultStartEndpointRequestTimeout,
+				testCtx.nfsVhostReplicaCount,
+				testCtx.nbsServerReplicaCount,
+				false, // enableEndpointBalancing
+				false, // offlineResize
+			)
+
+			ctx := context.Background()
+			client := testCtx.nfsClients[tc.clientIndex]
+			client.On("StartEndpoint", ctx, &nfs.TStartEndpointRequest{
+				Endpoint: &nfs.TEndpointConfig{
+					SocketPath:       testCtx.nfsSocketPath,
+					FileSystemId:     defaultDiskId,
+					ClientId:         testCtx.actualClientId,
+					VhostQueuesCount: defaultVhostQueuesCount,
+					Persistent:       true,
+				},
+			}).Return(&nfs.TStartEndpointResponse{}, nil).Once()
+
+			_, err := service.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+				VolumeId:          testCtx.volumeId,
+				StagingTargetPath: testCtx.stagingTargetPath,
+				VolumeCapability: &csi.VolumeCapability{
+					AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{}},
+					AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER},
+				},
+				VolumeContext: map[string]string{
+					backendVolumeContextKey: "nfs",
+					instanceIdKey:           defaultInstanceId,
+					zoneIdVolumeContextKey:  tc.zoneId,
+				},
+			})
+			require.NoError(t, err)
+
+			stageData, err := service.(*nodeService).readStageData(filepath.Join(testCtx.stagingTargetPath, defaultDiskId+".json"))
+			require.NoError(t, err)
+			assert.Equal(t, tc.clientIndex, stageData.ClientIndex)
+
+			client.On("StopEndpoint", ctx, &nfs.TStopEndpointRequest{
+				SocketPath: testCtx.nfsSocketPath,
+			}).Return(&nfs.TStopEndpointResponse{}, nil).Once()
+			_, err = service.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
+				VolumeId:          testCtx.volumeId,
+				StagingTargetPath: testCtx.stagingTargetPath,
+			})
+			require.NoError(t, err)
+
+			for index, nfsClient := range testCtx.nfsClients {
+				nfsClient.AssertExpectations(t)
+				if uint(index) != tc.clientIndex {
+					assert.Empty(t, nfsClient.Calls, "unselected filestore-vhost endpoint must not be called")
+				}
+			}
+		})
+	}
+}
+
 func TestReadVhostSettings(t *testing.T) {
 	t.Run("Invalid queues count value", func(t *testing.T) {
 		volumeContext := map[string]string{
@@ -1004,6 +1262,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.zoneIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -1014,6 +1273,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -1163,6 +1423,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.zoneIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -1173,6 +1434,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -1612,6 +1874,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.zoneIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -1622,6 +1885,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -1683,6 +1947,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.zoneIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -1693,6 +1958,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -1747,6 +2013,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.zoneIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -1757,6 +2024,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -1847,6 +2115,7 @@ func TestExternaFs(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.zoneIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -1857,6 +2126,7 @@ func TestExternaFs(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -1996,6 +2266,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.zoneIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -2006,6 +2277,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -2091,6 +2363,7 @@ func stageVolumeWithTimeoutForKubevirt(
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.zoneIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -2101,6 +2374,7 @@ func stageVolumeWithTimeoutForKubevirt(
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -2263,6 +2537,7 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 		testCtx.targetFsPathPattern,
 		testCtx.targetBlkPathPattern,
 		testCtx.localFsOverrides,
+		testCtx.zoneIdToBackendIndex,
 		getNbsClients(testCtx.nbsClients),
 		getNfsClients(testCtx.nfsClients),
 		testCtx.nfsLocalClient,
@@ -2273,6 +2548,7 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		true,  // enableEndpointBalancing
 		false, // offlineResize
 	)
 
@@ -2414,12 +2690,26 @@ func TestOnlineNodeExpandVolume(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			testCtx := CreateTestContext(t, tc.vmMode, false, tc.vmMode, 1, 2)
 			service := newNodeService(
-				defaultNodeId, defaultCientId, tc.vmMode, testCtx.socketsDir,
-				testCtx.targetFsPathPattern, testCtx.targetBlkPathPattern, testCtx.localFsOverrides,
-				getNbsClients(testCtx.nbsClients), getNfsClients(testCtx.nfsClients),
-				testCtx.nfsLocalClient, testCtx.nfsLocalFilestoreClient, testCtx.mounter,
-				nil, false, defaultStartEndpointRequestTimeout,
-				testCtx.nfsVhostReplicaCount, testCtx.nbsServerReplicaCount, false,
+				defaultNodeId,
+				defaultCientId,
+				tc.vmMode,
+				testCtx.socketsDir,
+				testCtx.targetFsPathPattern,
+				testCtx.targetBlkPathPattern,
+				testCtx.localFsOverrides,
+				testCtx.zoneIdToBackendIndex,
+				getNbsClients(testCtx.nbsClients),
+				getNfsClients(testCtx.nfsClients),
+				testCtx.nfsLocalClient,
+				testCtx.nfsLocalFilestoreClient,
+				testCtx.mounter,
+				nil,
+				false,
+				defaultStartEndpointRequestTimeout,
+				testCtx.nfsVhostReplicaCount,
+				testCtx.nbsServerReplicaCount,
+				true, // enableEndpointBalancing
+				false,
 			)
 			clientIndex := 0
 			if tc.vmMode {
@@ -2505,11 +2795,26 @@ func TestNodeStageVolumeExpansion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			testCtx := CreateTestContext(t, false, false, false, 1, 1)
 			service := newNodeService(
-				defaultNodeId, defaultCientId, false, testCtx.socketsDir,
-				testCtx.targetFsPathPattern, testCtx.targetBlkPathPattern, testCtx.localFsOverrides,
-				getNbsClients(testCtx.nbsClients), getNfsClients(testCtx.nfsClients),
-				testCtx.nfsLocalClient, testCtx.nfsLocalFilestoreClient, testCtx.mounter,
-				nil, false, defaultStartEndpointRequestTimeout, 1, 1, tc.offline,
+				defaultNodeId,
+				defaultCientId,
+				false,
+				testCtx.socketsDir,
+				testCtx.targetFsPathPattern,
+				testCtx.targetBlkPathPattern,
+				testCtx.localFsOverrides,
+				testCtx.zoneIdToBackendIndex,
+				getNbsClients(testCtx.nbsClients),
+				getNfsClients(testCtx.nfsClients),
+				testCtx.nfsLocalClient,
+				testCtx.nfsLocalFilestoreClient,
+				testCtx.mounter,
+				nil,
+				false,
+				defaultStartEndpointRequestTimeout,
+				1,
+				1,
+				true, // enableEndpointBalancing
+				tc.offline,
 			)
 			ctx := context.Background()
 			client := testCtx.nbsClients[0]
@@ -2597,5 +2902,52 @@ func TestNodeExpandVolumeNotFoundWithoutCapacityRange(t *testing.T) {
 			require.Equal(t, codes.NotFound, status.Code(err), "%v", err)
 			client.AssertExpectations(t)
 		})
+	}
+}
+
+func TestEndpointBalancing(t *testing.T) {
+	for _, backend := range []string{"nbs", "nfs"} {
+		for _, tc := range []struct {
+			name      string
+			enabled   bool
+			wantIndex uint
+		}{
+			{name: "disabled", enabled: false, wantIndex: 0},
+			{name: "enabled", enabled: true, wantIndex: 1},
+		} {
+			t.Run(backend+"/"+tc.name, func(t *testing.T) {
+				service := &nodeService{
+					nbsServerReplicaCount:   2,
+					nfsVhostReplicaCount:    2,
+					enableEndpointBalancing: tc.enabled,
+				}
+				ctx := context.Background()
+				if backend == "nbs" {
+					for i := 0; i < 2; i++ {
+						client := mocks.NewNbsClientMock()
+						if tc.enabled {
+							client.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).
+								Return(&nbs.TListEndpointsResponse{Endpoints: make([]*nbs.TStartEndpointRequest, 1-i)}, nil).Once()
+						}
+						service.nbsClients = append(service.nbsClients, client)
+						defer client.AssertExpectations(t)
+					}
+					index := service.getNbsClientIndex(ctx, "")
+					require.Equal(t, tc.wantIndex, index)
+				} else {
+					for i := 0; i < 2; i++ {
+						client := mocks.NewNfsEndpointClientMock()
+						if tc.enabled {
+							client.On("ListEndpoints", ctx, &nfs.TListEndpointsRequest{}).
+								Return(&nfs.TListEndpointsResponse{Endpoints: make([]*nfs.TEndpointConfig, 1-i)}, nil).Once()
+						}
+						service.nfsClients = append(service.nfsClients, client)
+						defer client.AssertExpectations(t)
+					}
+					index := service.getNfsClientIndex(ctx, "")
+					require.Equal(t, tc.wantIndex, index)
+				}
+			})
+		}
 	}
 }

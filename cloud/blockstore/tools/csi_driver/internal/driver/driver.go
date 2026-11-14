@@ -1,8 +1,11 @@
 package driver
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -50,6 +53,7 @@ type Config struct {
 	VendorVersion                    string
 	VMMode                           bool
 	OfflineResize                    bool
+	EnableEndpointBalancing          bool
 	MonPort                          uint
 	NbsHost                          string
 	NbsPort                          uint
@@ -77,6 +81,7 @@ type Config struct {
 	NbsServerReplicaCountUsed        uint
 	NbsServerReplicaCountTotal       uint
 	FilesystemPrefix                 string
+	ZoneIdConfigPath                 string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -193,10 +198,70 @@ func createClients(cfg Config) (*driverClients, error) {
 	}, nil
 }
 
+func loadZoneMapping(
+	path string,
+	nfsVhostReplicaCountUsed uint,
+	nbsServerReplicaCountUsed uint,
+) (map[string]uint, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var pairs []struct {
+		ZoneID       string `json:"zone_id"`
+		BackendIndex uint   `json:"backend_index"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&pairs); err != nil {
+		return nil, err
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("unexpected data after zone mapping")
+	}
+
+	result := make(map[string]uint, len(pairs))
+	for _, pair := range pairs {
+		if _, exists := result[pair.ZoneID]; exists {
+			return nil, fmt.Errorf("duplicate zone_id %q", pair.ZoneID)
+		}
+		if pair.BackendIndex >= nfsVhostReplicaCountUsed {
+			return nil, fmt.Errorf("zone_id %q: backend_index %d must be less than NfsVhostReplicaCountUsed %d",
+				pair.ZoneID, pair.BackendIndex, nfsVhostReplicaCountUsed)
+		}
+		if pair.BackendIndex >= nbsServerReplicaCountUsed {
+			return nil, fmt.Errorf("zone_id %q: backend_index %d must be less than NbsServerReplicaCountUsed %d",
+				pair.ZoneID, pair.BackendIndex, nbsServerReplicaCountUsed)
+		}
+		result[pair.ZoneID] = pair.BackendIndex
+	}
+	return result, nil
+}
+
 func NewDriver(cfg Config) (*Driver, error) {
+	if cfg.ZoneIdConfigPath != "" && cfg.EnableEndpointBalancing {
+		return nil, fmt.Errorf("ZoneIdConfigPath and EnableEndpointBalancing cannot be used together")
+	}
+
 	externalFsOverrides, err := LoadExternalFsOverrides(cfg.LocalFilestoreOverridePath)
 	if err != nil {
 		return nil, err
+	}
+
+	zoneIdToBackendIndex := make(map[string]uint)
+	if cfg.ZoneIdConfigPath != "" {
+		zoneIdToBackendIndex, err = loadZoneMapping(
+			cfg.ZoneIdConfigPath,
+			cfg.NfsVhostReplicaCountUsed,
+			cfg.NbsServerReplicaCountUsed,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load zone mapping: %v", err)
+		}
 	}
 
 	// Ensure StartEndpointRequestTimeout is set to a value less than
@@ -287,6 +352,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 			NodeFsTargetPathPattern,
 			NodeBlkTargetPathPattern,
 			externalFsOverrides,
+			zoneIdToBackendIndex,
 			clients.nbsClients,
 			clients.nfsEndpointClients,
 			clients.nfsLocalEndpointClient,
@@ -297,6 +363,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 			cfg.StartEndpointRequestTimeout,
 			cfg.NfsVhostReplicaCountUsed,
 			cfg.NbsServerReplicaCountUsed,
+			cfg.EnableEndpointBalancing,
 			cfg.OfflineResize,
 		))
 

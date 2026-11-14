@@ -51,6 +51,7 @@ const backendVolumeContextKey = "backend"
 const deviceNameVolumeContextKey = "deviceName"
 const requestQueuesCountVolumeContextKey = "requestQueuesCount"
 const instanceIdKey = "instanceId"
+const zoneIdVolumeContextKey = "zoneId"
 
 const defaultVhostQueuesCount = uint32(8)
 const maxQueuesCount = 65536
@@ -174,13 +175,14 @@ func readVhostSettings(volumeContext map[string]string) (vhostSettings, error) {
 type nodeService struct {
 	csi.NodeServer
 
-	nodeId              string
-	clientId            string
-	vmMode              bool
-	socketsDir          string
-	targetFsPathRegexp  *regexp.Regexp
-	targetBlkPathRegexp *regexp.Regexp
-	externalFsOverrides ExternalFsOverrideMap
+	nodeId               string
+	clientId             string
+	vmMode               bool
+	socketsDir           string
+	targetFsPathRegexp   *regexp.Regexp
+	targetBlkPathRegexp  *regexp.Regexp
+	externalFsOverrides  ExternalFsOverrideMap
+	zoneIdToBackendIndex map[string]uint
 
 	nbsClients              []nbsclient.ClientIface
 	nfsClients              []nfsclient.EndpointClientIface
@@ -195,6 +197,7 @@ type nodeService struct {
 	nfsVhostReplicaCount        uint
 	nbsServerReplicaCount       uint
 	offlineResize               bool
+	enableEndpointBalancing     bool
 }
 
 func newNodeService(
@@ -205,6 +208,7 @@ func newNodeService(
 	targetFsPathPattern string,
 	targetBlkPathPattern string,
 	externalFsOverrides ExternalFsOverrideMap,
+	zoneIdToBackendIndex map[string]uint,
 	nbsClients []nbsclient.ClientIface,
 	nfsClients []nfsclient.EndpointClientIface,
 	nfsLocalClient nfsclient.EndpointClientIface,
@@ -215,6 +219,7 @@ func newNodeService(
 	startEndpointRequestTimeout time.Duration,
 	nfsVhostReplicaCount uint,
 	nbsServerReplicaCount uint,
+	enableEndpointBalancing bool,
 	offlineResize bool) csi.NodeServer {
 
 	return &nodeService{
@@ -230,6 +235,7 @@ func newNodeService(
 		targetFsPathRegexp:          regexp.MustCompile(targetFsPathPattern),
 		targetBlkPathRegexp:         regexp.MustCompile(targetBlkPathPattern),
 		externalFsOverrides:         externalFsOverrides,
+		zoneIdToBackendIndex:        zoneIdToBackendIndex,
 		volumeOps:                   new(sync.Map),
 		mountOptions:                mountOptions,
 		useDiscardForYDBBasedDisks:  useDiscardForYDBBasedDisks,
@@ -237,6 +243,7 @@ func newNodeService(
 		nfsVhostReplicaCount:        nfsVhostReplicaCount,
 		nbsServerReplicaCount:       nbsServerReplicaCount,
 		offlineResize:               offlineResize,
+		enableEndpointBalancing:     enableEndpointBalancing,
 	}
 }
 
@@ -310,9 +317,9 @@ func (s *nodeService) NodeStageVolume(
 					clientIndex := uint(0)
 					if nfsBackend {
 						backend = "nfs"
-						clientIndex = s.getNfsClientIndex(ctx)
+						clientIndex = s.getNfsClientIndex(ctx, req.VolumeContext[zoneIdVolumeContextKey])
 					} else {
-						clientIndex = s.getNbsClientIndex(ctx)
+						clientIndex = s.getNbsClientIndex(ctx, req.VolumeContext[zoneIdVolumeContextKey])
 					}
 					stageData = &StageData{
 						Backend:       backend,
@@ -425,10 +432,29 @@ func (s *nodeService) NodeUnstageVolume(
 	return &csi.NodeUnstageVolumeResponse{}, nil
 }
 
-func (s *nodeService) getNbsClientIndex(ctx context.Context) uint {
+func (s *nodeService) getBackendIndexByZoneId(zoneId string) uint {
+	backendIndex, found := s.zoneIdToBackendIndex[zoneId]
+	if !found {
+		// return 0 if zoneId is not found in the map, as a default backend index
+		return 0
+	}
+
+	return backendIndex
+}
+
+func (s *nodeService) getNbsClientIndex(ctx context.Context, zoneId string) uint {
 	if s.nbsServerReplicaCount < 2 {
 		return 0
 	}
+
+	if len(s.zoneIdToBackendIndex) > 0 {
+		return s.getBackendIndexByZoneId(zoneId)
+	}
+
+	if !s.enableEndpointBalancing {
+		return 0
+	}
+
 	endpointsCount := math.MaxInt32
 	nbsClientIndex := uint(0)
 	for index := uint(0); index < s.nbsServerReplicaCount; index++ {
@@ -447,10 +473,19 @@ func (s *nodeService) getNbsClientIndex(ctx context.Context) uint {
 	return nbsClientIndex
 }
 
-func (s *nodeService) getNfsClientIndex(ctx context.Context) uint {
+func (s *nodeService) getNfsClientIndex(ctx context.Context, zoneId string) uint {
 	if s.nfsVhostReplicaCount < 2 {
 		return 0
 	}
+
+	if len(s.zoneIdToBackendIndex) > 0 {
+		return s.getBackendIndexByZoneId(zoneId)
+	}
+
+	if !s.enableEndpointBalancing {
+		return 0
+	}
+
 	endpointsCount := math.MaxInt32
 	nfsClientIndex := uint(0)
 	for index := uint(0); index < s.nfsVhostReplicaCount; index++ {
