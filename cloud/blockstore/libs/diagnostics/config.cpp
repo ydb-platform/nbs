@@ -312,6 +312,9 @@ TVolumePerfSettings GetPerfSettings(
         case NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP: {
             return config.GetHddPerfSettings();
         }
+        default: {
+            return {};
+        }
     }
 }
 
