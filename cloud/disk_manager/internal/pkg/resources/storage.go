@@ -186,6 +186,24 @@ type Storage interface {
 		deletingAt time.Time,
 	) (*DiskMeta, error)
 
+	// Registers cleanupID as a holder of the disk ID reservation. Returns false
+	// if there is nothing to clean up: the disk is not a tombstone (or a legacy
+	// placeholder created by deleteTaskID).
+	PrepareDiskCleanup(
+		ctx context.Context,
+		diskID string,
+		deleteTaskID string,
+		cleanupID string,
+	) (bool, error)
+
+	// Releases reservation of cleanupID within tx.
+	CompleteDiskCleanup(
+		ctx context.Context,
+		tx *persistence.Transaction,
+		diskID string,
+		cleanupID string,
+	) error
+
 	DiskDeleted(ctx context.Context, diskID string, deletedAt time.Time) error
 
 	ClearDeletedDisks(ctx context.Context, deletedBefore time.Time, limit int) error
