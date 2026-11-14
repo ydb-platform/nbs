@@ -39,7 +39,7 @@ Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
     Y_UNIT_TEST(ShouldKeepSingleInputAndUnboundedQueries)
     {
         const TVector<TProfileLogFile> single = {
-            {"/missing", Time(2000), Time(1000)}};
+            {"/missing", Time(1000), Time(2000)}};
         AssertPaths(
             SelectProfileLogFiles(single, Time(3000), {}),
             {"/missing"});
@@ -49,7 +49,7 @@ Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
             {"/missing"});
         AssertPaths(
             SelectProfileLogFiles(
-                {{"/first", Time(1000)}, {"/last", Time(2000)}},
+                {{"/first", {}, Time(1000)}, {"/last", {}, Time(2000)}},
                 {},
                 {}),
             {"/first", "/last"});
@@ -59,8 +59,8 @@ Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
     Y_UNIT_TEST(ShouldSelectUsingCachedBoundsWithoutOpeningFiles)
     {
         const TVector<TProfileLogFile> files = {
-            {"/missing/first", Time(2000), Time(1000)},
-            {"/missing/last", Time(4000), Time(3000)}};
+            {"/missing/first", Time(1000), Time(2000)},
+            {"/missing/last", Time(3000), Time(4000)}};
         AssertPaths(
             SelectProfileLogFiles(files, Time(1500), Time(1600)),
             {"/missing/first"});

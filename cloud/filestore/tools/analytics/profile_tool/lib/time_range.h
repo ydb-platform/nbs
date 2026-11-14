@@ -12,8 +12,8 @@ namespace NCloud::NFileStore::NProfileTool {
 struct TProfileLogFile
 {
     TString Path;
+    TMaybe<TInstant> StartTime;
     TMaybe<TInstant> EndTime;
-    TMaybe<TInstant> StartTime = {};
 };
 
 // Leave bounds unknown unless readRecords requests boundary-frame probing.

@@ -96,7 +96,7 @@ Y_UNIT_TEST_SUITE(TMaskSensitiveData)
 
         TMaskSensitiveData mask(TMaskSensitiveData::EMode::Hash, "seed", 0);
         mask.MaskSensitiveData(
-            TVector<TProfileLogFile>{{first.Name(), {}}, {second.Name(), {}}},
+            TVector<TProfileLogFile>{{first.Name(), {}, {}}, {second.Name(), {}, {}}},
             output.Name());
 
         NEventLog::TOptions options;

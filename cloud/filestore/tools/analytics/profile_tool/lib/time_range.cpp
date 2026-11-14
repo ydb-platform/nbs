@@ -125,7 +125,7 @@ TMaybe<TRecordBounds> ReadBoundaryFrame(
 
 TProfileLogFile GetProfileLogFile(const TString& path, bool readRecords)
 {
-    TProfileLogFile file{path, {}};
+    TProfileLogFile file{path, {}, {}};
     if (!readRecords) {
         return file;
     }
