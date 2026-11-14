@@ -198,6 +198,8 @@ void TPartitionActor::HandleAddFreshBlocks(
 {
     auto* msg = ev->Get();
     ui64 removedBlocksCount = 0;
+    // Commit ids of fresh blobs whose last remaining block this write
+    // overwrote.
     TVector<ui64> deadCommitIds;
 
     STORAGE_VERIFY(

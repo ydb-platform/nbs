@@ -106,7 +106,11 @@ class TPartitionActor final
 
     enum class ETrimFreshLogKind
     {
+        // Nothing to trim yet.
         None,
+        // A hard barrier on the fresh channels at TrimFreshLogToCommitId, the
+        // highest commit id below every live fresh blob. Every fresh blob at or
+        // below it is dead, so the barrier deletes all of them.
         Ordinary,
     };
 

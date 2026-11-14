@@ -133,6 +133,10 @@ ui64 TPartitionFreshBlobState::GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(
     return OrdinaryTrimmableFreshBlobByteCount;
 }
 
+// A blob is dead once it holds no trim barrier reference, i.e. all its blocks
+// were flushed or overwritten. Only dead blobs may be trimmed.
+//
+// Checks the Dead flags against liveCommitIds and the cached byte counts.
 bool TPartitionFreshBlobState::CheckDeadFreshBlobByteCount(
     const TVector<ui64>& liveCommitIds) const
 {
