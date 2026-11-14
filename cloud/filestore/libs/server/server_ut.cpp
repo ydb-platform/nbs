@@ -39,6 +39,26 @@ namespace {
 
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 
+struct TTestProfileLog final
+    : IProfileLog
+{
+    TPromise<TRecord> Record = NewPromise<TRecord>();
+
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
+    void Write(TRecord record) override
+    {
+        Record.TrySetValue(std::move(record));
+    }
+
+    void RegisterCounters(NMonitoring::TDynamicCounters&) override
+    {}
+};
+
 ICertificateProviderPtr CreateServerCertificateProvider(
     const TServerConfigPtr& config,
     ILoggingServicePtr /*logging*/)
@@ -237,7 +257,8 @@ struct TServerSetup
         ILoggingServicePtr logging,
         IRequestStatsPtr requestStats,
         NMonitoring::TDynamicCountersPtr counters,
-        IFileStoreServicePtr service)
+        IFileStoreServicePtr service,
+        IProfileLogPtr profileLog)
     {
         auto certificateProvider = CreateServerCertificateProvider(
             config,
@@ -247,7 +268,7 @@ struct TServerSetup
             std::move(logging),
             std::move(requestStats),
             std::move(counters),
-            CreateProfileLogStub(),
+            std::move(profileLog),
             CreateSchedulerStub(),
             std::move(service),
             std::move(certificateProvider));
@@ -279,7 +300,8 @@ struct TVHostSetup
         ILoggingServicePtr logging,
         IRequestStatsPtr requestStats,
         NMonitoring::TDynamicCountersPtr counters,
-        IEndpointManagerPtr service)
+        IEndpointManagerPtr service,
+        IProfileLogPtr /*profileLog*/)
     {
         auto certificateProvider = CreateServerCertificateProvider(
             config,
@@ -312,7 +334,8 @@ struct TBootstrap
 public:
     TBootstrap(
             const NProto::TServerConfig& serverConfig = {},
-            std::shared_ptr<TLogBackendControlPlaneCollector> logBackend = nullptr)
+            std::shared_ptr<TLogBackendControlPlaneCollector> logBackend = nullptr,
+            IProfileLogPtr profileLog = CreateProfileLogStub())
         : Counters{MakeIntrusive<NMonitoring::TDynamicCounters>()}
         , Logging{logBackend ? CreateLoggingService(logBackend) : CreateLoggingService("console")}
         , Service{std::make_shared<typename TSetup::TService>()}
@@ -335,7 +358,8 @@ public:
             Logging,
             registry->GetRequestStats(),
             Counters,
-            Service);
+            Service,
+            std::move(profileLog));
 
         CreateClient();
     }
@@ -443,6 +467,57 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         const auto& response = future.GetValue(WaitTimeout);
         UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldLogServerRequestStartTimestamp)
+    {
+        auto profileLog = std::make_shared<TTestProfileLog>();
+        TBootstrap<TServerSetup> bootstrap({}, nullptr, profileLog);
+
+        auto handlerStarted = NewPromise<TInstant>();
+        auto serviceResponse = NewPromise<NProto::TListNodesResponse>();
+        bootstrap.Service->ListNodesHandler =
+            [handlerStarted, serviceResponse](auto, auto) mutable
+        {
+            handlerStarted.SetValue(TInstant::Now());
+            return serviceResponse.GetFuture();
+        };
+        bootstrap.Start();
+
+        auto request = std::make_shared<NProto::TListNodesRequest>();
+        request->SetFileSystemId("fs");
+        request->SetNodeId(123);
+        request->SetMaxBytes(1000);
+
+        const auto beforeRequest = TInstant::Now();
+        auto future = bootstrap.Clients[0]->ListNodes(
+            MakeIntrusive<TCallContext>("fs"),
+            std::move(request));
+        const auto started = handlerStarted.GetFuture().GetValue(WaitTimeout);
+
+        // Complete only after observing the service call, so a completion-time
+        // timestamp cannot satisfy the request-start bounds below.
+        NProto::TListNodesResponse response;
+        response.AddNames("node");
+        serviceResponse.SetValue(std::move(response));
+        const auto& result = future.GetValue(WaitTimeout);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+
+        const auto& record =
+            profileLog->Record.GetFuture().GetValue(WaitTimeout);
+        const auto timestamp =
+            TInstant::MicroSeconds(record.Request.GetTimestampMcs());
+        UNIT_ASSERT_C(timestamp >= beforeRequest, timestamp);
+        UNIT_ASSERT_C(timestamp <= started, timestamp);
+        UNIT_ASSERT_VALUES_EQUAL("fs", record.FileSystemId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(EFileStoreRequest::ListNodes),
+            record.Request.GetRequestType());
+        UNIT_ASSERT(record.Request.HasDurationMcs());
+        const auto& info = record.Request.GetListNodesInfo();
+        UNIT_ASSERT_VALUES_EQUAL(123, info.GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(1000, info.GetMaxBytes());
+        UNIT_ASSERT_VALUES_EQUAL(1, info.GetNameCount());
     }
 
     Y_UNIT_TEST(CheckLoggingPriority)
