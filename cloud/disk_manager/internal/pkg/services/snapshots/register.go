@@ -36,23 +36,20 @@ func RegisterForExecution(
 		exportConfig = exportConfigs[0]
 	}
 
-	registerExport := taskRegistry.Register
 	if exportConfig != nil {
-		registerExport = taskRegistry.RegisterForExecution
-	}
-
-	err := registerExport(
-		"snapshots.ExportSnapshot",
-		func() tasks.Task {
-			return &exportSnapshotTask{
-				scheduler: taskScheduler,
-				storage:   storage,
-				config:    exportConfig,
-			}
-		},
-	)
-	if err != nil {
-		return err
+		err := taskRegistry.RegisterForExecution(
+			"snapshots.ExportSnapshot",
+			func() tasks.Task {
+				return &exportSnapshotTask{
+					scheduler: taskScheduler,
+					storage:   storage,
+					config:    exportConfig,
+				}
+			},
+		)
+		if err != nil {
+			return err
+		}
 	}
 
 	deletedSnapshotExpirationTimeout, err := time.ParseDuration(
