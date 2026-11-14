@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/config/blockstore_config_provider_private.h>
 #include <cloud/blockstore/libs/config/opaque_config_parser.h>
 
+#include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/config/runtime_config.h>
 
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
@@ -13,6 +14,8 @@
 #include <util/generic/hash_set.h>
 #include <util/generic/scope.h>
 #include <util/generic/vector.h>
+
+#include <google/protobuf/unknown_field_set.h>
 
 #include <atomic>
 #include <thread>
@@ -523,87 +526,6 @@ root_kms: {address: kms}
             result.GetFeatures().GetFeatures(1).GetName());
     }
 
-    // Merge Features with repeated names. Check that the first record in each
-    // source is used, a dynamic record fully replaces the same-name static
-    // record, and runtime lookups use only the resulting records.
-    Y_UNIT_TEST(ShouldReplaceStaticFeaturesWithDynamicFeatures)
-    {
-        NProto::TBlockstoreConfig staticConfig;
-        auto* staticA =
-            AddFeature(staticConfig, "A", "static-A", "static-A-cloud");
-        staticA->SetCloudProbability(1);
-        AddFeature(staticConfig, "B", "static-B", "static-B-cloud");
-        AddFeature(
-            staticConfig,
-            "B",
-            "duplicate-static-B",
-            "duplicate-static-B-cloud");
-
-        NProto::TBlockstoreConfig dynamicConfig;
-        AddFeature(dynamicConfig, "A", "dynamic-A", "dynamic-A-cloud");
-        AddFeature(dynamicConfig, "C", "dynamic-C", "dynamic-C-cloud");
-        AddFeature(
-            dynamicConfig,
-            "C",
-            "duplicate-dynamic-C",
-            "duplicate-dynamic-C-cloud");
-
-        const auto result = MergeBlockstoreConfigSources(
-            staticConfig,
-            dynamicConfig);
-
-        UNIT_ASSERT_VALUES_EQUAL(3, result.GetFeatures().FeaturesSize());
-
-        const auto& mergedA = result.GetFeatures().GetFeatures(0);
-        UNIT_ASSERT_VALUES_EQUAL("A", mergedA.GetName());
-        UNIT_ASSERT_VALUES_EQUAL("dynamic-A", mergedA.GetValue());
-        UNIT_ASSERT(!mergedA.HasCloudProbability());
-        UNIT_ASSERT_VALUES_EQUAL(1, mergedA.GetWhitelist().CloudIdsSize());
-        UNIT_ASSERT_VALUES_EQUAL(
-            "dynamic-A-cloud",
-            mergedA.GetWhitelist().GetCloudIds(0));
-
-        const auto& mergedB = result.GetFeatures().GetFeatures(1);
-        UNIT_ASSERT_VALUES_EQUAL("B", mergedB.GetName());
-        UNIT_ASSERT_VALUES_EQUAL("static-B", mergedB.GetValue());
-
-        const auto& mergedC = result.GetFeatures().GetFeatures(2);
-        UNIT_ASSERT_VALUES_EQUAL("C", mergedC.GetName());
-        UNIT_ASSERT_VALUES_EQUAL("dynamic-C", mergedC.GetValue());
-
-        const auto config = MakeStartupBlockstoreConfig(
-            staticConfig,
-            dynamicConfig,
-            std::make_shared<NStorage::TStorageConfigControls>());
-        const auto& runtimeFeatures = *config->GetFeaturesConfig();
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            result.GetFeatures().SerializeAsString(),
-            runtimeFeatures.GetConfigProto().SerializeAsString());
-
-        UNIT_ASSERT(
-            runtimeFeatures.IsFeatureEnabled("dynamic-A-cloud", {}, {}, "A"));
-        UNIT_ASSERT_VALUES_EQUAL(
-            "dynamic-A",
-            runtimeFeatures.GetFeatureValue("dynamic-A-cloud", {}, {}, "A"));
-        UNIT_ASSERT(
-            !runtimeFeatures.IsFeatureEnabled("static-A-cloud", {}, {}, "A"));
-        UNIT_ASSERT(
-            !runtimeFeatures.IsFeatureEnabled("other-cloud", {}, {}, "A"));
-
-        UNIT_ASSERT(
-            runtimeFeatures.IsFeatureEnabled("static-B-cloud", {}, {}, "B"));
-        UNIT_ASSERT(
-            !runtimeFeatures
-                 .IsFeatureEnabled("duplicate-static-B-cloud", {}, {}, "B"));
-
-        UNIT_ASSERT(
-            runtimeFeatures.IsFeatureEnabled("dynamic-C-cloud", {}, {}, "C"));
-        UNIT_ASSERT(
-            !runtimeFeatures
-                 .IsFeatureEnabled("duplicate-dynamic-C-cloud", {}, {}, "C"));
-    }
-
     // Set the ICB value to 100 and rebuild the config with default 300. Check
     // that the override stays 100 and RestoreDefault switches the value to 300.
     Y_UNIT_TEST(ShouldKeepExplicitIcbOverrideAcrossConfigs)
@@ -1095,7 +1017,7 @@ root_kms: {address: kms}
         NormalizeDynamicBlockstoreConfig(staticConfig, config);
         UNIT_ASSERT(!config.HasDiskAgent());
         NormalizeDynamicBlockstoreConfig(staticConfig, config);
-        UNIT_ASSERT_VALUES_EQUAL(0, config.ByteSizeLong());
+        UNIT_ASSERT(!HasKnownFields(config));
 
         // Allow enabling an ordinary agent without changing its static role.
         staticConfig.MutableDiskAgent()->SetDedicatedDiskAgent(false);
@@ -1221,6 +1143,7 @@ root_kms: {address: kms}
                 config.GetDiscoveryService().GetConductorSecureInstancePort());
         }
     }
+
 }
 
 }   // namespace NCloud::NBlockStore

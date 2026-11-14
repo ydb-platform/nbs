@@ -10,6 +10,7 @@ path and reason for each rejected change to the runtime configuration.
 #include "runtime_config.h"
 
 #include <cloud/storage/core/config/markers.pb.h>
+#include <cloud/storage/core/libs/common/proto_helpers.h>
 
 #include <util/generic/hash_set.h>
 #include <util/generic/scope.h>
@@ -103,15 +104,6 @@ void DiscardUnknownFields(Message& message)
             }
         }
     }
-}
-
-// Check whether a message has no known fields set.
-// Require unknown fields to have been removed.
-bool IsMessageEmpty(const Message& message)
-{
-    std::vector<const FieldDescriptor*> fields;
-    message.GetReflection()->ListFields(message, &fields);
-    return fields.empty();
 }
 
 // Record the reason for each rejected change for lookup by schema path.
@@ -327,7 +319,7 @@ void FilterSingularMessageField(
     const auto previousCount = context.Diagnostics.IgnoredPaths.size();
     auto* nested = reflection->MutableMessage(&runtime, &field);
     const bool requestedEmpty =
-        mode == EUpdateMode::Fields && IsMessageEmpty(*nested);
+        mode == EUpdateMode::Fields && !HasKnownFields(*nested);
 
     // Recurse with the matching messages and the same path and diagnostics.
     TMessageFilterContext childContext{
@@ -372,7 +364,7 @@ void FilterSingularMessageField(
         const bool fieldCanBeCleared =
             !field.real_containing_oneof() &&
             (!field.is_required() || !requestedPresent) &&
-            IsMessageEmpty(*nested) &&
+            !HasKnownFields(*nested) &&
             (!requestedPresent || (!requestedEmpty && !initialPresent));
 
         if (fieldCanBeCleared) {

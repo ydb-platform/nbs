@@ -10,6 +10,7 @@ Repeated values are aligned by index and map values by key across sources.
 #include "configs_manager_renderer.h"
 
 #include <cloud/storage/core/config/markers.pb.h>
+#include <cloud/storage/core/libs/common/proto_helpers.h>
 
 #include <contrib/ydb/core/cms/console/http.h>
 
@@ -22,7 +23,6 @@ Repeated values are aligned by index and map values by key across sources.
 #include <util/string/builder.h>
 #include <util/string/cast.h>
 #include <util/string/escape.h>
-#include <util/system/compiler.h>
 
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
@@ -32,7 +32,6 @@ Repeated values are aligned by index and map values by key across sources.
 #include <array>
 #include <optional>
 #include <utility>
-#include <vector>
 
 namespace NCloud::NBlockStore {
 
@@ -89,10 +88,14 @@ TStringBuf GetUpdateStatusName(EConfigUpdateStatus status)
     switch (status) {
         case EConfigUpdateStatus::Startup:
             return "startup";
+        case EConfigUpdateStatus::StartupPartiallyApplied:
+            return "startup (partially applied)";
         case EConfigUpdateStatus::Runtime:
             return "runtime";
         case EConfigUpdateStatus::RuntimeUnchanged:
             return "runtime (unchanged)";
+        case EConfigUpdateStatus::RuntimePartiallyApplied:
+            return "runtime (partially applied)";
     }
     return "<error>";
 }
@@ -176,18 +179,6 @@ GetMessage(const Message* message, const FieldDescriptor* field, int index = -1)
                : &reflection->GetMessage(*message, field);
 }
 
-// Check whether a present message has no explicitly set known fields.
-bool IsMessageEmpty(const Message* message)
-{
-    if (!message) {
-        return false;
-    }
-
-    std::vector<const FieldDescriptor*> fields;
-    message->GetReflection()->ListFields(*message, &fields);
-    return fields.empty();
-}
-
 // Format enum names with their numbers and label undeclared values.
 TString FormatEnumValue(
     const google::protobuf::EnumDescriptor& enumType,
@@ -223,7 +214,8 @@ GetValue(const Message* message, const FieldDescriptor* field, int index = -1)
     }
 
     if (field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE) {
-        return IsMessageEmpty(GetMessage(message, field, index))
+        const auto* nested = GetMessage(message, field, index);
+        return nested && !HasKnownFields(*nested)
                    ? std::optional<TString>("{}")
                    : std::nullopt;
     }
@@ -274,8 +266,7 @@ bool IsDeferred(
     TStringBuf path,
     const NConfig::TRuntimeConfigDiagnostics& diagnostics)
 {
-    for (const auto& [ignoredPath, reason]: diagnostics.IgnoredPaths) {
-        Y_UNUSED(reason);
+    for (const auto& [ignoredPath, _]: diagnostics.IgnoredPaths) {
         // Collections are terminal schema paths; mark every displayed element.
         if (ignoredPath.EndsWith("[]")) {
             if (path.StartsWith(TStringBuf(ignoredPath).Chop(1))) {
@@ -355,8 +346,7 @@ ui32 CountPendingRestart(
 {
     const TString prefix = TStringBuilder() << section << '.';
     ui32 count = 0;
-    for (const auto& [path, reason]: diagnostics.IgnoredPaths) {
-        Y_UNUSED(reason);
+    for (const auto& [path, _]: diagnostics.IgnoredPaths) {
         count += path == section || path.StartsWith(prefix);
     }
     return count;
@@ -386,7 +376,8 @@ bool RenderNestedMessage(
     for (size_t source = 0; source != sources.size(); ++source) {
         children[source] = GetMessage(sources[source], field, index);
         // Ignore empty top-level sections created by BuildEffectiveConfig.
-        hasEmptyMessage |= IsMessageEmpty(children[source]) &&
+        hasEmptyMessage |= children[source] &&
+                           !HasKnownFields(*children[source]) &&
                            (source != EffectiveSource ||
                             field->containing_type() !=
                                 NProto::TBlockstoreConfig::descriptor());
@@ -398,8 +389,8 @@ bool RenderNestedMessage(
 
     // Retain empty source cells even when another source has populated fields.
     if (hasEmptyMessage) {
-        counts.Dynamic +=
-            IsMessageEmpty(children[context.CurrentDynamicSource]);
+        const auto* dynamicMessage = children[context.CurrentDynamicSource];
+        counts.Dynamic += dynamicMessage && !HasKnownFields(*dynamicMessage);
         RenderField(out, sources, field, path, context, std::nullopt, index);
     }
 
@@ -628,7 +619,8 @@ TString TBlockstoreConfigRenderer::RenderHtml(
 {
     const auto effectiveConfig = BuildEffectiveConfig(config);
     const bool hasRuntimeUpdate =
-        Data.UpdateStatus != EConfigUpdateStatus::Startup;
+        Data.UpdateStatus != EConfigUpdateStatus::Startup &&
+        Data.UpdateStatus != EConfigUpdateStatus::StartupPartiallyApplied;
     const TMessages sources = {
         &staticConfig,
         &Data.StartupDynamicConfig,

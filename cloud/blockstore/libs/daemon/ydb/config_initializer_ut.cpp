@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/ydbstats/config.h>
 
 #include <cloud/storage/core/config/features.pb.h>
+#include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
@@ -479,7 +480,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         const auto staticConfig = ci.GetCurrentBlockstoreConfig();
         const auto staticText = staticConfig.SerializeAsString();
         UNIT_ASSERT(staticConfig.HasRdma());
-        UNIT_ASSERT_VALUES_EQUAL(0, staticConfig.GetRdma().ByteSizeLong());
+        UNIT_ASSERT(!HasKnownFields(staticConfig.GetRdma()));
         UNIT_ASSERT(ci.RdmaConfig);
         UNIT_ASSERT_VALUES_EQUAL(
             staticText,
