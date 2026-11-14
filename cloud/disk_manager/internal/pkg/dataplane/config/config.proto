@@ -50,6 +50,11 @@ message DataplaneConfig {
     // bucket at the same time.
     optional uint32 BackupChunksTaskIoDepth = 24 [default = 10];
 
+    // Do not zero the ranges of zero chunks when restoring a disk from backup.
+    // Correct only if every destination disk already reads as zeros there: an
+    // empty disk created without a source and never written.
+    optional bool TransferFromBackupToDiskIgnoreZeroChunks = 25 [default = false];
+
     optional string DeleteBackupChunksTaskScheduleInterval = 26 [default = "10s"];
     // Number of chunks taken from the backup chunk delete queue at a time to
     // be deleted from the follower bucket.
