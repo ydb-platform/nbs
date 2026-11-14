@@ -145,11 +145,28 @@ void TStatsServiceActor::HandleGetVolumeStats(
     const TActorContext& ctx)
 {
     for (auto& v: ev->Get()->VolumeStats) {
-        if (v.GetHost()) {
-            const auto* volume = State.GetVolume(v.GetDiskId());
-            if (!volume) {
-                v.SetIsLocal(false);
+        if (!v.GetHost()) {
+            continue;
+        }
+
+        const auto& diskId = v.GetDiskId();
+        // TStatsServiceState::GetVolume returns the same
+        // TVolumeStatsInfo-object for disk and its copy
+        if (auto* volume = State.GetVolume(diskId)) {
+            auto& rdStats = volume->RealDiskStats;
+
+            if (auto it = rdStats.find(diskId); it != rdStats.end()) {
+                auto& counters = it->second.BlobLoadCountersDiff;
+
+                v.SetReadBlobCount(counters.ReadBlob.Count);
+                v.SetReadBlobBytes(counters.ReadBlob.Bytes);
+                v.SetWriteBlobCount(counters.WriteBlob.Count);
+                v.SetWriteBlobBytes(counters.WriteBlob.Bytes);
+
+                counters.Reset();
             }
+        } else {
+            v.SetIsLocal(false);
         }
     }
 

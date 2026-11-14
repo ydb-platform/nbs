@@ -1029,6 +1029,23 @@ struct TVolumeSelfCounters
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TBlobIoCounters
+{
+    struct TCounters
+    {
+        ui64 Count = 0;
+        ui64 Bytes = 0;
+    };
+
+    TCounters ReadBlob;
+    TCounters WriteBlob;
+
+    void Add(const THistogramRequestCounters& counters);
+    void Reset();
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 TPartitionDiskCountersPtr CreatePartitionDiskCounters(
     EPublishingPolicy policy,
     const TDiagnosticsConfig& diagnosticsConfig);

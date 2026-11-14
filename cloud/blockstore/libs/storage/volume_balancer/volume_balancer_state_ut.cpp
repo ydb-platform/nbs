@@ -1,6 +1,7 @@
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_state.h>
+#include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_ut_helpers.h>
 
 #include <cloud/blockstore/libs/diagnostics/volume_balancer_switch.h>
 
@@ -148,6 +149,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
             ),
+            CreateDiagnosticsConfig(),
             CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
@@ -175,6 +177,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
             ),
+            CreateDiagnosticsConfig(),
             CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
@@ -202,6 +205,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
             ),
+            CreateDiagnosticsConfig(),
             CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
@@ -228,7 +232,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             70,
             CreateFeatureConfig("Balancer", {}, true));
 
-        TVolumeBalancerState state(storageConfig, CreateSwitch(true));
+        TVolumeBalancerState state(
+            storageConfig,
+            CreateDiagnosticsConfig(),
+            CreateSwitch(true));
         TInstant now = TInstant::Seconds(0);
 
         {
@@ -276,7 +283,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             70,
             CreateFeatureConfig("Balancer", {{"cloudid1", "folderid1"}}, true));
 
-        TVolumeBalancerState state(storageConfig, CreateSwitch(true));
+        TVolumeBalancerState state(
+            storageConfig,
+            CreateDiagnosticsConfig(),
+            CreateSwitch(true));
 
         TInstant now = TInstant::Seconds(0);
 
@@ -303,7 +313,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             70,
             CreateFeatureConfig("Balancer", {}, true));
 
-        TVolumeBalancerState state(storageConfig, CreateSwitch(true));
+        TVolumeBalancerState state(
+            storageConfig,
+            CreateDiagnosticsConfig(),
+            CreateSwitch(true));
         TInstant now = TInstant::Seconds(0);
 
         {
@@ -369,7 +382,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         auto overlappingPullDelay =
             storageConfig->GetInitialPullDelay() + TDuration::Seconds(10);
 
-        TVolumeBalancerState state(storageConfig, CreateSwitch(true));
+        TVolumeBalancerState state(
+            storageConfig,
+            CreateDiagnosticsConfig(),
+            CreateSwitch(true));
         TInstant now = TInstant::Seconds(0);
 
         // Push vol0
@@ -433,6 +449,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
             ),
+            CreateDiagnosticsConfig(),
             CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
@@ -476,6 +493,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 /*volumeBalancerEnabled=*/true,
                 70,
                 /*featuresConfig=*/nullptr),
+            CreateDiagnosticsConfig(),
             CreateSwitch(true));
         TInstant now = TInstant::Seconds(0);
 
@@ -501,7 +519,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             70,
             /*featuresConfig=*/nullptr);
 
-        TVolumeBalancerState state(storageConfig, CreateSwitch(false));
+        TVolumeBalancerState state(
+            storageConfig,
+            CreateDiagnosticsConfig(),
+            CreateSwitch(false));
         TInstant now = TInstant::Seconds(0);
 
         TVolumeBalancerState::TPerfGuaranteesMap perfMap;
@@ -549,6 +570,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
             ),
+            CreateDiagnosticsConfig(),
             CreateSwitch(true)
         );
 

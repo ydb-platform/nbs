@@ -318,6 +318,9 @@ void TStatsServiceActor::HandleRegisterVolume(
     auto* msg = ev->Get();
 
     auto* volume = State.GetOrAddVolume(msg->DiskId, msg->Config);
+    volume->RealDiskStats[msg->DiskId] = {
+        .VolumeActorId = msg->ActorId,
+        .BlobLoadCountersDiff = {}};
 
     LOG_DEBUG(
         ctx,
@@ -395,6 +398,8 @@ void TStatsServiceActor::HandleUnregisterVolume(
         // Remove registration from the disk when both the main and the copied
         // disk are unregistered.
         volume->RealDiskIds.erase(msg->DiskId);
+        volume->RealDiskStats.erase(msg->DiskId);
+
         volume->VolumeChannelsByDiskId.erase(msg->DiskId);
         if (volume->RealDiskIds.empty()) {
             UnregisterIsLocalMountCounter(AppData(ctx)->Counters, *volume);
@@ -451,6 +456,12 @@ void TStatsServiceActor::UpdateVolumePartCounters(
 
     volume->PerfCounters.DiskCounters.Add(*partCounters.DiskCounters);
     volume->PerfCounters.YdbDiskCounters.Add(*partCounters.DiskCounters);
+
+    if (auto* realDiskStat = volume->RealDiskStats.FindPtr(partCounters.DiskId))
+    {
+        realDiskStat->BlobLoadCountersDiff.Add(
+            partCounters.DiskCounters->RequestCounters);
+    }
 
     State.GetTotalCounters().UpdatePartCounters(*partCounters.DiskCounters);
 

@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 
@@ -39,6 +40,10 @@ class TVolumeBalancerState
 
         ui32 SufferCount = 0;
 
+        // Estimated time to process the reported load statistics with the
+        // configured read/write IOPS and bandwidth
+        std::optional<TDuration> Cost;
+
         TVolumeInfo(TDuration pullInterval);
     };
 
@@ -47,6 +52,7 @@ public:
 
 private:
     TStorageConfigConstPtr StorageConfig;
+    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
 
     ui64 CpuLack = 0;
 
@@ -67,6 +73,7 @@ private:
 public:
     TVolumeBalancerState(
         TStorageConfigConstPtr storageConfig,
+        TDiagnosticsConfigConstPtr diagnosticsConfig,
         IVolumeBalancerSwitchPtr volumeBalancerSwitch);
 
     TString GetVolumeToPush() const;
@@ -126,6 +133,9 @@ private:
         const TString& diskId,
         const TVolumeInfo& volume,
         TInstant now) const;
+
+    std::optional<TDuration> CalculateCostPerIO(
+        const NProto::TVolumeBalancerDiskStats& stats) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

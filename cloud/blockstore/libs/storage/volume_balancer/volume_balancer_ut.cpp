@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer.h>
+#include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_ut_helpers.h>
 
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -459,6 +460,7 @@ IActorPtr CreateVolumeBalancerActor(
         std::make_shared<TStorageConfig>(
             config.Build(),
             featureConf),
+        CreateDiagnosticsConfig(),
         std::move(volumeStats),
         std::move(statsFetcher),
         std::move(volumeBalancerSwitch),
@@ -838,6 +840,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             std::make_shared<TStorageConfig>(
                 config.Build(),
                 CreateFeatureConfig("Balancer", {})),
+            CreateDiagnosticsConfig(),
             testEnv.VolumeStats,
             testEnv.Fetcher,
             CreateVolumeBalancerSwitch(),

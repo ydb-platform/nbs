@@ -137,7 +137,7 @@ void UnregisterVolume(TTestActorRuntime& runtime, const TString& diskId)
             0);
 }
 
-void RegisterVolume(
+TActorId RegisterVolume(
     TTestActorRuntime& runtime,
     const TString& diskId,
     NProto::EStorageMediaKind kind,
@@ -154,11 +154,15 @@ void RegisterVolume(
     volume.SetIsSystem(isSystem);
     volume.SetPartitionsCount(1);
 
+    if (!volumeActorId) {
+        volumeActorId = runtime.AllocateEdgeActor();
+    }
+
     auto registerMsg = std::make_unique<TEvStatsService::TEvRegisterVolume>(
         diskId,
         volumeTabletID,
         std::move(volume),
-        volumeActorId ? volumeActorId : runtime.AllocateEdgeActor(),
+        volumeActorId,
         std::move(channels));
     runtime.Send(
         new IEventHandle(
@@ -168,15 +172,17 @@ void RegisterVolume(
             0, // flags
             0),
             0);
+
+    return volumeActorId;
 }
 
-void RegisterVolume(
+TActorId RegisterVolume(
     TTestActorRuntime& runtime,
     const TString& diskId,
     ui64 volumeTabletId,
     TVector<NKikimr::TTabletChannelInfo> channels = {})
 {
-    RegisterVolume(
+    return RegisterVolume(
         runtime,
         diskId,
         NProto::STORAGE_MEDIA_SSD,
@@ -185,11 +191,11 @@ void RegisterVolume(
         std::move(channels));
 }
 
-void RegisterVolume(
+TActorId RegisterVolume(
     TTestActorRuntime& runtime,
     const TString& diskId)
 {
-    RegisterVolume(runtime, diskId, 0);
+    return RegisterVolume(runtime, diskId, 0);
 }
 
 void PartitionBootExternalCompleted(
@@ -465,9 +471,12 @@ public:
         return std::make_unique<TEvService::TEvUploadClientMetricsRequest>();
     }
 
-    std::unique_ptr<TEvStatsService::TEvGetVolumeStatsRequest> CreateGetVolumeStatsRequest()
+    std::unique_ptr<TEvStatsService::TEvGetVolumeStatsRequest>
+    CreateGetVolumeStatsRequest(
+        TVector<NProto::TVolumeBalancerDiskStats> volumeStats = {})
     {
-        return std::make_unique<TEvStatsService::TEvGetVolumeStatsRequest>();
+        return std::make_unique<TEvStatsService::TEvGetVolumeStatsRequest>(
+            std::move(volumeStats));
     }
 
     std::unique_ptr<TEvStatsServicePrivate::TEvRegisterTrafficSourceRequest>
@@ -2333,6 +2342,145 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             {0},
             EVolumeTestOptions::VOLUME_HASCLIENTS);
         UNIT_ASSERT(counters[0] == 1);
+    }
+
+
+    Y_UNIT_TEST(ShouldAccumulateAndResetBlobLoadForEachRealDisk)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        TStatsServiceClient client(runtime);
+        RegisterVolume(runtime, DefaultDiskId);
+        RegisterVolume(runtime, DefaultCopiedDiskId);
+
+        const auto report =
+            [&](const TString& diskId, ui64 reads, ui64 writes, ui64 patches)
+        {
+            auto counters = CreatePartitionDiskCounters(EPublishingPolicy::Repl,
+                                                        TDiagnosticsConfig{});
+            counters->RequestCounters.ReadBlob.Count = reads;
+            counters->RequestCounters.ReadBlob.RequestBytes = reads * 4096;
+            counters->RequestCounters.WriteBlob.Count = writes;
+            counters->RequestCounters.WriteBlob.RequestBytes = writes * 8192;
+            counters->RequestCounters.PatchBlob.Count = patches;
+            counters->RequestCounters.PatchBlob.RequestBytes = patches * 1024;
+            client.SendRequest(
+                MakeStorageStatsServiceId(),
+                std::make_unique<TEvStatsService::TEvVolumePartCounters>(
+                    MakeIntrusive<TCallContext>(), diskId, std::move(counters),
+                    0, 0, false,
+                    NBlobMetrics::TBlobLoadMetrics{},
+                    NKikimrTabletBase::TMetrics{}));
+        };
+        const auto read = [&](std::initializer_list<TString> diskIds)
+        {
+            TVector<NProto::TVolumeBalancerDiskStats> stats;
+            for (const auto& diskId: diskIds) {
+                auto& volume = stats.emplace_back();
+                volume.SetDiskId(diskId);
+                volume.SetHost("localhost");
+                volume.SetIsLocal(true);
+            }
+            return client.GetVolumeStats(std::move(stats));
+        };
+        const auto assertStats = [](const auto& stats, const TString& diskId,
+                                    ui64 reads, ui64 readBytes, ui64 writes,
+                                    ui64 writeBytes)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(diskId, stats.GetDiskId());
+            UNIT_ASSERT_VALUES_EQUAL(reads, stats.GetReadBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(readBytes, stats.GetReadBlobBytes());
+            UNIT_ASSERT_VALUES_EQUAL(writes, stats.GetWriteBlobCount());
+            UNIT_ASSERT_VALUES_EQUAL(writeBytes, stats.GetWriteBlobBytes());
+        };
+
+        report(DefaultDiskId, 2, 3, 5);
+        report(DefaultCopiedDiskId, 7, 11, 13);
+        report(DefaultDiskId, 17, 19, 23);
+
+        // Accumulate both source reports and count patches as writes.
+        auto response = read({DefaultDiskId});
+        UNIT_ASSERT_VALUES_EQUAL(1, response->VolumeStats.size());
+        assertStats(response->VolumeStats[0], DefaultDiskId, 19, 19 * 4096, 50,
+                    22 * 8192 + 28 * 1024);
+
+        // Reading the source resets only its counters; the copy keeps its load.
+        response = read({DefaultCopiedDiskId, DefaultDiskId});
+        UNIT_ASSERT_VALUES_EQUAL(2, response->VolumeStats.size());
+        assertStats(response->VolumeStats[0], DefaultCopiedDiskId, 7, 7 * 4096,
+                    24, 11 * 8192 + 13 * 1024);
+        assertStats(response->VolumeStats[1], DefaultDiskId, 0, 0, 0, 0);
+
+        response = read({DefaultDiskId, DefaultCopiedDiskId});
+        UNIT_ASSERT_VALUES_EQUAL(2, response->VolumeStats.size());
+        assertStats(response->VolumeStats[0], DefaultDiskId, 0, 0, 0, 0);
+        assertStats(response->VolumeStats[1], DefaultCopiedDiskId, 0, 0, 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldPollOnlyRegisteredRealDisksInPullScheme)
+    {
+        TTestBasicRuntime runtime;
+        NProto::TStorageServiceConfig config;
+        config.SetUsePullSchemeForVolumeStatistics(true);
+        TTestEnv env(
+            runtime,
+            std::move(config),
+            NYdbStats::CreateVolumesStatsUploaderStub());
+        TStatsServiceClient client(runtime);
+
+        const auto diskActor = RegisterVolume(runtime, DefaultDiskId);
+        const auto copyActor = RegisterVolume(runtime, DefaultCopiedDiskId);
+
+        THashMap<TActorId, ui32> requestsByActor;
+        auto requestObserver = runtime.AddObserver<
+            TEvStatsService::TEvGetServiceStatisticsRequest>(
+            [&](auto& ev)
+            {
+                ++requestsByActor[ev->Recipient];
+                runtime.Send(
+                    new IEventHandle(
+                        ev->Sender,
+                        ev->Recipient,
+                        new TEvStatsService::TEvGetServiceStatisticsResponse(),
+                        0,
+                        ev->Cookie),
+                    0);
+                ev.Reset();
+            });
+
+        bool collected = false;
+        auto responseObserver = runtime.AddObserver<
+            TEvStatsService::TEvServiceStatisticsCombined>(
+            [&](auto& ev)
+            {
+                UNIT_ASSERT(!HasError(ev->Get()->Error));
+                collected = true;
+            });
+
+        const auto poll = [&]
+        {
+            requestsByActor.clear();
+            collected = false;
+            client.SendRequest(
+                MakeStorageStatsServiceId(),
+                std::make_unique<TEvents::TEvWakeup>());
+
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&] { return collected; };
+            runtime.DispatchEvents(options, TDuration::Seconds(5));
+            UNIT_ASSERT(collected);
+        };
+
+        poll();
+        UNIT_ASSERT_VALUES_EQUAL(2, requestsByActor.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, requestsByActor.at(diskActor));
+        UNIT_ASSERT_VALUES_EQUAL(1, requestsByActor.at(copyActor));
+
+        // The last registered actor must stop being polled after unregistering.
+        UnregisterVolume(runtime, DefaultCopiedDiskId);
+        poll();
+        UNIT_ASSERT_VALUES_EQUAL(1, requestsByActor.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, requestsByActor.at(diskActor));
     }
 }
 

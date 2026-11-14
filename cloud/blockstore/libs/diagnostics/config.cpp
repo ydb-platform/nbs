@@ -280,6 +280,44 @@ TDuration GetDowntimeThreshold(
     }
 }
 
+TVolumePerfSettings GetPerfSettings(
+    const TDiagnosticsConfig& config,
+    const NCloud::NProto::EStorageMediaKind kind)
+{
+    switch (kind) {
+        case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: {
+            return config.GetNonreplPerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: {
+            return config.GetHddNonreplPerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2: {
+            return config.GetMirror2PerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3: {
+            return config.GetMirror3PerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL: {
+            return config.GetLocalSSDPerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL: {
+            return config.GetLocalHDDPerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD: {
+            return config.GetSsdPerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_HDD:
+        case NCloud::NProto::STORAGE_MEDIA_HYBRID:
+        case NCloud::NProto::STORAGE_MEDIA_DEFAULT:
+        case NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP: {
+            return config.GetHddPerfSettings();
+        }
+        default: {
+            return {};
+        }
+    }
+}
+
 }   // namespace NCloud::NBlockStore
 
 ////////////////////////////////////////////////////////////////////////////////

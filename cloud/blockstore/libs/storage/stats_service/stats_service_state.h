@@ -176,6 +176,13 @@ struct TVolumeStatsInfo
     THashMap<TString, TTabletChannels> VolumeChannelsByDiskId;
     THashMap<ui64, TVector<NKikimr::TTabletChannelInfo>> ChannelInfos;
 
+    struct TRealDiskStatsInfo
+    {
+        NActors::TActorId VolumeActorId;
+        TBlobIoCounters BlobLoadCountersDiff;
+    };
+    THashMap<TString, TRealDiskStatsInfo> RealDiskStats;
+
     TVolumeStatsInfo(
         NProto::TVolume config,
         const TDiagnosticsConfig& diagnosticsConfig)
