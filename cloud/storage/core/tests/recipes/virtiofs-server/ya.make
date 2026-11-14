@@ -3,6 +3,8 @@ PY3_PROGRAM(virtiofs-server-recipe)
 PY_SRCS(__main__.py)
 
 DEPENDS(
+    cloud/filestore/apps/client
+    cloud/filestore/apps/vhost
     cloud/storage/core/tools/testing/virtiofs_server/bin
 )
 

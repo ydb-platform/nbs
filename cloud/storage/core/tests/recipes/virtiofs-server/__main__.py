@@ -1,6 +1,5 @@
 import os
 import logging
-import signal
 import uuid
 import argparse
 
@@ -100,15 +99,8 @@ def stop_server(args, index):
     for tag, _ in _get_mount_paths():
         pid = recipe_get_env("VIRTIOFS_PID_{}".format(tag), index)
         if pid:
-            logger.info("will kill virtiofs-server with pid `%s`", pid)
-            try:
-                os.kill(int(pid), signal.SIGTERM)
-            except ProcessLookupError:
-                logger.info("virtiofs-server pid `%s` already exited", pid)
-                continue
-            except OSError:
-                logger.exception("While killing pid `%s`", pid)
-                raise
+            # Wait for the runner to stop and reap its filestore-vhost child.
+            VirtioFsServer.stop_pid(tag, pid)
 
 
 def _parse_args(argv):
