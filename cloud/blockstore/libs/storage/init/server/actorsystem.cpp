@@ -647,6 +647,12 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             {
                 constexpr ui32 kind =
                     NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem;
+
+                // Preserve an explicit DenyList ban on
+                // PrivateDatabaseConfigItem. In that case:
+                // - only the PrivateDatabaseConfig loaded at startup is then
+                // applied
+                // - ConfigsDispatcher does not deliver its runtime updates
                 AllowConfigItem(kind, &runConfig.ConfigsDispatcherInitInfo);
                 runConfig.ConfigsDispatcherInitInfo.OpaqueConfigParsers.emplace(
                     kind,
