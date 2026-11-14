@@ -135,6 +135,15 @@ message TListEndpointsRequest
     THeaders Headers = 1;
 }
 
+enum EEndpointRestoringState
+{
+    ENDPOINT_RESTORING_STATE_WAITING_FOR_RESTORING = 0;
+    ENDPOINT_RESTORING_STATE_READING_STORAGE = 1;
+    ENDPOINT_RESTORING_STATE_STARTING_ENDPOINTS = 2;
+    ENDPOINT_RESTORING_STATE_COMPLETED = 3;
+    ENDPOINT_RESTORING_STATE_FAILED = 4;
+}
+
 message TListEndpointsResponse
 {
     // Optional error, set only if error happened.
@@ -145,6 +154,12 @@ message TListEndpointsResponse
 
     // Endpoints restoring status.
     bool EndpointsWereRestored = 3;
+
+    // Endpoint restoring stage.
+    EEndpointRestoringState EndpointRestoringState = 4;
+
+    // Number of endpoint restoring errors.
+    uint32 EndpointRestoringErrorCount = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
