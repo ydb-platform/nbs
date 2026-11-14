@@ -258,28 +258,28 @@ Y_UNIT_TEST_SUITE(TVolumeActorUpdateThrottlingConfigTest)
             policy.GetMaxReadBandwidth());
     }
 
-    Y_UNIT_TEST(ShouldApplyLastMatchingFilterRule)
+    Y_UNIT_TEST(ShouldApplyFirstMatchingFilterRule)
     {
         auto runtime = PrepareTestActorRuntime();
         TVolumeClient volume = CreateVolume(*runtime);
 
-        // Send multiple matching filter rules - last (ruleB) should win
+        // Place a narrow filter before a broader matching fallback.
         ui32 version = 1;
         double readBwCoef = 0.5;
         auto ruleA = CreateFilterRule(
             {cloudId},
             {folderId},
             {NProto::STORAGE_MEDIA_HDD},
-            0.3);
+            readBwCoef);
         auto ruleB = CreateFilterRule(
             {cloudId},
-            {folderId},
-            {NProto::STORAGE_MEDIA_HDD},
-            readBwCoef);
+            {},
+            {},
+            0.3);
         SendThrottlingConfig(volume, version, {ruleA, ruleB});
         runtime->DispatchEvents({}, TDuration::Seconds(1));
 
-        // Verify last matching rule applied
+        // Verify that a later matching filter cannot replace the first one.
         const auto& throttlingInfo = GetVolatileThrottlingInfo(volume);
         UNIT_ASSERT_VALUES_EQUAL(version, throttlingInfo.GetVersion());
 
@@ -338,6 +338,29 @@ Y_UNIT_TEST_SUITE(TVolumeActorUpdateThrottlingConfigTest)
 
         const auto& policy = throttlingInfo.GetActualPerformanceProfile();
         UNIT_ASSERT_VALUES_EQUAL(MaxBandwidth, policy.GetMaxReadBandwidth());
+    }
+
+    // Verify that the first matching VolumeThrottling Disks rule wins when
+    // multiple rules include the same disk.
+    Y_UNIT_TEST(ShouldApplyFirstMatchingDiskRule)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume = CreateVolume(*runtime);
+
+        // Send a rule for one disk followed by a rule for a group including it.
+        SendThrottlingConfig(
+            volume,
+            1,
+            {CreateSpecificDisksRule({diskId}, 0.5),
+             CreateSpecificDisksRule({diskId, otherDiskId}, 0.3)});
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        // Check that Volume uses the first rule and its bandwidth coefficient.
+        const auto info = GetVolatileThrottlingInfo(volume);
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxBandwidth * 0.5,
+            info.GetActualPerformanceProfile().GetMaxReadBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(1, info.GetAppliedRule().GetDisks().DiskIdsSize());
     }
 }
 
