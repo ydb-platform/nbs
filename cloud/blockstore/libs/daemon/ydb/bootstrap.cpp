@@ -8,9 +8,8 @@
 #include <cloud/blockstore/libs/cells/impl/cell_manager.h>
 #include <cloud/blockstore/libs/cells/impl/mon.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
-#include <cloud/blockstore/libs/config/blockstore_config.h>
+#include <cloud/blockstore/libs/config/blockstore_config_management.h>
 #include <cloud/blockstore/libs/config/blockstore_config_provider_private.h>
-#include <cloud/blockstore/libs/config/helpers.h>
 #include <cloud/blockstore/libs/config/opaque_config_parser.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -678,33 +677,33 @@ void TBootstrapYdb::InitKikimrService()
 
     auto startupBlockstoreConfigProto = ConfigInitializer->GetCurrentBlockstoreConfig();
     if (ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled()) {
+        auto dynamicConfigCopy = cmsBlockstoreConfig;
         NormalizeDynamicBlockstoreConfig(
             staticBlockstoreConfig,
-            cmsBlockstoreConfig);
+            dynamicConfigCopy);
 
         TBlockstoreConfigExtraParameters extraParameters;
         extraParameters.DiskAgent.Rack = ConfigInitializer->DiskAgentConfig->GetRack();
         extraParameters.DiskAgent.NetworkMbitThroughput =
             ConfigInitializer->DiskAgentConfig->GetNetworkMbitThroughput();
 
-        const auto mergedConfig = MergeBlockstoreConfig(
+        startupBlockstoreConfigProto = MergeBlockstoreConfigSources(
             staticBlockstoreConfig,
-            cmsBlockstoreConfig);
+            dynamicConfigCopy);
         StartupBlockstoreConfig = MakeBlockstoreConfig(
-            mergedConfig,
-            {},
+            startupBlockstoreConfigProto,
             ConfigInitializer->StorageConfigControls,
             std::move(extraParameters));
         ConfigInitializer->StorageConfigControls->UpdateDefaults(
-            mergedConfig.GetStorageService());
+            startupBlockstoreConfigProto.GetStorageService());
 
         STORAGE_INFO(
-            (cmsBlockstoreConfig.ByteSizeLong()
+            (dynamicConfigCopy.ByteSizeLong()
                  ? "Applied startup PrivateDatabaseConfig"
                  : "No startup PrivateDatabaseConfig applied; "
                    "using configuration after CMS"));
     } else {
-        StartupBlockstoreConfig = MakeBlockstoreConfig(
+        StartupBlockstoreConfig = MakeStartupBlockstoreConfig(
             startupBlockstoreConfigProto,
             {},
             *ConfigInitializer->StorageConfig,

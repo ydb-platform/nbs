@@ -16,6 +16,7 @@ namespace NCloud {
     xxx(MlockFailed)                                                           \
     xxx(ConfigDispatcherItemParseError)                                        \
     xxx(GetConfigsFromCmsYamlParseError)                                       \
+    xxx(DynamicConfigError)                                                    \
     xxx(FailedToParseRdmaError)                                                \
     xxx(FailedToSerializeRdmaError)                                            \
     xxx(SchemeCacheError)                                                      \
