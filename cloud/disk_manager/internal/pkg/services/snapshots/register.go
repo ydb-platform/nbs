@@ -69,34 +69,6 @@ func RegisterForExecution(
 		return err
 	}
 
-	scheduleBackupSnapshotTasksScheduleInterval, err := time.ParseDuration(
-		config.GetScheduleBackupSnapshotTasksScheduleInterval(),
-	)
-	if err != nil {
-		return err
-	}
-
-	deleteBackupMetaTaskScheduleInterval, err := time.ParseDuration(
-		config.GetDeleteBackupMetaTaskScheduleInterval(),
-	)
-	if err != nil {
-		return err
-	}
-
-	collectBackupQueueMetricsTaskScheduleInterval, err := time.ParseDuration(
-		config.GetCollectBackupQueueMetricsTaskScheduleInterval(),
-	)
-	if err != nil {
-		return err
-	}
-
-	backupQueueMetricsCollectionInterval, err := time.ParseDuration(
-		config.GetBackupQueueMetricsCollectionInterval(),
-	)
-	if err != nil {
-		return err
-	}
-
 	err = taskRegistry.RegisterForExecution("snapshots.CreateSnapshotFromDisk", func() tasks.Task {
 		return &createSnapshotFromDiskTask{
 			scheduler:     taskScheduler,
@@ -111,6 +83,34 @@ func RegisterForExecution(
 	}
 
 	if backupS3 != nil {
+		scheduleBackupSnapshotTasksScheduleInterval, err := time.ParseDuration(
+			config.GetScheduleBackupSnapshotTasksScheduleInterval(),
+		)
+		if err != nil {
+			return err
+		}
+
+		deleteBackupMetaTaskScheduleInterval, err := time.ParseDuration(
+			config.GetDeleteBackupMetaTaskScheduleInterval(),
+		)
+		if err != nil {
+			return err
+		}
+
+		collectBackupQueueMetricsTaskScheduleInterval, err := time.ParseDuration(
+			config.GetCollectBackupQueueMetricsTaskScheduleInterval(),
+		)
+		if err != nil {
+			return err
+		}
+
+		backupQueueMetricsCollectionInterval, err := time.ParseDuration(
+			config.GetBackupQueueMetricsCollectionInterval(),
+		)
+		if err != nil {
+			return err
+		}
+
 		err = taskRegistry.RegisterForExecution("snapshots.BackupSnapshot", func() tasks.Task {
 			return &backupSnapshotTask{
 				scheduler: taskScheduler,

@@ -116,6 +116,7 @@ func (c *exportResource) run() error {
 			nil,
 			uint64(c.s3UploadWorkers), // Max idle connections per host.
 			persistence.WithS3EmptySigningRegion(),
+			persistence.WithS3ExportCompatibility(),
 		)
 		if err != nil {
 			return fmt.Errorf("initializing destination S3 client: %w", err)

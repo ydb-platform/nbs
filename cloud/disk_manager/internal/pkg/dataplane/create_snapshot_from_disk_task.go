@@ -23,6 +23,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createSnapshotFromDiskTask struct {
+	backupEnabled            bool
 	config                   *config.DataplaneConfig
 	performanceConfig        *performance_config.PerformanceConfig
 	disabledZones            *internal_common.DisabledZones
@@ -247,7 +248,7 @@ func (t *createSnapshotFromDiskTask) run(
 	// Older task requests and image creation do not carry BlockSize. Resolve it
 	// while the source disk still exists, never at export time.
 	blockSize := t.request.BlockSize
-	if blockSize == 0 {
+	if blockSize == 0 && t.backupEnabled {
 		existing, err := t.storage.GetSnapshotMeta(ctx, t.request.DstSnapshotId)
 		if err != nil {
 			return err
