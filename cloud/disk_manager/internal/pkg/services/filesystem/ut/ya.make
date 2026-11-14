@@ -2,6 +2,7 @@ GO_TEST_FOR(cloud/disk_manager/internal/pkg/services/filesystem)
 
 GO_TEST_SRCS(
     create_filesystem_task_test.go
+    delete_filesystem_disabled_zones_test.go
     delete_filesystem_task_test.go
 )
 

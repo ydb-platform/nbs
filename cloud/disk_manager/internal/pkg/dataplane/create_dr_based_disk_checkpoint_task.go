@@ -5,17 +5,21 @@ import (
 	"fmt"
 
 	"github.com/golang/protobuf/proto"
+
 	nbs_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type createDRBasedDiskCheckpointTask struct {
+	disabledZones     *common.DisabledZones
 	performanceConfig *performance_config.PerformanceConfig
 	nbsFactory        nbs_client.Factory
 	request           *protos.CreateDRBasedDiskCheckpointRequest
@@ -42,12 +46,20 @@ func (t *createDRBasedDiskCheckpointTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	disk := t.request.Disk
+	if t.disabledZones.IsDisabled(disk.GetZoneId()) {
+		return common.NewNonRetriableAbortedError(
+			"can't create checkpoint %q for disk %q in disabled zone %q",
+			t.getCurrentCheckpointID(),
+			disk.GetDiskId(),
+			disk.GetZoneId(),
+		)
+	}
+
 	err := t.setEstimate(ctx, execCtx)
 	if err != nil {
 		return err
 	}
-
-	disk := t.request.Disk
 
 	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
 	if err != nil {
@@ -86,6 +98,20 @@ func (t *createDRBasedDiskCheckpointTask) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	disk := t.request.Disk
+	if t.disabledZones.IsDisabled(disk.GetZoneId()) {
+		previousCheckpointID, currentCheckpointID := t.getCheckpointIDs()
+		logging.Warn(
+			ctx,
+			"Skipping checkpoint deletion for disk %v in disabled zone %v: current checkpoint %v, previous checkpoint %v",
+			disk.GetDiskId(),
+			disk.GetZoneId(),
+			currentCheckpointID,
+			previousCheckpointID,
+		)
+		return nil
+	}
 
 	nbsClient, err := t.nbsFactory.GetClient(ctx, t.request.Disk.ZoneId)
 	if err != nil {
@@ -134,7 +160,7 @@ func (t *createDRBasedDiskCheckpointTask) setEstimate(
 		t.performanceConfig.GetCreateDRBasedDiskCheckpointBandwidthMiBs(),
 	))
 
-	return nil
+	return execCtx.SaveState(ctx)
 }
 
 func (t *createDRBasedDiskCheckpointTask) makeCheckpointID(
