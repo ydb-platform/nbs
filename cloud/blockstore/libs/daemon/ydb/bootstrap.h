@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/config/blockstore_config.h>
+#include <cloud/blockstore/libs/config/blockstore_config_getter.h>
 #include <cloud/blockstore/libs/daemon/common/bootstrap.h>
 #include <cloud/blockstore/libs/discovery/public.h>
 #include <cloud/blockstore/libs/kms/iface/public.h>
@@ -116,6 +117,10 @@ private:
     // Shared methods, including TBootstrapYdb overrides used in Local and Null
     // service modes, must read BootstrapConfig.
     IBlockstoreConfigPtr StartupBlockstoreConfig;
+
+    // Current Blockstore configuration source; owns the holder shared with
+    // ConfigsManager after the startup snapshot has been constructed.
+    IBlockstoreConfigGetterPtr BlockstoreConfigGetter;
 
     IActorSystemPtr ActorSystem;
     IAsyncLoggerPtr AsyncLogger;
