@@ -56,9 +56,8 @@ void TVolumeActor::CompleteChangeStorageConfig(
         "ChangeStorageConfig",
         args.RequestInfo->CallContext->RequestId);
 
-    Config =
-        TStorageConfig::Merge(GlobalStorageConfig, args.ResultStorageConfig);
-    HasStorageConfigPatch = Config != GlobalStorageConfig;
+    StorageConfigPatch = args.ResultStorageConfig;
+    ApplyStorageConfig();
 
     // Recreate BlockDigestGenerator with the updated configuration
     BlockDigestGenerator =

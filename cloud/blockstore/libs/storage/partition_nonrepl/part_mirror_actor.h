@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
+#include <cloud/blockstore/libs/storage/core/dynamic_config_update.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/model/request_bounds_tracker.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
@@ -68,7 +69,8 @@ class TMirrorPartitionActor final
     };
 
 private:
-    const TStorageConfigConstPtr Config;
+    TStorageConfigConstPtr Config;
+    TDynamicConfigUpdateState DynamicConfigUpdates;
     const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -273,6 +275,10 @@ private:
     void RejectGetDiskRegistryBasedPartCounters(
         const TEvNonreplPartitionPrivate::
             TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDynamicConfigUpdate(
+        const TEvVolume::TEvDynamicConfigUpdate::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>

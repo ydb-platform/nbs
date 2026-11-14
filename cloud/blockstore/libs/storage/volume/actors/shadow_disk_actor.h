@@ -143,6 +143,11 @@ public:
     void OnMigrationFinished(const NActors::TActorContext& ctx) override;
     void OnMigrationError(const NActors::TActorContext& ctx) override;
 
+protected:
+    void ForwardDynamicConfigUpdate(
+        const TEvVolume::TEvDynamicConfigUpdate& update,
+        const NActors::TActorContext& ctx) override;
+
 private:
     enum EShadowDiskWakeupReason
     {

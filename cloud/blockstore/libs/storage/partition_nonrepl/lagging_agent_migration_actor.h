@@ -19,7 +19,7 @@ class TLaggingAgentMigrationActor final
     , public IMigrationOwner
 {
 private:
-    const TStorageConfigConstPtr Config;
+    TStorageConfigConstPtr Config;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const NActors::TActorId ParentActorId;
     const NActors::TActorId TargetActorId;
@@ -49,6 +49,9 @@ public:
 private:
     // IMigrationOwner implementation
     void OnBootstrap(const NActors::TActorContext& ctx) override;
+    // Replace the configuration reference while preserving the object's other state.
+    void OnDynamicConfigUpdate(TStorageConfigConstPtr config) override;
+
     bool OnMessage(
         const NActors::TActorContext& ctx,
         TAutoPtr<NActors::IEventHandle>& ev) override;

@@ -402,6 +402,12 @@ public:
         StartPartitionsNeeded = startPartitionsNeeded;
     }
 
+    // Replace the configuration reference while preserving the object's other state.
+    void UpdateStorageConfig(TStorageConfigConstPtr config)
+    {
+        StorageConfig = std::move(config);
+    }
+
     void ResetMeta(NProto::TVolumeMeta meta);
     void AddMetaHistory(TVolumeMetaHistoryItem meta);
     void ResetThrottlingPolicy(const NProto::TVolumePerformanceProfile& pp);
@@ -502,6 +508,10 @@ public:
     }
 
     TString GetPartitionsError() const;
+
+    // Return child actors that receive dynamic configuration updates directly
+    // from Volume.
+    TVector<NActors::TActorId> GetDynamicConfigUpdateRecipients() const;
 
     void SetDiskRegistryBasedPartitionActor(
         TActorsStack actors,

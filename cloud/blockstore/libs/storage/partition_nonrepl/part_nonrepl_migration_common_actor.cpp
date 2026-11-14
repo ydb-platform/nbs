@@ -254,6 +254,44 @@ BLOCKSTORE_HANDLE_UNIMPLEMENTED_REQUEST(GetScanDiskStatus, TEvVolume);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Apply a dynamic configuration update.
+void TNonreplicatedPartitionMigrationCommonActor::HandleDynamicConfigUpdate(
+    const TEvVolume::TEvDynamicConfigUpdate::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    if (!DynamicConfigUpdates.TryUpdate(msg->Owner, msg->Revision)) {
+        return;
+    }
+    Config = msg->StorageConfig;
+
+    // Refresh references stored separately by an inheriting migration owner.
+    MigrationOwner->OnDynamicConfigUpdate(Config);
+
+    // Forward the configuration update to child actors.
+    ForwardDynamicConfigUpdate(*msg, ctx);
+}
+
+// Forward an accepted configuration update to owned source and destination
+// actors, preserving the owner and revision checked by the handler.
+void TNonreplicatedPartitionMigrationCommonActor::ForwardDynamicConfigUpdate(
+    const TEvVolume::TEvDynamicConfigUpdate& update,
+    const NActors::TActorContext& ctx)
+{
+    for (const auto actorId: {OwnsSrcActor ? SrcActorId : TActorId(),
+                              OwnsDstActor ? DstActorId : TActorId()})
+    {
+        if (actorId) {
+            ctx.Send(
+                actorId,
+                new TEvVolume::TEvDynamicConfigUpdate(
+                    update.StorageConfig,
+                    update.Owner,
+                    update.Revision));
+        }
+    }
+}
+
 STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
 {
     // Give the inheritor the opportunity to process the message first.
@@ -334,6 +372,10 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateWork)
         HFunc(NActors::TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
+        HFunc(
+            TEvVolume::TEvDynamicConfigUpdate,
+            HandleDynamicConfigUpdate);
+
         default:
             HandleUnexpectedEvent(
                 ev,
@@ -407,6 +449,8 @@ STFUNC(TNonreplicatedPartitionMigrationCommonActor::StateZombie)
         HFunc(TEvents::TEvPoisonPill, PoisonPillHelper.HandlePoisonPill);
         IgnoreFunc(NActors::TEvents::TEvWakeup);
         HFunc(TEvents::TEvPoisonTaken, PoisonPillHelper.HandlePoisonTaken);
+
+        IgnoreFunc(TEvVolume::TEvDynamicConfigUpdate);
 
         default:
             HandleUnexpectedEvent(

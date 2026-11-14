@@ -9,6 +9,7 @@ replace operator overrides, while changes to other parameters preserve them.
 """
 
 import copy
+import json
 import logging
 import re
 import time
@@ -25,6 +26,9 @@ from yatest.common.network import PortManager
 from google.protobuf.text_format import MessageToString
 
 from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
+from cloud.blockstore.public.sdk.python.client import ClientError, CreateClient, EResult
+import cloud.blockstore.public.sdk.python.protos as protos
+from cloud.blockstore.tests.python.lib.client import NbsClient
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator
 from cloud.blockstore.tests.python.lib.daemon import Nbs, start_nbs, start_ydb
 
@@ -849,6 +853,146 @@ def test_disabled_feature_does_not_start_configs_manager(remove_rdma_config):
         updated = "RDMA config updated from legacy fields after applying CMS configs"
         assert log.count(updated) == int(remove_rdma_config)
         assert ("Fake RDMA client initialized" in log) == (not remove_rdma_config)
+    finally:
+        if nbs:
+            nbs.kill()
+        ydb.stop()
+
+
+# Wait for the mounted partition to enforce or remove the two-block range limit.
+def wait_volume_range(client, disk_id, session_id, allowed, timeout=120):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            blocks = client.read_blocks(disk_id, 0, 2, "", session_id)
+            if allowed:
+                return blocks
+        except ClientError as error:
+            if error.code != EResult.E_ARGUMENT.value:
+                raise
+            if not allowed:
+                return None
+        time.sleep(0.1)
+    raise AssertionError(
+        f"Volume {disk_id} did not apply the range limit: allowed={allowed}"
+    )
+
+
+# Verify Console delivery, per-volume masking, RO filtering and source removal
+# through I/O on sessions mounted before the dynamic update.
+def test_dynamic_storage_config_reaches_running_volumes():
+    ydb = start_dynamic_config_ydb()
+    nbs = None
+    try:
+        # Start with one representative RW limit and one RO compressor setting.
+        replace_config(ydb, make_main_config(ydb))
+        replace_database_config(
+            ydb, 0,
+            "storage_service:\n  max_read_write_range_size: 16384",
+        )
+        config = make_nbs_config(ydb, True)
+        config.files["storage"].DisableLocalService = False
+        config.files["storage"].MaxReadWriteRangeSize = 16384
+        config.files["storage"].BlobCompressionCodec = "lz4"
+        nbs = start_nbs(config)
+        updates = wait_config_delivery(nbs)
+        actions = NbsClient(nbs.port)
+
+        with CreateClient(f"localhost:{nbs.port}", request_timeout=10) as client:
+            # Keep both Volumes mounted; mask the RW limit on the second disk.
+            sessions = {}
+            for disk_id in ("dynamic-volume", "patched-volume"):
+                client.create_volume(
+                    disk_id, 4096, 1024,
+                    storage_media_kind=protos.STORAGE_MEDIA_SSD,
+                )
+                if disk_id == "patched-volume":
+                    actions.execute_action("changestorageconfig", {
+                        "DiskId": disk_id,
+                        "StorageConfig": {"MaxReadWriteRangeSize": 8192},
+                    })
+                sessions[disk_id] = client.mount_volume(
+                    disk_id, ""
+                )["SessionInfo"].session_id
+                client.write_blocks(
+                    disk_id, 0, [b"x" * 4096] * 2, sessions[disk_id]
+                )
+                assert b"".join(
+                    client.read_blocks(disk_id, 0, 2, "", sessions[disk_id])
+                ) == b"x" * 8192
+
+            # Change the live range limit and attempt a forbidden RO update.
+            replace_database_config(
+                ydb, 1,
+                "storage_service:\n"
+                "  max_read_write_range_size: 4096\n"
+                "  blob_compression_codec: zstd",
+            )
+            updates = wait_config_delivery(nbs, updates)
+            wait_volume_range(
+                client, "dynamic-volume", sessions["dynamic-volume"], False
+            )
+            assert b"".join(wait_volume_range(
+                client, "patched-volume", sessions["patched-volume"], True
+            )) == b"x" * 8192
+            storage_config = json.loads(actions.execute_action(
+                "getstorageconfig", {"DiskId": "dynamic-volume"}
+            ))
+            assert int(storage_config["MaxReadWriteRangeSize"]) == 4096
+            assert storage_config["BlobCompressionCodec"] == "lz4"
+
+            # Remove the dynamic source without unmounting either disk.
+            replace_database_config(ydb, 2, "")
+            wait_config_delivery(nbs, updates)
+            for disk_id, session_id in sessions.items():
+                assert b"".join(wait_volume_range(
+                    client, disk_id, session_id, True
+                )) == b"x" * 8192
+            patched_config = json.loads(actions.execute_action(
+                "getstorageconfig", {"DiskId": "patched-volume"}
+            ))
+            assert int(patched_config["MaxReadWriteRangeSize"]) == 8192
+    finally:
+        if nbs:
+            nbs.kill()
+        ydb.stop()
+
+
+# Verify that disabling dynamic YAML leaves Volume startup and I/O operational.
+def test_volume_with_dynamic_configuration_disabled(tmp_path):
+    ydb = start_dynamic_config_ydb()
+    nbs = None
+    try:
+        # Publish a conflicting YAML value while keeping the startup gate off.
+        replace_config(ydb, make_main_config(ydb))
+        replace_database_config(
+            ydb, 0,
+            "storage_service:\n  send_error_on_add_client_conflict: true",
+        )
+        config = make_nbs_config(ydb, False)
+        config.files["storage"].DisableLocalService = False
+        config.files["storage"].ConfigsDispatcherServiceEnabled = True
+        config.files["storage"].SendErrorOnAddClientConflict = False
+        nbs = start_nbs(config)
+
+        # Create and boot a real Volume without a ConfigsManager response.
+        client = NbsClient(nbs.port)
+        disk_id = "static-dynamic-config-volume"
+        client.create_volume(disk_id, "ssd", 1024)
+        storage_config = json.loads(
+            client.execute_action("getstorageconfig", {"DiskId": disk_id})
+        )
+        assert not storage_config.get("SendErrorOnAddClientConflict", False)
+        assert get_config_subscription(nbs) is None
+
+        # Complete real writes and reads through the mounted Volume.
+        content = b"x" * 4096
+        input_path = tmp_path / "input"
+        output_path = tmp_path / "output"
+        input_path.write_bytes(content)
+        client.write_blocks(disk_id, 0, str(input_path))
+        client.read_blocks(disk_id, 0, 1, str(output_path))
+        assert output_path.read_bytes() == content
     finally:
         if nbs:
             nbs.kill()

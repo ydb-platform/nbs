@@ -971,6 +971,14 @@ bool TVolumeActor::CanChangeThrottlingPolicy() const
                volumeConfig.GetDiskId());
 }
 
+// Keep lagging status visible according to the mode selected at partition
+// startup, regardless of later configuration updates.
+bool TVolumeActor::ShouldShowLaggingStatus() const
+{
+    const auto& partitionConfig = State->GetNonreplicatedPartitionConfig();
+    return partitionConfig && partitionConfig->GetLaggingDevicesAllowed();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TVolumeActor::HandleHttpInfo(
@@ -1721,7 +1729,7 @@ void TVolumeActor::RenderHtmlInfo(IOutputStream& out, TInstant now) const
             }
         }
 
-        if (LaggingDevicesAreAllowed()) {
+        if (ShouldShowLaggingStatus()) {
             DIV_CLASS("row")
             {
                 DIV_CLASS("col-md-6")

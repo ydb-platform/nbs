@@ -9,6 +9,7 @@
 #include "volume_throttler_logger.h"
 #include "volume_tx.h"
 
+#include <cloud/blockstore/libs/configs_manager/events.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
@@ -38,8 +39,8 @@
 #include <cloud/blockstore/libs/storage/volume/model/requests_time_tracker.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
-#include <cloud/storage/core/protos/trace.pb.h>
 #include <cloud/storage/core/libs/rdma/iface/public.h>
+#include <cloud/storage/core/protos/trace.pb.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/blockstore/core/blockstore.h>
@@ -206,6 +207,11 @@ private:
     const ui64 StartTime = GetCycleCount();
     const TInstant VolumeStartTime = TInstant::Now();
     TStorageConfigConstPtr GlobalStorageConfig;
+    // The last committed per-volume patch, independent of global publications.
+    NProto::TStorageServiceConfig StorageConfigPatch;
+    // The Volume-local revision, incremented when a ConfigsManager update changes
+    // the effective configuration. Reset to zero when the Volume actor restarts.
+    ui64 DynamicConfigRevision = 0;
     TStorageConfigConstPtr Config;
     bool HasStorageConfigPatch = false;
     bool HasPerformanceProfileModifications = false;
@@ -588,6 +594,20 @@ private:
 
     ui32 GetCurrentConfigVersion() const;
 
+    // Apply the received configuration with the per-volume patch.
+    // Notify child actors if Volume's effective configuration changes.
+    void ApplyDynamicConfigUpdate(
+        const IBlockstoreConfigConstPtr& config,
+        const NActors::TActorContext& ctx);
+
+    // Merge the current global configuration and per-volume patch; return true
+    // if Volume's effective configuration changes.
+    bool ApplyStorageConfig();
+
+    // Send Volume's current effective configuration and revision to running
+    // child actors when Volume is in the working state.
+    void SendDynamicConfigUpdateToChildActors(const NActors::TActorContext& ctx);
+
     bool SendBootExternalRequest(
         const NActors::TActorContext& ctx,
         TPartitionInfo& partition);
@@ -709,6 +729,8 @@ private:
     bool CanExecuteWriteRequest() const;
 
     bool CanChangeThrottlingPolicy() const;
+
+    bool ShouldShowLaggingStatus() const;
 
     NKikimr::NMetrics::TResourceMetrics* GetResourceMetrics();
 
@@ -950,6 +972,14 @@ private:
 
     void HandleTabletStatus(
         const TEvBootstrapper::TEvStatus::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleConfigSubscriptionResponse(
+        const TEvConfigsManager::TEvSetConfigSubscriptionResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDynamicConfigUpdate(
+        const TEvConfigsManager::TEvConfigChanged::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleUpdateVolumeConfig(

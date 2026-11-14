@@ -3,7 +3,9 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
+#include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/dynamic_config_update.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -20,7 +22,8 @@ class TAgentAvailabilityMonitoringActor final
     : public NActors::TActorBootstrapped<TAgentAvailabilityMonitoringActor>
 {
 private:
-    const TStorageConfigConstPtr Config;
+    TStorageConfigConstPtr Config;
+    TDynamicConfigUpdateState DynamicConfigUpdates;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>
         Migrations;
@@ -65,6 +68,10 @@ private:
 
     void HandlePoisonPill(
         const NActors::TEvents::TEvPoisonPill::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDynamicConfigUpdate(
+        const TEvVolume::TEvDynamicConfigUpdate::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 
