@@ -90,6 +90,7 @@
 #include <library/cpp/monlib/service/pages/mon_page.h>
 
 #include <util/digest/city.h>
+#include <util/generic/algorithm.h>
 #include <util/system/hostname.h>
 
 #include <ranges>
@@ -599,11 +600,26 @@ void TBootstrapYdb::InitKikimrService()
     registerOpts.UseYamlConfig =
         ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled();
 
-    if (ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled() &&
-        !ConfigInitializer->Options->TemporaryServer)
-    {
+    const bool privateDatabaseConfigEnabled =
+        IsPrivateDatabaseConfigEnabled(
+            ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled(),
+            ConfigInitializer->Options->TemporaryServer);
+    if (privateDatabaseConfigEnabled) {
         registerOpts.PrivateDatabaseConfigParser =
             CreateBlockstoreOpaqueConfigParser();
+
+        const auto& deniedConfigNames =
+            staticBlockstoreConfig.GetStorageService()
+                .GetConfigDispatcherSettings()
+                .GetDenyList()
+                .GetNames();
+        if (FindPtr(deniedConfigNames, "PrivateDatabaseConfigItem")) {
+            STORAGE_WARN(
+                "ConfigsDispatcher will not deliver PrivateDatabaseConfig "
+                "updates because ConfigDispatcherSettings.DenyList explicitly "
+                "contains PrivateDatabaseConfigItem; startup "
+                "PrivateDatabaseConfig loading remains enabled");
+        }
     }
 
     STORAGE_INFO("Configs initialized");
@@ -627,10 +643,7 @@ void TBootstrapYdb::InitKikimrService()
                 << (cmsConfig->PrivateDatabaseConfig ? "yes" : "no"));
         }
 
-        if (ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled() &&
-            !ConfigInitializer->Options->TemporaryServer &&
-            cmsConfig->PrivateDatabaseConfig)
-        {
+        if (privateDatabaseConfigEnabled && cmsConfig->PrivateDatabaseConfig) {
             auto [config, error] =
                 ExtractBlockstoreConfig(*cmsConfig->PrivateDatabaseConfig);
             if (HasError(error)) {
@@ -674,7 +687,7 @@ void TBootstrapYdb::InitKikimrService()
             ConfigInitializer->DiskAgentConfig->GetNetworkMbitThroughput();
 
         StartupBlockstoreConfig = MakeBlockstoreConfig(
-            startupBlockstoreConfigProto,
+            staticBlockstoreConfig,
             cmsBlockstoreConfig,
             ConfigInitializer->StorageConfigControls,
             std::move(extraParameters));

@@ -21,6 +21,11 @@ TRegisterDynamicNodeOptions::TNodeLabels GetLabels(
     const TString& tenantName,
     const TString& nodeType);
 
+// Add a config kind to an existing allow list without changing explicit denies.
+void AllowConfigItem(
+    ui32 kind,
+    NKikimr::NConfig::TConfigsDispatcherInitInfo* info);
+
 void SetupConfigDispatcher(
     const NProto::TConfigDispatcherSettings& settings,
     const TString& tenantName,

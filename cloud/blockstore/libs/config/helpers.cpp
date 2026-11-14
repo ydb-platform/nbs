@@ -90,6 +90,13 @@ void NormalizeDynamicBlockstoreConfig(
     }
 }
 
+bool IsPrivateDatabaseConfigEnabled(
+    bool dynamicYamlConfigurationEnabled,
+    bool temporaryServer)
+{
+    return dynamicYamlConfigurationEnabled && !temporaryServer;
+}
+
 TResultOrError<NProto::TBlockstoreConfig> ExtractBlockstoreConfig(
     const google::protobuf::Message& privateDatabaseConfig)
 {
