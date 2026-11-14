@@ -163,16 +163,18 @@ void TConfigsManagerActor::Handle(
         ev->Get()->Subscriber ? ev->Get()->Subscriber : ev->Sender;
     Subscribers.insert(subscriber);
 
+    const auto config = ConfigHolder->Get();
+
     // Confirm registration to the requester, then initialize the recipient
     // even when another actor requested the subscription on its behalf.
     ctx.Send(
         ev->Sender,
-        new TEvConfigsManager::TEvSetConfigSubscriptionResponse(),
+        new TEvConfigsManager::TEvSetConfigSubscriptionResponse(config),
         0,
         ev->Cookie);
     ctx.Send(
         subscriber,
-        new TEvConfigsManager::TEvConfigChanged(),
+        new TEvConfigsManager::TEvConfigChanged(config),
         IEventHandle::FlagTrackDelivery);
 }
 
@@ -267,6 +269,7 @@ void TConfigsManagerActor::Handle(
 
     // Publish before notifying consumers and acknowledging the dispatcher
     // so the new configuration is already available to readers.
+    const IBlockstoreConfigConstPtr publishedConfig = newConfig;
     ConfigHolder->Set(std::move(newConfig));
     DynamicConfig = std::move(dynamicConfig);
 
@@ -277,12 +280,12 @@ void TConfigsManagerActor::Handle(
              ? "Applied PrivateDatabaseConfig"
              : "Reset PrivateDatabaseConfig; restored static config"));
 
-    // Do not wait for consumers: they read the provider at their safe point
-    // and may skip intermediate publications.
+    // Do not wait for consumers: they process the snapshot carried by each
+    // notification at their safe point.
     for (const auto& subscriber: Subscribers) {
         ctx.Send(
             subscriber,
-            new TEvConfigsManager::TEvConfigChanged(),
+            new TEvConfigsManager::TEvConfigChanged(publishedConfig),
             IEventHandle::FlagTrackDelivery);
     }
 

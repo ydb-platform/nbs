@@ -105,10 +105,12 @@ protected:
     void WaitForConfigLog(const TString& message);
 
     // Register the chosen subscriber and check the response to the requester.
-    void Subscribe(TActorId requester, TActorId subscriber = {});
+    IBlockstoreConfigConstPtr Subscribe(
+        TActorId requester,
+        TActorId subscriber = {});
 
     // Verify that the manager sends a change notification to one subscriber.
-    void WaitForConfigChanged(TActorId subscriber);
+    IBlockstoreConfigConstPtr WaitForConfigChanged(TActorId subscriber);
 
     // Check that a subscriber receives no change notification.
     void AssertNoConfigChanged(TActorId subscriber);
@@ -218,7 +220,9 @@ void TFixture::WaitForConfigLog(const TString& message)
 }
 
 // Register the chosen subscriber and check the response to the requester.
-void TFixture::Subscribe(TActorId requester, TActorId subscriber)
+IBlockstoreConfigConstPtr TFixture::Subscribe(
+    TActorId requester,
+    TActorId subscriber)
 {
     Runtime.Send(new IEventHandle(
         Manager,
@@ -232,10 +236,14 @@ void TFixture::Subscribe(TActorId requester, TActorId subscriber)
         TDuration::Seconds(1));
     UNIT_ASSERT(response);
     UNIT_ASSERT_VALUES_EQUAL(41, response->Cookie);
+    const auto& config = response->Get()->Config;
+    UNIT_ASSERT(config);
+    UNIT_ASSERT_EQUAL(ConfigHolder->Get().Get(), config.Get());
+    return config;
 }
 
 // Verify that the manager sends a change notification to one subscriber.
-void TFixture::WaitForConfigChanged(TActorId subscriber)
+IBlockstoreConfigConstPtr TFixture::WaitForConfigChanged(TActorId subscriber)
 {
     auto event =
         Runtime.GrabEdgeEventRethrow<TEvConfigsManager::TEvConfigChanged>(
@@ -243,6 +251,9 @@ void TFixture::WaitForConfigChanged(TActorId subscriber)
             TDuration::Seconds(1));
     UNIT_ASSERT(event);
     UNIT_ASSERT_VALUES_EQUAL(Manager, event->Sender);
+    const auto& config = event->Get()->Config;
+    UNIT_ASSERT(config);
+    return config;
 }
 
 // Check that a subscriber receives no change notification.
@@ -392,6 +403,19 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             500,
             ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            500,
+            initialConfig->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "200",
+            initialConfig->GetStorageConfig()
+                ->GetValueByName("WriteBlobThreshold")
+                .Value);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "300",
+            ConfigHolder->Get()->GetStorageConfig()
+                ->GetValueByName("WriteBlobThreshold")
+                .Value);
 
         // Preserve the override and snapshot for duplicate and rejected input.
         const auto publishedConfig = ConfigHolder->Get();
@@ -428,34 +452,48 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         ShouldNotifySubscribersAfterPublicationWithoutWaitingForAck,
         TFixture)
     {
-        // Register two consumers and consume only their initial notifications.
+        // Register two consumers and leave the second initial notification queued.
         const auto first = Runtime.AllocateEdgeActor();
         const auto second = Runtime.AllocateEdgeActor();
-        Subscribe(first);
-        Subscribe(second);
-        WaitForConfigChanged(first);
-        WaitForConfigChanged(second);
+        const auto initial = Subscribe(first);
+        const auto secondInitial = Subscribe(second);
+        UNIT_ASSERT_EQUAL(initial.Get(), secondInitial.Get());
+        UNIT_ASSERT_EQUAL(initial.Get(), WaitForConfigChanged(first).Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            initial->GetStorageConfig()->GetWriteBlobThreshold());
 
         // Publish and observe the new snapshot as soon as the notice arrives.
         SendNotification(
             std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300)),
             31);
-        WaitForConfigChanged(first);
+        const auto updated = WaitForConfigChanged(first);
         UNIT_ASSERT_VALUES_EQUAL(
             300,
-            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+            updated->GetStorageConfig()->GetWriteBlobThreshold());
         WaitForAck(31);
 
         // Let the second consumer lag; it must not block removal or upstream
         // ACK.
         SendNotification({}, 32);
         WaitForAck(32);
-        WaitForConfigChanged(first);
+        const auto reset = WaitForConfigChanged(first);
         UNIT_ASSERT_VALUES_EQUAL(
             100,
-            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
-        WaitForConfigChanged(second);
-        WaitForConfigChanged(second);
+            reset->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_EQUAL(reset.Get(), ConfigHolder->Get().Get());
+        const auto delayedInitial = WaitForConfigChanged(second);
+        UNIT_ASSERT_EQUAL(secondInitial.Get(), delayedInitial.Get());
+        const auto delayedUpdate = WaitForConfigChanged(second);
+        UNIT_ASSERT_EQUAL(updated.Get(), delayedUpdate.Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            delayedUpdate->GetStorageConfig()->GetWriteBlobThreshold());
+        const auto delayedReset = WaitForConfigChanged(second);
+        UNIT_ASSERT_EQUAL(reset.Get(), delayedReset.Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            initial->GetStorageConfig()->GetWriteBlobThreshold());
     }
 
     // Check delegated registration, refresh, and removal without duplicate
