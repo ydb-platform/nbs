@@ -23,9 +23,14 @@ import yaml
 import yatest.common as yatest_common
 from yatest.common.network import PortManager
 
-from google.protobuf.text_format import MessageToString
+from google.protobuf.text_format import MessageToString, Parse
 
 from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
+from cloud.blockstore.config.volume_throttling_pb2 import TVolumeThrottlingServiceConfig
+from cloud.blockstore.public.api.protos.volume_throttling_pb2 import (
+    TVolumeThrottlingConfig,
+    TUpdateVolumeThrottlingConfigResponse,
+)
 from cloud.blockstore.public.sdk.python.client import ClientError, CreateClient, EResult
 import cloud.blockstore.public.sdk.python.protos as protos
 from cloud.blockstore.tests.python.lib.client import NbsClient
@@ -958,6 +963,39 @@ def test_dynamic_storage_config_reaches_running_volumes():
         ydb.stop()
 
 
+# Execute a real protobuf CLI request and decode its response.
+def execute_proto(nbs, tmp_path, command, request, response):
+    request_path = tmp_path / f"{command}.txt"
+    request_path.write_text(MessageToString(request))
+    result = yatest_common.execute([
+        yatest_common.binary_path("cloud/blockstore/apps/client/blockstore-client"),
+        command, "--host", "localhost", "--port", str(nbs.port),
+        "--timeout", "10", "--proto", "--input", str(request_path),
+    ], timeout=30)
+    Parse(result.std_out, response)
+    assert response.Error.Code == 0, response.Error
+    return response
+
+
+# Wait for the actual Volume profile rather than only ConfigsManager publication.
+def wait_volume_throttling(nbs, tmp_path, disk_id, bandwidth, coefficient, timeout=120):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        response = execute_proto(
+            nbs, tmp_path, "statvolume", protos.TStatVolumeRequest(DiskId=disk_id),
+            protos.TStatVolumeResponse(),
+        )
+        info = response.VolatileThrottlingInfo
+        if info.ActualPerformanceProfile.MaxReadBandwidth == bandwidth:
+            if coefficient is None:
+                assert info.AppliedRule.WhichOneof("Selector") is None
+            else:
+                assert info.AppliedRule.Coefficients.MaxReadBandwidth == coefficient
+            return
+        time.sleep(0.1)
+    raise AssertionError(f"Volume {disk_id} did not apply throttling: {info}")
+
+
 # Verify that disabling dynamic YAML leaves Volume startup and I/O operational.
 def test_volume_with_dynamic_configuration_disabled(tmp_path):
     ydb = start_dynamic_config_ydb()
@@ -1069,6 +1107,154 @@ def test_temporary_server_skips_private_config(tmp_path, invalid_private_config)
         log = Path(nbs.stderr_file_name).read_text()
         assert "Received CMS configuration for YAML mode; PrivateDatabaseConfig: no" in log
         assert "GetConfigsFromCmsYamlParseError" not in log
+    finally:
+        if nbs:
+            nbs.kill()
+        ydb.stop()
+
+
+# Verify that VolumeThrottling CLI rules override static and dynamic rules,
+# and clearing CLI rules restores service rules without remounting the Volume.
+@pytest.mark.parametrize("dynamic_enabled", [False, True])
+def test_volume_throttling_sources(tmp_path, dynamic_enabled):
+    ydb = start_dynamic_config_ydb()
+    nbs = None
+    disk_id = "throttled-volume"
+    try:
+        # Start NBS with a static throttling rule and the manager enabled.
+        replace_config(ydb, make_main_config(ydb))
+        config = make_nbs_config(ydb, dynamic_enabled)
+        config.files["storage"].DisableLocalService = False
+        config.files["storage"].VolumeThrottlingManagerEnabled = True
+        config.files["storage"].VolumeThrottlingManagerNotificationPeriodSeconds = 1
+        static = TVolumeThrottlingServiceConfig()
+        rule = static.Rules.add()
+        rule.Filter.CloudIds.extend(["throttled-cloud", "other-cloud"])
+        rule.Coefficients.MaxReadBandwidth = 0.5
+        config.files["volume-throttling"] = static
+        nbs = start_nbs(config)
+        updates = wait_config_delivery(nbs) if dynamic_enabled else 0
+
+        with CreateClient(f"localhost:{nbs.port}", request_timeout=10) as client:
+            # Mount the Volume, write data, and check that the static rule applies.
+            execute_proto(
+                nbs, tmp_path, "createvolume", protos.TCreateVolumeRequest(
+                    DiskId=disk_id, BlockSize=4096, BlocksCount=1024,
+                    StorageMediaKind=protos.STORAGE_MEDIA_SSD,
+                    CloudId="throttled-cloud",
+                    PerformanceProfile=protos.TVolumePerformanceProfile(
+                        ThrottlingEnabled=True,
+                        MaxReadBandwidth=8 * 1024 * 1024, MaxReadIops=1000,
+                        MaxWriteBandwidth=8 * 1024 * 1024, MaxWriteIops=1000,
+                    ),
+                ), protos.TCreateVolumeResponse(),
+            )
+            session = client.mount_volume(disk_id, "")["SessionInfo"].session_id
+            client.write_blocks(disk_id, 0, [b"x" * 4096], session)
+            original = client.stat_volume(disk_id)["Volume"].PerformanceProfile.MaxReadBandwidth
+            assert original > 0
+            wait_volume_throttling(nbs, tmp_path, disk_id, int(original * 0.5), 0.5)
+
+            # Apply CLI rules and check that they override the static rule.
+            manual = TVolumeThrottlingConfig(Version=1)
+            manual_rule = manual.Rules.add()
+            manual_rule.Disks.DiskIds.append(disk_id)
+            manual_rule.Coefficients.MaxReadBandwidth = 0.25
+            execute_proto(
+                nbs, tmp_path, "updatevolumethrottlingconfig", manual,
+                TUpdateVolumeThrottlingConfigResponse(),
+            )
+            wait_volume_throttling(nbs, tmp_path, disk_id, int(original * 0.25), 0.25)
+
+            if dynamic_enabled:
+                # Update service rules and check that the CLI rule still applies.
+                replace_database_config(ydb, 0, yaml.safe_dump({
+                    "volume_throttling": {"rules": [{
+                        "filter": {"cloud_ids": ["throttled-cloud"]},
+                        "coefficients": {"max_read_bandwidth": 0.125},
+                    }]},
+                }))
+                updates = wait_config_delivery(nbs, updates)
+                wait_volume_throttling(nbs, tmp_path, disk_id, int(original * 0.25), 0.25)
+
+            # Clear CLI rules and check that the latest service rules apply.
+            execute_proto(
+                nbs, tmp_path, "updatevolumethrottlingconfig",
+                TVolumeThrottlingConfig(Version=2),
+                TUpdateVolumeThrottlingConfigResponse(),
+            )
+            base_coefficient = 0.125 if dynamic_enabled else 0.5
+            wait_volume_throttling(
+                nbs, tmp_path, disk_id, int(original * base_coefficient), base_coefficient,
+            )
+
+            if dynamic_enabled:
+                # Check that absent and empty dynamic rules both use the static rule.
+                replace_database_config(ydb, 1, "")
+                updates = wait_config_delivery(nbs, updates)
+                wait_volume_throttling(nbs, tmp_path, disk_id, int(original * 0.5), 0.5)
+                replace_database_config(ydb, 2, "volume_throttling: {rules: []}")
+                updates = wait_config_delivery(nbs, updates)
+                wait_volume_throttling(nbs, tmp_path, disk_id, int(original * 0.5), 0.5)
+
+                # Remove the static rule using its selector without Coefficients.
+                replace_database_config(ydb, 3, yaml.safe_dump({
+                    "volume_throttling": {"rules": [{
+                        "filter": {"cloud_ids": ["other-cloud", "throttled-cloud"]},
+                    }]},
+                }))
+                wait_config_delivery(nbs, updates)
+                wait_volume_throttling(nbs, tmp_path, disk_id, original, None)
+
+            # Read the original data through the session mounted before the updates.
+            assert b"".join(client.read_blocks(disk_id, 0, 1, "", session)) == b"x" * 4096
+    finally:
+        if nbs:
+            nbs.kill()
+        ydb.stop()
+
+
+# Verify that invalid startup VolumeThrottling falls back to static rules while
+# unrelated dynamic settings reach startup consumers and rejection is reported.
+def test_invalid_volume_throttling_section_at_startup():
+    ydb = start_dynamic_config_ydb()
+    nbs = None
+    try:
+        # Supply an invalid throttling coefficient beside a valid storage value.
+        replace_config(ydb, make_main_config(ydb))
+        replace_database_config(ydb, 0, yaml.safe_dump({
+            "storage_service": {"write_blob_threshold": 200},
+            "volume_throttling": {"rules": [{
+                "filter": {},
+                "coefficients": {"max_read_bandwidth": 2},
+            }]},
+        }))
+        config = make_nbs_config(ydb, True)
+        config.files["storage"].WriteBlobThreshold = 100
+        static = TVolumeThrottlingServiceConfig()
+        rule = static.Rules.add()
+        rule.Filter.SetInParent()
+        rule.Coefficients.MaxReadBandwidth = 0.5
+        config.files["volume-throttling"] = static
+        nbs = start_nbs(config)
+
+        # Observe bootstrap's accepted storage value rather than a runtime update.
+        page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
+        page.raise_for_status()
+        assert re.search(r"<td>WriteBlobThreshold</td>\s*<td>200</td>", page.text)
+        log = Path(nbs.stderr_file_name).read_text()
+        assert "CRITICAL_EVENT:AppCriticalEvents/DynamicConfigError" in log
+        assert "Using static configuration for section VolumeThrottling" in log
+        assert "VolumeThrottling.Rules[0].Coefficients.MaxReadBandwidth = 2" in log
+
+        # Retain static throttling through the first dynamic delivery and ACK it.
+        wait_config_delivery(nbs)
+        parameter = "VolumeThrottling.Rules[0].Coefficients.MaxReadBandwidth"
+        page = wait_monitoring_page(nbs, lambda text: "startup (partially applied)" in text)
+        assert get_parameter_row(page, parameter) == (
+            "<td>0.5</td><td>&mdash;</td><td>&mdash;</td>"
+            "<td>0.5</td>"
+        )
     finally:
         if nbs:
             nbs.kill()

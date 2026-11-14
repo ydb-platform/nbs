@@ -77,6 +77,9 @@ public:
 
     const TLocalNVMeConfigConstPtr& GetLocalNVMeConfig() const override;
 
+    const TVolumeThrottlingConfigConstPtr&
+    GetVolumeThrottlingConfig() const override;
+
 private:
     const NServer::TServerAppConfigConstPtr ServerConfig;
     const NFeatures::TFeaturesConfigConstPtr FeaturesConfig;
@@ -97,6 +100,7 @@ private:
     const TRootKmsConfigConstPtr RootKmsConfig;
     const NCells::TCellsConfigConstPtr CellsConfig;
     const TLocalNVMeConfigConstPtr LocalNVMeConfig;
+    const TVolumeThrottlingConfigConstPtr VolumeThrottlingConfig;
 };
 
 TBlockstoreConfigImpl::TBlockstoreConfigImpl(
@@ -138,6 +142,9 @@ TBlockstoreConfigImpl::TBlockstoreConfigImpl(
           std::make_shared<NProto::TRootKmsConfig>(config.GetRootKms()))
     , CellsConfig(std::make_shared<NCells::TCellsConfig>(config.GetCells()))
     , LocalNVMeConfig(std::make_shared<TLocalNVMeConfig>(config.GetLocalNVMe()))
+    , VolumeThrottlingConfig(
+          std::make_shared<NProto::TVolumeThrottlingServiceConfig>(
+              config.GetVolumeThrottling()))
 {
     Y_ABORT_UNLESS(FeaturesConfig);
     Y_ABORT_UNLESS(StorageConfig);
@@ -254,6 +261,12 @@ const TLocalNVMeConfigConstPtr&
 TBlockstoreConfigImpl::GetLocalNVMeConfig() const
 {
     return LocalNVMeConfig;
+}
+
+const TVolumeThrottlingConfigConstPtr&
+TBlockstoreConfigImpl::GetVolumeThrottlingConfig() const
+{
+    return VolumeThrottlingConfig;
 }
 
 }   // namespace

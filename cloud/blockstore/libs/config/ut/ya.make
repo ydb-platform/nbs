@@ -8,6 +8,7 @@ SRCS(
     opaque_config_parser_ut.cpp
     sections_update_ut.cpp
     sections_update/features_ut.cpp
+    sections_update/volume_throttling_ut.cpp
 )
 
 PEERDIR(

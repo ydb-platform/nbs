@@ -26,6 +26,7 @@
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
 #include <contrib/ydb/core/protos/feature_flags.pb.h>
 
+#include <library/cpp/logger/stream.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -35,6 +36,7 @@
 #include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
 #include <util/stream/file.h>
+#include <util/stream/str.h>
 #include <util/string/builder.h>
 #include <util/system/sanitizers.h>
 
@@ -79,6 +81,7 @@ void InitStaticConfigs(TConfigInitializerYdb& ci)
     ci.InitComputeClientConfig();
     ci.InitCellsConfig();
     ci.InitLocalNVMeConfig();
+    ci.InitVolumeThrottlingConfig();
     ci.InitDiskAgentConfig();
     ci.InitRdmaConfig();
 }
@@ -1499,6 +1502,76 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
                 }
             }
         }
+    }
+
+    // Verify that a static VolumeThrottling file populates the aggregate
+    // config.
+    Y_UNIT_TEST(ShouldLoadVolumeThrottlingConfiguration)
+    {
+        // Load a static throttling rule for a selected disk.
+        TTempDir dir;
+        const auto path = dir.Path() / "volume-throttling.txt";
+        TOFStream(path.GetPath()).Write(
+            "Rules { Disks { DiskIds: \"disk\" } "
+            "Coefficients { MaxReadBandwidth: 0.5 } }");
+        auto options = CreateOptions();
+        options->VolumeThrottlingConfig = path.GetPath();
+        TConfigInitializerYdb ci(std::move(options));
+        ci.InitVolumeThrottlingConfig();
+
+        // Check that the aggregate contains the rule from the file.
+        const auto config = ci.GetCurrentBlockstoreConfig();
+        UNIT_ASSERT_VALUES_EQUAL(
+            "disk",
+            config.GetVolumeThrottling().GetRules(0).GetDisks().GetDiskIds(0));
+    }
+
+    // Verify that static VolumeThrottling retains known fields and warns about
+    // rules whose selectors are unsupported.
+    Y_UNIT_TEST(ShouldIgnoreUnknownStaticVolumeThrottlingFields)
+    {
+        TTempDir dir;
+        const auto path = dir.Path() / "volume-throttling.txt";
+        TOFStream(path.GetPath()).Write(
+            "Rules { Filter { CloudIds: \"cloud\" FutureZone: \"zone\" } "
+            "Coefficients { MaxReadBandwidth: 0.5 FutureCoefficient: 0.25 } }\n"
+            "Rules { FutureSelector {} Coefficients { MaxReadBandwidth: 2 } }\n"
+            "Rules { Filter {} Coefficients {} }");
+        auto options = CreateOptions();
+        options->VolumeThrottlingConfig = path.GetPath();
+        TStringStream warnings;
+        TConfigInitializerYdb ci(std::move(options));
+        ci.Log = TLog(MakeHolder<TStreamLogBackend>(&warnings));
+
+        // Retain the known rule and existing static empty-rule behavior.
+        ci.InitVolumeThrottlingConfig();
+        const auto& config = ci.VolumeThrottlingConfig;
+        UNIT_ASSERT_VALUES_EQUAL(2, config.RulesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "cloud", config.GetRules(0).GetFilter().GetCloudIds(0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0.5, config.GetRules(0).GetCoefficients().GetMaxReadBandwidth());
+        UNIT_ASSERT(config.GetRules(1).HasCoefficients());
+        UNIT_ASSERT_STRING_CONTAINS(
+            warnings.Str(),
+            "Skip VolumeThrottling.Rules[1]: no known selector (Filter or Disks)");
+    }
+
+    // Verify that loading a VolumeThrottling file rejects coefficients above
+    // one.
+    Y_UNIT_TEST(ShouldRejectInvalidStaticVolumeThrottling)
+    {
+        TTempDir dir;
+        const auto path = dir.Path() / "volume-throttling.txt";
+        TOFStream(path.GetPath()).Write(
+            "Rules { Filter {} Coefficients { MaxReadBandwidth: 2 } }");
+        auto options = CreateOptions();
+        options->VolumeThrottlingConfig = path.GetPath();
+        TConfigInitializerYdb ci(std::move(options));
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            ci.InitVolumeThrottlingConfig(),
+            yexception,
+            "Invalid volume throttling coefficients");
     }
 }
 

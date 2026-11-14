@@ -10,6 +10,7 @@ factories are declared in blockstore_config_management.h.
 
 #include <cloud/blockstore/config/grpc_client.pb.h>
 #include <cloud/blockstore/config/root_kms.pb.h>
+#include <cloud/blockstore/config/volume_throttling.pb.h>
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -39,6 +40,8 @@ namespace NCloud::NBlockStore {
 using TGrpcClientConfigConstPtr =
     std::shared_ptr<const NProto::TGrpcClientConfig>;
 using TRootKmsConfigConstPtr = std::shared_ptr<const NProto::TRootKmsConfig>;
+using TVolumeThrottlingConfigConstPtr =
+    std::shared_ptr<const NProto::TVolumeThrottlingServiceConfig>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -104,6 +107,8 @@ public:
     GetCellsConfig() const = 0;
     [[nodiscard]] virtual const TLocalNVMeConfigConstPtr&
     GetLocalNVMeConfig() const = 0;
+    [[nodiscard]] virtual const TVolumeThrottlingConfigConstPtr&
+    GetVolumeThrottlingConfig() const = 0;
 };
 
 using IBlockstoreConfigPtr = TIntrusivePtr<IBlockstoreConfig>;

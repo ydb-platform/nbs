@@ -1347,6 +1347,44 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             "<td>100</td><td>200</td><td>200</td>"
             "<td>&mdash;</td><td>200</td>");
     }
+
+    // Verify that VolumeThrottling rejection stays visible on repeated partial
+    // deliveries and clears when a valid snapshot restores static rules.
+    Y_UNIT_TEST_F(
+        ShouldRenderPartialVolumeThrottlingRejection,
+        TRendererActorFixture)
+    {
+        // Apply storage settings while rejecting invalid dynamic throttling.
+        auto update = std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300));
+        auto* rule = update->MutableVolumeThrottling()->AddRules();
+        rule->MutableFilter();
+        rule->MutableCoefficients()->SetMaxReadIops(2);
+        for (ui64 cookie: {1, 1, 2}) {
+            SendNotification(update, cookie);
+            WaitForAck(cookie);
+
+            // Preserve the partial status through both unchanged-delivery paths.
+            const auto html = GetMonitoringPage();
+            UNIT_ASSERT_STRING_CONTAINS(html, ", runtime (partially applied)");
+            UNIT_ASSERT_STRING_CONTAINS(
+                html, "Rejected invalid VolumeThrottling configuration");
+            UNIT_ASSERT_STRING_CONTAINS(
+                html, "VolumeThrottling.Rules[0].Coefficients.MaxReadIops = 2");
+            UNIT_ASSERT_VALUES_EQUAL(
+                300,
+                ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0, ConfigHolder->Get()->GetVolumeThrottlingConfig()->RulesSize());
+        }
+
+        // Clear the rejection even when valid absence leaves values unchanged.
+        update->ClearVolumeThrottling();
+        SendNotification(update, 3);
+        WaitForAck(3);
+        const auto html = GetMonitoringPage();
+        UNIT_ASSERT_STRING_CONTAINS(html, ", runtime (unchanged)</td>");
+        UNIT_ASSERT(!html.Contains("Rejected invalid VolumeThrottling"));
+    }
 }
 
 }   // namespace NCloud::NBlockStore

@@ -1451,6 +1451,140 @@ storage_service:
         UNIT_ASSERT(
             !CriticalEventsLog.Str().Contains("will be lost after a restart"));
     }
+
+    // Verify that invalid VolumeThrottling preserves its complete previous
+    // section while other settings advance and corrected rules are accepted.
+    Y_UNIT_TEST_F(ShouldRetainThrottlingOnInvalidSection, TFixture)
+    {
+        // Accept two rules before attempting to replace one and delete another.
+        const auto subscriber = Runtime.AllocateEdgeActor();
+        Subscribe(subscriber);
+        WaitForConfigChanged(subscriber);
+        auto previous = std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(250));
+        auto* rule = previous->MutableVolumeThrottling()->AddRules();
+        rule->MutableDisks()->AddDiskIds("private-disk-id");
+        rule->MutableCoefficients()->SetMaxReadBandwidth(0.75);
+        rule = previous->MutableVolumeThrottling()->AddRules();
+        rule->MutableDisks()->AddDiskIds("deleted-disk-id");
+        rule->MutableCoefficients()->SetMaxReadBandwidth(0.8);
+        SendNotification(previous, 18);
+        WaitForAck(18);
+        WaitForConfigChanged(subscriber);
+        const auto previousRules =
+            ConfigHolder->Get()->GetVolumeThrottlingConfig()->SerializeAsString();
+
+        // Reject both throttling operations but publish the unrelated update.
+        auto update = std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300));
+        rule = update->MutableVolumeThrottling()->AddRules();
+        rule->MutableDisks()->AddDiskIds("private-disk-id");
+        rule->MutableCoefficients()->SetMaxReadBandwidth(2);
+        update->MutableVolumeThrottling()
+            ->AddRules()
+            ->MutableDisks()
+            ->AddDiskIds("deleted-disk-id");
+        SendNotification(update, 19);
+        WaitForAck(19);
+        WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_VALUES_EQUAL(
+            300, ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            previousRules,
+            ConfigHolder->Get()->GetVolumeThrottlingConfig()->SerializeAsString());
+        UNIT_ASSERT_STRING_CONTAINS(
+            CriticalEventsLog.Str(),
+            "CRITICAL_EVENT:AppCriticalEvents/DynamicConfigError");
+        UNIT_ASSERT_STRING_CONTAINS(
+            CriticalEventsLog.Str(),
+            "Rejected invalid VolumeThrottling configuration");
+        UNIT_ASSERT_STRING_CONTAINS(
+            CriticalEventsLog.Str(),
+            "VolumeThrottling.Rules[0].Coefficients.MaxReadBandwidth = 2");
+        UNIT_ASSERT_STRING_CONTAINS(
+            CriticalEventsLog.Str(), "expected a finite value in [0, 1]");
+        UNIT_ASSERT(!CriticalEventsLog.Str().Contains("private-disk-id"));
+
+        // Acknowledge a repeated rejection without republishing accepted values.
+        const auto accepted = ConfigHolder->Get();
+        SendNotification(update, 19);
+        WaitForAck(19);
+        UNIT_ASSERT_EQUAL(accepted.Get(), ConfigHolder->Get().Get());
+        AssertNoConfigChanged(subscriber);
+
+        // Reject a duplicate selector without blocking another storage update.
+        rule->MutableCoefficients()->SetMaxReadBandwidth(0.5);
+        auto* duplicate = update->MutableVolumeThrottling()->AddRules();
+        duplicate->CopyFrom(*rule);
+        update->MutableStorageService()->SetWriteBlobThreshold(400);
+        SendNotification(update, 20);
+        WaitForAck(20);
+        WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_VALUES_EQUAL(
+            400, ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            previousRules,
+            ConfigHolder->Get()->GetVolumeThrottlingConfig()->SerializeAsString());
+        UNIT_ASSERT_STRING_CONTAINS(
+            CriticalEventsLog.Str(),
+            "VolumeThrottling.Rules[2].Disks: same selector as "
+            "VolumeThrottling.Rules[0].Disks");
+
+        // Accept the corrected replacement and deletion together.
+        update->MutableVolumeThrottling()->MutableRules()->RemoveLast();
+        SendNotification(update, 22);
+        WaitForAck(22);
+        WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, ConfigHolder->Get()->GetVolumeThrottlingConfig()->RulesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0.5, ConfigHolder->Get()->GetVolumeThrottlingConfig()
+                ->GetRules(0).GetCoefficients().GetMaxReadBandwidth());
+
+        // Remove the valid dynamic section instead of retaining its old rules.
+        update->ClearVolumeThrottling();
+        SendNotification(update, 23);
+        WaitForAck(23);
+        WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0, ConfigHolder->Get()->GetVolumeThrottlingConfig()->RulesSize());
+    }
+
+    // Verify that VolumeThrottling skips unsupported or empty rules with
+    // warnings while publishing the remaining rules and acknowledging delivery.
+    Y_UNIT_TEST_F(ShouldWarnAboutSkippedVolumeThrottlingRules, TFixture)
+    {
+        // Mix an unsupported selector and empty coefficients with a valid rule.
+        const auto subscriber = Runtime.AllocateEdgeActor();
+        Subscribe(subscriber);
+        WaitForConfigChanged(subscriber);
+        auto update = std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300));
+        update->MutableVolumeThrottling()
+            ->AddRules()
+            ->MutableCoefficients()
+            ->SetMaxReadIops(2);
+        auto* empty = update->MutableVolumeThrottling()->AddRules();
+        empty->MutableDisks()->AddDiskIds("private-disk-id");
+        empty->MutableCoefficients();
+        auto* rule = update->MutableVolumeThrottling()->AddRules();
+        rule->MutableFilter();
+        rule->MutableCoefficients()->SetMaxReadBandwidth(0.5);
+
+        // Accept the remaining rule and report the original skipped indices.
+        SendNotification(update, 23);
+        WaitForAck(23);
+        WaitForConfigChanged(subscriber);
+        WaitForConfigLog("Skip VolumeThrottling.Rules[1]");
+        UNIT_ASSERT_STRING_CONTAINS(
+            ConfigLog.Str(),
+            "Skip VolumeThrottling.Rules[0]: no known selector (Filter or Disks)");
+        UNIT_ASSERT_STRING_CONTAINS(
+            ConfigLog.Str(),
+            "Skip VolumeThrottling.Rules[1]: Coefficients contains no known fields");
+        UNIT_ASSERT(!ConfigLog.Str().Contains("private-disk-id"));
+        const auto& config = *ConfigHolder->Get()->GetVolumeThrottlingConfig();
+        UNIT_ASSERT_VALUES_EQUAL(1, config.RulesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0.5, config.GetRules(0).GetCoefficients().GetMaxReadBandwidth());
+    }
 }
 
 }   // namespace NCloud::NBlockStore
