@@ -51,7 +51,9 @@ struct TBootstrap
         request->SetOffset(offset);
         *request->MutableBuffer() = std::move(data);
 
-        auto pendingRequest = RequestManager.AddRequest(std::move(request));
+        auto pendingRequest = RequestManager.AddRequest(
+            std::move(request),
+            NThreading::NewPromise<NProto::TWriteDataResponse>());
         UNIT_ASSERT(pendingRequest);
 
         auto* result = pendingRequest.get();
@@ -87,8 +89,7 @@ struct TBootstrap
 
     void Evict(ui64 sequenceId)
     {
-        UNIT_ASSERT(
-            RequestManager.Evict(std::move(CachedRequests[sequenceId])));
+        UNIT_ASSERT(RequestManager.Evict(CachedRequests[sequenceId].get()));
         CachedRequests.erase(sequenceId);
     }
 
@@ -308,7 +309,9 @@ Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
         request->SetHandle(101);
         request->SetBuffer("a");
 
-        auto pendingRequest = b.RequestManager.AddRequest(request);
+        auto pendingRequest = b.RequestManager.AddRequest(
+            request,
+            NThreading::NewPromise<NProto::TWriteDataResponse>());
         const auto allocResult = b.RequestManager.TryAllocPendingRequest();
         UNIT_ASSERT_VALUES_EQUAL(pendingRequest.get(), allocResult.Request);
 

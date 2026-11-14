@@ -172,7 +172,9 @@ struct TBootstrap
         request->SetOffset(offset);
         *request->MutableBuffer() = std::move(data);
 
-        auto pendingRequest = RequestManager.AddRequest(std::move(request));
+        auto pendingRequest = RequestManager.AddRequest(
+            std::move(request),
+            NThreading::NewPromise<NProto::TWriteDataResponse>());
         auto allocResult = RequestManager.TryAllocPendingRequest();
 
         UNIT_ASSERT(!allocResult.Failed);
