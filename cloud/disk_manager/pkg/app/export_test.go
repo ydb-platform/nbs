@@ -161,13 +161,36 @@ func TestControlplaneExportDoesNotInitializeExecutor(t *testing.T) {
 		for _, taskType := range []string{
 			"dataplane.ExportSnapshotToS3", "dataplane.ExportImageToS3",
 		} {
-			if _, err := registry.NewTask(taskType); err != nil {
+			_, err := registry.NewTask(taskType)
+			if exportConfig == nil {
+				if err == nil {
+					t.Fatal("disabled export must not register transfers")
+				}
+			} else if err != nil {
 				t.Fatalf("child state must remain readable: %v", err)
 			}
 		}
 
 		if len(registry.TaskTypesForExecution()) != 0 {
 			t.Fatal("controlplane must not execute transfers")
+		}
+	}
+}
+
+func TestExportDisabledDoesNotInitializeOrRegister(t *testing.T) {
+	for _, grpcConfig := range []*server_config.GrpcConfig{nil, {}} {
+		registry := tasks.NewRegistry()
+		cleanup, err := initSnapshotExport(
+			context.Background(),
+			&server_config.ServerConfig{GrpcConfig: grpcConfig},
+			nil, nil, registry, nil, nil,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cleanup()
+		if len(registry.TaskTypes()) != 0 {
+			t.Fatalf("disabled export registered tasks: %v", registry.TaskTypes())
 		}
 	}
 }
