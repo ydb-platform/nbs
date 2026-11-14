@@ -13,12 +13,45 @@ Profile log fills in three places:
 
 | Command line parameter | Data type | Description |
 |:----------------------:|:---------:|-------------|
-| ```--profile-log```    | String    | Path to log file with NFS binary profile log |
+| ```--profile-log```    | String    | Path to NFS binary profile log; repeat for multiple files, or pass additional paths after it |
 | ```--fs-id```          | String    | Filesystem Id, used to output events only for specified filesystem. |
 | ```--node-id```        | ui64      | Node id (a.k.a. inode), output events which were applied to specified node id |
 | ```--handle```         | ui64      | Handle id, output events which used specified handle id |
 | ```--since```          | Timestamp | [ISO 8601:2004 format](https://www.iso.org/standard/40874.html), output all events from this timestamp |
 | ```--until```          | Timestamp | [ISO 8601:2004 format](https://www.iso.org/standard/40874.html), output all events strictly before given timestamp |
+| ```--no-skip-files```  | Flag      | Disable time-based file skipping; false by default. Exact request filters still apply |
+
+## Multiple files and estimated time ranges
+
+`dumpevents` and `findbytesaccess` always scan a single supplied file and apply
+exact per-request `--since` and `--until` filters to its contents.
+
+With multiple files and either time bound set, the tool skips files outside the
+range estimated from their first and last usable profile frames. It uses the
+eventlog library to scan forward from the start and within a 64 KiB tail window,
+doubling the window until a usable frame is found or the whole file is covered.
+Healthy logs need only a prefix and tail scan; unusable boundaries may require
+scanning the whole file. The minimum and maximum
+request timestamps across both boundary frames supply the start and end.
+Timestamps before 2000-01-01 UTC are excluded from these estimates. If no valid
+timestamps are found, the bounds remain unknown. Stored records and exact
+per-request filtering are unchanged.
+Incomplete or corrupt boundary frames are ignored when estimating bounds. Files with unknown record bounds are retained.
+
+Multiple files are sorted by detected record end time, oldest first. Unknown
+bounds sort last. Ties keep command-line order within each group: option values
+first, then positional paths. Boundary frames are probed once for sorting even
+without time filters, and pruning reuses
+those bounds. Single inputs are not probed. No times are inferred from filenames
+or filesystem modification times.
+
+Pass `--no-skip-files` to disable file skipping; sorting still probes bounds. Exact
+per-request filters still apply. Use this when out-of-order records or damaged
+boundary frames could make the estimated ranges incomplete:
+
+```sh
+./filestore-profile-tool dumpevents --no-skip-files --profile-log /var/log/nfs/nfs-vhost-profile.log* --since 2026-09-26T10:00:00Z --until 2026-09-26T11:00:00Z
+```
 
 ## Options for particular commands
 
