@@ -1,0 +1,42 @@
+name: check-tstring-pascal-methods
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "**/*.cpp"
+      - "**/*.cc"
+      - "**/*.cxx"
+      - "**/*.h"
+      - "**/*.hpp"
+      - "**/*.hh"
+      - "**/*.hxx"
+      - ".github/scripts/check_tstring_pascal_methods.py"
+      - ".github/workflows/check-tstring-pascal-methods.yaml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check-tstring-pascal-methods:
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: fetch base branch
+        run: git fetch origin "${{ github.base_ref }}"
+
+      - name: check TString PascalCase methods
+        run: |
+          python3 .github/scripts/check_tstring_pascal_methods.py \
+            --from-ref "origin/${{ github.base_ref }}" \
+            --to-ref HEAD
