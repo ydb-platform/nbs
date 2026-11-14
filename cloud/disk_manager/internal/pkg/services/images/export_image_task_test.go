@@ -6,13 +6,17 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	api "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	resources_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
+	service_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
+	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
@@ -167,4 +171,38 @@ func TestExportImageRequiresComputeTaskID(t *testing.T) {
 	err := task.Run(ctx, nil)
 	require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
 	require.ErrorContains(t, err, "missing from x-task-id")
+}
+
+func TestExportImageDisabledReturnsUnimplemented(t *testing.T) {
+	s := &service{}
+	taskID, err := s.ExportImage(context.Background(), nil)
+	require.Empty(t, taskID)
+	require.Equal(t, codes.Unimplemented, status.Code(err))
+	require.True(t, errors.IsSilent(err))
+	require.False(t, errors.CanRetry(err))
+}
+
+func TestImageExportRegistrationRequiresConfig(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		registry := tasks.NewRegistry()
+		scheduler := tasks_mocks.NewSchedulerMock()
+		scheduler.On("ScheduleRegularTasks", mock.Anything, mock.Anything, mock.Anything).Return()
+		var exportConfig *server_config.ExportConfig
+		if enabled {
+			exportConfig = &server_config.ExportConfig{}
+		}
+		err := RegisterForExecution(context.Background(), &service_config.ImagesConfig{},
+			nil, registry, scheduler, nil, nil, nil, nil, nil, nil, exportConfig)
+		require.NoError(t, err)
+		require.Contains(t, registry.TaskTypesForExecution(), "images.ClearDeletedImages")
+		if enabled {
+			require.Contains(t, registry.TaskTypesForExecution(), "images.ExportImage")
+			_, err := registry.NewTask("images.ExportImage")
+			require.NoError(t, err)
+		} else {
+			require.NotContains(t, registry.TaskTypes(), "images.ExportImage")
+			_, err := registry.NewTask("images.ExportImage")
+			require.Error(t, err)
+		}
+	}
 }
