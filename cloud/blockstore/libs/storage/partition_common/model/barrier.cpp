@@ -21,19 +21,21 @@ void TBarriers::AcquireBarrierN(ui64 commitId, ui32 refCount)
     }
 }
 
-void TBarriers::ReleaseBarrier(ui64 commitId)
+bool TBarriers::ReleaseBarrier(ui64 commitId)
 {
-    ReleaseBarrierN(commitId, 1);
+    return ReleaseBarrierN(commitId, 1);
 }
 
-void TBarriers::ReleaseBarrierN(ui64 commitId, ui32 refCount)
+bool TBarriers::ReleaseBarrierN(ui64 commitId, ui32 refCount)
 {
     auto it = Barriers.find(TBarrier(commitId, 0));
     Y_ABORT_UNLESS(it != Barriers.end());
     Y_ABORT_UNLESS(it->RefCount >= refCount);
     if ((const_cast<TBarrier&>(*it).RefCount -= refCount) == 0) {
         Barriers.erase(it);
+        return true;
     }
+    return false;
 }
 
 ui64 TBarriers::GetMinCommitId() const

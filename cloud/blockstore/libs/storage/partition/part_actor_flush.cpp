@@ -810,10 +810,14 @@ void TPartitionActor::HandleFlushCompleted(
 
     if (!HasError(msg->Error)) {
         for (const auto& i: msg->FlushedCommitIdsFromChannel) {
-            State->AccessTrimFreshLogBarriers()->ReleaseBarrierN(
-                i.CommitId,
-                i.BlockCount);
+            if (State->AccessTrimFreshLogBarriers()->ReleaseBarrierN(
+                    i.CommitId,
+                    i.BlockCount))
+            {
+                State->MarkFreshBlobDead(i.CommitId);
+            }
         }
+        State->SetOrdinaryTrimRequested(true);
 
         ui64 flushedFreshBlobByteCount = 0;
 
