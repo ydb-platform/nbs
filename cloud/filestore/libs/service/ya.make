@@ -20,6 +20,7 @@ PEERDIR(
     cloud/filestore/config
     cloud/filestore/private/api/protos
     cloud/filestore/public/api/protos
+    cloud/filestore/private/api/protos
 
     cloud/storage/core/libs/common
     cloud/storage/core/protos
