@@ -29,6 +29,16 @@ static bool operator == (const TError& lhs, const TError& rhs)
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
+////////////////////////////////////////////////////////////////////////////////
+
+struct TWriteBackCacheStateTestAccess
+{
+    static bool IsLocked(const TWriteBackCacheState& state)
+    {
+        return state.QueuedOperations.Lock.IsLocked();
+    }
+};
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1277,6 +1287,64 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(102, b.State->AcquireFlushHandle(1));
         b.State->FlushSucceeded(1, 2);
+    }
+
+    Y_UNIT_TEST(ShouldDestroyCompletedWriteOutsideLock)
+    {
+        TBootstrap b;
+        bool unlocked = false;
+        auto request = std::shared_ptr<NProto::TWriteDataRequest>(
+            new NProto::TWriteDataRequest,
+            [&](auto* ptr) {
+                unlocked = !TWriteBackCacheStateTestAccess::IsLocked(*b.State);
+                delete ptr;
+            });
+        request->SetNodeId(1);
+        request->SetHandle(101);
+        request->SetBuffer("abc");
+        b.State->AddWriteDataRequest(std::move(request)).GetValue();
+        UNIT_ASSERT(unlocked);
+    }
+
+    Y_UNIT_TEST(ShouldDestroyFailedWriteOutsideLock)
+    {
+        TBootstrap b;
+        b.Storage->SetCapacity(1);
+        b.Add(1, 101, 0, "abc");
+        bool unlocked = false;
+        auto request = std::shared_ptr<NProto::TWriteDataRequest>(
+            new NProto::TWriteDataRequest,
+            [&](auto* ptr)
+            {
+                unlocked = !TWriteBackCacheStateTestAccess::IsLocked(*b.State);
+                delete ptr;
+            });
+        request->SetNodeId(2);
+        request->SetHandle(202);
+        request->SetBuffer("def");
+        b.State->AddWriteDataRequest(std::move(request));
+        b.State->FlushFailed(1, MakeError(E_FS_NOSPC, "No space left"));
+        UNIT_ASSERT(unlocked);
+    }
+
+    Y_UNIT_TEST(ShouldDestroyRequestBeforeCompletingWrite)
+    {
+        TProcessor processor;
+        TQueuedOperations queue(processor, [] {});
+        auto request = std::make_shared<NProto::TWriteDataRequest>();
+        request->SetBuffer("abc");
+        std::weak_ptr<NProto::TWriteDataRequest> weak = request;
+        auto pending = std::make_unique<TPendingWriteDataRequest>(
+            1,
+            TInstant::Zero(),
+            std::move(request));
+        auto future = pending->AccessPromise().GetFuture();
+        bool destroyed = false;
+        future.Subscribe([&](const auto&) { destroyed = weak.expired(); });
+        queue.Acquire();
+        queue.CompleteWriteDataRequest(std::move(pending));
+        queue.Release();
+        UNIT_ASSERT(destroyed);
     }
 
     Y_UNIT_TEST(ShouldFailPendingRequestsOnFlushFailure)

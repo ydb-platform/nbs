@@ -62,6 +62,9 @@ void TPendingWriteDataRequest::SerializeToAllocation()
         "Buffer is expected to be written completely");
 
     Checksum = Crc32c(AllocationPtr, AllocationByteCount);
+
+    // Publishing Serialized lets another thread retire and destroy this request
+    // Neither this method nor its caller may access the request afterward
     Serialized.store(true, std::memory_order_release);
 }
 

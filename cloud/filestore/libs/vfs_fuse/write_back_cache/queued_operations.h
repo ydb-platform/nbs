@@ -11,6 +11,7 @@
 #include <util/generic/vector.h>
 
 #include <functional>
+#include <memory>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -32,6 +33,8 @@ struct IQueuedOperationsProcessor
 // Execute queued operations outside lock
 class TQueuedOperations
 {
+    friend struct TWriteBackCacheStateTestAccess;
+
 private:
     struct TEvent;
 
@@ -64,11 +67,15 @@ public:
 
     void ScheduleFlushNode(ui64 nodeId);
 
-    void CompleteWriteDataPromise(
-        NThreading::TPromise<NProto::TWriteDataResponse> promise);
+    // Complete a promise associated with a WriteData request and delete the
+    // request. The request must be unlinked from all lists.
+    void CompleteWriteDataRequest(
+        std::unique_ptr<TPendingWriteDataRequest> request);
 
-    void FailWriteDataPromise(
-        NThreading::TPromise<NProto::TWriteDataResponse> promise,
+    // Fail the promise with the supplied error and delete the WriteData
+    // request. The request must be unlinked from all lists.
+    void FailWriteDataRequest(
+        std::unique_ptr<TPendingWriteDataRequest> request,
         const NCloud::NProto::TError& error);
 
     void CompleteFlushOrReleasePromise(

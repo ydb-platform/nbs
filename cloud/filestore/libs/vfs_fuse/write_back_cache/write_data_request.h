@@ -7,6 +7,9 @@
 #include <util/datetime/base.h>
 #include <util/generic/intrlist.h>
 
+#include <atomic>
+#include <memory>
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 class TWriteDataRequestManager;
@@ -59,11 +62,12 @@ protected:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// A pending request is externally owned (by TNodeCache in production) until
-// it is either promoted to a cached request or rejected.
-// TWriteDataRequestManager, THandleState and TQueuedOperations keep only
-// non-owning pointers. In particular, an allocated request must remain alive
-// while TQueuedOperations serializes it without the cache-state lock.
+// A pending request is owned by TNodeCache until promoted to a cached request
+// or rejected. In either case, ownership moves to a TQueuedOperations event
+// so the request is destroyed outside the cache-state lock.
+// TWriteDataRequestManager, THandleState and the serialization queue keep only
+// non-owning pointers. An allocated request must remain alive while it is
+// serialized without the cache-state lock.
 class TPendingWriteDataRequest
     : public TWriteDataRequestBase<TPendingWriteDataRequest>
     , public TIntrusiveListItem<TPendingWriteDataRequest, THandleStateTag>
@@ -111,6 +115,11 @@ public:
     bool HasAllocation() const
     {
         return AllocationPtr != nullptr;
+    }
+
+    bool IsSerialized() const
+    {
+        return Serialized.load(std::memory_order_acquire);
     }
 
     // Serializes the request into its persistent storage allocation.

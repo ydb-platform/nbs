@@ -973,12 +973,11 @@ void TWriteBackCacheState::ProcessReadyCachedRequest(
 
     Y_ABORT_UNLESS(pendingRequest->GetSequenceId() == request->GetSequenceId());
 
-    QueuedOperations.CompleteWriteDataPromise(
-        std::move(pendingRequest->AccessPromise()));
-
     auto& handleState = nodeState.Handles[request->GetHandle()];
     handleState.PendingRequests.Remove(pendingRequest.get());
     handleState.UnflushedRequests.PushBack(request.get());
+
+    QueuedOperations.CompleteWriteDataRequest(std::move(pendingRequest));
 
     EnqueueUnflushedRequest(nodeId, nodeState, std::move(request));
 
@@ -996,19 +995,6 @@ void TWriteBackCacheState::EnqueueUnflushedRequest(
 
     if (GetBackpressureStatus(nodeState)) {
         RequestManager.SetBackpressureStatusForNode(nodeId);
-    }
-}
-
-void TWriteBackCacheState::RemoveActiveRequestFromHandleState(
-    TNodeState& nodeState,
-    TPendingWriteDataRequest* request)
-{
-    auto handle = request->GetRequest().GetHandle();
-    auto* handleState = nodeState.Handles.FindPtr(handle);
-
-    if (handleState) {
-        handleState->PendingRequests.Remove(request);
-        TryRemoveUnusedHandle(nodeState, handle);
     }
 }
 
@@ -1111,14 +1097,17 @@ void TWriteBackCacheState::FailUnallocatedPendingRequest(
     std::unique_ptr<TPendingWriteDataRequest> request,
     const NCloud::NProto::TError& error)
 {
-    QueuedOperations.FailWriteDataPromise(
-        std::move(request->AccessPromise()),
-        error);
+    const ui64 handle = request->GetHandle();
+    RequestManager.RemoveUnallocated(request.get());
 
-    RemoveActiveRequestFromHandleState(nodeState, request.get());
+    if (auto* handleState = nodeState.Handles.FindPtr(handle)) {
+        handleState->PendingRequests.Remove(request.get());
+    }
+
+    QueuedOperations.FailWriteDataRequest(std::move(request), error);
+
+    TryRemoveUnusedHandle(nodeState, handle);
     TriggerFlushCompletions(nodeState);
-
-    RequestManager.RemoveUnallocated(std::move(request));
 }
 
 void TWriteBackCacheState::FailNodeUnallocatedPendingRequests(

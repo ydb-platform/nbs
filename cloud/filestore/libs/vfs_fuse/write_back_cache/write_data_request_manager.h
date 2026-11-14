@@ -57,8 +57,8 @@ public:
         std::unique_ptr<TCachedWriteDataRequest> request,
         bool handleReleased)>;
 
-    TWriteDataRequestManager(TWriteDataRequestManager&&) = default;
-    TWriteDataRequestManager& operator=(TWriteDataRequestManager&&) = default;
+    TWriteDataRequestManager(TWriteDataRequestManager&&) = delete;
+    TWriteDataRequestManager& operator=(TWriteDataRequestManager&&) = delete;
 
     TWriteDataRequestManager(
         ISequenceIdGeneratorPtr sequenceIdGenerator,
@@ -120,7 +120,7 @@ public:
     GetBackUnallocatedPendingRequest() const;
 
     // Removes an unallocated request from the pending queue.
-    void RemoveUnallocated(std::unique_ptr<TPendingWriteDataRequest> request);
+    void RemoveUnallocated(TPendingWriteDataRequest* request);
 
     /**
      * Marks the request as flushed
