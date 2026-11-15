@@ -14873,14 +14873,14 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         EnableReadBlobCorruption(*runtime, 0);
 
-        // direct read should fail
-        {
+        // Both the single-block and multi-block read paths must reject corruption.
+        for (const auto& readRange: {TBlockRange32::MakeOneBlock(0), range}) {
             TVector<TString> blocks;
             auto sglist = ResizeBlocks(
                 blocks,
-                range.Size(),
+                readRange.Size(),
                 TString::TUninitialized(DefaultBlockSize));
-            partition.SendReadBlocksLocalRequest(range, std::move(sglist));
+            partition.SendReadBlocksLocalRequest(readRange, std::move(sglist));
             auto response = partition.RecvReadBlocksLocalResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_REJECTED,
