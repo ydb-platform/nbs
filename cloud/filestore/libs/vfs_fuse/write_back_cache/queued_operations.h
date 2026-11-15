@@ -33,16 +33,15 @@ struct IQueuedOperationsProcessor
 // Execute queued operations outside lock
 class TQueuedOperations
 {
-    friend struct TWriteBackCacheStateTestAccess;
-
 private:
     struct TEvent;
 
     std::unique_ptr<IWriteBackCacheLock> Lock;
     TVector<TEvent> Events;
 
-    // Non-owning pointers. The cache-state lifetime invariant keeps allocated
-    // requests alive until this serialization batch completes.
+    // Non-owning pointers. Each request stays alive until it publishes
+    // Serialized. Another thread may then destroy it, the serializer must not
+    // dereference its pointer after publication.
     TVector<TPendingWriteDataRequest*> RequestsToSerialize;
     IQueuedOperationsProcessor& Processor;
 

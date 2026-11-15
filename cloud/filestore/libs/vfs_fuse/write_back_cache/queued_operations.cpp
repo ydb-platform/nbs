@@ -18,7 +18,7 @@ void ValidateRetiredRequest(const TPendingWriteDataRequest& request)
         (request.TIntrusiveListItem<TPendingWriteDataRequest, THandleStateTag>::
              Empty()));
 
-    // Ensure that the request cannot be freed while it is being serialized
+    // Allocated requests must publish Serialized before retirement
     Y_ABORT_UNLESS(!request.HasAllocation() || request.IsSerialized());
 }
 

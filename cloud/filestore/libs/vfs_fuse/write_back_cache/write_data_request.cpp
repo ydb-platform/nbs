@@ -63,8 +63,7 @@ void TPendingWriteDataRequest::SerializeToAllocation()
 
     Checksum = Crc32c(AllocationPtr, AllocationByteCount);
 
-    // Publishing Serialized lets another thread retire and destroy this request
-    // Neither this method nor its caller may access the request afterward
+    // Publish last; see RequestsToSerialize's lifetime contract.
     Serialized.store(true, std::memory_order_release);
 }
 

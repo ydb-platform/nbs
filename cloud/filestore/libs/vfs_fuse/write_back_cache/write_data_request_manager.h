@@ -57,8 +57,8 @@ public:
         std::unique_ptr<TCachedWriteDataRequest> request,
         bool handleReleased)>;
 
-    TWriteDataRequestManager(TWriteDataRequestManager&&) = delete;
-    TWriteDataRequestManager& operator=(TWriteDataRequestManager&&) = delete;
+    TWriteDataRequestManager(TWriteDataRequestManager&&) = default;
+    TWriteDataRequestManager& operator=(TWriteDataRequestManager&&) = default;
 
     TWriteDataRequestManager(
         ISequenceIdGeneratorPtr sequenceIdGenerator,

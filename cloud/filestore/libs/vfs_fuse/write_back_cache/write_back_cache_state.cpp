@@ -1000,6 +1000,18 @@ void TWriteBackCacheState::EnqueueUnflushedRequest(
 
 void TWriteBackCacheState::RemoveActiveRequestFromHandleState(
     TNodeState& nodeState,
+    TPendingWriteDataRequest* request)
+{
+    auto handle = request->GetRequest().GetHandle();
+    auto* handleState = nodeState.Handles.FindPtr(handle);
+
+    if (handleState) {
+        handleState->PendingRequests.Remove(request);
+    }
+}
+
+void TWriteBackCacheState::RemoveActiveRequestFromHandleState(
+    TNodeState& nodeState,
     TCachedWriteDataRequest* request)
 {
     auto handle = request->GetHandle();
@@ -1100,9 +1112,7 @@ void TWriteBackCacheState::FailUnallocatedPendingRequest(
     const ui64 handle = request->GetHandle();
     RequestManager.RemoveUnallocated(request.get());
 
-    if (auto* handleState = nodeState.Handles.FindPtr(handle)) {
-        handleState->PendingRequests.Remove(request.get());
-    }
+    RemoveActiveRequestFromHandleState(nodeState, request.get());
 
     QueuedOperations.FailWriteDataRequest(std::move(request), error);
 

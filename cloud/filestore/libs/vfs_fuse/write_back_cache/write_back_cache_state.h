@@ -51,8 +51,6 @@ struct TNodeCachedDataPin
 // The class is thread safe
 class TWriteBackCacheState
 {
-    friend struct TWriteBackCacheStateTestAccess;
-
 private:
     const ISequenceIdGeneratorPtr SequenceIdGenerator;
     const ITimerPtr Timer;
@@ -239,6 +237,10 @@ private:
         ui64 nodeId,
         TNodeState& nodeState,
         std::unique_ptr<TCachedWriteDataRequest> request);
+
+    void RemoveActiveRequestFromHandleState(
+        TNodeState& nodeState,
+        TPendingWriteDataRequest* request);
 
     void RemoveActiveRequestFromHandleState(
         TNodeState& nodeState,
