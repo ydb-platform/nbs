@@ -20,7 +20,6 @@ import (
 	public_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/library/go/core/metrics/solomon"
-	"github.com/ydb-platform/nbs/library/go/yandex/solomon/reporters/puller/httppuller"
 )
 
 func TestExportMetricsShareSolomonEndpoint(t *testing.T) {
@@ -34,7 +33,11 @@ func TestExportMetricsShareSolomonEndpoint(t *testing.T) {
 		mux = m
 		paths = append(paths, path)
 		registry := solomon.NewRegistry(solomon.NewRegistryOpts().SetRated(true))
-		m.Handle("/solomon/"+path, httppuller.NewHandler(registry))
+		m.HandleFunc("/solomon/"+path, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, err := registry.StreamJSON(r.Context(), w)
+			require.NoError(t, err)
+		})
 		return public_metrics.WrapRegistry(registry)
 	})
 	registry := newSnapshotExportRegistry(&server_config.ServerConfig{

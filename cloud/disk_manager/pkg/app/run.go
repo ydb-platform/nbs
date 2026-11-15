@@ -99,6 +99,8 @@ func run(
 	logger := logging.NewLogger(config.LoggingConfig)
 	ctx = logging.SetLogger(ctx, logger)
 
+	disabledZones := common.NewDisabledZones(config.GetDisabledZonesConfig().GetZones())
+
 	logging.Info(ctx, "Locking process memory")
 
 	if config.GetLockProcessMemory() {
@@ -424,6 +426,7 @@ func run(
 		err = initDataplane(
 			ctx,
 			config,
+			disabledZones,
 			mon,
 			creds,
 			newSnapshotStorageQuotaReporter,
@@ -504,6 +507,7 @@ func run(
 		serve, err = initControlplane(
 			ctx,
 			config,
+			disabledZones,
 			mon,
 			creds,
 			newAuthorizer,

@@ -6,6 +6,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -19,6 +20,7 @@ import (
 func RegisterForExecution(
 	ctx context.Context,
 	config *snapshots_config.SnapshotsConfig,
+	disabledZones *common.DisabledZones,
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	storage resources.Storage,
@@ -97,10 +99,11 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("snapshots.CreateSnapshotFromDisk", func() tasks.Task {
 		return &createSnapshotFromDiskTask{
-			scheduler:    taskScheduler,
-			storage:      storage,
-			nbsFactory:   nbsFactory,
-			cellSelector: cellSelector,
+			scheduler:     taskScheduler,
+			storage:       storage,
+			nbsFactory:    nbsFactory,
+			cellSelector:  cellSelector,
+			disabledZones: disabledZones,
 		}
 	})
 	if err != nil {

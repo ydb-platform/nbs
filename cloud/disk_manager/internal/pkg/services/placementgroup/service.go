@@ -49,6 +49,53 @@ func getPlacementStrategy(
 	}
 }
 
+func getZoneIDForPlacementGroup(
+	ctx context.Context,
+	storage resources.Storage,
+	cellSelector cells.CellSelector,
+	groupID string,
+	reqZoneID string,
+	meta *resources.PlacementGroupMeta,
+) (string, error) {
+
+	if meta == nil {
+		var err error
+		meta, err = storage.GetPlacementGroupMeta(ctx, groupID)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return resolvePlacementGroupZoneID(cellSelector, groupID, reqZoneID, meta)
+}
+
+func resolvePlacementGroupZoneID(
+	cellSelector cells.CellSelector,
+	groupID string,
+	reqZoneID string,
+	meta *resources.PlacementGroupMeta,
+) (string, error) {
+
+	zoneID := reqZoneID
+	if meta != nil && len(meta.ZoneID) > 0 {
+		zoneCells, err := cellSelector.ResolveCells(reqZoneID)
+		if err != nil {
+			return "", err
+		}
+		if !slices.Contains(zoneCells, meta.ZoneID) {
+			return "", errors.NewNonRetriableErrorf(
+				"placement group %v is in zone %v, not in requested zone %v",
+				groupID,
+				meta.ZoneID,
+				reqZoneID,
+			)
+		}
+		zoneID = meta.ZoneID
+	}
+
+	return zoneID, nil
+}
+
 func selectClientByGroup(
 	ctx context.Context,
 	storage resources.Storage,
@@ -56,33 +103,22 @@ func selectClientByGroup(
 	cellSelector cells.CellSelector,
 	groupID string,
 	reqZoneID string,
+	meta *resources.PlacementGroupMeta,
 ) (nbs.Client, error) {
 
-	pgMeta, err := storage.GetPlacementGroupMeta(ctx, groupID)
+	zoneID, err := getZoneIDForPlacementGroup(
+		ctx,
+		storage,
+		cellSelector,
+		groupID,
+		reqZoneID,
+		meta,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	zoneID := reqZoneID
-	if pgMeta != nil && len(pgMeta.ZoneID) > 0 {
-		zoneCells, err := cellSelector.ResolveCells(reqZoneID)
-		if err != nil {
-			return nil, err
-		}
-		if !slices.Contains(zoneCells, pgMeta.ZoneID) {
-			return nil, errors.NewNonRetriableErrorf(
-				"placement group %v is in zone %v, not in requested zone %v",
-				groupID,
-				pgMeta.ZoneID,
-				reqZoneID,
-			)
-		}
-		zoneID = pgMeta.ZoneID
-	}
-
-	client, err := nbsFactory.GetClient(ctx, zoneID)
-
-	return client, err
+	return nbsFactory.GetClient(ctx, zoneID)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -239,6 +275,7 @@ func (s *service) DescribePlacementGroup(
 		s.cellSelector,
 		req.GroupId.GroupId,
 		req.GroupId.ZoneId,
+		nil,
 	)
 
 	if err != nil {

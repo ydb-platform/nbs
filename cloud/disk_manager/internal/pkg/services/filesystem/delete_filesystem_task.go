@@ -8,21 +8,24 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type deleteFilesystemTask struct {
-	storage   resources.Storage
-	factory   nfs.Factory
-	scheduler tasks.Scheduler
-	request   *protos.DeleteFilesystemRequest
-	state     *protos.DeleteFilesystemTaskState
+	storage       resources.Storage
+	factory       nfs.Factory
+	scheduler     tasks.Scheduler
+	disabledZones *common.DisabledZones
+	request       *protos.DeleteFilesystemRequest
+	state         *protos.DeleteFilesystemTaskState
 }
 
 func (t *deleteFilesystemTask) Save() ([]byte, error) {
@@ -70,6 +73,16 @@ func (t *deleteFilesystemTask) deleteFilesystem(
 		zoneID = t.request.Filesystem.ZoneId
 	}
 	if len(zoneID) == 0 {
+		return t.storage.FilesystemDeleted(ctx, filesystemID, time.Now())
+	}
+
+	if t.disabledZones.IsDisabled(zoneID) {
+		logging.Warn(
+			ctx,
+			"Skipping backend deletion of filesystem %v: zone %v is disabled",
+			filesystemID,
+			zoneID,
+		)
 		return t.storage.FilesystemDeleted(ctx, filesystemID, time.Now())
 	}
 

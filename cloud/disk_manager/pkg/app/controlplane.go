@@ -144,6 +144,7 @@ func newGrpcServer(
 func registerControlplaneTasks(
 	ctx context.Context,
 	config *server_config.ServerConfig,
+	disabledZones *common.DisabledZones,
 	mon *monitoring.Monitoring,
 	creds auth.Credentials,
 	db *persistence.YDBClient,
@@ -170,6 +171,7 @@ func registerControlplaneTasks(
 		taskScheduler,
 		poolStorage,
 		nbsFactory,
+		disabledZones,
 		resourceStorage,
 	)
 	if err != nil {
@@ -187,6 +189,7 @@ func registerControlplaneTasks(
 		ctx,
 		config.GetDisksConfig(),
 		performanceConfig,
+		disabledZones,
 		config.GetProxyOverlayDiskIdPrefix(),
 		resourceStorage,
 		poolStorage,
@@ -208,6 +211,7 @@ func registerControlplaneTasks(
 	err = images.RegisterForExecution(
 		ctx,
 		config.GetImagesConfig(),
+		disabledZones,
 		taskRegistry,
 		taskScheduler,
 		resourceStorage,
@@ -227,6 +231,7 @@ func registerControlplaneTasks(
 	err = snapshots.RegisterForExecution(
 		ctx,
 		config.GetSnapshotsConfig(),
+		disabledZones,
 		taskRegistry,
 		taskScheduler,
 		resourceStorage,
@@ -247,6 +252,7 @@ func registerControlplaneTasks(
 		err = filesystem.RegisterForExecution(
 			ctx,
 			config.GetFilesystemConfig(),
+			disabledZones,
 			taskScheduler,
 			taskRegistry,
 			resourceStorage,
@@ -280,6 +286,7 @@ func registerControlplaneTasks(
 	err = placementgroup.RegisterForExecution(
 		ctx,
 		config.GetPlacementGroupConfig(),
+		disabledZones,
 		taskRegistry,
 		taskScheduler,
 		resourceStorage,
@@ -314,6 +321,7 @@ func registerControlplaneTasks(
 func initControlplane(
 	ctx context.Context,
 	config *server_config.ServerConfig,
+	disabledZones *common.DisabledZones,
 	mon *monitoring.Monitoring,
 	creds auth.Credentials,
 	newAuthorizer auth.NewAuthorizer,
@@ -422,6 +430,7 @@ func initControlplane(
 	err = registerControlplaneTasks(
 		ctx,
 		config,
+		disabledZones,
 		mon,
 		creds,
 		db,
