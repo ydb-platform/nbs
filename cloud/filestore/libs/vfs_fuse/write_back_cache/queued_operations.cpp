@@ -108,16 +108,20 @@ struct TQueuedOperations::TEvent: public TEventVariant
 
 TQueuedOperations::TQueuedOperations(
     IQueuedOperationsProcessor& processor,
+    std::unique_ptr<IWriteBackCacheLock> lock,
     std::function<void()> requestsSerializedCallback)
-    : Processor(processor)
+    : Lock(std::move(lock))
+    , Processor(processor)
     , RequestsSerializedCallback(std::move(requestsSerializedCallback))
-{}
+{
+    Y_ABORT_UNLESS(Lock);
+}
 
 TQueuedOperations::~TQueuedOperations() = default;
 
 void TQueuedOperations::Acquire()
 {
-    Lock.Acquire();
+    Lock->Acquire();
 }
 
 void TQueuedOperations::Release()
@@ -126,7 +130,7 @@ void TQueuedOperations::Release()
         auto events = std::exchange(Events, {});
         auto requestsToSerialize = std::exchange(RequestsToSerialize, {});
 
-        Lock.Release();
+        Lock->Release();
 
         for (auto& event: events) {
             std::visit([](auto& ev) { ev.Invoke(); }, event);
@@ -146,7 +150,7 @@ void TQueuedOperations::Release()
             request->SerializeToAllocation();
         }
 
-        Lock.Acquire();
+        Lock->Acquire();
 
         // This call may enqueue new events
         RequestsSerializedCallback();

@@ -37,6 +37,7 @@ public:
         : Stats(CreateWriteBackCacheStats())
         , State(
               *this,
+              CreateWriteBackCacheLock(NProto::WBC_LOCK_ADAPTIVE),
               CreateTestStorage(Stats),
               std::make_shared<TTestTimer>(),
               Stats->GetWriteBackCacheStateStats(),

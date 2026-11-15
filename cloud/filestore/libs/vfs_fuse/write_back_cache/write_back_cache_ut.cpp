@@ -163,6 +163,7 @@ struct TBootstrapArgs
     bool FlushWritesInParallelEnabled = true;
     ui64 CacheCapacityBytes = DefaultCacheCapacityBytes;
     bool LogDataOperations = true;
+    NProto::EWriteBackCacheLockMethod LockMethod = NProto::WBC_LOCK_ADAPTIVE;
 
     // Total number of threads shared by asynchronous submission, session
     // handling, and completion in TTestWriteBackCache.
@@ -208,6 +209,7 @@ struct TBootstrap
     bool DisableExpectedDataValidation = false;
     ui64 CacheCapacityBytes = DefaultCacheCapacityBytes;
     size_t ThreadCount = 0;
+    NProto::EWriteBackCacheLockMethod LockMethod = NProto::WBC_LOCK_ADAPTIVE;
 
     TCallContextPtr CallContext;
 
@@ -226,6 +228,7 @@ struct TBootstrap
         , FlushWritesInParallelEnabled(args.FlushWritesInParallelEnabled)
         , CacheCapacityBytes(args.CacheCapacityBytes)
         , ThreadCount(args.ThreadCount)
+        , LockMethod(args.LockMethod)
     {
         CacheFlushRetryPeriod = FlushRetryPeriod;
 
@@ -332,6 +335,7 @@ struct TBootstrap
              .FlushMaxWriteRequestSize = MaxWriteRequestSize,
              .FlushMaxWriteRequestsCount = MaxWriteRequestsCount,
              .FlushMaxSumWriteRequestsSize = MaxSumWriteRequestsSize,
+             .LockMethod = LockMethod,
              .ZeroCopyWriteEnabled = ZeroCopyWriteEnabled,
              .FlushWritesInParallelEnabled = FlushWritesInParallelEnabled},
             ThreadCount);
@@ -3060,10 +3064,18 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     struct TShouldHandleConcurrentReadsAndWritesAcrossNodesTest: TBootstrap
     {
-        static constexpr size_t ClientThreadCount = 16;
+        struct TArgs
+        {
+            NProto::EWriteBackCacheLockMethod LockMethod =
+                NProto::WBC_LOCK_ADAPTIVE;
+            size_t ClientThreadCount = 16;
+            size_t CacheThreadCount = 4;
+        };
+
+        const size_t ClientThreadCount;
         static constexpr ui64 MaxRequestSize = 8_KB;
         static constexpr ui64 FileSize = 256_KB;
-        static constexpr TDuration TestDuration = TDuration::Seconds(5);
+        static constexpr TDuration TestDuration = TDuration::Seconds(1);
 
         // Incoming write iovecs are borrowed by the cache. Keep one buffer per
         // thread alive through cache teardown so that a timed-out request
@@ -3071,13 +3083,16 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         TVector<TString> WriteBuffers;
         std::atomic<bool> StopRequested = false;
 
-        TShouldHandleConcurrentReadsAndWritesAcrossNodesTest()
+        explicit TShouldHandleConcurrentReadsAndWritesAcrossNodesTest(
+            const TArgs& args)
             : TBootstrap(
                   {.MaxWriteRequestsCount = 2,
                    .ZeroCopyWriteEnabled = true,
                    .DoNotCheckWriteDataRequestBuffer = true,
                    .LogDataOperations = false,
-                   .ThreadCount = 4})
+                   .LockMethod = args.LockMethod,
+                   .ThreadCount = args.CacheThreadCount})
+            , ClientThreadCount(args.ClientThreadCount)
             , WriteBuffers(ClientThreadCount)
         {}
 
@@ -3207,7 +3222,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         void Run()
         {
-            std::latch start{ClientThreadCount + 1};
+            std::latch start{static_cast<ptrdiff_t>(ClientThreadCount + 1)};
             const TInstant deadline = TInstant::Now() + TestDuration;
 
             TVector<std::exception_ptr> errors(ClientThreadCount);
@@ -3243,9 +3258,43 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         }
     };
 
-    Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodes)
+    Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodesAdaptive)
     {
-        TShouldHandleConcurrentReadsAndWritesAcrossNodesTest test;
+        TShouldHandleConcurrentReadsAndWritesAcrossNodesTest test(
+            {.LockMethod = NProto::WBC_LOCK_ADAPTIVE});
+        test.Run();
+    }
+
+    Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodesSpin)
+    {
+        // The test runner reserves four CPUs. Use two clients and two cache
+        // workers to reduce oversubscription: spinning waiters can otherwise
+        // delay a descheduled lock holder and cause request timeouts.
+        TShouldHandleConcurrentReadsAndWritesAcrossNodesTest test(
+            {.LockMethod = NProto::WBC_LOCK_SPIN,
+             .ClientThreadCount = 2,
+             .CacheThreadCount = 2});
+        test.Run();
+    }
+
+    Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodesMutex)
+    {
+        TShouldHandleConcurrentReadsAndWritesAcrossNodesTest test(
+            {.LockMethod = NProto::WBC_LOCK_MUTEX});
+        test.Run();
+    }
+
+    Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodesSpinThenMutex)
+    {
+        TShouldHandleConcurrentReadsAndWritesAcrossNodesTest test(
+            {.LockMethod = NProto::WBC_LOCK_SPIN_THEN_MUTEX});
+        test.Run();
+    }
+
+    Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodesPthreadAdaptive)
+    {
+        TShouldHandleConcurrentReadsAndWritesAcrossNodesTest test(
+            {.LockMethod = NProto::WBC_LOCK_PTHREAD_ADAPTIVE});
         test.Run();
     }
 

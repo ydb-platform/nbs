@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/filestore/config/vfs.pb.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/endpoint/public.h>
 #include <cloud/filestore/libs/service/public.h>
@@ -32,6 +33,7 @@ struct TWriteBackCacheConfig
     ui32 FlushMaxWriteRequestsCount = 0;
     ui32 FlushMaxSumWriteRequestsSize = 0;
     ui32 MaxQueuedFlushBatchesPerNode = 0;
+    NProto::EWriteBackCacheLockMethod LockMethod = NProto::WBC_LOCK_ADAPTIVE;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
