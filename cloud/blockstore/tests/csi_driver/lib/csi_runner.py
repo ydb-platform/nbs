@@ -14,13 +14,11 @@ import yatest.common as common
 
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test
-from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
+from cloud.blockstore.config.server_pb2 import TServerAppConfig, TKikimrServiceConfig
 from cloud.blockstore.config.client_pb2 import TClientConfig, TClientAppConfig
 from cloud.filestore.config.vhost_pb2 import TVhostAppConfig, TVhostServiceConfig, TServiceEndpoint
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
-from cloud.blockstore.tests.python.lib.test_base import (
-    thread_count
-)
+from cloud.blockstore.tests.python.lib.test_base import thread_count
 from cloud.filestore.tests.python.lib.daemon_config import FilestoreVhostConfigGenerator
 from cloud.filestore.tests.python.lib.vhost import FilestoreVhost, wait_for_filestore_vhost
 from cloud.storage.core.protos.endpoints_pb2 import (
@@ -47,37 +45,81 @@ def retry(max_retries):
     return decorator
 
 
-class CsiLoadTest(LocalLoadTest):
+class CsiLoadTest:
+    """Independent YDB/NBS backends connected to one CSI driver.
+
+    ``runs[i]`` addresses storage i directly. The CSI controller addresses
+    storage 0; VM staging balances endpoints across all backends, so tests
+    must create volumes on the backend that will be selected.
+    """
 
     def __init__(
             self,
-            sockets_dir: str,
-            grpc_unix_socket_path: str,
-            sockets_temporary_directory: tempfile.TemporaryDirectory,
-            vm_mode: bool,
-            external_fs_configs,
-            *args,
-            **kwargs,
-    ):
-        super(CsiLoadTest, self).__init__(*args, **kwargs)
-        if external_fs_configs is not None:
-            self.local_nfs_vhost = LocalNfsVhostRunner(external_fs_configs)
-            self.local_nfs_vhost.start()
-        self.sockets_temporary_directory = sockets_temporary_directory
-        self.csi = NbsCsiDriverRunner(
-            sockets_dir,
-            grpc_unix_socket_path,
-            vm_mode,
-            self.local_nfs_vhost.get_config() if self.local_nfs_vhost else None,
-        )
-        self.csi.start()
+            storage_count: int = 1,
+            vm_mode: bool = False,
+            external_fs_configs=None,
+            retry_timeout_ms: int | None = None):
+        if storage_count < 1:
+            raise ValueError("storage_count must be positive")
+
+        self.storages = []
+        self.local_nfs_vhost = None
+        self.runs = []
+        self._resources = contextlib.ExitStack()
+        try:
+            subprocess.check_call(["modprobe", "nbd"], timeout=20)
+            self.sockets_dir = Path(self._resources.enter_context(
+                tempfile.TemporaryDirectory(dir="/tmp")))
+            output_dir = Path(get_unique_path_for_current_test(
+                output_path=common.output_path(), sub_folder="storages"))
+            for index in range(storage_count):
+                storage_dir = output_dir / str(index)
+                server = _server_app_config(
+                    self.sockets_dir, storage_dir / "endpoints", vm_mode)
+                # Match the socket naming convention in CSI createClients().
+                socket_name = "grpc.sock" if index == 0 else f"grpc{index}.sock"
+                server.ServerConfig.UnixSocketPath = str(self.sockets_dir / socket_name)
+                storage = LocalLoadTest(
+                    endpoint="",
+                    server_app_config=server,
+                    use_in_memory_pdisks=True,
+                    kikimr_output_path=str(storage_dir),
+                    config_sub_folder=f"nbs_configs_{index}")
+                self.storages.append(storage)
+                self._resources.callback(storage.tear_down)
+                self.runs.append(_client_runner(
+                    storage.nbs_port, storage_dir / "client-config.txt", retry_timeout_ms))
+
+            if external_fs_configs:
+                self.local_nfs_vhost = LocalNfsVhostRunner(external_fs_configs)
+                self._resources.callback(self.local_nfs_vhost.stop)
+                self.local_nfs_vhost.start()
+
+            self.csi = NbsCsiDriverRunner(
+                str(self.sockets_dir),
+                str(self.sockets_dir / "grpc.sock"),
+                vm_mode,
+                local_fs_config=(
+                    self.local_nfs_vhost.get_config() if self.local_nfs_vhost else None),
+                nbs_server_count=storage_count)
+            self._resources.callback(self.csi.stop)
+            self.csi.start()
+        except BaseException:
+            self.tear_down()
+            raise
+
+    @property
+    def nbs_port(self):
+        return self.storages[0].nbs_port
 
     def tear_down(self):
-        self.csi.stop()
-        if self.local_nfs_vhost:
-            self.local_nfs_vhost.stop()
-        super(CsiLoadTest, self).tear_down()
-        self.sockets_temporary_directory.cleanup()
+        self._resources.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.tear_down()
 
 
 class NbsCsiDriverRunner:
@@ -87,7 +129,8 @@ class NbsCsiDriverRunner:
             sockets_dir: str,
             grpc_unix_socket_path: str,
             vm_mode: bool,
-            local_fs_config):
+            local_fs_config,
+            nbs_server_count: int = 1):
         csi_driver_dir = Path(
             common.binary_path("cloud/blockstore/tools/csi_driver/"),
         )
@@ -103,6 +146,7 @@ class NbsCsiDriverRunner:
         self._log_file = None
         self._vm_mode = vm_mode
         self._local_fs_config = local_fs_config
+        self._nbs_server_count = nbs_server_count
 
     def start(self):
         self._log_file = open(self._csi_driver_output, "w")
@@ -115,6 +159,8 @@ class NbsCsiDriverRunner:
             "--nbs-socket", self._grpc_unix_socket_path,
             f"--sockets-dir={self._sockets_dir}",
             f"--endpoint={str(self._endpoint)}",
+            f"--nbs-server-replica-count={self._nbs_server_count}",
+            f"--nbs-server-replica-count-total={self._nbs_server_count}",
             "--nfs-vhost-port=0",
             "--nfs-server-port=0",
             "-v=4",
@@ -300,8 +346,12 @@ class NbsCsiDriverRunner:
         if self._proc is not None:
             logging.info("Process exit code: %s", self._proc.returncode)
             logging.info("Process pid %d", self._proc.pid)
-        self._proc.kill()
-        self._log_file.close()
+            self._proc.kill()
+            self._proc.wait()
+            self._proc = None
+        if self._log_file is not None:
+            self._log_file.close()
+            self._log_file = None
 
     @retry(max_retries=3)
     def volumestats(self, pod_id: str, volume_id: str):
@@ -370,47 +420,40 @@ def cleanup_after_test(
     env.tear_down()
 
 
-def init(vm_mode: bool = False, retry_timeout_ms: int | None = None, external_fs_configs=[]):
-    server_config_patch = TServerConfig()
-    server_config_patch.NbdEnabled = True
-    server_config_patch.NbdNetlink = True
-    server_config_patch.AutomaticNbdDeviceManagement = True
-    endpoints_dir = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"
-    endpoints_dir.mkdir(exist_ok=True)
-    server_config_patch.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
-    server_config_patch.EndpointStorageDir = str(endpoints_dir)
-    server_config_patch.AllowAllRequestsViaUDS = True
-    # We run inside qemu, so do not need to cleanup
-    temp_dir = tempfile.TemporaryDirectory(dir="/tmp")
-    logging.info("Created temporary dir %s", temp_dir.name)
-    sockets_dir = Path(temp_dir.name)
-    server_config_patch.UnixSocketPath = str(sockets_dir / "grpc.sock")
-    server_config_patch.VhostEnabled = vm_mode
-    server_config_patch.NbdDevicePrefix = "/dev/nbd"
+def _server_app_config(sockets_dir: Path, endpoints_dir: Path, vm_mode: bool):
+    endpoints_dir.mkdir(parents=True, exist_ok=True)
     server = TServerAppConfig()
-    server.ServerConfig.CopyFrom(server_config_patch)
-    server.ServerConfig.ThreadsCount = thread_count()
-    server.ServerConfig.StrictContractValidation = True
+    config = server.ServerConfig
+    config.NbdEnabled = True
+    config.NbdNetlink = True
+    config.AutomaticNbdDeviceManagement = True
+    config.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
+    config.EndpointStorageDir = str(endpoints_dir)
+    config.AllowAllRequestsViaUDS = True
+    config.UnixSocketPath = str(sockets_dir / "grpc.sock")
+    config.VhostEnabled = vm_mode
+    config.NbdDevicePrefix = "/dev/nbd"
+    config.ThreadsCount = thread_count()
+    config.StrictContractValidation = True
     server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
-    subprocess.check_call(["modprobe", "nbd"], timeout=20)
+    return server
+
+
+def init(vm_mode: bool = False, retry_timeout_ms: int | None = None, external_fs_configs=None):
     env = CsiLoadTest(
-        sockets_dir=str(sockets_dir),
-        grpc_unix_socket_path=server_config_patch.UnixSocketPath,
-        sockets_temporary_directory=temp_dir,
         vm_mode=vm_mode,
         external_fs_configs=external_fs_configs,
-        endpoint="",
-        server_app_config=server,
-        storage_config_patches=None,
-        use_in_memory_pdisks=True)
+        retry_timeout_ms=retry_timeout_ms)
+    return env, env.runs[0]
 
-    client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
+
+def _client_runner(nbs_port: int, client_config_path: Path, retry_timeout_ms=None):
     client_config = TClientAppConfig()
     client_config.ClientConfig.CopyFrom(TClientConfig())
     if retry_timeout_ms:
         client_config.ClientConfig.RetryTimeout = retry_timeout_ms
     client_config.ClientConfig.Host = "localhost"
-    client_config.ClientConfig.InsecurePort = env.nbs_port
+    client_config.ClientConfig.InsecurePort = nbs_port
     client_config_path.write_text(MessageToString(client_config))
 
     def run(*args, **kwargs):
@@ -430,7 +473,7 @@ def init(vm_mode: bool = False, retry_timeout_ms: int | None = None, external_fs
             text=True,
         )
         return result
-    return env, run
+    return run
 
 
 class LocalNfsVhostRunner:

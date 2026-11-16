@@ -470,3 +470,80 @@ def test_stage_twice_with_different_parameters():
         raise
     finally:
         csi.cleanup_after_test(env, volume_name, access_type)
+
+
+def test_publish_volumes_from_independent_storages():
+    volume_name = "independent-disk"
+    block_size = 4096
+    staged = []
+    published = []
+
+    def run_checked(run, *args):
+        result = run(*args)
+        assert result.returncode == 0, (
+            f"command failed: {' '.join(args)}\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}")
+        return result
+
+    with csi.CsiLoadTest(storage_count=2, vm_mode=True) as env:
+        try:
+            # Identical disk IDs belong to different schemes and contain different data.
+            for index, run in enumerate(env.runs):
+                blocks_count = 1024 * (index + 1)
+                run_checked(
+                    run, "createvolume", "--disk-id", volume_name,
+                    "--block-size", str(block_size),
+                    "--blocks-count", str(blocks_count),
+                    "--storage-media-kind", "ssd")
+                payload = bytes([index + 1]) * block_size
+                input_path = env.sockets_dir / f"input-{index}.blocks"
+                input_path.write_bytes(payload)
+                run_checked(
+                    run, "writeblocks", "--disk-id", volume_name,
+                    "--start-index", "0", "--input", str(input_path))
+
+            # Check both after writing, so accidentally sharing a backend is detected.
+            for index, run in enumerate(env.runs):
+                description = run_checked(
+                    run, "describevolume", "--disk-id", volume_name)
+                assert f"BlocksCount: {1024 * (index + 1)}" in description.stdout
+                output_path = env.sockets_dir / f"output-{index}.blocks"
+                run_checked(
+                    run, "readblocks", "--disk-id", volume_name,
+                    "--start-index", "0", "--blocks-count", "1",
+                    "--output", str(output_path))
+                assert output_path.read_bytes() == bytes([index + 1]) * block_size
+
+            # With equal endpoint counts CSI selects backend 0. The next stage
+            # selects backend 1, which then has fewer endpoints.
+            for index, run in enumerate(env.runs):
+                instance_id = f"storage-{index}"
+                volume_id = f"{volume_name}#{instance_id}"
+                staging_path = str(env.sockets_dir / f"stage-{index}")
+                target_path = str(get_target_path(instance_id, instance_id, "mount"))
+                staged.append((volume_id, staging_path))
+                env.csi.stage_volume(
+                    volume_id, "mount", instance_id=instance_id,
+                    staging_target_path=staging_path)
+                published.append((instance_id, volume_id, target_path))
+                env.csi.publish_volume(
+                    instance_id, volume_id, "example-pod", "mount",
+                    instance_id=instance_id,
+                    staging_target_path=staging_path,
+                    target_path=target_path)
+                assert get_access_mode(target_path) == "rw"
+                endpoints = run_checked(run, "listendpoints", "--proto").stdout
+                assert endpoints.count(f'DiskId: "{volume_name}"') == 1
+                assert f'InstanceId: "{instance_id}"' in endpoints
+        except subprocess.CalledProcessError as e:
+            csi.log_called_process_error(e)
+            raise
+        finally:
+            for pod_id, volume_id, target_path in reversed(published):
+                with csi.called_process_error_logged():
+                    env.csi.unpublish_volume(
+                        pod_id, volume_id, "mount", target_path=target_path)
+            for volume_id, staging_path in reversed(staged):
+                with csi.called_process_error_logged():
+                    env.csi.unstage_volume(
+                        volume_id, staging_target_path=staging_path)
