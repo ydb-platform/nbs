@@ -937,44 +937,48 @@ func TestStagedPublishUnpublishVolumeForKubevirt(t *testing.T) {
 	}
 }
 
-func TestLoadZoneMappingReplicaCounts(t *testing.T) {
+func TestLoadZoneMapping(t *testing.T) {
 	for _, tc := range []struct {
 		name                      string
 		configData                string
-		backendIndex              uint
+		expectedMapping           map[string]uint
 		nfsVhostReplicaCountUsed  uint
 		nbsServerReplicaCountUsed uint
 		errorMessage              string
 	}{
-		{name: "unknown field", configData: `[{"zone_id": "zone1", "backend_index": 0, "unknown": true}]`,
+		{name: "unknown field", configData: `{"zones": [{"zone_id": "zone1", "backend_index": 0, "unknown": true}]}`,
 			nfsVhostReplicaCountUsed: 1, nbsServerReplicaCountUsed: 1,
 			errorMessage: `json: unknown field "unknown"`},
-		{name: "trailing data", configData: `[{"zone_id": "zone1", "backend_index": 0}] []`,
+		{name: "trailing data", configData: `{"zones": [{"zone_id": "zone1", "backend_index": 0}]} []`,
 			nfsVhostReplicaCountUsed: 1, nbsServerReplicaCountUsed: 1,
 			errorMessage: "unexpected data after zone mapping"},
-		{name: "zero index", backendIndex: 0, nfsVhostReplicaCountUsed: 1, nbsServerReplicaCountUsed: 1},
-		{name: "last valid index", backendIndex: 1, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 2},
-		{name: "different valid counts", backendIndex: 1, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 3},
-		{name: "index equals nfs count", backendIndex: 2, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 3,
+		{name: "zero index", configData: `{"zones":[{"zone_id":"zone1","backend_index":0}]}`, nfsVhostReplicaCountUsed: 1, nbsServerReplicaCountUsed: 1, expectedMapping: map[string]uint{"": 0, "zone1": 0}},
+		{name: "last valid index", configData: `{"zones":[{"zone_id":"zone1","backend_index":1}]}`, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 2, expectedMapping: map[string]uint{"": 0, "zone1": 1}},
+		{name: "different valid counts", configData: `{"zones":[{"zone_id":"zone1","backend_index":1}]}`, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 3, expectedMapping: map[string]uint{"": 0, "zone1": 1}},
+		{name: "index equals nfs count", configData: `{"zones":[{"zone_id":"zone1","backend_index":2}]}`, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 3,
 			errorMessage: `zone_id "zone1": backend_index 2 must be less than NfsVhostReplicaCountUsed 2`},
-		{name: "index exceeds nfs count", backendIndex: 3, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 4,
+		{name: "index exceeds nfs count", configData: `{"zones":[{"zone_id":"zone1","backend_index":3}]}`, nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 4,
 			errorMessage: `zone_id "zone1": backend_index 3 must be less than NfsVhostReplicaCountUsed 2`},
-		{name: "index equals nbs count", backendIndex: 2, nfsVhostReplicaCountUsed: 3, nbsServerReplicaCountUsed: 2,
+		{name: "index equals nbs count", configData: `{"zones":[{"zone_id":"zone1","backend_index":2}]}`, nfsVhostReplicaCountUsed: 3, nbsServerReplicaCountUsed: 2,
 			errorMessage: `zone_id "zone1": backend_index 2 must be less than NbsServerReplicaCountUsed 2`},
-		{name: "index exceeds nbs count", backendIndex: 3, nfsVhostReplicaCountUsed: 4, nbsServerReplicaCountUsed: 2,
+		{name: "index exceeds nbs count", configData: `{"zones":[{"zone_id":"zone1","backend_index":3}]}`, nfsVhostReplicaCountUsed: 4, nbsServerReplicaCountUsed: 2,
 			errorMessage: `zone_id "zone1": backend_index 3 must be less than NbsServerReplicaCountUsed 2`},
-		{name: "zero nfs count", backendIndex: 0, nfsVhostReplicaCountUsed: 0, nbsServerReplicaCountUsed: 1,
+		{name: "zero nfs count", configData: `{"zones":[{"zone_id":"zone1","backend_index":0}]}`, nfsVhostReplicaCountUsed: 0, nbsServerReplicaCountUsed: 1,
 			errorMessage: `zone_id "zone1": backend_index 0 must be less than NfsVhostReplicaCountUsed 0`},
-		{name: "zero nbs count", backendIndex: 0, nfsVhostReplicaCountUsed: 1, nbsServerReplicaCountUsed: 0,
+		{name: "zero nbs count", configData: `{"zones":[{"zone_id":"zone1","backend_index":0}]}`, nfsVhostReplicaCountUsed: 1, nbsServerReplicaCountUsed: 0,
 			errorMessage: `zone_id "zone1": backend_index 0 must be less than NbsServerReplicaCountUsed 0`},
+		{name: "default only", nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 3, configData: `{"default_backend_index":1}`, expectedMapping: map[string]uint{"": 1}},
+		{name: "default and zones", nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 3, configData: `{"default_backend_index":1,"zones":[{"zone_id":"zone1","backend_index":0}]}`, expectedMapping: map[string]uint{"": 1, "zone1": 0}},
+		{name: "omitted default", nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 3, configData: `{}`, expectedMapping: map[string]uint{"": 0}},
+		{name: "invalid nfs default", nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 3, configData: `{"default_backend_index":2}`, errorMessage: "default_backend_index 2 must be less than NfsVhostReplicaCountUsed 2"},
+		{name: "invalid nbs default", nfsVhostReplicaCountUsed: 4, nbsServerReplicaCountUsed: 3, configData: `{"default_backend_index":3}`, errorMessage: "default_backend_index 3 must be less than NbsServerReplicaCountUsed 3"},
+		{name: "empty zone", nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 3, configData: `{"zones":[{"zone_id":"","backend_index":0}]}`, errorMessage: "zone_id must not be empty in zones"},
+		{name: "duplicate zone", nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 3, configData: `{"zones":[{"zone_id":"zone1","backend_index":0},{"zone_id":"zone1","backend_index":1}]}`, errorMessage: `duplicate zone_id "zone1"`},
+		{name: "unknown top level field", nfsVhostReplicaCountUsed: 2, nbsServerReplicaCountUsed: 3, configData: `{"unknown":true}`, errorMessage: `json: unknown field "unknown"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "zones.json")
-			data := tc.configData
-			if data == "" {
-				data = fmt.Sprintf(`[{"zone_id": "zone1", "backend_index": %d}]`, tc.backendIndex)
-			}
-			require.NoError(t, os.WriteFile(path, []byte(data), 0600))
+			require.NoError(t, os.WriteFile(path, []byte(tc.configData), 0600))
 
 			mapping, err := loadZoneMapping(path, tc.nfsVhostReplicaCountUsed, tc.nbsServerReplicaCountUsed)
 			if tc.errorMessage != "" {
@@ -983,18 +987,20 @@ func TestLoadZoneMappingReplicaCounts(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, map[string]uint{"zone1": tc.backendIndex}, mapping)
+			require.Equal(t, tc.expectedMapping, mapping)
 		})
 	}
 }
 
 func TestNodeStageVolumeWithZoneMapping(t *testing.T) {
 	zoneIdConfigPath := filepath.Join(t.TempDir(), "zones.json")
-	require.NoError(t, os.WriteFile(zoneIdConfigPath, []byte(`[
-		{"zone_id": "", "backend_index": 0},
-		{"zone_id": "zone0", "backend_index": 0},
-		{"zone_id": "zone1", "backend_index": 1}
-	]`), 0600))
+	require.NoError(t, os.WriteFile(zoneIdConfigPath, []byte(`{
+		"default_backend_index": 1,
+		"zones": [
+			{"zone_id": "zone0", "backend_index": 0},
+			{"zone_id": "zone1", "backend_index": 1}
+		]
+	}`), 0600))
 	zoneIdToBackendIndex, err := loadZoneMapping(zoneIdConfigPath, 2, 2)
 	require.NoError(t, err)
 
@@ -1003,10 +1009,10 @@ func TestNodeStageVolumeWithZoneMapping(t *testing.T) {
 		zoneId      string
 		clientIndex uint
 	}{
-		{name: "empty zone", zoneId: "", clientIndex: 0},
+		{name: "empty zone", zoneId: "", clientIndex: 1},
 		{name: "zone0", zoneId: "zone0", clientIndex: 0},
 		{name: "zone1", zoneId: "zone1", clientIndex: 1},
-		{name: "unknown zone", zoneId: "zone2", clientIndex: 0},
+		{name: "unknown zone", zoneId: "zone2", clientIndex: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			testCtx := CreateTestContext(t, true, false, true, 1, 2)
@@ -1096,11 +1102,13 @@ func TestNodeStageVolumeWithZoneMapping(t *testing.T) {
 
 func TestNodeStageFilestoreVolumeWithZoneMapping(t *testing.T) {
 	zoneIdConfigPath := filepath.Join(t.TempDir(), "zones.json")
-	require.NoError(t, os.WriteFile(zoneIdConfigPath, []byte(`[
-		{"zone_id": "", "backend_index": 0},
-		{"zone_id": "zone0", "backend_index": 0},
-		{"zone_id": "zone1", "backend_index": 1}
-	]`), 0600))
+	require.NoError(t, os.WriteFile(zoneIdConfigPath, []byte(`{
+		"default_backend_index": 1,
+		"zones": [
+			{"zone_id": "zone0", "backend_index": 0},
+			{"zone_id": "zone1", "backend_index": 1}
+		]
+	}`), 0600))
 	zoneIdToBackendIndex, err := loadZoneMapping(zoneIdConfigPath, 2, 2)
 	require.NoError(t, err)
 
@@ -1109,10 +1117,10 @@ func TestNodeStageFilestoreVolumeWithZoneMapping(t *testing.T) {
 		zoneId      string
 		clientIndex uint
 	}{
-		{name: "empty zone", zoneId: "", clientIndex: 0},
+		{name: "empty zone", zoneId: "", clientIndex: 1},
 		{name: "zone0", zoneId: "zone0", clientIndex: 0},
 		{name: "zone1", zoneId: "zone1", clientIndex: 1},
-		{name: "unknown zone", zoneId: "zone2", clientIndex: 0},
+		{name: "unknown zone", zoneId: "zone2", clientIndex: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			testCtx := CreateTestContext(t, true, false, true, 2, 1)

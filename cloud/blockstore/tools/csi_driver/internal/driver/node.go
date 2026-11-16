@@ -435,8 +435,7 @@ func (s *nodeService) NodeUnstageVolume(
 func (s *nodeService) getBackendIndexByZoneId(zoneId string) uint {
 	backendIndex, found := s.zoneIdToBackendIndex[zoneId]
 	if !found {
-		// return 0 if zoneId is not found in the map, as a default backend index
-		return 0
+		return s.zoneIdToBackendIndex[""]
 	}
 
 	return backendIndex
