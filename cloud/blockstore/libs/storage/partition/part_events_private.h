@@ -223,6 +223,7 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
     xxx(CompactionReadBlobInfo,    __VA_ARGS__)                                \
     xxx(MetadataRebuildUsedBlocks, __VA_ARGS__)                                \
     xxx(MetadataRebuildBlockCount, __VA_ARGS__)                                \
+    xxx(MetadataRebuildCompactionMap, __VA_ARGS__)                             \
     xxx(ScanDiskBatch,             __VA_ARGS__)                                \
     xxx(Cleanup,                   __VA_ARGS__)                                \
     xxx(CollectGarbage,            __VA_ARGS__)                                \
@@ -282,6 +283,19 @@ struct TBlockCountRebuildState
     ui64 InitialMergedChannelBlocks = 0;
 
     NProto::TPartitionStats::TBlobByteCounters InitialBlobByteCounters;
+};
+
+struct TCompactionMapRangeCounters
+{
+    ui64 BlobCount = 0;
+    ui64 BlockCount = 0;
+    ui64 MixedBlockCount = 0;
+};
+
+struct TCompactionMapRebuildCounters
+{
+    ui32 BlockIndex = 0;
+    TCompactionMapRangeCounters Counters;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -508,6 +522,42 @@ struct TEvPartitionPrivate
                 const TBlockCountRebuildState& rebuildState)
             : LastReadBlobId(lastReadBlobId)
             , RebuildState(rebuildState)
+        {}
+    };
+
+    //
+    // MetadataRebuildCompactionMap
+    //
+
+    struct TMetadataRebuildCompactionMapRequest
+    {
+        const ui32 RangeIndex = 0;
+        const ui32 RangeCount = 0;
+
+        TMetadataRebuildCompactionMapRequest(ui32 rangeIndex, ui32 rangeCount)
+            : RangeIndex(rangeIndex)
+            , RangeCount(rangeCount)
+        {}
+    };
+
+    struct TMetadataRebuildCompactionMapResponse
+    {
+        ui32 RangeIndex = 0;
+        ui32 RangeCount = 0;
+        TDuration CpuTime;
+        TVector<TCompactionMapRebuildCounters> Counters;
+
+        TMetadataRebuildCompactionMapResponse() = default;
+
+        TMetadataRebuildCompactionMapResponse(
+            ui32 rangeIndex,
+            ui32 rangeCount,
+            TDuration cpuTime,
+            TVector<TCompactionMapRebuildCounters> counters)
+            : RangeIndex(rangeIndex)
+            , RangeCount(rangeCount)
+            , CpuTime(cpuTime)
+            , Counters(std::move(counters))
         {}
     };
 

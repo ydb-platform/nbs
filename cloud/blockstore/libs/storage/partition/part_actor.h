@@ -486,6 +486,13 @@ private:
         const NProto::TPartitionStats::TBlobByteCounters& initialBlobByteCounters,
         TDuration retryTimeout);
 
+    NActors::IActorPtr CreateMetadataRebuildCompactionMapActor(
+        NActors::TActorId tablet,
+        ui32 rangesPerBatch,
+        ui32 totalRangeCount,
+        TDuration allowedCpuTimePerSecond,
+        TDuration retryTimeout);
+
     TBlockBuffer CreateScanDiskBlockBuffer(ui32 blobsPerBatch);
 
     NActors::IActorPtr CreateScanDiskActor(
@@ -771,7 +778,8 @@ private:
     NProto::TError DoHandleMetadataRebuildBatch(
         const NActors::TActorContext& ctx,
         NProto::ERebuildMetadataType type,
-        ui32 rangesPerBatch);
+        ui32 rangesPerBatch,
+        TDuration allowedCpuTimePerSecond);
 
     NProto::TError DoHandleScanDisk(
         const NActors::TActorContext& ctx,
