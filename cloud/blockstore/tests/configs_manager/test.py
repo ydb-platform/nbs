@@ -1132,6 +1132,105 @@ def test_temporary_server_skips_private_config(tmp_path, invalid_private_config)
         ydb.stop()
 
 
+# Verify ICB reset, preservation and removal through a continuously mounted Volume.
+def test_dynamic_storage_config_and_icb_reach_running_volume():
+    ydb = start_dynamic_config_ydb()
+    nbs = None
+    try:
+        # Start with a dynamic range limit below the static limit.
+        replace_config(ydb, make_main_config(ydb))
+        replace_database_config(
+            ydb, 0,
+            "storage_service:\n  max_read_write_range_size: 8192",
+        )
+        config = make_nbs_config(ydb, True)
+        config.files["storage"].DisableLocalService = False
+        config.files["storage"].MaxReadWriteRangeSize = 16384
+        config.files["storage"].MaxMigrationIoDepth = 1
+        nbs = start_nbs(config)
+        updates = wait_config_delivery(nbs)
+        actions = NbsClient(nbs.port)
+
+        # Keep one session open across all configuration changes.
+        with CreateClient(f"localhost:{nbs.port}", request_timeout=10) as client:
+            disk_id = "dynamic-icb-volume"
+            client.create_volume(
+                disk_id, 4096, 1024,
+                storage_media_kind=protos.STORAGE_MEDIA_SSD,
+            )
+            session_id = client.mount_volume(disk_id, "")["SessionInfo"].session_id
+            client.write_blocks(disk_id, 0, [b"x" * 4096] * 2, session_id)
+
+            # Check ICB state, wait for the Volume configuration, and verify two-block reads.
+            def check_volume(expected_limit, expected_default, expected_io_depth):
+                expected_config = {
+                    "MaxReadWriteRangeSize": expected_limit,
+                    "MaxMigrationIoDepth": expected_io_depth,
+                }
+
+                def config_matches():
+                    storage_config = json.loads(actions.execute_action(
+                        "getstorageconfig", {"DiskId": disk_id}, timeout_sec=30
+                    ))
+                    return all(
+                        int(storage_config[name]) == value
+                        for name, value in expected_config.items()
+                    )
+
+                yatest_common.wait_for(
+                    config_matches,
+                    timeout=120,
+                    fail_message=f"Volume {disk_id} did not apply {expected_config}",
+                )
+                assert get_icb_values(nbs, "MaxReadWriteRangeSize") == (
+                    expected_limit, expected_default
+                )
+                allowed = expected_limit >= 8192
+                blocks = wait_volume_range(client, disk_id, session_id, allowed)
+                if allowed:
+                    assert b"".join(blocks) == b"x" * 8192
+
+            check_volume(8192, 8192, 1)
+
+            # Apply an ICB override without changing the configured default.
+            set_icb_value(nbs, "MaxReadWriteRangeSize", 4096)
+            check_volume(4096, 8192, 1)
+
+            # Change the configured default to the override value and verify the override is cleared.
+            replace_database_config(
+                ydb, 1,
+                "storage_service:\n  max_read_write_range_size: 4096",
+            )
+            updates = wait_config_delivery(nbs, updates)
+            check_volume(4096, 4096, 1)
+
+            # Change another field and verify its delivery before checking the preserved override.
+            set_icb_value(nbs, "MaxReadWriteRangeSize", 8192)
+            check_volume(8192, 4096, 1)
+
+            replace_database_config(
+                ydb, 2,
+                "storage_service:\n"
+                "  max_read_write_range_size: 4096\n"
+                "  max_migration_io_depth: 7",
+            )
+            updates = wait_config_delivery(nbs, updates)
+            check_volume(8192, 4096, 7)
+
+            # Clear the override and verify the current dynamic limit.
+            set_icb_value(nbs, "MaxReadWriteRangeSize", 4096)
+            check_volume(4096, 4096, 7)
+
+            # Remove the dynamic source and restore the static limit.
+            replace_database_config(ydb, 3, "")
+            wait_config_delivery(nbs, updates)
+            check_volume(16384, 16384, 1)
+    finally:
+        if nbs:
+            nbs.kill()
+        ydb.stop()
+
+
 # Verify that VolumeThrottling CLI rules override static and dynamic rules,
 # and clearing CLI rules restores service rules without remounting the Volume.
 @pytest.mark.parametrize("dynamic_enabled", [False, True])
