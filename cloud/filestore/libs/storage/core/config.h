@@ -390,7 +390,7 @@ public:
 
     ui32 GetMaxBackground() const;
     ui32 GetMaxFuseLoopThreads() const;
-    ui32 GetMaxRequestPages() const;
+    ui32 GetMaxRequestSize() const;
 
     bool GetStrictFileSystemSizeEnforcementEnabled() const;
 

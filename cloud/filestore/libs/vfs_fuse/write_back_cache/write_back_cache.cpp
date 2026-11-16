@@ -156,7 +156,7 @@ public:
                 << LogTag << " WriteBackCache is drained: max supported "
                 << "allocation " << supported << " is less than " << required
                 << ", increase the state file size or decrease "
-                << "MaxRequestPages, FilePath: " << FilePath.Quote());
+                << "MaxRequestSize, FilePath: " << FilePath.Quote());
             Y_UNUSED(Drain());
             return;
         }

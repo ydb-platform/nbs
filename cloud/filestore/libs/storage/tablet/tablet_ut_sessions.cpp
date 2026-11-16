@@ -1541,7 +1541,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetAvailabilityTrackingEnabled(true);
         config.SetAvailabilityTrackingInterval(
             TDuration::Seconds(15).MilliSeconds());
-        config.SetMaxRequestPages(1024);
+        config.SetMaxRequestSize(4_MB);
 
         features.SetTwoStageReadEnabled(true);
         features.SetTwoStageReadThreshold(64_KB);
@@ -1585,7 +1585,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetAvailabilityTrackingEnabled(true);
         features.SetAvailabilityTrackingInterval(
             TDuration::Seconds(15).MilliSeconds());
-        features.SetMaxRequestPages(1024);
+        features.SetMaxRequestSize(4_MB);
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
     }

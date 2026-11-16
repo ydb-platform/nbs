@@ -82,8 +82,9 @@ message TFileStoreFeatures
 
     bool WriteDataZeroBlockStatsEnabled = 61;
 
-    // Max FUSE read / write request size in pages.
-    uint32 MaxRequestPages = 62;
+    // Max FUSE read / write request size in bytes.
+    // Zero uses the vhost fallback.
+    uint32 MaxRequestSize = 62;
 }
 
 message TFileStore

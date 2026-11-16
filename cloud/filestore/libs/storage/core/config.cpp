@@ -333,7 +333,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(LazyXAttrsEnabled,                 bool,       false                  )\
     xxx(MaxBackground,                     ui32,       0                      )\
     xxx(MaxFuseLoopThreads,                ui32,       1                      )\
-    xxx(MaxRequestPages,                   ui32,       0                      )\
+    xxx(MaxRequestSize,                    ui32,       0                      )\
                                                                                \
     xxx(StrictFileSystemSizeEnforcementEnabled, bool,  false                  )\
                                                                                \

@@ -51,7 +51,8 @@ message TVFSConfig
     // Vhost queues count.
     optional uint32 VhostQueuesCount = 9;
 
-    // Limits max single request length.
+    // Legacy max single request length in host pages (default 256). Used when
+    // no nonzero MaxRequestSize is supplied by the server.
     optional uint32 MaxWritePages = 10;
 
     // Keep attempts to acquire lock.

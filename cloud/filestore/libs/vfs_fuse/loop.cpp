@@ -34,7 +34,9 @@
 #include <util/datetime/base.h>
 #include <util/generic/bitops.h>
 #include <util/generic/string.h>
+#include <util/generic/utility.h>
 #include <util/generic/yexception.h>
+#include <util/system/align.h>
 #include <util/system/event.h>
 #include <util/system/info.h>
 #include <util/system/rwlock.h>
@@ -60,10 +62,20 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Upper bound for MaxRequestPages (4 MiB with 4 KiB pages). The guest never
-// uses more: it caps pages per request below the virtqueue size, which is at
-// most 1024.
-constexpr ui32 MaxRequestPagesLimit = 1024;
+// Default TVFSConfig.MaxWritePages: an unconfigured vhost must keep offering
+// this many host pages, as it did before MaxRequestSize was introduced
+constexpr ui32 LegacyMaxRequestPages = 256;
+
+// Upper bound for the request size: 4 MiB on 4 KiB-page hosts, 16 MiB on
+// 64 KiB-page hosts. The guest caps pages per request below the virtqueue
+// size anyway, taking FUSE own headers into account (see FUSE_HEADER_OVERHEAD
+// in linux:fs/fuse/virtio_fs.c)
+ui64 GetMaxRequestSizeLimit()
+{
+    return Max<ui64>(
+        4_MB,
+        ui64(LegacyMaxRequestPages) * NSystemInfo::GetPageSize());
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1377,8 +1389,7 @@ private:
                 fuseLoopThreadCount,
                 ops,
                 SessionState,
-                FileSystemConfig->GetMaxRequestPages() *
-                    NSystemInfo::GetPageSize(),
+                FileSystemConfig->GetMaxRequestSize(),
                 this);
 
             FileSystem->Init();
@@ -1411,21 +1422,28 @@ private:
 
         const auto& features = filestore.GetFeatures();
 
-        const ui32 pages = Min<ui32>(
-            features.GetMaxRequestPages() ? features.GetMaxRequestPages()
-                                          : Config->GetMaxWritePages(),
-            MaxRequestPagesLimit);
-        if (pages) {
-            config.SetMaxRequestPages(pages);
-
-            // The guest keeps the max_write negotiated before a vhost restart
-            // (no new FUSE_INIT), so accept max(config, restored).
-            const ui32 restoredMaxWrite =
-                TSession::GetRestoredMaxWrite(sessionState);
-            config.SetMaxBufferSize(Max<ui32>(
-                pages * NSystemInfo::GetPageSize(),
-                restoredMaxWrite));
+        ui64 maxRequestSize = features.GetMaxRequestSize();
+        if (!maxRequestSize) {
+            maxRequestSize = ui64(Config->GetMaxWritePages()) *
+                             NSystemInfo::GetPageSize();
         }
+        // libfuse derives max_pages from max_write rounding up, and the guest
+        // sizes reads by max_pages, so keep max_write page-aligned: otherwise
+        // reads may exceed MaxBufferSize. Both bounds are page-aligned, so
+        // the result stays within them
+        maxRequestSize = AlignUp<ui64>(
+            ClampVal<ui64>(
+                maxRequestSize,
+                NSystemInfo::GetPageSize(),
+                GetMaxRequestSizeLimit()),
+            NSystemInfo::GetPageSize());
+        config.SetMaxRequestSize(maxRequestSize);
+
+        // The guest keeps the max_write negotiated before a vhost restart
+        // (no new FUSE_INIT), so accept max(config, restored).
+        const ui32 restoredMaxWrite =
+            TSession::GetRestoredMaxWrite(sessionState);
+        config.SetMaxBufferSize(Max<ui32>(maxRequestSize, restoredMaxWrite));
 
         if (features.GetPreferredBlockSize()) {
             config.SetPreferredBlockSize(features.GetPreferredBlockSize());
@@ -1545,17 +1563,12 @@ private:
 
     void Init(fuse_conn_info* conn)
     {
-        // Cap the number of scatter-gather segments per request to virtqueue
-        // size, taking FUSE own headers into account (see FUSE_HEADER_OVERHEAD
-        // in linux:fs/fuse/virtio_fs.c)
-        const size_t maxPages = FileSystemConfig->GetMaxRequestPages();
-
         // libfuse doesn't allow to configure max_pages directly but infers it
         // from fuse_conn_info.max_write, dividing it by page size.
         // see CLOUD-75329 for details
-        const size_t maxWrite = NSystemInfo::GetPageSize() * maxPages;
+        const ui32 maxWrite = FileSystemConfig->GetMaxRequestSize();
         if (maxWrite < conn->max_write) {
-            STORAGE_DEBUG("[f:%s][c:%s] setting max write pages %u -> %lu",
+            STORAGE_DEBUG("[f:%s][c:%s] setting max write bytes %u -> %u",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str(),
                 conn->max_write,
