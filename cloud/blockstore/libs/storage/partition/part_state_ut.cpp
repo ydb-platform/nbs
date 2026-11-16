@@ -1,5 +1,6 @@
 #include "part_state.h"
 
+#include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/partition/part_schema.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
@@ -151,6 +152,72 @@ TPartitionState MakeState(
 
 Y_UNIT_TEST_SUITE(TPartitionStateTest)
 {
+    Y_UNIT_TEST(ShouldCalculateMixedCompactionPercentageFromSelectedCounters)
+    {
+        for (const auto mediaKind:
+             {NCloud::NProto::STORAGE_MEDIA_HDD,
+              NCloud::NProto::STORAGE_MEDIA_SSD})
+        {
+            for (bool extendedCounters: {false, true}) {
+                for (bool useByteCounters: {false, true}) {
+                    auto meta = DefaultConfig(1, DefaultBlockCount);
+                    meta.MutableConfig()->SetStorageMediaKind(mediaKind);
+                    auto state = MakeState(
+                        meta,
+                        {.ExtendedBlobCountersEnabled = extendedCounters,
+                         .CompactionPolicy =
+                             BuildDefaultCompactionPolicy(5, 0, true)});
+                    NProto::TStorageServiceConfig proto;
+                    proto.SetMixedBlocksCompactionUseByteCounters(
+                        useByteCounters);
+                    proto.SetMixedBlocksCompactionMinStoredBytesHDD(0);
+                    proto.SetMixedBlocksCompactionMinStoredBytesSSD(0);
+                    const auto percentage = [&]
+                    {
+                        return state.GetMixedBlocksCompactionPercentage(
+                            TStorageConfig(proto, {}));
+                    };
+                    UNIT_ASSERT_VALUES_EQUAL(0, percentage());
+
+                    // Deliberately disagree: map 25%, legacy counters 10%,
+                    // stored blob bytes 60% (e.g. after compression).
+                    state.GetCompactionMap().Update(
+                        0, 2, 100, 100, 0, 25, false, false);
+                    auto& stats = state.AccessStats();
+                    stats.SetMixedBlocksCount(10);
+                    stats.SetMergedBlocksCount(90);
+                    stats.MutableBlobByteCounters()->SetMixedBytesCount(60);
+                    stats.MutableBlobByteCounters()->SetMergedBytesCount(40);
+                    const ui32 expected =
+                        useByteCounters ? (extendedCounters ? 60 : 10) : 25;
+                    UNIT_ASSERT_VALUES_EQUAL(expected, percentage());
+
+                    const ui64 totalBytes = useByteCounters && extendedCounters
+                                                ? 100
+                                                : 100 * DefaultBlockSize;
+                    const auto setMinimum = [&](ui64 value)
+                    {
+                        if (mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD) {
+                            proto.SetMixedBlocksCompactionMinStoredBytesSSD(
+                                value);
+                            proto.SetMixedBlocksCompactionMinStoredBytesHDD(
+                                Max<ui64>());
+                        } else {
+                            proto.SetMixedBlocksCompactionMinStoredBytesHDD(
+                                value);
+                            proto.SetMixedBlocksCompactionMinStoredBytesSSD(
+                                Max<ui64>());
+                        }
+                    };
+                    setMinimum(totalBytes + 1);
+                    UNIT_ASSERT_VALUES_EQUAL(0, percentage());
+                    setMinimum(totalBytes);
+                    UNIT_ASSERT_VALUES_EQUAL(expected, percentage());
+                }
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldAccountForBlobCountersByChannelAndIndex)
     {
         auto meta = DefaultConfig(1, DefaultBlockCount);

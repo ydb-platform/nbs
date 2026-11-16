@@ -1,5 +1,7 @@
 #include "part_state.h"
 
+#include <cloud/blockstore/libs/storage/core/config.h>
+
 #include <cloud/storage/core/libs/tablet/model/channels.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -486,6 +488,40 @@ void TPartitionState::ConfirmBlobs(
 
     UnconfirmedBlobs.clear();
     UnconfirmedBlobCount = 0;
+}
+
+ui32 TPartitionState::GetMixedBlocksCompactionPercentage(
+    const TStorageConfig& config) const
+{
+    ui64 mixedBytes = 0;
+    ui64 totalBytes = 0;
+    if (config.GetMixedBlocksCompactionUseByteCounters()) {
+        // Match the MixedBytesCount and MergedBytesCount metrics, including
+        // their fallback when extended blob counters are disabled.
+        mixedBytes = AreExtendedBlobCountersEnabled()
+                         ? GetMixedBytesCount()
+                         : GetMixedBlocksCount() * GetBlockSize();
+        const ui64 mergedBytes = AreExtendedBlobCountersEnabled()
+                                     ? GetMergedBytesCount()
+                                     : GetMergedBlocksCount() * GetBlockSize();
+        totalBytes = mixedBytes + mergedBytes;
+    } else {
+        mixedBytes =
+            CompactionMap.GetMixedBlocksCountPerDisk() * GetBlockSize();
+        totalBytes =
+            CompactionMap.GetStoredBlocksCountPerDisk() * GetBlockSize();
+    }
+
+    const bool isSSD =
+        GetConfig().GetStorageMediaKind() == NCloud::NProto::STORAGE_MEDIA_SSD;
+    const ui64 minStoredBytes =
+        isSSD ? config.GetMixedBlocksCompactionMinStoredBytesSSD()
+              : config.GetMixedBlocksCompactionMinStoredBytesHDD();
+    if (!totalBytes || totalBytes < minStoredBytes) {
+        return 0;
+    }
+
+    return static_cast<ui32>(mixedBytes * 100. / totalBytes);
 }
 
 ui64 TPartitionState::GetMixedBytesCount() const

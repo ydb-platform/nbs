@@ -1791,4 +1791,10 @@ message TStorageServiceConfig
     // dies when all its blocks are overwritten or flushed.
     optional uint32 FreshDeadBlobByteCountTrimThresholdSSD = 555;
     optional uint32 FreshDeadBlobByteCountTrimThresholdHDD = 556;
+
+    // Calculate the per-disk mixed compaction percentage and minimum stored
+    // bytes from MixedBytesCount and MergedBytesCount instead of the compaction
+    // map. Without ExtendedBlobCountersEnabled, use legacy block-count-based
+    // byte counters, as in the corresponding metrics. Disabled by default.
+    optional bool MixedBlocksCompactionUseByteCounters = 557;
 }
