@@ -73,7 +73,6 @@ private:
             Fail(ctx, it->first, it->second, std::move(response.Error));
         } else {
             it->second.Promise.SetValue(std::move(response));
-            Counters->InFlightRequests->Dec();
         }
         InFlight.erase(it);
     }
@@ -92,7 +91,6 @@ private:
 
         inflight.Promise.SetValue(TTabletTransportResponse(std::move(error)));
         Counters->Errors->Inc();
-        Counters->InFlightRequests->Dec();
     }
 
     void HandleTrackRequest(
@@ -117,8 +115,6 @@ private:
                                        : TInstant::Max()})
                 .second;
         Y_DEBUG_ABORT_UNLESS(inserted);
-
-        Counters->InFlightRequests->Inc();
 
         ScheduleSweep(ctx);
     }

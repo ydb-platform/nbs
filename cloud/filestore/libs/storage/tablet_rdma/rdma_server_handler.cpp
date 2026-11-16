@@ -69,8 +69,6 @@ public:
     {
         Y_UNUSED(callContext);
 
-        Counters->Requests->Inc();
-
         const ui32 methodId = envelope.GetMethodId();
         const TActorId pipeServerId(
             envelope.GetPipeServerId().GetRawX1(),

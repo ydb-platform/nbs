@@ -233,9 +233,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
             nodeId,
             viaPipe->Record.GetNode().GetId());
 
-        UNIT_ASSERT_VALUES_EQUAL(2, env.Counters->Requests->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, env.Counters->Errors->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, env.Counters->InFlightRequests->Val());
     }
 
     Y_UNIT_TEST(ShouldForwardDataRequestsToTablet)
@@ -318,7 +316,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_ARGUMENT),
             future.GetValue().Error.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(1, env.Counters->Requests->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, env.Counters->Errors->Val());
     }
 
@@ -348,7 +345,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
             static_cast<ui32>(E_NOT_IMPLEMENTED),
             createSession.GetValue().Error.GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(2, env.Counters->Requests->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, env.Counters->Errors->Val());
     }
 
@@ -364,7 +360,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_ARGUMENT),
             future.GetValue().Error.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(1, env.Counters->Requests->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, env.Counters->Errors->Val());
     }
 
@@ -394,7 +389,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
             static_cast<ui32>(E_REJECTED),
             disconnected.GetValue().Error.GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(2, env.Counters->Requests->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, env.Counters->Errors->Val());
     }
 
@@ -416,7 +410,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
             static_cast<ui32>(E_REJECTED),
             response.Error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(1, env.Counters->Errors->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, env.Counters->InFlightRequests->Val());
     }
 
     Y_UNIT_TEST(ShouldRejectInFlightRequestsWhenTabletRestarts)
@@ -439,7 +432,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
             static_cast<ui32>(E_REJECTED),
             response.Error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(1, env.Counters->Errors->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, env.Counters->InFlightRequests->Val());
 
         env.Runtime.SetObserverFunc(&TTestActorRuntime::DefaultObserverFunc);
         env.Tablet.WaitReady();
@@ -466,7 +458,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
             static_cast<ui32>(E_TIMEOUT),
             response.Error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(1, env.Counters->Errors->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, env.Counters->InFlightRequests->Val());
     }
 
     Y_UNIT_TEST(ShouldRejectRequestsWhenForwarderStops)
@@ -493,7 +484,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
             static_cast<ui32>(E_REJECTED),
             response.Error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(1, env.Counters->Errors->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, env.Counters->InFlightRequests->Val());
 
         auto late = env.Wait(
             env.Send(env.Tablet.CreateGetStorageStatsRequest()));

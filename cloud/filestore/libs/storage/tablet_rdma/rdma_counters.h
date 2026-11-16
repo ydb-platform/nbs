@@ -12,16 +12,12 @@ struct TRdmaForwarderCounters
 {
     using TCounterPtr = NMonitoring::TDynamicCounters::TCounterPtr;
 
-    TCounterPtr Requests;
     TCounterPtr Errors;
-    TCounterPtr InFlightRequests;
 
     explicit TRdmaForwarderCounters(
         TIntrusivePtr<NMonitoring::TDynamicCounters> group)
     {
-        Requests = group->GetCounter("Requests", true);
         Errors = group->GetCounter("Errors", true);
-        InFlightRequests = group->GetCounter("InFlightRequests");
     }
 };
 
