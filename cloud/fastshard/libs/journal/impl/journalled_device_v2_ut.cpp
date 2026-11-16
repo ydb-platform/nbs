@@ -262,7 +262,7 @@ struct TTestJournal final: public IJournal
 
     // Hands out the records the way the journal does: from the front, up to
     // the lsn and the page count asked for - but at least one record.
-    TFuture<TResultOrError<TJournalRecords>> GetRecordsToFlush(
+    TResultOrError<TJournalRecords> GetRecordsToFlush(
         ui64 maxAllowedLsn,
         ui64 maxPageCount) const override
     {
@@ -290,7 +290,7 @@ struct TTestJournal final: public IJournal
             }
         }
 
-        return MakeFuture<TResultOrError<TJournalRecords>>(std::move(records));
+        return records;
     }
 
     void MarkRecordAsFlushed(ui64 lsn) override
@@ -306,7 +306,7 @@ struct TTestJournal final: public IJournal
         }
     }
 
-    TFuture<NProto::TError> CleanupFlushedRecords() override
+    NProto::TError CleanupFlushedRecords() override
     {
         with_lock (Mutex) {
             ++CleanupCount;
@@ -319,7 +319,7 @@ struct TTestJournal final: public IJournal
 
         FlushCycleCompleted.Signal();
 
-        return MakeFuture(NProto::TError());
+        return {};
     }
 
     // helpers

@@ -576,13 +576,8 @@ struct TFixture: public NUnitTest::TBaseFixture
         ui64 maxPageCount = Max<ui64>())
     {
         return Run(
-                   [&]
-                   {
-                       return Journal->GetRecordsToFlush(
-                           maxAllowedLsn,
-                           maxPageCount);
-                   })
-            .GetValueSync();
+            [&]
+            { return Journal->GetRecordsToFlush(maxAllowedLsn, maxPageCount); });
     }
 
     // "1<-0 10:[A010]; 2<-1 20:[B020]", empty when there is nothing to flush
@@ -603,9 +598,7 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     ui32 CleanupFlushedRecords()
     {
-        return Run([&] { return Journal->CleanupFlushedRecords(); })
-            .GetValueSync()
-            .GetCode();
+        return Run([&] { return Journal->CleanupFlushedRecords(); }).GetCode();
     }
 
     // Takes the given record through the whole flush cycle.

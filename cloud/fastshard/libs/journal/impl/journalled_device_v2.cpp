@@ -13,6 +13,7 @@
 
 #include <library/cpp/coroutine/engine/impl.h>
 
+#include <util/generic/algorithm.h>
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
 #include <util/generic/scope.h>
@@ -33,25 +34,62 @@ constexpr ui64 MaxFlushBatchPages = 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Merges the pages of the records into page ranges with every page in one
-// range only, so that the data store is given no page twice. The records are
-// in lsn order, so the later record wins a page that two of them write.
+struct TPageContent
+{
+    ui64 PageNo = 0;
+    const TString* Content = nullptr;
+};
+
+// Merges the pages of the records into page ranges. The records are in lsn
+// order. If two records write the same page, the later record wins.
 TVector<TPageRange> MergeRecordPages(const TJournalRecords& records)
 {
-    TMap<ui64 /*pageNo*/, const TString*> pages;
+    //
+    // Skip the merge: one record never writes the same page twice
+    //
+
+    if (records.size() == 1) {
+        return MakePageRanges(records[0]);
+    }
+
+    //
+    // Sort the pages by number. The stable sort keeps equal pages in lsn order
+    //
+
+    size_t pageCount = 0;
+    for (const auto& record: records) {
+        for (const auto& group: record.GetPageGroups()) {
+            pageCount += group.ContentSize();
+        }
+    }
+
+    TVector<TPageContent> pages;
+    pages.reserve(pageCount);
 
     for (const auto& record: records) {
         for (const auto& group: record.GetPageGroups()) {
             ui64 pageNo = group.GetFirstPageNo();
             for (const auto& content: group.GetContent()) {
-                pages[pageNo++] = &content;
+                pages.push_back({.PageNo = pageNo++, .Content = &content});
             }
         }
     }
 
+    StableSortBy(pages, [](const auto& page) { return page.PageNo; });
+
     TVector<TPageRange> ranges;
 
-    for (const auto& [pageNo, content]: pages) {
+    for (size_t i = 0; i < pages.size(); ++i) {
+        const auto& [pageNo, content] = pages[i];
+
+        //
+        // Skip the page if a later record writes it too
+        //
+
+        if (i + 1 < pages.size() && pages[i + 1].PageNo == pageNo) {
+            continue;
+        }
+
         if (ranges.empty() ||
             ranges.back().FirstPageNo + ranges.back().Pages.size() != pageNo)
         {
@@ -428,11 +466,10 @@ void TJournalledDeviceV2::RunFlushCycle()
         // previous batch was being flushed join this one
         //
 
-        auto future = Journal->GetRecordsToFlush(
+        auto response = Journal->GetRecordsToFlush(
             IndexedLsnBarrier.GetBarrierLsn(),
             MaxFlushBatchPages);
 
-        auto response = Executor->ExtractResponse(future);
         if (HasError(response)) {
             STORAGE_ERROR(
                 "unable to get the next records to flush: "
@@ -498,8 +535,7 @@ void TJournalledDeviceV2::RunFlushCycle()
 
 void TJournalledDeviceV2::CleanupFlushedRecords(ui64 lastFlushedLsn)
 {
-    auto future = Journal->CleanupFlushedRecords();
-    const auto& response = Executor->WaitFor(future);
+    auto response = Journal->CleanupFlushedRecords();
     if (HasError(response)) {
         STORAGE_ERROR(
             "unable to cleanup flushed records up to lsn "

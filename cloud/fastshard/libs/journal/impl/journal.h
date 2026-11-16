@@ -53,15 +53,13 @@ struct IJournal
     // Background cleanup
     //
 
-    [[nodiscard]] virtual auto GetRecordsToFlush(
+    [[nodiscard]] virtual TResultOrError<TJournalRecords> GetRecordsToFlush(
         ui64 maxAllowedLsn,
-        ui64 maxPageCount) const
-        -> NThreading::TFuture<TResultOrError<TJournalRecords>> = 0;
+        ui64 maxPageCount) const = 0;
 
     virtual void MarkRecordAsFlushed(ui64 lsn) = 0;
 
-    [[nodiscard]] virtual auto CleanupFlushedRecords()
-        -> NThreading::TFuture<NProto::TError> = 0;
+    [[nodiscard]] virtual NProto::TError CleanupFlushedRecords() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
