@@ -65,19 +65,38 @@ Y_UNIT_TEST_SUITE(WriteBlocksLocalRequestTest)
         UNIT_ASSERT(!depSglist.Acquire());
     }
 
-    Y_UNIT_TEST(CreateDependentRequestDoesNotCopyBlocks)
+    Y_UNIT_TEST(CreateDependentRequestPreservesMetadataWithoutBlocks)
     {
         TString data = "hello";
         TWriteBlocksLocalRequest owner;
         SetupRequest(owner, data);
+        owner.MutableHeaders()->SetClientId("client");
+        owner.MutableHeaders()->SetRequestId(123);
+        owner.SetDiskId("disk");
+        owner.SetStartIndex(42);
+        owner.SetFlags(7);
+        owner.SetSessionId("session");
+        owner.SetBlockSize(data.size());
+        auto* checksum = owner.AddChecksums();
+        checksum->SetChecksum(456);
+        checksum->SetByteCount(data.size());
         owner.TakeDataOwnership();
         UNIT_ASSERT_VALUES_EQUAL(1, owner.GetBlocks().BuffersSize());
+        const auto original = owner.SerializeAsString();
+
+        TWriteBlocksRequest expected = owner;
+        expected.ClearBlocks();
 
         TWriteBlocksLocalRequest dep(
             owner,
             TWriteBlocksLocalRequest::TDependentTag{});
 
         UNIT_ASSERT_VALUES_EQUAL(0, dep.GetBlocks().BuffersSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expected.SerializeAsString(),
+            dep.SerializeAsString());
+        UNIT_ASSERT_VALUES_EQUAL(original, owner.SerializeAsString());
+        UNIT_ASSERT_VALUES_EQUAL(owner.BlocksCount, dep.BlocksCount);
     }
 
     Y_UNIT_TEST(TakeOwnershipCopiesData)

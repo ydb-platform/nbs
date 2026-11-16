@@ -900,6 +900,58 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         }
     }
 
+    Y_UNIT_TEST(UninitializedStorageFutureReturnsErrorAndReleasesReservation)
+    {
+        TDataConfig config;
+        config.MaxInflightRequests = 1;
+        TFixture f({}, config);
+        f.Service->ReadBlocksLocalHandler = [](const auto& request)
+        {
+            Y_UNUSED(request);
+            return NThreading::TFuture<NProto::TReadBlocksLocalResponse>();
+        };
+        f.Service->WriteBlocksLocalHandler = [](const auto& request)
+        {
+            Y_UNUSED(request);
+            return NThreading::TFuture<NProto::TWriteBlocksLocalResponse>();
+        };
+        f.Service->ZeroBlocksHandler = [](const auto& request)
+        {
+            Y_UNUSED(request);
+            return NThreading::TFuture<NProto::TZeroBlocksResponse>();
+        };
+        TString buffer(2 * BlockSize, '?');
+        auto read = f.Endpoint->ReadBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeRead(buffer));
+        f.Run(0);
+        UNIT_ASSERT_VALUES_EQUAL(Wait(read).GetError().GetCode(), E_FAIL);
+        UNIT_ASSERT_VALUES_EQUAL(buffer, TString(buffer.size(), '?'));
+
+        auto write = f.Endpoint->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeWrite(buffer));
+        f.Run(1);
+        UNIT_ASSERT_VALUES_EQUAL(Wait(write).GetError().GetCode(), E_FAIL);
+
+        auto zero =
+            f.Endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), MakeZero());
+        f.Run(2);
+        UNIT_ASSERT_VALUES_EQUAL(Wait(zero).GetError().GetCode(), E_FAIL);
+
+        f.Service->ZeroBlocksHandler = [](const auto& request)
+        {
+            Y_UNUSED(request);
+            return NThreading::MakeFuture<NProto::TZeroBlocksResponse>();
+        };
+        auto next =
+            f.Endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), MakeZero());
+        f.Run(3);
+        UNIT_ASSERT(!HasError(Wait(next)));
+        UNIT_ASSERT(!f.Channel->Closing);
+        f.Target->Stop();
+    }
+
     Y_UNIT_TEST(RejectsMalformedReadResponseBeforeCopyingAnyData)
     {
         for (size_t variant = 0; variant < 6; ++variant) {

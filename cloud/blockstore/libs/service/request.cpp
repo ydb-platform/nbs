@@ -20,16 +20,7 @@ TWriteBlocksLocalRequest::TWriteBlocksLocalRequest(
     const TWriteBlocksLocalRequest& source,
     TDependentTag)
 {
-    Y_ABORT_UNLESS(source.GetDescriptor()->field_count() == 8);
-
-    // Copy all protobuf fields except Blocks (field 4)
-    MutableHeaders()->CopyFrom(source.GetHeaders());
-    SetDiskId(source.GetDiskId());
-    SetStartIndex(source.GetStartIndex());
-    SetFlags(source.GetFlags());
-    SetSessionId(source.GetSessionId());
-    SetBlockSize(source.GetBlockSize());
-    MutableChecksums()->CopyFrom(source.GetChecksums());
+    CopyWriteRequestMetadata(source, *this);
 
     // Copy non-protobuf fields
     Sglist = source.Sglist;
@@ -84,6 +75,21 @@ void TWriteBlocksLocalRequest::CloseOwnedSglist()
         Sglist.Close();
         OwnsSglist = false;
     }
+}
+
+void CopyWriteRequestMetadata(
+    const TWriteBlocksRequest& source,
+    TWriteBlocksRequest& destination)
+{
+    Y_ABORT_UNLESS(source.GetDescriptor()->field_count() == 8);
+
+    destination.MutableHeaders()->CopyFrom(source.GetHeaders());
+    destination.SetDiskId(source.GetDiskId());
+    destination.SetStartIndex(source.GetStartIndex());
+    destination.SetFlags(source.GetFlags());
+    destination.SetSessionId(source.GetSessionId());
+    destination.SetBlockSize(source.GetBlockSize());
+    destination.MutableChecksums()->CopyFrom(source.GetChecksums());
 }
 
 TWriteBlocksLocalRequest CopyRequest(const TWriteBlocksLocalRequest& request)

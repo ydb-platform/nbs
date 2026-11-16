@@ -271,42 +271,45 @@ private:
     template <typename TMethod, typename TOperation>
     void ExecuteStorageRequest(std::shared_ptr<TOperation> op)
     {
-        op->Context = MakeIntrusive<TCallContext>(
-            op->Request->GetHeaders().GetRequestId());
-        NThreading::TFuture<typename TMethod::TResponse> future;
         try {
-            future =
+            op->Context = MakeIntrusive<TCallContext>(
+                op->Request->GetHeaders().GetRequestId());
+            auto future =
                 TMethod::Execute(op->Service.get(), op->Context, op->Request);
+            future.Subscribe(
+                [executor = Executor, op]   //
+                (const auto& future) mutable
+                {
+                    executor->ExecuteSimple(
+                        [op = std::move(op), future]() mutable
+                        {
+                            auto response = ExtractResponse(future);
+                            if (!op->Sglist.Empty()) {
+                                op->Sglist.Close();
+                            }
+                            auto& info =
+                                *response.MutableHeaders()->MutableThrottler();
+                            info.SetDelay(
+                                op->Context->Time(EProcessingStage::Postponed)
+                                    .MicroSeconds());
+                            info.SetShapingDelay(
+                                op->Context->Time(EProcessingStage::Shaping)
+                                    .MicroSeconds());
+                            auto event = std::make_unique<
+                                typename TOperation::TResponseEvent>();
+                            PrepareStorageResponse(
+                                *event,
+                                response,
+                                op->Payload);
+                            op->Incoming->Reply(std::move(event));
+                            op.reset();
+                        });
+                });
         } catch (...) {
-            future = NThreading::MakeFuture<typename TMethod::TResponse>(
-                TErrorResponse(E_FAIL, CurrentExceptionMessage()));
+            ReplyError<typename TOperation::TResponseEvent>(
+                *op->Incoming,
+                MakeError(E_FAIL, CurrentExceptionMessage()));
         }
-        future.Subscribe(
-            [executor = Executor, op = std::move(op)]   //
-            (const auto& future) mutable
-            {
-                executor->ExecuteSimple(
-                    [op = std::move(op), future]() mutable
-                    {
-                        auto response = ExtractResponse(future);
-                        if (!op->Sglist.Empty()) {
-                            op->Sglist.Close();
-                        }
-                        auto& info =
-                            *response.MutableHeaders()->MutableThrottler();
-                        info.SetDelay(
-                            op->Context->Time(EProcessingStage::Postponed)
-                                .MicroSeconds());
-                        info.SetShapingDelay(
-                            op->Context->Time(EProcessingStage::Shaping)
-                                .MicroSeconds());
-                        auto event = std::make_unique<
-                            typename TOperation::TResponseEvent>();
-                        PrepareStorageResponse(*event, response, op->Payload);
-                        op->Incoming->Reply(std::move(event));
-                        op.reset();
-                    });
-            });
     }
 };
 

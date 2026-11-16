@@ -87,8 +87,7 @@ CreateRequest(const NProto::TWriteBlocksRequest& request)
 
     auto event =
         std::make_unique<NStorage::TEvService::TEvWriteBlocksRequest>();
-    event->Record.CopyFrom(request);
-    event->Record.ClearBlocks();
+    NProto::CopyWriteRequestMetadata(request, event->Record);
     event->AddPayload(CopyWritePayload(GetSgList(request)));
     return event;
 }
@@ -112,10 +111,7 @@ CreateRequest(const NProto::TWriteBlocksLocalRequest& request)
 
     auto event =
         std::make_unique<NStorage::TEvService::TEvWriteBlocksRequest>();
-    const NProto::TWriteBlocksLocalRequest metadata(
-        request,
-        NProto::TWriteBlocksLocalRequest::TDependentTag{});
-    event->Record.CopyFrom(metadata);
+    NProto::CopyWriteRequestMetadata(request, event->Record);
     event->AddPayload(CopyWritePayload(guard.Get()));
     return event;
 }
