@@ -46,17 +46,16 @@ public:
         return MakeFuture();
     }
 
-    [[nodiscard]] auto ReadPages(
-        NCloud::NProto::TReadPagesRequest request)
-        -> TFuture<NCloud::NProto::TReadPagesResponse> final
+    [[nodiscard]] auto ReadPages(NProto::TReadPagesRequest request)
+        -> TFuture<NProto::TReadPagesResponse> final
     {
         auto rangeRefs = MakePageRangeRefs(request);
 
         auto future = DataStore->ReadPages(rangeRefs);
 
         return future.Apply(
-            [rangeRefs = std::move(rangeRefs)](const auto& future)
-                -> NCloud::NProto::TReadPagesResponse
+            [rangeRefs = std::move(rangeRefs)](
+                const auto& future) -> NProto::TReadPagesResponse
             {
                 const auto& result = future.GetValue();
                 if (HasError(result)) {
@@ -67,13 +66,13 @@ public:
             });
     }
 
-    [[nodiscard]] auto WriteLogRecord(
-        NCloud::NProto::TWriteLogRecordRequest request)
-        -> TFuture<NCloud::NProto::TWriteLogRecordResponse> final
+    [[nodiscard]] auto WriteLogRecord(NProto::TWriteLogRecordRequest request)
+        -> TFuture<NProto::TWriteLogRecordResponse> final
     {
         if (request.GetLogSequenceNumber() <= request.GetPrevLogSequenceNumber()) {
-            return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>(
-                TErrorResponse(E_ARGUMENT, TStringBuilder()
+            return MakeFuture<NProto::TWriteLogRecordResponse>(TErrorResponse(
+                E_ARGUMENT,
+                TStringBuilder()
                     << "invalid lsn: " << request.GetLogSequenceNumber()
                     << ", must be greater than the prev one: "
                     << request.GetPrevLogSequenceNumber()));
@@ -88,16 +87,17 @@ public:
         // if (lastLsn != 0 && prevLsn != lastLsn) {
         //     const auto code = prevLsn > lastLsn ? E_REJECTED : E_INVALID_STATE;
 
-        //     return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>(
+        //     return MakeFuture<NProto::TWriteLogRecordResponse>(
         //         TErrorResponse(code, TStringBuilder()
-        //             << "Wrong lsn: " << prevLsn << ", expected " << lastLsn));
+        //             << "Wrong lsn: " << prevLsn << ", expected " <<
+        //             lastLsn));
         // }
 
         auto future = DataStore->WritePages(MakePageRanges(request));
 
         return future.Apply(
-            [self = shared_from_this(), lsn](const auto& future) mutable
-                -> NCloud::NProto::TWriteLogRecordResponse
+            [self = shared_from_this(),
+             lsn](const auto& future) mutable -> NProto::TWriteLogRecordResponse
             {
                 if (future.HasException()) {
                     return TErrorResponse(
@@ -114,13 +114,12 @@ public:
             });
     }
 
-    [[nodiscard]] auto ReadJournalTail(
-        NCloud::NProto::TReadJournalTailRequest request)
-        -> TFuture<NCloud::NProto::TReadJournalTailResponse> final
+    [[nodiscard]] auto ReadJournalTail(NProto::TReadJournalTailRequest request)
+        -> TFuture<NProto::TReadJournalTailResponse> final
     {
         Y_UNUSED(request);
 
-        NCloud::NProto::TReadJournalTailResponse response;
+        NProto::TReadJournalTailResponse response;
         response.SetLsnLowWatermark(
             LastAckedLsn.load(std::memory_order_relaxed));
 
@@ -128,14 +127,14 @@ public:
     }
 
     [[nodiscard]] auto AdvanceLsnLowWatermark(
-        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
-        -> TFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse> final
+        NProto::TAdvanceLsnLowWatermarkRequest request)
+        -> TFuture<NProto::TAdvanceLsnLowWatermarkResponse> final
     {
         LastAckedLsn.store(
             request.GetLsnLowWatermark(),
             std::memory_order_relaxed);
 
-        NCloud::NProto::TAdvanceLsnLowWatermarkResponse response;
+        NProto::TAdvanceLsnLowWatermarkResponse response;
         return MakeFuture(response);
     }
 };

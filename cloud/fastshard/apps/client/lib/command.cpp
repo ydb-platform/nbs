@@ -258,9 +258,9 @@ int TCommand::FiberMain(TFiberParams* params) noexcept
     return 0;
 }
 
-NCloud::NProto::TError TCommand::AcquireDevice(const TString& deviceUUID)
+NProto::TError TCommand::AcquireDevice(const TString& deviceUUID)
 {
-    NCloud::NProto::TAcquireDevicesRequest request;
+    NProto::TAcquireDevicesRequest request;
     PrepareHeaders(*request.MutableHeaders());
     request.AddDeviceUUIDs(deviceUUID);
     request.SetGeneration(AcquireGeneration);
@@ -280,7 +280,7 @@ NCloud::NProto::TError TCommand::AcquireDevice(const TString& deviceUUID)
 
 void TCommand::ReleaseDevice(const TString& deviceUUID)
 {
-    NCloud::NProto::TReleaseDevicesRequest request;
+    NProto::TReleaseDevicesRequest request;
     PrepareHeaders(*request.MutableHeaders());
     request.AddDeviceUUIDs(deviceUUID);
     request.SetGeneration(AcquireGeneration);
@@ -298,7 +298,7 @@ void TCommand::ReleaseDevice(const TString& deviceUUID)
 void TCommand::ReadPageGroup(
     ui64 firstPageNo,
     ui32 pageSize,
-    NCloud::NProto::TDevicePageGroup* group)
+    NProto::TDevicePageGroup* group)
 {
     const TString data = GetInputStream().ReadAll();
     if (data.empty() || data.size() % pageSize) {
@@ -339,8 +339,7 @@ IOutputStream& TCommand::GetOutputStream()
     return OutputStream ? *OutputStream : Cout;
 }
 
-void TCommand::PrepareHeaders(
-    NCloud::NProto::TDeviceRequestHeaders& headers) const
+void TCommand::PrepareHeaders(NProto::TDeviceRequestHeaders& headers) const
 {
     if (ClientId) {
         headers.SetClientId(ClientId);

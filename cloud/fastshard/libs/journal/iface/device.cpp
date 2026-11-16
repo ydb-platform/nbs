@@ -18,18 +18,16 @@ public:
         return MakeFuture(TResultOrError(TVector<TBuffer>()));
     }
 
-    TFuture<NCloud::NProto::TError> WritePages(
-        TVector<TPageRange> ranges) override
+    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
     {
         Y_UNUSED(ranges);
-        return MakeFuture<NCloud::NProto::TError>();
+        return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NCloud::NProto::TError> ZeroPages(
-        TVector<TPageRangeRef> ranges) override
+    TFuture<NProto::TError> ZeroPages(TVector<TPageRangeRef> ranges) override
     {
         Y_UNUSED(ranges);
-        return MakeFuture<NCloud::NProto::TError>();
+        return MakeFuture<NProto::TError>();
     }
 };
 

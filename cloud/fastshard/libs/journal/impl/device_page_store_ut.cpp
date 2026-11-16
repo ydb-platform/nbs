@@ -75,7 +75,7 @@ struct TBrokenDevice final: public IDevice
             MakeError(E_IO, "device is broken"));
     }
 
-    NThreading::TFuture<NCloud::NProto::TError> WritePages(
+    NThreading::TFuture<NProto::TError> WritePages(
         TVector<TPageRange> ranges) override
     {
         Y_UNUSED(ranges);
@@ -83,7 +83,7 @@ struct TBrokenDevice final: public IDevice
         return NThreading::MakeFuture(MakeError(E_IO, "device is broken"));
     }
 
-    NThreading::TFuture<NCloud::NProto::TError> ZeroPages(
+    NThreading::TFuture<NProto::TError> ZeroPages(
         TVector<TPageRangeRef> ranges) override
     {
         Y_UNUSED(ranges);

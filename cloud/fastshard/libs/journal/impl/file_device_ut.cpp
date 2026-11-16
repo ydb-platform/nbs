@@ -80,7 +80,7 @@ TString DescribePage(const TString& page)
 }
 
 // "10:[a,b] 20:[c]"
-TString DescribeGroups(const NCloud::NProto::TReadPagesResponse& response)
+TString DescribeGroups(const NProto::TReadPagesResponse& response)
 {
     TVector<TString> groups;
 
@@ -137,7 +137,7 @@ struct TFixture: public NUnitTest::TBaseFixture
         return TFileStat(FilePath()).Size;
     }
 
-    NCloud::NProto::TError Write(
+    NProto::TError Write(
         const TVector<std::pair<ui64, TVector<TString>>>& groups)
     {
         return Device->WritePages(MakeRanges(groups)).GetValueSync();
@@ -153,7 +153,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             FormatError(error));
     }
 
-    NCloud::NProto::TError Zero(const TVector<std::pair<ui64, ui64>>& refs)
+    NProto::TError Zero(const TVector<std::pair<ui64, ui64>>& refs)
     {
         return Device->ZeroPages(MakeRangeRefs(refs)).GetValueSync();
     }
@@ -169,8 +169,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     }
 
     // the pages read are grouped after the refs they have been read for
-    NCloud::NProto::TReadPagesResponse Read(
-        const TVector<std::pair<ui64, ui64>>& refs)
+    NProto::TReadPagesResponse Read(const TVector<std::pair<ui64, ui64>>& refs)
     {
         const auto rangeRefs = MakeRangeRefs(refs);
 
@@ -182,7 +181,7 @@ struct TFixture: public NUnitTest::TBaseFixture
         return MakeReadPagesResponse(rangeRefs, result.GetResult());
     }
 
-    NCloud::NProto::TReadPagesResponse ReadPagesResponse(
+    NProto::TReadPagesResponse ReadPagesResponse(
         const TVector<std::pair<ui64, ui64>>& refs)
     {
         auto response = Read(refs);
