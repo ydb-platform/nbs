@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/config/blockstore_config.h>
+#include <cloud/blockstore/libs/cells/iface/public.h>
 #include <cloud/blockstore/libs/daemon/common/bootstrap.h>
 #include <cloud/blockstore/libs/discovery/public.h>
 #include <cloud/blockstore/libs/kms/iface/public.h>
@@ -57,6 +58,13 @@ struct TServerModuleFactories
         const NProto::TEdsConfig& config,
         ILoggingServicePtr logging,
         IMonitoringServicePtr monitoring)> EdsInstanceFetcherFactory;
+
+    // the EDS behind the cells' host patterns; a separate fetcher from the
+    // discovery service's, built from TCellsConfig.Eds
+    std::function<NCells::IEdsHostFetcherPtr(
+        const NProto::TEdsConfig& config,
+        ILoggingServicePtr logging,
+        IMonitoringServicePtr monitoring)> CellsEdsHostFetcherFactory;
 
     std::function<IComputeClientPtr(
         NProto::TGrpcClientConfig config,

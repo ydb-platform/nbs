@@ -10,6 +10,7 @@ SRCS(
     endpoint_bootstrap_impl_ut.cpp
     endpoint_router_ut.cpp
     forward_service_ut.cpp
+    host_discovery_ut.cpp
     host_pool_ut.cpp
     mon_ut.cpp
     inbound_activity_ut.cpp

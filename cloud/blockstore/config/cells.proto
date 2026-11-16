@@ -1,6 +1,7 @@
 syntax = "proto2";
 
 import "cloud/blockstore/config/client.proto";
+import "cloud/blockstore/config/discovery.proto";
 
 package NCloud.NBlockStore.NProto;
 
@@ -75,7 +76,9 @@ message TCellConfig
     // milliseconds.
     optional uint32 HostPingTimeout = 15;
 
-    // 16 is taken by EdsHostPatterns in the EDS host discovery change.
+    // Host masks resolved through EDS (TCellsConfig.Eds) into further hosts
+    // of this cell, refreshed periodically. Hosts above stay regardless.
+    repeated string EdsHostPatterns = 16;
 
     // How long an RDMA or IC V2 connection that has dropped once has to stay
     // up again before data is moved back onto it, in milliseconds.
@@ -104,4 +107,12 @@ message TCellsConfig
 
     // Enable/Disable feature
     optional bool CellsEnabled = 6;
+
+    // EDS used to resolve EdsHostPatterns of the cells. Off unless
+    // RequestInterval is set: that is how often each cell is asked; an hour
+    // is a sensible value. The fetcher holds repeat requests back by up to
+    // half of it so that the nodes do not poll EDS in lockstep.
+    // HostPatterns, InstancePort and SecureInstancePort are not used here:
+    // the patterns come from each cell, the ports from its TCellConfig.
+    optional TEdsConfig Eds = 7;
 }

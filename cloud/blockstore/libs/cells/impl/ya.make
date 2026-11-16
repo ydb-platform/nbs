@@ -11,6 +11,7 @@ SRCS(
     endpoint_bootstrap.cpp
     endpoint_router.cpp
     forward_service.cpp
+    host_discovery.cpp
     host_pool.cpp
     mon.cpp
     remote_storage.cpp

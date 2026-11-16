@@ -5,6 +5,7 @@
 #include "mon.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
+#include <cloud/blockstore/libs/cells/iface/eds_host_fetcher.h>
 #include <cloud/blockstore/libs/cells/iface/inbound_activity.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -485,15 +486,16 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             "alive</span></td><td><span class='badge'>0</span></td>"
             "<td>grpc</td><td>9001</td>");
 
-        // nothing found dead yet is healthy, even before anyone was asked
+        // nothing found dead yet is healthy, even before anyone was asked;
+        // a host nobody asked or holds gets no row of its own
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "<details class='panel panel-success'>"
             "<summary class='panel-heading'><strong>uvw</strong>");
+        UNIT_ASSERT(!html.Contains("<td>host-gamma</td>"));
         UNIT_ASSERT_STRING_CONTAINS(
             html,
-            "<td>host-gamma</td><td><span class='label label-default'>"
-            "not probed</span></td>");
+            "<td colspan='7'>1 cold hosts not probed</td>");
 
         // the summary counts what has no one-line heading of its own
         UNIT_ASSERT_STRING_CONTAINS(
@@ -962,10 +964,87 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             html,
             "<span class='label label-warning'>"
             "1 down, 1 alive, 1 not probed</span>");
+        UNIT_ASSERT(!html.Contains("<td>host-3</td>"));
+    }
+
+    Y_UNIT_TEST(ShouldWatchEdsOnlyForCellsWithPatterns)
+    {
+        auto cfg = TCellConfigBuilder("abc", true)
+            .AddCell("xyz", 9001, 0, 1, 1, {"host-a"})
+            .AddCell("uvw", 9001, 0, 1, 1, {"host-b"})
+            .Build();
+        cfg.MutableEds()->SetEndpoint("eds:1");
+        cfg.MutableEds()->SetRequestInterval(3600'000);
+        cfg.MutableCells(0)->AddEdsHostPatterns("xyz-*");
+
+        TBootstrap bootstrap{
+            .EdsFetcher = CreateEdsHostFetcherStub()};
+        TCellManager manager(
+            std::make_shared<TCellsConfig>(std::move(cfg)),
+            bootstrap);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, manager.HostDiscoveries.size());
+    }
+
+    Y_UNIT_TEST(ShouldLeaveEdsOffWithoutARequestInterval)
+    {
+        auto cfg = TCellConfigBuilder("abc", true)
+            .AddCell("xyz", 9001, 0, 1, 1, {"host-a"})
+            .Build();
+        cfg.MutableEds()->SetEndpoint("eds:1");
+        cfg.MutableCells(0)->AddEdsHostPatterns("xyz-*");
+
+        // the default: patterns and an endpoint alone do not switch it on
+        TCellManager manager(
+            std::make_shared<TCellsConfig>(std::move(cfg)),
+            TBootstrap{});
+
+        UNIT_ASSERT_VALUES_EQUAL(0, manager.HostDiscoveries.size());
+    }
+
+    Y_UNIT_TEST(ShouldRefuseEdsPatternsWithoutAFetcher)
+    {
+        auto cfg = TCellConfigBuilder("abc", true)
+            .AddCell("xyz", 9001, 0, 1, 1, {"host-a"})
+            .Build();
+        cfg.MutableEds()->SetRequestInterval(3600'000);
+        cfg.MutableCells(0)->AddEdsHostPatterns("xyz-*");
+
+        UNIT_ASSERT_EXCEPTION(
+            TCellManager(
+                std::make_shared<TCellsConfig>(std::move(cfg)),
+                TBootstrap{}),
+            yexception);
+    }
+
+    Y_UNIT_TEST(ShouldFoldColdHostsIntoOneRow)
+    {
+        auto cfg = TCellConfigBuilder("abc", true)
+            .AddCell("xyz", 9001, 0, 1, 1, {"host-1"})
+            .Build();
+        auto config = std::make_shared<TCellsConfig>(std::move(cfg));
+
+        // nobody has asked any of them; the warm one and the held one still
+        // tell the reader something, the other two only add up
+        TCellsSnapshot snapshot;
+        auto& hosts = snapshot.HostStatuses["xyz"];
+        hosts.push_back({.Fqdn = "host-1", .Warm = true});
+        hosts.push_back({.Fqdn = "host-2", .Connections = 1});
+        hosts.push_back({.Fqdn = "host-3"});
+        hosts.push_back({.Fqdn = "host-4"});
+
+        TStringStream out;
+        RenderCellsPage(out, *config, snapshot, TDiagnosticsConfig());
+        const auto html = out.Str();
+
+        UNIT_ASSERT_STRING_CONTAINS(html, "<td>host-1</td>");
+        UNIT_ASSERT_STRING_CONTAINS(html, "<td>host-2</td>");
+        UNIT_ASSERT(!html.Contains("<td>host-3</td>"));
+        UNIT_ASSERT(!html.Contains("<td>host-4</td>"));
         UNIT_ASSERT_STRING_CONTAINS(
             html,
-            "<td>host-3</td><td><span class='label label-default'>"
-            "not probed</span></td>");
+            "<td colspan='7'>2 cold hosts not probed</td>");
+        UNIT_ASSERT_STRING_CONTAINS(html, "4 not probed</span>");
     }
 }
 

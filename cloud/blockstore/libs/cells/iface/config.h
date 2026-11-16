@@ -119,6 +119,7 @@ public:
     [[nodiscard]] TDuration GetHostPingPeriod() const;
     [[nodiscard]] TDuration GetHostPingTimeout() const;
     [[nodiscard]] const TConfiguredHostsByFqdn& GetHosts() const;
+    [[nodiscard]] TVector<TString> GetEdsHostPatterns() const;
     [[nodiscard]] ui32 GetDescribeVolumeHostCount() const;
     [[nodiscard]] ui32 GetMinCellConnections() const;
 
@@ -148,6 +149,7 @@ public:
     [[nodiscard]] const TCellConfigByCellId& GetCells() const;
     [[nodiscard]] TDuration GetDescribeVolumeTimeout() const;
     [[nodiscard]] const NClient::TClientAppConfig& GetGrpcClientConfig() const;
+    [[nodiscard]] const NProto::TEdsConfig& GetEds() const;
     [[nodiscard]] ui32 GetRdmaTransportWorkers() const;
     [[nodiscard]] bool GetCellsEnabled() const;
 
