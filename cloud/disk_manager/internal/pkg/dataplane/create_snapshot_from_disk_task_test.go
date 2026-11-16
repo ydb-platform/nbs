@@ -101,11 +101,11 @@ func TestCreateSnapshotFromDiskMarksReadBlocks(t *testing.T) {
 	nbsFactory.On("GetClient", mock.Anything, "zone").Return(nbsClient, nil)
 	nbsClient.On("Describe", mock.Anything, "disk").Return(nbs_client.DiskParams{}, nil)
 	nbsClient.On("MountRO", mock.Anything, "disk", mock.Anything).Return(session, nil).Once()
-	nbsClient.On("GetChangedBytes", mock.Anything, "disk", "", "checkpoint", false).
+	nbsClient.On("GetChangedBytes", mock.Anything, "disk", "", "checkpoint", false, uint64(chunkSize)).
 		Return(uint64(chunkSize), nil).Once()
 	changedBlocks := make([]byte, blockCount/8)
 	changedBlocks[0] = 1
-	nbsClient.On("GetChangedBlocks", mock.Anything, "disk", uint64(0), blockCount, "", "checkpoint").
+	nbsClient.On("GetChangedBlocks", mock.Anything, "disk", uint64(0), blockCount, "", "checkpoint", false).
 		Return(changedBlocks, nil).Once()
 	snapshotStorage.On("CreateSnapshot", mock.Anything, mock.Anything).
 		Return(&storage.SnapshotMeta{ID: "snapshot"}, nil).Once()
@@ -127,6 +127,7 @@ func TestCreateSnapshotFromDiskMarksReadBlocks(t *testing.T) {
 			SrcDisk:             &types.Disk{ZoneId: "zone", DiskId: "disk"},
 			SrcDiskCheckpointId: "checkpoint",
 			DstSnapshotId:       "snapshot",
+			BlockSize:           blockSize,
 		},
 		state: &protos.CreateSnapshotFromDiskTaskState{},
 	}

@@ -378,6 +378,7 @@ TReadBlocksActor::TReadBlocksActor(
     bool replyLocal,
     bool checksumsEnabled,
     bool reportBlobIdsOnFailure,
+    bool asyncRead,
     ui64 commitId,
     TReadBlocksRequests ownRequests,
     TVector<IProfileLog::TBlockInfo> blockInfos,
