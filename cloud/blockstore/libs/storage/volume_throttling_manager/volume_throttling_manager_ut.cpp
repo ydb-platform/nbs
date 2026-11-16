@@ -436,11 +436,12 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0.5, received.GetRules(0).GetCoefficients().GetMaxReadBandwidth());
 
-        // Apply CLI rules, update service rules, and check that CLI delivery stays
-        // unchanged.
+        // Apply CLI rules, then update throttling rules in the dynamic configuration.
+        // Check that the delivered rules and delivery version remain unchanged
+        // while the CLI override is active.
         UNIT_ASSERT(!HasError(SetManualConfig(*runtime, 1, 0.25)));
         received = WaitForConfig(*runtime, recipient);
-        const auto manualDeliveryVersion = received.GetVersion();
+        const auto deliveryVersion = received.GetVersion();
         base->MutableRules(0)->MutableCoefficients()->SetMaxReadBandwidth(0.125);
         provider->Publish();
         runtime->Send(new IEventHandle(
@@ -451,14 +452,17 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingManagerTest)
             MakeVolumeThrottlingManagerServiceId(), recipient,
             new TEvents::TEvWakeup()));
         received = WaitForConfig(*runtime, recipient);
-        UNIT_ASSERT_VALUES_EQUAL(manualDeliveryVersion, received.GetVersion());
+        UNIT_ASSERT_VALUES_EQUAL(deliveryVersion, received.GetVersion());
         UNIT_ASSERT_VALUES_EQUAL(
             0.25, received.GetRules(0).GetCoefficients().GetMaxReadBandwidth());
 
-        // Clear CLI rules and check that the latest service update is delivered.
-        UNIT_ASSERT(!HasError(SetManualConfig(*runtime, 2)));
+        // Clear CLI rules with the maximum CLI version. Check that the latest
+        // throttling rules from dynamic configuration are delivered with the next
+        // delivery version.
+        const auto maxManualVersion = std::numeric_limits<ui32>::max();
+        UNIT_ASSERT(!HasError(SetManualConfig(*runtime, maxManualVersion)));
         received = WaitForConfig(*runtime, recipient);
-        UNIT_ASSERT(received.GetVersion() > manualDeliveryVersion);
+        UNIT_ASSERT_VALUES_EQUAL(deliveryVersion + 1, received.GetVersion());
         UNIT_ASSERT_VALUES_EQUAL(
             0.125, received.GetRules(0).GetCoefficients().GetMaxReadBandwidth());
 
@@ -469,7 +473,7 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingManagerTest)
             *runtime, MakeVolumeThrottlingManagerServiceId(), provider);
         received = WaitForConfig(*runtime, recipient);
         UNIT_ASSERT_VALUES_EQUAL(0, received.RulesSize());
-        UNIT_ASSERT(HasError(SetManualConfig(*runtime, 2, 0.5)));
+        UNIT_ASSERT(HasError(SetManualConfig(*runtime, maxManualVersion, 0.5)));
     }
 
     // Verify that VolumeThrottling CLI updates share one periodic wakeup.
