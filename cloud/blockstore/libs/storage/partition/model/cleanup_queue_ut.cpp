@@ -26,6 +26,54 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
 {
     static const TVector<ui32> Steps = {8, 9, 7, 6, 4, 2, 10, 5, 1, 3};
 
+    Y_UNIT_TEST(ShouldAccountMixedBytesAndBlocksByChannel)
+    {
+        TCleanupQueue queue(1024, {5, 3});
+        const TCleanupQueueItem mixed{{1, 1, 3, 2048, 0, 0}, 11, {}};
+        TCleanupQueueItem mixedOnMergedChannel{{1, 2, 4, 3072, 0, 0}, 12, {}};
+        mixedOnMergedChannel.BlobMeta.MutableMixedBlocks();
+        TCleanupQueueItem mergedOnMixedChannel{{1, 3, 5, 1024, 0, 0}, 13, {}};
+        mergedOnMixedChannel.BlobMeta.MutableMergedBlocks();
+        const TCleanupQueueItem deletion{{1, 4, 0, 0, 0, 0}, 14, {}};
+
+        UNIT_ASSERT(queue.Add(mixed));
+        UNIT_ASSERT(queue.Add(TVector<TCleanupQueueItem>{
+            mixedOnMergedChannel,
+            mergedOnMixedChannel,
+            deletion}));
+        UNIT_ASSERT_VALUES_EQUAL(6144, queue.GetQueueBytes());
+        UNIT_ASSERT_VALUES_EQUAL(6, queue.GetQueueBlocks());
+        const ui64 mixedBlocks = 3;
+        UNIT_ASSERT_VALUES_EQUAL(
+            mixedBlocks * 1024,
+            queue.GetQueueMixedBytes());
+        UNIT_ASSERT_VALUES_EQUAL(mixedBlocks, queue.GetQueueMixedBlocks());
+
+        UNIT_ASSERT(!queue.Add(mixed));
+        auto wrongCommit = mixed;
+        ++wrongCommit.CommitId;
+        UNIT_ASSERT(!queue.Remove(wrongCommit));
+        UNIT_ASSERT_VALUES_EQUAL(
+            mixedBlocks * 1024,
+            queue.GetQueueMixedBytes());
+        UNIT_ASSERT_VALUES_EQUAL(mixedBlocks, queue.GetQueueMixedBlocks());
+
+        // Callers can remove a blob without supplying its metadata or kind.
+        UNIT_ASSERT(queue.Remove({mixed.BlobId, mixed.CommitId, {}}));
+        UNIT_ASSERT(!queue.Remove(mixed));
+        UNIT_ASSERT_VALUES_EQUAL(
+            (mixedBlocks - 2) * 1024,
+            queue.GetQueueMixedBytes());
+        UNIT_ASSERT_VALUES_EQUAL(mixedBlocks - 2, queue.GetQueueMixedBlocks());
+        UNIT_ASSERT(queue.Remove(mixedOnMergedChannel));
+        UNIT_ASSERT(queue.Remove(mergedOnMixedChannel));
+        UNIT_ASSERT(queue.Remove(deletion));
+        UNIT_ASSERT_VALUES_EQUAL(0, queue.GetQueueBytes());
+        UNIT_ASSERT_VALUES_EQUAL(0, queue.GetQueueBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(0, queue.GetQueueMixedBytes());
+        UNIT_ASSERT_VALUES_EQUAL(0, queue.GetQueueMixedBlocks());
+    }
+
     Y_UNIT_TEST(ShouldKeepItemsSorted)
     {
         TCleanupQueue queue(1024);

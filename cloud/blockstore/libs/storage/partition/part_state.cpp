@@ -120,7 +120,10 @@ TPartitionState::TPartitionState(
           Max<ui32>()))
     , MaxBlobsPerRange(maxBlobsPerRange)
     , CompactionRangeCountPerRun(compactionRangeCountPerRun)
-    , CleanupQueue(GetBlockSize())
+    , CleanupQueue(
+          GetBlockSize(),
+          GetChannelsByKind([](EChannelDataKind kind)
+                            { return kind == EChannelDataKind::Mixed; }))
     , CleanupScoreHistory(cleanupScoreHistorySize)
     , CheckpointAwareCleanupEnabled(checkpointAwareCleanupEnabled)
 {
@@ -496,8 +499,8 @@ ui32 TPartitionState::GetMixedBlocksCompactionPercentage(
     ui64 mixedBytes = 0;
     ui64 totalBytes = 0;
     if (config.GetMixedBlocksCompactionUseByteCounters()) {
-        // Match the MixedBytesCount and MergedBytesCount metrics, including
-        // their fallback when extended blob counters are disabled.
+        // Use channel bytes or channel blocks, excluding blobs already
+        // overwritten and waiting for cleanup.
         mixedBytes = AreExtendedBlobCountersEnabled()
                          ? GetMixedBytesCount()
                          : GetMixedBlocksCount() * GetBlockSize();
@@ -505,6 +508,10 @@ ui32 TPartitionState::GetMixedBlocksCompactionPercentage(
                                      ? GetMergedBytesCount()
                                      : GetMergedBlocksCount() * GetBlockSize();
         totalBytes = mixedBytes + mergedBytes;
+        const ui64 queueMixedBytes = CleanupQueue.GetQueueMixedBytes();
+        const ui64 queueBytes = CleanupQueue.GetQueueBytes();
+        mixedBytes -= Min(mixedBytes, queueMixedBytes);
+        totalBytes -= Min(totalBytes, queueBytes);
     } else {
         mixedBytes =
             CompactionMap.GetMixedBlocksCountPerDisk() * GetBlockSize();

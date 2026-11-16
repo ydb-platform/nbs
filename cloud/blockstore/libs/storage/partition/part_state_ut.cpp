@@ -179,13 +179,15 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                     };
                     UNIT_ASSERT_VALUES_EQUAL(0, percentage());
 
-                    // Deliberately disagree: map 25%, legacy counters 10%,
-                    // stored blob bytes 60% (e.g. after compression).
+                    // Deliberately disagree: map 25%, index blocks 10%,
+                    // channel blocks 30%, stored blob bytes 60%.
                     state.GetCompactionMap().Update(
                         0, 2, 100, 100, 0, 25, false, false);
                     auto& stats = state.AccessStats();
                     stats.SetMixedBlocksCount(10);
                     stats.SetMergedBlocksCount(90);
+                    stats.SetMixedChannelBlocksCount(30);
+                    stats.SetMergedChannelBlocksCount(70);
                     stats.MutableBlobByteCounters()->SetMixedBytesCount(60);
                     stats.MutableBlobByteCounters()->SetMergedBytesCount(40);
                     const ui32 expected =
@@ -214,6 +216,81 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                     setMinimum(totalBytes);
                     UNIT_ASSERT_VALUES_EQUAL(expected, percentage());
                 }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldExcludeCleanupQueueFromMixedCompactionPercentage)
+    {
+        for (bool extendedCounters: {false, true}) {
+            for (bool useByteCounters: {false, true}) {
+                auto meta = DefaultConfig(1, DefaultBlockCount);
+                meta.MutableConfig()->AddExplicitChannelProfiles()->SetDataKind(
+                    static_cast<ui32>(EChannelDataKind::Mixed));
+                auto state = MakeState(
+                    meta,
+                    {.ExtendedBlobCountersEnabled = extendedCounters,
+                     .CompactionPolicy =
+                         BuildDefaultCompactionPolicy(5, 0, true)});
+                state.GetCompactionMap()
+                    .Update(0, 2, 100, 100, 0, 25, false, false);
+                auto& stats = state.AccessStats();
+                stats.SetMixedBlocksCount(60);
+                stats.SetMergedBlocksCount(40);
+                stats.SetMixedChannelBlocksCount(60);
+                stats.SetMergedChannelBlocksCount(40);
+                stats.MutableBlobByteCounters()->SetMixedBytesCount(
+                    60 * DefaultBlockSize);
+                stats.MutableBlobByteCounters()->SetMergedBytesCount(
+                    40 * DefaultBlockSize);
+
+                NProto::TStorageServiceConfig proto;
+                proto.SetMixedBlocksCompactionUseByteCounters(useByteCounters);
+                proto.SetMixedBlocksCompactionMinStoredBytesHDD(0);
+                const auto percentage = [&]
+                {
+                    return state.GetMixedBlocksCompactionPercentage(
+                        TStorageConfig(proto, {}));
+                };
+                auto& queue = state.GetCleanupQueue();
+                const TCleanupQueueItem mixed{
+                    {1, 1, 5, 40 * DefaultBlockSize, 0, 0},
+                    11,
+                    {}};
+                const TCleanupQueueItem merged{
+                    {1, 2, 3, 20 * DefaultBlockSize, 0, 0},
+                    12,
+                    {}};
+                UNIT_ASSERT(queue.Add(mixed));
+                UNIT_ASSERT(queue.Add(merged));
+                // Active mixed/total = (60 - 40) / (100 - 60) = 50%.
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useByteCounters ? 50 : 25,
+                    percentage());
+                proto.SetMixedBlocksCompactionMinStoredBytesHDD(
+                    40 * DefaultBlockSize + 1);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useByteCounters ? 0 : 25,
+                    percentage());
+                proto.SetMixedBlocksCompactionMinStoredBytesHDD(0);
+
+                UNIT_ASSERT(queue.Remove(mixed));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useByteCounters ? 75 : 25,
+                    percentage());
+                UNIT_ASSERT(queue.Remove(merged));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useByteCounters ? 60 : 25,
+                    percentage());
+
+                // Fully queued data must not cause division by zero.
+                UNIT_ASSERT(queue.Add(
+                    {{1, 3, 5, 60 * DefaultBlockSize, 0, 0}, 13, {}}));
+                UNIT_ASSERT(queue.Add(
+                    {{1, 4, 3, 40 * DefaultBlockSize, 0, 0}, 14, {}}));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useByteCounters ? 0 : 25,
+                    percentage());
             }
         }
     }

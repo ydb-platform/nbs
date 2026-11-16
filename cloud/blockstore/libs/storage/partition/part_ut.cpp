@@ -4144,7 +4144,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(1, compactionByMixedBlockCount);
     }
 
-    Y_UNIT_TEST(ShouldSuppressByteBasedMixedCompactionWithCheckpointData)
+    Y_UNIT_TEST(ShouldTriggerMixedCompactionWithCheckpointData)
     {
         for (bool useByteCounters: {false, true}) {
             for (bool withoutData: {false, true}) {
@@ -4204,27 +4204,118 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     partition.Flush();
                     runtime->DispatchEvents(TDispatchOptions(),
                                             TDuration::Seconds(1));
-                    const bool suppressed = useByteCounters && !withoutData;
-                    UNIT_ASSERT_VALUES_EQUAL(!suppressed,
-                                             compactionRequestObserved);
-
-                    if (suppressed) {
-                        partition.RebootTablet();
-                        partition.WaitReady();
-                        runtime->DispatchEvents(TDispatchOptions(),
-                                                TDuration::Seconds(1));
-                        UNIT_ASSERT(!compactionRequestObserved);
-
-                        // Retaining the checkpoint mapping without its data
-                        // must allow mixed compaction again.
-                        partition.DeleteCheckpointData("checkpoint");
-                        partition.WriteBlocks(4, 4);
-                        partition.Flush();
-                        runtime->DispatchEvents(TDispatchOptions(),
-                                                TDuration::Seconds(1));
-                        UNIT_ASSERT(compactionRequestObserved);
-                    }
+                    UNIT_ASSERT(compactionRequestObserved);
                 }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldExcludeQueuedMixedBlobsAfterCompactionAndReboot)
+    {
+        for (bool extendedCounters: {false, true}) {
+            for (bool hasMixedChannel: {false, true}) {
+                // Different index and channel classifications require extended
+                // counters for accurate percentage-based compaction.
+                if (!extendedCounters && !hasMixedChannel) {
+                    continue;
+                }
+
+                auto config = DefaultConfig(1_MB);
+                config.SetMixedBlocksCountCompactionEnabledHDD(true);
+                config.SetMixedBlocksCompactionUseByteCounters(true);
+                config.SetExtendedBlobCountersEnabled(extendedCounters);
+                config.SetMixedBytesCountCompactionThresholdHDD(1_MB);
+                config.SetMixedBlocksCompactionThresholdPercentageHDD(50);
+                config.SetMixedBlocksCompactionMinStoredBytesHDD(0);
+                config.SetWriteBlobThreshold(4 * DefaultBlockSize);
+                config.SetHDDMaxBlobsPerRange(100);
+                config.SetCompactionMergedBlobThresholdHDD(1);
+
+                TTestPartitionInfo partitionInfo;
+                partitionInfo.MixedChannelCount = hasMixedChannel ? 1 : 0;
+                auto runtime = PrepareTestActorRuntime(
+                    config,
+                    MaxBlocksCount,
+                    hasMixedChannel ? 6 : 5,
+                    partitionInfo);
+                TPartitionClient partition(*runtime);
+                partition.WaitReady();
+
+                ui32 compactionRequests = 0;
+                ui64 mixedPercentage = Max<ui64>();
+                runtime->SetEventFilter(
+                    [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+                    {
+                        if (event->GetTypeRewrite() ==
+                            TEvPartitionPrivate::EvCompactionRequest)
+                        {
+                            ++compactionRequests;
+                        } else if (
+                            event->GetTypeRewrite() ==
+                            TEvStatsService::EvVolumePartCounters)
+                        {
+                            mixedPercentage =
+                                event
+                                    ->Get<TEvStatsService::
+                                              TEvVolumePartCounters>()
+                                    ->DiskCounters->Simple
+                                    .CompactionMixedBlocksPercentage.Value;
+                        }
+                        return false;
+                    });
+
+                const auto updateCounters = [&]
+                {
+                    partition.SendToPipe(
+                        std::make_unique<
+                            TEvPartitionPrivate::TEvUpdateCounters>());
+                    TDispatchOptions options;
+                    options.FinalEvents.emplace_back(
+                        TEvStatsService::EvVolumePartCounters);
+                    runtime->DispatchEvents(options);
+                };
+
+                partition.WriteBlocks(TBlockRange32::WithLength(0, 4), 1);
+                // Keep overwritten blobs in the cleanup queue.
+                partition.CreateCheckpoint("checkpoint");
+                partition.WriteBlocks(TBlockRange32::WithLength(0, 2), 2);
+                partition.Flush();
+                partition.WriteBlocks(TBlockRange32::WithLength(2, 2), 3);
+                partition.Flush();
+                runtime->DispatchEvents(
+                    TDispatchOptions(),
+                    TDuration::Seconds(1));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    hasMixedChannel ? 1 : 0,
+                    compactionRequests);
+                if (!hasMixedChannel) {
+                    // Mixed-index blobs on merged channels must not trigger the
+                    // percentage-based compaction. Compact manually to test
+                    // that queued blobs keep the same classification after
+                    // reboot.
+                    partition.Compaction(0);
+                }
+
+                updateCounters();
+                UNIT_ASSERT_VALUES_EQUAL(0, mixedPercentage);
+                const auto stats = partition.StatPartition()->Record.GetStats();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    extendedCounters && !hasMixedChannel ? 0 : 4,
+                    stats.GetMixedBlocksCount());
+
+                partition.RebootTablet();
+                partition.WaitReady();
+                updateCounters();
+                UNIT_ASSERT_VALUES_EQUAL(0, mixedPercentage);
+                UNIT_ASSERT_VALUES_EQUAL(1, compactionRequests);
+
+                partition.WriteBlocks(TBlockRange32::WithLength(0, 2), 4);
+                partition.Flush();
+                updateCounters();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    hasMixedChannel ? 33 : 0,
+                    mixedPercentage);
+                UNIT_ASSERT_VALUES_EQUAL(1, compactionRequests);
             }
         }
     }

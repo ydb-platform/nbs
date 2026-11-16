@@ -32,12 +32,15 @@ private:
     std::unique_ptr<TImpl> Impl;
 
     const ui64 BlockSize;
+    TVector<ui32> MixedChannels;
 
     ui64 QueueBytes = 0;
     ui64 QueueBlocks = 0;
+    ui64 QueueMixedBytes = 0;
+    ui64 QueueMixedBlocks = 0;
 
 public:
-    explicit TCleanupQueue(ui64 blockSize);
+    explicit TCleanupQueue(ui64 blockSize, TVector<ui32> mixedChannels = {});
     ~TCleanupQueue();
 
     //
@@ -75,6 +78,9 @@ public:
 
     ui64 GetQueueBytes() const;
     ui64 GetQueueBlocks() const;
+    // Both bytes and blocks are classified by channel data kind.
+    ui64 GetQueueMixedBytes() const;
+    ui64 GetQueueMixedBlocks() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

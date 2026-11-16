@@ -1792,10 +1792,12 @@ message TStorageServiceConfig
     optional uint32 FreshDeadBlobByteCountTrimThresholdSSD = 555;
     optional uint32 FreshDeadBlobByteCountTrimThresholdHDD = 556;
 
+    // Supported only for hybrid disks with merged (HDD) and mixed (SSD) channels.
     // Calculate the per-disk mixed compaction percentage and minimum stored
     // bytes from MixedBytesCount and MergedBytesCount instead of the compaction
-    // map. Without ExtendedBlobCountersEnabled, use legacy block-count-based
-    // byte counters, as in the corresponding metrics. When enabled, suppress
-    // mixed compaction while checkpoints with data exist. Disabled by default.
+    // map. Without ExtendedBlobCountersEnabled, use legacy index block counts
+    // multiplied by the block size, assuming index and channel kinds match.
+    // Paths that consistently use different kinds require extended counters.
+    // Exclude blobs awaiting cleanup from these counts. Disabled by default.
     optional bool MixedBlocksCompactionUseByteCounters = 557;
 }
