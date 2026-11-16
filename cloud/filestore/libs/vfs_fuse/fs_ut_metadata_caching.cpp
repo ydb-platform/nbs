@@ -61,11 +61,11 @@ struct TMetadataCachingEnv
     std::atomic<ui32> XAttrCacheTTL = CacheTTLMs;
     std::atomic<bool> XAttrExists = true;
 
-    TMetadataCachingEnv()
+    explicit TMetadataCachingEnv(NProto::TFileStoreFeatures features = {})
         : Bootstrap(
               Timer,
               CreateScheduler(),
-              {} /* featuresConfig */,
+              features,
               1000 /* handleOpsQueueStateFileSize */,
               1000 /* writeBackCacheAutomaticFlushPeriodMs */,
               0 /* directoryHandlesInitialDataSize */,
@@ -772,6 +772,52 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetAttrCacheMissCount"));
         env.Lookup("f");
         UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("LookupCacheMissCount"));
+    }
+
+    Y_UNIT_TEST(ShouldApplyNodeAttrsCacheLimitFromFeatures)
+    {
+        constexpr ui32 Limit = 16;
+
+        NProto::TFileStoreFeatures features;
+        features.SetNodeAttrsCacheLimit(Limit);
+        TMetadataCachingEnv env(features);
+
+        //
+        // Limit + 1 nodes are cached - at least one of the first Limit nodes
+        // is evicted.
+        //
+
+        for (ui32 i = 0; i <= Limit; ++i) {
+            env.GetAttr(RootNodeId + i);
+        }
+        for (ui32 i = 0; i < Limit; ++i) {
+            env.GetAttr(RootNodeId + i);
+        }
+
+        UNIT_ASSERT_GT(env.GetCounter("GetAttrCacheMissCount"), Limit + 1);
+    }
+
+    Y_UNIT_TEST(ShouldApplyNodeRefCacheLimitFromFeatures)
+    {
+        constexpr ui32 Limit = 16;
+
+        NProto::TFileStoreFeatures features;
+        features.SetNodeRefCacheLimit(Limit);
+        TMetadataCachingEnv env(features);
+
+        //
+        // Limit + 1 NodeRefs are cached - at least one of the first Limit
+        // NodeRefs is evicted.
+        //
+
+        for (ui32 i = 0; i <= Limit; ++i) {
+            env.Lookup(ToString(i));
+        }
+        for (ui32 i = 0; i < Limit; ++i) {
+            env.Lookup(ToString(i));
+        }
+
+        UNIT_ASSERT_GT(env.GetCounter("LookupCacheMissCount"), Limit + 1);
     }
 
     Y_UNIT_TEST(ShouldCacheAttrsOfNodesNotLookedUp)

@@ -1393,6 +1393,12 @@ private:
         if (features.GetXAttrCacheLimit()) {
             config.SetXAttrCacheLimit(features.GetXAttrCacheLimit());
         }
+        if (features.GetNodeRefCacheLimit()) {
+            config.SetNodeRefCacheLimit(features.GetNodeRefCacheLimit());
+        }
+        if (features.GetNodeAttrsCacheLimit()) {
+            config.SetNodeAttrsCacheLimit(features.GetNodeAttrsCacheLimit());
+        }
         config.SetXAttrCacheInvalidateOnCreateEnabled(
             features.GetXAttrCacheInvalidateOnCreateEnabled());
         config.SetAsyncDestroyHandleEnabled(
