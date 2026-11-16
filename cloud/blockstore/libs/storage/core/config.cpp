@@ -1099,11 +1099,14 @@ TAtomicBase ConvertToAtomicBase(const double& value)
 // double default. Initialize and update it through UpdateControlDefault().
 struct TDoubleControlWrapper: TControlWrapper
 {
-    using TControlWrapper::operator=;
-
     // Last configuration value after compiled fallback and before ICB
     // conversion. Only initialization and default updates access it.
     double ConfigValue = 0;
+
+    i64 operator=(i64 value)
+    {
+        return TControlWrapper::operator=(value);
+    }
 };
 
 template <typename TValue>
