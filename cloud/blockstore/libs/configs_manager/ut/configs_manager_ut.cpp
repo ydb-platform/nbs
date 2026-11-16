@@ -1312,6 +1312,8 @@ storage_service:
         ShouldRetainThrottlingOnInvalidSection,
         TConfigsManagerFixture)
     {
+        StartManager();
+
         // Accept two rules before attempting to replace one and delete another.
         const auto subscriber = Runtime.AllocateEdgeActor();
         Subscribe(subscriber);
@@ -1410,6 +1412,8 @@ storage_service:
         ShouldWarnAboutSkippedVolumeThrottlingRules,
         TConfigsManagerFixture)
     {
+        StartManager();
+
         // Mix an unsupported selector and empty coefficients with a valid rule.
         const auto subscriber = Runtime.AllocateEdgeActor();
         Subscribe(subscriber);
