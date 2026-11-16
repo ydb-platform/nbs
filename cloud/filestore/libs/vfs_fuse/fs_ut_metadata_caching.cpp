@@ -938,6 +938,56 @@ Y_UNIT_TEST_SUITE(TInvalidationsTest)
         UNIT_ASSERT(invalidations.IsCacheable(1, 7 /* version */));
         UNIT_ASSERT(!invalidations.IsCacheable(3, 7 /* version */));
     }
+
+    Y_UNIT_TEST(ShouldKeepMaxVersionOfKey)
+    {
+        TInvalidations<ui64> invalidations(2 /* maxTombstoneCount */);
+
+        invalidations.Invalidate(1, 7 /* version */);
+        invalidations.Invalidate(1, 5 /* version */);
+        UNIT_ASSERT(!invalidations.IsCacheable(1, 6 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(1, 7 /* version */));
+    }
+
+    Y_UNIT_TEST(ShouldRaiseWatermarkWithoutTombstones)
+    {
+        TInvalidations<ui64> invalidations(0 /* maxTombstoneCount */);
+
+        invalidations.Invalidate(1, 5 /* version */);
+        UNIT_ASSERT(!invalidations.IsCacheable(1, 4 /* version */));
+        UNIT_ASSERT(!invalidations.IsCacheable(2, 4 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(2, 5 /* version */));
+    }
+
+    Y_UNIT_TEST(ShouldKeepTombstoneVersionsUponInvalidateAll)
+    {
+        TInvalidations<ui64> invalidations(2 /* maxTombstoneCount */);
+
+        //
+        // The tombstone versions may exceed the version of InvalidateAll -
+        // they are kept in the watermark.
+        //
+
+        invalidations.Invalidate(1, 7 /* version */);
+        invalidations.InvalidateAll(5 /* version */);
+        UNIT_ASSERT(!invalidations.IsCacheable(2, 6 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(2, 7 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(1, 7 /* version */));
+
+        invalidations.InvalidateAll(9 /* version */);
+        UNIT_ASSERT(!invalidations.IsCacheable(1, 8 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(1, 9 /* version */));
+    }
+
+    Y_UNIT_TEST(ShouldNotOverflowCapacity)
+    {
+        TInvalidations<ui64> invalidations(Max<ui32>() /* maxTombstoneCount */);
+
+        invalidations.Invalidate(1, 5 /* version */);
+        invalidations.Invalidate(2, 6 /* version */);
+        UNIT_ASSERT(!invalidations.IsCacheable(1, 4 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(3, 0 /* version */));
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

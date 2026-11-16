@@ -42,7 +42,7 @@ public:
      *  are remembered.
      */
     explicit TInvalidations(ui32 maxTombstoneCount)
-        : Tombstones(maxTombstoneCount + 1)
+        : Tombstones(static_cast<size_t>(maxTombstoneCount) + 1)
         , MaxTombstoneCount(maxTombstoneCount)
     {}
 
@@ -82,7 +82,9 @@ public:
         if (it != Tombstones.End()) {
             *it = Max(*it, version);
         } else {
-            Tombstones.Insert(key, version);
+            const size_t size = Tombstones.Size();
+            const bool inserted = Tombstones.Insert(key, version);
+            Y_DEBUG_ABORT_UNLESS(inserted && Tombstones.Size() == size + 1);
         }
 
         //
