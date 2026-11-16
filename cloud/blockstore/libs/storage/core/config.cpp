@@ -1200,7 +1200,7 @@ struct TStorageConfigControls::TImpl
 
 TStorageConfigControls::TStorageConfigControls(
     const NProto::TStorageServiceConfig& storageServiceConfig)
-    : Impl(new TImpl(storageServiceConfig))
+    : Impl(std::make_unique<TImpl>(storageServiceConfig))
 {}
 
 TStorageConfigControls::~TStorageConfigControls() = default;
