@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/tablet_proxy_config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry.h>
@@ -37,6 +38,7 @@
 
 #include <cloud/storage/core/libs/api/authorizer.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/api/tablet_proxy.h>
 #include <cloud/storage/core/libs/api/user_stats.h>
 #include <cloud/storage/core/libs/auth/authorizer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -46,6 +48,7 @@
 #include <cloud/storage/core/libs/kikimr/config_dispatcher_helpers.h>
 #include <cloud/storage/core/libs/kikimr/kikimr_initializer.h>
 #include <cloud/storage/core/libs/kikimr/tenant.h>
+#include <cloud/storage/core/libs/tablet_proxy/tablet_proxy.h>
 #include <cloud/storage/core/libs/user_stats/user_stats.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
@@ -225,6 +228,20 @@ public:
             MakeHiveProxyServiceId(),
             TActorSetupCmd(
                 hiveProxy.release(),
+                TMailboxType::Revolving,
+                appData->UserPoolId));
+
+        //
+        // TabletProxyService
+        //
+
+        auto tabletProxy =
+            CreateTabletProxy(GetTabletProxyConfig(*storageConfig));
+
+        setup->LocalServices.emplace_back(
+            MakeTabletProxyServiceId(),
+            TActorSetupCmd(
+                tabletProxy.release(),
                 TMailboxType::Revolving,
                 appData->UserPoolId));
 

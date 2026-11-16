@@ -27,6 +27,7 @@
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
 #include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/tablet_proxy_config.h>
 #include <cloud/blockstore/libs/storage/service/service.h>
 #include <cloud/blockstore/libs/storage/ss_proxy/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service.h>
@@ -37,9 +38,11 @@
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
+#include <cloud/storage/core/libs/api/tablet_proxy.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/hive_proxy/hive_proxy.h>
+#include <cloud/storage/core/libs/tablet_proxy/tablet_proxy.h>
 
 #include <contrib/ydb/core/blobstorage/base/blobstorage_events.h>
 #include <contrib/ydb/core/client/minikql_compile/mkql_compile_service.h>
@@ -379,6 +382,19 @@ ui32 TTestEnv::CreateBlockStoreNode(
     Runtime.RegisterService(
         MakeDiskAgentServiceId(Runtime.GetNodeId(nodeIdx)),
         diskAgentId,
+        nodeIdx);
+
+    auto tabletProxy = CreateTabletProxy(GetTabletProxyConfig(*storageConfig));
+    auto tabletProxyId = Runtime.Register(
+        tabletProxy.release(),
+        nodeIdx,
+        appData->UserPoolId,
+        TMailboxType::Simple,
+        0);
+    Runtime.EnableScheduleForActor(tabletProxyId);
+    Runtime.RegisterService(
+        MakeTabletProxyServiceId(),
+        tabletProxyId,
         nodeIdx);
 
     auto volumeProxy = CreateVolumeProxy(storageConfig, TraceSerializer, false);

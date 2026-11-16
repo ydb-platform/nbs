@@ -4,10 +4,13 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/block_digest_factory.h>
 #include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
+#include <cloud/blockstore/libs/storage/core/tablet_proxy_config.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_mock.h>
 #include <cloud/blockstore/libs/storage/volume_proxy/volume_proxy.h>
 
+#include <cloud/storage/core/libs/api/tablet_proxy.h>
 #include <cloud/storage/core/libs/common/media.h>
+#include <cloud/storage/core/libs/tablet_proxy/tablet_proxy.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -863,6 +866,15 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
             TMailboxType::Simple,
             0));
 
+    auto storageConfig = MakeStorageConfig();
+
+    runtime->AddLocalService(
+        MakeTabletProxyServiceId(),
+        TActorSetupCmd(
+            CreateTabletProxy(GetTabletProxyConfig(*storageConfig)),
+            TMailboxType::Simple,
+            0));
+
     auto traceSerializer = CreateTraceSerializerStub();
     traceSerializer->Start();
 
@@ -870,7 +882,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         MakeVolumeProxyServiceId(),
         TActorSetupCmd(
             CreateVolumeProxy(
-                MakeStorageConfig(),
+                storageConfig,
                 std::move(traceSerializer),
                 false),
             TMailboxType::Simple,
