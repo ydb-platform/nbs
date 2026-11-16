@@ -16,6 +16,7 @@ from cloud.blockstore.config.disk_pb2 import DEVICE_ERASE_METHOD_NONE,  \
     DISK_AGENT_BACKEND_IO_URING
 
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
+from cloud.blockstore.tests.python.lib.fake_root_kms import fake_root_kms
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
 from cloud.blockstore.tests.python.lib.test_base import thread_count, \
     wait_for_nbs_server, wait_for_disk_agent, run_test, wait_for_secure_erase, \
@@ -395,9 +396,25 @@ if SELECTED_BACKEND:
     BACKENDS = [backend for backend in BACKENDS if backend.id == SELECTED_BACKEND]
 
 
+@pytest.fixture
+def root_kms(test_case, monkeypatch):
+    if not test_case.root_kms_encryption:
+        yield
+        return
+
+    # Run alongside NBS, including when pytest executes inside QEMU.
+    working_dir = get_unique_path_for_current_test(
+        output_path=yatest_common.output_path(),
+        sub_folder="root_kms")
+    with fake_root_kms(working_dir) as environment:
+        for name, value in environment.items():
+            monkeypatch.setenv(name, value)
+        yield
+
+
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_load(test_case, backend):
+def test_load(test_case, backend, root_kms):
     test_case.config_path = yatest_common.source_path(test_case.config_path)
     if test_case.lwtrace_query_path:
         test_case.lwtrace_query_path = yatest_common.source_path(test_case.lwtrace_query_path)
@@ -408,7 +425,7 @@ def test_load(test_case, backend):
 @pytest.mark.skipif(SELECTED_BACKEND == 'io_uring', reason='RDMA supported only in AIO backend')
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_load_rdma(test_case, backend):
+def test_load_rdma(test_case, backend, root_kms):
     test_case.config_path = yatest_common.source_path(test_case.config_path)
     if test_case.lwtrace_query_path:
         test_case.lwtrace_query_path = yatest_common.source_path(test_case.lwtrace_query_path)
