@@ -212,7 +212,7 @@ func loadZoneMapping(
 		DefaultBackendIndex uint `json:"default_backend_index"`
 		Zones               []struct {
 			ZoneID       string `json:"zone_id"`
-			BackendIndex uint   `json:"backend_index"`
+			BackendIndex *uint  `json:"backend_index"`
 		} `json:"zones"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -233,18 +233,22 @@ func loadZoneMapping(
 		if pair.ZoneID == "" {
 			return nil, fmt.Errorf("zone_id must not be empty in zones")
 		}
+		if pair.BackendIndex == nil {
+			return nil, fmt.Errorf("zone_id %q: backend_index is required", pair.ZoneID)
+		}
+		backendIndex := *pair.BackendIndex
 		if _, exists := result[pair.ZoneID]; exists {
 			return nil, fmt.Errorf("duplicate zone_id %q", pair.ZoneID)
 		}
-		if pair.BackendIndex >= nfsVhostReplicaCountUsed {
+		if backendIndex >= nfsVhostReplicaCountUsed {
 			return nil, fmt.Errorf("zone_id %q: backend_index %d must be less than NfsVhostReplicaCountUsed %d",
-				pair.ZoneID, pair.BackendIndex, nfsVhostReplicaCountUsed)
+				pair.ZoneID, backendIndex, nfsVhostReplicaCountUsed)
 		}
-		if pair.BackendIndex >= nbsServerReplicaCountUsed {
+		if backendIndex >= nbsServerReplicaCountUsed {
 			return nil, fmt.Errorf("zone_id %q: backend_index %d must be less than NbsServerReplicaCountUsed %d",
-				pair.ZoneID, pair.BackendIndex, nbsServerReplicaCountUsed)
+				pair.ZoneID, backendIndex, nbsServerReplicaCountUsed)
 		}
-		result[pair.ZoneID] = pair.BackendIndex
+		result[pair.ZoneID] = backendIndex
 	}
 	if config.DefaultBackendIndex >= nfsVhostReplicaCountUsed {
 		return nil, fmt.Errorf("default_backend_index %d must be less than NfsVhostReplicaCountUsed %d",
