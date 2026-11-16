@@ -84,7 +84,7 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::DeleteQuota:
             return CreatePermissionList({EPermission::Update});
         case EFileStoreRequest::ListQuotas:
-            return CreatePermissionList({EPermission::List});
+            return CreatePermissionList({EPermission::Get});
         case EFileStoreRequest::DescribeFileStoreModel:
             return CreatePermissionList({EPermission::Get});
         case EFileStoreRequest::ListFileStores:

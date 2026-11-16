@@ -55,6 +55,10 @@ void TIndexTabletActor::HandleSetQuota(
                 E_ARGUMENT,
                 TStringBuilder()
                     << "too many quotas, limit is " << MaxQuotas));
+        CompleteResponse<TEvService::TSetQuotaMethod>(
+            response->Record,
+            requestInfo->CallContext,
+            ctx);
         NCloud::Reply(ctx, *requestInfo, std::move(response));
         return;
     }

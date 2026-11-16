@@ -234,6 +234,18 @@ struct TEvIndexTablet
         EvListNodesInternalRequest = EvBegin + 83,
         EvListNodesInternalResponse,
 
+        // formerly EvSetQuotaRequest/Response
+        EvReserved1 = EvBegin + 85,
+        EvReserved2,
+
+        // formerly EvDeleteQuotaRequest/Response
+        EvReserved3 = EvBegin + 87,
+        EvReserved4,
+
+        // formerly EvListQuotasRequest/Response
+        EvReserved5 = EvBegin + 89,
+        EvReserved6,
+
         EvGetDiagnosticStatsRequest = EvBegin + 91,
         EvGetDiagnosticStatsResponse,
 

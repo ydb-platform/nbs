@@ -49,11 +49,11 @@ message TSetQuotaResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
-
     // Resulting quota.
     TQuota Quota = 2;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -109,12 +109,12 @@ message TListQuotasResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
-    // Optional response headers.
-    TResponseHeaders Headers = 1000;
-
     // All quotas defined on this filesystem.
     repeated TQuota Quotas = 2;
 
     // Usage of each quota that has any recorded usage on this filesystem.
     repeated TQuotaUsage Usages = 3;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
 }
