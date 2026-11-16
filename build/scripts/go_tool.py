@@ -482,6 +482,18 @@ def do_link_lib(args):
         call(cmd, args.build_root)
 
 
+def quote_go_arg(arg):
+    # cmd/link parses -extldflags with cmd/internal/quoted, not a shell:
+    # quotes must surround the whole argument and backslashes are literal.
+    if arg and not any(c in arg for c in " \t\r\n'\""):
+        return arg
+    if "'" not in arg:
+        return "'" + arg + "'"
+    if '"' not in arg:
+        return '"' + arg + '"'
+    raise ValueError('Go linker argument contains both single and double quotes: {!r}'.format(arg))
+
+
 def do_link_exe(args):
     assert args.extld is not None
     assert args.non_local_peers is not None
@@ -545,7 +557,7 @@ def do_link_exe(args):
     except ValueError:
         extldflags.extend(cgo_peers)
     if len(extldflags) > 0:
-        cmd.append('-extldflags={}'.format(' '.join(extldflags)))
+        cmd.append('-extldflags={}'.format(' '.join(quote_go_arg(arg) for arg in extldflags)))
     cmd.append(compile_args.output)
     call(cmd, args.build_root)
 
