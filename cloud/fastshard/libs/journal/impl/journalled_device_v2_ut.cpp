@@ -34,12 +34,10 @@ constexpr TStringBuf DefaultClientId = "test-client";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NCloud::NProto::TDevicePageGroup MakeGroup(
-    ui64 firstPageNo,
-    ui64 pageCount,
-    TStringBuf prefix)
+NProto::TDevicePageGroup
+MakeGroup(ui64 firstPageNo, ui64 pageCount, TStringBuf prefix)
 {
-    NCloud::NProto::TDevicePageGroup group;
+    NProto::TDevicePageGroup group;
     group.SetFirstPageNo(firstPageNo);
 
     for (ui64 i = 0; i < pageCount; ++i) {
@@ -49,11 +47,11 @@ NCloud::NProto::TDevicePageGroup MakeGroup(
     return group;
 }
 
-NCloud::NProto::TReadPagesRequest MakeReadRequest(
+NProto::TReadPagesRequest MakeReadRequest(
     const TVector<std::pair<ui64 /*firstPageNo*/, ui64 /*pageCount*/>>& refs,
     TStringBuf deviceUUID = DefaultDeviceUUID)
 {
-    NCloud::NProto::TReadPagesRequest request;
+    NProto::TReadPagesRequest request;
     request.MutableHeaders()->SetClientId(TString{DefaultClientId});
     request.SetDeviceUUID(TString{deviceUUID});
 
@@ -67,9 +65,9 @@ NCloud::NProto::TReadPagesRequest MakeReadRequest(
     return request;
 }
 
-NCloud::NProto::TWriteLogRecordRequest MakeWriteRequest(TStringBuf deviceUUID)
+NProto::TWriteLogRecordRequest MakeWriteRequest(TStringBuf deviceUUID)
 {
-    NCloud::NProto::TWriteLogRecordRequest request;
+    NProto::TWriteLogRecordRequest request;
     request.SetDeviceUUID(TString{deviceUUID});
     request.SetLogSequenceNumber(1);
     *request.AddPageGroups() = MakeGroup(10, 1, "W");
@@ -77,29 +75,28 @@ NCloud::NProto::TWriteLogRecordRequest MakeWriteRequest(TStringBuf deviceUUID)
     return request;
 }
 
-NCloud::NProto::TReadJournalTailRequest MakeTailRequest(TStringBuf deviceUUID)
+NProto::TReadJournalTailRequest MakeTailRequest(TStringBuf deviceUUID)
 {
-    NCloud::NProto::TReadJournalTailRequest request;
+    NProto::TReadJournalTailRequest request;
     request.SetDeviceUUID(TString{deviceUUID});
 
     return request;
 }
 
-NCloud::NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(
-    TStringBuf deviceUUID)
+NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(TStringBuf deviceUUID)
 {
-    NCloud::NProto::TAdvanceLsnLowWatermarkRequest request;
+    NProto::TAdvanceLsnLowWatermarkRequest request;
     request.SetDeviceUUID(TString{deviceUUID});
     request.SetLsnLowWatermark(1);
 
     return request;
 }
 
-NCloud::NProto::TReadPagesResponse MakeReadResponse(
-    TVector<NCloud::NProto::TDevicePageGroup> groups,
+NProto::TReadPagesResponse MakeReadResponse(
+    TVector<NProto::TDevicePageGroup> groups,
     ui64 lastAckedLsn = 0)
 {
-    NCloud::NProto::TReadPagesResponse response;
+    NProto::TReadPagesResponse response;
     response.SetLastAckedLogSequenceNumber(lastAckedLsn);
 
     for (auto& group: groups) {
@@ -109,12 +106,9 @@ NCloud::NProto::TReadPagesResponse MakeReadResponse(
     return response;
 }
 
-NCloud::NProto::TJournalRecord MakeRecord(
-    ui64 lsn,
-    ui64 firstPageNo,
-    ui64 pageCount)
+NProto::TJournalRecord MakeRecord(ui64 lsn, ui64 firstPageNo, ui64 pageCount)
 {
-    NCloud::NProto::TJournalRecord record;
+    NProto::TJournalRecord record;
     record.SetLogSequenceNumber(lsn);
     record.SetPrevLogSequenceNumber(lsn - 1);
     *record.AddPageGroups() = MakeGroup(firstPageNo, pageCount, "J");
@@ -187,22 +181,22 @@ TString DescribeGroups(const T& source)
 
 struct TTestJournal final: public IJournal
 {
-    using TReadHandler = std::function<NCloud::NProto::TReadPagesResponse(
-        const NCloud::NProto::TReadPagesRequest&)>;
+    using TReadHandler = std::function<NProto::TReadPagesResponse(
+        const NProto::TReadPagesRequest&)>;
 
     TResultOrError<ui64> RestoreResponse = 0;
 
     TReadHandler ReadHandler = [] (const auto& request) {
         Y_UNUSED(request);
-        return NCloud::NProto::TReadPagesResponse();
+        return NProto::TReadPagesResponse();
     };
 
     TManualEvent AllRecordsFlushed;
     mutable TManualEvent FlushCycleCompleted;
 
     mutable TMutex Mutex;
-    mutable TVector<NCloud::NProto::TReadPagesRequest> ReadRequests;
-    mutable TDeque<NCloud::NProto::TJournalRecord> RecordsToFlush;
+    mutable TVector<NProto::TReadPagesRequest> ReadRequests;
+    mutable TDeque<NProto::TJournalRecord> RecordsToFlush;
     TVector<ui64> FlushedLsns;
     ui32 RestoreCount = 0;
     ui32 CleanupCount = 0;
@@ -218,16 +212,16 @@ struct TTestJournal final: public IJournal
         return RestoreResponse;
     }
 
-    TFuture<NCloud::NProto::TWriteLogRecordResponse> Write(
-        NCloud::NProto::TWriteLogRecordRequest request) override
+    TFuture<NProto::TWriteLogRecordResponse> Write(
+        NProto::TWriteLogRecordRequest request) override
     {
         Y_UNUSED(request);
 
-        return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>();
+        return MakeFuture<NProto::TWriteLogRecordResponse>();
     }
 
-    TFuture<NCloud::NProto::TReadPagesResponse> Read(
-        NCloud::NProto::TReadPagesRequest request) const override
+    TFuture<NProto::TReadPagesResponse> Read(
+        NProto::TReadPagesRequest request) const override
     {
         with_lock (Mutex) {
             ReadRequests.push_back(request);
@@ -236,27 +230,26 @@ struct TTestJournal final: public IJournal
         return MakeFuture(ReadHandler(request));
     }
 
-    auto ReadTail(NCloud::NProto::TReadJournalTailRequest request) const
-        -> TFuture<NCloud::NProto::TReadJournalTailResponse> override
+    auto ReadTail(NProto::TReadJournalTailRequest request) const
+        -> TFuture<NProto::TReadJournalTailResponse> override
     {
         Y_UNUSED(request);
 
-        return MakeFuture<NCloud::NProto::TReadJournalTailResponse>();
+        return MakeFuture<NProto::TReadJournalTailResponse>();
     }
 
-    auto AdvanceLsnLowWatermark(
-        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
-        -> TFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse> override
+    auto AdvanceLsnLowWatermark(NProto::TAdvanceLsnLowWatermarkRequest request)
+        -> TFuture<NProto::TAdvanceLsnLowWatermarkResponse> override
     {
         Y_UNUSED(request);
 
-        return MakeFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>();
+        return MakeFuture<NProto::TAdvanceLsnLowWatermarkResponse>();
     }
 
     auto GetRecordToFlush(ui64 maxAllowedLsn) const
-        -> TFuture<TResultOrError<NCloud::NProto::TJournalRecord>> override
+        -> TFuture<TResultOrError<NProto::TJournalRecord>> override
     {
-        NCloud::NProto::TJournalRecord record;
+        NProto::TJournalRecord record;
 
         with_lock (Mutex) {
             if (!RecordsToFlush.empty() &&
@@ -267,7 +260,7 @@ struct TTestJournal final: public IJournal
             }
         }
 
-        return MakeFuture<TResultOrError<NCloud::NProto::TJournalRecord>>(
+        return MakeFuture<TResultOrError<NProto::TJournalRecord>>(
             std::move(record));
     }
 
@@ -284,7 +277,7 @@ struct TTestJournal final: public IJournal
         }
     }
 
-    TFuture<NCloud::NProto::TError> CleanupFlushedRecords() override
+    TFuture<NProto::TError> CleanupFlushedRecords() override
     {
         with_lock (Mutex) {
             ++CleanupCount;
@@ -297,12 +290,12 @@ struct TTestJournal final: public IJournal
 
         FlushCycleCompleted.Signal();
 
-        return MakeFuture(NCloud::NProto::TError());
+        return MakeFuture(NProto::TError());
     }
 
     // helpers
 
-    void AddRecordToFlush(NCloud::NProto::TJournalRecord record)
+    void AddRecordToFlush(NProto::TJournalRecord record)
     {
         with_lock (Mutex) {
             RecordsToFlush.push_back(std::move(record));
@@ -330,7 +323,7 @@ struct TTestJournal final: public IJournal
         }
     }
 
-    TVector<NCloud::NProto::TReadPagesRequest> GetReadRequests() const
+    TVector<NProto::TReadPagesRequest> GetReadRequests() const
     {
         with_lock (Mutex) {
             return ReadRequests;
@@ -345,13 +338,13 @@ struct TTestDevice final: public IDevice
     using TReadHandler = std::function<TResultOrError<TVector<TBuffer>>(
         const TVector<TPageRangeRef>&)>;
     using TWriteHandler =
-        std::function<NCloud::NProto::TError(const TVector<TPageRange>&)>;
+        std::function<NProto::TError(const TVector<TPageRange>&)>;
 
     TReadHandler ReadHandler = ServePagesFromDevice;
 
     TWriteHandler WriteHandler = [] (const auto& ranges) {
         Y_UNUSED(ranges);
-        return NCloud::NProto::TError();
+        return NProto::TError();
     };
 
     mutable TMutex Mutex;
@@ -371,8 +364,7 @@ struct TTestDevice final: public IDevice
         return MakeFuture(ReadHandler(rangeRefs));
     }
 
-    TFuture<NCloud::NProto::TError> WritePages(
-        TVector<TPageRange> ranges) override
+    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
     {
         with_lock (Mutex) {
             WriteRequests.push_back(ranges);
@@ -381,14 +373,13 @@ struct TTestDevice final: public IDevice
         return MakeFuture(WriteHandler(ranges));
     }
 
-    TFuture<NCloud::NProto::TError> ZeroPages(
-        TVector<TPageRangeRef> ranges) override
+    TFuture<NProto::TError> ZeroPages(TVector<TPageRangeRef> ranges) override
     {
         with_lock (Mutex) {
             ZeroRequests.push_back(ranges);
         }
 
-        return MakeFuture<NCloud::NProto::TError>();
+        return MakeFuture<NProto::TError>();
     }
 
     // helpers
@@ -448,7 +439,7 @@ struct TFixture: public NUnitTest::TBaseFixture
         Logging->Stop();
     }
 
-    NCloud::NProto::TError StartDevice()
+    NProto::TError StartDevice()
     {
         return Device->Start().GetValueSync();
     }
@@ -464,8 +455,7 @@ struct TFixture: public NUnitTest::TBaseFixture
         Device->Stop().Wait();
     }
 
-    NCloud::NProto::TReadPagesResponse ReadPages(
-        NCloud::NProto::TReadPagesRequest request)
+    NProto::TReadPagesResponse ReadPages(NProto::TReadPagesRequest request)
     {
         return Device->ReadPages(std::move(request)).GetValueSync();
     }
@@ -636,7 +626,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
     {
         Journal->ReadHandler = [] (const auto& request) {
             Y_UNUSED(request);
-            return NCloud::NProto::TReadPagesResponse();
+            return NProto::TReadPagesResponse();
         };
 
         const auto response = ReadPages(MakeReadRequest({{10, 0}, {20, 2}}));
@@ -728,7 +718,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
     {
         Journal->ReadHandler = [] (const auto& request) {
             Y_UNUSED(request);
-            return NCloud::NProto::TReadPagesResponse(
+            return NProto::TReadPagesResponse(
                 TErrorResponse(E_IO, "journal is broken"));
         };
 
@@ -745,7 +735,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
     {
         Journal->ReadHandler = [] (const auto& request) {
             Y_UNUSED(request);
-            return NCloud::NProto::TReadPagesResponse();
+            return NProto::TReadPagesResponse();
         };
 
         DataStore->ReadHandler = [] (const auto& rangeRefs)
@@ -895,8 +885,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
     {
         std::atomic<ui32> writeCount = 0;
 
-        DataStore->WriteHandler = [&] (const auto& ranges)
-            -> NCloud::NProto::TError
+        DataStore->WriteHandler = [&](const auto& ranges) -> NProto::TError
         {
             Y_UNUSED(ranges);
 

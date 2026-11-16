@@ -37,7 +37,7 @@ struct TLogRecord
     TVector<TPageMapping> PageMappings;
     ui32 PagesCrc = 0;
 
-    NThreading::TPromise<NCloud::NProto::TWriteLogRecordResponse> Promise;
+    NThreading::TPromise<NProto::TWriteLogRecordResponse> Promise;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

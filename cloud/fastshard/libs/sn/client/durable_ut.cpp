@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 
+using namespace NCloud;
 using namespace NCloud::NFastShard;
 using silk::FiberScheduler;
 
@@ -21,9 +22,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NCloud::NProto::TWriteLogRecordResponse Rejected()
+NProto::TWriteLogRecordResponse Rejected()
 {
-    NCloud::NProto::TWriteLogRecordResponse response;
+    NProto::TWriteLogRecordResponse response;
     *response.MutableError() = MakeError(NCloud::E_REJECTED);
     return response;
 }
@@ -50,9 +51,9 @@ struct TFixture
         : Client(CreateDurableClient(Storage, config, Metrics))
     {}
 
-    NCloud::NProto::TWriteLogRecordResponse Write(ui64 lsn)
+    NProto::TWriteLogRecordResponse Write(ui64 lsn)
     {
-        NCloud::NProto::TWriteLogRecordRequest request;
+        NProto::TWriteLogRecordRequest request;
         request.SetDeviceUUID("dev");
         request.SetLogSequenceNumber(lsn);
         return Client->WriteLogRecord(Ctx, std::move(request));

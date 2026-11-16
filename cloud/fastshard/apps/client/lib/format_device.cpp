@@ -41,7 +41,7 @@ protected:
 
     bool DoExecute() override
     {
-        NCloud::NProto::TFormatDeviceRequest request;
+        NProto::TFormatDeviceRequest request;
         if (Proto) {
             ParseFromTextFormat(GetInputStream(), request);
         } else {

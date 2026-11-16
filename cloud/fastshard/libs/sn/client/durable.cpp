@@ -63,9 +63,9 @@ public:
     {}
 
 #define SN_DURABLE_METHOD(name, ...)                                           \
-    NCloud::NProto::T##name##Response name(                                    \
+    NProto::T##name##Response name(                                            \
         TFastShardContext& ctx,                                                \
-        NCloud::NProto::T##name##Request request) override                     \
+        NProto::T##name##Request request) override                             \
     {                                                                          \
         return Call(                                                           \
             &IStorageNode::name,                                               \

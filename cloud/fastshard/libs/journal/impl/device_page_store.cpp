@@ -73,8 +73,7 @@ public:
         return AllocateImpl(pageCount);
     }
 
-    NCloud::NProto::TError AllocateAt(
-        const TVector<TPageRangeRef>& pageRanges) override
+    NProto::TError AllocateAt(const TVector<TPageRangeRef>& pageRanges) override
     {
         std::lock_guard lock(Lock);
 
@@ -90,8 +89,7 @@ public:
         return MakeError(S_OK);
     }
 
-    NCloud::NProto::TError Free(
-        const TVector<TPageRangeRef>& pageRanges) override
+    NProto::TError Free(const TVector<TPageRangeRef>& pageRanges) override
     {
         std::lock_guard lock(Lock);
 
@@ -111,8 +109,7 @@ public:
 
     auto Write(
         const TVector<TPageRangeRef>& pageRanges,
-        const TVector<TBuffer>& pages)
-        -> TFuture<NCloud::NProto::TError> override
+        const TVector<TBuffer>& pages) -> TFuture<NProto::TError> override
     {
         ui64 pageCount = 0;
         for (const auto& pageRange: pageRanges) {
@@ -350,8 +347,7 @@ private:
     }
 
     // Does not look at the allocation state, so needs no lock.
-    NCloud::NProto::TError ValidateRanges(
-        const TVector<TPageRangeRef>& ranges) const
+    NProto::TError ValidateRanges(const TVector<TPageRangeRef>& ranges) const
     {
         if (HasIntersections(ranges)) {
             return MakeError(
@@ -380,7 +376,7 @@ private:
     }
 
     // Must be called under the lock.
-    NCloud::NProto::TError ValidatePages(
+    NProto::TError ValidatePages(
         const TVector<TPageRangeRef>& ranges,
         EPageState expected) const
     {
