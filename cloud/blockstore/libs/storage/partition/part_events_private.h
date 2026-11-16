@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
+#include <cloud/blockstore/libs/storage/partition_common/blob_compressor.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_fresh_blocks_state.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
@@ -34,6 +35,8 @@
 #include <util/generic/hash.h>
 #include <util/generic/maybe.h>
 #include <util/generic/vector.h>
+
+#include <optional>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -75,16 +78,20 @@ struct TAddMergedBlob
     const TBlockRange32 BlockRange;
     const TBlockMask SkipMask;
     const TVector<ui32> Checksums;
+    const std::optional<NProto::TCompressionMetadata> CompressionMetadata;
 
     TAddMergedBlob(
-            const TPartialBlobId& blobId,
-            const TBlockRange32& blockRange,
-            const TBlockMask& skipMask,
-            TVector<ui32> checksums)
+        const TPartialBlobId& blobId,
+        const TBlockRange32& blockRange,
+        const TBlockMask& skipMask,
+        TVector<ui32> checksums,
+        std::optional<NProto::TCompressionMetadata> compressionMetadata =
+            std::nullopt)
         : BlobId(blobId)
         , BlockRange(blockRange)
         , SkipMask(skipMask)
         , Checksums(std::move(checksums))
+        , CompressionMetadata(std::move(compressionMetadata))
     {}
 };
 
@@ -548,16 +555,19 @@ struct TEvPartitionPrivate
         TVector<TBlobMark> BlobsInBatch;
         TPartialBlobId LastVisitedBlobId;
         bool IsScanCompleted = false;
+        TPartialBlobId2CompressionMetadataMap BlobId2CompressionMetadata;
 
         TScanDiskBatchResponse() = default;
 
         TScanDiskBatchResponse(
-                TVector<TBlobMark> blobs,
-                TPartialBlobId lastVisitedBlobId,
-                bool isScanCompleted)
+            TVector<TBlobMark> blobs,
+            TPartialBlobId lastVisitedBlobId,
+            bool isScanCompleted,
+            TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata)
             : BlobsInBatch(std::move(blobs))
             , LastVisitedBlobId(lastVisitedBlobId)
             , IsScanCompleted(isScanCompleted)
+            , BlobId2CompressionMetadata(std::move(blobId2CompressionMetadata))
         {}
     };
 

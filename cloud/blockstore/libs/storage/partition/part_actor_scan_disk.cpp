@@ -57,7 +57,6 @@ public:
         const NProto::TBlobMeta& blobMeta,
         const TStringBuf blockMask) override
     {
-        Y_UNUSED(blobMeta);
         Y_UNUSED(blockMask);
 
         ++Args.VisitCount;
@@ -70,6 +69,17 @@ public:
             Args.BlobsToReadInCurrentBatch.emplace_back(
                 MakeBlobId(TabletInfo.TabletID, Args.LastVisitedBlobId),
                 group);
+
+            std::optional<NProto::TCompressionMetadata> compressionMetadata;
+            if (blobMeta.HasMergedBlocks() &&
+                blobMeta.GetMergedBlocks().HasCompressionMetadata())
+            {
+                compressionMetadata =
+                    blobMeta.GetMergedBlocks().GetCompressionMetadata();
+            }
+
+            Args.BlobId2CompressionMetadata[Args.LastVisitedBlobId] =
+                std::move(compressionMetadata);
         }
 
         return Args.VisitCount < Args.BlobCountToVisit;
@@ -83,6 +93,7 @@ class TScanDiskActor final
 {
 private:
     const TActorId Tablet;
+    const bool VerifyBlobCompressionMetadata;
     const ui32 BlobsPerBatch = 0;
     const TPartialBlobId FinalBlobId;
     const TDuration RetryTimeout;
@@ -90,6 +101,8 @@ private:
     TPartialBlobId BlobIdToRead;
 
     TVector<TBlobMark> RequestsInCurrentBatch;
+    TPartialBlobId2CompressionMetadataMap
+        BlobId2CompressionMetadataForCurrentBatch;
     ui32 ReadBlobResponsesCounter = 0;
 
     TGuardedBuffer<TBlockBuffer> GuardedBuffer;
@@ -99,6 +112,7 @@ private:
 public:
     TScanDiskActor(
         const TActorId& tablet,
+        bool verifyBlobCompressionMetadata,
         ui32 blobsPerBatch,
         ui64 finalCommitId,
         TDuration retryTimeout,
@@ -138,12 +152,14 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TScanDiskActor::TScanDiskActor(
-        const TActorId& tablet,
-        ui32 blobsPerBatch,
-        ui64 finalCommitId,
-        TDuration retryTimeout,
-        TBlockBuffer blockBuffer)
+    const TActorId& tablet,
+    bool verifyBlobCompressionMetadata,
+    ui32 blobsPerBatch,
+    ui64 finalCommitId,
+    TDuration retryTimeout,
+    TBlockBuffer blockBuffer)
     : Tablet(tablet)
+    , VerifyBlobCompressionMetadata(verifyBlobCompressionMetadata)
     , BlobsPerBatch(blobsPerBatch)
     , FinalBlobId(MakePartialBlobId(finalCommitId, Max()))
     , RetryTimeout(retryTimeout)
@@ -191,16 +207,21 @@ void TScanDiskActor::SendReadBlobRequest(
     const auto& blobMark = RequestsInCurrentBatch[requestIndex];
     TVector<ui16> blobOffsets{0};
 
-    auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
-        blobMark.BlobId,
-        MakeBlobStorageProxyID(blobMark.BSGroupId),
-        std::move(blobOffsets),
-        std::move(subSgList),
-        blobMark.BSGroupId,
-        false,           // async
-        TInstant::Max(), // deadline
-        false            // shouldCalculateChecksums
-    );
+    const auto* compressionMetadata =
+        BlobId2CompressionMetadataForCurrentBatch.FindPtr(
+            MakePartialBlobId(blobMark.BlobId));
+
+    auto request =
+        std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+            blobMark.BlobId,
+            MakeBlobStorageProxyID(blobMark.BSGroupId),
+            std::move(blobOffsets),
+            std::move(subSgList),
+            blobMark.BSGroupId,
+            false,             // async
+            TInstant::Max(),   // deadline
+            false,             // shouldCalculateChecksums
+            compressionMetadata ? *compressionMetadata : std::nullopt);
 
     NCloud::Send(
         ctx,
@@ -281,6 +302,21 @@ void TScanDiskActor::HandleScanDiskBatchResponse(
     ReadBlobResponsesCounter = 0;
 
     RequestsInCurrentBatch = std::move(msg->BlobsInBatch);
+    BlobId2CompressionMetadataForCurrentBatch =
+        std::move(msg->BlobId2CompressionMetadata);
+    if (VerifyBlobCompressionMetadata) {
+        for (const auto& blob: RequestsInCurrentBatch) {
+            auto error = ValidateBlobCompressionMetadata(
+                VerifyBlobCompressionMetadata,
+                blob.BlobId,
+                BlobId2CompressionMetadataForCurrentBatch.contains(
+                    MakePartialBlobId(blob.BlobId)));
+            if (HasError(error)) {
+                NotifyCompleted(ctx, error);
+                return;
+            }
+        }
+    }
     for (ui32 requestIndex = 0; requestIndex < RequestsInCurrentBatch.size(); ++requestIndex) {
         SendReadBlobRequest(ctx, requestIndex);
     }
@@ -572,7 +608,8 @@ void TPartitionActor::CompleteScanDiskBatch(
         std::make_unique<TEvPartitionPrivate::TEvScanDiskBatchResponse>(
             std::move(args.BlobsToReadInCurrentBatch),
             args.LastVisitedBlobId,
-            isScanCompleted));
+            isScanCompleted,
+            std::move(args.BlobId2CompressionMetadata)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -597,6 +634,7 @@ IActorPtr TPartitionActor::CreateScanDiskActor(
 {
     return std::make_unique<TScanDiskActor>(
         std::move(tablet),
+        Config->GetVerifyBlobCompressionMetadata(),
         blobsPerBatch,
         finalCommitId,
         retryTimeout,

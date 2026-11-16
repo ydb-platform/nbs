@@ -1,13 +1,16 @@
 #include "read_disk_registry_based_overlay.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
-#include <library/cpp/testing/unittest/registar.h>
-
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
+
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -47,6 +50,61 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         }
     };
 
+    Y_UNIT_TEST_F(
+        ShouldRejectBaseDiskReadWithoutCompressionMetadata,
+        TSetupEnvironment)
+    {
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        auto missingMetadata = counters->GetCounter(
+            GetCriticalEventForBlobCompressionMetadataAbsent(),
+            true);
+        NProto::TReadBlocksRequest request;
+        request.SetStartIndex(0);
+        request.SetBlocksCount(1);
+        ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<
+                             TEvService::TReadBlocksMethod>(
+            MakeIntrusive<TRequestInfo>(
+                EdgeActor,
+                0ull,
+                MakeIntrusive<TCallContext>()),
+            request,
+            TCompressedBitmap(1),
+            NActors::TActorId(),
+            EdgeActor,
+            0,
+            "base-disk",
+            "checkpoint",
+            512,
+            EStorageAccessMode::Default,
+            TDuration(),
+            TLogTitle(
+                GetCycleCount(),
+                TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
+                .GetChild(GetCycleCount()),
+            false,
+            true));
+        TAutoPtr<NActors::IEventHandle> handle;
+        ActorSystem.GrabEdgeEventIf<TEvVolume::TEvDescribeBlocksRequest>(
+            handle,
+            [](const auto&) { return true; });
+        auto response =
+            std::make_unique<TEvVolume::TEvDescribeBlocksResponse>();
+        auto* piece = response->Record.AddBlobPieces();
+        NKikimr::LogoBlobIDFromLogoBlobID(
+            NKikimr::TLogoBlobID(42, 1, 1, 3, 512, 0),
+            piece->MutableBlobId());
+        piece->AddRanges()->SetBlocksCount(1);
+        ActorSystem.Send(new NActors::IEventHandle(
+            handle->Sender,
+            EdgeActor,
+            response.release()));
+        auto completed =
+            ActorSystem.GrabEdgeEvent<TEvService::TEvReadBlocksResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, completed->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, missingMetadata->Val());
+    }
+
     Y_UNIT_TEST_F(ShouldReadFromOverlayDiskSuccess, TSetupEnvironment)
     {
         TCompressedBitmap usedBlocks(10);
@@ -78,7 +136,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     GetCycleCount(),
                     TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                     .GetChild(GetCycleCount()),
-                /*enableDataIntegrityValidation=*/false});
+                /*enableDataIntegrityValidation=*/false,
+                /*verifyBlobCompressionMetadata=*/false});
 
         auto requestToPartition = ActorSystem.GrabEdgeEvent<
             TEvService::TReadBlocksLocalMethod::TRequest>();
@@ -150,7 +209,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     GetCycleCount(),
                     TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                     .GetChild(GetCycleCount()),
-                /*enableDataIntegrityValidation=*/false});
+                /*enableDataIntegrityValidation=*/false,
+                /*verifyBlobCompressionMetadata=*/false});
 
         ActorSystem.GrabEdgeEvent<
             TEvService::TReadBlocksLocalMethod::TRequest>();
@@ -208,7 +268,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 GetCycleCount(),
                 TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                 .GetChild(GetCycleCount()),
-            /*enableDataIntegrityValidation=*/false});
+            /*enableDataIntegrityValidation=*/false,
+            /*verifyBlobCompressionMetadata=*/true});
 
         TAutoPtr<NActors::IEventHandle> handle;
         auto describeRequest = ActorSystem.GrabEdgeEventIf<
@@ -256,15 +317,25 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         TBlobPiece1.SetBSGroupId(2181038123);
         TBlobPiece1.MutableRanges()->Add(std::move(RangeInBlob1));
 
+        const TVector<TString> blobBlocks{
+            TString(blockSize, 6),
+            TString(blockSize, 7),
+            TString(blockSize, 5)};
+        TSgList blobSglist;
+        for (const auto& block: blobBlocks) {
+            blobSglist.emplace_back(block.data(), block.size());
+        }
+        auto compressedOrError = CompressBlob(
+            blockSize,
+            2 * blockSize,
+            NProto::TCompressionMetadata::COMPRESSION_ZSTD_3,
+            blobSglist);
+        UNIT_ASSERT(!HasError(compressedOrError.GetError()));
+        const auto compressed = compressedOrError.ExtractResult();
+        NKikimr::TLogoBlobID
+            logoBlobID2(42, 1, 1, 3, compressed.Data.size(), 0);
         NKikimrProto::TLogoBlobID protoLogoBlobID2;
-        protoLogoBlobID2.SetRawX1(42);
-        protoLogoBlobID2.SetRawX2(43);
-        protoLogoBlobID2.SetRawX3(0x8000); //blob size 2028
-
-        NKikimr::TLogoBlobID logoBlobID2(
-            protoLogoBlobID2.GetRawX1(),
-            protoLogoBlobID2.GetRawX2(),
-            protoLogoBlobID2.GetRawX3());
+        NKikimr::LogoBlobIDFromLogoBlobID(logoBlobID2, &protoLogoBlobID2);
 
         NProto::TRangeInBlob RangeInBlob2_1;
         RangeInBlob2_1.SetBlobOffset(2);
@@ -291,6 +362,14 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
             std::move(TBlobPiece1));
         describeResponse->Record.MutableBlobPieces()->Add(
             std::move(TBlobPiece2));
+        auto* plainEntry =
+            describeResponse->Record.AddBlobId2CompressionMetadata();
+        plainEntry->MutableBlobId()->CopyFrom(protoLogoBlobID1);
+        auto* compressionEntry =
+            describeResponse->Record.AddBlobId2CompressionMetadata();
+        compressionEntry->MutableBlobId()->CopyFrom(protoLogoBlobID2);
+        compressionEntry->MutableCompressionMetadata()->CopyFrom(
+            compressed.Compression);
 
         ActorSystem.Send(new NActors::IEventHandle(
             handle->Sender,
@@ -299,7 +378,10 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
 
         auto fillResponse = [&] (auto readBlob) {
             UNIT_ASSERT_EQUAL(readBlob->QuerySize, 1);
-            UNIT_ASSERT_EQUAL(readBlob->Queries[0].Size, blockSize * 3);
+            const auto expectedSize = readBlob->Queries[0].Id == logoBlobID2
+                                          ? compressed.Data.size()
+                                          : blockSize * 3;
+            UNIT_ASSERT_EQUAL(readBlob->Queries[0].Size, expectedSize);
 
             auto getResult = new NKikimr::TEvBlobStorage::TEvGetResult(
                 NKikimrProto::EReplyStatus::OK,
@@ -307,7 +389,7 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 2181038123);
             getResult->Responses[0].Status = NKikimrProto::OK;
             getResult->Responses[0].Shift = readBlob->Queries[0].Shift;
-            getResult->Responses[0].RequestedSize = blockSize * 3;
+            getResult->Responses[0].RequestedSize = expectedSize;
             getResult->Responses[0].Id = readBlob->Queries[0].Id;
 
             if (readBlob->Queries[0].Id == logoBlobID2) {
@@ -315,9 +397,7 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
 
                 getResult->Responses[0].Buffer.Insert(
                     getResult->Responses[0].Buffer.End(),
-                    TRope(TString(blockSize, 6)
-                        .append(TString(blockSize, 7))
-                        .append(TString(blockSize, 5))));
+                    TRope(compressed.Data));
             } else if (readBlob->Queries[0].Id == logoBlobID1) {
                 UNIT_ASSERT_EQUAL(readBlob->Queries[0].Shift, blockSize);
 
@@ -398,7 +478,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 GetCycleCount(),
                 TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                 .GetChild(GetCycleCount()),
-            /*enableDataIntegrityValidation=*/false});
+            /*enableDataIntegrityValidation=*/false,
+            /*verifyBlobCompressionMetadata=*/false});
 
         TAutoPtr<NActors::IEventHandle> handle;
         ActorSystem.GrabEdgeEventIf<
@@ -457,7 +538,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 GetCycleCount(),
                 TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                 .GetChild(GetCycleCount()),
-            /*enableDataIntegrityValidation=*/false});
+            /*enableDataIntegrityValidation=*/false,
+            /*verifyBlobCompressionMetadata=*/false});
 
         TAutoPtr<NActors::IEventHandle> handle;
         auto describeRequest = ActorSystem.GrabEdgeEventIf<
@@ -554,7 +636,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     GetCycleCount(),
                     TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                     .GetChild(GetCycleCount()),
-                /*enableDataIntegrityValidation=*/false});
+                /*enableDataIntegrityValidation=*/false,
+                /*verifyBlobCompressionMetadata=*/false});
 
         // read from overlay disk
         auto requestToPartition = ActorSystem.GrabEdgeEvent<

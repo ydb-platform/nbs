@@ -599,6 +599,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(AddingUnconfirmedBlobsEnabled,             bool,      false           )\
                                                                                \
     xxx(BlobCompressionRate,                       ui32,      0               )\
+    xxx(VerifyBlobCompressionMetadata,             bool,      false           )\
     xxx(SerialNumberValidationEnabled,             bool,      false           )\
                                                                                \
     xxx(RejectLateRequestsAtDiskAgentEnabled,      bool,      false           )\

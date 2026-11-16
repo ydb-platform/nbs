@@ -762,6 +762,11 @@ void TTestVolumeProxyActor::HandleDescribeBlocksRequest(
                 blobId,
                 blobPiece.MutableBlobId());
 
+            // An entry without CompressionMetadata denotes an uncompressed
+            // blob.
+            *response->Record.AddBlobId2CompressionMetadata()->MutableBlobId() =
+                blobPiece.GetBlobId();
+
             auto* range = blobPiece.AddRanges();
             range->SetBlobOffset(blob.Offset);
             range->SetBlockIndex(blockIndex);
@@ -1156,6 +1161,160 @@ protected:
 
 Y_UNIT_TEST_SUITE(TPartitionTest)
 {
+    Y_UNIT_TEST(ShouldPassMergedBlobCompressionMetadataToReaders)
+    {
+        for (bool splitCompactionTx: {false, true}) {
+            auto config = DefaultConfig();
+            config.SetWriteBlobThreshold(1);
+            config.SetVerifyBlobCompressionMetadata(true);
+            config.SetBlobPatchingEnabled(true);
+            config.SetCompactionMergedBlobThresholdHDD(1);
+            config.SetSplitCompactionTxEnabled(splitCompactionTx);
+            auto runtime = PrepareTestActorRuntime(config);
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            NProto::TCompressionMetadata compressionMetadata;
+            compressionMetadata.SetCodec(
+                NProto::TCompressionMetadata::COMPRESSION_ZSTD_3);
+            compressionMetadata.SetChunkSize(2 * DefaultBlockSize);
+            compressionMetadata.MutablePlainChunks()->AddCompressedChunkSize(
+                123);
+            ui32 readsWithCompressionMetadata = 0;
+            bool patchSeen = false;
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvAddBlobsRequest)
+                    {
+                        auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvAddBlobsRequest>();
+                        if (msg->Mode == ADD_WRITE_RESULT) {
+                            TVector<TAddMergedBlob> blobs;
+                            for (const auto& blob: msg->MergedBlobs) {
+                                blobs.emplace_back(
+                                    blob.BlobId,
+                                    blob.BlockRange,
+                                    blob.SkipMask,
+                                    blob.Checksums,
+                                    compressionMetadata);
+                            }
+                            msg->MergedBlobs = std::move(blobs);
+                        }
+                    }
+                    if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvReadBlobRequest)
+                    {
+                        auto* msg = event->Get<
+                            TEvPartitionCommonPrivate::TEvReadBlobRequest>();
+                        if (msg->CompressionMetadata) {
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                msg->CompressionMetadata->SerializeAsString(),
+                                compressionMetadata.SerializeAsString());
+                            ++readsWithCompressionMetadata;
+                            // This test checks metadata transport. The writer
+                            // stores plain data; decompression has its own
+                            // tests.
+                            msg->CompressionMetadata.reset();
+                        }
+                    }
+                    patchSeen |= event->GetTypeRewrite() ==
+                                 TEvPartitionCommonPrivate::EvPatchBlobRequest;
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            const auto range = TBlockRange32::WithLength(0, 4);
+            partition.WriteBlocks(range, 'a');
+            partition.RebootTablet();
+            partition.WaitReady();
+            auto response = partition.ReadBlocks(range);
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlocksContent('a', range.Size()),
+                GetBlocksContent(response));
+            UNIT_ASSERT_VALUES_EQUAL(1, readsWithCompressionMetadata);
+
+            const auto described = partition.DescribeBlocks(range);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                described->Record.BlobId2CompressionMetadataSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                compressionMetadata.SerializeAsString(),
+                described->Record.GetBlobId2CompressionMetadata(0)
+                    .GetCompressionMetadata()
+                    .SerializeAsString());
+
+            readsWithCompressionMetadata = 0;
+            partition.ScanDisk(10);
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvPartitionPrivate::EvScanDiskCompleted);
+            runtime->DispatchEvents(options, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(1, readsWithCompressionMetadata);
+
+            readsWithCompressionMetadata = 0;
+            partition.Compaction(
+                0,
+                TCompactionOptions().set(ToBit(ECompactionOption::Full)));
+            UNIT_ASSERT_VALUES_EQUAL(1, readsWithCompressionMetadata);
+            UNIT_ASSERT(!patchSeen);
+            response = partition.ReadBlocks(range);
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlocksContent('a', range.Size()),
+                GetBlocksContent(response));
+            UNIT_ASSERT_VALUES_EQUAL(1, readsWithCompressionMetadata);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectScanWithoutCompressionMetadata)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        config.SetVerifyBlobCompressionMetadata(true);
+        auto runtime = PrepareTestActorRuntime(config);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 4), 'a');
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        auto missingMetadata = counters->GetCounter(
+            GetCriticalEventForBlobCompressionMetadataAbsent(),
+            true);
+        ui32 reads = 0;
+        ui32 completionStatus = S_OK;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvScanDiskBatchResponse)
+                {
+                    event->Get<TEvPartitionPrivate::TEvScanDiskBatchResponse>()
+                        ->BlobId2CompressionMetadata.clear();
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvReadBlobRequest)
+                {
+                    ++reads;
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvScanDiskCompleted)
+                {
+                    completionStatus =
+                        event->Get<TEvPartitionPrivate::TEvScanDiskCompleted>()
+                            ->GetStatus();
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        partition.ScanDisk(10);
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TEvPartitionPrivate::EvScanDiskCompleted);
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, completionStatus);
+        UNIT_ASSERT_VALUES_EQUAL(1, missingMetadata->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, reads);
+    }
+
     Y_UNIT_TEST(ShouldWaitReady)
     {
         auto runtime = PrepareTestActorRuntime();
@@ -5352,7 +5511,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(CompactionShouldTakeCareOfFreshBlocks)
     {
-        auto runtime = PrepareTestActorRuntime();
+        auto config = DefaultConfig();
+        config.SetVerifyBlobCompressionMetadata(true);
+        auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();

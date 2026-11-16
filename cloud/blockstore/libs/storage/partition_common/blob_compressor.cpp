@@ -281,6 +281,24 @@ ui64 EstimateCompressedSize(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TError ValidateBlobCompressionMetadata(
+    bool verify,
+    const NKikimr::TLogoBlobID& blobId,
+    bool metadataKnown)
+{
+    if (verify && !metadataKnown) {
+        auto error = MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << "Compression metadata not found for blob " << blobId);
+        ReportBlobCompressionMetadataAbsent(
+            error.GetMessage(),
+            {{"tabletId", blobId.TabletID()}});
+        return error;
+    }
+    return {};
+}
+
 TResultOrError<TCompressionMetadata::ECompressionType>
 ParseBlobCompressionCodec(TStringBuf codecName)
 {

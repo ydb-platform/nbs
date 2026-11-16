@@ -14,6 +14,7 @@
 
 #include <library/cpp/blockcodecs/codecs.h>
 
+#include <util/generic/hash.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -25,6 +26,22 @@
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+using TPartialBlobId2CompressionMetadataMap = THashMap<
+    TPartialBlobId,
+    std::optional<NProto::TCompressionMetadata>,
+    TPartialBlobIdHash>;
+using TBlobId2CompressionMetadataMap =
+    THashMap<NKikimr::TLogoBlobID, std::optional<NProto::TCompressionMetadata>>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+// A metadata entry with no compression value explicitly identifies an
+// uncompressed blob. Only a missing entry is rejected when verification is on.
+NProto::TError ValidateBlobCompressionMetadata(
+    bool verify,
+    const NKikimr::TLogoBlobID& blobId,
+    bool metadataKnown);
 
 // Maps a storage configuration codec family (or its default codec name) to the
 // enum stored in blob metadata. Unsupported names return E_ARGUMENT.

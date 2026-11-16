@@ -244,22 +244,25 @@ public:
         TVector<ui32> Checksums;
         TVector<ui64> Requests; // block indices, ui64 needed for integration
                                 // with sglist-related code
+        std::optional<NProto::TCompressionMetadata> CompressionMetadata;
         ui32 GroupId = 0;
 
         TBatchRequest() = default;
 
         TBatchRequest(
-                const NKikimr::TLogoBlobID& blobId,
-                TActorId proxy,
-                TVector<ui16> blobOffsets,
-                TVector<ui32> checksums,
-                TVector<ui64> requests,
-                ui32 groupId)
+            const NKikimr::TLogoBlobID& blobId,
+            TActorId proxy,
+            TVector<ui16> blobOffsets,
+            TVector<ui32> checksums,
+            TVector<ui64> requests,
+            std::optional<NProto::TCompressionMetadata> compressionMetadata,
+            ui32 groupId)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))
             , Checksums(std::move(checksums))
             , Requests(std::move(requests))
+            , CompressionMetadata(std::move(compressionMetadata))
             , GroupId(groupId)
         {}
     };
@@ -281,8 +284,10 @@ private:
     const bool ReplyLocal;
     const bool ChecksumsEnabled;
     const bool ReportBlobIdsOnFailure;
+    const bool VerifyBlobCompressionMetadata;
 
     const ui64 CommitId;
+    TBlobId2CompressionMetadataMap BlobId2CompressionMetadata;
 
     TVector<TCallContextPtr> ForkedCallContexts;
 
@@ -314,7 +319,9 @@ public:
         ui64 commitId,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
-        bool waitBaseDiskRequests);
+        TBlobId2CompressionMetadataMap blobId2CompressionMetadata,
+        bool waitBaseDiskRequests,
+        bool verifyBlobCompressionMetadata);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -379,7 +386,9 @@ TReadBlocksActor::TReadBlocksActor(
     ui64 commitId,
     TReadBlocksRequests ownRequests,
     TVector<IProfileLog::TBlockInfo> blockInfos,
-    bool waitBaseDiskRequests)
+    TBlobId2CompressionMetadataMap blobId2CompressionMetadata,
+    bool waitBaseDiskRequests,
+    bool verifyBlobCompressionMetadata)
     : VolumeLabels(std::move(volumeLabels))
     , RequestInfo(std::move(requestInfo))
     , BlockDigestGenerator(blockDigestGenerator)
@@ -392,7 +401,9 @@ TReadBlocksActor::TReadBlocksActor(
     , ReplyLocal(replyLocal)
     , ChecksumsEnabled(checksumsEnabled)
     , ReportBlobIdsOnFailure(reportBlobIdsOnFailure)
+    , VerifyBlobCompressionMetadata(verifyBlobCompressionMetadata)
     , CommitId(commitId)
+    , BlobId2CompressionMetadata(std::move(blobId2CompressionMetadata))
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
     , WaitBaseDiskRequests(waitBaseDiskRequests)
@@ -427,6 +438,20 @@ void TReadBlocksActor::ReadBlocks(
         TCompareByBlobIdAndOffset()
     ));
 
+    if (VerifyBlobCompressionMetadata) {
+        for (const auto& request: requests) {
+            if (HandleError(
+                    ctx,
+                    ValidateBlobCompressionMetadata(
+                        VerifyBlobCompressionMetadata,
+                        request.BlobId,
+                        BlobId2CompressionMetadata.contains(request.BlobId))))
+            {
+                return;
+            }
+        }
+    }
+
     TBatchRequest current;
     for (auto& r: requests) {
         if (current.BlobId != r.BlobId) {
@@ -437,11 +462,16 @@ void TReadBlocksActor::ReadBlocks(
                     std::move(current.BlobOffsets),
                     std::move(current.Checksums),
                     std::move(current.Requests),
+                    std::move(current.CompressionMetadata),
                     current.GroupId);
             }
             current.BlobId = r.BlobId;
             current.Proxy = r.BSProxy;
             current.GroupId = r.GroupId;
+            const auto* compressionMetadata =
+                BlobId2CompressionMetadata.FindPtr(r.BlobId);
+            current.CompressionMetadata =
+                compressionMetadata ? *compressionMetadata : std::nullopt;
         }
 
         current.BlobOffsets.push_back(r.BlobOffset);
@@ -456,6 +486,7 @@ void TReadBlocksActor::ReadBlocks(
             std::move(current.BlobOffsets),
             std::move(current.Checksums),
             std::move(current.Requests),
+            std::move(current.CompressionMetadata),
             current.GroupId);
     }
 
@@ -466,15 +497,17 @@ void TReadBlocksActor::ReadBlocks(
 
         RequestsScheduled += batch.Requests.size();
 
-        auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
-            batch.BlobId,
-            batch.Proxy,
-            batch.BlobOffsets,
-            ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
-            batch.GroupId,
-            false,           // async
-            TInstant::Max(), // deadline
-            ChecksumsEnabled);
+        auto request =
+            std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+                batch.BlobId,
+                batch.Proxy,
+                batch.BlobOffsets,
+                ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
+                batch.GroupId,
+                false,             // async
+                TInstant::Max(),   // deadline
+                ChecksumsEnabled,
+                batch.CompressionMetadata);
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -696,6 +729,11 @@ void TReadBlocksActor::HandleDescribeBlocksCompleted(
         return;
     }
 
+    for (auto& blobId2CompressionMetadata: msg->BlobId2CompressionMetadata) {
+        BlobId2CompressionMetadata[blobId2CompressionMetadata.BlobId] =
+            std::move(blobId2CompressionMetadata.CompressionMetadata);
+    }
+
     Sort(requests, TCompareByBlobIdAndOffset());
     ReadBlocks(ctx, std::move(requests), true);
 }
@@ -739,6 +777,7 @@ class TReadBlocksVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
     , public IMixedBlocksIndexVisitor
+    , public IBlobsVisitor
 {
 private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -758,6 +797,20 @@ public:
         , TabletInfo(tabletInfo)
         , Args(args)
     {}
+
+    bool Visit(
+        TBlockRange32 blockRange,
+        const TPartialBlobId& blobId,
+        const TBlockMask& skipMask,
+        const NProto::TCompressionMetadata* compressionMetadata) override
+    {
+        Y_UNUSED(blockRange, skipMask);
+
+        Args.BlobId2CompressionMetadata[blobId] =
+            compressionMetadata ? std::make_optional(*compressionMetadata)
+                                : std::nullopt;
+        return true;
+    }
 
     bool Visit(const TFreshBlock& block) override
     {
@@ -836,6 +889,9 @@ public:
         }
 
         MixedBlocksVisited = true;
+
+        // Mixed blobs are not compressed.
+        Args.BlobId2CompressionMetadata[blobId] = std::nullopt;
 
         return Visit(blockIndex, commitId, blobId, blobOffset);
     }
@@ -1128,11 +1184,11 @@ bool TPartitionActor::PrepareReadBlocks(
 
     ready &= db.FindMergedBlocks(
         visitor,
+        visitor,
         args.ReadRange,
-        false,  // precharge
+        false,   // precharge
         State->GetMaxBlocksInBlob(),
-        commitId
-    );
+        commitId);
 
     const ui32 checksumBoundary =
         Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs()
@@ -1268,6 +1324,14 @@ void TPartitionActor::CompleteReadBlocks(
     }
 
     if (describeBlocksRange.Defined() || requests) {
+        TBlobId2CompressionMetadataMap fullBlobId2CompressionMetadata;
+        for (auto& [blobId, compressionMetadata]:
+             args.BlobId2CompressionMetadata)
+        {
+            fullBlobId2CompressionMetadata.emplace(
+                MakeBlobId(TabletID(), blobId),
+                std::move(compressionMetadata));
+        }
         const auto readBlocksActorId = NCloud::Register<TReadBlocksActor>(
             ctx,
             VolumeLabels,
@@ -1285,7 +1349,9 @@ void TPartitionActor::CompleteReadBlocks(
             args.CommitId,
             std::move(requests),
             std::move(args.BlockInfos),
-            describeBlocksRange.Defined());
+            std::move(fullBlobId2CompressionMetadata),
+            describeBlocksRange.Defined(),
+            Config->GetVerifyBlobCompressionMetadata());
         Actors.Insert(readBlocksActorId);
 
         if (describeBlocksRange.Defined()) {
@@ -1304,6 +1370,7 @@ void TPartitionActor::CompleteReadBlocks(
                     *describeBlocksRange,
                     std::move(args.BlockMarks),
                     State->GetBlockSize(),
+                    Config->GetVerifyBlobCompressionMetadata(),
                     SelfId());
 
             Actors.Insert(describeBlocksActorId);

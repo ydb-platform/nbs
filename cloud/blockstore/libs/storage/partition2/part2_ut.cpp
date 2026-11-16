@@ -3823,6 +3823,14 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             const auto& message = response->Record;
             // Expect that all data is contained in one blob.
             UNIT_ASSERT_VALUES_EQUAL(1, message.BlobPiecesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                message.BlobId2CompressionMetadataSize());
+            const auto& metadata = message.GetBlobId2CompressionMetadata(0);
+            UNIT_ASSERT(!metadata.HasCompressionMetadata());
+            UNIT_ASSERT_VALUES_EQUAL(
+                message.GetBlobPieces(0).GetBlobId().SerializeAsString(),
+                metadata.GetBlobId().SerializeAsString());
 
             const auto& blobPiece = message.GetBlobPieces(0);
             UNIT_ASSERT_VALUES_EQUAL(2, blobPiece.RangesSize());
