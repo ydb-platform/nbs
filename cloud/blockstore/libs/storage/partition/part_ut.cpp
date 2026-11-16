@@ -16330,6 +16330,68 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldContinueQueuedSingleBlockReadsAfterBlobError)
+    {
+        auto config = DefaultConfig();
+        config.SetMaxIORequestsInFlight(1);
+        config.SetCheckBlockChecksumsInBlobsUponRead(true);
+        auto runtime = PrepareTestActorRuntime(config, 2048);
+
+        TPartitionClient first(*runtime);
+        TPartitionClient second(*runtime);
+        first.WaitReady();
+        first.WriteBlocks(TBlockRange32::WithLength(0, 1024), 1);
+
+        ui32 readBlobRequests = 0;
+        ui32 getResults = 0;
+        std::unique_ptr<IEventHandle> delayedResult;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvReadBlobRequest)
+                {
+                    ++readBlobRequests;
+                }
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvGetResult) {
+                    if (++getResults == 1) {
+                        delayedResult.reset(event.Release());
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        TVector<TString> firstBlocks;
+        auto firstSglist =
+            ResizeBlocks(firstBlocks, 1, TString(DefaultBlockSize, char(0)));
+        TVector<TString> secondBlocks;
+        auto secondSglist =
+            ResizeBlocks(secondBlocks, 1, TString(DefaultBlockSize, char(0)));
+
+        first.SendReadBlocksLocalRequest(
+            TBlockRange32::MakeOneBlock(0), std::move(firstSglist));
+        second.SendReadBlocksLocalRequest(
+            TBlockRange32::MakeOneBlock(1), std::move(secondSglist));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(delayedResult);
+        UNIT_ASSERT_VALUES_EQUAL(2, readBlobRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, getResults);
+
+        delayedResult->Get<TEvBlobStorage::TEvGetResult>()->Status =
+            NKikimrProto::ERROR;
+        runtime->SendAsync(delayedResult.release());
+
+        UNIT_ASSERT(FAILED(first.RecvReadBlocksLocalResponse()->GetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK, second.RecvReadBlocksLocalResponse()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(1), secondBlocks[0]);
+        UNIT_ASSERT_VALUES_EQUAL(3, getResults);
+
+        first.RebootTablet();
+        first.ReadBlocks(TBlockRange32::WithLength(0, 2));
+    }
+
     Y_UNIT_TEST(ShouldNotHangWhenConsecutiveReadBlobErrorsHappen)
     {
         auto config = DefaultConfig();

@@ -24,6 +24,7 @@ struct TQueuedRequest
     TBSGroupOperationTimeTracker::EOperationType OperationType =
         TBSGroupOperationTimeTracker::EOperationType::Read;
     ui32 BlockSize = 0;
+    bool UseSameMailbox = false;
 };
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -122,7 +123,7 @@ public:
         ui64 bsGroupOperationId,
         ui32 group,
         TBSGroupOperationTimeTracker::EOperationType operationType,
-        ui32 blockSize);
+        ui32 blockSize, bool useSameMailbox = false);
     std::optional<TQueuedRequest> DequeueIORequest(ui32 channel);
     void CompleteIORequest(ui32 channel);
     ui32 GetIORequestsInFlight() const;
