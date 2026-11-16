@@ -52,8 +52,7 @@ public:
         return MakeFuture<TResultOrError<TVector<TBuffer>>>(std::move(pages));
     }
 
-    TFuture<NCloud::NProto::TError> WritePages(
-        TVector<TPageRange> ranges) override
+    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
     {
         {
             std::lock_guard lock(Lock);
@@ -66,11 +65,10 @@ public:
             }
         }
 
-        return MakeFuture<NCloud::NProto::TError>();
+        return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NCloud::NProto::TError> ZeroPages(
-        TVector<TPageRangeRef> ranges) override
+    TFuture<NProto::TError> ZeroPages(TVector<TPageRangeRef> ranges) override
     {
         {
             std::lock_guard lock(Lock);
@@ -83,7 +81,7 @@ public:
             }
         }
 
-        return MakeFuture<NCloud::NProto::TError>();
+        return MakeFuture<NProto::TError>();
     }
 };
 

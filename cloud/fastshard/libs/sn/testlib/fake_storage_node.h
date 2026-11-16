@@ -30,72 +30,70 @@ struct TFakeStorageNode: public IStorageNode
 {
     TAdaptiveLock Lock;
 
-    TVector<NCloud::NProto::TAcquireDevicesRequest> AcquireCalls;
-    TVector<NCloud::NProto::TReleaseDevicesRequest> ReleaseCalls;
-    TVector<NCloud::NProto::TFormatDeviceRequest> FormatCalls;
-    TVector<NCloud::NProto::TListDevicesRequest> ListCalls;
-    TVector<NCloud::NProto::TReadPagesRequest> ReadCalls;
-    TVector<NCloud::NProto::TWriteLogRecordRequest> WriteCalls;
-    TVector<NCloud::NProto::TReadJournalTailRequest> ReadJournalTailCalls;
-    TVector<NCloud::NProto::TAdvanceLsnLowWatermarkRequest>
-        AdvanceLsnLowWatermarkCalls;
-    TVector<NCloud::NProto::TWritePagesRequest> WritePagesCalls;
+    TVector<NProto::TAcquireDevicesRequest> AcquireCalls;
+    TVector<NProto::TReleaseDevicesRequest> ReleaseCalls;
+    TVector<NProto::TFormatDeviceRequest> FormatCalls;
+    TVector<NProto::TListDevicesRequest> ListCalls;
+    TVector<NProto::TReadPagesRequest> ReadCalls;
+    TVector<NProto::TWriteLogRecordRequest> WriteCalls;
+    TVector<NProto::TReadJournalTailRequest> ReadJournalTailCalls;
+    TVector<NProto::TAdvanceLsnLowWatermarkRequest> AdvanceLsnLowWatermarkCalls;
+    TVector<NProto::TWritePagesRequest> WritePagesCalls;
 
-    NCloud::NProto::TAcquireDevicesResponse AcquireResp;
-    NCloud::NProto::TReleaseDevicesResponse ReleaseResp;
-    NCloud::NProto::TFormatDeviceResponse FormatResp;
-    NCloud::NProto::TListDevicesResponse ListResp;
-    NCloud::NProto::TReadPagesResponse ReadResp;
-    NCloud::NProto::TWriteLogRecordResponse WriteResp;
-    NCloud::NProto::TReadJournalTailResponse ReadJournalTailResp;
-    NCloud::NProto::TAdvanceLsnLowWatermarkResponse
-        AdvanceLsnLowWatermarkResp;
-    NCloud::NProto::TWritePagesResponse WritePagesResp;
+    NProto::TAcquireDevicesResponse AcquireResp;
+    NProto::TReleaseDevicesResponse ReleaseResp;
+    NProto::TFormatDeviceResponse FormatResp;
+    NProto::TListDevicesResponse ListResp;
+    NProto::TReadPagesResponse ReadResp;
+    NProto::TWriteLogRecordResponse WriteResp;
+    NProto::TReadJournalTailResponse ReadJournalTailResp;
+    NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermarkResp;
+    NProto::TWritePagesResponse WritePagesResp;
 
-    TDeque<NCloud::NProto::TAcquireDevicesResponse> AcquireRespQueue;
-    TDeque<NCloud::NProto::TReleaseDevicesResponse> ReleaseRespQueue;
-    TDeque<NCloud::NProto::TFormatDeviceResponse> FormatRespQueue;
-    TDeque<NCloud::NProto::TListDevicesResponse> ListRespQueue;
-    TDeque<NCloud::NProto::TReadPagesResponse> ReadRespQueue;
-    TDeque<NCloud::NProto::TWriteLogRecordResponse> WriteRespQueue;
-    TDeque<NCloud::NProto::TReadJournalTailResponse> ReadJournalTailRespQueue;
-    TDeque<NCloud::NProto::TWritePagesResponse> WritePagesRespQueue;
+    TDeque<NProto::TAcquireDevicesResponse> AcquireRespQueue;
+    TDeque<NProto::TReleaseDevicesResponse> ReleaseRespQueue;
+    TDeque<NProto::TFormatDeviceResponse> FormatRespQueue;
+    TDeque<NProto::TListDevicesResponse> ListRespQueue;
+    TDeque<NProto::TReadPagesResponse> ReadRespQueue;
+    TDeque<NProto::TWriteLogRecordResponse> WriteRespQueue;
+    TDeque<NProto::TReadJournalTailResponse> ReadJournalTailRespQueue;
+    TDeque<NProto::TWritePagesResponse> WritePagesRespQueue;
 
-    NCloud::NProto::TAcquireDevicesResponse AcquireDevices(
+    NProto::TAcquireDevicesResponse AcquireDevices(
         TFastShardContext&,
-        NCloud::NProto::TAcquireDevicesRequest request) override;
+        NProto::TAcquireDevicesRequest request) override;
 
-    NCloud::NProto::TReleaseDevicesResponse ReleaseDevices(
+    NProto::TReleaseDevicesResponse ReleaseDevices(
         TFastShardContext&,
-        NCloud::NProto::TReleaseDevicesRequest request) override;
+        NProto::TReleaseDevicesRequest request) override;
 
-    NCloud::NProto::TFormatDeviceResponse FormatDevice(
+    NProto::TFormatDeviceResponse FormatDevice(
         TFastShardContext&,
-        NCloud::NProto::TFormatDeviceRequest request) override;
+        NProto::TFormatDeviceRequest request) override;
 
-    NCloud::NProto::TListDevicesResponse ListDevices(
+    NProto::TListDevicesResponse ListDevices(
         TFastShardContext&,
-        NCloud::NProto::TListDevicesRequest request) override;
+        NProto::TListDevicesRequest request) override;
 
-    NCloud::NProto::TReadPagesResponse ReadPages(
+    NProto::TReadPagesResponse ReadPages(
         TFastShardContext&,
-        NCloud::NProto::TReadPagesRequest request) override;
+        NProto::TReadPagesRequest request) override;
 
-    NCloud::NProto::TWriteLogRecordResponse WriteLogRecord(
+    NProto::TWriteLogRecordResponse WriteLogRecord(
         TFastShardContext&,
-        NCloud::NProto::TWriteLogRecordRequest request) override;
+        NProto::TWriteLogRecordRequest request) override;
 
-    NCloud::NProto::TReadJournalTailResponse ReadJournalTail(
+    NProto::TReadJournalTailResponse ReadJournalTail(
         TFastShardContext&,
-        NCloud::NProto::TReadJournalTailRequest request) override;
+        NProto::TReadJournalTailRequest request) override;
 
-    NCloud::NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
+    NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
         TFastShardContext&,
-        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request) override;
+        NProto::TAdvanceLsnLowWatermarkRequest request) override;
 
-    NCloud::NProto::TWritePagesResponse WritePages(
+    NProto::TWritePagesResponse WritePages(
         TFastShardContext&,
-        NCloud::NProto::TWritePagesRequest request) override;
+        NProto::TWritePagesRequest request) override;
 };
 
 }   // namespace NCloud::NFastShard

@@ -7,6 +7,7 @@ import (
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -18,6 +19,7 @@ import (
 type service struct {
 	taskScheduler tasks.Scheduler
 	config        *config.ImagesConfig
+	exportConfig  *server_config.ExportConfig
 }
 
 func (s *service) CreateImage(
@@ -163,10 +165,17 @@ func (s *service) DeleteImage(
 func NewService(
 	taskScheduler tasks.Scheduler,
 	config *config.ImagesConfig,
+	exportConfigs ...*server_config.ExportConfig,
 ) Service {
+
+	var exportConfig *server_config.ExportConfig
+	if len(exportConfigs) != 0 {
+		exportConfig = exportConfigs[0]
+	}
 
 	return &service{
 		taskScheduler: taskScheduler,
 		config:        config,
+		exportConfig:  exportConfig,
 	}
 }

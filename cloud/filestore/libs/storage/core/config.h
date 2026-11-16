@@ -233,6 +233,8 @@ public:
     TDuration GetAttrTimeout() const;
     TDuration GetXAttrCacheTimeout() const;
     ui32 GetXAttrCacheLimit() const;
+    ui32 GetNodeRefCacheLimit() const;
+    ui32 GetNodeAttrsCacheLimit() const;
     ui32 GetPreferredBlockSizeMultiplier() const;
 
     ui32 GetMaxOutOfOrderCompactionMapLoadRequestsInQueue() const;

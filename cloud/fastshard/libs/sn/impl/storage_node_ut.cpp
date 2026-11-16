@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 
+using namespace NCloud;
 using namespace NCloud::NFastShard;
 using NCloud::HasError;
 using silk::FiberScheduler;
@@ -73,7 +74,7 @@ TEST(NaiveFileStorageNodeTest, AcquireDevicesReturnsSuccess)
         +[](int*) noexcept -> int
         {
             TFixture fx;
-            NCloud::NProto::TAcquireDevicesRequest req;
+            NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("dev-x");
             auto resp = fx.Node->AcquireDevices(fx.Ctx, std::move(req));
             EXPECT_FALSE(HasError(resp.GetError()));
@@ -89,7 +90,7 @@ TEST(NaiveFileStorageNodeTest, ReleaseDevicesReturnsSuccess)
         +[](int*) noexcept -> int
         {
             TFixture fx;
-            NCloud::NProto::TReleaseDevicesRequest req;
+            NProto::TReleaseDevicesRequest req;
             req.AddDeviceUUIDs("dev-x");
             auto resp = fx.Node->ReleaseDevices(fx.Ctx, std::move(req));
             EXPECT_FALSE(HasError(resp.GetError()));
@@ -106,14 +107,14 @@ TEST(NaiveFileStorageNodeTest, RoundTripsSinglePage)
         {
             TFixture fx;
 
-            NCloud::NProto::TWriteLogRecordRequest wreq;
+            NProto::TWriteLogRecordRequest wreq;
             auto* pg = wreq.AddPageGroups();
             pg->SetFirstPageNo(3);
             pg->AddContent(Pattern('a', PageSize));
             auto wresp = fx.Node->WriteLogRecord(fx.Ctx, std::move(wreq));
             EXPECT_FALSE(HasError(wresp.GetError()));
 
-            NCloud::NProto::TReadPagesRequest rreq;
+            NProto::TReadPagesRequest rreq;
             auto* ref = rreq.AddPageGroupRefs();
             ref->SetFirstPageNo(3);
             ref->SetPageCount(1);
@@ -139,7 +140,7 @@ TEST(NaiveFileStorageNodeTest, RoundTripsMultiPageGroup)
         {
             TFixture fx;
 
-            NCloud::NProto::TWriteLogRecordRequest wreq;
+            NProto::TWriteLogRecordRequest wreq;
             auto* pg = wreq.AddPageGroups();
             pg->SetFirstPageNo(0);
             pg->AddContent(Pattern('A', PageSize));
@@ -148,7 +149,7 @@ TEST(NaiveFileStorageNodeTest, RoundTripsMultiPageGroup)
             auto wresp = fx.Node->WriteLogRecord(fx.Ctx, std::move(wreq));
             EXPECT_FALSE(HasError(wresp.GetError()));
 
-            NCloud::NProto::TReadPagesRequest rreq;
+            NProto::TReadPagesRequest rreq;
             auto* ref = rreq.AddPageGroupRefs();
             ref->SetFirstPageNo(0);
             ref->SetPageCount(3);
@@ -175,7 +176,7 @@ TEST(NaiveFileStorageNodeTest, RoundTripsMultipleGroups)
         {
             TFixture fx;
 
-            NCloud::NProto::TWriteLogRecordRequest wreq;
+            NProto::TWriteLogRecordRequest wreq;
             auto* g0 = wreq.AddPageGroups();
             g0->SetFirstPageNo(1);
             g0->AddContent(Pattern('x', PageSize));
@@ -186,7 +187,7 @@ TEST(NaiveFileStorageNodeTest, RoundTripsMultipleGroups)
             auto wresp = fx.Node->WriteLogRecord(fx.Ctx, std::move(wreq));
             EXPECT_FALSE(HasError(wresp.GetError()));
 
-            NCloud::NProto::TReadPagesRequest rreq;
+            NProto::TReadPagesRequest rreq;
             auto* r0 = rreq.AddPageGroupRefs();
             r0->SetFirstPageNo(1);
             r0->SetPageCount(2);
@@ -228,7 +229,7 @@ TEST(NaiveFileStorageNodeTest, LaterWriteOverridesEarlier)
             TFixture fx;
 
             for (char c: {'1', '2'}) {
-                NCloud::NProto::TWriteLogRecordRequest wreq;
+                NProto::TWriteLogRecordRequest wreq;
                 auto* pg = wreq.AddPageGroups();
                 pg->SetFirstPageNo(5);
                 pg->AddContent(Pattern(c, PageSize));
@@ -236,7 +237,7 @@ TEST(NaiveFileStorageNodeTest, LaterWriteOverridesEarlier)
                 EXPECT_FALSE(HasError(wresp.GetError()));
             }
 
-            NCloud::NProto::TReadPagesRequest rreq;
+            NProto::TReadPagesRequest rreq;
             auto* ref = rreq.AddPageGroupRefs();
             ref->SetFirstPageNo(5);
             ref->SetPageCount(1);
@@ -259,7 +260,7 @@ TEST(NaiveFileStorageNodeTest, EmptyReadReturnsSuccessWithNoGroups)
         +[](int*) noexcept -> int
         {
             TFixture fx;
-            NCloud::NProto::TReadPagesRequest rreq;
+            NProto::TReadPagesRequest rreq;
             auto rresp = fx.Node->ReadPages(fx.Ctx, std::move(rreq));
             EXPECT_FALSE(HasError(rresp.GetError()));
             EXPECT_EQ(0U, rresp.PageGroupsSize());
@@ -275,7 +276,7 @@ TEST(NaiveFileStorageNodeTest, EmptyWriteReturnsSuccess)
         +[](int*) noexcept -> int
         {
             TFixture fx;
-            NCloud::NProto::TWriteLogRecordRequest wreq;
+            NProto::TWriteLogRecordRequest wreq;
             auto wresp = fx.Node->WriteLogRecord(fx.Ctx, std::move(wreq));
             EXPECT_FALSE(HasError(wresp.GetError()));
             return 0;
@@ -291,14 +292,14 @@ TEST(NaiveFileStorageNodeTest, WritePagesRoundTripsSinglePage)
         {
             TFixture fx;
 
-            NCloud::NProto::TWritePagesRequest wreq;
+            NProto::TWritePagesRequest wreq;
             auto* pg = wreq.AddPageGroups();
             pg->SetFirstPageNo(5);
             pg->AddContent(Pattern('w', PageSize));
             auto wresp = fx.Node->WritePages(fx.Ctx, std::move(wreq));
             EXPECT_FALSE(HasError(wresp.GetError()));
 
-            NCloud::NProto::TReadPagesRequest rreq;
+            NProto::TReadPagesRequest rreq;
             auto* ref = rreq.AddPageGroupRefs();
             ref->SetFirstPageNo(5);
             ref->SetPageCount(1);
@@ -339,7 +340,7 @@ TEST(NaiveFileStorageNodeTest, ReadPagesReturnsErrorOnShortRead)
         {
             TFixture fx(PageSize /* backingSize */);
 
-            NCloud::NProto::TReadPagesRequest rreq;
+            NProto::TReadPagesRequest rreq;
             auto* ref = rreq.AddPageGroupRefs();
             ref->SetFirstPageNo(0);
             ref->SetPageCount(2);
@@ -368,7 +369,7 @@ TEST(NaiveFileStorageNodeTest, ReadPagesReportsErrorOnPartialFailure)
         {
             TFixture fx;
 
-            NCloud::NProto::TReadPagesRequest rreq;
+            NProto::TReadPagesRequest rreq;
             auto* valid = rreq.AddPageGroupRefs();
             valid->SetFirstPageNo(0);
             valid->SetPageCount(1);
@@ -392,7 +393,7 @@ TEST(NaiveFileStorageNodeTest, ReadPagesRejectsPageCountPageSizeOverflow)
         +[](int*) noexcept -> int
         {
             TFixture fx;
-            NCloud::NProto::TReadPagesRequest rreq;
+            NProto::TReadPagesRequest rreq;
             auto* ref = rreq.AddPageGroupRefs();
             // PageSize is uint32 in the proto; pick values within that
             // range whose product overflows ui64: 2^40 * 2^25 == 2^65.
@@ -417,7 +418,7 @@ TEST(NaiveFileStorageNodeTest, ReadPagesRejectsFirstPageNoPageSizeOverflow)
         +[](int*) noexcept -> int
         {
             TFixture fx;
-            NCloud::NProto::TReadPagesRequest rreq;
+            NProto::TReadPagesRequest rreq;
             auto* ref = rreq.AddPageGroupRefs();
             // FirstPageNo * PageSize == 2^60 * 2^20 == 2^80 overflows.
             ref->SetFirstPageNo(1ULL << 60);
@@ -441,7 +442,7 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordRejectsFirstPageNoPageSizeOverflow)
         +[](int*) noexcept -> int
         {
             TFixture fx;
-            NCloud::NProto::TWriteLogRecordRequest wreq;
+            NProto::TWriteLogRecordRequest wreq;
             auto* pg = wreq.AddPageGroups();
             // pageSize == Content[0].size() == PageSize (512).
             // FirstPageNo * pageSize needs to exceed 2^64 to overflow;
@@ -468,7 +469,7 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordRejectsMixedPageSizes)
         +[](int*) noexcept -> int
         {
             TFixture fx;
-            NCloud::NProto::TWriteLogRecordRequest wreq;
+            NProto::TWriteLogRecordRequest wreq;
             auto* g0 = wreq.AddPageGroups();
             g0->SetFirstPageNo(0);
             g0->AddContent(Pattern('a', PageSize));
@@ -493,7 +494,7 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordRejectsMixedPageSizesWithinGroup)
         +[](int*) noexcept -> int
         {
             TFixture fx;
-            NCloud::NProto::TWriteLogRecordRequest wreq;
+            NProto::TWriteLogRecordRequest wreq;
             auto* pg = wreq.AddPageGroups();
             pg->SetFirstPageNo(0);
             pg->AddContent(Pattern('a', PageSize));
@@ -518,7 +519,7 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordRejectsOverlappingIntervals)
         +[](int*) noexcept -> int
         {
             TFixture fx;
-            NCloud::NProto::TWriteLogRecordRequest wreq;
+            NProto::TWriteLogRecordRequest wreq;
             auto* g0 = wreq.AddPageGroups();
             g0->SetFirstPageNo(0);
             for (int i = 0; i < 3; ++i) {
@@ -547,7 +548,7 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordAcceptsAdjacentIntervals)
         +[](int*) noexcept -> int
         {
             TFixture fx;
-            NCloud::NProto::TWriteLogRecordRequest wreq;
+            NProto::TWriteLogRecordRequest wreq;
             auto* g0 = wreq.AddPageGroups();
             g0->SetFirstPageNo(0);
             g0->AddContent(Pattern('a', PageSize));
@@ -574,7 +575,7 @@ TEST(NaiveFileStorageNodeTest, WriteLogRecordReportsErrorOnPartialFailure)
         {
             TFixture fx;
 
-            NCloud::NProto::TWriteLogRecordRequest wreq;
+            NProto::TWriteLogRecordRequest wreq;
             auto* good = wreq.AddPageGroups();
             good->SetFirstPageNo(0);
             good->AddContent(Pattern('.', PageSize));

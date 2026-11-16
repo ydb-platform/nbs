@@ -19,6 +19,7 @@ using ERequestType = IWriteBackCacheStateStats::ERequestType;
 
 TWriteBackCacheState::TWriteBackCacheState(
     IQueuedOperationsProcessor& processor,
+    std::unique_ptr<IWriteBackCacheLock> lock,
     IPersistentStoragePtr persistentStorage,
     ITimerPtr timer,
     IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
@@ -39,6 +40,7 @@ TWriteBackCacheState::TWriteBackCacheState(
           std::move(writeDataRequestManagerStats))
     , QueuedOperations(
           processor,
+          std::move(lock),
           [this] { ProcessSerializedRequests(); })
 {}
 

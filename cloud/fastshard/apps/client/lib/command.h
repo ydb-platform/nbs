@@ -187,13 +187,13 @@ protected:
     IInputStream& GetInputStream();
     IOutputStream& GetOutputStream();
 
-    void PrepareHeaders(NCloud::NProto::TDeviceRequestHeaders& headers) const;
+    void PrepareHeaders(NProto::TDeviceRequestHeaders& headers) const;
 
     // The input split into pages of pageSize, from firstPageNo on.
     void ReadPageGroup(
         ui64 firstPageNo,
         ui32 pageSize,
-        NCloud::NProto::TDevicePageGroup* group);
+        NProto::TDevicePageGroup* group);
 
     template <typename TResponse>
     bool HandleResponse(const TResponse& response)
@@ -212,7 +212,7 @@ protected:
     }
 
 private:
-    NCloud::NProto::TError AcquireDevice(const TString& deviceUUID);
+    NProto::TError AcquireDevice(const TString& deviceUUID);
     void ReleaseDevice(const TString& deviceUUID);
 
     void PrintTiming() const;

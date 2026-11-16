@@ -37,9 +37,9 @@ struct IStorageNode
     virtual ~IStorageNode() = default;
 
 #define SN_DECLARE_METHOD(name, ...)                                           \
-    virtual NCloud::NProto::T##name##Response name(                            \
+    virtual NProto::T##name##Response name(                                    \
         TFastShardContext& ctx,                                                \
-        NCloud::NProto::T##name##Request request) = 0;                         \
+        NProto::T##name##Request request) = 0;                                 \
     // SN_DECLARE_METHOD
 
     SN_METHODS(SN_DECLARE_METHOD)

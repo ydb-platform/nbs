@@ -14,7 +14,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
-	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -54,8 +53,10 @@ func (t *backupImageTask) Run(
 		return err
 	}
 
-	if meta == nil || !meta.Ready {
-		return t.storage.ImageBackupCancelled(ctx, imageID)
+	// Nothing to copy: the image is gone, is being deleted or is already
+	// backed up.
+	if meta == nil || !meta.Ready || meta.BackupCompleted {
+		return t.removeFromQueue(ctx)
 	}
 
 	imageMeta, err := backup.NewImageMeta(*meta)
@@ -83,16 +84,6 @@ func (t *backupImageTask) Run(
 		}
 	}
 
-	err = t.backupS3.PutObject(
-		ctx,
-		backup.ImageMetaKey(imageID),
-		t.state.EncryptedDek,
-		persistence.S3Object{Data: data},
-	)
-	if err != nil {
-		return err
-	}
-
 	idempotencyKey := fmt.Sprintf("%v_%v_backup", execCtx.GetTaskID(), imageID)
 
 	taskID, err := t.scheduler.ScheduleTask(
@@ -102,6 +93,9 @@ func (t *backupImageTask) Run(
 		&dataplane_protos.BackupSnapshotDataRequest{
 			SnapshotId:   imageID,
 			EncryptedDek: t.state.EncryptedDek,
+			// The copy writes the meta while it holds the snapshot.
+			MetaKey: backup.ImageMetaKey(imageID),
+			Meta:    data,
 		},
 	)
 	if err != nil {
@@ -120,7 +114,21 @@ func (t *backupImageTask) Run(
 		return err
 	}
 
-	return t.storage.ImageBackupScheduled(ctx, imageID)
+	// The copy ends with the meta. A copy that ended without it, such as a
+	// copy of an older build, left the backup incomplete: it is not marked.
+	err = backup.CheckImageMeta(ctx, t.backupS3, imageID)
+	if err != nil {
+		return err
+	}
+
+	// Marks only a ready image: if deletion won before the copy took its
+	// hold, the image is already deleting and the copy copied nothing.
+	err = t.storage.ImageBackupCompleted(ctx, imageID)
+	if err != nil {
+		return err
+	}
+
+	return t.removeFromQueue(ctx)
 }
 
 func (t *backupImageTask) Cancel(
@@ -130,7 +138,15 @@ func (t *backupImageTask) Cancel(
 
 	// TODO(https://github.com/ydb-platform/nbs/issues/7237):
 	// roll back the objects already written to the follower bucket.
-	return t.storage.ImageBackupCancelled(ctx, t.request.ImageId)
+	// The copy clears its chunks and releases the image in its own Cancel.
+	if len(t.state.DataplaneTaskID) != 0 {
+		_, err := t.scheduler.CancelTask(ctx, t.state.DataplaneTaskID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return t.removeFromQueue(ctx)
 }
 
 func (t *backupImageTask) GetMetadata(
@@ -142,4 +158,14 @@ func (t *backupImageTask) GetMetadata(
 
 func (t *backupImageTask) GetResponse() proto.Message {
 	return &empty.Empty{}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *backupImageTask) removeFromQueue(ctx context.Context) error {
+	return t.storage.RemoveImageFromBackupQueue(
+		ctx,
+		t.request.ImageId,
+		t.request.BackupId,
+	)
 }

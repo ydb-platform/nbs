@@ -37,7 +37,7 @@ NProto::TError TSuperBlock::AccessSlot(
     TBuffer& page,
     TSuperBlockSlot* slot)
 {
-    auto error = PageStore->ReadPage(lsn, PageNo, &page);
+    auto error = PageStore->ReadPageForUpdate(lsn, PageNo, &page);
     if (HasError(error)) {
         return error;
     }
@@ -121,7 +121,7 @@ NProto::TError TSuperBlock::AllocateHandleId(
 NProto::TError TSuperBlock::CollectStats(TFileSystemShardStats* stats) const
 {
     TBuffer page;
-    auto error = PageStore->ReadPage(0 /* lsn */, PageNo, &page);
+    auto error = PageStore->ReadPageForLookup(PageNo, &page);
     if (HasError(error)) {
         return error;
     }

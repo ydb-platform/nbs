@@ -23,13 +23,16 @@ class TAuthService final
 private:
     const IEndpointManagerPtr Service;
     const IAuthProviderPtr AuthProvider;
+    const TVector<TString> ActionsNoAuth;
 
 public:
     TAuthService(
             IEndpointManagerPtr service,
-            IAuthProviderPtr authProvider)
+            IAuthProviderPtr authProvider,
+            TVector<TString> actionsNoAuth)
         : Service(std::move(service))
         , AuthProvider(std::move(authProvider))
+        , ActionsNoAuth(std::move(actionsNoAuth))
     {}
 
     void Start() override
@@ -77,7 +80,7 @@ private:
     {
         const auto& headers = request->GetHeaders();
         const auto& internal = headers.GetInternal();
-        auto permissions = GetRequestPermissions(*request, {});
+        auto permissions = GetRequestPermissions(*request, ActionsNoAuth);
 
         bool needAuth = AuthProvider->NeedAuth(
             internal.GetRequestSource(),
@@ -149,11 +152,13 @@ private:
 
 IEndpointManagerPtr CreateAuthService(
     IEndpointManagerPtr service,
-    IAuthProviderPtr authProvider)
+    IAuthProviderPtr authProvider,
+    TVector<TString> actionsNoAuth)
 {
     return std::make_shared<TAuthService>(
         std::move(service),
-        std::move(authProvider));
+        std::move(authProvider),
+        std::move(actionsNoAuth));
 }
 
 }   // namespace NCloud::NFileStore

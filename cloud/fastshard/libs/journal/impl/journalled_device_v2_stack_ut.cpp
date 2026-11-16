@@ -65,10 +65,9 @@ TString MakeContent(char tag, ui64 pageNo)
     return Sprintf("%c%03u", tag, static_cast<ui32>(pageNo % 1000));
 }
 
-NCloud::NProto::TDevicePageGroup
-MakeGroup(ui64 firstPageNo, ui64 pageCount, char tag)
+NProto::TDevicePageGroup MakeGroup(ui64 firstPageNo, ui64 pageCount, char tag)
 {
-    NCloud::NProto::TDevicePageGroup group;
+    NProto::TDevicePageGroup group;
     group.SetFirstPageNo(firstPageNo);
 
     for (ui64 i = 0; i < pageCount; ++i) {
@@ -78,10 +77,10 @@ MakeGroup(ui64 firstPageNo, ui64 pageCount, char tag)
     return group;
 }
 
-NCloud::NProto::TWriteLogRecordRequest
+NProto::TWriteLogRecordRequest
 MakeWriteRequest(ui64 lsn, ui64 prevLsn, char tag, const TGroups& groups)
 {
-    NCloud::NProto::TWriteLogRecordRequest request;
+    NProto::TWriteLogRecordRequest request;
     request.SetDeviceUUID(TString{DeviceUUID});
     request.SetLogSequenceNumber(lsn);
     request.SetPrevLogSequenceNumber(prevLsn);
@@ -93,9 +92,9 @@ MakeWriteRequest(ui64 lsn, ui64 prevLsn, char tag, const TGroups& groups)
     return request;
 }
 
-NCloud::NProto::TReadPagesRequest MakeReadRequest(const TGroups& refs)
+NProto::TReadPagesRequest MakeReadRequest(const TGroups& refs)
 {
-    NCloud::NProto::TReadPagesRequest request;
+    NProto::TReadPagesRequest request;
     request.SetDeviceUUID(TString{DeviceUUID});
 
     for (const auto& [firstPageNo, pageCount]: refs) {
@@ -108,11 +107,11 @@ NCloud::NProto::TReadPagesRequest MakeReadRequest(const TGroups& refs)
     return request;
 }
 
-NCloud::NProto::TReadJournalTailRequest MakeReadTailRequest(
+NProto::TReadJournalTailRequest MakeReadTailRequest(
     ui64 afterLsn,
     ui32 maxRecordCount)
 {
-    NCloud::NProto::TReadJournalTailRequest request;
+    NProto::TReadJournalTailRequest request;
     request.SetDeviceUUID(TString{DeviceUUID});
     request.SetAfterLogSequenceNumber(afterLsn);
     request.SetMaxRecordCount(maxRecordCount);
@@ -120,9 +119,9 @@ NCloud::NProto::TReadJournalTailRequest MakeReadTailRequest(
     return request;
 }
 
-NCloud::NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(ui64 lsn)
+NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(ui64 lsn)
 {
-    NCloud::NProto::TAdvanceLsnLowWatermarkRequest request;
+    NProto::TAdvanceLsnLowWatermarkRequest request;
     request.SetDeviceUUID(TString{DeviceUUID});
     request.SetLsnLowWatermark(lsn);
 
@@ -180,8 +179,7 @@ TString DescribeRanges(const TVector<TPageRange>& ranges)
 }
 
 // "1<-0 10:[A010]; 2<-1 20:[B020]"
-TString DescribeRecords(
-    const NCloud::NProto::TReadJournalTailResponse& response)
+TString DescribeRecords(const NProto::TReadJournalTailResponse& response)
 {
     TVector<TString> records;
 
@@ -217,8 +215,7 @@ struct TRecordingDevice final: public IDevice
         return Impl->ReadPages(std::move(rangeRefs));
     }
 
-    TFuture<NCloud::NProto::TError> WritePages(
-        TVector<TPageRange> ranges) override
+    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
     {
         with_lock (Mutex) {
             Writes.push_back(ranges);
@@ -227,8 +224,7 @@ struct TRecordingDevice final: public IDevice
         return Impl->WritePages(std::move(ranges));
     }
 
-    TFuture<NCloud::NProto::TError> ZeroPages(
-        TVector<TPageRangeRef> ranges) override
+    TFuture<NProto::TError> ZeroPages(TVector<TPageRangeRef> ranges) override
     {
         return Impl->ZeroPages(std::move(ranges));
     }
@@ -364,7 +360,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             FormatError(response.GetError()));
     }
 
-    NCloud::NProto::TReadPagesResponse ReadPages(const TGroups& refs)
+    NProto::TReadPagesResponse ReadPages(const TGroups& refs)
     {
         return Device->ReadPages(MakeReadRequest(refs)).GetValueSync();
     }
@@ -381,7 +377,7 @@ struct TFixture: public NUnitTest::TBaseFixture
         return DescribeGroups(response);
     }
 
-    NCloud::NProto::TReadJournalTailResponse ReadTail(
+    NProto::TReadJournalTailResponse ReadTail(
         ui64 afterLsn = 0,
         ui32 maxRecordCount = 0)
     {
@@ -416,7 +412,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     // Writes the pages the device held before the journal ever saw it.
     void FillDataDevice(const TGroups& groups, char tag)
     {
-        NCloud::NProto::TWriteLogRecordRequest request;
+        NProto::TWriteLogRecordRequest request;
         for (const auto& [firstPageNo, pageCount]: groups) {
             *request.AddPageGroups() = MakeGroup(firstPageNo, pageCount, tag);
         }

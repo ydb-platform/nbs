@@ -75,7 +75,7 @@ protected:
 
     bool DoExecute() override
     {
-        NCloud::NProto::TAcquireDevicesRequest request;
+        NProto::TAcquireDevicesRequest request;
         if (Proto) {
             ParseFromTextFormat(GetInputStream(), request);
         } else {

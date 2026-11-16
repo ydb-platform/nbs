@@ -153,6 +153,8 @@ public:
         const TString& fsId) const;
 
     ui32 GetXAttrCacheLimit() const;
+    ui32 GetNodeRefCacheLimit() const;
+    ui32 GetNodeAttrsCacheLimit() const;
 
     bool GetDirectoryHandlesStorageEnabled() const;
     bool GetDirectoryHandlesStorageEnabled(
