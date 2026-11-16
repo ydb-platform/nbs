@@ -62,10 +62,9 @@ public:
     void Register(NKikimr::TControlBoard& controlBoard);
 
     // Update defaults from raw configuration values, resetting overrides only
-    // for changed defaults. Calls for the same control set must not overlap.
-    // Concurrent ICB value updates are allowed.
-    // Calls for the same set must not overlap each other or its first
-    // Register().
+    // for changed defaults. Concurrent ICB value updates are allowed.
+    // Calls for the same control set must not overlap each other or the first
+    // Register() call.
     //
     // Resetting an override makes each TStorageConfig use its own raw fallback.
     // Raw values of existing configuration objects remain unchanged.
