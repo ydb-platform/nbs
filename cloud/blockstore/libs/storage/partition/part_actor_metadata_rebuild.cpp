@@ -146,9 +146,7 @@ NProto::TError TPartitionActor::DoHandleMetadataRebuildBatch(
                 return MakeError(E_REJECTED, "Cleanup is running");
             }
 
-            StartMetadataRebuildBlockCount(ctx, batchSize);
-
-            return MakeError(S_OK, "Metadata rebuild has been started");
+            return StartMetadataRebuildBlockCount(ctx, batchSize);
         }
         default: {
             return MakeError(
@@ -158,14 +156,14 @@ NProto::TError TPartitionActor::DoHandleMetadataRebuildBatch(
     }
 }
 
-void TPartitionActor::StartMetadataRebuildBlockCount(
+NProto::TError TPartitionActor::StartMetadataRebuildBlockCount(
     const TActorContext& ctx,
     ui32 batchSize)
 {
     const ui64 commitId = State->GenerateCommitId();
     if (commitId == InvalidCommitId) {
         RebootPartitionOnCommitIdOverflow(ctx, "MetadataRebuild");
-        return;
+        return MakeError(E_REJECTED, "tablet is shutting down");
     }
 
     // Block cleanup while waiting for commits, before capturing the counters.
@@ -176,6 +174,8 @@ void TPartitionActor::StartMetadataRebuildBlockCount(
         ctx,
         CreateTx<TStartMetadataRebuild>(commitId, batchSize),
         commitId);
+
+    return MakeError(S_OK, "Metadata rebuild has been started");
 }
 
 bool TPartitionActor::PrepareStartMetadataRebuild(

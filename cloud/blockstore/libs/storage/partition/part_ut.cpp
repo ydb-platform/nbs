@@ -11227,6 +11227,49 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+// Commit ID overflow reports an impossible event, which aborts debug builds.
+#ifdef NDEBUG
+    Y_UNIT_TEST(ShouldRejectMetadataRebuildOnCommitIdOverflow)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.SendToPipe(
+            std::make_unique<
+                TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoRequest>());
+        auto channelsInfo = partition.RecvResponse<
+            TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse>();
+
+        bool rebuildStarted = false;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvRebuildMetadataRequest) {
+                    channelsInfo->SharedState->Init(
+                        event->GetRecipientRewrite(),
+                        channelsInfo->Generation,
+                        Max<ui32>(),
+                        runtime->GetCurrentTime(),
+                        runtime->GetCurrentMonotonicTime());
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvMetadataRebuildBlockCountRequest)
+                {
+                    rebuildStarted = true;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.SendRebuildMetadataRequest(NProto::BLOCK_COUNT, 10);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            partition.RecvRebuildMetadataResponse()->GetStatus());
+        UNIT_ASSERT(!rebuildStarted);
+    }
+#endif
+
     Y_UNIT_TEST(ShouldWaitForCommitsBeforeTakingMetadataRebuildSnapshot)
     {
         for (ui32 testCase = 0; testCase < 4; ++testCase) {

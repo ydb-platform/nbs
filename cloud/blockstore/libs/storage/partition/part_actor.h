@@ -755,7 +755,7 @@ private:
         NProto::ERebuildMetadataType type,
         ui32 rangesPerBatch);
 
-    void StartMetadataRebuildBlockCount(
+    NProto::TError StartMetadataRebuildBlockCount(
         const NActors::TActorContext& ctx,
         ui32 batchSize);
 
