@@ -66,6 +66,11 @@ public:
     // Concurrent ICB value updates are allowed.
     // Calls for the same set must not overlap each other or its first
     // Register().
+    //
+    // Resetting an override makes each TStorageConfig use its own raw fallback.
+    // Raw values of existing configuration objects remain unchanged.
+    // Readers retaining an older configuration may therefore return its old
+    // value even when ICB already shows the new default.
     void UpdateDefaults(const NProto::TStorageServiceConfig& config);
 
     // Return an explicit ICB override for a known read-write field. An empty
