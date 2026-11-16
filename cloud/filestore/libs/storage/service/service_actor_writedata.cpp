@@ -144,7 +144,6 @@ struct TWriteRequestContext
     const bool UseThreeStageWrite = false;
     const bool ExternalWriteDataPayloadEnabled = false;
     [[maybe_unused]] const bool EnableRdmaForWrites = false;
-    const bool ZeroBlockStatsEnabled = false;
 
     TWriteRequestContext(
         NProto::TWriteDataRequest writeRequest,
@@ -157,8 +156,7 @@ struct TWriteRequestContext
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useThreeStageWrite,
         bool externalWriteDataPayloadEnabled,
-        bool enableRdmaForWrites,
-        bool zeroBlockStatsEnabled)
+        bool enableRdmaForWrites)
         : WriteRequest(std::move(writeRequest))
         , Range(range)
         , RequestInfo(std::move(requestInfo))
@@ -170,7 +168,6 @@ struct TWriteRequestContext
         , UseThreeStageWrite(useThreeStageWrite)
         , ExternalWriteDataPayloadEnabled(externalWriteDataPayloadEnabled)
         , EnableRdmaForWrites(enableRdmaForWrites)
-        , ZeroBlockStatsEnabled(zeroBlockStatsEnabled)
     {}
 };
 
@@ -213,6 +210,8 @@ private:
         TVector<double> ApproximateFreeSpaceShares;
         TRope Rope;
 
+        TZeroBlockStats ZeroBlockStats;
+
         explicit TRequestState(TWriteRequestContext params)
             : RequestContext(std::move(params))
             , BlobRange(RequestContext.Range.AlignedSubRange())
@@ -221,14 +220,14 @@ private:
 
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
-    const TWriteDataZeroCounters ZeroCounters;
+    const std::optional<TWriteDataZeroCounters> ZeroCounters;
     std::optional<TRequestState> RequestState;
 
 public:
     TWriteDataActor(
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
-        TWriteDataZeroCounters zeroCounters)
+        std::optional<TWriteDataZeroCounters> zeroCounters)
         : ProfileLog(std::move(profileLog))
         , TraceSerializer(std::move(traceSerializer))
         , ZeroCounters(std::move(zeroCounters))
@@ -244,8 +243,10 @@ public:
     {
         auto& state = GetState();
 
-        if (state.RequestContext.ZeroBlockStatsEnabled) {
-            UpdateZeroCounters();
+        if (ZeroCounters) {
+            state.ZeroBlockStats = CalculateZeroBlockStats(
+                state.RequestContext.WriteRequest,
+                state.RequestContext.Range.BlockSize);
         }
 
         if (!state.RequestContext.UseThreeStageWrite) {
@@ -324,14 +325,12 @@ private:
 
     void UpdateZeroCounters()
     {
-        const auto& context = GetState().RequestContext;
-        const auto stats =
-            CalculateZeroBlockStats(context.WriteRequest, context.Range);
+        const auto& stats = GetState().ZeroBlockStats;
 
-        ZeroCounters.CheckedBytes->Add(context.Range.Length);
-        ZeroCounters.ZeroBlockBytes->Add(stats.ZeroBlockBytes);
+        ZeroCounters->CheckedBytes->Add(stats.Bytes);
+        ZeroCounters->ZeroBlockBytes->Add(stats.ZeroBlockBytes);
         if (stats.AllZeroes) {
-            ZeroCounters.ZeroRequestBytes->Add(context.Range.Length);
+            ZeroCounters->ZeroRequestBytes->Add(stats.Bytes);
         }
     }
 
@@ -1059,6 +1058,10 @@ private:
     {
         auto& state = GetState();
 
+        if (ZeroCounters) {
+            UpdateZeroCounters();
+        }
+
         FILESTORE_TRACK(
             ResponseSent_ServiceWorker,
             state.RequestContext.RequestInfo->CallContext,
@@ -1246,10 +1249,15 @@ void TStorageServiceActor::HandleWriteData(
 
     auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
+    std::optional<TWriteDataZeroCounters> zeroCounters;
+    if (filestore.GetFeatures().GetWriteDataZeroBlockStatsEnabled()) {
+        zeroCounters = WriteDataZeroCounters;
+    }
+
     auto actor = std::make_unique<TWriteDataActor>(
         ProfileLog,
         TraceSerializer,
-        WriteDataZeroCounters);
+        std::move(zeroCounters));
     actor->Initialize(TWriteRequestContext(
         std::move(msg->Record),
         range,
@@ -1261,8 +1269,7 @@ void TStorageServiceActor::HandleWriteData(
         session->MediaKind,
         threeStageWriteEnabled,
         filestore.GetFeatures().GetExternalWriteDataPayloadEnabled(),
-        filestore.GetFeatures().GetEnableRdmaForWrites(),
-        filestore.GetFeatures().GetWriteDataZeroBlockStatsEnabled()));
+        filestore.GetFeatures().GetEnableRdmaForWrites()));
     NCloud::Register(ctx, std::move(actor));
 }
 

@@ -22,9 +22,9 @@ TZeroBlockStats Calculate(ui64 offset, const TString& data)
     request.SetOffset(offset);
     request.SetBuffer(data);
 
-    return CalculateZeroBlockStats(
-        request,
-        TByteRange(offset, data.size(), BlockSize));
+    const auto stats = CalculateZeroBlockStats(request, BlockSize);
+    UNIT_ASSERT_VALUES_EQUAL(data.size(), stats.Bytes);
+    return stats;
 }
 
 TZeroBlockStats CalculateWithIovecs(
@@ -46,9 +46,9 @@ TZeroBlockStats CalculateWithIovecs(
     }
     UNIT_ASSERT_VALUES_EQUAL(data.size(), dataOffset);
 
-    return CalculateZeroBlockStats(
-        request,
-        TByteRange(offset, data.size(), BlockSize));
+    const auto stats = CalculateZeroBlockStats(request, BlockSize);
+    UNIT_ASSERT_VALUES_EQUAL(data.size(), stats.Bytes);
+    return stats;
 }
 
 TZeroBlockStats CalculateNaive(ui64 offset, const TString& data)
@@ -155,25 +155,11 @@ Y_UNIT_TEST_SUITE(TZeroBlockStatsTest)
         UNIT_ASSERT(!stats.AllZeroes);
     }
 
-    Y_UNIT_TEST(ShouldSkipBufferOffset)
-    {
-        NProto::TWriteDataRequest request;
-        request.SetOffset(4_KB);
-        request.SetBuffer(TString(100, 'x') + TString(8_KB, 0));
-        request.SetBufferOffset(100);
-
-        const auto stats = CalculateZeroBlockStats(
-            request,
-            TByteRange(4_KB, 8_KB, BlockSize));
-        UNIT_ASSERT_VALUES_EQUAL(8_KB, stats.ZeroBlockBytes);
-        UNIT_ASSERT(stats.AllZeroes);
-    }
-
     Y_UNIT_TEST(ShouldMatchNaiveImplementation)
     {
         TReallyFastRng32 rng(42);
 
-        for (ui32 iteration = 0; iteration < 1000; ++iteration) {
+        for (ui32 iteration = 0; iteration < 10000; ++iteration) {
             const ui64 offset = rng.Uniform(3 * BlockSize);
             TString data(rng.Uniform(10 * BlockSize), 0);
 

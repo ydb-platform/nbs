@@ -1,98 +1,59 @@
 #include "zero_block_stats.h"
 
-#include <util/generic/strbuf.h>
+#include <cloud/storage/core/libs/common/zeroes.h>
 
-#include <cstring>
+#include <util/generic/strbuf.h>
+#include <util/system/align.h>
 
 namespace NCloud::NFileStore::NStorage {
-
-namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-bool IsAllZeroes(TStringBuf data)
-{
-    return data.empty() ||
-           data[0] == 0 &&
-               memcmp(data.data(), data.data() + 1, data.size() - 1) == 0;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TZeroBlockScanner
-{
-private:
-    const TByteRange Range;
-
-    ui64 Offset;
-    bool BlockIsZero = true;
-    TZeroBlockStats Stats;
-
-public:
-    explicit TZeroBlockScanner(TByteRange range)
-        : Range(range)
-        , Offset(range.Offset)
-    {}
-
-    void Add(TStringBuf data)
-    {
-        data = data.Head(Range.End() - Offset);
-
-        while (data) {
-            const ui64 blockStart = Offset - Offset % Range.BlockSize;
-            const ui64 blockEnd = blockStart + Range.BlockSize;
-            const bool wholeBlock =
-                blockStart >= Range.Offset && blockEnd <= Range.End();
-
-            const auto part = data.Head(blockEnd - Offset);
-            const bool shouldCheck =
-                Stats.AllZeroes || wholeBlock && BlockIsZero;
-            if (shouldCheck && !IsAllZeroes(part)) {
-                Stats.AllZeroes = false;
-                BlockIsZero = false;
-            }
-
-            Offset += part.size();
-            data.Skip(part.size());
-
-            if (Offset == blockEnd) {
-                if (wholeBlock && BlockIsZero) {
-                    Stats.ZeroBlockBytes += Range.BlockSize;
-                }
-                BlockIsZero = true;
-            }
-        }
-    }
-
-    TZeroBlockStats Finish() const
-    {
-        return Stats;
-    }
-};
-
-}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TZeroBlockStats CalculateZeroBlockStats(
     const NProto::TWriteDataRequest& request,
-    TByteRange range)
+    ui32 blockSize)
 {
-    TZeroBlockScanner scanner(range);
+    TZeroBlockStats stats;
+
+    ui64 offset = request.GetOffset();
+    bool blockIsZero = true;
+
+    auto add = [&](TStringBuf data)
+    {
+        stats.Bytes += data.size();
+
+        while (data) {
+            const ui64 blockStart = AlignDown<ui64>(offset, blockSize);
+            const ui64 blockEnd = blockStart + blockSize;
+            const auto part = data.Head(blockEnd - offset);
+            if (!IsAllZeroes(part.data(), part.size())) {
+                stats.AllZeroes = false;
+                blockIsZero = false;
+            }
+
+            offset += part.size();
+            data.Skip(part.size());
+
+            if (offset == blockEnd) {
+                if (blockIsZero && blockStart >= request.GetOffset()) {
+                    stats.ZeroBlockBytes += blockSize;
+                }
+                blockIsZero = true;
+            }
+        }
+    };
 
     if (request.GetIovecs().empty()) {
-        TStringBuf buffer(request.GetBuffer());
-        buffer.Skip(request.GetBufferOffset());
-        scanner.Add(buffer);
+        add(request.GetBuffer());
     } else {
         for (const auto& iovec: request.GetIovecs()) {
-            scanner.Add(TStringBuf(
+            add(TStringBuf(
                 reinterpret_cast<const char*>(iovec.GetBase()),
                 iovec.GetLength()));
         }
     }
 
-    return scanner.Finish();
+    return stats;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

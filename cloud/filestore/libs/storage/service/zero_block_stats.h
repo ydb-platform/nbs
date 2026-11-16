@@ -4,14 +4,15 @@
 
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
-#include <cloud/storage/core/libs/common/byte_range.h>
-
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TZeroBlockStats
 {
+    // Payload size.
+    ui64 Bytes = 0;
+
     // Bytes in the blocks which are fully covered by the request and contain
     // only zeroes.
     ui64 ZeroBlockBytes = 0;
@@ -20,9 +21,8 @@ struct TZeroBlockStats
     bool AllZeroes = true;
 };
 
-// range is the byte range written by the request.
 TZeroBlockStats CalculateZeroBlockStats(
     const NProto::TWriteDataRequest& request,
-    TByteRange range);
+    ui32 blockSize);
 
 }   // namespace NCloud::NFileStore::NStorage

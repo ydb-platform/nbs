@@ -47,6 +47,7 @@ void CompleteRequestImpl(
 
 struct TWriteDataZeroCounters
 {
+    // All processed bytes (separate counter for correct counting)
     NMonitoring::TDynamicCounters::TCounterPtr CheckedBytes;
     NMonitoring::TDynamicCounters::TCounterPtr ZeroBlockBytes;
     NMonitoring::TDynamicCounters::TCounterPtr ZeroRequestBytes;

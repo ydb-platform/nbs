@@ -5170,9 +5170,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.AssertWriteDataFailed(headers, fs, nodeId, handle, 0, data);
     }
 
-    void TestWriteDataZeroStats(NProto::TStorageConfig config, bool enabled)
+    void TestWriteDataZeroStats(const NProto::TStorageConfig& config)
     {
-        config.SetWriteDataZeroBlockStatsEnabled(enabled);
+        const bool enabled = config.GetWriteDataZeroBlockStatsEnabled();
         TTestEnv env({}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
@@ -5253,27 +5253,48 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             TString(100_KB, 0));
         checkCounters(868_KB, 544_KB, 356_KB);
 
+        // failed requests are not counted
+        service.AssertWriteDataFailed(
+            headers,
+            fs,
+            nodeId,
+            handle + 100500,
+            0,
+            TString(256_KB, 0));
+        checkCounters(868_KB, 544_KB, 356_KB);
+
         auto readDataResult =
             service.ReadData(headers, fs, nodeId, handle, 512_KB, 256_KB);
         UNIT_ASSERT_VALUES_EQUAL(mixed, readDataResult->Record.GetBuffer());
+
+        const auto generateBlobIdsRequests = env.GetRuntime().GetCounter(
+            TEvIndexTablet::EvGenerateBlobIdsRequest);
+        if (config.GetThreeStageWriteEnabled()) {
+            UNIT_ASSERT(generateBlobIdsRequests > 0);
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL(0, generateBlobIdsRequests);
+        }
     }
 
     Y_UNIT_TEST(ShouldReportWriteDataZeroStats)
     {
-        TestWriteDataZeroStats({}, true);
+        NProto::TStorageConfig config;
+        config.SetWriteDataZeroBlockStatsEnabled(true);
+        TestWriteDataZeroStats(config);
     }
 
     Y_UNIT_TEST(ShouldReportWriteDataZeroStatsWithThreeStageWrite)
     {
         NProto::TStorageConfig config;
+        config.SetWriteDataZeroBlockStatsEnabled(true);
         config.SetThreeStageWriteEnabled(true);
         config.SetUnalignedThreeStageWriteEnabled(true);
-        TestWriteDataZeroStats(config, true);
+        TestWriteDataZeroStats(config);
     }
 
     Y_UNIT_TEST(ShouldNotReportWriteDataZeroStatsByDefault)
     {
-        TestWriteDataZeroStats({}, false);
+        TestWriteDataZeroStats({});
     }
 
     Y_UNIT_TEST(ShouldEnableWriteDataZeroStatsPerFileSystem)
@@ -5295,8 +5316,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 ExecuteChangeStorageConfig(std::move(newConfig), service);
             UNIT_ASSERT(response.GetStorageConfig()
                             .GetWriteDataZeroBlockStatsEnabled());
-            TDispatchOptions options;
-            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+            WaitForTabletStart(service);
         }
 
         auto checkedBytes = env.GetRuntime()
