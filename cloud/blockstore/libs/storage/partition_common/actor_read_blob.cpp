@@ -345,6 +345,9 @@ TResultOrError<TVector<ui32>> TReadBlobActor::CopyReadResultToSglist(
 {
     size_t sglistIndex = 0;
     TVector<ui32> blockChecksums;
+    if (ShouldCalculateChecksums) {
+        blockChecksums.reserve(blockOffsets.size());
+    }
 
     for (auto& response: responses) {
         STORAGE_VERIFY(
