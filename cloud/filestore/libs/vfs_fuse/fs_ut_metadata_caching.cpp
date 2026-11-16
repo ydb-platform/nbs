@@ -2,6 +2,7 @@
 #include "node_attrs_cache.h"
 #include "node_cache.h"
 #include "node_ref_cache.h"
+#include "ttl_cache.h"
 
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filesystem_event.h>
@@ -886,6 +887,56 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("NodeAttrsCacheSize"));
         UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("NodeRefCacheSize"));
         UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("XAttrCacheSize"));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+Y_UNIT_TEST_SUITE(TInvalidationsTest)
+{
+    Y_UNIT_TEST(ShouldKeepOneTombstonePerKey)
+    {
+        TInvalidations<ui64> invalidations(2 /* maxTombstoneCount */);
+
+        invalidations.Invalidate(1, 5 /* version */);
+        invalidations.Invalidate(2, 6 /* version */);
+        for (ui64 version = 7; version < 100; ++version) {
+            invalidations.Invalidate(1, version);
+        }
+
+        //
+        // The repeated invalidations of key 1 don't evict anything - the
+        // watermark is not raised.
+        //
+
+        UNIT_ASSERT(!invalidations.IsCacheable(1, 98 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(1, 99 /* version */));
+        UNIT_ASSERT(!invalidations.IsCacheable(2, 5 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(2, 6 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(3, 0 /* version */));
+    }
+
+    Y_UNIT_TEST(ShouldEvictLeastRecentlyInvalidatedKey)
+    {
+        TInvalidations<ui64> invalidations(2 /* maxTombstoneCount */);
+
+        invalidations.Invalidate(1, 5 /* version */);
+        invalidations.Invalidate(2, 6 /* version */);
+        invalidations.Invalidate(1, 7 /* version */);
+        UNIT_ASSERT(invalidations.IsCacheable(4, 0 /* version */));
+
+        //
+        // Key 2 is the least recently invalidated one - its version becomes
+        // the watermark.
+        //
+
+        invalidations.Invalidate(3, 8 /* version */);
+        UNIT_ASSERT(!invalidations.IsCacheable(4, 5 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(4, 6 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(2, 6 /* version */));
+        UNIT_ASSERT(!invalidations.IsCacheable(1, 6 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(1, 7 /* version */));
+        UNIT_ASSERT(!invalidations.IsCacheable(3, 7 /* version */));
     }
 }
 

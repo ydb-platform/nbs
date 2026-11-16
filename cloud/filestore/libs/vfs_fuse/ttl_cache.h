@@ -5,7 +5,6 @@
 #include <library/cpp/cache/cache.h>
 
 #include <util/datetime/base.h>
-#include <util/generic/deque.h>
 #include <util/generic/hash.h>
 #include <util/generic/maybe.h>
 #include <util/generic/utility.h>
@@ -20,9 +19,9 @@ namespace NCloud::NFileStore::NFuse {
  * Remembers the invalidations of the cached metadata so that the data fetched
  * by the requests started before an invalidation of the same key is not
  * cached. The invalidations are remembered as tombstones with the cache
- * version of the invalidation. The number of the tombstones is limited: upon
- * eviction of a tombstone its version raises the watermark below which
- * nothing is cached.
+ * version of the invalidation, one tombstone per key. The number of the
+ * tombstones is limited: the least recently invalidated key is evicted first
+ * and its version raises the watermark below which nothing is cached.
  *
  * Not thread-safe - the users protect it with their own locks.
  */
@@ -30,14 +29,8 @@ template <typename TKey>
 class TInvalidations
 {
 private:
-    struct TTombstone
-    {
-        TKey Key;
-        ui64 Version = 0;
-    };
-
-    THashMap<TKey, ui64> Tombstones;
-    TDeque<TTombstone> TombstoneQueue;
+    // Tombstone versions by key, the least recently invalidated key first.
+    TLRUCache<TKey, ui64> Tombstones;
     const ui32 MaxTombstoneCount;
     // Max version among the tombstones added since the last InvalidateAll.
     ui64 MaxTombstoneVersion = 0;
@@ -45,10 +38,12 @@ private:
 
 public:
     /**
-     * @param maxTombstoneCount - Max number of the remembered invalidations.
+     * @param maxTombstoneCount - Max number of the keys whose invalidations
+     *  are remembered.
      */
     explicit TInvalidations(ui32 maxTombstoneCount)
-        : MaxTombstoneCount(maxTombstoneCount)
+        : Tombstones(maxTombstoneCount + 1)
+        , MaxTombstoneCount(maxTombstoneCount)
     {}
 
     /**
@@ -64,8 +59,8 @@ public:
             return false;
         }
 
-        const ui64* tombstone = Tombstones.FindPtr(key);
-        return !tombstone || version >= *tombstone;
+        const auto it = Tombstones.FindWithoutPromote(key);
+        return it == Tombstones.End() || version >= it.Value();
     }
 
     /**
@@ -76,27 +71,32 @@ public:
      */
     void Invalidate(const TKey& key, ui64 version)
     {
-        ui64& tombstoneVersion = Tombstones[key];
-        tombstoneVersion = Max(tombstoneVersion, version);
         MaxTombstoneVersion = Max(MaxTombstoneVersion, version);
-        TombstoneQueue.push_back({.Key = key, .Version = version});
 
         //
-        // The oldest tombstones are evicted first. A key may be present in
-        // the queue several times - the map entry is erased only by its
-        // latest queue entry. The evicted versions raise the watermark so that
-        // the requests started before the evicted invalidations still don't
-        // cache anything.
+        // The tombstone of a key keeps the max version of its invalidations,
+        // the invalidated key becomes the most recently invalidated one.
         //
 
-        while (TombstoneQueue.size() > MaxTombstoneCount) {
-            const auto& oldest = TombstoneQueue.front();
-            Watermark = Max(Watermark, oldest.Version);
-            auto it = Tombstones.find(oldest.Key);
-            if (it != Tombstones.end() && it->second == oldest.Version) {
-                Tombstones.erase(it);
-            }
-            TombstoneQueue.pop_front();
+        auto it = Tombstones.Find(key);
+        if (it != Tombstones.End()) {
+            *it = Max(*it, version);
+        } else {
+            Tombstones.Insert(key, version);
+        }
+
+        //
+        // The capacity of Tombstones is one more than MaxTombstoneCount, so
+        // the overflow is handled here: the least recently invalidated key is
+        // evicted and its version raises the watermark so that the requests
+        // started before the evicted invalidation still don't cache
+        // anything.
+        //
+
+        if (Tombstones.Size() > MaxTombstoneCount) {
+            auto oldest = Tombstones.FindOldest();
+            Watermark = Max(Watermark, oldest.Value());
+            Tombstones.Erase(oldest);
         }
     }
 
@@ -116,8 +116,7 @@ public:
 
         Watermark = Max(Watermark, version, MaxTombstoneVersion);
 
-        Tombstones.clear();
-        TombstoneQueue.clear();
+        Tombstones.Clear();
         MaxTombstoneVersion = 0;
     }
 };
