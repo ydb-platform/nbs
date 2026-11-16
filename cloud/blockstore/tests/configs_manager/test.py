@@ -183,10 +183,30 @@ def start_dynamic_config_ydb():
     )
 
 
+# Send an ICB request, retrying HTTP failures for up to 100 seconds.
+def request_icb(nbs, method, **kwargs):
+    url = f"http://localhost:{nbs.mon_port}/actors/icb"
+
+    def send_request():
+        try:
+            response = requests.request(method, url, timeout=10, **kwargs)
+            response.raise_for_status()
+            return response
+        except requests.exceptions.RequestException as error:
+            logging.warning("ICB %s request to %s failed: %s", method, url, error)
+            return None
+
+    return yatest_common.wait_for(
+        send_request,
+        timeout=100,
+        sleep_time=1,
+        fail_message=f"ICB {method} request did not complete: {url}",
+    )
+
+
 # Read the current value and default from one row of the native ICB page.
 def get_icb_values(nbs, name):
-    page = requests.get(f"http://localhost:{nbs.mon_port}/actors/icb", timeout=10)
-    page.raise_for_status()
+    page = request_icb(nbs, "GET")
     row = re.search(
         rf"<tr>\s*<td>BlockStore_{re.escape(name)}</td>(.*?)</tr>",
         page.text,
@@ -202,12 +222,10 @@ def get_icb_values(nbs, name):
 
 # Apply an operator override through the native ICB HTTP handler.
 def set_icb_value(nbs, name, value):
-    response = requests.post(
-        f"http://localhost:{nbs.mon_port}/actors/icb",
+    request_icb(
+        nbs, "POST",
         data={f"BlockStore_{name}": value},
-        timeout=10,
     )
-    response.raise_for_status()
 
 
 # Verify that both bootstraps initialize Local/Null without a YDB snapshot.
