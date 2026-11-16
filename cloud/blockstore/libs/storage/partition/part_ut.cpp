@@ -943,6 +943,7 @@ bool EventHandler(
 
             r.Id = blobId;
             r.Status = NKikimrProto::OK;
+            r.Shift = q.Shift;
 
             UNIT_ASSERT(q.Size % blockSize == 0);
             UNIT_ASSERT(q.Shift % blockSize == 0);
