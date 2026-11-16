@@ -162,6 +162,7 @@ class Workload:
     workflow_status: str = ""
     execution_status: str = ""
     cleanup_only_failure: bool = False
+    run_attempt: int = 1
 
     @property
     def workflow_state(self) -> str:
@@ -284,11 +285,14 @@ class Plaque:
     build_preset: str
     workloads: list[Workload] = dataclasses.field(default_factory=list)
 
-    def workload(self, component: str) -> Workload:
-        for workload in self.workloads:
+    def workload(self, component: str, run_attempt: int | None = None) -> Workload:
+        for index, workload in enumerate(self.workloads):
             if workload.component == component:
+                if run_attempt is not None and run_attempt > workload.run_attempt:
+                    workload = Workload(component, run_attempt=run_attempt)
+                    self.workloads[index] = workload
                 return workload
-        workload = Workload(component)
+        workload = Workload(component, run_attempt=run_attempt or 1)
         self.workloads.append(workload)
         return workload
 

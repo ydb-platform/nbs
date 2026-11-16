@@ -42,6 +42,7 @@ class PullRequest:
 def pr(monkeypatch):
     monkeypatch.setattr(gs, "WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS", 0)
     monkeypatch.setenv("BUILD_FAILED_COUNT", "0")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
     pr = PullRequest()
     gs.initialize_pr_comment(
         12, pr, PRESET, False, "in_progress", ["filestore", "blockstore"]
@@ -269,7 +270,11 @@ def test_rerun_clears_only_its_previous_attempt(pr):
     )
 
 
-def test_duplicate_start_and_initialization_preserve_results(pr):
+@pytest.mark.parametrize("run_attempt", [1, 2])
+def test_duplicate_start_and_initialization_preserve_results(
+    pr, monkeypatch, run_attempt
+):
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", str(run_attempt))
     comment = pr.comments[0]
     comment.body = gs.update_workload_check_block(
         comment.body, "filestore", "running", "https://job/1"
@@ -284,11 +289,72 @@ def test_duplicate_start_and_initialization_preserve_results(pr):
     plaque = Plaque.from_comment(comment.body)
     assert len(plaque.workload("filestore").reports) == 1
     assert plaque.workload("filestore").job_url == "https://job/1"
+    assert plaque.workload("filestore").run_attempt == run_attempt
     assert [row.component for row in plaque.workloads] == [
         "filestore",
         "blockstore",
         "tasks_storage",
     ]
+
+
+@pytest.mark.parametrize("execution", ["failure", "skipped"])
+def test_rerun_failure_before_worker_start_cannot_reuse_passing_results(
+    pr, monkeypatch, execution
+):
+    for component in ["filestore", "blockstore"]:
+        gs.update_pr_comment_workload_check(
+            12,
+            pr,
+            PRESET,
+            component,
+            False,
+            "built",
+            job_url=f"https://jobs/old/{component}",
+            build_duration_seconds=125,
+        )
+        publish(pr, component=component)
+        gs.update_pr_comment_workload_check(
+            12, pr, PRESET, component, False, "completed"
+        )
+    pr.comments[0].body = gs.complete_workload_checks_block(
+        pr.comments[0].body,
+        workflow_outcome_resolver=lambda *_: WorkflowOutcome(  # noqa: U101
+            "success", "success"
+        ),
+    )
+
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+    gs.initialize_pr_comment(
+        12, pr, PRESET, False, "in_progress", ["filestore", "blockstore"]
+    )
+    plaque = Plaque.from_comment(pr.comments[0].body)
+    for row in plaque.workloads:
+        assert row.run_attempt == 2
+        assert row.status == "pending"
+        assert row.reports == []
+        assert (
+            row.job_url
+            == row.build
+            == row.workflow_status
+            == row.execution_status
+            == ""
+        )
+        assert row.build_duration_seconds is None
+
+    def resolve(job_url, component):
+        assert job_url == ""
+        assert component in ("filestore", "blockstore")
+        return WorkflowOutcome(execution, "failure")
+
+    # Provisioning or checkout fails before the worker can post "running".
+    body = gs.complete_workload_checks_block(
+        pr.comments[0].body, workflow_outcome_resolver=resolve
+    )
+    plaque = Plaque.from_comment(body)
+    assert "https://jobs/old/" not in body
+    for row in parsed_table(plaque).findall("tbody/tr"):
+        assert row[0].find("span").text == "🔴"
+        assert row[1].find("a") is None
 
 
 @pytest.mark.parametrize(

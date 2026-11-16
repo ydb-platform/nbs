@@ -849,6 +849,10 @@ def ensure_workload_status_block(
     return replace_workload_status_block(body, build_preset, workload_status)
 
 
+def get_workflow_run_attempt() -> int:
+    return int(os.environ.get("GITHUB_RUN_ATTEMPT", "1"))
+
+
 def replace_workload_checks_block(
     body: str,
     build_preset: str,
@@ -856,9 +860,11 @@ def replace_workload_checks_block(
 ) -> str:
     plaque = Plaque.from_comment(body)
     if plaque is not None:
-        # Initialization may be retried after some workers have already started.
+        # Reset previous runs before provisioning, while preserving updates from
+        # workers that have already started in this GitHub run attempt.
+        run_attempt = get_workflow_run_attempt()
         for component in components:
-            plaque.workload(component)
+            plaque.workload(component, run_attempt)
         return plaque.replace(body)
 
     checks_block = "\n".join(get_workload_checks_text(build_preset, components))
@@ -983,7 +989,7 @@ def update_workload_check_block(
 ) -> str:
     plaque = Plaque.from_comment(body)
     if plaque is not None:
-        plaque.workload(component).update(
+        plaque.workload(component, get_workflow_run_attempt()).update(
             status, job_url, build_error_log_url, build_duration_seconds
         )
         return plaque.replace(body)
@@ -1196,7 +1202,7 @@ def get_base_comment_body(
     body.append("")
     plaque = Plaque(build_preset)
     for component in workload_components or []:
-        plaque.workload(component)
+        plaque.workload(component, get_workflow_run_attempt())
     body.append(plaque.render())
     return body
 
@@ -1255,7 +1261,7 @@ def update_pr_comment(
         def update_plaque(body: str) -> str:
             plaque = Plaque.from_comment(body)
             assert plaque is not None
-            row = plaque.workload(component)
+            row = plaque.workload(component, get_workflow_run_attempt())
             for report in reports:
                 row.add_report(report)
             if workload_status == "completed" and is_stale_workload_check_status(
