@@ -63,8 +63,8 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    // Assign a new delivery version without ordering independent source
-    // versions.
+    // Replace the effective configuration and increment the delivery version.
+    // Ignore the version in the supplied configuration.
     NProto::TError SetEffectiveConfig(NProto::TVolumeThrottlingConfig config);
 
     NProto::TError UpdateConfig(NProto::TVolumeThrottlingConfig newConfig);
@@ -140,8 +140,7 @@ NProto::TError TVolumeThrottlingManagerActor::SetEffectiveConfig(
             "Volume Throttling delivery version exhausted");
     }
 
-    config.SetVersion(
-        Max(ThrottlingConfig.GetVersion() + 1, config.GetVersion()));
+    config.SetVersion(ThrottlingConfig.GetVersion() + 1);
     ThrottlingConfig = std::move(config);
 
     return {};
@@ -167,12 +166,11 @@ NProto::TError TVolumeThrottlingManagerActor::UpdateConfig(
 
     // Release the complete manual override when its replacement has no
     // rules.
-    const auto version = newConfig.GetVersion();
+    const auto manualVersion = newConfig.GetVersion();
     const bool manualOverride = newConfig.RulesSize() != 0;
 
     if (!manualOverride) {
         newConfig = MakeVolumeThrottlingConfig(*BaseConfig);
-        newConfig.SetVersion(version);
     }
 
     error = SetEffectiveConfig(std::move(newConfig));
@@ -180,7 +178,7 @@ NProto::TError TVolumeThrottlingManagerActor::UpdateConfig(
         return error;
     }
 
-    LastManualVersion = version;
+    LastManualVersion = manualVersion;
     ManualOverride = manualOverride;
 
     return {};
