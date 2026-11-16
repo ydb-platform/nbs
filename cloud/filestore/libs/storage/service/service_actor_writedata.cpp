@@ -2,6 +2,7 @@
 
 #include "rope_utils.h"
 #include "verify.h"
+#include "zero_block_stats.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
@@ -143,6 +144,7 @@ struct TWriteRequestContext
     const bool UseThreeStageWrite = false;
     const bool ExternalWriteDataPayloadEnabled = false;
     [[maybe_unused]] const bool EnableRdmaForWrites = false;
+    const bool ZeroBlockStatsEnabled = false;
 
     TWriteRequestContext(
         NProto::TWriteDataRequest writeRequest,
@@ -155,7 +157,8 @@ struct TWriteRequestContext
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useThreeStageWrite,
         bool externalWriteDataPayloadEnabled,
-        bool enableRdmaForWrites)
+        bool enableRdmaForWrites,
+        bool zeroBlockStatsEnabled)
         : WriteRequest(std::move(writeRequest))
         , Range(range)
         , RequestInfo(std::move(requestInfo))
@@ -167,6 +170,7 @@ struct TWriteRequestContext
         , UseThreeStageWrite(useThreeStageWrite)
         , ExternalWriteDataPayloadEnabled(externalWriteDataPayloadEnabled)
         , EnableRdmaForWrites(enableRdmaForWrites)
+        , ZeroBlockStatsEnabled(zeroBlockStatsEnabled)
     {}
 };
 
@@ -217,14 +221,17 @@ private:
 
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
+    const TWriteDataZeroCounters ZeroCounters;
     std::optional<TRequestState> RequestState;
 
 public:
     TWriteDataActor(
         IProfileLogPtr profileLog,
-        ITraceSerializerPtr traceSerializer)
+        ITraceSerializerPtr traceSerializer,
+        TWriteDataZeroCounters zeroCounters)
         : ProfileLog(std::move(profileLog))
         , TraceSerializer(std::move(traceSerializer))
+        , ZeroCounters(std::move(zeroCounters))
     {}
 
     void Initialize(TWriteRequestContext params)
@@ -236,6 +243,10 @@ public:
     void Bootstrap(const TActorContext& ctx)
     {
         auto& state = GetState();
+
+        if (state.RequestContext.ZeroBlockStatsEnabled) {
+            UpdateZeroCounters();
+        }
 
         if (!state.RequestContext.UseThreeStageWrite) {
             LOG_DEBUG(
@@ -309,6 +320,19 @@ private:
     {
         Y_ABORT_UNLESS(RequestState);
         return *RequestState;
+    }
+
+    void UpdateZeroCounters()
+    {
+        const auto& context = GetState().RequestContext;
+        const auto stats =
+            CalculateZeroBlockStats(context.WriteRequest, context.Range);
+
+        ZeroCounters.CheckedBytes->Add(context.Range.Length);
+        ZeroCounters.ZeroBlockBytes->Add(stats.ZeroBlockBytes);
+        if (stats.AllZeroes) {
+            ZeroCounters.ZeroRequestBytes->Add(context.Range.Length);
+        }
     }
 
     STFUNC(StateWork)
@@ -1222,7 +1246,10 @@ void TStorageServiceActor::HandleWriteData(
 
     auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
-    auto actor = std::make_unique<TWriteDataActor>(ProfileLog, TraceSerializer);
+    auto actor = std::make_unique<TWriteDataActor>(
+        ProfileLog,
+        TraceSerializer,
+        WriteDataZeroCounters);
     actor->Initialize(TWriteRequestContext(
         std::move(msg->Record),
         range,
@@ -1234,7 +1261,8 @@ void TStorageServiceActor::HandleWriteData(
         session->MediaKind,
         threeStageWriteEnabled,
         filestore.GetFeatures().GetExternalWriteDataPayloadEnabled(),
-        filestore.GetFeatures().GetEnableRdmaForWrites()));
+        filestore.GetFeatures().GetEnableRdmaForWrites(),
+        filestore.GetFeatures().GetWriteDataZeroBlockStatsEnabled()));
     NCloud::Register(ctx, std::move(actor));
 }
 

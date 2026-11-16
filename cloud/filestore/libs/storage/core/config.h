@@ -227,6 +227,7 @@ public:
     bool GetThreeStageWriteEnabled() const;
     ui32 GetThreeStageWriteThreshold() const;
     bool GetUnalignedThreeStageWriteEnabled() const;
+    bool GetWriteDataZeroBlockStatsEnabled() const;
     TDuration GetEntryTimeout() const;
     TDuration GetRegularFileEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;

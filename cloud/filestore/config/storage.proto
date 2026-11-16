@@ -1013,4 +1013,11 @@ message TStorageConfig
     // default.
     optional uint32 NodeRefCacheLimit = 563;
     optional uint32 NodeAttrsCacheLimit = 564;
+
+    // Makes filestore-vhost check the WriteData payloads of the filesystem
+    // for zeroes and report WriteDataZeroCheckedBytes, WriteDataZeroBlockBytes
+    // (bytes in the blocks which are fully covered by a request and contain
+    // only zeroes) and WriteDataZeroRequestBytes (bytes of the requests which
+    // contain only zeroes).
+    optional bool WriteDataZeroBlockStatsEnabled = 565;
 }
