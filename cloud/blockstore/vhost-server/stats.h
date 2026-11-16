@@ -8,11 +8,11 @@
 #include <cloud/blockstore/libs/common/latency_sli.h>
 
 #include <util/datetime/base.h>
+#include <util/datetime/cputimer.h>
 #include <util/system/types.h>
 
 #include <array>
 #include <atomic>
-#include <limits>
 #include <optional>
 
 class IOutputStream;
@@ -120,11 +120,11 @@ struct TStats
     std::array<TTimeHistogram<T>, 2> Times = {};
     std::array<TSizeHistogram<T>, 2> Sizes = {};
 
-    void RecordFinalOutcome(
+    void RecordLatency(
         bool write,
         ui64 bytes,
+        ui64 elapsedCycles,
         bool failed,
-        ui64 elapsedUs,
         const TLatencySliConfig* latencySli) noexcept
     {
         auto& stats = Requests[write];
@@ -132,10 +132,13 @@ struct TStats
         if (!latencySli || !latencySli->Enabled) {
             return;
         }
-        const auto result =
-            !failed && elapsedUs == std::numeric_limits<ui64>::max()
-                ? ELatencySliResult::Unknown
-                : latencySli->Classify(write, bytes, elapsedUs, failed);
+        // Measure the original backend request, including its parts and
+        // decryption, using the same interval as the legacy timing histogram.
+        const auto result = latencySli->Classify(
+            write,
+            bytes,
+            failed ? 0 : CyclesToDurationSafe(elapsedCycles).MicroSeconds(),
+            failed);
         auto& counter = result == ELatencySliResult::Good ? stats.LatencyGood
                       : result == ELatencySliResult::Bad ? stats.LatencyBad
                                                         : stats.LatencyUnknown;
@@ -152,9 +155,9 @@ struct TStats
         , Completed{rhs.Completed}
         , CompFailed{rhs.CompFailed}
         , EncryptorErrors{rhs.EncryptorErrors}
-        , Requests{TRequestStats<T>(rhs.Requests[0]), TRequestStats<T>(rhs.Requests[1])}
-        , Times{TTimeHistogram<T>(rhs.Times[0]), TTimeHistogram<T>(rhs.Times[1])}
-        , Sizes{TSizeHistogram<T>(rhs.Sizes[0]), TSizeHistogram<T>(rhs.Sizes[1])}
+        , Requests{rhs.Requests[0], rhs.Requests[1]}
+        , Times{rhs.Times[0], rhs.Times[1]}
+        , Sizes{rhs.Sizes[0], rhs.Sizes[1]}
     {}
 
     template <typename U>
@@ -166,11 +169,9 @@ struct TStats
         Completed = rhs.Completed;
         CompFailed = rhs.CompFailed;
         EncryptorErrors = rhs.EncryptorErrors;
-        for (size_t i = 0; i != Requests.size(); ++i) {
-            Requests[i].template operator=<U>(rhs.Requests[i]);
-            Times[i].template operator=<U>(rhs.Times[i]);
-            Sizes[i].template operator=<U>(rhs.Sizes[i]);
-        }
+        Requests = rhs.Requests;
+        Times = rhs.Times;
+        Sizes = rhs.Sizes;
 
         return *this;
     }
@@ -217,6 +218,8 @@ struct ICompletionStats
     virtual ~ICompletionStats() = default;
 
     virtual std::optional<TSimpleStats> Get(TDuration timeout) = 0;
+
+    virtual void Sync(const TSimpleStats& stats) = 0;
 
     virtual void Sync(const TAtomicStats& stats) = 0;
 };

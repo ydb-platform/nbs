@@ -455,7 +455,7 @@ TString MakeRandomPattern(size_t size) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TEST(TFinalLatencySliTest, ShouldAccountOriginalCompoundAndRejectedRequests)
+TEST(TBackendLatencySliTest, ShouldAccountOriginalRequestsAtBackendBoundary)
 {
     enum ECase
     {
@@ -465,8 +465,19 @@ TEST(TFinalLatencySliTest, ShouldAccountOriginalCompoundAndRejectedRequests)
         DecryptFailure
     };
 
-    for (auto scenario: {Success, ReadOnly, EncryptFailure, DecryptFailure}) {
-        SCOPED_TRACE(static_cast<int>(scenario));
+    for (auto [scenario, requestBytes]: {
+             std::pair{Success, 4_KB},
+             {ReadOnly, 4_KB},
+             {EncryptFailure, 4_KB},
+             {DecryptFailure, 4_KB},
+             {Success, 80_KB},
+             {ReadOnly, 80_KB},
+             {EncryptFailure, 80_KB},
+             {DecryptFailure, 80_KB}})
+    {
+        SCOPED_TRACE(
+            TStringBuilder() << "scenario: " << static_cast<int>(scenario)
+                             << ", bytes: " << requestBytes);
         const bool write = scenario != DecryptFailure;
         auto logging = CreateLoggingService("console");
         TOptions options;
@@ -478,10 +489,11 @@ TEST(TFinalLatencySliTest, ShouldAccountOriginalCompoundAndRejectedRequests)
         options.NoSync = true;
         options.NoChmod = true;
         options.ReadOnly = scenario == ReadOnly;
-        // Match only the 80 KiB parent, excluding its 8/64/8 KiB parts.
+        // Match the original request, excluding the compound 8/64/8 KiB parts.
         options.LatencySli = std::make_shared<const TLatencySliConfig>(
             TLatencySliConfig::TryParse(
-                "1;0:81920:81921:1000000000000;1:81920:81921:1000000000000")
+                "1;0:4096:4097:1000000000000;0:81920:81921:1000000000000;"
+                "1:4096:4097:1000000000000;1:81920:81921:1000000000000")
                 .value());
         std::array<TTempFileHandle, 3> files;
         for (auto& file: files) {
@@ -515,7 +527,7 @@ TEST(TFinalLatencySliTest, ShouldAccountOriginalCompoundAndRejectedRequests)
                 {.type = static_cast<ui32>(
                      write ? VIRTIO_BLK_T_OUT : VIRTIO_BLK_T_IN),
                  .sector = (64_KB - 8_KB) / VHD_SECTOR_SIZE});
-        auto data = memory.Allocate(80_KB, 4096);
+        auto data = memory.Allocate(requestBytes, 4096);
         auto status = memory.Allocate(1);
         std::fill(data.begin(), data.end(), 'w');
         auto result = write ? client.WriteAsync(0, {header, data}, {status})
@@ -530,9 +542,13 @@ TEST(TFinalLatencySliTest, ShouldAccountOriginalCompoundAndRejectedRequests)
         const auto snapshot = server->GetStats({});
         const auto& stats = snapshot.SimpleStats.Requests[write];
         EXPECT_EQ(scenario == Success ? 1u : 0u, stats.FinalCount);
-        EXPECT_EQ(scenario == Success ? 0u : 1u, stats.FinalErrors);
+        // Read-only writes are rejected inside unmodified libvhost, before
+        // the backend can observe them.
+        const bool backendFailure =
+            scenario == EncryptFailure || scenario == DecryptFailure;
+        EXPECT_EQ(backendFailure ? 1u : 0u, stats.FinalErrors);
         EXPECT_EQ(scenario == Success ? 1u : 0u, stats.LatencyGood);
-        EXPECT_EQ(scenario == Success ? 0u : 1u, stats.LatencyBad);
+        EXPECT_EQ(backendFailure ? 1u : 0u, stats.LatencyBad);
         EXPECT_EQ(0u, stats.LatencyUnknown);
     }
 }

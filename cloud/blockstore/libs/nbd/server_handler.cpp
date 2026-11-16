@@ -85,10 +85,13 @@ public:
     {
         try {
             out.Write(
-                response.HeaderBuffer.Data(), response.HeaderBuffer.Size());
+                response.HeaderBuffer.Data(),
+                response.HeaderBuffer.Size());
 
             if (response.DataBuffer) {
-                out.Write(response.DataBuffer.get(), response.RequestBytes);
+                out.Write(
+                    response.DataBuffer.get(),
+                    response.RequestBytes);
             }
         } catch (...) {
             CancelResponse(response);
@@ -568,8 +571,9 @@ void TServerHandler::ProcessRequests(
             }
 
             case NBD_CMD_WRITE: {
-                auto requestCtx =
-                    RegisterRequest(request, EBlockStoreRequest::WriteBlocks);
+                auto requestCtx = RegisterRequest(
+                    request,
+                    EBlockStoreRequest::WriteBlocks);
                 if (Options.CheckpointId) {
                     UnregisterRequest(
                         requestCtx,

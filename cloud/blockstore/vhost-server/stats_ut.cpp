@@ -51,7 +51,7 @@ Y_UNIT_TEST_SUITE(TStatsTest)
                         producer.Times[write].Increment(elapsed);
                         producer.Sizes[write].Increment(bytes);
                     }
-                    producer.RecordFinalOutcome(write, bytes, failed, 500, &config);
+                    producer.RecordLatency(write, bytes, elapsed, failed, &config);
                 }
                 --running;
             });
@@ -61,7 +61,8 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         TSimpleStats previous;
         start = true;
         do {
-            const auto snapshot = TSimpleStats(producer);
+            TSimpleStats snapshot;
+            snapshot += producer;
             monotonic &= snapshot.Completed >= previous.Completed;
             for (size_t write = 0; write < 2; ++write) {
                 const auto& current = snapshot.Requests[write];
@@ -77,7 +78,8 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         }
 
         UNIT_ASSERT(monotonic);
-        const auto snapshot = TSimpleStats(producer);
+        TSimpleStats snapshot;
+        snapshot += producer;
         UNIT_ASSERT_VALUES_EQUAL(workerCount * iterations, snapshot.Completed);
         constexpr ui64 perOutcome = workerCount / 2 * iterations / 3;
         for (size_t write = 0; write < 2; ++write) {
@@ -124,10 +126,18 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         using namespace NCloud::NBlockStore;
         auto config = TLatencySliConfig::TryParse("1;0:1:8193:1000").value();
         TAtomicStats producer;
-        producer.RecordFinalOutcome(false, 4096, false, 500, &config);
-        producer.RecordFinalOutcome(false, 4096, false, 1500, &config);
-        producer.RecordFinalOutcome(false, 4096, true, 500, &config);
-        producer.RecordFinalOutcome(true, 4096, false, 0, &config);
+        producer.RecordLatency(
+            false, 4096, DurationToCyclesSafe(TDuration::MicroSeconds(500)),
+            false, &config);
+        producer.RecordLatency(
+            false, 4096, DurationToCyclesSafe(TDuration::MicroSeconds(1500)),
+            false, &config);
+        producer.RecordLatency(
+            false, 4096, DurationToCyclesSafe(TDuration::MicroSeconds(500)),
+            true, &config);
+        producer.RecordLatency(
+            true, 4096, DurationToCyclesSafe(TDuration::MicroSeconds(0)),
+            false, &config);
         TSimpleStats previous;
         TCompleteStats complete;
         complete.SimpleStats += producer;

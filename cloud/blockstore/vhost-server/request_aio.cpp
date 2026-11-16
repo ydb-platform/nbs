@@ -24,7 +24,10 @@ bool IsBrokenDevice(const TAioDevice& device)
     return !device.File.IsOpen();
 }
 
-void DiscardRequest(vhd_io* io, TSimpleStats& queueStats)
+void DiscardRequest(
+    vhd_io* io,
+    TSimpleStats& queueStats,
+    const TLatencySliConfig* latencySli)
 {
     ++queueStats.SubFailed;
     auto* bio = vhd_get_bdev_io(io);
@@ -34,6 +37,8 @@ void DiscardRequest(vhd_io* io, TSimpleStats& queueStats)
     requestStat.Errors += 1;
     requestStat.Bytes += bytes;
 
+    queueStats.RecordLatency(
+        bio->type == VHD_BDEV_WRITE, bytes, 0, true, latencySli);
     vhd_complete_bio(io, VHD_BDEV_IOERR);
 }
 
@@ -104,7 +109,8 @@ void PrepareCompoundIO(
     vhd_io* io,
     TVector<iocb*>& batch,
     TCpuCycles now,
-    TSimpleStats& queueStats)
+    TSimpleStats& queueStats,
+    const TLatencySliConfig* latencySli)
 {
     auto* bio = vhd_get_bdev_io(io);
     const ui64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
@@ -130,7 +136,7 @@ void PrepareCompoundIO(
     Y_DEBUG_ABORT_UNLESS(deviceCount > 1);
 
     if (std::any_of(it, end, IsBrokenDevice)) {
-        DiscardRequest(io, queueStats);
+        DiscardRequest(io, queueStats, latencySli);
         return;
     }
 
@@ -161,6 +167,7 @@ void PrepareCompoundIO(
             bio->first_sector);
         if (!success) {
             ++queueStats.EncryptorErrors;
+            queueStats.RecordLatency(true, totalBytes, 0, true, latencySli);
             vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
             return;
         }
@@ -309,7 +316,8 @@ void PrepareIO(
     vhd_io* io,
     TVector<iocb*>& batch,
     TCpuCycles now,
-    TSimpleStats& queueStats)
+    TSimpleStats& queueStats,
+    const TLatencySliConfig* latencySli)
 {
     auto* bio = vhd_get_bdev_io(io);
     const ui64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
@@ -328,7 +336,8 @@ void PrepareIO(
 
     if (device.EndOffset < logicalOffset + totalBytes) {
         // The request is cross-device, so we split it into two.
-        PrepareCompoundIO(encryptor, Log, devices, io, batch, now, queueStats);
+        PrepareCompoundIO(
+            encryptor, Log, devices, io, batch, now, queueStats, latencySli);
         return;
     }
 
@@ -344,7 +353,7 @@ void PrepareIO(
         !device.File.IsOpen());
 
     if (IsBrokenDevice(device)) {
-        DiscardRequest(io, queueStats);
+        DiscardRequest(io, queueStats, latencySli);
         return;
     }
 
@@ -387,6 +396,7 @@ void PrepareIO(
                 bio->first_sector);
             if (!success) {
                 ++queueStats.EncryptorErrors;
+                queueStats.RecordLatency(true, totalBytes, 0, true, latencySli);
                 vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
                 return;
             }
@@ -429,7 +439,8 @@ void CompleteCompoundRequestImpl(
     TAioSubRequestHolder sub,
     vhd_bdev_io_result status,
     TAtomicStats& stats,
-    TCompleteBioFn completeBio)
+    TCompleteBioFn completeBio,
+    const TLatencySliConfig* latencySli)
 {
     auto* req = sub->GetParentRequest();
 
@@ -469,11 +480,16 @@ void CompleteCompoundRequestImpl(
             }
         }
 
+        const TCpuCycles now = GetCycleCount();
+
         if (status == VHD_BDEV_SUCCESS) {
-            stats.Times[bio->type].Increment(GetCycleCount() - req->SubmitTs);
+            stats.Times[bio->type].Increment(now - req->SubmitTs);
             stats.Sizes[bio->type].Increment(bytes);
         }
 
+        stats.RecordLatency(
+            bio->type == VHD_BDEV_WRITE, bytes, now - req->SubmitTs,
+            status != VHD_BDEV_SUCCESS, latencySli);
         completeBio(req->Io, status);
     }
 }

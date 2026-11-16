@@ -135,6 +135,7 @@ private:
     NProto::TVolume Volume;
     TString ClientId;
     TAtomicStats CompletionStatsData;
+    TLatencySliConfigPtr LatencySli;
     bool ReadOnly = false;
     ui32 BlockSize = 0;
     ui32 SectorsToBlockShift = 0;
@@ -185,6 +186,7 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
     Timer = CreateWallClockTimer();
 
     ClientId = options.ClientId;
+    LatencySli = options.LatencySli;
     ReadOnly = options.ReadOnly;
 
     BlockSize = options.BlockSize;
@@ -354,7 +356,9 @@ void TRdmaBackend::ProcessQueue(
 std::optional<TSimpleStats> TRdmaBackend::GetCompletionStats(TDuration timeout)
 {
     Y_UNUSED(timeout);
-    return TSimpleStats(CompletionStatsData);
+    TSimpleStats stats;
+    stats += CompletionStatsData;
+    return stats;
 }
 
 TSgList ConvertVhdSgList(const vhd_sglist& vhdSglist)
@@ -459,17 +463,23 @@ void TRdmaBackend::CompleteRequest(
 
     ++CompletionStatsData.Completed;
 
+    const auto elapsed = isError ? 0 : GetCycleCount() - startCycles;
     if (!isError) {
         const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
         CompletionStatsData.Requests[bio->type].Count += 1;
         CompletionStatsData.Requests[bio->type].Bytes += bytes;
         CompletionStatsData.Sizes[bio->type].Increment(bytes);
-        CompletionStatsData.Times[bio->type].Increment(
-            GetCycleCount() - startCycles);
+        CompletionStatsData.Times[bio->type].Increment(elapsed);
     } else {
         CompletionStatsData.Requests[bio->type].Errors += 1;
     }
 
+    CompletionStatsData.RecordLatency(
+        bio->type == VHD_BDEV_WRITE,
+        bio->total_sectors * VHD_SECTOR_SIZE,
+        elapsed,
+        isError,
+        LatencySli.get());
     vhd_complete_bio(io, isError ? VHD_BDEV_IOERR : VHD_BDEV_SUCCESS);
 }
 

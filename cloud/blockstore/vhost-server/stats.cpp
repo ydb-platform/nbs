@@ -45,6 +45,24 @@ public:
         return CompletionStats;
     }
 
+    void Sync(const TSimpleStats& stats) override
+    {
+        if (!NeedUpdateCompletionStats) {
+            return;
+        }
+
+        CompletionStats.Completed = stats.Completed;
+        CompletionStats.CompFailed = stats.CompFailed;
+        CompletionStats.EncryptorErrors = stats.EncryptorErrors;
+
+        CompletionStats.Requests = stats.Requests;
+        CompletionStats.Times = stats.Times;
+        CompletionStats.Sizes = stats.Sizes;
+
+        NeedUpdateCompletionStats = false;
+        CompletionStatsEvent.Signal();
+    }
+
     void Sync(const TAtomicStats& stats) override
     {
         if (!NeedUpdateCompletionStats) {

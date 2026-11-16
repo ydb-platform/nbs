@@ -6,14 +6,22 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <tuple>
+
 namespace NCloud::NBlockStore::NVHostServer {
 namespace {
 
-// Substitute the libvhost queue boundary; asynchronous completion and
-// snapshots run the RDMA backend.
+// Substitute the clock and libvhost queue boundary; asynchronous completion,
+// classification and snapshots run the RDMA backend.
+ui64 RdmaNowCycles = 0;
 vhd_bdev_io* PendingBio = nullptr;
 ui64 CompletedBios = 0;
 vhd_bdev_io_result LastBioResult = VHD_BDEV_SUCCESS;
+
+ui64 GetCycleCount()
+{
+    return RdmaNowCycles;
+}
 
 const auto vhd_dequeue_request = [](vhd_request_queue*, vhd_request* request) {
     if (!PendingBio) {
@@ -82,11 +90,22 @@ void CheckRdmaLatency(bool enabled)
     CompletedBios = 0;
 
     for (bool write: {false, true}) {
+        ui64 good = 0;
+        ui64 bad = 0;
+        ui64 unknown = 0;
         ui64 bytes = 0;
         ui64 errors = 0;
         ui64 count = 0;
-        for (bool failed: {false, true}) {
-            const ui64 size = failed ? 16384 : 4096;
+        using E = ELatencySliResult;
+        // Bytes, elapsed us, failure, expected read/write outcomes.
+        for (const auto& scenario: {
+                 std::tuple<ui64, ui64, bool, E, E>{4096, 500, false, E::Good, E::Good},
+                 {4096, 1500, false, E::Bad, E::Good},
+                 {4096, 3000, false, E::Bad, E::Bad},
+                 {16384, 500, false, E::Unknown, E::Unknown},
+                 {16384, 500, true, E::Bad, E::Bad}})
+        {
+            const auto [size, elapsedUs, failed, readResult, writeResult] = scenario;
             auto readPromise = NThreading::NewPromise<NProto::TReadBlocksLocalResponse>();
             auto writePromise = NThreading::NewPromise<NProto::TWriteBlocksLocalResponse>();
             dataClient->ReadBlocksLocalHandler = [&](const auto&) {
@@ -99,12 +118,15 @@ void CheckRdmaLatency(bool enabled)
             bio.type = write ? VHD_BDEV_WRITE : VHD_BDEV_READ;
             bio.total_sectors = size / VHD_SECTOR_SIZE;
             PendingBio = &bio;
+            RdmaNowCycles = DurationToCyclesSafe(TDuration::Seconds(100));
             const auto before = CompletedBios;
             backend.ProcessQueue(0, nullptr, queueStats);
             UNIT_ASSERT_VALUES_EQUAL(before, CompletedBios);
-            UNIT_ASSERT_VALUES_EQUAL(
-                before, backend.GetCompletionStats(TDuration::Zero())->Completed);
+            const auto pending = backend.GetCompletionStats(TDuration::Zero());
+            UNIT_ASSERT(pending);
+            UNIT_ASSERT_VALUES_EQUAL(before, pending->Completed);
 
+            RdmaNowCycles += DurationToCyclesSafe(TDuration::MicroSeconds(elapsedUs));
             if (write) {
                 NProto::TWriteBlocksLocalResponse response;
                 if (failed) {
@@ -118,6 +140,10 @@ void CheckRdmaLatency(bool enabled)
                 }
                 readPromise.SetValue(response);
             }
+            const auto expected = write ? writeResult : readResult;
+            good += expected == E::Good;
+            bad += expected == E::Bad;
+            unknown += expected == E::Unknown;
             if (failed) {
                 ++errors;
             } else {
@@ -132,23 +158,30 @@ void CheckRdmaLatency(bool enabled)
             UNIT_ASSERT(snapshot);
             UNIT_ASSERT_VALUES_EQUAL(CompletedBios, snapshot->Completed);
             const auto& stats = snapshot->Requests[write];
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.LatencyGood);
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.LatencyBad);
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.LatencyUnknown);
+            UNIT_ASSERT_VALUES_EQUAL(enabled ? good : 0, stats.LatencyGood);
+            UNIT_ASSERT_VALUES_EQUAL(enabled ? bad : 0, stats.LatencyBad);
+            UNIT_ASSERT_VALUES_EQUAL(enabled ? unknown : 0, stats.LatencyUnknown);
+            UNIT_ASSERT_VALUES_EQUAL(count, stats.FinalCount);
+            UNIT_ASSERT_VALUES_EQUAL(errors, stats.FinalErrors);
             UNIT_ASSERT_VALUES_EQUAL(count, stats.Count);
             UNIT_ASSERT_VALUES_EQUAL(bytes, stats.Bytes);
             UNIT_ASSERT_VALUES_EQUAL(errors, stats.Errors);
+            // No further completion is needed to refresh an idle snapshot.
+            const auto idle = backend.GetCompletionStats(TDuration::Zero());
+            UNIT_ASSERT(idle);
+            UNIT_ASSERT_VALUES_EQUAL(count, idle->Requests[write].FinalCount);
+            UNIT_ASSERT_VALUES_EQUAL(errors, idle->Requests[write].FinalErrors);
         }
     }
-    UNIT_ASSERT_VALUES_EQUAL(4, queueStats.Dequeued);
-    UNIT_ASSERT_VALUES_EQUAL(4, queueStats.Submitted);
+    UNIT_ASSERT_VALUES_EQUAL(10, queueStats.Dequeued);
+    UNIT_ASSERT_VALUES_EQUAL(10, queueStats.Submitted);
 }
 
 }   // namespace
 
 Y_UNIT_TEST_SUITE(TRdmaLatencySliTest)
 {
-    Y_UNIT_TEST(ShouldLeaveClassificationToFinalVhostCompletion)
+    Y_UNIT_TEST(ShouldClassifyDeferredRdmaCompletions)
     {
         CheckRdmaLatency(true);
     }

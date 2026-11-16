@@ -123,8 +123,9 @@ TBlockstoreConfigImpl::TBlockstoreConfigImpl(
     , StorageConfig(std::move(storageConfig))
     , DiagnosticsConfig(
           std::make_shared<TDiagnosticsConfig>(config.GetDiagnostics()))
-    , DiscoveryServiceConfig(std::make_shared<NDiscovery::TDiscoveryConfig>(
-          config.GetDiscoveryService()))
+    , DiscoveryServiceConfig(
+          std::make_shared<NDiscovery::TDiscoveryConfig>(
+              config.GetDiscoveryService()))
     , EndpointConfig(
           std::make_shared<NClient::TClientAppConfig>(config.GetEndpoint()))
     , DiskAgentConfig(std::move(diskAgentConfig))
@@ -143,8 +144,9 @@ TBlockstoreConfigImpl::TBlockstoreConfigImpl(
           std::make_shared<NIamClient::TIamClientConfig>(config.GetIamClient()))
     , KmsClientConfig(
           std::make_shared<NProto::TGrpcClientConfig>(config.GetKmsClient()))
-    , ComputeClientConfig(std::make_shared<NProto::TGrpcClientConfig>(
-          config.GetComputeClient()))
+    , ComputeClientConfig(
+          std::make_shared<NProto::TGrpcClientConfig>(
+              config.GetComputeClient()))
     , RootKmsConfig(
           std::make_shared<NProto::TRootKmsConfig>(config.GetRootKms()))
     , CellsConfig(std::make_shared<NCells::TCellsConfig>(config.GetCells()))
@@ -343,12 +345,10 @@ TBlockstoreConfigExtraParameters GetBlockstoreConfigExtraParameters(
 {
     const auto& diskAgentConfig = currentConfig.GetDiskAgentConfig();
     return {
-        .DiskAgent =
-            {
-                .Rack = diskAgentConfig->GetRack(),
-                .NetworkMbitThroughput =
-                    diskAgentConfig->GetNetworkMbitThroughput(),
-            },
+        .DiskAgent = {
+            .Rack = diskAgentConfig->GetRack(),
+            .NetworkMbitThroughput = diskAgentConfig->GetNetworkMbitThroughput(),
+        },
         .LatencySliOverride = currentConfig.GetLatencySliOverride(),
     };
 }
