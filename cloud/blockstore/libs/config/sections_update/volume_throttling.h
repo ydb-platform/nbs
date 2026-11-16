@@ -37,6 +37,7 @@ NCloud::NProto::TError PrepareDynamicVolumeThrottlingConfig(
 // Build merged config from static and dynamic rules.
 // Put dynamic rules with coefficients before static rules not replaced or
 // deleted by dynamic rules.
+// Use a non-null result pointer that does not point to either input object.
 void MergeVolumeThrottlingConfig(
     const NProto::TVolumeThrottlingServiceConfig& staticConfig,
     const NProto::TVolumeThrottlingServiceConfig& dynamicConfig,
