@@ -2347,8 +2347,8 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         TActorId volumeActorId;
         std::optional<bool> isLocalMount;
-        runtime.SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvStatsService::EvRegisterVolume: {
@@ -2369,7 +2369,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
         auto getIsLocalMount = [&]
