@@ -119,6 +119,10 @@ public:
     // Return the non-null controls shared by this configuration and its copies.
     TStorageConfigControlsPtr GetControls() const;
 
+    // Update shared ICB defaults from this configuration's raw values.
+    // See TStorageConfigControls::UpdateDefaults().
+    void UpdateControlsDefaults() const;
+
     void SetFeaturesConfig(NFeatures::TFeaturesConfigConstPtr featuresConfig);
 
     // Apply a patch to the raw proto while retaining the same live ICB

@@ -1365,6 +1365,11 @@ TStorageConfigControlsPtr TStorageConfig::GetControls() const
     return Impl->Controls;
 }
 
+void TStorageConfig::UpdateControlsDefaults() const
+{
+    Impl->Controls->UpdateDefaults(Impl->StorageServiceConfig);
+}
+
 void TStorageConfig::SetFeaturesConfig(
     NFeatures::TFeaturesConfigConstPtr featuresConfig)
 {

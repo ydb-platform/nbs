@@ -305,11 +305,11 @@ void TConfigInitializerYdb::SetStorageConfig(
     }
 
     auto storageConfig = std::make_shared<NStorage::TStorageConfig>(
-        config,
+        std::move(config),
         FeaturesConfig,
         StorageConfigControls);
     StorageConfigControls = storageConfig->GetControls();
-    StorageConfigControls->UpdateDefaults(config);
+    storageConfig->UpdateControlsDefaults();
     StorageConfig = std::move(storageConfig);
 
     ApplySystemTabletBackupPath(

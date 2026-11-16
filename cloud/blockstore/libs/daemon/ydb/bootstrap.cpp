@@ -694,8 +694,7 @@ void TBootstrapYdb::InitKikimrService()
             {},
             ConfigInitializer->StorageConfigControls,
             std::move(extraParameters));
-        ConfigInitializer->StorageConfigControls->UpdateDefaults(
-            mergedConfig.GetStorageService());
+        StartupBlockstoreConfig->GetStorageConfig()->UpdateControlsDefaults();
 
         STORAGE_INFO(
             (cmsBlockstoreConfig.ByteSizeLong()
