@@ -628,6 +628,8 @@ void TBootstrapVhost::InitEndpoints()
             .MaxQueuedFlushBatchesPerNode =
                 Configs->VhostServiceConfig
                     ->GetWriteBackCacheMaxQueuedFlushBatchesPerNode(),
+            .LockMethod =
+                Configs->VhostServiceConfig->GetWriteBackCacheLockMethod(),
         },
         TDirectoryHandleStorageConfig{
             .PathPrefix =

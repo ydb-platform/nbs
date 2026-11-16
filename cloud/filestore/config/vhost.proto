@@ -4,6 +4,7 @@ package NCloud.NFileStore.NProto;
 
 import "cloud/filestore/config/client.proto";
 import "cloud/filestore/config/server.proto";
+import "cloud/filestore/config/vfs.proto";
 import "cloud/storage/core/protos/endpoints.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
@@ -134,6 +135,9 @@ message TVhostServiceConfig
     // still be positive. Undersized requests reject new-file creation and
     // preserve existing file sizes.
     optional uint64 WriteBackCacheMinStateFileSize = 28;
+
+    // Lock acquisition method for WriteBackCache.
+    optional EWriteBackCacheLockMethod WriteBackCacheLockMethod = 29;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

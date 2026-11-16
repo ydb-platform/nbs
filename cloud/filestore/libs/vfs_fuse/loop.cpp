@@ -1161,6 +1161,7 @@ private:
                      .MaxQueuedFlushBatchesPerNode =
                          Config
                              ->GetWriteBackCacheMaxQueuedFlushBatchesPerNode(),
+                     .LockMethod = Config->GetWriteBackCacheLockMethod(),
                      .ZeroCopyWriteEnabled =
                          FileSystemConfig->GetZeroCopyWriteEnabled(),
                      .FlushWritesInParallelEnabled =
