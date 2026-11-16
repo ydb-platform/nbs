@@ -1606,6 +1606,14 @@ private:
             return std::nullopt;
         }
 
+        if (Config->GetMixedBlocksCompactionUseByteCounters() &&
+            !State.GetCheckpoints().IsEmpty())
+        {
+            // Checkpoints with data retain blobs, so compaction cannot reclaim
+            // their stored bytes and can repeatedly trigger on those bytes.
+            return std::nullopt;
+        }
+
         const auto mediaKind = State.GetConfig().GetStorageMediaKind();
         const bool isSSD = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
 

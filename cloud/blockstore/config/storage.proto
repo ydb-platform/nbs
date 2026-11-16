@@ -1795,6 +1795,7 @@ message TStorageServiceConfig
     // Calculate the per-disk mixed compaction percentage and minimum stored
     // bytes from MixedBytesCount and MergedBytesCount instead of the compaction
     // map. Without ExtendedBlobCountersEnabled, use legacy block-count-based
-    // byte counters, as in the corresponding metrics. Disabled by default.
+    // byte counters, as in the corresponding metrics. When enabled, suppress
+    // mixed compaction while checkpoints with data exist. Disabled by default.
     optional bool MixedBlocksCompactionUseByteCounters = 557;
 }

@@ -4144,6 +4144,91 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(1, compactionByMixedBlockCount);
     }
 
+    Y_UNIT_TEST(ShouldSuppressByteBasedMixedCompactionWithCheckpointData)
+    {
+        for (bool useByteCounters: {false, true}) {
+            for (bool withoutData: {false, true}) {
+                for (bool perDisk: {false, true}) {
+                    auto config = DefaultConfig(1_MB);
+                    config.SetMixedBlocksCountCompactionEnabledHDD(true);
+                    config.SetMixedBlocksCompactionUseByteCounters(
+                        useByteCounters);
+                    config.SetExtendedBlobCountersEnabled(true);
+                    config.SetMixedBytesCountCompactionThresholdHDD(
+                        perDisk ? 1_MB : 4 * DefaultBlockSize);
+                    config.SetMixedBlocksCompactionThresholdPercentageHDD(
+                        perDisk ? 50 : 0);
+                    config.SetMixedBlocksCompactionMinStoredBytesHDD(0);
+                    config.SetWriteBlobThreshold(4 * DefaultBlockSize);
+                    config.SetHDDMaxBlobsPerRange(100);
+                    config.SetCompactionMergedBlobThresholdHDD(1);
+
+                    TTestPartitionInfo partitionInfo;
+                    partitionInfo.MixedChannelCount = 1;
+                    auto runtime = PrepareTestActorRuntime(
+                        config, MaxBlocksCount, 6, partitionInfo);
+                    TPartitionClient partition(*runtime);
+                    partition.WaitReady();
+
+                    bool compactionRequestObserved = false;
+                    runtime->SetEventFilter(
+                        [&](TTestActorRuntimeBase&,
+                            TAutoPtr<IEventHandle>& event)
+                        {
+                            if (event->GetTypeRewrite() ==
+                                TEvPartitionPrivate::EvCompactionRequest)
+                            {
+                                const auto* msg =
+                                    event->Get<TEvPartitionPrivate::
+                                                   TEvCompactionRequest>();
+                                UNIT_ASSERT_VALUES_EQUAL(
+                                    static_cast<ui32>(
+                                        TEvPartitionPrivate::
+                                            MixedBlocksCountCompaction),
+                                    static_cast<ui32>(msg->Mode));
+                                compactionRequestObserved = true;
+                                return true;
+                            }
+                            return false;
+                        });
+
+                    partition.WriteBlocks(TBlockRange32::WithLength(0, 4), 1);
+                    partition.CreateCheckpoint("checkpoint", "", withoutData);
+                    partition.WriteBlocks(TBlockRange32::WithLength(0, 2), 2);
+                    partition.Flush();
+                    UNIT_ASSERT(!compactionRequestObserved);
+
+                    // Four mixed blocks reach both the range threshold and
+                    // 50% of the stored bytes (four merged + four mixed).
+                    partition.WriteBlocks(TBlockRange32::WithLength(2, 2), 3);
+                    partition.Flush();
+                    runtime->DispatchEvents(TDispatchOptions(),
+                                            TDuration::Seconds(1));
+                    const bool suppressed = useByteCounters && !withoutData;
+                    UNIT_ASSERT_VALUES_EQUAL(!suppressed,
+                                             compactionRequestObserved);
+
+                    if (suppressed) {
+                        partition.RebootTablet();
+                        partition.WaitReady();
+                        runtime->DispatchEvents(TDispatchOptions(),
+                                                TDuration::Seconds(1));
+                        UNIT_ASSERT(!compactionRequestObserved);
+
+                        // Retaining the checkpoint mapping without its data
+                        // must allow mixed compaction again.
+                        partition.DeleteCheckpointData("checkpoint");
+                        partition.WriteBlocks(4, 4);
+                        partition.Flush();
+                        runtime->DispatchEvents(TDispatchOptions(),
+                                                TDuration::Seconds(1));
+                        UNIT_ASSERT(compactionRequestObserved);
+                    }
+                }
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldPrioritizeMixedBlocksCompactionOverGarbageCompaction)
     {
         for (bool ignoringZeroed: {false, true}) {
