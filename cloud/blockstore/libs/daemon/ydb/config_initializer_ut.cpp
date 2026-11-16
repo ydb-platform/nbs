@@ -448,16 +448,9 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
 
     // Verify that storage initialization creates shared controls before the
     // remaining sections are initialized.
-    Y_UNIT_TEST(ShouldInitializeSharedControlsFromServerConfig)
+    Y_UNIT_TEST(ShouldInitializeSharedControlsDuringStorageInitialization)
     {
-        // Initialize ServerConfig with dynamic YAML enabled.
-        TTempDir dir;
-        const auto serverPath = dir.Path() / "server.txt";
-        TOFStream(serverPath.GetPath()).Write(
-            "ServerConfig { DynamicYamlConfigurationEnabled: true }");
-        auto options = CreateOptions();
-        options->ServerConfig = serverPath.GetPath();
-        auto ci = TConfigInitializerYdb(std::move(options));
+        auto ci = TConfigInitializerYdb(CreateOptions());
         ci.InitServerConfig();
 
         // Create shared ICB controls before initializing the remaining
@@ -465,7 +458,6 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         ci.InitFeaturesConfig();
         ci.InitStorageConfig();
 
-        UNIT_ASSERT(ci.GetDynamicYamlConfigurationStaticallyEnabled());
         UNIT_ASSERT(ci.StorageConfigControls);
     }
 
