@@ -67,9 +67,11 @@ TString ReportConfigSectionsIssues(
         rejectedSectionsReason += reason;
         ReportDynamicConfigError(
             TStringBuilder()
-            << reason << ". Keeping the last accepted dynamic " << section.Path
-            << " section. Fix or roll back the configuration before restarting"
-               " NBS: the retained section is kept only in memory.");
+            << reason
+            << ". The rejected section uses its previously accepted dynamic "
+               "configuration, if present, or static configuration otherwise. "
+               "Any retained dynamic values are kept only in memory. Fix or "
+               "roll back the invalid configuration before restarting NBS.");
     }
     return rejectedSectionsReason;
 }
