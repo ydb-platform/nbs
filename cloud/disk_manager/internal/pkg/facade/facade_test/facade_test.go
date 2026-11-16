@@ -8,6 +8,8 @@ import (
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade/testcommon"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -16,6 +18,19 @@ import (
 // Purpose of this test is to catch stupid bugs, for example when disk-manager
 // crashes in main.go unconditionally.
 func TestFacade(t *testing.T) {
+}
+
+func TestFacadeGetNonexistentOperation(t *testing.T) {
+	ctx := testcommon.NewContext()
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	_, err = client.GetOperation(ctx, &disk_manager.GetOperationRequest{
+		OperationId: "nonexistent-operation",
+	})
+	require.Error(t, err)
+	require.Equal(t, codes.NotFound, status.Code(err))
 }
 
 // ErrorDetails from Public API should be binary compatible with ErrorDetails from Task Processor library.
