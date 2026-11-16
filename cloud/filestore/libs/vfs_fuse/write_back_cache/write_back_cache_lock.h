@@ -2,13 +2,15 @@
 
 #include <cloud/filestore/config/vfs.pb.h>
 
+#include <util/generic/noncopyable.h>
+
 #include <memory>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IWriteBackCacheLock
+struct IWriteBackCacheLock: private TNonCopyable
 {
     virtual ~IWriteBackCacheLock() = default;
 

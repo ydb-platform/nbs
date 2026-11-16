@@ -8,7 +8,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
 
 enum EWriteBackCacheLockMethod
 {
-    // TAdaptiveLock: spins, yields, then uses timed sleeps.
+    // TAdaptiveLock (default): spins, yields, then uses timed sleeps.
     WBC_LOCK_ADAPTIVE = 0;
 
     // TSpinLock: spins indefinitely; can waste CPU if the lock holder is
@@ -23,7 +23,6 @@ enum EWriteBackCacheLockMethod
     WBC_LOCK_SPIN_THEN_MUTEX = 3;
 
     // glibc adaptive pthread mutex: bounded adaptive spinning, then blocking.
-    // Available only on Linux with glibc.
     WBC_LOCK_PTHREAD_ADAPTIVE = 4;
 }
 

@@ -13,7 +13,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TLock, unsigned SpinCount = 0>
-class TWriteBackCacheLock final: public IWriteBackCacheLock
+class alignas(64) TWriteBackCacheLock final: public IWriteBackCacheLock
 {
 private:
     TLock Lock;
@@ -28,6 +28,8 @@ public:
             SpinLockPause();
         }
 
+        // Lock acquisition failures are fatal: noexcept intentionally turns
+        // a std::mutex::lock() exception into process termination.
         Lock.lock();
     }
 
@@ -37,7 +39,7 @@ public:
     }
 };
 
-class TPthreadAdaptiveLock final: public IWriteBackCacheLock
+class alignas(64) TPthreadAdaptiveLock final: public IWriteBackCacheLock
 {
 private:
     pthread_mutex_t Mutex = PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP;

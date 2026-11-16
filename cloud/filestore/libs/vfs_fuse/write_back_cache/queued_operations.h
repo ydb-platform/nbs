@@ -55,6 +55,11 @@ public:
     ~TQueuedOperations();
 
     void Acquire();
+
+    // Called from TGuard's destructor through noexcept lock operations.
+    // Event handlers (including synchronous promise subscribers) and
+    // RequestsSerializedCallback must not throw; an escaping exception calls
+    // std::terminate.
     void Release();
 
     void ScheduleFlushNode(ui64 nodeId);

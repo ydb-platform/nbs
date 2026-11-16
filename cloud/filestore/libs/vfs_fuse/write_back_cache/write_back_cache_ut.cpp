@@ -3070,12 +3070,13 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                 NProto::WBC_LOCK_ADAPTIVE;
             size_t ClientThreadCount = 16;
             size_t CacheThreadCount = 4;
+            TDuration Duration = TDuration::Seconds(1);
         };
 
         const size_t ClientThreadCount;
         static constexpr ui64 MaxRequestSize = 8_KB;
         static constexpr ui64 FileSize = 256_KB;
-        static constexpr TDuration TestDuration = TDuration::Seconds(1);
+        const TDuration TestDuration;
 
         // Incoming write iovecs are borrowed by the cache. Keep one buffer per
         // thread alive through cache teardown so that a timed-out request
@@ -3093,6 +3094,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                    .LockMethod = args.LockMethod,
                    .ThreadCount = args.CacheThreadCount})
             , ClientThreadCount(args.ClientThreadCount)
+            , TestDuration(args.Duration)
             , WriteBuffers(ClientThreadCount)
         {}
 
@@ -3261,7 +3263,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
     Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodesAdaptive)
     {
         TShouldHandleConcurrentReadsAndWritesAcrossNodesTest test(
-            {.LockMethod = NProto::WBC_LOCK_ADAPTIVE});
+            {.LockMethod = NProto::WBC_LOCK_ADAPTIVE,
+             .Duration = TDuration::Seconds(5)});
         test.Run();
     }
 
