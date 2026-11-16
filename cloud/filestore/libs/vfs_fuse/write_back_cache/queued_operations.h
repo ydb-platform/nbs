@@ -54,7 +54,7 @@ public:
 
     ~TQueuedOperations();
 
-    void Acquire();
+    void Acquire() noexcept;
 
     // Called from TGuard's destructor through noexcept lock operations.
     // Event handlers (including synchronous promise subscribers) and

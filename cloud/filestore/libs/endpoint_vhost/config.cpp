@@ -45,8 +45,8 @@ static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
     xxx(WriteBackCacheFlushMaxWriteRequestsCount,   ui32,       64            )\
     xxx(WriteBackCacheFlushMaxSumWriteRequestsSize, ui32,       32_MB         )\
     xxx(WriteBackCacheMaxQueuedFlushBatchesPerNode, ui32,       8             )\
-    xxx(WriteBackCacheLockMethod,                                             \
-        NProto::EWriteBackCacheLockMethod,                                    \
+    xxx(WriteBackCacheLockMethod,                                              \
+        NProto::EWriteBackCacheLockMethod,                                     \
         NProto::WBC_LOCK_ADAPTIVE                                             )\
     xxx(DirectoryHandlesStoragePath,                TString,    ""            )\
     xxx(DirectoryHandlesInitialDataSize,            ui64,       16_MB         )\

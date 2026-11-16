@@ -119,7 +119,7 @@ TQueuedOperations::TQueuedOperations(
 
 TQueuedOperations::~TQueuedOperations() = default;
 
-void TQueuedOperations::Acquire()
+void TQueuedOperations::Acquire() noexcept
 {
     Lock->Acquire();
 }

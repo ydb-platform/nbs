@@ -31,6 +31,7 @@
 #include <util/system/spinlock.h>
 #include <util/system/tempfile.h>
 
+#include <barrier>
 #include <exception>
 #include <latch>
 #include <memory>
@@ -3224,8 +3225,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         void Run()
         {
-            std::latch start{static_cast<ptrdiff_t>(ClientThreadCount + 1)};
-            const TInstant deadline = TInstant::Now() + TestDuration;
+            TInstant deadline;
+            // Start the timed workload only after all clients are ready.
+            std::barrier start(
+                static_cast<ptrdiff_t>(ClientThreadCount + 1),
+                [&]() noexcept { deadline = TInstant::Now() + TestDuration; });
 
             TVector<std::exception_ptr> errors(ClientThreadCount);
             TVector<std::thread> threads;

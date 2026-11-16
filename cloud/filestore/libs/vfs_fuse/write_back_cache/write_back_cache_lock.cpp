@@ -1,5 +1,7 @@
 #include "write_back_cache_lock.h"
 
+#include <cloud/storage/core/libs/common/public.h>
+
 #include <util/system/spinlock.h>
 #include <util/system/yassert.h>
 
@@ -13,7 +15,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TLock, unsigned SpinCount = 0>
-class alignas(64) TWriteBackCacheLock final: public IWriteBackCacheLock
+class Y_CACHE_ALIGNED TWriteBackCacheLock final: public IWriteBackCacheLock
 {
 private:
     TLock Lock;
@@ -39,7 +41,7 @@ public:
     }
 };
 
-class alignas(64) TPthreadAdaptiveLock final: public IWriteBackCacheLock
+class Y_CACHE_ALIGNED TPthreadAdaptiveLock final: public IWriteBackCacheLock
 {
 private:
     pthread_mutex_t Mutex = PTHREAD_ADAPTIVE_MUTEX_INITIALIZER_NP;
