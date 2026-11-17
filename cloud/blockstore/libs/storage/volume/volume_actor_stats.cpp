@@ -762,9 +762,14 @@ TEvStatsService::TVolumeSelfCounters TVolumeActor::GetVolumeSelfCounters(
     }
     simple.DiskAgentCount.Set(allAgents.size());
 
+    // A preempted local mounter keeps its LOCAL mount mode, but its tablet is
+    // then started by Hive (ONLINE) and may run on any host. Only a tablet
+    // started by the local mounter itself (MOUNTED) runs on the client's host.
+    const bool isLocalMount = !State->GetLocalMountClientId().empty() &&
+                              StartMode == EVolumeStartMode::MOUNTED;
     TEvStatsService::TVolumeSelfCounters volumeCounters(
         State->GetConfig().GetDiskId(),
-        /*IsLocalMount=*/!State->GetLocalMountClientId().empty(),
+        isLocalMount,
         State->HasActiveClients(ctx.Now()),
         State->IsPreempted(SelfId()),
         std::move(VolumeSelfCounters),
