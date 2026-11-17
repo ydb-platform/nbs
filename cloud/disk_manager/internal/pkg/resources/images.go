@@ -71,6 +71,9 @@ type imageState struct {
 	encryptionKeyHash []byte
 	backupCompleted   bool
 
+	checksum           uint32
+	checksumCalculated bool
+
 	status imageStatus
 }
 
@@ -99,6 +102,9 @@ func (s *imageState) toImageMeta() *ImageMeta {
 		},
 		Ready:           s.status == imageStatusReady,
 		BackupCompleted: s.backupCompleted,
+
+		Checksum:           s.checksum,
+		ChecksumCalculated: s.checksumCalculated,
 	}
 }
 
@@ -126,6 +132,14 @@ func (s *imageState) structValue() persistence.Value {
 		persistence.StructFieldValue(
 			"backup_completed",
 			persistence.BoolValue(s.backupCompleted),
+		),
+		persistence.StructFieldValue(
+			"checksum",
+			persistence.Uint32Value(s.checksum),
+		),
+		persistence.StructFieldValue(
+			"checksum_calculated",
+			persistence.BoolValue(s.checksumCalculated),
 		),
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
 	)
@@ -156,6 +170,11 @@ func scanImageState(res persistence.Result) (state imageState, err error) {
 		persistence.OptionalWithDefault(
 			"backup_completed",
 			&state.backupCompleted,
+		),
+		persistence.OptionalWithDefault("checksum", &state.checksum),
+		persistence.OptionalWithDefault(
+			"checksum_calculated",
+			&state.checksumCalculated,
 		),
 	)
 	return
@@ -203,6 +222,8 @@ func imageStateStructTypeString() string {
 		encryption_mode: Uint32,
 		encryption_keyhash: String,
 		backup_completed: Bool,
+		checksum: Uint32,
+		checksum_calculated: Bool,
 		status: Int64>`
 }
 
@@ -229,6 +250,14 @@ func imageStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("encryption_keyhash", persistence.Optional(persistence.TypeString)),
 		persistence.WithColumn(
 			"backup_completed",
+			persistence.Optional(persistence.TypeBool),
+		),
+		persistence.WithColumn(
+			"checksum",
+			persistence.Optional(persistence.TypeUint32),
+		),
+		persistence.WithColumn(
+			"checksum_calculated",
 			persistence.Optional(persistence.TypeBool),
 		),
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
@@ -1217,6 +1246,100 @@ func (s *storageYDB) imageBackupCompleted(
 	return err
 }
 
+// The status is checked and the checksum is written in one transaction, so
+// the checksum is never stored for an image that is not ready anymore.
+func (s *storageYDB) imageChecksumCalculated(
+	ctx context.Context,
+	session *persistence.Session,
+	imageID string,
+	checksum uint32,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+
+		select *
+		from images
+		where id = $id
+	`, s.imagesPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(imageID)),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Close()
+
+	states, err := scanImageStates(ctx, res)
+	if err != nil {
+		return err
+	}
+
+	if len(states) == 0 {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return err
+		}
+
+		return errors.NewSilentNonRetriableErrorf(
+			"image with id %v is not found",
+			imageID,
+		)
+	}
+
+	state := states[0]
+
+	if state.status != imageStatusReady {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return err
+		}
+
+		return errors.NewSilentNonRetriableErrorf(
+			"checksum of image with id %v and status %v can't be set",
+			imageID,
+			imageStatusToString(state.status),
+		)
+	}
+
+	if state.checksumCalculated && state.checksum == checksum {
+		// Nothing to do.
+		return tx.Commit(ctx)
+	}
+
+	// Another stored value is replaced: computing the checksum again is the
+	// way to repair a wrong one.
+	state.checksum = checksum
+	state.checksumCalculated = true
+
+	_, err = tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $states as List<%v>;
+
+		upsert into images
+		select *
+		from AS_TABLE($states)
+	`, s.imagesPath, imageStateStructTypeString()),
+		persistence.ValueParam(
+			"$states",
+			persistence.ListValue(state.structValue()),
+		),
+	)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
 func (s *storageYDB) getImageBackupQueueStats(
 	ctx context.Context,
 	session *persistence.Session,
@@ -1549,6 +1672,25 @@ func (s *storageYDB) ImageBackupCompleted(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			return s.imageBackupCompleted(ctx, session, imageID)
+		},
+	)
+}
+
+func (s *storageYDB) ImageChecksumCalculated(
+	ctx context.Context,
+	imageID string,
+	checksum uint32,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.imageChecksumCalculated(
+				ctx,
+				session,
+				imageID,
+				checksum,
+			)
 		},
 	)
 }

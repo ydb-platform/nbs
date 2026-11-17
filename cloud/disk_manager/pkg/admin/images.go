@@ -13,6 +13,7 @@ import (
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -345,6 +346,137 @@ func newBackupImageCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type saveImageChecksumCmd struct {
+	commandWithScheduler
+	imageID string
+}
+
+func (c *saveImageChecksumCmd) run() error {
+	err := c.init()
+	if err != nil {
+		return err
+	}
+	defer c.close()
+
+	// There is no idempotency key in the context, so a new task is scheduled.
+	taskID, err := images.ScheduleSaveImageChecksum(
+		c.ctx,
+		c.scheduler,
+		c.imageID,
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+
+func newSaveImageChecksumCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
+	c := &saveImageChecksumCmd{
+		commandWithScheduler: cmdWithScheduler,
+	}
+
+	cmd := &cobra.Command{
+		Use:     "save-checksum",
+		Aliases: []string{"save_checksum"},
+		Short:   "Schedule a task that computes and saves an image checksum",
+		Long: "Schedule a task that computes the checksum of the data of a " +
+			"ready image and saves it; a checksum saved earlier is " +
+			"overwritten. The task ID is printed without waiting for " +
+			"completion: use tasks get --id <task-id> to check the task and " +
+			"images get --id <id> to see checksum and checksum_calculated.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.imageID,
+		"id",
+		"",
+		"ID of image to save the checksum of; required",
+	)
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type validateImageChecksumCmd struct {
+	commandWithScheduler
+	imageID string
+}
+
+func (c *validateImageChecksumCmd) run() error {
+	err := c.init()
+	if err != nil {
+		return err
+	}
+	defer c.close()
+
+	// There is no idempotency key in the context, so a new task is scheduled.
+	taskID, err := images.ScheduleValidateImageChecksum(
+		c.ctx,
+		c.scheduler,
+		c.imageID,
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+
+func newValidateImageChecksumCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
+	c := &validateImageChecksumCmd{
+		commandWithScheduler: cmdWithScheduler,
+	}
+
+	cmd := &cobra.Command{
+		Use:     "validate-checksum",
+		Aliases: []string{"validate_checksum"},
+		Short:   "Schedule a task that validates the saved image checksum",
+		Long: "Schedule a task that computes the checksum of the data of a " +
+			"ready image once again and compares it with the one saved by " +
+			"save-checksum. The task fails with a checksum mismatch error if " +
+			"they differ, and also if no checksum is saved. The task ID is " +
+			"printed without waiting for completion: use tasks get --id " +
+			"<task-id> to check the task.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.imageID,
+		"id",
+		"",
+		"ID of image to validate the checksum of; required",
+	)
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newImagesCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
@@ -361,6 +493,8 @@ func newImagesCmd(
 		newExportImageCmd(clientConfig, serverConfig),
 		newCreateImageCmd(clientConfig),
 		newDeleteImageCmd(clientConfig),
+		newSaveImageChecksumCmd(clientConfig, serverConfig),
+		newValidateImageChecksumCmd(clientConfig, serverConfig),
 	)
 
 	return cmd

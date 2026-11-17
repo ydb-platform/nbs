@@ -8,6 +8,7 @@ SRCS(
     backup_chunks_task.proto
     backup_snapshot_data_task.proto
     collect_snapshots_task.proto
+    compute_snapshot_checksum_task.proto
     create_dr_based_disk_checkpoint_task.proto
     create_snapshot_from_disk_task.proto
     create_snapshot_from_snapshot_task.proto

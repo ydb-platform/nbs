@@ -661,10 +661,12 @@ func NewResourceStorage(
 
 	endedMigrationExpirationTimeout := 30 * time.Minute
 
+	// Should be in sync with storage folders of the control plane in test
+	// recipe: it uses the default ones.
 	storage, err := resources.NewStorage(
 		"disks",
 		"images",
-		"snapshot",
+		"snapshots",
 		"filesystems",
 		"filesystem_snapshots",
 		"placement_groups",
@@ -754,23 +756,27 @@ func newCellStorage(
 	return storage, closeFunc
 }
 
-func newSnapshotStorage(
-	t *testing.T,
-	ctx context.Context,
-) (snapshot_storage.Storage, func()) {
-
+func newSnapshotConfig() *snapshot_config.SnapshotConfig {
 	// Should be in sync with settings from SnapshotConfig in test recipe.
 	endpoint := fmt.Sprintf(
 		"localhost:%v",
 		os.Getenv("DISK_MANAGER_RECIPE_YDB_PORT"),
 	)
 	database := "/Root"
-	config := &snapshot_config.SnapshotConfig{
+	return &snapshot_config.SnapshotConfig{
 		PersistenceConfig: &persistence_config.PersistenceConfig{
 			Endpoint: &endpoint,
 			Database: &database,
 		},
 	}
+}
+
+func newSnapshotStorage(
+	t *testing.T,
+	ctx context.Context,
+) (snapshot_storage.Storage, func()) {
+
+	config := newSnapshotConfig()
 
 	db, err := persistence.NewYDBClient(
 		ctx,

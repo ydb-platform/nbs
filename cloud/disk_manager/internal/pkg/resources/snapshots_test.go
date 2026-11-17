@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -30,6 +32,8 @@ func requireSnapshotsAreEqual(t *testing.T, expected SnapshotMeta, actual Snapsh
 	require.Equal(t, expected.Size, actual.Size)
 	require.Equal(t, expected.StorageSize, actual.StorageSize)
 	require.Equal(t, expected.Ready, actual.Ready)
+	require.Equal(t, expected.Checksum, actual.Checksum)
+	require.Equal(t, expected.ChecksumCalculated, actual.ChecksumCalculated)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -948,4 +952,407 @@ func TestSnapshotsBackupQueueTracksScheduledAttempts(t *testing.T) {
 	require.Equal(t, []SnapshotBackupRequest{
 		{SnapshotID: "snap1", BackupID: "attempt"},
 	}, queue)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func requireSnapshotChecksum(
+	t *testing.T,
+	ctx context.Context,
+	storage Storage,
+	snapshotID string,
+	checksum uint32,
+) {
+
+	meta, err := storage.GetSnapshotMeta(ctx, snapshotID)
+	require.NoError(t, err, snapshotID)
+	require.NotNil(t, meta, snapshotID)
+	require.True(t, meta.ChecksumCalculated, snapshotID)
+	require.Equal(t, checksum, meta.Checksum, snapshotID)
+}
+
+func requireNoSnapshotChecksum(
+	t *testing.T,
+	ctx context.Context,
+	storage Storage,
+	snapshotID string,
+) {
+
+	meta, err := storage.GetSnapshotMeta(ctx, snapshotID)
+	require.NoError(t, err, snapshotID)
+	require.NotNil(t, meta, snapshotID)
+	require.False(t, meta.ChecksumCalculated, snapshotID)
+	require.Zero(t, meta.Checksum, snapshotID)
+}
+
+func TestSnapshotChecksumCalculated(t *testing.T) {
+	ctx, storage := newSnapshotBackupTestStorage(t)
+
+	requireNoSnapshotChecksum(t, ctx, storage, "snapshot")
+
+	// Zero is a valid checksum and differs from a checksum that is not set.
+	// A repeated value checks idempotency, another value replaces the stored
+	// one.
+	checksums := []uint32{0, 0, 0xDEADBEEF, 0xDEADBEEF, 0xFFFFFFFF, 1, 0}
+	for _, checksum := range checksums {
+		err := storage.SnapshotChecksumCalculated(ctx, "snapshot", checksum)
+		require.NoError(t, err)
+
+		requireSnapshotChecksum(t, ctx, storage, "snapshot", checksum)
+	}
+}
+
+// The checksum is stored by rewriting the whole row, which should keep the
+// other fields.
+func TestSnapshotChecksumCalculatedKeepsOtherFields(t *testing.T) {
+	ctx, storage := newSnapshotBackupTestStorage(t)
+
+	snapshot := SnapshotMeta{
+		BlockSize:     4096,
+		ID:            "other",
+		FolderID:      "folder",
+		Disk:          &types.Disk{ZoneId: "zone", DiskId: "disk"},
+		CreateRequest: &wrappers.UInt64Value{Value: 1},
+		CreateTaskID:  "create_other",
+		CreatingAt:    time.Now(),
+		CreatedBy:     "user",
+		Encryption: &types.EncryptionDesc{
+			Mode: types.EncryptionMode_ENCRYPTION_AES_XTS,
+			Key: &types.EncryptionDesc_KeyHash{
+				KeyHash: []byte("key hash"),
+			},
+		},
+	}
+
+	_, err := storage.CreateSnapshot(ctx, snapshot)
+	require.NoError(t, err)
+
+	expected := snapshot
+	expected.CreateRequest = nil
+	expected.CheckpointID = "checkpoint"
+	expected.Size = 2 * 1024 * 1024
+	expected.StorageSize = 3 * 1024 * 1024
+	expected.Ready = true
+	expected.BackupCompleted = true
+
+	err = storage.SnapshotCreated(
+		ctx,
+		snapshot.ID,
+		expected.CheckpointID,
+		time.Now(),
+		expected.Size,
+		expected.StorageSize,
+	)
+	require.NoError(t, err)
+
+	err = storage.SnapshotBackupCompleted(ctx, snapshot.ID)
+	require.NoError(t, err)
+
+	checkSnapshot := func() {
+		actual, err := storage.GetSnapshotMeta(ctx, snapshot.ID)
+		require.NoError(t, err)
+		require.NotNil(t, actual)
+		requireSnapshotsAreEqual(t, expected, *actual)
+		require.Equal(t, expected.BlockSize, actual.BlockSize)
+		require.True(t, proto.Equal(expected.Encryption, actual.Encryption))
+		require.Equal(t, expected.BackupCompleted, actual.BackupCompleted)
+	}
+
+	checkSnapshot()
+
+	err = storage.SnapshotChecksumCalculated(ctx, snapshot.ID, 42)
+	require.NoError(t, err)
+
+	expected.Checksum = 42
+	expected.ChecksumCalculated = true
+	checkSnapshot()
+
+	// The create request is kept too: creation is still idempotent.
+	created, err := storage.CreateSnapshot(ctx, snapshot)
+	require.NoError(t, err)
+	requireSnapshotsAreEqual(t, expected, created)
+}
+
+func TestSnapshotChecksumCalculatedRejectsUnavailableSnapshot(t *testing.T) {
+	ctx, storage := newSnapshotBackupTestStorage(t)
+
+	_, err := storage.CreateSnapshot(ctx, SnapshotMeta{
+		ID:            "creating",
+		FolderID:      "folder",
+		Disk:          &types.Disk{ZoneId: "zone", DiskId: "disk"},
+		CreateRequest: &wrappers.UInt64Value{Value: 1},
+		CreateTaskID:  "create_creating",
+		CreatingAt:    time.Now(),
+	})
+	require.NoError(t, err)
+
+	// Its checksum was stored before the deletion.
+	createReadySnapshotForBackup(t, ctx, storage, "deleting")
+	err = storage.SnapshotChecksumCalculated(ctx, "deleting", 7)
+	require.NoError(t, err)
+	_, err = storage.DeleteSnapshot(ctx, "deleting", "delete", time.Now())
+	require.NoError(t, err)
+
+	createReadySnapshotForBackup(t, ctx, storage, "deleted")
+	_, err = storage.DeleteSnapshot(ctx, "deleted", "delete", time.Now())
+	require.NoError(t, err)
+	err = storage.SnapshotDeleted(ctx, "deleted", time.Now())
+	require.NoError(t, err)
+
+	// A ready image is not a snapshot.
+	createReadyImage(t, ctx, storage, "image", "folder")
+
+	testCases := []struct {
+		snapshotID string
+		checksum   uint32
+		message    string
+	}{
+		{"missing", 42, "snapshot with id missing is not found"},
+		{"image", 42, "snapshot with id image is not found"},
+		{"creating", 42, "status creating can't be set"},
+		{"deleting", 42, "status deleting can't be set"},
+		// The stored value is not accepted either.
+		{"deleting", 7, "status deleting can't be set"},
+		{"deleted", 42, "status deleted can't be set"},
+	}
+
+	for _, testCase := range testCases {
+		err = storage.SnapshotChecksumCalculated(
+			ctx,
+			testCase.snapshotID,
+			testCase.checksum,
+		)
+		require.Error(t, err, testCase.snapshotID)
+		require.True(
+			t,
+			errors.Is(err, errors.NewEmptyNonRetriableError()),
+			testCase.snapshotID,
+		)
+		require.True(t, errors.IsSilent(err), testCase.snapshotID)
+		require.ErrorContains(t, err, testCase.message)
+	}
+
+	// Nothing is written.
+	requireNoSnapshotChecksum(t, ctx, storage, "creating")
+	requireSnapshotChecksum(t, ctx, storage, "deleting", 7)
+	requireNoSnapshotChecksum(t, ctx, storage, "deleted")
+	requireNoImageChecksum(t, ctx, storage, "image")
+
+	for _, snapshotID := range []string{"missing", "image"} {
+		meta, err := storage.GetSnapshotMeta(ctx, snapshotID)
+		require.NoError(t, err, snapshotID)
+		require.Nil(t, meta, snapshotID)
+	}
+}
+
+// Guards the row mapping: a column that is written but not scanned (or the
+// other way round) loses the checksum on the next whole-row rewrite.
+func TestSnapshotChecksumSurvivesOtherUpdates(t *testing.T) {
+	ctx, storage := newSnapshotBackupTestStorage(t)
+
+	err := storage.SnapshotChecksumCalculated(ctx, "snapshot", 42)
+	require.NoError(t, err)
+	requireSnapshotChecksum(t, ctx, storage, "snapshot", 42)
+
+	// Updates a single column.
+	err = storage.SnapshotBackupCompleted(ctx, "snapshot")
+	require.NoError(t, err)
+	requireSnapshotChecksum(t, ctx, storage, "snapshot", 42)
+
+	// Rewrites the whole row.
+	meta, err := storage.DeleteSnapshot(ctx, "snapshot", "delete", time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, meta)
+	require.True(t, meta.BackupCompleted)
+	require.True(t, meta.ChecksumCalculated)
+	require.EqualValues(t, 42, meta.Checksum)
+	requireSnapshotChecksum(t, ctx, storage, "snapshot", 42)
+
+	err = storage.SnapshotDeleted(ctx, "snapshot", time.Now())
+	require.NoError(t, err)
+	requireSnapshotChecksum(t, ctx, storage, "snapshot", 42)
+}
+
+func TestSnapshotChecksumCalculatedRacesWithDeletion(t *testing.T) {
+	ctx, storage := newSnapshotBackupTestStorage(t)
+
+	for i := 0; i < 8; i++ {
+		snapshotID := fmt.Sprintf("snapshot_%v", i)
+		createReadySnapshotForBackup(t, ctx, storage, snapshotID)
+
+		// The deletion takes longer than storing the checksum, so the
+		// checksum is delayed to meet the deletion at its different stages.
+		delay := time.Duration(i) * time.Millisecond
+
+		start := make(chan struct{})
+		set := make(chan error, 1)
+		deleted := make(chan error, 1)
+		var deleting *SnapshotMeta
+		go func() {
+			<-start
+			time.Sleep(delay)
+			set <- storage.SnapshotChecksumCalculated(ctx, snapshotID, 42)
+		}()
+		go func() {
+			<-start
+			var err error
+			deleting, err = storage.DeleteSnapshot(
+				ctx,
+				snapshotID,
+				"delete",
+				time.Now(),
+			)
+			deleted <- err
+		}()
+		close(start)
+
+		setErr, deleteErr := <-set, <-deleted
+		require.NoError(t, deleteErr)
+		require.NotNil(t, deleting)
+		if setErr != nil {
+			require.True(
+				t,
+				errors.Is(setErr, errors.NewEmptyNonRetriableError()),
+			)
+			require.ErrorContains(t, setErr, "status deleting can't be set")
+		}
+
+		// The checksum is stored only if it was set before the deletion, and
+		// then the deletion has seen it.
+		require.Equal(t, setErr == nil, deleting.ChecksumCalculated)
+
+		meta, err := storage.GetSnapshotMeta(ctx, snapshotID)
+		require.NoError(t, err)
+		require.NotNil(t, meta)
+		require.False(t, meta.Ready)
+
+		if setErr == nil {
+			requireSnapshotChecksum(t, ctx, storage, snapshotID, 42)
+		} else {
+			requireNoSnapshotChecksum(t, ctx, storage, snapshotID)
+		}
+	}
+}
+
+// Storing the checksum rewrites the whole row and should not lose a column
+// that is updated at the same time.
+func TestSnapshotChecksumCalculatedRacesWithBackupCompletion(t *testing.T) {
+	ctx, storage := newSnapshotBackupTestStorage(t)
+
+	// Several attempts give more interleavings of the two transactions.
+	for i := 0; i < 8; i++ {
+		snapshotID := fmt.Sprintf("snapshot_%v", i)
+		createReadySnapshotForBackup(t, ctx, storage, snapshotID)
+
+		start := make(chan struct{})
+		set := make(chan error, 1)
+		completed := make(chan error, 1)
+		go func() {
+			<-start
+			set <- storage.SnapshotChecksumCalculated(ctx, snapshotID, 42)
+		}()
+		go func() {
+			<-start
+			completed <- storage.SnapshotBackupCompleted(ctx, snapshotID)
+		}()
+		close(start)
+
+		setErr, completeErr := <-set, <-completed
+		require.NoError(t, setErr)
+		require.NoError(t, completeErr)
+
+		meta, err := storage.GetSnapshotMeta(ctx, snapshotID)
+		require.NoError(t, err)
+		require.NotNil(t, meta)
+		require.True(t, meta.Ready)
+		require.True(t, meta.BackupCompleted)
+		require.True(t, meta.ChecksumCalculated)
+		require.EqualValues(t, 42, meta.Checksum)
+	}
+}
+
+// A snapshot created before the checksum columns were added has no checksum.
+func TestSnapshotChecksumOfSnapshotCreatedBeforeMigration(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	// Should be in sync with newStorage.
+	folder := fmt.Sprintf("%v/snapshots", t.Name())
+
+	err = db.CreateOrAlterTable(
+		ctx,
+		folder,
+		"snapshots",
+		withoutChecksumColumns(t, snapshotStateTableDescription()),
+		false, // dropUnusedColumns
+	)
+	require.NoError(t, err)
+
+	_, err = db.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+		declare $folder_id as Utf8;
+		declare $size as Uint64;
+		declare $status as Int64;
+
+		upsert into snapshots (id, folder_id, size, status)
+		values ($id, $folder_id, $size, $status)
+	`, db.AbsolutePath(folder)),
+		persistence.ValueParam("$id", persistence.UTF8Value("snapshot")),
+		persistence.ValueParam("$folder_id", persistence.UTF8Value("folder")),
+		persistence.ValueParam("$size", persistence.Uint64Value(42)),
+		persistence.ValueParam(
+			"$status",
+			persistence.Int64Value(int64(snapshotStatusReady)),
+		),
+	)
+	require.NoError(t, err)
+
+	// The table has no checksum columns yet, so they can't be read.
+	_, err = readStoredChecksum(ctx, db, folder, "snapshots", "snapshot")
+	require.Error(t, err)
+
+	// Adds the checksum columns to the existing table.
+	storage := newStorage(t, ctx, db)
+
+	// The existing row holds NULL in both columns...
+	stored, err := readStoredChecksum(ctx, db, folder, "snapshots", "snapshot")
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		storedChecksum{checksumIsNull: true, calculatedIsNull: true},
+		stored,
+	)
+
+	// ... which is read as a checksum that is not calculated.
+	checkSnapshot := func(checksumCalculated bool) {
+		meta, err := storage.GetSnapshotMeta(ctx, "snapshot")
+		require.NoError(t, err)
+		require.NotNil(t, meta)
+		require.True(t, meta.Ready)
+		require.Equal(t, "folder", meta.FolderID)
+		require.EqualValues(t, 42, meta.Size)
+		require.Equal(t, checksumCalculated, meta.ChecksumCalculated)
+		require.Zero(t, meta.Checksum)
+	}
+
+	checkSnapshot(false)
+
+	// Zero differs from a checksum that is not calculated.
+	err = storage.SnapshotChecksumCalculated(ctx, "snapshot", 0)
+	require.NoError(t, err)
+	checkSnapshot(true)
+
+	stored, err = readStoredChecksum(ctx, db, folder, "snapshots", "snapshot")
+	require.NoError(t, err)
+	require.Equal(t, storedChecksum{calculated: true}, stored)
+
+	// The next run of the migration keeps the checksum.
+	storage = newStorage(t, ctx, db)
+	checkSnapshot(true)
 }
