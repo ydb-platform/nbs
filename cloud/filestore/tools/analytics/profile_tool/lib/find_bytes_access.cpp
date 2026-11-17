@@ -157,8 +157,8 @@ public:
                 std::move(requestTypes)));
 
         if (!parseResult.Has("no-skip-files")) {
-            ProfileLogFiles =
-                SelectProfileLogFiles(std::move(ProfileLogFiles), since, until);
+            ProfileLogFiles = SelectProfileLogFiles(
+                std::move(ProfileLogFiles), timeRange.Since, timeRange.Until);
         }
 
         return true;

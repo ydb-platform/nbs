@@ -95,10 +95,11 @@ public:
 
     bool Init(NLastGetopt::TOptsParseResultException& parseResult) override
     {
+        const auto timeRange = CommonFilterParams.GetTimeRange(parseResult);
         ProfileLogFiles = SelectProfileLogFiles(
             std::move(ProfileLogFiles),
-            CommonFilterParams.GetSince(parseResult),
-            CommonFilterParams.GetUntil(parseResult));
+            timeRange.Since,
+            timeRange.Until);
         return true;
     }
 
