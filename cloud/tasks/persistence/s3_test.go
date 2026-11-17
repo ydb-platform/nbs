@@ -28,7 +28,7 @@ func TestS3ObjectHeadersAreOptIn(t *testing.T) {
 	for _, compatibility := range []bool{false, true} {
 		name := "default"
 		if compatibility {
-			name = "backup/export"
+			name = "backup_export"
 		}
 		t.Run(name, func(t *testing.T) {
 			requests := make(chan http.Header, 3)
@@ -98,7 +98,7 @@ func TestS3ObjectBodyRetriesAreOptIn(t *testing.T) {
 	for _, compatibility := range []bool{false, true} {
 		name := "default"
 		if compatibility {
-			name = "backup/export"
+			name = "backup_export"
 		}
 		t.Run(name, func(t *testing.T) {
 			var attempts atomic.Int32

@@ -315,7 +315,7 @@ func newStorage(
 	registry metrics.Registry,
 ) Storage {
 
-	err := schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */, true)
+	err := schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */, true /* backupEnabled */)
 	require.NoError(t, err)
 
 	storage, err := NewStorage(config, registry, db, s3, true)
@@ -350,7 +350,7 @@ func TestBackupDisabledSchemaPreservesLegacyQueue(t *testing.T) {
 
 	// A cluster initialized by main already has this incompatible key.
 	// Disabled backups must not attempt an ALTER, even with column cleanup.
-	require.NoError(t, schema.Create(ctx, config, db, nil, true, false))
+	require.NoError(t, schema.Create(ctx, config, db, nil, true /* dropUnusedColumns */, false /* backupEnabled */))
 	require.NoError(t, schema.Drop(ctx, config, db, false))
 	res, err := db.ExecuteRO(ctx, fmt.Sprintf(`--!syntax_v1
 		pragma TablePathPrefix = "%v";
@@ -373,7 +373,7 @@ func TestBackupDisabledSnapshotDeletionWithoutFollowerTables(t *testing.T) {
 				defer f.teardown()
 				if shadow {
 					f.config.ChunkBlobsShadowTableName = proto.String("shadow_chunks")
-					require.NoError(t, schema.Create(f.ctx, f.config, f.db, f.s3, false, true))
+					require.NoError(t, schema.Create(f.ctx, f.config, f.db, f.s3, false /* dropUnusedColumns */, true /* backupEnabled */))
 				}
 				for _, table := range []string{
 					"backup_chunk_queue", f.config.GetFollowerChunksTableName(),
@@ -424,7 +424,7 @@ func TestBackupDisabledSchemaDoesNotCreateBackupTables(t *testing.T) {
 		ChunkMapTableShardCount:      proto.Uint64(2),
 		ChunkBlobsStoreExternalBlobs: proto.Bool(false),
 	}
-	require.NoError(t, schema.Create(ctx, config, db, nil, false, false))
+	require.NoError(t, schema.Create(ctx, config, db, nil, false /* dropUnusedColumns */, false /* backupEnabled */))
 	for _, table := range []string{
 		"backup_chunk_queue", config.GetFollowerChunksTableName(),
 		"backup_chunk_delete_queue", "backup_chunk_failures",
