@@ -16,6 +16,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/ydb-go-sdk/v3"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
@@ -315,10 +316,17 @@ func newStorage(
 	registry metrics.Registry,
 ) Storage {
 
-	err := schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */)
+	err := schema.Create(
+		ctx,
+		config,
+		db,
+		s3,
+		false, // dropUnusedColumns
+		true,  // backupEnabled
+	)
 	require.NoError(t, err)
 
-	storage, err := NewStorage(config, registry, db, s3)
+	storage, err := NewStorage(config, registry, db, s3, true)
 	require.NoError(t, err)
 
 	return storage
@@ -359,6 +367,61 @@ func (f *fixture) storageWithFollowerChunksTable(name string) Storage {
 	config := proto.Clone(f.config).(*snapshot_config.SnapshotConfig)
 	config.FollowerChunksTableName = &name
 	return newStorage(f.t, f.ctx, config, f.db, f.s3, metrics.NewEmptyRegistry())
+}
+
+func (f *fixture) checkDeleteSnapshotWithoutBackups(
+	useS3 bool,
+	shadowTableName string,
+) {
+
+	f.t.Helper()
+
+	if len(shadowTableName) != 0 {
+		f.config.ChunkBlobsShadowTableName = &shadowTableName
+		err := schema.Create(
+			f.ctx,
+			f.config,
+			f.db,
+			f.s3,
+			false, // dropUnusedColumns
+			true,  // backupEnabled
+		)
+		require.NoError(f.t, err)
+	}
+
+	// Snapshot deletion must work when backup tables are absent.
+	for _, table := range []string{
+		"backup_chunk_queue",
+		f.config.GetFollowerChunksTableName(),
+		"backup_chunk_delete_queue",
+		"backup_chunk_failures",
+	} {
+		err := f.db.DropTable(
+			f.ctx,
+			f.config.GetStorageFolder(),
+			table,
+		)
+		require.NoError(f.t, err)
+	}
+
+	var err error
+	f.storage, err = NewStorage(
+		f.config,
+		metrics.NewEmptyRegistry(),
+		f.db,
+		f.s3,
+		false, // backupEnabled
+	)
+	require.NoError(f.t, err)
+
+	chunkID := createSnapshotWithChunk(f, "snapshot", useS3)
+	deleteSnapshot(f, "snapshot")
+
+	require.Empty(f.t, readChunkBlobsFromYDB(f, chunkID))
+	if len(shadowTableName) != 0 {
+		f.config.ChunkBlobsTableName = &shadowTableName
+		require.Empty(f.t, readChunkBlobsFromYDB(f, chunkID))
+	}
 }
 
 func createFixture(t *testing.T) *fixture {
@@ -477,6 +540,132 @@ func checkLockTaskID(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func TestCreateAndDropSchemaWithoutBackups(t *testing.T) {
+	ctx := test.NewContext()
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	config := &snapshot_config.SnapshotConfig{
+		StorageFolder:                proto.String(t.Name()),
+		ChunkBlobsTableShardCount:    proto.Uint64(2),
+		ChunkMapTableShardCount:      proto.Uint64(2),
+		ChunkBlobsStoreExternalBlobs: proto.Bool(false),
+	}
+
+	// Older releases created this table even when backups were disabled.
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"backup_chunk_queue",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn(
+				"snapshot_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			persistence.WithColumn(
+				"chunk_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
+		),
+		false, // dropUnusedColumns
+	)
+	require.NoError(t, err)
+
+	query := fmt.Sprintf(`
+        --!syntax_v1
+        pragma TablePathPrefix = "%v";
+
+        upsert into backup_chunk_queue (snapshot_id, chunk_id)
+        values ("snapshot", "chunk");
+    `, db.AbsolutePath(config.GetStorageFolder()))
+	_, err = db.ExecuteRW(ctx, query)
+	require.NoError(t, err)
+
+	// Neither schema creation nor deletion may change the old backup table.
+	err = schema.Create(
+		ctx,
+		config,
+		db,
+		nil,   // s3
+		true,  // dropUnusedColumns
+		false, // backupEnabled
+	)
+	require.NoError(t, err)
+
+	err = schema.Drop(ctx, config, db, false /* backupEnabled */)
+	require.NoError(t, err)
+
+	query = fmt.Sprintf(`
+        --!syntax_v1
+        pragma TablePathPrefix = "%v";
+
+        select chunk_id from backup_chunk_queue
+        where snapshot_id = "snapshot";
+    `, db.AbsolutePath(config.GetStorageFolder()))
+	res, err := db.ExecuteRO(ctx, query)
+	require.NoError(t, err)
+	defer res.Close()
+
+	require.True(t, res.NextResultSet(ctx))
+	require.True(t, res.NextRow())
+
+	var chunkID string
+	err = res.ScanNamed(persistence.OptionalWithDefault("chunk_id", &chunkID))
+	require.NoError(t, err)
+	require.Equal(t, "chunk", chunkID)
+}
+
+func TestCreateSchemaWithoutBackups(t *testing.T) {
+	ctx := test.NewContext()
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	config := &snapshot_config.SnapshotConfig{
+		StorageFolder:                proto.String(t.Name()),
+		ChunkBlobsTableShardCount:    proto.Uint64(2),
+		ChunkMapTableShardCount:      proto.Uint64(2),
+		ChunkBlobsStoreExternalBlobs: proto.Bool(false),
+	}
+
+	err = schema.Create(
+		ctx,
+		config,
+		db,
+		nil,   // s3
+		false, // dropUnusedColumns
+		false, // backupEnabled
+	)
+	require.NoError(t, err)
+
+	for _, table := range []string{
+		"backup_chunk_queue",
+		config.GetFollowerChunksTableName(),
+		"backup_chunk_delete_queue",
+		"backup_chunk_failures",
+	} {
+		query := fmt.Sprintf(`
+            --!syntax_v1
+            pragma TablePathPrefix = "%v";
+
+            select * from %v;
+        `, db.AbsolutePath(config.GetStorageFolder()), table)
+		res, err := db.ExecuteRO(ctx, query)
+		if err == nil {
+			res.Close()
+		}
+		require.True(
+			t,
+			ydb.IsOperationErrorSchemeError(err),
+			"expected missing backup table %v, got: %v",
+			table,
+			err,
+		)
+	}
+}
 
 func TestCreateSnapshot(t *testing.T) {
 	for _, testCase := range testCases() {
@@ -933,6 +1122,58 @@ func TestDeletingSnapshot(t *testing.T) {
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 		})
 	}
+}
+
+func TestDeleteSnapshotWithoutBackups(t *testing.T) {
+	for _, testCase := range testCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			for _, shadowTableName := range []string{"", "shadow_chunks"} {
+				name := "without shadow table"
+				if len(shadowTableName) != 0 {
+					name = "with shadow table"
+				}
+
+				t.Run(name, func(t *testing.T) {
+					f := createFixture(t)
+					defer f.teardown()
+
+					f.checkDeleteSnapshotWithoutBackups(testCase.useS3, shadowTableName)
+				})
+			}
+		})
+	}
+}
+
+func TestDeletingSnapshotWithoutBackups(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+		ID:           "snapshot",
+		CreateTaskID: "create",
+	})
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+	require.NoError(t, err)
+	requireHeldForBackup(t, f, "snapshot", "copy")
+
+	// An unfinished backup blocks deletion while backups are enabled.
+	_, err = f.storage.DeletingSnapshot(f.ctx, "snapshot", "delete")
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	storage, err := NewStorage(
+		f.config,
+		metrics.NewEmptyRegistry(),
+		f.db,
+		f.s3,
+		false, // backupEnabled
+	)
+	require.NoError(t, err)
+
+	// After disabling backups, the saved backup task must not block deletion.
+	_, err = storage.DeletingSnapshot(f.ctx, "snapshot", "delete")
+	require.NoError(t, err)
 }
 
 func TestDeleteNonexistentSnapshot(t *testing.T) {

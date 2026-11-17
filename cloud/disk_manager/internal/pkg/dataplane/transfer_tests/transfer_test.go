@@ -292,7 +292,14 @@ func newStorage(
 	s3, err := test.NewS3Client()
 	require.NoError(t, err)
 
-	err = schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */)
+	err = schema.Create(
+		ctx,
+		config,
+		db,
+		s3,
+		false, // dropUnusedColumns
+		true,  // backupEnabled
+	)
 	require.NoError(t, err)
 
 	storage, err := snapshot_storage.NewStorage(
@@ -300,6 +307,7 @@ func newStorage(
 		metrics.NewEmptyRegistry(),
 		db,
 		s3,
+		true,
 	)
 	require.NoError(t, err)
 
@@ -1020,7 +1028,7 @@ func newBackupS3(
 	withEncryption bool,
 ) *backup.S3 {
 
-	s3, err := test.NewS3Client()
+	s3, err := test.NewBackupS3Client()
 	require.NoError(t, err)
 
 	exists, err := s3.BucketExists(ctx, backupBucket)

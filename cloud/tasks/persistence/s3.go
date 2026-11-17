@@ -111,14 +111,16 @@ func (t *s3TokenAuthTransport) RoundTrip(
 ////////////////////////////////////////////////////////////////////////////////
 
 type S3Client struct {
-	s3          *aws_s3.S3
-	callTimeout time.Duration
-	metrics     *s3Metrics
+	exportCompatibility bool
+	s3                  *aws_s3.S3
+	callTimeout         time.Duration
+	metrics             *s3Metrics
 	// Nil does not limit PutObject.
 	putObjectLimiter *s3AttemptLimiter
 }
 
 type s3ClientOptions struct {
+	exportCompatibility           bool
 	anonymousAccess               bool
 	emptySigningRegion            bool
 	minPutObjectAttemptsPerSecond uint64
@@ -129,6 +131,14 @@ type s3ClientOptions struct {
 
 // S3ClientOption changes only clients whose callers explicitly opt in.
 type S3ClientOption func(*s3ClientOptions)
+
+// WithS3ExportCompatibility enables standard object headers and read retries
+// for backup/export clients. Primary snapshot clients keep their legacy behavior.
+func WithS3ExportCompatibility() S3ClientOption {
+	return func(options *s3ClientOptions) {
+		options.exportCompatibility = true
+	}
+}
 
 // WithS3AnonymousAccess disables request signing and credential discovery.
 func WithS3AnonymousAccess() S3ClientOption {
@@ -298,9 +308,10 @@ func NewS3Client(
 	}
 
 	return &S3Client{
-		s3:          s3,
-		callTimeout: callTimeout,
-		metrics:     s3Metrics,
+		exportCompatibility: clientOptions.exportCompatibility,
+		s3:                  s3,
+		callTimeout:         callTimeout,
+		metrics:             s3Metrics,
 		putObjectLimiter: newS3AttemptLimiter(
 			clientOptions.minPutObjectAttemptsPerSecond,
 			clientOptions.maxPutObjectAttemptsPerSecond,
@@ -344,6 +355,7 @@ func NewS3ClientFromConfig(
 	registry metrics.Registry,
 	availabilityMonitoring *AvailabilityMonitoring,
 	tokenProvider credentials.Credentials,
+	extraOptions ...S3ClientOption,
 ) (*S3Client, error) {
 
 	credentials, err := newS3CredentialsFromConfig(config)
@@ -399,6 +411,7 @@ func NewS3ClientFromConfig(
 		minThrottleRetryDelay,
 		maxThrottleRetryDelay,
 	))
+	options = append(options, extraOptions...)
 
 	return NewS3Client(
 		config.GetEndpoint(),
@@ -537,7 +550,10 @@ func (c *S3Client) BucketExists(
 			}
 		}
 
-		return false, wrapS3ExportError(err)
+		if c.exportCompatibility {
+			return false, wrapS3ExportError(err)
+		}
+		return false, errors.NewRetriableError(err)
 	}
 
 	return true, nil
@@ -548,6 +564,8 @@ func (c *S3Client) BucketExists(
 // marking, so the Go transport does not decompress them and the caller gets
 // gzip instead of the object. Asking for the bytes as stored avoids it. Set
 // after signing, as the transport sets its own Accept-Encoding.
+// This is opt-in for backup clients. Primary snapshot clients retain their
+// previous encoding behavior so backup changes do not affect them.
 func withIdentityEncoding(r *request.Request) {
 	r.Handlers.Send.PushFront(func(r *request.Request) {
 		r.HTTPRequest.Header.Set("Accept-Encoding", "identity")
@@ -605,14 +623,17 @@ func (c *S3Client) GetObject(
 	defer c.metrics.StatCall(ctx, "GetObject", bucket, key)(&err)
 
 	var objData []byte
+	var options []request.Option
+	if c.exportCompatibility {
+		options = []request.Option{withIdentityEncoding, withS3ObjectBody(&objData)}
+	}
 	res, err := c.s3.GetObjectWithContext(
 		ctx,
 		&aws_s3.GetObjectInput{
 			Bucket: &bucket,
 			Key:    &key,
 		},
-		withIdentityEncoding,
-		withS3ObjectBody(&objData),
+		options...,
 	)
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
@@ -628,6 +649,14 @@ func (c *S3Client) GetObject(
 		}
 
 		return S3Object{}, errors.NewRetriableError(err)
+	}
+
+	if !c.exportCompatibility {
+		defer res.Body.Close()
+		objData, err = ioutil.ReadAll(res.Body)
+		if err != nil {
+			return S3Object{}, errors.NewRetriableError(err)
+		}
 	}
 
 	storageClass := aws.StringValue(res.StorageClass)
@@ -687,6 +716,30 @@ func (c *S3Client) PutObject(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (c *S3Client) newPutObjectInput(
+	bucket string,
+	key string,
+	object S3Object,
+) *aws_s3.PutObjectInput {
+
+	input := &aws_s3.PutObjectInput{
+		Bucket:   &bucket,
+		Key:      &key,
+		Body:     bytes.NewReader(object.Data),
+		Metadata: object.Metadata,
+	}
+
+	if c.exportCompatibility {
+		input.ContentType = aws.String("application/octet-stream")
+	} else {
+		// Legacy clients wrote the MIME type as Content-Encoding. Preserve
+		// their behavior; backup/export clients opt in to Content-Type.
+		input.ContentEncoding = aws.String("application/octet-stream")
+	}
+
+	return input
+}
+
 func (c *S3Client) putObject(
 	ctx context.Context,
 	bucket string,
@@ -694,13 +747,7 @@ func (c *S3Client) putObject(
 	object S3Object,
 ) error {
 
-	input := &aws_s3.PutObjectInput{
-		Bucket:      &bucket,
-		Key:         &key,
-		Body:        bytes.NewReader(object.Data),
-		Metadata:    object.Metadata,
-		ContentType: aws.String("application/octet-stream"),
-	}
+	input := c.newPutObjectInput(bucket, key, object)
 
 	_, err := c.s3.PutObjectWithContext(
 		ctx,
@@ -719,13 +766,7 @@ func (c *S3Client) putObjectWithStorageClass(
 	object S3Object,
 ) error {
 
-	input := &aws_s3.PutObjectInput{
-		Bucket:      &bucket,
-		Key:         &key,
-		Body:        bytes.NewReader(object.Data),
-		Metadata:    object.Metadata,
-		ContentType: aws.String("application/octet-stream"),
-	}
+	input := c.newPutObjectInput(bucket, key, object)
 
 	if len(object.StorageClass) != 0 {
 		input.StorageClass = aws.String(object.StorageClass)

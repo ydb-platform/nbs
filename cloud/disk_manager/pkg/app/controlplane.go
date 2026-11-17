@@ -206,7 +206,10 @@ func registerControlplaneTasks(
 
 	logging.Info(ctx, "Registering image tasks")
 	// Snapshot and image backups report their queues side by side.
-	backupQueueMetricsRegistry := mon.NewRegistry("backup_queue")
+	var backupQueueMetricsRegistry metrics.Registry
+	if backupS3 != nil {
+		backupQueueMetricsRegistry = mon.NewRegistry("backup_queue")
+	}
 
 	err = images.RegisterForExecution(
 		ctx,
@@ -390,7 +393,7 @@ func initControlplane(
 		config.GetPlacementGroupConfig().GetStorageFolder(),
 		db,
 		endedMigrationExpirationTimeout,
-		config.GetSnapshotStorageBackupConfig() != nil, // backupEnabled
+		config.GetSnapshotStorageBackupConfig() != nil,
 		config.GetSnapshotStorageBackupConfig().GetFolderIds(),
 	)
 	if err != nil {

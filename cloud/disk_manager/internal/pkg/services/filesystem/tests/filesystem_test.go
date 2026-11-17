@@ -103,6 +103,7 @@ func newResourceStorage(
 		placementGroupsFolder,
 		db,
 		false, // dropUnusedColumns
+		false, // backupEnabled
 	)
 	if err != nil {
 		return nil, err

@@ -19,6 +19,14 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewS3Client() (*persistence.S3Client, error) {
+	return newS3Client()
+}
+
+func NewBackupS3Client() (*persistence.S3Client, error) {
+	return newS3Client(persistence.WithS3ExportCompatibility())
+}
+
+func newS3Client(options ...persistence.S3ClientOption) (*persistence.S3Client, error) {
 	endpoint := fmt.Sprintf("http://localhost:%s", os.Getenv("DISK_MANAGER_RECIPE_S3_PORT"))
 	credentials := persistence.NewS3Credentials("test", "test")
 	callTimeout := 600 * time.Second
@@ -32,6 +40,7 @@ func NewS3Client() (*persistence.S3Client, error) {
 		nil, // availabilityMonitoring
 		nil, // tokenProvider
 		0,   // maxIdleConnsPerHost
+		options...,
 	)
 }
 

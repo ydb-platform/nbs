@@ -281,6 +281,7 @@ func run(
 			s3Registry,
 			nil, // availabilityMonitoring
 			creds,
+			persistence.WithS3ExportCompatibility(),
 		)
 		if err != nil {
 			return err

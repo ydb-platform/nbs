@@ -25,6 +25,7 @@ func Create(
 	db *persistence.YDBClient,
 	s3 *persistence.S3Client,
 	dropUnusedColumns bool,
+	backupEnabled bool,
 ) error {
 
 	logging.Info(
@@ -132,10 +133,163 @@ func Create(
 	}
 	logging.Info(ctx, "Created chunk_map table")
 
+	if backupEnabled {
+		err = createBackupTables(ctx, config, db, dropUnusedColumns)
+		if err != nil {
+			return err
+		}
+	}
+
+	if s3 != nil && len(config.GetS3Bucket()) != 0 {
+		exists, err := s3.BucketExists(ctx, config.GetS3Bucket())
+		if err != nil {
+			return err
+		}
+		// It is useful to create S3 buckets externally and assign permissions
+		// per-bucket. Bucket creation permissions can't be assigned per-bucket,
+		// since per-bucket permissions require the bucket to exist.
+		if !exists {
+			err = s3.CreateBucket(ctx, config.GetS3Bucket())
+			if err != nil {
+				return err
+			}
+
+			logging.Info(ctx, "Created s3 bucket")
+		}
+	} else {
+		logging.Info(ctx, "Skipped s3 bucket creation")
+	}
+
+	logging.Info(ctx, "Created schema for dataplane snapshot storage")
+
+	return nil
+}
+
+func Drop(
+	ctx context.Context,
+	config *snapshot_config.SnapshotConfig,
+	db *persistence.YDBClient,
+	backupEnabled bool,
+) error {
+
+	logging.Info(ctx, "Dropping schema for dataplane snapshot storage in %v", db.AbsolutePath(config.GetStorageFolder()))
+
+	err := db.DropTable(ctx, config.GetStorageFolder(), "snapshots")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped snapshots table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "deleting")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped deleting table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "incremental")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped incremental table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), config.GetChunkBlobsTableName())
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped %v table", config.GetChunkBlobsTableName())
+
+	shadowTableName := config.GetChunkBlobsShadowTableName()
+	if len(shadowTableName) != 0 {
+		err = db.DropTable(ctx, config.GetStorageFolder(), shadowTableName)
+		if err != nil {
+			return err
+		}
+		logging.Info(ctx, "Dropped %v table", shadowTableName)
+	}
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "chunk_map")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped chunk_map table")
+
+	if backupEnabled {
+		err = dropBackupTables(ctx, config, db)
+		if err != nil {
+			return err
+		}
+	}
+
+	logging.Info(ctx, "Dropped schema for dataplane snapshot storage")
+
+	return nil
+}
+
+func chunkBlobsTableDescription(
+	config *snapshot_config.SnapshotConfig,
+	storeExternalBlobs bool,
+) persistence.CreateTableDescription {
+
+	options := []persistence.CreateTableOption{
+		persistence.WithColumn("shard_id", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("referer", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("data", persistence.Optional(persistence.TypeString)),
+		persistence.WithColumn("refcnt", persistence.Optional(persistence.TypeUint32)),
+		persistence.WithColumn("checksum", persistence.Optional(persistence.TypeUint32)),
+		persistence.WithColumn("compression", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithPrimaryKeyColumn("shard_id", "chunk_id", "referer"),
+		persistence.WithUniformPartitions(config.GetChunkBlobsTableShardCount()),
+	}
+	if storeExternalBlobs {
+		options = append(
+			options,
+			persistence.WithExternalBlobs(config.GetExternalBlobsMediaKind()),
+		)
+	}
+
+	return persistence.NewCreateTableDescription(options...)
+}
+
+func snapshotStateTableDescription() persistence.CreateTableDescription {
+	return persistence.NewCreateTableDescription(
+		persistence.WithColumn(
+			"block_size", persistence.Optional(persistence.TypeUint32),
+		),
+		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("disk_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("create_task_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("creating_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("deleting_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("base_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("base_checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("storage_size", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("chunk_count", persistence.Optional(persistence.TypeUint32)),
+		persistence.WithColumn("lock_task_id", persistence.Optional(persistence.TypeUTF8)),
+		// The backup copy that holds the snapshot; deletion waits for it.
+		persistence.WithColumn("backup_task_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("encryption_mode", persistence.Optional(persistence.TypeUint32)),
+		persistence.WithColumn("encryption_keyhash", persistence.Optional(persistence.TypeString)),
+		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
+		persistence.WithPrimaryKeyColumn("id"),
+	)
+}
+
+func createBackupTables(
+	ctx context.Context,
+	config *snapshot_config.SnapshotConfig,
+	db *persistence.YDBClient,
+	dropUnusedColumns bool,
+) error {
+
 	// Keyed by a hash of the chunk so that copy tasks reading from a random
 	// shard_id take disjoint batches. Per-snapshot operations go through the
 	// snapshot_id index.
-	err = db.CreateOrAlterTable(
+	err := db.CreateOrAlterTable(
 		ctx,
 		config.GetStorageFolder(),
 		"backup_chunk_queue",
@@ -234,79 +388,16 @@ func Create(
 	}
 	logging.Info(ctx, "Created backup_chunk_failures table")
 
-	if s3 != nil && len(config.GetS3Bucket()) != 0 {
-		exists, err := s3.BucketExists(ctx, config.GetS3Bucket())
-		if err != nil {
-			return err
-		}
-		// It is useful to create S3 buckets externally and assign permissions
-		// per-bucket. Bucket creation permissions can't be assigned per-bucket,
-		// since per-bucket permissions require the bucket to exist.
-		if !exists {
-			err = s3.CreateBucket(ctx, config.GetS3Bucket())
-			if err != nil {
-				return err
-			}
-
-			logging.Info(ctx, "Created s3 bucket")
-		}
-	} else {
-		logging.Info(ctx, "Skipped s3 bucket creation")
-	}
-
-	logging.Info(ctx, "Created schema for dataplane snapshot storage")
-
 	return nil
 }
 
-func Drop(
+func dropBackupTables(
 	ctx context.Context,
 	config *snapshot_config.SnapshotConfig,
 	db *persistence.YDBClient,
 ) error {
 
-	logging.Info(ctx, "Dropping schema for dataplane snapshot storage in %v", db.AbsolutePath(config.GetStorageFolder()))
-
-	err := db.DropTable(ctx, config.GetStorageFolder(), "snapshots")
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Dropped snapshots table")
-
-	err = db.DropTable(ctx, config.GetStorageFolder(), "deleting")
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Dropped deleting table")
-
-	err = db.DropTable(ctx, config.GetStorageFolder(), "incremental")
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Dropped incremental table")
-
-	err = db.DropTable(ctx, config.GetStorageFolder(), config.GetChunkBlobsTableName())
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Dropped %v table", config.GetChunkBlobsTableName())
-
-	shadowTableName := config.GetChunkBlobsShadowTableName()
-	if len(shadowTableName) != 0 {
-		err = db.DropTable(ctx, config.GetStorageFolder(), shadowTableName)
-		if err != nil {
-			return err
-		}
-		logging.Info(ctx, "Dropped %v table", shadowTableName)
-	}
-
-	err = db.DropTable(ctx, config.GetStorageFolder(), "chunk_map")
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Dropped chunk_map table")
-
-	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_queue")
+	err := db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_queue")
 	if err != nil {
 		return err
 	}
@@ -330,61 +421,5 @@ func Drop(
 	}
 	logging.Info(ctx, "Dropped backup_chunk_failures table")
 
-	logging.Info(ctx, "Dropped schema for dataplane snapshot storage")
-
 	return nil
-}
-
-func chunkBlobsTableDescription(
-	config *snapshot_config.SnapshotConfig,
-	storeExternalBlobs bool,
-) persistence.CreateTableDescription {
-
-	options := []persistence.CreateTableOption{
-		persistence.WithColumn("shard_id", persistence.Optional(persistence.TypeUint64)),
-		persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("referer", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("data", persistence.Optional(persistence.TypeString)),
-		persistence.WithColumn("refcnt", persistence.Optional(persistence.TypeUint32)),
-		persistence.WithColumn("checksum", persistence.Optional(persistence.TypeUint32)),
-		persistence.WithColumn("compression", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithPrimaryKeyColumn("shard_id", "chunk_id", "referer"),
-		persistence.WithUniformPartitions(config.GetChunkBlobsTableShardCount()),
-	}
-	if storeExternalBlobs {
-		options = append(
-			options,
-			persistence.WithExternalBlobs(config.GetExternalBlobsMediaKind()),
-		)
-	}
-
-	return persistence.NewCreateTableDescription(options...)
-}
-
-func snapshotStateTableDescription() persistence.CreateTableDescription {
-	return persistence.NewCreateTableDescription(
-		persistence.WithColumn(
-			"block_size", persistence.Optional(persistence.TypeUint32),
-		),
-		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("disk_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("create_task_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("creating_at", persistence.Optional(persistence.TypeTimestamp)),
-		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
-		persistence.WithColumn("deleting_at", persistence.Optional(persistence.TypeTimestamp)),
-		persistence.WithColumn("base_snapshot_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("base_checkpoint_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("size", persistence.Optional(persistence.TypeUint64)),
-		persistence.WithColumn("storage_size", persistence.Optional(persistence.TypeUint64)),
-		persistence.WithColumn("chunk_count", persistence.Optional(persistence.TypeUint32)),
-		persistence.WithColumn("lock_task_id", persistence.Optional(persistence.TypeUTF8)),
-		// The backup copy that holds the snapshot; deletion waits for it.
-		persistence.WithColumn("backup_task_id", persistence.Optional(persistence.TypeUTF8)),
-		persistence.WithColumn("encryption_mode", persistence.Optional(persistence.TypeUint32)),
-		persistence.WithColumn("encryption_keyhash", persistence.Optional(persistence.TypeString)),
-		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
-		persistence.WithPrimaryKeyColumn("id"),
-	)
 }

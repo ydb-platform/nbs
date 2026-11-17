@@ -31,7 +31,7 @@ type testFollower struct {
 }
 
 func newTestFollower(t *testing.T, ctx context.Context) testFollower {
-	s3, err := test.NewS3Client()
+	s3, err := test.NewBackupS3Client()
 	require.NoError(t, err)
 
 	exists, err := s3.BucketExists(ctx, backupTestBucket)

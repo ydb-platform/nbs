@@ -663,3 +663,129 @@ func TestS3ShouldLimitPutObjectAttemptsIncludingRetries(t *testing.T) {
 	// default of 500 ms and more.
 	require.Less(t, elapsed, 400*time.Millisecond)
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestS3ClientCompatibilityHeaders(t *testing.T) {
+	testCases := []struct {
+		name                string
+		exportCompatibility bool
+	}{
+		{name: "default"},
+		{name: "backup_export", exportCompatibility: true},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			requests := make(chan http.Header, 2)
+			server := httptest.NewServer(http.HandlerFunc(func(
+				w http.ResponseWriter,
+				r *http.Request,
+			) {
+
+				requests <- r.Header.Clone()
+				if r.Method == http.MethodGet {
+					_, _ = w.Write([]byte("data"))
+				}
+			}))
+			defer server.Close()
+
+			var options []S3ClientOption
+			if testCase.exportCompatibility {
+				options = append(options, WithS3ExportCompatibility())
+			}
+
+			credentialsFile := filepath.Join(t.TempDir(), "credentials.json")
+			err := os.WriteFile(
+				credentialsFile,
+				[]byte(`{"id":"id","secret":"secret"}`),
+				0600,
+			)
+			require.NoError(t, err)
+
+			client, err := NewS3ClientFromConfig(
+				&persistence_config.S3Config{
+					Endpoint:               proto.String(server.URL),
+					Region:                 proto.String("region"),
+					CredentialsFilePath:    proto.String(credentialsFile),
+					CallTimeout:            proto.String("5s"),
+					MaxRetriableErrorCount: proto.Uint64(0),
+				},
+				empty.NewRegistry(),
+				nil, // availabilityMonitoring
+				nil, // tokenProvider
+				options...,
+			)
+			require.NoError(t, err)
+
+			err = client.PutObject(
+				newContext(),
+				"bucket",
+				"key",
+				S3Object{Data: []byte("data")},
+			)
+			require.NoError(t, err)
+
+			headers := <-requests
+			if testCase.exportCompatibility {
+				require.Empty(t, headers.Get("Content-Encoding"))
+				require.Equal(t, "application/octet-stream", headers.Get("Content-Type"))
+			} else {
+				require.Equal(t, "application/octet-stream", headers.Get("Content-Encoding"))
+			}
+
+			_, err = client.GetObject(newContext(), "bucket", "key")
+			require.NoError(t, err)
+			encoding := (<-requests).Get("Accept-Encoding")
+			if testCase.exportCompatibility {
+				require.Equal(t, "identity", encoding)
+			} else {
+				require.NotEqual(t, "identity", encoding)
+			}
+		})
+	}
+}
+
+func TestS3ClientCompatibilityBucketErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(
+		w http.ResponseWriter,
+		r *http.Request,
+	) {
+
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	client, err := NewS3Client(
+		server.URL,
+		"region",
+		NewS3Credentials("id", "secret"),
+		time.Second,
+		empty.NewRegistry(),
+		0,   // maxRetriableErrorCount
+		nil, // availabilityMonitoring
+		nil, // tokenProvider
+		0,   // maxIdleConnsPerHost
+	)
+	require.NoError(t, err)
+
+	_, err = client.BucketExists(newContext(), "bucket")
+	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
+
+	client, err = NewS3Client(
+		server.URL,
+		"region",
+		NewS3Credentials("id", "secret"),
+		time.Second,
+		empty.NewRegistry(),
+		0,   // maxRetriableErrorCount
+		nil, // availabilityMonitoring
+		nil, // tokenProvider
+		0,   // maxIdleConnsPerHost
+		WithS3ExportCompatibility(),
+	)
+	require.NoError(t, err)
+
+	_, err = client.BucketExists(newContext(), "bucket")
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+}

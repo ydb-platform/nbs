@@ -29,7 +29,7 @@ const backupTestBucket = "images-backup"
 func TestBackupImageTask(t *testing.T) {
 	ctx := test.NewContext()
 
-	s3, err := test.NewS3Client()
+	s3, err := test.NewBackupS3Client()
 	require.NoError(t, err)
 
 	exists, err := s3.BucketExists(ctx, backupTestBucket)
@@ -148,7 +148,7 @@ func TestBackupImageTask(t *testing.T) {
 func TestBackupImageTaskReusesEncryptedDEK(t *testing.T) {
 	ctx := test.NewContext()
 
-	s3, err := test.NewS3Client()
+	s3, err := test.NewBackupS3Client()
 	require.NoError(t, err)
 
 	exists, err := s3.BucketExists(ctx, backupTestBucket)
@@ -237,7 +237,7 @@ func TestBackupImageTaskReusesEncryptedDEK(t *testing.T) {
 func TestBackupImageTaskWithoutEncryption(t *testing.T) {
 	ctx := test.NewContext()
 
-	s3, err := test.NewS3Client()
+	s3, err := test.NewBackupS3Client()
 	require.NoError(t, err)
 
 	exists, err := s3.BucketExists(ctx, backupTestBucket)
@@ -438,7 +438,7 @@ func TestBackupImageTaskSkipsBackedUpImage(t *testing.T) {
 func TestBackupImageTaskDoesNotMarkBackupWithoutMeta(t *testing.T) {
 	ctx := test.NewContext()
 
-	s3, err := test.NewS3Client()
+	s3, err := test.NewBackupS3Client()
 	require.NoError(t, err)
 
 	exists, err := s3.BucketExists(ctx, backupTestBucket)
