@@ -119,6 +119,15 @@ class CommentEditConflict(Exception):
 
 
 @contextmanager
+def warn_on_comment_failure(operation: str) -> Iterable[None]:
+    try:
+        yield
+    except Exception:
+        LOGGER.warning("%s failed", operation, exc_info=True)
+        print(f"::warning::{operation} failed; see the job logs and test reports.")
+
+
+@contextmanager
 def _summary_output_stream(summary_fn: str | None) -> Iterable[IO[str]]:
     if summary_fn:
         with open(summary_fn, "at") as fp:
@@ -1427,6 +1436,89 @@ def parse_title_html_path_args(args: list[str]) -> list[TitlePathTriplet]:
     return list(zip(it, it, it))
 
 
+def generate_and_publish_summary(
+    paths: list[TitlePathTriplet],
+    *,
+    summary_out_path: str,
+    summary_url_prefix: str,
+    summary_out_env_path: str = "",
+    test_history_url: str | None = None,
+    build_preset: str = "default-linux-x86-64-relwithdebinfo",
+    test_target: str = "",
+    component: str = "",
+    test_iteration: int = 0,
+    test_exit_code: int | None = None,
+    is_dry_run: bool = False,
+    test_time: str = "0",
+    build_error_log_url: str = "",
+    trace_report_url: str = "",
+    trace_otlp_url: str = "",
+    workload_status: str = "completed",
+    update_workload_status_only: bool = False,
+) -> None:
+    summary: TestSummary | None = None
+    if paths:
+        summary = gen_summary(
+            summary_url_prefix,
+            summary_out_path,
+            paths,
+            build_error_log_url=build_error_log_url,
+            trace_report_url=trace_report_url,
+        )
+        write_summary(
+            summary,
+            summary_out_env_path,
+        )
+        write_summary_json(
+            summary,
+            summary_out_path,
+            build_failed_count=get_build_failed_count(),
+        )
+    elif not update_workload_status_only:
+        LOGGER.error("No summary inputs provided")
+        raise SystemExit(-1)
+
+    if os.environ.get("GITHUB_EVENT_NAME") not in (
+        "pull_request",
+        "pull_request_target",
+    ):
+        return
+
+    # Local report failures remain fatal. Publishing their status is optional and
+    # must not change the test result or prevent subsequent artifact uploads.
+    with warn_on_comment_failure("PR status publication"):
+        run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
+        pr = pull_request_from_event(
+            github_client_from_env(),
+            load_github_event(),
+        )
+        if update_workload_status_only:
+            update_pr_comment_workload_status(
+                run_number,
+                pr,
+                build_preset,
+                is_dry_run,
+                workload_status,
+            )
+        elif summary is not None:
+            update_pr_comment(
+                run_number,
+                pr,
+                summary,
+                build_preset,
+                test_history_url,
+                test_target,
+                test_time,
+                is_dry_run,
+                workload_status,
+                component=component,
+                test_iteration=test_iteration,
+                test_exit_code=test_exit_code,
+                trace_report_url=trace_report_url,
+                trace_otlp_url=trace_otlp_url,
+            )
+
+
 def main() -> None:
     setup_logger(name=__name__, fmt="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
@@ -1469,73 +1561,13 @@ def main() -> None:
         help="Only update the workload status block in an existing PR comment",
     )
     parser.add_argument("args", nargs="*", metavar="TITLE html_out path")
-    args = parser.parse_args()
-
-    summary: TestSummary | None = None
-    if args.args:
-        try:
-            title_path = parse_title_html_path_args(args.args)
-        except ValueError as error:
-            LOGGER.error(str(error))
-            raise SystemExit(-1) from error
-
-        summary = gen_summary(
-            args.summary_url_prefix,
-            args.summary_out_path,
-            title_path,
-            build_error_log_url=args.build_error_log_url,
-            trace_report_url=args.trace_report_url,
-        )
-        write_summary(
-            summary,
-            args.summary_out_env_path,
-        )
-        write_summary_json(
-            summary,
-            args.summary_out_path,
-            build_failed_count=get_build_failed_count(),
-        )
-    elif not args.update_workload_status_only:
-        LOGGER.error("No summary inputs provided")
-        raise SystemExit(-1)
-
-    if os.environ.get("GITHUB_EVENT_NAME") not in (
-        "pull_request",
-        "pull_request_target",
-    ):
-        return
-
-    run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
-    pr = pull_request_from_event(
-        github_client_from_env(),
-        load_github_event(),
-    )
-    if args.update_workload_status_only:
-        update_pr_comment_workload_status(
-            run_number,
-            pr,
-            args.build_preset,
-            args.is_dry_run,
-            args.workload_status,
-        )
-    else:
-        assert summary is not None
-        update_pr_comment(
-            run_number,
-            pr,
-            summary,
-            args.build_preset,
-            args.test_history_url,
-            args.test_target,
-            args.test_time,
-            args.is_dry_run,
-            args.workload_status,
-            component=args.component,
-            test_iteration=args.test_iteration,
-            test_exit_code=args.test_exit_code,
-            trace_report_url=args.trace_report_url,
-            trace_otlp_url=args.trace_otlp_url,
-        )
+    options = vars(parser.parse_args())
+    try:
+        paths = parse_title_html_path_args(options.pop("args"))
+    except ValueError as error:
+        LOGGER.error(str(error))
+        raise SystemExit(-1) from error
+    generate_and_publish_summary(paths, **options)
 
 
 if __name__ == "__main__":

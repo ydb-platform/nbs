@@ -2,8 +2,62 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import Mock
+
+import pytest
 
 from scripts.tests import generate_summary as gs
+
+
+@pytest.mark.parametrize(
+    "failure_point",
+    ["github_client_from_env", "pull_request_from_event", "update_pr_comment"],
+)
+def test_publication_failure_keeps_local_reports(
+    tmp_path, monkeypatch, capsys, mk_testcase, write_junit_xml, failure_point
+):
+    xml_path = tmp_path / "junit.xml"
+    write_junit_xml(xml_path, mk_testcase(failure="Test failed"))
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    monkeypatch.setenv("BUILD_FAILED_COUNT", "0")
+    for name in (
+        "github_client_from_env",
+        "load_github_event",
+        "pull_request_from_event",
+        "update_pr_comment",
+    ):
+        monkeypatch.setattr(gs, name, Mock())
+    monkeypatch.setattr(
+        gs, failure_point, Mock(side_effect=RuntimeError("unavailable"))
+    )
+
+    gs.generate_and_publish_summary(
+        [("Tests", "tests.html", str(xml_path))],
+        summary_out_path=str(tmp_path),
+        summary_out_env_path=str(tmp_path / "summary.md"),
+        summary_url_prefix="https://reports/",
+        test_exit_code=124,
+    )
+
+    assert (tmp_path / "tests.html").is_file()
+    assert (tmp_path / "summary.md").is_file()
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    assert summary["reports"][0]["counts"]["FAIL"] == 1
+    assert "::warning::PR status publication failed" in capsys.readouterr().out
+    if failure_point == "update_pr_comment":
+        assert gs.update_pr_comment.call_args.kwargs["test_exit_code"] == 124
+
+
+def test_local_report_failure_is_not_suppressed(tmp_path, mk_testcase, write_junit_xml):
+    xml_path = tmp_path / "junit.xml"
+    write_junit_xml(xml_path, mk_testcase())
+    with pytest.raises(IsADirectoryError):
+        gs.generate_and_publish_summary(
+            [("Tests", "tests.html", str(xml_path))],
+            summary_out_path=str(tmp_path),
+            summary_out_env_path=str(tmp_path),
+            summary_url_prefix="https://reports/",
+        )
 
 
 def test_from_junit_marks_fail_build_timeout_and_logs_directory(mk_testcase) -> None:
