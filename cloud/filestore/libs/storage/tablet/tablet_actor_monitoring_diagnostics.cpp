@@ -1,7 +1,6 @@
 #include "tablet_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/aggregate.h>
-#include <cloud/filestore/libs/diagnostics/latency_normalization.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 
@@ -11,7 +10,6 @@
 #include <library/cpp/resource/resource.h>
 
 #include <util/generic/vector.h>
-#include <util/generic/hash.h>
 #include <util/stream/str.h>
 #include <util/string/builder.h>
 
@@ -69,7 +67,6 @@ struct TNodeRow
 {
     TString ShardId;
     ui64 NodeId = 0;
-    TString NodeType;
     ui64 Requests = 0;
     double AccessScore = 0;
     ui64 LastAccessedUs = 0;
@@ -81,7 +78,6 @@ struct TLatency
     ui64 TotalLatencyUs = 0;
     double TotalDecayedLatencyUs = 0;
     ui64 LastAccessedTimestampUs = 0;
-    double NormalizedAverageLatencyUs = 0;
 
     void Add(const TLatency& other)
     {
@@ -90,7 +86,6 @@ struct TLatency
         TotalDecayedLatencyUs += other.TotalDecayedLatencyUs;
         LastAccessedTimestampUs =
             Max(LastAccessedTimestampUs, other.LastAccessedTimestampUs);
-        NormalizedAverageLatencyUs += other.NormalizedAverageLatencyUs;
     }
 
     double GetAverageDecayedLatencyUs() const
@@ -115,25 +110,10 @@ private:
 
     using TLatencyResult = NAggregation::TResult<TLatency>;
 
-    static TString NodeTypeToString(ui32 type)
-    {
-        switch (type) {
-            case NProto::E_REGULAR_NODE:
-                return "file";
-            case NProto::E_DIRECTORY_NODE:
-                return "dir";
-            case NProto::E_INVALID_NODE:
-                return "unknown";
-            default:
-                return "other";
-        }
-    }
-
     TVector<TShardRow> Shards;
     TVector<TString> ShardIds;
     TVector<TNodeRow> Nodes;
     TVector<NAggregation::TRow<TLatency>> Latency;
-    THashMap<TString, TLatency> RequestTypeTotals;
     TVector<TLatencyResult> NodeLatency;
     TVector<TLatencyResult> RequestLatency;
     TVector<TLatencyResult> ShardLatency;
@@ -261,11 +241,6 @@ private:
         } else {
             ProcessAccessStats(response.GetNodeStats(), Nodes);
             ProcessLatencyStats(response.GetLatencyStats(), Latency);
-            for (const auto& stats: response.GetRequestTypeStats()) {
-                auto& totals = RequestTypeTotals[stats.GetRequestType()];
-                totals.RequestCount += stats.GetRequestCount();
-                totals.TotalLatencyUs += stats.GetTotalLatencyUs();
-            }
         }
 
         SendDiagnosticRequests(ctx);
@@ -280,7 +255,6 @@ private:
             accessRows.push_back(
                 {stats.GetShardId(),
                  stats.GetNodeId(),
-                 NodeTypeToString(stats.GetNodeType()),
                  stats.GetRequestCount(),
                  stats.GetAccessScore(),
                  stats.GetLastAccessedTimestampUs()});
@@ -297,8 +271,7 @@ private:
             row.Labels = {
                 ToString(stats.GetNodeId()),
                 stats.GetShardId(),
-                stats.GetRequestType(),
-                NodeTypeToString(stats.GetNodeType())};
+                stats.GetRequestType()};
             row.Data.RequestCount = stats.GetRequestCount();
             row.Data.TotalLatencyUs = stats.GetTotalLatencyUs();
             row.Data.TotalDecayedLatencyUs =
@@ -306,39 +279,6 @@ private:
             row.Data.LastAccessedTimestampUs =
                 stats.GetLastAccessedTimestampUs();
             latencyRows.push_back(std::move(row));
-        }
-    }
-
-    void NormalizeNodeLatencyStats()
-    {
-        for (auto& row: Latency) {
-            if (!row.Data.RequestCount) {
-                continue;
-            }
-
-            const auto& totals = RequestTypeTotals.at(row.Labels[2]);
-            const auto otherRequestCount =
-                totals.RequestCount - row.Data.RequestCount;
-            const auto otherTotalLatencyUs =
-                totals.TotalLatencyUs - row.Data.TotalLatencyUs;
-            const double priorMeanLatencyUs = otherRequestCount
-                ? static_cast<double>(otherTotalLatencyUs) / otherRequestCount
-                : static_cast<double>(row.Data.TotalLatencyUs) /
-                      row.Data.RequestCount;
-
-            const double rawMeanLatencyUs =
-                static_cast<double>(row.Data.TotalLatencyUs) /
-                row.Data.RequestCount;
-            const double decayFactor = rawMeanLatencyUs > 0
-                ? row.Data.GetAverageDecayedLatencyUs() / rawMeanLatencyUs
-                : 1.0;
-
-            row.Data.NormalizedAverageLatencyUs =
-                NDiagnostics::NormalizeLatencyUs(
-                    row.Data.TotalLatencyUs,
-                    row.Data.RequestCount,
-                    priorMeanLatencyUs,
-                    decayFactor);
         }
     }
 
@@ -353,17 +293,11 @@ private:
             const bool hasShardId = !aggregate.Labels[1].empty();
             const bool hasRequestType = !aggregate.Labels[2].empty();
 
-            if (hasNodeId && hasShardId && hasRequestType &&
-                !aggregate.Labels[3].empty())
-            {
+            if (hasNodeId && hasShardId && hasRequestType) {
                 nodeLatencyRows.push_back(aggregate);
-            } else if (!hasNodeId && hasShardId && hasRequestType &&
-                       aggregate.Labels[3].empty())
-            {
+            } else if (!hasNodeId && hasShardId && hasRequestType) {
                 requestLatencyRows.push_back(aggregate);
-            } else if (!hasNodeId && hasShardId && !hasRequestType &&
-                       aggregate.Labels[3].empty())
-            {
+            } else if (!hasNodeId && hasShardId && !hasRequestType) {
                 shardLatencyRows.push_back(aggregate);
             }
         }
@@ -387,10 +321,8 @@ private:
         const TLatencyResult& lhs,
         const TLatencyResult& rhs)
     {
-        const auto lhsLatency =
-            lhs.GroupAggregate.NormalizedAverageLatencyUs;
-        const auto rhsLatency =
-            rhs.GroupAggregate.NormalizedAverageLatencyUs;
+        const auto lhsLatency = lhs.GroupAggregate.GetAverageDecayedLatencyUs();
+        const auto rhsLatency = rhs.GroupAggregate.GetAverageDecayedLatencyUs();
         const auto lhsNodeId = FromString<ui64>(lhs.Labels[0]);
         const auto rhsNodeId = FromString<ui64>(rhs.Labels[0]);
 
@@ -433,7 +365,6 @@ private:
 
     void Reply(const TActorContext& ctx)
     {
-        NormalizeNodeLatencyStats();
         auto latencyAggregates = NAggregation::Aggregate(Latency);
         GroupLatencyCombinations(
             latencyAggregates,
@@ -491,8 +422,6 @@ private:
             writer.WriteString(row.ShardId);
             writer.WriteKey("node_id");
             writer.WriteString(ToString(row.NodeId));
-            writer.WriteKey("node_type");
-            writer.WriteString(row.NodeType);
             writer.WriteKey("requests");
             writer.WriteULongLong(row.Requests);
             writer.WriteKey("access_score");
@@ -549,8 +478,6 @@ private:
             if (row.Labels[0]) {
                 writer.WriteKey("node_id");
                 writer.WriteString(row.Labels[0]);
-                writer.WriteKey("node_type");
-                writer.WriteString(row.Labels[3]);
             }
             if (row.Labels[2]) {
                 writer.WriteKey("request_type");
@@ -560,11 +487,6 @@ private:
             writer.WriteULongLong(row.GroupAggregate.RequestCount);
             writer.WriteKey("avg_decayed_us");
             writer.WriteDouble(row.GroupAggregate.GetAverageDecayedLatencyUs());
-            if (row.Labels[0]) {
-                writer.WriteKey("normalized_avg_us");
-                writer.WriteDouble(
-                    row.GroupAggregate.NormalizedAverageLatencyUs);
-            }
             writer.WriteKey("total_decayed_us");
             writer.WriteDouble(row.GroupAggregate.TotalDecayedLatencyUs);
             writer.WriteKey("total_us");
