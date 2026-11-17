@@ -3188,9 +3188,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
-    void CheckThreeStageWrites(NProto::EStorageMediaKind kind, bool disableForHdd)
+    void CheckThreeStageWrites(
+        NProto::EStorageMediaKind kind,
+        bool disableForHdd,
+        const NProto::TStorageConfig& storageConfig)
     {
-        TTestEnv env;
+        TTestEnv env({}, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -3350,12 +3353,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldUpdateTimestampsUponThreeStageWrite)
+    PARAMETRIZED_TEST(ShouldUpdateTimestampsUponThreeStageWrite)
     {
-        NProto::TStorageConfig config;
-        config.SetThreeStageWriteEnabled(true);
-        config.SetThreeStageWriteThreshold(1);
-        TTestEnv env({}, config);
+        storageConfig.SetThreeStageWriteEnabled(true);
+        storageConfig.SetThreeStageWriteThreshold(1);
+        TTestEnv env({}, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -3408,24 +3410,33 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_GT(attrs.GetCTime(), oldTime);
     }
 
-    Y_UNIT_TEST(ShouldPerformThreeStageWritesHdd)
+    PARAMETRIZED_TEST(ShouldPerformThreeStageWritesHdd)
     {
-        CheckThreeStageWrites(NProto::STORAGE_MEDIA_HDD, false);
+        CheckThreeStageWrites(
+            NProto::STORAGE_MEDIA_HDD,
+            false,
+            storageConfig);
     }
 
-    Y_UNIT_TEST(ShouldPerformThreeStageWritesSsd)
+    PARAMETRIZED_TEST(ShouldPerformThreeStageWritesSsd)
     {
-        CheckThreeStageWrites(NProto::STORAGE_MEDIA_SSD, false);
+        CheckThreeStageWrites(
+            NProto::STORAGE_MEDIA_SSD,
+            false,
+            storageConfig);
     }
 
-    Y_UNIT_TEST(ShouldPerformThreeStageWritesHybrid)
+    PARAMETRIZED_TEST(ShouldPerformThreeStageWritesHybrid)
     {
-        CheckThreeStageWrites(NProto::STORAGE_MEDIA_HYBRID, false);
+        CheckThreeStageWrites(
+            NProto::STORAGE_MEDIA_HYBRID,
+            false,
+            storageConfig);
     }
 
-    Y_UNIT_TEST(ShouldNotUseThreeStageWriteForSmallOrUnalignedRequests)
+    PARAMETRIZED_TEST(ShouldNotUseThreeStageWriteForSmallOrUnalignedRequests)
     {
-        TTestEnv env;
+        TTestEnv env({}, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -3483,13 +3494,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         validateWriteData(1, 128_KB, 1 + 128_KB);
     }
 
-    Y_UNIT_TEST(ShouldUseThreeStageWriteForLargeUnalignedRequestsIfEnabled)
+    PARAMETRIZED_TEST(ShouldUseThreeStageWriteForLargeUnalignedRequestsIfEnabled)
     {
-        NProto::TStorageConfig config;
-        config.SetThreeStageWriteEnabled(true);
-        config.SetThreeStageWriteThreshold(4_KB);
-        config.SetUnalignedThreeStageWriteEnabled(true);
-        TTestEnv env({}, config);
+        storageConfig.SetThreeStageWriteEnabled(true);
+        storageConfig.SetThreeStageWriteThreshold(4_KB);
+        storageConfig.SetUnalignedThreeStageWriteEnabled(true);
+        TTestEnv env({}, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -3550,15 +3560,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(data.size() + offset, stat.GetSize());
     }
 
-    Y_UNIT_TEST(ShouldFallbackToWriteIfNoAlignedForAtLeastOneBlock)
+    PARAMETRIZED_TEST(ShouldFallbackToWriteIfNoAlignedForAtLeastOneBlock)
     {
-        NProto::TStorageConfig config;
-        config.SetThreeStageWriteEnabled(true);
-        config.SetThreeStageWriteThreshold(64_KB);
-        config.SetUnalignedThreeStageWriteEnabled(true);
+        storageConfig.SetThreeStageWriteEnabled(true);
+        storageConfig.SetThreeStageWriteThreshold(64_KB);
+        storageConfig.SetUnalignedThreeStageWriteEnabled(true);
         const auto profileLog = std::make_shared<TTestProfileLog>();
 
-        TTestEnv env({}, config, {}, profileLog);
+        TTestEnv env({}, storageConfig, {}, profileLog);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -3616,9 +3625,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         runtime.ClearCounters();
     }
 
-    void CheckGenerateBlobIdsError(ui32 errorCode)
+    void CheckGenerateBlobIdsError(
+        ui32 errorCode,
+        const NProto::TStorageConfig& storageConfig)
     {
-        TTestEnv env;
+        TTestEnv env({}, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -3684,19 +3695,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         runtime.ClearCounters();
     }
 
-    Y_UNIT_TEST(ShouldReturnGenerateBlobIdsError)
+    PARAMETRIZED_TEST(ShouldReturnGenerateBlobIdsError)
     {
-        CheckGenerateBlobIdsError(E_REJECTED);
+        CheckGenerateBlobIdsError(E_REJECTED, storageConfig);
     }
 
-    Y_UNIT_TEST(ShouldReturnGenerateBlobIdsOutOfSpaceError)
+    PARAMETRIZED_TEST(ShouldReturnGenerateBlobIdsOutOfSpaceError)
     {
-        CheckGenerateBlobIdsError(E_FS_OUT_OF_SPACE);
+        CheckGenerateBlobIdsError(E_FS_OUT_OF_SPACE, storageConfig);
     }
 
-    Y_UNIT_TEST(ShouldFallbackThreeStageWriteToSimpleWrite)
+    PARAMETRIZED_TEST(ShouldFallbackThreeStageWriteToSimpleWrite)
     {
-        TTestEnv env;
+        TTestEnv env({}, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -3815,9 +3826,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, counters->GetCounter("InProgress")->GetAtomic());
     }
 
-    Y_UNIT_TEST(ShouldWriteDataWhenWriteBlobDisabled)
+    PARAMETRIZED_TEST(ShouldWriteDataWhenWriteBlobDisabled)
     {
-        TTestEnv env;
+        TTestEnv env({}, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -3887,17 +3898,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldThrottleMultipleStageReadsAndWrites)
+    PARAMETRIZED_TEST(ShouldThrottleMultipleStageReadsAndWrites)
     {
         const auto maxBandwidth = 10000;
-        NProto::TStorageConfig config;
-        config.SetThrottlingEnabled(true);
-        config.SetThreeStageWriteEnabled(true);
-        config.SetTwoStageReadEnabled(true);
-        config.SetUnalignedThreeStageWriteEnabled(true);
-        config.SetMultipleStageRequestThrottlingEnabled(true);
+        storageConfig.SetThrottlingEnabled(true);
+        storageConfig.SetThreeStageWriteEnabled(true);
+        storageConfig.SetTwoStageReadEnabled(true);
+        storageConfig.SetUnalignedThreeStageWriteEnabled(true);
+        storageConfig.SetMultipleStageRequestThrottlingEnabled(true);
 
-        TTestEnv env({}, config);
+        TTestEnv env({}, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -3985,9 +3995,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             runtime.GetCounter(TEvIndexTablet::EvDescribeDataRequest));
     }
 
-    Y_UNIT_TEST(ShouldSendBSGroupFlagsToTabletViaAddDataRequests)
+    PARAMETRIZED_TEST(ShouldSendBSGroupFlagsToTabletViaAddDataRequests)
     {
-        TTestEnv env;
+        TTestEnv env({}, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -4743,7 +4753,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
     Y_UNIT_TEST(ShouldNotAffectSsdReadWritesIfMultistageReadWritesAreOffForHdd)
     {
-        CheckThreeStageWrites(NProto::STORAGE_MEDIA_SSD, true);
+        CheckThreeStageWrites(
+            NProto::STORAGE_MEDIA_SSD,
+            true /* disableForHdd */,
+            NProto::TStorageConfig{});
         CheckTwoStageReads(
             NProto::STORAGE_MEDIA_SSD,
             true /* disableForHdd */,
@@ -5089,59 +5102,54 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(writeIovecs, readIovecs);
     }
 
-    Y_UNIT_TEST(TestAlignedZeroCopyWrite)
+    PARAMETRIZED_TEST(TestAlignedZeroCopyWrite)
     {
-        NProto::TStorageConfig config;
-        config.SetThreeStageWriteEnabled(true);
-        config.SetUnalignedThreeStageWriteEnabled(true);
-        config.SetZeroCopyWriteEnabled(true);
-        config.SetUseCustomReadDataResponseParser(true);
-        TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 4_KB));
-        TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 8_KB));
+        storageConfig.SetThreeStageWriteEnabled(true);
+        storageConfig.SetUnalignedThreeStageWriteEnabled(true);
+        storageConfig.SetZeroCopyWriteEnabled(true);
+        storageConfig.SetUseCustomReadDataResponseParser(true);
+        TestZeroCopyWrite(storageConfig, 4_KB, std::vector<ui64>(64, 4_KB));
+        TestZeroCopyWrite(storageConfig, 4_KB, std::vector<ui64>(64, 8_KB));
     }
 
-    Y_UNIT_TEST(TestAlignedZeroCopyWriteFallback)
+    PARAMETRIZED_TEST(TestAlignedZeroCopyWriteFallback)
     {
-        NProto::TStorageConfig config;
-        config.SetThreeStageWriteEnabled(false);
-        config.SetUnalignedThreeStageWriteEnabled(false);
-        config.SetZeroCopyWriteEnabled(true);
-        config.SetUseCustomReadDataResponseParser(true);
-        TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 4_KB));
+        storageConfig.SetThreeStageWriteEnabled(false);
+        storageConfig.SetUnalignedThreeStageWriteEnabled(false);
+        storageConfig.SetZeroCopyWriteEnabled(true);
+        storageConfig.SetUseCustomReadDataResponseParser(true);
+        TestZeroCopyWrite(storageConfig, 4_KB, std::vector<ui64>(64, 4_KB));
     }
 
-    Y_UNIT_TEST(TestUnalignedZeroCopyWrite)
+    PARAMETRIZED_TEST(TestUnalignedZeroCopyWrite)
     {
-        NProto::TStorageConfig config;
-        config.SetThreeStageWriteEnabled(true);
-        config.SetUnalignedThreeStageWriteEnabled(true);
-        config.SetZeroCopyWriteEnabled(true);
-        config.SetUseCustomReadDataResponseParser(true);
-        TestZeroCopyWrite(config, 111, std::vector<ui64>(64, 4_KB));
-        TestZeroCopyWrite(config, 0, std::vector<ui64>(64, 5000));
+        storageConfig.SetThreeStageWriteEnabled(true);
+        storageConfig.SetUnalignedThreeStageWriteEnabled(true);
+        storageConfig.SetZeroCopyWriteEnabled(true);
+        storageConfig.SetUseCustomReadDataResponseParser(true);
+        TestZeroCopyWrite(storageConfig, 111, std::vector<ui64>(64, 4_KB));
+        TestZeroCopyWrite(storageConfig, 0, std::vector<ui64>(64, 5000));
     }
 
-    Y_UNIT_TEST(TestUnalignedZeroCopyWriteFallback)
+    PARAMETRIZED_TEST(TestUnalignedZeroCopyWriteFallback)
     {
-        NProto::TStorageConfig config;
-        config.SetThreeStageWriteEnabled(true);
-        config.SetUnalignedThreeStageWriteEnabled(false);
-        config.SetZeroCopyWriteEnabled(true);
-        config.SetUseCustomReadDataResponseParser(true);
-        TestZeroCopyWrite(config, 111, std::vector<ui64>(64, 4_KB));
+        storageConfig.SetThreeStageWriteEnabled(true);
+        storageConfig.SetUnalignedThreeStageWriteEnabled(false);
+        storageConfig.SetZeroCopyWriteEnabled(true);
+        storageConfig.SetUseCustomReadDataResponseParser(true);
+        TestZeroCopyWrite(storageConfig, 111, std::vector<ui64>(64, 4_KB));
     }
 
-    Y_UNIT_TEST(TestZeroCopyWriteRandomIovecSize)
+    PARAMETRIZED_TEST(TestZeroCopyWriteRandomIovecSize)
     {
         ILoggingServicePtr Logging(
             CreateLoggingService("console", {TLOG_DEBUG}));
         TLog Log(Logging->CreateLog("NFS_TEST"));
 
-        NProto::TStorageConfig config;
-        config.SetThreeStageWriteEnabled(true);
-        config.SetUnalignedThreeStageWriteEnabled(true);
-        config.SetZeroCopyWriteEnabled(true);
-        config.SetUseCustomReadDataResponseParser(true);
+        storageConfig.SetThreeStageWriteEnabled(true);
+        storageConfig.SetUnalignedThreeStageWriteEnabled(true);
+        storageConfig.SetZeroCopyWriteEnabled(true);
+        storageConfig.SetUseCustomReadDataResponseParser(true);
         const auto seed = time(0);
         STORAGE_INFO("Seed: %lu", seed);
         srand(seed);
@@ -5154,20 +5162,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             iovecSizes.push_back(iovecSize);
         }
 
-        TestZeroCopyWrite(config, 0, iovecSizes);
+        TestZeroCopyWrite(storageConfig, 0, iovecSizes);
     }
 
-    Y_UNIT_TEST(TestZeroCopyWriteFallbackRandomIovecSize)
+    PARAMETRIZED_TEST(TestZeroCopyWriteFallbackRandomIovecSize)
     {
         ILoggingServicePtr Logging(
             CreateLoggingService("console", {TLOG_DEBUG}));
         TLog Log(Logging->CreateLog("NFS_TEST"));
 
-        NProto::TStorageConfig config;
-        config.SetThreeStageWriteEnabled(false);
-        config.SetUnalignedThreeStageWriteEnabled(false);
-        config.SetZeroCopyWriteEnabled(true);
-        config.SetUseCustomReadDataResponseParser(true);
+        storageConfig.SetThreeStageWriteEnabled(false);
+        storageConfig.SetUnalignedThreeStageWriteEnabled(false);
+        storageConfig.SetZeroCopyWriteEnabled(true);
+        storageConfig.SetUseCustomReadDataResponseParser(true);
         const auto seed = time(0);
         STORAGE_INFO("Seed: %lu", seed);
         srand(seed);
@@ -5180,53 +5187,49 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             iovecSizes.push_back(iovecSize);
         }
 
-        TestZeroCopyWrite(config, 0, iovecSizes);
+        TestZeroCopyWrite(storageConfig, 0, iovecSizes);
     }
 
-    Y_UNIT_TEST(TestZeroCopyWriteWithPartiallyEmptyIovecs)
+    PARAMETRIZED_TEST(TestZeroCopyWriteWithPartiallyEmptyIovecs)
     {
-        NProto::TStorageConfig config;
-        config.SetThreeStageWriteEnabled(true);
-        config.SetUnalignedThreeStageWriteEnabled(true);
-        config.SetZeroCopyWriteEnabled(true);
-        config.SetUseCustomReadDataResponseParser(true);
+        storageConfig.SetThreeStageWriteEnabled(true);
+        storageConfig.SetUnalignedThreeStageWriteEnabled(true);
+        storageConfig.SetZeroCopyWriteEnabled(true);
+        storageConfig.SetUseCustomReadDataResponseParser(true);
         auto iovecSizes = std::vector<ui64>(32, 4_KB);
         iovecSizes[10] = 0;
         iovecSizes[20] = 0;
         iovecSizes[30] = 0;
-        TestZeroCopyWrite(config, 0, iovecSizes);
+        TestZeroCopyWrite(storageConfig, 0, iovecSizes);
     }
 
-    Y_UNIT_TEST(TestAlignedZeroCopyWriteFallbackWithExternalPayload)
+    PARAMETRIZED_TEST(TestAlignedZeroCopyWriteFallbackWithExternalPayload)
     {
-        NProto::TStorageConfig config;
-        config.SetThreeStageWriteEnabled(false);
-        config.SetUnalignedThreeStageWriteEnabled(false);
-        config.SetZeroCopyWriteEnabled(true);
-        config.SetExternalWriteDataPayloadEnabled(true);
-        config.SetExternalReadDataPayload(true);
-        TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 4_KB));
+        storageConfig.SetThreeStageWriteEnabled(false);
+        storageConfig.SetUnalignedThreeStageWriteEnabled(false);
+        storageConfig.SetZeroCopyWriteEnabled(true);
+        storageConfig.SetExternalWriteDataPayloadEnabled(true);
+        storageConfig.SetExternalReadDataPayload(true);
+        TestZeroCopyWrite(storageConfig, 4_KB, std::vector<ui64>(64, 4_KB));
     }
 
-    Y_UNIT_TEST(TestUnalignedZeroCopyWriteFallbackWithExternalPayload)
+    PARAMETRIZED_TEST(TestUnalignedZeroCopyWriteFallbackWithExternalPayload)
     {
-        NProto::TStorageConfig config;
-        config.SetThreeStageWriteEnabled(true);
-        config.SetUnalignedThreeStageWriteEnabled(false);
-        config.SetZeroCopyWriteEnabled(true);
-        config.SetExternalWriteDataPayloadEnabled(true);
-        config.SetExternalReadDataPayload(true);
-        TestZeroCopyWrite(config, 111, std::vector<ui64>(64, 4_KB));
+        storageConfig.SetThreeStageWriteEnabled(true);
+        storageConfig.SetUnalignedThreeStageWriteEnabled(false);
+        storageConfig.SetZeroCopyWriteEnabled(true);
+        storageConfig.SetExternalWriteDataPayloadEnabled(true);
+        storageConfig.SetExternalReadDataPayload(true);
+        TestZeroCopyWrite(storageConfig, 111, std::vector<ui64>(64, 4_KB));
     }
 
-    Y_UNIT_TEST(TestZeroCopyWriteWithEmptyIovecs)
+    PARAMETRIZED_TEST(TestZeroCopyWriteWithEmptyIovecs)
     {
-        NProto::TStorageConfig config;
-        config.SetThreeStageWriteEnabled(true);
-        config.SetUnalignedThreeStageWriteEnabled(true);
-        config.SetZeroCopyWriteEnabled(true);
-        config.SetUseCustomReadDataResponseParser(true);
-        TTestEnv env({}, config);
+        storageConfig.SetThreeStageWriteEnabled(true);
+        storageConfig.SetUnalignedThreeStageWriteEnabled(true);
+        storageConfig.SetZeroCopyWriteEnabled(true);
+        storageConfig.SetUseCustomReadDataResponseParser(true);
+        TTestEnv env({}, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -5834,11 +5837,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             response->Record.GetFileStore().GetNodesCount());
     }
 
-    Y_UNIT_TEST(TestWriteWithExternalPayload)
+    PARAMETRIZED_TEST(TestWriteWithExternalPayload)
     {
-        NProto::TStorageConfig config;
-        config.SetExternalWriteDataPayloadEnabled(true);
-        TTestEnv env({}, std::move(config));
+        storageConfig.SetExternalWriteDataPayloadEnabled(true);
+        TTestEnv env({}, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -5876,12 +5878,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
     }
 
-    Y_UNIT_TEST(ShouldDropThreeStageWriteToNodeRemovedMidWrite)
+    PARAMETRIZED_TEST(ShouldDropThreeStageWriteToNodeRemovedMidWrite)
     {
-        NProto::TStorageConfig config;
-        config.SetThreeStageWriteEnabled(true);
-        config.SetThreeStageWriteThreshold(1);
-        TTestEnv env({}, config);
+        storageConfig.SetThreeStageWriteEnabled(true);
+        storageConfig.SetThreeStageWriteThreshold(1);
+        TTestEnv env({}, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -6211,6 +6212,151 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(2, startedReads);
         UNIT_ASSERT_VALUES_EQUAL(secondData, response->Record.GetBuffer());
         UNIT_ASSERT_VALUES_EQUAL(1, fallbackRequests);
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreLateWriteBlobResponses)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetThreeStageWriteThreshold(1);
+        config.SetAddingUnconfirmedDataEnabled(false);
+        config.SetEnablePreallocatedDataActors(true);
+        TTestEnv env({}, config);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+        const auto headers = service.InitSession(fs, "client");
+        const ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        const ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        TActorId writeActor;
+        ui64 firstCookie = 0;
+        ui32 startedWrites = 0;
+        ui32 pendingBlobResponses = 0;
+        ui32 secondWriteBlobResponses = 0;
+        ui32 fallbackRequests = 0;
+        ui32 addDataRequests = 0;
+        bool failedBlob = false;
+        TVector<TAutoPtr<IEventHandle>> delayedBlobs;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                const auto type = event->GetTypeRewrite();
+                if (type == TEvServicePrivate::EvStartWriteData) {
+                    if (!writeActor) {
+                        writeActor = event->Recipient;
+                    }
+                    UNIT_ASSERT_VALUES_EQUAL(writeActor, event->Recipient);
+                    ++startedWrites;
+                }
+                if (event->Sender == writeActor) {
+                    if (type == TEvIndexTablet::EvGenerateBlobIdsRequest) {
+                        if (startedWrites == 1) {
+                            firstCookie = event->Cookie;
+                        } else {
+                            UNIT_ASSERT(firstCookie != event->Cookie);
+                        }
+                    } else if (type == TEvService::EvWriteDataRequest) {
+                        ++fallbackRequests;
+                    } else if (type == TEvIndexTablet::EvAddDataRequest) {
+                        ++addDataRequests;
+                    }
+                }
+                if (event->Recipient != writeActor) {
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                }
+
+                if (startedWrites == 1) {
+                    if (type == TEvIndexTablet::EvGenerateBlobIdsResponse) {
+                        const auto& record = event->Get<
+                            TEvIndexTablet::TEvGenerateBlobIdsResponse>()->Record;
+                        UNIT_ASSERT(!record.GetUnconfirmedFlowEnabled());
+                        pendingBlobResponses = record.BlobsSize();
+                        UNIT_ASSERT_VALUES_EQUAL(4, pendingBlobResponses);
+                    }
+                    if (type == TEvBlobStorage::EvPutResult) {
+                        UNIT_ASSERT(pendingBlobResponses > 0);
+                        --pendingBlobResponses;
+                        auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
+                        if (!failedBlob) {
+                            // Fail one put to trigger fallback; retain the rest.
+                            msg->Status = NKikimrProto::ERROR;
+                            failedBlob = true;
+                        } else {
+                            delayedBlobs.push_back(event.Release());
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                    }
+                }
+
+                if (startedWrites == 2) {
+                    if (type == TEvIndexTablet::EvGenerateBlobIdsResponse) {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            2,
+                            event->Get<TEvIndexTablet::TEvGenerateBlobIdsResponse>()
+                                ->Record.BlobsSize());
+                        // Deliver an old reply before B's blob state has
+                        // been initialized.
+                        runtime.Send(delayedBlobs[1].Release(), nodeIdx);
+                    }
+                    if (type == TEvBlobStorage::EvPutResult) {
+                        if (++secondWriteBlobResponses == 2) {
+                            // Deliver an old error between B's two put replies.
+                            runtime.Send(delayedBlobs[2].Release(), nodeIdx);
+                        }
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // Four blobs: the first reply fails, the other three are delayed.
+        const TString firstData(DefaultBlockSize * BlockGroupSize * 4, 'A');
+        service.WriteData(headers, fs, nodeId, handle, 0, firstData);
+        if (pendingBlobResponses) {
+            runtime.DispatchEvents(TDispatchOptions{
+                .CustomFinalCondition = [&] {
+                    return pendingBlobResponses == 0;
+                }});
+        }
+        UNIT_ASSERT_VALUES_EQUAL(0, pendingBlobResponses);
+        UNIT_ASSERT_VALUES_EQUAL(3, delayedBlobs.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, fallbackRequests);
+        UNIT_ASSERT_VALUES_EQUAL(0, addDataRequests);
+
+        // Readback also lets the service process the write actor's release.
+        UNIT_ASSERT_VALUES_EQUAL(
+            firstData,
+            service.ReadData(headers, fs, nodeId, handle, 0, firstData.size())
+                ->Record.GetBuffer());
+        // Deliver one old reply while the worker is idle.
+        runtime.Send(delayedBlobs[0].Release(), nodeIdx);
+
+        // Deliver the remaining old success/error replies during the second
+        // write.
+        delayedBlobs[2]->Get<TEvBlobStorage::TEvPutResult>()->Status =
+            NKikimrProto::ERROR;
+        const TString secondData(DefaultBlockSize * BlockGroupSize * 2, 'B');
+        service.WriteData(headers, fs, nodeId, handle, 0, secondData);
+        UNIT_ASSERT_VALUES_EQUAL(2, startedWrites);
+        UNIT_ASSERT_VALUES_EQUAL(2, secondWriteBlobResponses);
+        UNIT_ASSERT_VALUES_EQUAL(1, fallbackRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, addDataRequests);
+        UNIT_ASSERT_VALUES_EQUAL(
+            secondData,
+            service.ReadData(headers, fs, nodeId, handle, 0, secondData.size())
+                ->Record.GetBuffer());
         runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
     }
 }

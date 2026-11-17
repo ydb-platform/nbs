@@ -1,3 +1,4 @@
+#include "service_private.h"
 #include "service_ut_helpers.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
@@ -59,18 +60,19 @@ struct TTestSetup
     TString FileSystemId = "test";
 
     explicit TTestSetup(
+        bool preallocatedActors,
         bool unconfirmedEnabled = true,
         bool threeStageWriteEnabled = true,
         bool unalignedThreeStageWriteEnabled = true,
         IProfileLogPtr profileLog = CreateProfileLogStub())
     {
+        StorageConfig.SetEnablePreallocatedDataActors(preallocatedActors);
         StorageConfig.SetAddingUnconfirmedDataEnabled(unconfirmedEnabled);
         StorageConfig.SetUnconfirmedDataCountHardLimit(100);
         StorageConfig.SetWriteBlobThreshold(128_KB);
         StorageConfig.SetThreeStageWriteEnabled(threeStageWriteEnabled);
         StorageConfig.SetUnalignedThreeStageWriteEnabled(
             unalignedThreeStageWriteEnabled);
-
 
         Env = std::make_unique<TTestEnv>(
             TTestEnvConfig{},
@@ -484,15 +486,27 @@ void DoTestShardUnconfirmedDataOnServicePipeDisconnect(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define PARAMETRIZED_TEST(name)                                            \
+    void TestImpl##name(bool preallocatedActors);                          \
+    Y_UNIT_TEST(name)                                                      \
+    {                                                                      \
+        TestImpl##name(false);                                             \
+    }                                                                      \
+    Y_UNIT_TEST(name##WithPreallocatedActors)                              \
+    {                                                                      \
+        TestImpl##name(true);                                              \
+    }                                                                      \
+    void TestImpl##name(bool preallocatedActors)
+
 Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
 {
     // =========================================================================
     // Success path tests
     // =========================================================================
 
-    Y_UNIT_TEST(ShouldUseUnconfirmedFlowWhenEnabled)
+    PARAMETRIZED_TEST(ShouldUseUnconfirmedFlowWhenEnabled)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
         auto& runtime = setup.GetRuntime();
 
         bool unconfirmedFlowEnabled = false;
@@ -530,9 +544,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             "Data mismatch");
     }
 
-    Y_UNIT_TEST(ShouldWriteLargeDataWithMultipleBlobs)
+    PARAMETRIZED_TEST(ShouldWriteLargeDataWithMultipleBlobs)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
 
         TString data =
             GenerateValidateData(DefaultBlockSize * BlockGroupSize * 2);
@@ -553,9 +567,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
         UNIT_ASSERT_VALUES_EQUAL(data.size(), stat.GetSize());
     }
 
-    Y_UNIT_TEST(ShouldWriteDataWithUnalignedHead)
+    PARAMETRIZED_TEST(ShouldWriteDataWithUnalignedHead)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
 
         const ui64 offset = 100;
         TString data = GenerateValidateData(256_KB);
@@ -576,9 +590,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             TString(firstBlock.substr(0, offset)));
     }
 
-    Y_UNIT_TEST(ShouldWriteDataWithUnalignedTail)
+    PARAMETRIZED_TEST(ShouldWriteDataWithUnalignedTail)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
 
         TString data = GenerateValidateData(256_KB + 100);
 
@@ -599,9 +613,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
         UNIT_ASSERT_VALUES_EQUAL(data.size(), stat.GetSize());
     }
 
-    Y_UNIT_TEST(ShouldWriteDataWithUnalignedHeadAndTail)
+    PARAMETRIZED_TEST(ShouldWriteDataWithUnalignedHeadAndTail)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
 
         const ui64 offset = 100;
         const ui64 dataSize = 512_KB + 200;
@@ -632,9 +646,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             TString(firstBlock.substr(0, offset)));
     }
 
-    Y_UNIT_TEST(ShouldWriteWithIovecs)
+    PARAMETRIZED_TEST(ShouldWriteWithIovecs)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
         auto& runtime = setup.GetRuntime();
 
         // Track whether unconfirmed data is allowed
@@ -687,9 +701,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldHandleMultipleWritesSequentially)
+    PARAMETRIZED_TEST(ShouldHandleMultipleWritesSequentially)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
         auto& runtime = setup.GetRuntime();
 
         for (ui32 i = 0; i < 3; ++i) {
@@ -713,9 +727,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
     // Flow control tests
     // =========================================================================
 
-    Y_UNIT_TEST(ShouldNotUseUnconfirmedFlowWhenDisabled)
+    PARAMETRIZED_TEST(ShouldNotUseUnconfirmedFlowWhenDisabled)
     {
-        TTestSetup setup(false);
+        TTestSetup setup(preallocatedActors, false);
         auto& runtime = setup.GetRuntime();
 
         bool unconfirmedFlowEnabled = false;
@@ -760,11 +774,11 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             "Data mismatch");
     }
 
-    Y_UNIT_TEST(ShouldNotUseUnconfirmedFlowWhenTabletRejects)
+    PARAMETRIZED_TEST(ShouldNotUseUnconfirmedFlowWhenTabletRejects)
     {
         // Session has unconfirmed enabled, but the tablet clears
         // UnconfirmedFlowEnabled in the response (e.g. hit hard limit).
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
         auto& runtime = setup.GetRuntime();
 
         runtime.SetEventFilter(
@@ -801,9 +815,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             "Data mismatch");
     }
 
-    Y_UNIT_TEST(ShouldNotCallConfirmAddDataInRegularFlow)
+    PARAMETRIZED_TEST(ShouldNotCallConfirmAddDataInRegularFlow)
     {
-        TTestSetup setup(false /*unconfirmedEnabled*/);
+        TTestSetup setup(preallocatedActors, false /*unconfirmedEnabled*/);
         auto& runtime = setup.GetRuntime();
 
         TString data = GenerateValidateData(256_KB);
@@ -821,9 +835,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
     // Error handling and fallback tests
     // =========================================================================
 
-    Y_UNIT_TEST(ShouldReturnGenerateBlobIdsError)
+    PARAMETRIZED_TEST(ShouldReturnGenerateBlobIdsError)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
         auto& runtime = setup.GetRuntime();
 
         NProto::TError error;
@@ -886,9 +900,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             "Data mismatch after retry");
     }
 
-    Y_UNIT_TEST(ShouldUseConfirmedFlowWhileUnconfirmedRecoveryIsNotReady)
+    PARAMETRIZED_TEST(ShouldUseConfirmedFlowWhileUnconfirmedRecoveryIsNotReady)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
         auto& runtime = setup.GetRuntime();
         const auto tabletId =
             setup.Service->GetFileStoreInfo(setup.FileSystemId)
@@ -999,9 +1013,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             "Data mismatch after recovery");
     }
 
-    Y_UNIT_TEST(ShouldFallbackOnWriteBlobError)
+    PARAMETRIZED_TEST(ShouldFallbackOnWriteBlobError)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
         auto& runtime = setup.GetRuntime();
 
         NActors::TActorId worker;
@@ -1061,10 +1075,11 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
         UNIT_ASSERT_VALUES_EQUAL(1, evPuts);
     }
 
-    Y_UNIT_TEST(ShouldProfileCancelAddDataAsSeparateRequestType)
+    PARAMETRIZED_TEST(ShouldProfileCancelAddDataAsSeparateRequestType)
     {
         const auto profileLog = std::make_shared<TTestProfileLog>();
         TTestSetup setup(
+            preallocatedActors,
             true,   // unconfirmedEnabled
             true,   // threeStageWriteEnabled
             true,   // unalignedThreeStageWriteEnabled
@@ -1161,9 +1176,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             "CancelAddData must be logged under its own request type");
     }
 
-    Y_UNIT_TEST(ShouldRetryCancelAddDataOnProxyErrorAndThenFallback)
+    PARAMETRIZED_TEST(ShouldRetryCancelAddDataOnProxyErrorAndThenFallback)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
         auto& runtime = setup.GetRuntime();
 
         NProto::TError error;
@@ -1244,9 +1259,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             "Data mismatch after CancelAddData retry");
     }
 
-    Y_UNIT_TEST(ShouldFallbackOnAddDataErrorInUnconfirmedFlow)
+    PARAMETRIZED_TEST(ShouldFallbackOnAddDataErrorInUnconfirmedFlow)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
         auto& runtime = setup.GetRuntime();
 
         NProto::TError error;
@@ -1280,9 +1295,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             "Data mismatch after fallback");
     }
 
-    Y_UNIT_TEST(ShouldFallbackOnConfirmAddDataError)
+    PARAMETRIZED_TEST(ShouldFallbackOnConfirmAddDataError)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
         auto& runtime = setup.GetRuntime();
 
         NProto::TError error;
@@ -1316,9 +1331,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             "Data mismatch after fallback");
     }
 
-    Y_UNIT_TEST(ShouldRetryConfirmAddDataOnProxyErrorAndThenUseTabletAnswer)
+    PARAMETRIZED_TEST(ShouldRetryConfirmAddDataOnProxyErrorAndThenUseTabletAnswer)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
         auto& runtime = setup.GetRuntime();
 
         NProto::TError error;
@@ -1371,9 +1386,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             "Data mismatch after ConfirmAddData retry");
     }
 
-    Y_UNIT_TEST(ShouldReportCriticalEventOnConfirmAddDataProxyRetryThreshold)
+    PARAMETRIZED_TEST(ShouldReportCriticalEventOnConfirmAddDataProxyRetryThreshold)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
         auto& runtime = setup.GetRuntime();
 
         auto criticalEventBackend =
@@ -1429,9 +1444,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
     // Request verification tests (continued)
     // =========================================================================
 
-    Y_UNIT_TEST(ShouldSendHeadAndTailUnalignedRangesToGenerateBlobIds)
+    PARAMETRIZED_TEST(ShouldSendHeadAndTailUnalignedRangesToGenerateBlobIds)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
         auto& runtime = setup.GetRuntime();
 
         NProtoPrivate::TGenerateBlobIdsRequest capturedGenRequest;
@@ -1652,9 +1667,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
     // Tablet reboot tests
     // =========================================================================
 
-    Y_UNIT_TEST(ShouldReadAndWriteUnalignedDataAfterTabletReboot)
+    PARAMETRIZED_TEST(ShouldReadAndWriteUnalignedDataAfterTabletReboot)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
         const auto tabletId =
             setup.Service->GetFileStoreInfo(setup.FileSystemId)
                 ->Record.GetFileStore()
@@ -1715,9 +1730,9 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
             "Data mismatch for unaligned iovec write after tablet reboot");
     }
 
-    Y_UNIT_TEST(ShouldDropUnconfirmedWriteToNodeRemovedMidWrite)
+    PARAMETRIZED_TEST(ShouldDropUnconfirmedWriteToNodeRemovedMidWrite)
     {
-        TTestSetup setup;
+        TTestSetup setup(preallocatedActors);
         auto& runtime = setup.GetRuntime();
 
         // Hold the ConfirmAddData request: the blob is already in
@@ -1775,6 +1790,146 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
         auto attrs = setup.Service->RecvGetNodeAttrResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_FS_NOENT, attrs->GetStatus());
     }
+
+    Y_UNIT_TEST(ShouldIgnoreLateWriteBlobResponses)
+    {
+        TTestSetup setup(true /* preallocatedActors */);
+        auto& runtime = setup.GetRuntime();
+
+        TActorId writeActor;
+        ui64 firstCookie = 0;
+        ui32 startedWrites = 0;
+        ui32 pendingBlobResponses = 0;
+        ui32 secondWriteBlobResponses = 0;
+        ui32 fallbackRequests = 0;
+        ui32 cancelAddDataRequests = 0;
+        ui32 confirmAddDataRequests = 0;
+        bool failedBlob = false;
+        TVector<TAutoPtr<IEventHandle>> delayedBlobs;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                const auto type = event->GetTypeRewrite();
+                if (type == TEvServicePrivate::EvStartWriteData) {
+                    if (!writeActor) {
+                        writeActor = event->Recipient;
+                    }
+                    UNIT_ASSERT_VALUES_EQUAL(writeActor, event->Recipient);
+                    ++startedWrites;
+                }
+                if (event->Sender == writeActor) {
+                    if (type == TEvIndexTablet::EvGenerateBlobIdsRequest) {
+                        if (startedWrites == 1) {
+                            firstCookie = event->Cookie;
+                        } else {
+                            UNIT_ASSERT(firstCookie < event->Cookie);
+                        }
+                    } else if (type == TEvService::EvWriteDataRequest) {
+                        ++fallbackRequests;
+                    } else if (type == TEvIndexTablet::EvCancelAddDataRequest) {
+                        ++cancelAddDataRequests;
+                    } else if (type == TEvIndexTablet::EvConfirmAddDataRequest)
+                    {
+                        ++confirmAddDataRequests;
+                    }
+                }
+                if (event->Recipient != writeActor) {
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                }
+
+                if (startedWrites == 1) {
+                    if (type == TEvIndexTablet::EvGenerateBlobIdsResponse) {
+                        const auto& record =
+                            event
+                                ->Get<TEvIndexTablet::
+                                          TEvGenerateBlobIdsResponse>()
+                                ->Record;
+                        UNIT_ASSERT(record.GetUnconfirmedFlowEnabled());
+                        pendingBlobResponses = record.BlobsSize();
+                        UNIT_ASSERT_VALUES_EQUAL(4, pendingBlobResponses);
+                    }
+                    if (type == TEvBlobStorage::EvPutResult) {
+                        UNIT_ASSERT(pendingBlobResponses > 0);
+                        --pendingBlobResponses;
+                        auto* msg = event->Get<TEvBlobStorage::TEvPutResult>();
+                        if (!failedBlob) {
+                            // Fail one put to trigger cancellation and
+                            // fallback.
+                            msg->Status = NKikimrProto::ERROR;
+                            failedBlob = true;
+                        } else {
+                            delayedBlobs.push_back(event.Release());
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                    }
+                }
+
+                if (startedWrites == 2) {
+                    if (type == TEvIndexTablet::EvGenerateBlobIdsResponse) {
+                        const auto& record =
+                            event
+                                ->Get<TEvIndexTablet::
+                                          TEvGenerateBlobIdsResponse>()
+                                ->Record;
+                        UNIT_ASSERT(record.GetUnconfirmedFlowEnabled());
+                        UNIT_ASSERT_VALUES_EQUAL(2, record.BlobsSize());
+                        // Deliver an old reply before B's blob state has
+                        // been initialized.
+                        runtime.Send(delayedBlobs[1].Release(), setup.NodeIdx);
+                    }
+                    if (type == TEvBlobStorage::EvPutResult) {
+                        if (++secondWriteBlobResponses == 2) {
+                            // Deliver an old error between B's two put replies.
+                            runtime.Send(
+                                delayedBlobs[2].Release(),
+                                setup.NodeIdx);
+                        }
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // Four blobs: the first reply fails, the other three are delayed.
+        const TString firstData(DefaultBlockSize * BlockGroupSize * 4, 'A');
+        WriteData(setup, 0, firstData);
+        if (pendingBlobResponses) {
+            runtime.DispatchEvents(TDispatchOptions{
+                .CustomFinalCondition = [&]
+                {
+                    return pendingBlobResponses == 0;
+                }});
+        }
+        UNIT_ASSERT_VALUES_EQUAL(0, pendingBlobResponses);
+        UNIT_ASSERT_VALUES_EQUAL(3, delayedBlobs.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, fallbackRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, cancelAddDataRequests);
+        UNIT_ASSERT_VALUES_EQUAL(0, confirmAddDataRequests);
+
+        // Readback also lets the service process the write actor's release.
+        UNIT_ASSERT_VALUES_EQUAL(
+            firstData,
+            ReadData(setup, 0, firstData.size())->Record.GetBuffer());
+        // Deliver one old reply while the worker is idle.
+        runtime.Send(delayedBlobs[0].Release(), setup.NodeIdx);
+
+        // Deliver the remaining old success/error replies during B.
+        delayedBlobs[2]->Get<TEvBlobStorage::TEvPutResult>()->Status =
+            NKikimrProto::ERROR;
+        const TString secondData(DefaultBlockSize * BlockGroupSize * 2, 'B');
+        WriteData(setup, 0, secondData);
+        UNIT_ASSERT_VALUES_EQUAL(2, startedWrites);
+        UNIT_ASSERT_VALUES_EQUAL(2, secondWriteBlobResponses);
+        UNIT_ASSERT_VALUES_EQUAL(1, fallbackRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, cancelAddDataRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, confirmAddDataRequests);
+        UNIT_ASSERT_VALUES_EQUAL(
+            secondData,
+            ReadData(setup, 0, secondData.size())->Record.GetBuffer());
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+    }
 }
+
+#undef PARAMETRIZED_TEST
 
 }   // namespace NCloud::NFileStore::NStorage
