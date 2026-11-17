@@ -39,7 +39,15 @@ TVector<TLogRecordPtr> EraseBelow(TLogRecordChain& chain, ui64 lsn)
         S_OK,
         result.GetError().GetCode(),
         result.GetError().GetMessage());
-    return result.ExtractResult();
+
+    auto erased = result.ExtractResult();
+
+    TVector<TLogRecordPtr> records = std::move(erased.Chained);
+    records.insert(
+        records.end(),
+        erased.Stranded.begin(),
+        erased.Stranded.end());
+    return records;
 }
 
 TVector<ui64> GetLsns(const TVector<TLogRecordPtr>& records)
@@ -684,7 +692,8 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         // chain stays as it was
         auto result = chain.EraseBelow(31);
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
-        UNIT_ASSERT(result.GetResult().empty());
+        UNIT_ASSERT(result.GetResult().Chained.empty());
+        UNIT_ASSERT(result.GetResult().Stranded.empty());
         UNIT_ASSERT_VALUES_EQUAL(20, chain.GetOldest()->Lsn);
 
         // once the gap is filled the same watermark goes through
