@@ -27,12 +27,10 @@ Y_UNIT_TEST_SUITE(TRequestTrackerTest)
         UNIT_ASSERT(!HasError(tracker->CheckRunning()));
         reservation.ExtractResult().reset();
         tracker->Stop();
-        UNIT_ASSERT_VALUES_EQUAL(
-            tracker->CheckRunning().GetCode(),
-            E_CANCELLED);
+        UNIT_ASSERT_VALUES_EQUAL(tracker->CheckRunning().GetCode(), E_REJECTED);
         UNIT_ASSERT_VALUES_EQUAL(
             tracker->Acquire(0).GetError().GetCode(),
-            E_CANCELLED);
+            E_REJECTED);
     }
 
     Y_UNIT_TEST(ConcurrentReservationsRespectLimitsAndReleaseBudget)
@@ -93,7 +91,7 @@ Y_UNIT_TEST_SUITE(TRequestTrackerTest)
                         for (unsigned request = 0; request < 32; ++request) {
                             auto result = tracker->Acquire(1);
                             if (HasError(result.GetError()) &&
-                                result.GetError().GetCode() != E_CANCELLED)
+                                result.GetError().GetCode() != E_REJECTED)
                             {
                                 failed = true;
                             }
@@ -108,7 +106,7 @@ Y_UNIT_TEST_SUITE(TRequestTrackerTest)
             UNIT_ASSERT(!failed.load());
             UNIT_ASSERT_VALUES_EQUAL(
                 tracker->Acquire(0).GetError().GetCode(),
-                E_CANCELLED);
+                E_REJECTED);
         }
     }
 
@@ -138,7 +136,7 @@ Y_UNIT_TEST_SUITE(TRequestTrackerTest)
             tracker->Stop();
             UNIT_ASSERT_VALUES_EQUAL(
                 tracker->Acquire(0).GetError().GetCode(),
-                E_CANCELLED);
+                E_REJECTED);
         }
     }
 }

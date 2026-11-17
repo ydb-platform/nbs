@@ -341,8 +341,8 @@ private:
                             ProcessThrottleTime(context, response);
                             return response;
                         });
-                    promise.SetValue(std::move(response));
                     reservation.reset();
+                    promise.SetValue(std::move(response));
                 });
         return promise.GetFuture();
     }

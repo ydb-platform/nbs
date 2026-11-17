@@ -26,7 +26,7 @@ TRequestTracker::Acquire(ui64 bytes)
     auto state = State.load();
     for (;;) {
         if (state.Phase != EState::Running) {
-            return MakeError(E_CANCELLED, "IC V2 data owner is stopping");
+            return MakeError(E_REJECTED, "IC V2 data owner is stopping");
         }
         if (state.Requests >= Config.MaxInflightRequests) {
             return MakeError(E_REJECTED, "IC V2 data admission limit reached");
@@ -47,9 +47,6 @@ TRequestTracker::Acquire(ui64 bytes)
 
 NProto::TError TRequestTracker::ReserveBytes(ui64 bytes)
 {
-    if (auto error = CheckRunning(); HasError(error)) {
-        return error;
-    }
     if (!bytes) {
         return {};
     }
@@ -92,7 +89,7 @@ void TRequestTracker::Release(ui64 bytes)
 NProto::TError TRequestTracker::CheckRunning() const
 {
     if (State.load().Phase != EState::Running) {
-        return MakeError(E_CANCELLED, "IC V2 data owner is stopping");
+        return MakeError(E_REJECTED, "IC V2 data owner is stopping");
     }
     return {};
 }

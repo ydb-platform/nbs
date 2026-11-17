@@ -219,7 +219,7 @@ private:
                 if (!self) {
                     ReplyError<typename TEventMethod::TResponse>(
                         *request,
-                        MakeError(E_CANCELLED, "IC V2 data target is gone"));
+                        MakeError(E_REJECTED, "IC V2 data target is gone"));
                     return;
                 }
                 NProto::TError error;
@@ -228,7 +228,7 @@ private:
                     if (!HasError(error)) {
                         error = self->ExecuteRequest<TEventMethod, TMethod>(
                             request,
-                            std::move(reservation));
+                            reservation);
                     }
                 } catch (...) {
                     if (request) {
@@ -251,8 +251,8 @@ private:
         IIncomingRequestPtr& incoming,
         TReservationPtr reservation)
     {
-        auto* event =
-            incoming->GetEvent().Get<typename TEventMethod::TRequest>();
+        auto event =
+            incoming->GetEvent().Release<typename TEventMethod::TRequest>();
         auto op = std::make_shared<TOperation<
             typename TMethod::TRequest,
             typename TEventMethod::TResponse>>();

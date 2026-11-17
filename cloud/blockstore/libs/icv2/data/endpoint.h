@@ -22,7 +22,7 @@ namespace NCloud::NBlockStore::NIcV2 {
 // shutdown cancels operations already sent to remote storage.
 struct IDataEndpoint: public IBlockStore
 {
-    // Rejects new requests with E_CANCELLED and closes the channel without
+    // Rejects new requests with E_REJECTED and closes the channel without
     // waiting. Safe to call from a result continuation.
     virtual void RequestStop() = 0;
 };
