@@ -421,10 +421,7 @@ TFuture<NProto::TReadJournalTailResponse> TJournalledDeviceV2::ReadJournalTail(
 
     return Execute<NProto::TReadJournalTailResponse>(
         [request = std::move(request)](auto& self) mutable
-        {
-            return self.Executor->ExtractResponse(
-                self.Journal->ReadTail(std::move(request)));
-        });
+        { return self.Journal->ReadTail(std::move(request)); });
 }
 
 auto TJournalledDeviceV2::AdvanceLsnLowWatermark(
@@ -438,10 +435,7 @@ auto TJournalledDeviceV2::AdvanceLsnLowWatermark(
 
     return Execute<NProto::TAdvanceLsnLowWatermarkResponse>(
         [request = std::move(request)](auto& self) mutable
-        {
-            return self.Executor->ExtractResponse(
-                self.Journal->AdvanceLsnLowWatermark(std::move(request)));
-        });
+        { return self.Journal->AdvanceLsnLowWatermark(std::move(request)); });
 }
 
 void TJournalledDeviceV2::ScheduleFlushCycle()

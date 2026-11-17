@@ -42,12 +42,12 @@ struct IJournal
     [[nodiscard]] virtual auto Read(NProto::TReadPagesRequest request) const
         -> NThreading::TFuture<NProto::TReadPagesResponse> = 0;
 
-    [[nodiscard]] virtual auto ReadTail(NProto::TReadJournalTailRequest request)
-        const -> NThreading::TFuture<NProto::TReadJournalTailResponse> = 0;
+    [[nodiscard]] virtual NProto::TReadJournalTailResponse ReadTail(
+        NProto::TReadJournalTailRequest request) const = 0;
 
     [[nodiscard]] virtual auto AdvanceLsnLowWatermark(
         NProto::TAdvanceLsnLowWatermarkRequest request)
-        -> NThreading::TFuture<NProto::TAdvanceLsnLowWatermarkResponse> = 0;
+        -> NProto::TAdvanceLsnLowWatermarkResponse = 0;
 
     //
     // Background cleanup

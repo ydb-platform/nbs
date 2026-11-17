@@ -684,7 +684,7 @@ TFuture<NProto::TError> TDeviceKeyBufferStore::WriteSuperblock(
         superblock = Superblock;
         if (!update(superblock)) {
             return MakeFuture(
-                MakeError(S_FALSE, "the superblock is already written"));
+                MakeError(S_FALSE, "nothing to update in the superblock"));
         }
 
         if (SuperblockWriteInFlight) {
