@@ -762,6 +762,129 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             UNIT_ASSERT(!state.GetVolumeToPull());
         }
     }
+
+    // Verify that dynamic config updates to InitialPullDelay preserve
+    // NextPullAttempt, the time when an existing volume can be selected for
+    // moving back to this node. Use the new delay for newly tracked volumes.
+    Y_UNIT_TEST(ShouldPreservePullDelaysOnConfigUpdate)
+    {
+        // Track "existing" with InitialPullDelay=10s and check that it cannot
+        // be selected before its NextPullAttempt.
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeBalancerEnabled(true);
+        config.SetInitialPullDelay(TDuration::Seconds(10).MilliSeconds());
+        const auto features = CreateFeatureConfig({}, {}, false);
+        TVolumeBalancerState state(
+            std::make_shared<TStorageConfig>(config, features),
+            CreateDiagnosticsConfig(),
+            CreateSwitch(true));
+        auto now = TInstant::Seconds(0);
+        state.UpdateVolumeStats(
+            {CreateVolumeStats({.DiskId = "existing", .IsLocal = false})},
+            {},
+            0,
+            now);
+        UNIT_ASSERT(!state.GetVolumeToPull());
+
+        // Increase InitialPullDelay to 60s, add "new", and check that neither
+        // volume can be selected yet.
+        config.SetInitialPullDelay(TDuration::Seconds(60).MilliSeconds());
+        state.UpdateStorageConfig(
+            std::make_shared<TStorageConfig>(config, features));
+        const TVector<NProto::TVolumeBalancerDiskStats> volumes{
+            CreateVolumeStats({.DiskId = "existing", .IsLocal = false}),
+            CreateVolumeStats({.DiskId = "new", .IsLocal = false})};
+        now += TDuration::Seconds(1);
+        state.UpdateVolumeStats(volumes, {}, 0, now);
+        UNIT_ASSERT(!state.GetVolumeToPull());
+
+        // Advance time and check that "existing" becomes selectable exactly
+        // at its original NextPullAttempt.
+        now = TInstant::Seconds(9);
+        state.UpdateVolumeStats(volumes, {}, 0, now);
+        UNIT_ASSERT(!state.GetVolumeToPull());
+        now = TInstant::Seconds(10);
+        state.UpdateVolumeStats(volumes, {}, 0, now);
+        UNIT_ASSERT_VALUES_EQUAL("existing", state.GetVolumeToPull());
+
+        // Mark "existing" in progress and check that "new" is not selected
+        // before its own NextPullAttempt.
+        state.SetVolumeInProgress("existing");
+        now = TInstant::Seconds(60);
+        state.UpdateVolumeStats(volumes, {}, 0, now);
+        UNIT_ASSERT(!state.GetVolumeToPull());
+
+        // Advance to NextPullAttempt for "new" and check that it is selected
+        // after the updated InitialPullDelay.
+        now = TInstant::Seconds(61);
+        state.UpdateVolumeStats(volumes, {}, 0, now);
+        UNIT_ASSERT_VALUES_EQUAL("new", state.GetVolumeToPull());
+    }
+
+    // Verify that dynamic config updates to InitialPullDelay change the time
+    // a volume must stay on this node before BackoffDelayProvider.Reset().
+    // Reset restores InitialPullDelay saved when the volume was first seen.
+    Y_UNIT_TEST(ShouldUpdateBackoffResetInterval)
+    {
+        // Use InitialPullDelay=10s and check that "vol" is selected after 10s.
+        // Mark it local, leaving a 20s delay in BackoffDelayProvider.
+        const auto initialDelay = TDuration::Seconds(10);
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeBalancerEnabled(true);
+        config.SetInitialPullDelay(initialDelay.MilliSeconds());
+        const auto features = CreateFeatureConfig({}, {}, false);
+        TVolumeBalancerState state(
+            std::make_shared<TStorageConfig>(config, features),
+            CreateDiagnosticsConfig(),
+            CreateSwitch(true));
+        const TVector<NProto::TVolumeBalancerDiskStats> remote{
+            CreateVolumeStats({.DiskId = "vol", .IsLocal = false})};
+        const TVector<NProto::TVolumeBalancerDiskStats> local{
+            CreateVolumeStats({.DiskId = "vol", .IsLocal = true})};
+        auto now = TInstant::Seconds(100);
+        state.UpdateVolumeStats(remote, {}, 0, now);
+        now += initialDelay;
+        state.UpdateVolumeStats(remote, {}, 0, now);
+        UNIT_ASSERT_VALUES_EQUAL("vol", state.GetVolumeToPull());
+        state.UpdateVolumeStats(local, {}, 0, now);
+
+        // Increase InitialPullDelay to 30s and check that 15s on this node
+        // does not reset BackoffDelayProvider's accumulated 20s delay.
+        config.SetInitialPullDelay(TDuration::Seconds(30).MilliSeconds());
+        state.UpdateStorageConfig(
+            std::make_shared<TStorageConfig>(config, features));
+        now += TDuration::Seconds(15);
+        state.UpdateVolumeStats(local, {}, 0, now);
+        state.UpdateVolumeStats(remote, {}, 0, now);
+
+        // Advance time and check that GetVolumeToPull() selects "vol" after
+        // 20s, not after the original InitialPullDelay of 10s.
+        now += initialDelay;
+        state.UpdateVolumeStats(remote, {}, 0, now);
+        UNIT_ASSERT(!state.GetVolumeToPull());
+        now += initialDelay;
+        state.UpdateVolumeStats(remote, {}, 0, now);
+        UNIT_ASSERT_VALUES_EQUAL("vol", state.GetVolumeToPull());
+        state.UpdateVolumeStats(local, {}, 0, now);
+
+        // Lower InitialPullDelay to 5s and check that 6s on this node allows
+        // BackoffDelayProvider.Reset() before the next move away.
+        config.SetInitialPullDelay(TDuration::Seconds(5).MilliSeconds());
+        state.UpdateStorageConfig(
+            std::make_shared<TStorageConfig>(config, features));
+        now += TDuration::Seconds(6);
+        state.UpdateVolumeStats(local, {}, 0, now);
+        state.UpdateVolumeStats(remote, {}, 0, now);
+
+        // Advance time and check that GetVolumeToPull() uses the saved
+        // InitialPullDelay=10s after Reset(), despite the current value of 5s.
+        now += initialDelay - TDuration::Seconds(1);
+        state.UpdateVolumeStats(remote, {}, 0, now);
+        UNIT_ASSERT(!state.GetVolumeToPull());
+        now += TDuration::Seconds(1);
+        state.UpdateVolumeStats(remote, {}, 0, now);
+        UNIT_ASSERT_VALUES_EQUAL("vol", state.GetVolumeToPull());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
