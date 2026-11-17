@@ -26,48 +26,6 @@ func newContext() context.Context {
 	)
 }
 
-func TestBackupDisabledResourceSchemaPreservesLegacyQueue(t *testing.T) {
-	for _, kind := range []string{"images", "snapshots"} {
-		t.Run(kind, func(t *testing.T) {
-			ctx := newContext()
-			db, err := newYDB(ctx)
-			require.NoError(t, err)
-			defer db.Close(ctx)
-			folder := t.Name()
-			idColumn := "image_id"
-			create, drop := createImagesYDBTables, dropImagesYDBTables
-			if kind == "snapshots" {
-				idColumn = "snapshot_id"
-				create, drop = createSnapshotsYDBTables, dropSnapshotsYDBTables
-			}
-			require.NoError(t, db.CreateOrAlterTable(ctx, folder, "backup_queue",
-				persistence.NewCreateTableDescription(
-					persistence.WithColumn(idColumn, persistence.Optional(persistence.TypeUTF8)),
-					persistence.WithPrimaryKeyColumn(idColumn),
-				), false))
-			require.NoError(t, create(ctx, folder, db, true, false))
-			// This column must not be added to the legacy backup table.
-			res, err := db.ExecuteRO(ctx, fmt.Sprintf(`--!syntax_v1
-				pragma TablePathPrefix = "%v";
-				select backup_id from backup_queue;
-			`, db.AbsolutePath(folder)))
-			if err == nil {
-				res.Close()
-			}
-			require.True(t, ydb.IsOperationError(err, ydb_status.StatusIds_GENERIC_ERROR),
-				"expected missing backup_id column, got: %v", err)
-			require.ErrorContains(t, err, "Member not found: backup_id")
-			require.NoError(t, drop(ctx, folder, db, false))
-			res, err = db.ExecuteRO(ctx, fmt.Sprintf(`--!syntax_v1
-				pragma TablePathPrefix = "%v";
-				select %v from backup_queue;
-			`, db.AbsolutePath(folder), idColumn))
-			require.NoError(t, err)
-			res.Close()
-		})
-	}
-}
-
 func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 	endpoint := fmt.Sprintf(
 		"localhost:%v",
@@ -148,4 +106,80 @@ func newStorageWithBackupFolders(
 	require.NoError(t, err)
 
 	return storage
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestCreateAndDropResourceSchemaWithoutBackups(t *testing.T) {
+	for _, kind := range []string{"images", "snapshots"} {
+		t.Run(kind, func(t *testing.T) {
+			ctx := newContext()
+			db, err := newYDB(ctx)
+			require.NoError(t, err)
+			defer db.Close(ctx)
+
+			folder := t.Name()
+
+			idColumn := "image_id"
+			create, drop := createImagesYDBTables, dropImagesYDBTables
+			if kind == "snapshots" {
+				idColumn = "snapshot_id"
+				create, drop = createSnapshotsYDBTables, dropSnapshotsYDBTables
+			}
+
+			err = db.CreateOrAlterTable(
+				ctx,
+				folder,
+				"backup_queue",
+				persistence.NewCreateTableDescription(
+					persistence.WithColumn(
+						idColumn,
+						persistence.Optional(persistence.TypeUTF8),
+					),
+					persistence.WithPrimaryKeyColumn(idColumn),
+				),
+				false, // dropUnusedColumns
+			)
+			require.NoError(t, err)
+
+			err = create(
+				ctx,
+				folder,
+				db,
+				true,  // dropUnusedColumns
+				false, // backupEnabled
+			)
+			require.NoError(t, err)
+
+			// This column must not be added to the legacy backup table.
+			query := fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+				select backup_id from backup_queue;
+			`, db.AbsolutePath(folder))
+			res, err := db.ExecuteRO(ctx, query)
+			if err == nil {
+				res.Close()
+			}
+			require.True(
+				t,
+				ydb.IsOperationError(err, ydb_status.StatusIds_GENERIC_ERROR),
+				"expected missing backup_id column, got: %v",
+				err,
+			)
+			require.ErrorContains(t, err, "Member not found: backup_id")
+
+			err = drop(ctx, folder, db, false /* backupEnabled */)
+			require.NoError(t, err)
+
+			query = fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+				select %v from backup_queue;
+			`, db.AbsolutePath(folder), idColumn)
+			res, err = db.ExecuteRO(ctx, query)
+			require.NoError(t, err)
+			res.Close()
+		})
+	}
 }

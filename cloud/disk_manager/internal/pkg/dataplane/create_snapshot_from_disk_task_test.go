@@ -335,3 +335,69 @@ func TestCreateSnapshotFromDiskCancelAllowed(t *testing.T) {
 		})
 	}
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestCreateSnapshotFromDiskBlockSize(t *testing.T) {
+	for _, supplied := range []bool{false, true} {
+		name := "block size from disk"
+		if supplied {
+			name = "block size from request"
+		}
+
+		t.Run(name, func(t *testing.T) {
+			f := newCreateSnapshotDiskZoneTest(
+				t,
+				"zone",
+				false, // useProxy
+				&protos.CreateSnapshotFromDiskTaskState{},
+				nil, // disabledZones
+			)
+
+			f.execCtx.On("GetTaskID").Return("create").Twice()
+
+			if supplied {
+				f.task.request.BlockSize = 8192
+			} else {
+				f.storage.On("GetSnapshotMeta", f.ctx, "snapshot").
+					Return((*storage.SnapshotMeta)(nil), nil).Once()
+				f.nbsFactory.On("GetClient", f.ctx, "zone").
+					Return(f.nbsClient, nil).Once()
+				f.nbsClient.On("Describe", f.ctx, "disk").
+					Return(nbs_client.DiskParams{BlockSize: 8192}, nil).Once()
+			}
+
+			f.storage.On(
+				"CreateSnapshot",
+				f.ctx,
+				storage.SnapshotMeta{
+					BlockSize:    8192,
+					ID:           "snapshot",
+					Disk:         f.task.request.SrcDisk,
+					CheckpointID: "checkpoint",
+					CreateTaskID: "create",
+				},
+			).Return((*storage.SnapshotMeta)(nil), assert.AnError).Once()
+
+			// Stop at CreateSnapshot to check the block size passed to storage.
+			err := f.task.run(f.ctx, f.execCtx)
+			require.ErrorIs(t, err, assert.AnError)
+		})
+	}
+}
+
+func TestCreateSnapshotFromDiskAlreadyCreated(t *testing.T) {
+	f := newCreateSnapshotDiskZoneTest(
+		t,
+		"zone",
+		false, // useProxy
+		&protos.CreateSnapshotFromDiskTaskState{},
+		nil, // disabledZones
+	)
+	f.execCtx.On("GetTaskID").Return("create").Once()
+	f.storage.On("GetSnapshotMeta", f.ctx, "snapshot").
+		Return(&storage.SnapshotMeta{ID: "snapshot", Ready: true}, nil).Once()
+
+	err := f.task.run(f.ctx, f.execCtx)
+	require.NoError(t, err)
+}

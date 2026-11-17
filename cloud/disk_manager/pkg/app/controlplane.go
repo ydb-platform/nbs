@@ -393,7 +393,7 @@ func initControlplane(
 		config.GetPlacementGroupConfig().GetStorageFolder(),
 		db,
 		endedMigrationExpirationTimeout,
-		config.GetSnapshotStorageBackupConfig() != nil, // backupEnabled
+		config.GetSnapshotStorageBackupConfig() != nil,
 		config.GetSnapshotStorageBackupConfig().GetFolderIds(),
 	)
 	if err != nil {

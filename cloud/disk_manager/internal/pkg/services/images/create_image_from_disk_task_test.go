@@ -17,38 +17,70 @@ import (
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
 
+////////////////////////////////////////////////////////////////////////////////
+
 func TestCreateImageFromDiskPassesBlockSizeToDataplane(t *testing.T) {
 	ctx := context.Background()
 	storage := resources_mocks.NewStorageMock()
 	scheduler := tasks_mocks.NewSchedulerMock()
 	execCtx := tasks_mocks.NewExecutionContextMock()
 	client := nbs_mocks.NewClientMock()
-	for _, m := range []*mock.Mock{&storage.Mock, &scheduler.Mock, &execCtx.Mock, &client.Mock} {
+
+	for _, m := range []*mock.Mock{
+		&storage.Mock,
+		&scheduler.Mock,
+		&execCtx.Mock,
+		&client.Mock,
+	} {
 		m.Test(t)
 		t.Cleanup(func() { m.AssertExpectations(t) })
 	}
-	disk := &types.Disk{DiskId: "disk", ZoneId: "zone"}
+
+	disk := &types.Disk{
+		DiskId: "disk",
+		ZoneId: "zone",
+	}
+
 	execCtx.On("GetTaskID").Return("create-image").Once()
-	client.On("Describe", ctx, "disk").Return(nbs_client.DiskParams{
-		BlockSize: 8192,
-	}, nil).Once()
+	client.On("Describe", ctx, "disk").Return(
+		nbs_client.DiskParams{BlockSize: 8192},
+		nil,
+	).Once()
+
 	storage.On("CreateImage", ctx, mock.Anything).
 		Return(resources.ImageMeta{ID: "image"}, nil).Once()
-	client.On("CreateCheckpoint", ctx, nbs_client.CheckpointParams{
-		DiskID: "disk", CheckpointID: "image",
-	}).Return(nil).Once()
-	scheduler.On("ScheduleZonalTask", mock.Anything,
-		"dataplane.CreateSnapshotFromDisk", "", "zone",
+
+	client.On(
+		"CreateCheckpoint",
+		ctx,
+		nbs_client.CheckpointParams{
+			DiskID:       "disk",
+			CheckpointID: "image",
+		},
+	).Return(nil).Once()
+
+	scheduler.On(
+		"ScheduleZonalTask",
+		mock.Anything,
+		"dataplane.CreateSnapshotFromDisk",
+		"",
+		"zone",
 		&dataplane_protos.CreateSnapshotFromDiskRequest{
-			SrcDisk: disk, SrcDiskCheckpointId: "image",
-			DstSnapshotId: "image", BlockSize: 8192,
-		}).Return("copy-task", nil).Once()
+			SrcDisk:             disk,
+			SrcDiskCheckpointId: "image",
+			DstSnapshotId:       "image",
+			BlockSize:           8192,
+		},
+	).Return("copy-task", nil).Once()
+
 	scheduler.On("WaitTask", ctx, execCtx, "copy-task").
 		Return(nil, errors.NewInterruptExecutionError()).Once()
+
 	task := &createImageFromDiskTask{
-		storage: storage, scheduler: scheduler,
-		request: &protos.CreateImageFromDiskRequest{DstImageId: "image"},
-		state:   &protos.CreateImageFromDiskTaskState{},
+		storage:   storage,
+		scheduler: scheduler,
+		request:   &protos.CreateImageFromDiskRequest{DstImageId: "image"},
+		state:     &protos.CreateImageFromDiskTaskState{},
 	}
 
 	_, err := task.run(ctx, execCtx, client, disk)

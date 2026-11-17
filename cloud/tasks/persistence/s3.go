@@ -132,8 +132,8 @@ type s3ClientOptions struct {
 // S3ClientOption changes only clients whose callers explicitly opt in.
 type S3ClientOption func(*s3ClientOptions)
 
-// WithS3ExportCompatibility enables object encoding and retry handling used
-// by backup/export clients without changing primary snapshot clients.
+// WithS3ExportCompatibility enables standard object headers and read retries
+// for backup/export clients. Primary snapshot clients keep their legacy behavior.
 func WithS3ExportCompatibility() S3ClientOption {
 	return func(options *s3ClientOptions) {
 		options.exportCompatibility = true
@@ -728,9 +728,12 @@ func (c *S3Client) newPutObjectInput(
 		Body:     bytes.NewReader(object.Data),
 		Metadata: object.Metadata,
 	}
+
 	if c.exportCompatibility {
 		input.ContentType = aws.String("application/octet-stream")
 	} else {
+		// Legacy clients wrote the MIME type as Content-Encoding. Preserve
+		// their behavior; backup/export clients opt in to Content-Type.
 		input.ContentEncoding = aws.String("application/octet-stream")
 	}
 
