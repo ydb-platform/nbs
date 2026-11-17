@@ -9,13 +9,15 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from ..helpers import format_duration
 from ..set_build_and_test_targets import JOIN_GROUPS
+from .report_status import TestStatus
 
 START = "<!-- status-plaque -->"
 END = "<!-- /status-plaque -->"
 DATA_RE = re.compile(r"<!-- status-plaque-data (.*?) -->")
 BLOCK_RE = re.compile(rf"{re.escape(START)}.*?{re.escape(END)}", re.DOTALL)
-COUNT_STATUSES = ("PASS", "ERROR", "FAIL", "FAIL_BUILD", "SKIP", "MUTE")
+COUNT_STATUSES = tuple(status.name for status in TestStatus.summary_table_order())
 ICONS = {
     "pending": "⏳",
     "running": "⏳",
@@ -54,22 +56,6 @@ MESSAGES = {
 }
 
 
-def format_duration(seconds: int | str | None) -> str:
-    try:
-        seconds = int(seconds)
-    except (TypeError, ValueError):
-        return "—"
-    if seconds < 0:
-        return "—"
-    hours, seconds = divmod(seconds, 3600)
-    minutes, seconds = divmod(seconds, 60)
-    if hours:
-        return f"{hours}h {minutes}m {seconds}s"
-    if minutes:
-        return f"{minutes}m {seconds}s"
-    return f"{seconds}s"
-
-
 @dataclasses.dataclass
 class Report:
     iteration: int
@@ -94,7 +80,9 @@ class Report:
             or self.exit_code not in (None, 0)
             or self.build_failed_count > 0
             or any(
-                self.counts.get(status, 0) for status in ("ERROR", "FAIL", "FAIL_BUILD")
+                self.counts.get(status.name, 0)
+                for status in TestStatus
+                if status.is_failure
             )
         )
 

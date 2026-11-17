@@ -5,9 +5,10 @@ from xml.etree import ElementTree as ET
 
 import pytest
 
+from scripts.helpers import format_duration
 from scripts.tests import generate_summary as gs
 from scripts.tests import finalize_workload_comments as fwc
-from scripts.tests.status_plaque import Plaque, Report, WorkflowOutcome, format_duration
+from scripts.tests.status_plaque import Plaque, Report, WorkflowOutcome
 
 PRESET = "linux-x86_64-relwithdebinfo"
 
@@ -536,24 +537,6 @@ def test_html_and_hidden_state_escape_values():
     html = ET.fromstring(f"<root>{plaque.render_table()}</root>")
     assert html.find("p/strong").text == "linux-arm64-release-asan"
     assert len(html.find("table/thead/tr")) == 13
-
-
-@pytest.mark.parametrize(
-    "seconds,expected",
-    [
-        (0, "0s"),
-        (59, "59s"),
-        (60, "1m 0s"),
-        (3600, "1h 0m 0s"),
-        ("3661", "1h 1m 1s"),
-        (None, "—"),
-        ("", "—"),
-        (-1, "—"),
-        ("invalid", "—"),
-    ],
-)
-def test_duration_format(seconds, expected):
-    assert format_duration(seconds) == expected
 
 
 @pytest.mark.parametrize("seconds", [None, 0, 3661])
