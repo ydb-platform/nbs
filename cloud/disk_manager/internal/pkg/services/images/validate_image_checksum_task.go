@@ -51,7 +51,7 @@ func (t *validateImageChecksumTask) Run(
 
 	// Fail fast: computing the checksum is expensive and there is no point in
 	// it if there is nothing to compare the result with.
-	_, err := t.getSavedChecksum(ctx)
+	savedChecksum, err := t.getSavedChecksum(ctx)
 	if err != nil {
 		return err
 	}
@@ -97,13 +97,6 @@ func (t *validateImageChecksumTask) Run(
 	}
 
 	t.state.Checksum = typedResponse.Checksum
-
-	// The saved checksum is read once again: the image might have been
-	// deleted or its checksum might have been saved anew in the meantime.
-	savedChecksum, err := t.getSavedChecksum(ctx)
-	if err != nil {
-		return err
-	}
 
 	if savedChecksum != typedResponse.Checksum {
 		return errors.NewNonRetriableErrorf(
