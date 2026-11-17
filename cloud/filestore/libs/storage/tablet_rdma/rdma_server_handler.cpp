@@ -29,7 +29,7 @@ namespace {
 
 // The tablet would deliver filesystem events of the client's pipe to the
 // forwarder, which serves every vhost of a node and has no way to route them.
-// TODO resolve later problem with events
+// TODO(#8001): route file system events via pipe
 template <typename T>
 void DisableFileSystemEventSubscription(T& record)
 {
