@@ -27,6 +27,10 @@ struct TOptions
     // the journal parts are not allocated.
     bool NoJournal = false;
 
+    // The executor threads that serve the connections. With zero the
+    // executor of the device serves the connections too.
+    ui32 ConnectionExecutors = 0;
+
     // The AIO completion threads the device file is served by.
     ui32 AioThreads = 1;
 

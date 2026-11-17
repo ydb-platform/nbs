@@ -14,6 +14,7 @@
 #include <util/string/builder.h>
 
 #include <functional>
+#include <mutex>
 
 namespace NCloud::NJournalled {
 
@@ -23,19 +24,37 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Touched only in the executor, so no locking is needed: the requests, the
-// formats and the stop all run there.
-struct TJournalledDeviceSpec
+// Changed only in the executor: the start, the formats and the stop all run
+// there. The requests read the device from the threads of the connections,
+// so the device is kept under a lock.
+class TJournalledDeviceSpec
 {
+public:
     TJournalledDeviceConfig Config;
 
     // Set while a format of the device is in flight: a parallel format of
-    // the same device is rejected.
+    // the same device is rejected. Touched only in the executor.
     bool Formatting = false;
+
+private:
+    std::mutex DeviceLock;
 
     // Null while the device is not started: it failed to start or to be
     // recreated, and stays so until the next format succeeds.
     IJournalledDevicePtr Device;
+
+public:
+    IJournalledDevicePtr GetDevice()
+    {
+        std::lock_guard lock(DeviceLock);
+        return Device;
+    }
+
+    void SetDevice(IJournalledDevicePtr device)
+    {
+        std::lock_guard lock(DeviceLock);
+        Device.swap(device);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -339,11 +358,12 @@ private:
             static_cast<ui32>(DeviceSpecs.size()),
             [](TJournalledDeviceSpec& spec) -> TFuture<void>
             {
-                if (!spec.Device) {
+                auto device = spec.GetDevice();
+                if (!device) {
                     return MakeFuture();
                 }
 
-                return spec.Device->Stop();
+                return device->Stop();
             }));
     }
 
@@ -366,7 +386,7 @@ private:
             return error;
         }
 
-        spec.Device = std::move(device);
+        spec.SetDevice(std::move(device));
         return {};
     }
 
@@ -374,12 +394,13 @@ private:
     // not started has nothing to stop.
     void DoStopJournalledDevice(TJournalledDeviceSpec& spec)
     {
-        if (!spec.Device) {
+        auto device = spec.GetDevice();
+        if (!device) {
             return;
         }
 
-        Executor->WaitFor(spec.Device->Stop());
-        spec.Device = nullptr;
+        Executor->WaitFor(device->Stop());
+        spec.SetDevice(nullptr);
     }
 
     NProto::TFormatDeviceResponse DoFormatDevice(
@@ -395,14 +416,15 @@ private:
             return error;
         }
 
-        if (!spec->Device) {
+        auto device = spec->GetDevice();
+        if (!device) {
             return MakeError(
                 E_INVALID_STATE,
                 TStringBuilder()
                     << "Device " << deviceUUID.Quote() << " is not started");
         }
 
-        return spec->Device;
+        return device;
     }
 
     TResultOrError<TJournalledDeviceSpec*> GetDeviceSpec(

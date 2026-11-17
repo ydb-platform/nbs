@@ -94,6 +94,14 @@ void TOptions::Parse(int argc, const char* argv[])
         .NoArgument()
         .SetFlag(&NoJournal);
 
+    opts.AddLongOption(
+            "connection-executors",
+            "executor threads that serve the connections; with zero the "
+            "executor of the device serves the connections too")
+        .RequiredArgument("NUM")
+        .DefaultValue(ConnectionExecutors)
+        .StoreResult(&ConnectionExecutors);
+
     opts.AddLongOption("aio-threads", "AIO completion threads")
         .RequiredArgument("NUM")
         .DefaultValue(AioThreads)

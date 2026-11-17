@@ -9,6 +9,7 @@
 #include <cloud/storage/core/libs/coroutine/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
+#include <util/generic/vector.h>
 #include <util/network/socket.h>
 
 namespace NCloud::NJournalled {
@@ -20,6 +21,13 @@ struct TServerConfig
     TNetworkAddress ListenAddress;
     bool JournalEnabled = false;
     ui32 RestoreConcurrency = 1;
+
+    // The executors that serve the connections: they read the requests, run
+    // ReadPages and WriteLogRecord and send the responses. The executor of
+    // the builder keeps the listener, the devices and the journals: the
+    // restore, the flush, the format and the other rare requests run there.
+    // If the list is empty, the executor of the builder does everything.
+    TVector<TExecutorPtr> ConnectionExecutors;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
