@@ -19,7 +19,11 @@ void ValidateRetiredRequest(const TPendingWriteDataRequest& request)
              Empty()));
 
     // Allocated requests must publish Serialized before retirement
-    Y_ABORT_UNLESS(!request.HasAllocation() || request.IsSerialized());
+    Y_ABORT_UNLESS(
+        !request.HasAllocation() || request.IsSerialized(),
+        "HasAllocation=%d, IsSerialized=%d",
+        request.HasAllocation(),
+        request.IsSerialized());
 }
 
 struct TWriteDataPromiseCompletedEvent
