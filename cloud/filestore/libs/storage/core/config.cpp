@@ -206,6 +206,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ThreeStageWriteThreshold,        ui32,      64_KB                     )\
     xxx(ThreeStageWriteDisabledForHDD,   bool,      false                     )\
     xxx(UnalignedThreeStageWriteEnabled, bool,      false                     )\
+    xxx(WriteDataZeroBlockStatsEnabled,  bool,      false                     )\
     xxx(ReadAheadCacheMaxNodes,                 ui32,       1024              )\
     xxx(ReadAheadCacheMaxResultsPerNode,        ui32,       32                )\
     xxx(ReadAheadCacheRangeSize,                ui32,       0                 )\
@@ -217,6 +218,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(AttrTimeout,                     TDuration, TDuration::Zero()         )\
     xxx(XAttrCacheTimeout,               TDuration, TDuration::Zero()         )\
     xxx(XAttrCacheLimit,                 ui32,      0                         )\
+    xxx(NodeRefCacheLimit,               ui32,      0                         )\
+    xxx(NodeAttrsCacheLimit,             ui32,      0                         )\
     xxx(MaxOutOfOrderCompactionMapLoadRequestsInQueue,  ui32,      5          )\
     xxx(MaxBackpressureErrorsBeforeSuicide, ui32,       1000                  )\
     xxx(MaxBackpressurePeriodBeforeSuicide, TDuration,  TDuration::Minutes(10))\
@@ -596,6 +599,11 @@ FILESTORE_STORAGE_CONFIG_REF(DECLARE_FIELD_CHECKER)
 FILESTORE_STORAGE_CONFIG(FILESTORE_CONFIG_GETTER)
 
 #undef FILESTORE_CONFIG_GETTER
+
+ui32 TStorageConfig::GetDefaultSizeToNodesRatio()
+{
+    return DefaultSizeToNodesRatio;
+}
 
 #define FILESTORE_CONFIG_GETTER_REF(name, type, ...)                           \
 const type& TStorageConfig::Get##name() const                                  \

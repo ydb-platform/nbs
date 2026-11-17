@@ -11,6 +11,7 @@ ENDIF()
 SRCS(
     helpers_ut.cpp
     protobuf_utils_ut.cpp
+    shard_creation_state_companion_ut.cpp
     service_ut.cpp
     service_ut_control_namespace.cpp
     service_ut_filesystem_events.cpp
@@ -20,6 +21,7 @@ SRCS(
     service_ut_quotas.cpp
     service_ut_writedata_unconfirmed.cpp
     service_actor_actions_ut.cpp
+    zero_block_stats_ut.cpp
 )
 
 PEERDIR(

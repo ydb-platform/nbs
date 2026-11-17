@@ -11,27 +11,27 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 TIOCompanion::TIOCompanion(
-        TStorageConfigConstPtr config,
-        const NProto::TPartitionConfig& partitionConfig,
-        NKikimr::TTabletStorageInfoPtr tabletStorageInfo,
-        ui64 tabletID,
-        std::shared_ptr<TBlobsCompressor> blobsCompressor,
-        const NActors::TActorId& volumeActorId,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
-        EStorageAccessMode storageAccessMode,
-        TBSGroupOperationTimeTracker& bsGroupOperationTimeTracker,
-        ui64& bsGroupOperationId,
-        IIOCompanionClient& client,
-        TPartitionChannelsState& channelsState,
-        TLogTitle& logTitle,
-        std::shared_ptr<TResourceMetricsQueue> resourceMetricsQueue,
-        std::shared_ptr<TGroupDowntimes> groupDowntimes,
-        std::shared_ptr<TThreadSafePartCounters> partCounters)
+    TStorageConfigConstPtr config,
+    const NProto::TPartitionConfig& partitionConfig,
+    NKikimr::TTabletStorageInfoPtr tabletStorageInfo,
+    ui64 tabletID,
+    TBlobCompressorPtr blobCompressor,
+    const NActors::TActorId& volumeActorId,
+    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    EStorageAccessMode storageAccessMode,
+    TBSGroupOperationTimeTracker& bsGroupOperationTimeTracker,
+    ui64& bsGroupOperationId,
+    IIOCompanionClient& client,
+    TPartitionChannelsState& channelsState,
+    TLogTitle& logTitle,
+    std::shared_ptr<TResourceMetricsQueue> resourceMetricsQueue,
+    std::shared_ptr<TGroupDowntimes> groupDowntimes,
+    std::shared_ptr<TThreadSafePartCounters> partCounters)
     : Config(std::move(config))
     , PartitionConfig(partitionConfig)
     , TabletStorageInfo(std::move(tabletStorageInfo))
     , TabletID(tabletID)
-    , BlobsCompressor(std::move(blobsCompressor))
+    , BlobCompressor(std::move(blobCompressor))
     , VolumeActorId(volumeActorId)
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , StorageAccessMode(storageAccessMode)

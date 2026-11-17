@@ -32,8 +32,8 @@ namespace NCloud::NFastShard {
 using silk::FiberFuture;
 using silk::FiberScheduler;
 
-using NCloud::NProto::TDeviceProtocolRequest;
-using NCloud::NProto::TDeviceProtocolResponse;
+using NProto::TDeviceProtocolRequest;
+using NProto::TDeviceProtocolResponse;
 
 namespace {
 

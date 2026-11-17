@@ -217,23 +217,23 @@ void TVolumeActor::HandleScrubberCounters(
     State->UpdateScrubberCounters(std::move(scrubbingInfo));
 }
 
-void TVolumeActor::UpdateDiskRegistryBasedPartCounters(
+TPartitionStatInfo* TVolumeActor::ApplyDiskRegistryBasedPartCounters(
     const TActorContext& ctx,
-    TDataForUpdatingDiskRegistryBasedPartCounters data)
+    const TActorId& sender,
+    const TString& diskId,
+    const TPartNonreplCountersData& partCountersData)
 {
-    Y_DEBUG_ABORT_UNLESS(State->IsDiskRegistryMediaKind());
-
     if (auto* resourceMetrics = GetResourceMetrics(); resourceMetrics) {
         bool changed = false;
-        if (data.PartCountersData.CpuUsage) {
+        if (partCountersData.CpuUsage) {
             resourceMetrics->CPU.Increment(
-                data.PartCountersData.CpuUsage.MicroSeconds(),
+                partCountersData.CpuUsage.MicroSeconds(),
                 ctx.Now());
             changed = true;
         }
-        if (data.PartCountersData.NetworkBytes) {
+        if (partCountersData.NetworkBytes) {
             resourceMetrics->Network.Increment(
-                data.PartCountersData.NetworkBytes,
+                partCountersData.NetworkBytes,
                 ctx.Now());
             changed = true;
         }
@@ -243,10 +243,7 @@ void TVolumeActor::UpdateDiskRegistryBasedPartCounters(
         }
     }
 
-    auto requestInfo =
-        CreateRequestInfo(data.Sender, data.Cookie, data.CallContext);
-
-    auto* statInfo = State->GetPartitionStatByDiskId(data.DiskId);
+    auto* statInfo = State->GetPartitionStatByDiskId(diskId);
 
     if (!statInfo) {
         LOG_INFO(
@@ -254,9 +251,9 @@ void TVolumeActor::UpdateDiskRegistryBasedPartCounters(
             TBlockStoreComponents::VOLUME,
             "%s Counters from partition %s (%s) do not belong to disk",
             LogTitle.GetWithTime().c_str(),
-            ToString(data.Sender).c_str(),
-            data.DiskId.Quote().c_str());
-        return;
+            ToString(sender).c_str(),
+            diskId.Quote().c_str());
+        return nullptr;
     }
 
     if (!statInfo->LastCounters) {
@@ -265,19 +262,42 @@ void TVolumeActor::UpdateDiskRegistryBasedPartCounters(
             *DiagnosticsConfig);
     }
 
-    if (!data.PartCountersData.DiskCounters) {
-        UpdateCounters(ctx);
+    if (!partCountersData.DiskCounters) {
+        return statInfo;
+    }
+
+    statInfo->LastCounters->Add(*partCountersData.DiskCounters);
+
+    UpdateCachedStats(*partCountersData.DiskCounters, statInfo->CachedCounters);
+    CopyPartCountersToCachedStats(
+        *partCountersData.DiskCounters,
+        statInfo->CachedCountersProto);
+
+    return statInfo;
+}
+
+void TVolumeActor::UpdateDiskRegistryBasedPartCounters(
+    const TActorContext& ctx,
+    TDataForUpdatingDiskRegistryBasedPartCounters data)
+{
+    Y_DEBUG_ABORT_UNLESS(State->IsDiskRegistryMediaKind());
+
+    auto* statInfo = ApplyDiskRegistryBasedPartCounters(
+        ctx,
+        data.Sender,
+        data.DiskId,
+        data.PartCountersData);
+
+    if (!statInfo) {
         return;
     }
 
-    statInfo->LastCounters->Add(*data.PartCountersData.DiskCounters);
+    if (!data.PartCountersData.DiskCounters) {
+        return;
+    }
 
-    UpdateCachedStats(
-        *data.PartCountersData.DiskCounters,
-        statInfo->CachedCounters);
-    CopyPartCountersToCachedStats(
-        *data.PartCountersData.DiskCounters,
-        statInfo->CachedCountersProto);
+    auto requestInfo =
+        CreateRequestInfo(data.Sender, data.Cookie, data.CallContext);
 
     TVolumeDatabase::TPartStats partStats;
     partStats.Stats = statInfo->CachedCountersProto;
@@ -309,6 +329,8 @@ void TVolumeActor::HandleGetDiskRegistryBasedPartCountersResponse(
         TEvGetDiskRegistryBasedPartCountersResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    Y_DEBUG_ABORT_UNLESS(State->IsDiskRegistryMediaKind());
+
     auto* msg = ev->Get();
 
     if (HasError(msg->Error)) {
@@ -320,14 +342,28 @@ void TVolumeActor::HandleGetDiskRegistryBasedPartCountersResponse(
             FormatError(msg->Error).c_str());
     }
 
-    TDataForUpdatingDiskRegistryBasedPartCounters data(
-        msg->ActorId,
-        ev->Cookie,
-        std::move(msg->DiskId),
-        MakeIntrusive<TCallContext>(),
-        std::move(msg->CountersData));
+    TVector<TVolumeDatabase::TPartStats> partStats;
+    for (const auto& diskCounters: msg->DisksCounters) {
+        auto* statInfo = ApplyDiskRegistryBasedPartCounters(
+            ctx,
+            msg->ActorId,
+            diskCounters.DiskId,
+            diskCounters.CountersData);
+        if (statInfo && diskCounters.CountersData.DiskCounters &&
+            diskCounters.DiskId == State->GetDiskId())
+        {
+            partStats.push_back({.Stats = statInfo->CachedCountersProto});
+        }
+    }
 
-    UpdateDiskRegistryBasedPartCounters(ctx, std::move(data));
+    if (!partStats.empty()) {
+        ExecuteTx<TSavePartStats>(
+            ctx,
+            /*requestInfo=*/nullptr,
+            std::move(partStats));
+    }
+
+    UpdateCounters(ctx);
 }
 
 std::optional<TVolumeDatabase::TPartStats> TVolumeActor::UpdatePartCounters(
@@ -437,15 +473,14 @@ void TVolumeActor::HandlePartCountersCombined(
         }
     }
 
-    if (partStats.empty()) {
-        UpdateCounters(ctx);
-        return;
+    if (!partStats.empty()) {
+        ExecuteTx<TSavePartStats>(
+            ctx,
+            /*requestInfo=*/nullptr,
+            std::move(partStats));
     }
 
-    ExecuteTx<TSavePartStats>(
-        ctx,
-        /*requestInfo=*/nullptr,
-        std::move(partStats));
+    UpdateCounters(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -503,11 +538,6 @@ void TVolumeActor::CompleteSavePartStats(
             return builder;
         }()
             .c_str());
-
-    if (Config->GetUsePullSchemeForVolumeStatistics())
-    {
-        UpdateCounters(ctx);
-    }
 
     NCloud::Send(
         ctx,
@@ -732,9 +762,14 @@ TEvStatsService::TVolumeSelfCounters TVolumeActor::GetVolumeSelfCounters(
     }
     simple.DiskAgentCount.Set(allAgents.size());
 
+    // A preempted local mounter keeps its LOCAL mount mode, but its tablet is
+    // then started by Hive (ONLINE) and may run on any host. Only a tablet
+    // started by the local mounter itself (MOUNTED) runs on the client's host.
+    const bool isLocalMount = !State->GetLocalMountClientId().empty() &&
+                              StartMode == EVolumeStartMode::MOUNTED;
     TEvStatsService::TVolumeSelfCounters volumeCounters(
         State->GetConfig().GetDiskId(),
-        /*IsLocalMount=*/!State->GetLocalMountClientId().empty(),
+        isLocalMount,
         State->HasActiveClients(ctx.Now()),
         State->IsPreempted(SelfId()),
         std::move(VolumeSelfCounters),

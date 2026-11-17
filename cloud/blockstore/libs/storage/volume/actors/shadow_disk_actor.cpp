@@ -1,5 +1,7 @@
 #include "shadow_disk_actor.h"
 
+#include "disk_registry_based_partition_statistics_collector_actor.h"
+
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
@@ -57,6 +59,29 @@ bool CheckDeviceUUIDsIdentical(
         described,
         [&](const auto& d)
         { return acquiredDevices.contains(d.GetDeviceUUID()); });
+}
+
+void AddDiskCounters(
+    TVector<TEvNonreplPartitionPrivate::TDiskCounters>& disksCounters,
+    TEvNonreplPartitionPrivate::TDiskCounters diskCounters)
+{
+    auto it = FindIf(
+        disksCounters,
+        [&](const auto& c) { return c.DiskId == diskCounters.DiskId; });
+    if (it == disksCounters.end()) {
+        disksCounters.push_back(std::move(diskCounters));
+        return;
+    }
+
+    TPartNonreplCountersData& dst = it->CountersData;
+    TPartNonreplCountersData& src = diskCounters.CountersData;
+    if (!dst.DiskCounters) {
+        dst.DiskCounters = std::move(src.DiskCounters);
+    } else if (src.DiskCounters) {
+        dst.DiskCounters->AggregateWith(*src.DiskCounters);
+    }
+    dst.NetworkBytes += src.NetworkBytes;
+    dst.CpuUsage += src.CpuUsage;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -644,6 +669,15 @@ bool TShadowDiskActor::OnMessage(
         HFunc(
             TEvService::TEvReadBlocksLocalRequest,
             HandleReadBlocks<TEvService::TReadBlocksLocalMethod>);
+
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvGetDiskRegistryBasedPartCountersRequest,
+            HandleGetDiskRegistryBasedPartCounters);
+        HFunc(
+            TEvNonreplPartitionPrivate::
+                TEvDiskRegistryBasedPartCountersCombined,
+            HandleDiskRegistryBasedPartCountersCombined);
 
         IgnoreFunc(TEvVolumePrivate::TEvDeviceTimedOutRequest);
 
@@ -1278,6 +1312,87 @@ void TShadowDiskActor::HandleGetChangedBlocks(
     response->Record.SetMask(GetNonZeroBlocks(range));
 
     NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+void TShadowDiskActor::HandleGetDiskRegistryBasedPartCounters(
+    const TEvNonreplPartitionPrivate::
+        TEvGetDiskRegistryBasedPartCountersRequest::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    if (StatisticRequestInfo) {
+        NCloud::Reply(
+            ctx,
+            *StatisticRequestInfo,
+            std::make_unique<TEvNonreplPartitionPrivate::
+                                 TEvGetDiskRegistryBasedPartCountersResponse>(
+                MakeError(E_REJECTED, "Shadow disk actor got new request"),
+                SelfId(),
+                SrcConfig->GetName(),
+                TPartNonreplCountersData{}));
+        StatisticRequestInfo.Reset();
+    }
+
+    TVector<TActorId> statActorIds{SrcActorId};
+    if (DstActorId) {
+        statActorIds.push_back(DstActorId);
+    }
+
+    StatisticRequestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext);
+
+    NCloud::Register<TDiskRegistryBasedPartitionStatisticsCollectorActor>(
+        ctx,
+        SelfId(),
+        std::move(statActorIds));
+}
+
+void TShadowDiskActor::HandleDiskRegistryBasedPartCountersCombined(
+    const TEvNonreplPartitionPrivate::TEvDiskRegistryBasedPartCountersCombined::
+        TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    if (!StatisticRequestInfo) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Failed to send shadow disk actor statistics due to empty "
+            "StatisticRequestInfo.",
+            LogTitle.GetWithTime().c_str());
+        return;
+    }
+
+    auto* msg = ev->Get();
+
+    if (HasError(msg->Error)) {
+        LOG_WARN(
+            ctx,
+            TBlockStoreComponents::VOLUME,
+            "%s Failed to collect shadow disk actor statistics due to error: "
+            "%s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(msg->Error).c_str());
+    }
+
+    TVector<TEvNonreplPartitionPrivate::TDiskCounters> disksCounters;
+    disksCounters.push_back(
+        {.DiskId = SrcConfig->GetName(),
+         .CountersData = ExtractPartCounters()});
+
+    for (auto& counters: msg->Counters) {
+        for (auto& diskCounters: counters.DisksCounters) {
+            AddDiskCounters(disksCounters, std::move(diskCounters));
+        }
+    }
+
+    NCloud::Reply(
+        ctx,
+        *StatisticRequestInfo,
+        std::make_unique<TEvNonreplPartitionPrivate::
+                             TEvGetDiskRegistryBasedPartCountersResponse>(
+            msg->Error,
+            SelfId(),
+            std::move(disksCounters)));
+    StatisticRequestInfo.Reset();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -70,7 +70,7 @@ public:
 private:
     void SendPatchRequest(const TActorContext& ctx);
 
-    void NotifyCompleted(const TActorContext& ctx, const NProto::TError& error);
+    void NotifyCompleted(const TActorContext& ctx, const TResponse& response);
 
     void ReplyAndDie(
         const TActorContext& ctx,
@@ -79,7 +79,8 @@ private:
     void ReplyError(
         const TActorContext& ctx,
         const TEvBlobStorage::TEvPatchResult& response,
-        const TString& description);
+        const TString& description,
+        EErrorSource errorSource);
 
 private:
     STFUNC(StateWork);
@@ -163,16 +164,18 @@ void TPatchBlobActor::SendPatchRequest(const TActorContext& ctx)
 
 void TPatchBlobActor::NotifyCompleted(
     const TActorContext& ctx,
-    const NProto::TError& error)
+    const TResponse& response)
 {
-    auto request = std::make_unique<TEvPartitionCommonPrivate::TEvPatchBlobCompleted>(
-        error);
+    auto request =
+        std::make_unique<TEvPartitionCommonPrivate::TEvPatchBlobCompleted>(
+            response.GetError());
     request->OriginalBlobId = Request->OriginalBlobId;
     request->PatchedBlobId = Request->PatchedBlobId;
     request->StorageStatusFlags = StorageStatusFlags;
     request->ApproximateFreeSpaceShare = ApproximateFreeSpaceShare;
     request->RequestTime = ResponseReceived - RequestSent;
     request->BSGroupOperationId = BSGroupOperationId;
+    request->ErrorSource = response.ErrorSource;
 
     NCloud::Send(ctx, TabletActorId, std::move(request));
 }
@@ -181,7 +184,11 @@ void TPatchBlobActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TResponse> response)
 {
-    NotifyCompleted(ctx, response->GetError());
+    if (HasError(response->GetError()) && !response->ErrorSource) {
+        response->ErrorSource = EErrorSource::Local;
+    }
+
+    NotifyCompleted(ctx, *response);
 
     LWTRACK(
         ResponseSent_Partition,
@@ -196,7 +203,8 @@ void TPatchBlobActor::ReplyAndDie(
 void TPatchBlobActor::ReplyError(
     const TActorContext& ctx,
     const TEvBlobStorage::TEvPatchResult& response,
-    const TString& description)
+    const TString& description,
+    EErrorSource errorSource)
 {
     LOG_ERROR(
         ctx,
@@ -206,11 +214,11 @@ void TPatchBlobActor::ReplyError(
         description.c_str(),
         response.Print(false).c_str());
 
-    ReplyAndDie(
-        ctx,
-        std::make_unique<TResponse>(MakeError(
-            E_REJECTED,
-            "TEvBlobStorage::TEvPatch failed: " + description)));
+    auto reply = std::make_unique<TResponse>(MakeError(
+        E_REJECTED,
+        "TEvBlobStorage::TEvPatch failed: " + description));
+    reply->ErrorSource = errorSource;
+    ReplyAndDie(ctx, std::move(reply));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -224,13 +232,13 @@ void TPatchBlobActor::HandlePatchResult(
     const auto* msg = ev->Get();
 
     if (msg->Status != NKikimrProto::OK) {
-        ReplyError(ctx, *msg, msg->ErrorReason);
+        ReplyError(ctx, *msg, msg->ErrorReason, EErrorSource::BlobStorage);
         return;
     }
 
     auto blobId = MakeBlobId(TabletId, Request->PatchedBlobId);
     if (msg->Id != blobId) {
-        ReplyError(ctx, *msg, "invalid response received");
+        ReplyError(ctx, *msg, "invalid response received", EErrorSource::Local);
         return;
     }
 
@@ -350,7 +358,9 @@ void TIOCompanion::HandlePatchBlobCompleted(
         msg->PatchedBlobId.Generation(),
         msg->ApproximateFreeSpaceShare);
 
-    if (FAILED(msg->GetStatus())) {
+    if (FAILED(msg->GetStatus()) &&
+        msg->ErrorSource == EErrorSource::BlobStorage)
+    {
         ReportTabletBSFailure(
             PartitionConfig.GetDiskId(),
             PartitionConfig.GetCloudId(),

@@ -284,6 +284,8 @@ protected:
     void SetTargetMigrationIsLagging(bool lagging);
     bool GetTargetMigrationIsLagging() const;
 
+    TPartNonreplCountersData ExtractPartCounters();
+
 private:
     bool IsMigrationFinished() const;
     bool IsIoDepthLimitReached() const;
@@ -315,8 +317,6 @@ private:
         const NActors::TActorContext& ctx,
         const NActors::TActorId& sender,
         TPartNonreplCountersData partCountersData);
-
-    TPartNonreplCountersData ExtractPartCounters();
 
 private:
     STFUNC(StateWork);

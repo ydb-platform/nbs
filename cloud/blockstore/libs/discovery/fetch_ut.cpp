@@ -6,6 +6,7 @@
 #include <cloud/blockstore/config/discovery.pb.h>
 #include <cloud/blockstore/public/api/protos/discovery.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -13,6 +14,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/folder/path.h>
 #include <util/folder/tempdir.h>
 #include <util/random/random.h>
 #include <util/stream/file.h>
@@ -42,6 +44,7 @@ struct TEnv
         *c.AddConductorGroups() = "group1";
         *c.AddConductorGroups() = "group2";
         *c.AddConductorGroups() = "group3";
+        // Successful groups still update instances when this group fails.
         *c.AddConductorGroups() = "broken_group";
 
         if (withConductor) {
@@ -75,6 +78,18 @@ struct TEnv
     }
 };
 
+void CheckFetchResult(
+    const NThreading::TFuture<NProto::TError>& future,
+    ui32 expectedCode)
+{
+    UNIT_ASSERT(future.Wait(TDuration::Seconds(5)));
+    const auto& error = future.GetValueSync();
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        expectedCode,
+        error.GetCode(),
+        error.GetMessage());
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -92,9 +107,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
         instance.Port = 9766;
         instances.Instances.push_back(std::move(instance));
 
-        auto future = fetcher->FetchInstances(instances);
-        UNIT_ASSERT(future.Wait(TDuration::Seconds(5)));
-        future.GetValueSync();
+        CheckFetchResult(fetcher->FetchInstances(instances), S_OK);
         UNIT_ASSERT(instances.Instances.empty());
 
         fetcher->Stop();
@@ -113,7 +126,8 @@ Y_UNIT_TEST_SUITE(FetchTest)
     void DoTestFetch(
         IInstanceFetcher& fetcher,
         const TInitInstanceSource& initInstanceSource,
-        bool withPorts)
+        bool withPorts,
+        ui32 expectedCode)
     {
         const TVector<TInstanceSpec> stage1 = {
             {"host1", 1},
@@ -141,7 +155,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
 
         // fetching instances for the first time
         TInstanceList instances;
-        fetcher.FetchInstances(instances).Wait();
+        CheckFetchResult(fetcher.FetchInstances(instances), expectedCode);
 
         // order of newly added instances is unspecified
         SortBy(
@@ -181,7 +195,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
         initInstanceSource(stage2);
 
         // refetching instances
-        fetcher.FetchInstances(instances).Wait();
+        CheckFetchResult(fetcher.FetchInstances(instances), expectedCode);
 
         // checking that existing instances are in the beginning of the
         // list and that their relative order is untouched
@@ -243,7 +257,8 @@ Y_UNIT_TEST_SUITE(FetchTest)
     void DoTestFetchSecure(
         IInstanceFetcher& fetcher,
         const TInitInstanceSource& initInstanceSource,
-        const TGetInstancePort& port)
+        const TGetInstancePort& port,
+        ui32 expectedCode)
     {
         const TVector<TInstanceSpec> stage1 = {
             {"host1", 1},
@@ -288,7 +303,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
         initInstanceSource(stage1);
 
         TInstanceList instances;
-        fetcher.FetchInstances(instances).Wait();
+        CheckFetchResult(fetcher.FetchInstances(instances), expectedCode);
 
         checkInstances(instances.Instances, {
             {"host1", port(1) , 0.0, TInstanceInfo::EStatus::Unreachable},
@@ -313,7 +328,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
 
         initInstanceSource(stage2);
 
-        fetcher.FetchInstances(instances).Wait();
+        CheckFetchResult(fetcher.FetchInstances(instances), expectedCode);
 
         UNIT_ASSERT_VALUES_EQUAL("host1", instances.Instances[0].Host);
         UNIT_ASSERT_VALUES_EQUAL(port(1), instances.Instances[0].Port);
@@ -374,8 +389,155 @@ Y_UNIT_TEST_SUITE(FetchTest)
                     of << x.Host << "\t" << x.Port << Endl;
                 }
             },
-            true
+            true,
+            S_OK
         );
+    }
+
+    Y_UNIT_TEST(ShouldKeepStaticInstancesOnFileReadErrors)
+    {
+        TEnv env(false);
+        auto fetcher = CreateStaticInstanceFetcher(
+            env.Config,
+            CreateLoggingService("console"),
+            CreateMonitoringServiceStub()
+        );
+        fetcher->Start();
+
+        {
+            TOFStream of(env.Config->GetInstanceListFile());
+            of << "old-host\t1\n";
+        }
+        TInstanceList instances;
+        CheckFetchResult(fetcher->FetchInstances(instances), S_OK);
+        UNIT_ASSERT_VALUES_EQUAL(1, instances.Instances.size());
+        instances.Instances[0].Status = TInstanceInfo::EStatus::Reachable;
+        instances.Instances[0].BalancingScore = 0.5;
+        instances.Instances[0].Tag = "old-state";
+
+        auto checkOldInstance = [&] {
+            UNIT_ASSERT_VALUES_EQUAL(1, instances.Instances.size());
+            const auto& instance = instances.Instances[0];
+            UNIT_ASSERT_VALUES_EQUAL("old-host", instance.Host);
+            UNIT_ASSERT_VALUES_EQUAL(1, instance.Port);
+            UNIT_ASSERT(instance.Status == TInstanceInfo::EStatus::Reachable);
+            UNIT_ASSERT_VALUES_EQUAL(0.5, instance.BalancingScore);
+            UNIT_ASSERT_VALUES_EQUAL("old-state", instance.Tag);
+        };
+
+        TFsPath(env.Config->GetInstanceListFile()).DeleteIfExists();
+        CheckFetchResult(fetcher->FetchInstances(instances), E_IO);
+        checkOldInstance();
+
+        TFsPath(env.Config->GetInstanceListFile()).MkDir();
+        CheckFetchResult(fetcher->FetchInstances(instances), E_IO);
+        checkOldInstance();
+        TFsPath(env.Config->GetInstanceListFile()).DeleteIfExists();
+
+        {
+            TOFStream of(env.Config->GetInstanceListFile());
+            of << "new-host\t2\n";
+        }
+        CheckFetchResult(fetcher->FetchInstances(instances), S_OK);
+        UNIT_ASSERT_VALUES_EQUAL(1, instances.Instances.size());
+        UNIT_ASSERT_VALUES_EQUAL("new-host", instances.Instances[0].Host);
+        UNIT_ASSERT_VALUES_EQUAL(2, instances.Instances[0].Port);
+
+        fetcher->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldApplyValidStaticInstancesAndSkipMalformedRows)
+    {
+        TEnv env(false);
+        auto fetcher = CreateStaticInstanceFetcher(
+            env.Config,
+            CreateLoggingService("console"),
+            CreateMonitoringServiceStub()
+        );
+        fetcher->Start();
+
+        {
+            TOFStream of(env.Config->GetInstanceListFile());
+            of << "old-host\t1\nretained-host\t2\n";
+        }
+        TInstanceList instances;
+        CheckFetchResult(fetcher->FetchInstances(instances), S_OK);
+        for (auto& instance: instances.Instances) {
+            instance.Status = TInstanceInfo::EStatus::Reachable;
+            instance.BalancingScore = 0.5;
+            instance.Tag = "old-state";
+        }
+
+        {
+            TOFStream of(env.Config->GetInstanceListFile());
+            of << "\nnew-host\t3\t13\n"
+               << "missing-port\n"
+               << "invalid-port\tnot-a-port\n"
+               << "invalid-secure-port\t4\tbad\n"
+               << "\t5\n"
+               << "retained-host\t2\n\n";
+        }
+        CheckFetchResult(fetcher->FetchInstances(instances), S_OK);
+        SortBy(instances.Instances, [] (const TInstanceInfo& instance) {
+            return std::make_pair(instance.Host, instance.Port);
+        });
+
+        UNIT_ASSERT_VALUES_EQUAL(3, instances.Instances.size());
+        const auto& newInstance = instances.Instances[0];
+        UNIT_ASSERT_VALUES_EQUAL("new-host", newInstance.Host);
+        UNIT_ASSERT_VALUES_EQUAL(3, newInstance.Port);
+        UNIT_ASSERT(!newInstance.IsSecurePort);
+        UNIT_ASSERT(newInstance.Status == TInstanceInfo::EStatus::Unreachable);
+        UNIT_ASSERT_VALUES_EQUAL(0, newInstance.BalancingScore);
+        UNIT_ASSERT(newInstance.Tag.empty());
+
+        const auto& secureInstance = instances.Instances[1];
+        UNIT_ASSERT_VALUES_EQUAL("new-host", secureInstance.Host);
+        UNIT_ASSERT_VALUES_EQUAL(13, secureInstance.Port);
+        UNIT_ASSERT(secureInstance.IsSecurePort);
+
+        const auto& retained = instances.Instances[2];
+        UNIT_ASSERT_VALUES_EQUAL("retained-host", retained.Host);
+        UNIT_ASSERT_VALUES_EQUAL(2, retained.Port);
+        UNIT_ASSERT(retained.Status == TInstanceInfo::EStatus::Reachable);
+        UNIT_ASSERT_VALUES_EQUAL(0.5, retained.BalancingScore);
+        UNIT_ASSERT_VALUES_EQUAL("old-state", retained.Tag);
+
+        fetcher->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldClearStaticInstancesWhenFileHasNoValidRows)
+    {
+        TEnv env(false);
+        auto fetcher = CreateStaticInstanceFetcher(
+            env.Config,
+            CreateLoggingService("console"),
+            CreateMonitoringServiceStub()
+        );
+        fetcher->Start();
+
+        TInstanceList instances;
+        for (const TStringBuf contents: {
+                 TStringBuf("broken-host\tnot-a-port\n"),
+                 TStringBuf("\n\n"),
+                 TStringBuf("")})
+        {
+            {
+                TOFStream of(env.Config->GetInstanceListFile());
+                of << "old-host\t1\n";
+            }
+            CheckFetchResult(fetcher->FetchInstances(instances), S_OK);
+            UNIT_ASSERT_VALUES_EQUAL(1, instances.Instances.size());
+
+            {
+                TOFStream of(env.Config->GetInstanceListFile());
+                of << contents;
+            }
+            CheckFetchResult(fetcher->FetchInstances(instances), S_OK);
+            UNIT_ASSERT(instances.Instances.empty());
+        }
+
+        fetcher->Stop();
     }
 
     Y_UNIT_TEST(ShouldResetStateForNewStaticInstanceAfterRemovingHosts)
@@ -394,7 +556,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
         }
 
         TInstanceList instances;
-        fetcher->FetchInstances(instances).GetValueSync();
+        CheckFetchResult(fetcher->FetchInstances(instances), S_OK);
         UNIT_ASSERT_VALUES_EQUAL(3, instances.Instances.size());
 
         SortBy(instances.Instances, [] (const TInstanceInfo& ii) {
@@ -419,7 +581,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
             TOFStream of(env.Config->GetInstanceListFile());
             of << "C\t3\nD\t4\n";
         }
-        fetcher->FetchInstances(instances).GetValueSync();
+        CheckFetchResult(fetcher->FetchInstances(instances), S_OK);
 
         UNIT_ASSERT_VALUES_EQUAL(2, instances.Instances.size());
         const auto& retained = instances.Instances[0];
@@ -477,7 +639,8 @@ Y_UNIT_TEST_SUITE(FetchTest)
             },
             [](int p) {
                 return p;
-            }
+            },
+            S_OK
         );
     }
 
@@ -506,7 +669,8 @@ Y_UNIT_TEST_SUITE(FetchTest)
                 }
                 env.Conductor->SetHostInfo(std::move(hostInfo));
             },
-            false
+            false,
+            S_OK
         );
     }
 
@@ -540,13 +704,70 @@ Y_UNIT_TEST_SUITE(FetchTest)
                 }
 
                 return 1;
-            }
+            },
+            S_OK
         );
+    }
+
+    Y_UNIT_TEST(ShouldAcceptEmptyConductorGroupWhenAnotherGroupFails)
+    {
+        TEnv env(true);
+        auto fetcher = CreateConductorInstanceFetcher(
+            env.Config,
+            CreateLoggingService("console"),
+            CreateMonitoringServiceStub(),
+            env.Timer,
+            env.Scheduler
+        );
+        fetcher->Start();
+
+        // group1, group2 and group3 are empty; broken_group returns HTTP 503.
+        TInstanceList instances;
+        CheckFetchResult(fetcher->FetchInstances(instances), S_OK);
+        UNIT_ASSERT(instances.Instances.empty());
+
+        fetcher->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldReturnErrorWhenAllConductorGroupsFail)
+    {
+        TEnv env(true);
+        auto config = *env.Config->GetConfig();
+        config.ClearConductorGroups();
+        *config.AddConductorGroups() = "broken_group";
+        env.Config = std::make_shared<TDiscoveryConfig>(std::move(config));
+        auto fetcher = CreateConductorInstanceFetcher(
+            env.Config,
+            CreateLoggingService("console"),
+            CreateMonitoringServiceStub(),
+            env.Timer,
+            env.Scheduler
+        );
+        fetcher->Start();
+
+        TInstanceList instances;
+        TInstanceInfo instance;
+        instance.Host = "old-host";
+        instance.Port = 1;
+        instance.Tag = "broken_group";
+        instances.Instances.push_back(std::move(instance));
+
+        CheckFetchResult(fetcher->FetchInstances(instances), E_FAIL);
+        UNIT_ASSERT_VALUES_EQUAL(1, instances.Instances.size());
+        UNIT_ASSERT_VALUES_EQUAL("old-host", instances.Instances[0].Host);
+        UNIT_ASSERT_VALUES_EQUAL(1, instances.Instances[0].Port);
+
+        fetcher->Stop();
     }
 
     Y_UNIT_TEST(ShouldProperlyProcessConductorTimeouts)
     {
         TEnv env(true);
+        auto config = *env.Config->GetConfig();
+        config.ClearConductorGroups();
+        *config.AddConductorGroups() = "group1";
+        *config.AddConductorGroups() = "group2";
+        env.Config = std::make_shared<TDiscoveryConfig>(std::move(config));
 
         auto fetcher = CreateConductorInstanceFetcher(
             env.Config,
@@ -565,7 +786,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
         env.Conductor->SetHostInfo(hostInfo);
 
         TInstanceList instances;
-        fetcher->FetchInstances(instances).Wait();
+        CheckFetchResult(fetcher->FetchInstances(instances), S_OK);
 
         SortBy(
             instances.Instances.begin(),
@@ -586,7 +807,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
         auto fetch2 = fetcher->FetchInstances(instances);
         Sleep(TDuration::Seconds(1));
         env.Scheduler->RunAllScheduledTasks();
-        fetch2.Wait();
+        CheckFetchResult(fetch2, S_OK);
 
         SortBy(
             instances.Instances.begin(),
@@ -603,7 +824,7 @@ Y_UNIT_TEST_SUITE(FetchTest)
         env.Conductor->SetDrop("group2", false);
 
         auto fetch3 = fetcher->FetchInstances(instances);
-        fetch3.Wait();
+        CheckFetchResult(fetch3, S_OK);
 
         SortBy(
             instances.Instances.begin(),
@@ -613,6 +834,15 @@ Y_UNIT_TEST_SUITE(FetchTest)
             }
         );
 
+        UNIT_ASSERT_VALUES_EQUAL(2, instances.Instances.size());
+        UNIT_ASSERT_VALUES_EQUAL("host1", instances.Instances[0].Host);
+        UNIT_ASSERT_VALUES_EQUAL("host22", instances.Instances[1].Host);
+
+        env.Conductor->SetDrop("group1", true);
+        env.Conductor->SetDrop("group2", true);
+        auto fetch4 = fetcher->FetchInstances(instances);
+        env.Scheduler->RunAllScheduledTasks();
+        CheckFetchResult(fetch4, E_TIMEOUT);
         UNIT_ASSERT_VALUES_EQUAL(2, instances.Instances.size());
         UNIT_ASSERT_VALUES_EQUAL("host1", instances.Instances[0].Host);
         UNIT_ASSERT_VALUES_EQUAL("host22", instances.Instances[1].Host);

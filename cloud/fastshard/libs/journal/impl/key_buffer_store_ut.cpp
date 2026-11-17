@@ -88,9 +88,22 @@ TString Describe(TKeyBuffers buffers)
     return sb;
 }
 
+// A rejection comes back as the error, an accepted write as the future of
+// its device write - fold the two into one future for the tests that only
+// care about the outcome
+NThreading::TFuture<NProto::TError>
+StartWrite(const IKeyBufferStorePtr& store, ui64 key, TBuffer buffer)
+{
+    auto futureOrError = store->Write(key, std::move(buffer));
+    if (HasError(futureOrError)) {
+        return NThreading::MakeFuture(futureOrError.GetError());
+    }
+    return futureOrError.ExtractResult();
+}
+
 void Write(const IKeyBufferStorePtr& store, ui64 key, TStringBuf data)
 {
-    const auto error = store->Write(key, MakeBuffer(data)).GetValueSync();
+    const auto error = StartWrite(store, key, MakeBuffer(data)).GetValueSync();
     UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 }
 
@@ -231,7 +244,7 @@ public:
         return Device->ReadPages(std::move(rangeRefs));
     }
 
-    NThreading::TFuture<NCloud::NProto::TError> WritePages(
+    NThreading::TFuture<NProto::TError> WritePages(
         TVector<TPageRange> ranges) override
     {
         if (Broken) {
@@ -239,7 +252,7 @@ public:
                 MakeError(E_IO, "device is broken"));
         }
 
-        auto promise = NThreading::NewPromise<NCloud::NProto::TError>();
+        auto promise = NThreading::NewPromise<NProto::TError>();
 
         Pending.push_back(
             [device = Device, ranges = std::move(ranges), promise]() mutable
@@ -251,7 +264,7 @@ public:
         return promise.GetFuture();
     }
 
-    NThreading::TFuture<NCloud::NProto::TError> ZeroPages(
+    NThreading::TFuture<NProto::TError> ZeroPages(
         TVector<TPageRangeRef> ranges) override
     {
         if (Broken) {
@@ -416,9 +429,9 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
         auto code = EraseBelow(store, 6);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, code);
 
-        auto error = store->Write(5, MakeBuffer("x")).GetValueSync();
+        auto error = StartWrite(store, 5, MakeBuffer("x")).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
-        error = store->Write(3, MakeBuffer("x")).GetValueSync();
+        error = StartWrite(store, 3, MakeBuffer("x")).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
 
         Write(store, 6, "y");
@@ -443,7 +456,7 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
         auto store = CreateInMemoryKeyBufferStore();
 
         TBuffer buffer = MakeBuffer("original");
-        auto error = store->Write(1, buffer).GetValueSync();
+        auto error = StartWrite(store, 1, buffer).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         buffer.Clear();
@@ -472,7 +485,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
     {
         auto store = CreateTestStore(CreateInMemoryDevice(TestPageSize));
 
-        auto error = store->Write(1, MakeBuffer("x")).GetValueSync();
+        auto error = StartWrite(store, 1, MakeBuffer("x")).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
         error = store->EraseBelow(2).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
@@ -515,9 +528,11 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         auto store = OpenTestStore(device);
 
         // an entry never spans pages, so the page bounds the buffer
-        auto error =
-            store->Write(1, MakeBuffer(TString(TestEntryCapacity + 1, 'x')))
-                .GetValueSync();
+        auto error = StartWrite(
+                         store,
+                         1,
+                         MakeBuffer(TString(TestEntryCapacity + 1, 'x')))
+                         .GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
 
         const TString largest(TestEntryCapacity, 'x');
@@ -527,7 +542,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         for (ui64 key = 2; key <= 6; ++key) {
             Write(store, key, "x");
         }
-        error = store->Write(7, MakeBuffer("x")).GetValueSync();
+        error = StartWrite(store, 7, MakeBuffer("x")).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
 
         auto buffers = Reopen(device);
@@ -545,7 +560,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
             Write(store, key, "x");
         }
 
-        auto error = store->Write(7, MakeBuffer("x")).GetValueSync();
+        auto error = StartWrite(store, 7, MakeBuffer("x")).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
 
         auto code = EraseBelow(store, 4);
@@ -557,7 +572,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         Write(store, 8, "x");
         Write(store, 9, "x");
 
-        error = store->Write(10, MakeBuffer("x")).GetValueSync();
+        error = StartWrite(store, 10, MakeBuffer("x")).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
 
         auto buffers = Reopen(device);
@@ -587,7 +602,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
             auto code = EraseBelow(store, 3);
             UNIT_ASSERT_VALUES_EQUAL(S_FALSE, code);
-            auto error = store->Write(2, MakeBuffer("x")).GetValueSync();
+            auto error = StartWrite(store, 2, MakeBuffer("x")).GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
 
             // a bound without live keys is persisted all the same
@@ -603,7 +618,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
             auto store = CreateTestStore(device);
             auto buffers = Restore(store);
             UNIT_ASSERT(buffers.empty());
-            auto error = store->Write(10, MakeBuffer("x")).GetValueSync();
+            auto error = StartWrite(store, 10, MakeBuffer("x")).GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
             Write(store, 11, "x");
         }
@@ -646,7 +661,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
             Write(store, 1, TString(TestEntryCapacity, fill));
         }
 
-        auto error = store->Write(1, MakeBuffer("x")).GetValueSync();
+        auto error = StartWrite(store, 1, MakeBuffer("x")).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
 
         auto buffers = Reopen(device);
@@ -691,7 +706,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         }
 
         // the third page has room, but no free page is left to append into
-        auto error = store->Write(100, MakeBuffer("xyz")).GetValueSync();
+        auto error = StartWrite(store, 100, MakeBuffer("xyz")).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
 
         auto buffers = Reopen(device, pageCount, TestWidePageSize);
@@ -949,9 +964,9 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         auto store = CreateTestStore(device);
         Restore(store);
 
-        auto write1 = store->Write(1, MakeBuffer("one"));
-        auto write2 = store->Write(2, MakeBuffer("two"));
-        auto write3 = store->Write(3, MakeBuffer("three"));
+        auto write1 = StartWrite(store, 1, MakeBuffer("one"));
+        auto write2 = StartWrite(store, 2, MakeBuffer("two"));
+        auto write3 = StartWrite(store, 3, MakeBuffer("three"));
         device->ReleaseAll();
         auto error = write1.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
@@ -978,7 +993,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
         // a key below the pending bound is taken, the write is dropped once
         // the erase lands
-        auto write = store->Write(2, MakeBuffer("x"));
+        auto write = StartWrite(store, 2, MakeBuffer("x"));
         UNIT_ASSERT_VALUES_EQUAL(2, device->PendingCount());
         UNIT_ASSERT(!write.HasValue());
 
@@ -1007,13 +1022,13 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         auto store = CreateTestStore(device);
         Restore(store);
 
-        auto write1 = store->Write(1, MakeBuffer("one"));
+        auto write1 = StartWrite(store, 1, MakeBuffer("one"));
         device->ReleaseAll();
         auto error = write1.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         // the write lands before the erase - it succeeds and is erased
-        auto write2 = store->Write(2, MakeBuffer("two"));
+        auto write2 = StartWrite(store, 2, MakeBuffer("two"));
         auto erase = store->EraseBelow(3);
         UNIT_ASSERT_VALUES_EQUAL(2, device->PendingCount());
 
@@ -1024,11 +1039,11 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         // the pages of both keys are free again: all 6 entry pages
-        TVector<NThreading::TFuture<NCloud::NProto::TError>> writes;
+        TVector<NThreading::TFuture<NProto::TError>> writes;
         for (ui64 key = 3; key <= 8; ++key) {
-            writes.push_back(store->Write(key, MakeBuffer("x")));
+            writes.push_back(StartWrite(store, key, MakeBuffer("x")));
         }
-        error = store->Write(9, MakeBuffer("x")).GetValueSync();
+        error = StartWrite(store, 9, MakeBuffer("x")).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
 
         device->ReleaseAll();
@@ -1049,7 +1064,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         auto store = CreateTestStore(device);
         Restore(store);
 
-        auto write = store->Write(3, MakeBuffer("three"));
+        auto write = StartWrite(store, 3, MakeBuffer("three"));
         device->ReleaseAll();
         auto error = write.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
@@ -1088,14 +1103,14 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         auto store = CreateTestStore(device);
         Restore(store);
 
-        auto write = store->Write(1, MakeBuffer("one"));
+        auto write = StartWrite(store, 1, MakeBuffer("one"));
         device->ReleaseAll();
         auto error = write.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         device->Broken = true;
 
-        error = store->Write(2, MakeBuffer("two")).GetValueSync();
+        error = StartWrite(store, 2, MakeBuffer("two")).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(E_IO, error.GetCode());
         error = store->EraseBelow(2).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(E_IO, error.GetCode());
@@ -1106,16 +1121,16 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
         // the pages of the failed write are free again: 5 of the 6 entry
         // pages are left after key 1
-        TVector<NThreading::TFuture<NCloud::NProto::TError>> writes;
+        TVector<NThreading::TFuture<NProto::TError>> writes;
         for (ui64 key = 2; key <= 6; ++key) {
-            writes.push_back(store->Write(key, MakeBuffer("x")));
+            writes.push_back(StartWrite(store, key, MakeBuffer("x")));
         }
         device->ReleaseAll();
         for (auto& future: writes) {
             error = future.GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         }
-        error = store->Write(7, MakeBuffer("x")).GetValueSync();
+        error = StartWrite(store, 7, MakeBuffer("x")).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
 
         // the failed erase changed nothing, it can be retried

@@ -7,6 +7,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/ss_proxy
 
     contrib/ydb/core/blockstore/core

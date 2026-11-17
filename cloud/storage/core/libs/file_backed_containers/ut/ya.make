@@ -4,6 +4,11 @@ UNITTEST_FOR(cloud/storage/core/libs/file_backed_containers)
 # the small-test chunk timeout even without sanitizers.
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
+# The randomized cases are adjacent in the test list, so sequential
+# partitioning puts all of them into one chunk. Use round-robin partitioning
+# to spread them across chunks and keep each chunk within its timeout.
+FORK_SUBTESTS(MODULO)
+
 SRCDIR(cloud/storage/core/libs/file_backed_containers)
 
 SRCS(

@@ -16,6 +16,7 @@ SRCS(
     disk.proto
     disk_service.proto
     error.proto
+    export.proto
     image.proto
     image_service.proto
     filesystem_service.proto
@@ -24,6 +25,8 @@ SRCS(
     operation_service.proto
     placement_group.proto
     placement_group_service.proto
+    quota.proto
+    quota_service.proto
     snapshot_service.proto
 )
 

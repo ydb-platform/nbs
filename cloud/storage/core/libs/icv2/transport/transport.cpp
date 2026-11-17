@@ -169,8 +169,7 @@ public:
         return Event->GetBase()->SerializeToArcadiaStream(serializer);
     }
 
-    std::optional<TRope> SerializeToRope(
-        TAllocator* allocator) const override
+    std::optional<TRope> SerializeToRope(TAllocator* allocator) const override
     {
         return Event->GetBase()->SerializeToRope(allocator);
     }
@@ -188,9 +187,9 @@ public:
     }
 };
 
-using TQueuedEvent =
-    TQueuedEventImpl<decltype(&NActors::IEventBase::SerializeToRope),
-                     decltype(&NActors::IEventBase::CreateSerializationInfo)>;
+using TQueuedEvent = TQueuedEventImpl<
+    decltype(&NActors::IEventBase::SerializeToRope),
+    decltype(&NActors::IEventBase::CreateSerializationInfo)>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -594,25 +593,25 @@ public:
         return accepted;
     }
 
-    bool Send(std::unique_ptr<NActors::IEventHandle> ev) override
+    ESendResult Send(std::unique_ptr<NActors::IEventHandle> ev) override
     {
         Y_DEBUG_ABORT_UNLESS(ev);
 
         const auto active = ActiveState.AtomicLoad();
         if (!active) {
-            return false;
+            return ESendResult::NotActive;
         }
 
         if (const ui64 size = GetSerializedEventSize(*ev)) {
             if (!State->OutputQueueBudget->TryAcquire(size)) {
-                return false;
+                return ESendResult::QueueFull;
             }
             ev = TrackOutputEvent(
                 std::move(ev),
                 TOutputQueueReservation(State->OutputQueueBudget, size));
         }
         active->Send(std::move(ev));
-        return true;
+        return ESendResult::Accepted;
     }
 
     void Close() override

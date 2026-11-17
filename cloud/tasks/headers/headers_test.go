@@ -72,3 +72,16 @@ func TestHeaders(t *testing.T) {
 	ctx = Replace(ctx, map[string]string{keyD: "d"})
 	checkContext(ctx, map[string]string{keyA: "a", keyB: "bbb", keyC: "c"})
 }
+
+func TestTaskIDSurvivesSchedulerMetadata(t *testing.T) {
+	ctx := SetIncomingOperationID(context.Background(), "compute-operation")
+	require.Empty(t, GetTaskID(ctx))
+	ctx = SetIncomingTaskID(ctx, "compute-task")
+	metadata := GetTracingHeaders(ctx)
+	require.Equal(t, "compute-task", metadata["x-task-id"])
+	require.Equal(t, "compute-operation", metadata["x-operation-id"])
+
+	restored := Append(context.Background(), metadata)
+	require.Equal(t, "compute-task", GetTaskID(restored))
+	require.Equal(t, "compute-operation", GetOperationID(restored))
+}

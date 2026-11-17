@@ -248,6 +248,8 @@ private:
     NFastShard::IServerPtr FastShardServer;
     NFastShard::IFileSystemShardFactoryPtr FastShardFactory;
 
+    IRdmaTabletRegistryPtr RdmaTabletRegistry;
+
 public:
     TIndexTabletActor(
         const NActors::TActorId& owner,
@@ -260,6 +262,7 @@ public:
         NMetrics::IMetricsRegistryPtr metricsRegistry,
         NFastShard::IServerPtr fastShardServer,
         NFastShard::IFileSystemShardFactoryPtr fastShardFactory,
+        IRdmaTabletRegistryPtr rdmaTabletRegistry,
         ITxReschedulerPtr txRescheduler);
     ~TIndexTabletActor() override;
 
@@ -827,6 +830,9 @@ private:
     // Custom event handlers.
     //
 
+    void HandleServerConnected(
+        const NKikimr::TEvTabletPipe::TEvServerConnected::TPtr& ev,
+        const NActors::TActorContext& ctx);
     void HandleSessionDisconnected(
         const NKikimr::TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -1038,6 +1044,9 @@ private:
 
     void RegisterFileStore(const NActors::TActorContext& ctx);
     void UnregisterFileStore(const NActors::TActorContext& ctx);
+
+    void UnregisterRdmaPipe(const NActors::TActorId& pipeServerId);
+    void UnregisterRdmaTablet();
 
     void UpdateLogTag();
 

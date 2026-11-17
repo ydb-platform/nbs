@@ -290,7 +290,8 @@ public:
              systemCounters = SystemCounters,
              metricsRegistry = MetricsRegistry,
              fastShardServer = Args.FastShardServer,
-             fastShardFactory = Args.FastShardFactory] (
+             fastShardFactory = Args.FastShardFactory,
+             rdmaTabletRegistry = Args.RdmaTabletRegistry] (
                 const TActorId& owner,
                 TTabletStorageInfo* storage)
             {
@@ -306,6 +307,7 @@ public:
                     metricsRegistry,
                     fastShardServer,
                     fastShardFactory,
+                    rdmaTabletRegistry,
                     config->GetFakeTxPageFaultsProbability() > 0
                         ? CreateRescheduler(
                               {.Probability =

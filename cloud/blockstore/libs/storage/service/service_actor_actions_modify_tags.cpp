@@ -1,10 +1,11 @@
 #include "service_actor.h"
 
+#include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
+
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-#include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -13,6 +14,7 @@
 #include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/charset/unidata.h>
+#include <util/generic/strbuf.h>
 #include <util/string/join.h>
 
 #include <google/protobuf/util/json_util.h>
@@ -34,9 +36,8 @@ class TModifyTagsActionActor final
 {
 private:
     const TRequestInfoPtr RequestInfo;
-    const TString Input;
+    const NPrivateProto::TModifyTagsRequest Request;
 
-    NPrivateProto::TModifyTagsRequest Request;
     NKikimrBlockStore::TVolumeConfig VolumeConfig;
 
     using TResponseCreateFunc =
@@ -47,7 +48,7 @@ private:
 public:
     TModifyTagsActionActor(
         TRequestInfoPtr requestInfo,
-        TString input,
+        NPrivateProto::TModifyTagsRequest request,
         TResponseCreateFunc createResponse);
 
     void Bootstrap(const TActorContext& ctx);
@@ -87,11 +88,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TModifyTagsActionActor::TModifyTagsActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input,
-        TResponseCreateFunc createResponse)
+    TRequestInfoPtr requestInfo,
+    NPrivateProto::TModifyTagsRequest request,
+    TResponseCreateFunc createResponse)
     : RequestInfo(std::move(requestInfo))
-    , Input(std::move(input))
+    , Request(std::move(request))
     , CreateResponse(std::move(createResponse))
 {}
 
@@ -100,11 +101,10 @@ bool TModifyTagsActionActor::ValidateTag(
     const TString& tag)
 {
     for (const auto c: tag) {
-        if (!IsAlnum(c) && c != '-' && c != '_' && c != '=' && c != '.') {
-            auto error = MakeError(
-                E_ARGUMENT,
-                Sprintf("Invalid tag: %s", tag.c_str())
-            );
+        const bool ok = IsAlnum(c) || TStringBuf("-_=.@").Contains(c);
+        if (!ok) {
+            auto error =
+                MakeError(E_ARGUMENT, Sprintf("Invalid tag: %s", tag.c_str()));
             ReplyAndDie(ctx, std::move(error));
             return false;
         }
@@ -115,11 +115,6 @@ bool TModifyTagsActionActor::ValidateTag(
 
 void TModifyTagsActionActor::Bootstrap(const TActorContext& ctx)
 {
-    if (!google::protobuf::util::JsonStringToMessage(Input, &Request).ok()) {
-        ReplyAndDie(ctx, MakeError(E_ARGUMENT, "Failed to parse input"));
-        return;
-    }
-
     if (!Request.GetDiskId()) {
         ReplyAndDie(ctx, MakeError(E_ARGUMENT, "DiskId should be supplied"));
         return;
@@ -193,6 +188,7 @@ void TModifyTagsActionActor::WaitReady(const TActorContext& ctx)
     Become(&TThis::StateWaitReady);
 
     auto request = std::make_unique<TEvVolume::TEvWaitReadyRequest>();
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
     request->Record.SetDiskId(Request.GetDiskId());
 
     NCloud::Send(
@@ -381,42 +377,60 @@ STFUNC(TModifyTagsActionActor::StateWaitReady)
     }
 }
 
+template <typename TResponse>
+void ModifyTags(
+    const TActorContext& ctx,
+    TRequestInfoPtr requestInfo,
+    const TString& diskId,
+    const TVector<TString>& tagsToAdd,
+    const TVector<TString>& tagsToRemove)
+{
+    NPrivateProto::TModifyTagsRequest request;
+    request.SetDiskId(diskId);
+    for (const auto& tag: tagsToAdd) {
+        request.AddTagsToAdd(tag);
+    }
+    for (const auto& tag: tagsToRemove) {
+        request.AddTagsToRemove(tag);
+    }
+
+    NCloud::Register(
+        ctx,
+        std::make_unique<TModifyTagsActionActor>(
+            std::move(requestInfo),
+            std::move(request),
+            [](NProto::TError error)
+            { return std::make_unique<TResponse>(std::move(error)); }));
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void TServiceActor::HandleAddTags(
     const TEvService::TEvAddTagsRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
-    auto* msg = ev->Get();
-
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
-
-    NPrivateProto::TModifyTagsRequest modifyTagsRequest;
-    modifyTagsRequest.SetDiskId(msg->DiskId);
-    for (const auto& tag: msg->Tags) {
-        modifyTagsRequest.AddTagsToAdd(tag);
-    }
-
-    TString input;
-    google::protobuf::util::MessageToJsonString(modifyTagsRequest, &input);
-
-    NCloud::Register(
+    const auto* msg = ev->Get();
+    ModifyTags<TEvService::TEvAddTagsResponse>(
         ctx,
-        std::make_unique<TModifyTagsActionActor>(
-            std::move(requestInfo),
-            std::move(input),
-            [](NProto::TError error)
-            {
-                auto response =
-                    std::make_unique<TEvService::TEvAddTagsResponse>(
-                        std::move(error));
-                return response;
-            }));
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+        msg->DiskId,
+        msg->Tags,
+        {});
+}
+
+void TServiceActor::HandleRemoveTags(
+    const TEvService::TEvRemoveTagsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    ModifyTags<TEvService::TEvRemoveTagsResponse>(
+        ctx,
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+        msg->DiskId,
+        {},
+        msg->Tags);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -425,9 +439,14 @@ TResultOrError<IActorPtr> TServiceActor::CreateModifyTagsActionActor(
     TRequestInfoPtr requestInfo,
     TString input)
 {
+    NPrivateProto::TModifyTagsRequest request;
+    if (!google::protobuf::util::JsonStringToMessage(input, &request).ok()) {
+        return MakeError(E_ARGUMENT, "Failed to parse input");
+    }
+
     return {std::make_unique<TModifyTagsActionActor>(
         std::move(requestInfo),
-        std::move(input),
+        std::move(request),
         [](NProto::TError error)
         {
             auto response =

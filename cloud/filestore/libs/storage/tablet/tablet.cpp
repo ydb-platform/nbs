@@ -23,6 +23,7 @@ IActorPtr CreateIndexTablet(
     NMetrics::IMetricsRegistryPtr metricsRegistry,
     NFastShard::IServerPtr fastShardServer,
     NFastShard::IFileSystemShardFactoryPtr fastShardFactory,
+    IRdmaTabletRegistryPtr rdmaTabletRegistry,
     ITxReschedulerPtr txRescheduler)
 {
     return std::make_unique<TIndexTabletActor>(
@@ -36,6 +37,7 @@ IActorPtr CreateIndexTablet(
         std::move(metricsRegistry),
         std::move(fastShardServer),
         std::move(fastShardFactory),
+        std::move(rdmaTabletRegistry),
         std::move(txRescheduler));
 }
 

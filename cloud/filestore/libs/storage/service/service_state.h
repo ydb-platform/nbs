@@ -213,14 +213,6 @@ public:
             other.Request = nullptr;
         }
 
-        TLockedRequest& operator=(TLockedRequest&& other) noexcept
-        {
-            Lock = other.Lock;
-            Request = other.Request;
-            other.Request = nullptr;
-            return *this;
-        }
-
     public:
         TInFlightRequest* Get()
         {

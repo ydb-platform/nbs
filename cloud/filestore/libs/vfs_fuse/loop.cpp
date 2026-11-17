@@ -1161,6 +1161,7 @@ private:
                      .MaxQueuedFlushBatchesPerNode =
                          Config
                              ->GetWriteBackCacheMaxQueuedFlushBatchesPerNode(),
+                     .LockMethod = Config->GetWriteBackCacheLockMethod(),
                      .ZeroCopyWriteEnabled =
                          FileSystemConfig->GetZeroCopyWriteEnabled(),
                      .FlushWritesInParallelEnabled =
@@ -1278,6 +1279,15 @@ private:
                      .ModuleStats = handleOpsQueue->GetModuleStats()});
             }
 
+            auto metadataCacheStats = CreateMetadataCacheModuleStats();
+            ModuleStatsRegistry->Register(
+                {.FileSystemId = Config->GetFileSystemId(),
+                 .ClientId = Config->GetClientId(),
+                 .CloudId = response.GetFileStore().GetCloudId(),
+                 .FolderId = response.GetFileStore().GetFolderId(),
+                 .SessionId = SessionId,
+                 .ModuleStats = metadataCacheStats});
+
             FileSystem = CreateFileSystem(
                 Logging,
                 ProfileLog,
@@ -1287,6 +1297,7 @@ private:
                 Session,
                 RequestStats,
                 DirectoryHandleStats,
+                std::move(metadataCacheStats),
                 CompletionQueue,
                 std::move(handleOpsQueue),
                 std::move(directoryHandleStorage),
@@ -1382,6 +1393,12 @@ private:
         }
         if (features.GetXAttrCacheLimit()) {
             config.SetXAttrCacheLimit(features.GetXAttrCacheLimit());
+        }
+        if (features.GetNodeRefCacheLimit()) {
+            config.SetNodeRefCacheLimit(features.GetNodeRefCacheLimit());
+        }
+        if (features.GetNodeAttrsCacheLimit()) {
+            config.SetNodeAttrsCacheLimit(features.GetNodeAttrsCacheLimit());
         }
         config.SetXAttrCacheInvalidateOnCreateEnabled(
             features.GetXAttrCacheInvalidateOnCreateEnabled());

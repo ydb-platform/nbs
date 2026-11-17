@@ -61,7 +61,7 @@ protected:
 
     bool DoExecute() override
     {
-        NCloud::NProto::TReadPagesRequest request;
+        NProto::TReadPagesRequest request;
         if (Proto) {
             ParseFromTextFormat(GetInputStream(), request);
         } else {

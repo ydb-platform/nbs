@@ -155,7 +155,12 @@ void TMirrorPartitionResyncActor::HandleDiskRegistryBasedPartCountersCombined(
     }
 
     for (auto& counters: msg->Counters) {
-        UpdateCounters(ctx, counters.ActorId, std::move(counters.CountersData));
+        for (auto& diskCounters: counters.DisksCounters) {
+            UpdateCounters(
+                ctx,
+                counters.ActorId,
+                std::move(diskCounters.CountersData));
+        }
     }
 
     NCloud::Reply(

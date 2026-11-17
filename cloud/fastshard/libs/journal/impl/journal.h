@@ -10,7 +10,13 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <util/generic/vector.h>
+
 namespace NCloud::NJournalled {
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TJournalRecords = TVector<NProto::TJournalRecord>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -22,43 +28,38 @@ struct IJournal
     // Restoring
     //
 
-    // Restores the journal state and returns lsn of the last indexed record
-    [[nodiscard]] virtual auto Restore()
-        -> NThreading::TFuture<TResultOrError<ui64>> = 0;
+    // Restores the journal state and returns lsn of the last indexed record.
+    // Must be called on the executor thread.
+    [[nodiscard]] virtual TResultOrError<ui64> Restore() = 0;
 
     //
     // Device API
     //
 
-    [[nodiscard]] virtual auto Write(
-        NCloud::NProto::TWriteLogRecordRequest request)
-        -> NThreading::TFuture<NCloud::NProto::TWriteLogRecordResponse> = 0;
+    [[nodiscard]] virtual auto Write(NProto::TWriteLogRecordRequest request)
+        -> NThreading::TFuture<NProto::TWriteLogRecordResponse> = 0;
 
-    [[nodiscard]] virtual auto Read(
-        NCloud::NProto::TReadPagesRequest request) const
-        -> NThreading::TFuture<NCloud::NProto::TReadPagesResponse> = 0;
+    [[nodiscard]] virtual auto Read(NProto::TReadPagesRequest request) const
+        -> NThreading::TFuture<NProto::TReadPagesResponse> = 0;
 
-    [[nodiscard]] virtual auto ReadTail(
-        NCloud::NProto::TReadJournalTailRequest request) const
-        -> NThreading::TFuture<NCloud::NProto::TReadJournalTailResponse> = 0;
+    [[nodiscard]] virtual NProto::TReadJournalTailResponse ReadTail(
+        NProto::TReadJournalTailRequest request) const = 0;
 
     [[nodiscard]] virtual auto AdvanceLsnLowWatermark(
-        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
-        -> NThreading::TFuture<
-            NCloud::NProto::TAdvanceLsnLowWatermarkResponse> = 0;
+        NProto::TAdvanceLsnLowWatermarkRequest request)
+        -> NProto::TAdvanceLsnLowWatermarkResponse = 0;
 
     //
     // Background cleanup
     //
 
-    [[nodiscard]] virtual auto GetRecordToFlush(ui64 maxAllowedLsn) const
-        -> NThreading::TFuture<
-            TResultOrError<NCloud::NProto::TJournalRecord>> = 0;
+    [[nodiscard]] virtual TResultOrError<TJournalRecords> GetRecordsToFlush(
+        ui64 maxAllowedLsn,
+        ui64 maxPageCount) const = 0;
 
     virtual void MarkRecordAsFlushed(ui64 lsn) = 0;
 
-    [[nodiscard]] virtual auto CleanupFlushedRecords()
-        -> NThreading::TFuture<NCloud::NProto::TError> = 0;
+    [[nodiscard]] virtual NProto::TError CleanupFlushedRecords() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

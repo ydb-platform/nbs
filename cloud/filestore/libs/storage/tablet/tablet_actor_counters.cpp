@@ -367,7 +367,7 @@ void TIndexTabletActor::UpdateMetrics(
     Store(Metrics->TotalBytesCount, fileSystem.GetBlocksCount() * blockSize);
     Store(Metrics->UsedBytesCount, stats.GetUsedBlocksCount() * blockSize);
 
-    Store(Metrics->TotalNodesCount, fileSystem.GetNodesCount());
+    Store(Metrics->TotalNodesCount, GetNodesCount());
     Store(Metrics->UsedNodesCount, stats.GetUsedNodesCount());
 
     Store(Metrics->UsedSessionsCount, stats.GetUsedSessionsCount());
@@ -827,6 +827,7 @@ void TIndexTabletActor::FillSelfStorageStats(
     stats->SetSuffer(Metrics->Suffer.load(std::memory_order_relaxed));
 
     stats->SetTotalBlocksCount(GetFileSystem().GetBlocksCount());
+    stats->SetTotalNodesCount(GetNodesCount());
 
     stats->SetFreshBytesItemCount(GetFreshBytesItemCount());
 

@@ -4,6 +4,8 @@ RECURSE(
     diagnostics
     endpoint
     endpoint_vhost
+    rdma
+    rdma_test
     server
     service
     service_kikimr

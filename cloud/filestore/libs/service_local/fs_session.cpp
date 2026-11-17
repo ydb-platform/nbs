@@ -77,6 +77,8 @@ NProto::TCreateSessionResponse TLocalFileSystem::CreateSession(
             Config->GetXAttrCacheTimeout(cloudId, folderId, fsId)
                 .MilliSeconds());
         features->SetXAttrCacheLimit(Config->GetXAttrCacheLimit());
+        features->SetNodeRefCacheLimit(Config->GetNodeRefCacheLimit());
+        features->SetNodeAttrsCacheLimit(Config->GetNodeAttrsCacheLimit());
         // The local service may reuse inode ids, so the FUSE xattr cache must
         // be invalidated when a create path returns a newly created inode.
         // The ydb-based backend never reuses ids and leaves this disabled.

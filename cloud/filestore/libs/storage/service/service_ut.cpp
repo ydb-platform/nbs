@@ -1787,6 +1787,101 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
     }
 
+    Y_UNIT_TEST(ShouldRetainGuestPosixAclSettingWhenRecoveringSession)
+    {
+        NProto::TStorageConfig config;
+        config.SetGuestPosixAclEnabled(true);
+        TTestEnv env({}, config);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TString fsId = "test";
+        service.CreateFileStore(fsId, 1'000);
+
+        THeaders headers = {
+            .FileSystemId = fsId,
+            .ClientId = "client",
+            .SessionId = "",
+            .SessionSeqNo = 0};
+        const TString checkpointId = "";
+        bool restoreClientSession = false;
+        const bool readOnly = false;
+
+        const auto session1 = service.CreateSession(
+            headers,
+            checkpointId,
+            restoreClientSession,
+            headers.SessionSeqNo,
+            readOnly);
+
+        UNIT_ASSERT(
+            session1->Record.GetFileStore()
+                .GetFeatures()
+                .GetGuestPosixAclEnabled());
+
+        NProto::TStorageConfig newConfig;
+        newConfig.SetGuestPosixAclEnabled(false);
+        const auto response =
+            ExecuteChangeStorageConfig(std::move(newConfig), service);
+        UNIT_ASSERT(
+            !response.GetStorageConfig().GetGuestPosixAclEnabled());
+
+        WaitForTabletStart(service);
+
+        // Even though SessionId changes, the old session should be restored.
+        headers.SessionId = "session_id";
+        restoreClientSession = true;
+        const auto session2 = service.CreateSession(
+            headers,
+            checkpointId,
+            restoreClientSession,
+            headers.SessionSeqNo,
+            readOnly);
+
+        // The restored session should preserve the GuestPosixAclEnabled value
+        // from its creation.
+        UNIT_ASSERT(
+            session2->Record.GetFileStore()
+                .GetFeatures()
+                .GetGuestPosixAclEnabled());
+
+        // If SessionSeqNo increases, the GuestPosixAclEnabled value should be
+        // preserved as well.
+        headers.SessionSeqNo = 1;
+        const auto session3 = service.CreateSession(
+            headers,
+            checkpointId,
+            restoreClientSession,
+            headers.SessionSeqNo,
+            readOnly);
+
+        UNIT_ASSERT(
+            session3->Record.GetFileStore()
+                .GetFeatures()
+                .GetGuestPosixAclEnabled());
+
+        // Recovering a session with a higher sequence number rewrites its DB
+        // record. Restart the tablet to ensure persistent options survived
+        // that rewrite.
+        NProto::TStorageConfig sameConfig;
+        sameConfig.SetGuestPosixAclEnabled(false);
+        ExecuteChangeStorageConfig(std::move(sameConfig), service);
+        WaitForTabletStart(service);
+
+        const auto session4 = service.CreateSession(
+            headers,
+            checkpointId,
+            restoreClientSession,
+            headers.SessionSeqNo,
+            readOnly);
+
+        UNIT_ASSERT(
+            session4->Record.GetFileStore()
+                .GetFeatures()
+                .GetGuestPosixAclEnabled());
+    }
+
     Y_UNIT_TEST(ShouldSetHasXAttrs)
     {
         // This test create a filestore with LazyXAttraEnabled == true,
@@ -5075,6 +5170,181 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.AssertWriteDataFailed(headers, fs, nodeId, handle, 0, data);
     }
 
+    void TestWriteDataZeroStats(const NProto::TStorageConfig& config)
+    {
+        const bool enabled = config.GetWriteDataZeroBlockStatsEnabled();
+        TTestEnv env({}, config);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::EStorageMediaKind::STORAGE_MEDIA_SSD);
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        auto serviceCounters = env.GetRuntime()
+            .GetAppData(nodeIdx)
+            .Counters->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service");
+        auto checkedBytes =
+            serviceCounters->GetCounter("WriteDataZeroCheckedBytes", true);
+        auto zeroBlockBytes =
+            serviceCounters->GetCounter("WriteDataZeroBlockBytes", true);
+        auto zeroRequestBytes =
+            serviceCounters->GetCounter("WriteDataZeroRequestBytes", true);
+
+        auto checkCounters = [&](ui64 checked, ui64 zeroBlock, ui64 zeroRequest)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(enabled ? checked : 0, checkedBytes->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled ? zeroBlock : 0,
+                zeroBlockBytes->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled ? zeroRequest : 0,
+                zeroRequestBytes->Val());
+        };
+
+        // only zeroes
+        service.WriteData(headers, fs, nodeId, handle, 0, TString(256_KB, 0));
+        checkCounters(256_KB, 256_KB, 256_KB);
+
+        // no zeroes
+        service.WriteData(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            256_KB,
+            GenerateValidateData(256_KB));
+        checkCounters(512_KB, 256_KB, 256_KB);
+
+        // zero blocks around a data block, block bounds differ from iovec
+        // bounds
+        const TString mixed =
+            TString(64_KB, 0) + GenerateValidateData(64_KB) + TString(128_KB, 0);
+        const TVector<TString> iovecs = {
+            mixed.substr(0, 1_KB),
+            mixed.substr(1_KB, 127_KB),
+            mixed.substr(128_KB, 128_KB)};
+        service.WriteData(headers, fs, nodeId, handle, 512_KB, iovecs);
+        checkCounters(768_KB, 448_KB, 256_KB);
+
+        // unaligned zeroes: [1025_KB, 1125_KB) covers [1028_KB, 1124_KB)
+        service.WriteData(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            1_MB + 1_KB,
+            TString(100_KB, 0));
+        checkCounters(868_KB, 544_KB, 356_KB);
+
+        // failed requests are not counted
+        service.AssertWriteDataFailed(
+            headers,
+            fs,
+            nodeId,
+            handle + 100500,
+            0,
+            TString(256_KB, 0));
+        checkCounters(868_KB, 544_KB, 356_KB);
+
+        auto readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 512_KB, 256_KB);
+        UNIT_ASSERT_VALUES_EQUAL(mixed, readDataResult->Record.GetBuffer());
+
+        const auto generateBlobIdsRequests = env.GetRuntime().GetCounter(
+            TEvIndexTablet::EvGenerateBlobIdsRequest);
+        if (config.GetThreeStageWriteEnabled()) {
+            UNIT_ASSERT(generateBlobIdsRequests > 0);
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL(0, generateBlobIdsRequests);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReportWriteDataZeroStats)
+    {
+        NProto::TStorageConfig config;
+        config.SetWriteDataZeroBlockStatsEnabled(true);
+        TestWriteDataZeroStats(config);
+    }
+
+    Y_UNIT_TEST(ShouldReportWriteDataZeroStatsWithThreeStageWrite)
+    {
+        NProto::TStorageConfig config;
+        config.SetWriteDataZeroBlockStatsEnabled(true);
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        TestWriteDataZeroStats(config);
+    }
+
+    Y_UNIT_TEST(ShouldNotReportWriteDataZeroStatsByDefault)
+    {
+        TestWriteDataZeroStats({});
+    }
+
+    Y_UNIT_TEST(ShouldEnableWriteDataZeroStatsPerFileSystem)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        const TString otherFs = "other";
+        service.CreateFileStore(fs, 1000);
+        service.CreateFileStore(otherFs, 1000);
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetWriteDataZeroBlockStatsEnabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            UNIT_ASSERT(response.GetStorageConfig()
+                            .GetWriteDataZeroBlockStatsEnabled());
+            WaitForTabletStart(service);
+        }
+
+        auto checkedBytes = env.GetRuntime()
+            .GetAppData(nodeIdx)
+            .Counters->FindSubgroup("counters", "filestore")
+            ->FindSubgroup("component", "service")
+            ->GetCounter("WriteDataZeroCheckedBytes", true);
+
+        auto write = [&](const TString& fsId, const TString& clientId)
+        {
+            auto headers = service.InitSession(fsId, clientId);
+            ui64 nodeId = service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+            ui64 handle = service
+                .CreateHandle(headers, fsId, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+            service.WriteData(headers, fsId, nodeId, handle, 0, TString(4_KB, 0));
+        };
+
+        write(otherFs, "client1");
+        UNIT_ASSERT_VALUES_EQUAL(0, checkedBytes->Val());
+
+        write(fs, "client2");
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, checkedBytes->Val());
+    }
+
     void testReadDataRequestWithIovecs(
         NProto::TStorageConfig config,
         size_t iovecSize = 4_KB)
@@ -5389,6 +5659,30 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         DoShouldHitNodesCountLimit(false);
         DoShouldHitNodesCountLimit(true);
+    }
+
+    Y_UNIT_TEST(ShouldReturnEffectiveNodesCountFromStatFileStore)
+    {
+        constexpr ui64 sizeToNodesRatio = 64_KB;
+        constexpr ui64 expectedNodesCount = 2ull * Max<ui32>();
+        constexpr ui64 blocksCount =
+            expectedNodesCount * sizeToNodesRatio / DefaultBlockSize;
+
+        NProto::TStorageConfig config;
+        config.SetSizeToNodesRatio(sizeToNodesRatio);
+
+        TTestEnv env({}, config);
+        const ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fsId = "test";
+        service.CreateFileStore(fsId, blocksCount);
+        const auto headers = service.InitSession(fsId, "client");
+
+        const auto response = service.StatFileStore(headers, fsId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedNodesCount,
+            response->Record.GetFileStore().GetNodesCount());
     }
 
     Y_UNIT_TEST(TestWriteWithExternalPayload)

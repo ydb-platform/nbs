@@ -5,6 +5,7 @@
 #include "instance.h"
 
 #include <cloud/blockstore/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
 
 #include <library/cpp/threading/future/future.h>
@@ -20,7 +21,7 @@ struct IInstanceFetcher
 {
     virtual ~IInstanceFetcher() = default;
 
-    virtual NThreading::TFuture<void> FetchInstances(
+    virtual NThreading::TFuture<NProto::TError> FetchInstances(
         TInstanceList& instances) = 0;
 };
 

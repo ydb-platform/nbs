@@ -9,6 +9,7 @@ SRCS(
     operation_service.go
     placement_group_service.go
     private_service.go
+    quota_service.go
     snapshot_service.go
 )
 

@@ -22,9 +22,9 @@ TResponse PopResponse(TDeque<TResponse>& queue, const TResponse& canned)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NCloud::NProto::TAcquireDevicesResponse TFakeStorageNode::AcquireDevices(
+NProto::TAcquireDevicesResponse TFakeStorageNode::AcquireDevices(
     TFastShardContext&,
-    NCloud::NProto::TAcquireDevicesRequest request)
+    NProto::TAcquireDevicesRequest request)
 {
     with_lock (Lock) {
         AcquireCalls.push_back(std::move(request));
@@ -32,9 +32,9 @@ NCloud::NProto::TAcquireDevicesResponse TFakeStorageNode::AcquireDevices(
     }
 }
 
-NCloud::NProto::TReleaseDevicesResponse TFakeStorageNode::ReleaseDevices(
+NProto::TReleaseDevicesResponse TFakeStorageNode::ReleaseDevices(
     TFastShardContext&,
-    NCloud::NProto::TReleaseDevicesRequest request)
+    NProto::TReleaseDevicesRequest request)
 {
     with_lock (Lock) {
         ReleaseCalls.push_back(std::move(request));
@@ -42,9 +42,9 @@ NCloud::NProto::TReleaseDevicesResponse TFakeStorageNode::ReleaseDevices(
     }
 }
 
-NCloud::NProto::TFormatDeviceResponse TFakeStorageNode::FormatDevice(
+NProto::TFormatDeviceResponse TFakeStorageNode::FormatDevice(
     TFastShardContext&,
-    NCloud::NProto::TFormatDeviceRequest request)
+    NProto::TFormatDeviceRequest request)
 {
     with_lock (Lock) {
         FormatCalls.push_back(std::move(request));
@@ -52,9 +52,9 @@ NCloud::NProto::TFormatDeviceResponse TFakeStorageNode::FormatDevice(
     }
 }
 
-NCloud::NProto::TListDevicesResponse TFakeStorageNode::ListDevices(
+NProto::TListDevicesResponse TFakeStorageNode::ListDevices(
     TFastShardContext&,
-    NCloud::NProto::TListDevicesRequest request)
+    NProto::TListDevicesRequest request)
 {
     with_lock (Lock) {
         ListCalls.push_back(std::move(request));
@@ -62,9 +62,9 @@ NCloud::NProto::TListDevicesResponse TFakeStorageNode::ListDevices(
     }
 }
 
-NCloud::NProto::TReadPagesResponse TFakeStorageNode::ReadPages(
+NProto::TReadPagesResponse TFakeStorageNode::ReadPages(
     TFastShardContext&,
-    NCloud::NProto::TReadPagesRequest request)
+    NProto::TReadPagesRequest request)
 {
     with_lock (Lock) {
         ReadCalls.push_back(std::move(request));
@@ -72,9 +72,9 @@ NCloud::NProto::TReadPagesResponse TFakeStorageNode::ReadPages(
     }
 }
 
-NCloud::NProto::TWriteLogRecordResponse TFakeStorageNode::WriteLogRecord(
+NProto::TWriteLogRecordResponse TFakeStorageNode::WriteLogRecord(
     TFastShardContext&,
-    NCloud::NProto::TWriteLogRecordRequest request)
+    NProto::TWriteLogRecordRequest request)
 {
     with_lock (Lock) {
         WriteCalls.push_back(std::move(request));
@@ -82,9 +82,9 @@ NCloud::NProto::TWriteLogRecordResponse TFakeStorageNode::WriteLogRecord(
     }
 }
 
-NCloud::NProto::TReadJournalTailResponse TFakeStorageNode::ReadJournalTail(
+NProto::TReadJournalTailResponse TFakeStorageNode::ReadJournalTail(
     TFastShardContext&,
-    NCloud::NProto::TReadJournalTailRequest request)
+    NProto::TReadJournalTailRequest request)
 {
     with_lock (Lock) {
         ReadJournalTailCalls.push_back(std::move(request));
@@ -92,10 +92,10 @@ NCloud::NProto::TReadJournalTailResponse TFakeStorageNode::ReadJournalTail(
     }
 }
 
-NCloud::NProto::TAdvanceLsnLowWatermarkResponse
+NProto::TAdvanceLsnLowWatermarkResponse
 TFakeStorageNode::AdvanceLsnLowWatermark(
     TFastShardContext&,
-    NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
+    NProto::TAdvanceLsnLowWatermarkRequest request)
 {
     with_lock (Lock) {
         AdvanceLsnLowWatermarkCalls.push_back(std::move(request));
@@ -103,9 +103,9 @@ TFakeStorageNode::AdvanceLsnLowWatermark(
     return AdvanceLsnLowWatermarkResp;
 }
 
-NCloud::NProto::TWritePagesResponse TFakeStorageNode::WritePages(
+NProto::TWritePagesResponse TFakeStorageNode::WritePages(
     TFastShardContext&,
-    NCloud::NProto::TWritePagesRequest request)
+    NProto::TWritePagesRequest request)
 {
     with_lock (Lock) {
         WritePagesCalls.push_back(std::move(request));

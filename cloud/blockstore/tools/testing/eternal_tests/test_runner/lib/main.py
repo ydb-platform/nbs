@@ -46,7 +46,7 @@ def get_generate_load_command(load_config: LoadConfig) -> str:
 
 
 def render_load_config(load_config: LoadConfig):
-    return get_template('test-config.json').substitute(
+    return get_template(load_config.config_template).substitute(
         ioDepth=load_config.io_depth,
         fileSize=load_config.size * 1024**3,
         writeRate=load_config.write_rate,

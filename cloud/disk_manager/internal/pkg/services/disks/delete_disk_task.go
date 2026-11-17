@@ -8,6 +8,7 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
@@ -19,6 +20,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -29,6 +31,7 @@ type deleteDiskTask struct {
 	scheduler         tasks.Scheduler
 	poolService       pools.Service
 	nbsFactory        nbs.Factory
+	disabledZones     *common.DisabledZones
 	request           *protos.DeleteDiskRequest
 	state             *protos.DeleteDiskTaskState
 }
@@ -111,18 +114,27 @@ func (t *deleteDiskTask) deleteDisk(
 		return err
 	}
 
-	client, err := t.nbsFactory.GetClient(ctx, zoneID)
-	if err != nil {
-		return err
-	}
-
-	if sync {
-		err = client.DeleteSync(ctx, diskID)
+	if t.disabledZones.IsDisabled(zoneID) {
+		logging.Warn(
+			ctx,
+			"Skipping NBS deletion of disk %v: zone %v is disabled",
+			diskID,
+			zoneID,
+		)
 	} else {
-		err = client.Delete(ctx, diskID)
-	}
-	if err != nil {
-		return err
+		client, err := t.nbsFactory.GetClient(ctx, zoneID)
+		if err != nil {
+			return err
+		}
+
+		if sync {
+			err = client.DeleteSync(ctx, diskID)
+		} else {
+			err = client.Delete(ctx, diskID)
+		}
+		if err != nil {
+			return err
+		}
 	}
 
 	// Only overlay disks (created from image) should be released.
@@ -210,6 +222,16 @@ func (t *deleteDiskTask) setEstimate(
 
 	if diskMeta == nil || len(diskMeta.ZoneID) == 0 {
 		// Should be idempotent.
+		return nil
+	}
+
+	if t.disabledZones.IsDisabled(diskMeta.ZoneID) {
+		logging.Warn(
+			ctx,
+			"Skipping deletion time estimate for disk %v: zone %v is disabled",
+			diskID,
+			diskMeta.ZoneID,
+		)
 		return nil
 	}
 

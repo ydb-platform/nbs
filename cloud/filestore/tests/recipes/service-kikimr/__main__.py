@@ -60,6 +60,7 @@ def start(argv):
 
     kikimr_configurator = KikimrConfigGenerator(
         erasure=None,
+        output_path=common.output_path("kikimr_working_dir"),
         use_in_memory_pdisks=args.in_memory_pdisks,
         binary_paths=[kikimr_binary_path],
         static_pdisk_size=PDISK_SIZE,

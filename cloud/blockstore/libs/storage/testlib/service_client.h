@@ -257,6 +257,10 @@ public:
         const TString& diskId,
         const TVector<TString>& tagsToAdd);
 
+    std::unique_ptr<TEvService::TEvRemoveTagsRequest> CreateRemoveTagsRequest(
+        const TString& diskId,
+        const TVector<TString>& tagsToRemove);
+
     std::unique_ptr<TEvService::TEvCreateVolumeLinkRequest>
     CreateCreateVolumeLinkRequest(
         const TString& leaderDiskId,

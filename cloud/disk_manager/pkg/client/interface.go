@@ -24,6 +24,10 @@ type Client interface {
 	ListDiskStates(ctx context.Context, req *disk_manager.ListDiskStatesRequest) (*disk_manager.ListDiskStatesResponse, error)
 
 	// ImageService:
+	ExportImage(
+		ctx context.Context,
+		req *disk_manager.ExportImageRequest,
+	) (*disk_manager.Operation, error)
 	CreateImage(ctx context.Context, req *disk_manager.CreateImageRequest) (*disk_manager.Operation, error)
 	UpdateImage(ctx context.Context, req *disk_manager.UpdateImageRequest) (*disk_manager.Operation, error)
 	DeleteImage(ctx context.Context, req *disk_manager.DeleteImageRequest) (*disk_manager.Operation, error)
@@ -41,6 +45,10 @@ type Client interface {
 	DescribePlacementGroup(ctx context.Context, req *disk_manager.DescribePlacementGroupRequest) (*disk_manager.PlacementGroup, error)
 
 	// SnapshotService:
+	ExportSnapshot(
+		ctx context.Context,
+		req *disk_manager.ExportSnapshotRequest,
+	) (*disk_manager.Operation, error)
 	CreateSnapshot(ctx context.Context, req *disk_manager.CreateSnapshotRequest) (*disk_manager.Operation, error)
 	DeleteSnapshot(ctx context.Context, req *disk_manager.DeleteSnapshotRequest) (*disk_manager.Operation, error)
 

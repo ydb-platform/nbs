@@ -181,6 +181,7 @@ func (f *factory) initClients(
 			sessionMetricsRegistry:        f.sessionMetricsRegistry,
 			metrics:                       f.metrics,
 			enableThrottlingForMediaKinds: enableThrottlingForMediaKinds,
+			proxyOverlayDiskMediaKind:     f.config.GetProxyOverlayDiskMediaKind(),
 			sessionRediscoverPeriodMin:    sessionRediscoverPeriodMin,
 			sessionRediscoverPeriodMax:    sessionRediscoverPeriodMax,
 			serverRequestTimeout:          requestTimeout,

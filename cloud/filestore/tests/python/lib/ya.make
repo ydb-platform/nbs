@@ -5,6 +5,7 @@ PEERDIR(
 
     cloud/filestore/public/sdk/python/client
     cloud/filestore/public/sdk/python/protos
+    cloud/filestore/tools/testing/loadtest/protos
 
     cloud/storage/core/protos
     cloud/storage/core/tests/common

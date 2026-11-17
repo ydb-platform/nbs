@@ -170,6 +170,8 @@ public:
     TDuration GetFreshBlobAgeFlushThresholdSSD() const;
     TDuration GetFreshBlobAgeFlushThresholdHDD() const;
     [[nodiscard]] ui32 GetFreshBlobByteCountFlushThresholdSSD() const;
+    [[nodiscard]] ui32 GetFreshDeadBlobByteCountTrimThresholdSSD() const;
+    [[nodiscard]] ui32 GetFreshDeadBlobByteCountTrimThresholdHDD() const;
     ui32 GetFlushBlobSizeThreshold() const;
     bool GetFlushToDevNull() const;
 

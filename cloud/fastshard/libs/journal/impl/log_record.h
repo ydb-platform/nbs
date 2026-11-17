@@ -35,8 +35,9 @@ struct TLogRecord
     ui64 Lsn = 0;
     ui64 PrevLsn = 0;
     TVector<TPageMapping> PageMappings;
+    ui32 PagesCrc = 0;
 
-    NThreading::TPromise<NCloud::NProto::TWriteLogRecordResponse> Promise;
+    NThreading::TPromise<NProto::TWriteLogRecordResponse> Promise;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -54,6 +55,8 @@ TLogRecordPtr DeserializeRecord(const TBuffer& buffer);
 
 TBuffer SerializeMetadata(const TJournalMetadata& metadata);
 std::optional<TJournalMetadata> DeserializeMetadata(const TBuffer& buffer);
+
+ui32 CalculatePagesCrc(const TVector<TBuffer>& pages);
 
 ui32 CalculateMinRecordBufferSize();
 

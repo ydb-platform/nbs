@@ -198,6 +198,9 @@ void TPartitionActor::HandleAddFreshBlocks(
 {
     auto* msg = ev->Get();
     ui64 removedBlocksCount = 0;
+    // Commit ids of fresh blobs whose last remaining block this write
+    // overwrote.
+    TVector<ui64> deadCommitIds;
 
     STORAGE_VERIFY(
         msg->WriteHandlers.size() == msg->BlockRanges.size() ||
@@ -212,7 +215,8 @@ void TPartitionActor::HandleAddFreshBlocks(
             State->ZeroFreshBlocks(
                 blockRange,
                 msg->CommitId,
-                removedBlocksCount);
+                removedBlocksCount,
+                deadCommitIds);
             State->DecrementFreshBlocksInFlight(blockRange.Size());
 
             continue;
@@ -229,7 +233,8 @@ void TPartitionActor::HandleAddFreshBlocks(
                 msg->CommitId,
                 sgList,
                 msg->BlobId,
-                removedBlocksCount);
+                removedBlocksCount,
+                deadCommitIds);
             State->DecrementFreshBlocksInFlight(blockRange.Size());
         } else {
             LOG_ERROR(
@@ -250,6 +255,9 @@ void TPartitionActor::HandleAddFreshBlocks(
     }
 
     State->AddFreshBlob(msg->CommitId, msg->BlobSize, msg->Timestamp);
+    for (ui64 commitId: deadCommitIds) {
+        State->MarkFreshBlobDead(commitId);
+    }
 
     if (FreshBlocksWriter) {
         SharedState->UnflushedFreshBlocksCount.fetch_sub(removedBlocksCount);
@@ -270,6 +278,11 @@ void TPartitionActor::HandleAddFreshBlocks(
         // start to reject all requests. Therefore, we should trigger Flush on
         // the AddFreshBlock request.
         EnqueueFlushIfNeeded(ctx);
+    }
+
+    // New dead blobs may have made a trim due.
+    if (GetFreshDeadBlobByteCountTrimThreshold()) {
+        EnqueueTrimFreshLogIfNeeded(ctx);
     }
 }
 

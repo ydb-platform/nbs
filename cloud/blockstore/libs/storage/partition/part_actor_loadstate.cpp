@@ -321,7 +321,7 @@ void TPartitionActor::CompleteLoadState(
         PartitionConfig,
         Info(),
         TabletID(),
-        BlobsCompressor,
+        BlobCompressor,
         VolumeActorId,
         DiagnosticsConfig,
         StorageAccessMode,

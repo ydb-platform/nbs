@@ -151,7 +151,11 @@ struct TBootstrap
         const NProto::TStateFileDump& newState,
         NProto::EStateFileType fileType)
     {
-        return TStateFileEditor::PatchStateFile(Accessor, newState, fileType);
+        return TStateFileEditor::PatchStateFile(
+            Accessor,
+            newState,
+            fileType,
+            true);
     }
 
     void CheckPatchRejected(
@@ -944,8 +948,16 @@ Y_UNIT_TEST_SUITE(TStateFileEditorTest)
             },
             version);
 
-        UNIT_ASSERT(
-            !bootstrap.Dump(NProto::EStateFileType::Unknown).GetIsCorrupted());
+        const auto initialDump = bootstrap.Dump(NProto::EStateFileType::Unknown);
+        UNIT_ASSERT(!initialDump.GetIsCorrupted());
+        const auto initialPatchError = TStateFileEditor::PatchStateFile(
+            bootstrap.Accessor,
+            initialDump,
+            NProto::EStateFileType::Unknown,
+            false);
+        UNIT_ASSERT_C(
+            !HasError(initialPatchError),
+            FormatError(initialPatchError));
         bootstrap.Accessor.ValidateAndInitialize();
         bootstrap.Accessor.GetRawMetadata()[0] ^= 1;
 
@@ -957,6 +969,23 @@ Y_UNIT_TEST_SUITE(TStateFileEditorTest)
 
         dump.MutableHeader()->SetMetadataChecksum(
             dump.GetActualMetadataChecksum());
+        dump.SetIsCorrupted(false);
+        const TString before(bootstrap.RawData.data(), bootstrap.RawData.size());
+        const auto rejected = TStateFileEditor::PatchStateFile(
+            bootstrap.Accessor,
+            dump,
+            NProto::EStateFileType::Unknown,
+            false);
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, rejected.GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            rejected.GetMessage(),
+            "Checksum mismatch for metadata");
+        UNIT_ASSERT_STRING_CONTAINS(
+            rejected.GetMessage(),
+            "patching is forbidden");
+        UNIT_ASSERT_VALUES_EQUAL(
+            before,
+            TString(bootstrap.RawData.data(), bootstrap.RawData.size()));
         UNIT_ASSERT_C(
             !HasError(bootstrap.Patch(dump, NProto::EStateFileType::Unknown)),
             "Patch failed");

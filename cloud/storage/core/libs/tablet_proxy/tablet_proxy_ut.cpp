@@ -14,7 +14,6 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <util/generic/algorithm.h>
 #include <util/generic/hash.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -165,7 +164,6 @@ private:
 struct TEnv
 {
     TTestBasicRuntime Runtime{1};
-    TActorId Edge;
     TActorId Proxy;
     THashMap<ui64, std::shared_ptr<TTabletState>> Tablets;
 
@@ -179,7 +177,6 @@ struct TEnv
             });
         SetupTabletServices(Runtime);
 
-        Edge = Runtime.AllocateEdgeActor();
         config.LogComponent = NKikimrServices::PIPE_CLIENT;
         Proxy = Runtime.Register(
             CreateTabletProxy(std::move(config)).release());
@@ -206,26 +203,36 @@ struct TEnv
         UNIT_ASSERT(condition());
     }
 
-    void Send(IEventBase* ev, TActorId sender = {})
+    // Sends the event to the tablet proxy.
+    void Send(const TActorId& sender, IEventBase* ev)
     {
-        Runtime.Send(new IEventHandle(Proxy, sender ? sender : Edge, ev));
+        Runtime.Send(new IEventHandle(Proxy, sender, ev));
     }
 
-    void Forward(ui64 tabletId, IEventHandlePtr request)
+    void Forward(
+        const TActorId& forwarder,
+        ui64 tabletId,
+        IEventHandlePtr request)
     {
-        const TActorId sender = request->Sender;
+        Forward(forwarder, tabletId, std::move(request), false);
+    }
+
+    void Forward(
+        const TActorId& forwarder,
+        ui64 tabletId,
+        IEventHandlePtr request,
+        bool subscribe)
+    {
         Send(
-            new TEvTabletProxy::TEvForward(tabletId, std::move(request)),
-            sender);
-    }
-
-    void Forward(ui64 tabletId, const TString& body, ui64 cookie)
-    {
-        Forward(tabletId, MakeRequest(Edge, body, cookie));
+            forwarder,
+            new TEvTabletProxy::TEvForward(
+                tabletId,
+                std::move(request),
+                subscribe));
     }
 
     static IEventHandlePtr
-    MakeRequest(const TActorId& sender, const TString& body, ui64 cookie)
+    TestMessage(const TActorId& sender, const TString& body, ui64 cookie)
     {
         return std::make_unique<IEventHandle>(
             TActorId(),
@@ -236,7 +243,7 @@ struct TEnv
     }
 
     // A request as it arrives from another node.
-    static IEventHandlePtr MakeSerializedRequest(
+    static IEventHandlePtr SerializedTestMessage(
         const TActorId& sender,
         const TString& body,
         ui64 cookie)
@@ -253,33 +260,17 @@ struct TEnv
             cookie);
     }
 
-    TString GrabReply(ui64 cookie, TActorId edge = {})
-    {
-        auto ev = Runtime.GrabEdgeEvent<TEvents::TEvBlob>(
-            edge ? edge : Edge,
-            GrabTimeout);
-        UNIT_ASSERT(ev);
-        UNIT_ASSERT_VALUES_EQUAL(cookie, ev->Cookie);
-        return ev->Get()->Blob;
-    }
-
-    // The tablet id and the cookie of the next disconnect notice.
-    std::pair<ui64, ui64> GrabDisconnected(TActorId edge = {})
-    {
-        auto ev = Runtime.GrabEdgeEvent<TEvTabletProxy::TEvDisconnected>(
-            edge ? edge : Edge,
-            GrabTimeout);
-        UNIT_ASSERT(ev);
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, ev->Get()->GetStatus());
-        return {ev->Get()->TabletId, ev->Cookie};
-    }
-
-    // No event of @p TEvent reaches the edge within @p timeout.
     template <typename TEvent>
-    void AssertNone(TDuration timeout, TActorId edge = {})
+    auto GrabEvent(const TActorId& recipient)
     {
-        auto ev = Runtime.GrabEdgeEvent<TEvent>(edge ? edge : Edge, timeout);
-        UNIT_ASSERT_C(!ev, "unexpected " << TEvent::EventType);
+        return GrabEvent<TEvent>(recipient, GrabTimeout);
+    }
+
+    // Null if no such event reaches the recipient within the timeout.
+    template <typename TEvent>
+    auto GrabEvent(const TActorId& recipient, TDuration timeout)
+    {
+        return Runtime.GrabEdgeEvent<TEvent>(recipient, timeout);
     }
 
     void WaitForHeld(ui64 tabletId, size_t count)
@@ -287,10 +278,13 @@ struct TEnv
         WaitFor([&] { return Tablets[tabletId]->Held.size() == count; });
     }
 
+    // Makes the tablet answer the requests it holds.
     void Release(ui64 tabletId)
     {
-        Runtime.Send(
-            new IEventHandle(Tablets[tabletId]->ActorId, Edge, new TEvRelease));
+        Runtime.Send(new IEventHandle(
+            Tablets[tabletId]->ActorId,
+            TActorId(),
+            new TEvRelease));
     }
 
     void Pass(TDuration duration)
@@ -324,27 +318,47 @@ Y_UNIT_TEST_SUITE(TTabletProxyTest)
     Y_UNIT_TEST(ShouldRouteRepliesToTheirSenders)
     {
         TEnv env;
-        const TActorId other = env.Runtime.AllocateEdgeActor();
+        const TActorId first = env.Runtime.AllocateEdgeActor();
+        const TActorId second = env.Runtime.AllocateEdgeActor();
 
         // Two senders with the same cookie, answered together.
-        env.Forward(TabletA, TEnv::MakeRequest(env.Edge, "hold", 1));
-        env.Forward(TabletA, TEnv::MakeRequest(other, "hold", 1));
+        env.Forward(first, TabletA, TEnv::TestMessage(first, "hold", 1));
+        env.Forward(second, TabletA, TEnv::TestMessage(second, "hold", 1));
         env.WaitForHeld(TabletA, 2);
         env.Release(TabletA);
-        UNIT_ASSERT_VALUES_EQUAL("held", env.GrabReply(1));
-        UNIT_ASSERT_VALUES_EQUAL("held", env.GrabReply(1, other));
+        auto reply = env.GrabEvent<TEvents::TEvBlob>(first);
+        UNIT_ASSERT(reply);
+        UNIT_ASSERT_VALUES_EQUAL("held", reply->Get()->Blob);
+        UNIT_ASSERT_VALUES_EQUAL(1, reply->Cookie);
+
+        reply = env.GrabEvent<TEvents::TEvBlob>(second);
+        UNIT_ASSERT(reply);
+        UNIT_ASSERT_VALUES_EQUAL("held", reply->Get()->Blob);
+        UNIT_ASSERT_VALUES_EQUAL(1, reply->Cookie);
 
         // A request and a reply as they arrive from another node.
-        env.Forward(TabletB, "serialized", 2);
-        UNIT_ASSERT_VALUES_EQUAL("serialized", env.GrabReply(2));
-        env.Forward(TabletA, TEnv::MakeSerializedRequest(env.Edge, "a", 3));
-        UNIT_ASSERT_VALUES_EQUAL("a", env.GrabReply(3));
+        env.Forward(first, TabletB, TEnv::TestMessage(first, "serialized", 2));
+        reply = env.GrabEvent<TEvents::TEvBlob>(first);
+        UNIT_ASSERT(reply);
+        UNIT_ASSERT_VALUES_EQUAL("serialized", reply->Get()->Blob);
+        UNIT_ASSERT_VALUES_EQUAL(2, reply->Cookie);
+
+        env.Forward(first, TabletA, TEnv::SerializedTestMessage(first, "a", 3));
+        reply = env.GrabEvent<TEvents::TEvBlob>(first);
+        UNIT_ASSERT(reply);
+        UNIT_ASSERT_VALUES_EQUAL("a", reply->Get()->Blob);
+        UNIT_ASSERT_VALUES_EQUAL(3, reply->Cookie);
 
         // The reply goes to the request's sender, not to the forwarder.
-        env.Send(new TEvTabletProxy::TEvForward(
-            TabletA,
-            TEnv::MakeRequest(other, "b", 4)));
-        UNIT_ASSERT_VALUES_EQUAL("b", env.GrabReply(4, other));
+        env.Forward(first, TabletA, TEnv::TestMessage(second, "b", 4));
+        reply = env.GrabEvent<TEvents::TEvBlob>(second);
+        UNIT_ASSERT(reply);
+        UNIT_ASSERT_VALUES_EQUAL("b", reply->Get()->Blob);
+        UNIT_ASSERT_VALUES_EQUAL(4, reply->Cookie);
+
+        UNIT_ASSERT(!env.GrabEvent<TEvents::TEvBlob>(
+            first,
+            TDuration::Seconds(1)));
 
         // One pipe per tablet.
         UNIT_ASSERT_VALUES_EQUAL(1, env.Tablets[TabletA]->Connects);
@@ -354,32 +368,52 @@ Y_UNIT_TEST_SUITE(TTabletProxyTest)
     Y_UNIT_TEST(ShouldNotifyRequestsWhenTabletRestarts)
     {
         TEnv env;
-        const TActorId other = env.Runtime.AllocateEdgeActor();
+        const TActorId first = env.Runtime.AllocateEdgeActor();
+        const TActorId second = env.Runtime.AllocateEdgeActor();
 
         // A notice per request in flight, with its cookie; a completed
         // request and another tablet's requests are not affected.
-        env.Forward(TabletA, TEnv::MakeRequest(other, "a", 3));
-        UNIT_ASSERT_VALUES_EQUAL("a", env.GrabReply(3, other));
-        env.Forward(TabletA, "hold", 1);
-        env.Forward(TabletA, TEnv::MakeRequest(other, "hold", 2));
-        env.Forward(TabletB, "hold", 5);
+        env.Forward(second, TabletA, TEnv::TestMessage(second, "a", 3));
+        auto reply = env.GrabEvent<TEvents::TEvBlob>(second);
+        UNIT_ASSERT(reply);
+        UNIT_ASSERT_VALUES_EQUAL("a", reply->Get()->Blob);
+        UNIT_ASSERT_VALUES_EQUAL(3, reply->Cookie);
+
+        env.Forward(first, TabletA, TEnv::TestMessage(first, "hold", 1));
+        env.Forward(second, TabletA, TEnv::TestMessage(second, "hold", 2));
+        env.Forward(first, TabletB, TEnv::TestMessage(first, "hold", 5));
         env.WaitForHeld(TabletA, 2);
         env.WaitForHeld(TabletB, 1);
 
         env.RebootTablet(TabletA);
+        auto disconnected =
+            env.GrabEvent<TEvTabletProxy::TEvDisconnected>(first);
+        UNIT_ASSERT(disconnected);
         UNIT_ASSERT_VALUES_EQUAL(
-            std::make_pair(TabletA, 1UL),
-            env.GrabDisconnected());
+            E_REJECTED,
+            disconnected->Get()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(TabletA, disconnected->Get()->TabletId);
+        UNIT_ASSERT_VALUES_EQUAL(1, disconnected->Cookie);
+
+        disconnected = env.GrabEvent<TEvTabletProxy::TEvDisconnected>(second);
+        UNIT_ASSERT(disconnected);
         UNIT_ASSERT_VALUES_EQUAL(
-            std::make_pair(TabletA, 2UL),
-            env.GrabDisconnected(other));
-        env.AssertNone<TEvTabletProxy::TEvDisconnected>(
-            TDuration::Seconds(1));
-        env.AssertNone<TEvTabletProxy::TEvDisconnected>(
-            TDuration::Seconds(1),
-            other);
+            E_REJECTED,
+            disconnected->Get()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(TabletA, disconnected->Get()->TabletId);
+        UNIT_ASSERT_VALUES_EQUAL(2, disconnected->Cookie);
+
+        UNIT_ASSERT(!env.GrabEvent<TEvTabletProxy::TEvDisconnected>(
+            first,
+            TDuration::Seconds(1)));
+        UNIT_ASSERT(!env.GrabEvent<TEvTabletProxy::TEvDisconnected>(
+            second,
+            TDuration::Seconds(1)));
         env.Release(TabletB);
-        UNIT_ASSERT_VALUES_EQUAL("held", env.GrabReply(5));
+        reply = env.GrabEvent<TEvents::TEvBlob>(first);
+        UNIT_ASSERT(reply);
+        UNIT_ASSERT_VALUES_EQUAL("held", reply->Get()->Blob);
+        UNIT_ASSERT_VALUES_EQUAL(5, reply->Cookie);
 
         // A reply to a request of the old pipe is dropped. The proxy numbers
         // requests from 1 in forward order, so the first held one is 2.
@@ -389,53 +423,79 @@ Y_UNIT_TEST_SUITE(TTabletProxyTest)
             new TEvents::TEvBlob("late"),
             0,   // flags
             2));
-        env.AssertNone<TEvents::TEvBlob>(TDuration::Seconds(1));
+        UNIT_ASSERT(!env.GrabEvent<TEvents::TEvBlob>(
+            first,
+            TDuration::Seconds(1)));
 
         // The next request opens a new pipe.
-        env.Forward(TabletA, "a", 3);
-        UNIT_ASSERT_VALUES_EQUAL("a", env.GrabReply(3));
+        env.Forward(first, TabletA, TEnv::TestMessage(first, "a", 3));
+        reply = env.GrabEvent<TEvents::TEvBlob>(first);
+        UNIT_ASSERT(reply);
+        UNIT_ASSERT_VALUES_EQUAL("a", reply->Get()->Blob);
+        UNIT_ASSERT_VALUES_EQUAL(3, reply->Cookie);
+
         UNIT_ASSERT_VALUES_EQUAL(2, env.Tablets[TabletA]->Connects);
     }
 
     Y_UNIT_TEST(ShouldNotifySenderWhenTabletIsUnreachable)
     {
         TEnv env;
+        const TActorId client = env.Runtime.AllocateEdgeActor();
 
-        env.Forward(MissingTablet, "a", 1);
+        env.Forward(client, MissingTablet, TEnv::TestMessage(client, "a", 1));
+        auto disconnected =
+            env.GrabEvent<TEvTabletProxy::TEvDisconnected>(client);
+        UNIT_ASSERT(disconnected);
         UNIT_ASSERT_VALUES_EQUAL(
-            std::make_pair(MissingTablet, 1UL),
-            env.GrabDisconnected());
+            E_REJECTED,
+            disconnected->Get()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(MissingTablet, disconnected->Get()->TabletId);
+        UNIT_ASSERT_VALUES_EQUAL(1, disconnected->Cookie);
 
-        env.Forward(MissingTablet, "b", 2);
+        env.Forward(client, MissingTablet, TEnv::TestMessage(client, "b", 2));
+        disconnected = env.GrabEvent<TEvTabletProxy::TEvDisconnected>(client);
+        UNIT_ASSERT(disconnected);
         UNIT_ASSERT_VALUES_EQUAL(
-            std::make_pair(MissingTablet, 2UL),
-            env.GrabDisconnected());
+            E_REJECTED,
+            disconnected->Get()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(MissingTablet, disconnected->Get()->TabletId);
+        UNIT_ASSERT_VALUES_EQUAL(2, disconnected->Cookie);
     }
 
     Y_UNIT_TEST(ShouldClosePipeAfterIdleTimeout)
     {
         TEnv env({.PipeInactivityTimeout = IdleTimeout});
+        const TActorId client = env.Runtime.AllocateEdgeActor();
         const auto& tablet = *env.Tablets[TabletA];
 
         // A request halfway through the timeout restarts it.
-        env.Forward(TabletA, "a", 1);
-        UNIT_ASSERT_VALUES_EQUAL("a", env.GrabReply(1));
+        env.Forward(client, TabletA, TEnv::TestMessage(client, "a", 1));
+        auto reply = env.GrabEvent<TEvents::TEvBlob>(client);
+        UNIT_ASSERT(reply);
+        UNIT_ASSERT_VALUES_EQUAL("a", reply->Get()->Blob);
+
         env.Pass(IdleTimeout / 2);
-        env.Forward(TabletA, "b", 2);
-        UNIT_ASSERT_VALUES_EQUAL("b", env.GrabReply(2));
+        env.Forward(client, TabletA, TEnv::TestMessage(client, "b", 2));
+        reply = env.GrabEvent<TEvents::TEvBlob>(client);
+        UNIT_ASSERT(reply);
+        UNIT_ASSERT_VALUES_EQUAL("b", reply->Get()->Blob);
 
         env.WaitFor([&] { return tablet.Disconnects == 1; });
         UNIT_ASSERT(
             tablet.LastDisconnected >= tablet.LastReceived + IdleTimeout);
 
-        env.Forward(TabletA, "c", 3);
-        UNIT_ASSERT_VALUES_EQUAL("c", env.GrabReply(3));
+        env.Forward(client, TabletA, TEnv::TestMessage(client, "c", 3));
+        reply = env.GrabEvent<TEvents::TEvBlob>(client);
+        UNIT_ASSERT(reply);
+        UNIT_ASSERT_VALUES_EQUAL("c", reply->Get()->Blob);
+
         UNIT_ASSERT_VALUES_EQUAL(2, tablet.Connects);
     }
 
     Y_UNIT_TEST(ShouldIgnoreIdleCheckOfClosedPipe)
     {
         TEnv env({.PipeInactivityTimeout = IdleTimeout});
+        const TActorId client = env.Runtime.AllocateEdgeActor();
         const auto& tablet = *env.Tablets[TabletA];
 
         ui32 wakeups = 0;
@@ -450,11 +510,17 @@ Y_UNIT_TEST_SUITE(TTabletProxyTest)
 
         // The idle check of the first pipe is pending when the pipe breaks
         // and the next request opens another.
-        env.Forward(TabletA, "a", 1);
-        UNIT_ASSERT_VALUES_EQUAL("a", env.GrabReply(1));
+        env.Forward(client, TabletA, TEnv::TestMessage(client, "a", 1));
+        auto reply = env.GrabEvent<TEvents::TEvBlob>(client);
+        UNIT_ASSERT(reply);
+        UNIT_ASSERT_VALUES_EQUAL("a", reply->Get()->Blob);
+
         env.RebootTablet(TabletA);
-        env.Forward(TabletA, "b", 2);
-        UNIT_ASSERT_VALUES_EQUAL("b", env.GrabReply(2));
+        env.Forward(client, TabletA, TEnv::TestMessage(client, "b", 2));
+        reply = env.GrabEvent<TEvents::TEvBlob>(client);
+        UNIT_ASSERT(reply);
+        UNIT_ASSERT_VALUES_EQUAL("b", reply->Get()->Blob);
+
         UNIT_ASSERT_VALUES_EQUAL(2, tablet.Connects);
 
         // The stale check does not touch the new pipe, whose own check closes
@@ -469,18 +535,25 @@ Y_UNIT_TEST_SUITE(TTabletProxyTest)
     Y_UNIT_TEST(ShouldKeepPipeWithRequestInflight)
     {
         TEnv env({.PipeInactivityTimeout = IdleTimeout});
+        const TActorId client = env.Runtime.AllocateEdgeActor();
         const auto& tablet = *env.Tablets[TabletA];
 
-        env.Forward(TabletA, "a", 1);
-        UNIT_ASSERT_VALUES_EQUAL("a", env.GrabReply(1));
-        env.Forward(TabletA, "hold", 2);
+        env.Forward(client, TabletA, TEnv::TestMessage(client, "a", 1));
+        auto reply = env.GrabEvent<TEvents::TEvBlob>(client);
+        UNIT_ASSERT(reply);
+        UNIT_ASSERT_VALUES_EQUAL("a", reply->Get()->Blob);
+
+        env.Forward(client, TabletA, TEnv::TestMessage(client, "hold", 2));
         env.WaitForHeld(TabletA, 1);
 
         env.Pass(IdleTimeout * 2);
         UNIT_ASSERT_VALUES_EQUAL(0, tablet.Disconnects);
 
         env.Release(TabletA);
-        UNIT_ASSERT_VALUES_EQUAL("held", env.GrabReply(2));
+        reply = env.GrabEvent<TEvents::TEvBlob>(client);
+        UNIT_ASSERT(reply);
+        UNIT_ASSERT_VALUES_EQUAL("held", reply->Get()->Blob);
+
         UNIT_ASSERT_VALUES_EQUAL(1, tablet.Connects);
 
         // Idle again once the held request completed.
@@ -489,29 +562,181 @@ Y_UNIT_TEST_SUITE(TTabletProxyTest)
             tablet.LastDisconnected >= tablet.LastReceived + IdleTimeout);
     }
 
+    Y_UNIT_TEST(ShouldKeepPipeOnKeepAlive)
+    {
+        TEnv env({.PipeInactivityTimeout = IdleTimeout});
+        const TActorId client = env.Runtime.AllocateEdgeActor();
+        const auto& tablet = *env.Tablets[TabletA];
+
+        auto keepAlive = [&]
+        {
+            env.Send(client, new TEvTabletProxy::TEvKeepAliveRequest(TabletA));
+            auto response =
+                env.GrabEvent<TEvTabletProxy::TEvKeepAliveResponse>(client);
+            UNIT_ASSERT(response);
+            return response->Get()->GetStatus();
+        };
+
+        // A keep-alive does not open a pipe, a request does.
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, keepAlive());
+        env.Forward(client, TabletA, TEnv::TestMessage(client, "a", 1));
+        auto reply = env.GrabEvent<TEvents::TEvBlob>(client);
+        UNIT_ASSERT(reply);
+        UNIT_ASSERT_VALUES_EQUAL("a", reply->Get()->Blob);
+
+        // Each keep-alive restarts the idle timeout.
+        for (ui32 i = 0; i != 3; ++i) {
+            env.Pass(IdleTimeout / 2);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, keepAlive());
+        }
+        const TInstant lastKeepAlive = env.Runtime.GetCurrentTime();
+        UNIT_ASSERT_VALUES_EQUAL(0, tablet.Disconnects);
+
+        env.WaitFor([&] { return tablet.Disconnects == 1; });
+        UNIT_ASSERT(tablet.LastDisconnected >= lastKeepAlive + IdleTimeout);
+
+        // The pipe closed idle: nothing to keep.
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, keepAlive());
+        UNIT_ASSERT_VALUES_EQUAL(1, tablet.Connects);
+    }
+
     Y_UNIT_TEST(ShouldNotifySendersOnShutdown)
     {
         TEnv env;
+        const TActorId first = env.Runtime.AllocateEdgeActor();
+        const TActorId second = env.Runtime.AllocateEdgeActor();
 
-        env.Forward(TabletA, "hold", 1);
-        env.Forward(TabletB, "hold", 2);
+        env.Forward(first, TabletA, TEnv::TestMessage(first, "hold", 1));
+        env.Forward(second, TabletB, TEnv::TestMessage(second, "hold", 2));
         env.WaitForHeld(TabletA, 1);
         env.WaitForHeld(TabletB, 1);
 
-        env.Runtime.Send(
-            new IEventHandle(env.Proxy, env.Edge, new TEvents::TEvPoisonPill));
-        TVector<std::pair<ui64, ui64>> notices{
-            env.GrabDisconnected(),
-            env.GrabDisconnected()};
-        Sort(notices);
-        const TVector<std::pair<ui64, ui64>> expected{
-            {TabletA, 1},
-            {TabletB, 2}};
-        UNIT_ASSERT_VALUES_EQUAL(expected, notices);
+        env.Send(first, new TEvents::TEvPoisonPill);
+        auto disconnected =
+            env.GrabEvent<TEvTabletProxy::TEvDisconnected>(first);
+        UNIT_ASSERT(disconnected);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            disconnected->Get()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(TabletA, disconnected->Get()->TabletId);
+        UNIT_ASSERT_VALUES_EQUAL(1, disconnected->Cookie);
+
+        disconnected = env.GrabEvent<TEvTabletProxy::TEvDisconnected>(second);
+        UNIT_ASSERT(disconnected);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            disconnected->Get()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(TabletB, disconnected->Get()->TabletId);
+        UNIT_ASSERT_VALUES_EQUAL(2, disconnected->Cookie);
+
         env.WaitFor([&] {
             return env.Tablets[TabletA]->Disconnects == 1 &&
                    env.Tablets[TabletB]->Disconnects == 1;
         });
+    }
+
+    Y_UNIT_TEST(ShouldNotifySubscriberWhenPipeBreaks)
+    {
+        TEnv env;
+        const TActorId subscriber = env.Runtime.AllocateEdgeActor();
+        const TActorId other = env.Runtime.AllocateEdgeActor();
+
+        // Subscribed twice: one notice; none for a sender that did not.
+        env.Forward(
+            subscriber,
+            TabletA,
+            TEnv::TestMessage(subscriber, "a", 1),
+            true);
+        UNIT_ASSERT(env.GrabEvent<TEvents::TEvBlob>(subscriber));
+        env.Forward(
+            subscriber,
+            TabletA,
+            TEnv::TestMessage(subscriber, "b", 2),
+            true);
+        UNIT_ASSERT(env.GrabEvent<TEvents::TEvBlob>(subscriber));
+        env.Forward(other, TabletA, TEnv::TestMessage(other, "c", 3));
+        UNIT_ASSERT(env.GrabEvent<TEvents::TEvBlob>(other));
+        env.RebootTablet(TabletA);
+        auto closed =
+            env.GrabEvent<TEvTabletProxy::TEvPipeClosed>(subscriber);
+        UNIT_ASSERT(closed);
+        UNIT_ASSERT_VALUES_EQUAL(TabletA, closed->Get()->TabletId);
+
+        UNIT_ASSERT(!env.GrabEvent<TEvTabletProxy::TEvPipeClosed>(
+            subscriber,
+            TDuration::Seconds(1)));
+        UNIT_ASSERT(!env.GrabEvent<TEvTabletProxy::TEvPipeClosed>(
+            other,
+            TDuration::Seconds(1)));
+
+        // The notice goes to the forwarder, not to the request's sender.
+        env.Forward(
+            subscriber,
+            TabletA,
+            TEnv::TestMessage(other, "hold", 4),
+            true);
+        env.WaitForHeld(TabletA, 1);
+        env.RebootTablet(TabletA);
+        UNIT_ASSERT(env.GrabEvent<TEvTabletProxy::TEvDisconnected>(other));
+        closed = env.GrabEvent<TEvTabletProxy::TEvPipeClosed>(subscriber);
+        UNIT_ASSERT(closed);
+        UNIT_ASSERT_VALUES_EQUAL(TabletA, closed->Get()->TabletId);
+
+        UNIT_ASSERT(!env.GrabEvent<TEvTabletProxy::TEvPipeClosed>(
+            other,
+            TDuration::Seconds(1)));
+
+        // A pipe that could not connect.
+        env.Forward(
+            subscriber,
+            MissingTablet,
+            TEnv::TestMessage(subscriber, "d", 5),
+            true);
+        closed = env.GrabEvent<TEvTabletProxy::TEvPipeClosed>(subscriber);
+        UNIT_ASSERT(closed);
+        UNIT_ASSERT_VALUES_EQUAL(MissingTablet, closed->Get()->TabletId);
+    }
+
+    Y_UNIT_TEST(ShouldNotifySubscriberWhenPipeClosesIdleOrProxyStops)
+    {
+        TEnv env({.PipeInactivityTimeout = IdleTimeout});
+        const TActorId subscriber = env.Runtime.AllocateEdgeActor();
+        const auto& tablet = *env.Tablets[TabletA];
+
+        // Each pipe needs its own subscription.
+        for (ui32 i = 1; i != 3; ++i) {
+            env.Forward(
+                subscriber,
+                TabletA,
+                TEnv::TestMessage(subscriber, "a", i),
+                true);
+            UNIT_ASSERT(env.GrabEvent<TEvents::TEvBlob>(subscriber));
+            UNIT_ASSERT_VALUES_EQUAL(i, tablet.Connects);
+
+            auto closed =
+                env.GrabEvent<TEvTabletProxy::TEvPipeClosed>(subscriber);
+            UNIT_ASSERT(closed);
+            UNIT_ASSERT_VALUES_EQUAL(TabletA, closed->Get()->TabletId);
+            env.WaitFor([&] { return tablet.Disconnects == i; });
+            UNIT_ASSERT(
+                tablet.LastDisconnected >= tablet.LastReceived + IdleTimeout);
+        }
+        UNIT_ASSERT(!env.GrabEvent<TEvTabletProxy::TEvPipeClosed>(
+            subscriber,
+            IdleTimeout * 2));
+
+        // The proxy stops with an open pipe.
+        env.Forward(
+            subscriber,
+            TabletA,
+            TEnv::TestMessage(subscriber, "b", 3),
+            true);
+        UNIT_ASSERT(env.GrabEvent<TEvents::TEvBlob>(subscriber));
+        env.Send(subscriber, new TEvents::TEvPoisonPill);
+        auto closed =
+            env.GrabEvent<TEvTabletProxy::TEvPipeClosed>(subscriber);
+        UNIT_ASSERT(closed);
+        UNIT_ASSERT_VALUES_EQUAL(TabletA, closed->Get()->TabletId);
     }
 }
 

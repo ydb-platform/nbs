@@ -16,7 +16,7 @@ public:
 protected:
     bool DoExecute() override
     {
-        NCloud::NProto::TListDevicesRequest request;
+        NProto::TListDevicesRequest request;
         if (Proto) {
             ParseFromTextFormat(GetInputStream(), request);
         }

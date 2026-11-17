@@ -95,9 +95,7 @@ void TPropagateLinkToFollowerActor::HandlePersistedOnFollower(
         FormatError(error).c_str());
 
     if (hasError && GetErrorKind(error) == EErrorKind::ErrorRetriable) {
-        ctx.Schedule(
-            DelayProvider.GetDelayAndIncrease(),
-            new NActors::TEvents::TEvWakeup());
+        // PersistOnFollower has already scheduled the next attempt.
         return;
     }
 

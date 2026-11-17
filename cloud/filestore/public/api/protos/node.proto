@@ -612,6 +612,10 @@ message TSetNodeXAttrResponse
     // Version of set value.
     uint64 Version = 2;
 
+    // For how long (in milliseconds) the client is allowed to cache the set
+    // attribute value. Zero means that caching is not allowed.
+    uint32 XAttrCacheTTL = 3;
+
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }

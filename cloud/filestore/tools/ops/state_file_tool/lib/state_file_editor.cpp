@@ -836,7 +836,8 @@ NProto::TStateFileDump TStateFileEditor::DumpStateFile(
 NCloud::NProto::TError TStateFileEditor::PatchStateFile(
     TFileRingBufferAccessor& accessor,
     const NProto::TStateFileDump& newState,
-    NProto::EStateFileType fileType)
+    NProto::EStateFileType fileType,
+    bool allowCorrupted)
 {
     if (fileType == NProto::EStateFileType::DirectoryHandles) {
         return MakeArgumentError(
@@ -844,17 +845,19 @@ NCloud::NProto::TError TStateFileEditor::PatchStateFile(
     }
 
     auto curState = DumpStateFile(accessor, fileType);
+    if (curState.GetIsCorrupted() && !allowCorrupted) {
+        return MakeArgumentError(Sprintf(
+            "State file is corrupted: %s; patching is forbidden",
+            curState.GetValidationErrorMessage().c_str()));
+    }
 
     auto* header = accessor.GetHeader();
     auto* dataProcessor = accessor.GetDataProcessor();
-    if (header == nullptr) {
+    if (header == nullptr || dataProcessor == nullptr) {
         return MakeInvalidStateError(
-            "State file is not initialized, nothing to patch");
-    }
-
-    if (dataProcessor == nullptr) {
-        return MakeInvalidStateError(
-            accessor.GetLastValidationError().GetMessage());
+            curState.GetIsCorrupted()
+                ? curState.GetValidationErrorMessage()
+                : "State file is not initialized, nothing to patch");
     }
 
     auto error = ValidatePatch(curState, newState, *dataProcessor, fileType);

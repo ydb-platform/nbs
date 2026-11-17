@@ -4,6 +4,7 @@
 
 #include "buffer.h"
 
+#include <cloud/storage/core/libs/common/endpoint_handler.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
@@ -106,18 +107,6 @@ struct IClientRequestHandler
         TClientRequestPtr req,
         ui32 status,
         size_t responseBytes) = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-// Used to notify user about changes in the endpoint state
-struct IClientEndpointHandler
-{
-    virtual ~IClientEndpointHandler() = default;
-
-    virtual void HandleConnected() = 0;
-    virtual void HandleDisconnected() = 0;
-    virtual void HandleUnavailable() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -248,12 +248,13 @@ def __enable_custom_cms_configs(ydb):
     assert response.Status.Code == StatusIds.SUCCESS
 
 
-def start_ydb(grpc_ssl_enable=False):
+def start_ydb(grpc_ssl_enable=False, extra_feature_flags=()):
     configurator = KikimrConfigGenerator(
         erasure=None,
         binary_paths=[yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")],
         use_in_memory_pdisks=True,
         grpc_ssl_enable=grpc_ssl_enable,
+        extra_feature_flags=extra_feature_flags,
         dynamic_storage_pools=[
             {"name": "dynamic_storage_pool:1", "kind": "hdd", "pdisk_user_kind": 0},
             {"name": "dynamic_storage_pool:2", "kind": "ssd", "pdisk_user_kind": 0}

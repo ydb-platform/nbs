@@ -2,6 +2,7 @@ GTEST()
 
 SRCS(
     ../client_ut.cpp
+    ../durable_ut.cpp
 )
 
 PEERDIR(

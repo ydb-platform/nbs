@@ -106,7 +106,7 @@ bool TPersistentBitmap::Validate(ui64 bit, NProto::TError* error) const
     return true;
 }
 
-NProto::TError TPersistentBitmap::Get(ui64 bit, bool* result) const
+NProto::TError TPersistentBitmap::GetForLookup(ui64 bit, bool* result) const
 {
     NProto::TError error;
     if (!Validate(bit, &error)) {
@@ -137,6 +137,10 @@ TPersistentBitmap::Set(ui64 lsn, ui64 bit, TVector<TPageGroup>& pageGroups)
         return error;
     }
 
+    if (lsn == 0) {
+        return MakeError(E_ARGUMENT, "zero lsn");
+    }
+
     error = InitIfNeeded();
     if (HasError(error)) {
         return error;
@@ -161,6 +165,10 @@ TPersistentBitmap::Reset(ui64 lsn, ui64 bit, TVector<TPageGroup>& pageGroups)
     NProto::TError error;
     if (!Validate(bit, &error)) {
         return error;
+    }
+
+    if (lsn == 0) {
+        return MakeError(E_ARGUMENT, "zero lsn");
     }
 
     error = InitIfNeeded();
@@ -191,6 +199,10 @@ NProto::TError TPersistentBitmap::AllocateImpl(
     ui64* bit,
     TVector<TPageGroup>& pageGroups)
 {
+    if (lsn == 0) {
+        return MakeError(E_ARGUMENT, "zero lsn");
+    }
+
     while (!BitmapPagesWithFreeBits.empty()) {
         const ui64 bitmapPageNo = BitmapPagesWithFreeBits.top();
         TBuffer page;
@@ -228,6 +240,10 @@ NProto::TError TPersistentBitmap::Allocate(
     ui64* bit,
     TVector<TPageGroup>& pageGroups)
 {
+    if (lsn == 0) {
+        return MakeError(E_ARGUMENT, "zero lsn");
+    }
+
     auto error = InitIfNeeded();
     if (HasError(error)) {
         return error;
@@ -289,7 +305,9 @@ NProto::TError TPersistentBitmap::ReadPage(
 {
     const ui64 bitsPerPage = CalcBitsPerPage(PageSize);
     const ui64 pageNo = FirstPageNo + relPageNo;
-    auto error = PageStore->ReadPage(lsn, pageNo, page);
+    auto error = lsn > 0
+        ? PageStore->ReadPageForUpdate(lsn, pageNo, page)
+        : PageStore->ReadPageForLookup(pageNo, page);
     if (HasError(error)) {
         return error;
     }

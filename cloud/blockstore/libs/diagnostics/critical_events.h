@@ -51,6 +51,7 @@ using TCritEventParams =
     xxx(DiskRegistryPurgeDeviceError)                                          \
     xxx(CompressionChunkNotFound)                                              \
     xxx(VolumeProxyInvalidState)                                               \
+    xxx(InvalidBlobCompressionCodec)                                           \
     // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
@@ -91,6 +92,7 @@ using TCritEventParams =
     xxx(MonitoringResourceNotFound)                                            \
     xxx(DiskRegistryUnexpectedAffectedDisks)                                   \
     xxx(ReadBlockCountMismatch)                                                \
+    xxx(InvalidReadBlobOffsets)                                                \
     xxx(CancelRoutineIsNotSet)                                                 \
     xxx(FieldDescriptorNotFound)                                               \
     xxx(DiskRegistryInsertToPendingCleanupFailed)                              \

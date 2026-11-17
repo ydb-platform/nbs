@@ -143,6 +143,10 @@ TString MediaKindToComputeType(NProto::EStorageMediaKind mediaKind)
             return "network-ssd-mirror2";
         case NProto::STORAGE_MEDIA_SSD_MIRROR3:
             return "network-ssd-mirror3";
+        case NProto::STORAGE_MEDIA_SSD_LOCAL:
+            return "local-ssd";
+        case NProto::STORAGE_MEDIA_HDD_LOCAL:
+            return "local-hdd";
         case NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
             return "network-hdd-nonreplicated";
         case NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP:

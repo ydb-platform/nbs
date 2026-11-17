@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/libs/client/public.h>
+#include <cloud/blockstore/libs/icv2/iface/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 
 #include <cloud/storage/core/libs/common/public.h>
@@ -29,6 +30,8 @@ struct TBootstrap
     NCloud::ICertificateProviderPtr CertProvider;
     NClient::IEndpointFactoryPtr GrpcClient;
     NCloud::NStorage::NRdma::IClientPtr RdmaClient;
+
+    NIcV2::IDataEndpointFactoryPtr IcV2EndpointFactory;
 
     // the node's own service, queried alongside the cells on a describe/search
     IBlockStorePtr LocalService;

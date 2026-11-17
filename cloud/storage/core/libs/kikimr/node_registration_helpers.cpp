@@ -1,6 +1,5 @@
 #include "node_registration_helpers.h"
 
-#include <contrib/ydb/core/protos/nbs/blockstore.pb.h>
 #include <contrib/ydb/library/yaml_config/yaml_config.h>
 
 namespace NCloud::NStorage {
@@ -13,8 +12,6 @@ NKikimrConfig::TAppConfig SelectCmsAppConfig(
     bool useYamlConfig)
 {
     if (!useYamlConfig) {
-        protoConfig.MutableBlockstoreConfig()->CopyFrom(
-            yamlConfig.GetBlockstoreConfig());   // Copy even if empty
         return protoConfig;
     }
 

@@ -41,7 +41,7 @@ protected:
 
     bool DoExecute() override
     {
-        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request;
+        NProto::TAdvanceLsnLowWatermarkRequest request;
         if (Proto) {
             ParseFromTextFormat(GetInputStream(), request);
         } else {

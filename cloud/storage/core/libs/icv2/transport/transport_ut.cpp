@@ -370,13 +370,13 @@ void CheckDeferredDestruction(bool serialized)
     TFixture f(limit, destructor);
     UNIT_ASSERT(f.Connection->Activate());
     f.Engine->HoldEvents = true;
-    UNIT_ASSERT(f.Connection->Send(std::move(event)));
+    UNIT_ASSERT(f.Connection->Send(std::move(event)) == ESendResult::Accepted);
     UNIT_ASSERT_VALUES_EQUAL(destroyed->load(), 0u);
     f.Engine->CompletePendingEvent(0);
     UNIT_ASSERT_VALUES_EQUAL(destroyed->load(), 0u);
     UNIT_ASSERT_VALUES_EQUAL(bool(destructor->Event), !serialized);
     UNIT_ASSERT_VALUES_EQUAL(bool(destructor->Buffer), serialized);
-    UNIT_ASSERT(!f.Connection->Send(MakeEvent(1)));
+    UNIT_ASSERT(f.Connection->Send(MakeEvent(1)) == ESendResult::QueueFull);
     std::async(
         std::launch::async,
         [&destructor]
@@ -386,7 +386,7 @@ void CheckDeferredDestruction(bool serialized)
         })
         .get();
     UNIT_ASSERT_VALUES_EQUAL(destroyed->load(), 1u);
-    UNIT_ASSERT(f.Connection->Send(MakeEvent(1)));
+    UNIT_ASSERT(f.Connection->Send(MakeEvent(1)) == ESendResult::Accepted);
     f.Engine->Client->GetAndResetDestroyEventsCycles();
     UNIT_ASSERT_VALUES_EQUAL(destructor->MetricReads, 0u);
     f.Engine->CompletePendingEvent(1);
@@ -404,7 +404,7 @@ void CheckReservationAfterHandleRelease(bool serialized)
     TFixture f(limit);
     UNIT_ASSERT(f.Connection->Activate());
     f.Engine->HoldEvents = true;
-    UNIT_ASSERT(f.Connection->Send(std::move(event)));
+    UNIT_ASSERT(f.Connection->Send(std::move(event)) == ESendResult::Accepted);
     auto pending = f.Engine->TakePendingEvent(0);
     std::unique_ptr<IEventBase> payload;
     TIntrusivePtr<TEventSerializedData> buffer;
@@ -414,9 +414,9 @@ void CheckReservationAfterHandleRelease(bool serialized)
         payload.reset(pending->ReleaseBase().Release());
     }
     pending.reset();
-    UNIT_ASSERT(!f.Connection->Send(MakeEvent(1)));
+    UNIT_ASSERT(f.Connection->Send(MakeEvent(1)) == ESendResult::QueueFull);
     f.Engine->Client->DestroyEvent(std::move(payload), std::move(buffer));
-    UNIT_ASSERT(f.Connection->Send(MakeEvent(1)));
+    UNIT_ASSERT(f.Connection->Send(MakeEvent(1)) == ESendResult::Accepted);
 }
 
 void CheckTransportExchange(bool serialized, bool xdc)
@@ -473,7 +473,8 @@ void CheckTransportExchange(bool serialized, bool xdc)
     if (serialized) {
         event->GetChainBuffer();
     }
-    UNIT_ASSERT(sendConnection->Send(std::move(event)));
+    UNIT_ASSERT(
+        sendConnection->Send(std::move(event)) == ESendResult::Accepted);
     const auto status = result.wait_for(10s);
     sender->Stop();
     receiver->Stop();
@@ -503,8 +504,12 @@ void CheckCloseDuringWrite(bool xdc)
         auto ev = std::make_unique<TEvTest>();
         ev->Destroyed = destroyed;
         ev->AddPayload(TRope(TString(1024 * 1024, 'p')));
-        UNIT_ASSERT(connection->Send(
-            std::make_unique<IEventHandle>(ActorId, ActorId, ev.release())));
+        UNIT_ASSERT(
+            connection->Send(
+                std::make_unique<IEventHandle>(
+                    ActorId,
+                    ActorId,
+                    ev.release())) == ESendResult::Accepted);
     }
     // Wait for writes to start while the unread peer keeps data queued.
     pollfd peer{static_cast<int>(*sockets[1]), POLLIN, 0};
@@ -548,7 +553,8 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
                 [&, connection]
                 {
                     for (size_t i = 0; i < 16; ++i) {
-                        admitted += connection->Send(makeEvent());
+                        admitted += connection->Send(makeEvent()) ==
+                                    ESendResult::Accepted;
                     }
                 });
         }
@@ -558,13 +564,14 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         UNIT_ASSERT_VALUES_EQUAL(admitted.load(), 4);
         UNIT_ASSERT_VALUES_EQUAL(f.Engine->PendingEvents.size(), 4);
         f.Engine->CompletePendingEvent(0);
-        UNIT_ASSERT(second->Send(makeEvent()));
-        UNIT_ASSERT(!f.Connection->Send(makeEvent()));
+        UNIT_ASSERT(second->Send(makeEvent()) == ESendResult::Accepted);
+        UNIT_ASSERT(f.Connection->Send(makeEvent()) == ESendResult::QueueFull);
         for (size_t i = 1; i < f.Engine->PendingEvents.size(); ++i) {
             f.Engine->CompletePendingEvent(i);
         }
-        UNIT_ASSERT(!f.Connection->Send(MakeEvent(limit)));
-        UNIT_ASSERT(f.Connection->Send(makeEvent()));
+        UNIT_ASSERT(
+            f.Connection->Send(MakeEvent(limit)) == ESendResult::QueueFull);
+        UNIT_ASSERT(f.Connection->Send(makeEvent()) == ESendResult::Accepted);
         UNIT_ASSERT_VALUES_EQUAL(f.Handler->Disconnects.load(), 0u);
     }
 
@@ -575,7 +582,8 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         TFixture f(limit);
         UNIT_ASSERT(f.Connection->Activate());
         f.Engine->HoldEvents = true;
-        UNIT_ASSERT(f.Connection->Send(std::move(event)));
+        UNIT_ASSERT(
+            f.Connection->Send(std::move(event)) == ESendResult::Accepted);
         f.Connection->Close();
         f.Connection.reset();
 
@@ -583,9 +591,9 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         auto connection =
             f.Transport->CreateConnection(sockets[0], {}, f.Handler, false);
         UNIT_ASSERT(connection->Activate());
-        UNIT_ASSERT(!connection->Send(MakeEvent(1)));
+        UNIT_ASSERT(connection->Send(MakeEvent(1)) == ESendResult::QueueFull);
         f.Engine->TakePendingEvent(0).reset();
-        UNIT_ASSERT(connection->Send(MakeEvent(1)));
+        UNIT_ASSERT(connection->Send(MakeEvent(1)) == ESendResult::Accepted);
         UNIT_ASSERT_VALUES_EQUAL(f.Handler->Disconnects.load(), 0u);
     }
 
@@ -634,19 +642,20 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         {
             payload.Insert(payload.End(), TRope(chunk));
         }
-        UNIT_ASSERT(f.Connection->Send(
-            std::make_unique<IEventHandle>(
-                TEvTest::EventType,
-                0,
-                ActorId,
-                ActorId,
-                MakeIntrusive<TEventSerializedData>(
-                    std::move(payload),
-                    TEventSerializationInfo{}),
-                0)));
-        UNIT_ASSERT(!f.Connection->Send(MakeEvent(1)));
+        UNIT_ASSERT(
+            f.Connection->Send(
+                std::make_unique<IEventHandle>(
+                    TEvTest::EventType,
+                    0,
+                    ActorId,
+                    ActorId,
+                    MakeIntrusive<TEventSerializedData>(
+                        std::move(payload),
+                        TEventSerializationInfo{}),
+                    0)) == ESendResult::Accepted);
+        UNIT_ASSERT(f.Connection->Send(MakeEvent(1)) == ESendResult::QueueFull);
         f.Engine->TakePendingEvent(0).reset();
-        UNIT_ASSERT(f.Connection->Send(MakeEvent(1)));
+        UNIT_ASSERT(f.Connection->Send(MakeEvent(1)) == ESendResult::Accepted);
     }
 
     Y_UNIT_TEST(EngineDropReleasesOutputQueueReservation)
@@ -654,8 +663,10 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         const ui64 limit = MakeEvent(100)->GetSize();
         TFixture f(limit);
         UNIT_ASSERT(f.Connection->Activate());
-        UNIT_ASSERT(f.Connection->Send(MakeEvent(100)));
-        UNIT_ASSERT(f.Connection->Send(MakeEvent(100)));
+        UNIT_ASSERT(
+            f.Connection->Send(MakeEvent(100)) == ESendResult::Accepted);
+        UNIT_ASSERT(
+            f.Connection->Send(MakeEvent(100)) == ESendResult::Accepted);
         UNIT_ASSERT_VALUES_EQUAL(f.Engine->Sends.load(), 2u);
     }
 
@@ -677,7 +688,8 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
             f.Connection->Send(MakeEvent(100)),
             std::runtime_error);
         f.Engine->OnSend = {};
-        UNIT_ASSERT(f.Connection->Send(MakeEvent(100)));
+        UNIT_ASSERT(
+            f.Connection->Send(MakeEvent(100)) == ESendResult::Accepted);
     }
 
     Y_UNIT_TEST(EventRetainsReservationAfterHandleIsReleased)
@@ -695,8 +707,12 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         TFixture f;
         UNIT_ASSERT(f.Connection->Activate());
         f.Engine->HoldEvents = true;
-        UNIT_ASSERT(f.Connection->Send(
-            std::make_unique<IEventHandle>(ActorId, ActorId, event.release())));
+        UNIT_ASSERT(
+            f.Connection->Send(
+                std::make_unique<IEventHandle>(
+                    ActorId,
+                    ActorId,
+                    event.release())) == ESendResult::Accepted);
         auto pending = f.Engine->TakePendingEvent(0);
         UNIT_ASSERT(!pending->HasBuffer());
 
@@ -709,8 +725,9 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
                     expected->CreateSerializationInfo(args...);
                 const auto actualInfo =
                     actual->CreateSerializationInfo(args...);
-                UNIT_ASSERT_VALUES_EQUAL(actualInfo.IsExtendedFormat,
-                                         expectedInfo.IsExtendedFormat);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    actualInfo.IsExtendedFormat,
+                    expectedInfo.IsExtendedFormat);
                 UNIT_ASSERT_VALUES_EQUAL(
                     actualInfo.Sections.size(),
                     expectedInfo.Sections.size());
@@ -812,7 +829,7 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
     {
         TFixture f;
         UNIT_ASSERT_VALUES_EQUAL(f.Engine->Sends.load(), 0u);
-        UNIT_ASSERT(!f.Connection->Send(MakeEvent()));
+        UNIT_ASSERT(f.Connection->Send(MakeEvent()) == ESendResult::NotActive);
         f.Engine->OnRegister = [&]
         {
             f.Engine->Deliver();
@@ -837,7 +854,7 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         bool sent = false;
         f.Handler->OnEvent = [&](IEventHandle&)
         {
-            sent = f.Connection->Send(MakeEvent());
+            sent = f.Connection->Send(MakeEvent()) == ESendResult::Accepted;
         };
         f.Engine->OnRegister = [&]
         {
@@ -971,7 +988,7 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
             closing.wait_for(5s) == std::future_status::ready;
         const bool stillRegistered = !f.Engine->Unregistered.load();
         release.Set();
-        UNIT_ASSERT(sending.get());
+        UNIT_ASSERT(sending.get() == ESendResult::Accepted);
         closing.get();
         UNIT_ASSERT(closeReturned);
         UNIT_ASSERT(stillRegistered);
@@ -1007,8 +1024,8 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         const bool concurrent =
             secondEnteredFuture.wait_for(5s) == std::future_status::ready;
         release.Set();
-        UNIT_ASSERT(first.get());
-        UNIT_ASSERT(second.get());
+        UNIT_ASSERT(first.get() == ESendResult::Accepted);
+        UNIT_ASSERT(second.get() == ESendResult::Accepted);
         UNIT_ASSERT(concurrent);
         UNIT_ASSERT_VALUES_EQUAL(f.Engine->Sends.load(), 2u);
     }
@@ -1041,9 +1058,10 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
             std::async(std::launch::async, [&] { f.Transport->Stop(); });
         const bool waits =
             stopping.wait_for(50ms) == std::future_status::timeout;
-        const bool rejected = !f.Connection->Send(MakeEvent());
+        const bool rejected =
+            f.Connection->Send(MakeEvent()) == ESendResult::NotActive;
         release.Set();
-        UNIT_ASSERT(sending.get());
+        UNIT_ASSERT(sending.get() == ESendResult::Accepted);
         stopping.get();
         UNIT_ASSERT(waits);
         UNIT_ASSERT(rejected);
@@ -1060,7 +1078,7 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         TSignal stopStarted;
         std::atomic<bool> subscriberFinished = false;
         TFixture f;
-        std::future<bool> sending;
+        std::future<ESendResult> sending;
         std::future<void> stopping;
 
         // Release blocked operations before future and fixture destruction on
@@ -1118,7 +1136,7 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
             stopping.wait_for(1s) == std::future_status::ready;
 
         releaseSubscriber.Set();
-        const bool sent = sending.get();
+        const bool sent = sending.get() == ESendResult::Accepted;
         stopping.get();
         UNIT_ASSERT(sent);
         UNIT_ASSERT_C(
@@ -1212,8 +1230,9 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         }
         const auto open = firstActive ? f.Connection : second;
         const auto closed = firstActive ? second : f.Connection;
-        const bool accepted = open->Send(MakeEvent());
-        const bool rejected = !closed->Send(MakeEvent());
+        const bool accepted = open->Send(MakeEvent()) == ESendResult::Accepted;
+        const bool rejected =
+            closed->Send(MakeEvent()) == ESendResult::NotActive;
         const bool creationRejected =
             !f.Transport->CreateConnection(sockets[1], {}, f.Handler, false);
         release.Set();
@@ -1221,8 +1240,8 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         UNIT_ASSERT(accepted);
         UNIT_ASSERT(rejected);
         UNIT_ASSERT(creationRejected);
-        UNIT_ASSERT(!f.Connection->Send(MakeEvent()));
-        UNIT_ASSERT(!second->Send(MakeEvent()));
+        UNIT_ASSERT(f.Connection->Send(MakeEvent()) == ESendResult::NotActive);
+        UNIT_ASSERT(second->Send(MakeEvent()) == ESendResult::NotActive);
         UNIT_ASSERT_VALUES_EQUAL(f.Engine->Unregisters.load(), 2u);
     }
 
@@ -1239,7 +1258,8 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
                 {
                     start.Wait();
                     for (size_t i = 0; i < 1000; ++i) {
-                        accepted += f.Connection->Send(MakeEvent());
+                        accepted += f.Connection->Send(MakeEvent()) ==
+                                    ESendResult::Accepted;
                     }
                 });
         }
@@ -1256,7 +1276,7 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         closer.join();
         UNIT_ASSERT_VALUES_EQUAL(f.Engine->Sends.load(), accepted.load());
         UNIT_ASSERT_VALUES_EQUAL(f.Engine->Unregisters.load(), 1u);
-        UNIT_ASSERT(!f.Connection->Send(MakeEvent()));
+        UNIT_ASSERT(f.Connection->Send(MakeEvent()) == ESendResult::NotActive);
     }
 
     Y_UNIT_TEST(CloseWaitsForActiveCallback)
@@ -1419,7 +1439,7 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         second.get();
         UNIT_ASSERT(pending);
         UNIT_ASSERT_VALUES_EQUAL(f.Engine->Stops.load(), 1u);
-        UNIT_ASSERT(!f.Connection->Send(MakeEvent()));
+        UNIT_ASSERT(f.Connection->Send(MakeEvent()) == ESendResult::NotActive);
     }
 
     Y_UNIT_TEST(OwnershipOnRejectionAndClose)
@@ -1435,15 +1455,15 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
                 ActorId,
                 ev.release());
         };
-        UNIT_ASSERT(!f.Connection->Send(makeEvent()));
+        UNIT_ASSERT(f.Connection->Send(makeEvent()) == ESendResult::NotActive);
         UNIT_ASSERT_VALUES_EQUAL(destroyed->load(), 1u);
         UNIT_ASSERT(f.Connection->Activate());
         f.Engine->HoldEvents = true;
-        UNIT_ASSERT(f.Connection->Send(makeEvent()));
+        UNIT_ASSERT(f.Connection->Send(makeEvent()) == ESendResult::Accepted);
         f.Connection->Close();
         UNIT_ASSERT(f.Connection->WhenClosed().HasValue());
         UNIT_ASSERT_VALUES_EQUAL(destroyed->load(), 1u);
-        UNIT_ASSERT(!f.Connection->Send(makeEvent()));
+        UNIT_ASSERT(f.Connection->Send(makeEvent()) == ESendResult::NotActive);
         UNIT_ASSERT_VALUES_EQUAL(destroyed->load(), 2u);
         f.Transport->Stop();
         UNIT_ASSERT_VALUES_EQUAL(destroyed->load(), 3u);

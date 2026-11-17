@@ -1,5 +1,6 @@
 #include "command.h"
 
+#include <cloud/filestore/libs/client/durable.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/action.pb.h>
 
@@ -24,9 +25,13 @@ TString ReadFile(const TString& path)
 }
 
 class TExecuteActionCommand final
-    : public TFileStoreServiceCommand
+    : public TCommand
 {
 private:
+    TString Endpoint;
+    IFileStoreServicePtr FileStoreClient;
+    IEndpointManagerPtr EndpointClient;
+
     TString Action;
     TString Input;
     TString InputFilePath;
@@ -46,7 +51,13 @@ private:
 
         STORAGE_DEBUG("Sending ExecuteAction request");
         return WaitFor(
-            Client->ExecuteAction(std::move(callContext), std::move(request)));
+            FileStoreClient
+                ? FileStoreClient->ExecuteAction(
+                      std::move(callContext),
+                      std::move(request))
+                : EndpointClient->ExecuteAction(
+                      std::move(callContext),
+                      std::move(request)));
     }
 
     NProto::TExecuteActionResponse SendAction(
@@ -171,6 +182,14 @@ private:
 public:
     TExecuteActionCommand()
     {
+        Opts.AddLongOption(
+                "endpoint",
+                "service to send the action to: filestore-server or "
+                "filestore-vhost")
+            .RequiredArgument("ENDPOINT")
+            .Choices({"filestore", "vhost"})
+            .DefaultValue("filestore")
+            .StoreResult(&Endpoint);
         Opts.AddLongOption("action", "name of action to execute")
             .RequiredArgument("STR")
             .StoreResult(&Action);
@@ -201,8 +220,64 @@ public:
             .StoreResult(&AllShardsDelaySec);
     }
 
+    void Init() override
+    {
+        TCommand::Init();
+
+        if (Endpoint == "filestore") {
+            FileStoreClient = CreateDurableClient(
+                Logging,
+                Timer,
+                Scheduler,
+                CreateRetryPolicy(ClientConfig),
+                CreateFileStoreClient(
+                    ClientConfig,
+                    Logging,
+                    CertificateProvider));
+        } else {
+            EndpointClient = CreateDurableClient(
+                Logging,
+                Timer,
+                Scheduler,
+                CreateRetryPolicy(ClientConfig),
+                CreateEndpointManagerClient(
+                    ClientConfig,
+                    Logging,
+                    CertificateProvider));
+        }
+    }
+
+    void Start() override
+    {
+        TCommand::Start();
+
+        if (FileStoreClient) {
+            FileStoreClient->Start();
+        } else {
+            EndpointClient->Start();
+        }
+    }
+
+    void Stop() override
+    {
+        if (FileStoreClient) {
+            FileStoreClient->Stop();
+        } else if (EndpointClient) {
+            EndpointClient->Stop();
+        }
+
+        TCommand::Stop();
+    }
+
     bool Execute() override
     {
+        // Before the input is read, which may wait for stdin.
+        if (AllShards && !FileStoreClient) {
+            STORAGE_THROW_SERVICE_ERROR(MakeError(
+                E_ARGUMENT,
+                "--all-shards is supported only for --endpoint filestore"));
+        }
+
         if (!InputFilePath.empty()) {
             Input = ReadFile(InputFilePath);
         }

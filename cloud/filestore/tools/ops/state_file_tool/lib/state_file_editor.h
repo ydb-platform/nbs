@@ -29,13 +29,16 @@ public:
     // and offset. Entries being freed or discarded are exempt from these checks.
     // Free entries cannot be made live.
     // DirectoryHandles state files are not supported by this ring-buffer editor.
+    // Corrupt files are rejected unless allowCorrupted is set. All patch
+    // validation checks still apply.
     //
     // For an empty file with ReadPos at a slack marker and WritePos == 0,
     // set both cursors to zero in the patch, including metadata-only repairs.
     static NCloud::NProto::TError PatchStateFile(
         TFileRingBufferAccessor& accessor,
         const NProto::TStateFileDump& newState,
-        NProto::EStateFileType fileType);
+        NProto::EStateFileType fileType,
+        bool allowCorrupted);
 };
 
 }   // namespace NCloud::NFileStore::NStateFileTool

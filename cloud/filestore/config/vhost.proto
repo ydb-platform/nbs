@@ -4,6 +4,7 @@ package NCloud.NFileStore.NProto;
 
 import "cloud/filestore/config/client.proto";
 import "cloud/filestore/config/server.proto";
+import "cloud/filestore/config/vfs.proto";
 import "cloud/storage/core/protos/endpoints.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
@@ -112,6 +113,7 @@ message TVhostServiceConfig
     // such as SetNodeAttr, ReleaseHandle, data requests with O_DIRECT flag.
     // The value is compared with the number of flush batches needed to drain
     // unflushed WriteData requests.
+    // Default: 8. Value 0 disables this threshold.
     optional uint32 WriteBackCacheMaxQueuedFlushBatchesPerNode = 25;
 
     // Limit of the total size (in bytes) of the HandleOpsQueue state files of
@@ -133,6 +135,9 @@ message TVhostServiceConfig
     // still be positive. Undersized requests reject new-file creation and
     // preserve existing file sizes.
     optional uint64 WriteBackCacheMinStateFileSize = 28;
+
+    // Lock acquisition method for WriteBackCache.
+    optional EWriteBackCacheLockMethod WriteBackCacheLockMethod = 29;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
