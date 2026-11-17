@@ -29,8 +29,8 @@ TMaybe<TRecordBounds> ScanBoundaryFrames(
     bool& reportedError)
 {
     // Ignore clock-relative timestamps interpreted as Unix timestamps.
-    // TODO(proller): Verify production timestamps after deploying
-    // https://github.com/ydb-platform/nbs/pull/7904
+    // TODO(proller): Verify production timestamps after deploying fix
+    // https://github.com/ydb-platform/nbs/issues/7988
     // Keep this cutoff while affected historical logs still need support.
     constexpr auto MinRecordTime = TInstant::Seconds(946684800); // 2000-01-01 UTC
     TMaybe<TRecordBounds> result;
