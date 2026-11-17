@@ -14,6 +14,7 @@
 #include <util/string/builder.h>
 
 #include <functional>
+#include <mutex>
 
 namespace NCloud::NJournalled {
 
@@ -23,19 +24,54 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Touched only in the executor, so no locking is needed: the requests, the
-// formats and the stop all run there.
-struct TJournalledDeviceSpec
+// The requests read the device in the threads of the connections, so it is
+// kept under a lock.
+class TJournalledDeviceSpec
 {
-    TJournalledDeviceConfig Config;
+private:
+    const TJournalledDeviceConfig Config;
 
     // Set while a format of the device is in flight: a parallel format of
     // the same device is rejected.
     bool Formatting = false;
 
+    mutable std::mutex DeviceLock;
+
     // Null while the device is not started: it failed to start or to be
     // recreated, and stays so until the next format succeeds.
     IJournalledDevicePtr Device;
+
+public:
+    explicit TJournalledDeviceSpec(TJournalledDeviceConfig config)
+        : Config(std::move(config))
+    {}
+
+    const TJournalledDeviceConfig& GetConfig() const
+    {
+        return Config;
+    }
+
+    IJournalledDevicePtr GetDevice() const
+    {
+        std::lock_guard lock(DeviceLock);
+        return Device;
+    }
+
+    void SetDevice(IJournalledDevicePtr device)
+    {
+        std::lock_guard lock(DeviceLock);
+        Device.swap(device);
+    }
+
+    bool IsFormatting() const
+    {
+        return Formatting;
+    }
+
+    void SetFormatting(bool formatting)
+    {
+        Formatting = formatting;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,8 +87,8 @@ THashMap<TString, TJournalledDeviceSpec> MakeDeviceSpecs(
     THashMap<TString, TJournalledDeviceSpec> specs;
 
     for (auto& config: configs) {
-        auto& spec = specs[config.DeviceUUID];
-        spec.Config = std::move(config);
+        auto uuid = config.DeviceUUID;
+        specs.try_emplace(std::move(uuid), std::move(config));
     }
 
     return specs;
@@ -69,7 +105,7 @@ TVector<const TJournalledDeviceSpec*> SortDevices(
     }
 
     Sort(sorted, [](const auto* lhs, const auto* rhs) {
-        return lhs->Config.DeviceUUID < rhs->Config.DeviceUUID;
+        return lhs->GetConfig().DeviceUUID < rhs->GetConfig().DeviceUUID;
     });
 
     return sorted;
@@ -140,7 +176,7 @@ public:
                 }
 
                 return self->StartJournalledDevice(spec).Apply(
-                    [uuid = spec.Config.DeviceUUID](const auto& future)
+                    [uuid = spec.GetConfig().DeviceUUID](const auto& future)
                     {
                         auto error = ExtractResponse(future);
                         if (HasError(error)) {
@@ -189,7 +225,7 @@ public:
         NProto::TListDevicesResponse response;
 
         for (const auto& device: SortedDevices) {
-            const auto& config = device->Config;
+            const auto& config = device->GetConfig();
             const ui64 deviceSize = config.BlocksCount * config.BlockSize;
 
             auto& info = *response.AddDevices();
@@ -339,11 +375,12 @@ private:
             static_cast<ui32>(DeviceSpecs.size()),
             [](TJournalledDeviceSpec& spec) -> TFuture<void>
             {
-                if (!spec.Device) {
+                auto device = spec.GetDevice();
+                if (!device) {
                     return MakeFuture();
                 }
 
-                return spec.Device->Stop();
+                return device->Stop();
             }));
     }
 
@@ -356,7 +393,8 @@ private:
     // Runs in the executor: waits for the device to start.
     NProto::TError DoStartJournalledDevice(TJournalledDeviceSpec& spec)
     {
-        auto [device, error] = JournalledDeviceFactory->Create(spec.Config);
+        auto [device, error] =
+            JournalledDeviceFactory->Create(spec.GetConfig());
         if (HasError(error)) {
             return error;
         }
@@ -366,7 +404,7 @@ private:
             return error;
         }
 
-        spec.Device = std::move(device);
+        spec.SetDevice(std::move(device));
         return {};
     }
 
@@ -374,12 +412,13 @@ private:
     // not started has nothing to stop.
     void DoStopJournalledDevice(TJournalledDeviceSpec& spec)
     {
-        if (!spec.Device) {
+        auto device = spec.GetDevice();
+        if (!device) {
             return;
         }
 
-        Executor->WaitFor(spec.Device->Stop());
-        spec.Device = nullptr;
+        Executor->WaitFor(device->Stop());
+        spec.SetDevice(nullptr);
     }
 
     NProto::TFormatDeviceResponse DoFormatDevice(
@@ -395,14 +434,15 @@ private:
             return error;
         }
 
-        if (!spec->Device) {
+        auto device = spec->GetDevice();
+        if (!device) {
             return MakeError(
                 E_INVALID_STATE,
                 TStringBuilder()
                     << "Device " << deviceUUID.Quote() << " is not started");
         }
 
-        return spec->Device;
+        return device;
     }
 
     TResultOrError<TJournalledDeviceSpec*> GetDeviceSpec(
@@ -477,7 +517,7 @@ NProto::TFormatDeviceResponse TJournalledDeviceHandler::DoFormatDevice(
     // Figure out the region to wipe
     //
 
-    const auto& config = spec->Config;
+    const auto& config = spec->GetConfig();
 
     //
     // Wipe only the journal metadata unless the whole device is requested:
@@ -505,7 +545,7 @@ NProto::TFormatDeviceResponse TJournalledDeviceHandler::DoFormatDevice(
     // completes
     //
 
-    if (spec->Formatting) {
+    if (spec->IsFormatting()) {
         return TErrorResponse(
             E_INVALID_STATE,
             TStringBuilder() << "Device " << config.DeviceUUID.Quote()
@@ -517,13 +557,12 @@ NProto::TFormatDeviceResponse TJournalledDeviceHandler::DoFormatDevice(
     // the format completes
     //
 
-    auto& formatting = spec->Formatting;
-    formatting = true;
+    spec->SetFormatting(true);
     ++FormatsInFlight;
 
     Y_DEFER
     {
-        formatting = false;
+        spec->SetFormatting(false);
         --FormatsInFlight;
         FormatsDone.BroadCast();
     };

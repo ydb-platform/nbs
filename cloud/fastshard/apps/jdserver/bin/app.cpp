@@ -60,6 +60,7 @@ int AppMain(TBootstrap& bootstrap)
         "Serving the device "
         << options->DeviceUUID.Quote() << " on port " << options->Port
         << (options->NoJournal ? " without a journal" : "") << " with "
+        << options->ConnectionExecutors << " connection executor(s) and "
         << options->AioThreads << " AIO thread(s), press Ctrl+C to stop");
 
     //

@@ -20,6 +20,8 @@
 #include <functional>
 #include <mutex>
 #include <optional>
+#include <set>
+#include <thread>
 
 namespace NCloud::NJournalled {
 
@@ -156,25 +158,42 @@ struct TFixture: public NUnitTest::TBaseFixture
     std::shared_ptr<IStartable> Server;
     TPortManager PortManager;
 
+    ui32 ConnectionExecutorCount = 0;
+    TVector<TExecutorPtr> ConnectionExecutors;
+
     void SetUp(NUnitTest::TTestContext& /*testContext*/) override
     {
         Port = PortManager.GetTcpPort();
         Backend = std::make_shared<TTestBackend>();
         Executor = TExecutor::Create("TestExecutor");
+        for (ui32 i = 0; i != ConnectionExecutorCount; ++i) {
+            ConnectionExecutors.push_back(
+                TExecutor::Create("TestConnExecutor"));
+        }
         Logging = CreateLoggingService(
             "console",
             {.FiltrationLevel = TLOG_RESOURCES});
-        Server =
-            CreateServer(TNetworkAddress{Port}, Logging, Executor, Backend);
+        Server = CreateServer(
+            TNetworkAddress{Port},
+            Logging,
+            Executor,
+            Backend,
+            ConnectionExecutors);
 
         Logging->Start();
         Executor->Start();
+        for (const auto& executor: ConnectionExecutors) {
+            executor->Start();
+        }
         Server->Start();
     }
 
     void TearDown(NUnitTest::TTestContext& /* testContext */) override
     {
         Server->Stop();
+        for (const auto& executor: ConnectionExecutors) {
+            executor->Stop();
+        }
         Executor->Stop();
         Logging->Stop();
     }
@@ -225,6 +244,25 @@ public:
         Y_ENSURE(response.ParseFromString(payload));
 
         return response;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TConnectionExecutorsFixture: public TFixture
+{
+    // Kept open, so the server is stopped with live connections.
+    TVector<std::unique_ptr<TTestClient>> Clients;
+
+    TConnectionExecutorsFixture()
+    {
+        ConnectionExecutorCount = 2;
+    }
+
+    static std::thread::id GetThreadId(TExecutor& executor)
+    {
+        auto future = executor.Execute([] { return std::this_thread::get_id(); });
+        return future.GetValueSync();
     }
 };
 
@@ -605,6 +643,54 @@ Y_UNIT_TEST_SUITE(TDeviceTCPServerTest)
         queue.Stop();
     }
 
+    Y_UNIT_TEST_F(
+        ShouldServeConnectionsInConnectionExecutors,
+        TConnectionExecutorsFixture)
+    {
+        const ui32 clientCount = 4;
+
+        std::mutex lock;
+        std::set<std::thread::id> actualThreads;
+
+        Backend->AcquireDevicesImpl = [&](auto)
+        {
+            std::lock_guard guard(lock);
+            actualThreads.insert(std::this_thread::get_id());
+            return MakeFuture(NProto::TAcquireDevicesResponse());
+        };
+
+        for (ui32 i = 0; i != clientCount; ++i) {
+            Clients.push_back(std::make_unique<TTestClient>(Port));
+        }
+
+        for (ui32 i = 0; i != clientCount; ++i) {
+            NProto::TDeviceProtocolRequest request;
+            request.SetRequestId(i);
+            request.MutableAcquireDevices();
+            Clients[i]->Send(request);
+        }
+
+        for (ui32 i = 0; i != clientCount; ++i) {
+            const auto response = Clients[i]->Receive();
+            UNIT_ASSERT_VALUES_EQUAL(i, response.GetRequestId());
+            UNIT_ASSERT(response.HasAcquireDevices());
+        }
+
+        //
+        // Expect only the connection executors to serve the requests
+        //
+
+        std::set<std::thread::id> expectedThreads;
+        for (const auto& executor: ConnectionExecutors) {
+            expectedThreads.insert(GetThreadId(*executor));
+        }
+
+        std::lock_guard guard(lock);
+        UNIT_ASSERT_VALUES_EQUAL(ConnectionExecutorCount, expectedThreads.size());
+        UNIT_ASSERT(expectedThreads == actualThreads);
+        UNIT_ASSERT(!actualThreads.contains(GetThreadId(*Executor)));
+    }
+
     Y_UNIT_TEST_F(ShouldDispatchFormatDevice, TFixture)
     {
         const ui64 requestId = 50;
@@ -982,6 +1068,7 @@ struct TServiceFixture: public NUnitTest::TBaseFixture
                      Logging,
                      Executor,
                      std::make_shared<TInMemoryDeviceManager>(),
+                     TVector<TExecutorPtr>{},
                      TServerConfig{
                          .ListenAddress = TNetworkAddress{Port},
                          .JournalEnabled = false,

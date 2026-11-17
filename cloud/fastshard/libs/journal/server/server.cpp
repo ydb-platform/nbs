@@ -12,10 +12,12 @@
 #include <library/cpp/coroutine/engine/network.h>
 #include <library/cpp/coroutine/engine/sockpool.h>
 #include <library/cpp/coroutine/listener/listen.h>
+#include <library/cpp/threading/future/wait/wait.h>
 
 #include <util/generic/scope.h>
 #include <util/network/address.h>
 
+#include <mutex>
 #include <optional>
 #include <type_traits>
 
@@ -81,14 +83,17 @@ SN_METHODS(STORAGE_DECLARE_METHOD)
 struct TConnection
 {
     TSocketHolder Socket;
+    const TExecutorPtr Executor;
+
     TContLockFreeQueue<NProto::TDeviceProtocolResponse> ResponseQueue;
 
     TCont* Send = nullptr;
     TCont* Recv = nullptr;
 
-    TConnection(TSocketHolder socket, TContExecutor* e)
+    TConnection(TSocketHolder socket, TExecutorPtr executor)
         : Socket(std::move(socket))
-        , ResponseQueue(e)
+        , Executor(std::move(executor))
+        , ResponseQueue(Executor->GetContExecutor())
     {}
 
     void OnReceiveStopped()
@@ -139,10 +144,13 @@ private:
     const TNetworkAddress ListenAddress;
     const TExecutorPtr Executor;
     const IServerBackendPtr Backend;
+    const TVector<TExecutorPtr> ConnectionExecutors;
     const TLog Log;
 
     std::optional<TContListener> Listener;
+    size_t NextConnectionExecutor = 0;
 
+    std::mutex ConnectionsLock;
     TVector<TConnectionPtr> Connections;
 
 public:
@@ -150,7 +158,8 @@ public:
         const TNetworkAddress& listenAddress,
         ILoggingServicePtr logging,
         TExecutorPtr executor,
-        IServerBackendPtr backend);
+        IServerBackendPtr backend,
+        TVector<TExecutorPtr> connectionExecutors);
 
     // IStartable
 
@@ -165,6 +174,12 @@ public:
 private:
     void StartListen();
     void StopImpl();
+
+    // Run in the executor of the connection.
+    void StartConnection(TConnectionPtr conn);
+    void StopConnection(const TConnectionPtr& conn);
+
+    bool HasConnections();
 
     void Receive(TConnectionPtr conn);
     void Send(TConnectionPtr conn);
@@ -239,10 +254,14 @@ TServer::TServer(
     const TNetworkAddress& listenAddress,
     ILoggingServicePtr logging,
     TExecutorPtr executor,
-    IServerBackendPtr backend)
+    IServerBackendPtr backend,
+    TVector<TExecutorPtr> connectionExecutors)
     : ListenAddress(listenAddress)
     , Executor(std::move(executor))
     , Backend(std::move(backend))
+    , ConnectionExecutors(
+          connectionExecutors.empty() ? TVector<TExecutorPtr>{Executor}
+                                      : std::move(connectionExecutors))
     , Log(logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
 {}
 
@@ -278,9 +297,36 @@ void TServer::OnAcceptFull(const TAcceptFull& accept)
 
     SetNoDelay(socket, true);
 
-    TContExecutor* e = Executor->GetContExecutor();
+    //
+    // Add the connection to the list first, so that a stop finds it
+    //
 
-    auto conn = std::make_shared<TConnection>(std::move(socket), e);
+    auto executor = ConnectionExecutors[
+        NextConnectionExecutor++ % ConnectionExecutors.size()];
+
+    auto conn = std::make_shared<TConnection>(std::move(socket), executor);
+
+    {
+        std::lock_guard lock(ConnectionsLock);
+        Connections.push_back(conn);
+    }
+
+    //
+    // Create the coroutines in the thread that runs them
+    //
+
+    executor->ExecuteSimple(
+        [weakSelf = weak_from_this(), conn = std::move(conn)]() mutable
+        {
+            if (auto self = weakSelf.lock()) {
+                self->StartConnection(std::move(conn));
+            }
+        });
+}
+
+void TServer::StartConnection(TConnectionPtr conn)
+{
+    TContExecutor* e = conn->Executor->GetContExecutor();
 
     conn->Send = e->CreateOwned(
         [weakSelf = weak_from_this(), conn](TCont*)
@@ -299,8 +345,23 @@ void TServer::OnAcceptFull(const TAcceptFull& accept)
             }
         },
         "receive");
+}
 
-    Connections.push_back(conn);
+void TServer::StopConnection(const TConnectionPtr& conn)
+{
+    if (conn->Send) {
+        conn->Send->Cancel();
+    }
+
+    if (conn->Recv) {
+        conn->Recv->Cancel();
+    }
+}
+
+bool TServer::HasConnections()
+{
+    std::lock_guard lock(ConnectionsLock);
+    return !Connections.empty();
 }
 
 void TServer::StartListen()
@@ -318,19 +379,31 @@ void TServer::StopImpl()
         Listener->Stop();
     }
 
-    for (auto& conn: Connections) {
-        if (conn->Send) {
-            conn->Send->Cancel();
-        }
+    //
+    // Cancel the coroutines of every connection in its own executor
+    //
 
-        if (conn->Recv) {
-            conn->Recv->Cancel();
-        }
+    TVector<TConnectionPtr> connections;
+    {
+        std::lock_guard lock(ConnectionsLock);
+        connections = Connections;
     }
+
+    TVector<TFuture<void>> futures;
+    futures.reserve(connections.size());
+
+    for (const auto& conn: connections) {
+        futures.push_back(conn->Executor->Execute(
+            [this, conn] { StopConnection(conn); }));
+    }
+
+    Executor->WaitFor(WaitAll(futures));
+
+    connections.clear();
 
     Listener.reset();
 
-    while (!Connections.empty()) {
+    while (HasConnections()) {
         RunningCont()->Yield();
     }
 
@@ -396,6 +469,7 @@ void TServer::OnExit(TConnectionPtr conn)
         "remove connection "
         << PrintHostAndPort(*NAddr::GetPeerAddr(conn->Socket)));
 
+    std::lock_guard lock(ConnectionsLock);
     std::erase(Connections, conn);
 }
 
@@ -492,13 +566,15 @@ std::shared_ptr<IStartable> CreateServer(
     const TNetworkAddress& listenAddress,
     ILoggingServicePtr logging,
     TExecutorPtr executor,
-    IServerBackendPtr backend)
+    IServerBackendPtr backend,
+    TVector<TExecutorPtr> connectionExecutors)
 {
     return std::make_shared<TServer>(
         listenAddress,
         std::move(logging),
         std::move(executor),
-        std::move(backend));
+        std::move(backend),
+        std::move(connectionExecutors));
 }
 
 }   // namespace NCloud::NJournalled
