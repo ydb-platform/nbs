@@ -230,15 +230,18 @@ TTrimFreshBlobsResult TPartitionFreshBlobState::TrimCollectedFreshBlobs(
 
 std::optional<TSelectiveTrimPlan>
 TPartitionFreshBlobState::BuildSelectiveTrimPlan(
-    ui64 ordinaryTrimToCommitId,
-    ui64 selectiveTrimToCommitId,
-    ui64 keptToCommitId,
-    ui64 lastSentSelectiveTrimToCommitId,
-    ui32 currentGeneration,
-    ui64 maxFlags) const
+    const TSelectiveTrimPlanParams& params) const
 {
+    // The barrier must be above OrdinaryTrimToCommitId and at or below
+    // SelectiveTrimToCommitId. An overwritten fresh write that has not
+    // completed can let OrdinaryTrimToCommitId pass SelectiveTrimToCommitId.
+    if (params.SelectiveTrimToCommitId <= params.OrdinaryTrimToCommitId) {
+        return std::nullopt;
+    }
+
     const ui64 minTrimToCommitId =
-        Max(ordinaryTrimToCommitId, lastSentSelectiveTrimToCommitId);
+        Max(params.OrdinaryTrimToCommitId,
+            params.LastSentSelectiveTrimToCommitId);
 
     TSelectiveTrimPlan plan{.TrimToCommitId = minTrimToCommitId};
     // Dead blobs at or below minTrimToCommitId that may carry Keep flags.
@@ -247,10 +250,10 @@ TPartitionFreshBlobState::BuildSelectiveTrimPlan(
     // the live blobs after the last dead one are dropped at the end.
     size_t keepCount = 0;
 
-    for (auto it =
-             UntrimmedFreshBlobsByCommitId.upper_bound(ordinaryTrimToCommitId);
+    for (auto it = UntrimmedFreshBlobsByCommitId.upper_bound(
+             params.OrdinaryTrimToCommitId);
          it != UntrimmedFreshBlobsByCommitId.end() &&
-         it->first <= selectiveTrimToCommitId;
+         it->first <= params.SelectiveTrimToCommitId;
          ++it)
     {
         const auto& [commitId, blob] = *it;
@@ -258,7 +261,7 @@ TPartitionFreshBlobState::BuildSelectiveTrimPlan(
         if (commitId <= minTrimToCommitId) {
             if (blob.Dead) {
                 deadKept.emplace_back(commitId, blob.BlobId);
-            } else if (commitId > keptToCommitId) {
+            } else if (commitId > params.KeptToCommitId) {
                 // Covered by a soft command that failed. The new barrier is at
                 // least as high, so this Keep is mandatory. These live blobs
                 // are a subset of the Keep list of that command, so they fit
@@ -270,7 +273,7 @@ TPartitionFreshBlobState::BuildSelectiveTrimPlan(
         }
 
         if (!blob.Dead) {
-            if (plan.Keep.size() >= maxFlags) {
+            if (plan.Keep.size() >= params.MaxFlags) {
                 // The flag budget is spent.
                 break;
             }
@@ -288,7 +291,7 @@ TPartitionFreshBlobState::BuildSelectiveTrimPlan(
     // the barrier, which does not touch them.
     plan.Keep.resize(keepCount);
     Y_DEBUG_ABORT_UNLESS(
-        plan.Keep.size() <= maxFlags,
+        plan.Keep.size() <= params.MaxFlags,
         "Too many mandatory Keep flags: %lu",
         plan.Keep.size());
 
@@ -296,7 +299,7 @@ TPartitionFreshBlobState::BuildSelectiveTrimPlan(
     // map until a later selective trim sends their DoNotKeep, or until the hard
     // barrier of an ordinary trim, which ignores Keep, passes them.
     for (const auto& [commitId, blobId]: deadKept) {
-        if (plan.Keep.size() + plan.DoNotKeep.size() >= maxFlags) {
+        if (plan.Keep.size() + plan.DoNotKeep.size() >= params.MaxFlags) {
             break;
         }
         plan.DoNotKeep.push_back(blobId);
@@ -314,14 +317,14 @@ TPartitionFreshBlobState::BuildSelectiveTrimPlan(
     // We should add blobs that are definitely unkept and will be deleted
     // after the selective trim.
     const ui64 unkeptFromCommitId =
-        Max(lastSentSelectiveTrimToCommitId,
+        Max(params.LastSentSelectiveTrimToCommitId,
             // Selective trim state is not restored on restart. Hence we do not
             // need to look below the current generation of commits.
-            MakeCommitId(currentGeneration, 0));
+            MakeCommitId(params.CurrentGeneration, 0));
     for (auto it =
              UntrimmedFreshBlobsByCommitId.upper_bound(unkeptFromCommitId);
          it != UntrimmedFreshBlobsByCommitId.end() &&
-         it->first <= ordinaryTrimToCommitId;
+         it->first <= params.OrdinaryTrimToCommitId;
          ++it)
     {
         plan.CollectingCommitIds.push_back(it->first);
