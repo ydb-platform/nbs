@@ -842,7 +842,12 @@ func TestImageChecksumCalculated(t *testing.T) {
 	// one.
 	checksums := []uint32{0, 0, 0xDEADBEEF, 0xDEADBEEF, 0xFFFFFFFF, 1, 0}
 	for _, checksum := range checksums {
-		err := storage.ImageChecksumCalculated(ctx, "image", checksum)
+		err := storage.ImageChecksumCalculated(
+			ctx,
+			"image",
+			"create_image",
+			checksum,
+		)
 		require.NoError(t, err)
 
 		requireImageChecksum(t, ctx, storage, "image", checksum)
@@ -910,7 +915,12 @@ func TestImageChecksumCalculatedKeepsOtherFields(t *testing.T) {
 
 	checkImage()
 
-	err = storage.ImageChecksumCalculated(ctx, image.ID, 42)
+	err = storage.ImageChecksumCalculated(
+		ctx,
+		image.ID,
+		image.CreateTaskID,
+		42,
+	)
 	require.NoError(t, err)
 
 	expected.Checksum = 42
@@ -937,7 +947,7 @@ func TestImageChecksumCalculatedRejectsUnavailableImage(t *testing.T) {
 
 	// Its checksum was stored before the deletion.
 	createReadyImage(t, ctx, storage, "deleting", "other")
-	err = storage.ImageChecksumCalculated(ctx, "deleting", 7)
+	err = storage.ImageChecksumCalculated(ctx, "deleting", "create_deleting", 7)
 	require.NoError(t, err)
 	_, err = storage.DeleteImage(ctx, "deleting", "delete", time.Now())
 	require.NoError(t, err)
@@ -969,6 +979,7 @@ func TestImageChecksumCalculatedRejectsUnavailableImage(t *testing.T) {
 		err = storage.ImageChecksumCalculated(
 			ctx,
 			testCase.imageID,
+			"create_"+testCase.imageID,
 			testCase.checksum,
 		)
 		require.Error(t, err, testCase.imageID)
@@ -994,12 +1005,37 @@ func TestImageChecksumCalculatedRejectsUnavailableImage(t *testing.T) {
 	}
 }
 
+// An image that is deleted and created again with the same id is another
+// image: it is created by another task.
+func TestImageChecksumCalculatedRejectsImageCreatedByAnotherTask(
+	t *testing.T,
+) {
+
+	ctx, storage := newImageBackupTestStorage(t)
+
+	err := storage.ImageChecksumCalculated(ctx, "image", "create_image", 7)
+	require.NoError(t, err)
+
+	err = storage.ImageChecksumCalculated(ctx, "image", "another", 42)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.False(t, errors.IsSilent(err))
+	require.ErrorContains(
+		t,
+		err,
+		"it is created by task create_image, not by task another",
+	)
+
+	// Nothing is written.
+	requireImageChecksum(t, ctx, storage, "image", 7)
+}
+
 // Guards the row mapping: a column that is written but not scanned (or the
 // other way round) loses the checksum on the next whole-row rewrite.
 func TestImageChecksumSurvivesOtherUpdates(t *testing.T) {
 	ctx, storage := newImageBackupTestStorage(t)
 
-	err := storage.ImageChecksumCalculated(ctx, "image", 42)
+	err := storage.ImageChecksumCalculated(ctx, "image", "create_image", 42)
 	require.NoError(t, err)
 	requireImageChecksum(t, ctx, storage, "image", 42)
 
@@ -1040,7 +1076,12 @@ func TestImageChecksumCalculatedRacesWithDeletion(t *testing.T) {
 		go func() {
 			<-start
 			time.Sleep(delay)
-			set <- storage.ImageChecksumCalculated(ctx, imageID, 42)
+			set <- storage.ImageChecksumCalculated(
+				ctx,
+				imageID,
+				"create_"+imageID,
+				42,
+			)
 		}()
 		go func() {
 			<-start
@@ -1098,7 +1139,12 @@ func TestImageChecksumCalculatedRacesWithBackupCompletion(t *testing.T) {
 		completed := make(chan error, 1)
 		go func() {
 			<-start
-			set <- storage.ImageChecksumCalculated(ctx, imageID, 42)
+			set <- storage.ImageChecksumCalculated(
+				ctx,
+				imageID,
+				"create_"+imageID,
+				42,
+			)
 		}()
 		go func() {
 			<-start
@@ -1193,7 +1239,12 @@ func TestImageChecksumOfImageCreatedBeforeMigration(t *testing.T) {
 	checkImage(false)
 
 	// Zero differs from a checksum that is not calculated.
-	err = storage.ImageChecksumCalculated(ctx, "image", 0)
+	err = storage.ImageChecksumCalculated(
+		ctx,
+		"image",
+		"", // createTaskID
+		0,
+	)
 	require.NoError(t, err)
 	checkImage(true)
 

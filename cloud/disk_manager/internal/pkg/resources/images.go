@@ -1246,12 +1246,14 @@ func (s *storageYDB) imageBackupCompleted(
 	return err
 }
 
-// The status is checked and the checksum is written in one transaction, so
-// the checksum is never stored for an image that is not ready anymore.
+// The image is checked and the checksum is written in one transaction, so
+// the checksum is never stored for an image that is not ready anymore or that
+// has been created again with the same id.
 func (s *storageYDB) imageChecksumCalculated(
 	ctx context.Context,
 	session *persistence.Session,
 	imageID string,
+	createTaskID string,
 	checksum uint32,
 ) error {
 
@@ -1306,6 +1308,22 @@ func (s *storageYDB) imageChecksumCalculated(
 			"checksum of image with id %v and status %v can't be set",
 			imageID,
 			imageStatusToString(state.status),
+		)
+	}
+
+	if state.createTaskID != createTaskID {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return err
+		}
+
+		return errors.NewNonRetriableErrorf(
+			"checksum of image with id %v can't be set: the image was "+
+				"deleted and created again with the same id, it is created "+
+				"by task %v, not by task %v",
+			imageID,
+			state.createTaskID,
+			createTaskID,
 		)
 	}
 
@@ -1679,6 +1697,7 @@ func (s *storageYDB) ImageBackupCompleted(
 func (s *storageYDB) ImageChecksumCalculated(
 	ctx context.Context,
 	imageID string,
+	createTaskID string,
 	checksum uint32,
 ) error {
 
@@ -1689,6 +1708,7 @@ func (s *storageYDB) ImageChecksumCalculated(
 				ctx,
 				session,
 				imageID,
+				createTaskID,
 				checksum,
 			)
 		},

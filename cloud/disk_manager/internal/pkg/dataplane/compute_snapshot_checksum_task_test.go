@@ -658,6 +658,7 @@ func (r *checksumTestRunners) requireTaskFailed(
 
 	taskState, _ := r.getTaskState(t, taskID)
 	require.Equal(t, tasks_storage.TaskStatusCancelled, taskState.Status)
+	require.False(t, taskState.ErrorSilent)
 	require.Contains(t, taskState.ErrorMessage, "Non retriable error")
 	require.Contains(t, taskState.ErrorMessage, expectedErrorMessage)
 }

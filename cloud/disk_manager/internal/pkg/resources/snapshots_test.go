@@ -995,7 +995,12 @@ func TestSnapshotChecksumCalculated(t *testing.T) {
 	// one.
 	checksums := []uint32{0, 0, 0xDEADBEEF, 0xDEADBEEF, 0xFFFFFFFF, 1, 0}
 	for _, checksum := range checksums {
-		err := storage.SnapshotChecksumCalculated(ctx, "snapshot", checksum)
+		err := storage.SnapshotChecksumCalculated(
+			ctx,
+			"snapshot",
+			"create",
+			checksum,
+		)
 		require.NoError(t, err)
 
 		requireSnapshotChecksum(t, ctx, storage, "snapshot", checksum)
@@ -1060,7 +1065,12 @@ func TestSnapshotChecksumCalculatedKeepsOtherFields(t *testing.T) {
 
 	checkSnapshot()
 
-	err = storage.SnapshotChecksumCalculated(ctx, snapshot.ID, 42)
+	err = storage.SnapshotChecksumCalculated(
+		ctx,
+		snapshot.ID,
+		snapshot.CreateTaskID,
+		42,
+	)
 	require.NoError(t, err)
 
 	expected.Checksum = 42
@@ -1088,7 +1098,12 @@ func TestSnapshotChecksumCalculatedRejectsUnavailableSnapshot(t *testing.T) {
 
 	// Its checksum was stored before the deletion.
 	createReadySnapshotForBackup(t, ctx, storage, "deleting")
-	err = storage.SnapshotChecksumCalculated(ctx, "deleting", 7)
+	err = storage.SnapshotChecksumCalculated(
+		ctx,
+		"deleting",
+		"create_deleting",
+		7,
+	)
 	require.NoError(t, err)
 	_, err = storage.DeleteSnapshot(ctx, "deleting", "delete", time.Now())
 	require.NoError(t, err)
@@ -1120,6 +1135,7 @@ func TestSnapshotChecksumCalculatedRejectsUnavailableSnapshot(t *testing.T) {
 		err = storage.SnapshotChecksumCalculated(
 			ctx,
 			testCase.snapshotID,
+			"create_"+testCase.snapshotID,
 			testCase.checksum,
 		)
 		require.Error(t, err, testCase.snapshotID)
@@ -1145,12 +1161,37 @@ func TestSnapshotChecksumCalculatedRejectsUnavailableSnapshot(t *testing.T) {
 	}
 }
 
+// A snapshot that is deleted and created again with the same id is another
+// snapshot: it is created by another task.
+func TestSnapshotChecksumCalculatedRejectsSnapshotCreatedByAnotherTask(
+	t *testing.T,
+) {
+
+	ctx, storage := newSnapshotBackupTestStorage(t)
+
+	err := storage.SnapshotChecksumCalculated(ctx, "snapshot", "create", 7)
+	require.NoError(t, err)
+
+	err = storage.SnapshotChecksumCalculated(ctx, "snapshot", "another", 42)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.False(t, errors.IsSilent(err))
+	require.ErrorContains(
+		t,
+		err,
+		"it is created by task create, not by task another",
+	)
+
+	// Nothing is written.
+	requireSnapshotChecksum(t, ctx, storage, "snapshot", 7)
+}
+
 // Guards the row mapping: a column that is written but not scanned (or the
 // other way round) loses the checksum on the next whole-row rewrite.
 func TestSnapshotChecksumSurvivesOtherUpdates(t *testing.T) {
 	ctx, storage := newSnapshotBackupTestStorage(t)
 
-	err := storage.SnapshotChecksumCalculated(ctx, "snapshot", 42)
+	err := storage.SnapshotChecksumCalculated(ctx, "snapshot", "create", 42)
 	require.NoError(t, err)
 	requireSnapshotChecksum(t, ctx, storage, "snapshot", 42)
 
@@ -1191,7 +1232,12 @@ func TestSnapshotChecksumCalculatedRacesWithDeletion(t *testing.T) {
 		go func() {
 			<-start
 			time.Sleep(delay)
-			set <- storage.SnapshotChecksumCalculated(ctx, snapshotID, 42)
+			set <- storage.SnapshotChecksumCalculated(
+				ctx,
+				snapshotID,
+				"create_"+snapshotID,
+				42,
+			)
 		}()
 		go func() {
 			<-start
@@ -1249,7 +1295,12 @@ func TestSnapshotChecksumCalculatedRacesWithBackupCompletion(t *testing.T) {
 		completed := make(chan error, 1)
 		go func() {
 			<-start
-			set <- storage.SnapshotChecksumCalculated(ctx, snapshotID, 42)
+			set <- storage.SnapshotChecksumCalculated(
+				ctx,
+				snapshotID,
+				"create_"+snapshotID,
+				42,
+			)
 		}()
 		go func() {
 			<-start
@@ -1344,7 +1395,12 @@ func TestSnapshotChecksumOfSnapshotCreatedBeforeMigration(t *testing.T) {
 	checkSnapshot(false)
 
 	// Zero differs from a checksum that is not calculated.
-	err = storage.SnapshotChecksumCalculated(ctx, "snapshot", 0)
+	err = storage.SnapshotChecksumCalculated(
+		ctx,
+		"snapshot",
+		"", // createTaskID
+		0,
+	)
 	require.NoError(t, err)
 	checkSnapshot(true)
 

@@ -25,6 +25,7 @@ import (
 	sdk_client "github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 	"github.com/ydb-platform/nbs/contrib/go/cityhash"
@@ -39,6 +40,12 @@ const (
 
 	// Is not expected to be reached: the data is removed in seconds.
 	snapshotDataDeletionTimeout = 5 * time.Minute
+
+	// Is not expected to be reached: the task ends in seconds.
+	checksumTaskTimeout = 5 * time.Minute
+
+	// See RequireChecksumTaskRejectsRecreatedResource.
+	recreatedResourceAttemptCount = 10
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -351,8 +358,42 @@ func ValidateSnapshotChecksum(
 	return response.Checksum, err
 }
 
-// Computes the checksum of the image and saves it to the database of Disk
-// Manager. Returns the checksum.
+// Schedules the task that computes the checksum of the image and saves it to
+// the database of Disk Manager. Returns id of the task, its response is
+// SaveImageChecksumResponse.
+func ScheduleSaveImageChecksum(
+	t *testing.T,
+	ctx context.Context,
+	imageID string,
+) string {
+
+	return scheduleChecksumTask(
+		t,
+		ctx,
+		images.ScheduleSaveImageChecksum,
+		imageID,
+	)
+}
+
+// Schedules the task that computes the checksum of the image and compares it
+// with the saved one, the task fails if they differ. Returns id of the task,
+// its response is ValidateImageChecksumResponse.
+func ScheduleValidateImageChecksum(
+	t *testing.T,
+	ctx context.Context,
+	imageID string,
+) string {
+
+	return scheduleChecksumTask(
+		t,
+		ctx,
+		images.ScheduleValidateImageChecksum,
+		imageID,
+	)
+}
+
+// Saves the checksum of the image, see ScheduleSaveImageChecksum. Returns the
+// checksum.
 func SaveImageChecksum(
 	t *testing.T,
 	ctx context.Context,
@@ -360,20 +401,15 @@ func SaveImageChecksum(
 	imageID string,
 ) (uint32, error) {
 
-	taskID := scheduleChecksumTask(
-		t,
-		ctx,
-		images.ScheduleSaveImageChecksum,
-		imageID,
-	)
+	taskID := ScheduleSaveImageChecksum(t, ctx, imageID)
 
 	response := images_protos.SaveImageChecksumResponse{}
 	err := internal_client.WaitResponse(ctx, client, taskID, &response)
 	return response.Checksum, err
 }
 
-// Computes the checksum of the image and compares it with the saved one,
-// fails if they differ. Returns the computed checksum.
+// Validates the checksum of the image, see ScheduleValidateImageChecksum.
+// Returns the computed checksum.
 func ValidateImageChecksum(
 	t *testing.T,
 	ctx context.Context,
@@ -381,16 +417,126 @@ func ValidateImageChecksum(
 	imageID string,
 ) (uint32, error) {
 
-	taskID := scheduleChecksumTask(
-		t,
-		ctx,
-		images.ScheduleValidateImageChecksum,
-		imageID,
-	)
+	taskID := ScheduleValidateImageChecksum(t, ctx, imageID)
 
 	response := images_protos.ValidateImageChecksumResponse{}
 	err := internal_client.WaitResponse(ctx, client, taskID, &response)
 	return response.Checksum, err
+}
+
+// Waits until the task ends. Returns the error that the task has failed
+// with, nil if it has not failed.
+func waitChecksumTask(t *testing.T, ctx context.Context, taskID string) error {
+	scheduler := newScheduler(t, ctx)
+
+	err := scheduler.WaitTaskEndedWithTimeout(ctx, taskID, checksumTaskTimeout)
+	require.NoError(t, err)
+
+	return scheduler.GetTaskError(ctx, taskID)
+}
+
+// Waits until the task fails and checks its error. A silent error is the one
+// that is expected to happen, Disk Manager does not report it as its own
+// failure.
+func RequireChecksumTaskError(
+	t *testing.T,
+	ctx context.Context,
+	taskID string,
+	expectedError string,
+	expectedSilent bool,
+) {
+
+	err := waitChecksumTask(t, ctx, taskID)
+	require.ErrorContains(t, err, expectedError)
+	require.Equal(t, expectedSilent, errors.IsSilent(err))
+}
+
+// Makes the snapshot or the image look like another one that has the same id,
+// as if it has been deleted and created again by another task. It takes
+// minutes to do that for real, so id of the task that has created it is
+// changed right in |table| of Disk Manager: "snapshots" or "images".
+func SetCreateTaskID(
+	t *testing.T,
+	ctx context.Context,
+	table string,
+	resourceID string,
+	createTaskID string,
+) {
+
+	db := newYDB(t, ctx)
+	defer db.Close(ctx)
+
+	// The table is in the folder of the same name, see NewResourceStorage.
+	_, err := db.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+		declare $create_task_id as Utf8;
+
+		update %v
+		set create_task_id = $create_task_id
+		where id = $id;
+	`, db.AbsolutePath(table), table),
+		persistence.ValueParam("$id", persistence.UTF8Value(resourceID)),
+		persistence.ValueParam(
+			"$create_task_id",
+			persistence.UTF8Value(createTaskID),
+		),
+	)
+	require.NoError(t, err)
+}
+
+// Checks that the checksum task fails if its snapshot or image is recreated
+// while the task is in progress. Ids are not expected to be used again, so
+// the error is not silent. |schedule| schedules the task and returns its id,
+// |recreate| makes the resource look like a recreated one, see
+// SetCreateTaskID.
+//
+// The resource is recreated when the task waits for its checksum to be
+// computed: the task has remembered the resource by then and has not checked
+// it for the last time yet. The checksum might be computed too fast to get
+// there in time, so there are several attempts.
+func RequireChecksumTaskRejectsRecreatedResource(
+	t *testing.T,
+	ctx context.Context,
+	schedule func() string,
+	recreate func(),
+	expectedError string,
+) {
+
+	taskStorage := NewTaskStorage(t, ctx)
+
+	for i := 0; i < recreatedResourceAttemptCount; i++ {
+		taskID := schedule()
+
+		for {
+			state, err := taskStorage.GetTask(ctx, taskID)
+			require.NoError(t, err)
+
+			if state.Status == tasks_storage.TaskStatusWaitingToRun {
+				recreate()
+				break
+			}
+
+			if tasks_storage.IsEnded(state.Status) {
+				break
+			}
+
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		err := waitChecksumTask(t, ctx, taskID)
+		if err == nil {
+			// The task has not noticed anything: it was too late.
+			continue
+		}
+
+		require.ErrorContains(t, err, expectedError)
+		require.False(t, errors.IsSilent(err))
+		return
+	}
+
+	require.Fail(t, "resource is never recreated in time")
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -514,6 +660,29 @@ func WaitForSnapshotDataDeletion(
 
 		time.Sleep(time.Second)
 	}
+}
+
+// Deletes the snapshot (or the image) from the storage of snapshots, the same
+// way the task that deletes a snapshot does, and waits until its data is
+// removed. Disk Manager is not aware of that: the snapshot is still ready for
+// it, but there is nothing to read.
+func DeleteSnapshotData(
+	t *testing.T,
+	ctx context.Context,
+	snapshotID string,
+) {
+
+	dataStorage, closeFunc := newSnapshotDataStorage(t, ctx)
+	defer closeFunc()
+
+	_, err := dataStorage.storage.DeletingSnapshot(
+		ctx,
+		snapshotID,
+		"testcommon", // taskID
+	)
+	require.NoError(t, err)
+
+	WaitForSnapshotDataDeletion(t, ctx, snapshotID)
 }
 
 // Writes the chunk to the snapshot (or to the image) via the storage of
