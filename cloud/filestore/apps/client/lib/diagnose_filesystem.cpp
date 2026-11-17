@@ -357,23 +357,23 @@ private:
                 totals.RequestCount - row.Data.RequestCount;
             const auto otherTotalLatencyUs =
                 totals.TotalLatencyUs - row.Data.TotalLatencyUs;
-            const double priorMeanLatencyUs = otherRequestCount
+            const double priorAvgLatencyUs = otherRequestCount
                 ? static_cast<double>(otherTotalLatencyUs) / otherRequestCount
                 : static_cast<double>(row.Data.TotalLatencyUs) /
                       row.Data.RequestCount;
 
-            const double rawMeanLatencyUs =
+            const double rawAvgLatencyUs =
                 static_cast<double>(row.Data.TotalLatencyUs) /
                 row.Data.RequestCount;
-            const double decayFactor = rawMeanLatencyUs > 0
-                ? row.Data.GetAverageDecayedLatencyUs() / rawMeanLatencyUs
+            const double decayFactor = rawAvgLatencyUs > 0
+                ? row.Data.GetAverageDecayedLatencyUs() / rawAvgLatencyUs
                 : 1.0;
 
             row.Data.NormalizedAverageLatencyUs =
                 NDiagnostics::NormalizeLatencyUs(
                     row.Data.TotalLatencyUs,
                     row.Data.RequestCount,
-                    priorMeanLatencyUs,
+                    priorAvgLatencyUs,
                     decayFactor);
         }
     }
