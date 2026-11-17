@@ -1,6 +1,5 @@
 #pragma once
 
-#include "rdma_counters.h"
 #include "rdma_tablet_registry.h"
 
 #include <cloud/filestore/libs/rdma/public.h>
@@ -17,13 +16,21 @@ namespace NCloud::NFileStore::NStorage {
 // CreateSession.
 bool IsRdmaTabletMethod(ui32 methodId);
 
-// Parses the typed request on the RDMA poller thread and sends it to the tablet
-// of the client's pipe server as if it came through that pipe; the tablet
-// answers to the forwarder, which resolves the response.
+/**
+ * Creates the handler that the RDMA target calls on its poller threads. It
+ * parses the typed request and sends it to the tablet of the client's pipe
+ * server as if it came through that pipe.
+ *
+ * @param actorSystem - Actor system of the node, used to send the request to
+ *  the tablet and the tracking event to the forwarder.
+ * @param forwarderId - Forwarder actor (CreateRdmaTabletForwarderActor) that
+ *  receives the tablet's response and resolves the returned future.
+ * @param registry - Pipe servers of the node's tablets; finds the tablet of
+ *  the pipe server named in the request.
+ */
 IRdmaTabletRequestHandlerPtr CreateActorSystemRdmaRequestHandler(
     NActors::TActorSystem* actorSystem,
     NActors::TActorId forwarderId,
-    TRdmaTabletRegistryPtr registry,
-    TRdmaForwarderCountersPtr counters);
+    TRdmaTabletRegistryPtr registry);
 
 }   // namespace NCloud::NFileStore::NStorage

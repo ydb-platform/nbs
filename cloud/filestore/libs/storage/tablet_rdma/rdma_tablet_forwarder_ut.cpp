@@ -1,8 +1,9 @@
+#include "rdma_server_handler.h"
+#include "rdma_tablet_forwarder.h"
+#include "rdma_tablet_registry.h"
+
 #include <cloud/filestore/libs/rdma/transport.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
-#include <cloud/filestore/libs/storage/tablet_rdma/rdma_server_handler.h>
-#include <cloud/filestore/libs/storage/tablet_rdma/rdma_tablet_forwarder.h>
-#include <cloud/filestore/libs/storage/tablet_rdma/rdma_tablet_registry.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -54,7 +55,6 @@ struct TEnv
     TIndexTabletClient Tablet;
 
     const TRdmaTabletRegistryPtr Registry;
-    const TRdmaForwarderCountersPtr Counters;
     TActorId ForwarderId;
     IRdmaTabletRequestHandlerPtr Handler;
     TPipe Pipe;
@@ -70,11 +70,9 @@ struct TEnv
         , TabletId(Env.BootIndexTablet(NodeIdx))
         , Tablet(Runtime, NodeIdx, TabletId)
         , Registry(Env.GetRdmaTabletRegistry(Runtime.GetNodeId(NodeIdx)))
-        , Counters(std::make_shared<TRdmaForwarderCounters>(
-              MakeIntrusive<NMonitoring::TDynamicCounters>()))
     {
         ForwarderId = Runtime.Register(
-            CreateRdmaTabletForwarderActor(requestTimeout, Counters).release(),
+            CreateRdmaTabletForwarderActor(requestTimeout).release(),
             NodeIdx);
         Runtime.EnableScheduleForActor(ForwarderId);
         Registry->AttachForwarder(ForwarderId);
@@ -82,8 +80,7 @@ struct TEnv
         Handler = CreateActorSystemRdmaRequestHandler(
             Runtime.GetActorSystem(NodeIdx),
             ForwarderId,
-            Registry,
-            Counters);
+            Registry);
 
         Tablet.InitSession("client", "session");
         Pipe = ConnectPipe();
@@ -232,8 +229,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         UNIT_ASSERT_VALUES_EQUAL(
             nodeId,
             viaPipe->Record.GetNode().GetId());
-
-        UNIT_ASSERT_VALUES_EQUAL(0, env.Counters->Errors->Val());
     }
 
     Y_UNIT_TEST(ShouldForwardDataRequestsToTablet)
@@ -316,7 +311,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_ARGUMENT),
             future.GetValue().Error.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(1, env.Counters->Errors->Val());
     }
 
     Y_UNIT_TEST(ShouldRejectUnsupportedMethods)
@@ -344,8 +338,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_NOT_IMPLEMENTED),
             createSession.GetValue().Error.GetCode());
-
-        UNIT_ASSERT_VALUES_EQUAL(2, env.Counters->Errors->Val());
     }
 
     Y_UNIT_TEST(ShouldRejectMalformedBodies)
@@ -360,7 +352,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_ARGUMENT),
             future.GetValue().Error.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(1, env.Counters->Errors->Val());
     }
 
     Y_UNIT_TEST(ShouldRejectRequestsForUnknownPipes)
@@ -388,8 +379,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_REJECTED),
             disconnected.GetValue().Error.GetCode());
-
-        UNIT_ASSERT_VALUES_EQUAL(2, env.Counters->Errors->Val());
     }
 
     Y_UNIT_TEST(ShouldRejectRequestsUndeliveredToTablet)
@@ -409,7 +398,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_REJECTED),
             response.Error.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(1, env.Counters->Errors->Val());
     }
 
     Y_UNIT_TEST(ShouldRejectInFlightRequestsWhenTabletRestarts)
@@ -431,7 +419,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_REJECTED),
             response.Error.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(1, env.Counters->Errors->Val());
 
         env.Runtime.SetObserverFunc(&TTestActorRuntime::DefaultObserverFunc);
         env.Tablet.WaitReady();
@@ -457,7 +444,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_TIMEOUT),
             response.Error.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(1, env.Counters->Errors->Val());
     }
 
     Y_UNIT_TEST(ShouldRejectRequestsWhenForwarderStops)
@@ -483,7 +469,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_REJECTED),
             response.Error.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(1, env.Counters->Errors->Val());
 
         auto late = env.Wait(
             env.Send(env.Tablet.CreateGetStorageStatsRequest()));
@@ -509,7 +494,6 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_NOT_IMPLEMENTED),
             response.Error.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(1, env.Counters->Errors->Val());
     }
 
     Y_UNIT_TEST(ShouldKeepFileSystemEventsOfClientPipe)

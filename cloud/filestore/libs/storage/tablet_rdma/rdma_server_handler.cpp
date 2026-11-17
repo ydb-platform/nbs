@@ -2,6 +2,7 @@
 
 #include "rdma_private.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/rdma/transport.h>
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/api/service.h>
@@ -46,7 +47,6 @@ private:
     TActorSystem* const ActorSystem;
     const TActorId ForwarderId;
     const TRdmaTabletRegistryPtr Registry;
-    const TRdmaForwarderCountersPtr Counters;
 
     std::atomic<ui64> LastCookie = 0;
 
@@ -54,12 +54,10 @@ public:
     TActorSystemRdmaRequestHandler(
             TActorSystem* actorSystem,
             TActorId forwarderId,
-            TRdmaTabletRegistryPtr registry,
-            TRdmaForwarderCountersPtr counters)
+            TRdmaTabletRegistryPtr registry)
         : ActorSystem(actorSystem)
         , ForwarderId(forwarderId)
         , Registry(std::move(registry))
-        , Counters(std::move(counters))
     {}
 
     TFuture<TTabletTransportResponse> HandleRequest(
@@ -106,11 +104,10 @@ public:
                 requestBody.data(),                                            \
                 requestBody.size()))                                           \
         {                                                                      \
-            promise.SetValue(Reject(                                           \
-                E_ARGUMENT,                                                    \
-                TStringBuilder()                                               \
-                    << "malformed RDMA request body for method "               \
-                    << methodId));                                             \
+            const TString message = TStringBuilder()                           \
+                << "malformed RDMA request body for method " << methodId;      \
+            ReportRdmaMalformedTabletRequest(message);                         \
+            promise.SetValue(Reject(E_ARGUMENT, message));                     \
             break;                                                             \
         }                                                                      \
         DisableFileSystemEventSubscription(request->Record);                   \
@@ -138,7 +135,6 @@ private:
     {
         LOG_WARN_S(*ActorSystem, TFileStoreComponents::RDMA,
             "Reject RDMA request: " << message);
-        Counters->Errors->Inc();
         return TTabletTransportResponse(MakeError(code, std::move(message)));
     }
 
@@ -204,14 +200,12 @@ bool IsRdmaTabletMethod(ui32 methodId)
 IRdmaTabletRequestHandlerPtr CreateActorSystemRdmaRequestHandler(
     TActorSystem* actorSystem,
     TActorId forwarderId,
-    TRdmaTabletRegistryPtr registry,
-    TRdmaForwarderCountersPtr counters)
+    TRdmaTabletRegistryPtr registry)
 {
     return std::make_shared<TActorSystemRdmaRequestHandler>(
         actorSystem,
         forwarderId,
-        std::move(registry),
-        std::move(counters));
+        std::move(registry));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

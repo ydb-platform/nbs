@@ -2,6 +2,7 @@
 
 #include "rdma_private.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
@@ -38,17 +39,13 @@ class TRdmaTabletForwarderActor final
 
 private:
     const TDuration RequestTimeout;
-    const TRdmaForwarderCountersPtr Counters;
 
     THashMap<ui64, TInFlight> InFlight;
     bool SweepScheduled = false;
 
 public:
-    TRdmaTabletForwarderActor(
-            TDuration requestTimeout,
-            TRdmaForwarderCountersPtr counters)
+    explicit TRdmaTabletForwarderActor(TDuration requestTimeout)
         : RequestTimeout(requestTimeout)
-        , Counters(std::move(counters))
     {}
 
     void Bootstrap(const TActorContext& ctx)
@@ -90,7 +87,6 @@ private:
             FormatError(error).c_str());
 
         inflight.Promise.SetValue(TTabletTransportResponse(std::move(error)));
-        Counters->Errors->Inc();
     }
 
     void HandleTrackRequest(
@@ -104,17 +100,22 @@ private:
             ev->Cookie,
             ToString(msg->TabletActorId).c_str());
 
-        const bool inserted =
-            InFlight
-                .emplace(
-                    ev->Cookie,
-                    TInFlight{
-                        std::move(msg->Promise),
-                        msg->TabletActorId,
-                        RequestTimeout ? ctx.Now() + RequestTimeout
-                                       : TInstant::Max()})
-                .second;
-        Y_DEBUG_ABORT_UNLESS(inserted);
+        if (InFlight.contains(ev->Cookie)) {
+            ReportRdmaDuplicateRequestCookie(
+                TStringBuilder()
+                << "cookie " << ev->Cookie << ", tablet "
+                << ToString(msg->TabletActorId));
+            msg->Promise.SetValue(TTabletTransportResponse(
+                MakeError(E_REJECTED, "duplicate RDMA request cookie")));
+            return;
+        }
+
+        InFlight.emplace(
+            ev->Cookie,
+            TInFlight{
+                std::move(msg->Promise),
+                msg->TabletActorId,
+                RequestTimeout ? ctx.Now() + RequestTimeout : TInstant::Max()});
 
         ScheduleSweep(ctx);
     }
@@ -181,6 +182,10 @@ private:
         const auto now = ctx.Now();
         for (auto it = InFlight.begin(); it != InFlight.end();) {
             if (it->second.Deadline <= now) {
+                ReportRdmaTabletRequestTimeout(
+                    TStringBuilder()
+                    << "cookie " << it->first << ", tablet "
+                    << ToString(it->second.TabletActorId));
                 Fail(
                     ctx,
                     it->first,
@@ -293,12 +298,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 std::unique_ptr<IActor> CreateRdmaTabletForwarderActor(
-    TDuration requestTimeout,
-    TRdmaForwarderCountersPtr counters)
+    TDuration requestTimeout)
 {
-    return std::make_unique<TRdmaTabletForwarderActor>(
-        requestTimeout,
-        std::move(counters));
+    return std::make_unique<TRdmaTabletForwarderActor>(requestTimeout);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

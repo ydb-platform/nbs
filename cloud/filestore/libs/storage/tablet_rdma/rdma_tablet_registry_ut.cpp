@@ -1,5 +1,6 @@
-#include <cloud/filestore/libs/storage/tablet_rdma/rdma_private.h>
-#include <cloud/filestore/libs/storage/tablet_rdma/rdma_tablet_registry.h>
+#include "rdma_private.h"
+#include "rdma_tablet_registry.h"
+
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 

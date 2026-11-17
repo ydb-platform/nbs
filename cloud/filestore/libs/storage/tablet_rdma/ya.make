@@ -7,6 +7,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/filestore/libs/diagnostics
     cloud/filestore/libs/rdma
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
@@ -17,7 +18,6 @@ PEERDIR(
 
     contrib/ydb/library/actors/core
 
-    library/cpp/monlib/dynamic_counters
     library/cpp/threading/future
 )
 

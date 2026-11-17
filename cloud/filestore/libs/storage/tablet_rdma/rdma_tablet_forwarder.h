@@ -1,7 +1,5 @@
 #pragma once
 
-#include "rdma_counters.h"
-
 #include <contrib/ydb/library/actors/core/actor.h>
 
 #include <util/datetime/base.h>
@@ -16,7 +14,6 @@ namespace NCloud::NFileStore::NStorage {
 // requests and resolves their promises. requestTimeout of zero disables the
 // timeout. Later we want to scale it by the number of tablets
 std::unique_ptr<NActors::IActor> CreateRdmaTabletForwarderActor(
-    TDuration requestTimeout,
-    TRdmaForwarderCountersPtr counters);
+    TDuration requestTimeout);
 
 }   // namespace NCloud::NFileStore::NStorage
