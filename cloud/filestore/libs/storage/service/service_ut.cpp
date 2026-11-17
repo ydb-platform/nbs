@@ -1860,7 +1860,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 .GetGuestPosixAclEnabled());
 
         // Changing the value while a session exists must be rejected.
-        changeGuestPosixAclEnabled(true, E_REJECTED);
+        changeGuestPosixAclEnabled(true, E_PRECONDITION_FAILED);
 
         // Once the last session is destroyed, changing the value is allowed.
         service.DestroySession(headers);

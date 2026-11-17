@@ -920,7 +920,7 @@ void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
         HasSessions())
     {
         args.Error = MakeError(
-            E_REJECTED,
+            E_PRECONDITION_FAILED,
             "GuestPosixAclEnabled cannot be changed while the tablet has "
             "sessions");
         return;
