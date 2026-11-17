@@ -13,6 +13,7 @@
 
 #include <library/cpp/coroutine/engine/impl.h>
 
+#include <util/generic/algorithm.h>
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
 #include <util/generic/scope.h>
@@ -26,7 +27,80 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TDuration IdleFlushDelay = TDuration::MilliSeconds(100);
+constexpr TDuration IdleFlushDelay = TDuration::MilliSeconds(10);
+
+// How much a flush batch may hold.
+constexpr ui64 MaxFlushBatchPages = 1024;
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TPageContent
+{
+    ui64 PageNo = 0;
+    const TString* Content = nullptr;
+};
+
+// Merges the pages of the records into page ranges. The records are in lsn
+// order. If two records write the same page, the later record wins.
+TVector<TPageRange> MergeRecordPages(const TJournalRecords& records)
+{
+    //
+    // Skip the merge: one record never writes the same page twice
+    //
+
+    if (records.size() == 1) {
+        return MakePageRanges(records[0]);
+    }
+
+    //
+    // Sort the pages by number. The stable sort keeps equal pages in lsn order
+    //
+
+    size_t pageCount = 0;
+    for (const auto& record: records) {
+        for (const auto& group: record.GetPageGroups()) {
+            pageCount += group.ContentSize();
+        }
+    }
+
+    TVector<TPageContent> pages;
+    pages.reserve(pageCount);
+
+    for (const auto& record: records) {
+        for (const auto& group: record.GetPageGroups()) {
+            ui64 pageNo = group.GetFirstPageNo();
+            for (const auto& content: group.GetContent()) {
+                pages.push_back({.PageNo = pageNo++, .Content = &content});
+            }
+        }
+    }
+
+    StableSortBy(pages, [](const auto& page) { return page.PageNo; });
+
+    TVector<TPageRange> ranges;
+
+    for (size_t i = 0; i < pages.size(); ++i) {
+        const auto& [pageNo, content] = pages[i];
+
+        //
+        // Skip the page if a later record writes it too
+        //
+
+        if (i + 1 < pages.size() && pages[i + 1].PageNo == pageNo) {
+            continue;
+        }
+
+        if (ranges.empty() ||
+            ranges.back().FirstPageNo + ranges.back().Pages.size() != pageNo)
+        {
+            ranges.push_back({.FirstPageNo = pageNo});
+        }
+
+        ranges.back().Pages.emplace_back(content->data(), content->size());
+    }
+
+    return ranges;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -201,6 +275,8 @@ private:
     void ScheduleFlushCycle();
 
     void RunFlushCycle();
+
+    void CleanupFlushedRecords(ui64 lastFlushedLsn);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -381,40 +457,68 @@ void TJournalledDeviceV2::ScheduleFlushCycle()
 
 void TJournalledDeviceV2::RunFlushCycle()
 {
-    ui64 maxAllowedLsn = IndexedLsnBarrier.GetBarrierLsn();
     ui64 lastFlushedLsn = 0;
 
     while (!ShouldStop.load()) {
-        auto future = Journal->GetRecordToFlush(maxAllowedLsn);
-        auto response = Executor->ExtractResponse(future);
+        //
+        // Take the next batch of records the journal lets go of. The
+        // barrier is read anew every time: the records indexed while the
+        // previous batch was being flushed join this one
+        //
+
+        auto response = Journal->GetRecordsToFlush(
+            IndexedLsnBarrier.GetBarrierLsn(),
+            MaxFlushBatchPages);
+
         if (HasError(response)) {
             STORAGE_ERROR(
-                "unable to get the next record to flush: "
+                "unable to get the next records to flush: "
                 << FormatError(response.GetError()));
             break;
         }
 
-        auto record = response.ExtractResult();
-        ui64 lsn = record.GetLogSequenceNumber();
-        if (!lsn) {
-            // no record to flush
+        auto records = response.ExtractResult();
+        if (records.empty()) {
+            // nothing to flush
             break;
         }
 
-        if (record.PageGroupsSize()) {
-            auto writeFuture = DataStore->WritePages(MakePageRanges(record));
+        const ui64 lsn = records.back().GetLogSequenceNumber();
+
+        //
+        // Write the pages of the whole batch in one request, the later
+        // records over the earlier ones, and only then mark the batch as
+        // flushed: a reader goes to the data store for the flushed
+        // records, so every page of the batch must be there first
+        //
+
+        auto ranges = MergeRecordPages(records);
+        if (!ranges.empty()) {
+            auto writeFuture = DataStore->WritePages(std::move(ranges));
 
             auto writeError = Executor->WaitFor(writeFuture);
             if (HasError(writeError)) {
                 STORAGE_ERROR(
-                    "unable to flush the record with lsn "
-                    << lsn << ": " << FormatError(writeError));
+                    "unable to flush "
+                    << records.size() << " records up to lsn " << lsn
+                    << ": " << FormatError(writeError));
                 break;
             }
         }
 
         Journal->MarkRecordAsFlushed(lsn);
         lastFlushedLsn = lsn;
+
+        STORAGE_DEBUG(
+            "flushed " << records.size() << " records up to lsn " << lsn);
+
+        //
+        // Free the journal pages of the batch right away and not when the
+        // whole backlog is flushed: a journal that is catching up needs
+        // the pages for the records coming in
+        //
+
+        CleanupFlushedRecords(lastFlushedLsn);
     }
 
     if (ShouldStop.load()) {
@@ -422,17 +526,21 @@ void TJournalledDeviceV2::RunFlushCycle()
         return;
     }
 
-    auto future = Journal->CleanupFlushedRecords();
-    const auto& response = Executor->WaitFor(future);
+    CleanupFlushedRecords(lastFlushedLsn);
+
+    RunningCont()->SleepT(IdleFlushDelay);
+
+    ScheduleFlushCycle();
+}
+
+void TJournalledDeviceV2::CleanupFlushedRecords(ui64 lastFlushedLsn)
+{
+    auto response = Journal->CleanupFlushedRecords();
     if (HasError(response)) {
         STORAGE_ERROR(
             "unable to cleanup flushed records up to lsn "
             << lastFlushedLsn << ": " << FormatError(response));
     }
-
-    RunningCont()->SleepT(IdleFlushDelay);
-
-    ScheduleFlushCycle();
 }
 
 template <typename TRequest>
