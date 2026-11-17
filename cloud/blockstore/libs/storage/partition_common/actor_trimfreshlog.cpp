@@ -93,46 +93,67 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
             << SelectiveTrim << ", hard: " << Hard
             << ", collecting: " << CollectingCommitIds.size());
 
-    // Generation 0 never matches the current one, so with cleanupHistory the
-    // barrier goes to every group in each channel's history.
+    auto [barrierGen, barrierStep] = ParseCommitId(TrimFreshLogToCommitId);
+    // A selective trim starts only when the ordinary trim reaches the current
+    // generation, so its barrier is in this generation too.
+    STORAGE_VERIFY_C(
+        !SelectiveTrim || barrierGen == RecordGeneration,
+        TWellKnownEntityTypes::TABLET,
+        tabletId,
+        "Selective trim barrier outside the current generation, barrier: "
+            << barrierGen << ":" << barrierStep
+            << ", generation: " << RecordGeneration);
+
+    // A selective trim flags and collects only blobs of the current generation.
+    // Generation 0 never matches the current one.
+    const ui64 lastGCCommitId =
+        SelectiveTrim ? MakeCommitId(RecordGeneration, 0) : 0;
     auto requests = BuildGCRequests(
         *TabletInfo,
         FreshChannels,
         Keep,
         DoNotKeep,
-        true,                     // cleanupHistory
-        0,                        // lastGCCommitId
+        !SelectiveTrim,   // cleanupHistory
+        lastGCCommitId,
         TrimFreshLogToCommitId,   // collectCommitId
         PerGenerationCounter);    // collectCounter
 
-    auto [barrierGen, barrierStep] = ParseCommitId(TrimFreshLogToCommitId);
+    if (SelectiveTrim) {
+        for (ui32 channelId: FreshChannels) {
+            // Adds an empty request for the channel's current group unless its
+            // flags already did. The soft barrier also collects dead blobs
+            // without flags, so the group needs it even with no flags.
+            requests.Get(*TabletInfo, channelId, RecordGeneration);
+            Y_DEBUG_ABORT_UNLESS(requests.GetRequests(channelId).size() == 1);
+        }
+    }
+
     for (ui32 channelId: FreshChannels) {
         for (auto& [bsProxyId, flags]: requests.GetRequests(channelId)) {
             auto deadline = Timeout ? ctx.Now() + Timeout : TInstant::Max();
 
             auto request = std::make_unique<TEvBlobStorage::TEvCollectGarbage>(
-                tabletId,                   // tabletId
-                RecordGeneration,           // record generation
-                PerGenerationCounter,       // per generation counter
-                channelId,                  // channel
-                true,                       // yes, collect
-                barrierGen,                 // barrier gen
-                barrierStep,                // barrier step
-                flags.Keep.release(),       // keep
-                flags.DoNotKeep.release(),  // do not keep
-                deadline,                   // deadline
-                false,                      // multicollect not allowed
-                Hard);                      // hard barrier
+                tabletId,                    // tabletId
+                RecordGeneration,            // record generation
+                PerGenerationCounter,        // per generation counter
+                channelId,                   // channel
+                true,                        // yes, collect
+                barrierGen,                  // barrier gen
+                barrierStep,                 // barrier step
+                flags.Keep.release(),        // keep
+                flags.DoNotKeep.release(),   // do not keep
+                deadline,                    // deadline
+                false,                       // multicollect not allowed
+                Hard);                       // hard barrier
 
-            LOG_DEBUG(ctx, TBlockStoreComponents::PARTITION,
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::PARTITION,
                 "[%lu] %s",
                 tabletId,
                 request->Print(true).data());
 
-            SendToBSProxy(
-                ctx,
-                bsProxyId,
-                request.release());
+            SendToBSProxy(ctx, bsProxyId, request.release());
 
             ++RequestsInFlight;
         }

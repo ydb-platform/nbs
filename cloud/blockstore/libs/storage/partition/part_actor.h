@@ -277,11 +277,11 @@ private:
     [[nodiscard]] bool ShouldStartOrdinaryTrim(ui64 ordinaryTrimToCommitId);
     [[nodiscard]] bool ShouldStartSelectiveTrim(
         const NActors::TActorContext& ctx,
-        ui64 ordinaryTrimToCommitId);
+        const TPartitionThreadSafeState::TFreshTrimSnapshot& snapshot);
     [[nodiscard]] bool CheckDeadFreshBlobByteCount() const;
     [[nodiscard]] ETrimFreshLogKind ChooseTrimFreshLogKind(
         const NActors::TActorContext& ctx,
-        ui64 ordinaryTrimToCommitId);
+        const TPartitionThreadSafeState::TFreshTrimSnapshot& snapshot);
     void EnqueueAddConfirmedBlobsIfNeeded(const NActors::TActorContext& ctx);
 
     void UpdateStats(const NProto::TPartitionStats& update);

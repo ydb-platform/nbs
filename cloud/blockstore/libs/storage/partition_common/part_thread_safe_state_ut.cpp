@@ -173,6 +173,39 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
         UNIT_ASSERT_VALUES_EQUAL(fourth, snapshot.SelectiveTrimToCommitId);
     }
 
+    Y_UNIT_TEST(ShouldLetOrdinaryTrimPassOverwrittenWriteBeforeItCompletes)
+    {
+        TTimestampTestRuntime runtime;
+        const auto ctx = runtime.GetContext();
+        TPartitionThreadSafeState state;
+        state.Init({}, 1, 0, TInstant::Seconds(100), TMonotonic::Seconds(10));
+
+        const ui64 first = state.StartFreshWrite(ctx, 1).CommitId;
+        const ui64 second = state.StartFreshWrite(ctx, 1).CommitId;
+
+        // The partition added the first write, and the second one overwrote
+        // its block before the first one completed.
+        state.AccessTrimFreshLogBarriers()->ReleaseBarrier(first);
+
+        auto snapshot = state.GetFreshTrimSnapshot();
+        UNIT_ASSERT_VALUES_EQUAL(second - 1, snapshot.OrdinaryTrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(first - 1, snapshot.SelectiveTrimToCommitId);
+        UNIT_ASSERT_GT(
+            snapshot.OrdinaryTrimToCommitId,
+            snapshot.SelectiveTrimToCommitId);
+
+        // While the second write is in flight, it holds both of them.
+        state.FinishFreshWrite(ctx, first, 1, false);
+        snapshot = state.GetFreshTrimSnapshot();
+        UNIT_ASSERT_VALUES_EQUAL(second - 1, snapshot.OrdinaryTrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(second - 1, snapshot.SelectiveTrimToCommitId);
+
+        state.FinishFreshWrite(ctx, second, 1, false);
+        snapshot = state.GetFreshTrimSnapshot();
+        UNIT_ASSERT_VALUES_EQUAL(second - 1, snapshot.OrdinaryTrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(second, snapshot.SelectiveTrimToCommitId);
+    }
+
     Y_UNIT_TEST(ShouldReturnInvalidCommitIdWhenItOverflows)
     {
         TPartitionThreadSafeState state;
