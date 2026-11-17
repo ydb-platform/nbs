@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 
+#include <cloud/storage/core/libs/actors/public.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap_serialization.h>
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -23,6 +24,21 @@ TResultOrError<ui64> CalculateNewShardConfigsHash(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class IShardCreationOwner
+{
+public:
+    virtual ~IShardCreationOwner() = default;
+
+    // Send a CreateFileStore request for the owner's shard config at shardIndex
+    // to SSProxy.
+    // Use shardIndex as the response cookie.
+    virtual void CreateShard(
+        const NActors::TActorContext& ctx,
+        ui32 shardIndex) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Tracks shard creation progress for one create/resize operation. The caller
 // records the state read from the main Tablet, then calls
 // SetupCreatedShardBitmap once the committed topology and desired shard configs
@@ -32,8 +48,8 @@ TResultOrError<ui64> CalculateNewShardConfigsHash(
 // ShardCreationState holds the last received state, or the plan prepared by
 // SetupCreatedShardBitmap.
 //
-// The actor owns request scheduling, retries, and the fallback for Tablets that
-// do not support persistent state. This companion does not handle actor events.
+// The companion schedules shard creation requests. The actor handles responses,
+// retries, and the fallback for Tablets without persistent state support.
 class TShardCreationStateCompanion
 {
 public:
@@ -57,6 +73,7 @@ private:
     const TString FileSystemId;
     const TString LogTag;
     const EMode Mode;
+    IShardCreationOwner* const Owner;
 
     EShardCreationStateStatus ShardCreationStateStatus =
         EShardCreationStateStatus::Unknown;
@@ -64,9 +81,17 @@ private:
     ui64 ShardBitmapBitCount = 0;
     std::unique_ptr<NCloud::TCompressedBitmap> CreatedShardBitmap;
 
+    ui32 NextShardToCreate = 0;
+    ui32 ShardsToCreate = 0;
+    ui32 TargetShardCount = 0;
+    ui32 MaxShardManagementRequestsInFlight = 0;
+
 public:
     // Track shard creation state for fileSystemId in the given mode.
-    TShardCreationStateCompanion(TString fileSystemId, EMode mode);
+    TShardCreationStateCompanion(
+        TString fileSystemId,
+        EMode mode,
+        IShardCreationOwner* owner);
 
     // Whether the initial read completed, including an unsupported response.
     bool IsPersistentStateLoaded() const;
@@ -98,9 +123,31 @@ public:
         ui32 topologyShardCount,
         const TVector<NKikimrFileStore::TConfig>& shardConfigs);
 
+    // Set the range [topologyShardCount, targetShardCount) of shards to create
+    // where topologyShardCount is the current shard count in the topology.
+    // If maxShardManagementRequestsInFlight is zero, we send requests to
+    // SchemeShard without limit (legacy mode).
+    // Rejects any decrease number of shards requests.
+    NProto::TError InitializeShardCreation(
+        ui32 topologyShardCount,
+        ui32 targetShardCount,
+        ui32 maxShardManagementRequestsInFlight);
+    // Send creation requests up to the configured limit.
+    // Advance the cursor after each request is sent.
+    void StartShardCreation(const NActors::TActorContext& ctx);
+    // Account for a successful response for shardIndex and send the next
+    // request when the number of in-flight requests is limited. Return an
+    // error if no more shard creation acknowledgements are expected.
+    NProto::TError OnShardCreated(
+        const NActors::TActorContext& ctx,
+        ui32 shardIndex);
+    // Whether any shards in the range still need to be created.
+    bool HasShardsToCreate() const;
+
 private:
-    // Return whether the saved plan can be reset because its bitmap has no bits
-    // outside the current topology. Reject a conflicting plan otherwise.
+    // Return whether the saved creation/alteration plan can be reset because
+    // its bitmap has no bits outside the current topology.
+    // Reject a conflicting plan otherwise.
     TResultOrError<bool> CanResetFsShardCreationState(
         ui32 topologyShardCount,
         ui32 targetShardCount,
