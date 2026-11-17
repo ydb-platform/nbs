@@ -1,5 +1,5 @@
 {% macro icon(status) -%}
-<span title="{{ labels[status] }}">{{ icons[status] }}</span>
+<span title="{{ labels.get(status, 'Unknown status') }}">{{ icons.get(status, '⚠️') }}</span>
 {%- endmacro %}
 {% macro link(label, url) -%}
 {% if url %}<a href="{{ url }}">{{ label }}</a>{% else %}{{ label }}{% endif %}
@@ -46,12 +46,12 @@
 {% else %}
 {% if workload.build == 'completed' %}
 <td align="center">{{ icon('completed') }}{{ duration(workload.build_duration_seconds, 'Build') }}</td>
-<td colspan="9">{{ messages[workload.status] }}</td>
+<td colspan="9">{{ messages.get(workload.status, 'Unknown status; check the workflow') }}</td>
 {% else %}
-<td colspan="10">{{ icon(workload.status) }} {{ messages[workload.status] }}{% if workload.build_errors %} — {{ link('log', run.build_error_url(workload.component, workload.run_attempt)) }}{% endif %}{{ duration(workload.build_duration_seconds, 'Build') }}</td>
+<td colspan="10">{{ icon(workload.status) }} {{ messages.get(workload.status, 'Unknown status; check the workflow') }}{% if workload.build_errors %} — {{ link('log', run.build_error_url(workload.component, workload.run_attempt)) }}{% endif %}{{ duration(workload.build_duration_seconds, 'Build') }}</td>
 {% endif %}
 {% endif %}
-<td align="center">{% if loop.last %}{{ icon(workload.workflow_state) }}{% if report and workload.workflow_state not in ('pending', 'running', 'built', 'completed') %} {{ labels[workload.workflow_state] }}{% endif %}{% else %}—{% endif %}</td>
+<td align="center">{% if loop.last %}{{ icon(workload.workflow_state) }}{% if report and workload.workflow_state not in ('pending', 'running', 'built', 'completed') %} {{ labels.get(workload.workflow_state, 'Unknown status') }}{% endif %}{% else %}—{% endif %}</td>
 </tr>
 {% endfor %}
 {% endfor %}

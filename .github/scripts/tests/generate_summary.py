@@ -922,9 +922,12 @@ def is_workload_check_update_applied(
         )
         return not job_url or current_job_url == job_url
 
+    current_order = WORKLOAD_CHECK_STATUS_ORDER.get(current_status)
+    requested_order = WORKLOAD_CHECK_STATUS_ORDER.get(status)
     return (
-        WORKLOAD_CHECK_STATUS_ORDER[current_status]
-        >= WORKLOAD_CHECK_STATUS_ORDER[status]
+        current_order is not None
+        and requested_order is not None
+        and current_order >= requested_order
     )
 
 

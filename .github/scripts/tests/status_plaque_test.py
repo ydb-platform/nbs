@@ -185,6 +185,40 @@ def test_no_results_uses_merged_message(status, message):
         )
 
 
+@pytest.mark.parametrize(
+    "field", ["status", "build", "workflow_status", "execution_status"]
+)
+@pytest.mark.parametrize("with_report", [False, True])
+def test_unknown_status_is_visible_and_never_allows_merge(field, with_report):
+    plaque = Plaque(PRESET)
+    row = plaque.workload("filestore")
+    row.status = row.build = row.execution_status = "completed"
+    row.workflow_status = "failed"
+    row.cleanup_only_failure = True
+    if with_report:
+        row.add_report(
+            Report(
+                0, "Tests", "cloud/filestore/", "abc123", 1, {"PASS": 1}, exit_code=0
+            )
+        )
+    setattr(row, field, "future_status")
+
+    html = plaque.render_table()
+
+    table = ET.fromstring(f"<root>{html}</root>").find("table")
+    cells = table.find("tbody/tr")
+    assert "⚠️" in "".join(cells[0].itertext())
+    assert "Unknown status" in html
+    assert "you can merge" not in html
+
+
+def test_unknown_status_does_not_satisfy_completed_update():
+    plaque = Plaque(PRESET, [Workload("filestore", status="future_status")])
+    assert not gs.is_workload_check_update_applied(
+        plaque.render(), "filestore", "completed"
+    )
+
+
 def test_build_only_completion(pr):
     body = pr.comments[0].body
     body = gs.update_workload_check_block(

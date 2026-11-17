@@ -33,6 +33,7 @@ ICONS = {
     "timed_out": "⏰",
     "skipped": "⚫",
     "report_failed": "⚠️",
+    "unknown": "⚠️",
 }
 LABELS = {
     "pending": "Queued",
@@ -45,6 +46,7 @@ LABELS = {
     "timed_out": "Timed out",
     "skipped": "Skipped",
     "report_failed": "Report missing",
+    "unknown": "Unknown status",
 }
 MESSAGES = {
     "pending": "Queued",
@@ -57,6 +59,7 @@ MESSAGES = {
     "timed_out": "Workflow timed out",
     "skipped": "Workflow skipped",
     "report_failed": "Workflow finished, but report update failed",
+    "unknown": "Unknown status; check the workflow",
 }
 
 
@@ -254,6 +257,11 @@ class Workload:
         return self.build if report.iteration == 0 else ""
 
     def overall(self, report: Report | None) -> str:
+        states = (self.status, self.build, self.workflow_status, self.execution_status)
+        if not self.status or any(
+            state and (state not in ICONS or state == "unknown") for state in states
+        ):
+            return "unknown"
         if self.build == "failed_build" or (report and report.failed):
             return "failed"
         if (
