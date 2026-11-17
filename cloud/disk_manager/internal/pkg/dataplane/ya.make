@@ -25,6 +25,7 @@ SRCS(
     register.go
     replicate_disk_task.go
     schedule_backup_chunks_tasks.go
+    transfer_from_backup_to_disk_task.go
     transfer_from_disk_to_disk_task.go
     transfer_from_snapshot_to_disk_task.go
 )
@@ -35,8 +36,13 @@ GO_TEST_SRCS(
     export_image_task_test.go
     export_snapshot_retry_test.go
     collect_snapshots_task_test.go
+    create_dr_based_disk_checkpoint_task_test.go
+    create_dr_based_disk_checkpoint_disabled_zones_test.go
+    create_snapshot_from_disk_disabled_zones_test.go
+    delete_snapshot_task_test.go
     replicate_disk_task_test.go
     schedule_backup_chunks_tasks_test.go
+    transfer_from_backup_to_disk_task_test.go
 )
 
 END()

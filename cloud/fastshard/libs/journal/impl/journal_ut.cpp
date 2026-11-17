@@ -52,10 +52,10 @@ TString MakeContent(char tag, ui64 pageNo)
     return Sprintf("%c%03u", tag, static_cast<ui32>(pageNo % 1000));
 }
 
-NCloud::NProto::TWriteLogRecordRequest
+NProto::TWriteLogRecordRequest
 MakeWriteRequest(ui64 lsn, ui64 prevLsn, char tag, const TGroups& groups)
 {
-    NCloud::NProto::TWriteLogRecordRequest request;
+    NProto::TWriteLogRecordRequest request;
     request.SetLogSequenceNumber(lsn);
     request.SetPrevLogSequenceNumber(prevLsn);
 
@@ -71,9 +71,9 @@ MakeWriteRequest(ui64 lsn, ui64 prevLsn, char tag, const TGroups& groups)
     return request;
 }
 
-NCloud::NProto::TReadPagesRequest MakeReadRequest(const TGroups& refs)
+NProto::TReadPagesRequest MakeReadRequest(const TGroups& refs)
 {
-    NCloud::NProto::TReadPagesRequest request;
+    NProto::TReadPagesRequest request;
 
     for (const auto& [firstPageNo, pageCount]: refs) {
         auto& ref = *request.AddPageGroupRefs();
@@ -85,20 +85,20 @@ NCloud::NProto::TReadPagesRequest MakeReadRequest(const TGroups& refs)
     return request;
 }
 
-NCloud::NProto::TReadJournalTailRequest MakeReadTailRequest(
+NProto::TReadJournalTailRequest MakeReadTailRequest(
     ui64 afterLsn,
     ui32 maxRecordCount = 0)
 {
-    NCloud::NProto::TReadJournalTailRequest request;
+    NProto::TReadJournalTailRequest request;
     request.SetAfterLogSequenceNumber(afterLsn);
     request.SetMaxRecordCount(maxRecordCount);
 
     return request;
 }
 
-NCloud::NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(ui64 lsn)
+NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(ui64 lsn)
 {
-    NCloud::NProto::TAdvanceLsnLowWatermarkRequest request;
+    NProto::TAdvanceLsnLowWatermarkRequest request;
     request.SetLsnLowWatermark(lsn);
 
     return request;
@@ -126,7 +126,7 @@ TString DescribeGroups(const T& source)
 
 // "2<-1 20:[B020]", empty for the empty record the journal hands back when
 // there is nothing to flush
-TString DescribeRecord(const NCloud::NProto::TJournalRecord& record)
+TString DescribeRecord(const NProto::TJournalRecord& record)
 {
     if (!record.GetLogSequenceNumber() && !record.PageGroupsSize()) {
         return {};
@@ -144,8 +144,7 @@ TString DescribeRecord(const NCloud::NProto::TJournalRecord& record)
 }
 
 // "1<-0 10:[A010]; 2<-1 20:[B020]"
-TString DescribeRecords(
-    const NCloud::NProto::TReadJournalTailResponse& response)
+TString DescribeRecords(const NProto::TReadJournalTailResponse& response)
 {
     TVector<TString> records;
 
@@ -176,7 +175,7 @@ struct TTestDevice final: public IDevice
     struct TBlockedWrite
     {
         TVector<TPageRange> Ranges;
-        TPromise<NCloud::NProto::TError> Error;
+        TPromise<NProto::TError> Error;
     };
 
     TMutex Mutex;
@@ -209,8 +208,7 @@ struct TTestDevice final: public IDevice
         return Impl->ReadPages(std::move(rangeRefs));
     }
 
-    TFuture<NCloud::NProto::TError> WritePages(
-        TVector<TPageRange> ranges) override
+    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
     {
         if (FailWrites.load()) {
             return MakeFuture(MakeError(E_IO, "write failed"));
@@ -218,7 +216,7 @@ struct TTestDevice final: public IDevice
 
         with_lock (Mutex) {
             if (BlockWrites) {
-                auto error = NewPromise<NCloud::NProto::TError>();
+                auto error = NewPromise<NProto::TError>();
                 BlockedWrites.push_back(
                     {.Ranges = std::move(ranges), .Error = error});
                 WriteBlocked.Signal();
@@ -229,8 +227,7 @@ struct TTestDevice final: public IDevice
         return Impl->WritePages(std::move(ranges));
     }
 
-    TFuture<NCloud::NProto::TError> ZeroPages(
-        TVector<TPageRangeRef> ranges) override
+    TFuture<NProto::TError> ZeroPages(TVector<TPageRangeRef> ranges) override
     {
         if (FailWrites.load()) {
             return MakeFuture(MakeError(E_IO, "zero failed"));
@@ -303,7 +300,7 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
     {
         std::optional<ui64> Key;   // none for a metadata write
         TBuffer Buffer;
-        TPromise<NCloud::NProto::TError> Error;
+        TPromise<NProto::TError> Error;
     };
 
     TMutex Mutex;
@@ -331,7 +328,7 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
         return MakeFuture<TRestoreResult>(std::move(restored));
     }
 
-    TResultOrError<TFuture<NCloud::NProto::TError>> Write(
+    TResultOrError<TFuture<NProto::TError>> Write(
         ui64 key,
         TBuffer buffer) override
     {
@@ -344,12 +341,12 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
         return WriteOrHold(key, std::move(buffer));
     }
 
-    TFuture<NCloud::NProto::TError> WriteMeta(TBuffer buffer) override
+    TFuture<NProto::TError> WriteMeta(TBuffer buffer) override
     {
         return WriteOrHold(std::nullopt, std::move(buffer));
     }
 
-    TFuture<NCloud::NProto::TError> EraseBelow(ui64 key) override
+    TFuture<NProto::TError> EraseBelow(ui64 key) override
     {
         return Impl->EraseBelow(key);
     }
@@ -362,9 +359,7 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
     }
 
 private:
-    TFuture<NCloud::NProto::TError> WriteOrHold(
-        std::optional<ui64> key,
-        TBuffer buffer)
+    TFuture<NProto::TError> WriteOrHold(std::optional<ui64> key, TBuffer buffer)
     {
         if (FailWrites.load()) {
             return MakeFuture(MakeError(E_IO, "meta write failed"));
@@ -372,7 +367,7 @@ private:
 
         with_lock (Mutex) {
             if (BlockWrites) {
-                auto error = NewPromise<NCloud::NProto::TError>();
+                auto error = NewPromise<NProto::TError>();
                 BlockedWrites.push_back(
                     {.Key = key, .Buffer = std::move(buffer), .Error = error});
                 WriteBlocked.Signal();
@@ -383,7 +378,7 @@ private:
         return WriteThrough(key, std::move(buffer));
     }
 
-    TFuture<NCloud::NProto::TError> WriteThrough(
+    TFuture<NProto::TError> WriteThrough(
         std::optional<ui64> key,
         TBuffer buffer)
     {
@@ -507,23 +502,23 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     // The response is ready only once the record has made it into the page
     // index, which a record that does not continue the chain yet has not.
-    TFuture<NCloud::NProto::TWriteLogRecordResponse> WriteAsync(
-        NCloud::NProto::TWriteLogRecordRequest request)
+    TFuture<NProto::TWriteLogRecordResponse> WriteAsync(
+        NProto::TWriteLogRecordRequest request)
     {
         return Run([&] { return Journal->Write(std::move(request)); });
     }
 
     // Returns once the write is on the executor - for a write the test
     // holds up at a store.
-    TFuture<NCloud::NProto::TWriteLogRecordResponse> StartWrite(
-        NCloud::NProto::TWriteLogRecordRequest request)
+    TFuture<NProto::TWriteLogRecordResponse> StartWrite(
+        NProto::TWriteLogRecordRequest request)
     {
         return Executor->Execute(
             [this, request = std::move(request)]() mutable
             { return Journal->Write(std::move(request)); });
     }
 
-    ui32 Write(NCloud::NProto::TWriteLogRecordRequest request)
+    ui32 Write(NProto::TWriteLogRecordRequest request)
     {
         return WriteAsync(std::move(request))
             .GetValueSync()
@@ -536,21 +531,20 @@ struct TFixture: public NUnitTest::TBaseFixture
         return Write(MakeWriteRequest(lsn, prevLsn, tag, groups));
     }
 
-    NCloud::NProto::TReadPagesResponse ReadPages(const TGroups& refs)
+    NProto::TReadPagesResponse ReadPages(const TGroups& refs)
     {
         return Run([&] { return Journal->Read(MakeReadRequest(refs)); })
             .GetValueSync();
     }
 
-    TFuture<NCloud::NProto::TReadPagesResponse> ReadPagesAsync(
-        const TGroups& refs)
+    TFuture<NProto::TReadPagesResponse> ReadPagesAsync(const TGroups& refs)
     {
         return Executor->Execute(
             [this, request = MakeReadRequest(refs)]() mutable
             { return Journal->Read(std::move(request)); });
     }
 
-    NCloud::NProto::TReadJournalTailResponse ReadTail(
+    NProto::TReadJournalTailResponse ReadTail(
         ui64 afterLsn,
         ui32 maxRecordCount = 0)
     {
@@ -576,7 +570,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             .GetCode();
     }
 
-    TResultOrError<NCloud::NProto::TJournalRecord> GetRecordToFlush(
+    TResultOrError<NProto::TJournalRecord> GetRecordToFlush(
         ui64 maxAllowedLsn = Max<ui64>())
     {
         return Run([&] { return Journal->GetRecordToFlush(maxAllowedLsn); })

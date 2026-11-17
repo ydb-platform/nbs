@@ -6,6 +6,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -20,6 +21,7 @@ import (
 func RegisterForExecution(
 	ctx context.Context,
 	config *images_config.ImagesConfig,
+	disabledZones *common.DisabledZones,
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	storage resources.Storage,
@@ -232,10 +234,11 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("images.DeleteImage", func() tasks.Task {
 		return &deleteImageTask{
-			config:      config,
-			scheduler:   taskScheduler,
-			storage:     storage,
-			poolService: poolService,
+			config:        config,
+			disabledZones: disabledZones,
+			scheduler:     taskScheduler,
+			storage:       storage,
+			poolService:   poolService,
 		}
 	})
 	if err != nil {

@@ -24,6 +24,7 @@ GO_TEST_SRCS(
     create_disk_from_base_disk_task_test.go
     create_empty_disk_task_test.go
     create_overlay_disk_task_test.go
+    delete_disk_disabled_zones_test.go
     delete_disk_task_test.go
     migrate_disk_task_test.go
     service_test.go

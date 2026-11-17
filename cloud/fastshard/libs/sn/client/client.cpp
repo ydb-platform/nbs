@@ -40,8 +40,8 @@ using silk::FiberFuture;
 using silk::FiberMutex;
 using silk::FiberScheduler;
 
-using NCloud::NProto::TDeviceProtocolRequest;
-using NCloud::NProto::TDeviceProtocolResponse;
+using NProto::TDeviceProtocolRequest;
+using NProto::TDeviceProtocolResponse;
 
 namespace {
 
@@ -270,9 +270,9 @@ public:
     {}
 
 #define SN_CLIENT_METHOD(name, ...)                                            \
-    NCloud::NProto::T##name##Response name(                                    \
+    NProto::T##name##Response name(                                            \
         TFastShardContext& ctx,                                                \
-        NCloud::NProto::T##name##Request request) override                     \
+        NProto::T##name##Request request) override                             \
     {                                                                          \
         TDeviceProtocolRequest wire;                                           \
         wire.SetRequestId(NextRequestId.fetch_add(1));                         \
@@ -280,7 +280,7 @@ public:
                                                                                \
         TDeviceProtocolResponse resp = Exchange(ctx, wire);                    \
                                                                                \
-        NCloud::NProto::T##name##Response out;                                 \
+        NProto::T##name##Response out;                                         \
         if (resp.HasProtocolError()) {                                         \
             *out.MutableError() = std::move(*resp.MutableProtocolError());     \
         } else if (resp.Has##name()) {                                         \

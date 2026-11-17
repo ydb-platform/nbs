@@ -1,5 +1,7 @@
 #pragma once
 
+#include "write_back_cache_lock.h"
+
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -7,7 +9,6 @@
 #include <library/cpp/threading/future/core/future.h>
 
 #include <util/generic/vector.h>
-#include <util/system/spinlock.h>
 
 #include <functional>
 
@@ -34,7 +35,7 @@ class TQueuedOperations
 private:
     struct TEvent;
 
-    TAdaptiveLock Lock;
+    std::unique_ptr<IWriteBackCacheLock> Lock;
     TVector<TEvent> Events;
 
     // Non-owning pointers. The cache-state lifetime invariant keeps allocated
@@ -48,11 +49,17 @@ private:
 public:
     TQueuedOperations(
         IQueuedOperationsProcessor& processor,
+        std::unique_ptr<IWriteBackCacheLock> lock,
         std::function<void()> requestsSerializedCallback);
 
     ~TQueuedOperations();
 
-    void Acquire();
+    void Acquire() noexcept;
+
+    // Called from TGuard's destructor through noexcept lock operations.
+    // Event handlers (including synchronous promise subscribers) and
+    // RequestsSerializedCallback must not throw; an escaping exception calls
+    // std::terminate.
     void Release();
 
     void ScheduleFlushNode(ui64 nodeId);

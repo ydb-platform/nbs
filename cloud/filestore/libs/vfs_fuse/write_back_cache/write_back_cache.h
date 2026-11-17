@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/filestore/config/vfs.pb.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/vfs_fuse/public.h>
@@ -71,6 +72,9 @@ struct TWriteBackCacheArgs
     // The value is compared with the number of flush batches needed to drain
     // unflushed WriteData requests.
     ui32 MaxQueuedFlushBatchesPerNode = 0;
+
+    // Lock acquisition method for the shared cache state
+    NProto::EWriteBackCacheLockMethod LockMethod = NProto::WBC_LOCK_ADAPTIVE;
 
     // If the flag is enabled, WriteBackCache will generate WriteData requests
     // with iovecs.

@@ -29,4 +29,8 @@ message SnapshotsConfig {
     optional uint32 BackupSnapshotsInflightLimit = 13 [default = 10];
     optional string CollectBackupQueueMetricsTaskScheduleInterval = 14 [default = "10m"];
     optional string BackupQueueMetricsCollectionInterval = 15 [default = "1m"];
+    // Disable proxy overlay disks when the source zone in the request
+    // exactly matches an entry. Only restricts
+    // UseProxyOverlayDisk; an empty list preserves its value.
+    repeated string UseProxyOverlayDiskZoneBlacklist = 16;
 }

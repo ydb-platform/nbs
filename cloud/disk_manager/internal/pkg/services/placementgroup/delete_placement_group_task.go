@@ -6,23 +6,27 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
+
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type deletePlacementGroupTask struct {
-	storage      resources.Storage
-	nbsFactory   nbs.Factory
-	cellSelector cells.CellSelector
-	request      *protos.DeletePlacementGroupRequest
-	state        *protos.DeletePlacementGroupTaskState
+	storage       resources.Storage
+	nbsFactory    nbs.Factory
+	cellSelector  cells.CellSelector
+	disabledZones *common.DisabledZones
+	request       *protos.DeletePlacementGroupRequest
+	state         *protos.DeletePlacementGroupTaskState
 }
 
 func (t *deletePlacementGroupTask) Save() ([]byte, error) {
@@ -45,17 +49,88 @@ func (t *deletePlacementGroupTask) deletePlacementGroup(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := selectClientByGroup(
+	pgMeta, err := t.storage.GetPlacementGroupMeta(
 		ctx,
-		t.storage,
-		t.nbsFactory,
-		t.cellSelector,
 		t.request.GroupId,
-		t.request.ZoneId,
 	)
 	if err != nil {
 		return err
 	}
+
+	zoneID := t.request.ZoneId
+	if pgMeta != nil && len(pgMeta.ZoneID) > 0 {
+		zoneID = pgMeta.ZoneID
+	}
+
+	// Disabled cells may already be absent from the cell mapping,
+	// so we cannot rely on it to validate that the cell stored in metadata
+	// belongs to the requested zone.
+	if t.disabledZones.IsDisabled(zoneID) {
+		return t.deletePlacementGroupInDisabledZone(ctx, execCtx, zoneID)
+	}
+
+	return t.deletePlacementGroupInEnabledZone(ctx, execCtx, pgMeta)
+}
+
+func (t *deletePlacementGroupTask) deletePlacementGroupInDisabledZone(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	zoneID string,
+) error {
+
+	err := t.markPlacementGroupDeleting(ctx, execCtx)
+	if err != nil {
+		return err
+	}
+
+	logging.Warn(
+		ctx,
+		"Skipping NBS deletion of placement group %v: zone %v is disabled",
+		t.request.GroupId,
+		zoneID,
+	)
+
+	return t.storage.PlacementGroupDeleted(ctx, t.request.GroupId, time.Now())
+}
+
+func (t *deletePlacementGroupTask) deletePlacementGroupInEnabledZone(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	pgMeta *resources.PlacementGroupMeta,
+) error {
+
+	zoneID, err := resolvePlacementGroupZoneID(
+		t.cellSelector,
+		t.request.GroupId,
+		t.request.ZoneId,
+		pgMeta,
+	)
+	if err != nil {
+		return err
+	}
+
+	client, err := t.nbsFactory.GetClient(ctx, zoneID)
+	if err != nil {
+		return err
+	}
+
+	err = t.markPlacementGroupDeleting(ctx, execCtx)
+	if err != nil {
+		return err
+	}
+
+	err = client.DeletePlacementGroup(ctx, t.request.GroupId)
+	if err != nil {
+		return err
+	}
+
+	return t.storage.PlacementGroupDeleted(ctx, t.request.GroupId, time.Now())
+}
+
+func (t *deletePlacementGroupTask) markPlacementGroupDeleting(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
 
 	selfTaskID := execCtx.GetTaskID()
 
@@ -76,12 +151,7 @@ func (t *deletePlacementGroupTask) deletePlacementGroup(
 		)
 	}
 
-	err = client.DeletePlacementGroup(ctx, t.request.GroupId)
-	if err != nil {
-		return err
-	}
-
-	return t.storage.PlacementGroupDeleted(ctx, t.request.GroupId, time.Now())
+	return nil
 }
 
 func (t *deletePlacementGroupTask) Run(

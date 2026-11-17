@@ -34,11 +34,11 @@ struct IDevice
     [[nodiscard]] virtual auto ReadPages(TVector<TPageRangeRef> rangeRefs)
         -> NThreading::TFuture<TResultOrError<TVector<TBuffer>>> = 0;
 
-    [[nodiscard]] virtual auto WritePages(TVector<TPageRange> ranges)
-        -> NThreading::TFuture<NCloud::NProto::TError> = 0;
+    [[nodiscard]] virtual auto WritePages(
+        TVector<TPageRange> ranges) -> NThreading::TFuture<NProto::TError> = 0;
 
     [[nodiscard]] virtual auto ZeroPages(TVector<TPageRangeRef> ranges)
-        -> NThreading::TFuture<NCloud::NProto::TError> = 0;
+        -> NThreading::TFuture<NProto::TError> = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
