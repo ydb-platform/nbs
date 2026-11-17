@@ -334,12 +334,12 @@ public:
     [[nodiscard]] auto Read(NProto::TReadPagesRequest request) const
         -> TFuture<NProto::TReadPagesResponse> override;
 
-    [[nodiscard]] auto ReadTail(NProto::TReadJournalTailRequest request) const
-        -> TFuture<NProto::TReadJournalTailResponse> override;
+    [[nodiscard]] NProto::TReadJournalTailResponse ReadTail(
+        NProto::TReadJournalTailRequest request) const override;
 
     [[nodiscard]] auto AdvanceLsnLowWatermark(
         NProto::TAdvanceLsnLowWatermarkRequest request)
-        -> TFuture<NProto::TAdvanceLsnLowWatermarkResponse> override;
+        -> NProto::TAdvanceLsnLowWatermarkResponse override;
 
     [[nodiscard]] TResultOrError<TJournalRecords> GetRecordsToFlush(
         ui64 maxAllowedLsn,
@@ -835,11 +835,9 @@ TFuture<NProto::TReadPagesResponse> TJournal::Read(
     return MakeFuture(std::move(response));
 }
 
-TFuture<NProto::TReadJournalTailResponse> TJournal::ReadTail(
+NProto::TReadJournalTailResponse TJournal::ReadTail(
     NProto::TReadJournalTailRequest request) const
 {
-    using TResponse = NProto::TReadJournalTailResponse;
-
     //
     // Pin the flushed lsn, at least at the lsn the reader asks from, so that
     // the records past it stay in the journal until the read is done
@@ -864,7 +862,7 @@ TFuture<NProto::TReadJournalTailResponse> TJournal::ReadTail(
     // Fill the response with the records and their page contents
     //
 
-    TResponse response;
+    NProto::TReadJournalTailResponse response;
     response.SetLsnLowWatermark(lsnLowWatermark);
 
     for (const auto& record: records) {
@@ -877,18 +875,16 @@ TFuture<NProto::TReadJournalTailResponse> TJournal::ReadTail(
             journalRecord.MutablePageGroups());
 
         if (HasError(error)) {
-            return MakeFuture<TResponse>(TErrorResponse(error));
+            return TErrorResponse(std::move(error));
         }
     }
 
-    return MakeFuture(std::move(response));
+    return response;
 }
 
-TFuture<NProto::TAdvanceLsnLowWatermarkResponse>
-TJournal::AdvanceLsnLowWatermark(NProto::TAdvanceLsnLowWatermarkRequest request)
+NProto::TAdvanceLsnLowWatermarkResponse TJournal::AdvanceLsnLowWatermark(
+    NProto::TAdvanceLsnLowWatermarkRequest request)
 {
-    using TResponse = NProto::TAdvanceLsnLowWatermarkResponse;
-
     //
     // Reject a watermark past the last indexed lsn - the writer may only ack
     // what the journal has indexed
@@ -898,11 +894,11 @@ TJournal::AdvanceLsnLowWatermark(NProto::TAdvanceLsnLowWatermarkRequest request)
     const ui64 lastIndexedLsn = LogPageIndex.GetLastIndexedLsn();
 
     if (lsnLowWatermark > lastIndexedLsn) {
-        return MakeFuture<TResponse>(TErrorResponse(
+        return TErrorResponse(
             E_ARGUMENT,
             TStringBuilder()
                 << "lsn low watermark " << lsnLowWatermark
-                << " reaches past the last indexed lsn " << lastIndexedLsn));
+                << " reaches past the last indexed lsn " << lastIndexedLsn);
     }
 
     //
@@ -911,10 +907,10 @@ TJournal::AdvanceLsnLowWatermark(NProto::TAdvanceLsnLowWatermarkRequest request)
     //
 
     if (AdvancingLsnLowWatermark.exchange(true, std::memory_order_acquire)) {
-        return MakeFuture<TResponse>(TErrorResponse(
+        return TErrorResponse(
             E_REJECTED,
             TStringBuilder() << "another advance to lsn low watermark "
-                             << lsnLowWatermark << " is already in progress"));
+                             << lsnLowWatermark << " is already in progress");
     }
     Y_DEFER
     {
@@ -922,7 +918,7 @@ TJournal::AdvanceLsnLowWatermark(NProto::TAdvanceLsnLowWatermarkRequest request)
     };
 
     if (lsnLowWatermark <= LsnLowWatermark.load(std::memory_order_acquire)) {
-        return MakeFuture<TResponse>(TErrorResponse(S_ALREADY));
+        return TErrorResponse(S_ALREADY);
     }
 
     //
@@ -937,11 +933,11 @@ TJournal::AdvanceLsnLowWatermark(NProto::TAdvanceLsnLowWatermarkRequest request)
 
     auto future = MetaStore->WriteMeta(SerializeMetadata(metadata));
     if (const auto& error = Executor->WaitFor(future); HasError(error)) {
-        return MakeFuture<TResponse>(TErrorResponse(error));
+        return TErrorResponse(error);
     }
 
     LsnLowWatermark.store(lsnLowWatermark, std::memory_order_release);
-    return MakeFuture<TResponse>();
+    return {};
 }
 
 TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(

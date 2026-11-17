@@ -553,8 +553,7 @@ struct TFixture: public NUnitTest::TBaseFixture
                    {
                        return Journal->ReadTail(
                            MakeReadTailRequest(afterLsn, maxRecordCount));
-                   })
-            .GetValueSync();
+                   });
     }
 
     ui32 AdvanceLsnLowWatermark(ui64 lsn)
@@ -565,7 +564,6 @@ struct TFixture: public NUnitTest::TBaseFixture
                        return Journal->AdvanceLsnLowWatermark(
                            MakeAdvanceRequest(lsn));
                    })
-            .GetValueSync()
             .GetError()
             .GetCode();
     }

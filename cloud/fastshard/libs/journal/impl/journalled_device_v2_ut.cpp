@@ -244,20 +244,20 @@ struct TTestJournal final: public IJournal
         return MakeFuture(ReadHandler(request));
     }
 
-    auto ReadTail(NProto::TReadJournalTailRequest request) const
-        -> TFuture<NProto::TReadJournalTailResponse> override
+    NProto::TReadJournalTailResponse ReadTail(
+        NProto::TReadJournalTailRequest request) const override
     {
         Y_UNUSED(request);
 
-        return MakeFuture<NProto::TReadJournalTailResponse>();
+        return {};
     }
 
     auto AdvanceLsnLowWatermark(NProto::TAdvanceLsnLowWatermarkRequest request)
-        -> TFuture<NProto::TAdvanceLsnLowWatermarkResponse> override
+        -> NProto::TAdvanceLsnLowWatermarkResponse override
     {
         Y_UNUSED(request);
 
-        return MakeFuture<NProto::TAdvanceLsnLowWatermarkResponse>();
+        return {};
     }
 
     // Hands out the records the way the journal does: from the front, up to
