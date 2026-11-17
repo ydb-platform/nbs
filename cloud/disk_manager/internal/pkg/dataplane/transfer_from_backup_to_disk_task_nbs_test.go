@@ -221,7 +221,6 @@ func (e *restoreTestEnv) backupDisk(
 	execCtx.On("SetEstimatedInflightDuration", mock.Anything)
 
 	createTask := &createSnapshotFromDiskTask{
-		backupEnabled:     true,
 		config:            &config.DataplaneConfig{},
 		performanceConfig: &performance_config.PerformanceConfig{},
 		nbsFactory:        e.nbsFactory,

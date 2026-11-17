@@ -38,7 +38,6 @@ func RegisterForExecution(
 
 	err := taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromDisk", func() tasks.Task {
 		return &createSnapshotFromDiskTask{
-			backupEnabled:            backupS3 != nil,
 			config:                   config,
 			performanceConfig:        performanceConfig,
 			disabledZones:            disabledZones,

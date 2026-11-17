@@ -8,8 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
@@ -52,20 +50,4 @@ func TestBackupDisabledIgnoresUnusedIntervals(t *testing.T) {
 			scheduler.AssertExpectations(t)
 		})
 	}
-}
-
-func TestBackupDisabledDoesNotResolveMissingBlockSize(t *testing.T) {
-	f := newCreateSnapshotDiskZoneTest(t, "zone", false,
-		&protos.CreateSnapshotFromDiskTaskState{}, nil)
-	f.execCtx.On("GetTaskID").Return("create").Twice()
-	f.storage.On("CreateSnapshot", f.ctx, storage.SnapshotMeta{
-		ID:           "snapshot",
-		Disk:         f.task.request.SrcDisk,
-		CheckpointID: "checkpoint",
-		CreateTaskID: "create",
-	}).Return(&storage.SnapshotMeta{ID: "snapshot", Ready: true}, nil).Once()
-
-	// A retried ready snapshot does not need an extra metadata read or a
-	// description of a disk that might no longer exist.
-	require.NoError(t, f.task.run(f.ctx, f.execCtx))
 }

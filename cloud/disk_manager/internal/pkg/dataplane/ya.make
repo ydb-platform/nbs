@@ -39,6 +39,7 @@ GO_TEST_SRCS(
     collect_snapshots_task_test.go
     create_dr_based_disk_checkpoint_task_test.go
     create_dr_based_disk_checkpoint_disabled_zones_test.go
+    create_snapshot_from_disk_block_size_test.go
     create_snapshot_from_disk_disabled_zones_test.go
     delete_snapshot_task_test.go
     replicate_disk_task_test.go
