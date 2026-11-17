@@ -27,38 +27,38 @@ constexpr TDuration DefaultIntervalDuration = TDuration::Minutes(2);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const char* GetAvailabilityRequestTypeName(
-    EFileStoreAvailabilityRequestType requestType)
+const char* GetAvailabilityRequestName(EFileStoreRequest requestType)
 {
-    using EType = EFileStoreAvailabilityRequestType;
+    using EType = EFileStoreRequest;
     switch (requestType) {
-        case EType::Lookup: return "lookup";
-        case EType::GetAttr: return "getattr";
-        case EType::SetAttr: return "setattr";
+        case EType::AccessNode: return "access";
+        case EType::AcquireLock: return "acquirelock";
+        case EType::AllocateData: return "fallocate";
+        case EType::CreateHandle: return "open";
+        case EType::CreateNode: return "createnode";
+        case EType::DestroyHandle: return "release";
+        case EType::GetNodeAttr: return "getattr";
+        case EType::GetNodeXAttr: return "getxattr";
+        case EType::ListNodeXAttr: return "listxattr";
+        case EType::ListNodes: return "readdir";
+        case EType::ReadData: return "read";
         case EType::ReadLink: return "readlink";
-        case EType::MkDir: return "mkdir";
-        case EType::RmDir: return "rmdir";
-        case EType::Unlink: return "unlink";
-        case EType::SymLink: return "symlink";
-        case EType::Link: return "link";
-        case EType::Rename: return "rename";
-        case EType::Open: return "open";
-        case EType::Create: return "create";
-        case EType::Read: return "read";
-        case EType::Write: return "write";
-        case EType::WriteBuf: return "write_buf";
-        case EType::Flush: return "flush";
-        case EType::Fsync: return "fsync";
-        case EType::Release: return "release";
-        case EType::OpenDir: return "opendir";
-        case EType::ReadDir: return "readdir";
-        case EType::ReadDirPlus: return "readdirplus";
-        case EType::ReleaseDir: return "releasedir";
-        case EType::None:
-        case EType::MAX:
-            break;
+        case EType::ReleaseLock: return "releaselock";
+        case EType::RemoveNodeXAttr: return "removexattr";
+        case EType::RenameNode: return "rename";
+        case EType::SetNodeAttr: return "setattr";
+        case EType::SetNodeXAttr: return "setxattr";
+        case EType::StatFileStore: return "statfs";
+        case EType::UnlinkNode: return "unlink";
+        case EType::WriteData: return "write";
+        default:
+            return nullptr;
     }
-    return "unknown";
+}
+
+bool IsAvailabilityTrackedRequest(EFileStoreRequest requestType)
+{
+    return GetAvailabilityRequestName(requestType) != nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -101,13 +101,16 @@ void TAvailabilityCounters::EnableAndRegister(
     // No intervals have been reported yet - start as available.
     *LastIntervalAvailableCounter = 1;
 
-    // Index 0 is EFileStoreAvailabilityRequestType::None and stays unused.
-    for (size_t i = 1; i < RequestTypeStates.size(); ++i) {
+    // Only the tracked request types get per-type sensors.
+    for (size_t i = 0; i < RequestTypeStates.size(); ++i) {
+        const auto requestType = static_cast<EFileStoreRequest>(i);
+        if (!IsAvailabilityTrackedRequest(requestType)) {
+            continue;
+        }
         auto& state = RequestTypeStates[i];
         auto requestCounters = counters.GetSubgroup(
             "request",
-            GetAvailabilityRequestTypeName(
-                static_cast<EFileStoreAvailabilityRequestType>(i)));
+            GetAvailabilityRequestName(requestType));
 
         state.AvailableIntervalsCounter = requestCounters->GetCounter(
             "Availability_AvailableIntervals",
@@ -133,14 +136,12 @@ void TAvailabilityCounters::RequestStarted(
         return;
     }
 
-    if (callContext.AvailabilityRequestType ==
-        EFileStoreAvailabilityRequestType::None)
-    {
+    if (!IsAvailabilityTrackedRequest(callContext.RequestType)) {
         return;
     }
 
     auto& state = RequestTypeStates[
-        static_cast<size_t>(callContext.AvailabilityRequestType)];
+        static_cast<size_t>(callContext.RequestType)];
 
     for (;;) {
         // Assign the event to its actual wall-clock interval: roll the
@@ -174,7 +175,7 @@ void TAvailabilityCounters::DoRequestStarted(
     if (callContext.AvailabilityIntervalSeqNo != 0) {
         ReportAvailabilityCountersDoubleRegistration(
             TStringBuilder() << "request type: "
-                << static_cast<ui32>(callContext.AvailabilityRequestType));
+                << GetAvailabilityRequestName(callContext.RequestType));
         return;
     }
 
@@ -192,14 +193,12 @@ void TAvailabilityCounters::RequestCompleted(
         return;
     }
 
-    if (callContext.AvailabilityRequestType ==
-        EFileStoreAvailabilityRequestType::None)
-    {
+    if (!IsAvailabilityTrackedRequest(callContext.RequestType)) {
         return;
     }
 
     auto& state = RequestTypeStates[
-        static_cast<size_t>(callContext.AvailabilityRequestType)];
+        static_cast<size_t>(callContext.RequestType)];
 
     for (;;) {
         // Assign the event to its actual wall-clock interval: roll the
@@ -348,8 +347,11 @@ void TAvailabilityCounters::RollInterval(bool publishCounters)
     bool intervalAvailable = true;
     TStringBuilder unavailableRequestTypes;
 
-    // Index 0 is EFileStoreAvailabilityRequestType::None, stays unused.
-    for (size_t i = 1; i < RequestTypeStates.size(); ++i) {
+    for (size_t i = 0; i < RequestTypeStates.size(); ++i) {
+        const auto requestType = static_cast<EFileStoreRequest>(i);
+        if (!IsAvailabilityTrackedRequest(requestType)) {
+            continue;
+        }
         if (!RollRequestTypeStateAndReturnAvailability(
                 RequestTypeStates[i],
                 publishCounters))
@@ -358,8 +360,7 @@ void TAvailabilityCounters::RollInterval(bool publishCounters)
             // the request types.
             intervalAvailable = false;
             unavailableRequestTypes << " "
-                << GetAvailabilityRequestTypeName(
-                    static_cast<EFileStoreAvailabilityRequestType>(i));
+                << GetAvailabilityRequestName(requestType);
         }
     }
 
