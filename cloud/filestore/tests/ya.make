@@ -31,6 +31,7 @@ RECURSE_FOR_TESTS(
     lease_expiration
     loadtest
     profile_log
+    range_id_hasher
     registration
     scheme_cache
     service

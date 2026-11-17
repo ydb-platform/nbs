@@ -342,6 +342,14 @@ void Convert(
     }
 }
 
+ui32 GetRangeIdHasherType(
+    const TStorageConfig& storageConfig,
+    const NProto::TFileSystem& fileSystem)
+{
+    const ui32 typeOverride = storageConfig.GetRangeIdHasherTypeOverride();
+    return typeOverride ? typeOverride : fileSystem.GetRangeIdHasherType();
+}
+
 void ApplySoftBackpressureParameters(
     const TStorageConfig& storageConfig,
     TDefaultParameters& parameters)

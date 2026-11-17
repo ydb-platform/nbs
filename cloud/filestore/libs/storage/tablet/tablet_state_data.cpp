@@ -202,7 +202,7 @@ NProto::TError TIndexTabletState::DeleteRange(
             SplitRange(
                 range.FirstAlignedBlock(),
                 deletedBlockCount,
-                BlockGroupSize,
+                GetBlockGroupSize(),
                 [&] (ui32 blockOffset, ui32 blocksCount) {
                     MarkMixedBlocksDeleted(
                         db,
@@ -1353,6 +1353,14 @@ const IBlockLocation2RangeIndex& TIndexTabletState::GetRangeIdHasher() const
     return *Impl->RangeIdHasher;
 }
 
+ui32 TIndexTabletState::GetBlockGroupSize() const
+{
+    // The hasher is not created before LoadState (e.g. in STATE_BROKEN).
+    return Impl->RangeIdHasher
+        ? Impl->RangeIdHasher->GetBlockGroupSize()
+        : BlockGroupSize;
+}
+
 ui32 TIndexTabletState::CalculateMixedIndexRangeGarbageBlockCount(
     ui32 rangeId) const
 {
@@ -1538,7 +1546,7 @@ TIndexTabletState::NextPriorityRangeForCleanup() const
         SplitRange(
             one.BlockIndex,
             one.BlockCount,
-            BlockGroupSize,
+            GetBlockGroupSize(),
             [&] (ui32 blockOffset, ui32 blocksCount) {
                 PriorityRangesForCleanup.push_back({
                     one.NodeId,
