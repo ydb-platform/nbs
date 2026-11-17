@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import base64
 import dataclasses
 import json
 import re
+import zlib
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from ..helpers import format_duration
+from ..helpers import RunMetadata, format_duration
 from ..set_build_and_test_targets import JOIN_GROUPS
 from .report_status import TestStatus
 
@@ -17,7 +19,9 @@ START = "<!-- status-plaque -->"
 END = "<!-- /status-plaque -->"
 DATA_RE = re.compile(r"<!-- status-plaque-data (.*?) -->")
 BLOCK_RE = re.compile(rf"{re.escape(START)}.*?{re.escape(END)}", re.DOTALL)
+COMMENT_SIZE_LIMIT = 60_000
 COUNT_STATUSES = tuple(status.name for status in TestStatus.summary_table_order())
+STATE_ENCODING = "zlib-v1:"
 ICONS = {
     "pending": "⏳",
     "running": "⏳",
@@ -64,14 +68,13 @@ class Report:
     commit: str
     total: int
     counts: dict[str, int]
-    url: str = ""
-    build_error_url: str = ""
+    filename: str = ""
+    build_errors: bool = False
     build_failed_count: int = 0
-    history_url: str = ""
     elapsed: str = "0"
     exit_code: int | None = None
-    trace_report_url: str = ""
-    trace_otlp_url: str = ""
+    trace: bool = False
+    otlp: bool = False
 
     @property
     def failed(self) -> bool:
@@ -106,12 +109,12 @@ class Report:
         count = self.counts.get(status, 0)
         return max(count, self.build_failed_count) if status == "FAIL_BUILD" else count
 
-    def count_url(self, status: str) -> str:
+    def count_url(self, status: str, report_url: str, build_error_url: str) -> str:
         if not self.count(status):
             return ""
         if status == "FAIL_BUILD" and not self.counts.get(status, 0):
-            return self.build_error_url
-        return f"{self.url}#{status}" if self.url else ""
+            return build_error_url
+        return f"{report_url}#{status}" if report_url else ""
 
 
 def target_for_component(component: str) -> str:
@@ -142,9 +145,9 @@ class WorkflowOutcome:
 class Workload:
     component: str
     status: str = "pending"
-    job_url: str = ""
+    job_id: int | None = None  # Zero links to the run when job lookup was unavailable.
     build: str = ""
-    build_error_url: str = ""
+    build_errors: bool = False
     reports: list[Report] = dataclasses.field(default_factory=list)
     build_duration_seconds: int | None = None
     workflow_status: str = ""
@@ -192,19 +195,19 @@ class Workload:
     def update(
         self,
         status: str,
-        job_url: str,
-        build_error_url: str,
+        job_id: int | None,
+        build_errors: bool,
         build_duration_seconds: int | None = None,
     ) -> None:
         # A running update starts a new job attempt. Repeated notifications for
         # the same running job must not erase reports that have already arrived.
         if status == "running" and (
             self.status not in ("pending", "running", "built")
-            or (job_url and job_url != self.job_url)
+            or (job_id is not None and job_id != self.job_id)
         ):
             self.reports.clear()
             self.build = ""
-            self.build_error_url = ""
+            self.build_errors = False
             self.build_duration_seconds = None
             self.workflow_status = ""
             self.execution_status = ""
@@ -215,14 +218,15 @@ class Workload:
         ):
             return
         self.status = status
-        self.job_url = job_url or self.job_url
+        if job_id is not None:
+            self.job_id = job_id
         if build_duration_seconds is not None:
             self.build_duration_seconds = build_duration_seconds
         if status == "built":
             self.build = "completed"
         elif status == "failed_build":
             self.build = "failed_build"
-            self.build_error_url = build_error_url or self.build_error_url
+            self.build_errors = build_errors or self.build_errors
 
     def add_report(self, report: Report) -> None:
         # Older plaques copied attempt build errors into the shared build state.
@@ -233,7 +237,7 @@ class Workload:
             and any(item.count("FAIL_BUILD") for item in self.reports)
         ):
             self.build = ""
-            self.build_error_url = ""
+            self.build_errors = False
         self.reports = [
             old
             for old in self.reports
@@ -272,6 +276,10 @@ class Workload:
 class Plaque:
     build_preset: str
     workloads: list[Workload] = dataclasses.field(default_factory=list)
+    notice: str = ""
+    run: RunMetadata = dataclasses.field(default_factory=RunMetadata.from_env)
+    history_url: str = ""
+    too_large: bool = False
 
     def workload(self, component: str, run_attempt: int | None = None) -> Workload:
         for index, workload in enumerate(self.workloads):
@@ -281,7 +289,8 @@ class Plaque:
                     self.workloads[index] = workload
                 return workload
         workload = Workload(component, run_attempt=run_attempt or 1)
-        self.workloads.append(workload)
+        if not self.too_large:
+            self.workloads.append(workload)
         return workload
 
     @classmethod
@@ -289,25 +298,40 @@ class Plaque:
         match = DATA_RE.search(body)
         if match is None:
             return None
-        data = json.loads(match.group(1))
+        payload = match.group(1)
+        if payload.startswith(STATE_ENCODING):
+            payload = zlib.decompress(
+                base64.b64decode(payload[len(STATE_ENCODING) :], validate=True)
+            )
+        data = json.loads(payload)
+        workloads = []
+        for row in data["workloads"]:
+            fields = dict(row)
+            fields["reports"] = [Report(**report) for report in row["reports"]]
+            workloads.append(Workload(**fields))
         return cls(
-            data["build_preset"],
-            [
-                Workload(
-                    **{key: value for key, value in row.items() if key != "reports"},
-                    reports=[Report(**report) for report in row["reports"]],
-                )
-                for row in data["workloads"]
-            ],
+            build_preset=data["build_preset"],
+            workloads=workloads,
+            run=RunMetadata(**data["run"]),
+            notice=data.get("notice", ""),
+            history_url=data.get("history_url", ""),
+            too_large=data.get("too_large", False),
         )
 
     def render(self) -> str:
-        # Keep update state separate from the presentation. Escaping angle
-        # brackets also prevents values containing '-->' from closing the comment.
-        payload = json.dumps(dataclasses.asdict(self), separators=(",", ":"))
-        payload = payload.replace("<", "\\u003c").replace(">", "\\u003e")
+        # Keep ordinary JSON objects; Base64 makes the compressed state safe
+        # inside the hidden HTML comment.
+        raw = json.dumps(dataclasses.asdict(self), separators=(",", ":")).encode(
+            "utf-8"
+        )
+        payload = STATE_ENCODING + base64.b64encode(zlib.compress(raw)).decode("ascii")
         return "\n".join(
-            [START, f"<!-- status-plaque-data {payload} -->", self.render_table(), END]
+            [
+                START,
+                f"<!-- status-plaque-data {payload} -->",
+                self.render_table(),
+                END,
+            ]
         )
 
     def replace(self, body: str) -> str:
@@ -323,10 +347,27 @@ class Plaque:
         )
         env.filters["duration"] = format_duration
         return env.get_template("status_plaque.html").render(
+            run=self.run,
+            history_url=self.history_url,
             workloads=self.workloads,
             build_preset=self.build_preset,
             icons=ICONS,
             labels=LABELS,
             messages=MESSAGES,
             count_statuses=COUNT_STATUSES,
+            notice=self.notice,
+            workflow_url=self.run.url,
         )
+
+
+def fit_comment(body: str, limit: int = COMMENT_SIZE_LIMIT) -> str:
+    """Bound the entire API payload, including its header and hidden state."""
+    if len(body) <= limit:
+        return body
+    plaque = Plaque.from_comment(body) or Plaque("Build and test results")
+    plaque.workloads.clear()
+    plaque.history_url = ""
+    plaque.too_large = True
+    plaque.notice = "Results are too large for this comment. See individual results in the workflow run."
+    header = body.splitlines()[0] if body.startswith("<!-- status ") else ""
+    return f"{header}\n{plaque.render()}"

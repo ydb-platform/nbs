@@ -23,13 +23,20 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from ..helpers import (
     github_client_from_env,
     load_github_event,
+    parse_actions_job_url,
     pull_request_from_event,
     setup_logger,
 )
 from ..set_build_and_test_targets import JOIN_GROUPS
 from .junit_utils import get_property_value, iter_xml_files
 from .report_status import TestStatus
-from .status_plaque import Plaque, Report, WorkflowOutcome, component_for_target
+from .status_plaque import (
+    Plaque,
+    Report,
+    WorkflowOutcome,
+    component_for_target,
+    fit_comment,
+)
 
 LOGGER = logging.getLogger(__name__)
 TitlePathTriplet: TypeAlias = tuple[str, str, str]
@@ -901,7 +908,10 @@ def is_workload_check_update_applied(
             return False
 
         if plaque is not None:
-            return not job_url or plaque.workload(component).job_url == job_url
+            return (
+                not job_url
+                or plaque.run.job_url(plaque.workload(component).job_id) == job_url
+            )
 
         match = get_workload_check_line_match(body, component)
         if match is None:
@@ -928,8 +938,13 @@ def update_workload_check_block(
 ) -> str:
     plaque = Plaque.from_comment(body)
     if plaque is not None:
+        plaque.run.update_from_env()
+        job_ref = parse_actions_job_url(job_url)
         plaque.workload(component, get_workflow_run_attempt()).update(
-            status, job_url, build_error_log_url, build_duration_seconds
+            status,
+            job_ref[1] if job_ref else (0 if job_url else None),
+            bool(build_error_log_url),
+            build_duration_seconds,
         )
         return plaque.replace(body)
 
@@ -996,13 +1011,15 @@ def complete_workload_checks_block(
     if plaque is not None:
         for row in plaque.workloads:
             conclusion = (
-                job_conclusion_resolver(row.job_url, row.component)
+                job_conclusion_resolver(plaque.run.job_url(row.job_id), row.component)
                 if job_conclusion_resolver
                 else None
             )
             workflow_conclusion = conclusion
             if workflow_outcome_resolver is not None:
-                outcome = workflow_outcome_resolver(row.job_url, row.component)
+                outcome = workflow_outcome_resolver(
+                    plaque.run.job_url(row.job_id), row.component
+                )
                 conclusion = outcome.execution
                 workflow_conclusion = outcome.workflow
                 row.execution_status = (
@@ -1018,7 +1035,9 @@ def complete_workload_checks_block(
                     else workload_check_status_for_job_conclusion(workflow_conclusion)
                 )
             if is_stale_workload_check_status(row.status):
-                row.update(workload_check_status_for_job_conclusion(conclusion), "", "")
+                row.update(
+                    workload_check_status_for_job_conclusion(conclusion), None, False
+                )
         return plaque.replace(body)
 
     pattern = re.compile(
@@ -1056,6 +1075,16 @@ def find_pr_comment(
             LOGGER.info("Found comment with id=%s", comment.id)
             return comment
     return None
+
+
+def create_status_comment(pr: PullRequestLike, body: str) -> None:
+    pr.create_issue_comment(fit_comment(body))
+
+
+def edit_status_comment(comment: IssueCommentLike, body: str) -> str:
+    body = fit_comment(body)
+    comment.edit(body)
+    return body
 
 
 def retry_pr_comment_edit(func: Callable[..., None]) -> Callable[..., None]:
@@ -1104,7 +1133,7 @@ def edit_pr_comment(
         return
 
     updated_body = bump_comment_revision(updated_body)
-    comment.edit(updated_body)
+    updated_body = edit_status_comment(comment, updated_body)
 
     if WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS > 0:
         time.sleep(WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS)
@@ -1114,7 +1143,7 @@ def edit_pr_comment(
         LOGGER.info("Comment disappeared after %s", operation)
         return
 
-    if is_applied(refreshed_comment.body):
+    if refreshed_comment.body == updated_body or is_applied(refreshed_comment.body):
         return
 
     raise CommentEditConflict(operation)
@@ -1185,14 +1214,13 @@ def update_pr_comment(
                     status.name: line.count(status) if line else 0
                     for status in TestStatus.summary_table_order()
                 },
-                url=(line.report_url or "") if line else "",
-                build_error_url=summary.build_error_log_url,
+                filename=(line.report_fn or "") if line else "",
+                build_errors=bool(summary.build_error_log_url),
                 build_failed_count=get_build_failed_count(),
-                history_url=test_history_url or "",
                 elapsed=test_time,
                 exit_code=test_exit_code,
-                trace_report_url=trace_report_url,
-                trace_otlp_url=trace_otlp_url,
+                trace=bool(trace_report_url),
+                otlp=bool(trace_otlp_url),
             )
             for line in summary.lines or [None]
         ]
@@ -1200,6 +1228,8 @@ def update_pr_comment(
         def update_plaque(body: str) -> str:
             plaque = Plaque.from_comment(body)
             assert plaque is not None
+            plaque.run.update_from_env()
+            plaque.history_url = test_history_url or plaque.history_url
             row = plaque.workload(component, get_workflow_run_attempt())
             for report in reports:
                 row.add_report(report)
@@ -1219,7 +1249,7 @@ def update_pr_comment(
                     header, build_preset, is_dry_run, workload_status, [component]
                 )
             )
-            pr.create_issue_comment(update_plaque(body))
+            create_status_comment(pr, update_plaque(body))
             return
 
         def reports_applied(body: str) -> bool:
@@ -1287,14 +1317,15 @@ def update_pr_comment_workload_status(
         return
 
     LOGGER.info("Updating workload status for comment id=%s", comment.id)
-    comment.edit(
+    edit_status_comment(
+        comment,
         bump_comment_revision(
             replace_workload_status_block(
                 comment.body,
                 build_preset,
                 workload_status,
             )
-        )
+        ),
     )
 
 
@@ -1317,7 +1348,8 @@ def initialize_pr_comment(
 
     if comment is None:
         LOGGER.info("Creating new pre-run comment")
-        pr.create_issue_comment(
+        create_status_comment(
+            pr,
             "\n".join(
                 get_base_comment_body(
                     header,
@@ -1326,14 +1358,14 @@ def initialize_pr_comment(
                     workload_status,
                     workload_components,
                 )
-            )
+            ),
         )
         return
 
     LOGGER.info("Refreshing existing pre-run comment id=%s", comment.id)
     body = replace_workload_status_block(comment.body, build_preset, workload_status)
     body = replace_workload_checks_block(body, build_preset, workload_components)
-    comment.edit(bump_comment_revision(body))
+    edit_status_comment(comment, bump_comment_revision(body))
 
 
 def update_pr_comment_workload_check(
@@ -1358,7 +1390,8 @@ def update_pr_comment_workload_check(
     if comment is None:
         LOGGER.info("Creating minimal comment for workload check update")
         header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
-        pr.create_issue_comment(
+        create_status_comment(
+            pr,
             "\n".join(
                 get_base_comment_body(
                     header,
@@ -1367,7 +1400,7 @@ def update_pr_comment_workload_check(
                     "in_progress",
                     [component],
                 )
-            )
+            ),
         )
     else:
         LOGGER.info("Updating workload check for comment id=%s", comment.id)
@@ -1420,12 +1453,13 @@ def complete_pr_comment_workload_checks(
         return
 
     LOGGER.info("Completing workload checks for comment id=%s", comment.id)
-    comment.edit(
+    edit_status_comment(
+        comment,
         bump_comment_revision(
             complete_workload_checks_block(
                 comment.body, job_conclusion_resolver, workflow_outcome_resolver
             )
-        )
+        ),
     )
 
 

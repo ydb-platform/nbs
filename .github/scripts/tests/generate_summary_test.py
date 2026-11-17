@@ -353,6 +353,12 @@ def test_configure_failure_links_build_report_with_passing_tests(
 
 def test_update_pr_comment_creates_new_comment(monkeypatch) -> None:
     monkeypatch.setenv("BUILD_FAILED_COUNT", "0")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    monkeypatch.setenv("GITHUB_WORKFLOW", "Check")
+    monkeypatch.setenv(
+        "S3_WEBSITE_PREFIX", "https://summary/org/repo/Check/123/1/x86-64"
+    )
 
     class FakeHead:
         sha = "deadbeef"
@@ -399,7 +405,10 @@ def test_update_pr_comment_creates_new_comment(monkeypatch) -> None:
     assert "<!-- linux: in_progress -->" in body
     assert "<table>" in body
     assert "commit deadbeef" in body
-    assert 'href="https://summary/ya-test.html#PASS"' in body
+    assert (
+        'href="https://summary/org/repo/Check/123/1/x86-64/summary/1/ya-test.html#PASS"'
+        in body
+    )
 
 
 def test_update_pr_comment_updates_existing_comment() -> None:
@@ -726,6 +735,9 @@ def test_update_pr_comment_workload_check_creates_minimal_comment_when_missing(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(gs, "WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS", 0)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
+    monkeypatch.setenv("GITHUB_RUN_ID", "1")
+    monkeypatch.setenv("GITHUB_SERVER_URL", "https://github.example")
 
     class FakeHead:
         sha = "abc123"
@@ -762,7 +774,7 @@ def test_update_pr_comment_workload_check_creates_minimal_comment_when_missing(
         component="blockstore",
         is_dry_run=False,
         workload_check_status="completed",
-        job_url="https://github.example/job/123",
+        job_url="https://github.example/org/repo/actions/runs/1/job/123",
     )
 
     assert len(pr.comments) == 1
@@ -770,7 +782,7 @@ def test_update_pr_comment_workload_check_creates_minimal_comment_when_missing(
     assert gs.Plaque.from_comment(body) is not None
     assert "<th>Status</th>" in body
     assert gs.get_workload_check_status(body, "blockstore") == "completed"
-    assert "https://github.example/job/123" in body
+    assert "https://github.example/org/repo/actions/runs/1/job/123" in body
     assert gs.get_comment_revision(body) == 1
 
 
