@@ -110,6 +110,8 @@ func newStorageWithBackupFolders(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Check the control-plane backup queues for images and snapshots. Dataplane
+// chunk queues are covered by the snapshot storage schema tests.
 func TestCreateAndDropResourceSchemaWithoutBackups(t *testing.T) {
 	for _, kind := range []string{"images", "snapshots"} {
 		t.Run(kind, func(t *testing.T) {
