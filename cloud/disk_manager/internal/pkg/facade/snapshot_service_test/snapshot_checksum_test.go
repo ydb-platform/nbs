@@ -309,21 +309,30 @@ func TestSnapshotServiceChecksumOfEmptySnapshot(t *testing.T) {
 func TestSnapshotServiceChecksumOfAbsentSnapshot(t *testing.T) {
 	ctx := testcommon.NewContext()
 
-	client, err := testcommon.NewClient(ctx)
-	require.NoError(t, err)
-	defer client.Close()
-
 	snapshotID := t.Name()
+	// There is nothing wrong with Disk Manager, so the error is silent.
 	expectedError := fmt.Sprintf(
 		"snapshot %v is absent or not ready",
 		snapshotID,
 	)
 
-	_, err = testcommon.SaveSnapshotChecksum(t, ctx, client, snapshotID)
-	require.ErrorContains(t, err, expectedError)
+	taskID := testcommon.ScheduleSaveSnapshotChecksum(t, ctx, snapshotID)
+	testcommon.RequireChecksumTaskError(
+		t,
+		ctx,
+		taskID,
+		expectedError,
+		true, // expectedSilent
+	)
 
-	_, err = testcommon.ValidateSnapshotChecksum(t, ctx, client, snapshotID)
-	require.ErrorContains(t, err, expectedError)
+	taskID = testcommon.ScheduleValidateSnapshotChecksum(t, ctx, snapshotID)
+	testcommon.RequireChecksumTaskError(
+		t,
+		ctx,
+		taskID,
+		expectedError,
+		true, // expectedSilent
+	)
 
 	storage, closeFunc := testcommon.NewResourceStorage(t, ctx)
 	defer closeFunc()
@@ -575,6 +584,149 @@ func TestSnapshotServiceChecksumDetectsDamagedChunk(t *testing.T) {
 	// There is no checksum to save, the one that is saved is kept.
 	_, err = testcommon.SaveSnapshotChecksum(t, ctx, client, snapshotID)
 	require.ErrorContains(t, err, expectedError)
+	requireSavedSnapshotChecksum(t, ctx, snapshotID, savedChecksum)
+
+	deleteChecksumTestSnapshot(t, ctx, client, snapshotID)
+	testcommon.CheckConsistency(t, ctx)
+}
+
+// The snapshot is still ready for Disk Manager, but nothing is left of it in
+// the storage of snapshots. Unlike the snapshot that is deleted, a ready one
+// should not lose its data, so the error is not silent.
+func TestSnapshotServiceChecksumDetectsLostData(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+	snapshotID := t.Name()
+
+	chunkChecksums, _ := createChecksumTestDiskAndSnapshot(
+		t,
+		ctx,
+		client,
+		diskID,
+		snapshotID,
+	)
+
+	savedChecksum, err := testcommon.SaveSnapshotChecksum(
+		t,
+		ctx,
+		client,
+		snapshotID,
+	)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		testcommon.GetExpectedSnapshotChecksum(chunkChecksums),
+		savedChecksum,
+	)
+
+	testcommon.DeleteSnapshotData(t, ctx, snapshotID)
+
+	expectedError := fmt.Sprintf(
+		"snapshot with id %v is not found",
+		snapshotID,
+	)
+
+	taskID := testcommon.ScheduleValidateSnapshotChecksum(t, ctx, snapshotID)
+	testcommon.RequireChecksumTaskError(
+		t,
+		ctx,
+		taskID,
+		expectedError,
+		false, // expectedSilent
+	)
+
+	// There is no checksum to save, the one that is saved is kept.
+	taskID = testcommon.ScheduleSaveSnapshotChecksum(t, ctx, snapshotID)
+	testcommon.RequireChecksumTaskError(
+		t,
+		ctx,
+		taskID,
+		expectedError,
+		false, // expectedSilent
+	)
+	requireSavedSnapshotChecksum(t, ctx, snapshotID, savedChecksum)
+
+	deleteChecksumTestSnapshot(t, ctx, client, snapshotID)
+	testcommon.CheckConsistency(t, ctx)
+}
+
+// A snapshot that is deleted and created again with the same id is another
+// snapshot. The task that has started with the former has nothing to do with
+// the latter. Ids are not expected to be used again, so the error is not
+// silent.
+func TestSnapshotServiceChecksumOfRecreatedSnapshot(t *testing.T) {
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+	snapshotID := t.Name()
+
+	chunkChecksums, _ := createChecksumTestDiskAndSnapshot(
+		t,
+		ctx,
+		client,
+		diskID,
+		snapshotID,
+	)
+
+	savedChecksum, err := testcommon.SaveSnapshotChecksum(
+		t,
+		ctx,
+		client,
+		snapshotID,
+	)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		testcommon.GetExpectedSnapshotChecksum(chunkChecksums),
+		savedChecksum,
+	)
+
+	recreationCount := 0
+	recreate := func() {
+		recreationCount++
+		testcommon.SetCreateTaskID(
+			t,
+			ctx,
+			"snapshots",
+			snapshotID,
+			fmt.Sprintf("recreate_%v", recreationCount),
+		)
+	}
+	// Both the task and the storage that saves the checksum report that.
+	expectedError := "was deleted and created again with the same id"
+
+	testcommon.RequireChecksumTaskRejectsRecreatedResource(
+		t,
+		ctx,
+		func() string {
+			return testcommon.ScheduleValidateSnapshotChecksum(
+				t,
+				ctx,
+				snapshotID,
+			)
+		},
+		recreate,
+		expectedError,
+	)
+
+	testcommon.RequireChecksumTaskRejectsRecreatedResource(
+		t,
+		ctx,
+		func() string {
+			return testcommon.ScheduleSaveSnapshotChecksum(t, ctx, snapshotID)
+		},
+		recreate,
+		expectedError,
+	)
 	requireSavedSnapshotChecksum(t, ctx, snapshotID, savedChecksum)
 
 	deleteChecksumTestSnapshot(t, ctx, client, snapshotID)

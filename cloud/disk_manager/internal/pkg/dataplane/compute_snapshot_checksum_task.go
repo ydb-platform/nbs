@@ -13,6 +13,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -48,10 +49,7 @@ func (t *computeSnapshotChecksumTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	snapshotMeta, err := t.storage.CheckSnapshotReady(
-		ctx,
-		t.request.SnapshotId,
-	)
+	snapshotMeta, err := t.checkSnapshotReady(ctx)
 	if err != nil {
 		return err
 	}
@@ -91,7 +89,7 @@ func (t *computeSnapshotChecksumTask) Run(
 			TransferredChunkCount: t.state.TransferredChunkCount,
 		},
 		func(ctx context.Context, milestone common.Milestone) error {
-			_, err := t.storage.CheckSnapshotReady(ctx, t.request.SnapshotId)
+			_, err := t.checkSnapshotReady(ctx)
 			if err != nil {
 				return err
 			}
@@ -151,6 +149,26 @@ func (t *computeSnapshotChecksumTask) GetResponse() proto.Message {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// The storage reports a snapshot that is not ready with a silent error. It is
+// not silent here: the task that needs the checksum has seen the snapshot
+// ready, so its data should be ready as well.
+func (t *computeSnapshotChecksumTask) checkSnapshotReady(
+	ctx context.Context,
+) (storage.SnapshotMeta, error) {
+
+	snapshotMeta, err := t.storage.CheckSnapshotReady(
+		ctx,
+		t.request.SnapshotId,
+	)
+
+	nonRetriableError := errors.NewEmptyNonRetriableError()
+	if errors.As(err, &nonRetriableError) && nonRetriableError.Silent {
+		return snapshotMeta, errors.NewNonRetriableError(nonRetriableError.Err)
+	}
+
+	return snapshotMeta, err
+}
 
 func (t *computeSnapshotChecksumTask) setEstimate(
 	ctx context.Context,

@@ -56,6 +56,15 @@ func (t *validateSnapshotChecksumTask) Run(
 		return err
 	}
 
+	// The snapshot is remembered before the dataplane task is scheduled.
+	// Otherwise this task might forget the snapshot when it is restarted, while
+	// the dataplane task goes on and mixes the data of two snapshots that have
+	// the same id.
+	err = execCtx.SaveState(ctx)
+	if err != nil {
+		return err
+	}
+
 	// The idempotency key depends only on the id of this task, so the
 	// dataplane task is scheduled once, no matter how many times Run is
 	// started.
@@ -142,7 +151,9 @@ func (t *validateSnapshotChecksumTask) GetResponse() proto.Message {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Returns the checksum saved for the snapshot. Fails if there is nothing to
-// validate: the snapshot is not ready or its checksum is not saved.
+// validate: the snapshot is not ready, it is not the one this task has
+// started with or its checksum is not saved. The snapshot is remembered when
+// it is seen for the first time.
 func (t *validateSnapshotChecksumTask) getSavedChecksum(
 	ctx context.Context,
 ) (uint32, error) {
@@ -155,9 +166,26 @@ func (t *validateSnapshotChecksumTask) getSavedChecksum(
 	}
 
 	if meta == nil || !meta.Ready {
-		return 0, errors.NewNonRetriableErrorf(
+		return 0, errors.NewSilentNonRetriableErrorf(
 			"snapshot %v is absent or not ready",
 			snapshotID,
+		)
+	}
+
+	// A snapshot that is deleted and created again with the same id is
+	// another snapshot.
+	if t.state.SnapshotCreateTaskId == "" {
+		t.state.SnapshotCreateTaskId = meta.CreateTaskID
+	}
+
+	if meta.CreateTaskID != t.state.SnapshotCreateTaskId {
+		return 0, errors.NewNonRetriableErrorf(
+			"snapshot %v was deleted and created again with the same id "+
+				"while its checksum was computed: it was created by task "+
+				"%v, now it is created by task %v",
+			snapshotID,
+			t.state.SnapshotCreateTaskId,
+			meta.CreateTaskID,
 		)
 	}
 

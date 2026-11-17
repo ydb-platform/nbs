@@ -205,10 +205,11 @@ func (s *StorageMock) ImageBackupCompleted(
 func (s *StorageMock) ImageChecksumCalculated(
 	ctx context.Context,
 	imageID string,
+	createTaskID string,
 	checksum uint32,
 ) error {
 
-	args := s.Called(ctx, imageID, checksum)
+	args := s.Called(ctx, imageID, createTaskID, checksum)
 	return args.Error(0)
 }
 
@@ -428,10 +429,11 @@ func (s *StorageMock) SnapshotBackupCompleted(
 func (s *StorageMock) SnapshotChecksumCalculated(
 	ctx context.Context,
 	snapshotID string,
+	createTaskID string,
 	checksum uint32,
 ) error {
 
-	args := s.Called(ctx, snapshotID, checksum)
+	args := s.Called(ctx, snapshotID, createTaskID, checksum)
 	return args.Error(0)
 }
 

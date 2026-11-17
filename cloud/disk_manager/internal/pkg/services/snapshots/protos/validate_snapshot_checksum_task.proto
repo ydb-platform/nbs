@@ -20,4 +20,8 @@ message ValidateSnapshotChecksumTaskState {
     // Checksum computed by that task. It is set when the task is finished,
     // so it is known even if it does not match the saved one.
     uint32 Checksum = 2;
+    // Id of the task that has created the snapshot. It is set when this task
+    // sees the snapshot for the first time: a snapshot that is deleted and
+    // created again with the same id is another snapshot.
+    string SnapshotCreateTaskId = 3;
 }

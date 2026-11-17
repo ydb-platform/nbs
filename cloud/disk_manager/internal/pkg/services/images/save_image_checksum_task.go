@@ -55,10 +55,36 @@ func (t *saveImageChecksumTask) Run(
 	}
 
 	if meta == nil || !meta.Ready {
-		return errors.NewNonRetriableErrorf(
+		return errors.NewSilentNonRetriableErrorf(
 			"image %v is absent or not ready",
 			imageID,
 		)
+	}
+
+	// An image that is deleted and created again with the same id is
+	// another image.
+	if t.state.ImageCreateTaskId == "" {
+		t.state.ImageCreateTaskId = meta.CreateTaskID
+	}
+
+	if meta.CreateTaskID != t.state.ImageCreateTaskId {
+		return errors.NewNonRetriableErrorf(
+			"image %v was deleted and created again with the same id "+
+				"while its checksum was computed: it was created by task "+
+				"%v, now it is created by task %v",
+			imageID,
+			t.state.ImageCreateTaskId,
+			meta.CreateTaskID,
+		)
+	}
+
+	// The image is remembered before the dataplane task is scheduled.
+	// Otherwise this task might forget the image when it is restarted, while
+	// the dataplane task goes on and mixes the data of two images that have
+	// the same id.
+	err = execCtx.SaveState(ctx)
+	if err != nil {
+		return err
 	}
 
 	// The idempotency key depends only on the id of this task, so the
@@ -103,11 +129,12 @@ func (t *saveImageChecksumTask) Run(
 
 	t.state.Checksum = typedResponse.Checksum
 
-	// Fails if the image is not ready anymore: the checksum of an image that
-	// is being deleted is of no use.
+	// Fails if the image is not ready anymore or is not the one this task has
+	// started with: the checksum is of no use then.
 	return t.storage.ImageChecksumCalculated(
 		ctx,
 		imageID,
+		t.state.ImageCreateTaskId,
 		typedResponse.Checksum,
 	)
 }

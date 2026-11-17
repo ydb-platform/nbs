@@ -1188,12 +1188,14 @@ func (s *storageYDB) snapshotBackupCompleted(
 	return err
 }
 
-// The status is checked and the checksum is written in one transaction, so
-// the checksum is never stored for a snapshot that is not ready anymore.
+// The snapshot is checked and the checksum is written in one transaction, so
+// the checksum is never stored for a snapshot that is not ready anymore or that
+// has been created again with the same id.
 func (s *storageYDB) snapshotChecksumCalculated(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
+	createTaskID string,
 	checksum uint32,
 ) error {
 
@@ -1248,6 +1250,22 @@ func (s *storageYDB) snapshotChecksumCalculated(
 			"checksum of snapshot with id %v and status %v can't be set",
 			snapshotID,
 			snapshotStatusToString(state.status),
+		)
+	}
+
+	if state.createTaskID != createTaskID {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return err
+		}
+
+		return errors.NewNonRetriableErrorf(
+			"checksum of snapshot with id %v can't be set: the snapshot was "+
+				"deleted and created again with the same id, it is created "+
+				"by task %v, not by task %v",
+			snapshotID,
+			state.createTaskID,
+			createTaskID,
 		)
 	}
 
@@ -1658,6 +1676,7 @@ func (s *storageYDB) SnapshotBackupCompleted(
 func (s *storageYDB) SnapshotChecksumCalculated(
 	ctx context.Context,
 	snapshotID string,
+	createTaskID string,
 	checksum uint32,
 ) error {
 
@@ -1668,6 +1687,7 @@ func (s *storageYDB) SnapshotChecksumCalculated(
 				ctx,
 				session,
 				snapshotID,
+				createTaskID,
 				checksum,
 			)
 		},
