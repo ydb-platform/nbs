@@ -4,8 +4,9 @@
 #include "page_store.h"
 #include "persistent_hash_table.h"
 
-#include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
+
+#include <cloud/storage/core/libs/common/error.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
@@ -51,7 +52,11 @@ public:
 
     NProto::TError Delete(const TString& name, TWriteContext& writeContext);
 
-    NProto::TError Get(const TString& name, ui64* nodeId) const;
+    NProto::TError GetForLookup(const TString& name, ui64* nodeId) const;
+    NProto::TError GetForUpdate(
+        const TString& name,
+        TWriteContext& writeContext,
+        ui64* nodeId) const;
 
     [[nodiscard]] NProto::TError CollectStats(
         TFileSystemShardStats* stats) const;

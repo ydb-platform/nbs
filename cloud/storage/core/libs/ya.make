@@ -20,6 +20,7 @@ RECURSE(
     opentelemetry
     rdma
     ss_proxy
+    systemd_time
     tablet
     tablet_proxy
     throttling

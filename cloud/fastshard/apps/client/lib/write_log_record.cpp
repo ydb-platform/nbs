@@ -65,7 +65,7 @@ protected:
 
     bool DoExecute() override
     {
-        NCloud::NProto::TWriteLogRecordRequest request;
+        NProto::TWriteLogRecordRequest request;
         if (Proto) {
             ParseFromTextFormat(GetInputStream(), request);
         } else {

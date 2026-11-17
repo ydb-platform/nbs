@@ -91,10 +91,8 @@ TString Describe(TKeyBuffers buffers)
 // A rejection comes back as the error, an accepted write as the future of
 // its device write - fold the two into one future for the tests that only
 // care about the outcome
-NThreading::TFuture<NCloud::NProto::TError> StartWrite(
-    const IKeyBufferStorePtr& store,
-    ui64 key,
-    TBuffer buffer)
+NThreading::TFuture<NProto::TError>
+StartWrite(const IKeyBufferStorePtr& store, ui64 key, TBuffer buffer)
 {
     auto futureOrError = store->Write(key, std::move(buffer));
     if (HasError(futureOrError)) {
@@ -246,7 +244,7 @@ public:
         return Device->ReadPages(std::move(rangeRefs));
     }
 
-    NThreading::TFuture<NCloud::NProto::TError> WritePages(
+    NThreading::TFuture<NProto::TError> WritePages(
         TVector<TPageRange> ranges) override
     {
         if (Broken) {
@@ -254,7 +252,7 @@ public:
                 MakeError(E_IO, "device is broken"));
         }
 
-        auto promise = NThreading::NewPromise<NCloud::NProto::TError>();
+        auto promise = NThreading::NewPromise<NProto::TError>();
 
         Pending.push_back(
             [device = Device, ranges = std::move(ranges), promise]() mutable
@@ -266,7 +264,7 @@ public:
         return promise.GetFuture();
     }
 
-    NThreading::TFuture<NCloud::NProto::TError> ZeroPages(
+    NThreading::TFuture<NProto::TError> ZeroPages(
         TVector<TPageRangeRef> ranges) override
     {
         if (Broken) {
@@ -1041,7 +1039,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         // the pages of both keys are free again: all 6 entry pages
-        TVector<NThreading::TFuture<NCloud::NProto::TError>> writes;
+        TVector<NThreading::TFuture<NProto::TError>> writes;
         for (ui64 key = 3; key <= 8; ++key) {
             writes.push_back(StartWrite(store, key, MakeBuffer("x")));
         }
@@ -1123,7 +1121,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
         // the pages of the failed write are free again: 5 of the 6 entry
         // pages are left after key 1
-        TVector<NThreading::TFuture<NCloud::NProto::TError>> writes;
+        TVector<NThreading::TFuture<NProto::TError>> writes;
         for (ui64 key = 2; key <= 6; ++key) {
             writes.push_back(StartWrite(store, key, MakeBuffer("x")));
         }

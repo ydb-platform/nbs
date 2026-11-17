@@ -40,6 +40,8 @@ void FillFeatures(
     features->SetXAttrCacheTimeout(
         config.GetXAttrCacheTimeout().MilliSeconds());
     features->SetXAttrCacheLimit(config.GetXAttrCacheLimit());
+    features->SetNodeRefCacheLimit(config.GetNodeRefCacheLimit());
+    features->SetNodeAttrsCacheLimit(config.GetNodeAttrsCacheLimit());
     features->SetThreeStageWriteThreshold(config.GetThreeStageWriteThreshold());
 
     auto preferredBlockSizeMultiplier =
@@ -144,6 +146,8 @@ void FillFeatures(
     features->SetExternalWriteDataPayloadEnabled(
         config.GetExternalWriteDataPayloadEnabled());
     features->SetEnableRdmaForWrites(config.GetEnableRdmaForWrites());
+    features->SetWriteDataZeroBlockStatsEnabled(
+        config.GetWriteDataZeroBlockStatsEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

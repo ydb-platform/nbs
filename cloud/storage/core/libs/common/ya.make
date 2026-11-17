@@ -51,6 +51,7 @@ SRCS(
     timer_test.cpp
     write_sync_flags.cpp
     verify.cpp
+    zeroes.cpp
 )
 
 PEERDIR(

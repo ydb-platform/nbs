@@ -10,5 +10,6 @@ END()
 
 RECURSE(
     config
+    exporter
     storage
 )

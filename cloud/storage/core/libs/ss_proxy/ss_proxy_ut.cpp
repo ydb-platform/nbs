@@ -4,6 +4,7 @@
 
 #include <cloud/storage/core/libs/api/ss_proxy.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
@@ -21,6 +22,7 @@
 #include <contrib/ydb/core/tx/tx_allocator/txallocator.h>
 #include <contrib/ydb/core/tx/tx_proxy/proxy.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/hash.h>
@@ -1263,6 +1265,84 @@ void TestShouldSkipUnknownChildKinds()
     UNIT_ASSERT(foundBlockStoreVolume);
 }
 
+using ENavigateStatus = NKikimr::NSchemeCache::TSchemeCacheNavigate::EStatus;
+
+// SchemeCache answers with LookupError/RedirectLookupError when SchemeBoard is
+// not able to give an authoritative answer (its replicas are unreachable or not
+// populated yet). It's a transient condition, so describe must be rejected with
+// a retriable error and without a critical event. Statuses that are really
+// unexpected must still raise the critical event.
+void TestShouldRejectDescribeOnSchemeCacheError(
+    ENavigateStatus status,
+    i64 expectedCriticalEvents)
+{
+    TTestBasicRuntime runtime;
+    TTestEnv env(runtime);
+
+    NMonitoring::TDynamicCountersPtr counters =
+        new NMonitoring::TDynamicCounters();
+    InitCriticalEventsCounter(counters);
+    auto schemeCacheError =
+        counters->GetCounter(GetCriticalEventForSchemeCacheError(), true);
+
+    ui64 txId = 100;
+
+    TestMkDir(runtime, ++txId, "/MyRoot", "nbs");
+    env.TestWaitNotification(runtime, txId);
+
+    auto ssProxyId = SetupSSProxy(runtime, true);
+
+    const TString path = "/MyRoot/nbs";
+    const TVector<TString> pathParts = {"MyRoot", "nbs"};
+
+    runtime.SetEventFilter(
+        [&](auto&, TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvTxProxySchemeCache::EvNavigateKeySetResult)
+            {
+                auto* msg =
+                    event
+                        ->Get<TEvTxProxySchemeCache::TEvNavigateKeySetResult>();
+                auto* record = msg->Request.Get();
+                if (!record || record->ResultSet.size() != 1) {
+                    return false;
+                }
+
+                // don't touch the requests made by SchemeCache itself
+                auto& entry = record->ResultSet.front();
+                if (entry.Path != pathParts) {
+                    return false;
+                }
+
+                entry.Status = status;
+                record->ErrorCount = 1;
+            }
+            return false;
+        });
+
+    const auto sender = runtime.AllocateEdgeActor(NodeIdx);
+
+    runtime.Send(
+        new IEventHandle(
+            ssProxyId,
+            sender,
+            new TEvSSProxy::TEvDescribeSchemeRequest(path)),
+        NodeIdx);
+
+    TAutoPtr<IEventHandle> handle;
+    auto* response =
+        runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeSchemeResponse>(
+            handle);
+
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        E_REJECTED,
+        response->GetError().GetCode(),
+        FormatError(response->GetError()));
+
+    UNIT_ASSERT_VALUES_EQUAL(expectedCriticalEvents, schemeCacheError->Val());
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1332,6 +1412,27 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
     Y_UNIT_TEST(ShouldSkipUnknownChildKindsWithSchemeCache)
     {
         TestShouldSkipUnknownChildKinds();
+    }
+
+    Y_UNIT_TEST(ShouldNotReportCriticalEventOnSchemeCacheLookupError)
+    {
+        TestShouldRejectDescribeOnSchemeCacheError(
+            ENavigateStatus::LookupError,
+            0); // expectedCriticalEvents
+    }
+
+    Y_UNIT_TEST(ShouldNotReportCriticalEventOnSchemeCacheRedirectLookupError)
+    {
+        TestShouldRejectDescribeOnSchemeCacheError(
+            ENavigateStatus::RedirectLookupError,
+            0); // expectedCriticalEvents
+    }
+
+    Y_UNIT_TEST(ShouldReportCriticalEventOnUnexpectedSchemeCacheStatus)
+    {
+        TestShouldRejectDescribeOnSchemeCacheError(
+            ENavigateStatus::PathNotTable,
+            1); // expectedCriticalEvents
     }
 }
 

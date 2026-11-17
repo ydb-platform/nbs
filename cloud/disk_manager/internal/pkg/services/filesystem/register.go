@@ -6,6 +6,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/filesystem/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -16,6 +17,7 @@ import (
 func RegisterForExecution(
 	ctx context.Context,
 	config *config.FilesystemConfig,
+	disabledZones *common.DisabledZones,
 	taskScheduler tasks.Scheduler,
 	registry *tasks.Registry,
 	storage resources.Storage,
@@ -71,9 +73,10 @@ func RegisterForExecution(
 
 	err = registry.RegisterForExecution("filesystem.DeleteFilesystem", func() tasks.Task {
 		return &deleteFilesystemTask{
-			storage:   storage,
-			factory:   factory,
-			scheduler: taskScheduler,
+			storage:       storage,
+			factory:       factory,
+			scheduler:     taskScheduler,
+			disabledZones: disabledZones,
 		}
 	})
 	if err != nil {
@@ -82,8 +85,9 @@ func RegisterForExecution(
 
 	err = registry.RegisterForExecution("filesystem.DeleteExternalFilesystem", func() tasks.Task {
 		return &deleteExternalFilesystemTask{
-			storage: storage,
-			factory: factory,
+			storage:       storage,
+			factory:       factory,
+			disabledZones: disabledZones,
 		}
 	})
 	if err != nil {

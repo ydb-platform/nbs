@@ -9,6 +9,18 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func NewNonRetriableAbortedError(format string, args ...interface{}) error {
+	message := fmt.Sprintf(format, args...)
+	return errors.NewDetailedError(
+		errors.NewNonRetriableErrorf("%s", message),
+		&errors.ErrorDetails{
+			Code:     codes.Aborted,
+			Message:  message,
+			Internal: true,
+		},
+	)
+}
+
 func NewInvalidArgumentError(format string, args ...interface{}) error {
 	message := fmt.Sprintf(format, args...)
 

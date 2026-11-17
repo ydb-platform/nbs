@@ -7,6 +7,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
+	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
@@ -20,9 +21,13 @@ type storageYDB struct {
 	shallowCopyWorkerCount   int
 	shallowCopyInflightLimit int
 	chunkCompression         string
-	chunkStorageS3           *chunks.StorageS3
-	chunkStorageYDB          *chunks.StorageYDB
+	// Chunks copied to the follower bucket or queued for it.
+	followerChunksTableName string
+	chunkStorageS3          *chunks.StorageS3
+	chunkStorageYDB         *chunks.StorageYDB
 }
+
+var _ ChunkMapRangeReader = (*storageYDB)(nil)
 
 func (s *storageYDB) CreateSnapshot(
 	ctx context.Context,
@@ -141,6 +146,53 @@ func (s *storageYDB) ReadChunkMap(
 	milestoneChunkIndex uint32,
 ) (<-chan ChunkMapEntry, <-chan error) {
 
+	return s.readChunkMapWithEnd(ctx, snapshotID, milestoneChunkIndex, ^uint32(0))
+}
+
+// ReadChunkMapRange applies both boundaries to the YDB primary-key range.
+// The end boundary is exclusive; ReadChunkMap keeps its existing semantics.
+func (s *storageYDB) ReadChunkMapRange(
+	ctx context.Context,
+	snapshotID string,
+	start uint32,
+	end uint32,
+) (<-chan ChunkMapEntry, <-chan error) {
+
+	if err := ctx.Err(); err != nil {
+		return closedChunkMap(err)
+	}
+
+	if start > end {
+		return closedChunkMap(
+			task_errors.NewNonRetriableErrorf(
+				"invalid chunk map range [%v, %v)", start, end,
+			),
+		)
+	}
+
+	if start == end {
+		return closedChunkMap(nil)
+	}
+
+	return s.readChunkMapWithEnd(ctx, snapshotID, start, end-1)
+}
+
+func closedChunkMap(err error) (<-chan ChunkMapEntry, <-chan error) {
+	entries := make(chan ChunkMapEntry)
+	errors := make(chan error, 1)
+	errors <- err
+	close(entries)
+	close(errors)
+	return entries, errors
+}
+
+func (s *storageYDB) readChunkMapWithEnd(
+	ctx context.Context,
+	snapshotID string,
+	milestoneChunkIndex uint32,
+	lastChunkIndex uint32,
+) (<-chan ChunkMapEntry, <-chan error) {
+
 	var entries <-chan ChunkMapEntry
 	var errors <-chan error
 
@@ -152,18 +204,14 @@ func (s *storageYDB) ReadChunkMap(
 				session,
 				snapshotID,
 				milestoneChunkIndex,
+				lastChunkIndex,
 				nil,
 			)
 			return nil
 		},
 	)
 	if err != nil {
-		entries := make(chan ChunkMapEntry)
-		errors := make(chan error, 1)
-		errors <- err
-		close(entries)
-		close(errors)
-		return entries, errors
+		return closedChunkMap(err)
 	}
 
 	return entries, errors
@@ -275,6 +323,29 @@ func (s *storageYDB) ListSnapshots(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (s *storageYDB) HoldSnapshotForBackup(
+	ctx context.Context,
+	snapshotID string,
+	taskID string,
+) (held bool, err error) {
+
+	defer s.metrics.StatOperation("HoldSnapshotForBackup")(&err)
+
+	if len(taskID) == 0 {
+		return false, task_errors.NewNonRetriableErrorf("empty backup task ID")
+	}
+
+	err = s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			held, err = s.holdSnapshotForBackup(ctx, session, snapshotID, taskID)
+			return err
+		},
+	)
+	return held, err
+}
+
 func (s *storageYDB) EnqueueBackupChunks(
 	ctx context.Context,
 	snapshotID string,
@@ -293,6 +364,9 @@ func (s *storageYDB) EnqueueBackupChunks(
 
 func (s *storageYDB) GetQueuedChunksToBackup(
 	ctx context.Context,
+	firstShardID uint64,
+	lastShardID uint64,
+	after *BackupChunkQueueEntry,
 	limit int,
 ) (entries []BackupChunkQueueEntry, err error) {
 
@@ -301,9 +375,37 @@ func (s *storageYDB) GetQueuedChunksToBackup(
 	err = s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			entries, err = s.getQueuedChunksToBackup(ctx, session, limit)
+			entries, err = s.getQueuedChunksToBackup(
+				ctx,
+				session,
+				firstShardID,
+				lastShardID,
+				after,
+				limit,
+			)
 			return err
 		},
 	)
 	return entries, err
+}
+
+func (s *storageYDB) GetFirstQueuedChunkShardID(
+	ctx context.Context,
+	fromShardID uint64,
+) (shardID uint64, found bool, err error) {
+
+	defer s.metrics.StatOperation("GetFirstQueuedChunkShardID")(&err)
+
+	err = s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			shardID, found, err = s.getFirstQueuedChunkShardID(
+				ctx,
+				session,
+				fromShardID,
+			)
+			return err
+		},
+	)
+	return shardID, found, err
 }

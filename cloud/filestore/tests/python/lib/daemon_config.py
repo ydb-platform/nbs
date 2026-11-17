@@ -307,8 +307,10 @@ class FilestoreDaemonConfigGenerator:
                 config_file.flush()
                 logger.info("written config file: " + path)
 
-    def generate_configs(self, domains_txt, names_txt):
-        self.__proto_configs = {}
+    def generate_configs(self, domains_txt=None, names_txt=None):
+        self.__proto_configs = {
+            "diag.txt": self.__generate_diag_txt(),
+        }
         if self.__is_storage_kikimr():
             self.__proto_configs.update(
                 {
@@ -318,7 +320,6 @@ class FilestoreDaemonConfigGenerator:
                     "sys.txt": self.__generate_sys_txt(),
                     "storage.txt": self.__generate_storage_txt(),
                     "storage-nolocal.txt": self.__generate_storage_txt(True),
-                    "diag.txt": self.__generate_diag_txt(),
                     "dyn_ns.txt": self.__generate_dyn_ns_txt(),
                     "auth.txt": self.__generate_auth_txt(self.__access_service_port),
                 }
@@ -347,6 +348,8 @@ class FilestoreDaemonConfigGenerator:
             str(self.__mon_port),
             "--profile-file",
             self.__profile_log_path,
+            "--diag-file",
+            self.__config_file_path("diag.txt"),
         ] + self.generate_aux_params()
 
         if self.__service_type == "kikimr":
@@ -355,8 +358,6 @@ class FilestoreDaemonConfigGenerator:
                 self.__domain,
                 "--ic-port",
                 str(self.__ic_port),
-                "--diag-file",
-                self.__config_file_path("diag.txt"),
                 "--domains-file",
                 self.__config_file_path("domains.txt"),
                 "--naming-file",

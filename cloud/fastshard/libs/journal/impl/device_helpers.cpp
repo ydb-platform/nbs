@@ -9,8 +9,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 TVector<TPageRange> MakePageRangesImpl(
-    const google::protobuf::RepeatedPtrField<NCloud::NProto::TDevicePageGroup>&
-        groups)
+    const google::protobuf::RepeatedPtrField<NProto::TDevicePageGroup>& groups)
 {
     TVector<TPageRange> ranges;
     ranges.reserve(groups.size());
@@ -33,7 +32,7 @@ TVector<TPageRange> MakePageRangesImpl(
 ////////////////////////////////////////////////////////////////////////////////
 
 TVector<TPageRangeRef> MakePageRangeRefs(
-    const NCloud::NProto::TReadPagesRequest& request)
+    const NProto::TReadPagesRequest& request)
 {
     TVector<TPageRangeRef> rangeRefs;
     rangeRefs.reserve(request.PageGroupRefsSize());
@@ -48,17 +47,17 @@ TVector<TPageRangeRef> MakePageRangeRefs(
 }
 
 TVector<TPageRange> MakePageRanges(
-    const NCloud::NProto::TWriteLogRecordRequest& request)
+    const NProto::TWriteLogRecordRequest& request)
 {
     return MakePageRangesImpl(request.GetPageGroups());
 }
 
-TVector<TPageRange> MakePageRanges(const NCloud::NProto::TJournalRecord& record)
+TVector<TPageRange> MakePageRanges(const NProto::TJournalRecord& record)
 {
     return MakePageRangesImpl(record.GetPageGroups());
 }
 
-NCloud::NProto::TReadPagesResponse MakeReadPagesResponse(
+NProto::TReadPagesResponse MakeReadPagesResponse(
     const TVector<TPageRangeRef>& rangeRefs,
     const TVector<TBuffer>& pages)
 {
@@ -74,7 +73,7 @@ NCloud::NProto::TReadPagesResponse MakeReadPagesResponse(
                              << " pages, expected " << pageCount);
     }
 
-    NCloud::NProto::TReadPagesResponse response;
+    NProto::TReadPagesResponse response;
 
     auto& groups = *response.MutablePageGroups();
     groups.Reserve(rangeRefs.size());

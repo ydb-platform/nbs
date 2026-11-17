@@ -22,6 +22,7 @@
 
 #include <atomic>
 
+using namespace NCloud;
 using namespace NCloud::NFastShard;
 using silk::FiberScheduler;
 
@@ -99,9 +100,9 @@ struct TSlowStorageNode: public IStorageNode
     {}
 
 #define SLOW_SN_METHOD(name, ...)                                              \
-    NCloud::NProto::T##name##Response name(                                    \
+    NProto::T##name##Response name(                                            \
         TFastShardContext& ctx,                                                \
-        NCloud::NProto::T##name##Request request) override                     \
+        NProto::T##name##Request request) override                             \
     {                                                                          \
         FiberScheduler::SleepFuture sf;                                        \
         FiberScheduler::sleep(DelayNs, &sf);                                   \
@@ -123,9 +124,9 @@ struct TParkingStorageNode: public TFakeStorageNode
     silk::FiberEvent Arrived;
     silk::FiberEvent Gate;
 
-    NCloud::NProto::TAcquireDevicesResponse AcquireDevices(
+    NProto::TAcquireDevicesResponse AcquireDevices(
         TFastShardContext& ctx,
-        NCloud::NProto::TAcquireDevicesRequest request) override
+        NProto::TAcquireDevicesRequest request) override
     {
         Arrived.set();
         Gate.wait();
@@ -148,7 +149,7 @@ static_assert(sizeof(TBurstParams) <= silk::FIBER_PARAMETERS_SIZE);
 
 int BurstCallFiber(TBurstParams* params) noexcept
 {
-    NCloud::NProto::TAcquireDevicesRequest req;
+    NProto::TAcquireDevicesRequest req;
     req.AddDeviceUUIDs("dev-burst");
     auto resp = params->Client->AcquireDevices(*params->Ctx, std::move(req));
     if (resp.GetError().GetCode()) {
@@ -194,7 +195,7 @@ TEST(ClientTest, AcquireDevicesRoundTrip)
         {
             TFixture fx;
 
-            NCloud::NProto::TAcquireDevicesRequest req;
+            NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("dev-a");
             req.AddDeviceUUIDs("dev-b");
             auto resp = fx.Client->AcquireDevices(fx.Ctx, std::move(req));
@@ -219,7 +220,7 @@ TEST(ClientTest, ReleaseDevicesRoundTrip)
         {
             TFixture fx;
 
-            NCloud::NProto::TReleaseDevicesRequest req;
+            NProto::TReleaseDevicesRequest req;
             req.AddDeviceUUIDs("dev-x");
             auto resp = fx.Client->ReleaseDevices(fx.Ctx, std::move(req));
 
@@ -250,7 +251,7 @@ TEST(ClientTest, ReadPagesRoundTrip)
             pg->SetFirstPageNo(5);
             pg->AddContent("page-content");
 
-            NCloud::NProto::TReadPagesRequest req;
+            NProto::TReadPagesRequest req;
             req.SetDeviceUUID("dev-42");
             auto* ref = req.AddPageGroupRefs();
             ref->SetFirstPageNo(5);
@@ -289,7 +290,7 @@ TEST(ClientTest, WriteLogRecordRoundTrip)
         {
             TFixture fx;
 
-            NCloud::NProto::TWriteLogRecordRequest req;
+            NProto::TWriteLogRecordRequest req;
             req.SetDeviceUUID("dev-99");
             req.SetLogSequenceNumber(1234);
             auto* pg = req.AddPageGroups();
@@ -319,7 +320,7 @@ TEST(ClientTest, WritePagesRoundTrip)
         {
             TFixture fx;
 
-            NCloud::NProto::TWritePagesRequest req;
+            NProto::TWritePagesRequest req;
             req.SetDeviceUUID("dev-99");
             auto* pg = req.AddPageGroups();
             pg->SetFirstPageNo(7);
@@ -356,7 +357,7 @@ TEST(ClientTest, StorageErrorPassesThrough)
             *fx.Storage->AcquireResp.MutableError() =
                 NCloud::MakeError(NCloud::E_FS_IO, "disk on fire");
 
-            NCloud::NProto::TAcquireDevicesRequest req;
+            NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("dev-a");
             auto resp = fx.Client->AcquireDevices(fx.Ctx, std::move(req));
 
@@ -376,7 +377,7 @@ TEST(ClientTest, ConnectFailureReturnsRejected)
         {
             TUnreachableFixture fx;
 
-            NCloud::NProto::TAcquireDevicesRequest req;
+            NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("dev-a");
             auto resp = fx.Client->AcquireDevices(fx.Ctx, std::move(req));
 
@@ -485,7 +486,7 @@ TEST(ClientTest, ReconnectsAfterServerRestart)
             TFastShardContext ctx(0);
 
             {
-                NCloud::NProto::TAcquireDevicesRequest req;
+                NProto::TAcquireDevicesRequest req;
                 req.AddDeviceUUIDs("dev-before");
                 auto resp = client->AcquireDevices(ctx, std::move(req));
                 EXPECT_EQ(0u, resp.GetError().GetCode());
@@ -499,7 +500,7 @@ TEST(ClientTest, ReconnectsAfterServerRestart)
             //
 
             {
-                NCloud::NProto::TAcquireDevicesRequest req;
+                NProto::TAcquireDevicesRequest req;
                 req.AddDeviceUUIDs("dev-down");
                 auto resp = client->AcquireDevices(ctx, std::move(req));
                 EXPECT_EQ(
@@ -522,7 +523,7 @@ TEST(ClientTest, ReconnectsAfterServerRestart)
             server2->Start();
 
             {
-                NCloud::NProto::TAcquireDevicesRequest req;
+                NProto::TAcquireDevicesRequest req;
                 req.AddDeviceUUIDs("dev-after");
                 auto resp = client->AcquireDevices(ctx, std::move(req));
                 EXPECT_EQ(0u, resp.GetError().GetCode());
@@ -549,7 +550,7 @@ TEST(ClientTest, ReusesConnectionAcrossSequentialCalls)
             //
 
             for (ui32 i = 1; i <= 3; ++i) {
-                NCloud::NProto::TAcquireDevicesRequest req;
+                NProto::TAcquireDevicesRequest req;
                 req.AddDeviceUUIDs(TString("dev-") + ToString(i));
                 auto resp = fx.Client->AcquireDevices(fx.Ctx, std::move(req));
                 EXPECT_EQ(0u, resp.GetError().GetCode());
@@ -609,7 +610,7 @@ TEST(ClientTest, ShouldInterruptNetworkPollOnCtxCancel)
             }
 
             // connection should be dropped
-            NCloud::NProto::TAcquireDevicesRequest req;
+            NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("dev-a");
 
             TFastShardContext ctx(1);

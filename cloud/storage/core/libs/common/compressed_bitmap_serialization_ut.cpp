@@ -66,6 +66,30 @@ Y_UNIT_TEST_SUITE(TCompressedBitmapProtoTest)
         UNIT_ASSERT(loaded->Test(2 * TCompressedBitmap::CHUNK_SIZE));
     }
 
+    Y_UNIT_TEST(ShouldMergeSerializedChunksWithoutLosingExistingBits)
+    {
+        const auto proto = MakeCompressedBitmapData();
+        TCompressedBitmap bitmap(proto.GetBitCount());
+        bitmap.Set(0, 2);
+        bitmap.Set(
+            TCompressedBitmap::CHUNK_SIZE,
+            TCompressedBitmap::CHUNK_SIZE + 1);
+
+        MergeCompressedBitmap(bitmap, proto);
+
+        UNIT_ASSERT_VALUES_EQUAL(4, bitmap.Count());
+        UNIT_ASSERT(bitmap.Test(0));
+        UNIT_ASSERT(bitmap.Test(1));
+        UNIT_ASSERT(bitmap.Test(TCompressedBitmap::CHUNK_SIZE));
+        UNIT_ASSERT(bitmap.Test(2 * TCompressedBitmap::CHUNK_SIZE));
+
+        MergeCompressedBitmap(bitmap, proto);
+        UNIT_ASSERT_VALUES_EQUAL(4, bitmap.Count());
+
+        MergeCompressedBitmap(bitmap, NProto::TCompressedBitmapData{});
+        UNIT_ASSERT_VALUES_EQUAL(4, bitmap.Count());
+    }
+
     Y_UNIT_TEST(ShouldRoundTripEmptyCompressedBitmapData)
     {
         TCompressedBitmap bitmap(1);

@@ -483,6 +483,16 @@ void TTestEnv::BootStandardTablet(
     Runtime.EnableScheduleForActor(bootstrapper);
 }
 
+TRdmaTabletRegistryPtr TTestEnv::GetRdmaTabletRegistry(ui32 nodeId)
+{
+    auto guard = Guard(RdmaTabletRegistriesLock);
+    auto& registry = RdmaTabletRegistries[nodeId];
+    if (!registry) {
+        registry = std::make_shared<TRdmaTabletRegistry>();
+    }
+    return registry;
+}
+
 ui64 TTestEnv::BootIndexTablet(ui32 nodeIdx)
 {
     auto tabletId = ChangeDomain(Config.DomainUid, ++NextTabletId);
@@ -500,6 +510,7 @@ ui64 TTestEnv::BootIndexTablet(ui32 nodeIdx)
             Registry,
             nullptr /* fastShardServer */,
             Config.FastShardFactory,
+            GetRdmaTabletRegistry(owner.NodeId()),
             Config.FakePageFaultsProbability > 0 ?
                 CreateRescheduler({
                     .Probability = Config.FakePageFaultsProbability,
@@ -638,6 +649,7 @@ void TTestEnv::SetupLocalServiceConfig(
             Registry,
             nullptr /* fastShardServer */,
             Config.FastShardFactory,
+            GetRdmaTabletRegistry(owner.NodeId()),
             Config.FakePageFaultsProbability > 0 ?
                 CreateRescheduler({
                     .Probability = Config.FakePageFaultsProbability,

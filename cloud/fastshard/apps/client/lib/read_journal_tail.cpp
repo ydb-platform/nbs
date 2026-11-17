@@ -48,7 +48,7 @@ protected:
 
     bool DoExecute() override
     {
-        NCloud::NProto::TReadJournalTailRequest request;
+        NProto::TReadJournalTailRequest request;
         if (Proto) {
             ParseFromTextFormat(GetInputStream(), request);
         } else {

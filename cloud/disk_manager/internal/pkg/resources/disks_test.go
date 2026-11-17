@@ -83,6 +83,14 @@ func TestDisksCreateDisk(t *testing.T) {
 	expected := disk
 	expected.CreateRequest = nil
 	requireDisksAreEqual(t, expected, *actual)
+	createRequestData, err := proto.Marshal(disk.CreateRequest)
+	require.NoError(t, err)
+	require.Equal(t, createRequestData, actual.CreateRequestData)
+
+	loaded, err := storage.GetDiskMeta(ctx, disk.ID)
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	require.Equal(t, createRequestData, loaded.CreateRequestData)
 
 	// Check idempotency.
 	actual, err = storage.CreateDisk(ctx, disk)

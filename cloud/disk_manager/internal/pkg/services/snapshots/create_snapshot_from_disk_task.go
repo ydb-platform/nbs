@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
@@ -17,17 +18,19 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type createSnapshotFromDiskTask struct {
-	scheduler    tasks.Scheduler
-	storage      resources.Storage
-	nbsFactory   nbs.Factory
-	request      *protos.CreateSnapshotFromDiskRequest
-	state        *protos.CreateSnapshotFromDiskTaskState
-	cellSelector cells.CellSelector
+	disabledZones *internal_common.DisabledZones
+	scheduler     tasks.Scheduler
+	storage       resources.Storage
+	nbsFactory    nbs.Factory
+	request       *protos.CreateSnapshotFromDiskRequest
+	state         *protos.CreateSnapshotFromDiskTaskState
+	cellSelector  cells.CellSelector
 }
 
 func (t *createSnapshotFromDiskTask) Save() ([]byte, error) {
@@ -66,6 +69,7 @@ func (t *createSnapshotFromDiskTask) run(
 	}
 
 	snapshotMeta, err := t.storage.CreateSnapshot(ctx, resources.SnapshotMeta{
+		BlockSize:     diskParams.BlockSize,
 		ID:            t.request.DstSnapshotId,
 		FolderID:      t.request.FolderId,
 		Disk:          disk,
@@ -105,6 +109,7 @@ func (t *createSnapshotFromDiskTask) run(
 		"",
 		disk.ZoneId,
 		&dataplane_protos.CreateSnapshotFromDiskRequest{
+			BlockSize:           diskParams.BlockSize,
 			SrcDisk:             disk,
 			SrcDiskCheckpointId: checkpointID,
 			DstSnapshotId:       t.request.DstSnapshotId,
@@ -154,10 +159,64 @@ func (t *createSnapshotFromDiskTask) run(
 	return checkpointID, nil
 }
 
+func (t *createSnapshotFromDiskTask) getSourceDiskZone(
+	ctx context.Context,
+) (string, error) {
+
+	diskMeta, err := t.storage.GetDiskMeta(ctx, t.request.SrcDisk.DiskId)
+	if err != nil {
+		return "", err
+	}
+	if diskMeta == nil {
+		return t.request.SrcDisk.ZoneId, nil
+	}
+
+	return diskMeta.ZoneID, nil
+}
+
+func (t *createSnapshotFromDiskTask) isSourceZoneDisabled(
+	ctx context.Context,
+) (bool, error) {
+
+	if t.disabledZones == nil {
+		return false, nil
+	}
+
+	zoneID, err := t.getSourceDiskZone(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	disabled := t.disabledZones.IsDisabled(zoneID)
+	if disabled {
+		logging.Warn(
+			ctx,
+			"Source disk %v for snapshot %v is in disabled zone %v",
+			t.request.SrcDisk.DiskId,
+			t.request.DstSnapshotId,
+			zoneID,
+		)
+	}
+
+	return disabled, nil
+}
+
 func (t *createSnapshotFromDiskTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	disabled, err := t.isSourceZoneDisabled(ctx)
+	if err != nil {
+		return err
+	}
+	if disabled {
+		return internal_common.NewNonRetriableAbortedError(
+			"can't create snapshot %q from disk %q: source zone is disabled",
+			t.request.DstSnapshotId,
+			t.request.SrcDisk.DiskId,
+		)
+	}
 
 	// Disk cell may differ from the zone presented in the request.
 	disk, err := t.cellSelector.ReplaceZoneIdWithCellIdInDiskMeta(
@@ -196,40 +255,47 @@ func (t *createSnapshotFromDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	// Disk cell may differ from the zone presented in the request.
-	disk, err := t.cellSelector.ReplaceZoneIdWithCellIdInDiskMeta(
-		ctx,
-		t.storage,
-		t.request.SrcDisk,
-	)
-	if err != nil {
-		return err
-	}
-
-	nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
+	disabled, err := t.isSourceZoneDisabled(ctx)
 	if err != nil {
 		return err
 	}
 
 	selfTaskID := execCtx.GetTaskID()
 
-	checkpointID, err := common.CancelCheckpointCreation(
-		ctx,
-		t.scheduler,
-		nbsClient,
-		disk,
-		t.request.DstSnapshotId,
-		selfTaskID,
-		t.request.RetryBrokenDRBasedDiskCheckpoint,
-	)
-	if err != nil {
-		return err
-	}
-
-	if checkpointID != "" {
-		err = nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+	if !disabled {
+		// Disk cell may differ from the zone presented in the request.
+		disk, err := t.cellSelector.ReplaceZoneIdWithCellIdInDiskMeta(
+			ctx,
+			t.storage,
+			t.request.SrcDisk,
+		)
 		if err != nil {
 			return err
+		}
+
+		nbsClient, err := t.nbsFactory.GetClient(ctx, disk.ZoneId)
+		if err != nil {
+			return err
+		}
+
+		checkpointID, err := common.CancelCheckpointCreation(
+			ctx,
+			t.scheduler,
+			nbsClient,
+			disk,
+			t.request.DstSnapshotId,
+			selfTaskID,
+			t.request.RetryBrokenDRBasedDiskCheckpoint,
+		)
+		if err != nil {
+			return err
+		}
+
+		if checkpointID != "" {
+			err = nbsClient.DeleteCheckpoint(ctx, disk.DiskId, checkpointID)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

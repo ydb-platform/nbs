@@ -28,22 +28,22 @@ struct TTestDevice final: public IDevice
             TVector<TBuffer>());
     }
 
-    [[nodiscard]] auto WritePages(TVector<TPageRange> ranges)
-        -> TFuture<NCloud::NProto::TError> final
+    [[nodiscard]] auto WritePages(
+        TVector<TPageRange> ranges) -> TFuture<NProto::TError> final
     {
         Y_UNUSED(ranges);
 
         ++WritePagesCount;
 
-        return MakeFuture<NCloud::NProto::TError>();
+        return MakeFuture<NProto::TError>();
     }
 
-    [[nodiscard]] auto ZeroPages(TVector<TPageRangeRef> ranges)
-        -> TFuture<NCloud::NProto::TError> final
+    [[nodiscard]] auto ZeroPages(
+        TVector<TPageRangeRef> ranges) -> TFuture<NProto::TError> final
     {
         Y_UNUSED(ranges);
 
-        return MakeFuture<NCloud::NProto::TError>();
+        return MakeFuture<NProto::TError>();
     }
 };
 
@@ -62,7 +62,7 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     NProto::TError WriteLogRecord(ui64 lsn, ui64 prevLsn)
     {
-        NCloud::NProto::TWriteLogRecordRequest request;
+        NProto::TWriteLogRecordRequest request;
         request.SetLogSequenceNumber(lsn);
         request.SetPrevLogSequenceNumber(prevLsn);
 
