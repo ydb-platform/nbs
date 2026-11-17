@@ -600,19 +600,17 @@ private:
         TVector<double> values;
         for (size_t i = 0; i < limit; ++i) {
             const auto& row = rows[i];
-            const auto latency =
-                row.GroupAggregate.GetAverageDecayedLatencyUs();
             tableRows.push_back(
                 {ToString(i + 1),
                  row.Labels[0],
                  row.Labels[3],
                  row.Labels[1],
                  row.Labels[2],
-                 ToString(latency),
+                 ToString(row.GroupAggregate.GetAverageDecayedLatencyUs()),
                  ToString(row.GroupAggregate.NormalizedAverageLatencyUs),
                  ToString(row.GroupAggregate.TotalLatencyUs),
                  ToString(row.GroupAggregate.RequestCount)});
-            values.push_back(latency);
+            values.push_back(row.GroupAggregate.NormalizedAverageLatencyUs);
         }
 
         PrintTable(
