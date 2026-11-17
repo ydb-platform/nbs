@@ -64,10 +64,4 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-template <typename TProtoRequest>
-ui64 CalculateByteCount(const TProtoRequest& request)
-{
-    return request.GetLength();
-}
-
 }   // namespace NCloud::NFileStore::NStorage

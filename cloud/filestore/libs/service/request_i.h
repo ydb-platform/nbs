@@ -17,6 +17,8 @@
 #include <cloud/filestore/public/api/protos/ping.pb.h>
 #include <cloud/filestore/public/api/protos/session.pb.h>
 
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
+
 #include <cloud/storage/core/protos/media.pb.h>
 #include <cloud/storage/core/protos/request_source.pb.h>
 
@@ -188,6 +190,14 @@ ui64 CalculateByteCount<NProto::TWriteDataRequest>(
 template <>
 ui64 CalculateByteCount<NProto::TReadDataResponse>(
     const NProto::TReadDataResponse& response);
+
+template <>
+ui64 CalculateByteCount<NProtoPrivate::TDescribeDataRequest>(
+    const NProtoPrivate::TDescribeDataRequest& request);
+
+template <>
+ui64 CalculateByteCount<NProtoPrivate::TGenerateBlobIdsRequest>(
+    const NProtoPrivate::TGenerateBlobIdsRequest& request);
 
 ////////////////////////////////////////////////////////////////////////////////
 
