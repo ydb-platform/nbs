@@ -99,8 +99,8 @@ void TStorageServiceActor::RegisterCounters(const NActors::TActorContext& ctx)
     HddTabletCount = hddCounters->GetCounter("TabletCount", false);
 
     auto ssdCounters = serviceCounters->GetSubgroup("type", "ssd");
-    SsdFileSystemCount = hddCounters->GetCounter("FileSystemCount", false);
-    SsdTabletCount = hddCounters->GetCounter("TabletCount", false);
+    SsdFileSystemCount = ssdCounters->GetCounter("FileSystemCount", false);
+    SsdTabletCount = ssdCounters->GetCounter("TabletCount", false);
 }
 
 void TStorageServiceActor::ScheduleUpdateStats(const NActors::TActorContext& ctx)
