@@ -18,9 +18,11 @@ namespace NCloud::NFileStore::NFuse {
 
 /*
  * Caches the node attrs returned by the backend along with a TTL
- * (NodeCacheTTL in the GetNodeAttr responses), see TTTLCacheShard. Unlike
- * TNodeCache, doesn't depend on the guest's lookup count: the entries live
- * until their deadline, invalidation or eviction.
+ * (NodeCacheTTL in the GetNodeAttr responses), see TTTLCacheShard. The
+ * entries live until their deadline, invalidation or eviction.
+ *
+ * The invalidations of the node attrs are also used to decide whether the
+ * guest may cache the node attrs returned to it, see IsCacheable.
  */
 class TNodeAttrsCache
 {
@@ -47,6 +49,16 @@ public:
      * @param deadline - Deadline after which the attrs are not used.
      */
     void Add(const NProto::TNodeAttr& attrs, ui64 version, TInstant deadline);
+
+    /**
+     * Checks whether the node attrs fetched by a request may be cached - by
+     * this cache or by the guest.
+     *
+     * @param nodeId - Node id.
+     * @param version - Cache version at which the request has started.
+     * @return - False if the node has been invalidated after version.
+     */
+    bool IsCacheable(ui64 nodeId, ui64 version);
 
     /**
      * Returns the cached node attrs. The attrs are erased if their deadline

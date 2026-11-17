@@ -7886,8 +7886,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         bootstrap.GetNodeAttrResponse.SetValue(std::move(response));
     }
 
-    void TestForgetNodeAfterAttrReply(
-        const std::function<void(TAttrRaceBootstrap&)>& attrRequest)
+    Y_UNIT_TEST(ShouldNotAllowGuestAttrCachingUponRaceWithForget)
     {
         TAttrRaceBootstrap bootstrap;
         bootstrap.Start();
@@ -7902,44 +7901,24 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         ReplyGetNodeAttr(bootstrap);
         lookup.GetValue(WaitTimeout);
 
-        attrRequest(bootstrap);
-
         auto request = std::make_shared<TGetAttrRequest>(bootstrap.NodeId);
         auto pending = bootstrap.Fuse->SendRequest(request);
         UNIT_ASSERT(bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout));
 
-        // Record a version newer than the probe's, then drop the guest's only
-        // lookup reference. If an attr reply had leaked a reference, the entry
-        // would survive FORGET with that newer version, and the probe would
-        // get attr_valid == 0 as if its reply raced with a modification.
-        bootstrap.Write(/* offset */ 0, 4_KB);
+        //
+        // The node is modified while GetAttr is in flight and the guest drops
+        // its only lookup reference. The reply may be stale - the guest must
+        // not cache it.
+        //
+
+        bootstrap.Write(0 /* offset */, 4_KB);
         bootstrap.Fuse->SendRequest<TForgetRequest>(bootstrap.NodeId, 1)
             .GetValue(WaitTimeout);
 
         ReplyGetNodeAttr(bootstrap);
         pending.GetValue(WaitTimeout);
-        UNIT_ASSERT_GT(request->Out->Body.attr_valid, 0);
-    }
-
-    Y_UNIT_TEST(ShouldForgetNodeAfterGetAttrReply)
-    {
-        TestForgetNodeAfterAttrReply(
-            [] (TAttrRaceBootstrap& bootstrap) {
-                auto getAttr = bootstrap.Fuse->SendRequest<TGetAttrRequest>(
-                    bootstrap.NodeId);
-                UNIT_ASSERT(
-                    bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout));
-                ReplyGetNodeAttr(bootstrap);
-                getAttr.GetValue(WaitTimeout);
-            });
-    }
-
-    Y_UNIT_TEST(ShouldForgetNodeAfterSetAttrReply)
-    {
-        TestForgetNodeAfterAttrReply(
-            [] (TAttrRaceBootstrap& bootstrap) {
-                bootstrap.SetSize(0);
-            });
+        UNIT_ASSERT_VALUES_EQUAL(0, request->Out->Body.attr_valid);
+        UNIT_ASSERT_VALUES_EQUAL(0, request->Out->Body.attr_valid_nsec);
     }
 
     Y_UNIT_TEST(

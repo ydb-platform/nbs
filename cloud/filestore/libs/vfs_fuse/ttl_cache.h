@@ -165,6 +165,13 @@ public:
             TEntry{.Value = std::move(value), .Deadline = deadline});
     }
 
+    bool IsCacheable(const TKey& key, ui64 version)
+    {
+        auto g = Guard(Lock);
+
+        return Invalidations.IsCacheable(key, version);
+    }
+
     TMaybe<TValue> Get(const TKey& key, TInstant now)
     {
         auto g = Guard(Lock);

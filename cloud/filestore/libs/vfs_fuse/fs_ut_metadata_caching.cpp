@@ -288,6 +288,54 @@ void CheckReadAfterSetXAttrRacingWithDelayedGetXAttr(bool xattrExists)
     UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("GetXAttrCacheMissCount"));
 }
 
+//
+// Sends a Lookup (if name is set) or a GetAttr of nodeId, delays its backend
+// request until race is done and returns the attr and entry timeouts of the
+// reply to the guest.
+//
+
+std::pair<ui64, ui64> GetTimeoutsUponRace(
+    TMetadataCachingEnv& env,
+    const TString& name,
+    ui64 nodeId,
+    const std::function<void()>& race)
+{
+    auto promise = NewPromise();
+    std::atomic<bool> requested = false;
+    env.Bootstrap.Service->SetHandlerGetNodeAttr(
+        [&] (auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+            requested = true;
+            auto response = env.HandleGetNodeAttr(*request);
+            return promise.GetFuture().Apply(
+                [response] (const auto&) { return response; });
+        });
+
+    auto release = [&] {
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&] { return requested.load(); }));
+        race();
+        promise.SetValue();
+    };
+
+    if (!name.empty()) {
+        auto lookup =
+            std::make_shared<TLookupRequest>(name, RootNodeId);
+        auto future = env.Bootstrap.Fuse->SendRequest(lookup);
+        release();
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        return {lookup->Out->Body.attr_valid, lookup->Out->Body.entry_valid};
+    }
+
+    auto getAttr = std::make_shared<TGetAttrRequest>(nodeId);
+    auto future = env.Bootstrap.Fuse->SendRequest(getAttr);
+    release();
+    UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+    return {getAttr->Out->Body.attr_valid, 0};
+}
+
 NProto::TNodeAttr MakeFileAttr(ui64 nodeId)
 {
     NProto::TNodeAttr attrs;
@@ -819,6 +867,85 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         }
 
         UNIT_ASSERT_GT(env.GetCounter("LookupCacheMissCount"), Limit + 1);
+    }
+
+    Y_UNIT_TEST(ShouldNotAllowGuestCachingUponLookupAndLocalChangeRace)
+    {
+        TMetadataCachingEnv env;
+        env.Bootstrap.Service->SetHandlerSetNodeAttr(
+            [] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                NProto::TSetNodeAttrResponse response;
+                *response.MutableNode() = MakeFileAttr(request->GetNodeId());
+                return MakeFuture(response);
+            });
+
+        const auto timeouts = GetTimeoutsUponRace(
+            env,
+            "f",
+            InvalidNodeId,
+            [&] {
+                auto setAttr =
+                    env.Bootstrap.Fuse->SendRequest<TSetAttrRequest>(
+                        FileNodeId,
+                        0 /* fh */);
+                UNIT_ASSERT_NO_EXCEPTION(setAttr.GetValue(WaitTimeout));
+            });
+        UNIT_ASSERT_VALUES_EQUAL(0, timeouts.first);
+        UNIT_ASSERT_VALUES_EQUAL(0, timeouts.second);
+
+        //
+        // Without a race the guest may cache the reply.
+        //
+
+        const auto noRaceTimeouts =
+            GetTimeoutsUponRace(env, "f", InvalidNodeId, [] {});
+        UNIT_ASSERT_GT(noRaceTimeouts.first, 0);
+        UNIT_ASSERT_GT(noRaceTimeouts.second, 0);
+    }
+
+    Y_UNIT_TEST(ShouldNotAllowGuestCachingUponGetAttrAndEventRace)
+    {
+        TMetadataCachingEnv env;
+
+        const auto timeouts = GetTimeoutsUponRace(
+            env,
+            {} /* name */,
+            FileNodeId,
+            [&] {
+                NProto::TFileSystemEvent event;
+                event.MutableInvalidateNode()->SetNodeId(FileNodeId);
+                env.SendEvent(event);
+            });
+        UNIT_ASSERT_VALUES_EQUAL(0, timeouts.first);
+    }
+
+    Y_UNIT_TEST(ShouldNotAllowGuestCachingUponEvictedInvalidation)
+    {
+        constexpr ui32 Limit = 16;
+
+        NProto::TFileStoreFeatures features;
+        features.SetNodeAttrsCacheLimit(Limit);
+        TMetadataCachingEnv env(features);
+
+        //
+        // The invalidations of many other nodes may evict the invalidation of
+        // the requested node - the reply still may not be cached.
+        //
+
+        const auto timeouts = GetTimeoutsUponRace(
+            env,
+            {} /* name */,
+            FileNodeId,
+            [&] {
+                for (ui64 i = 0; i <= 64 * Limit; ++i) {
+                    NProto::TFileSystemEvent event;
+                    event.MutableInvalidateNode()->SetNodeId(FileNodeId + i);
+                    env.SendEvent(event);
+                }
+            });
+        UNIT_ASSERT_VALUES_EQUAL(0, timeouts.first);
     }
 
     Y_UNIT_TEST(ShouldCacheAttrsOfNodesNotLookedUp)

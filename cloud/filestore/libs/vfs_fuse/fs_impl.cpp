@@ -58,7 +58,6 @@ TFileSystem::TFileSystem(
     , Log(Logging->CreateLog("NFS_FUSE"))
     , RequestStats(std::move(stats))
     , CompletionQueue(std::move(queue))
-    , NodeCache(Config->GetFileSystemId(), CACHE_SHARD_COUNT)
     , MetadataCacheStats(std::move(metadataCacheStats))
     , NodeAttrsCache(Config->GetNodeAttrsCacheLimit(), CACHE_SHARD_COUNT)
     , NodeRefCache(Config->GetNodeRefCacheLimit(), CACHE_SHARD_COUNT)
@@ -185,35 +184,40 @@ void TFileSystem::AdjustNodeSize(NProto::TNodeAttr& attrs)
     }
 }
 
-bool TFileSystem::UpdateNodeAttrsInCache(
+void TFileSystem::FillEntryParam(
     const NProto::TNodeAttr& attrs,
     fuse_entry_param& entry,
     ui64 version)
 {
-    STORAGE_TRACE("updating node attrs: "
+    STORAGE_TRACE("filling entry: "
         << ProtoMessagePrinter.ToString(attrs)
         << ", version: " << version);
+
+    if (attrs.GetType() == NProto::E_INVALID_NODE) {
+        ReportNodeCacheInvalidNode(TStringBuilder()
+            << "fs: " << Config->GetFileSystemId()
+            << ", attrs: " << attrs.ShortUtf8DebugString()
+            << ", version: " << version);
+    }
 
     entry.ino = attrs.GetId();
     entry.generation = 0; // TODO
 
-    const bool updated = NodeCache.UpdateNode(attrs, version);
-    if (updated) {
+    //
+    // The attrs may be stale if the node has been invalidated after the
+    // request that has fetched them had started - the guest must not cache
+    // them then.
+    //
+
+    if (NodeAttrsCache.IsCacheable(attrs.GetId(), version)) {
         entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
         entry.entry_timeout = GetEntryCacheTimeout(attrs).SecondsFloat();
     } else {
-        //
-        // NodeCache contains a newer node version. This means that the attrs
-        // that we're going to return might be stale. So we should disallow
-        // caching.
-        //
-
         entry.attr_timeout = 0;
         entry.entry_timeout = 0;
     }
 
     ConvertAttr(Config->GetPreferredBlockSize(), attrs, entry.attr);
-    return updated;
 }
 
 TInstant TFileSystem::GetCacheDeadline(ui32 cacheTTL) const
@@ -281,10 +285,8 @@ bool TFileSystem::TryReplyEntryFromCache(
         << ProtoMessagePrinter.ToString(*attrs));
 
     //
-    // The reply increments the guest's lookup count, so NodeCache is updated
-    // the same way as upon a Lookup response. The cached attrs have not been
-    // invalidated since they were fetched, so they are as fresh as a
-    // response to a request started now.
+    // The cached attrs have not been invalidated since they were fetched, so
+    // they are as fresh as a response to a request started now.
     //
 
     const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
@@ -430,17 +432,6 @@ void TFileSystem::InvalidateCachedEntry(
     NodeAttrsCache.Invalidate(parentNodeId, version);
 }
 
-void TFileSystem::InvalidateNodeInCache(ui64 nodeId)
-{
-    const ui64 newVersion = GenerateCacheVersion(GlobalCacheVersion);
-
-    STORAGE_TRACE("invalidating node: " << nodeId
-        << ", version: " << newVersion);
-
-    NodeCache.InvalidateNode(nodeId, newVersion);
-    NodeAttrsCache.Invalidate(nodeId, newVersion);
-}
-
 void TFileSystem::InvalidateDirectoryEntryInCache(
     fuse_ino_t parent,
     const TString& name)
@@ -556,16 +547,18 @@ void TFileSystem::ReplyCreateWithCache(
     }
 
     fuse_entry_param entry = {};
-    UpdateNodeAttrsInCache(attrs, entry, version);
+    FillEntryParam(attrs, entry, version);
 
     fuse_file_info fi = {};
     fi.fh = handle;
 
     const int res = ReplyCreate(callContext, error, req, &entry, &fi);
-    if (res == -ENOENT) {
-        // syscall was interrupted
-        NodeCache.ForgetNode(entry.ino, 1);
-    }
+
+    //
+    // An interrupted syscall (-ENOENT) needs no handling.
+    //
+
+    Y_UNUSED(res);
 }
 
 void TFileSystem::ReplyEntryWithCache(
@@ -592,13 +585,15 @@ void TFileSystem::ReplyEntryWithCache(
     }
 
     fuse_entry_param entry = {};
-    UpdateNodeAttrsInCache(attrs, entry, version);
+    FillEntryParam(attrs, entry, version);
 
     const int res = ReplyEntry(callContext, error, req, &entry);
-    if (res == -ENOENT) {
-        // syscall was interrupted
-        NodeCache.ForgetNode(entry.ino, 1);
-    }
+
+    //
+    // An interrupted syscall (-ENOENT) needs no handling.
+    //
+
+    Y_UNUSED(res);
 }
 
 void TFileSystem::ReplyXAttrInt(
@@ -637,19 +632,21 @@ void TFileSystem::ReplyAttrWithCache(
         return;
     }
 
-    // NodeCache ref count mirrors the guest's lookup count. attr replies do
-    // not change it, so only check the version.
-    const bool updated = NodeCache.GetNodeVersion(attrs.GetId()) <= version;
-
     struct stat attr = {};
     ConvertAttr(Config->GetPreferredBlockSize(), attrs, attr);
 
+    //
+    // The guest must not cache the attrs if the node has been invalidated
+    // after the request that has fetched them had started.
+    //
+
+    const bool cacheable = NodeAttrsCache.IsCacheable(attrs.GetId(), version);
     ReplyAttr(
         callContext,
         error,
         req,
         &attr,
-        updated ? Config->GetAttrTimeout().SecondsFloat() : 0);
+        cacheable ? Config->GetAttrTimeout().SecondsFloat() : 0);
 }
 
 void TFileSystem::CancelRequest(TCallContextPtr callContext, fuse_req_t req)

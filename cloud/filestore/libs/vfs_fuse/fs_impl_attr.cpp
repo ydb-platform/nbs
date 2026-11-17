@@ -89,7 +89,7 @@ void TFileSystem::SetAttr(
         self->FSyncQueue->Dequeue(reqId, error, TNodeId{ino});
 
         if (self->CheckNodeError(*callContext, req, error)) {
-            InvalidateNodeInCache(ino);
+            InvalidateCachedNodeAttrs(ino);
 
             self->ReplyAttrWithCache(
                 *callContext,

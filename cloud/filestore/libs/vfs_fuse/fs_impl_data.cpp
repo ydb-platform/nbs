@@ -818,7 +818,7 @@ void TFileSystem::DoWrite(
             // that read node attributes.
             //
 
-            self->InvalidateNodeInCache(ino);
+            self->InvalidateCachedNodeAttrs(ino);
             self->ReplyWrite(*callContext, error, req, size);
         }
     };
@@ -972,7 +972,7 @@ void TFileSystem::FAllocate(
                 // operations that read node attributes.
                 //
 
-                InvalidateNodeInCache(ino);
+                InvalidateCachedNodeAttrs(ino);
                 self->ReplyError(*callContext, error, req, 0);
             }
         });

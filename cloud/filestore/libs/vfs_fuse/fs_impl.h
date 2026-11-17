@@ -91,7 +91,6 @@ private:
 
     std::unique_ptr<NVFS::IFSyncQueue> FSyncQueue;
 
-    TNodeCache NodeCache;
     TMetadataCacheModuleStatsPtr MetadataCacheStats;
     TNodeAttrsCache NodeAttrsCache;
     TNodeRefCache NodeRefCache;
@@ -461,7 +460,7 @@ private:
 
     void AdjustNodeSize(NProto::TNodeAttr& attrs);
 
-    bool UpdateNodeAttrsInCache(
+    void FillEntryParam(
         const NProto::TNodeAttr& attrs,
         fuse_entry_param& entry,
         ui64 version);
@@ -485,7 +484,6 @@ private:
         fuse_req_t req,
         ui64 nodeId);
 
-    void InvalidateNodeInCache(ui64 nodeId);
     void InvalidateCachedEntry(ui64 parentNodeId, const TString& name);
     void InvalidateCachedNodeAttrs(ui64 nodeId);
     void InvalidateCachedXAttr(ui64 nodeId, const TString& name);
