@@ -5521,6 +5521,77 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, fakeBlobWasRead->Val());
     }
 
+    Y_UNIT_TEST(ShouldNotZeroFillReadBufferWhenReadBlobDisabled)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::STORAGE_MEDIA_SSD);
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            // Zero-copy read makes TReadDataActor work directly with our
+            // buffers, which lets us see whether it touched them
+            newConfig.SetZeroCopyReadEnabled(true);
+            newConfig.SetReadBlobDisabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                response.GetStorageConfig().GetReadBlobDisabled());
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto fakeBlobWasRead =
+            counters->GetCounter("AppCriticalEvents/FakeBlobWasRead", true);
+
+        // Large aligned write goes directly to blobs => there will be no fresh
+        // data in the DescribeData response
+        const TString data(1_MB, 'b');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+
+        const size_t iovecSize = 4_KB;
+        TVector<TString> iovecs;
+        for (size_t i = 0; i < data.size() / iovecSize; ++i) {
+            iovecs.emplace_back(iovecSize, 'x');
+        }
+
+        auto response =
+            service
+                .ReadData(headers, fs, nodeId, handle, 0, data.size(), iovecs);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, fakeBlobWasRead->Val());
+        UNIT_ASSERT_VALUES_EQUAL(data.size(), response->Record.GetLength());
+        // Neither the data nor zeroes should have been written to the buffers
+        const TString expected(data.size(), 'x');
+        UNIT_ASSERT_C(
+            expected == GetBufferFromIovecs(iovecs, data.size()),
+            "read buffers were modified");
+    }
+
     Y_UNIT_TEST(ShouldReadFakeDataWhenFakeDescribeDataEnabled)
     {
         TTestEnv env;
