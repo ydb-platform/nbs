@@ -155,13 +155,6 @@ void TFileSystem::MkDir(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                //
-                // The response reflects this request's own change: the guest
-                // may cache it unless the node has been changed by something
-                // else since the request started. The own invalidations go
-                // after this check.
-                //
-
                 const bool cacheable = self->NodeAttrsCache.IsCacheable(
                     response.GetNode().GetId(),
                     version);
@@ -274,13 +267,6 @@ void TFileSystem::MkNode(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                //
-                // The response reflects this request's own change: the guest
-                // may cache it unless the node has been changed by something
-                // else since the request started. The own invalidations go
-                // after this check.
-                //
-
                 const bool cacheable = self->NodeAttrsCache.IsCacheable(
                     response.GetNode().GetId(),
                     version);
@@ -426,13 +412,6 @@ void TFileSystem::SymLink(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
-                //
-                // The response reflects this request's own change: the guest
-                // may cache it unless the node has been changed by something
-                // else since the request started. The own invalidations go
-                // after this check.
-                //
-
                 const bool cacheable = self->NodeAttrsCache.IsCacheable(
                     response.GetNode().GetId(),
                     version);
@@ -484,17 +463,9 @@ void TFileSystem::Link(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
 
             if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                //
-                // The response reflects this request's own change: the guest
-                // may cache it unless the node has been changed by something
-                // else since the request started. The own invalidations go
-                // after this check.
-                //
-
-                const bool cacheable =
-                    self->NodeAttrsCache.IsCacheable(ino, version);
                 self->InvalidateCachedNodeAttrs(newparent);
-                self->InvalidateCachedNodeAttrs(ino);
+                const bool cacheable =
+                    self->InvalidateCachedNodeAttrsUponOwnChange(ino, version);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,

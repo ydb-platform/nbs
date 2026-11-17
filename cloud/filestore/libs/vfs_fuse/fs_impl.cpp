@@ -337,6 +337,30 @@ void TFileSystem::InvalidateCachedNodeAttrs(ui64 nodeId)
     NodeAttrsCache.Invalidate(nodeId, version);
 }
 
+bool TFileSystem::InvalidateCachedNodeAttrsUponOwnChange(
+    ui64 nodeId,
+    ui64 version)
+{
+    //
+    // The response to a request which has changed the node reflects this
+    // change: the guest may cache it unless the node has been changed by
+    // something else since the request started. The check precedes the own
+    // invalidation, under the same lock - otherwise the own invalidation
+    // would fail the check, and two own changes completing concurrently
+    // could both pass it.
+    //
+
+    const ui64 invalidationVersion = GenerateCacheVersion(GlobalCacheVersion);
+
+    STORAGE_TRACE("invalidating cached node upon own change: " << nodeId
+        << ", version: " << invalidationVersion);
+
+    return NodeAttrsCache.CheckAndInvalidate(
+        nodeId,
+        version,
+        invalidationVersion);
+}
+
 void TFileSystem::InvalidateCachedNodeRef(
     ui64 parentNodeId,
     const TString& name)

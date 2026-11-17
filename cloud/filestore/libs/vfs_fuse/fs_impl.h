@@ -486,6 +486,7 @@ private:
 
     void InvalidateCachedEntry(ui64 parentNodeId, const TString& name);
     void InvalidateCachedNodeAttrs(ui64 nodeId);
+    bool InvalidateCachedNodeAttrsUponOwnChange(ui64 nodeId, ui64 version);
     void InvalidateCachedXAttr(ui64 nodeId, const TString& name);
     void InvalidateDirectoryEntryInCache(
         fuse_ino_t parent,

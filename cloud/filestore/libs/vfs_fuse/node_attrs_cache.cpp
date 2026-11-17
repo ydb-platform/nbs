@@ -49,6 +49,17 @@ void TNodeAttrsCache::Invalidate(ui64 nodeId, ui64 version)
     Y_UNUSED(GetShard(nodeId).Invalidate(nodeId, version));
 }
 
+bool TNodeAttrsCache::CheckAndInvalidate(
+    ui64 nodeId,
+    ui64 version,
+    ui64 invalidationVersion)
+{
+    return GetShard(nodeId).CheckAndInvalidate(
+        nodeId,
+        version,
+        invalidationVersion);
+}
+
 void TNodeAttrsCache::InvalidateAll(ui64 version)
 {
     for (auto& shard: Shards) {

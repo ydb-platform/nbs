@@ -205,6 +205,33 @@ public:
         return value;
     }
 
+    /**
+     * Checks whether the data fetched by a request may be cached and then
+     * invalidates the key, atomically.
+     *
+     * @param key - Key of the data.
+     * @param version - Cache version at which the request has started.
+     * @param invalidationVersion - Cache version of the invalidation.
+     * @return - False if the key has been invalidated after version.
+     */
+    bool CheckAndInvalidate(
+        const TKey& key,
+        ui64 version,
+        ui64 invalidationVersion)
+    {
+        auto g = Guard(Lock);
+
+        const bool cacheable = Invalidations.IsCacheable(key, version);
+        Invalidations.Invalidate(key, invalidationVersion);
+
+        auto it = Entries.Find(key);
+        if (it != Entries.End()) {
+            Entries.Erase(it);
+        }
+
+        return cacheable;
+    }
+
     void InvalidateAll(ui64 version)
     {
         auto g = Guard(Lock);

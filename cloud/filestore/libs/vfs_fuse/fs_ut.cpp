@@ -5893,6 +5893,64 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(3, writeDataCalled.load());
     }
 
+    Y_UNIT_TEST(ShouldIncludeCachedDataInSetAttrReplyWithServerWriteBackCache)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            1000 /* handleOpsQueueStateFileSize */,
+            0 /* writeBackCacheAutomaticFlushPeriodMs */);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        std::atomic<int> writeDataCalled = 0;
+        bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
+            Y_UNUSED(callContext);
+            writeDataCalled++;
+            return MakeFuture(NProto::TWriteDataResponse());
+        };
+        bootstrap.Service->SetNodeAttrHandler = [&] (auto callContext, auto) {
+            Y_UNUSED(callContext);
+            NProto::TSetNodeAttrResponse response;
+            auto* node = response.MutableNode();
+            node->SetId(nodeId);
+            node->SetType(NProto::E_REGULAR_NODE);
+            return MakeFuture(response);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto write = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0 /* offset */,
+            CreateBuffer(4_KB, 'a'));
+        write->In->Body.flags |= O_WRONLY;
+        UNIT_ASSERT_NO_EXCEPTION(
+            bootstrap.Fuse->SendRequest(write).GetValue(WaitTimeout));
+
+        //
+        // chmod doesn't flush the cached data - the backend doesn't know
+        // about it yet, but the reply has to include it.
+        //
+
+        auto setAttr = std::make_shared<TSetAttrRequest>(nodeId, handleId);
+        setAttr->In->Body.valid = FUSE_SET_ATTR_MODE;
+        setAttr->In->Body.mode = S_IFREG | 0600;
+        UNIT_ASSERT_NO_EXCEPTION(
+            bootstrap.Fuse->SendRequest(setAttr).GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, setAttr->Out->Body.attr.size);
+    }
+
     Y_UNIT_TEST(ShouldFsyncDirWithServerWriteBackCacheEnabled)
     {
         NProto::TFileStoreFeatures features;

@@ -77,6 +77,17 @@ void TFileSystem::SetAttr(
 
     const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
 
+    //
+    // A SetAttr which doesn't change the size doesn't flush WriteBackCache -
+    // the size in the response doesn't include the cached data. The data
+    // cached after this point invalidates the node (see GetAttr).
+    //
+
+    const ui64 maxWrittenOffset =
+        WriteBackCache && !(to_set & FUSE_SET_ATTR_SIZE)
+            ? WriteBackCache.GetMaxWrittenOffset(ino)
+            : 0;
+
     auto callback = [=, ptr = weak_from_this()](const auto& future)
     {
         auto self = ptr.lock();
@@ -89,22 +100,16 @@ void TFileSystem::SetAttr(
         self->FSyncQueue->Dequeue(reqId, error, TNodeId{ino});
 
         if (self->CheckNodeError(*callContext, req, error)) {
-            //
-            // The response reflects this request's own change: the guest may
-            // cache it unless the node has been changed by something else
-            // since the request started. The own invalidation goes after
-            // this check.
-            //
-
             const bool cacheable =
-                self->NodeAttrsCache.IsCacheable(ino, version);
-            self->InvalidateCachedNodeAttrs(ino);
+                self->InvalidateCachedNodeAttrsUponOwnChange(ino, version);
 
+            auto attrs = response.GetNode();
+            attrs.SetSize(Max(attrs.GetSize(), maxWrittenOffset));
             self->ReplyAttrWithCache(
                 *callContext,
                 error,
                 req,
-                response.GetNode(),
+                attrs,
                 cacheable);
         }
     };
