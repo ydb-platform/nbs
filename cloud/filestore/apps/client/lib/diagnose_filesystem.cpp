@@ -6,9 +6,9 @@
 
 #include <library/cpp/json/json_writer.h>
 
-#include <google/protobuf/util/json_util.h>
-
 #include <util/generic/hash.h>
+
+#include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NFileStore::NClient {
 
@@ -348,7 +348,10 @@ private:
         const THashMap<TString, TLatency>& requestTypeTotals)
     {
         for (auto& row: latencyRows) {
-            if (!row.Data.RequestCount) {
+            row.Data.NormalizedAverageLatencyUs =
+                row.Data.GetAverageDecayedLatencyUs();
+            const auto it = requestTypeTotals.find(row.Labels[2]);
+            if (!row.Data.RequestCount || it == requestTypeTotals.end()) {
                 continue;
             }
 
@@ -357,17 +360,20 @@ private:
                 totals.RequestCount - row.Data.RequestCount;
             const auto otherTotalLatencyUs =
                 totals.TotalLatencyUs - row.Data.TotalLatencyUs;
-            const double priorAvgLatencyUs = otherRequestCount
-                ? static_cast<double>(otherTotalLatencyUs) / otherRequestCount
-                : static_cast<double>(row.Data.TotalLatencyUs) /
-                      row.Data.RequestCount;
+            const double priorAvgLatencyUs =
+                otherRequestCount
+                    ? static_cast<double>(otherTotalLatencyUs) /
+                          otherRequestCount
+                    : static_cast<double>(row.Data.TotalLatencyUs) /
+                          row.Data.RequestCount;
 
             const double rawAvgLatencyUs =
                 static_cast<double>(row.Data.TotalLatencyUs) /
                 row.Data.RequestCount;
-            const double decayFactor = rawAvgLatencyUs > 0
-                ? row.Data.GetAverageDecayedLatencyUs() / rawAvgLatencyUs
-                : 1.0;
+            const double decayFactor =
+                rawAvgLatencyUs > 0
+                    ? row.Data.GetAverageDecayedLatencyUs() / rawAvgLatencyUs
+                    : 1.0;
 
             row.Data.NormalizedAverageLatencyUs =
                 NDiagnostics::NormalizeLatencyUs(
@@ -422,10 +428,8 @@ private:
         const TLatencyResult& lhs,
         const TLatencyResult& rhs)
     {
-        const auto lhsLatency =
-            lhs.GroupAggregate.NormalizedAverageLatencyUs;
-        const auto rhsLatency =
-            rhs.GroupAggregate.NormalizedAverageLatencyUs;
+        const auto lhsLatency = lhs.GroupAggregate.NormalizedAverageLatencyUs;
+        const auto rhsLatency = rhs.GroupAggregate.NormalizedAverageLatencyUs;
         const auto lhsNodeId = FromString<ui64>(lhs.Labels[0]);
         const auto rhsNodeId = FromString<ui64>(rhs.Labels[0]);
 
