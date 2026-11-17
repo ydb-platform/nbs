@@ -266,45 +266,40 @@ public:
         return MakeFuture();
     }
 
-    [[nodiscard]] auto ReadPages(NProto::TReadPagesRequest /*request*/)
-        -> TFuture<NProto::TReadPagesResponse> final
-    {
-        return MakeResponse<NProto::TReadPagesResponse>();
-    }
-
-    [[nodiscard]] auto WriteLogRecord(
-        NProto::TWriteLogRecordRequest /*request*/)
-        -> TFuture<NProto::TWriteLogRecordResponse> final
-    {
-        return MakeResponse<NProto::TWriteLogRecordResponse>();
-    }
-
-    [[nodiscard]] auto ReadJournalTail(
-        NProto::TReadJournalTailRequest /*request*/)
-        -> TFuture<NProto::TReadJournalTailResponse> final
-    {
-        return MakeResponse<NProto::TReadJournalTailResponse>();
-    }
-
-    [[nodiscard]] auto AdvanceLsnLowWatermark(
-        NProto::TAdvanceLsnLowWatermarkRequest /*request*/)
-        -> TFuture<NProto::TAdvanceLsnLowWatermarkResponse> final
-    {
-        return MakeResponse<NProto::TAdvanceLsnLowWatermarkResponse>();
-    }
-
-    [[nodiscard]] auto WritePages(NProto::TWritePagesRequest /*request*/)
-        -> TFuture<NProto::TWritePagesResponse> final
-    {
-        return MakeResponse<NProto::TWritePagesResponse>();
-    }
-
-private:
-    template <typename TResponse>
-    TFuture<TResponse> MakeResponse()
+    TFuture<TResultOrError<TReadPagesResult>> ReadPages(
+        TVector<TPageRangeRef> /*rangeRefs*/) final
     {
         ++RequestCount;
-        return MakeFuture(TResponse());
+        return MakeFuture<TResultOrError<TReadPagesResult>>(TReadPagesResult());
+    }
+
+    TFuture<NProto::TError> WriteLogRecord(
+        TVector<TPageRange> /*ranges*/,
+        ui64 /*lsn*/,
+        ui64 /*prevLsn*/) final
+    {
+        ++RequestCount;
+        return MakeFuture<NProto::TError>();
+    }
+
+    TFuture<TResultOrError<TJournalTail>> ReadJournalTail(
+        ui64 /*afterLsn*/,
+        ui32 /*maxRecordCount*/) final
+    {
+        ++RequestCount;
+        return MakeFuture<TResultOrError<TJournalTail>>(TJournalTail());
+    }
+
+    TFuture<NProto::TError> AdvanceWatermark(ui64 /*lsnLowWatermark*/) final
+    {
+        ++RequestCount;
+        return MakeFuture<NProto::TError>();
+    }
+
+    TFuture<NProto::TError> WritePages(TVector<TPageRange> /*ranges*/) final
+    {
+        ++RequestCount;
+        return MakeFuture<NProto::TError>();
     }
 };
 

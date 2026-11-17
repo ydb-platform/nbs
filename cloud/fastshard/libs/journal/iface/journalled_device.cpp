@@ -23,40 +23,48 @@ public:
         return MakeFuture();
     }
 
-    [[nodiscard]] auto ReadPages(NProto::TReadPagesRequest request)
-        -> TFuture<NProto::TReadPagesResponse> final
+    TFuture<TResultOrError<TReadPagesResult>> ReadPages(
+        TVector<TPageRangeRef> rangeRefs) final
     {
-        Y_UNUSED(request);
-        return MakeFuture<NProto::TReadPagesResponse>({});
+        // One buffer per requested page: the callers index the pages by
+        // their position in the request.
+        ui64 pageCount = 0;
+        for (const auto& ref: rangeRefs) {
+            pageCount += ref.PageCount;
+        }
+
+        TReadPagesResult result;
+        result.Pages.resize(pageCount);
+        return MakeFuture<TResultOrError<TReadPagesResult>>(std::move(result));
     }
 
-    [[nodiscard]] auto WriteLogRecord(NProto::TWriteLogRecordRequest request)
-        -> TFuture<NProto::TWriteLogRecordResponse> final
+    TFuture<NProto::TError> WriteLogRecord(
+        TVector<TPageRange> ranges,
+        ui64 lsn,
+        ui64 prevLsn) final
     {
-        Y_UNUSED(request);
-        return MakeFuture<NProto::TWriteLogRecordResponse>({});
+        Y_UNUSED(ranges, lsn, prevLsn);
+        return MakeFuture<NProto::TError>();
     }
 
-    [[nodiscard]] auto ReadJournalTail(NProto::TReadJournalTailRequest request)
-        -> TFuture<NProto::TReadJournalTailResponse> final
+    TFuture<TResultOrError<TJournalTail>> ReadJournalTail(
+        ui64 afterLsn,
+        ui32 maxRecordCount) final
     {
-        Y_UNUSED(request);
-        return MakeFuture<NProto::TReadJournalTailResponse>({});
+        Y_UNUSED(afterLsn, maxRecordCount);
+        return MakeFuture<TResultOrError<TJournalTail>>(TJournalTail());
     }
 
-    [[nodiscard]] auto AdvanceLsnLowWatermark(
-        NProto::TAdvanceLsnLowWatermarkRequest request)
-        -> TFuture<NProto::TAdvanceLsnLowWatermarkResponse> final
+    TFuture<NProto::TError> AdvanceWatermark(ui64 lsnLowWatermark) final
     {
-        Y_UNUSED(request);
-        return MakeFuture<NProto::TAdvanceLsnLowWatermarkResponse>({});
+        Y_UNUSED(lsnLowWatermark);
+        return MakeFuture<NProto::TError>();
     }
 
-    [[nodiscard]] auto WritePages(NProto::TWritePagesRequest request)
-        -> TFuture<NProto::TWritePagesResponse> final
+    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) final
     {
-        Y_UNUSED(request);
-        return MakeFuture<NProto::TWritePagesResponse>({});
+        Y_UNUSED(ranges);
+        return MakeFuture<NProto::TError>();
     }
 };
 

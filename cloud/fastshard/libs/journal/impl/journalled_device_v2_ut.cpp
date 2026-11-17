@@ -29,118 +29,60 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 DefaultPageSize = 4096;
 constexpr TStringBuf DefaultDeviceUUID = "uuid";
-constexpr TStringBuf DefaultClientId = "test-client";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TDevicePageGroup
-MakeGroup(ui64 firstPageNo, ui64 pageCount, TStringBuf prefix)
+using TPageRefs = TVector<std::pair<ui64 /*firstPageNo*/, ui64 /*pageCount*/>>;
+
+TVector<TPageRange> MakePageRanges(const TPageRefs& refs = {{10, 2}, {20, 1}})
 {
-    NProto::TDevicePageGroup group;
-    group.SetFirstPageNo(firstPageNo);
-
-    for (ui64 i = 0; i < pageCount; ++i) {
-        *group.AddContent() = TStringBuilder() << prefix << firstPageNo + i;
-    }
-
-    return group;
-}
-
-NProto::TReadPagesRequest MakeReadRequest(
-    const TVector<std::pair<ui64 /*firstPageNo*/, ui64 /*pageCount*/>>& refs,
-    TStringBuf deviceUUID = DefaultDeviceUUID)
-{
-    NProto::TReadPagesRequest request;
-    request.MutableHeaders()->SetClientId(TString{DefaultClientId});
-    request.SetDeviceUUID(TString{deviceUUID});
+    TVector<TPageRange> ranges;
 
     for (const auto& [firstPageNo, pageCount]: refs) {
-        auto& ref = *request.AddPageGroupRefs();
-        ref.SetFirstPageNo(firstPageNo);
-        ref.SetPageCount(pageCount);
-        ref.SetPageSize(DefaultPageSize);
+        auto& range = ranges.emplace_back();
+        range.FirstPageNo = firstPageNo;
+
+        for (ui64 i = 0; i < pageCount; ++i) {
+            const TString page = TStringBuilder() << "P" << firstPageNo + i;
+            range.Pages.emplace_back(page.data(), page.size());
+        }
     }
 
-    return request;
+    return ranges;
 }
 
-NProto::TWriteLogRecordRequest MakeWriteRequest(TStringBuf deviceUUID)
+TVector<TBuffer> MakePages(ui64 firstPageNo, ui64 pageCount, TStringBuf prefix)
 {
-    NProto::TWriteLogRecordRequest request;
-    request.SetDeviceUUID(TString{deviceUUID});
-    request.SetLogSequenceNumber(1);
-    *request.AddPageGroups() = MakeGroup(10, 1, "W");
+    TVector<TBuffer> pages;
 
-    return request;
-}
-
-NProto::TReadJournalTailRequest MakeTailRequest(TStringBuf deviceUUID)
-{
-    NProto::TReadJournalTailRequest request;
-    request.SetDeviceUUID(TString{deviceUUID});
-
-    return request;
-}
-
-NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(TStringBuf deviceUUID)
-{
-    NProto::TAdvanceLsnLowWatermarkRequest request;
-    request.SetDeviceUUID(TString{deviceUUID});
-    request.SetLsnLowWatermark(1);
-
-    return request;
-}
-
-NProto::TWritePagesRequest MakeWritePagesRequest(
-    TStringBuf deviceUUID,
-    const TVector<std::pair<ui64 /*firstPageNo*/, ui64 /*pageCount*/>>& ranges =
-        {{10, 2}, {20, 1}})
-{
-    NProto::TWritePagesRequest request;
-    request.SetDeviceUUID(TString{deviceUUID});
-
-    for (const auto& [firstPageNo, pageCount]: ranges) {
-        *request.AddPageGroups() = MakeGroup(firstPageNo, pageCount, "P");
+    for (ui64 i = 0; i < pageCount; ++i) {
+        const TString page = TStringBuilder() << prefix << firstPageNo + i;
+        pages.emplace_back(page.data(), page.size());
     }
 
-    return request;
+    return pages;
 }
 
-NProto::TReadPagesResponse MakeReadResponse(
-    TVector<NProto::TDevicePageGroup> groups,
-    ui64 lastAckedLsn = 0)
-{
-    NProto::TReadPagesResponse response;
-    response.SetLastAckedLogSequenceNumber(lastAckedLsn);
-
-    for (auto& group: groups) {
-        response.AddPageGroups()->Swap(&group);
-    }
-
-    return response;
-}
-
-NProto::TJournalRecord MakeRecord(
+TJournalRecord MakeRecord(
     ui64 lsn,
     ui64 firstPageNo,
     ui64 pageCount,
     TStringBuf prefix = "J")
 {
-    NProto::TJournalRecord record;
-    record.SetLogSequenceNumber(lsn);
-    record.SetPrevLogSequenceNumber(lsn - 1);
-    *record.AddPageGroups() = MakeGroup(firstPageNo, pageCount, prefix);
+    TJournalRecord record{.Lsn = lsn, .PrevLsn = lsn - 1};
+    record.Ranges.push_back(
+        {.FirstPageNo = firstPageNo,
+         .Pages = MakePages(firstPageNo, pageCount, prefix)});
 
     return record;
 }
 
-ui64 CountPages(const NProto::TJournalRecord& record)
+ui64 CountPages(const TJournalRecord& record)
 {
     ui64 pageCount = 0;
-    for (const auto& group: record.GetPageGroups()) {
-        pageCount += group.ContentSize();
+    for (const auto& range: record.Ranges) {
+        pageCount += range.Pages.size();
     }
 
     return pageCount;
@@ -192,34 +134,31 @@ TString DescribeRanges(const TVector<TPageRange>& ranges)
     return JoinSeq(" ", groups);
 }
 
-// "10:[D10,D11,J12] 20:[J20]"
-template <typename T>
-TString DescribeGroups(const T& source)
+// "D10,D11,J12,J20"
+TString DescribePages(const TResultOrError<TReadPagesResult>& result)
 {
-    TVector<TString> groups;
+    TVector<TStringBuf> pages;
 
-    for (const auto& group: source.GetPageGroups()) {
-        groups.push_back(TStringBuilder()
-            << group.GetFirstPageNo()
-            << ":[" << JoinSeq(",", group.GetContent()) << "]");
+    for (const auto& page: result.GetResult().Pages) {
+        pages.emplace_back(page.Data(), page.Size());
     }
 
-    return JoinSeq(" ", groups);
+    return JoinSeq(",", pages);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TTestJournal final: public IJournal
 {
-    using TReadHandler = std::function<NProto::TReadPagesResponse(
-        const NProto::TReadPagesRequest&)>;
-
     TResultOrError<ui64> RestoreResponse = 0;
 
-    TReadHandler ReadHandler = [] (const auto& request) {
-        Y_UNUSED(request);
-        return NProto::TReadPagesResponse();
-    };
+    // The pages that the journal holds. A read takes all the other pages as
+    // the missing ones.
+    TVector<TPageRangeRef> JournalRanges;
+    ui64 LastAckedLsn = 0;
+
+    // When set, a read fails with this error
+    NProto::TError ReadError;
 
     // The future that Read returns is set only when this one is set
     TFuture<void> ReadBarrier = MakeFuture();
@@ -228,8 +167,8 @@ struct TTestJournal final: public IJournal
     mutable TManualEvent FlushCycleCompleted;
 
     mutable TMutex Mutex;
-    mutable TVector<NProto::TReadPagesRequest> ReadRequests;
-    mutable TDeque<NProto::TJournalRecord> RecordsToFlush;
+    mutable TVector<TVector<TPageRangeRef>> ReadRequests;
+    mutable TDeque<TJournalRecord> RecordsToFlush;
     TVector<ui64> FlushedLsns;
     ui32 RestoreCount = 0;
     ui32 CleanupCount = 0;
@@ -245,45 +184,49 @@ struct TTestJournal final: public IJournal
         return RestoreResponse;
     }
 
-    TFuture<NProto::TWriteLogRecordResponse> Write(
-        NProto::TWriteLogRecordRequest request) override
+    TFuture<NProto::TError> Write(
+        TVector<TPageRange> ranges,
+        ui64 lsn,
+        ui64 prevLsn) override
     {
-        Y_UNUSED(request);
+        Y_UNUSED(ranges, lsn, prevLsn);
 
-        return MakeFuture<NProto::TWriteLogRecordResponse>();
+        return MakeFuture<NProto::TError>();
     }
 
-    // Answers with the response of ReadHandler and takes the pages of the
-    // request that the response does not hold as the missing ones. An error
-    // response of ReadHandler becomes the error of the read itself.
+    // Answers with the pages of the request that JournalRanges hold, named
+    // after the journal, and takes the other pages of the request as the
+    // missing ones.
     TResultOrError<TJournalReadResult> Read(
-        NProto::TReadPagesRequest request) const override
+        TVector<TPageRangeRef> rangeRefs) const override
     {
         with_lock (Mutex) {
-            ReadRequests.push_back(request);
+            ReadRequests.push_back(rangeRefs);
         }
 
-        auto response = ReadHandler(request);
-        if (HasError(response)) {
-            return response.GetError();
+        if (HasError(ReadError)) {
+            return ReadError;
         }
 
         TSet<ui64> journalled;
-        for (const auto& group: response.GetPageGroups()) {
-            for (ui64 i = 0; i < group.ContentSize(); ++i) {
-                journalled.insert(group.GetFirstPageNo() + i);
+        for (const auto& range: JournalRanges) {
+            for (ui64 i = 0; i < range.PageCount; ++i) {
+                journalled.insert(range.FirstPageNo + i);
             }
         }
 
         TJournalReadResult result;
+        TReadPagesResult pages{.LastAckedLsn = LastAckedLsn};
 
         auto& missing = result.MissingRanges;
-        for (const auto& ref: request.GetPageGroupRefs()) {
+        for (const auto& ref: rangeRefs) {
             bool extend = false;
 
-            for (ui64 i = 0; i < ref.GetPageCount(); ++i) {
-                const ui64 pageNo = ref.GetFirstPageNo() + i;
+            for (ui64 i = 0; i < ref.PageCount; ++i) {
+                const ui64 pageNo = ref.FirstPageNo + i;
                 if (journalled.contains(pageNo)) {
+                    const TString page = TStringBuilder() << "J" << pageNo;
+                    pages.Pages.emplace_back(page.data(), page.size());
                     extend = false;
                     continue;
                 }
@@ -298,27 +241,28 @@ struct TTestJournal final: public IJournal
         }
 
         result.Future = ReadBarrier.Apply(
-            [response = std::move(response)](const auto& future)
+            [pages = std::move(pages)](
+                const auto& future) -> TResultOrError<TReadPagesResult>
             {
                 Y_UNUSED(future);
-                return response;
+                return pages;
             });
 
         return result;
     }
 
-    NProto::TReadJournalTailResponse ReadTail(
-        NProto::TReadJournalTailRequest request) const override
+    TResultOrError<TJournalTail> ReadTail(
+        ui64 afterLsn,
+        ui32 maxRecordCount) const override
     {
-        Y_UNUSED(request);
+        Y_UNUSED(afterLsn, maxRecordCount);
 
-        return {};
+        return TJournalTail();
     }
 
-    auto AdvanceLsnLowWatermark(NProto::TAdvanceLsnLowWatermarkRequest request)
-        -> NProto::TAdvanceLsnLowWatermarkResponse override
+    NProto::TError AdvanceLsnLowWatermark(ui64 lsnLowWatermark) override
     {
-        Y_UNUSED(request);
+        Y_UNUSED(lsnLowWatermark);
 
         return {};
     }
@@ -337,7 +281,7 @@ struct TTestJournal final: public IJournal
         with_lock (Mutex) {
             // the records are kept until they get acked
             for (const auto& record: RecordsToFlush) {
-                if (record.GetLogSequenceNumber() > maxAllowedLsn){
+                if (record.Lsn > maxAllowedLsn) {
                     break;
                 }
 
@@ -359,8 +303,7 @@ struct TTestJournal final: public IJournal
     void MarkRecordAsFlushed(ui64 lsn) override
     {
         with_lock (Mutex) {
-            while (!RecordsToFlush.empty() &&
-                   RecordsToFlush.front().GetLogSequenceNumber() <= lsn)
+            while (!RecordsToFlush.empty() && RecordsToFlush.front().Lsn <= lsn)
             {
                 RecordsToFlush.pop_front();
             }
@@ -387,7 +330,7 @@ struct TTestJournal final: public IJournal
 
     // helpers
 
-    void AddRecordToFlush(NProto::TJournalRecord record)
+    void AddRecordToFlush(TJournalRecord record)
     {
         with_lock (Mutex) {
             RecordsToFlush.push_back(std::move(record));
@@ -415,7 +358,7 @@ struct TTestJournal final: public IJournal
         }
     }
 
-    TVector<NProto::TReadPagesRequest> GetReadRequests() const
+    TVector<TVector<TPageRangeRef>> GetReadRequests() const
     {
         with_lock (Mutex) {
             return ReadRequests;
@@ -558,17 +501,42 @@ struct TFixture: public NUnitTest::TBaseFixture
         Device->Stop().Wait();
     }
 
-    NProto::TReadPagesResponse ReadPages(NProto::TReadPagesRequest request)
+    TResultOrError<TReadPagesResult> ReadPages(const TPageRefs& refs)
     {
-        return Device->ReadPages(std::move(request)).GetValueSync();
+        TVector<TPageRangeRef> rangeRefs;
+        for (const auto& [firstPageNo, pageCount]: refs) {
+            rangeRefs.push_back(
+                {.FirstPageNo = firstPageNo, .PageCount = pageCount});
+        }
+
+        return Device->ReadPages(std::move(rangeRefs)).GetValueSync();
     }
 
-    NProto::TError WritePages(const TVector<std::pair<ui64, ui64>>& ranges)
+    NProto::TError WriteLogRecord()
     {
-        return Device
-            ->WritePages(MakeWritePagesRequest(DefaultDeviceUUID, ranges))
-            .GetValueSync()
-            .GetError();
+        const TString page = "W10";
+
+        TVector<TPageRange> ranges;
+        auto& range = ranges.emplace_back();
+        range.FirstPageNo = 10;
+        range.Pages.emplace_back(page.data(), page.size());
+
+        return Device->WriteLogRecord(std::move(ranges), 1, 0).GetValueSync();
+    }
+
+    NProto::TError ReadJournalTail()
+    {
+        return Device->ReadJournalTail(0, 0).GetValueSync().GetError();
+    }
+
+    NProto::TError AdvanceWatermark()
+    {
+        return Device->AdvanceWatermark(1).GetValueSync();
+    }
+
+    NProto::TError WritePages(const TPageRefs& refs = {{10, 2}, {20, 1}})
+    {
+        return Device->WritePages(MakePageRanges(refs)).GetValueSync();
     }
 
     void HoldFirstDataStoreWrite()
@@ -605,21 +573,17 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 {
     Y_UNIT_TEST_F(ShouldReadAllPagesFromJournal, TFixture)
     {
-        Journal->ReadHandler = [] (const auto& request) {
-            Y_UNUSED(request);
-            return MakeReadResponse({MakeGroup(10, 4, "J")}, 42);
-        };
+        Journal->JournalRanges = {{10, 4}};
+        Journal->LastAckedLsn = 42;
 
-        const auto response = ReadPages(MakeReadRequest({{10, 4}}));
+        const auto response = ReadPages({{10, 4}});
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             response.GetError().GetCode(),
             FormatError(response.GetError()));
-        UNIT_ASSERT_VALUES_EQUAL(
-            "10:[J10,J11,J12,J13]",
-            DescribeGroups(response));
-        UNIT_ASSERT_VALUES_EQUAL(42, response.GetLastAckedLogSequenceNumber());
+        UNIT_ASSERT_VALUES_EQUAL("J10,J11,J12,J13", DescribePages(response));
+        UNIT_ASSERT_VALUES_EQUAL(42, response.GetResult().LastAckedLsn);
 
         // the data store has not been touched at all
 
@@ -628,12 +592,10 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
     Y_UNIT_TEST_F(ShouldReadAllPagesFromDataStore, TFixture)
     {
-        Journal->ReadHandler = [] (const auto& request) {
-            Y_UNUSED(request);
-            return MakeReadResponse({}, 7);
-        };
+        Journal->JournalRanges = {};
+        Journal->LastAckedLsn = 7;
 
-        const auto response = ReadPages(MakeReadRequest({{10, 4}}));
+        const auto response = ReadPages({{10, 4}});
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
@@ -648,25 +610,21 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             "10+4",
             DescribeRefs(deviceRequests[0]));
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            "10:[D10,D11,D12,D13]",
-            DescribeGroups(response));
+        UNIT_ASSERT_VALUES_EQUAL("D10,D11,D12,D13", DescribePages(response));
 
         // the lsn is taken from the journal response
 
-        UNIT_ASSERT_VALUES_EQUAL(7, response.GetLastAckedLogSequenceNumber());
+        UNIT_ASSERT_VALUES_EQUAL(7, response.GetResult().LastAckedLsn);
     }
 
     Y_UNIT_TEST_F(ShouldRequestOnlyMissingPagesFromDataStore, TFixture)
     {
         // the journal covers the middle of the requested range
 
-        Journal->ReadHandler = [] (const auto& request) {
-            Y_UNUSED(request);
-            return MakeReadResponse({MakeGroup(12, 3, "J")}, 100);
-        };
+        Journal->JournalRanges = {{12, 3}};
+        Journal->LastAckedLsn = 100;
 
-        const auto response = ReadPages(MakeReadRequest({{10, 10}}));
+        const auto response = ReadPages({{10, 10}});
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
@@ -682,9 +640,9 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         // the response is shaped after the request, not after the sources
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "10:[D10,D11,J12,J13,J14,D15,D16,D17,D18,D19]",
-            DescribeGroups(response));
-        UNIT_ASSERT_VALUES_EQUAL(100, response.GetLastAckedLogSequenceNumber());
+            "D10,D11,J12,J13,J14,D15,D16,D17,D18,D19",
+            DescribePages(response));
+        UNIT_ASSERT_VALUES_EQUAL(100, response.GetResult().LastAckedLsn);
     }
 
     Y_UNIT_TEST_F(ShouldRequestMissingPagesForEveryPageGroupRef, TFixture)
@@ -692,13 +650,9 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         // the first journal group covers the tail of the first ref and goes
         // beyond it, the second one covers the head of the second ref
 
-        Journal->ReadHandler = [] (const auto& request) {
-            Y_UNUSED(request);
-            return MakeReadResponse(
-                {MakeGroup(2, 4, "J"), MakeGroup(100, 2, "J")});
-        };
+        Journal->JournalRanges = {{2, 4}, {100, 2}};
 
-        const auto response = ReadPages(MakeReadRequest({{0, 4}, {100, 4}}));
+        const auto response = ReadPages({{0, 4}, {100, 4}});
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
@@ -712,21 +666,17 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             DescribeRefs(deviceRequests[0]));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "0:[D0,D1,J2,J3] 100:[J100,J101,D102,D103]",
-            DescribeGroups(response));
+            "D0,D1,J2,J3,J100,J101,D102,D103",
+            DescribePages(response));
     }
 
     Y_UNIT_TEST_F(ShouldIgnoreEmptyJournalPageGroups, TFixture)
     {
         // a page group without content covers nothing
 
-        Journal->ReadHandler = [] (const auto& request) {
-            Y_UNUSED(request);
-            return MakeReadResponse(
-                {MakeGroup(10, 0, "J"), MakeGroup(20, 2, "J")});
-        };
+        Journal->JournalRanges = {{10, 0}, {20, 2}};
 
-        const auto response = ReadPages(MakeReadRequest({{10, 4}, {20, 2}}));
+        const auto response = ReadPages({{10, 4}, {20, 2}});
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
@@ -740,18 +690,13 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             DescribeRefs(deviceRequests[0]));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "10:[D10,D11,D12,D13] 20:[J20,J21]",
-            DescribeGroups(response));
+            "D10,D11,D12,D13,J20,J21",
+            DescribePages(response));
     }
 
     Y_UNIT_TEST_F(ShouldSkipEmptyPageGroupRefs, TFixture)
     {
-        Journal->ReadHandler = [] (const auto& request) {
-            Y_UNUSED(request);
-            return NProto::TReadPagesResponse();
-        };
-
-        const auto response = ReadPages(MakeReadRequest({{10, 0}, {20, 2}}));
+        const auto response = ReadPages({{10, 0}, {20, 2}});
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
@@ -764,19 +709,17 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             "20+2",
             DescribeRefs(deviceRequests[0]));
 
-        UNIT_ASSERT_VALUES_EQUAL("20:[D20,D21]", DescribeGroups(response));
+        UNIT_ASSERT_VALUES_EQUAL("D20,D21", DescribePages(response));
     }
 
     Y_UNIT_TEST_F(ShouldShapeResponseAfterRequest, TFixture)
     {
         // the journal holds a wider page group than the requested one
 
-        Journal->ReadHandler = [] (const auto& request) {
-            Y_UNUSED(request);
-            return MakeReadResponse({MakeGroup(8, 8, "J")}, 42);
-        };
+        Journal->JournalRanges = {{8, 8}};
+        Journal->LastAckedLsn = 42;
 
-        const auto response = ReadPages(MakeReadRequest({{10, 4}}));
+        const auto response = ReadPages({{10, 4}});
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
@@ -785,19 +728,14 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
         // only the requested pages are returned
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            "10:[J10,J11,J12,J13]",
-            DescribeGroups(response));
-        UNIT_ASSERT_VALUES_EQUAL(42, response.GetLastAckedLogSequenceNumber());
+        UNIT_ASSERT_VALUES_EQUAL("J10,J11,J12,J13", DescribePages(response));
+        UNIT_ASSERT_VALUES_EQUAL(42, response.GetResult().LastAckedLsn);
         UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetReadRequests().size());
     }
 
     Y_UNIT_TEST_F(ShouldFailIfDataStoreReturnsMorePagesThanAsked, TFixture)
     {
-        Journal->ReadHandler = [] (const auto& request) {
-            Y_UNUSED(request);
-            return MakeReadResponse({MakeGroup(12, 2, "J")});
-        };
+        Journal->JournalRanges = {{12, 2}};
 
         // the data store returns the pages the journal covers as well
 
@@ -806,7 +744,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             return ServePagesFromDevice({{.FirstPageNo = 10, .PageCount = 4}});
         };
 
-        const auto response = ReadPages(MakeReadRequest({{10, 4}}));
+        const auto response = ReadPages({{10, 4}});
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_INVALID_STATE,
@@ -816,10 +754,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
     Y_UNIT_TEST_F(ShouldFailIfDataStoreMissesPage, TFixture)
     {
-        Journal->ReadHandler = [] (const auto& request) {
-            Y_UNUSED(request);
-            return MakeReadResponse({MakeGroup(10, 1, "J")});
-        };
+        Journal->JournalRanges = {{10, 1}};
 
         // the data store does not return the missing page
 
@@ -828,7 +763,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             return TVector<TBuffer>();
         };
 
-        const auto response = ReadPages(MakeReadRequest({{10, 2}}));
+        const auto response = ReadPages({{10, 2}});
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_INVALID_STATE,
@@ -838,10 +773,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
     Y_UNIT_TEST_F(ShouldReadFromJournalAndDataStoreInParallel, TFixture)
     {
-        Journal->ReadHandler = [] (const auto& request) {
-            Y_UNUSED(request);
-            return MakeReadResponse({MakeGroup(12, 2, "J")}, 5);
-        };
+        Journal->JournalRanges = {{12, 2}};
+        Journal->LastAckedLsn = 5;
 
         // the journal does not answer until the test lets it
 
@@ -854,7 +787,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             return ServePagesFromDevice(rangeRefs);
         };
 
-        auto future = Device->ReadPages(MakeReadRequest({{10, 4}}));
+        auto future = Device->ReadPages({{.FirstPageNo = 10, .PageCount = 4}});
 
         // the data store is read while the journal read is still running
 
@@ -876,21 +809,15 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             "10+2",
             DescribeRefs(deviceRequests[0]));
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            "10:[D10,D11,J12,J13]",
-            DescribeGroups(response));
-        UNIT_ASSERT_VALUES_EQUAL(5, response.GetLastAckedLogSequenceNumber());
+        UNIT_ASSERT_VALUES_EQUAL("D10,D11,J12,J13", DescribePages(response));
+        UNIT_ASSERT_VALUES_EQUAL(5, response.GetResult().LastAckedLsn);
     }
 
     Y_UNIT_TEST_F(ShouldHandleJournalReadError, TFixture)
     {
-        Journal->ReadHandler = [] (const auto& request) {
-            Y_UNUSED(request);
-            return NProto::TReadPagesResponse(
-                TErrorResponse(E_IO, "journal is broken"));
-        };
+        Journal->ReadError = MakeError(E_IO, "journal is broken");
 
-        const auto response = ReadPages(MakeReadRequest({{10, 4}}));
+        const auto response = ReadPages({{10, 4}});
 
         UNIT_ASSERT_VALUES_EQUAL(E_IO, response.GetError().GetCode());
 
@@ -901,11 +828,6 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
     Y_UNIT_TEST_F(ShouldHandleDataStoreReadError, TFixture)
     {
-        Journal->ReadHandler = [] (const auto& request) {
-            Y_UNUSED(request);
-            return NProto::TReadPagesResponse();
-        };
-
         DataStore->ReadHandler = [] (const auto& rangeRefs)
             -> TResultOrError<TVector<TBuffer>>
         {
@@ -913,137 +835,31 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             return MakeError(E_IO, "device is broken");
         };
 
-        const auto response = ReadPages(MakeReadRequest({{10, 4}}));
+        const auto response = ReadPages({{10, 4}});
 
         UNIT_ASSERT_VALUES_EQUAL(E_IO, response.GetError().GetCode());
     }
 
-    Y_UNIT_TEST_F(ShouldRejectRequestForAnotherDevice, TFixture)
+    Y_UNIT_TEST_F(ShouldServeRequests, TFixture)
     {
-        constexpr TStringBuf otherUUID = "another-device";
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            ReadPages(MakeReadRequest({{10, 4}}, otherUUID))
-                .GetError()
-                .GetCode());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            Device->WriteLogRecord(MakeWriteRequest(otherUUID))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            Device->ReadJournalTail(MakeTailRequest(otherUUID))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            Device->AdvanceLsnLowWatermark(MakeAdvanceRequest(otherUUID))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            Device->WritePages(MakeWritePagesRequest(otherUUID))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
-
-        // none of them got anywhere near the journal or the device
-
-        UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetReadRequests().size());
-        UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetReadRequests().size());
-        UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetWriteRequests().size());
-    }
-
-    Y_UNIT_TEST_F(ShouldRejectRequestWithNoDeviceUUID, TFixture)
-    {
-        auto response = ReadPages(MakeReadRequest({{10, 4}}, ""));
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            Device->WriteLogRecord(MakeWriteRequest(""))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            Device->ReadJournalTail(MakeTailRequest(""))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            Device->AdvanceLsnLowWatermark(MakeAdvanceRequest(""))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            Device->WritePages(MakeWritePagesRequest(""))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
-
-        UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetReadRequests().size());
-        UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetWriteRequests().size());
-    }
-
-    Y_UNIT_TEST_F(ShouldServeRequestForThisDevice, TFixture)
-    {
-        Journal->ReadHandler = [] (const auto& request) {
-            Y_UNUSED(request);
-            return MakeReadResponse({MakeGroup(10, 1, "J")}, 1);
-        };
+        Journal->JournalRanges = {{10, 1}};
+        Journal->LastAckedLsn = 1;
 
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
-            ReadPages(MakeReadRequest({{10, 1}})).GetError().GetCode());
+            ReadPages({{10, 1}}).GetError().GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            Device->WriteLogRecord(MakeWriteRequest(DefaultDeviceUUID))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteLogRecord().GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            Device->ReadJournalTail(MakeTailRequest(DefaultDeviceUUID))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, ReadJournalTail().GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            Device
-                ->AdvanceLsnLowWatermark(MakeAdvanceRequest(DefaultDeviceUUID))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceWatermark().GetCode());
     }
 
     Y_UNIT_TEST_F(ShouldWritePagesToDataStorePastJournal, TFixture)
     {
-        const auto response =
-            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID))
-                .GetValueSync();
-
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            S_OK,
-            response.GetError().GetCode(),
-            FormatError(response.GetError()));
+        const auto error = WritePages();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
         // the pages went to the data store as they are
 
@@ -1066,11 +882,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             return MakeError(E_IO, "device is broken");
         };
 
-        const auto response =
-            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID))
-                .GetValueSync();
-
-        UNIT_ASSERT_VALUES_EQUAL(E_IO, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, WritePages().GetCode());
     }
 
     Y_UNIT_TEST_F(ShouldRejectWritePagesOverlappingWritePagesInFlight, TFixture)
@@ -1078,8 +890,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         HoldFirstDataStoreWrite();
 
         // pages 10, 11 and 20 stay in flight
-        auto first =
-            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID));
+        auto first = Device->WritePages(MakePageRanges());
         WaitForFirstDataStoreWrite();
 
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WritePages({{11, 3}}).GetCode());
@@ -1091,9 +902,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WritePages({{12, 8}}).GetCode());
 
         DataStore->FirstWriteResult.SetValue({});
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            first.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, first.GetValueSync().GetCode());
 
         // the pages are free again
 
@@ -1105,15 +914,12 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
     {
         HoldFirstDataStoreWrite();
 
-        auto first =
-            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID));
+        auto first = Device->WritePages(MakePageRanges());
         WaitForFirstDataStoreWrite();
 
         DataStore->FirstWriteResult.SetValue(
             MakeError(E_IO, "device is broken"));
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_IO,
-            first.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, first.GetValueSync().GetCode());
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WritePages({{10, 2}}).GetCode());
     }
@@ -1134,8 +940,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         HoldFirstDataStoreWrite();
 
         // pages 10, 11 and 20 stay in flight
-        auto first =
-            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID));
+        auto first = Device->WritePages(MakePageRanges());
         WaitForFirstDataStoreWrite();
 
         Journal->RestoreResponse = 1;
@@ -1150,9 +955,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetFlushedLsns().size());
 
         DataStore->FirstWriteResult.SetValue({});
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            first.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, first.GetValueSync().GetCode());
 
         WaitForAllRecordsToBeFlushed();
         StopDevice();
@@ -1313,37 +1116,16 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         const auto startError = StartDevice();
         UNIT_ASSERT_VALUES_EQUAL(E_IO, startError.GetCode());
 
-        const auto readResponse = ReadPages(MakeReadRequest({{10, 4}}));
+        const auto readResponse = ReadPages({{10, 4}});
         UNIT_ASSERT_VALUES_EQUAL(E_IO, readResponse.GetError().GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_IO,
-            Device->WriteLogRecord(MakeWriteRequest(DefaultDeviceUUID))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, WriteLogRecord().GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_IO,
-            Device->ReadJournalTail(MakeTailRequest(DefaultDeviceUUID))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, ReadJournalTail().GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_IO,
-            Device
-                ->AdvanceLsnLowWatermark(MakeAdvanceRequest(DefaultDeviceUUID))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, AdvanceWatermark().GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_IO,
-            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, WritePages().GetCode());
 
         StopDevice();
 
@@ -1377,8 +1159,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         StartDeviceAndCheck();
         HoldFirstDataStoreWrite();
 
-        auto write =
-            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID));
+        auto write = Device->WritePages(MakePageRanges());
         WaitForFirstDataStoreWrite();
 
         auto stopped = Device->Stop();
@@ -1392,7 +1173,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
         UNIT_ASSERT(stopped.Wait(TDuration::Seconds(30)));
         UNIT_ASSERT(write.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, write.GetValue().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, write.GetValue().GetCode());
     }
 
     Y_UNIT_TEST_F(ShouldRejectRequestsAfterStop, TFixture)
@@ -1402,29 +1183,13 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
-            ReadPages(MakeReadRequest({{10, 1}})).GetError().GetCode());
+            ReadPages({{10, 1}}).GetError().GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
-            Device->WriteLogRecord(MakeWriteRequest(DefaultDeviceUUID))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WriteLogRecord().GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
-            Device->ReadJournalTail(MakeTailRequest(DefaultDeviceUUID))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, ReadJournalTail().GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
-            Device
-                ->AdvanceLsnLowWatermark(MakeAdvanceRequest(DefaultDeviceUUID))
-                .GetValueSync()
-                .GetError()
-                .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, AdvanceWatermark().GetCode());
 
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WritePages({{10, 1}}).GetCode());
 

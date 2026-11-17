@@ -6,11 +6,15 @@
 #include <cloud/fastshard/libs/journal/impl/journalled_device_v2.h>
 #include <cloud/fastshard/libs/journal/impl/key_buffer_store.h>
 #include <cloud/fastshard/libs/journal/impl/memory_device.h>
+#include <cloud/fastshard/libs/journal/server/proto_helpers.h>
+
 #include <cloud/storage/core/libs/common/error.h>
+
+#include <silk/fibers/future.h>
 
 #include <library/cpp/threading/future/future.h>
 
-#include <silk/fibers/future.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NFastShard {
 
@@ -28,6 +32,30 @@ T WaitInFiber(NThreading::TFuture<T> future)
     future.Subscribe([ready] (const auto&) { ready->set(0); });
     ready->wait();
     return future.ExtractValue();
+}
+
+// The device does not know its UUID, so the node checks the address of a
+// request the way the journal service does.
+NProto::TError CheckDeviceUUID(
+    const TString& requestDeviceUUID,
+    const TString& deviceUUID)
+{
+    if (requestDeviceUUID.empty()) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "empty device UUID in the request to device "
+                             << deviceUUID.Quote());
+    }
+
+    if (requestDeviceUUID != deviceUUID) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "the request is addressed to device "
+                             << requestDeviceUUID.Quote() << ", this is "
+                             << deviceUUID.Quote());
+    }
+
+    return {};
 }
 
 }   // namespace
@@ -130,25 +158,114 @@ NProto::TListDevicesResponse TJournalledStorageNode::ListDevices(
     return response;
 }
 
-#define SN_FORWARD(name)                                                       \
-    NProto::T##name##Response TJournalledStorageNode::name(                    \
-        TFastShardContext&,                                                    \
-        NProto::T##name##Request request)                                      \
-    {                                                                          \
-        ++Counters.name;                                                       \
-        if (!Started) {                                                        \
-            return TErrorResponse(E_INVALID_STATE, "not started");             \
-        }                                                                      \
-        return WaitInFiber(Device->name(std::move(request)));                  \
-    }                                                                          \
-    // SN_FORWARD
+NProto::TReadPagesResponse TJournalledStorageNode::ReadPages(
+    TFastShardContext&,
+    NProto::TReadPagesRequest request)
+{
+    ++Counters.ReadPages;
+    if (auto error = CheckDeviceUUID(request.GetDeviceUUID(), DeviceUUID);
+        HasError(error))
+    {
+        return TErrorResponse(std::move(error));
+    }
 
-SN_FORWARD(ReadPages)
-SN_FORWARD(WriteLogRecord)
-SN_FORWARD(ReadJournalTail)
-SN_FORWARD(AdvanceLsnLowWatermark)
-SN_FORWARD(WritePages)
+    if (!Started) {
+        return TErrorResponse(E_INVALID_STATE, "not started");
+    }
 
-#undef SN_FORWARD
+    auto rangeRefs = MakePageRangeRefs(request);
+
+    auto result = WaitInFiber(Device->ReadPages(rangeRefs));
+    if (HasError(result)) {
+        return TErrorResponse(result.GetError());
+    }
+
+    return MakeReadPagesResponse(rangeRefs, result.GetResult());
+}
+
+NProto::TWriteLogRecordResponse TJournalledStorageNode::WriteLogRecord(
+    TFastShardContext&,
+    NProto::TWriteLogRecordRequest request)
+{
+    ++Counters.WriteLogRecord;
+    if (auto error = CheckDeviceUUID(request.GetDeviceUUID(), DeviceUUID);
+        HasError(error))
+    {
+        return TErrorResponse(std::move(error));
+    }
+
+    if (!Started) {
+        return TErrorResponse(E_INVALID_STATE, "not started");
+    }
+
+    return TErrorResponse(WaitInFiber(Device->WriteLogRecord(
+        MakePageRanges(request),
+        request.GetLogSequenceNumber(),
+        request.GetPrevLogSequenceNumber())));
+}
+
+NProto::TReadJournalTailResponse TJournalledStorageNode::ReadJournalTail(
+    TFastShardContext&,
+    NProto::TReadJournalTailRequest request)
+{
+    ++Counters.ReadJournalTail;
+    if (auto error = CheckDeviceUUID(request.GetDeviceUUID(), DeviceUUID);
+        HasError(error))
+    {
+        return TErrorResponse(std::move(error));
+    }
+
+    if (!Started) {
+        return TErrorResponse(E_INVALID_STATE, "not started");
+    }
+
+    auto result = WaitInFiber(Device->ReadJournalTail(
+        request.GetAfterLogSequenceNumber(),
+        request.GetMaxRecordCount()));
+    if (HasError(result)) {
+        return TErrorResponse(result.GetError());
+    }
+
+    return MakeReadJournalTailResponse(result.GetResult());
+}
+
+NProto::TAdvanceLsnLowWatermarkResponse
+TJournalledStorageNode::AdvanceLsnLowWatermark(
+    TFastShardContext&,
+    NProto::TAdvanceLsnLowWatermarkRequest request)
+{
+    ++Counters.AdvanceLsnLowWatermark;
+    if (auto error = CheckDeviceUUID(request.GetDeviceUUID(), DeviceUUID);
+        HasError(error))
+    {
+        return TErrorResponse(std::move(error));
+    }
+
+    if (!Started) {
+        return TErrorResponse(E_INVALID_STATE, "not started");
+    }
+
+    return TErrorResponse(
+        WaitInFiber(Device->AdvanceWatermark(request.GetLsnLowWatermark())));
+}
+
+NProto::TWritePagesResponse TJournalledStorageNode::WritePages(
+    TFastShardContext&,
+    NProto::TWritePagesRequest request)
+{
+    ++Counters.WritePages;
+    if (auto error = CheckDeviceUUID(request.GetDeviceUUID(), DeviceUUID);
+        HasError(error))
+    {
+        return TErrorResponse(std::move(error));
+    }
+
+    if (!Started) {
+        return TErrorResponse(E_INVALID_STATE, "not started");
+    }
+
+    return TErrorResponse(
+        WaitInFiber(Device->WritePages(MakePageRanges(request))));
+}
 
 }   // namespace NCloud::NFastShard

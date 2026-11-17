@@ -1,4 +1,4 @@
-#include "device_helpers.h"
+#include "proto_helpers.h"
 
 #include <util/string/builder.h>
 
@@ -27,6 +27,23 @@ TVector<TPageRange> MakePageRangesImpl(
     return ranges;
 }
 
+void FillPageGroups(
+    const TVector<TPageRange>& ranges,
+    google::protobuf::RepeatedPtrField<NProto::TDevicePageGroup>* groups)
+{
+    groups->Reserve(ranges.size());
+
+    for (const auto& range: ranges) {
+        auto& group = *groups->Add();
+        group.SetFirstPageNo(range.FirstPageNo);
+        group.MutableContent()->Reserve(range.Pages.size());
+
+        for (const auto& page: range.Pages) {
+            group.AddContent()->assign(page.Data(), page.Size());
+        }
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -46,20 +63,32 @@ TVector<TPageRangeRef> MakePageRangeRefs(
     return rangeRefs;
 }
 
+TVector<TPageRange> MakePageRanges(const NProto::TWritePagesRequest& request)
+{
+    return MakePageRangesImpl(request.GetPageGroups());
+}
+
 TVector<TPageRange> MakePageRanges(
     const NProto::TWriteLogRecordRequest& request)
 {
     return MakePageRangesImpl(request.GetPageGroups());
 }
 
-TVector<TPageRange> MakePageRanges(const NProto::TWritePagesRequest& request)
+NProto::TReadJournalTailResponse MakeReadJournalTailResponse(
+    const TJournalTail& tail)
 {
-    return MakePageRangesImpl(request.GetPageGroups());
-}
+    NProto::TReadJournalTailResponse response;
+    response.SetLsnLowWatermark(tail.LsnLowWatermark);
+    response.MutableRecords()->Reserve(tail.Records.size());
 
-TVector<TPageRange> MakePageRanges(const NProto::TJournalRecord& record)
-{
-    return MakePageRangesImpl(record.GetPageGroups());
+    for (const auto& record: tail.Records) {
+        auto& journalRecord = *response.AddRecords();
+        journalRecord.SetLogSequenceNumber(record.Lsn);
+        journalRecord.SetPrevLogSequenceNumber(record.PrevLsn);
+        FillPageGroups(record.Ranges, journalRecord.MutablePageGroups());
+    }
+
+    return response;
 }
 
 NProto::TReadPagesResponse MakeReadPagesResponse(
@@ -92,6 +121,18 @@ NProto::TReadPagesResponse MakeReadPagesResponse(
             const auto& page = pages[pageIndex++];
             group.AddContent()->assign(page.Data(), page.Size());
         }
+    }
+
+    return response;
+}
+
+NProto::TReadPagesResponse MakeReadPagesResponse(
+    const TVector<TPageRangeRef>& rangeRefs,
+    const TReadPagesResult& result)
+{
+    auto response = MakeReadPagesResponse(rangeRefs, result.Pages);
+    if (!HasError(response)) {
+        response.SetLastAckedLogSequenceNumber(result.LastAckedLsn);
     }
 
     return response;

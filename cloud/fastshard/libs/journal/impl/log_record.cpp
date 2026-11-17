@@ -126,7 +126,7 @@ TLogRecordPtr DeserializeRecord(const TBuffer& buffer)
         record->PageMappings.push_back(mapping);
     }
 
-    record->Promise = NewPromise<NProto::TWriteLogRecordResponse>();
+    record->Promise = NewPromise<NProto::TError>();
     return record;
 }
 
