@@ -65,7 +65,7 @@ func appendExpectedRecord(
 // Does not share the code with the target: the checksum is computed in one go
 // from all the records.
 // Chunks should be ordered by index.
-func expectedChecksum(chunks ...dataplane_common.Chunk) uint32 {
+func computeExpectedChecksum(chunks ...dataplane_common.Chunk) uint32 {
 	var records []byte
 	for _, chunk := range chunks {
 		records = appendExpectedRecord(records, chunk)
@@ -109,32 +109,45 @@ func TestChecksumTarget(t *testing.T) {
 		}
 	}
 
-	// Takes the state with |milestone| and checks that it has the given
-	// NextChunkIndex and Checksum. Also checks the count of written chunks
-	// that are not folded yet.
+	// Calls GetState with |milestone|, it is the only argument that goes to the
+	// target. The rest is what is expected after the call: NextChunkIndex and
+	// Checksum of the returned state and the count of written chunks that are
+	// not folded yet.
 	getState := func(
 		milestone uint32,
-		nextChunkIndex uint32,
-		checksum uint32,
-		pendingCount int,
+		expectedNextChunkIndex uint32,
+		expectedChecksum uint32,
+		expectedPendingCount int,
 	) testOp {
 
 		return func(t *testing.T, target *Target, description string) {
 			require.Equal(
 				t,
-				State{NextChunkIndex: nextChunkIndex, Checksum: checksum},
+				State{
+					NextChunkIndex: expectedNextChunkIndex,
+					Checksum:       expectedChecksum,
+				},
 				target.GetState(milestone),
 				description,
 			)
-			require.Len(t, target.entries, pendingCount, description)
+			require.Len(t, target.entries, expectedPendingCount, description)
 		}
 	}
 
-	finish := func(nextChunkIndex uint32, checksum uint32) testOp {
+	// Calls Finish and checks the returned state. Nothing should be left
+	// unfolded after that.
+	finish := func(
+		expectedNextChunkIndex uint32,
+		expectedChecksum uint32,
+	) testOp {
+
 		return func(t *testing.T, target *Target, description string) {
 			require.Equal(
 				t,
-				State{NextChunkIndex: nextChunkIndex, Checksum: checksum},
+				State{
+					NextChunkIndex: expectedNextChunkIndex,
+					Checksum:       expectedChecksum,
+				},
 				target.Finish(),
 				description,
 			)
@@ -150,22 +163,22 @@ func TestChecksumTarget(t *testing.T) {
 
 	a, b, c := byte(1), byte(2), byte(3)
 
-	s0 := expectedChecksum(newDataChunk(0, a))
-	s01 := expectedChecksum(newDataChunk(0, a), newDataChunk(1, b))
-	s012 := expectedChecksum(
+	s0 := computeExpectedChecksum(newDataChunk(0, a))
+	s01 := computeExpectedChecksum(newDataChunk(0, a), newDataChunk(1, b))
+	s012 := computeExpectedChecksum(
 		newDataChunk(0, a),
 		newDataChunk(1, b),
 		newDataChunk(2, c),
 	)
-	s015 := expectedChecksum(
+	s015 := computeExpectedChecksum(
 		newDataChunk(0, a),
 		newDataChunk(1, b),
 		newDataChunk(5, c),
 	)
-	s02 := expectedChecksum(newDataChunk(0, a), newDataChunk(2, b))
-	s05 := expectedChecksum(newDataChunk(0, a), newDataChunk(5, c))
-	s3 := expectedChecksum(newDataChunk(3, a))
-	sLast := expectedChecksum(newDataChunk(math.MaxUint32-1, a))
+	s02 := computeExpectedChecksum(newDataChunk(0, a), newDataChunk(2, b))
+	s05 := computeExpectedChecksum(newDataChunk(0, a), newDataChunk(5, c))
+	s3 := computeExpectedChecksum(newDataChunk(3, a))
+	sLast := computeExpectedChecksum(newDataChunk(math.MaxUint32-1, a))
 
 	// The same data with another index gives another checksum.
 	require.NotEqual(t, s0, s3)
@@ -400,7 +413,7 @@ func TestChecksumTargetChecksumFormat(t *testing.T) {
 	require.Equal(
 		t,
 		uint32(0xc85900ad),
-		expectedChecksum(
+		computeExpectedChecksum(
 			newChunk(0, 0x01),
 			newChunk(1, 0x02),
 			newZeroChunk(2),
@@ -488,7 +501,7 @@ func TestChecksumTargetChecksumDependsOnContents(t *testing.T) {
 		}
 
 		state := target.Finish()
-		require.Equal(t, expectedChecksum(chunks...), state.Checksum)
+		require.Equal(t, computeExpectedChecksum(chunks...), state.Checksum)
 		return state.Checksum
 	}
 
@@ -600,7 +613,7 @@ type testSnapshot struct {
 func newTestSnapshot(chunks ...dataplane_common.Chunk) *testSnapshot {
 	snapshot := &testSnapshot{
 		chunks:    chunks,
-		checksums: []uint32{expectedChecksum()},
+		checksums: []uint32{computeExpectedChecksum()},
 	}
 
 	var records []byte
@@ -738,10 +751,10 @@ func (s *testSnapshot) transfer(
 
 		// What is expected: exactly the chunks before the milestone are
 		// folded, the rest of the written non-zero chunks wait for it.
-		pendingCount := 0
+		expectedPendingCount := 0
 		for _, pendingChunk := range s.chunksFrom(targetMilestone) {
 			if written[pendingChunk.Index] && !isZeroChunk(pendingChunk) {
-				pendingCount++
+				expectedPendingCount++
 			}
 		}
 
@@ -752,7 +765,7 @@ func (s *testSnapshot) transfer(
 			newState,
 			description...,
 		)
-		require.Len(t, target.entries, pendingCount, description...)
+		require.Len(t, target.entries, expectedPendingCount, description...)
 
 		if newState != lastState {
 			newStates = append(newStates, newState)
@@ -762,16 +775,19 @@ func (s *testSnapshot) transfer(
 
 	// All chunks are written, so nothing is left behind wherever the milestone
 	// is. NextChunkIndex gets past the last chunk that has waited for it.
-	nextChunkIndex := targetMilestone
+	expectedNextChunkIndex := targetMilestone
 	for _, pendingChunk := range s.chunksFrom(targetMilestone) {
 		if !isZeroChunk(pendingChunk) {
-			nextChunkIndex = pendingChunk.Index + 1
+			expectedNextChunkIndex = pendingChunk.Index + 1
 		}
 	}
 
 	require.Equal(
 		t,
-		State{NextChunkIndex: nextChunkIndex, Checksum: s.expectedChecksum()},
+		State{
+			NextChunkIndex: expectedNextChunkIndex,
+			Checksum:       s.expectedChecksum(),
+		},
 		target.Finish(),
 		description...,
 	)
