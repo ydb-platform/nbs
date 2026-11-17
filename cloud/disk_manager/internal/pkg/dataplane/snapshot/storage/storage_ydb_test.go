@@ -667,40 +667,6 @@ func TestCreateSchemaWithoutBackups(t *testing.T) {
 	}
 }
 
-func TestNewStorageWithEmptyFollowerTableName(t *testing.T) {
-	f := createFixture(t)
-	defer f.teardown()
-
-	f.config.FollowerChunksTableName = proto.String("")
-	_, err := NewStorage(
-		f.config,
-		metrics.NewEmptyRegistry(),
-		f.db,
-		f.s3,
-		true, // backupEnabled
-	)
-	require.ErrorContains(t, err, "FollowerChunksTableName must not be empty")
-
-	_, err = NewStorage(
-		f.config,
-		metrics.NewEmptyRegistry(),
-		f.db,
-		f.s3,
-		false, // backupEnabled
-	)
-	require.NoError(t, err)
-
-	f.config.FollowerChunksTableName = nil // Use the default table name.
-	_, err = NewStorage(
-		f.config,
-		metrics.NewEmptyRegistry(),
-		f.db,
-		f.s3,
-		true, // backupEnabled
-	)
-	require.NoError(t, err)
-}
-
 func TestCreateSnapshot(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {

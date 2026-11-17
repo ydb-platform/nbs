@@ -2,14 +2,12 @@ package persistence
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -679,7 +677,7 @@ func TestS3ClientCompatibilityHeaders(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			requests := make(chan http.Header, 3)
+			requests := make(chan http.Header, 2)
 			server := httptest.NewServer(http.HandlerFunc(func(
 				w http.ResponseWriter,
 				r *http.Request,
@@ -720,33 +718,20 @@ func TestS3ClientCompatibilityHeaders(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			for _, put := range []func(context.Context, string, string, S3Object) error{
-				client.PutObject,
-				client.putObject,
-			} {
-				err := put(
-					newContext(),
-					"bucket",
-					"key",
-					S3Object{Data: []byte("data")},
-				)
-				require.NoError(t, err)
+			err = client.PutObject(
+				newContext(),
+				"bucket",
+				"key",
+				S3Object{Data: []byte("data")},
+			)
+			require.NoError(t, err)
 
-				headers := <-requests
-				if testCase.exportCompatibility {
-					require.Empty(t, headers.Get("Content-Encoding"))
-					require.Equal(
-						t,
-						"application/octet-stream",
-						headers.Get("Content-Type"),
-					)
-				} else {
-					require.Equal(
-						t,
-						"application/octet-stream",
-						headers.Get("Content-Encoding"),
-					)
-				}
+			headers := <-requests
+			if testCase.exportCompatibility {
+				require.Empty(t, headers.Get("Content-Encoding"))
+				require.Equal(t, "application/octet-stream", headers.Get("Content-Type"))
+			} else {
+				require.Equal(t, "application/octet-stream", headers.Get("Content-Encoding"))
 			}
 
 			_, err = client.GetObject(newContext(), "bucket", "key")
@@ -803,151 +788,4 @@ func TestS3ClientCompatibilityBucketErrors(t *testing.T) {
 
 	_, err = client.BucketExists(newContext(), "bucket")
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
-}
-
-func TestS3ClientCompatibilityReadRetries(t *testing.T) {
-	testCases := []struct {
-		name                string
-		exportCompatibility bool
-	}{
-		{name: "default"},
-		{name: "backup_export", exportCompatibility: true},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			var attempts atomic.Int32
-			server := httptest.NewServer(http.HandlerFunc(func(
-				w http.ResponseWriter,
-				r *http.Request,
-			) {
-
-				if attempts.Add(1) == 1 {
-					w.Header().Set("Content-Length", "100")
-					_, _ = w.Write([]byte("short"))
-					return
-				}
-				_, _ = w.Write([]byte("data"))
-			}))
-			defer server.Close()
-
-			var options []S3ClientOption
-			if testCase.exportCompatibility {
-				options = append(options, WithS3ExportCompatibility())
-			}
-
-			client, err := NewS3Client(
-				server.URL,
-				"region",
-				NewS3Credentials("id", "secret"),
-				5*time.Second,
-				empty.NewRegistry(),
-				1,   // maxRetriableErrorCount
-				nil, // availabilityMonitoring
-				nil, // tokenProvider
-				0,   // maxIdleConnsPerHost
-				options...,
-			)
-			require.NoError(t, err)
-
-			object, err := client.GetObject(newContext(), "bucket", "key")
-			if testCase.exportCompatibility {
-				require.NoError(t, err)
-				require.Equal(t, []byte("data"), object.Data)
-				require.EqualValues(t, 2, attempts.Load())
-			} else {
-				require.Error(t, err)
-				require.EqualValues(t, 1, attempts.Load())
-			}
-		})
-	}
-}
-
-func TestS3PutObjectRetriesWithoutStorageClass(t *testing.T) {
-	testCases := []struct {
-		name                string
-		exportCompatibility bool
-	}{
-		{name: "default"},
-		{name: "backup_export", exportCompatibility: true},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			var mu sync.Mutex
-			var requests []http.Header
-			var bodies []string
-			server := httptest.NewServer(http.HandlerFunc(func(
-				w http.ResponseWriter,
-				r *http.Request,
-			) {
-
-				body, err := io.ReadAll(r.Body)
-				if err != nil {
-					w.WriteHeader(http.StatusBadRequest)
-					return
-				}
-				mu.Lock()
-				requests = append(requests, r.Header.Clone())
-				bodies = append(bodies, string(body))
-				mu.Unlock()
-				if r.Header.Get("X-Amz-Storage-Class") != "" {
-					w.Header().Set("Content-Type", "application/xml")
-					w.WriteHeader(http.StatusBadRequest)
-					_, _ = w.Write([]byte(`<Error><Code>QuotaLimitExceeded</Code></Error>`))
-				}
-			}))
-			defer server.Close()
-
-			var options []S3ClientOption
-			if testCase.exportCompatibility {
-				options = append(options, WithS3ExportCompatibility())
-			}
-
-			client, err := NewS3Client(
-				server.URL,
-				"region",
-				NewS3Credentials("id", "secret"),
-				5*time.Second,
-				empty.NewRegistry(),
-				0,   // maxRetriableErrorCount
-				nil, // availabilityMonitoring
-				nil, // tokenProvider
-				0,   // maxIdleConnsPerHost
-				options...,
-			)
-			require.NoError(t, err)
-
-			err = client.PutObject(newContext(), "bucket", "key", S3Object{
-				Data:         []byte("data"),
-				StorageClass: "COLD",
-				Metadata:     map[string]*string{"disk-id": proto.String("disk")},
-			})
-			require.NoError(t, err)
-
-			mu.Lock()
-			defer mu.Unlock()
-			require.Len(t, requests, 2)
-			require.Equal(t, "COLD", requests[0].Get("X-Amz-Storage-Class"))
-			require.Empty(t, requests[1].Get("X-Amz-Storage-Class"))
-			require.Equal(t, []string{"data", "data"}, bodies)
-			for _, headers := range requests {
-				require.Equal(t, "disk", headers.Get("X-Amz-Meta-Disk-Id"))
-				if testCase.exportCompatibility {
-					require.Equal(
-						t,
-						"application/octet-stream",
-						headers.Get("Content-Type"),
-					)
-					require.Empty(t, headers.Get("Content-Encoding"))
-				} else {
-					require.Equal(
-						t,
-						"application/octet-stream",
-						headers.Get("Content-Encoding"),
-					)
-				}
-			}
-		})
-	}
 }

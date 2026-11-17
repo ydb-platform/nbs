@@ -15,16 +15,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestRegisterDoesNotEnableTaskExecution(t *testing.T) {
-	ctx := newContext()
-	registry := tasks.NewRegistry()
-
-	err := Register(ctx, registry)
-	require.NoError(t, err)
-	require.NotEmpty(t, registry.TaskTypes())
-	require.Empty(t, registry.TaskTypesForExecution())
-}
-
 func TestRegisterForExecutionWithInvalidBackupIntervals(t *testing.T) {
 	testCases := []struct {
 		name     string

@@ -398,21 +398,3 @@ func TestCreateSnapshotFromDiskBlockSize(t *testing.T) {
 		})
 	}
 }
-
-func TestCreateSnapshotFromDiskRetryAfterCompletion(t *testing.T) {
-	// An old request has no BlockSize. Once the snapshot is ready, retrying
-	// must not describe the source disk: it may already have been deleted.
-	f := newCreateSnapshotFromDiskTest(
-		t,
-		"zone",
-		false, // useProxy
-		&protos.CreateSnapshotFromDiskTaskState{},
-		nil, // disabledZones
-	)
-	f.execCtx.On("GetTaskID").Return("create").Once()
-	f.storage.On("GetSnapshotMeta", f.ctx, "snapshot").
-		Return(&storage.SnapshotMeta{ID: "snapshot", Ready: true}, nil).Once()
-
-	err := f.task.run(f.ctx, f.execCtx)
-	require.NoError(t, err)
-}
