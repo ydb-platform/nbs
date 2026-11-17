@@ -1,29 +1,31 @@
 #pragma once
 
-#include <util/generic/types.h>
+#include <util/system/types.h>
 
 namespace NCloud::NFileStore::NDiagnostics {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The prior represents the latency of this many pseudo-requests.
+/* Using https://en.wikipedia.org/wiki/Bayesian_average
+so that consistent latency across multiple requests ranks above sporadic spikes. */
+
 inline constexpr double LatencyPriorRequestCount = 20.0;
 
 inline double NormalizeLatencyUs(
     ui64 totalLatencyUs,
     ui64 requestCount,
-    double priorMeanLatencyUs,
+    double priorAvgLatencyUs,
     double decayFactor)
 {
     if (!requestCount) {
         return 0;
     }
 
-    const double normalizedMean =
-        (totalLatencyUs + LatencyPriorRequestCount * priorMeanLatencyUs) /
-        (requestCount + LatencyPriorRequestCount);
+    const double normalizedAvg =
+        ((LatencyPriorRequestCount * priorAvgLatencyUs) + totalLatencyUs) /
+        (LatencyPriorRequestCount + requestCount);
 
-    return normalizedMean * decayFactor;
+    return normalizedAvg * decayFactor;
 }
 
 }   // namespace NCloud::NFileStore::NDiagnostics
