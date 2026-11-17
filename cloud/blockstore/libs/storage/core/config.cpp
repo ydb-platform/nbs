@@ -1084,6 +1084,7 @@ TAtomicBase ConvertToAtomicBase(const double& value)
 
     // Use an exclusive upper bound: double(Max<TAtomicBase>()) may round up.
     // Return integer limits directly, without converting them through double.
+    // upper == 2^63 when TAtomicBase is i64
     const double upper =
         std::ldexp(1.0, std::numeric_limits<TAtomicBase>::digits);
     if (value <= -upper) {

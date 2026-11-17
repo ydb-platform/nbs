@@ -255,11 +255,9 @@ void TConfigsManagerActor::Handle(
     }
 
     const auto currentConfig = ConfigHolder->Get();
-    const auto mergedConfig =
-        MergeBlockstoreConfig(StaticConfig, dynamicConfig);
     auto newConfig = MakeBlockstoreConfig(
-        mergedConfig,
-        {},
+        StaticConfig,
+        dynamicConfig,
         StorageConfigControls,
         GetBlockstoreConfigExtraParameters(*currentConfig));
     const auto newStorageConfig = newConfig->GetStorageConfig();
