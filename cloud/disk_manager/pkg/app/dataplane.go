@@ -43,6 +43,8 @@ func initDataplane(
 	backupS3 *backup.S3,
 ) error {
 
+	backupEnabled := config.GetSnapshotStorageBackupConfig() != nil
+
 	dataplaneConfig := config.GetDataplaneConfig()
 	snapshotConfig := dataplaneConfig.GetSnapshotConfig()
 
@@ -67,7 +69,7 @@ func initDataplane(
 		snapshotMetricsRegistry,
 		snapshotDB,
 		s3,
-		config.GetSnapshotStorageBackupConfig() != nil,
+		backupEnabled,
 	)
 	if err != nil {
 		return err
@@ -82,7 +84,7 @@ func initDataplane(
 			snapshotMetricsRegistry,
 			migrationDstDB,
 			migrationDstS3,
-			config.GetSnapshotStorageBackupConfig() != nil,
+			backupEnabled,
 		)
 		if migrationDstS3 != nil {
 			useS3InSnapshotMigration = true

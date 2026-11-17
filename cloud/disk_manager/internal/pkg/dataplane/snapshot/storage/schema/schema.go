@@ -134,108 +134,10 @@ func Create(
 	logging.Info(ctx, "Created chunk_map table")
 
 	if backupEnabled {
-		// Keyed by a hash of the chunk so that copy tasks reading from a random
-		// shard_id take disjoint batches. Per-snapshot operations go through the
-		// snapshot_id index.
-		err = db.CreateOrAlterTable(
-			ctx,
-			config.GetStorageFolder(),
-			"backup_chunk_queue",
-			persistence.NewCreateTableDescription(
-				persistence.WithColumn(
-					"shard_id",
-					persistence.Optional(persistence.TypeUint64),
-				),
-				persistence.WithColumn(
-					"snapshot_id",
-					persistence.Optional(persistence.TypeUTF8),
-				),
-				persistence.WithColumn(
-					"chunk_id",
-					persistence.Optional(persistence.TypeUTF8),
-				),
-				persistence.WithColumn(
-					"stored_in_s3",
-					persistence.Optional(persistence.TypeBool),
-				),
-				persistence.WithColumn(
-					"encrypted_dek",
-					persistence.Optional(persistence.TypeString),
-				),
-				persistence.WithPrimaryKeyColumn("shard_id", "snapshot_id", "chunk_id"),
-				persistence.WithSecondaryKeyColumn("snapshot_id"),
-				persistence.WithPartitioningByLoad(
-					backupTablesMinPartitions,
-					backupTablesMaxPartitions,
-				),
-			),
-			dropUnusedColumns,
-		)
+		err = createBackupTables(ctx, config, db, dropUnusedColumns)
 		if err != nil {
 			return err
 		}
-		logging.Info(ctx, "Created backup_chunk_queue table")
-
-		// Chunks queued for the follower or already copied there, whichever
-		// snapshot queued them. A row lives while the chunk lives in chunk_blobs:
-		// the last unref moves it to backup_chunk_delete_queue.
-		// Its name comes from FollowerChunksTableName: one table per follower bucket.
-		err = db.CreateOrAlterTable(
-			ctx,
-			config.GetStorageFolder(),
-			config.GetFollowerChunksTableName(),
-			persistence.NewCreateTableDescription(
-				persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
-				persistence.WithColumn("copied", persistence.Optional(persistence.TypeBool)),
-				persistence.WithPrimaryKeyColumn("chunk_id"),
-				persistence.WithPartitioningByLoad(
-					backupTablesMinPartitions,
-					backupTablesMaxPartitions,
-				),
-			),
-			dropUnusedColumns,
-		)
-		if err != nil {
-			return err
-		}
-		logging.Info(ctx, "Created %v table", config.GetFollowerChunksTableName())
-
-		// Chunks deleted from chunk_blobs whose follower objects are to be
-		// deleted.
-		err = db.CreateOrAlterTable(
-			ctx,
-			config.GetStorageFolder(),
-			"backup_chunk_delete_queue",
-			persistence.NewCreateTableDescription(
-				persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
-				persistence.WithPrimaryKeyColumn("chunk_id"),
-			),
-			dropUnusedColumns,
-		)
-		if err != nil {
-			return err
-		}
-		logging.Info(ctx, "Created backup_chunk_delete_queue table")
-
-		// Chunks that could not be copied to the follower: missing or corrupt
-		// data. The backup of their snapshot fails.
-		err = db.CreateOrAlterTable(
-			ctx,
-			config.GetStorageFolder(),
-			"backup_chunk_failures",
-			persistence.NewCreateTableDescription(
-				persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
-				persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
-				persistence.WithColumn("error", persistence.Optional(persistence.TypeUTF8)),
-				persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
-			),
-			dropUnusedColumns,
-		)
-		if err != nil {
-			return err
-		}
-		logging.Info(ctx, "Created backup_chunk_failures table")
-
 	}
 
 	if s3 != nil && len(config.GetS3Bucket()) != 0 {
@@ -312,30 +214,10 @@ func Drop(
 	logging.Info(ctx, "Dropped chunk_map table")
 
 	if backupEnabled {
-		err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_queue")
+		err = dropBackupTables(ctx, config, db)
 		if err != nil {
 			return err
 		}
-		logging.Info(ctx, "Dropped backup_chunk_queue table")
-
-		err = db.DropTable(ctx, config.GetStorageFolder(), config.GetFollowerChunksTableName())
-		if err != nil {
-			return err
-		}
-		logging.Info(ctx, "Dropped %v table", config.GetFollowerChunksTableName())
-
-		err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_delete_queue")
-		if err != nil {
-			return err
-		}
-		logging.Info(ctx, "Dropped backup_chunk_delete_queue table")
-
-		err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_failures")
-		if err != nil {
-			return err
-		}
-		logging.Info(ctx, "Dropped backup_chunk_failures table")
-
 	}
 
 	logging.Info(ctx, "Dropped schema for dataplane snapshot storage")
@@ -395,4 +277,149 @@ func snapshotStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
 		persistence.WithPrimaryKeyColumn("id"),
 	)
+}
+
+func createBackupTables(
+	ctx context.Context,
+	config *snapshot_config.SnapshotConfig,
+	db *persistence.YDBClient,
+	dropUnusedColumns bool,
+) error {
+
+	// Keyed by a hash of the chunk so that copy tasks reading from a random
+	// shard_id take disjoint batches. Per-snapshot operations go through the
+	// snapshot_id index.
+	err := db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"backup_chunk_queue",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn(
+				"shard_id",
+				persistence.Optional(persistence.TypeUint64),
+			),
+			persistence.WithColumn(
+				"snapshot_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			persistence.WithColumn(
+				"chunk_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			persistence.WithColumn(
+				"stored_in_s3",
+				persistence.Optional(persistence.TypeBool),
+			),
+			persistence.WithColumn(
+				"encrypted_dek",
+				persistence.Optional(persistence.TypeString),
+			),
+			persistence.WithPrimaryKeyColumn("shard_id", "snapshot_id", "chunk_id"),
+			persistence.WithSecondaryKeyColumn("snapshot_id"),
+			persistence.WithPartitioningByLoad(
+				backupTablesMinPartitions,
+				backupTablesMaxPartitions,
+			),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created backup_chunk_queue table")
+
+	// Chunks queued for the follower or already copied there, whichever
+	// snapshot queued them. A row lives while the chunk lives in chunk_blobs:
+	// the last unref moves it to backup_chunk_delete_queue.
+	// Its name comes from FollowerChunksTableName: one table per follower bucket.
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		config.GetFollowerChunksTableName(),
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("copied", persistence.Optional(persistence.TypeBool)),
+			persistence.WithPrimaryKeyColumn("chunk_id"),
+			persistence.WithPartitioningByLoad(
+				backupTablesMinPartitions,
+				backupTablesMaxPartitions,
+			),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created %v table", config.GetFollowerChunksTableName())
+
+	// Chunks deleted from chunk_blobs whose follower objects are to be
+	// deleted.
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"backup_chunk_delete_queue",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithPrimaryKeyColumn("chunk_id"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created backup_chunk_delete_queue table")
+
+	// Chunks that could not be copied to the follower: missing or corrupt
+	// data. The backup of their snapshot fails.
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"backup_chunk_failures",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("error", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created backup_chunk_failures table")
+
+	return nil
+}
+
+func dropBackupTables(
+	ctx context.Context,
+	config *snapshot_config.SnapshotConfig,
+	db *persistence.YDBClient,
+) error {
+
+	err := db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_queue")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped backup_chunk_queue table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), config.GetFollowerChunksTableName())
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped %v table", config.GetFollowerChunksTableName())
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_delete_queue")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped backup_chunk_delete_queue table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_failures")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped backup_chunk_failures table")
+
+	return nil
 }

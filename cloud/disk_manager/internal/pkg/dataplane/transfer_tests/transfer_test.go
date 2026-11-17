@@ -1021,7 +1021,7 @@ func newBackupS3(
 	withEncryption bool,
 ) *backup.S3 {
 
-	s3, err := test.NewS3Client()
+	s3, err := test.NewBackupS3Client()
 	require.NoError(t, err)
 
 	exists, err := s3.BucketExists(ctx, backupBucket)

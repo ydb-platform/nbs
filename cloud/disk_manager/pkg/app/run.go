@@ -322,7 +322,7 @@ func run(
 	dataplaneConfig := config.GetDataplaneConfig()
 	if dataplaneConfig == nil {
 		logging.Info(ctx, "Registering dataplane tasks")
-		err = dataplane.Register(ctx, taskRegistry, backupConfig != nil)
+		err = dataplane.Register(ctx, taskRegistry)
 		if err != nil {
 			logging.Error(ctx, "Failed to register dataplane tasks: %v", err)
 			return err

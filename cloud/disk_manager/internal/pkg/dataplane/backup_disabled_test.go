@@ -15,26 +15,11 @@ import (
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
 
-func TestBackupDisabledDoesNotRegisterTaskTypes(t *testing.T) {
+func TestBackupTaskRegistrationDoesNotEnableExecution(t *testing.T) {
 	registry := tasks.NewRegistry()
-	require.NoError(t, Register(newContext(), registry, false))
-	for _, taskType := range []string{
-		"dataplane.BackupSnapshotData",
-		"dataplane.BackupChunks",
-		"dataplane.ScheduleBackupChunksTasks",
-		"dataplane.DeleteBackupSnapshotData",
-		"dataplane.DeleteBackupChunks",
-		"dataplane.TransferFromBackupToDisk",
-	} {
-		require.NotContains(t, registry.TaskTypes(), taskType)
-	}
-	require.Contains(t, registry.TaskTypes(), "dataplane.CreateSnapshotFromDisk")
-	_, err := registry.NewTask("dataplane.DeleteBackupChunks")
-	require.Error(t, err)
-
-	enabled := tasks.NewRegistry()
-	require.NoError(t, Register(newContext(), enabled, true))
-	require.Contains(t, enabled.TaskTypes(), "dataplane.DeleteBackupChunks")
+	require.NoError(t, Register(newContext(), registry))
+	require.NotEmpty(t, registry.TaskTypes())
+	require.Empty(t, registry.TaskTypesForExecution())
 }
 
 func TestBackupDisabledIgnoresUnusedIntervals(t *testing.T) {

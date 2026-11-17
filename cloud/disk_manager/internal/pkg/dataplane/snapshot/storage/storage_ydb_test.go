@@ -16,6 +16,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/ydb-go-sdk/v3"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
@@ -436,7 +437,7 @@ func TestBackupDisabledSchemaDoesNotCreateBackupTables(t *testing.T) {
 		if err == nil {
 			res.Close()
 		}
-		require.Error(t, err, "backup table %v should be absent", table)
+		require.True(t, ydb.IsOperationErrorSchemeError(err), "expected missing backup table %v, got: %v", table, err)
 	}
 }
 
@@ -2737,4 +2738,17 @@ func TestGetQueuedChunksToBackupReadsShardRangeAfterCursor(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Empty(t, got)
+}
+
+func TestBackupFollowerTableName(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+	f.config.FollowerChunksTableName = proto.String("")
+	_, err := NewStorage(f.config, metrics.NewEmptyRegistry(), f.db, f.s3, true)
+	require.ErrorContains(t, err, "FollowerChunksTableName must not be empty")
+	_, err = NewStorage(f.config, metrics.NewEmptyRegistry(), f.db, f.s3, false)
+	require.NoError(t, err)
+	f.config.FollowerChunksTableName = nil // Use the default table name.
+	_, err = NewStorage(f.config, metrics.NewEmptyRegistry(), f.db, f.s3, true)
+	require.NoError(t, err)
 }

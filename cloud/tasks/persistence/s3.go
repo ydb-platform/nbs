@@ -564,6 +564,8 @@ func (c *S3Client) BucketExists(
 // marking, so the Go transport does not decompress them and the caller gets
 // gzip instead of the object. Asking for the bytes as stored avoids it. Set
 // after signing, as the transport sets its own Accept-Encoding.
+// This is opt-in for backup clients. Primary snapshot clients retain their
+// previous encoding behavior so backup changes do not affect them.
 func withIdentityEncoding(r *request.Request) {
 	r.Handlers.Send.PushFront(func(r *request.Request) {
 		r.HTTPRequest.Header.Set("Accept-Encoding", "identity")
@@ -714,12 +716,11 @@ func (c *S3Client) PutObject(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (c *S3Client) putObject(
-	ctx context.Context,
+func (c *S3Client) newPutObjectInput(
 	bucket string,
 	key string,
 	object S3Object,
-) error {
+) *aws_s3.PutObjectInput {
 
 	input := &aws_s3.PutObjectInput{
 		Bucket:   &bucket,
@@ -732,6 +733,18 @@ func (c *S3Client) putObject(
 	} else {
 		input.ContentEncoding = aws.String("application/octet-stream")
 	}
+
+	return input
+}
+
+func (c *S3Client) putObject(
+	ctx context.Context,
+	bucket string,
+	key string,
+	object S3Object,
+) error {
+
+	input := c.newPutObjectInput(bucket, key, object)
 
 	_, err := c.s3.PutObjectWithContext(
 		ctx,
@@ -750,17 +763,7 @@ func (c *S3Client) putObjectWithStorageClass(
 	object S3Object,
 ) error {
 
-	input := &aws_s3.PutObjectInput{
-		Bucket:   &bucket,
-		Key:      &key,
-		Body:     bytes.NewReader(object.Data),
-		Metadata: object.Metadata,
-	}
-	if c.exportCompatibility {
-		input.ContentType = aws.String("application/octet-stream")
-	} else {
-		input.ContentEncoding = aws.String("application/octet-stream")
-	}
+	input := c.newPutObjectInput(bucket, key, object)
 
 	if len(object.StorageClass) != 0 {
 		input.StorageClass = aws.String(object.StorageClass)

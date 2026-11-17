@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -46,10 +47,11 @@ func TestS3ObjectHeadersAreOptIn(t *testing.T) {
 			credentialsFile := filepath.Join(t.TempDir(), "credentials.json")
 			require.NoError(t, os.WriteFile(credentialsFile, []byte(`{"id":"id","secret":"secret"}`), 0600))
 			client, err := NewS3ClientFromConfig(&persistence_config.S3Config{
-				Endpoint:            proto.String(server.URL),
-				Region:              proto.String("region"),
-				CredentialsFilePath: proto.String(credentialsFile),
-				CallTimeout:         proto.String("1s"),
+				Endpoint:               proto.String(server.URL),
+				Region:                 proto.String("region"),
+				CredentialsFilePath:    proto.String(credentialsFile),
+				CallTimeout:            proto.String("5s"),
+				MaxRetriableErrorCount: proto.Uint64(0),
 			}, empty.NewRegistry(), nil, nil, options...)
 			require.NoError(t, err)
 			for _, put := range []func(context.Context, string, string, S3Object) error{
@@ -770,4 +772,62 @@ func TestS3ShouldLimitPutObjectAttemptsIncludingRetries(t *testing.T) {
 	// The throttle pause is the configured milliseconds, not the SDK
 	// default of 500 ms and more.
 	require.Less(t, elapsed, 400*time.Millisecond)
+}
+
+func TestS3PutObjectRetriesWithoutStorageClass(t *testing.T) {
+	for _, compatibility := range []bool{false, true} {
+		name := "default"
+		if compatibility {
+			name = "backup_export"
+		}
+		t.Run(name, func(t *testing.T) {
+			var mu sync.Mutex
+			var requests []http.Header
+			var bodies []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				mu.Lock()
+				requests = append(requests, r.Header.Clone())
+				bodies = append(bodies, string(body))
+				mu.Unlock()
+				if r.Header.Get("X-Amz-Storage-Class") != "" {
+					w.Header().Set("Content-Type", "application/xml")
+					w.WriteHeader(http.StatusBadRequest)
+					_, _ = w.Write([]byte(`<Error><Code>QuotaLimitExceeded</Code></Error>`))
+				}
+			}))
+			defer server.Close()
+			var options []S3ClientOption
+			if compatibility {
+				options = append(options, WithS3ExportCompatibility())
+			}
+			client, err := NewS3Client(server.URL, "region", NewS3Credentials("id", "secret"),
+				5*time.Second, empty.NewRegistry(), 0, nil, nil, 0, options...)
+			require.NoError(t, err)
+			err = client.PutObject(newContext(), "bucket", "key", S3Object{
+				Data: []byte("data"), StorageClass: "COLD",
+				Metadata: map[string]*string{"disk-id": proto.String("disk")},
+			})
+			require.NoError(t, err)
+			mu.Lock()
+			defer mu.Unlock()
+			require.Len(t, requests, 2)
+			require.Equal(t, "COLD", requests[0].Get("X-Amz-Storage-Class"))
+			require.Empty(t, requests[1].Get("X-Amz-Storage-Class"))
+			require.Equal(t, []string{"data", "data"}, bodies)
+			for _, headers := range requests {
+				require.Equal(t, "disk", headers.Get("X-Amz-Meta-Disk-Id"))
+				if compatibility {
+					require.Equal(t, "application/octet-stream", headers.Get("Content-Type"))
+					require.Empty(t, headers.Get("Content-Encoding"))
+				} else {
+					require.Equal(t, "application/octet-stream", headers.Get("Content-Encoding"))
+				}
+			}
+		})
+	}
 }

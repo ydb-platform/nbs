@@ -21,7 +21,7 @@ import (
 func TestDeleteBackupMetaTask(t *testing.T) {
 	ctx := test.NewContext()
 
-	s3, err := test.NewS3Client()
+	s3, err := test.NewBackupS3Client()
 	require.NoError(t, err)
 
 	exists, err := s3.BucketExists(ctx, backupTestBucket)

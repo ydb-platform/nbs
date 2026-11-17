@@ -13,6 +13,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	ydb_status "github.com/ydb-platform/ydb-go-genproto/protos/Ydb"
+	"github.com/ydb-platform/ydb-go-sdk/v3"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -52,7 +54,9 @@ func TestBackupDisabledResourceSchemaPreservesLegacyQueue(t *testing.T) {
 			if err == nil {
 				res.Close()
 			}
-			require.Error(t, err)
+			require.True(t, ydb.IsOperationError(err, ydb_status.StatusIds_GENERIC_ERROR),
+				"expected missing backup_id column, got: %v", err)
+			require.ErrorContains(t, err, "Member not found: backup_id")
 			require.NoError(t, drop(ctx, folder, db, false))
 			res, err = db.ExecuteRO(ctx, fmt.Sprintf(`--!syntax_v1
 				pragma TablePathPrefix = "%v";

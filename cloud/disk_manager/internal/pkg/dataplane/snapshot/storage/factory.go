@@ -5,6 +5,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
 	common_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
@@ -22,6 +23,9 @@ func NewStorage(
 	followerChunksTableName := ""
 	if backupEnabled {
 		followerChunksTableName = config.GetFollowerChunksTableName()
+		if len(followerChunksTableName) == 0 {
+			return nil, errors.NewNonRetriableErrorf("FollowerChunksTableName must not be empty when backups are enabled")
+		}
 	}
 	probeCompressionPercentage := config.GetProbeCompressionPercentage()
 

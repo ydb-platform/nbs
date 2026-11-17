@@ -24,6 +24,8 @@ func initDataplane(
 	dropUnusedColumns bool,
 ) error {
 
+	backupEnabled := config.GetSnapshotStorageBackupConfig() != nil
+
 	err := tasks_storage.CreateYDBTables(
 		ctx,
 		config.GetTasksConfig(),
@@ -62,7 +64,7 @@ func initDataplane(
 		}
 	}
 
-	err = schema.Create(ctx, snapshotConfig, snapshotDB, s3, dropUnusedColumns, config.GetSnapshotStorageBackupConfig() != nil)
+	err = schema.Create(ctx, snapshotConfig, snapshotDB, s3, dropUnusedColumns, backupEnabled)
 	if err != nil {
 		return err
 	}
@@ -102,7 +104,7 @@ func initDataplane(
 		migrationDstDB,
 		migrationDstS3,
 		dropUnusedColumns,
-		config.GetSnapshotStorageBackupConfig() != nil,
+		backupEnabled,
 	)
 }
 
