@@ -2,6 +2,7 @@
 
 #include "rope_utils.h"
 #include "verify.h"
+#include "zero_block_stats.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
@@ -209,6 +210,8 @@ private:
         TVector<double> ApproximateFreeSpaceShares;
         TRope Rope;
 
+        TZeroBlockStats ZeroBlockStats;
+
         explicit TRequestState(TWriteRequestContext params)
             : RequestContext(std::move(params))
             , BlobRange(RequestContext.Range.AlignedSubRange())
@@ -217,14 +220,17 @@ private:
 
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
+    const std::optional<TWriteDataZeroCounters> ZeroCounters;
     std::optional<TRequestState> RequestState;
 
 public:
     TWriteDataActor(
         IProfileLogPtr profileLog,
-        ITraceSerializerPtr traceSerializer)
+        ITraceSerializerPtr traceSerializer,
+        std::optional<TWriteDataZeroCounters> zeroCounters)
         : ProfileLog(std::move(profileLog))
         , TraceSerializer(std::move(traceSerializer))
+        , ZeroCounters(std::move(zeroCounters))
     {}
 
     void Initialize(TWriteRequestContext params)
@@ -236,6 +242,12 @@ public:
     void Bootstrap(const TActorContext& ctx)
     {
         auto& state = GetState();
+
+        if (ZeroCounters) {
+            state.ZeroBlockStats = CalculateZeroBlockStats(
+                state.RequestContext.WriteRequest,
+                state.RequestContext.Range.BlockSize);
+        }
 
         if (!state.RequestContext.UseThreeStageWrite) {
             LOG_DEBUG(
@@ -309,6 +321,17 @@ private:
     {
         Y_ABORT_UNLESS(RequestState);
         return *RequestState;
+    }
+
+    void UpdateZeroCounters()
+    {
+        const auto& stats = GetState().ZeroBlockStats;
+
+        ZeroCounters->CheckedBytes->Add(stats.Bytes);
+        ZeroCounters->ZeroBlockBytes->Add(stats.ZeroBlockBytes);
+        if (stats.AllZeroes) {
+            ZeroCounters->ZeroRequestBytes->Add(stats.Bytes);
+        }
     }
 
     STFUNC(StateWork)
@@ -1035,6 +1058,10 @@ private:
     {
         auto& state = GetState();
 
+        if (ZeroCounters) {
+            UpdateZeroCounters();
+        }
+
         FILESTORE_TRACK(
             ResponseSent_ServiceWorker,
             state.RequestContext.RequestInfo->CallContext,
@@ -1222,7 +1249,15 @@ void TStorageServiceActor::HandleWriteData(
 
     auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
-    auto actor = std::make_unique<TWriteDataActor>(ProfileLog, TraceSerializer);
+    std::optional<TWriteDataZeroCounters> zeroCounters;
+    if (filestore.GetFeatures().GetWriteDataZeroBlockStatsEnabled()) {
+        zeroCounters = WriteDataZeroCounters;
+    }
+
+    auto actor = std::make_unique<TWriteDataActor>(
+        ProfileLog,
+        TraceSerializer,
+        std::move(zeroCounters));
     actor->Initialize(TWriteRequestContext(
         std::move(msg->Record),
         range,

@@ -13,4 +13,5 @@ endpoint_methods = [
     ("list_endpoints", "ListEndpoints"),
     ("kick_endpoint", "KickEndpoint"),
     ("ping", "Ping"),
+    ("execute_action", "ExecuteAction"),
 ]

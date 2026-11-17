@@ -540,6 +540,19 @@ NProto::TPingResponse TEndpointManager::DoPing(
     return {};
 }
 
+NProto::TExecuteActionResponse TEndpointManager::DoExecuteAction(
+    const NProto::TExecuteActionRequest& request)
+{
+    STORAGE_TRACE(
+        "ExecuteAction " << ProtoMessagePrinter.ToString(request));
+
+    // The daemon handles its actions before the request gets here.
+    return TErrorResponse(
+        E_NOT_IMPLEMENTED,
+        TStringBuilder() << "Action " << request.GetAction().Quote()
+                         << " is not implemented for the endpoint manager");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TNullEndpointManager final

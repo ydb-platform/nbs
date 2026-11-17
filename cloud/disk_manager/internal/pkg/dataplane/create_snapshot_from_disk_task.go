@@ -4,7 +4,9 @@ import (
 	"context"
 
 	"github.com/golang/protobuf/proto"
+
 	nbs_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	internal_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/nbs"
@@ -23,6 +25,7 @@ import (
 type createSnapshotFromDiskTask struct {
 	config                   *config.DataplaneConfig
 	performanceConfig        *performance_config.PerformanceConfig
+	disabledZones            *internal_common.DisabledZones
 	nbsFactory               nbs_client.Factory
 	storage                  storage.Storage
 	proxyOverlayDiskIDPrefix string
@@ -49,6 +52,15 @@ func (t *createSnapshotFromDiskTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	if t.disabledZones.IsDisabled(t.request.SrcDisk.ZoneId) {
+		return internal_common.NewNonRetriableAbortedError(
+			"can't create snapshot %q from disk %q in disabled zone %q",
+			t.request.DstSnapshotId,
+			t.request.SrcDisk.DiskId,
+			t.request.SrcDisk.ZoneId,
+		)
+	}
 
 	err := t.run(ctx, execCtx)
 	if err != nil {
@@ -550,6 +562,18 @@ func (t *createSnapshotFromDiskTask) deleteProxyOverlayDiskIfNeeded(
 ) error {
 
 	if !t.request.UseProxyOverlayDisk {
+		return nil
+	}
+
+	if t.disabledZones.IsDisabled(t.request.SrcDisk.ZoneId) {
+		logging.Warn(
+			ctx,
+			"Skipping deletion of proxy overlay disk %v for snapshot %v of disk %v: zone %v is disabled",
+			t.getProxyOverlayDiskID(),
+			t.request.DstSnapshotId,
+			t.request.SrcDisk.DiskId,
+			t.request.SrcDisk.ZoneId,
+		)
 		return nil
 	}
 

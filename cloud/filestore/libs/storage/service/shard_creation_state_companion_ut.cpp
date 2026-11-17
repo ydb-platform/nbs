@@ -1,18 +1,41 @@
 #include "shard_creation_state_companion.h"
 
+#include <cloud/filestore/libs/storage/api/components.h>
+#include <cloud/filestore/libs/storage/api/ss_proxy.h>
+
 #include <cloud/storage/core/libs/common/error.h>
+
+#include <contrib/ydb/core/base/events.h>
+#include <contrib/ydb/library/actors/core/actor.h>
+#include <contrib/ydb/library/actors/core/events.h>
+#include <contrib/ydb/library/actors/core/hfunc.h>
+#include <contrib/ydb/library/actors/testlib/test_runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/string/builder.h>
 
 #include <limits>
+#include <utility>
 
 namespace NCloud::NFileStore::NStorage {
+
+using namespace NActors;
 
 namespace {
 
 using EMode = TShardCreationStateCompanion::EMode;
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TNoopShardCreationOwner final: public IShardCreationOwner
+{
+public:
+    void CreateShard(
+        const TActorContext&,
+        ui32) override
+    {}
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -89,15 +112,157 @@ NProtoPrivate::TFileSystemShardCreationState MakeState(
     return MakeState(version, createdShards, 0, MakeShardConfigs());
 }
 
+enum ETestEvents
+{
+    EvScheduleShardCreation = EventSpaceBegin(NKikimr::TEvents::ES_USERSPACE + 42),
+    EvShardCreationScheduled,
+};
+
+struct TEvScheduleShardCreation final
+    : public TEventBase<TEvScheduleShardCreation, EvScheduleShardCreation>
+{
+    bool Complete;
+    ui32 ShardIndex;
+
+    TEvScheduleShardCreation(bool complete, ui32 shardIndex)
+        : Complete(complete)
+        , ShardIndex(shardIndex)
+    {}
+
+    DEFINE_SIMPLE_LOCAL_EVENT(TEvScheduleShardCreation, "TEvScheduleShardCreation");
+};
+
+struct TEvShardCreationScheduled final
+    : public TEventBase<TEvShardCreationScheduled, EvShardCreationScheduled>
+{
+    bool HasShardsToCreate;
+    NProto::TError Error;
+
+    TEvShardCreationScheduled(
+        bool hasShardsToCreate,
+        NProto::TError error)
+        : HasShardsToCreate(hasShardsToCreate)
+        , Error(std::move(error))
+    {}
+
+    DEFINE_SIMPLE_LOCAL_EVENT(
+        TEvShardCreationScheduled,
+        "TEvShardCreationScheduled");
+};
+
+class TShardSchedulingActor final
+    : public TActor<TShardSchedulingActor>
+    , public IShardCreationOwner
+{
+private:
+    TShardCreationStateCompanion Companion{
+        TString{FileSystemId},
+        EMode::Create,
+        this};
+    TVector<NKikimrFileStore::TConfig> ShardConfigs = MakeShardConfigs();
+
+public:
+    TShardSchedulingActor(
+        ui32 topologyShardCount,
+        ui32 maxShardManagementRequestsInFlight)
+        : TActor(&TThis::StateWork)
+    {
+        const auto error = Companion.InitializeShardCreation(
+            topologyShardCount,
+            ShardCount,
+            maxShardManagementRequestsInFlight);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+    }
+
+private:
+    void CreateShard(
+        const TActorContext& ctx,
+        ui32 shardIndex) override
+    {
+        auto request = std::make_unique<TEvSSProxy::TEvCreateFileStoreRequest>(
+            ShardConfigs[shardIndex]);
+        NCloud::Send(
+            ctx,
+            MakeSSProxyServiceId(),
+            std::move(request),
+            shardIndex);
+    }
+
+    STFUNC(StateWork)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(TEvScheduleShardCreation, HandleScheduleShardCreation);
+
+            default:
+                Y_ABORT("Unexpected event");
+        }
+    }
+
+    void HandleScheduleShardCreation(
+        const TEvScheduleShardCreation::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        NProto::TError error;
+        if (ev->Get()->Complete) {
+            error = Companion.OnShardCreated(
+                ctx,
+                ev->Get()->ShardIndex);
+        } else {
+            Companion.StartShardCreation(ctx);
+        }
+        ctx.Send(
+            ev->Sender,
+            new TEvShardCreationScheduled(
+                Companion.HasShardsToCreate(),
+                std::move(error)));
+    }
+};
+
+struct TActorSystem: TTestActorRuntimeBase
+{
+    void Start()
+    {
+        InitNodes();
+        AppendToLogSettings(
+            TFileStoreComponents::START,
+            TFileStoreComponents::END,
+            GetComponentName);
+        SetDispatchTimeout(TDuration::Seconds(5));
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 {
+    Y_UNIT_TEST(ShouldRejectTargetShardCountBelowTopology)
+    {
+        TNoopShardCreationOwner owner;
+        TShardCreationStateCompanion companion(
+            TString{FileSystemId},
+            EMode::Create,
+            &owner);
+
+        const auto error = companion.InitializeShardCreation(
+            ShardCount + 1,
+            ShardCount,
+            0);
+
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
+        UNIT_ASSERT(error.GetMessage().Contains(
+            "Cannot decrease number of shards: current=7, requested=6"));
+        UNIT_ASSERT(!companion.HasShardsToCreate());
+    }
+
     Y_UNIT_TEST(ShouldTrackPersistentShardCreationStateSupport)
     {
-        TShardCreationStateCompanion companion(TString{FileSystemId}, EMode::Create);
+        TNoopShardCreationOwner owner;
+        TShardCreationStateCompanion companion(
+            TString{FileSystemId},
+            EMode::Create,
+            &owner);
 
         UNIT_ASSERT(!companion.IsPersistentStateLoaded());
         UNIT_ASSERT(!companion.IsPersistentStateSupported());
@@ -110,6 +275,73 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
         UNIT_ASSERT(companion.IsPersistentStateLoaded());
         UNIT_ASSERT(companion.IsPersistentStateSupported());
         UNIT_ASSERT_VALUES_EQUAL(42, companion.GetShardCreationStateVersion());
+    }
+
+    Y_UNIT_TEST(ShouldScheduleShardCreationWithinLimit)
+    {
+        TActorSystem runtime;
+        runtime.Start();
+        const auto sender = runtime.AllocateEdgeActor();
+        const auto ssProxy = runtime.AllocateEdgeActor();
+        runtime.RegisterService(MakeSSProxyServiceId(), ssProxy);
+        const ui32 currentShardCount = 2;
+        const ui32 maxShardManagementRequestsInFlight = 2;
+        const auto actorId = runtime.Register(new TShardSchedulingActor(
+            currentShardCount,
+            maxShardManagementRequestsInFlight));
+
+        auto schedule = [&](bool complete, ui32 shardIndex) {
+            runtime.Send(new IEventHandle(
+                actorId,
+                sender,
+                new TEvScheduleShardCreation(complete, shardIndex)));
+            return runtime.GrabEdgeEvent<TEvShardCreationScheduled>(sender)
+                ->Get()->HasShardsToCreate;
+        };
+        auto assertNextShard = [&](ui32 shardIndex) {
+            const auto request = runtime.GrabEdgeEvent<
+                TEvSSProxy::TEvCreateFileStoreRequest>(ssProxy);
+            UNIT_ASSERT_VALUES_EQUAL(shardIndex, request->Cookie);
+            UNIT_ASSERT_VALUES_EQUAL(
+                MakeShardConfigs()[shardIndex].GetFileSystemId(),
+                request->Get()->Config.GetFileSystemId());
+        };
+
+        UNIT_ASSERT(schedule(false, 0));
+        assertNextShard(2);
+        assertNextShard(3);
+        UNIT_ASSERT(schedule(true, 2));
+        assertNextShard(4);
+        UNIT_ASSERT(schedule(true, 3));
+        assertNextShard(5);
+        UNIT_ASSERT(schedule(true, 4));
+        UNIT_ASSERT(!schedule(true, 5));
+    }
+
+    Y_UNIT_TEST(ShouldRejectShardCreationResponseWithoutPendingShards)
+    {
+        TActorSystem runtime;
+        runtime.Start();
+        const auto sender = runtime.AllocateEdgeActor();
+        const ui32 currentShardCount = ShardCount;
+        const ui32 maxShardManagementRequestsInFlight = 1;
+        const auto actorId = runtime.Register(new TShardSchedulingActor(
+            currentShardCount,
+            maxShardManagementRequestsInFlight));
+
+        runtime.Send(new IEventHandle(
+            actorId,
+            sender,
+            new TEvScheduleShardCreation(true, ShardCount)));
+
+        const auto response =
+            runtime.GrabEdgeEvent<TEvShardCreationScheduled>(sender);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            response->Get()->Error.GetCode());
+        UNIT_ASSERT(response->Get()->Error.GetMessage().Contains(
+            "shard 6"));
+        UNIT_ASSERT(!response->Get()->HasShardsToCreate);
     }
 
     Y_UNIT_TEST(ShouldIgnoreVolatileShardConfigFieldsInNewShardConfigsHash)
@@ -142,12 +374,16 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, result.GetError().GetCode());
         UNIT_ASSERT(result.GetError().GetMessage().Contains(
-            "Invalid shard creation range"));
+            "Invalid shard creation range: topology=7, target=6"));
     }
 
     Y_UNIT_TEST(ShouldLoadPersistedCreatedShardBitmap)
     {
-        TShardCreationStateCompanion companion(TString{FileSystemId}, EMode::Create);
+        TNoopShardCreationOwner owner;
+        TShardCreationStateCompanion companion(
+            TString{FileSystemId},
+            EMode::Create,
+            &owner);
 
         const auto shardConfigs = MakeShardConfigs();
 
@@ -170,7 +406,11 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 
     Y_UNIT_TEST(ShouldRejectHugePersistedShardCreationBitmapOnSetup)
     {
-        TShardCreationStateCompanion companion(TString{FileSystemId}, EMode::Create);
+        TNoopShardCreationOwner owner;
+        TShardCreationStateCompanion companion(
+            TString{FileSystemId},
+            EMode::Create,
+            &owner);
 
         const auto shardConfigs = MakeShardConfigs();
         auto state = MakeState(42, {});
@@ -188,7 +428,11 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 
     Y_UNIT_TEST(ShouldRejectConflictingUncommittedShardCreationState)
     {
-        TShardCreationStateCompanion companion(TString{FileSystemId}, EMode::Create);
+        TNoopShardCreationOwner owner;
+        TShardCreationStateCompanion companion(
+            TString{FileSystemId},
+            EMode::Create,
+            &owner);
 
         const auto originalShardConfigs = MakeShardConfigs();
         auto conflictingShardConfigs = originalShardConfigs;
@@ -210,7 +454,11 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 
     Y_UNIT_TEST(ShouldResetStaleCommittedShardCreationState)
     {
-        TShardCreationStateCompanion companion(TString{FileSystemId}, EMode::Create);
+        TNoopShardCreationOwner owner;
+        TShardCreationStateCompanion companion(
+            TString{FileSystemId},
+            EMode::Create,
+            &owner);
 
         const auto originalShardConfigs = MakeShardConfigs();
         const auto nextShardConfigs = MakeShardConfigs(8);

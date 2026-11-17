@@ -227,12 +227,15 @@ public:
     bool GetThreeStageWriteEnabled() const;
     ui32 GetThreeStageWriteThreshold() const;
     bool GetUnalignedThreeStageWriteEnabled() const;
+    bool GetWriteDataZeroBlockStatsEnabled() const;
     TDuration GetEntryTimeout() const;
     TDuration GetRegularFileEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;
     TDuration GetAttrTimeout() const;
     TDuration GetXAttrCacheTimeout() const;
     ui32 GetXAttrCacheLimit() const;
+    ui32 GetNodeRefCacheLimit() const;
+    ui32 GetNodeAttrsCacheLimit() const;
     ui32 GetPreferredBlockSizeMultiplier() const;
 
     ui32 GetMaxOutOfOrderCompactionMapLoadRequestsInQueue() const;

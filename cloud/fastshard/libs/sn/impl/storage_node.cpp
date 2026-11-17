@@ -28,7 +28,7 @@ using silk::FiberScheduler;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NCloud::NProto::TError MakeIoError(int err, TStringBuf op)
+NProto::TError MakeIoError(int err, TStringBuf op)
 {
     return MakeError(
         MAKE_SYSTEM_ERROR(err),
@@ -49,8 +49,7 @@ constexpr bool AddOverflowsU64(ui64 a, ui64 b)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NCloud::NProto::TError ValidateReadRequest(
-    const NCloud::NProto::TReadPagesRequest& req)
+NProto::TError ValidateReadRequest(const NProto::TReadPagesRequest& req)
 {
     for (size_t i = 0; i < req.PageGroupRefsSize(); ++i) {
         const auto& ref = req.GetPageGroupRefs(i);
@@ -82,9 +81,9 @@ NCloud::NProto::TError ValidateReadRequest(
 ////////////////////////////////////////////////////////////////////////////////
 
 using TPageGroups =
-    google::protobuf::RepeatedPtrField<NCloud::NProto::TDevicePageGroup>;
+    google::protobuf::RepeatedPtrField<NProto::TDevicePageGroup>;
 
-NCloud::NProto::TError ValidatePageGroups(const TPageGroups& groups)
+NProto::TError ValidatePageGroups(const TPageGroups& groups)
 {
     //
     // Two invariants:
@@ -191,44 +190,44 @@ public:
                                        << ::strerror(errno));
     }
 
-    NCloud::NProto::TAcquireDevicesResponse AcquireDevices(
+    NProto::TAcquireDevicesResponse AcquireDevices(
         TFastShardContext&,
-        NCloud::NProto::TAcquireDevicesRequest request) override
+        NProto::TAcquireDevicesRequest request) override
     {
         Y_UNUSED(request);
         return {};
     }
 
-    NCloud::NProto::TReleaseDevicesResponse ReleaseDevices(
+    NProto::TReleaseDevicesResponse ReleaseDevices(
         TFastShardContext&,
-        NCloud::NProto::TReleaseDevicesRequest request) override
+        NProto::TReleaseDevicesRequest request) override
     {
         Y_UNUSED(request);
         return {};
     }
 
-    NCloud::NProto::TFormatDeviceResponse FormatDevice(
+    NProto::TFormatDeviceResponse FormatDevice(
         TFastShardContext&,
-        NCloud::NProto::TFormatDeviceRequest request) override
+        NProto::TFormatDeviceRequest request) override
     {
         Y_UNUSED(request);
         return {};
     }
 
-    NCloud::NProto::TListDevicesResponse ListDevices(
+    NProto::TListDevicesResponse ListDevices(
         TFastShardContext&,
-        NCloud::NProto::TListDevicesRequest request) override
+        NProto::TListDevicesRequest request) override
     {
         // The file has no device UUID, so there is nothing to list.
         Y_UNUSED(request);
         return {};
     }
 
-    NCloud::NProto::TReadPagesResponse ReadPages(
+    NProto::TReadPagesResponse ReadPages(
         TFastShardContext&,
-        NCloud::NProto::TReadPagesRequest request) override
+        NProto::TReadPagesRequest request) override
     {
-        NCloud::NProto::TReadPagesResponse resp;
+        NProto::TReadPagesResponse resp;
 
         if (auto err = ValidateReadRequest(request); HasError(err)) {
             *resp.MutableError() = std::move(err);
@@ -337,11 +336,11 @@ public:
         return resp;
     }
 
-    NCloud::NProto::TWriteLogRecordResponse WriteLogRecord(
+    NProto::TWriteLogRecordResponse WriteLogRecord(
         TFastShardContext&,
-        NCloud::NProto::TWriteLogRecordRequest request) override
+        NProto::TWriteLogRecordRequest request) override
     {
-        NCloud::NProto::TWriteLogRecordResponse resp;
+        NProto::TWriteLogRecordResponse resp;
         if (auto err = WritePageGroups(*request.MutablePageGroups());
             HasError(err))
         {
@@ -350,9 +349,9 @@ public:
         return resp;
     }
 
-    NCloud::NProto::TReadJournalTailResponse ReadJournalTail(
+    NProto::TReadJournalTailResponse ReadJournalTail(
         TFastShardContext&,
-        NCloud::NProto::TReadJournalTailRequest request) override
+        NProto::TReadJournalTailRequest request) override
     {
         // WriteLogRecord writes in place, so the journal is always empty and
         // there is never anything to replay.
@@ -360,9 +359,9 @@ public:
         return {};
     }
 
-    NCloud::NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
+    NProto::TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark(
         TFastShardContext&,
-        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request) override
+        NProto::TAdvanceLsnLowWatermarkRequest request) override
     {
         // Every page is already at its final location, so the watermark can be
         // advanced to any value without doing anything.
@@ -370,11 +369,11 @@ public:
         return {};
     }
 
-    NCloud::NProto::TWritePagesResponse WritePages(
+    NProto::TWritePagesResponse WritePages(
         TFastShardContext&,
-        NCloud::NProto::TWritePagesRequest request) override
+        NProto::TWritePagesRequest request) override
     {
-        NCloud::NProto::TWritePagesResponse resp;
+        NProto::TWritePagesResponse resp;
         if (auto err = WritePageGroups(*request.MutablePageGroups());
             HasError(err))
         {
@@ -384,7 +383,7 @@ public:
     }
 
 private:
-    NCloud::NProto::TError WritePageGroups(TPageGroups& groups)
+    NProto::TError WritePageGroups(TPageGroups& groups)
     {
         if (auto err = ValidatePageGroups(groups); HasError(err)) {
             return err;

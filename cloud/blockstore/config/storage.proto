@@ -1785,4 +1785,10 @@ message TStorageServiceConfig
     // When disabled, clear these counters and report legacy index-based counts.
     // Enable before compression: missing counters are initialized from block counts.
     optional bool ExtendedBlobCountersEnabled = 554;
+
+    // Partition v1 trims the fresh log without waiting for a flush once the
+    // dead fresh blobs older than every live one reach this many bytes. A blob
+    // dies when all its blocks are overwritten or flushed.
+    optional uint32 FreshDeadBlobByteCountTrimThresholdSSD = 555;
+    optional uint32 FreshDeadBlobByteCountTrimThresholdHDD = 556;
 }

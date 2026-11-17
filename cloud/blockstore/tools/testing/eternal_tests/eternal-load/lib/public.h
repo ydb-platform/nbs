@@ -1,5 +1,7 @@
 #pragma once
 
+#include <library/cpp/digest/crc32c/crc32c.h>
+
 #include <util/datetime/base.h>
 #include <util/system/defaults.h>
 #include <util/stream/file.h>
@@ -41,6 +43,29 @@ inline IOutputStream& operator<<(IOutputStream& out, const TBlockData& data)
         << "}";
 
     return out;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Layout of every sector written by the aligned test scenario.
+// Header.Checksum holds CalculateSectorChecksum() of the sector.
+struct TSectorData
+{
+    static constexpr ui64 Size = 512;
+
+    TBlockData Header;
+    // Device offset of the sector divided by Size.
+    ui64 SectorIndex = 0;
+    char Payload[Size - sizeof(TBlockData) - sizeof(ui64)];
+};
+
+static_assert(sizeof(TSectorData) == TSectorData::Size);
+
+// CRC32C of the whole sector, computed with Header.Checksum set to zero.
+inline ui32 CalculateSectorChecksum(TSectorData sector)
+{
+    sector.Header.Checksum = 0;
+    return Crc32c(&sector, sizeof(sector));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

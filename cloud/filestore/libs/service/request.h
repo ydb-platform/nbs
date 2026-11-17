@@ -117,9 +117,12 @@ namespace NCloud::NFileStore {
     xxx(KickEndpoint,                       __VA_ARGS__)                       \
 // FILESTORE_ENDPOINT_METHODS
 
+// ExecuteAction is not among FILESTORE_ENDPOINT_METHODS: FILESTORE_REQUESTS
+// already has it with FILESTORE_SERVICE_METHODS.
 #define FILESTORE_ENDPOINT_SERVICE(xxx, ...)                                   \
     xxx(Ping,                               __VA_ARGS__)                       \
     FILESTORE_ENDPOINT_METHODS(xxx,         __VA_ARGS__)                       \
+    xxx(ExecuteAction,                      __VA_ARGS__)                       \
 // FILESTORE_ENDPOINT_SERVICE
 
 ////////////////////////////////////////////////////////////////////////////////

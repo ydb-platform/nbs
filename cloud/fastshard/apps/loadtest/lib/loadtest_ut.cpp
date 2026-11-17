@@ -11,6 +11,8 @@
 
 #include <util/generic/algorithm.h>
 #include <util/generic/vector.h>
+#include <util/system/sanitizers.h>
+#include <util/system/spinlock.h>
 
 #include <gtest/gtest.h>
 
@@ -72,6 +74,22 @@ const NCloud::NFileStore::NProto::TTestStats::TStats* FindStats(
     return nullptr;
 }
 
+// The call vectors are appended to by the load fibers, so a thread that
+// reads them while the test runs has to take the lock of the fake.
+size_t WriteCallCount(TFakeStorageNode& storage)
+{
+    with_lock (storage.Lock) {
+        return storage.WriteCalls.size();
+    }
+}
+
+size_t ReadCallCount(TFakeStorageNode& storage)
+{
+    with_lock (storage.Lock) {
+        return storage.ReadCalls.size();
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TEST(TFastShardLoadTest, ShouldRunMixedLoadAgainstFakeStorageNode)
@@ -106,7 +124,10 @@ TEST(TFastShardLoadTest, ShouldRunMixedLoadAgainstFakeStorageNode)
     EXPECT_EQ(
         writes * config.WritePages * config.PageSize,
         writeStats->GetRequestBytes());
-    EXPECT_GT(writeStats->GetLatency().GetMax(), 0u);
+    // TLatencyHistogram records nothing under thread sanitizer
+    if (!NSan::TSanIsOn()) {
+        EXPECT_GT(writeStats->GetLatency().GetMax(), 0u);
+    }
 
     const auto* readStats = FindStats(stats, "ReadPages");
     ASSERT_TRUE(readStats);
@@ -348,7 +369,7 @@ TEST(TFastShardLoadTest, ShouldStopWhileRetryingReads)
     std::thread stopper(
         [&]
         {
-            while (storage->ReadCalls.size() < 3) {
+            while (ReadCallCount(*storage) < 3) {
                 Sleep(TDuration::MilliSeconds(1));
             }
             ctx.ShouldStop.store(true);
@@ -378,10 +399,10 @@ TEST(TFastShardLoadTest, ShouldKeepRetryingWritesAfterStop)
     std::thread stopper(
         [&]
         {
-            while (storage->WriteCalls.size() < 3) {
+            while (WriteCallCount(*storage) < 3) {
                 Sleep(TDuration::MilliSeconds(1));
             }
-            callsAtStop = storage->WriteCalls.size();
+            callsAtStop = WriteCallCount(*storage);
             ctx.ShouldStop.store(true);
         });
 
@@ -423,8 +444,7 @@ TEST(TFastShardLoadTest, ShouldStopOnRequest)
     std::thread stopper(
         [&]
         {
-            while (storage->WriteCalls.size() + storage->ReadCalls.size() < 50)
-            {
+            while (WriteCallCount(*storage) + ReadCallCount(*storage) < 50) {
                 Sleep(TDuration::MilliSeconds(1));
             }
             ctx.ShouldStop.store(true);

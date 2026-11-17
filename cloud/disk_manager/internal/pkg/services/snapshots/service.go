@@ -41,6 +41,10 @@ func (s *service) CreateSnapshot(
 	useS3 := common.Find(s.config.GetUseS3ForFolder(), req.FolderId) ||
 		rand.Uint32()%100 < s.config.GetUseS3Percentage()
 
+	proxyOverlayDiskZoneBlacklist := s.config.GetUseProxyOverlayDiskZoneBlacklist()
+	useProxyOverlayDisk := s.config.GetUseProxyOverlayDisk() &&
+		!common.Find(proxyOverlayDiskZoneBlacklist, req.Src.ZoneId)
+
 	return s.taskScheduler.ScheduleTask(
 		ctx,
 		"snapshots.CreateSnapshotFromDisk",
@@ -53,7 +57,7 @@ func (s *service) CreateSnapshot(
 			DstSnapshotId:                    req.SnapshotId,
 			FolderId:                         req.FolderId,
 			UseS3:                            useS3,
-			UseProxyOverlayDisk:              s.config.GetUseProxyOverlayDisk(),
+			UseProxyOverlayDisk:              useProxyOverlayDisk,
 			RetryBrokenDRBasedDiskCheckpoint: s.config.GetRetryBrokenDRBasedDiskCheckpoint(),
 		},
 	)

@@ -55,7 +55,7 @@ TString ZeroedPage(ui32 pageSize = DefaultPageSize)
 }
 
 // "10:[a,b] 20:[c]"
-TString DescribeGroups(const NCloud::NProto::TReadPagesResponse& response)
+TString DescribeGroups(const NProto::TReadPagesResponse& response)
 {
     TVector<TString> groups;
 
@@ -97,7 +97,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     }
 
     // the pages read are grouped after the refs they have been read for
-    NCloud::NProto::TReadPagesResponse ReadPagesResponse(
+    NProto::TReadPagesResponse ReadPagesResponse(
         const TVector<std::pair<ui64, ui64>>& refs)
     {
         const auto rangeRefs = MakeRangeRefs(refs);

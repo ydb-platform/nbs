@@ -21,7 +21,6 @@ defaults:
 permissions:
   contents: read
   pull-requests: write
-  issues: write
 
 env:
   GIT_CONFIG_COUNT: "1"

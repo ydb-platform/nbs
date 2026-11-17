@@ -34,15 +34,23 @@ struct IDevice
     [[nodiscard]] virtual auto ReadPages(TVector<TPageRangeRef> rangeRefs)
         -> NThreading::TFuture<TResultOrError<TVector<TBuffer>>> = 0;
 
-    [[nodiscard]] virtual auto WritePages(TVector<TPageRange> ranges)
-        -> NThreading::TFuture<NCloud::NProto::TError> = 0;
+    [[nodiscard]] virtual auto WritePages(
+        TVector<TPageRange> ranges) -> NThreading::TFuture<NProto::TError> = 0;
 
     [[nodiscard]] virtual auto ZeroPages(TVector<TPageRangeRef> ranges)
-        -> NThreading::TFuture<NCloud::NProto::TError> = 0;
+        -> NThreading::TFuture<NProto::TError> = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 IDevicePtr CreateDeviceStub();
+
+/**
+ * Creates a device over a region of |device|, addressed from the region's
+ * first page. The devices created for the regions of the same device share
+ * its pages. A request that reaches outside the region fails with
+ * E_ARGUMENT.
+ */
+IDevicePtr CreateRegionDevice(IDevicePtr device, TPageRangeRef region);
 
 }   // namespace NCloud::NJournalled

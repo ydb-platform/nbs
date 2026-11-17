@@ -1,5 +1,7 @@
 #include "iovector.h"
 
+#include <cloud/storage/core/libs/common/zeroes.h>
+
 #include <util/string/builder.h>
 
 namespace NCloud::NBlockStore {
@@ -224,28 +226,7 @@ size_t CountVoidBuffers(const NProto::TIOVector& iov)
 
 bool IsAllZeroes(const char* src, size_t size)
 {
-    using TBigNumber = ui64;
-
-    if (size < sizeof(TBigNumber)) {
-        for (size_t i = 0; i < size; ++i) {
-            if (src[i] != 0) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    const bool isAligned =
-        reinterpret_cast<std::uintptr_t>(src) % sizeof(TBigNumber) == 0;
-
-    if (isAligned) {
-        const TBigNumber* const a = reinterpret_cast<const TBigNumber*>(src);
-        return !a[0] && !memcmp(
-                            src,
-                            src + sizeof(TBigNumber),
-                            size - sizeof(TBigNumber));
-    }
-    return !src[0] && !memcmp(src, src + sizeof(char), size - sizeof(char));
+    return NCloud::IsAllZeroes(src, size);
 }
 
 bool IsAllZeroes(TBlockDataRef dataRef)

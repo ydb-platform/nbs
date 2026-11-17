@@ -113,6 +113,7 @@ struct TBootstrap
     {
         State = std::make_unique<TWriteBackCacheState>(
             Processor,
+            CreateWriteBackCacheLock(NProto::WBC_LOCK_ADAPTIVE),
             Storage,
             Timer,
             Stats->GetWriteBackCacheStateStats(),

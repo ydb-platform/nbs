@@ -23,9 +23,10 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+using namespace NCloud;
 using namespace NCloud::NFastShard;
-using NCloud::NProto::TDeviceProtocolRequest;
-using NCloud::NProto::TDeviceProtocolResponse;
+using NProto::TDeviceProtocolRequest;
+using NProto::TDeviceProtocolResponse;
 using silk::FiberScheduler;
 
 namespace {

@@ -5,7 +5,11 @@
 #include <util/digest/city.h>
 #include <util/string/builder.h>
 
+#include <algorithm>
+
 namespace NCloud::NFileStore::NStorage {
+
+using namespace NActors;
 
 namespace {
 
@@ -72,10 +76,12 @@ TResultOrError<ui64> CalculateNewShardConfigsHash(
 
 TShardCreationStateCompanion::TShardCreationStateCompanion(
     TString fileSystemId,
-    EMode mode)
+    EMode mode,
+    IShardCreationOwner* owner)
     : FileSystemId(std::move(fileSystemId))
     , LogTag(FileSystemId)
     , Mode(mode)
+    , Owner(owner)
 {
     Y_UNUSED(Mode);
 }
@@ -197,6 +203,75 @@ NProto::TError TShardCreationStateCompanion::SetupCreatedShardBitmap(
     CreatedShardBitmap = bitmap.ExtractResult();
 
     return {};
+}
+
+NProto::TError TShardCreationStateCompanion::InitializeShardCreation(
+    const ui32 topologyShardCount,
+    const ui32 targetShardCount,
+    const ui32 maxShardManagementRequestsInFlight)
+{
+    if (topologyShardCount > targetShardCount) {
+        return MakeError(
+            E_INVALID_STATE,
+            TStringBuilder()
+                << "Cannot decrease number of shards: current="
+                << topologyShardCount
+                << ", requested=" << targetShardCount);
+    }
+
+    NextShardToCreate = topologyShardCount;
+    ShardsToCreate = targetShardCount - topologyShardCount;
+    TargetShardCount = targetShardCount;
+    MaxShardManagementRequestsInFlight =
+        maxShardManagementRequestsInFlight;
+
+    return {};
+}
+
+void TShardCreationStateCompanion::StartShardCreation(
+    const TActorContext& ctx)
+{
+    const ui32 limit = MaxShardManagementRequestsInFlight;
+    const ui32 endShardIndex = (limit == 0)
+                                   ? TargetShardCount
+                                   : std::min<ui32>(
+                                         NextShardToCreate + limit,
+                                         TargetShardCount);
+    for (ui32 shardIndex = NextShardToCreate; shardIndex < endShardIndex;
+         ++shardIndex)
+    {
+        Owner->CreateShard(ctx, shardIndex);
+        NextShardToCreate = shardIndex + 1;
+    }
+}
+
+NProto::TError TShardCreationStateCompanion::OnShardCreated(
+    const TActorContext& ctx,
+    const ui32 shardIndex)
+{
+    if (!ShardsToCreate) {
+        return MakeError(
+            E_INVALID_STATE,
+            TStringBuilder()
+                << "Shard creation response for shard " << shardIndex
+                << " received with no shards left to create");
+    }
+
+    --ShardsToCreate;
+
+    if (ShardsToCreate && MaxShardManagementRequestsInFlight) {
+        if (NextShardToCreate < TargetShardCount) {
+            Owner->CreateShard(ctx, NextShardToCreate);
+            ++NextShardToCreate;
+        }
+    }
+
+    return {};
+}
+
+bool TShardCreationStateCompanion::HasShardsToCreate() const
+{
+    return ShardsToCreate != 0;
 }
 
 TResultOrError<bool> TShardCreationStateCompanion::CanResetFsShardCreationState(

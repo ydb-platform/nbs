@@ -77,9 +77,9 @@ struct TBlockingStorageNode: public TFakeStorageNode
     silk::FiberEvent Gate;
     std::atomic<bool> Completed{false};
 
-    NCloud::NProto::TAcquireDevicesResponse AcquireDevices(
+    NProto::TAcquireDevicesResponse AcquireDevices(
         TFastShardContext& ctx,
-        NCloud::NProto::TAcquireDevicesRequest request) override
+        NProto::TAcquireDevicesRequest request) override
     {
         Gate.wait();
         Completed.store(true);
@@ -124,7 +124,7 @@ TEST(TFastShardClientTest, ShouldAcquireDevices)
     EXPECT_EQ("d1", req.GetDeviceUUIDs(0));
     EXPECT_EQ("d2", req.GetDeviceUUIDs(1));
     EXPECT_EQ(7u, req.GetGeneration());
-    EXPECT_EQ(NCloud::NProto::ACCESS_READ_ONLY, req.GetAccessMode());
+    EXPECT_EQ(NProto::ACCESS_READ_ONLY, req.GetAccessMode());
     EXPECT_EQ("fs", req.GetFastshardId());
     EXPECT_EQ("cli", req.GetHeaders().GetClientId());
     EXPECT_EQ(500u, req.GetHeaders().GetRequestTimeout());
@@ -138,7 +138,7 @@ TEST(TFastShardClientTest, ShouldAcquireDevicesForWritingByDefault)
 
     ASSERT_EQ(1u, f.Storage->AcquireCalls.size());
     const auto& req = f.Storage->AcquireCalls[0];
-    EXPECT_EQ(NCloud::NProto::ACCESS_READ_WRITE, req.GetAccessMode());
+    EXPECT_EQ(NProto::ACCESS_READ_WRITE, req.GetAccessMode());
     EXPECT_EQ(0u, req.GetGeneration());
 }
 
@@ -331,7 +331,7 @@ TEST(TFastShardClientTest, ShouldAcquireAndReleaseDeviceAroundRequest)
     EXPECT_EQ("d1", acquire.GetDeviceUUIDs(0));
     EXPECT_EQ("cli", acquire.GetHeaders().GetClientId());
     EXPECT_EQ(7u, acquire.GetGeneration());
-    EXPECT_EQ(NCloud::NProto::ACCESS_READ_WRITE, acquire.GetAccessMode());
+    EXPECT_EQ(NProto::ACCESS_READ_WRITE, acquire.GetAccessMode());
     EXPECT_EQ("fs", acquire.GetFastshardId());
 
     ASSERT_EQ(1u, f.Storage->FormatCalls.size());
@@ -354,30 +354,30 @@ TEST(TFastShardClientTest, ShouldAcquireWithAccessModeOfCommand)
         const char* Name;
         std::initializer_list<const char*> Args;
         TString Input;
-        NCloud::NProto::EAccessMode AccessMode;
+        NProto::EAccessMode AccessMode;
     };
 
     const TCase cases[] = {
         {"readpages",
          {"--acquire", "--device-uuid", "d1", "--page-count", "1"},
          {},
-         NCloud::NProto::ACCESS_READ_ONLY},
+         NProto::ACCESS_READ_ONLY},
         {"readjournaltail",
          {"--acquire", "--device-uuid", "d1"},
          {},
-         NCloud::NProto::ACCESS_READ_ONLY},
+         NProto::ACCESS_READ_ONLY},
         {"formatdevice",
          {"--acquire", "--device-uuid", "d1"},
          {},
-         NCloud::NProto::ACCESS_READ_WRITE},
+         NProto::ACCESS_READ_WRITE},
         {"writelogrecord",
          {"--acquire", "--device-uuid", "d1", "--page-size", "4"},
          "abcd",
-         NCloud::NProto::ACCESS_READ_WRITE},
+         NProto::ACCESS_READ_WRITE},
         {"advancelsnlowwatermark",
          {"--acquire", "--device-uuid", "d1", "--lsn-low-watermark", "1"},
          {},
-         NCloud::NProto::ACCESS_READ_WRITE},
+         NProto::ACCESS_READ_WRITE},
     };
 
     for (const auto& c: cases) {
@@ -517,7 +517,7 @@ TEST(TFastShardClientTest, ShouldSpeakProtoText)
     EXPECT_EQ(3u, req.GetGeneration());
     EXPECT_EQ("cli", req.GetHeaders().GetClientId());
 
-    NCloud::NProto::TAcquireDevicesResponse resp;
+    NProto::TAcquireDevicesResponse resp;
     ParseFromTextFormat(*f.Output, resp);
     EXPECT_EQ(E_REJECTED, resp.GetError().GetCode());
 }

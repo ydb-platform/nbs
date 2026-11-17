@@ -49,7 +49,7 @@ protected:
 
     bool DoExecute() override
     {
-        NCloud::NProto::TReleaseDevicesRequest request;
+        NProto::TReleaseDevicesRequest request;
         if (Proto) {
             ParseFromTextFormat(GetInputStream(), request);
         } else {
