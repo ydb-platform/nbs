@@ -58,6 +58,16 @@ struct TWriteDataPromiseFailedEvent
     }
 };
 
+struct TDestroyCachedWriteDataRequestEvent
+{
+    std::unique_ptr<TCachedWriteDataRequest> Request;
+
+    void Invoke()
+    {
+        Request.reset();
+    }
+};
+
 struct TFlushOrReleasePromiseCompletedEvent
 {
     NThreading::TPromise<NCloud::NProto::TError> Promise;
@@ -115,6 +125,7 @@ struct TScheduleFlushEvent
 using TEventVariant = std::variant<
     TWriteDataPromiseCompletedEvent,
     TWriteDataPromiseFailedEvent,
+    TDestroyCachedWriteDataRequestEvent,
     TFlushOrReleasePromiseCompletedEvent,
     TFlushOrReleasePromiseFailedEvent,
     TAcquireBarrierPromiseCompletedEvent,
@@ -154,7 +165,7 @@ void TQueuedOperations::Release()
 {
     while (true) {
         auto events = std::exchange(Events, {});
-        auto requestsToSerialize = std::exchange(RequestsToSerialize, {});
+        auto* requestToSerialize = std::exchange(RequestToSerialize, nullptr);
 
         Lock->Release();
 
@@ -165,7 +176,7 @@ void TQueuedOperations::Release()
         // Release event-held state while unlocked
         events.clear();
 
-        if (requestsToSerialize.empty()) {
+        if (!requestToSerialize) {
             break;
         }
 
@@ -175,9 +186,7 @@ void TQueuedOperations::Release()
         //
         // Serialization failures are fatal: requests have already been
         // validated, so any failure indicates an invariant violation.
-        for (auto& request: requestsToSerialize) {
-            request->SerializeToAllocation();
-        }
+        requestToSerialize->SerializeToAllocation();
 
         Lock->Acquire();
 
@@ -206,6 +215,18 @@ void TQueuedOperations::FailWriteDataRequest(
     ValidateRetiredRequest(*request);
 
     Events.push_back(TWriteDataPromiseFailedEvent{std::move(request), error});
+}
+
+void TQueuedOperations::DestroyCachedWriteDataRequest(
+    std::unique_ptr<TCachedWriteDataRequest> request)
+{
+    // Automatic unlinking during destruction must not touch shared lists
+    // after releasing Lock.
+    request->TIntrusiveListItem<TCachedWriteDataRequest>::Unlink();
+    request->TIntrusiveListItem<TCachedWriteDataRequest, THandleStateTag>::
+        Unlink();
+
+    Events.push_back(TDestroyCachedWriteDataRequestEvent{std::move(request)});
 }
 
 void TQueuedOperations::CompleteFlushOrReleasePromise(
@@ -241,7 +262,8 @@ void TQueuedOperations::FailAcquireBarrierPromise(
 void TQueuedOperations::SerializeWriteDataRequest(
     TPendingWriteDataRequest* request)
 {
-    RequestsToSerialize.push_back(request);
+    Y_ABORT_UNLESS(!RequestToSerialize);
+    RequestToSerialize = request;
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

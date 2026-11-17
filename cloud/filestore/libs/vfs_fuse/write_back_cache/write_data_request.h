@@ -13,6 +13,7 @@
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 class TWriteDataRequestManager;
+class TCachedWriteDataRequest;
 struct THandleStateTag;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -74,21 +75,21 @@ private:
     friend class TWriteDataRequestManager;
 
     std::shared_ptr<NProto::TWriteDataRequest> Request;
-
-    NThreading::TPromise<NProto::TWriteDataResponse> Promise =
-        NThreading::NewPromise<NProto::TWriteDataResponse>();
+    NThreading::TPromise<NProto::TWriteDataResponse> Promise;
 
     // Private fields accessed directly by TWriteDataRequestManager
     char* AllocationPtr = nullptr;
     size_t AllocationByteCount = 0;
     ui32 Checksum = 0;
+    std::unique_ptr<TCachedWriteDataRequest> CachedRequest;
     std::atomic<bool> Serialized = false;
 
 public:
     TPendingWriteDataRequest(
         ui64 sequenceId,
         TInstant time,
-        std::shared_ptr<NProto::TWriteDataRequest> request);
+        std::shared_ptr<NProto::TWriteDataRequest> request,
+        NThreading::TPromise<NProto::TWriteDataResponse> promise);
 
     const NProto::TWriteDataRequest& GetRequest() const
     {

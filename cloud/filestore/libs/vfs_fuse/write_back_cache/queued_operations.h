@@ -18,6 +18,7 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TPendingWriteDataRequest;
+class TCachedWriteDataRequest;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -39,10 +40,11 @@ private:
     std::unique_ptr<IWriteBackCacheLock> Lock;
     TVector<TEvent> Events;
 
-    // Non-owning pointers. Each request stays alive until it publishes
-    // Serialized. Another thread may then destroy it, the serializer must not
-    // dereference its pointer after publication.
-    TVector<TPendingWriteDataRequest*> RequestsToSerialize;
+    // Non-owning pointer. The request stays alive until it publishes
+    // Serialized. Another thread may then destroy it; the serializer must not
+    // dereference its pointer after publication. ProcessPendingRequests queues
+    // at most one request before Release takes it.
+    TPendingWriteDataRequest* RequestToSerialize = nullptr;
     IQueuedOperationsProcessor& Processor;
 
     // Invoked under Lock after queued WriteData requests are serialized
@@ -76,6 +78,9 @@ public:
     void FailWriteDataRequest(
         std::unique_ptr<TPendingWriteDataRequest> request,
         const NCloud::NProto::TError& error);
+
+    void DestroyCachedWriteDataRequest(
+        std::unique_ptr<TCachedWriteDataRequest> request);
 
     void CompleteFlushOrReleasePromise(
         NThreading::TPromise<NCloud::NProto::TError> promise);

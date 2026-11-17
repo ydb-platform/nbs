@@ -13,9 +13,11 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 TPendingWriteDataRequest::TPendingWriteDataRequest(
     ui64 sequenceId,
     TInstant time,
-    std::shared_ptr<NProto::TWriteDataRequest> request)
+    std::shared_ptr<NProto::TWriteDataRequest> request,
+    NThreading::TPromise<NProto::TWriteDataResponse> promise)
     : TWriteDataRequestBase(sequenceId, time)
     , Request(std::move(request))
+    , Promise(std::move(promise))
 {
     const ui64 byteCount = NCloud::NFileStore::CalculateByteCount(*Request) -
                            Request->GetBufferOffset();
@@ -63,7 +65,15 @@ void TPendingWriteDataRequest::SerializeToAllocation()
 
     Checksum = Crc32c(AllocationPtr, AllocationByteCount);
 
-    // Publish last; see RequestsToSerialize's lifetime contract.
+    // Prepare the cached request while unlocked. Its admission time is set
+    // under the cache-state lock after the allocation is committed.
+    CachedRequest = TCachedWriteDataRequest::CreateFromAllocation(
+        GetSequenceId(),
+        TInstant::Zero(),
+        {AllocationPtr, AllocationByteCount});
+    Y_ABORT_UNLESS(CachedRequest != nullptr);
+
+    // Publish last; see RequestToSerialize's lifetime contract.
     Serialized.store(true, std::memory_order_release);
 }
 
