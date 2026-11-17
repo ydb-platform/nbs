@@ -293,6 +293,11 @@ def test_find():
     a1_node_id = json.loads(client.stat("fs0", "/a1"))["Id"]
     out += client.find("fs0", depth=3, root_node_id=a1_node_id)
 
+    for path, size in [("/a0/f5.txt", 4096), ("/a1/f3.txt", 1048576)]:
+        node_id = json.loads(client.stat("fs0", path))["Id"]
+        client.set_node_attr("fs0", node_id, "--size", size)
+    out += client.find("fs0", depth=2, print_attrs=True)
+
     client.destroy("fs0")
 
     with open(results_path, "wb") as results_file:

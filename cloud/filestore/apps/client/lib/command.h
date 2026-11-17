@@ -268,4 +268,8 @@ protected:
     void Stop() override;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+TString NodeTypeToString(NProto::ENodeType nodeType);
+
 }   // namespace NCloud::NFileStore::NClient

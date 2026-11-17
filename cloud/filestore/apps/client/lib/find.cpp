@@ -26,6 +26,7 @@ private:
     TString Glob;
     ui32 Depth = 0;
     ui64 StartRootNodeId = RootNodeId;
+    bool PrintAttrs = false;
 
 public:
     TFindCommand()
@@ -43,6 +44,9 @@ public:
             .RequiredArgument("NUM")
             .DefaultValue(RootNodeId)
             .StoreResult(&StartRootNodeId);
+
+        Opts.AddLongOption("print-attrs", "also print type, size and links")
+            .StoreTrue(&PrintAttrs);
     }
 
     void StatAll(
@@ -61,7 +65,15 @@ public:
             const auto& node = response.GetNodes(i);
             const auto& name = response.GetNames(i);
             if (MatchesGlob(Glob, name)) {
-                Cout << prefix << "\t" << name << "\t" << node.GetId() << Endl;
+                Cout << prefix << "\t" << name << "\t" << node.GetId();
+                if (PrintAttrs) {
+                    const auto type =
+                        static_cast<NProto::ENodeType>(node.GetType());
+                    Cout << "\t" << NodeTypeToString(type)
+                         << "\t" << node.GetSize()
+                         << "\t" << node.GetLinks();
+                }
+                Cout << Endl;
             }
 
             if (node.GetType() == NProto::E_DIRECTORY_NODE && depth) {
