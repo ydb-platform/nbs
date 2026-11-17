@@ -31,12 +31,22 @@ bool TPartitionActor::ShouldStartOrdinaryTrim(ui64 ordinaryTrimToCommitId)
 
 bool TPartitionActor::ShouldStartSelectiveTrim(
     const TActorContext& ctx,
-    ui64 ordinaryTrimToCommitId)
+    const TPartitionThreadSafeState::TFreshTrimSnapshot& snapshot)
 {
     if (!IsSelectiveTrimEnabled()) {
         return false;
     }
 
+    // Normally, the SelectiveTrimToCommitId is above the
+    // OrdinaryTrimToCommitId. But the opposite is a technically possible
+    // situation, since the OrdinaryTrimToCommitId can be advanced a little
+    // earlier than the SelectiveTrimToCommitId. No point in doing the selective
+    // trim in this case.
+    if (snapshot.SelectiveTrimToCommitId <= snapshot.OrdinaryTrimToCommitId) {
+        return false;
+    }
+
+    const ui64 ordinaryTrimToCommitId = snapshot.OrdinaryTrimToCommitId;
     const ui64 trimmableByteCount =
         State->GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(
             ordinaryTrimToCommitId);
@@ -78,16 +88,16 @@ bool TPartitionActor::CheckDeadFreshBlobByteCount() const
 
 TPartitionActor::ETrimFreshLogKind TPartitionActor::ChooseTrimFreshLogKind(
     const TActorContext& ctx,
-    ui64 ordinaryTrimToCommitId)
+    const TPartitionThreadSafeState::TFreshTrimSnapshot& snapshot)
 {
     // An ordinary trim wins when both are due. It is cheaper, its hard barrier
     // also deletes dead blobs with Keep flags, and the selective trim stays due
     // after it.
-    if (ShouldStartOrdinaryTrim(ordinaryTrimToCommitId)) {
+    if (ShouldStartOrdinaryTrim(snapshot.OrdinaryTrimToCommitId)) {
         return ETrimFreshLogKind::Ordinary;
     }
 
-    if (ShouldStartSelectiveTrim(ctx, ordinaryTrimToCommitId)) {
+    if (ShouldStartSelectiveTrim(ctx, snapshot)) {
         return ETrimFreshLogKind::Selective;
     }
 
@@ -101,7 +111,7 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    if (ChooseTrimFreshLogKind(ctx, State->GetTrimFreshLogToCommitId()) ==
+    if (ChooseTrimFreshLogKind(ctx, SharedState->GetFreshTrimSnapshot()) ==
         ETrimFreshLogKind::None)
     {
         // not ready
@@ -195,17 +205,19 @@ void TPartitionActor::HandleTrimFreshLog(
         State->GetDeadUntrimmedFreshBlobByteCount());
 
     const auto snapshot = SharedState->GetFreshTrimSnapshot();
-    auto kind = ChooseTrimFreshLogKind(ctx, snapshot.OrdinaryTrimToCommitId);
+    auto kind = ChooseTrimFreshLogKind(ctx, snapshot);
 
     std::optional<TSelectiveTrimPlan> plan;
     if (kind == ETrimFreshLogKind::Selective) {
-        plan = State->BuildSelectiveTrimPlan(
-            snapshot.OrdinaryTrimToCommitId,
-            snapshot.SelectiveTrimToCommitId,
-            State->GetKeptToCommitId(),
-            State->GetLastSentSelectiveTrimToCommitId(),
-            Executor()->Generation(),
-            MaxCollectGarbageFlagsPerMessage);
+        plan = State->BuildSelectiveTrimPlan({
+            .OrdinaryTrimToCommitId = snapshot.OrdinaryTrimToCommitId,
+            .SelectiveTrimToCommitId = snapshot.SelectiveTrimToCommitId,
+            .KeptToCommitId = State->GetKeptToCommitId(),
+            .LastSentSelectiveTrimToCommitId =
+                State->GetLastSentSelectiveTrimToCommitId(),
+            .CurrentGeneration = Executor()->Generation(),
+            .MaxFlags = MaxCollectGarbageFlagsPerMessage,
+        });
 
         LOG_DEBUG(
             ctx,
