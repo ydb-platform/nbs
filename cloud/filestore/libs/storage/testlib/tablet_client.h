@@ -338,6 +338,15 @@ public:
         return request;
     }
 
+    auto CreateUnsafeChangeTabletStateRequest(
+        NProtoPrivate::TUnsafeChangeTabletStateRequest record)
+    {
+        auto request = std::make_unique<
+            TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
+        request->Record = std::move(record);
+        return request;
+    }
+
     auto CreateDestroySessionRequest(ui64 seqNo = 0)
     {
         auto request = std::make_unique<TEvIndexTablet::TEvDestroySessionRequest>();

@@ -959,6 +959,48 @@ void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
         return;
     }
 
+    const bool changeRangeIdHasherType =
+        args.Request.HasRangeIdHasherType() &&
+        args.Request.GetRangeIdHasherType() !=
+            GetFileSystem().GetRangeIdHasherType();
+    if (changeRangeIdHasherType) {
+        const ui32 type = args.Request.GetRangeIdHasherType();
+        const auto hasher = CreateRangeIdHasher(type);
+        if (!hasher) {
+            *args.Response.MutableError() = MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "unsupported RangeIdHasherType " << type);
+            return;
+        }
+
+        // A blob never spans ranges, so a range must fit into a blob.
+        const ui64 rangeSize =
+            static_cast<ui64>(GetBlockSize()) * hasher->GetBlockGroupSize();
+        if (rangeSize > Config->GetMaxBlobSize()) {
+            *args.Response.MutableError() = MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "RangeIdHasherType " << type
+                    << " range size " << rangeSize << " exceeds MaxBlobSize "
+                    << Config->GetMaxBlobSize());
+            return;
+        }
+
+        // The range id is a persisted key of the data tables. Data can be
+        // written only to a node and only within a session, so with no node
+        // ever created and no sessions there is no data and no write in
+        // flight. An unconfigured tablet would get the schemeshard's type
+        // with its first config.
+        if (GetFileSystemId().empty() || GetLastNodeId() != RootNodeId ||
+            HasSessions())
+        {
+            *args.Response.MutableError() = MakeError(
+                E_PRECONDITION_FAILED,
+                "RangeIdHasherType can be changed only on a configured tablet"
+                " with no nodes ever created and no sessions");
+            return;
+        }
+    }
+
     auto db = CreateIndexTabletDatabase(tx.DB);
 
     if (args.Request.HasShardCreationState()) {
@@ -990,6 +1032,10 @@ void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
         SetGuestPosixAclEnabled(
             *db,
             args.Request.GetGuestPosixAclEnabled());
+    }
+
+    if (changeRangeIdHasherType) {
+        SetRangeIdHasherType(*db, args.Request.GetRangeIdHasherType());
     }
 }
 

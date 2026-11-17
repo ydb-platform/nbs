@@ -285,6 +285,9 @@ void TIndexTabletActor::HandleUpdateConfig(
     }
 
     // Setting the fields that schemeshard is not aware of.
+    // RangeIdHasherType may be changed by SetRangeIdHasherType, it must never
+    // change afterwards: the range id is a persisted key of the data tables.
+    newConfig.SetRangeIdHasherType(oldConfig.GetRangeIdHasherType());
     // TODO(#8034): switch to shard topology
     *newConfig.MutableShardFileSystemIds() =
         oldConfig.GetShardFileSystemIds();

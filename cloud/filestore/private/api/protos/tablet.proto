@@ -1232,6 +1232,12 @@ message TUnsafeChangeTabletStateRequest
     // Track shard creation progress across retries of throttled create/resize
     // operations, potentially involving thousands of shards.
     TFileSystemShardCreationState ShardCreationState = 5;
+
+    // Range layout: 1 - 64 blocks per range, 2 - 128, 3 - 256. Can be changed
+    // only on a configured tablet with no nodes ever created and no sessions,
+    // and only if a range (BlockSize * blocks per range) fits MaxBlobSize.
+    // Has to be sent to each shard of a sharded filesystem.
+    optional uint32 RangeIdHasherType = 6;
 }
 
 message TUnsafeChangeTabletStateResponse

@@ -360,6 +360,9 @@ TString DescribeChangeTabletStateRequest(
         out << ", GuestPosixAclEnabled: "
             << (request.GetGuestPosixAclEnabled() ? "true" : "false");
     }
+    if (request.HasRangeIdHasherType()) {
+        out << ", RangeIdHasherType: " << request.GetRangeIdHasherType();
+    }
     out << ", ShardCreationState: "
         << DescribeShardCreationState(request.GetShardCreationState()) << "}";
 
