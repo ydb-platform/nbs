@@ -369,6 +369,61 @@ func (f *fixture) storageWithFollowerChunksTable(name string) Storage {
 	return newStorage(f.t, f.ctx, config, f.db, f.s3, metrics.NewEmptyRegistry())
 }
 
+func (f *fixture) checkDeleteSnapshotWithoutBackups(
+	useS3 bool,
+	shadowTableName string,
+) {
+
+	f.t.Helper()
+
+	if len(shadowTableName) != 0 {
+		f.config.ChunkBlobsShadowTableName = &shadowTableName
+		err := schema.Create(
+			f.ctx,
+			f.config,
+			f.db,
+			f.s3,
+			false, // dropUnusedColumns
+			true,  // backupEnabled
+		)
+		require.NoError(f.t, err)
+	}
+
+	// Snapshot deletion must work when backup tables are absent.
+	for _, table := range []string{
+		"backup_chunk_queue",
+		f.config.GetFollowerChunksTableName(),
+		"backup_chunk_delete_queue",
+		"backup_chunk_failures",
+	} {
+		err := f.db.DropTable(
+			f.ctx,
+			f.config.GetStorageFolder(),
+			table,
+		)
+		require.NoError(f.t, err)
+	}
+
+	var err error
+	f.storage, err = NewStorage(
+		f.config,
+		metrics.NewEmptyRegistry(),
+		f.db,
+		f.s3,
+		false, // backupEnabled
+	)
+	require.NoError(f.t, err)
+
+	chunkID := createSnapshotWithChunk(f, "snapshot", useS3)
+	deleteSnapshot(f, "snapshot")
+
+	require.Empty(f.t, readChunkBlobsFromYDB(f, chunkID))
+	if len(shadowTableName) != 0 {
+		f.config.ChunkBlobsTableName = &shadowTableName
+		require.Empty(f.t, readChunkBlobsFromYDB(f, chunkID))
+	}
+}
+
 func createFixture(t *testing.T) *fixture {
 	ctx, cancel := context.WithCancel(test.NewContext())
 
@@ -1116,52 +1171,7 @@ func TestDeleteSnapshotWithoutBackups(t *testing.T) {
 					f := createFixture(t)
 					defer f.teardown()
 
-					if len(shadowTableName) != 0 {
-						f.config.ChunkBlobsShadowTableName = &shadowTableName
-						err := schema.Create(
-							f.ctx,
-							f.config,
-							f.db,
-							f.s3,
-							false, // dropUnusedColumns
-							true,  // backupEnabled
-						)
-						require.NoError(t, err)
-					}
-
-					// Snapshot deletion must work when backup tables are absent.
-					for _, table := range []string{
-						"backup_chunk_queue",
-						f.config.GetFollowerChunksTableName(),
-						"backup_chunk_delete_queue",
-						"backup_chunk_failures",
-					} {
-						err := f.db.DropTable(
-							f.ctx,
-							f.config.GetStorageFolder(),
-							table,
-						)
-						require.NoError(t, err)
-					}
-
-					var err error
-					f.storage, err = NewStorage(
-						f.config,
-						metrics.NewEmptyRegistry(),
-						f.db,
-						f.s3,
-						false, // backupEnabled
-					)
-					require.NoError(t, err)
-
-					chunkID := createSnapshotWithChunk(f, "snapshot", testCase.useS3)
-					deleteSnapshot(f, "snapshot")
-
-					require.Empty(t, readChunkBlobsFromYDB(f, chunkID))
-					if len(shadowTableName) != 0 {
-						f.config.ChunkBlobsTableName = &shadowTableName
-						require.Empty(t, readChunkBlobsFromYDB(f, chunkID))
-					}
+					f.checkDeleteSnapshotWithoutBackups(testCase.useS3, shadowTableName)
 				})
 			}
 		})
