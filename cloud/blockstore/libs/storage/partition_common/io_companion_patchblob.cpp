@@ -186,10 +186,10 @@ void TPatchBlobActor::ReplyAndDie(
 {
     if (HasError(response->GetError())) {
         if (!response->ErrorSource) {
-            response->ErrorSource = EErrorSource::Local;
+            response->ErrorSource = EErrorSource::Regular;
         }
-        if (response->ErrorSource == EErrorSource::Local) {
-            ReportLocalPatchBlobError(
+        if (response->ErrorSource == EErrorSource::ContractViolation) {
+            ReportContractViolationPatchBlobError(
                 FormatError(response->GetError()),
                 {{"tabletId", TabletId},
                  {"originalBlobId",
@@ -249,7 +249,11 @@ void TPatchBlobActor::HandlePatchResult(
 
     auto blobId = MakeBlobId(TabletId, Request->PatchedBlobId);
     if (msg->Id != blobId) {
-        ReplyError(ctx, *msg, "invalid response received", EErrorSource::Local);
+        ReplyError(
+            ctx,
+            *msg,
+            "invalid response received",
+            EErrorSource::ContractViolation);
         return;
     }
 

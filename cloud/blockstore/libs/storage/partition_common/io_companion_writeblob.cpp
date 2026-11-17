@@ -249,10 +249,10 @@ void TWriteBlobActor::ReplyAndDie(
 {
     if (HasError(response->GetError())) {
         if (!response->ErrorSource) {
-            response->ErrorSource = EErrorSource::Local;
+            response->ErrorSource = EErrorSource::Regular;
         }
-        if (response->ErrorSource == EErrorSource::Local) {
-            ReportLocalWriteBlobError(
+        if (response->ErrorSource == EErrorSource::ContractViolation) {
+            ReportContractViolationWriteBlobError(
                 FormatError(response->GetError()),
                 {{"tabletId", TabletId},
                  {"blobId", MakeBlobId(TabletId, Request->BlobId).ToString()}});
@@ -317,7 +317,11 @@ void TWriteBlobActor::HandlePutResult(
 
     auto blobId = MakeBlobId(TabletId, Request->BlobId);
     if (msg->Id != blobId) {
-        ReplyError(ctx, *msg, "invalid response received", EErrorSource::Local);
+        ReplyError(
+            ctx,
+            *msg,
+            "invalid response received",
+            EErrorSource::ContractViolation);
         return;
     }
 

@@ -42,7 +42,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 enum class EErrorSource
 {
-    Local,
+    Regular,
+    ContractViolation,
     BlobStorage,
 };
 

@@ -50,10 +50,12 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
             EdgeActor = ActorSystem.AllocateEdgeActor();
         }
 
-        ui64 GetLocalReadBlobErrors() const
+        ui64 GetContractViolationReadBlobErrors() const
         {
             return CriticalEvents
-                ->GetCounter(GetCriticalEventForLocalReadBlobError(), true)
+                ->GetCounter(
+                    GetCriticalEventForContractViolationReadBlobError(),
+                    true)
                 ->Val();
         }
     };
@@ -174,7 +176,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         THolder<TEvPartitionCommonPrivate::TEvReadBlobResponse> FinishRead(
             std::unique_ptr<NKikimr::TEvBlobStorage::TEvGetResult> result)
         {
-            const auto previousLocalReadErrors = GetLocalReadBlobErrors();
+            const auto previousContractViolationReadErrors =
+                GetContractViolationReadBlobErrors();
             ActorSystem.Send(new NActors::IEventHandle(
                 ReadActor,
                 EdgeActor,
@@ -192,12 +195,12 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 expectedBytesCount += ReadRequest->Queries[i].Size;
             }
             UNIT_ASSERT_VALUES_EQUAL(expectedBytesCount, completed->BytesCount);
-            const bool localError =
+            const bool contractViolationError =
                 HasError(response->GetError()) &&
-                response->ErrorSource == EErrorSource::Local;
+                response->ErrorSource == EErrorSource::ContractViolation;
             UNIT_ASSERT_VALUES_EQUAL(
-                previousLocalReadErrors + localError,
-                GetLocalReadBlobErrors());
+                previousContractViolationReadErrors + contractViolationError,
+                GetContractViolationReadBlobErrors());
             return response;
         }
     };
@@ -225,7 +228,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
             "outside the chunk list");
         UNIT_ASSERT(response->BlockChecksums.empty());
         UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), Blocks.front());
-        UNIT_ASSERT_VALUES_EQUAL(1, GetLocalReadBlobErrors());
+        UNIT_ASSERT_VALUES_EQUAL(1, GetContractViolationReadBlobErrors());
     }
 
     Y_UNIT_TEST_F(ShouldReportCompressedReadBytes, TCompressedReadEnvironment)
@@ -317,7 +320,9 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                             response->BlockChecksums[i]);
                     }
                 }
-                UNIT_ASSERT_VALUES_EQUAL(0, GetLocalReadBlobErrors());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    GetContractViolationReadBlobErrors());
             }
         }
     }
@@ -458,10 +463,10 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
 
                 const auto response = FinishRead(std::move(result));
                 UNIT_ASSERT_VALUES_EQUAL(
-                    E_REJECTED,
+                    E_FAIL,
                     response->GetError().GetCode());
                 UNIT_ASSERT_VALUES_EQUAL(
-                    "TEvBlobStorage::TEvGet failed: invalid response received",
+                    "response blob id mismatch with request blob id",
                     response->GetError().GetMessage());
                 UNIT_ASSERT(response->BlockChecksums.empty());
                 for (const auto& block: Blocks) {
@@ -511,16 +516,18 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
 
                     const auto response = FinishRead(std::move(result));
                     UNIT_ASSERT_VALUES_EQUAL(
-                        E_REJECTED,
+                        E_FAIL,
                         response->GetError().GetCode());
                     UNIT_ASSERT_VALUES_EQUAL(
                         TStringBuilder()
-                            << "TEvBlobStorage::TEvGet failed: Invalid blob "
+                            << "Invalid blob "
                                "response size at index "
                             << responseIndex << ": expected " << query.Size
                             << " bytes, got " << size,
                         response->GetError().GetMessage());
-                    UNIT_ASSERT(response->ErrorSource == EErrorSource::Local);
+                    UNIT_ASSERT(
+                        response->ErrorSource ==
+                        EErrorSource::ContractViolation);
                     UNIT_ASSERT(response->BlockChecksums.empty());
                     for (const auto& block: Blocks) {
                         UNIT_ASSERT_VALUES_EQUAL(
@@ -529,7 +536,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                     }
                     UNIT_ASSERT_VALUES_EQUAL(
                         ++expectedCriticalEvents,
-                        GetLocalReadBlobErrors());
+                        GetContractViolationReadBlobErrors());
                 }
             }
         }
@@ -558,17 +565,18 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
 
                 const auto response = FinishRead(std::move(result));
                 UNIT_ASSERT_VALUES_EQUAL(
-                    E_REJECTED,
+                    E_FAIL,
                     response->GetError().GetCode());
                 UNIT_ASSERT_VALUES_EQUAL(
                     TStringBuilder()
-                        << "TEvBlobStorage::TEvGet failed: Invalid blob "
+                        << "Invalid blob "
                            "response "
                            "offset at index "
                         << responseIndex << ": expected " << query.Shift
                         << ", got " << query.Shift + 1,
                     response->GetError().GetMessage());
-                UNIT_ASSERT(response->ErrorSource == EErrorSource::Local);
+                UNIT_ASSERT(
+                    response->ErrorSource == EErrorSource::ContractViolation);
                 UNIT_ASSERT(response->BlockChecksums.empty());
                 for (const auto& block: Blocks) {
                     UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), block);
@@ -606,7 +614,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
             ++expectedCriticalEvents;
             UNIT_ASSERT_VALUES_EQUAL(
                 expectedCriticalEvents,
-                GetLocalReadBlobErrors());
+                GetContractViolationReadBlobErrors());
         }
     }
 
@@ -626,10 +634,38 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
             "TEvBlobStorage::TEvGet failed: read error",
             response->GetError().GetMessage());
         UNIT_ASSERT(response->BlockChecksums.empty());
-        UNIT_ASSERT_VALUES_EQUAL(0, GetLocalReadBlobErrors());
+        UNIT_ASSERT_VALUES_EQUAL(0, GetContractViolationReadBlobErrors());
         for (const auto& block: Blocks) {
             UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), block);
         }
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldNotReportContractViolationOnPoisonPill,
+        TCompressedReadEnvironment)
+    {
+        StartCompressedRead(
+            NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
+            true);
+
+        ActorSystem.Send(new NActors::IEventHandle(
+            ReadActor,
+            EdgeActor,
+            new NActors::TEvents::TEvPoisonPill()));
+
+        auto response = ActorSystem.GrabEdgeEvent<
+            TEvPartitionCommonPrivate::TEvReadBlobResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "tablet is shutting down",
+            response->GetError().GetMessage());
+        UNIT_ASSERT(response->ErrorSource == EErrorSource::Regular);
+
+        auto completed = ActorSystem.GrabEdgeEvent<
+            TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, completed->GetError().GetCode());
+        UNIT_ASSERT(completed->ErrorSource == EErrorSource::Regular);
+        UNIT_ASSERT_VALUES_EQUAL(0, GetContractViolationReadBlobErrors());
     }
 
     Y_UNIT_TEST_F(ShouldReadBlobSuccess, TSetupEnvironment)
@@ -850,8 +886,9 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         auto invalidOffsets = counters->GetCounter(
             GetCriticalEventForInvalidReadBlobOffsets(),
             true);
-        auto localReadErrors =
-            counters->GetCounter(GetCriticalEventForLocalReadBlobError(), true);
+        auto contractViolationReadErrors = counters->GetCounter(
+            GetCriticalEventForContractViolationReadBlobError(),
+            true);
         ui32 readRequests = 0;
         ActorSystem.SetEventFilter(
             [&](NActors::TTestActorRuntimeBase&,
@@ -866,7 +903,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         for (const auto storageAccessMode:
              {EStorageAccessMode::Default, EStorageAccessMode::Repair})
         {
-            const auto previousLocalReadErrors = localReadErrors->Val();
+            const auto previousContractViolationReadErrors =
+                contractViolationReadErrors->Val();
             const auto previousInvalidOffsets = invalidOffsets->Val();
             const ui32 blockSize = 512;
             const NKikimr::TLogoBlobID blobId(142, 143, 0x8000);
@@ -908,7 +946,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
             UNIT_ASSERT_VALUES_EQUAL(
                 E_ARGUMENT,
                 response->GetError().GetCode());
-            UNIT_ASSERT(response->ErrorSource == EErrorSource::Local);
+            UNIT_ASSERT(
+                response->ErrorSource == EErrorSource::ContractViolation);
             UNIT_ASSERT_STRING_CONTAINS(
                 response->GetError().GetMessage(),
                 "Offsets should be sorted in strict ascending order: 0, 2, 2, "
@@ -919,14 +958,15 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
             UNIT_ASSERT_VALUES_EQUAL(
                 E_ARGUMENT,
                 completed->GetError().GetCode());
-            UNIT_ASSERT(completed->ErrorSource == EErrorSource::Local);
+            UNIT_ASSERT(
+                completed->ErrorSource == EErrorSource::ContractViolation);
             UNIT_ASSERT_VALUES_EQUAL(0, readRequests);
             UNIT_ASSERT_VALUES_EQUAL(
                 previousInvalidOffsets + 1,
                 invalidOffsets->Val());
             UNIT_ASSERT_VALUES_EQUAL(
-                previousLocalReadErrors + 1,
-                localReadErrors->Val());
+                previousContractViolationReadErrors + 1,
+                contractViolationReadErrors->Val());
             for (const auto& block: blocks) {
                 UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, 'x'), block);
             }
@@ -1096,7 +1136,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         const ui32 blockSize = 512;
         const NKikimr::TLogoBlobID blobId(142, 1, 2, 3, 2 * blockSize, 4);
 
-        ui64 expectedLocalReadErrors = 0;
+        ui64 expectedContractViolationReadErrors = 0;
         for (const auto mode:
              {EStorageAccessMode::Default, EStorageAccessMode::Repair})
         {
@@ -1161,7 +1201,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                     const bool expectedError = invalidBlobId || invalidOffset ||
                                                responseSize != 2 * blockSize;
                     const auto expectedErrorSource =
-                        expectedError ? std::make_optional(EErrorSource::Local)
+                        expectedError ? std::make_optional(
+                                            EErrorSource::ContractViolation)
                                       : std::nullopt;
                     auto response = ActorSystem.GrabEdgeEvent<
                         TEvPartitionCommonPrivate::TEvReadBlobResponse>();
@@ -1176,10 +1217,10 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                         expectedError,
                         HasError(completed->GetError()));
                     UNIT_ASSERT(completed->ErrorSource == expectedErrorSource);
-                    expectedLocalReadErrors += expectedError;
+                    expectedContractViolationReadErrors += expectedError;
                     UNIT_ASSERT_VALUES_EQUAL(
-                        expectedLocalReadErrors,
-                        GetLocalReadBlobErrors());
+                        expectedContractViolationReadErrors,
+                        GetContractViolationReadBlobErrors());
                     if (expectedError) {
                         for (const auto& block: blocks) {
                             UNIT_ASSERT_VALUES_EQUAL(
@@ -1189,7 +1230,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                         if (responseSize != 2 * blockSize) {
                             UNIT_ASSERT_VALUES_EQUAL(
                                 TStringBuilder()
-                                    << "TEvBlobStorage::TEvGet failed: Invalid "
+                                    << "Invalid "
                                        "blob "
                                        "response size at index 0: expected "
                                     << readBlob->Queries[0].Size
@@ -1198,7 +1239,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                         } else if (invalidOffset) {
                             UNIT_ASSERT_VALUES_EQUAL(
                                 TStringBuilder()
-                                    << "TEvBlobStorage::TEvGet failed: Invalid "
+                                    << "Invalid "
                                        "blob response offset at index 0: "
                                        "expected "
                                     << readBlob->Queries[0].Shift << ", got "

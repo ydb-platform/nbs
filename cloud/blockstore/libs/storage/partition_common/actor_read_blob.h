@@ -88,13 +88,7 @@ private:
         const NActors::TActorContext& ctx,
         const NProto::TError& error,
         EErrorSource errorSource,
-        const NKikimr::TEvBlobStorage::TEvGetResult& response);
-
-    void ReplyError(
-        const NActors::TActorContext& ctx,
-        const NKikimr::TEvBlobStorage::TEvGetResult& response,
-        const TString& description,
-        EErrorSource errorSource);
+        const NKikimr::TEvBlobStorage::TEvGetResult* response);
 
     struct TDataThatCanBeProcessed
     {

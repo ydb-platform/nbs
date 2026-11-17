@@ -93,9 +93,9 @@ void TReadBlobActor::Bootstrap(const TActorContext& ctx)
                                  << JoinSeq(", ", Request->BlobOffsets)
                                  << " for blob " << Request->BlobId);
             ReportInvalidReadBlobOffsets(
-                error.GetMessage(),
+                FormatError(error),
                 {{"tabletId", PartitionTabletId}});
-            ReplyAndDie(ctx, std::make_unique<TResponse>(error));
+            ReplyError(ctx, error, EErrorSource::ContractViolation, nullptr);
             return;
         }
         lastOffset = offset;
@@ -147,7 +147,11 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
 {
     auto planOrError = GetQueries();
     if (HasError(planOrError.GetError())) {
-        ReplyAndDie(ctx, std::make_unique<TResponse>(planOrError.GetError()));
+        ReplyError(
+            ctx,
+            planOrError.GetError(),
+            EErrorSource::ContractViolation,
+            nullptr);
         return;
     }
     auto plan = planOrError.ExtractResult();
@@ -214,10 +218,10 @@ void TReadBlobActor::ReplyAndDie(
 {
     if (HasError(response->GetError())) {
         if (!response->ErrorSource) {
-            response->ErrorSource = EErrorSource::Local;
+            response->ErrorSource = EErrorSource::Regular;
         }
-        if (response->ErrorSource == EErrorSource::Local) {
-            ReportLocalReadBlobError(
+        if (response->ErrorSource == EErrorSource::ContractViolation) {
+            ReportContractViolationReadBlobError(
                 FormatError(response->GetError()),
                 {{"tabletId", PartitionTabletId},
                  {"blobId", Request->BlobId.ToString()}});
@@ -244,36 +248,33 @@ void TReadBlobActor::ReplyError(
     const NActors::TActorContext& ctx,
     const NProto::TError& error,
     EErrorSource errorSource,
-    const NKikimr::TEvBlobStorage::TEvGetResult& response)
+    const NKikimr::TEvBlobStorage::TEvGetResult* response)
 {
-    LOG_ERROR(
-        ctx,
-        TBlockStoreComponents::PARTITION_COMMON,
-        "[%lu] TEvBlobStorage::TEvGet failed: %s\n%s",
-        PartitionTabletId,
-        FormatError(error).data(),
-        response.Print(false).data());
+    if (response) {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION_COMMON,
+            "[%lu] TEvBlobStorage::TEvGet failed: %s\n%s",
+            PartitionTabletId,
+            FormatError(error).data(),
+            response->Print(false).data());
 
-    if (response.Status == NKikimrProto::DEADLINE) {
-        DeadlineSeen = true;
+        if (response->Status == NKikimrProto::DEADLINE) {
+            DeadlineSeen = true;
+        }
+
+    } else {
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION_COMMON,
+            "[%lu] ReadBlob failed: %s",
+            PartitionTabletId,
+            FormatError(error).data());
     }
 
     auto reply = std::make_unique<TResponse>(error);
     reply->ErrorSource = errorSource;
     ReplyAndDie(ctx, std::move(reply));
-}
-
-void TReadBlobActor::ReplyError(
-    const TActorContext& ctx,
-    const TEvBlobStorage::TEvGetResult& response,
-    const TString& description,
-    EErrorSource errorSource)
-{
-    ReplyError(
-        ctx,
-        MakeError(E_REJECTED, "TEvBlobStorage::TEvGet failed: " + description),
-        errorSource,
-        response);
 }
 
 bool TReadBlobActor::FillBrokenDataAndFilterItOut(
@@ -515,7 +516,11 @@ void TReadBlobActor::HandleGetResult(
     RequestInfo->CallContext->LWOrbit = std::move(msg->Orbit);
 
     if (msg->Status != NKikimrProto::OK) {
-        ReplyError(ctx, *msg, msg->ErrorReason, EErrorSource::BlobStorage);
+        ReplyError(
+            ctx,
+            MakeError(E_REJECTED, msg->ErrorReason),
+            EErrorSource::BlobStorage,
+            msg);
         return;
     }
 
@@ -524,9 +529,11 @@ void TReadBlobActor::HandleGetResult(
     if (Queries.size() != msg->ResponseSz) {
         ReplyError(
             ctx,
-            *msg,
-            "Number of responses does not match number of requests",
-            EErrorSource::Local);
+            MakeError(
+                E_FAIL,
+                "Number of responses does not match number of requests"),
+            EErrorSource::ContractViolation,
+            msg);
         return;
     }
 
@@ -541,7 +548,11 @@ void TReadBlobActor::HandleGetResult(
                 TStringBuilder()
                 << "Invalid blob response size at index " << i << ": expected "
                 << query.Size << " bytes, got " << response.Buffer.GetSize();
-            ReplyError(ctx, *msg, description, EErrorSource::Local);
+            ReplyError(
+                ctx,
+                MakeError(E_FAIL, description),
+                EErrorSource::ContractViolation,
+                msg);
             return;
         }
         if (response.Shift != query.Shift) {
@@ -549,7 +560,11 @@ void TReadBlobActor::HandleGetResult(
                 TStringBuilder()
                 << "Invalid blob response offset at index " << i
                 << ": expected " << query.Shift << ", got " << response.Shift;
-            ReplyError(ctx, *msg, description, EErrorSource::Local);
+            ReplyError(
+                ctx,
+                MakeError(E_FAIL, description),
+                EErrorSource::ContractViolation,
+                msg);
             return;
         }
     }
@@ -581,15 +596,23 @@ void TReadBlobActor::HandleGetResult(
 
         for (auto& response: responsesToProcess) {
             if (response.Status != NKikimrProto::OK) {
-                ReplyError(ctx, *msg, "read error", EErrorSource::BlobStorage);
+                ReplyError(
+                    ctx,
+                    MakeError(
+                        E_REJECTED,
+                        "TEvBlobStorage::TEvGet failed: read error"),
+                    EErrorSource::BlobStorage,
+                    msg);
                 return;
             }
             if (response.Id != Request->BlobId) {
                 ReplyError(
                     ctx,
-                    *msg,
-                    "invalid response received",
-                    EErrorSource::Local);
+                    MakeError(
+                        E_FAIL,
+                        "response blob id mismatch with request blob id"),
+                    EErrorSource::ContractViolation,
+                    msg);
                 return;
             }
         }
@@ -611,9 +634,9 @@ void TReadBlobActor::HandleGetResult(
         if (HasError(checksumsOrError.GetError())) {
             ReplyError(
                 ctx,
-                *msg,
-                checksumsOrError.GetError().GetMessage(),
-                EErrorSource::Local);
+                checksumsOrError.GetError(),
+                EErrorSource::ContractViolation,
+                msg);
             return;
         }
 
