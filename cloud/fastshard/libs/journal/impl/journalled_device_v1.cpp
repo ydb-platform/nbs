@@ -1,7 +1,5 @@
 #include "journalled_device_v1.h"
 
-#include "device_helpers.h"
-
 #include <cloud/fastshard/libs/journal/iface/device.h>
 #include <cloud/fastshard/libs/journal/iface/journalled_device.h>
 
@@ -46,105 +44,73 @@ public:
         return MakeFuture();
     }
 
-    [[nodiscard]] auto ReadPages(NProto::TReadPagesRequest request)
-        -> TFuture<NProto::TReadPagesResponse> final
+    TFuture<TResultOrError<TReadPagesResult>> ReadPages(
+        TVector<TPageRangeRef> rangeRefs) final
     {
-        auto rangeRefs = MakePageRangeRefs(request);
+        return DataStore->ReadPages(std::move(rangeRefs))
+            .Apply(
+                [](auto future) -> TResultOrError<TReadPagesResult>
+                {
+                    auto result = future.ExtractValue();
+                    if (HasError(result)) {
+                        return result.GetError();
+                    }
 
-        auto future = DataStore->ReadPages(rangeRefs);
-
-        return future.Apply(
-            [rangeRefs = std::move(rangeRefs)](
-                const auto& future) -> NProto::TReadPagesResponse
-            {
-                const auto& result = future.GetValue();
-                if (HasError(result)) {
-                    return TErrorResponse(result.GetError());
-                }
-
-                return MakeReadPagesResponse(rangeRefs, result.GetResult());
-            });
+                    return TReadPagesResult{.Pages = result.ExtractResult()};
+                });
     }
 
-    [[nodiscard]] auto WriteLogRecord(NProto::TWriteLogRecordRequest request)
-        -> TFuture<NProto::TWriteLogRecordResponse> final
+    TFuture<NProto::TError> WriteLogRecord(TJournalRecord logRecord) final
     {
-        if (request.GetLogSequenceNumber() <= request.GetPrevLogSequenceNumber()) {
-            return MakeFuture<NProto::TWriteLogRecordResponse>(TErrorResponse(
+        if (logRecord.Lsn <= logRecord.PrevLsn) {
+            return MakeFuture(MakeError(
                 E_ARGUMENT,
-                TStringBuilder()
-                    << "invalid lsn: " << request.GetLogSequenceNumber()
-                    << ", must be greater than the prev one: "
-                    << request.GetPrevLogSequenceNumber()));
+                TStringBuilder() << "invalid lsn: " << logRecord.Lsn
+                                 << ", must be greater than the prev one: "
+                                 << logRecord.PrevLsn));
         }
 
-        const ui64 lsn = request.GetLogSequenceNumber();
+        const ui64 lsn = logRecord.Lsn;
 
-        // TODO(#6956): now PrevLogSequenceNumber is always zero
-        // const ui64 prevLsn = request.GetPrevLogSequenceNumber();
-        // const ui64 lastLsn = LastLsn.load(std::memory_order_relaxed);
+        // TODO(#6956): check PrevLsn against LastLsn; now PrevLsn is always 0
 
-        // if (lastLsn != 0 && prevLsn != lastLsn) {
-        //     const auto code = prevLsn > lastLsn ? E_REJECTED : E_INVALID_STATE;
-
-        //     return MakeFuture<NProto::TWriteLogRecordResponse>(
-        //         TErrorResponse(code, TStringBuilder()
-        //             << "Wrong lsn: " << prevLsn << ", expected " <<
-        //             lastLsn));
-        // }
-
-        auto future = DataStore->WritePages(MakePageRanges(request));
+        auto future = DataStore->WritePages(std::move(logRecord.Ranges));
 
         return future.Apply(
-            [self = shared_from_this(),
-             lsn](const auto& future) mutable -> NProto::TWriteLogRecordResponse
+            [self = shared_from_this(), lsn](const auto& future)
             {
-                if (future.HasException()) {
-                    return TErrorResponse(
-                        ResultOrError(future.IgnoreResult()).GetError());
+                auto error = ExtractResponse(future);
+                if (!HasError(error)) {
+                    self->LastLsn.store(lsn, std::memory_order_relaxed);
                 }
 
-                const auto& error = future.GetValue();
-                if (HasError(error)) {
-                    return TErrorResponse(error);
-                }
-
-                self->LastLsn.store(lsn, std::memory_order_relaxed);
-                return {};
+                return error;
             });
     }
 
-    [[nodiscard]] auto ReadJournalTail(NProto::TReadJournalTailRequest request)
-        -> TFuture<NProto::TReadJournalTailResponse> final
+    TFuture<TResultOrError<TJournalTail>> ReadJournalTail(
+        ui64 afterLsn,
+        ui32 maxRecordCount) final
     {
-        Y_UNUSED(request);
+        Y_UNUSED(afterLsn, maxRecordCount);
 
-        NProto::TReadJournalTailResponse response;
-        response.SetLsnLowWatermark(
-            LastAckedLsn.load(std::memory_order_relaxed));
+        TJournalTail tail{
+            .LsnLowWatermark = LastAckedLsn.load(std::memory_order_relaxed)};
 
-        return MakeFuture(response);
+        return MakeFuture<TResultOrError<TJournalTail>>(std::move(tail));
     }
 
-    [[nodiscard]] auto AdvanceLsnLowWatermark(
-        NProto::TAdvanceLsnLowWatermarkRequest request)
-        -> TFuture<NProto::TAdvanceLsnLowWatermarkResponse> final
+    TFuture<NProto::TError> AdvanceWatermark(ui64 lsnLowWatermark) final
     {
-        LastAckedLsn.store(
-            request.GetLsnLowWatermark(),
-            std::memory_order_relaxed);
+        LastAckedLsn.store(lsnLowWatermark, std::memory_order_relaxed);
 
-        NProto::TAdvanceLsnLowWatermarkResponse response;
-        return MakeFuture(response);
+        return MakeFuture<NProto::TError>();
     }
 
-    [[nodiscard]] auto WritePages(NProto::TWritePagesRequest request)
-        -> TFuture<NProto::TWritePagesResponse> final
+    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) final
     {
-        return DataStore->WritePages(MakePageRanges(request))
-            .Apply(
-                [](const auto& future) -> NProto::TWritePagesResponse
-                { return TErrorResponse(ExtractResponse(future)); });
+        return DataStore->WritePages(std::move(ranges))
+            .Apply([](const auto& future) { return ExtractResponse(future); });
     }
 };
 

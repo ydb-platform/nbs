@@ -2,8 +2,7 @@
 
 #include "public.h"
 
-#include <cloud/fastshard/libs/journal/iface/device.h>
-#include <cloud/fastshard/public/api/protos/device.pb.h>
+#include <cloud/fastshard/libs/journal/iface/types.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -37,7 +36,7 @@ struct TLogRecord
     TVector<TPageMapping> PageMappings;
     ui32 PagesCrc = 0;
 
-    NThreading::TPromise<NProto::TWriteLogRecordResponse> Promise;
+    NThreading::TPromise<NProto::TError> Promise;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

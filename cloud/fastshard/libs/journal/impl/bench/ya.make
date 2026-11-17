@@ -9,7 +9,6 @@ SRCS(
 PEERDIR(
     cloud/fastshard/libs/journal/iface
     cloud/fastshard/libs/journal/impl
-    cloud/fastshard/public/api/protos
 
     cloud/storage/core/libs/aio
     cloud/storage/core/libs/common

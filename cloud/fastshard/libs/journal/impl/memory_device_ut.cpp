@@ -1,6 +1,6 @@
 #include "memory_device.h"
 
-#include "device_helpers.h"
+#include "ut_helpers.h"
 
 #include <cloud/fastshard/libs/journal/iface/device.h>
 
@@ -55,14 +55,14 @@ TString ZeroedPage(ui32 pageSize = DefaultPageSize)
 }
 
 // "10:[a,b] 20:[c]"
-TString DescribeGroups(const NProto::TReadPagesResponse& response)
+TString DescribeGroups(const TVector<TPageGroup>& response)
 {
     TVector<TString> groups;
 
-    for (const auto& group: response.GetPageGroups()) {
-        groups.push_back(TStringBuilder()
-            << group.GetFirstPageNo()
-            << ":[" << JoinSeq(",", group.GetContent()) << "]");
+    for (const auto& group: response) {
+        groups.push_back(
+            TStringBuilder()
+            << group.FirstPageNo << ":[" << JoinSeq(",", group.Pages) << "]");
     }
 
     return JoinSeq(" ", groups);
@@ -97,7 +97,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     }
 
     // the pages read are grouped after the refs they have been read for
-    NProto::TReadPagesResponse ReadPagesResponse(
+    TVector<TPageGroup> ReadPagesResponse(
         const TVector<std::pair<ui64, ui64>>& refs)
     {
         const auto rangeRefs = MakeRangeRefs(refs);
@@ -109,14 +109,14 @@ struct TFixture: public NUnitTest::TBaseFixture
             result.GetError().GetCode(),
             FormatError(result.GetError()));
 
-        auto response = MakeReadPagesResponse(rangeRefs, result.GetResult());
+        auto groups = GroupPages(rangeRefs, result.GetResult());
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
-            response.GetError().GetCode(),
-            FormatError(response.GetError()));
+            groups.GetError().GetCode(),
+            FormatError(groups.GetError()));
 
-        return response;
+        return groups.ExtractResult();
     }
 
     TString ReadPages(const TVector<std::pair<ui64, ui64>>& refs)
@@ -200,13 +200,13 @@ Y_UNIT_TEST_SUITE(TInMemoryDeviceTest)
         {
             const auto response = ReadPagesResponse({{10, 3}});
 
-            UNIT_ASSERT_VALUES_EQUAL(1, response.PageGroupsSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, response.size());
 
-            const auto& group = response.GetPageGroups(0);
-            UNIT_ASSERT_VALUES_EQUAL(10, group.GetFirstPageNo());
-            UNIT_ASSERT_VALUES_EQUAL(3, group.ContentSize());
+            const auto& group = response[0];
+            UNIT_ASSERT_VALUES_EQUAL(10, group.FirstPageNo);
+            UNIT_ASSERT_VALUES_EQUAL(3, group.Pages.size());
 
-            for (const auto& content: group.GetContent()) {
+            for (const auto& content: group.Pages) {
                 UNIT_ASSERT_VALUES_EQUAL(DefaultPageSize, content.size());
                 UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(), content);
             }
@@ -219,13 +219,13 @@ Y_UNIT_TEST_SUITE(TInMemoryDeviceTest)
         {
             const auto response = ReadPagesResponse({{10, 3}});
 
-            UNIT_ASSERT_VALUES_EQUAL(1, response.PageGroupsSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, response.size());
 
-            const auto& group = response.GetPageGroups(0);
-            UNIT_ASSERT_VALUES_EQUAL(3, group.ContentSize());
-            UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(), group.GetContent(0));
-            UNIT_ASSERT_VALUES_EQUAL("b", group.GetContent(1));
-            UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(), group.GetContent(2));
+            const auto& group = response[0];
+            UNIT_ASSERT_VALUES_EQUAL(3, group.Pages.size());
+            UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(), group.Pages[0]);
+            UNIT_ASSERT_VALUES_EQUAL("b", group.Pages[1]);
+            UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(), group.Pages[2]);
         }
     }
 
@@ -235,12 +235,12 @@ Y_UNIT_TEST_SUITE(TInMemoryDeviceTest)
 
         const auto response = ReadPagesResponse({{10, 1}});
 
-        UNIT_ASSERT_VALUES_EQUAL(1, response.PageGroupsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.size());
 
-        const auto& group = response.GetPageGroups(0);
-        UNIT_ASSERT_VALUES_EQUAL(1, group.ContentSize());
-        UNIT_ASSERT_VALUES_EQUAL(512, group.GetContent(0).size());
-        UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(512), group.GetContent(0));
+        const auto& group = response[0];
+        UNIT_ASSERT_VALUES_EQUAL(1, group.Pages.size());
+        UNIT_ASSERT_VALUES_EQUAL(512, group.Pages[0].size());
+        UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(512), group.Pages[0]);
     }
 
     Y_UNIT_TEST_F(ShouldReturnPagePerRequestedPage, TFixture)
@@ -254,21 +254,6 @@ Y_UNIT_TEST_SUITE(TInMemoryDeviceTest)
             ReadPages({{10, 1}, {20, 0}}));
 
         UNIT_ASSERT_VALUES_EQUAL("", ReadPages({}));
-    }
-
-    Y_UNIT_TEST(ShouldNotMakeResponseOfUnexpectedPageCount)
-    {
-        TVector<TBuffer> pages;
-        pages.emplace_back("a", 1);
-
-        const auto response = MakeReadPagesResponse(
-            {{.FirstPageNo = 10, .PageCount = 2}},
-            pages);
-
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_INVALID_STATE,
-            response.GetError().GetCode(),
-            FormatError(response.GetError()));
     }
 }
 

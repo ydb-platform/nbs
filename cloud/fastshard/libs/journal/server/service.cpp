@@ -1,8 +1,10 @@
 #include "service.h"
 
 #include "device_manager.h"
+#include "proto_helpers.h"
 
 #include <cloud/fastshard/libs/journal/iface/journalled_device.h>
+
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
@@ -236,7 +238,21 @@ public:
                 TErrorResponse(error));
         }
 
-        return device->ReadPages(std::move(request));
+        auto rangeRefs = MakePageRangeRefs(request);
+
+        auto future = device->ReadPages(rangeRefs);
+
+        return future.Apply(
+            [rangeRefs = std::move(rangeRefs)](
+                const auto& future) -> NProto::TReadPagesResponse
+            {
+                const auto& result = future.GetValue();
+                if (HasError(result)) {
+                    return TErrorResponse(result.GetError());
+                }
+
+                return MakeReadPagesResponse(rangeRefs, result.GetResult());
+            });
     }
 
     [[nodiscard]] auto WriteLogRecord(NProto::TWriteLogRecordRequest request)
@@ -252,7 +268,11 @@ public:
                 TErrorResponse(error));
         }
 
-        return device->WriteLogRecord(std::move(request));
+        auto future = device->WriteLogRecord(MakeJournalRecord(request));
+
+        return future.Apply(
+            [](const auto& future) -> NProto::TWriteLogRecordResponse
+            { return TErrorResponse(future.GetValue()); });
     }
 
     [[nodiscard]] auto ReadJournalTail(NProto::TReadJournalTailRequest request)
@@ -268,7 +288,20 @@ public:
                 TErrorResponse(error));
         }
 
-        return device->ReadJournalTail(std::move(request));
+        auto future = device->ReadJournalTail(
+            request.GetAfterLogSequenceNumber(),
+            request.GetMaxRecordCount());
+
+        return future.Apply(
+            [](const auto& future) -> NProto::TReadJournalTailResponse
+            {
+                const auto& result = future.GetValue();
+                if (HasError(result)) {
+                    return TErrorResponse(result.GetError());
+                }
+
+                return MakeReadJournalTailResponse(result.GetResult());
+            });
     }
 
     [[nodiscard]] auto AdvanceLsnLowWatermark(
@@ -285,7 +318,11 @@ public:
                 TErrorResponse(error));
         }
 
-        return device->AdvanceLsnLowWatermark(std::move(request));
+        auto future = device->AdvanceWatermark(request.GetLsnLowWatermark());
+
+        return future.Apply(
+            [](const auto& future) -> NProto::TAdvanceLsnLowWatermarkResponse
+            { return TErrorResponse(future.GetValue()); });
     }
 
     [[nodiscard]] auto WritePages(NProto::TWritePagesRequest request)
@@ -301,7 +338,11 @@ public:
                 TErrorResponse(error));
         }
 
-        return device->WritePages(std::move(request));
+        auto future = device->WritePages(MakePageRanges(request));
+
+        return future.Apply(
+            [](const auto& future) -> NProto::TWritePagesResponse
+            { return TErrorResponse(future.GetValue()); });
     }
 
 private:

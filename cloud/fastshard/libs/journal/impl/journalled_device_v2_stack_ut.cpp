@@ -1,6 +1,5 @@
 #include "journalled_device_v2.h"
 
-#include "device_helpers.h"
 #include "device_page_store.h"
 #include "journal.h"
 #include "key_buffer_store.h"
@@ -65,67 +64,39 @@ TString MakeContent(char tag, ui64 pageNo)
     return Sprintf("%c%03u", tag, static_cast<ui32>(pageNo % 1000));
 }
 
-NProto::TDevicePageGroup MakeGroup(ui64 firstPageNo, ui64 pageCount, char tag)
+TVector<TPageRange> MakeRanges(char tag, const TGroups& groups)
 {
-    NProto::TDevicePageGroup group;
-    group.SetFirstPageNo(firstPageNo);
-
-    for (ui64 i = 0; i < pageCount; ++i) {
-        *group.AddContent() = MakeContent(tag, firstPageNo + i);
-    }
-
-    return group;
-}
-
-NProto::TWriteLogRecordRequest
-MakeWriteRequest(ui64 lsn, ui64 prevLsn, char tag, const TGroups& groups)
-{
-    NProto::TWriteLogRecordRequest request;
-    request.SetDeviceUUID(TString{DeviceUUID});
-    request.SetLogSequenceNumber(lsn);
-    request.SetPrevLogSequenceNumber(prevLsn);
+    TVector<TPageRange> ranges;
 
     for (const auto& [firstPageNo, pageCount]: groups) {
-        *request.AddPageGroups() = MakeGroup(firstPageNo, pageCount, tag);
+        auto& range = ranges.emplace_back();
+        range.FirstPageNo = firstPageNo;
+
+        for (ui64 i = 0; i < pageCount; ++i) {
+            const auto content = MakeContent(tag, firstPageNo + i);
+            range.Pages.emplace_back(content.data(), content.size());
+        }
     }
 
-    return request;
+    return ranges;
 }
 
-NProto::TReadPagesRequest MakeReadRequest(const TGroups& refs)
+TJournalRecord
+MakeRecord(ui64 lsn, ui64 prevLsn, char tag, const TGroups& groups)
 {
-    NProto::TReadPagesRequest request;
-    request.SetDeviceUUID(TString{DeviceUUID});
+    return {.Lsn = lsn, .PrevLsn = prevLsn, .Ranges = MakeRanges(tag, groups)};
+}
+
+TVector<TPageRangeRef> MakeRangeRefs(const TGroups& refs)
+{
+    TVector<TPageRangeRef> rangeRefs;
 
     for (const auto& [firstPageNo, pageCount]: refs) {
-        auto& ref = *request.AddPageGroupRefs();
-        ref.SetFirstPageNo(firstPageNo);
-        ref.SetPageCount(pageCount);
-        ref.SetPageSize(DataPageSize);
+        rangeRefs.push_back(
+            {.FirstPageNo = firstPageNo, .PageCount = pageCount});
     }
 
-    return request;
-}
-
-NProto::TReadJournalTailRequest MakeReadTailRequest(
-    ui64 afterLsn,
-    ui32 maxRecordCount)
-{
-    NProto::TReadJournalTailRequest request;
-    request.SetDeviceUUID(TString{DeviceUUID});
-    request.SetAfterLogSequenceNumber(afterLsn);
-    request.SetMaxRecordCount(maxRecordCount);
-
-    return request;
-}
-
-NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(ui64 lsn)
-{
-    NProto::TAdvanceLsnLowWatermarkRequest request;
-    request.SetDeviceUUID(TString{DeviceUUID});
-    request.SetLsnLowWatermark(lsn);
-
-    return request;
+    return rangeRefs;
 }
 
 // A page that has never been written reads back as a zeroed one.
@@ -136,26 +107,6 @@ TString DescribeContent(TStringBuf content)
     }
 
     return TString{content};
-}
-
-// "10:[A010,A011] 20:[A020]"
-template <typename T>
-TString DescribeGroups(const T& source)
-{
-    TVector<TString> groups;
-
-    for (const auto& group: source.GetPageGroups()) {
-        TVector<TString> contents;
-        for (const auto& content: group.GetContent()) {
-            contents.push_back(DescribeContent(content));
-        }
-
-        groups.push_back(
-            TStringBuilder()
-            << group.GetFirstPageNo() << ":[" << JoinSeq(",", contents) << "]");
-    }
-
-    return JoinSeq(" ", groups);
 }
 
 // "10:[A010,A011] 20:[A020]"
@@ -178,18 +129,45 @@ TString DescribeRanges(const TVector<TPageRange>& ranges)
     return JoinSeq(" ", groups);
 }
 
-// "1<-0 10:[A010]; 2<-1 20:[B020]"
-TString DescribeRecords(const NProto::TReadJournalTailResponse& response)
+// "10:[A010,A011] 20:[A020]" - the pages are grouped by the refs they were
+// read for
+TString DescribePages(
+    const TVector<TPageRangeRef>& rangeRefs,
+    const TVector<TBuffer>& pages)
 {
+    TVector<TPageRange> ranges;
+
+    size_t pageIndex = 0;
+    for (const auto& ref: rangeRefs) {
+        auto& range = ranges.emplace_back();
+        range.FirstPageNo = ref.FirstPageNo;
+
+        for (ui64 i = 0; i != ref.PageCount; ++i) {
+            UNIT_ASSERT(pageIndex < pages.size());
+
+            const auto& page = pages[pageIndex++];
+            range.Pages.emplace_back(page.Data(), page.Size());
+        }
+    }
+
+    UNIT_ASSERT_VALUES_EQUAL(pages.size(), pageIndex);
+
+    return DescribeRanges(ranges);
+}
+
+// "1<-0 10:[A010]; 2<-1 20:[B020]"
+TString DescribeRecords(const TResultOrError<TJournalTail>& tail)
+{
+    UNIT_ASSERT_C(!HasError(tail), FormatError(tail.GetError()));
+
     TVector<TString> records;
 
-    for (const auto& record: response.GetRecords()) {
+    for (const auto& record: tail.GetResult().Records) {
         TStringBuilder sb;
-        sb << record.GetLogSequenceNumber() << "<-"
-           << record.GetPrevLogSequenceNumber();
+        sb << record.Lsn << "<-" << record.PrevLsn;
 
-        if (const auto groups = DescribeGroups(record)) {
-            sb << " " << groups;
+        if (const auto ranges = DescribeRanges(record.Ranges)) {
+            sb << " " << ranges;
         }
 
         records.push_back(sb);
@@ -342,64 +320,54 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     ui32 WriteRecord(ui64 lsn, ui64 prevLsn, char tag, const TGroups& groups)
     {
-        return Device
-            ->WriteLogRecord(MakeWriteRequest(lsn, prevLsn, tag, groups))
+        return Device->WriteLogRecord(MakeRecord(lsn, prevLsn, tag, groups))
             .GetValueSync()
-            .GetError()
             .GetCode();
     }
 
     void
     WriteRecordOrFail(ui64 lsn, ui64 prevLsn, char tag, const TGroups& groups)
     {
-        const auto response =
-            Device->WriteLogRecord(MakeWriteRequest(lsn, prevLsn, tag, groups))
+        const auto error =
+            Device->WriteLogRecord(MakeRecord(lsn, prevLsn, tag, groups))
                 .GetValueSync();
 
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            S_OK,
-            response.GetError().GetCode(),
-            FormatError(response.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
     }
 
-    NProto::TReadPagesResponse ReadPages(const TGroups& refs)
+    TResultOrError<TReadPagesResult> ReadPages(const TGroups& refs)
     {
-        return Device->ReadPages(MakeReadRequest(refs)).GetValueSync();
+        return Device->ReadPages(MakeRangeRefs(refs)).GetValueSync();
     }
 
     TString ReadPagesOrFail(const TGroups& refs)
     {
-        const auto response = ReadPages(refs);
+        const auto result = ReadPages(refs);
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
-            response.GetError().GetCode(),
-            FormatError(response.GetError()));
+            result.GetError().GetCode(),
+            FormatError(result.GetError()));
 
-        return DescribeGroups(response);
+        return DescribePages(MakeRangeRefs(refs), result.GetResult().Pages);
     }
 
-    NProto::TReadJournalTailResponse ReadTail(
+    TResultOrError<TJournalTail> ReadTail(
         ui64 afterLsn = 0,
         ui32 maxRecordCount = 0)
     {
-        return Device
-            ->ReadJournalTail(MakeReadTailRequest(afterLsn, maxRecordCount))
-            .GetValueSync();
+        return Device->ReadJournalTail(afterLsn, maxRecordCount).GetValueSync();
     }
 
     ui32 AdvanceLsnLowWatermark(ui64 lsn)
     {
-        return Device->AdvanceLsnLowWatermark(MakeAdvanceRequest(lsn))
-            .GetValueSync()
-            .GetError()
-            .GetCode();
+        return Device->AdvanceWatermark(lsn).GetValueSync().GetCode();
     }
 
     // Goes straight to the data device, bypassing the journal.
     TString ReadDataDevice(const TGroups& refs)
     {
-        const auto rangeRefs = MakePageRangeRefs(MakeReadRequest(refs));
+        const auto rangeRefs = MakeRangeRefs(refs);
         const auto result = DataDevice->ReadPages(rangeRefs).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -407,20 +375,14 @@ struct TFixture: public NUnitTest::TBaseFixture
             result.GetError().GetCode(),
             FormatError(result.GetError()));
 
-        return DescribeGroups(
-            MakeReadPagesResponse(rangeRefs, result.GetResult()));
+        return DescribePages(rangeRefs, result.GetResult());
     }
 
     // Writes the pages the device held before the journal ever saw it.
     void FillDataDevice(const TGroups& groups, char tag)
     {
-        NProto::TWriteLogRecordRequest request;
-        for (const auto& [firstPageNo, pageCount]: groups) {
-            *request.AddPageGroups() = MakeGroup(firstPageNo, pageCount, tag);
-        }
-
         const auto error =
-            DataDevice->WritePages(MakePageRanges(request)).GetValueSync();
+            DataDevice->WritePages(MakeRanges(tag, groups)).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
     }
@@ -544,7 +506,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2StackTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "1<-0 10:[A010]; 2<-1 20:[B020,B021]; 3<-2 30:[C030]",
             DescribeRecords(response));
-        UNIT_ASSERT_VALUES_EQUAL(0, response.GetLsnLowWatermark());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetResult().LsnLowWatermark);
 
         // the tail starts after the requested lsn
 
@@ -775,8 +737,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2StackTest)
     Y_UNIT_TEST_F(ShouldAckOutOfOrderRecordOnceChainCloses, TFixture)
     {
         // the record arrives before the one it chains from
-        auto second =
-            Device->WriteLogRecord(MakeWriteRequest(2, 1, 'B', {{20, 1}}));
+        auto second = Device->WriteLogRecord(MakeRecord(2, 1, 'B', {{20, 1}}));
 
         Sleep(TDuration::MilliSeconds(200));
 
@@ -788,11 +749,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2StackTest)
 
         WriteRecordOrFail(1, 0, 'A', {{10, 1}});
 
-        const auto response = second.GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            S_OK,
-            response.GetError().GetCode(),
-            FormatError(response.GetError()));
+        const auto error = second.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
         UNIT_ASSERT_VALUES_EQUAL(
             "1<-0 10:[A010]; 2<-1 20:[B020]",

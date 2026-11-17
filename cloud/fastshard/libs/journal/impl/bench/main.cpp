@@ -8,7 +8,6 @@
 #include <cloud/fastshard/libs/journal/impl/key_buffer_store.h>
 #include <cloud/fastshard/libs/journal/impl/log_record.h>
 #include <cloud/fastshard/libs/journal/impl/memory_device.h>
-#include <cloud/fastshard/public/api/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/affinity.h>
@@ -458,15 +457,16 @@ TString MakePage(ui32 pageSize, ui64 seed)
 
 // Every page gets its own copy of the content, as in a request that came
 // from the network.
-template <typename TRequest>
-void AddPageGroup(TRequest& request, TPageRangeRef range, const TString& page)
+TPageRange MakePageRange(TPageRangeRef range, const TString& page)
 {
-    auto& group = *request.AddPageGroups();
-    group.SetFirstPageNo(range.FirstPageNo);
+    TPageRange result{.FirstPageNo = range.FirstPageNo};
+    result.Pages.reserve(range.PageCount);
 
     for (ui64 i = 0; i < range.PageCount; ++i) {
-        group.AddContent(TString(page.data(), page.size()));
+        result.Pages.emplace_back(page.data(), page.size());
     }
+
+    return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -836,17 +836,15 @@ void TBench::PrefillData()
     for (ui64 pageNo = 0; pageNo < workingSetPages;
          pageNo += PrefillRequestPages)
     {
-        NProto::TWritePagesRequest request;
-        request.SetDeviceUUID(TString(DeviceUUID));
-        AddPageGroup(
-            request,
+        TVector<TPageRange> ranges;
+        ranges.push_back(MakePageRange(
             {.FirstPageNo = pageNo,
              .PageCount = Min(PrefillRequestPages, workingSetPages - pageNo)},
-            page);
+            page));
 
-        auto response = Device->WritePages(std::move(request)).GetValueSync();
-        if (HasError(response)) {
-            Fail("Prefill of the data area", response.GetError());
+        auto error = Device->WritePages(std::move(ranges)).GetValueSync();
+        if (HasError(error)) {
+            Fail("Prefill of the data area", error);
         }
     }
 }
@@ -865,24 +863,20 @@ void TBench::PrefillJournal(const TVector<TPageRangeRef>& ranges)
     while (i < ranges.size()) {
         const ui64 lsn = LastLsn.fetch_add(1) + 1;
 
-        NProto::TWriteLogRecordRequest request;
-        request.SetDeviceUUID(TString(DeviceUUID));
-        request.SetLogSequenceNumber(lsn);
-        request.SetPrevLogSequenceNumber(lsn - 1);
+        TJournalRecord record{.Lsn = lsn, .PrevLsn = lsn - 1};
 
         ui64 pageCount = 0;
         while (i < ranges.size() && pageCount < PrefillRequestPages &&
-               request.PageGroupsSize() < PrefillRecordGroups)
+               record.Ranges.size() < PrefillRecordGroups)
         {
-            AddPageGroup(request, ranges[i], page);
+            record.Ranges.push_back(MakePageRange(ranges[i], page));
             pageCount += ranges[i].PageCount;
             ++i;
         }
 
-        auto response =
-            Device->WriteLogRecord(std::move(request)).GetValueSync();
-        if (HasError(response)) {
-            Fail("Prefill of the journal", response.GetError());
+        auto error = Device->WriteLogRecord(std::move(record)).GetValueSync();
+        if (HasError(error)) {
+            Fail("Prefill of the journal", error);
         }
     }
 }
@@ -945,11 +939,8 @@ void TBench::WriteLogRecord(
 
     auto makeRequest = [&]()
     {
-        NProto::TWriteLogRecordRequest request;
-        request.SetDeviceUUID(TString(DeviceUUID));
-        request.SetLogSequenceNumber(lsn);
-        request.SetPrevLogSequenceNumber(lsn - 1);
-        AddPageGroup(request, slot, page);
+        TJournalRecord request{.Lsn = lsn, .PrevLsn = lsn - 1};
+        request.Ranges.push_back(MakePageRange(slot, page));
         return request;
     };
 
@@ -966,7 +957,7 @@ void TBench::WriteLogRecord(
     for (;;) {
         auto future = Device->WriteLogRecord(std::move(request));
         const ui64 doneNs = WaitFor(future);
-        const auto& error = future.GetValue().GetError();
+        const auto& error = future.GetValue();
 
         if (!HasError(error)) {
             stats.Main.LatenciesNs.push_back(doneNs - startNs);
@@ -1000,15 +991,11 @@ void TBench::WriteLogRecord(
 
 void TBench::AdvanceLsnLowWatermark(ui64 lsn, TActionStats& stats)
 {
-    NProto::TAdvanceLsnLowWatermarkRequest request;
-    request.SetDeviceUUID(TString(DeviceUUID));
-    request.SetLsnLowWatermark(lsn);
-
     const ui64 startNs = NowNs();
 
-    auto future = Device->AdvanceLsnLowWatermark(std::move(request));
+    auto future = Device->AdvanceWatermark(lsn);
     const ui64 doneNs = WaitFor(future);
-    const auto& error = future.GetValue().GetError();
+    const auto& error = future.GetValue();
 
     if (!HasError(error)) {
         stats.LatenciesNs.push_back(doneNs - startNs);
@@ -1031,17 +1018,9 @@ void TBench::ReadPages(TFastRng64& rng, TActionStats& stats)
 {
     const auto slot = PickSlot(rng);
 
-    NProto::TReadPagesRequest request;
-    request.SetDeviceUUID(TString(DeviceUUID));
-
-    auto& ref = *request.AddPageGroupRefs();
-    ref.SetFirstPageNo(slot.FirstPageNo);
-    ref.SetPageCount(slot.PageCount);
-    ref.SetPageSize(Options.PageSize);
-
     const ui64 startNs = NowNs();
 
-    auto future = Device->ReadPages(std::move(request));
+    auto future = Device->ReadPages({slot});
     const ui64 doneNs = WaitFor(future);
     const auto& response = future.GetValue();
 
@@ -1049,10 +1028,7 @@ void TBench::ReadPages(TFastRng64& rng, TActionStats& stats)
         Fail("ReadPages", response.GetError());
     }
 
-    ui64 pageCount = 0;
-    for (const auto& group: response.GetPageGroups()) {
-        pageCount += group.ContentSize();
-    }
+    const ui64 pageCount = response.GetResult().Pages.size();
 
     if (pageCount != slot.PageCount) {
         Fail(
