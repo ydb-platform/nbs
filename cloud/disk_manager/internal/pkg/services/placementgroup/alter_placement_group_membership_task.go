@@ -2,6 +2,7 @@ package placementgroup
 
 import (
 	"context"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -15,11 +16,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type alterPlacementGroupMembershipTask struct {
-	storage      resources.Storage
-	nbsFactory   nbs.Factory
-	cellSelector cells.CellSelector
-	request      *protos.AlterPlacementGroupMembershipRequest
-	state        *protos.AlterPlacementGroupMembershipTaskState
+	storage       resources.Storage
+	nbsFactory    nbs.Factory
+	cellSelector  cells.CellSelector
+	disabledZones *common.DisabledZones
+	request       *protos.AlterPlacementGroupMembershipRequest
+	state         *protos.AlterPlacementGroupMembershipTaskState
 }
 
 func (t *alterPlacementGroupMembershipTask) Save() ([]byte, error) {
@@ -42,6 +44,18 @@ func (t *alterPlacementGroupMembershipTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	meta, err := t.storage.GetPlacementGroupMeta(
+		ctx,
+		t.request.GroupId,
+	)
+	if err != nil {
+		return err
+	}
+
+	if zoneDisabled, err := t.handleRunDisabledZone(meta); zoneDisabled {
+		return err
+	}
+
 	client, err := selectClientByGroup(
 		ctx,
 		t.storage,
@@ -49,6 +63,7 @@ func (t *alterPlacementGroupMembershipTask) Run(
 		t.cellSelector,
 		t.request.GroupId,
 		t.request.ZoneId,
+		meta,
 	)
 	if err != nil {
 		return err
@@ -65,6 +80,33 @@ func (t *alterPlacementGroupMembershipTask) Run(
 		t.request.DisksToAdd,
 		t.request.DisksToRemove,
 	)
+}
+
+func (t *alterPlacementGroupMembershipTask) handleRunDisabledZone(
+	meta *resources.PlacementGroupMeta,
+) (zoneDisabled bool, err error) {
+
+	zoneID := t.request.ZoneId
+
+	if meta != nil && len(meta.ZoneID) > 0 {
+		zoneID = meta.ZoneID
+	}
+
+	// Disabled cells may already be absent from the cell mapping.
+	if !t.disabledZones.IsDisabled(zoneID) {
+		return false, nil
+	}
+
+	// Addition needs to result in error.
+	if len(t.request.DisksToAdd) > 0 {
+		return true, common.NewNonRetriableAbortedError(
+			"can't alter placement group membership in disabled zone %q",
+			zoneID,
+		)
+	}
+
+	// Removal needs no DM metadata changes and can skip the unavailable NBS.
+	return true, nil
 }
 
 func (t *alterPlacementGroupMembershipTask) Cancel(

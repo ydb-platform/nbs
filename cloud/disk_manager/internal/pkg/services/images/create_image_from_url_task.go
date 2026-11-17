@@ -142,6 +142,7 @@ func (t *createImageFromURLTask) Cancel(
 		ctx,
 		execCtx,
 		t.config,
+		nil, // disabledZones
 		t.scheduler,
 		t.storage,
 		t.poolService,

@@ -45,6 +45,16 @@ void CompleteRequestImpl(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TWriteDataZeroCounters
+{
+    // All processed bytes (separate counter for correct counting)
+    NMonitoring::TDynamicCounters::TCounterPtr CheckedBytes;
+    NMonitoring::TDynamicCounters::TCounterPtr ZeroBlockBytes;
+    NMonitoring::TDynamicCounters::TCounterPtr ZeroRequestBytes;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TStorageServiceActor final
     : public NActors::TActorBootstrapped<TStorageServiceActor>
 {
@@ -78,6 +88,8 @@ private:
 
     TCounterPtr SsdFileSystemCount;
     TCounterPtr SsdTabletCount;
+
+    TWriteDataZeroCounters WriteDataZeroCounters;
 
     NProto::EServiceState ServiceState = NProto::SERVICE_STATE_UNKNOWN;
 

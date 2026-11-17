@@ -65,9 +65,9 @@ message TToggleServiceStateResponse
 // UpdateCertificates request/response.
 
 // Re-reads all TLS files of the daemon right away instead of waiting for the
-// periodic check: certificates, private keys and root CAs. Call it once the
-// files have been written completely. Fails with E_TRY_AGAIN if another update
-// is in progress.
+// periodic check: certificates, private keys and root CAs, those filestore-vhost
+// connects to filestore-server with included. Call it once the files have been
+// written completely. Fails with E_TRY_AGAIN if another update is in progress.
 message TUpdateCertificatesRequest
 {
 }

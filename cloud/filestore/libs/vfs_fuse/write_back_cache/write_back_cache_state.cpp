@@ -19,6 +19,7 @@ using ERequestType = IWriteBackCacheStateStats::ERequestType;
 
 TWriteBackCacheState::TWriteBackCacheState(
     IQueuedOperationsProcessor& processor,
+    std::unique_ptr<IWriteBackCacheLock> lock,
     IPersistentStoragePtr persistentStorage,
     ITimerPtr timer,
     IWriteBackCacheStateStatsPtr writeBackCacheStateStats,
@@ -39,6 +40,7 @@ TWriteBackCacheState::TWriteBackCacheState(
           std::move(writeDataRequestManagerStats))
     , QueuedOperations(
           processor,
+          std::move(lock),
           [this] { ProcessSerializedRequests(); })
 {}
 
@@ -971,12 +973,11 @@ void TWriteBackCacheState::ProcessReadyCachedRequest(
 
     Y_ABORT_UNLESS(pendingRequest->GetSequenceId() == request->GetSequenceId());
 
-    QueuedOperations.CompleteWriteDataPromise(
-        std::move(pendingRequest->AccessPromise()));
-
     auto& handleState = nodeState.Handles[request->GetHandle()];
     handleState.PendingRequests.Remove(pendingRequest.get());
     handleState.UnflushedRequests.PushBack(request.get());
+
+    QueuedOperations.CompleteWriteDataRequest(std::move(pendingRequest));
 
     EnqueueUnflushedRequest(nodeId, nodeState, std::move(request));
 
@@ -1006,7 +1007,6 @@ void TWriteBackCacheState::RemoveActiveRequestFromHandleState(
 
     if (handleState) {
         handleState->PendingRequests.Remove(request);
-        TryRemoveUnusedHandle(nodeState, handle);
     }
 }
 
@@ -1109,14 +1109,15 @@ void TWriteBackCacheState::FailUnallocatedPendingRequest(
     std::unique_ptr<TPendingWriteDataRequest> request,
     const NCloud::NProto::TError& error)
 {
-    QueuedOperations.FailWriteDataPromise(
-        std::move(request->AccessPromise()),
-        error);
+    const ui64 handle = request->GetHandle();
+    RequestManager.RemoveUnallocated(request.get());
 
     RemoveActiveRequestFromHandleState(nodeState, request.get());
-    TriggerFlushCompletions(nodeState);
 
-    RequestManager.RemoveUnallocated(std::move(request));
+    QueuedOperations.FailWriteDataRequest(std::move(request), error);
+
+    TryRemoveUnusedHandle(nodeState, handle);
+    TriggerFlushCompletions(nodeState);
 }
 
 void TWriteBackCacheState::FailNodeUnallocatedPendingRequests(

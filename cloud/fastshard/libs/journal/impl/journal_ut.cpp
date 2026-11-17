@@ -52,10 +52,10 @@ TString MakeContent(char tag, ui64 pageNo)
     return Sprintf("%c%03u", tag, static_cast<ui32>(pageNo % 1000));
 }
 
-NCloud::NProto::TWriteLogRecordRequest
+NProto::TWriteLogRecordRequest
 MakeWriteRequest(ui64 lsn, ui64 prevLsn, char tag, const TGroups& groups)
 {
-    NCloud::NProto::TWriteLogRecordRequest request;
+    NProto::TWriteLogRecordRequest request;
     request.SetLogSequenceNumber(lsn);
     request.SetPrevLogSequenceNumber(prevLsn);
 
@@ -71,9 +71,9 @@ MakeWriteRequest(ui64 lsn, ui64 prevLsn, char tag, const TGroups& groups)
     return request;
 }
 
-NCloud::NProto::TReadPagesRequest MakeReadRequest(const TGroups& refs)
+NProto::TReadPagesRequest MakeReadRequest(const TGroups& refs)
 {
-    NCloud::NProto::TReadPagesRequest request;
+    NProto::TReadPagesRequest request;
 
     for (const auto& [firstPageNo, pageCount]: refs) {
         auto& ref = *request.AddPageGroupRefs();
@@ -85,20 +85,20 @@ NCloud::NProto::TReadPagesRequest MakeReadRequest(const TGroups& refs)
     return request;
 }
 
-NCloud::NProto::TReadJournalTailRequest MakeReadTailRequest(
+NProto::TReadJournalTailRequest MakeReadTailRequest(
     ui64 afterLsn,
     ui32 maxRecordCount = 0)
 {
-    NCloud::NProto::TReadJournalTailRequest request;
+    NProto::TReadJournalTailRequest request;
     request.SetAfterLogSequenceNumber(afterLsn);
     request.SetMaxRecordCount(maxRecordCount);
 
     return request;
 }
 
-NCloud::NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(ui64 lsn)
+NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(ui64 lsn)
 {
-    NCloud::NProto::TAdvanceLsnLowWatermarkRequest request;
+    NProto::TAdvanceLsnLowWatermarkRequest request;
     request.SetLsnLowWatermark(lsn);
 
     return request;
@@ -126,7 +126,7 @@ TString DescribeGroups(const T& source)
 
 // "2<-1 20:[B020]", empty for the empty record the journal hands back when
 // there is nothing to flush
-TString DescribeRecord(const NCloud::NProto::TJournalRecord& record)
+TString DescribeRecord(const NProto::TJournalRecord& record)
 {
     if (!record.GetLogSequenceNumber() && !record.PageGroupsSize()) {
         return {};
@@ -144,8 +144,7 @@ TString DescribeRecord(const NCloud::NProto::TJournalRecord& record)
 }
 
 // "1<-0 10:[A010]; 2<-1 20:[B020]"
-TString DescribeRecords(
-    const NCloud::NProto::TReadJournalTailResponse& response)
+TString DescribeRecords(const NProto::TReadJournalTailResponse& response)
 {
     TVector<TString> records;
 
@@ -176,7 +175,7 @@ struct TTestDevice final: public IDevice
     struct TBlockedWrite
     {
         TVector<TPageRange> Ranges;
-        TPromise<NCloud::NProto::TError> Error;
+        TPromise<NProto::TError> Error;
     };
 
     TMutex Mutex;
@@ -209,8 +208,7 @@ struct TTestDevice final: public IDevice
         return Impl->ReadPages(std::move(rangeRefs));
     }
 
-    TFuture<NCloud::NProto::TError> WritePages(
-        TVector<TPageRange> ranges) override
+    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
     {
         if (FailWrites.load()) {
             return MakeFuture(MakeError(E_IO, "write failed"));
@@ -218,7 +216,7 @@ struct TTestDevice final: public IDevice
 
         with_lock (Mutex) {
             if (BlockWrites) {
-                auto error = NewPromise<NCloud::NProto::TError>();
+                auto error = NewPromise<NProto::TError>();
                 BlockedWrites.push_back(
                     {.Ranges = std::move(ranges), .Error = error});
                 WriteBlocked.Signal();
@@ -229,8 +227,7 @@ struct TTestDevice final: public IDevice
         return Impl->WritePages(std::move(ranges));
     }
 
-    TFuture<NCloud::NProto::TError> ZeroPages(
-        TVector<TPageRangeRef> ranges) override
+    TFuture<NProto::TError> ZeroPages(TVector<TPageRangeRef> ranges) override
     {
         if (FailWrites.load()) {
             return MakeFuture(MakeError(E_IO, "zero failed"));
@@ -303,7 +300,7 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
     {
         std::optional<ui64> Key;   // none for a metadata write
         TBuffer Buffer;
-        TPromise<NCloud::NProto::TError> Error;
+        TPromise<NProto::TError> Error;
     };
 
     TMutex Mutex;
@@ -331,7 +328,7 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
         return MakeFuture<TRestoreResult>(std::move(restored));
     }
 
-    TResultOrError<TFuture<NCloud::NProto::TError>> Write(
+    TResultOrError<TFuture<NProto::TError>> Write(
         ui64 key,
         TBuffer buffer) override
     {
@@ -344,12 +341,12 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
         return WriteOrHold(key, std::move(buffer));
     }
 
-    TFuture<NCloud::NProto::TError> WriteMeta(TBuffer buffer) override
+    TFuture<NProto::TError> WriteMeta(TBuffer buffer) override
     {
         return WriteOrHold(std::nullopt, std::move(buffer));
     }
 
-    TFuture<NCloud::NProto::TError> EraseBelow(ui64 key) override
+    TFuture<NProto::TError> EraseBelow(ui64 key) override
     {
         return Impl->EraseBelow(key);
     }
@@ -362,9 +359,7 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
     }
 
 private:
-    TFuture<NCloud::NProto::TError> WriteOrHold(
-        std::optional<ui64> key,
-        TBuffer buffer)
+    TFuture<NProto::TError> WriteOrHold(std::optional<ui64> key, TBuffer buffer)
     {
         if (FailWrites.load()) {
             return MakeFuture(MakeError(E_IO, "meta write failed"));
@@ -372,7 +367,7 @@ private:
 
         with_lock (Mutex) {
             if (BlockWrites) {
-                auto error = NewPromise<NCloud::NProto::TError>();
+                auto error = NewPromise<NProto::TError>();
                 BlockedWrites.push_back(
                     {.Key = key, .Buffer = std::move(buffer), .Error = error});
                 WriteBlocked.Signal();
@@ -383,7 +378,7 @@ private:
         return WriteThrough(key, std::move(buffer));
     }
 
-    TFuture<NCloud::NProto::TError> WriteThrough(
+    TFuture<NProto::TError> WriteThrough(
         std::optional<ui64> key,
         TBuffer buffer)
     {
@@ -507,23 +502,23 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     // The response is ready only once the record has made it into the page
     // index, which a record that does not continue the chain yet has not.
-    TFuture<NCloud::NProto::TWriteLogRecordResponse> WriteAsync(
-        NCloud::NProto::TWriteLogRecordRequest request)
+    TFuture<NProto::TWriteLogRecordResponse> WriteAsync(
+        NProto::TWriteLogRecordRequest request)
     {
         return Run([&] { return Journal->Write(std::move(request)); });
     }
 
     // Returns once the write is on the executor - for a write the test
     // holds up at a store.
-    TFuture<NCloud::NProto::TWriteLogRecordResponse> StartWrite(
-        NCloud::NProto::TWriteLogRecordRequest request)
+    TFuture<NProto::TWriteLogRecordResponse> StartWrite(
+        NProto::TWriteLogRecordRequest request)
     {
         return Executor->Execute(
             [this, request = std::move(request)]() mutable
             { return Journal->Write(std::move(request)); });
     }
 
-    ui32 Write(NCloud::NProto::TWriteLogRecordRequest request)
+    ui32 Write(NProto::TWriteLogRecordRequest request)
     {
         return WriteAsync(std::move(request))
             .GetValueSync()
@@ -536,21 +531,20 @@ struct TFixture: public NUnitTest::TBaseFixture
         return Write(MakeWriteRequest(lsn, prevLsn, tag, groups));
     }
 
-    NCloud::NProto::TReadPagesResponse ReadPages(const TGroups& refs)
+    NProto::TReadPagesResponse ReadPages(const TGroups& refs)
     {
         return Run([&] { return Journal->Read(MakeReadRequest(refs)); })
             .GetValueSync();
     }
 
-    TFuture<NCloud::NProto::TReadPagesResponse> ReadPagesAsync(
-        const TGroups& refs)
+    TFuture<NProto::TReadPagesResponse> ReadPagesAsync(const TGroups& refs)
     {
         return Executor->Execute(
             [this, request = MakeReadRequest(refs)]() mutable
             { return Journal->Read(std::move(request)); });
     }
 
-    NCloud::NProto::TReadJournalTailResponse ReadTail(
+    NProto::TReadJournalTailResponse ReadTail(
         ui64 afterLsn,
         ui32 maxRecordCount = 0)
     {
@@ -576,25 +570,35 @@ struct TFixture: public NUnitTest::TBaseFixture
             .GetCode();
     }
 
-    TResultOrError<NCloud::NProto::TJournalRecord> GetRecordToFlush(
-        ui64 maxAllowedLsn = Max<ui64>())
+    // No limit on the lsn or the pages of the batch unless given one.
+    TResultOrError<TJournalRecords> GetRecordsToFlush(
+        ui64 maxAllowedLsn = Max<ui64>(),
+        ui64 maxPageCount = Max<ui64>())
     {
-        return Run([&] { return Journal->GetRecordToFlush(maxAllowedLsn); })
-            .GetValueSync();
+        return Run(
+            [&]
+            { return Journal->GetRecordsToFlush(maxAllowedLsn, maxPageCount); });
     }
 
-    TString GetRecordToFlushDescription(ui64 maxAllowedLsn = Max<ui64>())
+    // "1<-0 10:[A010]; 2<-1 20:[B020]", empty when there is nothing to flush
+    TString GetRecordsToFlushDescription(
+        ui64 maxAllowedLsn = Max<ui64>(),
+        ui64 maxPageCount = Max<ui64>())
     {
-        auto result = GetRecordToFlush(maxAllowedLsn);
+        auto result = GetRecordsToFlush(maxAllowedLsn, maxPageCount);
         UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
-        return DescribeRecord(result.GetResult());
+
+        TVector<TString> records;
+        for (const auto& record: result.GetResult()) {
+            records.push_back(DescribeRecord(record));
+        }
+
+        return JoinSeq("; ", records);
     }
 
     ui32 CleanupFlushedRecords()
     {
-        return Run([&] { return Journal->CleanupFlushedRecords(); })
-            .GetValueSync()
-            .GetCode();
+        return Run([&] { return Journal->CleanupFlushedRecords(); }).GetCode();
     }
 
     // Takes the given record through the whole flush cycle.
@@ -813,13 +817,13 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         // the flusher starts where the restored log starts, not at lsn 0 -
         // the pages were never written, so only the record is looked at
         UNIT_ASSERT_STRING_CONTAINS(
-            GetRecordToFlushDescription(),
+            GetRecordsToFlushDescription(),
             "5<-4 10:[");
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(6));
         Journal->MarkRecordAsFlushed(5);
         UNIT_ASSERT_STRING_CONTAINS(
-            GetRecordToFlushDescription(),
+            GetRecordsToFlushDescription(),
             "6<-5 20:[");
     }
 
@@ -860,7 +864,9 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(1, RestoreOrFail());
 
         // the restored record still holds every page of the store
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WriteRecord(2, 1, 'B', {{20, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            WriteRecord(2, 1, 'B', {{20, 1}}));
 
         // and its contents are where the mappings say they are
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1338,7 +1344,9 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WriteRecord(1, 0, 'A', {{10, 5}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            WriteRecord(1, 0, 'A', {{10, 5}}));
 
         // the rejected record has taken nothing, the journal still fits four
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
@@ -1838,15 +1846,18 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         WriteThreeRecords();
 
         // nothing may leave the journal before the writer has acked it
-        UNIT_ASSERT_VALUES_EQUAL("", GetRecordToFlushDescription());
+        UNIT_ASSERT_VALUES_EQUAL("", GetRecordsToFlushDescription());
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
         UNIT_ASSERT_VALUES_EQUAL(
-            "1<-0 10:[A010]",
-            GetRecordToFlushDescription());
+            "1<-0 10:[A010]; 2<-1 20:[B020]",
+            GetRecordsToFlushDescription());
 
         // and the caller may hold it back further
-        UNIT_ASSERT_VALUES_EQUAL("", GetRecordToFlushDescription(0));
+        UNIT_ASSERT_VALUES_EQUAL("", GetRecordsToFlushDescription(0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]",
+            GetRecordsToFlushDescription(1));
     }
 
     Y_UNIT_TEST_F(ShouldWalkRecordsToFlushInOrder, TFixture)
@@ -1855,21 +1866,53 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "1<-0 10:[A010]",
-            GetRecordToFlushDescription());
+            "1<-0 10:[A010]; 2<-1 20:[B020]",
+            GetRecordsToFlushDescription());
+
+        // the batch starts right after the flushed lsn
 
         Journal->MarkRecordAsFlushed(1);
         UNIT_ASSERT_VALUES_EQUAL(
             "2<-1 20:[B020]",
-            GetRecordToFlushDescription());
+            GetRecordsToFlushDescription());
 
         Journal->MarkRecordAsFlushed(2);
-        UNIT_ASSERT_VALUES_EQUAL("", GetRecordToFlushDescription());
+        UNIT_ASSERT_VALUES_EQUAL("", GetRecordsToFlushDescription());
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(3));
         UNIT_ASSERT_VALUES_EQUAL(
             "3<-2 30:[C030]",
-            GetRecordToFlushDescription());
+            GetRecordsToFlushDescription());
+    }
+
+    Y_UNIT_TEST_F(ShouldLimitFlushBatch, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 2}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(3, 2, 'C', {{30, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(3));
+
+        const ui64 anyLsn = Max<ui64>();
+        const ui64 anyPageCount = Max<ui64>();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]; 2<-1 20:[B020,B021]; 3<-2 30:[C030]",
+            GetRecordsToFlushDescription(anyLsn, anyPageCount));
+
+        // the batch stops before the record that takes it past the page
+        // budget
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]; 2<-1 20:[B020,B021]",
+            GetRecordsToFlushDescription(anyLsn, 3));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]",
+            GetRecordsToFlushDescription(anyLsn, 2));
+
+        // a record bigger than the whole budget is handed out on its own
+        Journal->MarkRecordAsFlushed(1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "2<-1 20:[B020,B021]",
+            GetRecordsToFlushDescription(anyLsn, 1));
     }
 
     Y_UNIT_TEST_F(ShouldNotOfferUnwrittenRecordToFlusher, TFixture)
@@ -1877,7 +1920,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         auto second = WriteAsync(MakeWriteRequest(2, 1, 'B', {{20, 1}}));
 
         // lsn 1 has not been written at all, so the chain starts at a gap
-        UNIT_ASSERT_VALUES_EQUAL("", GetRecordToFlushDescription());
+        UNIT_ASSERT_VALUES_EQUAL("", GetRecordsToFlushDescription());
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1886,18 +1929,20 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
         UNIT_ASSERT_VALUES_EQUAL(
-            "1<-0 10:[A010]",
-            GetRecordToFlushDescription());
+            "1<-0 10:[A010]; 2<-1 20:[B020]",
+            GetRecordsToFlushDescription());
     }
 
-    Y_UNIT_TEST_F(ShouldFailToFetchRecordToFlushWhenDeviceFails, TFixture)
+    Y_UNIT_TEST_F(ShouldFailToFetchRecordsToFlushWhenDeviceFails, TFixture)
     {
         WriteThreeRecords();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(1));
 
         Device->FailReads.store(true);
 
-        UNIT_ASSERT_VALUES_EQUAL(E_IO, GetRecordToFlush().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_IO,
+            GetRecordsToFlush().GetError().GetCode());
     }
 
     Y_UNIT_TEST_F(ShouldCleanupFlushedRecords, TFixture)

@@ -76,6 +76,11 @@ message TFileStoreFeatures
 
     // Server WriteBackCache state file size in bytes per session.
     uint64 ServerWriteBackCacheStateFileSize = 58;
+
+    uint32 NodeRefCacheLimit = 59;
+    uint32 NodeAttrsCacheLimit = 60;
+
+    bool WriteDataZeroBlockStatsEnabled = 61;
 }
 
 message TFileStore

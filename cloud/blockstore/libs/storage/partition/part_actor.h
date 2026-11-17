@@ -104,6 +104,16 @@ class TPartitionActor final
         {}
     };
 
+    enum class ETrimFreshLogKind
+    {
+        // Nothing to trim yet.
+        None,
+        // A hard barrier on the fresh channels at TrimFreshLogToCommitId, the
+        // highest commit id below every live fresh blob. Every fresh blob at or
+        // below it is dead, so the barrier deletes all of them.
+        Ordinary,
+    };
+
     static constexpr ui64 BootWakeupEventTag = 1;
 
     friend TFreshBlocksCompanionClient;
@@ -244,6 +254,9 @@ private:
     void EnqueueCollectGarbageIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueProcessWriteQueueIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTrimFreshLogIfNeeded(const NActors::TActorContext& ctx);
+    [[nodiscard]] bool ShouldStartOrdinaryTrim(ui64 ordinaryTrimToCommitId);
+    [[nodiscard]] bool CheckDeadFreshBlobByteCount() const;
+    [[nodiscard]] ETrimFreshLogKind ChooseTrimFreshLogKind();
     void EnqueueAddConfirmedBlobsIfNeeded(const NActors::TActorContext& ctx);
 
     void UpdateStats(const NProto::TPartitionStats& update);
@@ -466,11 +479,7 @@ private:
         NActors::TActorId tablet,
         ui64 blobsPerBatch,
         ui64 finalCommitId,
-        ui64 mixedBlocksCount,
-        ui64 mergedBlocksCount,
-        ui64 mixedChannelBlocksCount,
-        ui64 mergedChannelBlocksCount,
-        const NProto::TPartitionStats::TBlobByteCounters& initialBlobByteCounters,
+        TPartitionBlobAndBlockCounts initialCounters,
         TDuration retryTimeout);
 
     TBlockBuffer CreateScanDiskBlockBuffer(ui32 blobsPerBatch);
@@ -484,6 +493,7 @@ private:
 
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
     [[nodiscard]] TDuration GetFreshBlobAgeFlushThreshold() const;
+    [[nodiscard]] ui32 GetFreshDeadBlobByteCountTrimThreshold() const;
 
     void CreateFreshBlocksCompanionClient();
 
@@ -758,6 +768,10 @@ private:
         const NActors::TActorContext& ctx,
         NProto::ERebuildMetadataType type,
         ui32 rangesPerBatch);
+
+    NProto::TError StartMetadataRebuildBlockCount(
+        const NActors::TActorContext& ctx,
+        ui32 batchSize);
 
     NProto::TError DoHandleScanDisk(
         const NActors::TActorContext& ctx,

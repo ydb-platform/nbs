@@ -180,16 +180,23 @@ void TPageStore::CommitPages(ui64 lsn, const TVector<ui64>& pages)
 
         Y_ABORT_UNLESS(pageVersions);
 
+        auto* it = pageVersions->FindAtLsn(lsn);
+
         if (lsn <= pageVersions->Committed.Lsn) {
             //
             // We might have received a commit notification for a later log
-            // record already.
+            // record already - this version has been erased then. Or the page
+            // has been loaded after a later log record had been committed -
+            // the loaded version includes this one, so this version is
+            // obsolete and has to be erased along with the older ones.
             //
+
+            if (it != pageVersions->Dirty.end()) {
+                pageVersions->Dirty.erase(pageVersions->Dirty.begin(), ++it);
+            }
 
             continue;
         }
-
-        auto* it = pageVersions->FindAtLsn(lsn);
 
         //
         // This lsn must be present among the dirty ones because whenever we

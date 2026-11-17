@@ -38,11 +38,11 @@ constexpr ui32 DirectIOAlignment = 4_KB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NCloud::NProto::TError CheckTransfer(
+NProto::TError CheckTransfer(
     TStringBuf operation,
     ui64 firstPageNo,
     ui64 expectedBytes,
-    const NCloud::NProto::TError& error,
+    const NProto::TError& error,
     ui32 bytesTransferred)
 {
     if (HasError(error)) {
@@ -59,7 +59,7 @@ NCloud::NProto::TError CheckTransfer(
     return {};
 }
 
-NCloud::NProto::TError DiscardRange(TFileHandle& file, i64 offset, i64 length)
+NProto::TError DiscardRange(TFileHandle& file, i64 offset, i64 length)
 {
 #if defined(_linux_)
     if (fallocate(
@@ -153,7 +153,7 @@ public:
         // the pages the data is copied into must outlive the requests
         auto pages = std::make_shared<TVector<TBuffer>>(pageCount);
 
-        TVector<TFuture<NCloud::NProto::TError>> futures;
+        TVector<TFuture<NProto::TError>> futures;
         futures.reserve(rangeRefs.size());
 
         ui64 pageIndex = 0;
@@ -189,8 +189,7 @@ public:
             });
     }
 
-    TFuture<NCloud::NProto::TError> WritePages(
-        TVector<TPageRange> ranges) override
+    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
     {
         for (const auto& range: ranges) {
             auto error = ValidatePages(range.FirstPageNo, range.Pages);
@@ -199,7 +198,7 @@ public:
             }
         }
 
-        TVector<TFuture<NCloud::NProto::TError>> futures;
+        TVector<TFuture<NProto::TError>> futures;
         futures.reserve(ranges.size());
 
         for (const auto& range: ranges) {
@@ -211,8 +210,8 @@ public:
         }
 
         return WaitAll(futures).Apply(
-            [futures = std::move(futures)]
-            (const TFuture<void>&) -> NCloud::NProto::TError
+            [futures =
+                 std::move(futures)](const TFuture<void>&) -> NProto::TError
             {
                 for (const auto& future: futures) {
                     const auto& error = future.GetValue();
@@ -225,8 +224,7 @@ public:
             });
     }
 
-    TFuture<NCloud::NProto::TError> ZeroPages(
-        TVector<TPageRangeRef> ranges) override
+    TFuture<NProto::TError> ZeroPages(TVector<TPageRangeRef> ranges) override
     {
         for (const auto& range: ranges) {
             auto error = ValidatePageRange(range.FirstPageNo, range.PageCount);
@@ -250,11 +248,11 @@ public:
             }
         }
 
-        return MakeFuture<NCloud::NProto::TError>();
+        return MakeFuture<NProto::TError>();
     }
 
 private:
-    NCloud::NProto::TError ValidatePages(
+    NProto::TError ValidatePages(
         ui64 firstPageNo,
         const TVector<TBuffer>& pages) const
     {
@@ -269,9 +267,7 @@ private:
         return ValidatePageRange(firstPageNo, pages.size());
     }
 
-    NCloud::NProto::TError ValidatePageRange(
-        ui64 firstPageNo,
-        ui64 pageCount) const
+    NProto::TError ValidatePageRange(ui64 firstPageNo, ui64 pageCount) const
     {
         if (firstPageNo > PageCount || pageCount > PageCount - firstPageNo) {
             return MakeError(E_ARGUMENT, TStringBuilder()
@@ -290,7 +286,7 @@ private:
 
     // the pages are read into an aligned buffer, as O_DIRECT requires, and
     // copied into the destination ones once the read succeeds
-    TFuture<NCloud::NProto::TError> Read(
+    TFuture<NProto::TError> Read(
         ui64 firstPageNo,
         TVector<TArrayRef<char>> pages)
     {
@@ -301,7 +297,7 @@ private:
         // moving the buffer into the callback keeps its data in place
         const TArrayRef<char> data(buffer.Begin(), buffer.Size());
 
-        auto promise = NewPromise<NCloud::NProto::TError>();
+        auto promise = NewPromise<NProto::TError>();
 
         FileIO->AsyncRead(
             File,
@@ -311,8 +307,8 @@ private:
              firstPageNo,
              pageSize = PageSize,
              pages = std::move(pages),
-             buffer = std::move(buffer)]
-            (const NCloud::NProto::TError& error, ui32 bytes) mutable
+             buffer = std::move(
+                 buffer)](const NProto::TError& error, ui32 bytes) mutable
             {
                 auto result = CheckTransfer(
                     "read",
@@ -339,7 +335,7 @@ private:
 
     // the pages are copied into an aligned buffer, as O_DIRECT requires, so
     // the request does not have to outlive the write
-    TFuture<NCloud::NProto::TError> Write(
+    TFuture<NProto::TError> Write(
         ui64 firstPageNo,
         const TVector<TBuffer>& pages)
     {
@@ -356,14 +352,15 @@ private:
         // moving the buffer into the callback keeps its data in place
         const TArrayRef<const char> data(buffer.Begin(), buffer.Size());
 
-        auto promise = NewPromise<NCloud::NProto::TError>();
+        auto promise = NewPromise<NProto::TError>();
 
         FileIO->AsyncWrite(
             File,
             GetOffset(firstPageNo),
             data,
-            [promise, firstPageNo, buffer = std::move(buffer)]
-            (const NCloud::NProto::TError& error, ui32 bytes) mutable
+            [promise, firstPageNo, buffer = std::move(buffer)](
+                const NProto::TError& error,
+                ui32 bytes) mutable
             {
                 promise.SetValue(CheckTransfer(
                     "write",

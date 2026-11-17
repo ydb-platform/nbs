@@ -23,35 +23,33 @@ public:
         return MakeFuture();
     }
 
-    [[nodiscard]] auto ReadPages(NCloud::NProto::TReadPagesRequest request)
-        -> TFuture<NCloud::NProto::TReadPagesResponse> final
+    [[nodiscard]] auto ReadPages(NProto::TReadPagesRequest request)
+        -> TFuture<NProto::TReadPagesResponse> final
     {
         Y_UNUSED(request);
-        return MakeFuture<NCloud::NProto::TReadPagesResponse>({});
+        return MakeFuture<NProto::TReadPagesResponse>({});
     }
 
-    [[nodiscard]] auto WriteLogRecord(
-        NCloud::NProto::TWriteLogRecordRequest request)
-        -> TFuture<NCloud::NProto::TWriteLogRecordResponse> final
+    [[nodiscard]] auto WriteLogRecord(NProto::TWriteLogRecordRequest request)
+        -> TFuture<NProto::TWriteLogRecordResponse> final
     {
         Y_UNUSED(request);
-        return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>({});
+        return MakeFuture<NProto::TWriteLogRecordResponse>({});
     }
 
-    [[nodiscard]] auto ReadJournalTail(
-        NCloud::NProto::TReadJournalTailRequest request)
-        -> TFuture<NCloud::NProto::TReadJournalTailResponse> final
+    [[nodiscard]] auto ReadJournalTail(NProto::TReadJournalTailRequest request)
+        -> TFuture<NProto::TReadJournalTailResponse> final
     {
         Y_UNUSED(request);
-        return MakeFuture<NCloud::NProto::TReadJournalTailResponse>({});
+        return MakeFuture<NProto::TReadJournalTailResponse>({});
     }
 
     [[nodiscard]] auto AdvanceLsnLowWatermark(
-        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
-        -> TFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse> final
+        NProto::TAdvanceLsnLowWatermarkRequest request)
+        -> TFuture<NProto::TAdvanceLsnLowWatermarkResponse> final
     {
         Y_UNUSED(request);
-        return MakeFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>({});
+        return MakeFuture<NProto::TAdvanceLsnLowWatermarkResponse>({});
     }
 };
 

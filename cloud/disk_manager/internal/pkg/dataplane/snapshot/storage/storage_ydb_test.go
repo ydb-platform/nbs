@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"sort"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
@@ -334,10 +336,29 @@ type fixture struct {
 	storage Storage
 }
 
+// Reads the whole queue in key order.
+func (f *fixture) queuedChunks(limit int) ([]BackupChunkQueueEntry, error) {
+	return f.storage.GetQueuedChunksToBackup(
+		f.ctx,
+		0,
+		math.MaxUint64,
+		nil, // after
+		limit,
+	)
+}
+
 func (f *fixture) teardown() {
 	err := f.db.Close(f.ctx)
 	require.NoError(f.t, err)
 	f.cancel()
+}
+
+// A storage of the same database whose follower is another bucket: it keeps
+// the chunks copied to that bucket in a table of its own.
+func (f *fixture) storageWithFollowerChunksTable(name string) Storage {
+	config := proto.Clone(f.config).(*snapshot_config.SnapshotConfig)
+	config.FollowerChunksTableName = &name
+	return newStorage(f.t, f.ctx, config, f.db, f.s3, metrics.NewEmptyRegistry())
 }
 
 func createFixture(t *testing.T) *fixture {
@@ -682,6 +703,181 @@ func TestSnapshotsLocks(t *testing.T) {
 			_, err = f.storage.DeletingSnapshot(f.ctx, snapshot1.ID, "delete1")
 			require.NoError(t, err)
 		})
+	}
+}
+
+func requireHeldForBackup(
+	t *testing.T,
+	f *fixture,
+	snapshotID string,
+	taskID string,
+) {
+
+	held, err := f.storage.HoldSnapshotForBackup(f.ctx, snapshotID, taskID)
+	require.NoError(t, err)
+	require.True(t, held)
+}
+
+func requireNotHeldForBackup(
+	t *testing.T,
+	f *fixture,
+	snapshotID string,
+	taskID string,
+) {
+
+	held, err := f.storage.HoldSnapshotForBackup(f.ctx, snapshotID, taskID)
+	require.NoError(t, err)
+	require.False(t, held)
+}
+
+func TestSnapshotBackupHoldIsIdempotentAndOwnedByOneCopy(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snapshot", CreateTaskID: "create"})
+	require.NoError(t, err)
+	require.NoError(t, f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil))
+
+	// The backup hold is independent of the lock of incremental snapshots.
+	locked, err := f.storage.LockSnapshot(f.ctx, "snapshot", "incremental")
+	require.NoError(t, err)
+	require.True(t, locked)
+	for i := 0; i != 2; i++ {
+		requireHeldForBackup(t, f, "snapshot", "copy")
+	}
+	require.NoError(t, f.storage.UnlockSnapshot(f.ctx, "snapshot", "incremental"))
+
+	// Another copy waits for the current one.
+	_, err = f.storage.HoldSnapshotForBackup(f.ctx, "snapshot", "next")
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+	require.NoError(t, f.storage.ReleaseSnapshotForBackup(f.ctx, "snapshot", "next"))
+
+	_, err = f.storage.DeletingSnapshot(f.ctx, "snapshot", "delete")
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	for i := 0; i != 2; i++ {
+		require.NoError(t, f.storage.ReleaseSnapshotForBackup(f.ctx, "snapshot", "copy"))
+	}
+	_, err = f.storage.DeletingSnapshot(f.ctx, "snapshot", "delete")
+	require.NoError(t, err)
+	requireNotHeldForBackup(t, f, "snapshot", "next")
+}
+
+func TestSnapshotBackupHoldPreservesInheritedChunks(t *testing.T) {
+	for _, testCase := range testCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			f := createFixture(t)
+			defer f.teardown()
+
+			chunkID, err := f.storage.WriteChunk(
+				f.ctx, "", "source", makeChunk(0, "abc"), testCase.useS3,
+			)
+			require.NoError(t, err)
+			_, err = f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+				ID:           "copy",
+				CreateTaskID: "create",
+			})
+			require.NoError(t, err)
+			err = f.storage.ShallowCopySnapshot(f.ctx, "source", "copy", 0, nil)
+			require.NoError(t, err)
+			err = f.storage.SnapshotCreated(f.ctx, "copy", 3, 3, 1, nil)
+			require.NoError(t, err)
+			requireHeldForBackup(t, f, "copy", "backup")
+
+			_, err = f.storage.DeletingSnapshot(f.ctx, "source", "delete")
+			require.NoError(t, err)
+			err = f.storage.DeleteSnapshotData(f.ctx, "source")
+			require.NoError(t, err)
+			_, err = f.storage.DeletingSnapshot(f.ctx, "copy", "delete")
+			require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+			blob, err := f.storage.ReadChunkBlob(f.ctx, chunkID, testCase.useS3)
+			require.NoError(t, err)
+			require.Equal(t, []byte("abc"), blob.Data)
+			err = f.storage.ReleaseSnapshotForBackup(f.ctx, "copy", "backup")
+			require.NoError(t, err)
+			_, err = f.storage.DeletingSnapshot(f.ctx, "copy", "delete")
+			require.NoError(t, err)
+			require.NoError(t, f.storage.DeleteSnapshotData(f.ctx, "copy"))
+			_, err = f.storage.ReadChunkBlob(f.ctx, chunkID, testCase.useS3)
+			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+		})
+	}
+}
+
+func TestSnapshotBackupHoldRejectsUnavailableSnapshot(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	requireNotHeldForBackup(t, f, "missing", "backup")
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+		ID:           "snapshot",
+		CreateTaskID: "create",
+	})
+	require.NoError(t, err)
+	requireNotHeldForBackup(t, f, "snapshot", "backup")
+
+	err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+	require.NoError(t, err)
+	_, err = f.storage.HoldSnapshotForBackup(f.ctx, "snapshot", "")
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	_, err = f.storage.DeletingSnapshot(f.ctx, "snapshot", "delete")
+	require.NoError(t, err)
+	requireNotHeldForBackup(t, f, "snapshot", "backup")
+}
+
+func TestSnapshotBackupHoldRacesWithDeletion(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	for i := 0; i != 10; i++ {
+		snapshotID := fmt.Sprintf("snapshot%v", i)
+		_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+			ID:           snapshotID,
+			CreateTaskID: "create",
+		})
+		require.NoError(t, err)
+		err = f.storage.SnapshotCreated(f.ctx, snapshotID, 0, 0, 0, nil)
+		require.NoError(t, err)
+
+		start := make(chan struct{})
+		type holdResult struct {
+			held bool
+			err  error
+		}
+		hold := make(chan holdResult, 1)
+		deleted := make(chan error, 1)
+		go func() {
+			<-start
+			held, err := f.storage.HoldSnapshotForBackup(f.ctx, snapshotID, "backup")
+			hold <- holdResult{held, err}
+		}()
+		go func() {
+			<-start
+			_, err := f.storage.DeletingSnapshot(f.ctx, snapshotID, "delete")
+			deleted <- err
+		}()
+		close(start)
+
+		result, deleteErr := <-hold, <-deleted
+		require.NoError(t, result.err)
+		if result.held {
+			require.True(
+				t,
+				errors.Is(deleteErr, errors.NewInterruptExecutionError()),
+			)
+			err = f.storage.ReleaseSnapshotForBackup(
+				f.ctx,
+				snapshotID,
+				"backup",
+			)
+			require.NoError(t, err)
+			_, err = f.storage.DeletingSnapshot(f.ctx, snapshotID, "delete")
+			require.NoError(t, err)
+		} else {
+			require.NoError(t, deleteErr)
+		}
 	}
 }
 
@@ -1191,6 +1387,58 @@ func TestWriteChunk(t *testing.T) {
 
 			require.Equal(t, []ChunkMapEntry{{0, chunkID, testCase.useS3}}, actual)
 		})
+	}
+}
+
+func TestReadChunkMapRange(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+	var expected []ChunkMapEntry
+	for _, index := range []uint32{0, 1, 2, 4} {
+		chunkID, err := f.storage.WriteChunk(
+			f.ctx, "", "snapshot", makeChunk(index, "data"), false,
+		)
+		require.NoError(t, err)
+		if index >= 1 && index < 4 {
+			expected = append(expected, ChunkMapEntry{index, chunkID, false})
+		}
+	}
+
+	reader := f.storage.(ChunkMapRangeReader)
+	entries, errors := reader.ReadChunkMapRange(f.ctx, "snapshot", 1, 4)
+	var actual []ChunkMapEntry
+	for entry := range entries {
+		actual = append(actual, entry)
+	}
+
+	require.NoError(t, <-errors)
+	require.Equal(t, expected, actual)
+}
+
+func TestReadChunkMapEmptyAndInvalidRangesDoNotQueryYDB(t *testing.T) {
+	reader := &storageYDB{} // No DB: empty and invalid ranges must not query it.
+	for _, tc := range []struct {
+		start   uint32
+		end     uint32
+		invalid bool
+	}{
+		{0, 0, false},
+		{math.MaxUint32, math.MaxUint32, false},
+		{2, 1, true},
+	} {
+		entries, errors := reader.ReadChunkMapRange(
+			context.Background(), "snapshot", tc.start, tc.end,
+		)
+		for entry := range entries {
+			t.Fatalf("unexpected entry %v", entry)
+		}
+
+		err := <-errors
+		if tc.invalid {
+			require.Error(t, err)
+		} else {
+			require.NoError(t, err)
+		}
 	}
 }
 
@@ -1757,32 +2005,31 @@ func TestBackupChunkQueue(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 3, length)
 
-	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 2)
+	got, err := f.queuedChunks(2)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 
-	completed, err := f.storage.GetBackedUpChunkCount(f.ctx, "snap1")
-	require.NoError(t, err)
-	require.Zero(t, completed)
+	err = f.storage.CheckBackupChunksCompleted(f.ctx, "snap1")
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
 	err = f.storage.ChunksBackupCompleted(f.ctx, entries[:2])
 	require.NoError(t, err)
 
-	completed, err = f.storage.GetBackedUpChunkCount(f.ctx, "snap1")
-	require.NoError(t, err)
-	require.EqualValues(t, 2, completed)
+	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap1"))
+	err = f.storage.CheckBackupChunksCompleted(f.ctx, "snap2")
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
 	err = f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:2])
 	require.NoError(t, err)
 
-	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 10)
+	got, err = f.queuedChunks(10)
 	require.NoError(t, err)
 	require.Equal(t, entries[2:], got)
 
 	err = f.storage.ChunksBackupCompleted(f.ctx, entries[2:])
 	require.NoError(t, err)
 
-	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 10)
+	got, err = f.queuedChunks(10)
 	require.NoError(t, err)
 	require.Empty(t, got)
 
@@ -1791,7 +2038,109 @@ func TestBackupChunkQueue(t *testing.T) {
 	require.EqualValues(t, 0, length)
 }
 
-func TestClearCompletedBackupChunks(t *testing.T) {
+func TestBackupChunkInFollowerIsNotEnqueuedForAnotherSnapshot(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	first := BackupChunkQueueEntry{
+		SnapshotID:   "snap1",
+		ChunkID:      "t.creator.0",
+		EncryptedDEK: []byte("dek"),
+	}
+	err := f.storage.EnqueueBackupChunks(
+		f.ctx,
+		"snap1",
+		[]BackupChunkQueueEntry{first},
+	)
+	require.NoError(t, err)
+
+	// Not copied yet: another snapshot enqueues the chunk too.
+	second := BackupChunkQueueEntry{
+		SnapshotID:   "snap2",
+		ChunkID:      "t.creator.0",
+		EncryptedDEK: []byte("dek"),
+	}
+	err = f.storage.EnqueueBackupChunks(
+		f.ctx,
+		"snap2",
+		[]BackupChunkQueueEntry{second},
+	)
+	require.NoError(t, err)
+	got, err := f.queuedChunks(10)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []BackupChunkQueueEntry{first, second}, got)
+
+	// One batch may complete the same chunk for both snapshots.
+	err = f.storage.ChunksBackupCompleted(
+		f.ctx,
+		[]BackupChunkQueueEntry{first, second},
+	)
+	require.NoError(t, err)
+
+	third := BackupChunkQueueEntry{
+		SnapshotID:   "snap3",
+		ChunkID:      "t.creator.0",
+		EncryptedDEK: []byte("dek"),
+	}
+	err = f.storage.EnqueueBackupChunks(
+		f.ctx,
+		"snap3",
+		[]BackupChunkQueueEntry{third},
+	)
+	require.NoError(t, err)
+	got, err = f.queuedChunks(10)
+	require.NoError(t, err)
+	require.Empty(t, got)
+	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap3"))
+}
+
+// A chunk copied to one follower is unknown to the table of another: a backup
+// to the other follower queues the chunk again, and marks it in its own table.
+func TestBackupChunkCopiedToAnotherFollowerIsEnqueuedAgain(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	second := f.storageWithFollowerChunksTable("follower_chunks_second")
+
+	entry := func(snapshotID string) BackupChunkQueueEntry {
+		return BackupChunkQueueEntry{
+			SnapshotID:   snapshotID,
+			ChunkID:      "t.creator.0",
+			EncryptedDEK: []byte("dek"),
+		}
+	}
+
+	// Copied to the first follower.
+	err := f.storage.EnqueueBackupChunks(f.ctx, "snap1", []BackupChunkQueueEntry{entry("snap1")})
+	require.NoError(t, err)
+	err = f.storage.ChunksBackupCompleted(f.ctx, []BackupChunkQueueEntry{entry("snap1")})
+	require.NoError(t, err)
+
+	// The first follower skips it.
+	err = f.storage.EnqueueBackupChunks(f.ctx, "snap2", []BackupChunkQueueEntry{entry("snap2")})
+	require.NoError(t, err)
+	got, err := f.queuedChunks(10)
+	require.NoError(t, err)
+	require.Empty(t, got)
+
+	// The second follower queues it.
+	err = second.EnqueueBackupChunks(f.ctx, "snap2", []BackupChunkQueueEntry{entry("snap2")})
+	require.NoError(t, err)
+	got, err = f.queuedChunks(10)
+	require.NoError(t, err)
+	require.Equal(t, []BackupChunkQueueEntry{entry("snap2")}, got)
+
+	// Copied to the second follower: from now on the second skips it too.
+	err = second.ChunksBackupCompleted(f.ctx, []BackupChunkQueueEntry{entry("snap2")})
+	require.NoError(t, err)
+	err = second.EnqueueBackupChunks(f.ctx, "snap3", []BackupChunkQueueEntry{entry("snap3")})
+	require.NoError(t, err)
+	got, err = f.queuedChunks(10)
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
+
+func TestClearBackupChunks(t *testing.T) {
 	f := createFixture(t)
 	defer f.teardown()
 
@@ -1829,7 +2178,7 @@ func TestClearCompletedBackupChunks(t *testing.T) {
 	err = f.storage.ChunksBackupCompleted(f.ctx, entries[3:])
 	require.NoError(t, err)
 
-	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 10)
+	got, err := f.queuedChunks(10)
 	require.NoError(t, err)
 	require.Equal(t, entries[2:3], got)
 
@@ -1837,12 +2186,9 @@ func TestClearCompletedBackupChunks(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 1, length)
 
-	completed, err := f.storage.GetBackedUpChunkCount(f.ctx, "snap1")
-	require.NoError(t, err)
-	require.EqualValues(t, 2, completed)
-
-	for _, expected := range []int{1, 1, 0} {
-		cleared, err := f.storage.ClearCompletedBackupChunks(
+	// Only the chunk still queued is cleared; the copied ones left the queue.
+	for _, expected := range []int{1, 0} {
+		cleared, err := f.storage.ClearBackupChunks(
 			f.ctx,
 			"snap1",
 			1, // limit
@@ -1851,20 +2197,62 @@ func TestClearCompletedBackupChunks(t *testing.T) {
 		require.Equal(t, expected, cleared)
 	}
 
-	err = f.storage.ChunksBackupCompleted(f.ctx, entries[:2])
+	got, err = f.queuedChunks(10)
 	require.NoError(t, err)
+	require.Empty(t, got)
+	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap1"))
 
-	completed, err = f.storage.GetBackedUpChunkCount(f.ctx, "snap1")
+	// The next attempt enqueues the cleared chunk that was not copied; the
+	// copied ones are already in the follower.
+	err = f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:3])
 	require.NoError(t, err)
-	require.Zero(t, completed)
+	got, err = f.queuedChunks(10)
+	require.NoError(t, err)
+	require.Equal(t, entries[2:3], got)
 
-	cleared, err := f.storage.ClearCompletedBackupChunks(
+	cleared, err := f.storage.ClearBackupChunks(
 		f.ctx,
 		"snap2",
 		10, // limit
 	)
 	require.NoError(t, err)
+	require.Zero(t, cleared)
+}
+
+func TestBackupChunkQueueKeysChunksByShard(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	var entries []BackupChunkQueueEntry
+	for i := 0; i < 20; i++ {
+		entries = append(entries, BackupChunkQueueEntry{
+			SnapshotID:   "snap1",
+			ChunkID:      fmt.Sprintf("t.snap1.%v", i),
+			EncryptedDEK: []byte("dek"),
+		})
+	}
+	err := f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries)
+	require.NoError(t, err)
+
+	// Rows of one snapshot are spread over the key space, so a read from the
+	// start of the table does not return them in chunk order.
+	got, err := f.queuedChunks(20)
+	require.NoError(t, err)
+	require.Len(t, got, 20)
+	require.ElementsMatch(t, entries, got)
+	require.NotEqual(t, entries, got)
+
+	err = f.storage.ChunksBackupCompleted(f.ctx, entries[:19])
+	require.NoError(t, err)
+
+	err = f.storage.CheckBackupChunksCompleted(f.ctx, "snap1")
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	cleared, err := f.storage.ClearBackupChunks(f.ctx, "snap1", 10)
+	require.NoError(t, err)
 	require.Equal(t, 1, cleared)
+
+	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap1"))
 }
 
 func TestReadChunkBlob(t *testing.T) {
@@ -1936,13 +2324,301 @@ func TestReadChunkBlobStoredInYDB(t *testing.T) {
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 }
 
-func TestGetSnapshotIDFromChunkID(t *testing.T) {
-	require.Equal(t, "snap1", getSnapshotIDFromChunkID("task1.snap1.7"))
-	require.Equal(t, "snap.1", getSnapshotIDFromChunkID("task1.snap.1.7"))
-	require.Empty(t, getSnapshotIDFromChunkID("task1.snap1"))
-	require.Empty(t, getSnapshotIDFromChunkID(""))
+////////////////////////////////////////////////////////////////////////////////
 
-	require.True(t, IsChunkCreatedBySnapshot("task1.snap.1.7", "snap.1"))
-	require.False(t, IsChunkCreatedBySnapshot("task1.snap1.7", "snap2"))
-	require.False(t, IsChunkCreatedBySnapshot("", ""))
+func createSnapshotWithChunk(
+	f *fixture,
+	snapshotID string,
+	useS3 bool,
+) string {
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: snapshotID})
+	require.NoError(f.t, err)
+
+	chunkID, err := f.storage.WriteChunk(
+		f.ctx,
+		"task",
+		snapshotID,
+		dataplane_common.Chunk{Index: 0, Data: []byte("abc")},
+		useS3,
+	)
+	require.NoError(f.t, err)
+
+	err = f.storage.SnapshotCreated(
+		f.ctx,
+		snapshotID,
+		4096, // size
+		4096, // storageSize
+		1,    // chunkCount
+		nil,  // encryption
+	)
+	require.NoError(f.t, err)
+
+	return chunkID
+}
+
+func deleteSnapshot(f *fixture, snapshotID string) {
+	_, err := f.storage.DeletingSnapshot(f.ctx, snapshotID, "delete")
+	require.NoError(f.t, err)
+
+	err = f.storage.DeleteSnapshotData(f.ctx, snapshotID)
+	require.NoError(f.t, err)
+}
+
+func TestBackupChunkDeleteQueue(t *testing.T) {
+	for _, testCase := range testCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			f := createFixture(t)
+			defer f.teardown()
+
+			useS3 := testCase.useS3
+
+			queued := createSnapshotWithChunk(f, "snap1", useS3)
+			createSnapshotWithChunk(f, "snap2", useS3)
+
+			entry := BackupChunkQueueEntry{
+				SnapshotID:   "snap1",
+				ChunkID:      queued,
+				StoredInS3:   useS3,
+				EncryptedDEK: []byte("dek"),
+			}
+			err := f.storage.EnqueueBackupChunks(
+				f.ctx,
+				"snap1",
+				[]BackupChunkQueueEntry{entry},
+			)
+			require.NoError(t, err)
+
+			// Only the chunk known to the follower is queued for deletion.
+			deleteSnapshot(f, "snap1")
+			deleteSnapshot(f, "snap2")
+
+			got, err := f.storage.GetBackupChunksToDelete(f.ctx, 10)
+			require.NoError(t, err)
+			require.Equal(t, []string{queued}, got)
+
+			length, err := f.storage.GetBackupChunkDeleteQueueLength(f.ctx)
+			require.NoError(t, err)
+			require.EqualValues(t, 1, length)
+
+			// Unref is idempotent: a repeated deletion queues nothing new.
+			err = f.storage.DeleteSnapshotData(f.ctx, "snap1")
+			require.NoError(t, err)
+			length, err = f.storage.GetBackupChunkDeleteQueueLength(f.ctx)
+			require.NoError(t, err)
+			require.EqualValues(t, 1, length)
+
+			err = f.storage.BackupChunksDeleted(f.ctx, got)
+			require.NoError(t, err)
+
+			got, err = f.storage.GetBackupChunksToDelete(f.ctx, 10)
+			require.NoError(t, err)
+			require.Empty(t, got)
+		})
+	}
+}
+
+// The last unref queues for deletion only the chunks known to the follower
+// chunks table of the storage: a chunk of the old follower is left alone.
+func TestBackupChunkDeleteQueueTakesFollowerChunksTableOfConfig(t *testing.T) {
+	for _, testCase := range testCases() {
+		t.Run(testCase.name, func(t *testing.T) {
+			f := createFixture(t)
+			defer f.teardown()
+
+			useS3 := testCase.useS3
+			second := f.storageWithFollowerChunksTable("follower_chunks_second")
+
+			ofFirst := createSnapshotWithChunk(f, "snap1", useS3)
+			ofSecond := createSnapshotWithChunk(f, "snap2", useS3)
+
+			err := f.storage.EnqueueBackupChunks(f.ctx, "snap1", []BackupChunkQueueEntry{{
+				SnapshotID:   "snap1",
+				ChunkID:      ofFirst,
+				StoredInS3:   useS3,
+				EncryptedDEK: []byte("dek"),
+			}})
+			require.NoError(t, err)
+			err = second.EnqueueBackupChunks(f.ctx, "snap2", []BackupChunkQueueEntry{{
+				SnapshotID:   "snap2",
+				ChunkID:      ofSecond,
+				StoredInS3:   useS3,
+				EncryptedDEK: []byte("dek"),
+			}})
+			require.NoError(t, err)
+
+			// Both snapshots are deleted by the storage of the second follower.
+			for _, snapshotID := range []string{"snap1", "snap2"} {
+				_, err = second.DeletingSnapshot(f.ctx, snapshotID, "delete")
+				require.NoError(t, err)
+				err = second.DeleteSnapshotData(f.ctx, snapshotID)
+				require.NoError(t, err)
+			}
+
+			got, err := second.GetBackupChunksToDelete(f.ctx, 10)
+			require.NoError(t, err)
+			require.Equal(t, []string{ofSecond}, got)
+		})
+	}
+}
+
+// A worker that copied a chunk after the chunk was deleted does not mark it
+// as copied: the follower object is queued for deletion already.
+func TestBackupChunkCompletedAfterDeletionIsNotMarkedCopied(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	chunkID := createSnapshotWithChunk(f, "snap1", false /* useS3 */)
+	entry := BackupChunkQueueEntry{
+		SnapshotID:   "snap1",
+		ChunkID:      chunkID,
+		EncryptedDEK: []byte("dek"),
+	}
+	err := f.storage.EnqueueBackupChunks(
+		f.ctx,
+		"snap1",
+		[]BackupChunkQueueEntry{entry},
+	)
+	require.NoError(t, err)
+
+	_, err = f.storage.ClearBackupChunks(f.ctx, "snap1", 10)
+	require.NoError(t, err)
+	deleteSnapshot(f, "snap1")
+
+	err = f.storage.ChunksBackupCompleted(
+		f.ctx,
+		[]BackupChunkQueueEntry{entry},
+	)
+	require.NoError(t, err)
+
+	// Had the chunk been marked as copied, the copy would skip it.
+	other := BackupChunkQueueEntry{
+		SnapshotID:   "snap2",
+		ChunkID:      chunkID,
+		EncryptedDEK: []byte("dek"),
+	}
+	err = f.storage.EnqueueBackupChunks(
+		f.ctx,
+		"snap2",
+		[]BackupChunkQueueEntry{other},
+	)
+	require.NoError(t, err)
+
+	got, err := f.queuedChunks(10)
+	require.NoError(t, err)
+	require.Equal(t, []BackupChunkQueueEntry{other}, got)
+}
+
+func TestBackupChunkFailed(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	// Snapshots A and B share chunk a.
+	entries := []BackupChunkQueueEntry{
+		{SnapshotID: "A", ChunkID: "t.a", EncryptedDEK: []byte("dek")},
+		{SnapshotID: "A", ChunkID: "t.c", EncryptedDEK: []byte("dek")},
+		{SnapshotID: "B", ChunkID: "t.a", EncryptedDEK: []byte("dek")},
+	}
+	err := f.storage.EnqueueBackupChunks(f.ctx, "A", entries[:2])
+	require.NoError(t, err)
+	err = f.storage.EnqueueBackupChunks(f.ctx, "B", entries[2:])
+	require.NoError(t, err)
+
+	err = f.storage.BackupChunkFailed(f.ctx, entries[1], "corrupt")
+	require.NoError(t, err)
+
+	// The failed chunk leaves the queue; the others stay.
+	got, err := f.queuedChunks(10)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []BackupChunkQueueEntry{entries[0], entries[2]}, got)
+
+	// The backup of A fails; B only waits for its chunk.
+	err = f.storage.CheckBackupChunksCompleted(f.ctx, "A")
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.Contains(t, err.Error(), "t.c")
+	err = f.storage.CheckBackupChunksCompleted(f.ctx, "B")
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	// Clearing A removes its queued and failed chunks, not those of B.
+	cleared, err := f.storage.ClearBackupChunks(f.ctx, "A", 10)
+	require.NoError(t, err)
+	require.Equal(t, 1, cleared)
+	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "A"))
+
+	got, err = f.queuedChunks(10)
+	require.NoError(t, err)
+	require.Equal(t, entries[2:], got)
+}
+
+func TestGetQueuedChunksToBackupReadsShardRangeAfterCursor(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	var entries []BackupChunkQueueEntry
+	for i := 0; i < 10; i++ {
+		entries = append(entries, BackupChunkQueueEntry{
+			SnapshotID:   "snap1",
+			ChunkID:      fmt.Sprintf("t.snap1.%v", i),
+			EncryptedDEK: []byte("dek"),
+		})
+	}
+	err := f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries)
+	require.NoError(t, err)
+
+	// The same chunk queued by another snapshot has the same shard_id.
+	shared := BackupChunkQueueEntry{
+		SnapshotID:   "snap2",
+		ChunkID:      entries[6].ChunkID,
+		EncryptedDEK: []byte("dek"),
+	}
+	err = f.storage.EnqueueBackupChunks(
+		f.ctx,
+		"snap2",
+		[]BackupChunkQueueEntry{shared},
+	)
+	require.NoError(t, err)
+
+	all, err := f.queuedChunks(100)
+	require.NoError(t, err)
+	require.Len(t, all, 11)
+
+	// Rows come in key order: shard_id, then snapshot_id.
+	sixth := -1
+	for i, entry := range all {
+		if entry.SnapshotID == "snap1" && entry.ChunkID == entries[6].ChunkID {
+			sixth = i
+		}
+	}
+	require.NotEqual(t, -1, sixth)
+	require.Equal(t, shared, all[sixth+1])
+
+	end := min(sixth+4, len(all))
+	first := makeShardID(all[sixth].ChunkID)
+	last := makeShardID(all[end-1].ChunkID)
+
+	// A range starts at its first shard, rows of other shards are not read.
+	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, first, last, nil, 100)
+	require.NoError(t, err)
+	require.Equal(t, all[sixth:end], got)
+
+	// Reading goes on after the last entry read, also inside one shard.
+	got, err = f.storage.GetQueuedChunksToBackup(
+		f.ctx,
+		first,
+		last,
+		&all[sixth],
+		1,
+	)
+	require.NoError(t, err)
+	require.Equal(t, all[sixth+1:sixth+2], got)
+
+	got, err = f.storage.GetQueuedChunksToBackup(
+		f.ctx,
+		first,
+		last,
+		&all[end-1],
+		100,
+	)
+	require.NoError(t, err)
+	require.Empty(t, got)
 }

@@ -29,4 +29,12 @@ message ImagesConfig {
     optional string S3DefaultStorageClass = 10;
     optional string ScheduleBackupImageTasksScheduleInterval = 11 [default = "1m"];
     optional uint32 ScheduleBackupImageTasksLimit = 12 [default = 1000];
+    optional string DeleteBackupMetaTaskScheduleInterval = 13 [default = "10s"];
+    optional uint32 DeleteBackupMetaTaskBatchSize = 14 [default = 100];
+    // Image backups copied at the same time; queued ones start when a slot
+    // frees. 0 = no limit.
+    optional uint32 BackupImagesInflightLimit = 15 [default = 10];
+    optional string CollectBackupQueueMetricsTaskScheduleInterval = 16 [default = "10m"];
+    // How often the running metrics task reads the image backup queue.
+    optional string BackupQueueMetricsCollectionInterval = 17 [default = "1m"];
 }

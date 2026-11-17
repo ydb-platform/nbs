@@ -6,6 +6,29 @@ option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum EWriteBackCacheLockMethod
+{
+    // TAdaptiveLock (default): spins, yields, then uses timed sleeps.
+    WBC_LOCK_ADAPTIVE = 0;
+
+    // TSpinLock: intended for controlled benchmarks, not production use.
+    // Spins indefinitely if the holder is descheduled or page-faults; avoid
+    // oversubscribed CPUs or priority imbalance that can starve the holder.
+    WBC_LOCK_SPIN = 1;
+
+    // std::mutex: blocks waiting threads using a non-recursive mutex.
+    WBC_LOCK_MUTEX = 2;
+
+    // Tries a bounded spin loop before blocking on a standard mutex.
+    // The spin budget counts iterations, so its duration depends on the CPU.
+    WBC_LOCK_SPIN_THEN_MUTEX = 3;
+
+    // glibc adaptive pthread mutex: bounded adaptive spinning, then blocking.
+    WBC_LOCK_PTHREAD_ADAPTIVE = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TVFSConfig
 {
     // FileSystem identifier.
@@ -89,4 +112,7 @@ message TVFSConfig
     // unflushed WriteData requests.
     // Default: 8. Value 0 disables this threshold.
     optional uint32 WriteBackCacheMaxQueuedFlushBatchesPerNode = 25;
+
+    // Lock acquisition method for WriteBackCache.
+    optional EWriteBackCacheLockMethod WriteBackCacheLockMethod = 26;
 }

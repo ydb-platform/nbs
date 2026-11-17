@@ -12,15 +12,14 @@ namespace NCloud::NJournalled {
 // Conversions between the device protocol messages and the IDevice arguments.
 
 TVector<TPageRangeRef> MakePageRangeRefs(
-    const NCloud::NProto::TReadPagesRequest& request);
+    const NProto::TReadPagesRequest& request);
 
 TVector<TPageRange> MakePageRanges(
-    const NCloud::NProto::TWriteLogRecordRequest& request);
+    const NProto::TWriteLogRecordRequest& request);
 
-TVector<TPageRange> MakePageRanges(
-    const NCloud::NProto::TJournalRecord& record);
+TVector<TPageRange> MakePageRanges(const NProto::TJournalRecord& record);
 
-NCloud::NProto::TReadPagesResponse MakeReadPagesResponse(
+NProto::TReadPagesResponse MakeReadPagesResponse(
     const TVector<TPageRangeRef>& rangeRefs,
     const TVector<TBuffer>& pages);
 
