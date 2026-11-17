@@ -135,7 +135,7 @@ TString LogCriticalEvent(const TString& sensorName, const TString& message)
 // STORAGE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE
 
     STORAGE_IMPOSSIBLE_EVENTS(STORAGE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE)
-#undef STORAGE_DEFINE_CRITICAL_EVENT_ROUTINE
+#undef STORAGE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE
 
 ////////////////////////////////////////////////////////////////////////////////
 
