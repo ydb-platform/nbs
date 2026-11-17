@@ -281,10 +281,10 @@ TWriteDataRequestManager::GetBackUnallocatedPendingRequest() const
 }
 
 void TWriteDataRequestManager::RemoveUnallocated(
-    std::unique_ptr<TPendingWriteDataRequest> request)
+    TPendingWriteDataRequest* request)
 {
     Y_ABORT_UNLESS(!request->HasAllocation());
-    UnallocatedPendingRequestsRemove(request.get());
+    UnallocatedPendingRequestsRemove(request);
 }
 
 bool TWriteDataRequestManager::SetFlushed(TCachedWriteDataRequest* request)

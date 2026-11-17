@@ -11,6 +11,7 @@
 #include <util/generic/vector.h>
 
 #include <functional>
+#include <memory>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -38,8 +39,9 @@ private:
     std::unique_ptr<IWriteBackCacheLock> Lock;
     TVector<TEvent> Events;
 
-    // Non-owning pointers. The cache-state lifetime invariant keeps allocated
-    // requests alive until this serialization batch completes.
+    // Non-owning pointers. Each request stays alive until it publishes
+    // Serialized. Another thread may then destroy it, the serializer must not
+    // dereference its pointer after publication.
     TVector<TPendingWriteDataRequest*> RequestsToSerialize;
     IQueuedOperationsProcessor& Processor;
 
@@ -64,11 +66,15 @@ public:
 
     void ScheduleFlushNode(ui64 nodeId);
 
-    void CompleteWriteDataPromise(
-        NThreading::TPromise<NProto::TWriteDataResponse> promise);
+    // Complete a promise associated with a WriteData request and delete the
+    // request. The request must be unlinked from all lists.
+    void CompleteWriteDataRequest(
+        std::unique_ptr<TPendingWriteDataRequest> request);
 
-    void FailWriteDataPromise(
-        NThreading::TPromise<NProto::TWriteDataResponse> promise,
+    // Fail the promise with the supplied error and delete the WriteData
+    // request. The request must be unlinked from all lists.
+    void FailWriteDataRequest(
+        std::unique_ptr<TPendingWriteDataRequest> request,
         const NCloud::NProto::TError& error);
 
     void CompleteFlushOrReleasePromise(
