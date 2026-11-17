@@ -163,8 +163,11 @@ void TStatsServiceActor::HandleGetVolumeStats(
                 v.SetWriteBlobCount(counters.WriteBlob.Count);
                 v.SetWriteBlobBytes(counters.WriteBlob.Bytes);
 
+                // Counter difference has been accumulated since the previous
+                // stats request and is no longer needed
                 counters.Reset();
             }
+            v.SetIsLocal(true);
         } else {
             v.SetIsLocal(false);
         }

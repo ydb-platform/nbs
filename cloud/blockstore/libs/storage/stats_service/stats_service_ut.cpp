@@ -2344,7 +2344,6 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         UNIT_ASSERT(counters[0] == 1);
     }
 
-
     Y_UNIT_TEST(ShouldAccumulateAndResetBlobLoadForEachRealDisk)
     {
         TTestBasicRuntime runtime;
@@ -2356,8 +2355,9 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         const auto report =
             [&](const TString& diskId, ui64 reads, ui64 writes, ui64 patches)
         {
-            auto counters = CreatePartitionDiskCounters(EPublishingPolicy::Repl,
-                                                        TDiagnosticsConfig{});
+            auto counters = CreatePartitionDiskCounters(
+                EPublishingPolicy::Repl,
+                TDiagnosticsConfig{});
             counters->RequestCounters.ReadBlob.Count = reads;
             counters->RequestCounters.ReadBlob.RequestBytes = reads * 4096;
             counters->RequestCounters.WriteBlob.Count = writes;
@@ -2367,8 +2367,12 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             client.SendRequest(
                 MakeStorageStatsServiceId(),
                 std::make_unique<TEvStatsService::TEvVolumePartCounters>(
-                    MakeIntrusive<TCallContext>(), diskId, std::move(counters),
-                    0, 0, false,
+                    MakeIntrusive<TCallContext>(),
+                    diskId,
+                    std::move(counters),
+                    0,
+                    0,
+                    false,
                     NBlobMetrics::TBlobLoadMetrics{},
                     NKikimrTabletBase::TMetrics{}));
         };
@@ -2383,8 +2387,11 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             }
             return client.GetVolumeStats(std::move(stats));
         };
-        const auto assertStats = [](const auto& stats, const TString& diskId,
-                                    ui64 reads, ui64 readBytes, ui64 writes,
+        const auto assertStats = [](const auto& stats,
+                                    const TString& diskId,
+                                    ui64 reads,
+                                    ui64 readBytes,
+                                    ui64 writes,
                                     ui64 writeBytes)
         {
             UNIT_ASSERT_VALUES_EQUAL(diskId, stats.GetDiskId());
@@ -2401,14 +2408,24 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         // Accumulate both source reports and count patches as writes.
         auto response = read({DefaultDiskId});
         UNIT_ASSERT_VALUES_EQUAL(1, response->VolumeStats.size());
-        assertStats(response->VolumeStats[0], DefaultDiskId, 19, 19 * 4096, 50,
-                    22 * 8192 + 28 * 1024);
+        assertStats(
+            response->VolumeStats[0],
+            DefaultDiskId,
+            19,
+            19 * 4096,
+            50,
+            22 * 8192 + 28 * 1024);
 
         // Reading the source resets only its counters; the copy keeps its load.
         response = read({DefaultCopiedDiskId, DefaultDiskId});
         UNIT_ASSERT_VALUES_EQUAL(2, response->VolumeStats.size());
-        assertStats(response->VolumeStats[0], DefaultCopiedDiskId, 7, 7 * 4096,
-                    24, 11 * 8192 + 13 * 1024);
+        assertStats(
+            response->VolumeStats[0],
+            DefaultCopiedDiskId,
+            7,
+            7 * 4096,
+            24,
+            11 * 8192 + 13 * 1024);
         assertStats(response->VolumeStats[1], DefaultDiskId, 0, 0, 0, 0);
 
         response = read({DefaultDiskId, DefaultCopiedDiskId});
