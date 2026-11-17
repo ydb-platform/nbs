@@ -33,13 +33,19 @@ def default_storage_config():
     storage.DiskPrefixLengthWithBlockChecksumsInBlobs = 1 << 30
     storage.CheckBlockChecksumsInBlobsUponRead = True
     storage.VerifyRecreatedBlobMetasOnCleanup = True
+    storage.FreshChannelWriteRequestsEnabled = True
+    storage.FreshChannelZeroRequestsEnabled = True
+    storage.BatchCompactionEnabled = True
+    storage.WriteRequestBatchingEnabled = True
+    storage.IncrementalCompactionEnabled = True
+    storage.WriteBlobThresholdSSD = 262144
+    storage.WriteBlobThreshold = 2097152
 
     return storage
 
 
 def storage_config_with_garbage_batch_compaction():
     storage = default_storage_config()
-    storage.BatchCompactionEnabled = True
     storage.GarbageCompactionRangeCountPerRun = 20
     storage.CompactionGarbageThreshold = 20
     storage.CompactionRangeGarbageThreshold = 999999
@@ -51,7 +57,6 @@ def storage_config_with_garbage_batch_compaction():
 
 def storage_config_with_incremental_compaction_and_patching():
     storage = default_storage_config()
-    storage.IncrementalCompactionEnabled = True
     storage.BlobPatchingEnabled = True
     # checksums are currently not supported for patched blobs
     storage.DiskPrefixLengthWithBlockChecksumsInBlobs = 0
@@ -87,25 +92,8 @@ def features_config_with_incremental_compaction():
     return config
 
 
-def storage_config_with_fresh_channel_writes_enabled(enabled):
-    storage = default_storage_config()
-    storage.FreshChannelWriteRequestsEnabled = enabled
-
-    return storage
-
-
-def storage_config_with_fresh_channel_zeros_enabled(enabled):
-    storage = default_storage_config()
-    storage.FreshChannelWriteRequestsEnabled = True
-    storage.FreshChannelZeroRequestsEnabled = enabled
-
-    return storage
-
-
 def storage_config_with_fresh_blocks_writer_enabled(enabled):
     storage = default_storage_config()
-    storage.FreshChannelWriteRequestsEnabled = True
-    storage.FreshChannelZeroRequestsEnabled = True
     storage.FreshBlocksWriterEnabled = enabled
 
     return storage
@@ -138,10 +126,6 @@ def storage_config_with_adding_unconfirmed_blobs_enabled():
 
 def ordinary_prod_storage_config():
     storage = default_storage_config()
-    storage.WriteRequestBatchingEnabled = True
-    storage.IncrementalCompactionEnabled = True
-    storage.FreshChannelWriteRequestsEnabled = True
-    storage.BatchCompactionEnabled = True
     storage.HDDMaxBlobsPerRange = 5
     storage.VerifyRecreatedBlobMetasOnCleanup = True
 
@@ -158,8 +142,6 @@ def storage_config_with_compaction_merged_blob_threshold_hdd(block_size=4096):
 
 def storage_config_with_ignoring_zeroed_compaction_enabled():
     storage = default_storage_config()
-    storage.FreshChannelWriteRequestsEnabled = True
-    storage.FreshChannelZeroRequestsEnabled = True
     storage.IgnoringZeroedCompactionEnabled = True
 
     return storage
@@ -178,8 +160,6 @@ def storage_config_with_mixed_blocks_filter_enabled():
 def storage_config_with_new_features_enabled():
     storage = ordinary_prod_storage_config()
     storage.ReadBlockMaskOnCompactionOptimizationEnabled = True
-    storage.FreshChannelWriteRequestsEnabled = True
-    storage.FreshChannelZeroRequestsEnabled = True
     storage.FreshBlocksWriterEnabled = True
     storage.IgnoringZeroedCompactionEnabled = True
 
@@ -209,17 +189,10 @@ def storage_config_with_checkpoint_aware_cleanup_enabled(max_partitions):
 def storage_config_with_blob_count_compaction():
     storage = default_storage_config()
     storage.CompactionGarbageThreshold = 20
-    storage.FreshChannelWriteRequestsEnabled = True
-    storage.BatchCompactionEnabled = True
-    storage.IncrementalCompactionEnabled = True
     storage.MaxSkippedBlobsDuringCompactionHDD = 0
     storage.MultipartitionVolumesEnabled = True
-    storage.WriteRequestBatchingEnabled = True
-    storage.FreshChannelZeroRequestsEnabled = True
     storage.FreshChannelCountSSD = 2
     storage.FreshBlocksWriterEnabled = True
-    storage.WriteBlobThresholdSSD = 262144
-    storage.WriteBlobThreshold = 2097152
     storage.ReadBlockMaskOnCompactionOptimizationEnabled = True
     storage.SSDMaxBlobsPerRange = 10
     storage.MaxBlobsToCleanup = 3000
@@ -235,6 +208,35 @@ def storage_config_with_blob_count_compaction():
     storage.MaxCompactionExecTimePerSecondForZeroed = 100
     storage.SSDMaxBlobsPerUnit = 40960   # 5 blobs per range on avg
     storage.HDDMaxBlobsPerUnit = 327680  # 5 blobs per range on avg
+
+    return storage
+
+
+def storage_config_with_new_trims():
+    storage = default_storage_config()
+    storage.FlushThresholdSSD = 33554432  # 32 MiB
+    storage.FlushThresholdHDD = 33554432  # 32 MiB
+    storage.FreshByteCountHardLimitSSD = 1073741824  # 1 GiB
+    storage.FreshByteCountHardLimitHDD = 1073741824  # 1 GiB
+    storage.FreshByteCountThresholdForBackpressureSSD = 335544320  # 320 MiB
+    storage.FreshByteCountThresholdForBackpressureHDD = 335544320  # 320 MiB
+    storage.FreshByteCountLimitForBackpressureSSD = 536870912  # 512 MiB
+    storage.FreshByteCountLimitForBackpressureHDD = 536870912  # 512 MiB
+    storage.FreshBlobCountFlushThresholdSSD = 16384
+    storage.FreshBlobCountFlushThresholdHDD = 16384
+    storage.FreshBlobByteCountFlushThresholdSSD = 134217728  # 128 MiB
+    storage.FreshBlobByteCountFlushThresholdHDD = 134217728  # 128 MiB
+    storage.FreshSelectiveTrimEnabledSSD = True
+    storage.FreshSelectiveTrimEnabledHDD = True
+    storage.FreshDeadBlobByteCountTrimThresholdSSD = 524288  # 512 KiB
+    storage.FreshDeadBlobByteCountTrimThresholdHDD = 524288  # 512 KiB
+
+    return storage
+
+
+def storage_config_with_new_features_and_new_trims():
+    storage = storage_config_with_new_features_enabled()
+    storage.MergeFrom(storage_config_with_new_trims())
 
     return storage
 
@@ -263,15 +265,6 @@ class TestCase(object):
 
 
 TESTS = [
-    TestCase(
-        "version1-two-partitions",
-        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-two-partitions.txt",
-        [
-            storage_config_with_multiple_partitions(2),
-            storage_config_with_multiple_partitions(1),
-        ],
-        None,
-    ),
     TestCase(
         "version1-two-partitions-and-checkpoints",
         "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-two-partitions-and-checkpoints.txt",
@@ -337,9 +330,6 @@ TESTS = [
         "version1-fresh-channel-writes-enabled",
         "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-fresh-channel-writes.txt",
         [
-            storage_config_with_fresh_channel_writes_enabled(False),
-            storage_config_with_fresh_channel_writes_enabled(True),
-            storage_config_with_fresh_channel_zeros_enabled(True),
             storage_config_with_fresh_blocks_writer_enabled(False),
             storage_config_with_fresh_blocks_writer_enabled(True),
         ],
@@ -349,8 +339,6 @@ TESTS = [
         "version1-fresh-channel-writes-enabled-no-restarts",
         "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-fresh-channel-writes.txt",
         [
-            storage_config_with_fresh_channel_writes_enabled(True),
-            storage_config_with_fresh_channel_zeros_enabled(True),
             storage_config_with_fresh_blocks_writer_enabled(True),
         ],
         None,
@@ -445,6 +433,17 @@ TESTS = [
         "version1-8k-block-size-with-new-features",
         "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-small-disk-bs8k.txt",
         [
+            storage_config_with_new_features_enabled(),
+        ],
+        None,
+        check_disk_size=True,
+        disk_id="vol0",
+    ),
+    TestCase(
+        "version1-8k-block-size-small-disk-with-new-trims",
+        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-small-disk-bs8k.txt",
+        [
+            storage_config_with_new_features_and_new_trims(),
             storage_config_with_new_features_enabled(),
         ],
         None,
