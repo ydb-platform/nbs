@@ -2,6 +2,7 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
@@ -16,14 +17,16 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IBlockLocation2RangeIndexPtr CreateHasher(const NProto::TFileSystem& fs)
+IBlockLocation2RangeIndexPtr CreateHasher(
+    const NProto::TFileSystem& fs,
+    ui32 type)
 {
-    auto hasher = CreateRangeIdHasher(fs.GetRangeIdHasherType());
+    auto hasher = CreateRangeIdHasher(type);
     Y_ABORT_UNLESS(
         hasher,
         "[f:%s] unsupported hasher type: %u",
         fs.GetFileSystemId().c_str(),
-        fs.GetRangeIdHasherType());
+        type);
 
     return hasher;
 }
@@ -261,7 +264,10 @@ void TIndexTabletState::LoadState(
     Impl->Channels.SetMaxUsedDataChannelCount(
         config.GetMaxUsedDataChannelCount());
 
-    Impl->RangeIdHasher = CreateHasher(fileSystem);
+    // CompleteTx_LoadState puts the tablet into the broken state instead if
+    // the type is unknown.
+    Impl->RangeIdHasher =
+        CreateHasher(fileSystem, GetRangeIdHasherType(config, fileSystem));
     Impl->ThrottlingPolicy.Reset(throttlerConfig);
     Impl->ReadAheadCache.Reset(
         config.GetReadAheadCacheMaxNodes(),
@@ -336,12 +342,28 @@ void TIndexTabletState::UpdateConfig(
     const NProto::TFileSystem& fileSystem,
     const TThrottlerConfig& throttlerConfig)
 {
+    const ui32 oldHasherType = FileSystem.GetRangeIdHasherType();
+
     FileSystem.CopyFrom(fileSystem);
     db.WriteFileSystem(fileSystem);
 
     UpdateChannels();
 
-    Impl->RangeIdHasher = CreateHasher(fileSystem);
+    // The hasher is chosen on tablet start, RangeIdHasherTypeOverride must
+    // not change on a running tablet. Rebuild it only if the persisted type
+    // changes, e.g. on the first config of a new (empty) tablet.
+    if (oldHasherType != fileSystem.GetRangeIdHasherType()) {
+        ui32 type = GetRangeIdHasherType(config, fileSystem);
+        if (!CreateRangeIdHasher(type)) {
+            // Normally the first config of a new, still empty tablet: use the
+            // persisted type now, the tablet goes broken on the next start.
+            ReportInvalidRangeIdHasherType(TStringBuilder()
+                << "[f:" << fileSystem.GetFileSystemId() << "]"
+                << " unsupported RangeIdHasherTypeOverride " << type);
+            type = fileSystem.GetRangeIdHasherType();
+        }
+        Impl->RangeIdHasher = CreateHasher(fileSystem, type);
+    }
     Impl->ThrottlingPolicy.Reset(throttlerConfig);
 
     InitShardBalancer(config);

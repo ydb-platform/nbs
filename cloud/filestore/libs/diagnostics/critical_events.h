@@ -81,6 +81,7 @@ namespace NCloud::NFileStore{
     xxx(TabletRdmaCritEvent)                                                   \
     xxx(ShardCreationStateResponseMissing)                                     \
     xxx(ShardCreationBitmapMissing)                                            \
+    xxx(InvalidRangeIdHasherType)                                              \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \
