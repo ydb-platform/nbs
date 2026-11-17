@@ -30,13 +30,15 @@ const TString UserKeyType = "user";
 const ui32 InvalidCode = static_cast<ui32>(-1);
 const ui32 MaxRetries = 10;
 
+// Keeps the raw signed syscall result: syscall() reports failure as -1, which
+// must not be squeezed into an unsigned type before it is checked.
 template <typename T>
-ui32 RetriableExecute(T&& block, const TString& operation)
+long RetriableExecute(T&& block, const TString& operation)
 {
     TSpinWait sw;
     while (sw.C < MaxRetries) {
-        ui32 res = block();
-        if (res != InvalidCode) {
+        long res = block();
+        if (res != -1) {
             return res;
         }
 
@@ -52,11 +54,17 @@ ui32 RetriableExecute(T&& block, const TString& operation)
     }
 
     Cerr << operation << " failed after reaching retry limit" << Endl;
-    return InvalidCode;
+    return -1;
+}
+
+// Converts a checked syscall result to a key value; any error becomes InvalidCode.
+ui32 ToKeyResult(long res)
+{
+    return res < 0 ? InvalidCode : static_cast<ui32>(res);
 }
 
 #define RETRIABLE_SYSCALL(op, ...)                                             \
-    RetriableExecute([&] { return syscall(op, __VA_ARGS__); }, #op);
+    ToKeyResult(RetriableExecute([&] { return syscall(op, __VA_ARGS__); }, #op));
 
 ////////////////////////////////////////////////////////////////////////////////
 
