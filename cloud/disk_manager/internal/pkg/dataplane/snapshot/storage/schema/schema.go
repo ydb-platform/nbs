@@ -337,7 +337,10 @@ func createBackupTables(
 		config.GetStorageFolder(),
 		config.GetFollowerChunksTableName(),
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn(
+				"chunk_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
 			persistence.WithColumn("copied", persistence.Optional(persistence.TypeBool)),
 			persistence.WithPrimaryKeyColumn("chunk_id"),
 			persistence.WithPartitioningByLoad(
@@ -359,7 +362,10 @@ func createBackupTables(
 		config.GetStorageFolder(),
 		"backup_chunk_delete_queue",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn(
+				"chunk_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
 			persistence.WithPrimaryKeyColumn("chunk_id"),
 		),
 		dropUnusedColumns,
@@ -376,8 +382,14 @@ func createBackupTables(
 		config.GetStorageFolder(),
 		"backup_chunk_failures",
 		persistence.NewCreateTableDescription(
-			persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
-			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn(
+				"snapshot_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			persistence.WithColumn(
+				"chunk_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
 			persistence.WithColumn("error", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
 		),
@@ -403,7 +415,11 @@ func dropBackupTables(
 	}
 	logging.Info(ctx, "Dropped backup_chunk_queue table")
 
-	err = db.DropTable(ctx, config.GetStorageFolder(), config.GetFollowerChunksTableName())
+	err = db.DropTable(
+		ctx,
+		config.GetStorageFolder(),
+		config.GetFollowerChunksTableName(),
+	)
 	if err != nil {
 		return err
 	}

@@ -1724,7 +1724,11 @@ func dropSnapshotsYDBTables(
 	backupEnabled bool,
 ) error {
 
-	logging.Info(ctx, "Dropping tables for snapshots in %v", db.AbsolutePath(folder))
+	logging.Info(
+		ctx,
+		"Dropping tables for snapshots in %v",
+		db.AbsolutePath(folder),
+	)
 
 	err := db.DropTable(ctx, folder, "snapshots")
 	if err != nil {

@@ -24,7 +24,9 @@ func NewStorage(
 	if backupEnabled {
 		followerChunksTableName = config.GetFollowerChunksTableName()
 		if len(followerChunksTableName) == 0 {
-			return nil, errors.NewNonRetriableErrorf("FollowerChunksTableName must not be empty when backups are enabled")
+			return nil, errors.NewNonRetriableErrorf(
+				"FollowerChunksTableName must not be empty when backups are enabled",
+			)
 		}
 	}
 	probeCompressionPercentage := config.GetProbeCompressionPercentage()

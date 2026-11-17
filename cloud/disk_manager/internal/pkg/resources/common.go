@@ -95,12 +95,24 @@ func CreateYDBTables(
 		return err
 	}
 
-	err = createImagesYDBTables(ctx, imagesFolder, db, dropUnusedColumns, backupEnabled)
+	err = createImagesYDBTables(
+		ctx,
+		imagesFolder,
+		db,
+		dropUnusedColumns,
+		backupEnabled,
+	)
 	if err != nil {
 		return err
 	}
 
-	err = createSnapshotsYDBTables(ctx, snapshotsFolder, db, dropUnusedColumns, backupEnabled)
+	err = createSnapshotsYDBTables(
+		ctx,
+		snapshotsFolder,
+		db,
+		dropUnusedColumns,
+		backupEnabled,
+	)
 	if err != nil {
 		return err
 	}
