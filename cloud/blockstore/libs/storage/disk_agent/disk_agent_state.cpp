@@ -1407,6 +1407,9 @@ void TDiskAgentState::AttachPaths(
             continue;
         }
 
+        if (d->Config.HasRdmaEndpoint()) {
+            config.MutableRdmaEndpoint()->CopyFrom(d->Config.GetRdmaEndpoint());
+        }
         d->Config = std::move(config);
         d->Stats = std::move(stat);
         auto storageAdapter = std::make_shared<TStorageAdapter>(
