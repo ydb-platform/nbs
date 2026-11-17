@@ -1,7 +1,6 @@
 #include "validate.h"
 
 #include <util/generic/algorithm.h>
-#include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
 #include <util/str_stl.h>
 
@@ -36,15 +35,20 @@ TRangeValidationResult ValidateRange(
     IConfigHolderPtr configHolder,
     ui32 rangeIdx)
 {
-    const auto& config = configHolder->GetConfig().GetRanges()[rangeIdx];
+    const auto& testConfig = configHolder->GetConfig();
+    const auto& config = testConfig.GetRanges()[rangeIdx];
 
     ui64 len = config.GetRequestCount();
-    ui64 startOffset = config.GetStartOffset();
-    ui64 requestSize = config.GetRequestBlockCount() * 4_KB;
+    // Index of the first block of the i-th request of the range.
+    auto requestBlockIdx = [&](ui64 i)
+    {
+        return config.GetStartOffset() + i * config.GetRequestBlockCount();
+    };
 
     TVector<TBlockData> actual(len);
     for (ui64 i = 0; i < len; ++i) {
-        actual[i] = ReadBlockData(file, (i + startOffset) * requestSize);
+        actual[i] =
+            ReadBlockData(file, requestBlockIdx(i) * testConfig.GetBlockSize());
     }
 
     auto sortedActual = actual;
@@ -109,7 +113,7 @@ TRangeValidationResult ValidateRange(
     for (ui64 i = 0; i < len; ++i) {
         if (expectedRequestNumbers[i] != actual[i].RequestNumber) {
             res.InvalidBlocks.push_back(TInvalidBlock {
-                .BlockIdx = (i + startOffset),
+                .BlockIdx = requestBlockIdx(i),
                 .ExpectedRequestNumber = expectedRequestNumbers[i],
                 .ActualRequestNumber = actual[i].RequestNumber,
             });

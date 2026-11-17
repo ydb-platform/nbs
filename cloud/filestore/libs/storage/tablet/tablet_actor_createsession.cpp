@@ -146,6 +146,8 @@ void FillFeatures(
     features->SetExternalWriteDataPayloadEnabled(
         config.GetExternalWriteDataPayloadEnabled());
     features->SetEnableRdmaForWrites(config.GetEnableRdmaForWrites());
+    features->SetWriteDataZeroBlockStatsEnabled(
+        config.GetWriteDataZeroBlockStatsEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

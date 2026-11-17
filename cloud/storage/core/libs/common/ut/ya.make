@@ -38,6 +38,7 @@ SRCS(
     sglist_ut.cpp
     simple_template_ut.cpp
     thread_pool_ut.cpp
+    zeroes_ut.cpp
 )
 
 END()

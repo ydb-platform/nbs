@@ -53,6 +53,7 @@ SRCS(
     service_state.cpp
     shard_creation_state_companion.cpp
     tablet_action_actor.cpp
+    zero_block_stats.cpp
 )
 
 PEERDIR(

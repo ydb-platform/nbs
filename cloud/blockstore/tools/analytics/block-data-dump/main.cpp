@@ -2,8 +2,6 @@
 
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/public.h>
 
-#include <library/cpp/digest/crc32c/crc32c.h>
-
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 #include <util/generic/yexception.h>
@@ -24,8 +22,9 @@ TString FormatTimestamp(ui64 mcs)
     return TInstant::MicroSeconds(mcs).ToStringLocalUpToSeconds();
 }
 
-void Dump(const TBlockData& data)
+void Dump(const TSectorData& sector)
 {
+    const TBlockData& data = sector.Header;
     std::printf(
         "RequestNumber:    %20" PRIu64 " [0x%016" PRIx64 "]\n"
         "PartNumber:       %20" PRIu64 " [0x%016" PRIx64 "]\n"
@@ -34,7 +33,8 @@ void Dump(const TBlockData& data)
         "RequestTimestamp: %s [0x%016" PRIx64 "]\n"
         "TestTimestamp:    %s [0x%016" PRIx64 "]\n"
         "TestId:           %20" PRIu64 " [0x%016" PRIx64 "]\n"
-        "Checksum:         %20" PRIu64 " [0x%016" PRIx64 "]\n",
+        "Checksum:         %20" PRIu64 " [0x%016" PRIx64 "]\n"
+        "SectorIndex:      %20" PRIu64 " [0x%016" PRIx64 "]\n",
         data.RequestNumber, data.RequestNumber,
         data.PartNumber, data.PartNumber,
         data.BlockIndex, data.BlockIndex,
@@ -44,21 +44,16 @@ void Dump(const TBlockData& data)
         FormatTimestamp(data.TestTimestamp).c_str(),
         data.TestTimestamp,
         data.TestId, data.TestId,
-        data.Checksum, data.Checksum
+        data.Checksum, data.Checksum,
+        sector.SectorIndex, sector.SectorIndex
     );
-}
-
-ui64 Checksum(TBlockData blockData)
-{
-    blockData.Checksum = 0;
-    return Crc32c(&blockData, sizeof(blockData));
 }
 
 void DumpMap(TFile& file, const TOptions& options)
 {
     constexpr ui64 lineBreak = 128;
 
-    TBlockData blockData {};
+    TSectorData sector {};
 
     ui64 offset = options.StartIndex * options.BlockSize;
     ui64 line = 0;
@@ -68,13 +63,13 @@ void DumpMap(TFile& file, const TOptions& options)
     std::printf(" %16" PRIx64 " ", offset);
 
     for (ui64 i = 0; i != options.BlockCount; ++i) {
-        file.Pload(&blockData, sizeof(blockData), offset);
+        file.Pload(&sector, sizeof(sector), offset);
         offset += options.BlockSize;
 
-        const ui64 checksum = Checksum(blockData);
+        const ui64 checksum = CalculateSectorChecksum(sector);
 
-        const bool ok = (checksum == blockData.Checksum)
-            && (!options.TestId || options.TestId == blockData.TestId);
+        const bool ok = (checksum == sector.Header.Checksum)
+            && (!options.TestId || options.TestId == sector.Header.TestId);
 
         std::putchar(symbol[ok]);
 
@@ -87,23 +82,23 @@ void DumpMap(TFile& file, const TOptions& options)
 
 void DumpText(TFile& file, const TOptions& options)
 {
-    TBlockData blockData {};
+    TSectorData sector {};
 
     ui64 offset = options.StartIndex * options.BlockSize;
 
     const char* status[] { " (corrupted)", "" };
 
     for (ui64 i = 0; i != options.BlockCount; ++i) {
-        file.Pload(&blockData, sizeof(blockData), offset);
+        file.Pload(&sector, sizeof(sector), offset);
 
-        const ui64 checksum = Checksum(blockData);
+        const ui64 checksum = CalculateSectorChecksum(sector);
 
         std::printf("=========== # %" PRIu64 " 0x%016" PRIx64 "%s ===========\n",
             options.StartIndex + i,
             checksum,
-            status[checksum == blockData.Checksum]);
+            status[checksum == sector.Header.Checksum]);
 
-        Dump(blockData);
+        Dump(sector);
         std::putchar('\n');
 
         offset += options.BlockSize;

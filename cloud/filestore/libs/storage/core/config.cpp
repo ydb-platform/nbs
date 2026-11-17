@@ -206,6 +206,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ThreeStageWriteThreshold,        ui32,      64_KB                     )\
     xxx(ThreeStageWriteDisabledForHDD,   bool,      false                     )\
     xxx(UnalignedThreeStageWriteEnabled, bool,      false                     )\
+    xxx(WriteDataZeroBlockStatsEnabled,  bool,      false                     )\
     xxx(ReadAheadCacheMaxNodes,                 ui32,       1024              )\
     xxx(ReadAheadCacheMaxResultsPerNode,        ui32,       32                )\
     xxx(ReadAheadCacheRangeSize,                ui32,       0                 )\
