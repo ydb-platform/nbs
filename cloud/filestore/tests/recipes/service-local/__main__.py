@@ -59,6 +59,7 @@ def start(argv):
         app_config=server_config,
         service_type=args.service,
         verbose=args.verbose)
+    filestore_configurator.generate_configs()
 
     filestore_server = FilestoreServer(configurator=filestore_configurator)
 

@@ -12,9 +12,9 @@ class TStorageNodeStub: public IStorageNode
 {
 public:
 #define SN_STUB_METHOD(name, ...)                                              \
-    NCloud::NProto::T##name##Response name(                                    \
+    NProto::T##name##Response name(                                            \
         TFastShardContext& ctx,                                                \
-        NCloud::NProto::T##name##Request request) override                     \
+        NProto::T##name##Request request) override                             \
     {                                                                          \
         Y_UNUSED(request, ctx);                                                \
         NProto::T##name##Response response;                                    \

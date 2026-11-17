@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <memory>
 
+using namespace NCloud;
 using namespace NCloud::NFastShard;
 using silk::FiberFuture;
 using silk::FiberScheduler;
@@ -88,7 +89,7 @@ int CallFiberMain(TDriverParams* params) noexcept
 {
     for (ui32 i = 0; i < params->CallsPerFiber; ++i) {
         if (params->WritePageCount) {
-            NCloud::NProto::TWriteLogRecordRequest req;
+            NProto::TWriteLogRecordRequest req;
             req.SetDeviceUUID("bench-dev");
             req.SetLogSequenceNumber(i);
             auto* pg = req.AddPageGroups();
@@ -103,7 +104,7 @@ int CallFiberMain(TDriverParams* params) noexcept
                 params->ErrorCount->fetch_add(1);
             }
         } else {
-            NCloud::NProto::TAcquireDevicesRequest req;
+            NProto::TAcquireDevicesRequest req;
             req.AddDeviceUUIDs("bench-dev");
             auto resp = params->Fixture->Client->AcquireDevices(
                 params->Fixture->Ctx,

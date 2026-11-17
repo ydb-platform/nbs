@@ -32,16 +32,18 @@ TVector<ui64> CollectPages(const TVector<TPageGroup>& groups)
     return res;
 }
 
-void Flush(TVector<TPageGroup>& groups, IPageStore& pageStore)
+void Flush(TWriteContext& writeContext, IPageStore& pageStore)
 {
-    pageStore.CommitPages(CollectPages(groups));
-    groups.clear();
+    pageStore.CommitPages(
+        writeContext.Lsn,
+        CollectPages(writeContext.PageGroups));
 }
 
-void Rollback(TVector<TPageGroup>& groups, IPageStore& pageStore)
+void Rollback(TWriteContext& writeContext, IPageStore& pageStore)
 {
-    pageStore.RollbackPages(CollectPages(groups));
-    groups.clear();
+    pageStore.RollbackPages(
+        writeContext.Lsn,
+        CollectPages(writeContext.PageGroups));
 }
 
 }   // namespace
@@ -70,7 +72,7 @@ TEST(FormatPageTest, ChecksVersions)
             writeContext);
         EXPECT_EQ(S_OK, e.GetCode()) << FormatError(e);
 
-        Flush(writeContext.PageGroups, *pageStore);
+        Flush(writeContext, *pageStore);
     }
 
     EXPECT_EQ("G=1 P=11 MV=1 V=1 D={something}", formatPage.Describe());
@@ -91,7 +93,7 @@ TEST(FormatPageTest, ChecksVersions)
             writeContext);
         EXPECT_EQ(S_OK, e.GetCode()) << FormatError(e);
 
-        Flush(writeContext.PageGroups, *pageStore);
+        Flush(writeContext, *pageStore);
     }
 
     EXPECT_EQ("G=2 P=11 MV=1 V=2 D={something2}", formatPage2.Describe());
@@ -112,7 +114,7 @@ TEST(FormatPageTest, ChecksVersions)
             writeContext);
         EXPECT_EQ(E_INVALID_STATE, e.GetCode()) << FormatError(e);
 
-        Rollback(writeContext.PageGroups, *pageStore);
+        Rollback(writeContext, *pageStore);
     }
 
     EXPECT_EQ("G=0 P=11 MV=0 V=0 D={}", formatPage3.Describe());
@@ -133,15 +135,16 @@ TEST(FormatPageTest, ErrorsOnGarbage)
         TBuffer page;
         page.Resize(PageSize);
         memset(page.Data(), 1, PageSize);
-        TVector<TPageGroup> pageGroups;
+        TWriteContext writeContext;
+        writeContext.Lsn = pageStore->AllocateLsn();
         auto e = pageStore->WritePage(
-            pageStore->AllocateLsn(),
+            writeContext.Lsn,
             pageNo,
             page,
-            pageGroups);
+            writeContext.PageGroups);
         EXPECT_EQ(S_OK, e.GetCode()) << FormatError(e);
 
-        Flush(pageGroups, *pageStore);
+        Flush(writeContext, *pageStore);
     }
 
     {
@@ -154,7 +157,7 @@ TEST(FormatPageTest, ErrorsOnGarbage)
             writeContext);
         EXPECT_EQ(E_INVALID_STATE, e.GetCode()) << FormatError(e);
 
-        Rollback(writeContext.PageGroups, *pageStore);
+        Rollback(writeContext, *pageStore);
     }
 
     EXPECT_EQ("G=0 P=11 MV=0 V=0 D={}", formatPage.Describe());
@@ -181,7 +184,7 @@ TEST(FormatPageTest, ErrorsOnWrongPageNo)
             writeContext);
         EXPECT_EQ(S_OK, e.GetCode()) << FormatError(e);
 
-        Flush(writeContext.PageGroups, *pageStore);
+        Flush(writeContext, *pageStore);
     }
 
     EXPECT_EQ("G=1 P=11 MV=1 V=1 D={something}", formatPage.Describe());
@@ -190,10 +193,9 @@ TEST(FormatPageTest, ErrorsOnWrongPageNo)
 
     {
         TBuffer originalPage;
-        auto e = pageStore->ReadPage(
-            pageStore->AllocateLsn(),
-            pageNo,
-            &originalPage);
+        TWriteContext writeContext;
+        writeContext.Lsn = pageStore->AllocateLsn();
+        auto e = pageStore->ReadPageForLookup(pageNo, &originalPage);
         EXPECT_EQ(S_OK, e.GetCode()) << FormatError(e);
 
         TBuffer page;
@@ -207,7 +209,7 @@ TEST(FormatPageTest, ErrorsOnWrongPageNo)
             pageGroups);
         EXPECT_EQ(S_OK, e.GetCode()) << FormatError(e);
 
-        Flush(pageGroups, *pageStore);
+        Flush(writeContext, *pageStore);
     }
 
     TFormatPage formatPage2;
@@ -223,7 +225,7 @@ TEST(FormatPageTest, ErrorsOnWrongPageNo)
             writeContext);
         EXPECT_EQ(E_INVALID_STATE, e.GetCode()) << FormatError(e);
 
-        Rollback(writeContext.PageGroups, *pageStore);
+        Rollback(writeContext, *pageStore);
     }
 
     EXPECT_EQ("G=0 P=21 MV=0 V=0 D={}", formatPage2.Describe());

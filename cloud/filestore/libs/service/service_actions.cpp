@@ -1,6 +1,7 @@
 #include "service_actions.h"
 
 #include "context.h"
+#include "endpoint.h"
 #include "filestore.h"
 
 #include <cloud/filestore/private/api/protos/actions.pb.h>
@@ -15,17 +16,29 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THashMap<TString, TActionHandler> LowerCaseNames(
-    THashMap<TString, TActionHandler> actions)
+class TActionHandlers
 {
-    THashMap<TString, TActionHandler> result;
-    for (auto& [name, handler]: actions) {
-        TString action = name;
-        action.to_lower();
-        result.emplace(std::move(action), std::move(handler));
+private:
+    THashMap<TString, TActionHandler> Handlers;
+
+public:
+    explicit TActionHandlers(THashMap<TString, TActionHandler> handlers)
+    {
+        for (auto& [name, handler]: handlers) {
+            TString action = name;
+            action.to_lower();
+            Handlers.emplace(std::move(action), std::move(handler));
+        }
     }
-    return result;
-}
+
+    const TActionHandler* Find(
+        const NProto::TExecuteActionRequest& request) const
+    {
+        TString action = request.GetAction();
+        action.to_lower();
+        return Handlers.FindPtr(action);
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -70,24 +83,96 @@ class TActionsService final
     : public TForwardingService
 {
 private:
-    const THashMap<TString, TActionHandler> Actions;
+    const TActionHandlers Actions;
 
 public:
     TActionsService(
             IFileStoreServicePtr service,
             THashMap<TString, TActionHandler> actions)
         : TForwardingService(std::move(service))
-        , Actions(LowerCaseNames(std::move(actions)))
+        , Actions(std::move(actions))
     {}
 
     TFuture<NProto::TExecuteActionResponse> ExecuteAction(
         TCallContextPtr ctx,
         std::shared_ptr<NProto::TExecuteActionRequest> request) override
     {
-        TString action = request->GetAction();
-        action.to_lower();
+        const auto* handler = Actions.Find(*request);
+        if (!handler) {
+            return Service->ExecuteAction(std::move(ctx), std::move(request));
+        }
+        return (*handler)(request->GetInput());
+    }
+};
 
-        const auto* handler = Actions.FindPtr(action);
+////////////////////////////////////////////////////////////////////////////////
+
+class TForwardingEndpointManager
+    : public IEndpointManager
+{
+protected:
+    const IEndpointManagerPtr Service;
+
+public:
+    explicit TForwardingEndpointManager(IEndpointManagerPtr service)
+        : Service(std::move(service))
+    {}
+
+    void Start() override
+    {
+        Service->Start();
+    }
+
+    void Stop() override
+    {
+        Service->Stop();
+    }
+
+    void Drain() override
+    {
+        Service->Drain();
+    }
+
+    TFuture<void> RestoreEndpoints() override
+    {
+        return Service->RestoreEndpoints();
+    }
+
+#define FILESTORE_IMPLEMENT_METHOD(name, ...)                                  \
+    TFuture<NProto::T##name##Response> name(                                   \
+        TCallContextPtr ctx,                                                   \
+        std::shared_ptr<NProto::T##name##Request> request) override            \
+    {                                                                          \
+        return Service->name(std::move(ctx), std::move(request));              \
+    }                                                                          \
+// FILESTORE_IMPLEMENT_METHOD
+
+    FILESTORE_ENDPOINT_SERVICE(FILESTORE_IMPLEMENT_METHOD)
+
+#undef FILESTORE_IMPLEMENT_METHOD
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TEndpointActionsService final
+    : public TForwardingEndpointManager
+{
+private:
+    const TActionHandlers Actions;
+
+public:
+    TEndpointActionsService(
+            IEndpointManagerPtr service,
+            THashMap<TString, TActionHandler> actions)
+        : TForwardingEndpointManager(std::move(service))
+        , Actions(std::move(actions))
+    {}
+
+    TFuture<NProto::TExecuteActionResponse> ExecuteAction(
+        TCallContextPtr ctx,
+        std::shared_ptr<NProto::TExecuteActionRequest> request) override
+    {
+        const auto* handler = Actions.Find(*request);
         if (!handler) {
             return Service->ExecuteAction(std::move(ctx), std::move(request));
         }
@@ -104,6 +189,15 @@ IFileStoreServicePtr CreateActionsService(
     THashMap<TString, TActionHandler> actions)
 {
     return std::make_shared<TActionsService>(
+        std::move(service),
+        std::move(actions));
+}
+
+IEndpointManagerPtr CreateActionsService(
+    IEndpointManagerPtr service,
+    THashMap<TString, TActionHandler> actions)
+{
+    return std::make_shared<TEndpointActionsService>(
         std::move(service),
         std::move(actions));
 }

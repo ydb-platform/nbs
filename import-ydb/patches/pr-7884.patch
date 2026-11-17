@@ -1,0 +1,111 @@
+diff --git a/contrib/ydb/public/api/client/yc_private/compute/export.proto b/contrib/ydb/public/api/client/yc_private/compute/export.proto
+new file mode 100644
+index 0000000000000000000000000000000000000000..f02d4885c0c114a569974e3ce2cae84661946c5b
+--- /dev/null
++++ b/contrib/ydb/public/api/client/yc_private/compute/export.proto
+@@ -0,0 +1,33 @@
++syntax = "proto3";
++
++package yandex.cloud.priv.compute.v1;
++
++option go_package = "github.com/ydb-platform/nbs/contrib/ydb/public/api/client/yc_private/compute;compute";
++option java_outer_classname = "PEX";
++option java_package = "yandex.cloud.priv.compute.v1";
++
++// Destination of an export to an S3-compatible storage.
++message ExportDestination {
++  // HTTP(S) endpoint of an S3-compatible storage.
++  string endpoint = 1;
++
++  // Signing region; empty when the storage does not use one.
++  string region = 2;
++
++  // The bucket must exist.
++  string bucket = 3;
++
++  // Optional prefix of the exported objects.
++  string prefix = 4;
++}
++
++// Credentials used to access the destination storage.
++message ExportS3Credentials {
++  string access_key_id = 1;
++  string secret_access_key = 2;
++}
++
++message ExportResponse {
++  string bucket = 1;
++  string manifest_key = 2;
++}
+diff --git a/contrib/ydb/public/api/client/yc_private/compute/inner/disk_service.proto b/contrib/ydb/public/api/client/yc_private/compute/inner/disk_service.proto
+index b7335e408eb7a703f26c270f1ce8beb36eccd771..02e841468d27e60ddf296f2b9a6fde4556045bc8 100644
+--- a/contrib/ydb/public/api/client/yc_private/compute/inner/disk_service.proto
++++ b/contrib/ydb/public/api/client/yc_private/compute/inner/disk_service.proto
+@@ -2,11 +2,16 @@ syntax = "proto3";
+ 
+ package yandex.cloud.priv.compute.v1.inner;
+ 
++import "contrib/ydb/public/api/client/yc_private/compute/export.proto";
++
+ option go_package = "github.com/ydb-platform/nbs/contrib/ydb/public/api/client/yc_private/compute/inner;compute";
+ 
+ service DiskService {
+   // Create iam-token for encrypted disk
+   rpc CreateToken(CreateTokenRequest) returns (CreateTokenResponse);
++
++  rpc GetExportCredentials(GetExportCredentialsRequest)
++      returns (GetExportCredentialsResponse);
+ }
+ 
+ message CreateTokenRequest {
+@@ -17,3 +22,14 @@ message CreateTokenRequest {
+ message CreateTokenResponse {
+   string token = 1;
+ }
++
++message GetExportCredentialsRequest {
++  // Compute export task ID passed to Disk Manager in x-task-id.
++  string task_id = 1;
++  string snapshot_id = 2;
++  string image_id = 3;
++}
++
++message GetExportCredentialsResponse {
++  yandex.cloud.priv.compute.v1.ExportS3Credentials credentials = 1;
++}
+diff --git a/contrib/ydb/public/api/client/yc_private/compute/inner/ya.make b/contrib/ydb/public/api/client/yc_private/compute/inner/ya.make
+index 961bbefa17f1e3ea54a114d11e4c86d93309a66e..cae8f0997258e47b462201b00985503943b3a43e 100644
+--- a/contrib/ydb/public/api/client/yc_private/compute/inner/ya.make
++++ b/contrib/ydb/public/api/client/yc_private/compute/inner/ya.make
+@@ -1,9 +1,13 @@
+ PROTO_LIBRARY()
++PROTOC_FATAL_WARNINGS()
+ 
+ GRPC()
+ SRCS(
+     disk_service.proto
+ )
+ 
+-END()
++PEERDIR(
++    contrib/ydb/public/api/client/yc_private/compute
++)
+ 
++END()
+diff --git a/contrib/ydb/public/api/client/yc_private/compute/ya.make b/contrib/ydb/public/api/client/yc_private/compute/ya.make
+index 8bc25f23c65bf0ee5786b3ad5909debbebae91f9..66a98ae29b07e176c564eb7164197a0e2daf4116 100644
+--- a/contrib/ydb/public/api/client/yc_private/compute/ya.make
++++ b/contrib/ydb/public/api/client/yc_private/compute/ya.make
+@@ -1,3 +1,12 @@
++PROTO_LIBRARY()
++PROTOC_FATAL_WARNINGS()
++
++SRCS(
++    export.proto
++)
++
++END()
++
+ RECURSE(
+     inner
+ )

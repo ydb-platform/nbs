@@ -144,6 +144,8 @@ public:
             WriteBackCacheConfig.FlushMaxSumWriteRequestsSize);
         protoConfig.SetWriteBackCacheMaxQueuedFlushBatchesPerNode(
             WriteBackCacheConfig.MaxQueuedFlushBatchesPerNode);
+        protoConfig.SetWriteBackCacheLockMethod(
+            WriteBackCacheConfig.LockMethod);
         protoConfig.SetDirectoryHandlesStoragePath(
             DirectoryHandleStorageConfig.PathPrefix);
         protoConfig.SetDirectoryHandlesInitialDataSize(

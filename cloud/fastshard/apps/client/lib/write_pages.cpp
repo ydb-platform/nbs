@@ -58,7 +58,7 @@ protected:
 
     bool DoExecute() override
     {
-        NCloud::NProto::TWritePagesRequest request;
+        NProto::TWritePagesRequest request;
         if (Proto) {
             ParseFromTextFormat(GetInputStream(), request);
         } else {

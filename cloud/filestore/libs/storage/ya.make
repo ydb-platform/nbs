@@ -12,6 +12,7 @@ RECURSE(
     tablet/model
     tablet/protos
     tablet_proxy
+    tablet_rdma
 )
 
 RECURSE_FOR_TESTS(

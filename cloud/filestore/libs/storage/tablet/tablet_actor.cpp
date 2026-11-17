@@ -78,6 +78,7 @@ TIndexTabletActor::TIndexTabletActor(
         NMetrics::IMetricsRegistryPtr metricsRegistry,
         NFastShard::IServerPtr fastShardServer,
         NFastShard::IFileSystemShardFactoryPtr fastShardFactory,
+        IRdmaTabletRegistryPtr rdmaTabletRegistry,
         ITxReschedulerPtr txRescheduler)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), std::move(txRescheduler))
@@ -101,6 +102,7 @@ TIndexTabletActor::TIndexTabletActor(
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
     , FastShardServer(std::move(fastShardServer))
     , FastShardFactory(std::move(fastShardFactory))
+    , RdmaTabletRegistry(std::move(rdmaTabletRegistry))
 {
     UpdateLogTag();
 }
@@ -367,6 +369,7 @@ bool TIndexTabletActor::OnRenderAppHtmlPage(
 void TIndexTabletActor::OnDetach(const TActorContext& ctx)
 {
     Counters = nullptr;
+    UnregisterRdmaTablet();
 
     Die(ctx);
 }
@@ -385,6 +388,7 @@ void TIndexTabletActor::OnTabletDead(
 
     WorkerActors.clear();
     UnregisterFileStore(ctx);
+    UnregisterRdmaTablet();
 
     if (FastShardServer) {
         FastShardServer->UnregisterShard(GetFileSystemId());
@@ -1142,6 +1146,17 @@ void TIndexTabletActor::HandleTabletMetrics(
     Y_UNUSED(ctx);
 }
 
+void TIndexTabletActor::HandleServerConnected(
+    const TEvTabletPipe::TEvServerConnected::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+
+    if (RdmaTabletRegistry) {
+        RdmaTabletRegistry->RegisterPipe(ev->Get()->ServerId, SelfId());
+    }
+}
+
 void TIndexTabletActor::HandleSessionDisconnected(
     const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
     const TActorContext& ctx)
@@ -1151,6 +1166,7 @@ void TIndexTabletActor::HandleSessionDisconnected(
         LogTag.c_str(),
         ev->Sender.ToString().c_str());
 
+    UnregisterRdmaPipe(ev->Get()->ServerId);
     RemoveFileSystemEventClient(ev->Sender);
     OrphanSession(ev->Sender, ctx.Now());
 }
@@ -1170,6 +1186,7 @@ void TIndexTabletActor::HandleSessionDisconnectedInWork(
         msg.ClientId.ToString().c_str(),
         msg.ServerId.ToString().c_str());
 
+    UnregisterRdmaPipe(msg.ServerId);
     // msg.ServerId is the tablet-pipe server actor that received requests
     // from this client connection. Unconfirmed data keeps this actor id from
     // GenerateBlobIds, so clean it up when the pipe disconnects.
@@ -1836,7 +1853,7 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        IgnoreFunc(TEvTabletPipe::TEvServerConnected);
+        HFunc(TEvTabletPipe::TEvServerConnected, HandleServerConnected);
         HFunc(
             TEvTabletPipe::TEvServerDisconnected,
             HandleSessionDisconnectedInWork);
@@ -2173,6 +2190,20 @@ void TIndexTabletActor::UnregisterFileStore(const NActors::TActorContext& ctx)
         GetGeneration());
 
     ctx.Send(MakeStorageServiceId(), request.release());
+}
+
+void TIndexTabletActor::UnregisterRdmaPipe(const TActorId& pipeServerId)
+{
+    if (RdmaTabletRegistry) {
+        RdmaTabletRegistry->UnregisterPipe(pipeServerId);
+    }
+}
+
+void TIndexTabletActor::UnregisterRdmaTablet()
+{
+    if (RdmaTabletRegistry) {
+        RdmaTabletRegistry->UnregisterTablet(SelfId());
+    }
 }
 
 void TIndexTabletActor::UpdateLogTag()

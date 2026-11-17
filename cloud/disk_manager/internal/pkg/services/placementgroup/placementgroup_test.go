@@ -2,6 +2,12 @@ package placementgroup
 
 import (
 	"context"
+	"github.com/stretchr/testify/assert"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	placement_group_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/placementgroup/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/client/codes"
+	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -52,7 +58,7 @@ func TestAlterPlacementGroupMembershipUsesStoredCell(t *testing.T) {
 			ID:     "pg-1",
 			ZoneID: "zone-a-shard1",
 		}, nil,
-	)
+	).Once()
 
 	cellSelector.On("ResolveCells", "zone-a").Return(
 		[]string{"zone-a", "zone-a-shard1"}, nil,
@@ -97,7 +103,7 @@ func TestAlterPlacementGroupMembershipFallsBackToRequestZone(t *testing.T) {
 
 	storage.On("GetPlacementGroupMeta", ctx, "pg-1").Return(
 		(*resources.PlacementGroupMeta)(nil), nil,
-	)
+	).Twice()
 
 	nbsFactory.On("GetClient", ctx, "zone-a").Return(nbsClient, nil)
 
@@ -123,9 +129,10 @@ func TestAlterPlacementGroupMembershipZoneMismatch(t *testing.T) {
 	execCtx := tasks_mocks.NewExecutionContextMock()
 
 	task := &alterPlacementGroupMembershipTask{
-		storage:      storage,
-		nbsFactory:   nbs_mocks.NewFactoryMock(),
-		cellSelector: cellSelector,
+		storage:       storage,
+		nbsFactory:    nbs_mocks.NewFactoryMock(),
+		cellSelector:  cellSelector,
+		disabledZones: common.NewDisabledZones([]string{"zone-c"}),
 		request: &protos.AlterPlacementGroupMembershipRequest{
 			ZoneId:     "zone-b",
 			GroupId:    "pg-1",
@@ -476,4 +483,165 @@ func TestListPlacementGroupsSingleCell(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"pg-10"}, resp.GroupIds)
 	mock.AssertExpectationsForObjects(t, nbsFactory, cellSelector, nbsClient)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestAlterPlacementGroupMembershipRunDisabledZones(t *testing.T) {
+	testCases := []struct {
+		name              string
+		metadata          *resources.PlacementGroupMeta
+		disabledZones     []string
+		metadataReadError error
+		zoneDisabled      bool
+		removalOnly       bool
+	}{
+		// Reject the disabled stored cell before resolving cells or calling NBS.
+		{
+			name:          "disabled stored cell",
+			metadata:      &resources.PlacementGroupMeta{ID: "pg-1", ZoneID: "zone-a-shard1"},
+			disabledZones: []string{"zone-a-shard1"},
+			zoneDisabled:  true,
+		},
+
+		// With no metadata, reject the disabled zone from the request.
+		{
+			name:          "missing metadata uses disabled request zone",
+			disabledZones: []string{"zone-a"},
+			zoneDisabled:  true,
+		},
+
+		// Use the enabled stored cell even when the original request zone is disabled.
+		{
+			name:          "enabled stored cell in disabled request zone",
+			metadata:      &resources.PlacementGroupMeta{ID: "pg-1", ZoneID: "zone-a-shard1"},
+			disabledZones: []string{"zone-a"},
+		},
+
+		// Preserve a metadata lookup failure instead of falling back to the request zone.
+		{
+			name:              "metadata read fails",
+			disabledZones:     []string{"zone-a"},
+			metadataReadError: assert.AnError,
+		},
+		{
+			name:          "removal skips disabled stored cell",
+			metadata:      &resources.PlacementGroupMeta{ID: "pg-1", ZoneID: "zone-a-shard1"},
+			disabledZones: []string{"zone-a-shard1"},
+			zoneDisabled:  true,
+			removalOnly:   true,
+		},
+		{
+			name:          "removal without metadata skips disabled request zone",
+			disabledZones: []string{"zone-a"},
+			zoneDisabled:  true,
+			removalOnly:   true,
+		},
+		{
+			name:          "removal in enabled stored cell calls NBS",
+			metadata:      &resources.PlacementGroupMeta{ID: "pg-1", ZoneID: "zone-a-shard1"},
+			disabledZones: []string{"zone-a"},
+			removalOnly:   true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			storage := storage_mocks.NewStorageMock()
+			nbsFactory := nbs_mocks.NewFactoryMock()
+			nbsClient := nbs_mocks.NewClientMock()
+			cellSelector := cells_mocks.NewCellSelectorMock()
+			execCtx := tasks_mocks.NewExecutionContextMock()
+			scheduler := tasks_mocks.NewSchedulerMock()
+
+			for _, m := range []*mock.Mock{
+				&storage.Mock, &nbsFactory.Mock, &nbsClient.Mock,
+				&cellSelector.Mock, &execCtx.Mock, &scheduler.Mock,
+			} {
+				m.Test(t)
+				t.Cleanup(func() { m.AssertExpectations(t) })
+			}
+
+			registry := tasks.NewRegistry()
+			scheduler.On("ScheduleRegularTasks", ctx, "placement_groups.ClearDeletedPlacementGroups", mock.Anything).
+				Once()
+
+			require.NoError(t, RegisterForExecution(
+				ctx, &placement_group_config.Config{}, common.NewDisabledZones(tc.disabledZones),
+				registry, scheduler, storage, nbsFactory, cellSelector,
+			))
+
+			registeredTask, err := registry.NewTask("placement_group.AlterPlacementGroupMembership")
+			require.NoError(t, err)
+
+			task := registeredTask.(*alterPlacementGroupMembershipTask)
+			disksToAdd := []string{"disk-to-add-1", "disk-to-add-2"}
+			if tc.removalOnly {
+				disksToAdd = nil
+			}
+			task.request = &protos.AlterPlacementGroupMembershipRequest{
+				ZoneId:                  "zone-a",
+				GroupId:                 "pg-1",
+				PlacementPartitionIndex: 2,
+				DisksToAdd:              disksToAdd,
+				DisksToRemove:           []string{"disk-to-remove"},
+			}
+			task.state = &protos.AlterPlacementGroupMembershipTaskState{}
+
+			storage.On("GetPlacementGroupMeta", ctx, "pg-1").Return(tc.metadata, tc.metadataReadError).Once()
+
+			if tc.metadata != nil && !tc.zoneDisabled && tc.metadataReadError == nil {
+				cellSelector.On("ResolveCells", "zone-a").
+					Return([]string{"zone-a", "zone-a-shard1"}, nil).Once()
+			}
+
+			if !tc.zoneDisabled && tc.metadataReadError == nil {
+				nbsFactory.On("GetClient", ctx, "zone-a-shard1").Return(nbsClient, nil).Once()
+				execCtx.On("SaveState", ctx).Return(nil).Once()
+
+				nbsClient.On(
+					"AlterPlacementGroupMembership",
+					ctx,
+					mock.AnythingOfType("func() error"),
+					"pg-1",
+					uint32(2),
+					disksToAdd,
+					[]string{"disk-to-remove"},
+				).Run(func(args mock.Arguments) {
+					// The NBS operation must retain the task-generation check.
+					require.NoError(t, args.Get(1).(func() error)())
+				}).Return(nil).Once()
+			}
+
+			err = task.Run(ctx, execCtx)
+
+			switch {
+			case tc.metadataReadError != nil:
+				require.ErrorIs(t, err, tc.metadataReadError)
+
+			case tc.zoneDisabled && !tc.removalOnly:
+				require.ErrorIs(t, err, errors.NewEmptyNonRetriableError())
+				require.NotErrorIs(t, err, errors.NewEmptyNonCancellableError())
+				require.NotErrorIs(t, err, errors.NewEmptyAbortedError())
+
+				var detailed *errors.DetailedError
+				require.ErrorAs(t, err, &detailed)
+				require.NotNil(t, detailed.Details)
+				require.Equal(t, int64(codes.Aborted), detailed.Details.Code)
+				require.True(t, detailed.Details.Internal)
+				require.Contains(t, detailed.Details.Message, tc.disabledZones[0])
+
+			default:
+				require.NoError(t, err)
+			}
+
+			if tc.zoneDisabled || tc.metadataReadError != nil {
+				cellSelector.AssertNumberOfCalls(t, "ResolveCells", 0)
+				nbsFactory.AssertNumberOfCalls(t, "GetClient", 0)
+				nbsClient.AssertNumberOfCalls(t, "AlterPlacementGroupMembership", 0)
+				execCtx.AssertNumberOfCalls(t, "SaveState", 0)
+			}
+		})
+	}
 }

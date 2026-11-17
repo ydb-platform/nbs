@@ -116,6 +116,7 @@ public:
               LogTag))
         , State(
               *this,
+              CreateWriteBackCacheLock(args.LockMethod),
               PersistentStorage,
               Timer,
               args.Stats->GetWriteBackCacheStateStats(),

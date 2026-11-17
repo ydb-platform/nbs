@@ -42,6 +42,7 @@ RECURSE(
     stats_aggregator_perf
     storage_discovery
     tablets
+    update_certificates
     vhost-server
     vhost-server/run_and_die
 )

@@ -46,7 +46,7 @@ constexpr ui64 DataDevicePageCount = 1024;
 // The metadata store keeps one entry per in-flight record plus the journal
 // metadata, and its pages carry a 48 byte header.
 constexpr ui32 MetaPageSize = 256;
-constexpr ui64 MetaPageCount = 64;
+constexpr ui64 DefaultMetaPageCount = 64;
 
 constexpr TStringBuf DeviceUUID = "test-device";
 
@@ -65,10 +65,9 @@ TString MakeContent(char tag, ui64 pageNo)
     return Sprintf("%c%03u", tag, static_cast<ui32>(pageNo % 1000));
 }
 
-NCloud::NProto::TDevicePageGroup
-MakeGroup(ui64 firstPageNo, ui64 pageCount, char tag)
+NProto::TDevicePageGroup MakeGroup(ui64 firstPageNo, ui64 pageCount, char tag)
 {
-    NCloud::NProto::TDevicePageGroup group;
+    NProto::TDevicePageGroup group;
     group.SetFirstPageNo(firstPageNo);
 
     for (ui64 i = 0; i < pageCount; ++i) {
@@ -78,10 +77,10 @@ MakeGroup(ui64 firstPageNo, ui64 pageCount, char tag)
     return group;
 }
 
-NCloud::NProto::TWriteLogRecordRequest
+NProto::TWriteLogRecordRequest
 MakeWriteRequest(ui64 lsn, ui64 prevLsn, char tag, const TGroups& groups)
 {
-    NCloud::NProto::TWriteLogRecordRequest request;
+    NProto::TWriteLogRecordRequest request;
     request.SetDeviceUUID(TString{DeviceUUID});
     request.SetLogSequenceNumber(lsn);
     request.SetPrevLogSequenceNumber(prevLsn);
@@ -93,9 +92,9 @@ MakeWriteRequest(ui64 lsn, ui64 prevLsn, char tag, const TGroups& groups)
     return request;
 }
 
-NCloud::NProto::TReadPagesRequest MakeReadRequest(const TGroups& refs)
+NProto::TReadPagesRequest MakeReadRequest(const TGroups& refs)
 {
-    NCloud::NProto::TReadPagesRequest request;
+    NProto::TReadPagesRequest request;
     request.SetDeviceUUID(TString{DeviceUUID});
 
     for (const auto& [firstPageNo, pageCount]: refs) {
@@ -108,11 +107,11 @@ NCloud::NProto::TReadPagesRequest MakeReadRequest(const TGroups& refs)
     return request;
 }
 
-NCloud::NProto::TReadJournalTailRequest MakeReadTailRequest(
+NProto::TReadJournalTailRequest MakeReadTailRequest(
     ui64 afterLsn,
     ui32 maxRecordCount)
 {
-    NCloud::NProto::TReadJournalTailRequest request;
+    NProto::TReadJournalTailRequest request;
     request.SetDeviceUUID(TString{DeviceUUID});
     request.SetAfterLogSequenceNumber(afterLsn);
     request.SetMaxRecordCount(maxRecordCount);
@@ -120,9 +119,9 @@ NCloud::NProto::TReadJournalTailRequest MakeReadTailRequest(
     return request;
 }
 
-NCloud::NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(ui64 lsn)
+NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(ui64 lsn)
 {
-    NCloud::NProto::TAdvanceLsnLowWatermarkRequest request;
+    NProto::TAdvanceLsnLowWatermarkRequest request;
     request.SetDeviceUUID(TString{DeviceUUID});
     request.SetLsnLowWatermark(lsn);
 
@@ -180,8 +179,7 @@ TString DescribeRanges(const TVector<TPageRange>& ranges)
 }
 
 // "1<-0 10:[A010]; 2<-1 20:[B020]"
-TString DescribeRecords(
-    const NCloud::NProto::TReadJournalTailResponse& response)
+TString DescribeRecords(const NProto::TReadJournalTailResponse& response)
 {
     TVector<TString> records;
 
@@ -217,8 +215,7 @@ struct TRecordingDevice final: public IDevice
         return Impl->ReadPages(std::move(rangeRefs));
     }
 
-    TFuture<NCloud::NProto::TError> WritePages(
-        TVector<TPageRange> ranges) override
+    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
     {
         with_lock (Mutex) {
             Writes.push_back(ranges);
@@ -227,8 +224,7 @@ struct TRecordingDevice final: public IDevice
         return Impl->WritePages(std::move(ranges));
     }
 
-    TFuture<NCloud::NProto::TError> ZeroPages(
-        TVector<TPageRangeRef> ranges) override
+    TFuture<NProto::TError> ZeroPages(TVector<TPageRangeRef> ranges) override
     {
         return Impl->ZeroPages(std::move(ranges));
     }
@@ -255,8 +251,9 @@ struct TFixture: public NUnitTest::TBaseFixture
     IDevicePtr LogDataDevice;
     std::shared_ptr<TRecordingDevice> DataDevice;
 
-    // the number of journal pages the next stack is given
+    // the number of journal pages and metadata pages the next stack is given
     ui64 JournalPageCount = DefaultJournalPageCount;
+    ui64 MetaPageCount = DefaultMetaPageCount;
 
     IKeyBufferStorePtr MetaStore;
     IDevicePageStorePtr PageStore;
@@ -364,7 +361,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             FormatError(response.GetError()));
     }
 
-    NCloud::NProto::TReadPagesResponse ReadPages(const TGroups& refs)
+    NProto::TReadPagesResponse ReadPages(const TGroups& refs)
     {
         return Device->ReadPages(MakeReadRequest(refs)).GetValueSync();
     }
@@ -381,7 +378,7 @@ struct TFixture: public NUnitTest::TBaseFixture
         return DescribeGroups(response);
     }
 
-    NCloud::NProto::TReadJournalTailResponse ReadTail(
+    NProto::TReadJournalTailResponse ReadTail(
         ui64 afterLsn = 0,
         ui32 maxRecordCount = 0)
     {
@@ -416,7 +413,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     // Writes the pages the device held before the journal ever saw it.
     void FillDataDevice(const TGroups& groups, char tag)
     {
-        NCloud::NProto::TWriteLogRecordRequest request;
+        NProto::TWriteLogRecordRequest request;
         for (const auto& [firstPageNo, pageCount]: groups) {
             *request.AddPageGroups() = MakeGroup(firstPageNo, pageCount, tag);
         }
@@ -460,6 +457,30 @@ struct TTinyJournalFixture: public TFixture
     TTinyJournalFixture()
     {
         JournalPageCount = 8;
+    }
+};
+
+// A metadata store with a single page for the records beside the two
+// superblock slots: it holds one record at a time, a second one has no free
+// page to be appended into.
+struct TTinyMetaStoreFixture: public TFixture
+{
+    TTinyMetaStoreFixture()
+    {
+        MetaPageCount = 3;
+    }
+};
+
+// A journal and a metadata store large enough for a long run of single page
+// records.
+struct TLargeJournalFixture: public TFixture
+{
+    static constexpr ui64 RecordCount = 200;
+
+    TLargeJournalFixture()
+    {
+        JournalPageCount = 2 * RecordCount;
+        MetaPageCount = 2 * RecordCount;
     }
 };
 
@@ -568,7 +589,10 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2StackTest)
         WriteRecordOrFail(1, 0, 'A', {{10, 4}});
         WriteRecordOrFail(2, 1, 'B', {{20, 4}});
 
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WriteRecord(3, 2, 'C', {{30, 1}}));
+        // a full journal is told apart from any other refusal
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            WriteRecord(3, 2, 'C', {{30, 1}}));
 
         // the pages come back once the records they hold are flushed
 
@@ -581,6 +605,70 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2StackTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010,A011,A012,A013] 30:[C030]",
             ReadPagesOrFail({{10, 4}, {30, 1}}));
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldFreeMetaStorePagesOfFlushedRecords,
+        TTinyMetaStoreFixture)
+    {
+        WriteRecordOrFail(1, 0, 'A', {{10, 1}});
+
+        // the journal has room for the pages, the metadata store has none
+        // for the record - a full metadata store is a full journal
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            WriteRecord(2, 1, 'B', {{20, 1}}));
+
+        // the page comes back once the record it holds is flushed
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(1));
+
+        WaitUntil(
+            [&] { return WriteRecord(2, 1, 'B', {{20, 1}}) == S_OK; },
+            "the metadata store pages to be freed");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010] 20:[B020]",
+            ReadPagesOrFail({{10, 1}, {20, 1}}));
+    }
+
+    Y_UNIT_TEST_F(ShouldFlushManyRecordsInOneDeviceWrite, TLargeJournalFixture)
+    {
+        // a long run of records, flushable all at once: the flush is not to
+        // cost a device write per record, or it cannot keep up with the
+        // records coming in
+
+        constexpr ui64 firstPageNo = 100;
+
+        for (ui64 i = 0; i < RecordCount; ++i) {
+            WriteRecordOrFail(i + 1, i, 'A', {{firstPageNo + i, 1}});
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(RecordCount));
+
+        const ui64 lastPageNo = firstPageNo + RecordCount - 1;
+        WaitForDataDevice(
+            {{lastPageNo, 1}},
+            TStringBuilder()
+                << lastPageNo << ":[" << MakeContent('A', lastPageNo) << "]");
+
+        // every record went to the data device in the one write, as a single
+        // range of pages next to each other
+
+        const auto writes = DataDevice->GetWrites();
+        UNIT_ASSERT_VALUES_EQUAL(1, writes.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, writes[0].size());
+        UNIT_ASSERT_VALUES_EQUAL(firstPageNo, writes[0][0].FirstPageNo);
+        UNIT_ASSERT_VALUES_EQUAL(RecordCount, writes[0][0].Pages.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TStringBuilder()
+                << firstPageNo << ":[" << MakeContent('A', firstPageNo) << "]",
+            ReadDataDevice({{firstPageNo, 1}}));
+
+        // and the journal has let go of all of them
+
+        UNIT_ASSERT_VALUES_EQUAL("", DescribeRecords(ReadTail()));
     }
 
     Y_UNIT_TEST_F(ShouldRestoreUnflushedRecords, TFixture)
@@ -757,10 +845,13 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2StackTest)
         // the device means the one in the middle has been dealt with
         WaitForDataDevice({{30, 1}}, "30:[D030]");
 
+        // all three are flushable at once, so they go in one write - the one
+        // with no pages adds nothing to it
         const auto writes = DataDevice->GetWrites();
-        UNIT_ASSERT_VALUES_EQUAL(2, writes.size());
-        UNIT_ASSERT_VALUES_EQUAL("10:[A010]", DescribeRanges(writes[0]));
-        UNIT_ASSERT_VALUES_EQUAL("30:[D030]", DescribeRanges(writes[1]));
+        UNIT_ASSERT_VALUES_EQUAL(1, writes.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010] 30:[D030]",
+            DescribeRanges(writes[0]));
 
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010] 30:[D030]",

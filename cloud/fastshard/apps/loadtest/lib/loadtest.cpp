@@ -70,7 +70,7 @@ struct TActionStats
         }
     }
 
-    void RecordError(const NCloud::NProto::TError& error)
+    void RecordError(const NProto::TError& error)
     {
         Errors.fetch_add(1);
         with_lock (Lock) {
@@ -261,7 +261,7 @@ private:
             return true;
         }
 
-        NCloud::NProto::TAcquireDevicesRequest request;
+        NProto::TAcquireDevicesRequest request;
         PrepareHeaders(*request.MutableHeaders());
         request.AddDeviceUUIDs(Config.DeviceUUID);
         request.SetGeneration(Config.Generation);
@@ -315,7 +315,7 @@ private:
         ui64 last = 0;
         ui64 after = 0;
         for (;;) {
-            NCloud::NProto::TReadJournalTailRequest request;
+            NProto::TReadJournalTailRequest request;
             PrepareHeaders(*request.MutableHeaders());
             request.SetDeviceUUID(Config.DeviceUUID);
             request.SetAfterLogSequenceNumber(after);
@@ -355,7 +355,7 @@ private:
             return;
         }
 
-        NCloud::NProto::TReleaseDevicesRequest request;
+        NProto::TReleaseDevicesRequest request;
         PrepareHeaders(*request.MutableHeaders());
         request.AddDeviceUUIDs(Config.DeviceUUID);
         auto response =
@@ -386,7 +386,7 @@ private:
     }
 
     // A read or advance the stop cut short is neither ok nor an error.
-    bool CutShortByStop(const NCloud::NProto::TError& error) const
+    bool CutShortByStop(const NProto::TError& error) const
     {
         return StoppableCtx.Cancel.isSet() &&
                GetErrorKind(error) == EErrorKind::ErrorRetriable;
@@ -417,7 +417,7 @@ private:
         // chain intact however the concurrent requests are reordered.
         const ui64 lsn = LastLsn.fetch_add(1) + 1;
 
-        NCloud::NProto::TWriteLogRecordRequest request;
+        NProto::TWriteLogRecordRequest request;
         PrepareHeaders(*request.MutableHeaders());
         request.SetDeviceUUID(Config.DeviceUUID);
         request.SetLogSequenceNumber(lsn);
@@ -452,7 +452,7 @@ private:
 
     void DoRead()
     {
-        NCloud::NProto::TReadPagesRequest request;
+        NProto::TReadPagesRequest request;
         PrepareHeaders(*request.MutableHeaders());
         request.SetDeviceUUID(Config.DeviceUUID);
 
@@ -482,7 +482,7 @@ private:
 
     void DoAdvance(ui64 lsn)
     {
-        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request;
+        NProto::TAdvanceLsnLowWatermarkRequest request;
         PrepareHeaders(*request.MutableHeaders());
         request.SetDeviceUUID(Config.DeviceUUID);
         request.SetLsnLowWatermark(lsn);
@@ -547,7 +547,7 @@ private:
         return RandomNumber<ui64>(Config.PageCount - pages + 1);
     }
 
-    void PrepareHeaders(NCloud::NProto::TDeviceRequestHeaders& headers) const
+    void PrepareHeaders(NProto::TDeviceRequestHeaders& headers) const
     {
         headers.SetClientId(Config.ClientId);
         if (Config.RequestTimeoutMs) {

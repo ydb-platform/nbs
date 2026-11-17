@@ -152,6 +152,7 @@ func newResourceStorage(
 		db,
 		endedMigrationExpirationTimeout,
 		false, // backupEnabled
+		nil,   // backupFolderIDs
 	)
 
 	return resourcesStorage, db, err

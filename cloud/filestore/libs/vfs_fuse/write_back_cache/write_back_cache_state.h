@@ -95,6 +95,7 @@ public:
 
     TWriteBackCacheState(
         IQueuedOperationsProcessor& processor,
+        std::unique_ptr<IWriteBackCacheLock> lock,
         IPersistentStoragePtr persistentStorage,
         ITimerPtr timer,
         IWriteBackCacheStateStatsPtr writeBackCacheStateStats,

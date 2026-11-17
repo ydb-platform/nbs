@@ -2,6 +2,7 @@
 #include "node_attrs_cache.h"
 #include "node_cache.h"
 #include "node_ref_cache.h"
+#include "ttl_cache.h"
 
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filesystem_event.h>
@@ -61,11 +62,11 @@ struct TMetadataCachingEnv
     std::atomic<ui32> XAttrCacheTTL = CacheTTLMs;
     std::atomic<bool> XAttrExists = true;
 
-    TMetadataCachingEnv()
+    explicit TMetadataCachingEnv(NProto::TFileStoreFeatures features = {})
         : Bootstrap(
               Timer,
               CreateScheduler(),
-              {} /* featuresConfig */,
+              features,
               1000 /* handleOpsQueueStateFileSize */,
               1000 /* writeBackCacheAutomaticFlushPeriodMs */,
               0 /* directoryHandlesInitialDataSize */,
@@ -774,6 +775,52 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("LookupCacheMissCount"));
     }
 
+    Y_UNIT_TEST(ShouldApplyNodeAttrsCacheLimitFromFeatures)
+    {
+        constexpr ui32 Limit = 16;
+
+        NProto::TFileStoreFeatures features;
+        features.SetNodeAttrsCacheLimit(Limit);
+        TMetadataCachingEnv env(features);
+
+        //
+        // Limit + 1 nodes are cached - at least one of the first Limit nodes
+        // is evicted.
+        //
+
+        for (ui32 i = 0; i <= Limit; ++i) {
+            env.GetAttr(RootNodeId + i);
+        }
+        for (ui32 i = 0; i < Limit; ++i) {
+            env.GetAttr(RootNodeId + i);
+        }
+
+        UNIT_ASSERT_GT(env.GetCounter("GetAttrCacheMissCount"), Limit + 1);
+    }
+
+    Y_UNIT_TEST(ShouldApplyNodeRefCacheLimitFromFeatures)
+    {
+        constexpr ui32 Limit = 16;
+
+        NProto::TFileStoreFeatures features;
+        features.SetNodeRefCacheLimit(Limit);
+        TMetadataCachingEnv env(features);
+
+        //
+        // Limit + 1 NodeRefs are cached - at least one of the first Limit
+        // NodeRefs is evicted.
+        //
+
+        for (ui32 i = 0; i <= Limit; ++i) {
+            env.Lookup(ToString(i));
+        }
+        for (ui32 i = 0; i < Limit; ++i) {
+            env.Lookup(ToString(i));
+        }
+
+        UNIT_ASSERT_GT(env.GetCounter("LookupCacheMissCount"), Limit + 1);
+    }
+
     Y_UNIT_TEST(ShouldCacheAttrsOfNodesNotLookedUp)
     {
         TMetadataCachingEnv env;
@@ -886,6 +933,106 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("NodeAttrsCacheSize"));
         UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("NodeRefCacheSize"));
         UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("XAttrCacheSize"));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+Y_UNIT_TEST_SUITE(TInvalidationsTest)
+{
+    Y_UNIT_TEST(ShouldKeepOneTombstonePerKey)
+    {
+        TInvalidations<ui64> invalidations(2 /* maxTombstoneCount */);
+
+        invalidations.Invalidate(1, 5 /* version */);
+        invalidations.Invalidate(2, 6 /* version */);
+        for (ui64 version = 7; version < 100; ++version) {
+            invalidations.Invalidate(1, version);
+        }
+
+        //
+        // The repeated invalidations of key 1 don't evict anything - the
+        // watermark is not raised.
+        //
+
+        UNIT_ASSERT(!invalidations.IsCacheable(1, 98 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(1, 99 /* version */));
+        UNIT_ASSERT(!invalidations.IsCacheable(2, 5 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(2, 6 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(3, 0 /* version */));
+    }
+
+    Y_UNIT_TEST(ShouldEvictLeastRecentlyInvalidatedKey)
+    {
+        TInvalidations<ui64> invalidations(2 /* maxTombstoneCount */);
+
+        invalidations.Invalidate(1, 5 /* version */);
+        invalidations.Invalidate(2, 6 /* version */);
+        invalidations.Invalidate(1, 7 /* version */);
+        UNIT_ASSERT(invalidations.IsCacheable(4, 0 /* version */));
+
+        //
+        // Key 2 is the least recently invalidated one - its version becomes
+        // the watermark.
+        //
+
+        invalidations.Invalidate(3, 8 /* version */);
+        UNIT_ASSERT(!invalidations.IsCacheable(4, 5 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(4, 6 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(2, 6 /* version */));
+        UNIT_ASSERT(!invalidations.IsCacheable(1, 6 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(1, 7 /* version */));
+        UNIT_ASSERT(!invalidations.IsCacheable(3, 7 /* version */));
+    }
+
+    Y_UNIT_TEST(ShouldKeepMaxVersionOfKey)
+    {
+        TInvalidations<ui64> invalidations(2 /* maxTombstoneCount */);
+
+        invalidations.Invalidate(1, 7 /* version */);
+        invalidations.Invalidate(1, 5 /* version */);
+        UNIT_ASSERT(!invalidations.IsCacheable(1, 6 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(1, 7 /* version */));
+    }
+
+    Y_UNIT_TEST(ShouldRaiseWatermarkWithoutTombstones)
+    {
+        TInvalidations<ui64> invalidations(0 /* maxTombstoneCount */);
+
+        invalidations.Invalidate(1, 5 /* version */);
+        UNIT_ASSERT(!invalidations.IsCacheable(1, 4 /* version */));
+        UNIT_ASSERT(!invalidations.IsCacheable(2, 4 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(2, 5 /* version */));
+    }
+
+    Y_UNIT_TEST(ShouldKeepTombstoneVersionsUponInvalidateAll)
+    {
+        TInvalidations<ui64> invalidations(2 /* maxTombstoneCount */);
+
+        //
+        // The tombstone versions may exceed the version of InvalidateAll -
+        // they are kept in the watermark.
+        //
+
+        invalidations.Invalidate(1, 7 /* version */);
+        invalidations.InvalidateAll(5 /* version */);
+        UNIT_ASSERT(!invalidations.IsCacheable(2, 6 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(2, 7 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(1, 7 /* version */));
+
+        invalidations.InvalidateAll(9 /* version */);
+        UNIT_ASSERT(!invalidations.IsCacheable(1, 8 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(1, 9 /* version */));
+    }
+
+    Y_UNIT_TEST(ShouldNotOverflowCapacity)
+    {
+        TInvalidations<ui64> invalidations(Max<ui32>() /* maxTombstoneCount */);
+
+        invalidations.Invalidate(1, 5 /* version */);
+        invalidations.Invalidate(2, 6 /* version */);
+        UNIT_ASSERT(!invalidations.IsCacheable(1, 4 /* version */));
+        UNIT_ASSERT(invalidations.IsCacheable(3, 0 /* version */));
     }
 }
 

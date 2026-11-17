@@ -36,16 +36,16 @@ struct IDevicePageStore
     // Returns nothing if there are not enough free pages.
     [[nodiscard]] virtual TVector<TPageRangeRef> Allocate(ui64 pageCount) = 0;
 
-    [[nodiscard]] virtual NCloud::NProto::TError AllocateAt(
+    [[nodiscard]] virtual NProto::TError AllocateAt(
         const TVector<TPageRangeRef>& pageRanges) = 0;
 
-    [[nodiscard]] virtual NCloud::NProto::TError Free(
+    [[nodiscard]] virtual NProto::TError Free(
         const TVector<TPageRangeRef>& pageRanges) = 0;
 
     [[nodiscard]] virtual auto Write(
         const TVector<TPageRangeRef>& pageRanges,
         const TVector<TBuffer>& pages)
-        -> NThreading::TFuture<NCloud::NProto::TError> = 0;
+        -> NThreading::TFuture<NProto::TError> = 0;
 
     [[nodiscard]] virtual auto Read(const TVector<TPageRangeRef>& pageRanges)
         -> NThreading::TFuture<TResultOrError<TVector<TBuffer>>> = 0;

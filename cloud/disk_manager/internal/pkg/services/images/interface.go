@@ -18,4 +18,9 @@ type Service interface {
 		ctx context.Context,
 		req *disk_manager.DeleteImageRequest,
 	) (string, error)
+
+	ExportImage(
+		ctx context.Context,
+		req *disk_manager.ExportImageRequest,
+	) (string, error)
 }
