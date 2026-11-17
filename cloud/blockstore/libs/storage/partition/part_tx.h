@@ -67,6 +67,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(DeleteUnconfirmedBlobs,     __VA_ARGS__)                               \
     xxx(LoadCompactionMapChunk,     __VA_ARGS__)                               \
     xxx(LoadMixedBlocksFilterChunk, __VA_ARGS__)                               \
+    xxx(StartMetadataRebuild,       __VA_ARGS__)                               \
 // BLOCKSTORE_PARTITION_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -566,6 +567,20 @@ struct TTxPartition
         }
     };
 
+    struct TStartMetadataRebuild
+    {
+        const ui64 CommitId;
+        const ui32 BatchSize;
+
+        TStartMetadataRebuild(ui64 commitId, ui32 batchSize)
+            : CommitId(commitId)
+            , BatchSize(batchSize)
+        {}
+
+        void Clear()
+        {}
+    };
+
     //
     // MetadataRebuildBlockCount
     //
@@ -579,15 +594,7 @@ struct TTxPartition
 
         ui32 ReadCount = 0;
 
-        ui64 MixedIndexBlockCount = 0;
-        ui64 MergedIndexBlockCount = 0;
-        ui64 MixedChannelBlockCount = 0;
-        ui64 MergedChannelBlockCount = 0;
-
-        ui64 MixedIndexByteCount = 0;
-        ui64 MergedIndexByteCount = 0;
-        ui64 MixedChannelByteCount = 0;
-        ui64 MergedChannelByteCount = 0;
+        TPartitionBlobAndBlockCounts BatchCounters;
 
         TPartialBlobId LastReadBlobId;
 
@@ -609,14 +616,7 @@ struct TTxPartition
         void Clear()
         {
             ReadCount = 0;
-            MixedIndexBlockCount = 0;
-            MergedIndexBlockCount = 0;
-            MixedChannelBlockCount = 0;
-            MergedChannelBlockCount = 0;
-            MixedIndexByteCount = 0;
-            MergedIndexByteCount = 0;
-            MixedChannelByteCount = 0;
-            MergedChannelByteCount = 0;
+            BatchCounters = {};
             LastReadBlobId = {};
         }
     };
