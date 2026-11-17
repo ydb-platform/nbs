@@ -252,6 +252,78 @@ def resolve_workflow_outcome(
     )
 
 
+def finalize_workload_comments(
+    contexts: list[tuple[str, str, str]],
+    *,
+    pr: gs.PullRequestLike,
+    run_number: int,
+    current_run_id: WorkflowRunId,
+    jobs_for_run: JobsForRun,
+    workload_status: str = "completed",
+    is_dry_run: bool = False,
+) -> None:
+    workflow_outcome_cache: WorkflowOutcomeCache = {}
+
+    def cached_workflow_outcome(
+        job_url: JobUrl,
+        build_preset: BuildPreset,
+        component: Component,
+        target_platform: TargetPlatform,
+    ) -> WorkflowOutcome:
+        cache_key: WorkflowOutcomeCacheKey = (
+            job_url,
+            build_preset,
+            component,
+            target_platform,
+        )
+        if cache_key in workflow_outcome_cache:
+            return workflow_outcome_cache[cache_key]
+        outcome = resolve_workflow_outcome(
+            job_url,
+            build_preset,
+            component,
+            target_platform,
+            current_run_id,
+            jobs_for_run,
+        )
+        workflow_outcome_cache[cache_key] = outcome
+        return outcome
+
+    for full_build_preset, build_preset, target_platform in contexts:
+
+        def workflow_outcome_resolver(
+            job_url: JobUrl,
+            component: Component,
+            preset: BuildPreset = build_preset,
+            platform: TargetPlatform = target_platform,
+        ) -> WorkflowOutcome:
+            return cached_workflow_outcome(
+                job_url,
+                preset,
+                component,
+                platform,
+            )
+
+        with gs.warn_on_comment_failure(f"Status finalization for {full_build_preset}"):
+            gs.complete_pr_comment_workload_checks(
+                run_number=run_number,
+                pr=pr,
+                build_preset=full_build_preset,
+                is_dry_run=is_dry_run,
+                job_conclusion_resolver=lambda url, component: workflow_outcome_resolver(
+                    url, component
+                ).execution,
+                workflow_outcome_resolver=workflow_outcome_resolver,
+            )
+            gs.update_pr_comment_workload_status(
+                run_number=run_number,
+                pr=pr,
+                build_preset=full_build_preset,
+                is_dry_run=is_dry_run,
+                workload_status=workload_status,
+            )
+
+
 def main() -> None:
     setup_logger(name=__name__, fmt="%(levelname)s %(message)s")
     setup_logger(name=gs.__name__, fmt="%(levelname)s %(message)s")
@@ -286,7 +358,6 @@ def main() -> None:
     run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
     current_run_id = int(os.environ.get("GITHUB_RUN_ID", "0"))
     jobs_cache: JobsCache = {}
-    workflow_outcome_cache: WorkflowOutcomeCache = {}
 
     def jobs_for_run(run_id: WorkflowRunId) -> WorkflowJobs:
         if run_id in jobs_cache:
@@ -302,65 +373,15 @@ def main() -> None:
         jobs_cache[run_id] = jobs
         return jobs
 
-    def cached_workflow_outcome(
-        job_url: JobUrl,
-        build_preset: BuildPreset,
-        component: Component,
-        target_platform: TargetPlatform,
-    ) -> WorkflowOutcome:
-        cache_key: WorkflowOutcomeCacheKey = (
-            job_url,
-            build_preset,
-            component,
-            target_platform,
-        )
-        if cache_key in workflow_outcome_cache:
-            return workflow_outcome_cache[cache_key]
-        outcome = resolve_workflow_outcome(
-            job_url,
-            build_preset,
-            component,
-            target_platform,
-            current_run_id,
-            jobs_for_run,
-        )
-        workflow_outcome_cache[cache_key] = outcome
-        return outcome
-
-    for full_build_preset, build_preset, target_platform in iter_build_preset_contexts(
-        args.matrix_include, args.platform_name
-    ):
-
-        def workflow_outcome_resolver(
-            job_url: JobUrl,
-            component: Component,
-            preset: BuildPreset = build_preset,
-            platform: TargetPlatform = target_platform,
-        ) -> WorkflowOutcome:
-            return cached_workflow_outcome(
-                job_url,
-                preset,
-                component,
-                platform,
-            )
-
-        gs.complete_pr_comment_workload_checks(
-            run_number=run_number,
-            pr=pr,
-            build_preset=full_build_preset,
-            is_dry_run=args.is_dry_run,
-            job_conclusion_resolver=lambda url, component: workflow_outcome_resolver(
-                url, component
-            ).execution,
-            workflow_outcome_resolver=workflow_outcome_resolver,
-        )
-        gs.update_pr_comment_workload_status(
-            run_number=run_number,
-            pr=pr,
-            build_preset=full_build_preset,
-            is_dry_run=args.is_dry_run,
-            workload_status=args.workload_status,
-        )
+    finalize_workload_comments(
+        iter_build_preset_contexts(args.matrix_include, args.platform_name),
+        pr=pr,
+        run_number=run_number,
+        current_run_id=current_run_id,
+        jobs_for_run=jobs_for_run,
+        workload_status=args.workload_status,
+        is_dry_run=args.is_dry_run,
+    )
 
 
 if __name__ == "__main__":
