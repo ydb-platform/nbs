@@ -87,6 +87,12 @@ void TStorageServiceActor::RegisterCounters(const NActors::TActorContext& ctx)
     HardLinkFromShardDirToMainTabletNodeCount = serviceCounters->GetCounter(
         "HardLinkFromShardDirToMainTabletNodeCount",
         true);
+    WriteDataZeroCounters.CheckedBytes =
+        serviceCounters->GetCounter("WriteDataZeroCheckedBytes", true);
+    WriteDataZeroCounters.ZeroBlockBytes =
+        serviceCounters->GetCounter("WriteDataZeroBlockBytes", true);
+    WriteDataZeroCounters.ZeroRequestBytes =
+        serviceCounters->GetCounter("WriteDataZeroRequestBytes", true);
 
     auto hddCounters = serviceCounters->GetSubgroup("type", "hdd");
     HddFileSystemCount = hddCounters->GetCounter("FileSystemCount", false);
