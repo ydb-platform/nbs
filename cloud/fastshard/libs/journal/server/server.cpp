@@ -17,6 +17,7 @@
 #include <util/network/address.h>
 
 #include <optional>
+#include <type_traits>
 
 namespace NCloud::NJournalled {
 
@@ -36,6 +37,11 @@ struct TServerMethod
 {
     using TRequest = TProtoRequest;
     using TResponse = TProtoResponse;
+
+    // The response holds pages: move it out of the future, do not copy.
+    constexpr static bool MovesResponse =
+        std::is_same_v<TProtoResponse, NProto::TReadPagesResponse> ||
+        std::is_same_v<TProtoResponse, NProto::TReadJournalTailResponse>;
 
     static auto Execute(
         IServerBackend& backend,
@@ -206,8 +212,15 @@ private:
                 response.SetRequestId(requestId);
 
                 auto& proto = TMethod::MutableProto(response);
-                proto.CopyFrom(
-                    SafeExecute<TResponse>([&] { return future.GetValue(); }));
+
+                if constexpr (TMethod::MovesResponse) {
+                    // Move the value: nobody else reads this future
+                    proto = ExtractResponse(future);
+                } else {
+                    // Copy the value: MakeFuture<T>() returns a shared future
+                    proto.CopyFrom(SafeExecute<TResponse>(
+                        [&] { return future.GetValue(); }));
+                }
 
                 const bool failed = HasError(proto.GetError());
 
