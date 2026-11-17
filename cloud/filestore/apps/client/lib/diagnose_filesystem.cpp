@@ -14,6 +14,8 @@
 
 #include <util/generic/hash.h>
 
+#include <google/protobuf/util/json_util.h>
+
 namespace NCloud::NFileStore::NClient {
 
 namespace {
