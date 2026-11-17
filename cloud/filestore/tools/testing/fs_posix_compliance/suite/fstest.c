@@ -43,6 +43,7 @@
 #include <sys/param.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <sys/un.h>
 #include <unistd.h>
 
@@ -131,12 +132,22 @@ static struct acl_api* get_acl_api(void)
         initialized = 1;
         api.Handle = dlopen("libacl.so.1", RTLD_NOW | RTLD_LOCAL);
         if (api.Handle) {
-            api.DeleteDefFile = dlsym(api.Handle, "acl_delete_def_file");
-            api.Free = dlsym(api.Handle, "acl_free");
-            api.FromText = dlsym(api.Handle, "acl_from_text");
-            api.GetFile = dlsym(api.Handle, "acl_get_file");
-            api.SetFile = dlsym(api.Handle, "acl_set_file");
-            api.ToText = dlsym(api.Handle, "acl_to_text");
+            api.DeleteDefFile = (int (*)(const char*))dlsym(
+                api.Handle,
+                "acl_delete_def_file");
+            api.Free = (int (*)(void*))dlsym(api.Handle, "acl_free");
+            api.FromText = (acl_t (*)(const char*))dlsym(
+                api.Handle,
+                "acl_from_text");
+            api.GetFile = (acl_t (*)(const char*, acl_type_t))dlsym(
+                api.Handle,
+                "acl_get_file");
+            api.SetFile = (int (*)(const char*, acl_type_t, acl_t))dlsym(
+                api.Handle,
+                "acl_set_file");
+            api.ToText = (char* (*)(acl_t, ssize_t*))dlsym(
+                api.Handle,
+                "acl_to_text");
 
             if (!api.DeleteDefFile || !api.Free || !api.FromText ||
                 !api.GetFile || !api.SetFile || !api.ToText) {
@@ -659,6 +670,7 @@ static unsigned int call_syscall(struct syscall_desc* scall, char* argv[])
         } else {
             if (argv[i] == NULL || strcmp(argv[i], ":") == 0) {
                 if (scall->sd_args[i] & TYPE_OPTIONAL) {
+                    args[i].str = NULL;
                     break;
                 }
                 fprintf(stderr, "too few arguments\n");
@@ -976,15 +988,15 @@ int main(int argc, char* argv[])
             fprintf(stderr, "syscall '%s' not supported\n", argv[0]);
             exit(1);
         }
-        argc++;
+        argc--;
         argv++;
         n = call_syscall(scall, argv);
-        argc += n;
+        argc -= n;
         argv += n;
         if (argv[0] == NULL) {
             break;
         }
-        argc++;
+        argc--;
         argv++;
     }
 

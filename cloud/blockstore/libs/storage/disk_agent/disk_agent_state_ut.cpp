@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
+#include <cloud/blockstore/libs/rdma_test/server_test_async.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
@@ -18,6 +19,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 #include <library/cpp/testing/common/env.h>
@@ -25,6 +27,7 @@
 
 #include <util/folder/tempdir.h>
 #include <util/generic/algorithm.h>
+#include <util/generic/scope.h>
 #include <util/stream/file.h>
 #include <util/string/cast.h>
 #include <util/string/join.h>
@@ -555,6 +558,81 @@ Y_UNIT_TEST_SUITE(TDiskAgentStateTest)
         ShouldInitialize(
             *state,
             false); // checkSerialNumbers
+    }
+
+    Y_UNIT_TEST_F(ShouldPreserveRdmaEndpointOnReattach, TFiles)
+    {
+        for (bool rdmaEnabled: {false, true}) {
+            NProto::TRdmaTarget target;
+            target.MutableEndpoint()->SetHost("rdma-host");
+            target.MutableEndpoint()->SetPort(10020);
+
+            auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+            TOldRequestCounters oldCounters{
+                counters->GetCounter("Delayed"),
+                counters->GetCounter("Rejected")};
+
+            TDiskAgentState state(
+                CreateStorageConfig(),
+                CreateNullConfig({.Files = {Nvme3s[0], Nvme3s[1]}}),
+                nullptr,   // spdk
+                CreateTestAllocator(),
+                NServer::CreateNullStorageProvider(),
+                CreateProfileLogStub(),
+                CreateBlockDigestGeneratorStub(),
+                CreateLoggingService("console"),
+                std::make_shared<TRdmaAsyncTestServer>(),
+                NvmeManager,
+                rdmaEnabled
+                    ? std::make_shared<TRdmaTargetConfig>(false, target)
+                    : nullptr,
+                oldCounters,
+                nullptr,   // multiAgentWriteHandler
+                CreateTaskQueueStub());
+
+            Y_DEFER
+            {
+                state.StopTarget();
+            };
+
+            auto future = state.Initialize();
+            const auto& result = future.GetValue(WaitTimeout);
+            UNIT_ASSERT(result.Errors.empty());
+
+            auto checkEndpoints = [&]
+            {
+                for (const auto& device: state.GetDevices()) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        rdmaEnabled,
+                        device.HasRdmaEndpoint());
+                    if (rdmaEnabled) {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            "rdma-host",
+                            device.GetRdmaEndpoint().GetHost());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            10020,
+                            device.GetRdmaEndpoint().GetPort());
+                    }
+                }
+            };
+
+            checkEndpoints();
+
+            const TVector<TString> paths{Nvme3s[0]};
+            state.DetachPaths(paths).GetValue(WaitTimeout);
+            auto [prepared, error] =
+                state.PreparePaths(paths).GetValue(WaitTimeout);
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(1, prepared.Configs.size());
+            UNIT_ASSERT(!prepared.Configs[0].HasRdmaEndpoint());
+
+            state.AttachPaths(
+                std::move(prepared.Configs),
+                std::move(prepared.Devices),
+                std::move(prepared.Stats));
+
+            checkEndpoints();
+        }
     }
 
     Y_UNIT_TEST_F(ShouldReportDeviceGeneratedConfigMismatch, TFiles)
