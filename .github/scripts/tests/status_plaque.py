@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import dataclasses
 import json
+import logging
 import re
 import zlib
 from pathlib import Path
@@ -20,6 +22,8 @@ END = "<!-- /status-plaque -->"
 DATA_RE = re.compile(r"<!-- status-plaque-data (.*?) -->")
 BLOCK_RE = re.compile(rf"{re.escape(START)}.*?{re.escape(END)}", re.DOTALL)
 COMMENT_SIZE_LIMIT = 60_000
+LOGGER = logging.getLogger(__name__)
+STATE_NOTICE = "Some stored results were unavailable. Check the workflow reports."
 COUNT_STATUSES = tuple(status.name for status in TestStatus.summary_table_order())
 STATE_ENCODING = "zlib-v1:"
 ICONS = {
@@ -280,6 +284,33 @@ class Workload:
         return "running"
 
 
+def _read_workload(data) -> Workload:
+    if not isinstance(data, dict):
+        raise ValueError("Expected a workload object")
+    reports = data["reports"]
+    if not isinstance(reports, list):
+        raise ValueError("Expected a list of reports")
+    fields = dict(data)
+    fields["reports"] = [Report(**report) for report in reports]
+    return Workload(**fields)
+
+
+def _unavailable_workload(data) -> Workload | None:
+    if not isinstance(data, dict):
+        return None
+    component = data.get("component")
+    if not isinstance(component, str) or not component:
+        return None
+    job_id, attempt = data.get("job_id"), data.get("run_attempt")
+    return Workload(
+        component,
+        job_id=job_id if type(job_id) is int and job_id >= 0 else None,
+        run_attempt=attempt if type(attempt) is int and attempt > 0 else 1,
+        status="report_failed",
+        workflow_status="report_failed",
+    )
+
+
 @dataclasses.dataclass
 class Plaque:
     build_preset: str
@@ -304,27 +335,61 @@ class Plaque:
     @classmethod
     def from_comment(cls, body: str) -> Plaque | None:
         match = DATA_RE.search(body)
-        if match is None:
+        if (
+            match is None
+            and START not in body
+            and "<!-- status-plaque-data" not in body
+        ):
             return None
-        payload = match.group(1)
-        if payload.startswith(STATE_ENCODING):
-            payload = zlib.decompress(
-                base64.b64decode(payload[len(STATE_ENCODING) :], validate=True)
+        header = re.search(r"^<!-- status .*?build_preset=([^,\n]*),", body)
+        plaque = cls(header.group(1) if header else "Build and test results")
+        try:
+            if match is None:
+                raise ValueError("Missing stored plaque state")
+            payload = match.group(1)
+            if payload.startswith(STATE_ENCODING):
+                payload = zlib.decompress(
+                    base64.b64decode(payload[len(STATE_ENCODING) :], validate=True)
+                )
+            data = json.loads(payload)
+            if not isinstance(data, dict):
+                raise ValueError("Expected stored plaque state")
+            build_preset, workloads = data["build_preset"], data["workloads"]
+            notice, history_url = data.get("notice", ""), data.get("history_url", "")
+            too_large = data.get("too_large", False)
+            if (
+                not isinstance(notice, str)
+                or not isinstance(history_url, str)
+                or type(too_large) is not bool
+            ):
+                raise ValueError("Invalid plaque metadata")
+            plaque.run = RunMetadata(**data["run"])
+            plaque.notice, plaque.history_url, plaque.too_large = (
+                notice,
+                history_url,
+                too_large,
             )
-        data = json.loads(payload)
-        workloads = []
-        for row in data["workloads"]:
-            fields = dict(row)
-            fields["reports"] = [Report(**report) for report in row["reports"]]
-            workloads.append(Workload(**fields))
-        return cls(
-            build_preset=data["build_preset"],
-            workloads=workloads,
-            run=RunMetadata(**data["run"]),
-            notice=data.get("notice", ""),
-            history_url=data.get("history_url", ""),
-            too_large=data.get("too_large", False),
-        )
+            if not isinstance(build_preset, str) or not isinstance(workloads, list):
+                raise ValueError("Invalid plaque preset or workloads")
+            plaque.build_preset = build_preset
+            for data in workloads:
+                try:
+                    plaque.workloads.append(_read_workload(data))
+                except (KeyError, TypeError, ValueError) as error:
+                    LOGGER.warning("Cannot restore workload: %s", error)
+                    row = _unavailable_workload(data)
+                    if row is not None:
+                        plaque.workloads.append(row)
+                    plaque.mark_state_unavailable()
+        except (KeyError, TypeError, ValueError, binascii.Error, zlib.error) as error:
+            LOGGER.warning("Cannot restore status plaque: %s", error)
+            plaque.workloads.clear()
+            plaque.mark_state_unavailable()
+        return plaque
+
+    def mark_state_unavailable(self) -> None:
+        if STATE_NOTICE not in self.notice:
+            self.notice = f"{self.notice} {STATE_NOTICE}".strip()
 
     def render(self) -> str:
         # Keep ordinary JSON objects; Base64 makes the compressed state safe
@@ -343,7 +408,16 @@ class Plaque:
         )
 
     def replace(self, body: str) -> str:
-        return BLOCK_RE.sub(lambda _: self.render(), body, count=1)  # noqa: U101
+        rendered = self.render()
+        match = BLOCK_RE.search(body)
+        if match:
+            return body[: match.start()] + rendered + body[match.end() :]
+        # An incomplete managed block is not a legacy Markdown comment. Replace
+        # its damaged contents so an old green table cannot survive recovery.
+        for marker in (START, "<!-- status-plaque-data"):
+            if marker in body:
+                return body.split(marker, 1)[0] + rendered
+        return f"{body}\n{rendered}"
 
     def render_table(self) -> str:
         env = Environment(

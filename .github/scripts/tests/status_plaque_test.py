@@ -790,6 +790,114 @@ def test_job_lookup_fallback_links_to_run(pr):
     )
 
 
+def test_unknown_encoding_version_is_unavailable():
+    body = "<!-- status-plaque-data zlib-v99:unsupported -->"
+    plaque = Plaque.from_comment(body)
+    assert plaque.workloads == []
+    assert "stored results were unavailable" in plaque.notice
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "missing_total",
+        "invalid_report",
+        "invalid_reports",
+        "missing_reports",
+    ],
+)
+def test_damaged_workload_does_not_erase_valid_workloads(damage):
+    plaque = Plaque(PRESET)
+    for component in ("filestore", "blockstore"):
+        row = plaque.workload(component)
+        row.status = "completed"
+        row.job_id = 123
+        row.add_report(
+            Report(
+                0, "Tests", f"cloud/{component}/", "abc123", 1, {"PASS": 1}, exit_code=0
+            )
+        )
+    data = dataclasses.asdict(plaque)
+    damaged = data["workloads"][0]
+    if damage == "missing_total":
+        del damaged["reports"][0]["total"]
+    elif damage == "invalid_report":
+        damaged["reports"][0] = None
+    elif damage == "invalid_reports":
+        damaged["reports"] = None
+    else:
+        del damaged["reports"]
+    restored = Plaque.from_comment(f"<!-- status-plaque-data {json.dumps(data)} -->")
+    assert restored.workload("blockstore") == plaque.workload("blockstore")
+    row = restored.workload("filestore")
+    assert row.status == "report_failed"
+    assert row.job_id == 123
+    assert row.reports == []
+    assert row.overall(None) != "completed"
+    assert "stored results were unavailable" in restored.notice
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "{broken",
+        "null",
+        "[]",
+        "{}",
+        STATE_ENCODING + "not-base64",
+        STATE_ENCODING + base64.b64encode(b"not compressed").decode("ascii"),
+        STATE_ENCODING + base64.b64encode(zlib.compress(b"{broken")).decode("ascii"),
+    ],
+)
+def test_corrupt_state_is_replaced_during_publication(pr, monkeypatch, payload):
+    monkeypatch.setenv("GITHUB_REPOSITORY", "ydb-platform/nbs")
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    publish(pr)
+    publish(pr, component="blockstore")
+    comment = pr.comments[0]
+    comment.body = comment.body.replace(
+        DATA_RE.search(comment.body).group(0),
+        f"<!-- status-plaque-data {payload} -->",
+        1,
+    )
+    publish(pr, iteration=1, failed=True)
+    restored = Plaque.from_comment(comment.body)
+    assert restored.build_preset == PRESET
+    assert [row.component for row in restored.workloads] == ["filestore"]
+    assert len(restored.workloads[0].reports) == 1
+    assert restored.workloads[0].reports[0].iteration == 1
+    assert restored.workloads[0].reports[0].failed
+    assert "stored results were unavailable" in restored.notice
+    assert 'href="https://github.com/ydb-platform/nbs/actions/runs/123"' in comment.body
+    assert comment.body.count("<table>") == 1
+    assert f"{SUMMARY_BASE}/summary/blockstore/1/ya-test.html" not in comment.body
+
+
+@pytest.mark.parametrize("marker", ["data", "start", "end"])
+def test_incomplete_managed_block_is_repaired(pr, marker):
+    publish(pr)
+    comment = pr.comments[0]
+    if marker == "data":
+        comment.body = DATA_RE.sub("", comment.body)
+    else:
+        comment.body = comment.body.replace(
+            (
+                "<!-- status-plaque -->"
+                if marker == "start"
+                else "<!-- /status-plaque -->"
+            ),
+            "",
+        )
+    publish(pr, iteration=1)
+    assert comment.body.count("<!-- status-plaque -->") == 1
+    assert comment.body.count("<!-- /status-plaque -->") == 1
+    assert comment.body.count("<table>") == 1
+    assert (
+        Plaque.from_comment(comment.body).workload("filestore").reports[-1].iteration
+        == 1
+    )
+
+
 def test_legacy_state_is_compacted_on_update(pr):
     publish(pr, failed=True)
     publish(pr, component="blockstore")

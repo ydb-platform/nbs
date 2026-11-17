@@ -1230,7 +1230,9 @@ def update_pr_comment(
 
         def update_plaque(body: str) -> str:
             plaque = Plaque.from_comment(body)
-            assert plaque is not None
+            if plaque is None:
+                plaque = Plaque(build_preset)
+                plaque.mark_state_unavailable()
             plaque.run.update_from_env()
             plaque.history_url = test_history_url or plaque.history_url
             row = plaque.workload(component, get_workflow_run_attempt())
