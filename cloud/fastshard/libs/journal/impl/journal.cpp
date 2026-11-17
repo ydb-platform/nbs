@@ -145,14 +145,13 @@ ui64 GetPageCount(const TVector<TPageMapping>& mappings)
 }
 
 // Fills the page groups of a record with the buffers read for its mappings -
-// one buffer per page, in the order of the mappings - starting at
-// |*bufferIndex|, which is moved past the buffers taken.
+// one buffer per page, in the order of the mappings.
 NProto::TError FillPageGroups(
     const TVector<TPageMapping>& mappings,
     const TVector<TBuffer>& buffers,
     size_t firstBufferIndex,
-    size_t& bufferCount,
-    TDevicePageGroups& pageGroups)
+    size_t* bufferCount,
+    TDevicePageGroups* pageGroups)
 {
     size_t bufferIndex = firstBufferIndex;
     for (const auto& [pageNo, location]: mappings) {
@@ -162,7 +161,7 @@ NProto::TError FillPageGroups(
                 TStringBuilder() << "not enough buffers for page " << pageNo);
         }
 
-        auto& pageGroup = *pageGroups.Add();
+        auto& pageGroup = *pageGroups->Add();
         pageGroup.SetFirstPageNo(pageNo);
 
         for (ui64 i = 0; i < location.PageCount; ++i) {
@@ -171,7 +170,7 @@ NProto::TError FillPageGroups(
         }
     }
 
-    bufferCount = bufferIndex - firstBufferIndex;
+    *bufferCount = bufferIndex - firstBufferIndex;
     return {};
 }
 
@@ -371,7 +370,7 @@ private:
 
     NProto::TError ReadPageGroups(
         const TVector<TPageMapping>& mappings,
-        TDevicePageGroups& pageGroups) const;
+        TDevicePageGroups* pageGroups) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -828,7 +827,7 @@ TFuture<NProto::TReadPagesResponse> TJournal::Read(
     TResponse response;
     response.SetLastAckedLogSequenceNumber(lookup.LastIndexedLsn);
 
-    auto error = ReadPageGroups(lookup.Mappings, *response.MutablePageGroups());
+    auto error = ReadPageGroups(lookup.Mappings, response.MutablePageGroups());
     if (HasError(error)) {
         return MakeFuture<TResponse>(TErrorResponse(error));
     }
@@ -875,7 +874,7 @@ TFuture<NProto::TReadJournalTailResponse> TJournal::ReadTail(
 
         auto error = ReadPageGroups(
             record->PageMappings,
-            *journalRecord.MutablePageGroups());
+            journalRecord.MutablePageGroups());
 
         if (HasError(error)) {
             return MakeFuture<TResponse>(TErrorResponse(error));
@@ -1024,8 +1023,8 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
             record->PageMappings,
             buffers,
             bufferIndex,
-            bufferCount,
-            *journalRecord.MutablePageGroups());
+            &bufferCount,
+            journalRecord.MutablePageGroups());
 
         if (HasError(error)) {
             return error;
@@ -1110,7 +1109,7 @@ NProto::TError TJournal::CleanupFlushedRecords()
 
 NProto::TError TJournal::ReadPageGroups(
     const TVector<TPageMapping>& mappings,
-    TDevicePageGroups& pageGroups) const
+    TDevicePageGroups* pageGroups) const
 {
     auto future = DataStore->Read(GetLocations(mappings));
     const auto& response = Executor->WaitFor(future);
@@ -1123,7 +1122,7 @@ NProto::TError TJournal::ReadPageGroups(
         mappings,
         response.GetResult(),
         0, /* firstBufferIndex */
-        bufferCount,
+        &bufferCount,
         pageGroups);
 }
 
