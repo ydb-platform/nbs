@@ -220,8 +220,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
             TEvPartitionCommonPrivate::TEvReadBlobResponse>();
         auto completed = ActorSystem.GrabEdgeEvent<
             TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, completed->GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, completed->GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(0, completed->BytesCount);
         UNIT_ASSERT_STRING_CONTAINS(
             response->GetError().GetMessage(),
@@ -463,7 +463,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
 
                 const auto response = FinishRead(std::move(result));
                 UNIT_ASSERT_VALUES_EQUAL(
-                    E_FAIL,
+                    E_REJECTED,
                     response->GetError().GetCode());
                 UNIT_ASSERT_VALUES_EQUAL(
                     "response blob id mismatch with request blob id",
@@ -516,7 +516,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
 
                     const auto response = FinishRead(std::move(result));
                     UNIT_ASSERT_VALUES_EQUAL(
-                        E_FAIL,
+                        E_REJECTED,
                         response->GetError().GetCode());
                     UNIT_ASSERT_VALUES_EQUAL(
                         TStringBuilder()
@@ -565,7 +565,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
 
                 const auto response = FinishRead(std::move(result));
                 UNIT_ASSERT_VALUES_EQUAL(
-                    E_FAIL,
+                    E_REJECTED,
                     response->GetError().GetCode());
                 UNIT_ASSERT_VALUES_EQUAL(
                     TStringBuilder()
@@ -635,6 +635,27 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
             response->GetError().GetMessage());
         UNIT_ASSERT(response->BlockChecksums.empty());
         UNIT_ASSERT_VALUES_EQUAL(0, GetContractViolationReadBlobErrors());
+        for (const auto& block: Blocks) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), block);
+        }
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldCancelReadWhenSglistIsClosed,
+        TCompressedReadEnvironment)
+    {
+        StartCompressedRead(
+            NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
+            true);
+        GuardedSglist.Close();
+
+        const auto response = FinishRead(MakeReadResult());
+        UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, response->GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "failed to acquire sglist in ReadBlobActor",
+            response->GetError().GetMessage());
+        UNIT_ASSERT(response->ErrorSource == EErrorSource::Regular);
+        UNIT_ASSERT(response->BlockChecksums.empty());
         for (const auto& block: Blocks) {
             UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), block);
         }
@@ -944,7 +965,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
             auto response = ActorSystem.GrabEdgeEvent<
                 TEvPartitionCommonPrivate::TEvReadBlobResponse>();
             UNIT_ASSERT_VALUES_EQUAL(
-                E_ARGUMENT,
+                E_REJECTED,
                 response->GetError().GetCode());
             UNIT_ASSERT(
                 response->ErrorSource == EErrorSource::ContractViolation);
@@ -956,7 +977,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
             auto completed = ActorSystem.GrabEdgeEvent<
                 TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
             UNIT_ASSERT_VALUES_EQUAL(
-                E_ARGUMENT,
+                E_REJECTED,
                 completed->GetError().GetCode());
             UNIT_ASSERT(
                 completed->ErrorSource == EErrorSource::ContractViolation);

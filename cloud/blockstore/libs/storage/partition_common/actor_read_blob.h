@@ -11,6 +11,8 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <util/generic/strbuf.h>
+
 #include <optional>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -86,7 +88,7 @@ private:
 
     void ReplyError(
         const NActors::TActorContext& ctx,
-        const NProto::TError& error,
+        TStringBuf errorMessage,
         EErrorSource errorSource,
         const NKikimr::TEvBlobStorage::TEvGetResult* response);
 
