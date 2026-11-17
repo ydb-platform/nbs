@@ -22,7 +22,8 @@ namespace NCloud::NFileStore::NFuse {
  * entries live until their deadline, invalidation or eviction.
  *
  * The invalidations of the node attrs are also used to decide whether the
- * guest may cache the node attrs returned to it, see IsCacheable.
+ * guest may cache the node attrs returned to it, see IsCacheable. They are
+ * tracked regardless of the TTLs, i.e. also when no node attrs are cached.
  */
 class TNodeAttrsCache
 {

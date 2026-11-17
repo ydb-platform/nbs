@@ -187,29 +187,22 @@ void TFileSystem::AdjustNodeSize(NProto::TNodeAttr& attrs)
 void TFileSystem::FillEntryParam(
     const NProto::TNodeAttr& attrs,
     fuse_entry_param& entry,
-    ui64 version)
+    bool cacheable)
 {
     STORAGE_TRACE("filling entry: "
         << ProtoMessagePrinter.ToString(attrs)
-        << ", version: " << version);
+        << ", cacheable: " << cacheable);
 
     if (attrs.GetType() == NProto::E_INVALID_NODE) {
         ReportNodeCacheInvalidNode(TStringBuilder()
             << "fs: " << Config->GetFileSystemId()
-            << ", attrs: " << attrs.ShortUtf8DebugString()
-            << ", version: " << version);
+            << ", attrs: " << attrs.ShortUtf8DebugString());
     }
 
     entry.ino = attrs.GetId();
     entry.generation = 0; // TODO
 
-    //
-    // The attrs may be stale if the node has been invalidated after the
-    // request that has fetched them had started - the guest must not cache
-    // them then.
-    //
-
-    if (NodeAttrsCache.IsCacheable(attrs.GetId(), version)) {
+    if (cacheable) {
         entry.attr_timeout = Config->GetAttrTimeout().SecondsFloat();
         entry.entry_timeout = GetEntryCacheTimeout(attrs).SecondsFloat();
     } else {
@@ -286,17 +279,16 @@ bool TFileSystem::TryReplyEntryFromCache(
 
     //
     // The cached attrs have not been invalidated since they were fetched, so
-    // they are as fresh as a response to a request started now.
+    // the guest may cache them as well.
     //
 
-    const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
     AdjustNodeSize(*attrs);
     ReplyEntryWithCache(
         callContext,
         {} /* error */,
         req,
         *attrs,
-        version,
+        true /* cacheable */,
         false /* newNodeCreated */);
 
     return true;
@@ -528,12 +520,12 @@ void TFileSystem::ReplyCreateWithCache(
     fuse_req_t req,
     ui64 handle,
     const NProto::TNodeAttr& attrs,
-    ui64 version,
+    bool cacheable,
     bool newNodeCreated)
 {
     STORAGE_TRACE("inserting node: "
         << ProtoMessagePrinter.ToString(attrs)
-        << ", version: " << version);
+        << ", cacheable: " << cacheable);
 
     if (attrs.GetId() == InvalidNodeId) {
         ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
@@ -547,7 +539,7 @@ void TFileSystem::ReplyCreateWithCache(
     }
 
     fuse_entry_param entry = {};
-    FillEntryParam(attrs, entry, version);
+    FillEntryParam(attrs, entry, cacheable);
 
     fuse_file_info fi = {};
     fi.fh = handle;
@@ -566,12 +558,12 @@ void TFileSystem::ReplyEntryWithCache(
     const NCloud::NProto::TError& error,
     fuse_req_t req,
     const NProto::TNodeAttr& attrs,
-    ui64 version,
+    bool cacheable,
     bool newNodeCreated)
 {
     STORAGE_TRACE("inserting node: "
         << ProtoMessagePrinter.ToString(attrs)
-        << ", version: " << version);
+        << ", cacheable: " << cacheable);
 
     if (attrs.GetId() == InvalidNodeId) {
         ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
@@ -585,7 +577,7 @@ void TFileSystem::ReplyEntryWithCache(
     }
 
     fuse_entry_param entry = {};
-    FillEntryParam(attrs, entry, version);
+    FillEntryParam(attrs, entry, cacheable);
 
     const int res = ReplyEntry(callContext, error, req, &entry);
 
@@ -621,11 +613,11 @@ void TFileSystem::ReplyAttrWithCache(
     const NCloud::NProto::TError& error,
     fuse_req_t req,
     const NProto::TNodeAttr& attrs,
-    ui64 version)
+    bool cacheable)
 {
     STORAGE_TRACE("returning node: "
         << ProtoMessagePrinter.ToString(attrs)
-        << ", version: " << version);
+        << ", cacheable: " << cacheable);
 
     if (attrs.GetId() == InvalidNodeId) {
         ReplyError(callContext, MakeError(E_FS_IO), req, EIO);
@@ -635,12 +627,6 @@ void TFileSystem::ReplyAttrWithCache(
     struct stat attr = {};
     ConvertAttr(Config->GetPreferredBlockSize(), attrs, attr);
 
-    //
-    // The guest must not cache the attrs if the node has been invalidated
-    // after the request that has fetched them had started.
-    //
-
-    const bool cacheable = NodeAttrsCache.IsCacheable(attrs.GetId(), version);
     ReplyAttr(
         callContext,
         error,

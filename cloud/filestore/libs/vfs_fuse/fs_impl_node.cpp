@@ -77,7 +77,7 @@ void TFileSystem::Lookup(
                         error,
                         req,
                         response.GetNode(),
-                        version,
+                        self->NodeAttrsCache.IsCacheable(nodeId, version),
                         false /* newNodeCreated */);
                 } else if (error.GetCode() == E_FS_NAMETOOLONG) {
                     self->ReplyError(*callContext, error, req, ENAMETOOLONG);
@@ -141,6 +141,8 @@ void TFileSystem::MkDir(
     const auto reqId = callContext->RequestId;
     FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
+    const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
+
     Session->CreateNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             auto self = ptr.lock();
@@ -153,13 +155,23 @@ void TFileSystem::MkDir(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                //
+                // The response reflects this request's own change: the guest
+                // may cache it unless the node has been changed by something
+                // else since the request started. The own invalidations go
+                // after this check.
+                //
+
+                const bool cacheable = self->NodeAttrsCache.IsCacheable(
+                    response.GetNode().GetId(),
+                    version);
                 self->InvalidateCachedNodeAttrs(parent);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
                     req,
                     response.GetNode(),
-                    1 /* version */,
+                    cacheable,
                     true /* newNodeCreated */);
             }
         });
@@ -248,6 +260,8 @@ void TFileSystem::MkNode(
     const auto reqId = callContext->RequestId;
     FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
+    const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
+
     Session->CreateNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             auto self = ptr.lock();
@@ -260,13 +274,23 @@ void TFileSystem::MkNode(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                //
+                // The response reflects this request's own change: the guest
+                // may cache it unless the node has been changed by something
+                // else since the request started. The own invalidations go
+                // after this check.
+                //
+
+                const bool cacheable = self->NodeAttrsCache.IsCacheable(
+                    response.GetNode().GetId(),
+                    version);
                 self->InvalidateCachedNodeAttrs(parent);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
                     req,
                     response.GetNode(),
-                    1 /* version */,
+                    cacheable,
                     true /* newNodeCreated */);
             }
         });
@@ -388,6 +412,8 @@ void TFileSystem::SymLink(
     const auto reqId = callContext->RequestId;
     FSyncQueue->Enqueue(reqId, TNodeId {parent});
 
+    const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
+
     Session->CreateNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             auto self = ptr.lock();
@@ -400,13 +426,23 @@ void TFileSystem::SymLink(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                //
+                // The response reflects this request's own change: the guest
+                // may cache it unless the node has been changed by something
+                // else since the request started. The own invalidations go
+                // after this check.
+                //
+
+                const bool cacheable = self->NodeAttrsCache.IsCacheable(
+                    response.GetNode().GetId(),
+                    version);
                 self->InvalidateCachedNodeAttrs(parent);
                 self->ReplyEntryWithCache(
                     *callContext,
                     error,
                     req,
                     response.GetNode(),
-                    1 /* version */,
+                    cacheable,
                     true /* newNodeCreated */);
             }
         });
@@ -434,6 +470,8 @@ void TFileSystem::Link(
     const auto reqId = callContext->RequestId;
     FSyncQueue->Enqueue(reqId, TNodeId {ino});
 
+    const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
+
     Session->CreateNode(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             auto self = ptr.lock();
@@ -446,6 +484,15 @@ void TFileSystem::Link(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
 
             if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
+                //
+                // The response reflects this request's own change: the guest
+                // may cache it unless the node has been changed by something
+                // else since the request started. The own invalidations go
+                // after this check.
+                //
+
+                const bool cacheable =
+                    self->NodeAttrsCache.IsCacheable(ino, version);
                 self->InvalidateCachedNodeAttrs(newparent);
                 self->InvalidateCachedNodeAttrs(ino);
                 self->ReplyEntryWithCache(
@@ -453,7 +500,7 @@ void TFileSystem::Link(
                     error,
                     req,
                     response.GetNode(),
-                    1 /* version */,
+                    cacheable,
                     false /* newNodeCreated */);
             }
         });

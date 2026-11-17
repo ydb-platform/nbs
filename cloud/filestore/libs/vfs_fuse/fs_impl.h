@@ -463,7 +463,7 @@ private:
     void FillEntryParam(
         const NProto::TNodeAttr& attrs,
         fuse_entry_param& entry,
-        ui64 version);
+        bool cacheable);
 
     TInstant GetCacheDeadline(ui32 cacheTTL) const;
     void UpdateCachedNodeRef(
@@ -515,14 +515,14 @@ private:
         fuse_req_t req,
         ui64 handle,
         const NProto::TNodeAttr& attrs,
-        ui64 version,
+        bool cacheable,
         bool newNodeCreated);
     void ReplyEntryWithCache(
         TCallContext& callContext,
         const NCloud::NProto::TError& error,
         fuse_req_t req,
         const NProto::TNodeAttr& attrs,
-        ui64 version,
+        bool cacheable,
         bool newNodeCreated);
     void ReplyXAttrInt(
         TCallContext& callContext,
@@ -535,7 +535,7 @@ private:
         const NCloud::NProto::TError& error,
         fuse_req_t req,
         const NProto::TNodeAttr& attrs,
-        ui64 version);
+        bool cacheable);
 
     void ProcessAsyncCreateHandleResponse(
         TCallContextPtr callContext,

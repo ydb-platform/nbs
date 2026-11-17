@@ -89,14 +89,23 @@ void TFileSystem::SetAttr(
         self->FSyncQueue->Dequeue(reqId, error, TNodeId{ino});
 
         if (self->CheckNodeError(*callContext, req, error)) {
-            InvalidateCachedNodeAttrs(ino);
+            //
+            // The response reflects this request's own change: the guest may
+            // cache it unless the node has been changed by something else
+            // since the request started. The own invalidation goes after
+            // this check.
+            //
+
+            const bool cacheable =
+                self->NodeAttrsCache.IsCacheable(ino, version);
+            self->InvalidateCachedNodeAttrs(ino);
 
             self->ReplyAttrWithCache(
                 *callContext,
                 error,
                 req,
                 response.GetNode(),
-                version);
+                cacheable);
         }
     };
 
@@ -167,12 +176,18 @@ void TFileSystem::GetAttr(
 
                     auto* attr = response.MutableNode();
                     attr->SetSize(Max(attr->GetSize(), maxWrittenOffset));
+
+                    //
+                    // The guest must not cache the attrs if the node has been
+                    // invalidated after the request had started.
+                    //
+
                     self->ReplyAttrWithCache(
                         *callContext,
                         response.GetError(),
                         req,
                         response.GetNode(),
-                        version);
+                        self->NodeAttrsCache.IsCacheable(ino, version));
                 }
             });
 }

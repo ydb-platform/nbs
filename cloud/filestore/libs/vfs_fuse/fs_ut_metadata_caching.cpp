@@ -948,6 +948,135 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         UNIT_ASSERT_VALUES_EQUAL(0, timeouts.first);
     }
 
+    Y_UNIT_TEST(ShouldAllowGuestCachingOfOwnChanges)
+    {
+        TMetadataCachingEnv env;
+
+        std::atomic<ui64> lastNodeId = FileNodeId;
+        env.Bootstrap.Service->SetHandlerCreateNode(
+            [&] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                NProto::TCreateNodeResponse response;
+                auto* node = response.MutableNode();
+                if (request->HasLink()) {
+                    *node = MakeFileAttr(request->GetLink().GetTargetNode());
+                } else {
+                    *node = MakeFileAttr(++lastNodeId);
+                    if (request->HasDirectory()) {
+                        node->SetType(NProto::E_DIRECTORY_NODE);
+                    } else if (request->HasSymLink()) {
+                        node->SetType(NProto::E_LINK_NODE);
+                    }
+                }
+                return MakeFuture(response);
+            });
+        env.Bootstrap.Service->SetHandlerCreateHandle(
+            [&] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                Y_UNUSED(request);
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(1);
+                *response.MutableNodeAttr() = MakeFileAttr(++lastNodeId);
+                return MakeFuture(response);
+            });
+
+        env.Bootstrap.Service->SetHandlerSetNodeAttr(
+            [] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                NProto::TSetNodeAttrResponse response;
+                *response.MutableNode() = MakeFileAttr(request->GetNodeId());
+                return MakeFuture(response);
+            });
+
+        auto assertCacheable = [] (const fuse_entry_out& entry)
+        {
+            UNIT_ASSERT_GT(entry.attr_valid, 0);
+            UNIT_ASSERT_GT(entry.entry_valid, 0);
+        };
+
+        auto check = [&] {
+            auto mkDir = std::make_shared<TMkDirRequest>("d", RootNodeId);
+            env.Bootstrap.Fuse->SendRequest(mkDir).GetValue(WaitTimeout);
+            assertCacheable(mkDir->Out->Body);
+
+            auto mkNode = std::make_shared<TMkNodeRequest>("n", RootNodeId);
+            env.Bootstrap.Fuse->SendRequest(mkNode).GetValue(WaitTimeout);
+            assertCacheable(mkNode->Out->Body);
+
+            auto symLink =
+                std::make_shared<TSymLinkRequest>("s", "t", RootNodeId);
+            env.Bootstrap.Fuse->SendRequest(symLink).GetValue(WaitTimeout);
+            assertCacheable(symLink->Out->Body);
+
+            auto link =
+                std::make_shared<TLinkRequest>("l", FileNodeId, RootNodeId);
+            env.Bootstrap.Fuse->SendRequest(link).GetValue(WaitTimeout);
+            assertCacheable(link->Out->Body);
+
+            auto create =
+                std::make_shared<TCreateHandleRequest>("c", RootNodeId);
+            create->In->Body.flags = O_CREAT | O_RDWR;
+            create->In->Body.mode = 0644;
+            env.Bootstrap.Fuse->SendRequest(create).GetValue(WaitTimeout);
+            assertCacheable(create->Out->Body.Entry);
+
+            auto setAttr =
+                std::make_shared<TSetAttrRequest>(FileNodeId, 0 /* fh */);
+            env.Bootstrap.Fuse->SendRequest(setAttr).GetValue(WaitTimeout);
+            UNIT_ASSERT_GT(setAttr->Out->Body.attr_valid, 0);
+        };
+
+        check();
+
+        //
+        // The invalidations of everything raise the watermark.
+        //
+
+        env.EventHandler->OnDisconnect(1 /* tabletId */);
+        check();
+    }
+
+    Y_UNIT_TEST(ShouldNotAllowGuestCachingUponSetAttrAndEventRace)
+    {
+        TMetadataCachingEnv env;
+
+        auto promise = NewPromise();
+        std::atomic<bool> requested = false;
+        env.Bootstrap.Service->SetHandlerSetNodeAttr(
+            [&] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                requested = true;
+                NProto::TSetNodeAttrResponse response;
+                *response.MutableNode() = MakeFileAttr(request->GetNodeId());
+                return promise.GetFuture().Apply(
+                    [response] (const auto&) { return response; });
+            });
+
+        auto setAttr =
+            std::make_shared<TSetAttrRequest>(FileNodeId, 0 /* fh */);
+        auto future = env.Bootstrap.Fuse->SendRequest(setAttr);
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&] { return requested.load(); }));
+
+        //
+        // The node is changed by another client while SetAttr is in flight -
+        // the response may not reflect that change.
+        //
+
+        NProto::TFileSystemEvent event;
+        event.MutableInvalidateNode()->SetNodeId(FileNodeId);
+        env.SendEvent(event);
+
+        promise.SetValue();
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(0, setAttr->Out->Body.attr_valid);
+    }
+
     Y_UNIT_TEST(ShouldCacheAttrsOfNodesNotLookedUp)
     {
         TMetadataCachingEnv env;

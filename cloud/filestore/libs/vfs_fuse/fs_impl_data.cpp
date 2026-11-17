@@ -328,15 +328,25 @@ void TFileSystem::Create(
                     }
                 }
 
+                //
+                // The response reflects this request's own change: the guest
+                // may cache it unless the node has been changed by something
+                // else since the request started. The own invalidations go
+                // after this check.
+                //
+
+                const ui64 nodeId = response.GetNodeAttr().GetId();
+                const bool cacheable =
+                    self->NodeAttrsCache.IsCacheable(nodeId, version);
                 self->InvalidateCachedNodeAttrs(parent);
-                self->InvalidateCachedNodeAttrs(response.GetNodeAttr().GetId());
+                self->InvalidateCachedNodeAttrs(nodeId);
                 self->ReplyCreateWithCache(
                     *callContext,
                     error,
                     req,
                     response.GetHandle(),
                     response.GetNodeAttr(),
-                    version,
+                    cacheable,
                     HasFlag(
                         flags,
                         NProto::TCreateHandleRequest::E_CREATE));
