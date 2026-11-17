@@ -11,8 +11,10 @@ SRCS(
     export.go
     export_snapshot_task.go
     register.go
+    save_snapshot_checksum_task.go
     schedule_backup_snapshot_tasks.go
     service.go
+    validate_snapshot_checksum_task.go
 )
 
 GO_TEST_SRCS(

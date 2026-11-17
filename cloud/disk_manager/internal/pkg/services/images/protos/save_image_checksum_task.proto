@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package images;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message SaveImageChecksumRequest {
+    string ImageId = 1;
+}
+
+message SaveImageChecksumResponse {
+    uint32 Checksum = 1;
+}
+
+message SaveImageChecksumTaskState {
+    // Id of the dataplane.ComputeSnapshotChecksum task.
+    string ComputeChecksumTaskId = 1;
+    // Checksum computed by that task. It is set when the task is finished,
+    // so it is known even if the checksum is not saved afterwards.
+    uint32 Checksum = 2;
+}

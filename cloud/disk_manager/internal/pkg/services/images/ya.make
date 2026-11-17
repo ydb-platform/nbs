@@ -15,8 +15,10 @@ SRCS(
     export_image_task.go
     interface.go
     register.go
+    save_image_checksum_task.go
     schedule_backup_image_tasks.go
     service.go
+    validate_image_checksum_task.go
 )
 
 GO_TEST_SRCS(

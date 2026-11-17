@@ -60,6 +60,10 @@ type ImageMeta struct {
 	Ready             bool                  `json:"ready"`
 	// A backup of the image completed; a deleting image is never marked.
 	BackupCompleted bool `json:"backup_completed"`
+
+	// Checksum is meaningful only if ChecksumCalculated is set.
+	Checksum           uint32 `json:"checksum"`
+	ChecksumCalculated bool   `json:"checksum_calculated"`
 }
 
 type SnapshotMeta struct {
@@ -80,6 +84,10 @@ type SnapshotMeta struct {
 	Encryption        *types.EncryptionDesc `json:"encryption"`
 	Ready             bool                  `json:"ready"`
 	BackupCompleted   bool                  `json:"backup_completed"`
+
+	// Checksum is meaningful only if ChecksumCalculated is set.
+	Checksum           uint32 `json:"checksum"`
+	ChecksumCalculated bool   `json:"checksum_calculated"`
 }
 
 type FilesystemMeta struct {
@@ -212,6 +220,15 @@ type Storage interface {
 
 	GetImageMeta(ctx context.Context, imageID string) (*ImageMeta, error)
 
+	// Stores the checksum of a ready image. Storing the same value again does
+	// nothing, another value replaces the stored one. Fails with a silent non
+	// retriable error if the image is not found or is not ready.
+	ImageChecksumCalculated(
+		ctx context.Context,
+		imageID string,
+		checksum uint32,
+	) error
+
 	// Returns image if action has been accepted by storage and nil otherwise.
 	DeleteImage(
 		ctx context.Context,
@@ -293,6 +310,15 @@ type Storage interface {
 	) error
 
 	GetSnapshotMeta(ctx context.Context, snapshotID string) (*SnapshotMeta, error)
+
+	// Stores the checksum of a ready snapshot. Storing the same value again
+	// does nothing, another value replaces the stored one. Fails with a silent
+	// non retriable error if the snapshot is not found or is not ready.
+	SnapshotChecksumCalculated(
+		ctx context.Context,
+		snapshotID string,
+		checksum uint32,
+	) error
 
 	// Returns snapshot if action has been accepted by storage and nil otherwise.
 	DeleteSnapshot(

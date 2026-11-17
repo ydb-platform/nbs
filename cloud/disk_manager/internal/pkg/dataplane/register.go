@@ -134,6 +134,20 @@ func RegisterForExecution(
 		return err
 	}
 
+	err = taskRegistry.RegisterForExecution(
+		"dataplane.ComputeSnapshotChecksum",
+		func() tasks.Task {
+			return &computeSnapshotChecksumTask{
+				config:            config,
+				performanceConfig: performanceConfig,
+				storage:           storage,
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
 	err = taskRegistry.RegisterForExecution("dataplane.TransferFromDiskToDisk", func() tasks.Task {
 		return &transferFromDiskToDiskTask{
 			config:            config,
@@ -436,6 +450,7 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.MigrateSnapshotDatabaseTask": func() tasks.Task { return &migrateSnapshotDatabaseTask{} },
 	"dataplane.TransferFromSnapshotToDisk":  func() tasks.Task { return &transferFromSnapshotToDiskTask{} },
 	"dataplane.TransferFromBackupToDisk":    func() tasks.Task { return &transferFromBackupToDiskTask{} },
+	"dataplane.ComputeSnapshotChecksum":     func() tasks.Task { return &computeSnapshotChecksumTask{} },
 	"dataplane.TransferFromDiskToDisk":      func() tasks.Task { return &transferFromDiskToDiskTask{} },
 	"dataplane.ReplicateDisk":               func() tasks.Task { return &replicateDiskTask{} },
 	"dataplane.DeleteSnapshot":              func() tasks.Task { return &deleteSnapshotTask{} },

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
@@ -184,4 +185,90 @@ func TestCreateAndDropResourceSchemaWithoutBackups(t *testing.T) {
 			res.Close()
 		})
 	}
+}
+
+// Returns the description of the snapshots or images table as it was before
+// the checksum columns were added.
+func withoutChecksumColumns(
+	t *testing.T,
+	description persistence.CreateTableDescription,
+) persistence.CreateTableDescription {
+
+	columns := description.Columns[:0:0]
+	for _, column := range description.Columns {
+		if column.Name != "checksum" && column.Name != "checksum_calculated" {
+			columns = append(columns, column)
+		}
+	}
+
+	require.Len(t, columns, len(description.Columns)-2)
+
+	description.Columns = columns
+	return description
+}
+
+// The checksum columns of a row as they are stored. NULL is reported
+// separately, because scanning turns it into a zero value.
+type storedChecksum struct {
+	checksum         uint32
+	checksumIsNull   bool
+	calculated       bool
+	calculatedIsNull bool
+}
+
+// Reads the checksum columns of the resource with |id| directly from the
+// snapshots or images |table|.
+func readStoredChecksum(
+	ctx context.Context,
+	db *persistence.YDBClient,
+	folder string,
+	table string,
+	id string,
+) (storedChecksum, error) {
+
+	res, err := db.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+
+		select
+			checksum,
+			checksum is null as checksum_is_null,
+			checksum_calculated,
+			checksum_calculated is null as checksum_calculated_is_null
+		from %v
+		where id = $id
+	`, db.AbsolutePath(folder), table),
+		persistence.ValueParam("$id", persistence.UTF8Value(id)),
+	)
+	if err != nil {
+		return storedChecksum{}, err
+	}
+	defer res.Close()
+
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		return storedChecksum{}, errors.NewNonRetriableErrorf(
+			"row with id %v is not found in table %v",
+			id,
+			table,
+		)
+	}
+
+	var stored storedChecksum
+	err = res.ScanNamed(
+		persistence.OptionalWithDefault("checksum", &stored.checksum),
+		persistence.OptionalWithDefault(
+			"checksum_is_null",
+			&stored.checksumIsNull,
+		),
+		persistence.OptionalWithDefault(
+			"checksum_calculated",
+			&stored.calculated,
+		),
+		persistence.OptionalWithDefault(
+			"checksum_calculated_is_null",
+			&stored.calculatedIsNull,
+		),
+	)
+	return stored, err
 }

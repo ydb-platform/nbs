@@ -7,6 +7,8 @@ SRCS(
     backup_snapshot_task.proto
     create_snapshot_from_disk_task.proto
     delete_snapshot_task.proto
+    save_snapshot_checksum_task.proto
+    validate_snapshot_checksum_task.proto
 )
 
 PEERDIR(

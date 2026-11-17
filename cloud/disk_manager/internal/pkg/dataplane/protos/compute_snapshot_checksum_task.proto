@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package dataplane;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message ComputeSnapshotChecksumRequest {
+    string SnapshotId = 1;
+}
+
+message ComputeSnapshotChecksumResponse {
+    uint32 Checksum = 1;
+}
+
+message ComputeSnapshotChecksumTaskState {
+    // Index of the first chunk that is not covered by Checksum.
+    // The transfer is resumed from it.
+    uint32 NextChunkIndex = 1;
+    uint32 Checksum = 2;
+    uint32 TransferredChunkCount = 3;
+    uint32 ChunkCount = 4;
+    double Progress = 5;
+}
+
+message ComputeSnapshotChecksumMetadata {
+    double Progress = 1;
+}
