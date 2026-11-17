@@ -217,7 +217,6 @@ func (c *exportResource) newBackupSource(
 		metrics.NewEmptyRegistry(),
 		nil, // Availability monitoring.
 		creds,
-		persistence.WithS3ExportCompatibility(),
 	)
 	if err != nil {
 		return nil, err
@@ -309,7 +308,6 @@ func (c *exportResource) newSnapshotStorageSource(
 			metrics.NewEmptyRegistry(),
 			nil, // Availability monitoring.
 			creds,
-			persistence.WithS3ExportCompatibility(),
 		)
 		if err != nil {
 			closeSource()

@@ -292,7 +292,14 @@ func newStorage(
 	s3, err := test.NewS3Client()
 	require.NoError(t, err)
 
-	err = schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */, true)
+	err = schema.Create(
+		ctx,
+		config,
+		db,
+		s3,
+		false, // dropUnusedColumns
+		true,  // backupEnabled
+	)
 	require.NoError(t, err)
 
 	storage, err := snapshot_storage.NewStorage(

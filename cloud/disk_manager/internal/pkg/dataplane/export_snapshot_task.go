@@ -305,7 +305,6 @@ func (t *exportSnapshotTask) run(
 	}
 
 	clientOptions := []persistence.S3ClientOption{
-		persistence.WithS3ExportCompatibility(),
 		persistence.WithS3EmptySigningRegion(),
 	}
 	if response.GetCredentials() == nil {

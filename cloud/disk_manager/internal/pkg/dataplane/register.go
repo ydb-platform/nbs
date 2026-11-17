@@ -38,7 +38,6 @@ func RegisterForExecution(
 
 	err := taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromDisk", func() tasks.Task {
 		return &createSnapshotFromDiskTask{
-			backupEnabled:            backupS3 != nil,
 			config:                   config,
 			performanceConfig:        performanceConfig,
 			disabledZones:            disabledZones,
@@ -416,16 +415,8 @@ func RegisterForExecution(
 	return nil
 }
 
-func Register(ctx context.Context, taskRegistry *tasks.Registry, backupEnabled bool) error {
+func Register(ctx context.Context, taskRegistry *tasks.Registry) error {
 	for taskType, newTask := range newTaskByTaskType {
-		if !backupEnabled {
-			switch taskType {
-			case "dataplane.BackupSnapshotData", "dataplane.BackupChunks",
-				"dataplane.ScheduleBackupChunksTasks", "dataplane.DeleteBackupSnapshotData",
-				"dataplane.DeleteBackupChunks", "dataplane.TransferFromBackupToDisk":
-				continue
-			}
-		}
 		err := taskRegistry.Register(taskType, newTask)
 		if err != nil {
 			return err

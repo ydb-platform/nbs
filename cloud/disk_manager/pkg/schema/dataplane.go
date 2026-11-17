@@ -62,7 +62,14 @@ func initDataplane(
 		}
 	}
 
-	err = schema.Create(ctx, snapshotConfig, snapshotDB, s3, dropUnusedColumns, config.GetSnapshotStorageBackupConfig() != nil)
+	err = schema.Create(
+		ctx,
+		snapshotConfig,
+		snapshotDB,
+		s3,
+		dropUnusedColumns,
+		config.GetSnapshotStorageBackupConfig() != nil,
+	)
 	if err != nil {
 		return err
 	}
