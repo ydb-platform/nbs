@@ -145,6 +145,7 @@ struct TWriteRequestContext
     const bool UseThreeStageWrite = false;
     const bool ExternalWriteDataPayloadEnabled = false;
     [[maybe_unused]] const bool EnableRdmaForWrites = false;
+    const std::optional<TWriteDataZeroCounters> ZeroCounters;
 
     TWriteRequestContext(
         NProto::TWriteDataRequest writeRequest,
@@ -157,7 +158,8 @@ struct TWriteRequestContext
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useThreeStageWrite,
         bool externalWriteDataPayloadEnabled,
-        bool enableRdmaForWrites)
+        bool enableRdmaForWrites,
+        std::optional<TWriteDataZeroCounters> zeroCounters)
         : WriteRequest(std::move(writeRequest))
         , Range(range)
         , RequestInfo(std::move(requestInfo))
@@ -169,6 +171,7 @@ struct TWriteRequestContext
         , UseThreeStageWrite(useThreeStageWrite)
         , ExternalWriteDataPayloadEnabled(externalWriteDataPayloadEnabled)
         , EnableRdmaForWrites(enableRdmaForWrites)
+        , ZeroCounters(std::move(zeroCounters))
     {}
 };
 
@@ -233,7 +236,6 @@ private:
 
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
-    const std::optional<TWriteDataZeroCounters> ZeroCounters;
 
     // Empty for one-shot actors and when shutting down.
     TActorId ServiceActorId;
@@ -248,11 +250,9 @@ public:
     TWriteDataActor(
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
-        std::optional<TWriteDataZeroCounters> zeroCounters,
         TActorId serviceActorId)
         : ProfileLog(std::move(profileLog))
         , TraceSerializer(std::move(traceSerializer))
-        , ZeroCounters(std::move(zeroCounters))
         , ServiceActorId(serviceActorId)
     {}
 
@@ -287,7 +287,7 @@ private:
         auto& state = GetState();
         ++RequestGeneration;
 
-        if (ZeroCounters) {
+        if (state.RequestContext.ZeroCounters) {
             state.ZeroBlockStats = CalculateZeroBlockStats(
                 state.RequestContext.WriteRequest,
                 state.RequestContext.Range.BlockSize);
@@ -370,12 +370,14 @@ private:
 
     void UpdateZeroCounters()
     {
-        const auto& stats = GetState().ZeroBlockStats;
+        const auto& state = GetState();
+        const auto& stats = state.ZeroBlockStats;
+        const auto& zeroCounters = state.RequestContext.ZeroCounters;
 
-        ZeroCounters->CheckedBytes->Add(stats.Bytes);
-        ZeroCounters->ZeroBlockBytes->Add(stats.ZeroBlockBytes);
+        zeroCounters->CheckedBytes->Add(stats.Bytes);
+        zeroCounters->ZeroBlockBytes->Add(stats.ZeroBlockBytes);
         if (stats.AllZeroes) {
-            ZeroCounters->ZeroRequestBytes->Add(stats.Bytes);
+            zeroCounters->ZeroRequestBytes->Add(stats.Bytes);
         }
     }
 
@@ -1172,7 +1174,7 @@ private:
     {
         auto& state = GetState();
 
-        if (ZeroCounters) {
+        if (state.RequestContext.ZeroCounters) {
             UpdateZeroCounters();
         }
 
@@ -1417,7 +1419,8 @@ void TStorageServiceActor::HandleWriteData(
         session->MediaKind,
         threeStageWriteEnabled,
         filestore.GetFeatures().GetExternalWriteDataPayloadEnabled(),
-        filestore.GetFeatures().GetEnableRdmaForWrites());
+        filestore.GetFeatures().GetEnableRdmaForWrites(),
+        std::move(zeroCounters));
 
     if (StorageConfig->GetEnablePreallocatedDataActors()) {
         auto request = std::make_unique<TEvStartWriteData>(std::move(context));
@@ -1429,7 +1432,6 @@ void TStorageServiceActor::HandleWriteData(
         auto actor = std::make_unique<TWriteDataActor>(
             ProfileLog,
             TraceSerializer,
-            std::move(zeroCounters),
             TActorId{});
         actor->Initialize(std::move(context));
         NCloud::Register(ctx, std::move(actor));
