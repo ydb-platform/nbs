@@ -1,8 +1,6 @@
 /*******************************************************************************
 
-Read-only access to published Blockstore configuration snapshots. A snapshot
-is a configuration object corresponding to one publication. Get() returns the
-latest snapshot from the supplied source; later calls may return a newer one.
+Read-only access to published Blockstore configuration snapshots.
 
 *******************************************************************************/
 
@@ -16,10 +14,14 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Read-only access to current Blockstore configuration snapshots. Keep an
-// owning getter pointer and retain one snapshot per logical operation.
-// The implementation owns the publication point; previously returned
-// snapshots remain valid after later publications.
+// Read-only access to current Blockstore configuration snapshots.
+//
+// A snapshot is a configuration object corresponding to one publication.
+// The implementation owns the publication point.
+//
+// Call Get() once per logical operation and use the returned configuration
+// throughout that operation. Later Get() calls may return a newer one.
+// Previously returned snapshots remain valid after later publications.
 struct IBlockstoreConfigGetter
 {
     virtual ~IBlockstoreConfigGetter() = default;
