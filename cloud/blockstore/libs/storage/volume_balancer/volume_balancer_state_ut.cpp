@@ -505,8 +505,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 
         testEnv.Pull("vol0");
 
-        // 2 cycles so Cost can be calculated
-        testEnv.Simulate(2 * UpdateCountersInterval, CpuOverload);
+        testEnv.Simulate(UpdateCountersInterval, CpuOverload);
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", testEnv.GetVolumeToPush());
         UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPull());
