@@ -39,6 +39,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 	testCases := []struct {
 		name                string
 		diskMeta            *resources.DiskMeta
+		zoneMeta            *resources.DiskMeta
 		requestZone         string
 		disabledZones       *common.DisabledZones
 		sync                bool
@@ -112,6 +113,18 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			name:        "missing metadata with allowed request zone",
 			requestZone: "zone-a", disabledZones: disabledZone,
 			deleteIfNonExistent: true, expectedZone: "zone-a", expectNBS: true,
+		},
+		{
+			name: "trash metadata zone preferred over empty request",
+			zoneMeta: &resources.DiskMeta{ZoneID: "zone-a"}, requestZone: "",
+			disabledZones: disabledZone, deleteIfNonExistent: true,
+			expectedZone: "zone-a", expectNBS: true,
+		},
+		{
+			name: "trash metadata zone preferred over disabled request",
+			zoneMeta: &resources.DiskMeta{ZoneID: "zone-a"}, requestZone: "zone-d",
+			disabledZones: disabledZone, deleteIfNonExistent: true,
+			expectedZone: "zone-a", expectNBS: true,
 		},
 		{
 			name:        "missing metadata without fallback",
@@ -213,6 +226,13 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 					Return(tc.diskMeta, errorFor("DeleteDisk")).Once()
 				if tc.errorAt == "DeleteDisk" {
 					return
+				}
+				if tc.diskMeta == nil && tc.deleteIfNonExistent {
+					storage.On("GetDiskMeta", ctx, "disk").
+						Return(tc.zoneMeta, errorFor("GetDiskMeta")).Once()
+					if tc.errorAt == "GetDiskMeta" {
+						return
+					}
 				}
 				if !tc.skipIncremental {
 					scheduler.On(
