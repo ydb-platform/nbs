@@ -1,4 +1,5 @@
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
+
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_state.h>
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_ut_helpers.h>
 
@@ -603,19 +604,18 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
     {
         TVolumeBalancerStateTestEnv testEnv(
             CreateStorageConfig(
-                NProto::PREEMPTION_MOVE_MOST_HEAVY,
+                preemptionType,
                 /*volumeBalancerEnabled=*/true,
                 DefaultCpuThreshold,
                 CreateFeatureConfig("Balancer", {}, true),
-                InitialPullDelay
-            ),
+                InitialPullDelay),
             CreateDiagnosticsConfig(),
             {
                 {.DiskId = "vol0",
                  .Source = NProto::SOURCE_INITIAL_MOUNT,
-                 .LoadProfile = LoadHeavy},
-            }
-        );
+                 .LoadProfile = LoadHeavy,
+                 .SufferCount = 10},
+            });
 
         {
             TVector<NProto::TVolumeBalancerDiskStats> vols{
@@ -648,6 +648,18 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPull());
     }
 
+    Y_UNIT_TEST(ShouldNotReturnManuallyPreemptedVolume)
+    {
+        TestNotReturnManuallyPreemptedVolume(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY);
+    }
+
+    Y_UNIT_TEST(ShouldNotReturnManuallyPreemptedVolumeWithCpuRanking)
+    {
+        TestNotReturnManuallyPreemptedVolume(
+            NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY);
+    }
+
     Y_UNIT_TEST(ShouldSelectLightestVolumeWhenEnabledWithPreemptionTypeNone)
     {
         TVolumeBalancerState state(
@@ -674,24 +686,26 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         UNIT_ASSERT(!state.GetVolumeToPull());
     }
 
-    Y_UNIT_TEST(ShouldNotPreemptWhenVolumeBalancerSwitchIsDisabled)
+    static void TestNotPreemptWhenVolumeBalancerSwitchIsDisabled(
+        NProto::EVolumePreemptionType preemptionType)
     {
-        auto storageConfig = CreateStorageConfig(
-            NProto::PREEMPTION_MOVE_MOST_HEAVY,
-            /*volumeBalancerEnabled=*/true,
-            70,
-            /*featuresConfig=*/nullptr,
-            InitialPullDelay);
-
-        TVolumeBalancerState state(
-            storageConfig,
+        TVolumeBalancerStateTestEnv testEnv(
+            CreateStorageConfig(
+                preemptionType,
+                /*volumeBalancerEnabled=*/true,
+                DefaultCpuThreshold,
+                /*featuresConfig=*/nullptr,
+                InitialPullDelay),
             CreateDiagnosticsConfig(),
+            {
+                {.DiskId = "vol0", .LoadProfile = LoadHeavy, .SufferCount = 10},
+                {.DiskId = "vol1", .IsLocal = false},
+            },
             CreateSwitch(false));
-        TInstant now = TInstant::Seconds(0);
 
-        TVolumeBalancerState::TPerfGuaranteesMap perfMap;
-        perfMap["vol0"] = 10;
-        perfMap["vol1"] = 1;
+        testEnv.Simulate(UpdateCountersInterval, CpuOverload);
+        UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPush());
+        UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPull());
 
         {
             TVector<NProto::TVolumeBalancerDiskStats> vols{
@@ -718,7 +732,21 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldNotMoveNonKikimrDisks)
+    Y_UNIT_TEST(ShouldNotPreemptWhenVolumeBalancerSwitchIsDisabled)
+    {
+        TestNotPreemptWhenVolumeBalancerSwitchIsDisabled(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY);
+    }
+
+    Y_UNIT_TEST(
+        ShouldNotPreemptWhenVolumeBalancerSwitchIsDisabledWithCpuRanking)
+    {
+        TestNotPreemptWhenVolumeBalancerSwitchIsDisabled(
+            NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY);
+    }
+
+    static void TestNotMoveNonKikimrDisks(
+        NProto::EVolumePreemptionType preemptionType)
     {
         const TVector kinds{
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
@@ -729,14 +757,17 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         for (const auto kind: kinds) {
             TVolumeBalancerStateTestEnv testEnv(
                 CreateStorageConfig(
-                    NProto::PREEMPTION_MOVE_MOST_HEAVY,
+                    preemptionType,
                     /*volumeBalancerEnabled=*/true,
                     DefaultCpuThreshold,
                     CreateFeatureConfig("Balancer", {}, true),
                     InitialPullDelay),
                 CreateDiagnosticsConfig(),
                 {
-                    {.DiskId = "vol0", .Kind = kind, .LoadProfile = LoadHeavy},
+                    {.DiskId = "vol0",
+                     .Kind = kind,
+                     .LoadProfile = LoadHeavy,
+                     .SufferCount = 10},
                 });
 
             testEnv.Simulate(UpdateCountersInterval, CpuOverload);
@@ -753,6 +784,16 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             UNIT_ASSERT(!state.GetVolumeToPush());
             UNIT_ASSERT(!state.GetVolumeToPull());
         }
+    }
+
+    Y_UNIT_TEST(ShouldNotMoveNonKikimrDisks)
+    {
+        TestNotMoveNonKikimrDisks(NProto::PREEMPTION_MOVE_MOST_HEAVY);
+    }
+
+    Y_UNIT_TEST(ShouldNotMoveNonKikimrDisksWithCpuRanking)
+    {
+        TestNotMoveNonKikimrDisks(NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY);
     }
 }
 

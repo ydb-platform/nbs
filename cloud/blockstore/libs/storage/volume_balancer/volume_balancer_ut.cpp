@@ -620,10 +620,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol0"},
                 {.DiskId = "vol1"},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
@@ -643,10 +643,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                  .IsLocal = true,
                  .Source = NProto::SOURCE_NONE},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             0.1,
             EChangeBindingOp::ACQUIRE_FROM_HIVE,
-            UpdateCountersInterval + TDuration::Seconds(20));
+            TDuration::Seconds(15) + TDuration::Seconds(20));
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
     }
@@ -675,10 +675,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol0", .IsLocal = true},
                 {.DiskId = "vol1", .IsLocal = true},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
@@ -693,10 +693,12 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                  .IsLocal = true,
                  .Source = NProto::SOURCE_NONE},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             0.1,
             {},
-            UpdateCountersInterval + TDuration::Seconds(20));
+            TDuration::Seconds(15) + TDuration::Seconds(20));
+
+        UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
     }
 
     Y_UNIT_TEST(ShouldNotDoAnythingIfBalancerIsDisabled)
@@ -720,10 +722,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol0"},
                 {.DiskId = "vol1"},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             {},
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
     }
 
     Y_UNIT_TEST(ShouldNotDoAnythingIfBalancerIsDisabledViaPrivateApi)
@@ -758,10 +760,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol0"},
                 {.DiskId = "vol1"},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             {},
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
     }
 
     Y_UNIT_TEST(ShouldNotDoAnythingIfBalancerDisabledWithConfig)
@@ -785,10 +787,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol0"},
                 {.DiskId = "vol1"},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             {},
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
     }
 
     Y_UNIT_TEST(ShouldSetCpuWaitCounter)
@@ -815,16 +817,16 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             {{"vol0", 10}, {"vol1", 1}},
             .9,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
-        auto appCounters = testEnv.GetRuntime()
-                               .GetAppData(0)
-                               .Counters->GetSubgroup("counters", "blockstore")
-                               ->GetSubgroup("component", "server");
+        auto counters = testEnv.GetRuntime()
+                            .GetAppData(0)
+                            .Counters->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server");
 
-        auto cpuWaitCounter = appCounters->GetCounter("CpuWait", false);
+        auto cpuWaitCounter = counters->GetCounter("CpuWait", false);
         UNIT_ASSERT_VALUES_UNEQUAL(0, cpuWaitCounter->Val());
         UNIT_ASSERT(cpuWaitCounter->Val() <= 90);
 
@@ -859,10 +861,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol0"},
                 {.DiskId = "vol1"},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             {},
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
     }
 
     Y_UNIT_TEST(ShouldSetCountersForPreemptedVolumes)
@@ -903,10 +905,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol8", .Source = NProto::SOURCE_INITIAL_MOUNT},
                 {.DiskId = "vol9", .Source = NProto::SOURCE_INITIAL_MOUNT},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             .9,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
@@ -939,17 +941,17 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol0"},
                 {.DiskId = "vol1"},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             MakeError(E_INVALID_STATE),
             {},
             TDuration::Seconds(15));
 
-        auto appCounters = testEnv.GetRuntime()
-                               .GetAppData(0)
-                               .Counters->GetSubgroup("counters", "blockstore")
-                               ->GetSubgroup("component", "server");
+        auto counters = testEnv.GetRuntime()
+                            .GetAppData(0)
+                            .Counters->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server");
 
-        auto cpuWaitCounter = appCounters->GetCounter("CpuWait", false);
+        auto cpuWaitCounter = counters->GetCounter("CpuWait", false);
         UNIT_ASSERT_VALUES_EQUAL(0, cpuWaitCounter->Val());
 
         UNIT_ASSERT_VALUES_UNEQUAL(
@@ -982,10 +984,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol1"},
                 {.DiskId = "vol2"},
             },
-            {{"vol0", 1}, {"vol1", 1}, {"vol2", 1}},
+            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
 
         UNIT_ASSERT_VALUES_EQUAL("vol1", diskId);
 
@@ -997,10 +999,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol1"},
                 {.DiskId = "vol2"},
             },
-            {{"vol0", 1}, {"vol1", 1}, {"vol2", 1}},
+            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
 
         UNIT_ASSERT_VALUES_EQUAL("vol2", diskId2);
     }
