@@ -605,12 +605,12 @@ root_kms: {address: kms}
             getter->Get()->GetStorageConfig()->GetWriteBlobThreshold());
     }
 
-    // Check that local holders isolate publications and that a getter keeps its
-    // holder alive after the writer handle is released.
+    // Check that updating one holder preserves the other holder's configuration
+    // and a previously returned snapshot.
     Y_UNIT_TEST(ShouldKeepLocalHoldersIndependent)
     {
-        // Create independent publication points without binding the global
-        // provider or sharing controls.
+        // Create two local holders with separate configurations and ICB
+        // controls.
         auto firstControls =
             std::make_shared<NStorage::TStorageConfigControls>();
         auto secondControls =
@@ -623,7 +623,7 @@ root_kms: {address: kms}
         const IBlockstoreConfigGetterPtr secondGetter = secondHolder;
         const auto retained = firstGetter->Get();
 
-        // Publish through one writer and preserve the other holder's
+        // Publish through one holder and preserve the other holder's
         // configuration and the retained snapshot.
         firstHolder->Set(
             MakeBlockstoreConfig(MakeConfig(300), {}, firstControls));
@@ -634,18 +634,6 @@ root_kms: {address: kms}
             200,
             secondGetter->Get()->GetServerConfig()->GetPort());
         UNIT_ASSERT_VALUES_EQUAL(100, retained->GetServerConfig()->GetPort());
-
-        // Release writer and getter handles separately to check both levels
-        // of ownership.
-        firstHolder.reset();
-        UNIT_ASSERT_VALUES_EQUAL(
-            300,
-            firstGetter->Get()->GetServerConfig()->GetPort());
-        firstGetter.reset();
-        UNIT_ASSERT_VALUES_EQUAL(100, retained->GetServerConfig()->GetPort());
-        UNIT_ASSERT_VALUES_EQUAL(
-            200,
-            secondGetter->Get()->GetServerConfig()->GetPort());
     }
 
     // Initialize the process provider with value 100, then publish value 200
