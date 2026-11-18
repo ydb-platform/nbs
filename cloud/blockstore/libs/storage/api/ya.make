@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     bootstrapper.cpp
+    cell_proxy.cpp
     disk_agent.cpp
     disk_registry.cpp
     disk_registry_proxy.cpp

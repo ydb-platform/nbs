@@ -51,6 +51,7 @@
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
+#include <cloud/blockstore/libs/storage/api/cell_proxy.h>
 #include <cloud/blockstore/libs/storage/core/block_digest_factory.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
 #include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
@@ -1191,6 +1192,23 @@ void TBootstrapYdb::SetupCellManager()
     } else {
         CellManager = NCells::CreateCellManagerStub(Service);
     }
+}
+
+void TBootstrapYdb::SetupCellProxy()
+{
+    if (!ActorSystem) {
+        STORAGE_INFO(
+            "CellProxy initialization skipped: ActorSystem is not available");
+        return;
+    }
+
+    auto clientConfig = std::make_shared<NClient::TClientAppConfig>(
+        BootstrapConfig->CellsConfig->GetGrpcClientConfig());
+    ActorSystem->Send(
+        NStorage::MakeCellProxyServiceId(),
+        std::make_unique<NStorage::TEvCellProxy::TEvInitializeRequest>(
+            CellManager,
+            std::move(clientConfig)));
 }
 
 void TBootstrapYdb::SetupCellMonitoringActor()
