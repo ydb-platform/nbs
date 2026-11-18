@@ -125,6 +125,11 @@ public:
         , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
+        if (CallContext->IsLatencyTimingEnabled() ||
+            Request->GetHeaders().GetInternal().GetReturnVolumeLatencyTiming())
+        {
+            Request->MutableHeaders()->SetLatencyTimingRequested(true);
+        }
         TraceSerializer->BuildTraceRequest(
             *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
             CallContext->LWOrbit);
@@ -167,6 +172,12 @@ public:
     {
         auto resultOrError = Serializer->Parse(buffer);
         if (HasError(resultOrError)) {
+            if (!Request->GetHeaders()
+                     .GetInternal()
+                     .GetReturnVolumeLatencyTiming())
+            {
+                CallContext->MarkLatencyTimingIncomplete();
+            }
             Response.SetValue(TErrorResponse(resultOrError.GetError()));
             return;
         }
@@ -176,6 +187,11 @@ public:
 
         auto& responseMsg = static_cast<NProto::TReadBlocksResponse&>(
             *response.Proto);
+        if (CallContext->IsLatencyTimingEnabled() &&
+            !Request->GetHeaders().GetInternal().GetReturnVolumeLatencyTiming())
+        {
+            CallContext->ConsumeLatencyTiming(*responseMsg.MutableHeaders());
+        }
         TResponse localResponse;
         localResponse.CopyFrom(responseMsg);
 
@@ -204,6 +220,10 @@ public:
 
     void HandleError(ui32 error, TStringBuf message) override
     {
+        if (!Request->GetHeaders().GetInternal().GetReturnVolumeLatencyTiming())
+        {
+            CallContext->MarkLatencyTimingIncomplete();
+        }
         Response.SetValue(TErrorResponse(error, TString(message)));
     }
 
@@ -284,6 +304,11 @@ public:
         , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
+        if (CallContext->IsLatencyTimingEnabled() ||
+            Request->GetHeaders().GetInternal().GetReturnVolumeLatencyTiming())
+        {
+            Request->MutableHeaders()->SetLatencyTimingRequested(true);
+        }
         TraceSerializer->BuildTraceRequest(
             *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
             CallContext->LWOrbit);
@@ -353,6 +378,12 @@ public:
     {
         auto resultOrError = Serializer->Parse(buffer);
         if (HasError(resultOrError)) {
+            if (!Request->GetHeaders()
+                     .GetInternal()
+                     .GetReturnVolumeLatencyTiming())
+            {
+                CallContext->MarkLatencyTimingIncomplete();
+            }
             Response.SetValue(TErrorResponse(resultOrError.GetError()));
             return;
         }
@@ -372,6 +403,11 @@ public:
             responseMsg.MutableHeaders()->ClearTrace();
         }
 
+        if (CallContext->IsLatencyTimingEnabled() &&
+            !Request->GetHeaders().GetInternal().GetReturnVolumeLatencyTiming())
+        {
+            CallContext->ConsumeLatencyTiming(*responseMsg.MutableHeaders());
+        }
         ProcessThrottleTime(CallContext, responseMsg);
 
         Response.SetValue(std::move(responseMsg));
@@ -379,6 +415,10 @@ public:
 
     void HandleError(ui32 error, TStringBuf message) override
     {
+        if (!Request->GetHeaders().GetInternal().GetReturnVolumeLatencyTiming())
+        {
+            CallContext->MarkLatencyTimingIncomplete();
+        }
         Response.SetValue(TErrorResponse(error, TString(message)));
     }
 };
@@ -415,6 +455,11 @@ public:
         , TraceSerializer(std::move(traceSerializer))
         , IsAlignedDataEnabled(isAlignedDataEnabled)
     {
+        if (CallContext->IsLatencyTimingEnabled() ||
+            Request->GetHeaders().GetInternal().GetReturnVolumeLatencyTiming())
+        {
+            Request->MutableHeaders()->SetLatencyTimingRequested(true);
+        }
         TraceSerializer->BuildTraceRequest(
             *Request->MutableHeaders()->MutableInternal()->MutableTrace(),
             CallContext->LWOrbit);
@@ -455,6 +500,12 @@ public:
     {
         auto resultOrError = Serializer->Parse(buffer);
         if (HasError(resultOrError)) {
+            if (!Request->GetHeaders()
+                     .GetInternal()
+                     .GetReturnVolumeLatencyTiming())
+            {
+                CallContext->MarkLatencyTimingIncomplete();
+            }
             Response.SetValue(TErrorResponse(resultOrError.GetError()));
             return;
         }
@@ -472,6 +523,11 @@ public:
             GetCycleCount());
         responseMsg.MutableHeaders()->ClearTrace();
 
+        if (CallContext->IsLatencyTimingEnabled() &&
+            !Request->GetHeaders().GetInternal().GetReturnVolumeLatencyTiming())
+        {
+            CallContext->ConsumeLatencyTiming(*responseMsg.MutableHeaders());
+        }
         ProcessThrottleTime(CallContext, responseMsg);
 
         Response.SetValue(std::move(responseMsg));
@@ -479,6 +535,10 @@ public:
 
     void HandleError(ui32 error, TStringBuf message) override
     {
+        if (!Request->GetHeaders().GetInternal().GetReturnVolumeLatencyTiming())
+        {
+            CallContext->MarkLatencyTimingIncomplete();
+        }
         Response.SetValue(TErrorResponse(error, TString(message)));
     }
 };
