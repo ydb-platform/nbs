@@ -1025,4 +1025,8 @@ message TStorageConfig
     // The writes which bypass the storage service (the fastshard side channel)
     // are not counted.
     optional bool WriteDataZeroBlockStatsEnabled = 565;
+
+    // Max FUSE read / write request size in bytes
+    // Zero uses TVFSConfig.MaxWritePages (default 256) * host page size.
+    optional uint32 MaxRequestSize = 566;
 }

@@ -81,6 +81,10 @@ message TFileStoreFeatures
     uint32 NodeAttrsCacheLimit = 60;
 
     bool WriteDataZeroBlockStatsEnabled = 61;
+
+    // Max FUSE read / write request size in bytes.
+    // Zero uses the vhost fallback.
+    uint32 MaxRequestSize = 62;
 }
 
 message TFileStore

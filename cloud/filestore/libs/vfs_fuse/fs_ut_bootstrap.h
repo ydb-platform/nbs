@@ -91,7 +91,8 @@ struct TBootstrap
         IFileMapMemoryLimiterPtr fileMapMemoryLimiter =
             CreateFileMapMemoryLimiterStub(),
         IPersistentStateManagerPtr persistentStateManager = nullptr,
-        IMultiFileSystemEventHandlerPtr multiFileSystemEventHandler = nullptr)
+        IMultiFileSystemEventHandlerPtr multiFileSystemEventHandler = nullptr,
+        const NProto::TVFSConfig& vfsConfig = {})
         : Logging(CreateLoggingService("console", {TLOG_RESOURCES}))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
@@ -172,7 +173,7 @@ struct TBootstrap
             Service,
             std::move(sessionConfig));
 
-        NProto::TVFSConfig proto;
+        NProto::TVFSConfig proto = vfsConfig;
         proto.SetDebug(true);
         proto.SetSocketPath(SocketPath);
         proto.SetFileSystemId(FileSystemId);
