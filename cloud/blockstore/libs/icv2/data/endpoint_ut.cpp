@@ -1,0 +1,1555 @@
+#include "endpoint.h"
+
+#include "protocol.h"
+#include "target.h"
+
+#include <cloud/blockstore/libs/common/constants.h>
+#include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/service_test.h>
+
+#include <cloud/storage/core/libs/common/scheduler_test.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
+#include <cloud/storage/core/libs/common/timer_test.h>
+#include <cloud/storage/core/libs/icv2/handshake/handshake.h>
+#include <cloud/storage/core/libs/icv2/tcp/testlib/socket_test.h>
+#include <cloud/storage/core/libs/icv2/transport/testlib/event_test.h>
+
+#include <contrib/ydb/library/actors/interconnect/interconnect_common.h>
+#include <contrib/ydb/library/actors/interconnect/interconnect_uring_engine.h>
+#include <contrib/ydb/library/actors/interconnect/uring_context.h>
+
+#include <library/cpp/testing/unittest/registar.h>
+
+#include <util/generic/scope.h>
+#include <util/system/mutex.h>
+
+#include <future>
+#include <thread>
+
+namespace NCloud::NBlockStore::NIcV2 {
+
+namespace {
+
+using NCloud::NIcV2::CreateRequestChannel;
+using NCloud::NIcV2::IIncomingRequest;
+using NCloud::NIcV2::IIncomingRequestPtr;
+using NCloud::NIcV2::IRequestChannel;
+using NCloud::NIcV2::IRequestChannelHandler;
+using NCloud::NIcV2::IRequestChannelPtr;
+using NCloud::NIcV2::TRequestChannelConfig;
+using NCloud::NIcV2::TResponseFuture;
+using NCloud::NIcV2::TResponseResult;
+
+using NCloud::NIcV2::CreateHandshakeProvider;
+using NCloud::NIcV2::IHandshakeProviderPtr;
+using NCloud::NIcV2::THandshakeConfig;
+using NCloud::NIcV2::THandshakeIncomplete;
+using NCloud::NIcV2::THandshakeReady;
+
+using NCloud::NIcV2::ITransportPtr;
+
+using NCloud::NIcV2::TSocketPtr;
+
+////////////////////////////////////////////////////////////////////////////////
+
+using NStorage::TEvService;
+using namespace std::chrono_literals;
+constexpr size_t BlockSize = 4_KB;
+constexpr ui32 BlockCount = 8;
+
+template <typename T>
+T Wait(NThreading::TFuture<T> future)
+{
+    UNIT_ASSERT(future.Wait(TDuration::Seconds(10)));
+    return future.ExtractValue();
+}
+
+class TManualExecutor final: public ITaskQueue
+{
+    TMutex Mutex;
+    TVector<ITaskPtr> Tasks;
+
+public:
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
+    void Enqueue(ITaskPtr task) override
+    {
+        TGuard<TMutex> guard(Mutex);
+        Tasks.push_back(std::move(task));
+    }
+
+    void Run()
+    {
+        for (;;) {
+            TVector<ITaskPtr> tasks;
+            {
+                TGuard<TMutex> guard(Mutex);
+                tasks.swap(Tasks);
+            }
+            if (tasks.empty()) {
+                return;
+            }
+            for (auto& task: tasks) {
+                task->Execute();
+            }
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestChannel final: IRequestChannel
+{
+    struct TRequest
+    {
+        std::unique_ptr<NActors::IEventBase> Event;
+        TDuration Timeout;
+        NThreading::TPromise<TResponseResult> Promise =
+            NThreading::NewPromise<TResponseResult>();
+        bool Completed = false;
+    };
+
+    TMutex Mutex;
+    TVector<TRequest> Requests;
+    bool Closing = false;
+    size_t ActiveCompletions = 0;
+    NThreading::TPromise<NProto::TError> Closed =
+        NThreading::NewPromise<NProto::TError>();
+
+    bool Activate() override
+    {
+        return true;
+    }
+
+    TResponseFuture Request(
+        std::unique_ptr<NActors::IEventBase> event,
+        TDuration timeout) override
+    {
+        TGuard<TMutex> guard(Mutex);
+        if (Closing) {
+            return NThreading::MakeFuture<TResponseResult>(
+                MakeError(E_REJECTED, "closed"));
+        }
+        auto& request = Requests.emplace_back(std::move(event), timeout);
+        return request.Promise.GetFuture();
+    }
+
+    bool Reply(ui64 cookie, std::unique_ptr<NActors::IEventBase> event)
+    {
+        NThreading::TPromise<TResponseResult> promise;
+        {
+            TGuard<TMutex> guard(Mutex);
+            if (Closing || !cookie || cookie > Requests.size()) {
+                return false;
+            }
+            auto& request = Requests[cookie - 1];
+            if (request.Completed) {
+                return true;
+            }
+            request.Completed = true;
+            promise = request.Promise;
+            ++ActiveCompletions;
+        }
+        Y_DEFER
+        {
+            FinishCompletion();
+        };
+        auto handle = std::make_unique<NActors::IEventHandle>(
+            NActors::TActorId(),
+            NActors::TActorId(),
+            event.release(),
+            0,
+            cookie);
+        NCloud::NIcV2::NTests::PreserializeEvent(handle);
+        promise.SetValue(TResponseResult(std::move(handle)));
+        return true;
+    }
+
+    void Fail(size_t index, ui32 code)
+    {
+        NThreading::TPromise<TResponseResult> promise;
+        {
+            TGuard<TMutex> guard(Mutex);
+            auto& request = Requests.at(index);
+            if (request.Completed) {
+                return;
+            }
+            request.Completed = true;
+            promise = request.Promise;
+            ++ActiveCompletions;
+        }
+        Y_DEFER
+        {
+            FinishCompletion();
+        };
+        promise.SetValue(MakeError(code, "test error"));
+    }
+
+    void Close() override
+    {
+        size_t count = 0;
+        {
+            TGuard<TMutex> guard(Mutex);
+            if (Closing) {
+                return;
+            }
+            Closing = true;
+            count = Requests.size();
+            ++ActiveCompletions;
+        }
+        for (size_t i = 0; i < count; ++i) {
+            Fail(i, E_REJECTED);
+        }
+        FinishCompletion();
+    }
+
+    NThreading::TFuture<NProto::TError> WhenClosed() const override
+    {
+        return Closed.GetFuture();
+    }
+
+    std::unique_ptr<NActors::IEventHandle> Take(size_t index)
+    {
+        TGuard<TMutex> guard(Mutex);
+        auto handle = std::make_unique<NActors::IEventHandle>(
+            NActors::TActorId(),
+            NActors::TActorId(),
+            Requests.at(index).Event.release(),
+            0,
+            index + 1);
+        NCloud::NIcV2::NTests::PreserializeEvent(handle);
+        return handle;
+    }
+
+private:
+    void FinishCompletion()
+    {
+        bool closed = false;
+        {
+            TGuard<TMutex> guard(Mutex);
+            Y_DEBUG_ABORT_UNLESS(ActiveCompletions);
+
+            --ActiveCompletions;
+            closed = Closing && !ActiveCompletions;
+        }
+        if (closed) {
+            Closed.SetValue(NProto::TError{});
+        }
+    }
+};
+
+template <typename T>
+std::shared_ptr<T> MakeRequest()
+{
+    auto request = std::make_shared<T>();
+    request->SetDiskId("disk");
+    request->SetSessionId("session");
+    request->SetStartIndex(1);
+    request->MutableHeaders()->SetClientId("client");
+    request->MutableHeaders()->SetRequestId(123);
+    request->MutableHeaders()->SetRequestTimeout(1000);
+    return request;
+}
+
+auto MakeRead(TString& buffer)
+{
+    auto request = MakeRequest<NProto::TReadBlocksLocalRequest>();
+    request->SetBlockSize(BlockSize);
+    request->SetBlocksCount(buffer.size() / BlockSize);
+    request->Sglist = TGuardedSgList({{buffer.data(), buffer.size()}});
+    return request;
+}
+
+auto MakeWrite(const TString& buffer)
+{
+    auto request = MakeRequest<NProto::TWriteBlocksLocalRequest>();
+    request->SetBlockSize(BlockSize);
+    request->BlocksCount = buffer.size() / BlockSize;
+    request->Sglist = TGuardedSgList(
+        {{buffer.data(), 17}, {buffer.data() + 17, buffer.size() - 17}});
+    return request;
+}
+
+auto MakeZero()
+{
+    auto request = MakeRequest<NProto::TZeroBlocksRequest>();
+    request->SetBlocksCount(2);
+    return request;
+}
+
+class TTestIncomingRequest final: public IIncomingRequest
+{
+    const std::weak_ptr<TTestChannel> Channel;
+    const std::unique_ptr<NActors::IEventHandle> Event;
+    const bool RejectReply;
+
+public:
+    TTestIncomingRequest(
+        std::weak_ptr<TTestChannel> channel,
+        std::unique_ptr<NActors::IEventHandle> event,
+        bool rejectReply = false)
+        : Channel(std::move(channel))
+        , Event(std::move(event))
+        , RejectReply(rejectReply)
+    {}
+
+    NActors::IEventHandle& GetEvent() override
+    {
+        return *Event;
+    }
+
+    NProto::TError Reply(std::unique_ptr<NActors::IEventBase> response) override
+    {
+        if (RejectReply) {
+            return MakeError(E_REJECTED, "test reply queue is full");
+        }
+        if (auto channel = Channel.lock()) {
+            if (channel->Reply(Event->Cookie, std::move(response))) {
+                return {};
+            }
+        }
+        return MakeError(E_REJECTED, "test reply rejected");
+    }
+
+    void CloseChannel() override
+    {
+        if (auto channel = Channel.lock()) {
+            channel->Close();
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFixture
+{
+    std::shared_ptr<TTestChannel> Channel = std::make_shared<TTestChannel>();
+    std::shared_ptr<TManualExecutor> Executor =
+        std::make_shared<TManualExecutor>();
+    std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
+    std::shared_ptr<TTestService> Service = std::make_shared<TTestService>();
+    IDataEndpointPtr Endpoint;
+    IDataTargetPtr Target;
+    TString Data = TString(BlockSize * BlockCount, 'x');
+    size_t Reads = 0;
+    size_t Writes = 0;
+    size_t Zeroes = 0;
+    NThreading::TPromise<NProto::TReadBlocksLocalResponse> ReadCompletion =
+        NThreading::NewPromise<NProto::TReadBlocksLocalResponse>();
+    NThreading::TPromise<NProto::TWriteBlocksLocalResponse> WriteCompletion =
+        NThreading::NewPromise<NProto::TWriteBlocksLocalResponse>();
+    std::shared_ptr<NProto::TReadBlocksLocalRequest> DelayedRead;
+    std::shared_ptr<NProto::TWriteBlocksLocalRequest> DelayedWrite;
+
+    explicit TFixture(
+        TDataConfig endpointConfig = {},
+        TDataConfig targetConfig = {})
+    {
+        auto [endpoint, endpointError] =
+            CreateDataEndpoint(Channel, endpointConfig);
+        UNIT_ASSERT_C(!HasError(endpointError), FormatError(endpointError));
+        Endpoint = std::move(endpoint);
+        auto [target, targetError] =
+            CreateDataTarget(Service, Executor, targetConfig);
+        UNIT_ASSERT_C(!HasError(targetError), FormatError(targetError));
+        Target = std::move(target);
+        Service->ReadBlocksLocalHandler = [&](const auto& request)
+        {
+            ++Reads;
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            SgListCopy(
+                {Data.data() + request->GetStartIndex() * BlockSize,
+                 static_cast<size_t>(request->GetBlocksCount()) * BlockSize},
+                guard.Get());
+            return NThreading::MakeFuture<NProto::TReadBlocksLocalResponse>();
+        };
+        Service->WriteBlocksLocalHandler = [&](const auto& request)
+        {
+            ++Writes;
+            auto guard = request->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            SgListCopy(
+                guard.Get(),
+                {Data.Detach() + request->GetStartIndex() * BlockSize,
+                 static_cast<size_t>(request->BlocksCount) * BlockSize});
+            return NThreading::MakeFuture<NProto::TWriteBlocksLocalResponse>();
+        };
+        Service->ZeroBlocksHandler = [&](const auto& request)
+        {
+            ++Zeroes;
+            memset(
+                Data.Detach() + request->GetStartIndex() * BlockSize,
+                0,
+                request->GetBlocksCount() * BlockSize);
+            return NThreading::MakeFuture<NProto::TZeroBlocksResponse>();
+        };
+    }
+
+    ~TFixture()
+    {
+        Endpoint->RequestStop();
+        if (Target) {
+            Target->RequestStop();
+        }
+        if (!ReadCompletion.GetFuture().HasValue()) {
+            ReadCompletion.SetValue(TErrorResponse(E_REJECTED, "fixture stop"));
+        }
+        if (!WriteCompletion.GetFuture().HasValue()) {
+            WriteCompletion.SetValue(
+                TErrorResponse(E_REJECTED, "fixture stop"));
+        }
+        Executor->Run();
+        if (Target) {
+            Target->Stop();
+        }
+        Endpoint->Stop();
+    }
+
+    void Run(size_t index)
+    {
+        Target->HandleRequest(
+            std::make_unique<TTestIncomingRequest>(
+                Channel,
+                Channel->Take(index)));
+        Executor->Run();
+    }
+
+    void DelayRead()
+    {
+        Service->ReadBlocksLocalHandler = [&](const auto& request)
+        {
+            ++Reads;
+            DelayedRead = request;
+            {
+                auto guard = DelayedRead->Sglist.Acquire();
+                for (const auto& block: guard.Get()) {
+                    memset(const_cast<char*>(block.Data()), 'r', block.Size());
+                }
+            }
+            return ReadCompletion.GetFuture();
+        };
+    }
+
+    void DelayWrite()
+    {
+        Service->WriteBlocksLocalHandler = [&](const auto& request)
+        {
+            ++Writes;
+            DelayedWrite = request;
+            return WriteCompletion.GetFuture();
+        };
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TDataRequestHandler final: public IRequestChannelHandler
+{
+    const IDataTargetPtr Target;
+
+public:
+    explicit TDataRequestHandler(IDataTargetPtr target)
+        : Target(std::move(target))
+    {}
+
+    void HandleRequest(IIncomingRequestPtr request) override
+    {
+        Target->HandleRequest(std::move(request));
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TNetworkFixture
+{
+    std::array<TFixture, 2> Peers;
+    std::array<ITransportPtr, 2> Transports;
+    std::array<IRequestChannelPtr, 2> Channels;
+    std::array<IDataEndpointPtr, 2> Endpoints;
+    ITaskQueuePtr Completions = CreateThreadPool("ICV2DataTest", 2);
+
+    explicit TNetworkFixture(bool checksums, bool xdc = false)
+    {
+        Completions->Start();
+        NCloud::NIcV2::NTests::TTestListener listener;
+        listener.Listener->Start();
+        auto connector = NCloud::NIcV2::NTests::CreateTestConnector();
+        connector->Start();
+        std::array<TSocketPtr, 2> sockets{
+            NCloud::NIcV2::NTests::WaitSocket(connector->Connect(
+                listener.Listener->GetAddress(),
+                TDuration::Seconds(10))),
+            listener.Accept()};
+        connector->Stop();
+        std::array<IHandshakeProviderPtr, 2> hellos;
+        Y_DEFER
+        {
+            for (const auto& hello: hellos) {
+                if (hello) {
+                    hello->Stop();
+                }
+            }
+        };
+        for (size_t i = 0; i < hellos.size(); ++i) {
+            auto [hello, error] =
+                CreateHandshakeProvider(THandshakeConfig{xdc});
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+            hellos[i] = std::move(hello);
+            hellos[i]->Start();
+        }
+        const auto outgoing =
+            hellos[0]->Connect(std::move(sockets[0]), TDuration::Seconds(10));
+        const auto incoming =
+            hellos[1]->Accept(std::move(sockets[1]), TDuration::Seconds(10));
+        if (xdc) {
+            auto auxiliary = Wait(
+                hellos[1]->Accept(listener.Accept(), TDuration::Seconds(10)));
+            UNIT_ASSERT_C(
+                !HasError(auxiliary.GetError()),
+                FormatError(auxiliary.GetError()));
+            UNIT_ASSERT(
+                std::holds_alternative<THandshakeIncomplete>(
+                    auxiliary.GetResult()));
+        }
+        const auto outgoingResult = Wait(outgoing);
+        const auto incomingResult = Wait(incoming);
+        UNIT_ASSERT_C(
+            !HasError(outgoingResult.GetError()),
+            FormatError(outgoingResult.GetError()));
+        UNIT_ASSERT_C(
+            !HasError(incomingResult.GetError()),
+            FormatError(incomingResult.GetError()));
+        const std::array<THandshakeReady, 2> connected{
+            outgoingResult.GetResult(),
+            std::get<THandshakeReady>(incomingResult.GetResult())};
+        for (size_t i = 0; i < Channels.size(); ++i) {
+            const auto& connection = connected[i];
+            hellos[i]->Stop();
+            auto common = MakeIntrusive<NActors::TInterconnectProxyCommon>();
+            common->MonCounters =
+                MakeIntrusive<NMonitoring::TDynamicCounters>();
+            common->Settings.V2.Threads = 1;
+            common->Settings.V2.EnableSQPOLL = false;
+            common->Settings.V2.ChecksumEvents = checksums;
+            Transports[i] = NCloud::NIcV2::CreateTransport(
+                NActors::CreateUringEngine(std::move(common)),
+                0,
+                {});
+            UNIT_ASSERT(Transports[i]);
+            TRequestChannelConfig config;
+            config.EventTypes.assign(
+                DataEventTypes.begin(),
+                DataEventTypes.end());
+            auto [channel, error] = CreateRequestChannel(
+                Transports[i],
+                connection.Socket,
+                connection.XdcSocket,
+                config,
+                Peers[i].Timer,
+                std::make_shared<TTestScheduler>(),
+                Completions,
+                std::make_shared<TDataRequestHandler>(Peers[i].Target));
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+            Channels[i] = std::move(channel);
+            auto [endpoint, endpointError] =
+                CreateDataEndpoint(Channels[i], {});
+            UNIT_ASSERT_C(!HasError(endpointError), FormatError(endpointError));
+            Endpoints[i] = std::move(endpoint);
+            Peers[i].Data.resize(8 * 1024 * 1024, 'x');
+        }
+        for (auto& channel: Channels) {
+            UNIT_ASSERT(channel->Activate());
+        }
+    }
+
+    ~TNetworkFixture()
+    {
+        for (auto& endpoint: Endpoints) {
+            if (endpoint) {
+                endpoint->RequestStop();
+            }
+        }
+        for (auto& transport: Transports) {
+            if (transport) {
+                transport->Stop();
+            }
+        }
+        for (auto& peer: Peers) {
+            peer.Executor->Run();
+            peer.Target->Stop();
+        }
+        for (auto& endpoint: Endpoints) {
+            if (endpoint) {
+                endpoint->Stop();
+            }
+        }
+        Completions->Stop();
+    }
+
+    template <typename T>
+    T Pump(const NThreading::TFuture<T>& future)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + 10s;
+        while (!future.HasValue() &&
+               std::chrono::steady_clock::now() < deadline)
+        {
+            for (auto& peer: Peers) {
+                peer.Executor->Run();
+            }
+            future.Wait(TDuration::MilliSeconds(1));
+        }
+        return Wait(future);
+    }
+};
+
+}   // namespace
+
+Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
+{
+    Y_UNIT_TEST(WriteReadAndZeroPreserveDataAndRequestMetadata)
+    {
+        TFixture f;
+        TString data(2 * BlockSize, 'w');
+        data[0] = '\0';
+        auto write = f.Endpoint->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeWrite(data));
+        const auto* sent = static_cast<TEvService::TEvWriteBlocksRequest*>(
+            f.Channel->Requests[0].Event.get());
+        UNIT_ASSERT_VALUES_EQUAL(0, sent->Record.GetBlocks().BuffersSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, sent->GetPayloadCount());
+        UNIT_ASSERT_VALUES_EQUAL(data, sent->GetPayload(0).ConvertToString());
+        f.Run(0);
+        UNIT_ASSERT(!HasError(Wait(write)));
+        TString buffer(data.size(), '?');
+        auto read = f.Endpoint->ReadBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeRead(buffer));
+        f.Run(1);
+        UNIT_ASSERT(!HasError(Wait(read)));
+        UNIT_ASSERT_VALUES_EQUAL(data, buffer);
+        auto zero =
+            f.Endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), MakeZero());
+        f.Run(2);
+        UNIT_ASSERT(!HasError(Wait(zero)));
+        auto again = f.Endpoint->ReadBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeRead(buffer));
+        f.Run(3);
+        UNIT_ASSERT(!HasError(Wait(again)));
+        UNIT_ASSERT_VALUES_EQUAL(TString(data.size(), '\0'), buffer);
+        UNIT_ASSERT_VALUES_EQUAL(2, f.Reads);
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Writes);
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Zeroes);
+    }
+
+    Y_UNIT_TEST(ProtobufAndLocalRequestsUseTheSameWireFormat)
+    {
+        TFixture f;
+        TString data(2 * BlockSize, 'w');
+        data[0] = '\0';
+        auto request = MakeRequest<NProto::TWriteBlocksRequest>();
+        request->SetBlockSize(BlockSize);
+        request->MutableBlocks()->AddBuffers(data.substr(0, 17));
+        request->MutableBlocks()->AddBuffers(data.substr(17));
+        auto write =
+            f.Endpoint->WriteBlocks(MakeIntrusive<TCallContext>(), request);
+        const auto* sent = static_cast<TEvService::TEvWriteBlocksRequest*>(
+            f.Channel->Requests[0].Event.get());
+        UNIT_ASSERT_VALUES_EQUAL(0, sent->Record.GetBlocks().BuffersSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, sent->GetPayloadCount());
+        UNIT_ASSERT_VALUES_EQUAL(data, sent->GetPayload(0).ConvertToString());
+        request->ClearBlocks();
+        f.Run(0);
+        UNIT_ASSERT(!HasError(Wait(write)));
+
+        auto readRequest = MakeRequest<NProto::TReadBlocksRequest>();
+        readRequest->SetBlockSize(BlockSize);
+        readRequest->SetBlocksCount(2);
+        auto read =
+            f.Endpoint->ReadBlocks(MakeIntrusive<TCallContext>(), readRequest);
+        f.Run(1);
+        auto response = Wait(read);
+        UNIT_ASSERT(!HasError(response));
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetBlocks().BuffersSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            data,
+            response.GetBlocks().GetBuffers(0) +
+                response.GetBlocks().GetBuffers(1));
+
+        TString localBuffer(data.size(), '?');
+        auto localRead = f.Endpoint->ReadBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeRead(localBuffer));
+        f.Run(2);
+        UNIT_ASSERT(!HasError(Wait(localRead)));
+        UNIT_ASSERT_VALUES_EQUAL(data, localBuffer);
+
+        data = TString(data.size(), 'l');
+        auto localWrite = f.Endpoint->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeWrite(data));
+        f.Run(3);
+        UNIT_ASSERT(!HasError(Wait(localWrite)));
+        read =
+            f.Endpoint->ReadBlocks(MakeIntrusive<TCallContext>(), readRequest);
+        f.Run(4);
+        response = Wait(read);
+        UNIT_ASSERT(!HasError(response));
+        UNIT_ASSERT_VALUES_EQUAL(
+            data,
+            response.GetBlocks().GetBuffers(0) +
+                response.GetBlocks().GetBuffers(1));
+    }
+
+    Y_UNIT_TEST(ProtobufWriteUsesPayloadBudget)
+    {
+        TDataConfig config;
+        config.MaxInflightBytes = BlockSize;
+        TFixture f(config);
+        auto request = MakeRequest<NProto::TWriteBlocksRequest>();
+        request->SetBlockSize(BlockSize);
+        request->MutableBlocks()->AddBuffers(TString(2 * BlockSize, 'w'));
+        auto write =
+            f.Endpoint->WriteBlocks(MakeIntrusive<TCallContext>(), request);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, Wait(write).GetError().GetCode());
+        UNIT_ASSERT(f.Channel->Requests.empty());
+    }
+
+    Y_UNIT_TEST(WriteSnapshotOutlivesCallerAndTargetClosesStorageSglist)
+    {
+        TFixture f;
+        f.DelayWrite();
+        TString data(2 * BlockSize, 'a');
+        auto request = MakeWrite(data);
+        auto future = f.Endpoint->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            request);
+        request->Sglist.Close();
+        data = TString(data.size(), 'b');
+        request.reset();
+        f.Run(0);
+        auto captured = f.DelayedWrite;
+        TString snapshot(2 * BlockSize, '?');
+        {
+            auto guard = captured->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            SgListCopy(guard.Get(), {snapshot.Detach(), snapshot.size()});
+        }
+        const bool metadata =
+            captured->GetSessionId() == "session" &&
+            captured->GetHeaders().GetClientId() == "client" &&
+            captured->GetHeaders().GetRequestId() == 123 &&
+            captured->BlocksCount == 2;
+        f.WriteCompletion.SetValue({});
+        f.Executor->Run();
+        UNIT_ASSERT(!HasError(Wait(future)));
+        UNIT_ASSERT(metadata);
+        UNIT_ASSERT_VALUES_EQUAL(TString(snapshot.size(), 'a'), snapshot);
+        UNIT_ASSERT(!captured->Sglist.Acquire());
+    }
+
+    Y_UNIT_TEST(LateReadAfterTimeoutDoesNotTouchCallerBuffer)
+    {
+        TFixture f;
+        f.DelayRead();
+        TString buffer(2 * BlockSize, '?');
+        auto request = MakeRead(buffer);
+        auto future =
+            f.Endpoint->ReadBlocksLocal(MakeIntrusive<TCallContext>(), request);
+        f.Run(0);
+        f.Channel->Fail(0, E_TIMEOUT);
+        request->Sglist.Close();
+        f.ReadCompletion.SetValue({});
+        f.Executor->Run();
+        UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, Wait(future).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), '?'), buffer);
+        UNIT_ASSERT(!f.DelayedRead->Sglist.Acquire());
+    }
+
+    Y_UNIT_TEST(ClosedCallerSglistRejectsReadCopy)
+    {
+        TFixture f;
+        f.DelayRead();
+        TString buffer(2 * BlockSize, '?');
+        auto request = MakeRead(buffer);
+        auto future =
+            f.Endpoint->ReadBlocksLocal(MakeIntrusive<TCallContext>(), request);
+        f.Run(0);
+        request->Sglist.Close();
+        f.ReadCompletion.SetValue({});
+        f.Executor->Run();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_CANCELLED,
+            Wait(future).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), '?'), buffer);
+    }
+
+    Y_UNIT_TEST(TargetStopWaitsForActualStorageCompletionAfterDisconnect)
+    {
+        TFixture f;
+        f.DelayRead();
+        TString buffer(2 * BlockSize, '?');
+        auto future = f.Endpoint->ReadBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeRead(buffer));
+        f.Run(0);
+        f.Endpoint->RequestStop();
+        auto stopping =
+            std::async(std::launch::async, [&] { f.Target->Stop(); });
+        const bool waits =
+            stopping.wait_for(30ms) == std::future_status::timeout;
+        const bool alive = static_cast<bool>(f.DelayedRead->Sglist.Acquire());
+        f.ReadCompletion.SetValue({});
+        f.Executor->Run();
+        stopping.get();
+        UNIT_ASSERT(waits);
+        UNIT_ASSERT(alive);
+        UNIT_ASSERT(!f.DelayedRead->Sglist.Acquire());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, Wait(future).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), '?'), buffer);
+    }
+
+    Y_UNIT_TEST(EndpointAndTargetApplySharedAdmissionLimits)
+    {
+        for (bool targetLimit: {false, true}) {
+            TDataConfig config;
+            config.MaxInflightRequests = 1;
+            TFixture f(
+                targetLimit ? TDataConfig{} : config,
+                targetLimit ? config : TDataConfig{});
+            f.DelayRead();
+            TString buffer(2 * BlockSize, '?');
+            auto read = f.Endpoint->ReadBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                MakeRead(buffer));
+            f.Run(0);
+            auto zero = f.Endpoint->ZeroBlocks(
+                MakeIntrusive<TCallContext>(),
+                MakeZero());
+            if (targetLimit) {
+                f.Run(1);
+            }
+            const auto code = Wait(zero).GetError().GetCode();
+            f.ReadCompletion.SetValue({});
+            f.Executor->Run();
+            UNIT_ASSERT(!HasError(Wait(read)));
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, code);
+            UNIT_ASSERT_VALUES_EQUAL(0, f.Zeroes);
+            auto next = f.Endpoint->ZeroBlocks(
+                MakeIntrusive<TCallContext>(),
+                MakeZero());
+            f.Run(targetLimit ? 2 : 1);
+            UNIT_ASSERT(!HasError(Wait(next)));
+        }
+    }
+
+    Y_UNIT_TEST(TargetDoesNotChargeReadBuffersToWritePayloadBudget)
+    {
+        TDataConfig config;
+        config.MaxInflightBytes = BlockSize;
+        TFixture f({}, config);
+        TString buffer(2 * BlockSize, '?');
+        auto read = f.Endpoint->ReadBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeRead(buffer));
+        f.Run(0);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, Wait(read).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Reads);
+        auto zero =
+            f.Endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), MakeZero());
+        f.Run(1);
+        UNIT_ASSERT(!HasError(Wait(zero)));
+    }
+
+    Y_UNIT_TEST(EndpointRejectsPayloadOverMemoryBudgetBeforeSending)
+    {
+        TDataConfig config;
+        config.MaxInflightBytes = BlockSize;
+        TFixture f(config);
+        TString buffer(2 * BlockSize, '?');
+        auto future = f.Endpoint->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeWrite(buffer));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, Wait(future).GetError().GetCode());
+        UNIT_ASSERT(f.Channel->Requests.empty());
+    }
+
+    Y_UNIT_TEST(CompletionReleasesLimitsBeforeContinuation)
+    {
+        TDataConfig config;
+        config.MaxInflightRequests = 1;
+        config.MaxInflightBytes = 2 * BlockSize;
+        TFixture f(config);
+        TString data(config.MaxInflightBytes, 'w');
+        auto first = f.Endpoint->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeWrite(data));
+        NThreading::TFuture<NProto::TWriteBlocksLocalResponse> second;
+        first.Subscribe(
+            [&](const auto& response)
+            {
+                Y_UNUSED(response);
+
+                second = f.Endpoint->WriteBlocksLocal(
+                    MakeIntrusive<TCallContext>(),
+                    MakeWrite(data));
+            });
+        f.Run(0);
+        UNIT_ASSERT(!HasError(Wait(first)));
+        UNIT_ASSERT(second.Initialized());
+        UNIT_ASSERT_VALUES_EQUAL(2, f.Channel->Requests.size());
+        f.Run(1);
+        UNIT_ASSERT(!HasError(Wait(second)));
+        UNIT_ASSERT_VALUES_EQUAL(2, f.Writes);
+    }
+
+    Y_UNIT_TEST(ChargesOnlyOutgoingWritePayloadBytes)
+    {
+        TDataConfig endpointConfig;
+        endpointConfig.MaxInflightBytes = 2 * BlockSize;
+        TDataConfig targetConfig;
+        targetConfig.MaxInflightBytes = 1;
+        TFixture f(endpointConfig, targetConfig);
+        TString buffer(2 * BlockSize, 'w');
+        auto write = f.Endpoint->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeWrite(buffer));
+        f.Run(0);
+        UNIT_ASSERT(!HasError(Wait(write)));
+
+        auto read = f.Endpoint->ReadBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeRead(buffer));
+        f.Run(1);
+        UNIT_ASSERT(!HasError(Wait(read)));
+    }
+
+    Y_UNIT_TEST(StorageErrorsAndExceptionsAreReturnedWithoutRetry)
+    {
+        for (ui32 code: {E_BS_INVALID_SESSION, E_BADMSG, E_FAIL}) {
+            TFixture f;
+            f.Service->ZeroBlocksHandler = [&](const auto& request)
+                -> NThreading::TFuture<NProto::TZeroBlocksResponse>
+            {
+                Y_UNUSED(request);
+
+                ++f.Zeroes;
+                if (code == E_FAIL) {
+                    ythrow yexception() << "storage failure";
+                }
+                return NThreading::MakeFuture<NProto::TZeroBlocksResponse>(
+                    TErrorResponse(code, "storage error"));
+            };
+            auto future = f.Endpoint->ZeroBlocks(
+                MakeIntrusive<TCallContext>(),
+                MakeZero());
+            f.Run(0);
+            UNIT_ASSERT_VALUES_EQUAL(code, Wait(future).GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(1, f.Zeroes);
+            UNIT_ASSERT_VALUES_EQUAL(1, f.Channel->Requests.size());
+            UNIT_ASSERT(!f.Channel->Closing);
+        }
+    }
+
+    Y_UNIT_TEST(UninitializedStorageFutureReturnsErrorAndReleasesReservation)
+    {
+        TDataConfig config;
+        config.MaxInflightRequests = 1;
+        TFixture f({}, config);
+        f.Service->ReadBlocksLocalHandler = [](const auto& request)
+        {
+            Y_UNUSED(request);
+            return NThreading::TFuture<NProto::TReadBlocksLocalResponse>();
+        };
+        f.Service->WriteBlocksLocalHandler = [](const auto& request)
+        {
+            Y_UNUSED(request);
+            return NThreading::TFuture<NProto::TWriteBlocksLocalResponse>();
+        };
+        f.Service->ZeroBlocksHandler = [](const auto& request)
+        {
+            Y_UNUSED(request);
+            return NThreading::TFuture<NProto::TZeroBlocksResponse>();
+        };
+        TString buffer(2 * BlockSize, '?');
+        auto read = f.Endpoint->ReadBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeRead(buffer));
+        f.Run(0);
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, Wait(read).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), '?'), buffer);
+
+        auto write = f.Endpoint->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeWrite(buffer));
+        f.Run(1);
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, Wait(write).GetError().GetCode());
+
+        auto zero =
+            f.Endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), MakeZero());
+        f.Run(2);
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, Wait(zero).GetError().GetCode());
+
+        f.Service->ZeroBlocksHandler = [](const auto& request)
+        {
+            Y_UNUSED(request);
+            return NThreading::MakeFuture<NProto::TZeroBlocksResponse>();
+        };
+        auto next =
+            f.Endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), MakeZero());
+        f.Run(3);
+        UNIT_ASSERT(!HasError(Wait(next)));
+        UNIT_ASSERT(!f.Channel->Closing);
+        f.Target->Stop();
+    }
+
+    Y_UNIT_TEST(RejectsMalformedReadResponseBeforeCopyingAnyData)
+    {
+        for (size_t variant = 0; variant < 6; ++variant) {
+            TFixture f;
+            TString buffer(2 * BlockSize, '?');
+            auto future = f.Endpoint->ReadBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                MakeRead(buffer));
+            auto pendingZero = f.Endpoint->ZeroBlocks(
+                MakeIntrusive<TCallContext>(),
+                MakeZero());
+            auto response =
+                std::make_unique<TEvService::TEvReadBlocksResponse>();
+            switch (variant) {
+                case 0:   // Missing payload.
+                    break;
+                case 1:   // Short payload.
+                    response->AddPayload(TRope(TString(BlockSize, 'x')));
+                    break;
+                case 2:   // Oversized payload.
+                    response->AddPayload(TRope(TString(3 * BlockSize, 'x')));
+                    break;
+                case 3:   // Multiple payloads.
+                    response->AddPayload(TRope(TString(BlockSize, 'x')));
+                    response->AddPayload(TRope(TString(BlockSize, 'y')));
+                    break;
+                case 4:   // Mixed protobuf blocks and payload.
+                    response->Record.MutableBlocks()->AddBuffers(
+                        TString(BlockSize, 'x'));
+                    response->AddPayload(TRope(TString(2 * BlockSize, 'x')));
+                    break;
+                case 5:   // Error responses carry no data.
+                    *response->Record.MutableError() =
+                        MakeError(E_FAIL, "storage failure");
+                    response->AddPayload(TRope(TString(2 * BlockSize, 'x')));
+                    break;
+            }
+            f.Channel->Reply(1, std::move(response));
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_BADMSG,
+                Wait(future).GetError().GetCode());
+            UNIT_ASSERT(!f.Channel->Closing);
+            f.Run(1);
+            UNIT_ASSERT(!HasError(Wait(pendingZero)));
+            auto nextZero = f.Endpoint->ZeroBlocks(
+                MakeIntrusive<TCallContext>(),
+                MakeZero());
+            f.Run(2);
+            UNIT_ASSERT(!HasError(Wait(nextZero)));
+            UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), '?'), buffer);
+        }
+    }
+
+    Y_UNIT_TEST(CopiesFragmentedReadPayloadIntoFragmentedCallerBuffers)
+    {
+        TFixture f;
+        TString buffer(2 * BlockSize, '?');
+        auto request = MakeRead(buffer);
+        request->Sglist = TGuardedSgList(
+            {{buffer.data(), 123}, {buffer.data() + 123, buffer.size() - 123}});
+        auto future =
+            f.Endpoint->ReadBlocksLocal(MakeIntrusive<TCallContext>(), request);
+        auto response = std::make_unique<TEvService::TEvReadBlocksResponse>();
+        TRope payload(TString(17, 'a'));
+        payload.Insert(payload.End(), TRope(TString(buffer.size() - 17, 'b')));
+        response->AddPayload(std::move(payload));
+        f.Channel->Reply(1, std::move(response));
+        UNIT_ASSERT(!HasError(Wait(future)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(17, 'a') + TString(buffer.size() - 17, 'b'),
+            buffer);
+    }
+
+    Y_UNIT_TEST(StorageReadErrorHasNoPayloadAndDoesNotCopyData)
+    {
+        TFixture f;
+        f.Service->ReadBlocksLocalHandler = [](auto request)
+        {
+            Y_UNUSED(request);
+
+            return NThreading::MakeFuture<NProto::TReadBlocksLocalResponse>(
+                TErrorResponse(E_IO, "storage failure"));
+        };
+        TString buffer(2 * BlockSize, '?');
+        auto read = f.Endpoint->ReadBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeRead(buffer));
+        f.Run(0);
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, Wait(read).GetError().GetCode());
+        UNIT_ASSERT(!f.Channel->Closing);
+        UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), '?'), buffer);
+    }
+
+    Y_UNIT_TEST(FragmentedWritePayloadOutlivesReceivedEvent)
+    {
+        TFixture f;
+        f.DelayWrite();
+        auto write = std::make_unique<TEvService::TEvWriteBlocksRequest>();
+        write->Record.CopyFrom(*MakeRequest<NProto::TWriteBlocksRequest>());
+        write->Record.SetBlockSize(BlockSize);
+        TRope payload(TString(17, 'a'));
+        payload.Insert(payload.End(), TRope(TString(2 * BlockSize - 17, 'b')));
+        write->AddPayload(std::move(payload));
+        auto future =
+            f.Channel->Request(std::move(write), TDuration::Seconds(1));
+        auto incoming = std::make_unique<TTestIncomingRequest>(
+            f.Channel,
+            f.Channel->Take(0));
+        auto& received = incoming->GetEvent();
+        f.Target->HandleRequest(std::move(incoming));
+        f.Executor->Run();
+        UNIT_ASSERT(!received.HasEvent());
+        UNIT_ASSERT(!received.HasBuffer());
+        TString snapshot(2 * BlockSize, '?');
+        {
+            auto guard = f.DelayedWrite->Sglist.Acquire();
+            UNIT_ASSERT(guard);
+            UNIT_ASSERT_VALUES_EQUAL(2, guard.Get().size());
+            SgListCopy(guard.Get(), {snapshot.Detach(), snapshot.size()});
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(17, 'a') + TString(snapshot.size() - 17, 'b'),
+            snapshot);
+        f.WriteCompletion.SetValue({});
+        f.Executor->Run();
+        UNIT_ASSERT(!HasError(Wait(future).GetError()));
+        UNIT_ASSERT(!f.DelayedWrite->Sglist.Acquire());
+    }
+
+    Y_UNIT_TEST(RejectsMalformedWritePayloadBeforeCallingStorage)
+    {
+        for (size_t variant = 0; variant < 5; ++variant) {
+            TFixture f;
+            auto write = std::make_unique<TEvService::TEvWriteBlocksRequest>();
+            write->Record.CopyFrom(*MakeRequest<NProto::TWriteBlocksRequest>());
+            write->Record.SetBlockSize(BlockSize);
+            switch (variant) {
+                case 0:   // Missing payload.
+                    break;
+                case 1:   // Empty payload.
+                    write->AddPayload(TRope());
+                    break;
+                case 2:   // Unaligned payload.
+                    write->AddPayload(TRope(TString(17, 'x')));
+                    break;
+                case 3:   // Multiple payloads.
+                    write->AddPayload(TRope(TString(BlockSize, 'x')));
+                    write->AddPayload(TRope(TString(BlockSize, 'y')));
+                    break;
+                case 4:   // Mixed protobuf blocks and payload.
+                    write->Record.MutableBlocks()->AddBuffers(
+                        TString(BlockSize, 'x'));
+                    write->AddPayload(TRope(TString(BlockSize, 'y')));
+                    break;
+            }
+            auto future =
+                f.Channel->Request(std::move(write), TDuration::Seconds(1));
+            f.Run(0);
+            auto result = Wait(future);
+            UNIT_ASSERT(!HasError(result.GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_ARGUMENT,
+                result.GetResult()
+                    ->Get<TEvService::TEvWriteBlocksResponse>()
+                    ->Record.GetError()
+                    .GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, f.Writes);
+        }
+    }
+
+    Y_UNIT_TEST(RejectsZeroBlockSizeAndUnsupportedControlRequests)
+    {
+        TFixture f;
+        TString buffer(2 * BlockSize, '?');
+        auto request = MakeRead(buffer);
+        request->SetBlockSize(0);
+        auto future =
+            f.Endpoint->ReadBlocksLocal(MakeIntrusive<TCallContext>(), request);
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, Wait(future).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_NOT_IMPLEMENTED,
+            Wait(f.Endpoint->MountVolume(
+                     MakeIntrusive<TCallContext>(),
+                     std::make_shared<NProto::TMountVolumeRequest>()))
+                .GetError()
+                .GetCode());
+        UNIT_ASSERT(f.Channel->Requests.empty());
+    }
+
+    Y_UNIT_TEST(PreservesChannelResultsWhenCompletionIsDelayed)
+    {
+        TFixture f;
+        f.DelayRead();
+        f.DelayWrite();
+        TString buffer(2 * BlockSize, '?');
+        TString data(2 * BlockSize, 'w');
+        auto readRequest = MakeRead(buffer);
+        auto writeRequest = MakeWrite(data);
+        readRequest->MutableHeaders()->SetRequestTimeout(1);
+        writeRequest->MutableHeaders()->SetRequestTimeout(1);
+        auto read = f.Endpoint->ReadBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            readRequest);
+        auto write = f.Endpoint->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            writeRequest);
+        f.Run(0);
+        f.Run(1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(1),
+            f.Channel->Requests[0].Timeout);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(1),
+            f.Channel->Requests[1].Timeout);
+
+        // The channel owns timeout handling. Once it delivers a result, the
+        // endpoint must preserve that result even after the original timeout.
+        std::this_thread::sleep_for(2ms);
+        f.ReadCompletion.SetValue({});
+        f.WriteCompletion.SetValue({});
+        f.Executor->Run();
+        UNIT_ASSERT(!HasError(Wait(read)));
+        UNIT_ASSERT(!HasError(Wait(write)));
+        UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), 'r'), buffer);
+    }
+
+    Y_UNIT_TEST(TargetLimitsReadSizeBeforeCallingStorage)
+    {
+        TFixture f;
+        f.Data.resize(MaxSubRequestSize + BlockSize, 'x');
+        for (ui32 blocksCount:
+             {
+                 MaxSubRequestSize / BlockSize,
+                 (MaxSubRequestSize / BlockSize) + 1,
+             })
+        {
+            auto read = std::make_unique<TEvService::TEvReadBlocksRequest>();
+            read->Record.SetDiskId("disk");
+            read->Record.SetBlockSize(BlockSize);
+            read->Record.SetBlocksCount(blocksCount);
+            auto result =
+                f.Channel->Request(std::move(read), TDuration::Seconds(1));
+            f.Run(f.Channel->Requests.size() - 1);
+            auto response = Wait(result);
+            UNIT_ASSERT(!HasError(response.GetError()));
+            auto* event =
+                response.GetResult()->Get<TEvService::TEvReadBlocksResponse>();
+            if (blocksCount == MaxSubRequestSize / BlockSize) {
+                UNIT_ASSERT(!HasError(event->Record));
+                UNIT_ASSERT_VALUES_EQUAL(1, event->GetPayloadCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    MaxSubRequestSize,
+                    event->GetPayload(0).GetSize());
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_REJECTED,
+                    event->Record.GetError().GetCode());
+                UNIT_ASSERT_VALUES_EQUAL(0, event->GetPayloadCount());
+            }
+            UNIT_ASSERT_VALUES_EQUAL(1, f.Reads);
+        }
+    }
+
+    Y_UNIT_TEST(TargetRejectsInvalidReadAndWriteBeforeCallingStorage)
+    {
+        TDataConfig config;
+        config.MaxInflightRequests = 1;
+        TFixture f({}, config);
+        auto read = std::make_unique<TEvService::TEvReadBlocksRequest>();
+        read->Record.SetDiskId("disk");
+        read->Record.SetBlocksCount(Max<ui32>());
+        read->Record.SetBlockSize(0);
+        auto readResult =
+            f.Channel->Request(std::move(read), TDuration::Seconds(1));
+        NThreading::TFuture<NProto::TZeroBlocksResponse> zero;
+        readResult.Subscribe(
+            [&](const auto& response)
+            {
+                Y_UNUSED(response);
+
+                zero = f.Endpoint->ZeroBlocks(
+                    MakeIntrusive<TCallContext>(),
+                    MakeZero());
+                f.Target->HandleRequest(
+                    std::make_unique<TTestIncomingRequest>(
+                        f.Channel,
+                        f.Channel->Take(1)));
+            });
+        f.Run(0);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, Wait(zero).GetError().GetCode());
+        auto readResponse = Wait(readResult);
+        UNIT_ASSERT(!HasError(readResponse.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            readResponse.GetResult()
+                ->Get<TEvService::TEvReadBlocksResponse>()
+                ->Record.GetError()
+                .GetCode());
+        auto write = std::make_unique<TEvService::TEvWriteBlocksRequest>();
+        write->Record.SetDiskId("disk");
+        write->Record.SetBlockSize(BlockSize);
+        write->Record.MutableBlocks()->AddBuffers("unaligned");
+        auto writeResult =
+            f.Channel->Request(std::move(write), TDuration::Seconds(1));
+        f.Run(2);
+        auto writeResponse = Wait(writeResult);
+        UNIT_ASSERT(!HasError(writeResponse.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            writeResponse.GetResult()
+                ->Get<TEvService::TEvWriteBlocksResponse>()
+                ->Record.GetError()
+                .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, f.Reads);
+        UNIT_ASSERT_VALUES_EQUAL(0, f.Writes);
+        UNIT_ASSERT_VALUES_EQUAL(0, f.Zeroes);
+    }
+
+    Y_UNIT_TEST(
+        EndpointStopWaitsForResultContinuationAndRequestStopIsCallbackSafe)
+    {
+        TFixture f;
+        auto future =
+            f.Endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), MakeZero());
+        auto entered = NThreading::NewPromise<void>();
+        auto release = NThreading::NewPromise<void>();
+        bool closedDuringCallback = false;
+        std::future<void> delivery;
+        std::future<void> stopping;
+        Y_DEFER
+        {
+            release.TrySetValue();
+            if (delivery.valid()) {
+                delivery.wait();
+            }
+            if (stopping.valid()) {
+                stopping.wait();
+            }
+        };
+        future.Subscribe(
+            [&](const auto& response)
+            {
+                Y_UNUSED(response);
+
+                f.Endpoint->RequestStop();
+                closedDuringCallback = f.Channel->WhenClosed().HasValue();
+                entered.SetValue();
+                release.GetFuture().GetValueSync();
+            });
+        delivery = std::async(std::launch::async, [&] { f.Run(0); });
+        const bool started = entered.GetFuture().Wait(TDuration::Seconds(10));
+        stopping = std::async(std::launch::async, [&] { f.Endpoint->Stop(); });
+        const bool waits =
+            stopping.wait_for(30ms) == std::future_status::timeout;
+        release.SetValue();
+        delivery.get();
+        stopping.get();
+        UNIT_ASSERT(started);
+        UNIT_ASSERT(!closedDuringCallback);
+        UNIT_ASSERT(waits);
+    }
+
+    Y_UNIT_TEST(DestroyedTargetRejectsQueuedRequest)
+    {
+        TFixture f;
+        auto result =
+            f.Endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), MakeZero());
+        f.Target->HandleRequest(
+            std::make_unique<TTestIncomingRequest>(
+                f.Channel,
+                f.Channel->Take(0)));
+        std::weak_ptr<IDataTarget> weak = f.Target;
+        f.Target.reset();
+        UNIT_ASSERT(weak.expired());
+        f.Executor->Run();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, Wait(result).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, f.Zeroes);
+        UNIT_ASSERT(!f.Channel->Closing);
+    }
+
+    Y_UNIT_TEST(StartedWriteOutlivesTargetAndKeepsServiceAlive)
+    {
+        TFixture f;
+        f.DelayWrite();
+        TString data(2 * BlockSize, 'w');
+        auto result = f.Endpoint->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeWrite(data));
+        f.Run(0);
+        std::weak_ptr<IDataTarget> weakTarget = f.Target;
+        std::weak_ptr<IBlockStore> weakService = f.Service;
+        f.Target.reset();
+        f.Service.reset();
+        UNIT_ASSERT(weakTarget.expired());
+        UNIT_ASSERT(!weakService.expired());
+        UNIT_ASSERT(f.DelayedWrite->Sglist.Acquire());
+        f.WriteCompletion.SetValue({});
+        f.Executor->Run();
+        UNIT_ASSERT(!HasError(Wait(result)));
+        UNIT_ASSERT(!f.DelayedWrite->Sglist.Acquire());
+        UNIT_ASSERT(weakService.expired());
+        UNIT_ASSERT(!f.Channel->Closing);
+    }
+
+    Y_UNIT_TEST(ReplyRejectionDoesNotCloseChannel)
+    {
+        for (bool admissionError: {false, true}) {
+            TDataConfig config;
+            config.MaxInflightRequests = 1;
+            TFixture f({}, config);
+            TString buffer(2 * BlockSize, '?');
+            NThreading::TFuture<NProto::TReadBlocksLocalResponse> read;
+            if (admissionError) {
+                f.DelayRead();
+                read = f.Endpoint->ReadBlocksLocal(
+                    MakeIntrusive<TCallContext>(),
+                    MakeRead(buffer));
+                f.Run(0);
+            }
+            const size_t index = admissionError ? 1 : 0;
+            auto rejected = f.Endpoint->ZeroBlocks(
+                MakeIntrusive<TCallContext>(),
+                MakeZero());
+            f.Target->HandleRequest(
+                std::make_unique<TTestIncomingRequest>(
+                    f.Channel,
+                    f.Channel->Take(index),
+                    true));
+            f.Executor->Run();
+            UNIT_ASSERT(!f.Channel->Closing);
+            if (admissionError) {
+                f.ReadCompletion.SetValue({});
+                f.Executor->Run();
+                UNIT_ASSERT(!HasError(Wait(read)));
+            }
+            auto next = f.Endpoint->ZeroBlocks(
+                MakeIntrusive<TCallContext>(),
+                MakeZero());
+            f.Run(index + 1);
+            UNIT_ASSERT(!HasError(Wait(next)));
+            f.Channel->Fail(index, E_TIMEOUT);
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_TIMEOUT,
+                Wait(rejected).GetError().GetCode());
+        }
+    }
+
+    Y_UNIT_TEST(TargetRequestStopFromStorageCallbackRejectsFurtherRequests)
+    {
+        TFixture f;
+        f.Service->ZeroBlocksHandler = [&](const auto& request)
+        {
+            Y_UNUSED(request);
+
+            ++f.Zeroes;
+            f.Target->RequestStop();
+            return NThreading::MakeFuture<NProto::TZeroBlocksResponse>();
+        };
+        auto first =
+            f.Endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), MakeZero());
+        f.Run(0);
+        UNIT_ASSERT(!HasError(Wait(first)));
+        auto second =
+            f.Endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), MakeZero());
+        f.Run(1);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, Wait(second).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Zeroes);
+    }
+
+    Y_UNIT_TEST(RealTcpHelloAndIcV2ExchangeBlockDataInBothDirections)
+    {
+        if (!NActors::TUringContext::IsAvailable()) {
+            Cerr << "io_uring not available; skipping" << Endl;
+            return;
+        }
+        for (const auto [checksums, xdc]:
+             std::array<std::pair<bool, bool>, 4>{
+                 {{false, false}, {false, true}, {true, false}, {true, true}}})
+        {
+            TNetworkFixture f(checksums, xdc);
+            constexpr size_t Count = 16;
+            constexpr size_t PayloadBytes = 256_KB;
+            std::array<TString, Count> payloads;
+            std::array<
+                std::array<
+                    NThreading::TFuture<NProto::TWriteBlocksResponse>,
+                    Count>,
+                2>
+                writes;
+            for (size_t i = 0; i < Count; ++i) {
+                payloads[i] = TString(PayloadBytes, 'a' + i);
+                payloads[i][0] = '\0';
+                for (size_t peer = 0; peer < writes.size(); ++peer) {
+                    auto request = MakeWrite(payloads[i]);
+                    request->SetStartIndex(1 + i * PayloadBytes / BlockSize);
+                    writes[peer][i] = f.Endpoints[peer]->WriteBlocksLocal(
+                        MakeIntrusive<TCallContext>(),
+                        request);
+                }
+            }
+            for (auto& peer: writes) {
+                for (const auto& future: peer) {
+                    UNIT_ASSERT(!HasError(f.Pump(future)));
+                }
+            }
+            std::array<std::array<TString, Count>, 2> buffers;
+            std::array<
+                std::array<
+                    NThreading::TFuture<NProto::TReadBlocksLocalResponse>,
+                    Count>,
+                2>
+                reads;
+            for (size_t i = 0; i < Count; ++i) {
+                for (size_t peer = 0; peer < reads.size(); ++peer) {
+                    buffers[peer][i] = TString(PayloadBytes, '?');
+                    auto request = MakeRead(buffers[peer][i]);
+                    request->SetStartIndex(1 + i * PayloadBytes / BlockSize);
+                    reads[peer][i] = f.Endpoints[peer]->ReadBlocksLocal(
+                        MakeIntrusive<TCallContext>(),
+                        request);
+                }
+            }
+            for (size_t peer = 0; peer < reads.size(); ++peer) {
+                for (size_t i = 0; i < Count; ++i) {
+                    UNIT_ASSERT(!HasError(f.Pump(reads[peer][i])));
+                    UNIT_ASSERT_VALUES_EQUAL(payloads[i], buffers[peer][i]);
+                }
+                auto request = MakeZero();
+                request->SetBlocksCount(PayloadBytes / BlockSize);
+                UNIT_ASSERT(!HasError(f.Pump(f.Endpoints[peer]->ZeroBlocks(
+                    MakeIntrusive<TCallContext>(),
+                    request))));
+                TString buffer(PayloadBytes, '?');
+                UNIT_ASSERT(!HasError(f.Pump(f.Endpoints[peer]->ReadBlocksLocal(
+                    MakeIntrusive<TCallContext>(),
+                    MakeRead(buffer)))));
+                UNIT_ASSERT_VALUES_EQUAL(TString(PayloadBytes, '\0'), buffer);
+            }
+        }
+    }
+}
+
+}   // namespace NCloud::NBlockStore::NIcV2

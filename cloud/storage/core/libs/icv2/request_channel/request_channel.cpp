@@ -38,7 +38,7 @@ NProto::TError MakeSendError(ESendResult result)
         return MakeError(E_REJECTED, "IC V2 output queue limit reached");
     }
 
-    return MakeError(E_INVALID_STATE, "IC V2 connection is not active");
+    return MakeError(E_REJECTED, "IC V2 connection is not active");
 }
 
 NProto::TError MakeRequestClosureError(const NProto::TError& error)
@@ -239,9 +239,7 @@ public:
         {
             TGuard<TAdaptiveLock> guard(Lock);
             if (Phase != EPhase::Open) {
-                return MakeError(
-                    E_INVALID_STATE,
-                    "IC V2 request channel closed");
+                return MakeError(E_REJECTED, "IC V2 request channel closed");
             }
             if (Outstanding.load(std::memory_order_relaxed) >=
                 MaxPendingRequests)
@@ -665,7 +663,7 @@ NProto::TError TIncomingRequest::Reply(
 
     auto channel = Channel.lock();
     if (!channel) {
-        return MakeError(E_INVALID_STATE, "IC V2 request channel destroyed");
+        return MakeError(E_REJECTED, "IC V2 request channel destroyed");
     }
     return channel->Send(Event->Cookie, std::move(response));
 }
