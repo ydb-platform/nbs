@@ -15,6 +15,19 @@ namespace {
 
 using EOpType = EVolumeThrottlingOpType;
 
+// Apply a bandwidth coefficient with a minimum of 1 byte/s for positive inputs.
+// Preserve original zeros and explicitly zero coefficients.
+ui64 ThrottledBandwidth(ui64 bandwidth, double coefficient)
+{
+    const ui64 throttledBandwidth = bandwidth * coefficient;
+
+    if (bandwidth && coefficient > 0. && throttledBandwidth < 1) {
+        return 1;
+    }
+
+    return throttledBandwidth;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // IOPS throttle
 //
@@ -142,9 +155,9 @@ struct TVolumeThrottlingPolicy::TImpl
         }
         // Volatile throttling can multiply PerformanceProfile by coefficients
         if (coefficients.HasMaxReadBandwidth()) {
-            result.SetMaxReadBandwidth(
-                OriginalConfig.GetMaxReadBandwidth() *
-                coefficients.GetMaxReadBandwidth());
+            result.SetMaxReadBandwidth(ThrottledBandwidth(
+                OriginalConfig.GetMaxReadBandwidth(),
+                coefficients.GetMaxReadBandwidth()));
         }
         if (coefficients.HasMaxPostponedWeight()) {
             result.SetMaxPostponedWeight(
@@ -171,9 +184,9 @@ struct TVolumeThrottlingPolicy::TImpl
                 coefficients.GetBoostPercentage());
         }
         if (coefficients.HasMaxWriteBandwidth()) {
-            result.SetMaxWriteBandwidth(
-                OriginalConfig.GetMaxWriteBandwidth() *
-                coefficients.GetMaxWriteBandwidth());
+            result.SetMaxWriteBandwidth(ThrottledBandwidth(
+                OriginalConfig.GetMaxWriteBandwidth(),
+                coefficients.GetMaxWriteBandwidth()));
         }
         if (coefficients.HasMaxWriteIops()) {
             result.SetMaxWriteIops(
