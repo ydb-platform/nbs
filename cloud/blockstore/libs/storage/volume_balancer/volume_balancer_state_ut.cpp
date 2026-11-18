@@ -87,17 +87,17 @@ struct TVolumeLoadProfile
 };
 
 constexpr TVolumeLoadProfile LoadHeavy{
-    100,
-    100 * 4_KB,
-    100,
-    100 * 4_KB,
+    .ReadBlobIops = 100,
+    .WriteBlobIops = 100,
+    .ReadBlobBW = 100 * 4_KB,
+    .WriteBlobBW = 100 * 4_KB,
 };
 
 constexpr TVolumeLoadProfile LoadLight{
-    10,
-    10 * 4_KB,
-    10,
-    10 * 4_KB,
+    .ReadBlobIops = 10,
+    .WriteBlobIops = 10,
+    .ReadBlobBW = 10 * 4_KB,
+    .WriteBlobBW = 10 * 4_KB,
 };
 
 constexpr TVolumeLoadProfile LoadZero{};
@@ -224,6 +224,13 @@ void TVolumeBalancerStateTestEnv::Simulate(TDuration elapsed, ui64 cpuLack)
         elapsed -= timeBeforeNextStatsUpdate;
         AddCounters(timeBeforeNextStatsUpdate);
         State.UpdateVolumeStats(VolumeStats, VolumeSufferMap, cpuLack, Now);
+        // The stats service resets the delta after each statistics request.
+        for (auto& v: VolumeStats) {
+            v.SetReadBlobCount(0);
+            v.SetWriteBlobCount(0);
+            v.SetReadBlobBytes(0);
+            v.SetWriteBlobBytes(0);
+        }
     }
 }
 
@@ -354,6 +361,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 {.DiskId = "vol0", .LoadProfile = LoadHeavy},
                 {.DiskId = "vol1", .LoadProfile = LoadLight},
             });
+
+        testEnv.Simulate(UpdateCountersInterval, CpuOverload);
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", testEnv.GetVolumeToPush());
         UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPull());
