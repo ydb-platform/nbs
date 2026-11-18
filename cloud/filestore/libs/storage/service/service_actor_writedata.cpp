@@ -405,7 +405,6 @@ private:
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(TEvStartWriteData, HandleStartWriteData);
             HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
             HFunc(TEvents::TEvWakeup, HandleWakeup);
 
