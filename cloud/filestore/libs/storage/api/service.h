@@ -76,7 +76,7 @@ namespace NCloud::NFileStore::NStorage {
 #define FILESTORE_SERVICE_REQUESTS(xxx, ...)                                   \
     FILESTORE_SERVICE_REQUESTS_HANDLE(xxx,   __VA_ARGS__)                      \
     FILESTORE_SERVICE_REQUESTS_FWD(xxx,      __VA_ARGS__)                      \
-    FILESTORE_SERVICE_REQUESTS_FWD_NO_SESSION(xxx, __VA_ARGS__)                \
+    FILESTORE_SERVICE_REQUESTS_FWD_NO_SESSION(xxx,           __VA_ARGS__)      \
     FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_NODE_ID(xxx,  __VA_ARGS__)      \
     FILESTORE_SERVICE_REQUESTS_FWD_TO_SHARD_BY_HANDLE(xxx,   __VA_ARGS__)      \
 // FILESTORE_SERVICE_REQUESTS
