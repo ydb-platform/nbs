@@ -16,12 +16,17 @@ namespace NCloud::NJournalled {
 TVector<TPageRangeRef> MakePageRangeRefs(
     const NProto::TReadPagesRequest& request);
 
-TVector<TPageRange> MakePageRanges(
+// The views below point to the pages of the request. The request must live
+// as long as they are used.
+
+TVector<TPageRangeView> MakePageRangeViews(
     const NProto::TWriteLogRecordRequest& request);
 
-TVector<TPageRange> MakePageRanges(const NProto::TWritePagesRequest& request);
+TVector<TPageRangeView> MakePageRangeViews(
+    const NProto::TWritePagesRequest& request);
 
-TJournalRecord MakeJournalRecord(const NProto::TWriteLogRecordRequest& request);
+TJournalRecordView MakeJournalRecordView(
+    const NProto::TWriteLogRecordRequest& request);
 
 NProto::TReadJournalTailResponse MakeReadJournalTailResponse(
     const TJournalTail& tail);

@@ -56,6 +56,7 @@ TBuffer SerializeMetadata(const TJournalMetadata& metadata);
 std::optional<TJournalMetadata> DeserializeMetadata(const TBuffer& buffer);
 
 ui32 CalculatePagesCrc(const TVector<TBuffer>& pages);
+ui32 CalculatePagesCrc(const TVector<TStringBuf>& pages);
 
 ui32 CalculateMinRecordBufferSize();
 

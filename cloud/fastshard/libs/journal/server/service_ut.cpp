@@ -78,8 +78,8 @@ struct TTestDevice final: public IDevice
         return {};
     }
 
-    [[nodiscard]] auto WritePages(TVector<TPageRange> /*ranges*/)
-        -> TFuture<NProto::TError> final
+    [[nodiscard]] TFuture<NProto::TError> WritePages(
+        TVector<TPageRangeView> /*ranges*/) final
     {
         UNIT_FAIL("unexpected WritePages");
         return {};
@@ -273,7 +273,8 @@ public:
         return MakeFuture<TResultOrError<TReadPagesResult>>(TReadPagesResult());
     }
 
-    TFuture<NProto::TError> WriteLogRecord(TJournalRecord /*logRecord*/) final
+    TFuture<NProto::TError> WriteLogRecord(
+        TJournalRecordView /*logRecord*/) final
     {
         ++RequestCount;
         return MakeFuture<NProto::TError>();
@@ -293,7 +294,7 @@ public:
         return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NProto::TError> WritePages(TVector<TPageRange> /*ranges*/) final
+    TFuture<NProto::TError> WritePages(TVector<TPageRangeView> /*ranges*/) final
     {
         ++RequestCount;
         return MakeFuture<NProto::TError>();

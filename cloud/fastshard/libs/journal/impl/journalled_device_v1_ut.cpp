@@ -1,5 +1,7 @@
 #include "journalled_device_v1.h"
 
+#include "ut_helpers.h"
+
 #include <cloud/fastshard/libs/journal/iface/device.h>
 #include <cloud/fastshard/libs/journal/iface/journalled_device.h>
 
@@ -30,11 +32,11 @@ struct TTestDevice final: public IDevice
             TVector<TBuffer>());
     }
 
-    [[nodiscard]] auto WritePages(
-        TVector<TPageRange> ranges) -> TFuture<NProto::TError> final
+    [[nodiscard]] TFuture<NProto::TError> WritePages(
+        TVector<TPageRangeView> ranges) final
     {
         ++WritePagesCount;
-        LastWrittenRanges = std::move(ranges);
+        LastWrittenRanges = CopyPageRanges(ranges);
 
         return MakeFuture(WritePagesError);
     }
@@ -78,7 +80,8 @@ struct TFixture: public NUnitTest::TBaseFixture
         range.FirstPageNo = 0x10;
         range.Pages.push_back(MakePage('A'));
 
-        return Device->WriteLogRecord(std::move(record)).GetValueSync();
+        return Device->WriteLogRecord(MakeJournalRecordView(record))
+            .GetValueSync();
     }
 };
 
@@ -132,7 +135,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
         ranges[0].Pages.push_back(MakePage('A'));
         ranges[0].Pages.push_back(MakePage('B'));
 
-        const auto error = Device->WritePages(std::move(ranges)).GetValueSync();
+        const auto error =
+            Device->WritePages(MakePageRangeViews(ranges)).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
         UNIT_ASSERT_VALUES_EQUAL(1, DataStore->WritePagesCount);
@@ -161,7 +165,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
         ranges[0].FirstPageNo = 0x10;
         ranges[0].Pages.push_back(MakePage('A'));
 
-        const auto error = Device->WritePages(std::move(ranges)).GetValueSync();
+        const auto error =
+            Device->WritePages(MakePageRangeViews(ranges)).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
     }
 }

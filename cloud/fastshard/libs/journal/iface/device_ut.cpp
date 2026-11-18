@@ -50,7 +50,9 @@ Y_UNIT_TEST_SUITE(TRegionDeviceTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
-            region->WritePages({MakeRange(0, 'a'), MakeRange(7, 'b')})
+            region
+                ->WritePages(
+                    MakePageRangeViews({MakeRange(0, 'a'), MakeRange(7, 'b')}))
                 .GetValueSync()
                 .GetCode());
 
@@ -76,7 +78,9 @@ Y_UNIT_TEST_SUITE(TRegionDeviceTest)
             region->ReadPages({{7, 2}}).GetValueSync().GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
-            region->WritePages({MakeRange(8, 'a')}).GetValueSync().GetCode());
+            region->WritePages(MakePageRangeViews({MakeRange(8, 'a')}))
+                .GetValueSync()
+                .GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             region->ZeroPages({{0, 9}}).GetValueSync().GetCode());

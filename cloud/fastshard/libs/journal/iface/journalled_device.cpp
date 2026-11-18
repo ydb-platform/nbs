@@ -30,7 +30,7 @@ public:
         return MakeFuture<TResultOrError<TReadPagesResult>>(TReadPagesResult());
     }
 
-    TFuture<NProto::TError> WriteLogRecord(TJournalRecord logRecord) final
+    TFuture<NProto::TError> WriteLogRecord(TJournalRecordView logRecord) final
     {
         Y_UNUSED(logRecord);
         return MakeFuture<NProto::TError>();
@@ -50,7 +50,7 @@ public:
         return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) final
+    TFuture<NProto::TError> WritePages(TVector<TPageRangeView> ranges) final
     {
         Y_UNUSED(ranges);
         return MakeFuture<NProto::TError>();

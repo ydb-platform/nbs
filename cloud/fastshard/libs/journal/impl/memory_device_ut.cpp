@@ -83,7 +83,8 @@ struct TFixture: public NUnitTest::TBaseFixture
         const TVector<std::pair<ui64, TVector<TString>>>& groups)
     {
         const auto error =
-            Device->WritePages(MakeRanges(groups)).GetValueSync();
+            Device->WritePages(MakePageRangeViews(MakeRanges(groups)))
+                .GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
     }

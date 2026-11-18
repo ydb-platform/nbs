@@ -1,6 +1,7 @@
 #pragma once
 
 #include <util/generic/buffer.h>
+#include <util/generic/strbuf.h>
 #include <util/generic/vector.h>
 #include <util/system/types.h>
 
@@ -12,6 +13,12 @@ struct TPageRangeRef
 {
     ui64 FirstPageNo = 0;
     ui64 PageCount = 0;
+};
+
+struct TPageRangeView
+{
+    ui64 FirstPageNo = 0;
+    TVector<TStringBuf> Pages;
 };
 
 struct TPageRange
@@ -29,6 +36,14 @@ struct TReadPagesResult
     TVector<TBuffer> Pages;
 };
 
+struct TJournalRecordView
+{
+    ui64 Lsn = 0;
+    ui64 PrevLsn = 0;
+
+    TVector<TPageRangeView> Ranges;
+};
+
 struct TJournalRecord
 {
     ui64 Lsn = 0;
@@ -42,5 +57,14 @@ struct TJournalTail
     ui64 LsnLowWatermark = 0;
     TVector<TJournalRecord> Records;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+// The views below point to the pages of the argument. The argument must live
+// as long as the views are used.
+
+TVector<TPageRangeView> MakePageRangeViews(const TVector<TPageRange>& ranges);
+
+TJournalRecordView MakeJournalRecordView(const TJournalRecord& record);
 
 }   // namespace NCloud::NJournalled

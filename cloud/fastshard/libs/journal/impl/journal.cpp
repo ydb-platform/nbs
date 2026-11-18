@@ -33,7 +33,7 @@ ui64 PageCountOf(const TPageRangeRef& ref)
     return ref.PageCount;
 }
 
-ui64 PageCountOf(const TPageRange& range)
+ui64 PageCountOf(const TPageRangeView& range)
 {
     return range.Pages.size();
 }
@@ -48,7 +48,7 @@ ui64 FirstPageNoOf(const TPageRangeRef& ref)
     return ref.FirstPageNo;
 }
 
-ui64 FirstPageNoOf(const TPageRange& range)
+ui64 FirstPageNoOf(const TPageRangeView& range)
 {
     return range.FirstPageNo;
 }
@@ -173,7 +173,7 @@ NProto::TError FillPageRanges(
     return {};
 }
 
-TVector<TPageRangeRef> GetPageRangeRefs(const TVector<TPageRange>& ranges)
+TVector<TPageRangeRef> GetPageRangeRefs(const TVector<TPageRangeView>& ranges)
 {
     TVector<TPageRangeRef> rangeRefs;
     rangeRefs.reserve(ranges.size());
@@ -187,27 +187,25 @@ TVector<TPageRangeRef> GetPageRangeRefs(const TVector<TPageRange>& ranges)
     return rangeRefs;
 }
 
-// Moves the pages out of the ranges, in the order of the ranges.
-TVector<TBuffer> ExtractPages(TVector<TPageRange> ranges)
+// Returns the pages of the ranges as one list, in the order of the ranges.
+TVector<TStringBuf> GetPages(const TVector<TPageRangeView>& ranges)
 {
     size_t pageCount = 0;
     for (const auto& range: ranges) {
         pageCount += range.Pages.size();
     }
 
-    TVector<TBuffer> pages;
+    TVector<TStringBuf> pages;
     pages.reserve(pageCount);
 
-    for (auto& range: ranges) {
-        for (auto& page: range.Pages) {
-            pages.push_back(std::move(page));
-        }
+    for (const auto& range: ranges) {
+        pages.insert(pages.end(), range.Pages.begin(), range.Pages.end());
     }
 
     return pages;
 }
 
-TLogRecordPtr CreateRecord(const TJournalRecord& logRecord)
+TLogRecordPtr CreateRecord(const TJournalRecordView& logRecord)
 {
     auto record = std::make_shared<TLogRecord>();
     record->Lsn = logRecord.Lsn;
@@ -341,7 +339,7 @@ public:
     [[nodiscard]] TResultOrError<ui64> Restore() override;
 
     [[nodiscard]] TFuture<NProto::TError> Write(
-        TJournalRecord logRecord) override;
+        TJournalRecordView logRecord) override;
 
     [[nodiscard]] TResultOrError<TJournalReadResult> Read(
         TVector<TPageRangeRef> rangeRefs) const override;
@@ -373,7 +371,7 @@ private:
 
     TFuture<NProto::TError> WriteLogRecord(
         TLogRecord& record,
-        TVector<TPageRange> ranges);
+        TVector<TPageRangeView> ranges);
 
     void OnWriteLogRecord(NProto::TError error, TLogRecord& record);
 
@@ -652,7 +650,7 @@ TResultOrError<ui32> TJournal::ReadPagesCrc(const TLogRecord& record)
     return CalculatePagesCrc(response.GetResult());
 }
 
-TFuture<NProto::TError> TJournal::Write(TJournalRecord logRecord)
+TFuture<NProto::TError> TJournal::Write(TJournalRecordView logRecord)
 {
     auto error = ValidatePageRanges(logRecord.Ranges, DevicePageCount);
     if (HasError(error)) {
@@ -727,7 +725,7 @@ void TJournal::OnWriteLogRecord(NProto::TError error, TLogRecord& record)
 
 TFuture<NProto::TError> TJournal::WriteLogRecord(
     TLogRecord& record,
-    TVector<TPageRange> ranges)
+    TVector<TPageRangeView> ranges)
 {
     //
     // Allocate free journal pages for the pages of the request - they may be
@@ -736,7 +734,7 @@ TFuture<NProto::TError> TJournal::WriteLogRecord(
     //
 
     auto requestPageRanges = GetPageRangeRefs(ranges);
-    auto pages = ExtractPages(std::move(ranges));
+    auto pages = GetPages(ranges);
 
     auto locations = DataStore->Allocate(pages.size());
     if (locations.empty() && !pages.empty()) {

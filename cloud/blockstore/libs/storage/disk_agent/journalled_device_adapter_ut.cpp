@@ -115,7 +115,7 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     NProto::TError WritePages(TVector<TPageRange> ranges)
     {
-        return Device->WritePages(std::move(ranges)).GetValueSync();
+        return Device->WritePages(MakePageRangeViews(ranges)).GetValueSync();
     }
 
     auto ReadPages(TVector<TPageRangeRef> rangeRefs)
@@ -353,7 +353,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
             range.Pages.push_back(MakeBlock(DefaultBlockSize, 'Z'));
 
             const auto error =
-                region->WritePages(std::move(ranges)).GetValueSync();
+                region->WritePages(MakePageRangeViews(ranges)).GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -377,7 +377,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
             range.Pages.push_back(MakeBlock(DefaultBlockSize, 'Q'));
 
             const auto error =
-                region->WritePages(std::move(ranges)).GetValueSync();
+                region->WritePages(MakePageRangeViews(ranges)).GetValueSync();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
                 error.GetCode(),

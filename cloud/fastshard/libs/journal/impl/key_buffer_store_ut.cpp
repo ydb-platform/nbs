@@ -188,7 +188,8 @@ void WriteToDevice(const IDevicePtr& device, ui64 pageNo, TString content)
     range.Pages.emplace_back(content.data(), content.size());
 
     const auto error =
-        device->WritePages({std::move(range)}).GetValueSync();
+        device->WritePages(MakePageRangeViews({std::move(range)}))
+            .GetValueSync();
     UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 }
 
@@ -245,7 +246,7 @@ public:
     }
 
     NThreading::TFuture<NProto::TError> WritePages(
-        TVector<TPageRange> ranges) override
+        TVector<TPageRangeView> ranges) override
     {
         if (Broken) {
             return NThreading::MakeFuture(

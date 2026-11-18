@@ -140,6 +140,16 @@ ui32 CalculatePagesCrc(const TVector<TBuffer>& pages)
     return crc;
 }
 
+ui32 CalculatePagesCrc(const TVector<TStringBuf>& pages)
+{
+    ui32 crc = 0;
+    for (const auto& page: pages) {
+        crc = Crc32cExtend(crc, page.data(), page.size());
+    }
+
+    return crc;
+}
+
 ui32 CalculateMinRecordBufferSize()
 {
     auto logRecordBuffer = SerializeRecord(TLogRecord{

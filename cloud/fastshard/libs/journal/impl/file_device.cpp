@@ -189,7 +189,7 @@ public:
             });
     }
 
-    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
+    TFuture<NProto::TError> WritePages(TVector<TPageRangeView> ranges) override
     {
         for (const auto& range: ranges) {
             auto error = ValidatePages(range.FirstPageNo, range.Pages);
@@ -254,13 +254,14 @@ public:
 private:
     NProto::TError ValidatePages(
         ui64 firstPageNo,
-        const TVector<TBuffer>& pages) const
+        const TVector<TStringBuf>& pages) const
     {
-        for (const TBuffer& page: pages) {
-            if (page.Size() != PageSize) {
-                return MakeError(E_ARGUMENT, TStringBuilder()
-                    << "page size mismatch: expected " << PageSize
-                    << ", got " << page.Size());
+        for (const auto& page: pages) {
+            if (page.size() != PageSize) {
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder() << "page size mismatch: expected "
+                                     << PageSize << ", got " << page.size());
             }
         }
 
@@ -337,15 +338,15 @@ private:
     // the request does not have to outlive the write
     TFuture<NProto::TError> Write(
         ui64 firstPageNo,
-        const TVector<TBuffer>& pages)
+        const TVector<TStringBuf>& pages)
     {
         TAlignedBuffer buffer(
             static_cast<ui32>(pages.size() * PageSize),
             DirectIOAlignment);
 
         char* dst = buffer.Begin();
-        for (const TBuffer& page: pages) {
-            std::memcpy(dst, page.Data(), PageSize);
+        for (const auto& page: pages) {
+            std::memcpy(dst, page.data(), PageSize);
             dst += PageSize;
         }
 

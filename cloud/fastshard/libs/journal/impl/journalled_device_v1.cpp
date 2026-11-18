@@ -60,7 +60,7 @@ public:
                 });
     }
 
-    TFuture<NProto::TError> WriteLogRecord(TJournalRecord logRecord) final
+    TFuture<NProto::TError> WriteLogRecord(TJournalRecordView logRecord) final
     {
         if (logRecord.Lsn <= logRecord.PrevLsn) {
             return MakeFuture(MakeError(
@@ -107,7 +107,7 @@ public:
         return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) final
+    TFuture<NProto::TError> WritePages(TVector<TPageRangeView> ranges) final
     {
         return DataStore->WritePages(std::move(ranges))
             .Apply([](const auto& future) { return ExtractResponse(future); });

@@ -170,7 +170,7 @@ struct TJournalledDevices
         range.Pages.emplace_back(page.data(), page.size());
 
         return Nodes[i]
-            ->Device->WriteLogRecord(std::move(record))
+            ->Device->WriteLogRecord(NJournalled::MakeJournalRecordView(record))
             .GetValueSync();
     }
 };

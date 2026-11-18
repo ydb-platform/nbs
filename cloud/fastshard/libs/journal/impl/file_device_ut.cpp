@@ -140,7 +140,8 @@ struct TFixture: public NUnitTest::TBaseFixture
     NProto::TError Write(
         const TVector<std::pair<ui64, TVector<TString>>>& groups)
     {
-        return Device->WritePages(MakeRanges(groups)).GetValueSync();
+        return Device->WritePages(MakePageRangeViews(MakeRanges(groups)))
+            .GetValueSync();
     }
 
     void WritePages(const TVector<std::pair<ui64, TVector<TString>>>& groups)

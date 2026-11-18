@@ -36,20 +36,21 @@ constexpr ui64 MaxFlushBatchPages = 1024;
 struct TPageContent
 {
     ui64 PageNo = 0;
-    TBuffer* Content = nullptr;
+    TStringBuf Content;
 };
 
 // Merges the pages of the records into page ranges. The records are in lsn
-// order. If two records write the same page, the later record wins. The pages
-// are moved out of the records.
-TVector<TPageRange> MergeRecordPages(TJournalRecords records)
+// order. If two records write the same page, the later record wins. The
+// ranges point to the pages of the records, so the records must live as long
+// as the ranges.
+TVector<TPageRangeView> MergeRecordPages(const TJournalRecords& records)
 {
     //
     // Skip the merge: one record never writes the same page twice
     //
 
     if (records.size() == 1) {
-        return std::move(records[0].Ranges);
+        return MakePageRangeViews(records[0].Ranges);
     }
 
     //
@@ -66,18 +67,20 @@ TVector<TPageRange> MergeRecordPages(TJournalRecords records)
     TVector<TPageContent> pages;
     pages.reserve(pageCount);
 
-    for (auto& record: records) {
-        for (auto& range: record.Ranges) {
+    for (const auto& record: records) {
+        for (const auto& range: record.Ranges) {
             ui64 pageNo = range.FirstPageNo;
-            for (auto& page: range.Pages) {
-                pages.push_back({.PageNo = pageNo++, .Content = &page});
+            for (const auto& page: range.Pages) {
+                pages.push_back(
+                    {.PageNo = pageNo++,
+                     .Content = TStringBuf(page.Data(), page.Size())});
             }
         }
     }
 
     StableSortBy(pages, [](const auto& page) { return page.PageNo; });
 
-    TVector<TPageRange> ranges;
+    TVector<TPageRangeView> ranges;
 
     for (size_t i = 0; i < pages.size(); ++i) {
         const auto& [pageNo, content] = pages[i];
@@ -96,7 +99,7 @@ TVector<TPageRange> MergeRecordPages(TJournalRecords records)
             ranges.push_back({.FirstPageNo = pageNo});
         }
 
-        ranges.back().Pages.push_back(std::move(*content));
+        ranges.back().Pages.push_back(content);
     }
 
     return ranges;
@@ -216,7 +219,7 @@ private:
 public:
     // Fails if any range overlaps a held one. Returns the id to pass to
     // Release.
-    TResultOrError<ui64> TryAcquire(const TVector<TPageRange>& ranges)
+    TResultOrError<ui64> TryAcquire(const TVector<TPageRangeView>& ranges)
     {
         TVector<TPageRangeRef> refs;
 
@@ -295,7 +298,8 @@ public:
     TFuture<TResultOrError<TReadPagesResult>> ReadPages(
         TVector<TPageRangeRef> rangeRefs) override;
 
-    TFuture<NProto::TError> WriteLogRecord(TJournalRecord logRecord) override;
+    TFuture<NProto::TError> WriteLogRecord(
+        TJournalRecordView logRecord) override;
 
     TFuture<TResultOrError<TJournalTail>> ReadJournalTail(
         ui64 afterLsn,
@@ -303,7 +307,7 @@ public:
 
     TFuture<NProto::TError> AdvanceWatermark(ui64 lsnLowWatermark) override;
 
-    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override;
+    TFuture<NProto::TError> WritePages(TVector<TPageRangeView> ranges) override;
 
 private:
     NProto::TError CheckRestored() const;
@@ -319,7 +323,7 @@ private:
         TFuture<TResultOrError<TReadPagesResult>> journalFuture,
         TFuture<TResultOrError<TVector<TBuffer>>> deviceFuture);
 
-    NProto::TError DoWritePages(TVector<TPageRange> ranges);
+    NProto::TError DoWritePages(TVector<TPageRangeView> ranges);
 
     void ScheduleFlushCycle();
 
@@ -483,7 +487,7 @@ TResultOrError<TReadPagesResult> TJournalledDeviceV2::OnReadPages(
 }
 
 TFuture<NProto::TError> TJournalledDeviceV2::WriteLogRecord(
-    TJournalRecord logRecord)
+    TJournalRecordView logRecord)
 {
     if (auto error = CheckRestored(); HasError(error)) {
         return MakeFuture(std::move(error));
@@ -539,7 +543,7 @@ TFuture<NProto::TError> TJournalledDeviceV2::AdvanceWatermark(
 }
 
 TFuture<NProto::TError> TJournalledDeviceV2::WritePages(
-    TVector<TPageRange> ranges)
+    TVector<TPageRangeView> ranges)
 {
     if (auto error = CheckRestored(); HasError(error)) {
         return MakeFuture(std::move(error));
@@ -550,7 +554,7 @@ TFuture<NProto::TError> TJournalledDeviceV2::WritePages(
         { return self.DoWritePages(std::move(ranges)); });
 }
 
-NProto::TError TJournalledDeviceV2::DoWritePages(TVector<TPageRange> ranges)
+NProto::TError TJournalledDeviceV2::DoWritePages(TVector<TPageRangeView> ranges)
 {
     auto acquired = PagesInFlight.TryAcquire(ranges);
     if (HasError(acquired)) {
@@ -605,23 +609,23 @@ void TJournalledDeviceV2::RunFlushCycle()
         }
 
         const ui64 lsn = records.back().Lsn;
-        const size_t recordCount = records.size();
 
         //
-        // Write the pages of the whole batch in one request, the later
+        // Keep |records| until the write is done: the ranges point to their
+        // pages. Write the pages of the whole batch in one request, the later
         // records over the earlier ones, and only then mark the batch as
         // flushed: a reader goes to the data store for the flushed
         // records, so every page of the batch must be there first
         //
 
-        auto ranges = MergeRecordPages(std::move(records));
+        auto ranges = MergeRecordPages(records);
         if (!ranges.empty()) {
             auto acquired = PagesInFlight.TryAcquire(ranges);
             if (HasError(acquired)) {
                 // WritePages holds the pages, the next cycle retries
                 STORAGE_INFO(
                     "postpone the flush of "
-                    << recordCount << " records up to lsn " << lsn << ": "
+                    << records.size() << " records up to lsn " << lsn << ": "
                     << FormatError(acquired.GetError()));
                 break;
             }
@@ -633,8 +637,8 @@ void TJournalledDeviceV2::RunFlushCycle()
 
             if (HasError(writeError)) {
                 STORAGE_ERROR(
-                    "unable to flush " << recordCount << " records up to lsn "
-                                       << lsn << ": "
+                    "unable to flush " << records.size()
+                                       << " records up to lsn " << lsn << ": "
                                        << FormatError(writeError));
                 break;
             }
@@ -644,7 +648,7 @@ void TJournalledDeviceV2::RunFlushCycle()
         lastFlushedLsn = lsn;
 
         STORAGE_DEBUG(
-            "flushed " << recordCount << " records up to lsn " << lsn);
+            "flushed " << records.size() << " records up to lsn " << lsn);
 
         //
         // Free the journal pages of the batch right away and not when the

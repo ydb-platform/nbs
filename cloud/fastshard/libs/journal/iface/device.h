@@ -22,8 +22,9 @@ struct IDevice
     [[nodiscard]] virtual auto ReadPages(TVector<TPageRangeRef> rangeRefs)
         -> NThreading::TFuture<TResultOrError<TVector<TBuffer>>> = 0;
 
+    // The caller must keep the pages alive until the future is set.
     [[nodiscard]] virtual NThreading::TFuture<NProto::TError> WritePages(
-        TVector<TPageRange> ranges) = 0;
+        TVector<TPageRangeView> ranges) = 0;
 
     [[nodiscard]] virtual NThreading::TFuture<NProto::TError> ZeroPages(
         TVector<TPageRangeRef> ranges) = 0;

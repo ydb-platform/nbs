@@ -5,6 +5,7 @@
 #include "key_buffer_store.h"
 #include "log_record.h"
 #include "memory_device.h"
+#include "ut_helpers.h"
 
 #include <cloud/fastshard/libs/journal/iface/device.h>
 #include <cloud/fastshard/libs/journal/iface/journalled_device.h>
@@ -193,10 +194,10 @@ struct TRecordingDevice final: public IDevice
         return Impl->ReadPages(std::move(rangeRefs));
     }
 
-    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
+    TFuture<NProto::TError> WritePages(TVector<TPageRangeView> ranges) override
     {
         with_lock (Mutex) {
-            Writes.push_back(ranges);
+            Writes.push_back(CopyPageRanges(ranges));
         }
 
         return Impl->WritePages(std::move(ranges));
@@ -320,7 +321,9 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     ui32 WriteRecord(ui64 lsn, ui64 prevLsn, char tag, const TGroups& groups)
     {
-        return Device->WriteLogRecord(MakeRecord(lsn, prevLsn, tag, groups))
+        const auto record = MakeRecord(lsn, prevLsn, tag, groups);
+
+        return Device->WriteLogRecord(MakeJournalRecordView(record))
             .GetValueSync()
             .GetCode();
     }
@@ -328,9 +331,10 @@ struct TFixture: public NUnitTest::TBaseFixture
     void
     WriteRecordOrFail(ui64 lsn, ui64 prevLsn, char tag, const TGroups& groups)
     {
-        const auto error =
-            Device->WriteLogRecord(MakeRecord(lsn, prevLsn, tag, groups))
-                .GetValueSync();
+        const auto record = MakeRecord(lsn, prevLsn, tag, groups);
+
+        const auto error = Device->WriteLogRecord(MakeJournalRecordView(record))
+                               .GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
     }
@@ -381,8 +385,10 @@ struct TFixture: public NUnitTest::TBaseFixture
     // Writes the pages the device held before the journal ever saw it.
     void FillDataDevice(const TGroups& groups, char tag)
     {
+        const auto ranges = MakeRanges(tag, groups);
+
         const auto error =
-            DataDevice->WritePages(MakeRanges(tag, groups)).GetValueSync();
+            DataDevice->WritePages(MakePageRangeViews(ranges)).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
     }
@@ -737,7 +743,9 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2StackTest)
     Y_UNIT_TEST_F(ShouldAckOutOfOrderRecordOnceChainCloses, TFixture)
     {
         // the record arrives before the one it chains from
-        auto second = Device->WriteLogRecord(MakeRecord(2, 1, 'B', {{20, 1}}));
+        // the test keeps the record until the write is done
+        const auto record = MakeRecord(2, 1, 'B', {{20, 1}});
+        auto second = Device->WriteLogRecord(MakeJournalRecordView(record));
 
         Sleep(TDuration::MilliSeconds(200));
 

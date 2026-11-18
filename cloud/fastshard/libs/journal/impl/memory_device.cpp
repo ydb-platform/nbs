@@ -52,15 +52,15 @@ public:
         return MakeFuture<TResultOrError<TVector<TBuffer>>>(std::move(pages));
     }
 
-    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
+    TFuture<NProto::TError> WritePages(TVector<TPageRangeView> ranges) override
     {
         {
             std::lock_guard lock(Lock);
 
-            for (auto& range: ranges) {
+            for (const auto& range: ranges) {
                 ui64 pageNo = range.FirstPageNo;
-                for (auto& page: range.Pages) {
-                    Pages[pageNo++] = std::move(page);
+                for (const auto& page: range.Pages) {
+                    Pages[pageNo++].Assign(page.data(), page.size());
                 }
             }
         }

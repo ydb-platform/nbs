@@ -26,8 +26,10 @@ struct IJournalledDevice
     [[nodiscard]] virtual auto ReadPages(TVector<TPageRangeRef> rangeRefs)
         -> NThreading::TFuture<TResultOrError<TReadPagesResult>> = 0;
 
+    // The caller must keep the pages of the record alive until the future is
+    // set.
     [[nodiscard]] virtual NThreading::TFuture<NProto::TError> WriteLogRecord(
-        TJournalRecord logRecord) = 0;
+        TJournalRecordView logRecord) = 0;
 
     [[nodiscard]] virtual auto ReadJournalTail(
         ui64 afterLsn,
@@ -38,9 +40,10 @@ struct IJournalledDevice
         ui64 lsnLowWatermark) = 0;
 
     // Writes the pages right to the data area, past the journal. The caller
-    // must not read or write the same pages at the same time.
+    // must not read or write the same pages at the same time, and must keep
+    // the pages alive until the future is set.
     [[nodiscard]] virtual NThreading::TFuture<NProto::TError> WritePages(
-        TVector<TPageRange> ranges) = 0;
+        TVector<TPageRangeView> ranges) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -157,22 +157,25 @@ Y_UNIT_TEST_SUITE(TLogRecordTest)
             return TBuffer(content.data(), content.size());
         };
 
-        UNIT_ASSERT_VALUES_EQUAL(0, CalculatePagesCrc({}));
+        UNIT_ASSERT_VALUES_EQUAL(0, CalculatePagesCrc(TVector<TBuffer>()));
 
-        const ui32 crc = CalculatePagesCrc({page("abcd"), page("efgh")});
+        const ui32 crc =
+            CalculatePagesCrc(TVector<TBuffer>{page("abcd"), page("efgh")});
         UNIT_ASSERT_VALUES_UNEQUAL(0, crc);
 
         // the crc covers the contents as one stream, so it does not depend
         // on how the stream is cut into pages
-        UNIT_ASSERT_VALUES_EQUAL(crc, CalculatePagesCrc({page("abcdefgh")}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            crc,
+            CalculatePagesCrc(TVector<TBuffer>{page("abcdefgh")}));
 
         // but it does depend on their order and on every byte
         UNIT_ASSERT_VALUES_UNEQUAL(
             crc,
-            CalculatePagesCrc({page("efgh"), page("abcd")}));
+            CalculatePagesCrc(TVector<TBuffer>{page("efgh"), page("abcd")}));
         UNIT_ASSERT_VALUES_UNEQUAL(
             crc,
-            CalculatePagesCrc({page("abcd"), page("efgX")}));
+            CalculatePagesCrc(TVector<TBuffer>{page("abcd"), page("efgX")}));
     }
 }
 

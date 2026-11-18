@@ -182,28 +182,28 @@ public:
         future.Wait();
     }
 
-    [[nodiscard]] auto AcquireDevices(NProto::TAcquireDevicesRequest request)
-        -> TFuture<NProto::TAcquireDevicesResponse> final
+    [[nodiscard]] TFuture<NProto::TAcquireDevicesResponse> AcquireDevices(
+        NProto::TAcquireDevicesRequest request) final
     {
         return DeviceManager->AcquireDevices(std::move(request));
     }
 
-    [[nodiscard]] auto ReleaseDevices(NProto::TReleaseDevicesRequest request)
-        -> TFuture<NProto::TReleaseDevicesResponse> final
+    [[nodiscard]] TFuture<NProto::TReleaseDevicesResponse> ReleaseDevices(
+        NProto::TReleaseDevicesRequest request) final
     {
         return DeviceManager->ReleaseDevices(std::move(request));
     }
 
-    [[nodiscard]] auto FormatDevice(NProto::TFormatDeviceRequest request)
-        -> TFuture<NProto::TFormatDeviceResponse> final
+    [[nodiscard]] TFuture<NProto::TFormatDeviceResponse> FormatDevice(
+        NProto::TFormatDeviceRequest request) final
     {
         return Execute<NProto::TFormatDeviceResponse>(
             [req = std::move(request)](auto& self) mutable
             { return self.DoFormatDevice(std::move(req)); });
     }
 
-    [[nodiscard]] auto ListDevices(NProto::TListDevicesRequest request)
-        -> TFuture<NProto::TListDevicesResponse> final
+    [[nodiscard]] TFuture<NProto::TListDevicesResponse> ListDevices(
+        NProto::TListDevicesRequest request) final
     {
         Y_UNUSED(request);
 
@@ -225,8 +225,8 @@ public:
         return MakeFuture(std::move(response));
     }
 
-    [[nodiscard]] auto ReadPages(NProto::TReadPagesRequest request)
-        -> TFuture<NProto::TReadPagesResponse> final
+    [[nodiscard]] TFuture<NProto::TReadPagesResponse> ReadPages(
+        NProto::TReadPagesRequest request) final
     {
         auto [device, error] = GetDevice(
             request.GetDeviceUUID(),
@@ -255,8 +255,8 @@ public:
             });
     }
 
-    [[nodiscard]] auto WriteLogRecord(NProto::TWriteLogRecordRequest request)
-        -> TFuture<NProto::TWriteLogRecordResponse> final
+    [[nodiscard]] TFuture<NProto::TWriteLogRecordResponse> WriteLogRecord(
+        NProto::TWriteLogRecordRequest request) final
     {
         auto [device, error] = GetDevice(
             request.GetDeviceUUID(),
@@ -268,15 +268,22 @@ public:
                 TErrorResponse(error));
         }
 
-        auto future = device->WriteLogRecord(MakeJournalRecord(request));
+        auto future = device->WriteLogRecord(MakeJournalRecordView(request));
+
+        //
+        // Keep the request in the callback until the write is done: the
+        // record points to the pages of the request. A move of the request
+        // does not move the page data
+        //
 
         return future.Apply(
-            [](const auto& future) -> NProto::TWriteLogRecordResponse
+            [request = std::move(request)](
+                const auto& future) -> NProto::TWriteLogRecordResponse
             { return TErrorResponse(future.GetValue()); });
     }
 
-    [[nodiscard]] auto ReadJournalTail(NProto::TReadJournalTailRequest request)
-        -> TFuture<NProto::TReadJournalTailResponse> final
+    [[nodiscard]] TFuture<NProto::TReadJournalTailResponse> ReadJournalTail(
+        NProto::TReadJournalTailRequest request) final
     {
         auto [device, error] = GetDevice(
             request.GetDeviceUUID(),
@@ -325,8 +332,8 @@ public:
             { return TErrorResponse(future.GetValue()); });
     }
 
-    [[nodiscard]] auto WritePages(NProto::TWritePagesRequest request)
-        -> TFuture<NProto::TWritePagesResponse> final
+    [[nodiscard]] TFuture<NProto::TWritePagesResponse> WritePages(
+        NProto::TWritePagesRequest request) final
     {
         auto [device, error] = GetDevice(
             request.GetDeviceUUID(),
@@ -338,10 +345,17 @@ public:
                 TErrorResponse(error));
         }
 
-        auto future = device->WritePages(MakePageRanges(request));
+        auto future = device->WritePages(MakePageRangeViews(request));
+
+        //
+        // Keep the request in the callback until the write is done: the
+        // ranges point to the pages of the request. A move of the request
+        // does not move the page data
+        //
 
         return future.Apply(
-            [](const auto& future) -> NProto::TWritePagesResponse
+            [request = std::move(request)](
+                const auto& future) -> NProto::TWritePagesResponse
             { return TErrorResponse(future.GetValue()); });
     }
 
