@@ -83,9 +83,12 @@ struct TEvConfigsManager
     {
     };
 
-    // Notification of a configuration update.
-    // The recipient sends no acknowledgement to ConfigsManager.
+    // Notification of a configuration update, carrying the snapshot of one
+    // configuration publication.
+    // A newer configuration may be published before this event is processed.
     // Later publications do not replace the snapshot carried by this event.
+    // Within one subscription, notifications follow publication order.
+    // The recipient sends no acknowledgement to ConfigsManager.
     struct TEvConfigChanged final
         : NActors::TEventLocal<TEvConfigChanged, EvConfigChanged>
     {
