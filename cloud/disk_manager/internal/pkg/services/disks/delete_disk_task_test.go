@@ -65,6 +65,7 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 		ctx,
 		"disk",
 		"toplevel_task_id",
+		"",
 		mock.Anything,
 	).Return(diskMeta, nil).Once()
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
@@ -126,6 +127,7 @@ func TestDeleteDiskTaskRunWithDiskCreatedFromImage(t *testing.T) {
 		ctx,
 		"disk",
 		"toplevel_task_id",
+		"",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
 		ZoneID:       "zone",
@@ -187,6 +189,7 @@ func TestDeleteDiskTaskCancel(t *testing.T) {
 		ctx,
 		"disk",
 		"toplevel_task_id",
+		"",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
 		ZoneID:       "zone",
@@ -250,12 +253,18 @@ func testDeleteDiskTaskWithNonExistentDisk(
 		state:       &protos.DeleteDiskTaskState{},
 	}
 
+	cleanupTaskID := ""
+	if deleteIfNonExistent {
+		cleanupTaskID = "toplevel_task_id"
+	}
+
 	// There is no such disk in the database, return nil.
 	storage.On(
 		"DeleteDisk",
 		ctx,
 		"disk",
 		"toplevel_task_id",
+		cleanupTaskID,
 		mock.Anything,
 	).Return((*resources.DiskMeta)(nil), nil)
 
@@ -352,6 +361,7 @@ func testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
 		ctx,
 		"disk",
 		"toplevel_task_id",
+		"",
 		mock.Anything,
 	).Return(diskMeta, nil).Once()
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
@@ -443,12 +453,14 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		prepared bool
+		legacy   bool
 		sync     bool
 		errorAt  string
 	}{
 		{name: "async", prepared: true}, {name: "sync", prepared: true, sync: true},
-		{name: "legacy placeholder", prepared: false},
-		{name: "reservation read error", errorAt: "PrepareDiskCleanup"},
+		{name: "legacy placeholder", legacy: true},
+		{name: "completed deletion"},
+		{name: "reservation read error", errorAt: "DeleteDisk"},
 		{name: "incremental retry keeps reservation", prepared: true, errorAt: "WaitTask"},
 		{name: "NBS retry keeps reservation", prepared: true, errorAt: "Delete"},
 		{name: "completion callback failure", prepared: true, errorAt: "CompleteDiskCleanup"},
@@ -475,10 +487,25 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 			if tc.sync {
 				storage.On("GetDiskMeta", ctx, "disk").Return((*resources.DiskMeta)(nil), nil).Once()
 			}
-			storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything).Return((*resources.DiskMeta)(nil), nil).Once()
-			storage.On("PrepareDiskCleanup", ctx, "disk", id).Return(tc.prepared, errorFor("PrepareDiskCleanup")).Once()
+			var deleteMeta *resources.DiskMeta
+			if tc.legacy {
+				deleteMeta = &resources.DiskMeta{ID: "disk", ZoneID: "cell", DeleteTaskID: id}
+			}
+			storage.On("DeleteDisk", ctx, "disk", id, id, mock.Anything).Return(deleteMeta, errorFor("DeleteDisk")).Once()
 			setup := func() {
-				if tc.errorAt == "PrepareDiskCleanup" {
+				if tc.errorAt == "DeleteDisk" {
+					return
+				}
+				if tc.legacy {
+					scheduler.On("ScheduleTask", headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_incremental"), "dataplane.DeleteDiskFromIncremental", "", &dataplane_protos.DeleteDiskFromIncrementalRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}}).Return("incremental", nil).Once()
+					scheduler.On("WaitTask", ctx, execCtx, "incremental").Return(nil, nil).Once()
+					factory.On("GetClient", ctx, "cell").Return(client, nil).Once()
+					client.On("Delete", ctx, "disk").Return(nil).Once()
+					storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil).Once()
+					return
+				}
+				storage.On("PrepareDiskCleanup", ctx, "disk", id).Return(tc.prepared, nil).Once()
+				if !tc.prepared {
 					return
 				}
 				scheduler.On("ScheduleTask", headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_incremental"), "dataplane.DeleteDiskFromIncremental", "", &dataplane_protos.DeleteDiskFromIncrementalRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}}).Return("incremental", nil).Once()
@@ -493,10 +520,6 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 				}
 				client.On(method, ctx, "disk").Return(errorFor("Delete")).Once()
 				if tc.errorAt == "Delete" {
-					return
-				}
-				if !tc.prepared {
-					storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil).Once()
 					return
 				}
 				tx := &persistence.Transaction{}

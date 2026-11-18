@@ -18,6 +18,23 @@ func diskIsTombstone(state diskState) bool {
 	return state.status == diskStatusDeleting && state.tombstone
 }
 
+func registerDiskCleanupID(state *diskState, cleanupTaskID string) error {
+	if len(cleanupTaskID) == 0 {
+		return nil
+	}
+
+	ids, err := diskCleanupIDs(*state)
+	if err != nil {
+		return err
+	}
+	if slices.Contains(ids, cleanupTaskID) {
+		return nil
+	}
+
+	state.cleanupTaskIDs, err = encodeDiskCleanupIDs(append(ids, cleanupTaskID))
+	return err
+}
+
 func diskCleanupIDs(state diskState) ([]string, error) {
 	var ids []string
 	if len(state.cleanupTaskIDs) == 0 {
@@ -51,7 +68,7 @@ func encodeDiskCleanupIDs(ids []string) (string, error) {
 func (s *storageYDB) PrepareDiskCleanup(
 	ctx context.Context,
 	diskID string,
-	cleanupID string,
+	cleanupTaskID string,
 ) (bool, error) {
 
 	var prepared bool
@@ -75,18 +92,7 @@ func (s *storageYDB) PrepareDiskCleanup(
 				return tx.Commit(ctx)
 			}
 
-			ids, err := diskCleanupIDs(state)
-			if err != nil {
-				return err
-			}
-
-			if slices.Contains(ids, cleanupID) {
-				return tx.Commit(ctx)
-			}
-
-			state.cleanupTaskIDs, err = encodeDiskCleanupIDs(
-				append(ids, cleanupID),
-			)
+			err = registerDiskCleanupID(&state, cleanupTaskID)
 			if err != nil {
 				return err
 			}
@@ -106,7 +112,7 @@ func (s *storageYDB) CompleteDiskCleanup(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	diskID string,
-	cleanupID string,
+	cleanupTaskID string,
 ) error {
 
 	state, err := s.getDiskState(ctx, tx, diskID)
@@ -119,11 +125,11 @@ func (s *storageYDB) CompleteDiskCleanup(
 		return err
 	}
 
-	if !slices.Contains(ids, cleanupID) {
+	if !slices.Contains(ids, cleanupTaskID) {
 		return nil
 	}
 
-	ids = slices.DeleteFunc(ids, func(id string) bool { return id == cleanupID })
+	ids = slices.DeleteFunc(ids, func(id string) bool { return id == cleanupTaskID })
 
 	state.cleanupTaskIDs, err = encodeDiskCleanupIDs(ids)
 	if err != nil {

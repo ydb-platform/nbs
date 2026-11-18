@@ -53,7 +53,7 @@ func completeDiskCleanup(
 	db *persistence.YDBClient,
 	storage Storage,
 	diskID string,
-	cleanupID string,
+	cleanupTaskID string,
 	commit bool,
 ) error {
 
@@ -66,7 +66,7 @@ func completeDiskCleanup(
 			}
 			defer tx.Rollback(ctx)
 
-			err = storage.CompleteDiskCleanup(ctx, tx, diskID, cleanupID)
+			err = storage.CompleteDiskCleanup(ctx, tx, diskID, cleanupTaskID)
 			if err != nil || !commit {
 				return err
 			}
@@ -97,11 +97,11 @@ func executeRW(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestTrackedDiskDeletionCompletesOnLastRelease(t *testing.T) {
+func TestTombstoneCompletesOnLastCleanupRelease(t *testing.T) {
 	ctx, db, storage := setupTest(t)
 	defer db.Close(ctx)
 
-	actual, err := storage.DeleteDisk(ctx, "disk", "delete", time.Now())
+	actual, err := storage.DeleteDisk(ctx, "disk", "delete", "delete", time.Now())
 	require.NoError(t, err)
 	require.Nil(t, actual)
 
@@ -129,7 +129,7 @@ func TestTrackedDiskDeletionCompletesOnLastRelease(t *testing.T) {
 
 	state := readTrackedDisk(t, ctx, db, storage, "disk")
 	require.True(t, diskIsTombstone(state))
-	require.Equal(t, `["holder","first","second"]`, state.cleanupTaskIDs)
+	require.Equal(t, `["delete","holder","first","second"]`, state.cleanupTaskIDs)
 	require.False(t, state.deletedAt.After(time.Unix(0, 0)))
 
 	// Reservation is released only together with the transaction.
@@ -137,7 +137,7 @@ func TestTrackedDiskDeletionCompletesOnLastRelease(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(
 		t,
-		`["holder","first","second"]`,
+		`["delete","holder","first","second"]`,
 		readTrackedDisk(t, ctx, db, storage, "disk").cleanupTaskIDs,
 	)
 
@@ -146,10 +146,10 @@ func TestTrackedDiskDeletionCompletesOnLastRelease(t *testing.T) {
 
 	state = readTrackedDisk(t, ctx, db, storage, "disk")
 	require.True(t, diskIsTombstone(state))
-	require.Equal(t, `["holder","second"]`, state.cleanupTaskIDs)
+	require.Equal(t, `["delete","holder","second"]`, state.cleanupTaskIDs)
 
 	beforeCompletion := time.Now()
-	for _, id := range []string{"holder", "second", "unknown"} {
+	for _, id := range []string{"delete", "holder", "second", "unknown"} {
 		err = completeDiskCleanup(ctx, db, storage, "disk", id, true)
 		require.NoError(t, err)
 	}
@@ -181,7 +181,7 @@ func TestTrackedDiskDeletionCompletesOnLastRelease(t *testing.T) {
 	require.Empty(t, readTrackedDisk(t, ctx, db, storage, "disk").id)
 }
 
-func TestTrackedDeletionRejectsCompletedDisk(t *testing.T) {
+func TestPrepareDiskCleanupRejectsCompletedDisk(t *testing.T) {
 	ctx, db, storage := setupTest(t)
 	defer db.Close(ctx)
 
@@ -192,7 +192,7 @@ func TestTrackedDeletionRejectsCompletedDisk(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	_, err = storage.DeleteDisk(ctx, "disk", "delete", time.Now())
+	_, err = storage.DeleteDisk(ctx, "disk", "delete", "delete", time.Now())
 	require.NoError(t, err)
 
 	err = storage.DiskDeleted(ctx, "disk", time.Now())
@@ -229,7 +229,7 @@ func TestMissingDiskCreatesTombstone(t *testing.T) {
 	ctx, db, storage := setupTest(t)
 	defer db.Close(ctx)
 
-	actual, err := storage.DeleteDisk(ctx, "disk", "delete", time.Now())
+	actual, err := storage.DeleteDisk(ctx, "disk", "delete", "delete", time.Now())
 	require.NoError(t, err)
 	require.Nil(t, actual)
 
@@ -241,21 +241,25 @@ func TestMissingDiskCreatesTombstone(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, prepared)
 
-	// Legacy path finalizes a tombstone without holders via DiskDeleted.
+	// DiskDeleted must not finalize while cleanup holders are present.
 	err = storage.DiskDeleted(ctx, "disk", time.Now())
 	require.NoError(t, err)
 	require.True(t, diskIsTombstone(readTrackedDisk(t, ctx, db, storage, "disk")))
 
 	err = completeDiskCleanup(ctx, db, storage, "disk", "cleanup", true)
 	require.NoError(t, err)
+	require.True(t, diskIsTombstone(readTrackedDisk(t, ctx, db, storage, "disk")))
+
+	err = completeDiskCleanup(ctx, db, storage, "disk", "delete", true)
+	require.NoError(t, err)
 	require.Equal(t, diskStatusDeleted, readTrackedDisk(t, ctx, db, storage, "disk").status)
 
-	actual, err = storage.DeleteDisk(ctx, "disk2", "delete2", time.Now())
+	actual, err = storage.DeleteDisk(ctx, "disk2", "delete2", "delete2", time.Now())
 	require.NoError(t, err)
 	require.Nil(t, actual)
 	require.True(t, diskIsTombstone(readTrackedDisk(t, ctx, db, storage, "disk2")))
 
-	err = storage.DiskDeleted(ctx, "disk2", time.Now())
+	err = completeDiskCleanup(ctx, db, storage, "disk2", "delete2", true)
 	require.NoError(t, err)
 	require.Equal(t, diskStatusDeleted, readTrackedDisk(t, ctx, db, storage, "disk2").status)
 }
@@ -287,7 +291,7 @@ func TestLegacyDeletedDiskCleanup(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			_, err := storage.DeleteDisk(ctx, "disk", "delete", time.Now())
+			_, err := storage.DeleteDisk(ctx, "disk", "delete", "delete", time.Now())
 			require.NoError(t, err)
 
 			if tc.createDisk {

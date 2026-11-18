@@ -65,10 +65,16 @@ func (t *deleteDiskTask) deleteDisk(
 	selfTaskID := execCtx.GetTaskID()
 	diskID := t.request.Disk.DiskId
 
+	cleanupTaskID := ""
+	if t.request.DeleteIfNonExistent {
+		cleanupTaskID = selfTaskID
+	}
+
 	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
 		diskID,
 		selfTaskID,
+		cleanupTaskID,
 		time.Now(),
 	)
 	if err != nil {
@@ -167,37 +173,31 @@ func (t *deleteDiskTask) deleteDiskWithoutMetadata(
 
 	diskID := t.request.Disk.DiskId
 	zoneID := t.request.Disk.ZoneId
-	if len(zoneID) == 0 {
-		// Nothing to clean up externally. DiskDeleted finalizes a tombstone
-		// without holders and is a no-op for legacy Deleted placeholders.
-		return t.storage.DiskDeleted(ctx, diskID, time.Now())
-	}
-
 	selfTaskID := execCtx.GetTaskID()
 
-	// Tombstones are cleaned via Prepare/Complete. Legacy Deleted placeholders
-	// (in-flight tasks from before the tombstone rollout) return prepared=false
-	// and still finish through DiskDeleted after external cleanup.
 	prepared, err := t.storage.PrepareDiskCleanup(ctx, diskID, selfTaskID)
 	if err != nil {
 		return err
 	}
-
-	err = t.deleteDiskFromExternal(ctx, execCtx, diskID, zoneID)
-	if err != nil {
-		return err
+	if !prepared {
+		return nil
 	}
 
-	if prepared {
-		return execCtx.FinishWithPreparation(
-			ctx,
-			func(ctx context.Context, tx *persistence.Transaction) error {
-				return t.storage.CompleteDiskCleanup(ctx, tx, diskID, selfTaskID)
-			},
-		)
+	// Zone-less: no external stores to clean; still finish via Complete so the
+	// tombstone stays reserved until the task itself commits.
+	if len(zoneID) != 0 {
+		err = t.deleteDiskFromExternal(ctx, execCtx, diskID, zoneID)
+		if err != nil {
+			return err
+		}
 	}
 
-	return t.storage.DiskDeleted(ctx, diskID, time.Now())
+	return execCtx.FinishWithPreparation(
+		ctx,
+		func(ctx context.Context, tx *persistence.Transaction) error {
+			return t.storage.CompleteDiskCleanup(ctx, tx, diskID, selfTaskID)
+		},
+	)
 }
 
 func (t *deleteDiskTask) deleteDiskFromExternal(

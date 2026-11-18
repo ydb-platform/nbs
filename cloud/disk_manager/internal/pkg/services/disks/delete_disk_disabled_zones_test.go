@@ -210,14 +210,23 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 						execCtx.On("SetEstimatedInflightDuration", time.Second).Once()
 					}
 				}
-				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything).
-					Return(tc.diskMeta, errorFor("DeleteDisk")).Once()
+				trackedMissingDisk := tc.diskMeta == nil && tc.deleteIfNonExistent
+				if tc.deleteIfNonExistent {
+					storage.On(
+						"DeleteDisk",
+						ctx,
+						"disk",
+						"toplevel_task_id",
+						"toplevel_task_id",
+						mock.Anything,
+					).Return(tc.diskMeta, errorFor("DeleteDisk")).Once()
+				} else {
+					storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", "", mock.Anything).
+						Return(tc.diskMeta, errorFor("DeleteDisk")).Once()
+				}
 				if tc.errorAt == "DeleteDisk" {
 					return
 				}
-				trackedMissingDisk := tc.diskMeta == nil &&
-					tc.deleteIfNonExistent &&
-					len(tc.expectedZone) != 0
 				if trackedMissingDisk {
 					storage.On(
 						"PrepareDiskCleanup",

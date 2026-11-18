@@ -492,6 +492,7 @@ func (s *storageYDB) deleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
+	cleanupTaskID string,
 ) (*DiskMeta, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -527,26 +528,41 @@ func (s *storageYDB) deleteDisk(
 		state = states[0]
 
 		if state.status >= diskStatusDeleting {
-			// Disk already marked as deleting/deleted.
+			switch {
+			case diskIsTombstone(state):
+				if len(cleanupTaskID) != 0 {
+					err = registerDiskCleanupID(&state, cleanupTaskID)
+					if err != nil {
+						return nil, err
+					}
+					err = s.updateDiskState(ctx, tx, state)
+					if err != nil {
+						return nil, err
+					}
+				}
+			case state.status == diskStatusDeleted && state.deleteTaskID != taskID:
+				// Foreign Deleted: no unreserved cleanup.
+			case state.status == diskStatusDeleted && state.tombstone:
+				// Completed tombstone: no unreserved cleanup.
+			default:
+				// Live deleting disk, or own legacy Deleted placeholder.
+				err = tx.Commit(ctx)
+				if err != nil {
+					return nil, err
+				}
+				return state.toDiskMeta(), nil
+			}
 
 			err = tx.Commit(ctx)
 			if err != nil {
 				return nil, err
 			}
-
-			// Should be idempotent.
-			if state.status == diskStatusDeleted || state.tombstone {
-				return nil, nil
-			}
-
-			return state.toDiskMeta(), nil
+			return nil, nil
 		}
 
 		state.status = diskStatusDeleting
 	} else {
-		// Create a tombstone disk entry to avoid race conditions between
-		// concurrent disk deletion and disk creation operations. The tombstone
-		// prevents new disk creation with the same ID until cleanup finishes.
+		// Tombstone keeps the disk ID reserved until cleanup finishes.
 		state.status = diskStatusDeleting
 		state.tombstone = true
 	}
@@ -554,6 +570,13 @@ func (s *storageYDB) deleteDisk(
 	state.id = diskID
 	state.deleteTaskID = taskID
 	state.deletingAt = deletingAt
+
+	if len(cleanupTaskID) != 0 && diskIsTombstone(state) {
+		err = registerDiskCleanupID(&state, cleanupTaskID)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	err = s.updateDiskState(ctx, tx, state)
 	if err != nil {
@@ -565,8 +588,7 @@ func (s *storageYDB) deleteDisk(
 		return nil, err
 	}
 
-	// Should be idempotent.
-	if state.status == diskStatusDeleted || state.tombstone {
+	if state.tombstone {
 		return nil, nil
 	}
 
@@ -1021,6 +1043,7 @@ func (s *storageYDB) DeleteDisk(
 	ctx context.Context,
 	diskID string,
 	taskID string,
+	cleanupTaskID string,
 	deletingAt time.Time,
 ) (*DiskMeta, error) {
 
@@ -1030,7 +1053,14 @@ func (s *storageYDB) DeleteDisk(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt)
+			disk, err = s.deleteDisk(
+				ctx,
+				session,
+				diskID,
+				taskID,
+				deletingAt,
+				cleanupTaskID,
+			)
 			return err
 		},
 	)

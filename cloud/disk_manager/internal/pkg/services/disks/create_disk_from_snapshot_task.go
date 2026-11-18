@@ -203,6 +203,7 @@ func (t *createDiskFromSnapshotTask) Cancel(
 		ctx,
 		params.Disk.DiskId,
 		selfTaskID,
+		selfTaskID,
 		time.Now(),
 	)
 	if err != nil {

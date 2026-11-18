@@ -120,6 +120,7 @@ func (t *createEmptyDiskTask) Cancel(
 		ctx,
 		t.params.Disk.DiskId,
 		selfTaskID,
+		selfTaskID,
 		time.Now(),
 	)
 	if err != nil {
