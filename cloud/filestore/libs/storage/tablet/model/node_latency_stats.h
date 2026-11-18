@@ -3,10 +3,12 @@
 #include "ranking.h"
 
 #include <cloud/filestore/libs/service/request.h>
+#include <cloud/filestore/public/api/protos/node.pb.h>
 
 #include <util/datetime/base.h>
 #include <util/digest/multi.h>
-#include <util/generic/hash.h>
+
+#include <array>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -15,7 +17,7 @@ namespace NCloud::NFileStore::NStorage {
 struct TNodeLatencyStats
 {
     ui64 NodeId = 0;
-    ui32 NodeType = 0;
+    NProto::ENodeType NodeType = NProto::E_INVALID_NODE;
     EFileStoreRequest RequestType = EFileStoreRequest::MAX;
     ui64 RequestCount = 0;
     ui64 TotalLatencyUs = 0;
@@ -75,7 +77,8 @@ private:
         TLatencyKeyHash>;
 
     TRanking Ranking;
-    THashMap<EFileStoreRequest, TRequestTypeLatencyStats> RequestTypeStats;
+    std::array<TRequestTypeLatencyStats, FileStoreRequestCount>
+        RequestTypeStats{};
     bool Enabled;
 
 public:
@@ -84,7 +87,7 @@ public:
     void Reset(size_t maxEntries, TDuration decayHalfLife);
     bool UpdateLatencyStats(
         ui64 nodeId,
-        ui32 nodeType,
+        NProto::ENodeType nodeType,
         EFileStoreRequest requestType,
         TInstant now,
         TDuration latency);
@@ -94,7 +97,12 @@ public:
         TInstant now,
         TDuration latency)
     {
-        return UpdateLatencyStats(nodeId, 0, requestType, now, latency);
+        return UpdateLatencyStats(
+            nodeId,
+            NProto::E_INVALID_NODE,
+            requestType,
+            now,
+            latency);
     }
     static double CalculateLatencyDecay(
         const TNodeLatencyStats& stats,

@@ -65,7 +65,7 @@ void TNodeAccessStatsTracker::Reset(size_t maxEntries, TDuration halfLife)
 
 bool TNodeAccessStatsTracker::UpdateAccessStats(
     ui64 nodeId,
-    ui32 nodeType,
+    NProto::ENodeType nodeType,
     TInstant now)
 {
     if (!Enabled) {

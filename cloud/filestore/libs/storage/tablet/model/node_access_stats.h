@@ -2,6 +2,8 @@
 
 #include "ranking.h"
 
+#include <cloud/filestore/public/api/protos/node.pb.h>
+
 #include <util/datetime/base.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -11,7 +13,7 @@ namespace NCloud::NFileStore::NStorage {
 struct TNodeAccessStats
 {
     ui64 NodeId = 0;
-    ui32 NodeType = 0;
+    NProto::ENodeType NodeType = NProto::E_INVALID_NODE;
     ui64 RequestCount = 0;
     double AccessScore = 0;
     TInstant LastAccessed;
@@ -59,10 +61,13 @@ public:
 
     void Reset(size_t maxEntries, TDuration halfLife);
 
-    bool UpdateAccessStats(ui64 nodeId, ui32 nodeType, TInstant now);
+    bool UpdateAccessStats(
+        ui64 nodeId,
+        NProto::ENodeType nodeType,
+        TInstant now);
     bool UpdateAccessStats(ui64 nodeId, TInstant now)
     {
-        return UpdateAccessStats(nodeId, 0, now);
+        return UpdateAccessStats(nodeId, NProto::E_INVALID_NODE, now);
     }
 
     TVector<TNodeAccessStats> GetStats(TInstant now, ui32 n) const;

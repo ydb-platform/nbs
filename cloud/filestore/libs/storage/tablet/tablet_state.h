@@ -332,7 +332,10 @@ public:
         StateLoaded = true;
     }
 
-    bool UpdateAccessStats(ui64 nodeId, ui32 nodeType, TInstant now);
+    bool UpdateAccessStats(
+        ui64 nodeId,
+        NProto::ENodeType nodeType,
+        TInstant now);
 
     TVector<TNodeAccessStats> GetNodeAccessStats(TInstant now, ui32 n) const;
 
@@ -460,7 +463,7 @@ public:
 
     bool UpdateLatencyStats(
         ui64 nodeId,
-        ui32 nodeType,
+        NProto::ENodeType nodeType,
         EFileStoreRequest requestType,
         TInstant now,
         TDuration latency);

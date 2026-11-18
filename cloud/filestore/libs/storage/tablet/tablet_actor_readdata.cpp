@@ -711,17 +711,18 @@ void TIndexTabletActor::HandleReadDataCompleted(
     WorkerActors.erase(ev->Sender);
 
     Metrics->ReadData.Update(msg->Count, msg->Size, msg->Time);
-    if (!UpdateAccessStats(
-            msg->NodeId,
-            NProto::E_REGULAR_NODE,
-            ctx.Now()) ||
-        !UpdateLatencyStats(
-            msg->NodeId,
-            NProto::E_REGULAR_NODE,
-            EFileStoreRequest::ReadData,
-            ctx.Now(),
-            msg->Time))
-    {
+    const bool accessUpdated = UpdateAccessStats(
+        msg->NodeId,
+        NProto::E_REGULAR_NODE,
+        ctx.Now());
+    const bool latencyUpdated = UpdateLatencyStats(
+        msg->NodeId,
+        NProto::E_REGULAR_NODE,
+        EFileStoreRequest::ReadData,
+        ctx.Now(),
+        msg->Time);
+
+    if (!accessUpdated || !latencyUpdated) {
         ReportDiagnosticStatsInsertFailed();
     }
     if (msg->IsOverloaded) {
@@ -798,7 +799,7 @@ void TIndexTabletActor::HandleDescribeData(
         : GetCurrentCommitId();
 
     NProtoPrivate::TDescribeDataResponse result;
-    const bool filled = handle && TryFillDescribeResult(
+    const bool filled = TryFillDescribeResult(
         nodeId,
         msg->Record.GetHandle(),
         commitId,
@@ -817,19 +818,18 @@ void TIndexTabletActor::HandleDescribeData(
             requestInfo->CallContext,
             ctx);
 
-        // A cache hit here requires a handle, and handles currently target
-        // regular nodes only.
-        if (!UpdateAccessStats(
-                nodeId,
-                NProto::E_REGULAR_NODE,
-                ctx.Now()) ||
-            !UpdateLatencyStats(
-                nodeId,
-                NProto::E_REGULAR_NODE,
-                EFileStoreRequest::DescribeData,
-                ctx.Now(),
-                ctx.Now() - requestInfo->StartedTs))
-        {
+        const bool accessUpdated = UpdateAccessStats(
+            nodeId,
+            NProto::E_REGULAR_NODE,
+            ctx.Now());
+        const bool latencyUpdated = UpdateLatencyStats(
+            nodeId,
+            NProto::E_REGULAR_NODE,
+            EFileStoreRequest::DescribeData,
+            ctx.Now(),
+            ctx.Now() - requestInfo->StartedTs);
+
+        if (!accessUpdated || !latencyUpdated) {
             ReportDiagnosticStatsInsertFailed();
         }
 
@@ -1098,17 +1098,18 @@ void TIndexTabletActor::CompleteTx_ReadData(
             args.OriginByteRange.Length,
             ctx.Now() - args.RequestInfo->StartedTs);
 
-        if (!UpdateAccessStats(
-                args.NodeId,
-                NProto::E_REGULAR_NODE,
-                ctx.Now()) ||
-            !UpdateLatencyStats(
-                args.NodeId,
-                NProto::E_REGULAR_NODE,
-                EFileStoreRequest::DescribeData,
-                ctx.Now(),
-                ctx.Now() - args.RequestInfo->StartedTs))
-        {
+        const bool accessUpdated = UpdateAccessStats(
+            args.NodeId,
+            NProto::E_REGULAR_NODE,
+            ctx.Now());
+        const bool latencyUpdated = UpdateLatencyStats(
+            args.NodeId,
+            NProto::E_REGULAR_NODE,
+            EFileStoreRequest::DescribeData,
+            ctx.Now(),
+            ctx.Now() - args.RequestInfo->StartedTs);
+
+        if (!accessUpdated || !latencyUpdated) {
             ReportDiagnosticStatsInsertFailed();
         }
 
@@ -1196,17 +1197,18 @@ void TIndexTabletActor::CompleteTx_ReadData(
             MakeError(S_OK),
             ProfileLog);
 
-        if (!UpdateAccessStats(
-                args.NodeId,
-                NProto::E_REGULAR_NODE,
-                ctx.Now()) ||
-            !UpdateLatencyStats(
-                args.NodeId,
-                NProto::E_REGULAR_NODE,
-                EFileStoreRequest::ReadData,
-                ctx.Now(),
-                ctx.Now() - args.RequestInfo->StartedTs))
-        {
+        const bool accessUpdated = UpdateAccessStats(
+            args.NodeId,
+            NProto::E_REGULAR_NODE,
+            ctx.Now());
+        const bool latencyUpdated = UpdateLatencyStats(
+            args.NodeId,
+            NProto::E_REGULAR_NODE,
+            EFileStoreRequest::ReadData,
+            ctx.Now(),
+            ctx.Now() - args.RequestInfo->StartedTs);
+
+        if (!accessUpdated || !latencyUpdated) {
             ReportDiagnosticStatsInsertFailed();
         }
 
