@@ -60,7 +60,7 @@ struct TServerActorSystemArgs
     IBlockstoreConfigMutablePtr StartupBlockstoreConfig;
 
     // Configuration publication point initialized by bootstrap; non-null and
-    // shared with its read-only provider and the process-wide getter.
+    // shared with its read-only getter and the process-wide provider.
     TBlockstoreConfigHolderPtr ConfigHolder;
 
     ILoggingServicePtr Logging;
