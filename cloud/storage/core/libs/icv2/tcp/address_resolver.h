@@ -24,7 +24,10 @@ struct IAddressResolver
 
 using IAddressResolverPtr = std::shared_ptr<IAddressResolver>;
 
-// Use a running asynchronous executor and keep it alive until lookups finish.
+// Use a running asynchronous executor with workers dedicated to blocking DNS
+// lookups. Do not use I/O or request completion workers. Keep the executor
+// running until all lookup futures are ready; DNS has no timeout or
+// cancellation at this interface.
 IAddressResolverPtr CreateAddressResolver(ITaskQueuePtr executor);
 
 }   // namespace NCloud::NIcV2

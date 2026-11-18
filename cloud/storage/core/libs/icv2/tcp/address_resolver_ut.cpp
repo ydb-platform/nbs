@@ -58,6 +58,9 @@ Y_UNIT_TEST_SUITE(TAddressResolverTest)
             !HasError(result.GetError()),
             FormatError(result.GetError()));
         UNIT_ASSERT(!result.GetResult().empty());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "127.0.0.1",
+            result.GetResult().front().GetAddress());
         UNIT_ASSERT_VALUES_EQUAL(1234, result.GetResult().front().GetPort());
     }
 

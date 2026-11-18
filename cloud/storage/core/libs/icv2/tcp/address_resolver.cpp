@@ -4,6 +4,8 @@
 
 #include <util/network/address.h>
 
+#include <cstring>
+
 namespace NCloud::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -19,8 +21,12 @@ TResolveResult ResolveHost(const TString& host, ui16 port)
         TVector<NInterconnect::TAddress> addresses;
         for (auto it = resolved.Begin(); it != resolved.End(); ++it) {
             if (it->ai_family == AF_INET || it->ai_family == AF_INET6) {
-                NAddr::TAddrInfo address(&*it);
-                addresses.emplace_back(address);
+                NInterconnect::TAddress address;
+                Y_DEBUG_ABORT_UNLESS(it->ai_addr);
+                Y_DEBUG_ABORT_UNLESS(it->ai_addrlen <= sizeof(address.Addr));
+
+                std::memcpy(&address.Addr, it->ai_addr, it->ai_addrlen);
+                addresses.push_back(address);
             }
         }
         if (addresses.empty()) {

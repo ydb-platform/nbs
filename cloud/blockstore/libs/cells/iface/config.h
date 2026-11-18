@@ -155,7 +155,7 @@ public:
     [[nodiscard]] TString GetListenAddress() const;
     [[nodiscard]] ui32 GetPort() const;
     [[nodiscard]] ui32 GetThreads() const;
-    [[nodiscard]] ui32 GetHandshakeTimeoutMs() const;
+    [[nodiscard]] TDuration GetHandshakeTimeout() const;
     [[nodiscard]] bool GetChecksumEvents() const;
     [[nodiscard]] ui32 GetMaxConnections() const;
     [[nodiscard]] ui32 GetMaxPendingRequests() const;
