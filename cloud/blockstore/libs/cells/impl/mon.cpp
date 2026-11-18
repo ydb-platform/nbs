@@ -50,10 +50,15 @@ struct TEvPrivate
 {
     enum EEv
     {
-        EvSearchCompleted = TBlockStorePrivateEvents::CELLS_START,
+        EvSearchCompleted =
+            TBlockStorePrivateEvents::CELLS_MONITORING_START,
         EvTransportChanged,
         EvEnd
     };
+
+    static_assert(
+        EvEnd <= static_cast<int>(
+            TBlockStorePrivateEvents::CELLS_MONITORING_END));
 
     struct TEvSearchCompleted
         : public TEventLocal<TEvSearchCompleted, EvSearchCompleted>

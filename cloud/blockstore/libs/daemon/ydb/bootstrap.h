@@ -174,6 +174,7 @@ protected:
     void WarmupBSGroupConnections() override;
 
     void SetupCellManager() override;
+    void SetupCellProxy() override;
     void SetupCellMonitoringActor() override;
     IBlockStorePtr WrapServiceForInterCellForward(
         IBlockStorePtr authorized,
