@@ -94,11 +94,10 @@ void TReadBlobActor::Bootstrap(const TActorContext& ctx)
             ReportInvalidReadBlobOffsets(
                 errorMessage,
                 {{"tabletId", PartitionTabletId}});
-            ReplyError(
+            ReplyAndDie(
                 ctx,
-                errorMessage,
-                EErrorSource::ContractViolation,
-                nullptr);
+                std::make_unique<TResponse>(
+                    MakeError(E_ARGUMENT, errorMessage)));
             return;
         }
         lastOffset = offset;
@@ -254,26 +253,16 @@ void TReadBlobActor::ReplyError(
     const NKikimr::TEvBlobStorage::TEvGetResult* response)
 {
     auto error = MakeError(E_REJECTED, TString(errorMessage));
-    if (response) {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::PARTITION_COMMON,
-            "[%lu] TEvBlobStorage::TEvGet failed: %s\n%s",
-            PartitionTabletId,
-            FormatError(error).data(),
-            response->Print(false).data());
+    LOG_ERROR(
+        ctx,
+        TBlockStoreComponents::PARTITION_COMMON,
+        "[%lu] ReadBlob failed: %s\n%s",
+        PartitionTabletId,
+        FormatError(error).data(),
+        response ? response->Print(false).data() : "");
 
-        if (response->Status == NKikimrProto::DEADLINE) {
-            DeadlineSeen = true;
-        }
-
-    } else {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::PARTITION_COMMON,
-            "[%lu] ReadBlob failed: %s",
-            PartitionTabletId,
-            FormatError(error).data());
+    if (response && response->Status == NKikimrProto::DEADLINE) {
+        DeadlineSeen = true;
     }
 
     auto reply = std::make_unique<TResponse>(std::move(error));

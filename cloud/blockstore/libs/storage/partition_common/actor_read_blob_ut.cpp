@@ -900,7 +900,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         }
     }
 
-    Y_UNIT_TEST_F(ShouldRejectDuplicateBlobOffsets, TSetupEnvironment)
+    Y_UNIT_TEST_F(ShouldRejectInvalidBlobOffsets, TSetupEnvironment)
     {
         auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
         InitCriticalEventsCounter(counters);
@@ -921,22 +921,24 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 return false;
             });
 
-        for (const auto storageAccessMode:
-             {EStorageAccessMode::Default, EStorageAccessMode::Repair})
+        for (const auto& blobOffsets:
+             {TVector<ui16>{0, 2, 2, 3}, TVector<ui16>{0, 3, 2}})
         {
-            const auto previousContractViolationReadErrors =
-                contractViolationReadErrors->Val();
-            const auto previousInvalidOffsets = invalidOffsets->Val();
-            const ui32 blockSize = 512;
-            const NKikimr::TLogoBlobID blobId(142, 143, 0x8000);
-            const TVector<ui16> blobOffsets{0, 2, 2, 3};
-            TVector<TString> blocks;
-            auto sglist = ResizeBlocks(
-                blocks,
-                blobOffsets.size(),
-                TString(blockSize, 'x'));
-            auto request =
-                std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+            for (const auto storageAccessMode:
+                 {EStorageAccessMode::Default, EStorageAccessMode::Repair})
+            {
+                const auto previousContractViolationReadErrors =
+                    contractViolationReadErrors->Val();
+                const auto previousInvalidOffsets = invalidOffsets->Val();
+                const ui32 blockSize = 512;
+                const NKikimr::TLogoBlobID blobId(142, 143, 0x8000);
+                TVector<TString> blocks;
+                auto sglist = ResizeBlocks(
+                    blocks,
+                    blobOffsets.size(),
+                    TString(blockSize, 'x'));
+                auto request = std::make_unique<
+                    TEvPartitionCommonPrivate::TEvReadBlobRequest>(
                     blobId,
                     EdgeActor,
                     blobOffsets,
@@ -946,50 +948,48 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                     TInstant::Max(),
                     false);
 
-            ActorSystem.Register(new TReadBlobActor(
-                MakeIntrusive<TRequestInfo>(
+                ActorSystem.Register(new TReadBlobActor(
+                    MakeIntrusive<TRequestInfo>(
+                        EdgeActor,
+                        0ull,
+                        MakeIntrusive<TCallContext>()),
                     EdgeActor,
+                    NActors::TActorId(),
+                    0,
+                    blockSize,
+                    false,
+                    storageAccessMode,
+                    std::move(request),
+                    TDuration(),
                     0ull,
-                    MakeIntrusive<TCallContext>()),
-                EdgeActor,
-                NActors::TActorId(),
-                0,
-                blockSize,
-                false,
-                storageAccessMode,
-                std::move(request),
-                TDuration(),
-                0ull,
-                false));
+                    false));
 
-            auto response = ActorSystem.GrabEdgeEvent<
-                TEvPartitionCommonPrivate::TEvReadBlobResponse>();
-            UNIT_ASSERT_VALUES_EQUAL(
-                E_REJECTED,
-                response->GetError().GetCode());
-            UNIT_ASSERT(
-                response->ErrorSource == EErrorSource::ContractViolation);
-            UNIT_ASSERT_STRING_CONTAINS(
-                response->GetError().GetMessage(),
-                "Offsets should be sorted in strict ascending order: 0, 2, 2, "
-                "3");
+                auto response = ActorSystem.GrabEdgeEvent<
+                    TEvPartitionCommonPrivate::TEvReadBlobResponse>();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_ARGUMENT,
+                    response->GetError().GetCode());
+                UNIT_ASSERT(response->ErrorSource == EErrorSource::Regular);
+                UNIT_ASSERT_STRING_CONTAINS(
+                    response->GetError().GetMessage(),
+                    "Offsets should be sorted in strict ascending order:");
 
-            auto completed = ActorSystem.GrabEdgeEvent<
-                TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
-            UNIT_ASSERT_VALUES_EQUAL(
-                E_REJECTED,
-                completed->GetError().GetCode());
-            UNIT_ASSERT(
-                completed->ErrorSource == EErrorSource::ContractViolation);
-            UNIT_ASSERT_VALUES_EQUAL(0, readRequests);
-            UNIT_ASSERT_VALUES_EQUAL(
-                previousInvalidOffsets + 1,
-                invalidOffsets->Val());
-            UNIT_ASSERT_VALUES_EQUAL(
-                previousContractViolationReadErrors + 1,
-                contractViolationReadErrors->Val());
-            for (const auto& block: blocks) {
-                UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, 'x'), block);
+                auto completed = ActorSystem.GrabEdgeEvent<
+                    TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_ARGUMENT,
+                    completed->GetError().GetCode());
+                UNIT_ASSERT(completed->ErrorSource == EErrorSource::Regular);
+                UNIT_ASSERT_VALUES_EQUAL(0, readRequests);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    previousInvalidOffsets + 1,
+                    invalidOffsets->Val());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    previousContractViolationReadErrors,
+                    contractViolationReadErrors->Val());
+                for (const auto& block: blocks) {
+                    UNIT_ASSERT_VALUES_EQUAL(TString(blockSize, 'x'), block);
+                }
             }
         }
     }

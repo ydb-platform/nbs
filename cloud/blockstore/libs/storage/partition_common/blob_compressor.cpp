@@ -483,6 +483,11 @@ TResultOrError<TReadPlan> PlanReadBlob(
         return error;
     }
 
+    auto codecOrError = GetCodec(compression.GetCodec());
+    if (HasError(codecOrError.GetError())) {
+        return codecOrError.GetError();
+    }
+
     using TQuery = NKikimr::TEvBlobStorage::TEvGet::TQuery;
 
     size_t queryCount = 0;

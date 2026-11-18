@@ -116,8 +116,9 @@ struct TReadPlan
  * blocks, using the chunk size from the blob's metadata. Each requested
  * chunk is read once and adjacent chunks are coalesced into a single range.
  * Cumulative chunk offsets are rebuilt from sizes for each read plan.
- * Returns E_ARGUMENT for invalid chunk metadata, offsets outside the chunk
- * list or read ranges extending beyond the compressed blob.
+ * Returns E_ARGUMENT for invalid chunk metadata, unsupported or unavailable
+ * codecs, offsets outside the chunk list or read ranges extending beyond
+ * the compressed blob. Codec lookup failures return E_FAIL.
  *
  * The caller must supply valid block offsets: the metadata does not store
  * the original blob size, so this function cannot detect offsets beyond the

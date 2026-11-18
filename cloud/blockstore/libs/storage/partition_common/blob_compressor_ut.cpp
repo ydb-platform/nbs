@@ -1084,11 +1084,21 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
                     outputs,
                     nullptr);
             });
-        for (const int value: {-1, 4, Max<int>()}) {
+        for (const int value: {-1, 0, 4, Max<int>()}) {
             const auto codec =
                 static_cast<TCompression::ECompressionType>(value);
             metadata = blob.Compression;
             metadata.SetCodec(codec);
+            AssertArgumentError(
+                [&]
+                {
+                    return PlanReadBlob(
+                               BlockSize,
+                               MakeBlobId(blob.Data.size()),
+                               metadata,
+                               TVector<ui16>{0})
+                        .GetError();
+                });
             AssertArgumentError(
                 [&]
                 {
@@ -1209,6 +1219,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         constexpr ui32 chunkSize = 2 * blockSize;
         constexpr ui32 compressedChunkSize = 1024;
         NProto::TCompressionMetadata compression;
+        compression.SetCodec(TCompression::COMPRESSION_LZ4_FAST14_SAFE);
         compression.SetChunkSize(chunkSize);
         for (ui32 i = 1; i < (static_cast<ui32>(blockOffset) + 1) / 2; ++i) {
             compression.MutablePlainChunks()->AddCompressedChunkSize(
