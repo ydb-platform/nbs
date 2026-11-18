@@ -257,18 +257,16 @@ void TConfigsManagerActor::Handle(
     }
 
     const auto currentConfig = ConfigHolder->Get();
-    auto newConfig = MakeBlockstoreConfig(
+    const auto newConfig = MakeBlockstoreConfig(
         StaticConfig,
         dynamicConfig,
         StorageConfigControls,
         GetBlockstoreConfigExtraParameters(*currentConfig));
-    const auto newStorageConfig = newConfig->GetStorageConfig();
 
     // Publish before notifying consumers and acknowledging the dispatcher
     // so the new configuration is already available to readers.
-    const IBlockstoreConfigConstPtr publishedConfig = newConfig;
-    ConfigHolder->Set(std::move(newConfig));
-    newStorageConfig->UpdateControlsDefaults();
+    ConfigHolder->Set(newConfig);
+    newConfig->GetStorageConfig()->UpdateControlsDefaults();
     DynamicConfig = std::move(dynamicConfig);
 
     LOG_INFO_S(
@@ -283,7 +281,7 @@ void TConfigsManagerActor::Handle(
     for (const auto& subscriber: Subscribers) {
         ctx.Send(
             subscriber,
-            new TEvConfigsManager::TEvConfigChanged(publishedConfig),
+            new TEvConfigsManager::TEvConfigChanged(newConfig),
             IEventHandle::FlagTrackDelivery);
     }
 
