@@ -11,6 +11,7 @@ namespace NCloud::NBlockStore::NIcV2 {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Forwards incoming read/write/zero requests to the supplied IBlockStore.
+// Reads larger than MaxSubRequestSize are rejected with E_REJECTED.
 // Route channel request callbacks to HandleRequest before activating channels.
 // Keep the service and executor running until Stop returns; the target does
 // not start or stop them. Stop waits for accepted work.

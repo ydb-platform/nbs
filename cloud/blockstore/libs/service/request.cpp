@@ -81,8 +81,6 @@ void CopyWriteRequestMetadata(
     const TWriteBlocksRequest& source,
     TWriteBlocksRequest& destination)
 {
-    Y_ABORT_UNLESS(source.GetDescriptor()->field_count() == 8);
-
     destination.MutableHeaders()->CopyFrom(source.GetHeaders());
     destination.SetDiskId(source.GetDiskId());
     destination.SetStartIndex(source.GetStartIndex());

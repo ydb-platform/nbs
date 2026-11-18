@@ -259,6 +259,8 @@ public:
         TCallContextPtr context,
         std::shared_ptr<NProto::TWriteBlocksRequest> request) override
     {
+        Y_DEBUG_ABORT_UNLESS(request);
+
         const auto bytes =
             CalculateBytesCount(*request, request->GetBlockSize());
         return ExecuteDataRequest<NProto::TWriteBlocksResponse>(
@@ -271,6 +273,8 @@ public:
         TCallContextPtr context,
         std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
     {
+        Y_DEBUG_ABORT_UNLESS(request);
+
         const auto bytes =
             CalculateBytesCount(*request, request->GetBlockSize());
         return ExecuteDataRequest<NProto::TWriteBlocksLocalResponse>(

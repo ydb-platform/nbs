@@ -69,6 +69,7 @@ Y_UNIT_TEST_SUITE(WriteBlocksLocalRequestTest)
     {
         TString data = "hello";
         TWriteBlocksLocalRequest owner;
+        UNIT_ASSERT_VALUES_EQUAL(8, owner.GetDescriptor()->field_count());
         SetupRequest(owner, data);
         owner.MutableHeaders()->SetClientId("client");
         owner.MutableHeaders()->SetRequestId(123);

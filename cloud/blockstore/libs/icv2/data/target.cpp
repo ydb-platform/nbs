@@ -2,6 +2,7 @@
 
 #include "request_tracker.h"
 
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service_method.h>
@@ -88,6 +89,10 @@ NProto::TError PrepareStorageRequest(
     }
     const auto bytes =
         CalculateBytesCount(*op.Request, op.Request->GetBlockSize());
+    if (bytes > MaxSubRequestSize) {
+        return MakeError(E_REJECTED, "IC V2 read size exceeds limit");
+    }
+
     op.Payload = TRope(TString(bytes, '\0'));
     SetStorageSgList(op);
     return {};

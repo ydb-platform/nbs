@@ -3,6 +3,7 @@
 #include "protocol.h"
 #include "target.h"
 
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service_test.h>
@@ -1233,6 +1234,43 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         UNIT_ASSERT(!HasError(Wait(read)));
         UNIT_ASSERT(!HasError(Wait(write)));
         UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), 'r'), buffer);
+    }
+
+    Y_UNIT_TEST(TargetLimitsReadSizeBeforeCallingStorage)
+    {
+        TFixture f;
+        f.Data.resize(MaxSubRequestSize + BlockSize, 'x');
+        for (ui32 blocksCount:
+             {
+                 MaxSubRequestSize / BlockSize,
+                 (MaxSubRequestSize / BlockSize) + 1,
+             })
+        {
+            auto read = std::make_unique<TEvService::TEvReadBlocksRequest>();
+            read->Record.SetDiskId("disk");
+            read->Record.SetBlockSize(BlockSize);
+            read->Record.SetBlocksCount(blocksCount);
+            auto result =
+                f.Channel->Request(std::move(read), TDuration::Seconds(1));
+            f.Run(f.Channel->Requests.size() - 1);
+            auto response = Wait(result);
+            UNIT_ASSERT(!HasError(response.GetError()));
+            auto* event =
+                response.GetResult()->Get<TEvService::TEvReadBlocksResponse>();
+            if (blocksCount == MaxSubRequestSize / BlockSize) {
+                UNIT_ASSERT(!HasError(event->Record));
+                UNIT_ASSERT_VALUES_EQUAL(1, event->GetPayloadCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    MaxSubRequestSize,
+                    event->GetPayload(0).GetSize());
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_REJECTED,
+                    event->Record.GetError().GetCode());
+                UNIT_ASSERT_VALUES_EQUAL(0, event->GetPayloadCount());
+            }
+            UNIT_ASSERT_VALUES_EQUAL(1, f.Reads);
+        }
     }
 
     Y_UNIT_TEST(TargetRejectsInvalidReadAndWriteBeforeCallingStorage)
