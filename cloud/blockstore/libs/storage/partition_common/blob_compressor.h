@@ -36,7 +36,7 @@ struct TCompressedBlob
     // Compressed chunks concatenated in their original order.
     TString Data;
 
-    // Codec, uncompressed chunk size and N-1 compressed chunk sizes.
+    // Codec, uncompressed chunk and last chunk sizes, and N-1 compressed sizes.
     NProto::TCompressionMetadata Compression;
 };
 
@@ -62,13 +62,12 @@ struct TReadPlan
  *  of and at least blockSize.
  * @param compressionType - Compression type used to select the codec and
  *  recorded in the blob metadata.
- * @param blobPayload - Uncompressed blocks in blob order, with one buffer
- *  of exactly blockSize bytes per block. Null data represents a zero block.
+ * @param blobPayload - Nonempty list of uncompressed blocks in blob order,
+ *  with one buffer of exactly blockSize bytes per block. Null data represents
+ *  a zero block.
  *
  * @return - Concatenated compressed chunks and their metadata, or an error.
  *  Invalid arguments return E_ARGUMENT; codec failures return E_FAIL.
- *  An empty payload produces empty data and no chunks, with codec and chunk
- *  size still recorded in the metadata.
  */
 [[nodiscard]] TResultOrError<TCompressedBlob> CompressBlob(
     ui32 blockSize,
@@ -117,12 +116,8 @@ struct TReadPlan
  * chunk is read once and adjacent chunks are coalesced into a single range.
  * Cumulative chunk offsets are rebuilt from sizes for each read plan.
  * Returns E_ARGUMENT for invalid chunk metadata, unsupported or unavailable
- * codecs, offsets outside the chunk list or read ranges extending beyond
+ * codecs, offsets outside the uncompressed blob or read ranges extending beyond
  * the compressed blob. Codec lookup failures return E_FAIL.
- *
- * The caller must supply valid block offsets: the metadata does not store
- * the original blob size, so this function cannot detect offsets beyond the
- * end of a partial final chunk.
  *
  * @param blockSize - Block size used for compression.
  * @param blobId - ID of the compressed blob to read.

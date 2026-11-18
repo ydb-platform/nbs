@@ -119,6 +119,9 @@ TError ValidateCompressBlobInput(
     {
         return error;
     }
+    if (blobPayload.empty()) {
+        return MakeError(E_ARGUMENT, "Blob payload must be nonempty");
+    }
     for (const auto& buffer: blobPayload) {
         if (buffer.Size() != blockSize) {
             return MakeError(
@@ -157,6 +160,9 @@ TError ValidateReadBlobInput(
     if (!compression.HasPlainChunks()) {
         return MakeError(E_ARGUMENT, "Missing compressed chunk metadata");
     }
+    if (!blobSize) {
+        return MakeError(E_ARGUMENT, "Compressed blob size must be nonzero");
+    }
     const auto& values = compression.GetPlainChunks().GetCompressedChunkSize();
     ui32 previousOffset = 0;
     for (const auto value: values) {
@@ -170,15 +176,21 @@ TError ValidateReadBlobInput(
         previousOffset = static_cast<ui32>(offset);
     }
     lastChunkSize = blobSize - previousOffset;
-    for (const auto blockOffset: blockOffsets) {
-        if (static_cast<ui64>(blockOffset) * blockSize / chunkSize >=
-            (blobSize ? static_cast<size_t>(values.size()) + 1 : 0))
-        {
-            return MakeError(
-                E_ARGUMENT,
-                TStringBuilder() << "Block offset " << blockOffset
-                                 << " is outside the chunk list");
-        }
+    const ui32 lastUncompressedChunkSize = compression.GetLastChunkSize();
+    if (!lastUncompressedChunkSize || lastUncompressedChunkSize > chunkSize ||
+        lastUncompressedChunkSize % blockSize != 0)
+    {
+        return MakeError(E_ARGUMENT, "Invalid uncompressed last chunk size");
+    }
+    const ui64 uncompressedSize = static_cast<ui64>(values.size()) * chunkSize +
+                                  lastUncompressedChunkSize;
+    if (!blockOffsets.empty() &&
+        static_cast<ui64>(blockOffsets.back()) * blockSize >= uncompressedSize)
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "Block offset " << blockOffsets.back()
+                             << " is outside the uncompressed blob");
     }
     return {};
 }
@@ -225,9 +237,7 @@ TError ValidateDecompressBlobInput(
 TError DecodeChunk(
     const NBlockCodecs::ICodec& codec,
     TStringBuf compressed,
-    ui32 blockSize,
-    ui32 chunkSize,
-    bool lastChunk,
+    ui32 expectedSize,
     TString& decoded)
 {
     size_t size;
@@ -239,9 +249,7 @@ TError DecodeChunk(
             TStringBuilder() << "Failed to read decompressed chunk size: "
                              << CurrentExceptionMessage());
     }
-    if (!size || size > chunkSize || size % blockSize != 0 ||
-        (!lastChunk && size != chunkSize))
-    {
+    if (size != expectedSize) {
         return MakeError(
             E_REJECTED,
             TStringBuilder() << "Invalid decompressed chunk size: " << size);
@@ -344,6 +352,8 @@ TResultOrError<TCompressedBlob> CompressBlob(
         if (blockIndex + blockCount < blobPayload.size()) {
             chunks->AddCompressedChunkSize(
                 static_cast<ui32>(compressedChunk.size()));
+        } else {
+            result.Compression.SetLastChunkSize(blockCount * blockSize);
         }
         result.Data.append(compressedChunk);
         blockIndex += blockCount;
@@ -423,9 +433,7 @@ TError DecompressBlob(
             auto error = DecodeChunk(
                 *codec,
                 compressedChunk,
-                blockSize,
-                chunkSize,
-                lastChunk,
+                lastChunk ? compression.GetLastChunkSize() : chunkSize,
                 decoded);
             if (HasError(error)) {
                 return error;

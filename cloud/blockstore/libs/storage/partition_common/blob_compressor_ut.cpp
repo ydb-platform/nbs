@@ -129,6 +129,7 @@ NProto::TCompressionMetadata MakeCompression()
     NProto::TCompressionMetadata compression;
     compression.SetCodec(TCompression::COMPRESSION_LZ4_FAST14_SAFE);
     compression.SetChunkSize(ChunkSize);
+    compression.SetLastChunkSize(ChunkSize);
     for (const ui32 size: {100, 200, 300, 400}) {
         compression.MutablePlainChunks()->AddCompressedChunkSize(size);
     }
@@ -277,6 +278,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
                 TCompression::COMPRESSION_LZ4_FAST14_SAFE ==
                 compression.GetCodec());
             UNIT_ASSERT_VALUES_EQUAL(chunkSize, compression.GetChunkSize());
+            UNIT_ASSERT_VALUES_EQUAL(BlockSize, compression.GetLastChunkSize());
             UNIT_ASSERT(compression.HasPlainChunks());
             UNIT_ASSERT_VALUES_EQUAL(
                 2,
@@ -410,6 +412,9 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
                     1,
                 blob.Compression.GetPlainChunks().CompressedChunkSizeSize());
             UNIT_ASSERT_VALUES_EQUAL(
+                ((blockCount - 1) % (ChunkSize / BlockSize) + 1) * BlockSize,
+                blob.Compression.GetLastChunkSize());
+            UNIT_ASSERT_VALUES_EQUAL(
                 payload,
                 DecompressWholeBlob(
                     blob.Compression,
@@ -443,32 +448,36 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldHandleEmptyPayloadAndReads)
+    Y_UNIT_TEST(ShouldRejectEmptyPayloadAndHandleEmptyReads)
     {
-        const auto [compressed, compression] = GetResultOrFail(CompressBlob(
-            BlockSize,
-            ChunkSize,
-            TCompression::COMPRESSION_LZ4_FAST14_SAFE,
-            {}));
-
-        UNIT_ASSERT(compressed.empty());
-        UNIT_ASSERT(
-            TCompression::COMPRESSION_LZ4_FAST14_SAFE ==
-            compression.GetCodec());
-        UNIT_ASSERT_VALUES_EQUAL(ChunkSize, compression.GetChunkSize());
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            compression.GetPlainChunks().CompressedChunkSizeSize());
+        AssertArgumentError(
+            [&]
+            {
+                return CompressBlob(
+                           BlockSize,
+                           ChunkSize,
+                           TCompression::COMPRESSION_LZ4_FAST14_SAFE,
+                           {})
+                    .GetError();
+            });
         const auto [emptyQueries, emptyBlockOffsets] =
             GetResultOrFail(PlanReadBlob(BlockSize, {}, {}, {}));
         UNIT_ASSERT(emptyQueries.empty());
-        for (const auto& metadata: {compression, MakeCompression()}) {
-            const auto [queries, blockRangesForEachRequest] = GetResultOrFail(
-                PlanReadBlob(BlockSize, MakeBlobId(), metadata, {}));
-            UNIT_ASSERT(queries.empty());
-        }
-        UNIT_ASSERT(!HasError(
-            DecompressBlob(BlockSize, {}, compression, 0, {}, {}, nullptr)));
+        const auto [queries, blockRangesForEachRequest] = GetResultOrFail(
+            PlanReadBlob(BlockSize, MakeBlobId(), MakeCompression(), {}));
+        UNIT_ASSERT(queries.empty());
+        AssertArgumentError(
+            [&]
+            {
+                return DecompressBlob(
+                    BlockSize,
+                    {},
+                    MakeCompression(),
+                    0,
+                    {},
+                    {},
+                    nullptr);
+            });
         UNIT_ASSERT(!HasError(DecompressBlob(
             BlockSize,
             MakeRope({{}, {}}),
@@ -676,6 +685,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
             UNIT_ASSERT(
                 metadata.ParseFromString(blob.Compression.SerializeAsString()));
             UNIT_ASSERT_VALUES_EQUAL(chunkSize, metadata.GetChunkSize());
+            UNIT_ASSERT_VALUES_EQUAL(BlockSize, metadata.GetLastChunkSize());
             UNIT_ASSERT_VALUES_EQUAL(
                 3,
                 metadata.GetPlainChunks().CompressedChunkSizeSize());
@@ -860,6 +870,125 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldRejectInvalidLastChunkSizeMetadata)
+    {
+        const auto blob = GetResultOrFail(CompressBlob(
+            BlockSize,
+            ChunkSize,
+            TCompression::COMPRESSION_LZ4_FAST14_SAFE,
+            MakeSgList(TString(BlockSize, 'a'))));
+        TString output(BlockSize, '?');
+        for (const ui32 size:
+             {0u, BlockSize - 1, BlockSize + 1, ChunkSize + BlockSize})
+        {
+            auto metadata = blob.Compression;
+            metadata.SetLastChunkSize(size);
+            AssertArgumentError(
+                [&]
+                {
+                    return PlanReadBlob(
+                               BlockSize,
+                               MakeBlobId(blob.Data.size()),
+                               metadata,
+                               TVector<ui16>{0})
+                        .GetError();
+                });
+            AssertArgumentError(
+                [&]
+                {
+                    return DecompressBlob(
+                        BlockSize,
+                        {},
+                        metadata,
+                        blob.Data.size(),
+                        TVector<ui16>{0},
+                        MakeSgList(output),
+                        nullptr);
+                });
+        }
+        UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), output);
+    }
+
+    Y_UNIT_TEST(ShouldRejectReadsBeyondPartialLastChunkBeforeDecoding)
+    {
+        for (const ui32 fullChunks: {0, 2}) {
+            for (const ui32 lastBlocks: {1u, 3u, ChunkSize / BlockSize}) {
+                const ui32 blockCount =
+                    fullChunks * (ChunkSize / BlockSize) + lastBlocks;
+                const auto blob = GetResultOrFail(CompressBlob(
+                    BlockSize,
+                    ChunkSize,
+                    TCompression::COMPRESSION_LZ4_FAST14_SAFE,
+                    MakeSgList(TString(blockCount * BlockSize, 'a'))));
+                const auto blobId = MakeBlobId(blob.Data.size());
+                GetResultOrFail(PlanReadBlob(
+                    BlockSize,
+                    blobId,
+                    blob.Compression,
+                    TVector<ui16>{static_cast<ui16>(blockCount - 1)}));
+                TString output(BlockSize, '?');
+                for (const ui16 offset:
+                     {static_cast<ui16>(blockCount),
+                      static_cast<ui16>(
+                          Max(blockCount,
+                              (fullChunks + 1) * (ChunkSize / BlockSize) - 1))})
+                {
+                    AssertArgumentError(
+                        [&]
+                        {
+                            return PlanReadBlob(
+                                       BlockSize,
+                                       blobId,
+                                       blob.Compression,
+                                       TVector<ui16>{offset})
+                                .GetError();
+                        });
+                    // No compressed data is needed to reject this offset.
+                    AssertArgumentError(
+                        [&]
+                        {
+                            return DecompressBlob(
+                                BlockSize,
+                                {},
+                                blob.Compression,
+                                blob.Data.size(),
+                                TVector<ui16>{offset},
+                                MakeSgList(output),
+                                nullptr);
+                        });
+                }
+                UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), output);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectLastChunkSizeMismatch)
+    {
+        const auto blob = GetResultOrFail(CompressBlob(
+            BlockSize,
+            ChunkSize,
+            TCompression::COMPRESSION_LZ4_FAST14_SAFE,
+            MakeSgList(TString(2 * BlockSize, 'a'))));
+        for (const ui32 size: {BlockSize, 3 * BlockSize}) {
+            auto metadata = blob.Compression;
+            metadata.SetLastChunkSize(size);
+            TString output(BlockSize, '?');
+            const auto error = DecompressBlob(
+                BlockSize,
+                TRope(blob.Data),
+                metadata,
+                blob.Data.size(),
+                TVector<ui16>{0},
+                MakeSgList(output),
+                nullptr);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), output);
+        }
+    }
+
     Y_UNIT_TEST(ShouldRejectInvalidDecompressionBuffers)
     {
         const auto blob = GetResultOrFail(CompressBlob(
@@ -974,26 +1103,6 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
                     outputs,
                     nullptr);
             });
-
-        // The offset addresses an existing chunk, but lies beyond its partial
-        // final payload. Chunk metadata alone cannot detect that in
-        // PlanReadBlob.
-        const auto partial = GetResultOrFail(CompressBlob(
-            BlockSize,
-            ChunkSize,
-            TCompression::COMPRESSION_LZ4_FAST14_SAFE,
-            MakeSgList(TString(BlockSize, 'a'))));
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
-            DecompressBlob(
-                BlockSize,
-                TRope(partial.Data),
-                partial.Compression,
-                partial.Data.size(),
-                TVector<ui16>{1},
-                outputs,
-                nullptr)
-                .GetCode());
     }
 
     Y_UNIT_TEST(ShouldRejectTruncatedChunksAcrossRopes)
@@ -1050,7 +1159,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
             TRope(blob.Data),
             blob.Compression,
             blob.Data.size(),
-            TVector<ui16>{2},
+            TVector<ui16>{0},
             TSgList{{result.begin(), result.size()}},
             nullptr);
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -1221,6 +1330,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         NProto::TCompressionMetadata compression;
         compression.SetCodec(TCompression::COMPRESSION_LZ4_FAST14_SAFE);
         compression.SetChunkSize(chunkSize);
+        compression.SetLastChunkSize(chunkSize);
         for (ui32 i = 1; i < (static_cast<ui32>(blockOffset) + 1) / 2; ++i) {
             compression.MutablePlainChunks()->AddCompressedChunkSize(
                 compressedChunkSize);
@@ -1385,6 +1495,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         for (const auto& sizes: invalidSizes) {
             TCompression metadata;
             metadata.SetChunkSize(ChunkSize);
+            metadata.SetLastChunkSize(ChunkSize);
             for (const auto size: sizes) {
                 metadata.MutablePlainChunks()->AddCompressedChunkSize(size);
             }
@@ -1418,6 +1529,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         TString output(BlockSize, '?');
         NProto::TCompressionMetadata metadata;
         metadata.SetChunkSize(ChunkSize);
+        metadata.SetLastChunkSize(ChunkSize);
         // Missing representation must not be mistaken for a single chunk.
         AssertArgumentError(
             [&]

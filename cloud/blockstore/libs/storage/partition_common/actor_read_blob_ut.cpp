@@ -209,26 +209,46 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         ShouldReturnCompressedReadPlanningError,
         TCompressedReadEnvironment)
     {
-        BlobOffsets = {40};
-        StartCompressedRead(
-            NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
-            true,
-            EStorageAccessMode::Default,
-            false);   // waitForReadRequest
+        ui32 readRequests = 0;
+        ActorSystem.SetEventFilter(
+            [&](NActors::TTestActorRuntimeBase&,
+                TAutoPtr<NActors::IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == NKikimr::TEvBlobStorage::EvGet) {
+                    ++readRequests;
+                }
+                return false;
+            });
+        ui64 expectedCriticalEvents = 0;
+        for (const ui16 offset: {17, 19, 20, 40}) {
+            BlobOffsets = {offset};
+            StartCompressedRead(
+                NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
+                true,
+                EStorageAccessMode::Default,
+                false);   // waitForReadRequest
 
-        auto response = ActorSystem.GrabEdgeEvent<
-            TEvPartitionCommonPrivate::TEvReadBlobResponse>();
-        auto completed = ActorSystem.GrabEdgeEvent<
-            TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, completed->GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(0, completed->BytesCount);
-        UNIT_ASSERT_STRING_CONTAINS(
-            response->GetError().GetMessage(),
-            "outside the chunk list");
-        UNIT_ASSERT(response->BlockChecksums.empty());
-        UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), Blocks.front());
-        UNIT_ASSERT_VALUES_EQUAL(1, GetContractViolationReadBlobErrors());
+            auto response = ActorSystem.GrabEdgeEvent<
+                TEvPartitionCommonPrivate::TEvReadBlobResponse>();
+            auto completed = ActorSystem.GrabEdgeEvent<
+                TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED,
+                response->GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED,
+                completed->GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, completed->BytesCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, readRequests);
+            UNIT_ASSERT_STRING_CONTAINS(
+                response->GetError().GetMessage(),
+                "outside the uncompressed blob");
+            UNIT_ASSERT(response->BlockChecksums.empty());
+            UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), Blocks.front());
+            UNIT_ASSERT_VALUES_EQUAL(
+                ++expectedCriticalEvents,
+                GetContractViolationReadBlobErrors());
+        }
     }
 
     Y_UNIT_TEST_F(ShouldReportCompressedReadBytes, TCompressedReadEnvironment)
