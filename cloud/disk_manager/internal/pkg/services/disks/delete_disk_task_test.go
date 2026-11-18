@@ -260,11 +260,8 @@ func testDeleteDiskTaskWithNonExistentDisk(
 	).Return((*resources.DiskMeta)(nil), nil)
 
 	if deleteIfNonExistent {
-		// DeleteIfNonExistent option is on. Therefore, should proceed deleting
-		// even though the disk is missing from the database.
-
-		cleanupID := legacyDiskCleanupPrefix + "toplevel_task_id"
-		storage.On("PrepareDiskCleanup", ctx, "disk", "toplevel_task_id", cleanupID).Return(true, nil).Once()
+		cleanupID := diskCleanupPrefix + "toplevel_task_id"
+		storage.On("PrepareDiskCleanup", ctx, "disk", cleanupID).Return(true, nil).Once()
 		tx := &persistence.Transaction{}
 		storage.On("CompleteDiskCleanup", ctx, tx, "disk", cleanupID).Return(nil).Once()
 		execCtx.On("FinishWithPreparation", ctx, mock.Anything).Run(func(args mock.Arguments) {
@@ -450,8 +447,9 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 		sync     bool
 		errorAt  string
 	}{
-		{name: "legacy async", prepared: true}, {name: "legacy sync", prepared: true, sync: true},
-		{name: "completed deletion"}, {name: "reservation read error", errorAt: "PrepareDiskCleanup"},
+		{name: "async", prepared: true}, {name: "sync", prepared: true, sync: true},
+		{name: "legacy placeholder", prepared: false},
+		{name: "reservation read error", errorAt: "PrepareDiskCleanup"},
 		{name: "incremental retry keeps reservation", prepared: true, errorAt: "WaitTask"},
 		{name: "NBS retry keeps reservation", prepared: true, errorAt: "Delete"},
 		{name: "completion callback failure", prepared: true, errorAt: "CompleteDiskCleanup"},
@@ -468,7 +466,7 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 			request, err := proto.Marshal(&protos.DeleteDiskRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}, DeleteIfNonExistent: true, Sync: tc.sync})
 			require.NoError(t, err)
 			require.NoError(t, task.Load(request, nil))
-			id := "legacy_disk_cleanup_toplevel_task_id"
+			id := diskCleanupPrefix + "toplevel_task_id"
 			errorFor := func(step string) error {
 				if tc.errorAt == step {
 					return assert.AnError
@@ -479,9 +477,9 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 				storage.On("GetDiskMeta", ctx, "disk").Return((*resources.DiskMeta)(nil), nil).Once()
 			}
 			storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything).Return((*resources.DiskMeta)(nil), nil).Once()
-			storage.On("PrepareDiskCleanup", ctx, "disk", "toplevel_task_id", id).Return(tc.prepared, errorFor("PrepareDiskCleanup")).Once()
+			storage.On("PrepareDiskCleanup", ctx, "disk", id).Return(tc.prepared, errorFor("PrepareDiskCleanup")).Once()
 			setup := func() {
-				if !tc.prepared || tc.errorAt == "PrepareDiskCleanup" {
+				if tc.errorAt == "PrepareDiskCleanup" {
 					return
 				}
 				scheduler.On("ScheduleTask", headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_incremental"), "dataplane.DeleteDiskFromIncremental", "", &dataplane_protos.DeleteDiskFromIncrementalRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}}).Return("incremental", nil).Once()
@@ -496,6 +494,10 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 				}
 				client.On(method, ctx, "disk").Return(errorFor("Delete")).Once()
 				if tc.errorAt == "Delete" {
+					return
+				}
+				if !tc.prepared {
+					storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil).Once()
 					return
 				}
 				tx := &persistence.Transaction{}
@@ -517,7 +519,9 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 				require.NoError(t, err)
 			}
 			mock.AssertExpectationsForObjects(t, storage, scheduler, factory, client, execCtx)
-			storage.AssertNotCalled(t, "DiskDeleted", mock.Anything, mock.Anything, mock.Anything)
+			if tc.prepared {
+				storage.AssertNotCalled(t, "DiskDeleted", mock.Anything, mock.Anything, mock.Anything)
+			}
 			scheduler.AssertNotCalled(t, "ScheduleNonCancellableTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		})
 	}

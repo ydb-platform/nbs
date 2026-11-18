@@ -545,7 +545,7 @@ func (s *storageYDB) deleteDisk(
 	} else {
 		// Create a tombstone disk entry to avoid race conditions between
 		// concurrent disk deletion and disk creation operations. The tombstone
-		// prevents new disk creation with the same ID.
+		// prevents new disk creation with the same ID until cleanup finishes.
 		state.status = diskStatusDeleting
 		state.tombstone = true
 	}
@@ -565,7 +565,7 @@ func (s *storageYDB) deleteDisk(
 	}
 
 	// Should be idempotent.
-	if state.tombstone {
+	if state.status == diskStatusDeleted || state.tombstone {
 		return nil, nil
 	}
 
@@ -619,8 +619,22 @@ func (s *storageYDB) diskDeleted(
 	}
 
 	if state.tombstone {
-		// Tombstone deletion is completed by CompleteDiskCleanup, when the
-		// last cleanup reservation is released.
+		ids, err := diskCleanupIDs(state)
+		if err != nil {
+			return err
+		}
+		if len(ids) != 0 {
+			// Tracked cleanup holds the reservation; CompleteDiskCleanup
+			// finalizes the tombstone when the last holder is released.
+			return tx.Commit(ctx)
+		}
+
+		// Legacy missing-disk path: no holders, finalize immediately.
+		err = s.markDiskDeleted(ctx, tx, diskID, state, deletedAt)
+		if err != nil {
+			return err
+		}
+
 		return tx.Commit(ctx)
 	}
 

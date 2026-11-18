@@ -136,12 +136,10 @@ type Storage interface {
 	) (*DiskMeta, error)
 
 	// Registers cleanupID as a holder of the disk ID reservation. Returns false
-	// if there is nothing to clean up: the disk is not a tombstone (or a legacy
-	// placeholder created by deleteTaskID).
+	// if there is nothing to clean up: the disk is not a tombstone.
 	PrepareDiskCleanup(
 		ctx context.Context,
 		diskID string,
-		deleteTaskID string,
 		cleanupID string,
 	) (bool, error)
 

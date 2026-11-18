@@ -24,7 +24,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const legacyDiskCleanupPrefix = "legacy_disk_cleanup_"
+const diskCleanupPrefix = "legacy_disk_cleanup_"
 
 type deleteDiskTask struct {
 	performanceConfig *performance_config.PerformanceConfig
@@ -200,27 +200,47 @@ func (t *deleteDiskTask) deleteDiskWithoutMetadata(
 	diskID := t.request.Disk.DiskId
 	zoneID := t.request.Disk.ZoneId
 	if len(zoneID) == 0 {
-		// Zone was not specified in the request: nothing to clean up, the
-		// tombstone keeps the disk ID reserved.
-		return nil
+		// Nothing to clean up externally. DiskDeleted finalizes a tombstone
+		// without holders and is a no-op for legacy Deleted placeholders.
+		return t.storage.DiskDeleted(ctx, diskID, time.Now())
 	}
 
 	selfTaskID := execCtx.GetTaskID()
-	cleanupID := legacyDiskCleanupPrefix + selfTaskID
+	cleanupID := diskCleanupPrefix + selfTaskID
 
-	prepared, err := t.storage.PrepareDiskCleanup(
-		ctx,
-		diskID,
-		selfTaskID,
-		cleanupID,
-	)
+	// Tombstones are cleaned via Prepare/Complete. Legacy Deleted placeholders
+	// (in-flight tasks from before the tombstone rollout) return prepared=false
+	// and still finish through DiskDeleted after external cleanup.
+	prepared, err := t.storage.PrepareDiskCleanup(ctx, diskID, cleanupID)
 	if err != nil {
 		return err
 	}
 
-	if !prepared {
-		return nil
+	err = t.deleteDiskFromExternalStores(ctx, execCtx, diskID, zoneID)
+	if err != nil {
+		return err
 	}
+
+	if prepared {
+		return execCtx.FinishWithPreparation(
+			ctx,
+			func(ctx context.Context, tx *persistence.Transaction) error {
+				return t.storage.CompleteDiskCleanup(ctx, tx, diskID, cleanupID)
+			},
+		)
+	}
+
+	return t.storage.DiskDeleted(ctx, diskID, time.Now())
+}
+
+func (t *deleteDiskTask) deleteDiskFromExternalStores(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	diskID string,
+	zoneID string,
+) error {
+
+	selfTaskID := execCtx.GetTaskID()
 
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
@@ -251,20 +271,10 @@ func (t *deleteDiskTask) deleteDiskWithoutMetadata(
 	}
 
 	if t.request.Sync {
-		err = client.DeleteSync(ctx, diskID)
-	} else {
-		err = client.Delete(ctx, diskID)
-	}
-	if err != nil {
-		return err
+		return client.DeleteSync(ctx, diskID)
 	}
 
-	return execCtx.FinishWithPreparation(
-		ctx,
-		func(ctx context.Context, tx *persistence.Transaction) error {
-			return t.storage.CompleteDiskCleanup(ctx, tx, diskID, cleanupID)
-		},
-	)
+	return client.Delete(ctx, diskID)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

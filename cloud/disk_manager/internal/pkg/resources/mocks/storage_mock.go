@@ -56,11 +56,10 @@ func (s *StorageMock) DeleteDisk(
 func (s *StorageMock) PrepareDiskCleanup(
 	ctx context.Context,
 	diskID string,
-	deleteTaskID string,
 	cleanupID string,
 ) (bool, error) {
 
-	args := s.Called(ctx, diskID, deleteTaskID, cleanupID)
+	args := s.Called(ctx, diskID, cleanupID)
 	return args.Bool(0), args.Error(1)
 }
 

@@ -18,14 +18,6 @@ func diskIsTombstone(state diskState) bool {
 	return state.status == diskStatusDeleting && state.tombstone
 }
 
-// The deletion is considered legacy if the delete task id is not empty and
-// matches the delete task id of the disk.
-//
-// TODO: Remove when the legacy deletion is no longer supported
-func diskDeletionLegacy(state diskState, deleteTaskID string) bool {
-	return state.status == diskStatusDeleted && len(deleteTaskID) != 0 && state.deleteTaskID == deleteTaskID
-}
-
 func diskCleanupIDs(state diskState) ([]string, error) {
 	var ids []string
 	if len(state.cleanupTaskIDs) == 0 {
@@ -59,7 +51,6 @@ func encodeDiskCleanupIDs(ids []string) (string, error) {
 func (s *storageYDB) PrepareDiskCleanup(
 	ctx context.Context,
 	diskID string,
-	deleteTaskID string,
 	cleanupID string,
 ) (bool, error) {
 
@@ -79,7 +70,7 @@ func (s *storageYDB) PrepareDiskCleanup(
 				return err
 			}
 
-			prepared = diskIsTombstone(state) || diskDeletionLegacy(state, deleteTaskID)
+			prepared = diskIsTombstone(state)
 			if !prepared {
 				return tx.Commit(ctx)
 			}

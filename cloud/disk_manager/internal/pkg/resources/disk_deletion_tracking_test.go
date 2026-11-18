@@ -112,20 +112,24 @@ func TestTrackedDiskDeletionCompletesOnLastRelease(t *testing.T) {
 	})
 	require.Error(t, err)
 
-	// Only the last cleanup reservation completes tombstone deletion.
+	// With cleanup holders, DiskDeleted must not finalize the tombstone.
+	prepared, err := storage.PrepareDiskCleanup(ctx, "disk", "holder")
+	require.NoError(t, err)
+	require.True(t, prepared)
+
 	err = storage.DiskDeleted(ctx, "disk", time.Now())
 	require.NoError(t, err)
 	require.True(t, diskIsTombstone(readTrackedDisk(t, ctx, db, storage, "disk")))
 
 	for _, id := range []string{"first", "second", "first"} {
-		prepared, err := storage.PrepareDiskCleanup(ctx, "disk", "delete", id)
+		prepared, err := storage.PrepareDiskCleanup(ctx, "disk", id)
 		require.NoError(t, err)
 		require.True(t, prepared)
 	}
 
 	state := readTrackedDisk(t, ctx, db, storage, "disk")
 	require.True(t, diskIsTombstone(state))
-	require.Equal(t, `["first","second"]`, state.cleanupTaskIDs)
+	require.Equal(t, `["holder","first","second"]`, state.cleanupTaskIDs)
 	require.False(t, state.deletedAt.After(time.Unix(0, 0)))
 
 	// Reservation is released only together with the transaction.
@@ -133,7 +137,7 @@ func TestTrackedDiskDeletionCompletesOnLastRelease(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(
 		t,
-		`["first","second"]`,
+		`["holder","first","second"]`,
 		readTrackedDisk(t, ctx, db, storage, "disk").cleanupTaskIDs,
 	)
 
@@ -142,10 +146,10 @@ func TestTrackedDiskDeletionCompletesOnLastRelease(t *testing.T) {
 
 	state = readTrackedDisk(t, ctx, db, storage, "disk")
 	require.True(t, diskIsTombstone(state))
-	require.Equal(t, `["second"]`, state.cleanupTaskIDs)
+	require.Equal(t, `["holder","second"]`, state.cleanupTaskIDs)
 
 	beforeCompletion := time.Now()
-	for _, id := range []string{"second", "unknown"} {
+	for _, id := range []string{"holder", "second", "unknown"} {
 		err = completeDiskCleanup(ctx, db, storage, "disk", id, true)
 		require.NoError(t, err)
 	}
@@ -156,13 +160,13 @@ func TestTrackedDiskDeletionCompletesOnLastRelease(t *testing.T) {
 	require.Equal(t, "[]", state.cleanupTaskIDs)
 	require.False(t, state.deletedAt.Before(beforeCompletion))
 
-	prepared, err := storage.PrepareDiskCleanup(ctx, "disk", "late", "late")
+	prepared, err := storage.PrepareDiskCleanup(ctx, "disk", "late")
 	require.NoError(t, err)
 	require.False(t, prepared)
 
 	// The task which created the tombstone may resume after another task has
 	// completed the deletion. It must not clean up a completed deletion.
-	prepared, err = storage.PrepareDiskCleanup(ctx, "disk", "delete", "creator")
+	prepared, err = storage.PrepareDiskCleanup(ctx, "disk", "creator")
 	require.NoError(t, err)
 	require.False(t, prepared)
 	require.Equal(
@@ -194,7 +198,7 @@ func TestTrackedDeletionRejectsCompletedDisk(t *testing.T) {
 	err = storage.DiskDeleted(ctx, "disk", time.Now())
 	require.NoError(t, err)
 
-	prepared, err := storage.PrepareDiskCleanup(ctx, "disk", "late", "late")
+	prepared, err := storage.PrepareDiskCleanup(ctx, "disk", "late")
 	require.NoError(t, err)
 	require.False(t, prepared)
 
@@ -221,9 +225,44 @@ func TestDiskTombstoneClassification(t *testing.T) {
 	}
 }
 
+func TestMissingDiskCreatesTombstone(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+
+	actual, err := storage.DeleteDisk(ctx, "disk", "delete", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, actual)
+
+	state := readTrackedDisk(t, ctx, db, storage, "disk")
+	require.True(t, diskIsTombstone(state))
+	require.Equal(t, "delete", state.deleteTaskID)
+
+	prepared, err := storage.PrepareDiskCleanup(ctx, "disk", "cleanup")
+	require.NoError(t, err)
+	require.True(t, prepared)
+
+	// Legacy path finalizes a tombstone without holders via DiskDeleted.
+	err = storage.DiskDeleted(ctx, "disk", time.Now())
+	require.NoError(t, err)
+	require.True(t, diskIsTombstone(readTrackedDisk(t, ctx, db, storage, "disk")))
+
+	err = completeDiskCleanup(ctx, db, storage, "disk", "cleanup", true)
+	require.NoError(t, err)
+	require.Equal(t, diskStatusDeleted, readTrackedDisk(t, ctx, db, storage, "disk").status)
+
+	actual, err = storage.DeleteDisk(ctx, "disk2", "delete2", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, actual)
+	require.True(t, diskIsTombstone(readTrackedDisk(t, ctx, db, storage, "disk2")))
+
+	err = storage.DiskDeleted(ctx, "disk2", time.Now())
+	require.NoError(t, err)
+	require.Equal(t, diskStatusDeleted, readTrackedDisk(t, ctx, db, storage, "disk2").status)
+}
+
 // Rows written before the explicit tombstone flag was added: a placeholder
-// and a completed deletion look the same. Only the task which wrote the row
-// may still have unfinished external cleanup.
+// and a completed deletion look the same. PrepareDiskCleanup must not treat
+// them as tombstones even for the task which wrote the row.
 func TestLegacyDeletedDiskCleanup(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
@@ -283,27 +322,16 @@ func TestLegacyDeletedDiskCleanup(t *testing.T) {
 				)
 			})
 
-			prepared, err := storage.PrepareDiskCleanup(ctx, "disk", "other", "other")
-			require.NoError(t, err)
-			require.False(t, prepared)
-
-			// Task which wrote the row before the upgrade must finish cleanup.
-			prepared, err = storage.PrepareDiskCleanup(ctx, "disk", "delete", "cleanup")
-			require.NoError(t, err)
-			require.True(t, prepared)
+			for _, id := range []string{"other", "cleanup"} {
+				prepared, err := storage.PrepareDiskCleanup(ctx, "disk", id)
+				require.NoError(t, err)
+				require.False(t, prepared)
+			}
 
 			state := readTrackedDisk(t, ctx, db, storage, "disk")
 			require.Equal(t, diskStatusDeleted, state.status)
 			require.False(t, state.tombstone)
-			require.Equal(t, `["cleanup"]`, state.cleanupTaskIDs)
-
-			err = completeDiskCleanup(ctx, db, storage, "disk", "cleanup", true)
-			require.NoError(t, err)
-			require.Equal(
-				t,
-				"[]",
-				readTrackedDisk(t, ctx, db, storage, "disk").cleanupTaskIDs,
-			)
+			require.Empty(t, state.cleanupTaskIDs)
 		})
 	}
 }
