@@ -152,7 +152,7 @@ void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
                "filesystem without strict file system size enforcement.");
     }
 
-    // TODO issue-8034: switch to shard topology
+    // TODO(#8034): switch to shard topology
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     TVector<TString> balancerShardIds;
 
@@ -236,6 +236,7 @@ void TIndexTabletState::LoadState(
     SizeToNodesRatio = config.GetSizeToNodesRatio();
 
     FileSystem.CopyFrom(fileSystem);
+    // TODO(#8034): remove after all tablets store the shard topology
     RestoreShardTopology(
         FileSystem.GetShardFileSystemIds(),
         *FileSystem.MutableShardTopology());

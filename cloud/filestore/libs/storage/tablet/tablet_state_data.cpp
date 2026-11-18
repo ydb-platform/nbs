@@ -1876,7 +1876,7 @@ NProto::TError TIndexTabletState::UpdateShardBalancer(
             minFreeSpaceReserve);
     }
 
-    // TODO issue-8034: switch to shard topology
+    // TODO(#8034): switch to shard topology
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     const auto fileShardIds = GetFileShardIds(GetFileSystem());
     THashSet<TString> fileShardIdSet(fileShardIds.begin(), fileShardIds.end());

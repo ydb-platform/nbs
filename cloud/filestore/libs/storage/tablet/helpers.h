@@ -150,7 +150,9 @@ NProto::TError ValidateRange(TByteRange byteRange, ui32 maxFileBlocks);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Makes the topology describe every shard of the shard list.
+// Ensures that every shard id has an entry in the topology. Handles the rare
+// case when a filesystem is created by the new code, then rolled back and
+// altered by the old code. This is not expected to happen.
 void RestoreShardTopology(
     const google::protobuf::RepeatedPtrField<TString>& shardIds,
     NProtoPrivate::TShardTopology& topology);

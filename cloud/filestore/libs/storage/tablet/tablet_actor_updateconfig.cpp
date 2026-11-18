@@ -140,7 +140,7 @@ NProto::TError ValidateShardList(
 }
 
 // A request sets the shard list or the topology, the other one is derived.
-// TODO issue-8034: switch to shard topology
+// TODO(#8034): switch to shard topology
 void SyncShardIdsAndTopology(
     const NProtoPrivate::TShardTopology& currentTopology,
     google::protobuf::RepeatedPtrField<TString>& shardIds,
@@ -288,7 +288,7 @@ void TIndexTabletActor::HandleUpdateConfig(
     }
 
     // Setting the fields that schemeshard is not aware of.
-    // TODO issue-8034: switch to shard topology
+    // TODO(#8034): switch to shard topology
     *newConfig.MutableShardFileSystemIds() =
         oldConfig.GetShardFileSystemIds();
     *newConfig.MutableShardTopology() = oldConfig.GetShardTopology();

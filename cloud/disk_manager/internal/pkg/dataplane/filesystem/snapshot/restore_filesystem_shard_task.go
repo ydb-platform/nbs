@@ -223,7 +223,7 @@ func (t *restoreFilesystemShardTask) getShardFileSystemIDs(
 		return nil, err
 	}
 
-	// TODO issue-8034: switch to shard topology
+	// TODO(#8034): switch to shard topology
 	shardFileSystemIDs := mainFileSystemTopology.ShardFileSystemIDs
 	if len(shardFileSystemIDs) == 0 {
 		return nil, task_errors.NewNonRetriableErrorf(

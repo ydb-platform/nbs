@@ -55,7 +55,7 @@ TVector<TString> TFileStoreIndexOperations::GetShardFileSystemIds()
                            << response.GetError();
     }
 
-    // TODO issue-8034: switch to shard topology
+    // TODO(#8034): switch to shard topology
     const auto& shardIds = response.GetShardFileSystemIds();
     return {shardIds.begin(), shardIds.end()};
 }

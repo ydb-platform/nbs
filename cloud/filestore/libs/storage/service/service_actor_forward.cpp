@@ -81,7 +81,7 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
     const NProto::TFileStore& filestore,
     const ui32 shardNo) const
 {
-    // TODO issue-8034: switch to shard topology
+    // TODO(#8034): switch to shard topology
     const auto& shardIds = filestore.GetShardFileSystemIds();
     if (shardIds.empty()) {
         //

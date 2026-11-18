@@ -1264,7 +1264,7 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyResponse>();
 
-    // TODO issue-8034: switch to shard topology
+    // TODO(#8034): switch to shard topology
     *response->Record.MutableShardFileSystemIds() =
         GetFileSystem().GetShardFileSystemIds();
     response->Record.SetShardNo(GetFileSystem().GetShardNo());
