@@ -1,6 +1,9 @@
 #include "actorsystem.h"
 
 #include <cloud/blockstore/libs/config/blockstore_config_provider_private.h>
+#include <cloud/blockstore/libs/config/helpers.h>
+#include <cloud/blockstore/libs/config/opaque_config_parser.h>
+#include <cloud/blockstore/libs/configs_manager/configs_manager.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
@@ -138,11 +141,33 @@ public:
         const auto config = Args.StartupBlockstoreConfig;
         const auto storageConfig = config->GetStorageConfig();
 
-        storageConfig->Register(*appData->Icb);
+        storageConfig->GetControls()->Register(*appData->Icb);
+        auto ConfigHolder = InitializeBlockstoreConfigProvider(
+            Args.StartupBlockstoreConfig);
 
-        // TODO: the result shall be used by further dynamic YAML configuration
-        // implementation
-        (void)InitializeBlockstoreConfigProvider(Args.StartupBlockstoreConfig);
+        //
+        // ConfigsManager
+        //
+
+        const NServer::TServerAppConfig staticServerConfig(
+            Args.StaticBlockstoreConfigProto.GetServer());
+        if (IsPrivateDatabaseConfigEnabled(
+                staticServerConfig.GetDynamicYamlConfigurationEnabled(),
+                Args.TemporaryServer))
+        {
+            setup->LocalServices.emplace_back(
+                MakeConfigsManagerServiceId(),
+                TActorSetupCmd(
+                    CreateConfigsManager({
+                        .ConfigHolder = std::move(ConfigHolder),
+                        .StaticConfig = Args.StaticBlockstoreConfigProto,
+                        .InitialDynamicConfig = Args.CmsBlockstoreConfig,
+                        .StorageConfigControls =
+                            storageConfig->GetControls(),
+                    }),
+                    TMailboxType::Revolving,
+                    appData->UserPoolId));
+        }
 
         //
         // SSProxy
@@ -592,15 +617,15 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
 {
     Y_ABORT_UNLESS(sArgs.StartupBlockstoreConfig);
 
+    const TStorageConfig staticStorageConfig(
+        sArgs.StaticBlockstoreConfigProto.GetStorageService(),
+        nullptr);
+
     const auto startupStorageConfig =
         sArgs.StartupBlockstoreConfig->GetStorageConfig();
 
     const NServer::TServerAppConfig staticServerConfig(
         sArgs.StaticBlockstoreConfigProto.GetServer());
-    Y_ABORT_UNLESS(
-        !staticServerConfig.GetDynamicYamlConfigurationEnabled() ||
-        startupStorageConfig->GetStorageConfigControls());
-
     const bool enableConfigsDispatcher = ShouldEnableConfigsDispatcher(
         staticServerConfig,
         *startupStorageConfig);
@@ -608,10 +633,27 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
     auto prepareKikimrRunConfig = [&] (TKikimrRunConfig& runConfig) {
         if (enableConfigsDispatcher) {
             SetupConfigDispatcher(
-                startupStorageConfig->GetConfigDispatcherSettings(),
-                startupStorageConfig->GetSchemeShardDir(),
-                startupStorageConfig->GetNodeType(),
+                staticStorageConfig.GetConfigDispatcherSettings(),
+                staticStorageConfig.GetSchemeShardDir(),
+                staticStorageConfig.GetNodeType(),
                 &runConfig.ConfigsDispatcherInitInfo);
+            if (IsPrivateDatabaseConfigEnabled(
+                    staticServerConfig.GetDynamicYamlConfigurationEnabled(),
+                    sArgs.TemporaryServer))
+            {
+                constexpr ui32 kind =
+                    NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem;
+
+                // Preserve an explicit DenyList ban on
+                // PrivateDatabaseConfigItem. In that case:
+                // - only the PrivateDatabaseConfig loaded at startup is then
+                // applied
+                // - ConfigsDispatcher does not deliver its runtime updates
+                AllowConfigItem(kind, &runConfig.ConfigsDispatcherInitInfo);
+                runConfig.ConfigsDispatcherInitInfo.OpaqueConfigParsers.emplace(
+                    kind,
+                    CreateBlockstoreOpaqueConfigParser());
+            }
             runConfig.ConfigsDispatcherInitInfo.InitialConfig = runConfig.AppConfig;
         }
     };

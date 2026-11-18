@@ -168,7 +168,7 @@ TLoadOptimizationCompactionPolicyConfig
 BuildLoadOptimizationCompactionPolicyConfig(
     const NProto::TPartitionConfig& partitionConfig,
     const TStorageConfig& storageConfig,
-    const ui32 siblingCount);
+    const ui32 maxBlobsPerRange);
 
 ICompactionPolicyPtr BuildCompactionPolicy(
     const NProto::TPartitionConfig& partitionConfig,

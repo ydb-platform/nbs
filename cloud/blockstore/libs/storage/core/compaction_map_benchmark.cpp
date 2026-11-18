@@ -175,6 +175,7 @@ void DoUpdateRange(
             BlocksInRange,
             0,
             0,
+            false,
             false);
     }
 
@@ -207,7 +208,8 @@ void DoUpdateRange(
             BlocksInRange,
             0,
             0,
-            compacted);
+            compacted,
+            false);
     }
 }
 

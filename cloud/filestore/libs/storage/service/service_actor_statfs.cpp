@@ -127,9 +127,18 @@ void TStatFileStoreActor::HandleStorageStats(
     auto response = std::make_unique<TEvService::TEvStatFileStoreResponse>();
     response->Record.MutableFileStore()->CopyFrom(FileStore);
 
+    const auto& storageStats = msg->Record.GetStats();
+    // Older tablets don't populate TotalNodesCount. Keep the value obtained
+    // from the scheme shard in that case to support rolling upgrades.
+    // TODO(#7811). This 'if' should be dropped after the migration.
+    if (storageStats.GetTotalNodesCount()) {
+        response->Record.MutableFileStore()->SetNodesCount(
+            storageStats.GetTotalNodesCount());
+    }
+
     auto* stats = response->Record.MutableStats();
-    stats->SetUsedNodesCount(msg->Record.GetStats().GetUsedNodesCount());
-    stats->SetUsedBlocksCount(msg->Record.GetStats().GetUsedBlocksCount());
+    stats->SetUsedNodesCount(storageStats.GetUsedNodesCount());
+    stats->SetUsedBlocksCount(storageStats.GetUsedBlocksCount());
 
     ReplyAndDie(ctx, std::move(response));
 }

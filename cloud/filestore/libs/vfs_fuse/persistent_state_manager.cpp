@@ -35,22 +35,14 @@ struct TComponentConfig
     const TString BasePath;
     // State file name.
     const TString FileName;
-    // The size a new state file is created with. 0 means empty, in which
-    // case the file is sized by the component itself.
-    const ui64 StateFileSize;
+    // Whether the caller must supply a positive stateFileSize in
+    // AcquireStateFile.
+    const bool StateFileSizeRequired;
+    // Minimum size for new state files. Smaller requests preserve the current
+    // size of existing files. Zero disables the minimum-size check.
+    const ui64 MinStateFileSize;
     // Limit of the total size of the state files, 0 means no limit.
     const ui64 TotalSizeLimit;
-
-    TComponentConfig(
-            TString basePath,
-            TString fileName,
-            ui64 stateFileSize,
-            ui64 totalSizeLimit)
-        : BasePath(std::move(basePath))
-        , FileName(std::move(fileName))
-        , StateFileSize(stateFileSize)
-        , TotalSizeLimit(totalSizeLimit)
-    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -66,9 +58,9 @@ class TStateFileRegistry
 public:
     struct TStateFile
     {
-        // The size the file is known: the actual one for a listed file, the one
-        // it was created with otherwise (a component may adjust it slightly,
-        // which is only picked up by a listing).
+        // Size reserved for quota checks: at least the listed or created size
+        // and the target size selected on acquisition. Shrinking may be
+        // deferred, so a smaller target does not reduce the reservation.
         ui64 Size = 0;
         // Whether the file is acquired by a guard.
         bool Acquired = false;
@@ -95,19 +87,40 @@ public:
         return file && file->Acquired;
     }
 
-    // Registers the state file, adding it with the given size if it is not
-    // known yet (the size of a known one is left as is).
-    // A file found (listed) is registered as not acquired, it might be later
-    // acquired by a guard as such.
+    // Registers a listed or newly created file as not acquired. A known file
+    // keeps its previous size reservation.
     void Register(
         const TString& dir,
         const TString& fileName,
-        ui64 size,
-        bool fileAcquired)
+        ui64 size)
     {
         const TStateFile unknownFile{.Size = size, .Acquired = false};
         auto it = StateFiles[dir].insert({fileName, unknownFile}).first;
-        it->second.Acquired = fileAcquired;
+        Y_DEBUG_ABORT_UNLESS(!it->second.Acquired);
+    }
+
+    // Marks a registered file acquired and reserves its target size.
+    void MarkAcquired(
+        const TString& dir,
+        const TString& fileName,
+        ui64 targetSize)
+    {
+        auto* dirFiles = StateFiles.FindPtr(dir);
+        Y_ABORT_UNLESS(dirFiles, "Session directory is not registered");
+        auto* file = dirFiles->FindPtr(fileName);
+        Y_ABORT_UNLESS(file, "State file is not registered");
+
+        // targetSize is the target requested for this acquisition. Reserve any
+        // growth now so other sessions cannot consume the quota needed
+        // when the component resizes the file. The resize itself may wait
+        // until buffered entries have drained.
+        //
+        // A smaller target must not reduce the reservation while the file
+        // may still be larger. Releasing the guard keeps the reservation;
+        // deletion removes it, and a new listing rebuilds it from disk.
+        // Only a successful lock acquisition may grow a known reservation.
+        file->Size = Max(file->Size, targetSize);
+        file->Acquired = true;
     }
 
     // Unregisters the state file, forgetting it altogether if it has been
@@ -138,16 +151,27 @@ public:
         return true;
     }
 
-    // The total size of the state files of the component.
-    ui64 GetTotalSize(const TString& fileName) const
+    // Whether another state file fits within the component's total size limit.
+    bool FitsInTotalSizeLimit(
+        const TString& fileName,
+        ui64 stateFileSize,
+        ui64 totalSizeLimit) const
     {
-        ui64 totalSize = 0;
+        if (stateFileSize > totalSizeLimit) {
+            return false;
+        }
+
+        // Subtract from the remaining budget to avoid overflowing a size sum.
+        ui64 remainingSize = totalSizeLimit - stateFileSize;
         for (const auto& [dir, dirFiles]: StateFiles) {
             if (const auto* file = dirFiles.FindPtr(fileName)) {
-                totalSize += file->Size;
+                if (file->Size > remainingSize) {
+                    return false;
+                }
+                remainingSize -= file->Size;
             }
         }
-        return totalSize;
+        return true;
     }
 };
 
@@ -161,6 +185,7 @@ struct TAcquireStateFileGuard::TImpl
     // State file name.
     TString FileName;
     TFsPath FilePath;
+    ui64 TargetStateFileSize = 0;
 
     THolder<TFileLock> Lock;
 
@@ -217,6 +242,12 @@ const TFsPath& TAcquireStateFileGuard::GetFilePath() const
     return Impl->FilePath;
 }
 
+ui64 TAcquireStateFileGuard::GetTargetStateFileSize() const
+{
+    Y_ABORT_UNLESS(Impl, "The guard holds no state file");
+    return Impl->TargetStateFileSize;
+}
+
 NProto::TError TAcquireStateFileGuard::DeleteStateFile()
 {
     if (!Impl) {
@@ -262,7 +293,8 @@ public:
         const TString& sessionId) override;
     TResultOrError<TAcquireStateFileGuard> AcquireHandleOpsQueueStateFile(
         const TString& fileSystemId,
-        const TString& sessionId) override;
+        const TString& sessionId,
+        ui64 stateFileSize) override;
 
     // WriteBackCache
 
@@ -271,7 +303,8 @@ public:
         const TString& sessionId) override;
     TResultOrError<TAcquireStateFileGuard> AcquireWriteBackCacheStateFile(
         const TString& fileSystemId,
-        const TString& sessionId) override;
+        const TString& sessionId,
+        ui64 stateFileSize) override;
 
     // DirectoryHandleStorage
 
@@ -313,28 +346,32 @@ private:
     TResultOrError<TAcquireStateFileGuard> AcquireStateFile(
         const TComponentConfig& component,
         const TString& fileSystemId,
-        const TString& sessionId);
+        const TString& sessionId,
+        ui64 stateFileSize);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TPersistentStateManager::TPersistentStateManager(
         TPersistentStateManagerConfig config)
-    : HandleOpsQueue(
-          std::move(config.HandleOpsQueueBasePath),
-          TString(HandleOpsQueueFileName),
-          config.HandleOpsQueueStateFileSize,
-          config.HandleOpsQueueTotalSizeLimit)
-    , WriteBackCache(
-          std::move(config.WriteBackCacheBasePath),
-          TString(WriteBackCacheFileName),
-          config.WriteBackCacheStateFileSize,
-          config.WriteBackCacheTotalSizeLimit)
-    , DirectoryHandleStorage(
-          std::move(config.DirectoryHandlesStorageBasePath),
-          TString(DirectoryHandleStorageFileName),
-          0,   // stateFileSize: sized by the component itself
-          0)   // totalSizeLimit: not limited
+    : HandleOpsQueue{
+          .BasePath = std::move(config.HandleOpsQueueBasePath),
+          .FileName = TString(HandleOpsQueueFileName),
+          .StateFileSizeRequired = true,
+          .MinStateFileSize = 0,
+          .TotalSizeLimit = config.HandleOpsQueueTotalSizeLimit}
+    , WriteBackCache{
+          .BasePath = std::move(config.WriteBackCacheBasePath),
+          .FileName = TString(WriteBackCacheFileName),
+          .StateFileSizeRequired = true,
+          .MinStateFileSize = config.WriteBackCacheMinStateFileSize,
+          .TotalSizeLimit = config.WriteBackCacheTotalSizeLimit}
+    , DirectoryHandleStorage{
+          .BasePath = std::move(config.DirectoryHandlesStorageBasePath),
+          .FileName = TString(DirectoryHandleStorageFileName),
+          .StateFileSizeRequired = false,
+          .MinStateFileSize = 0,
+          .TotalSizeLimit = 0}
 {}
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -474,8 +511,7 @@ NProto::TError TPersistentStateManager::ListStateFilesLocked(
                 Registry.Register(
                     sessionDir.GetPath(),
                     fileName,
-                    stat.Size,
-                    false /* fileAcquired */);
+                    stat.Size);
             }
         }
     }
@@ -614,8 +650,16 @@ TResultOrError<TAcquireStateFileGuard>
 TPersistentStateManager::AcquireStateFile(
     const TComponentConfig& component,
     const TString& fileSystemId,
-    const TString& sessionId)
+    const TString& sessionId,
+    ui64 stateFileSize)
 {
+    if (component.StateFileSizeRequired && !stateFileSize) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "State file size for " << component.FileName
+                             << " must be positive");
+    }
+
     if (!component.BasePath) {
         return MakeError(
             E_INVALID_STATE,
@@ -640,14 +684,32 @@ TPersistentStateManager::AcquireStateFile(
                              << " is already acquired");
     }
 
-    // An existing state file is acquired regardless of the limit, so that the
-    // state of a previous session is always restored. A new one is created
-    // only if it fits into the limit, otherwise the component is not to be
-    // used by the session at all, which is what an empty guard means.
+    // An existing state file bypasses the size limit, provided the acquisition
+    // arguments are valid, so previous-session state can be restored. A new one
+    // is created only if it fits into the limit, otherwise the component is not
+    // used by the session, which is what an empty guard means.
     const bool isNew = !Registry.IsRegistered(dir.GetPath(), fileName);
+    const bool sizeBelowMinimum = stateFileSize < component.MinStateFileSize;
+    if (sizeBelowMinimum) {
+        const TString message = TStringBuilder()
+                                << "Requested size " << stateFileSize
+                                << " for state file " << filePath
+                                << " is below the minimum "
+                                << component.MinStateFileSize;
+        ReportPersistentStateFileRequestedSizeTooSmall(message);
+
+        if (isNew) {
+            // State file is not created because of invalid size
+            // Reporting a critical event but not returning an error is enough
+            return TAcquireStateFileGuard();
+        }
+    }
+
     if (isNew && component.TotalSizeLimit &&
-        Registry.GetTotalSize(fileName) + component.StateFileSize >
-            component.TotalSizeLimit)
+        !Registry.FitsInTotalSizeLimit(
+            fileName,
+            stateFileSize,
+            component.TotalSizeLimit))
     {
         // State file is not created: the total file size limit has been
         // reached.
@@ -670,8 +732,8 @@ TPersistentStateManager::AcquireStateFile(
             TFile file(
                 filePath,
                 EOpenModeFlag::CreateNew | EOpenModeFlag::RdWr);
-            if (component.StateFileSize) {
-                file.Resize(component.StateFileSize);
+            if (stateFileSize) {
+                file.Resize(stateFileSize);
             }
         } catch (const TSystemError& e) {
             if (e.Status() != EEXIST) {
@@ -693,8 +755,7 @@ TPersistentStateManager::AcquireStateFile(
     Registry.Register(
         dir.GetPath(),
         fileName,
-        component.StateFileSize,
-        false /* fileAcquired */);
+        stateFileSize);
 
     THolder<TFileLock> lock;
     try {
@@ -704,6 +765,18 @@ TPersistentStateManager::AcquireStateFile(
                 E_INVALID_STATE,
                 TStringBuilder() << "State file " << filePath
                                  << " is locked by another owner");
+        }
+
+        if (sizeBelowMinimum) {
+            // Ignore the requested size
+            const i64 currentSize = lock->GetLength();
+            if (currentSize < 0) {
+                return MakeError(
+                    E_INVALID_STATE,
+                    TStringBuilder() << "Invalid current size of state file "
+                                     << filePath << ": " << currentSize);
+            }
+            stateFileSize = static_cast<ui64>(currentSize);
         }
     } catch (const yexception& e) {
         return MakeError(
@@ -717,6 +790,7 @@ TPersistentStateManager::AcquireStateFile(
             .Dir = std::move(dir),
             .FileName = std::move(fileName),
             .FilePath = std::move(filePath),
+            .TargetStateFileSize = stateFileSize,
             .Lock = std::move(lock),
             .Release = [manager = shared_from_this()](
                            TAcquireStateFileGuard::TImpl& impl,
@@ -728,11 +802,10 @@ TPersistentStateManager::AcquireStateFile(
     // Marking the file acquired is the last step and cannot fail (the
     // registry entry exists already), so a file never ends up marked
     // acquired without a guard actually holding it.
-    Registry.Register(
+    Registry.MarkAcquired(
         impl->Dir.GetPath(),
         impl->FileName,
-        component.StateFileSize,
-        true /* fileAcquired */);
+        stateFileSize);
 
     return TAcquireStateFileGuard(std::move(impl));
 }
@@ -750,9 +823,14 @@ TResultOrError<bool> TPersistentStateManager::HasHandleOpsQueueState(
 TResultOrError<TAcquireStateFileGuard>
 TPersistentStateManager::AcquireHandleOpsQueueStateFile(
     const TString& fileSystemId,
-    const TString& sessionId)
+    const TString& sessionId,
+    ui64 stateFileSize)
 {
-    return AcquireStateFile(HandleOpsQueue, fileSystemId, sessionId);
+    return AcquireStateFile(
+        HandleOpsQueue,
+        fileSystemId,
+        sessionId,
+        stateFileSize);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -768,9 +846,14 @@ TResultOrError<bool> TPersistentStateManager::HasWriteBackCacheState(
 TResultOrError<TAcquireStateFileGuard>
 TPersistentStateManager::AcquireWriteBackCacheStateFile(
     const TString& fileSystemId,
-    const TString& sessionId)
+    const TString& sessionId,
+    ui64 stateFileSize)
 {
-    return AcquireStateFile(WriteBackCache, fileSystemId, sessionId);
+    return AcquireStateFile(
+        WriteBackCache,
+        fileSystemId,
+        sessionId,
+        stateFileSize);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -788,7 +871,11 @@ TPersistentStateManager::AcquireDirectoryHandleStorageStateFile(
     const TString& fileSystemId,
     const TString& sessionId)
 {
-    return AcquireStateFile(DirectoryHandleStorage, fileSystemId, sessionId);
+    return AcquireStateFile(
+        DirectoryHandleStorage,
+        fileSystemId,
+        sessionId,
+        0 /* stateFileSize: sized by the component itself */);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -809,9 +896,10 @@ public:
 
     TResultOrError<TAcquireStateFileGuard> AcquireHandleOpsQueueStateFile(
         const TString& fileSystemId,
-        const TString& sessionId) override
+        const TString& sessionId,
+        ui64 stateFileSize) override
     {
-        Y_UNUSED(fileSystemId, sessionId);
+        Y_UNUSED(fileSystemId, sessionId, stateFileSize);
         return NotImplemented(HandleOpsQueueFileName);
     }
 
@@ -827,9 +915,10 @@ public:
 
     TResultOrError<TAcquireStateFileGuard> AcquireWriteBackCacheStateFile(
         const TString& fileSystemId,
-        const TString& sessionId) override
+        const TString& sessionId,
+        ui64 stateFileSize) override
     {
-        Y_UNUSED(fileSystemId, sessionId);
+        Y_UNUSED(fileSystemId, sessionId, stateFileSize);
         return NotImplemented(WriteBackCacheFileName);
     }
 

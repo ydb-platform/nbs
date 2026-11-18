@@ -964,10 +964,11 @@ bool IsSetDefaultThrottlingPolicy(const TVolumeState* state)
 bool TVolumeActor::CanChangeThrottlingPolicy() const
 {
     const auto& volumeConfig = GetNewestConfig();
-    return Config->IsChangeThrottlingPolicyFeatureEnabled(
-        volumeConfig.GetCloudId(),
-        volumeConfig.GetFolderId(),
-        volumeConfig.GetDiskId());
+    return Config->GetChangeThrottlingPolicyEnabled() ||
+           Config->IsChangeThrottlingPolicyFeatureEnabled(
+               volumeConfig.GetCloudId(),
+               volumeConfig.GetFolderId(),
+               volumeConfig.GetDiskId());
 }
 
 ////////////////////////////////////////////////////////////////////////////////

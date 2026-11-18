@@ -4,10 +4,12 @@ SRCS(
     authorizer.cpp
     hive_proxy.cpp
     ss_proxy.cpp
+    tablet_proxy.cpp
     user_stats.cpp
 )
 
 PEERDIR(
+    cloud/storage/core/libs/actors
     cloud/storage/core/libs/kikimr
     cloud/storage/core/protos
 

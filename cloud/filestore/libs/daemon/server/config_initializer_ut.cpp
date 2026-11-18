@@ -15,7 +15,9 @@
 #include <util/datetime/cputimer.h>
 #include <util/folder/tempdir.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/vector.h>
 #include <util/stream/file.h>
+#include <util/string/builder.h>
 #include <util/system/sanitizers.h>
 
 namespace NCloud::NFileStore::NDaemon {
@@ -293,6 +295,178 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             "EnableGracefulShutdown"};
 
         ShouldLoadKikimrFeaturesFromCms(featureNames, false);
+    }
+
+    Y_UNIT_TEST(ShouldLoadSystemTabletBackupPathFromFile)
+    {
+        const TVector<TString> backupPaths = {"", "/var/backup/nfs"};
+        for (const auto& backupPath: backupPaths) {
+            TTempDir dir;
+            const auto configPath = dir.Path() / "nfs-storage.txt";
+            TOFStream(configPath.GetPath())
+                .Write(
+                    TStringBuilder()
+                    << "SystemTabletBackupDirPath: \"" << backupPath << "\"");
+
+            auto options = CreateOptions();
+            options->StorageConfig = configPath.GetPath();
+            auto ci = TConfigInitializerServer(std::move(options));
+            ci.InitKikimrConfig();
+            ci.InitStorageConfig();
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                backupPath,
+                ci.StorageConfig->GetSystemTabletBackupDirPath());
+            UNIT_ASSERT_VALUES_EQUAL(
+                !backupPath.empty(),
+                ci.KikimrConfig->HasSystemTabletBackupConfig());
+            UNIT_ASSERT_VALUES_EQUAL(
+                backupPath,
+                ci.KikimrConfig->GetSystemTabletBackupConfig()
+                    .GetFilesystem()
+                    .GetPath());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldApplySystemTabletBackupPathFromCms)
+    {
+        auto ci = TConfigInitializerServer(CreateOptions());
+        ci.InitKikimrConfig();
+        ci.InitStorageConfig();
+
+        const TVector<TString> backupPaths = {
+            "/var/backup/nfs",
+            "/var/backup/nfs-new",
+            ""};
+        for (const auto& backupPath: backupPaths) {
+            NKikimrConfig::TAppConfig appCfg;
+            auto* namedConfig = appCfg.AddNamedConfigs();
+            namedConfig->SetName("Cloud.Filestore.StorageConfig");
+            if (backupPath) {
+                namedConfig->SetConfig(
+                    TStringBuilder()
+                    << "SystemTabletBackupDirPath: \"" << backupPath << "\"");
+            } else {
+                // Removing the field from the named config removes its
+                // override.
+                namedConfig->SetConfig("");
+            }
+            ci.ApplyCMSConfigs(std::move(appCfg));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                backupPath,
+                ci.StorageConfig->GetSystemTabletBackupDirPath());
+            UNIT_ASSERT_VALUES_EQUAL(
+                !backupPath.empty(),
+                ci.KikimrConfig->HasSystemTabletBackupConfig());
+            const auto& backupConfig =
+                ci.KikimrConfig->GetSystemTabletBackupConfig();
+            UNIT_ASSERT_VALUES_EQUAL(
+                !backupPath.empty(),
+                backupConfig.HasFilesystem());
+            UNIT_ASSERT_VALUES_EQUAL(
+                backupPath,
+                backupConfig.GetFilesystem().GetPath());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldTakeOtherSystemTabletBackupSettingsFromCms)
+    {
+        const TVector<TString> localPaths = {"", "/var/backup/local"};
+        const TVector<TString> namedPaths = {"", "/var/backup/named-cms", ""};
+        for (const auto& localPath: localPaths) {
+            TTempDir dir;
+            const auto configPath = dir.Path() / "nfs-storage.txt";
+            TOFStream(configPath.GetPath())
+                .Write(
+                    TStringBuilder()
+                    << "SystemTabletBackupDirPath: \"" << localPath << "\"");
+
+            auto options = CreateOptions();
+            options->StorageConfig = configPath.GetPath();
+            auto ci = TConfigInitializerServer(std::move(options));
+            ci.InitKikimrConfig();
+            ci.InitStorageConfig();
+
+            NKikimrConfig::TAppConfig cmsConfig;
+            auto* cmsBackupConfig = cmsConfig.MutableSystemTabletBackupConfig();
+            cmsBackupConfig->MutableFilesystem()->SetPath("/var/backup/cms");
+            cmsBackupConfig->SetMaxBackupsLimit(7);
+            cmsBackupConfig->AddExcludeTabletIds(123);
+            ci.ApplyCMSConfigs(std::move(cmsConfig));
+
+            for (const auto& namedPath: namedPaths) {
+                // Named-only updates keep the previously received CMS backup
+                // settings.
+                NKikimrConfig::TAppConfig appCfg;
+                auto* namedConfig = appCfg.AddNamedConfigs();
+                namedConfig->SetName("Cloud.Filestore.StorageConfig");
+                namedConfig->SetConfig(
+                    TStringBuilder()
+                    << "SystemTabletBackupDirPath: \"" << namedPath << "\"");
+                ci.ApplyCMSConfigs(std::move(appCfg));
+
+                const TString storagePath = localPath ? localPath : namedPath;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    storagePath,
+                    ci.StorageConfig->GetSystemTabletBackupDirPath());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    !storagePath.empty(),
+                    ci.KikimrConfig->HasSystemTabletBackupConfig());
+                if (!storagePath) {
+                    continue;
+                }
+
+                const auto& backupConfig =
+                    ci.KikimrConfig->GetSystemTabletBackupConfig();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    storagePath,
+                    backupConfig.GetFilesystem().GetPath());
+                UNIT_ASSERT_VALUES_EQUAL(7, backupConfig.GetMaxBackupsLimit());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    backupConfig.GetExcludeTabletIds().size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    123,
+                    backupConfig.GetExcludeTabletIds(0));
+            }
+
+            NKikimrConfig::TAppConfig clearNamedConfig;
+            auto* namedConfig = clearNamedConfig.AddNamedConfigs();
+            namedConfig->SetName("Cloud.Filestore.StorageConfig");
+            namedConfig->SetConfig("");
+            ci.ApplyCMSConfigs(std::move(clearNamedConfig));
+
+            NKikimrConfig::TAppConfig updatedCmsConfig;
+            auto* updatedBackupConfig =
+                updatedCmsConfig.MutableSystemTabletBackupConfig();
+            updatedBackupConfig->MutableFilesystem()->SetPath(
+                "/var/backup/cms-new");
+            updatedBackupConfig->SetMaxBackupsLimit(9);
+            updatedBackupConfig->AddExcludeTabletIds(456);
+            ci.ApplyCMSConfigs(std::move(updatedCmsConfig));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                localPath,
+                ci.StorageConfig->GetSystemTabletBackupDirPath());
+            UNIT_ASSERT_VALUES_EQUAL(
+                !localPath.empty(),
+                ci.KikimrConfig->HasSystemTabletBackupConfig());
+            if (localPath) {
+                const auto& backupConfig =
+                    ci.KikimrConfig->GetSystemTabletBackupConfig();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    localPath,
+                    backupConfig.GetFilesystem().GetPath());
+                UNIT_ASSERT_VALUES_EQUAL(9, backupConfig.GetMaxBackupsLimit());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    backupConfig.GetExcludeTabletIds().size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    456,
+                    backupConfig.GetExcludeTabletIds(0));
+            }
+        }
     }
 }
 

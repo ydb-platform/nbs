@@ -732,11 +732,11 @@ void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
 {
     auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
-    DeleteOpLogEntry(*db, args.OpLogEntryId);
-
     // If the original response was an error or prepare stage failed, we don't
     // need to do anything
     if (FAILED(args.Error.GetCode())) {
+        DeleteOpLogEntry(*db, args.OpLogEntryId);
+
         // It should be impossible to achieve this state
         LOG_ERROR(
             ctx,
@@ -753,6 +753,7 @@ void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
         return;
     }
     if (FAILED(args.Response.GetError().GetCode())) {
+        DeleteOpLogEntry(*db, args.OpLogEntryId);
         return;
     }
 
@@ -760,6 +761,8 @@ void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
     if (args.CommitId == InvalidCommitId) {
         return args.OnCommitIdOverflow();
     }
+
+    DeleteOpLogEntry(*db, args.OpLogEntryId);
 
     UnlinkExternalNode(
         *db,

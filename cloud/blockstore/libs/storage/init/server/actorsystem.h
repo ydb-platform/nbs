@@ -41,14 +41,21 @@ struct TServerActorSystemArgs
     NActors::TScopeId ScopeId;
     NKikimrConfig::TAppConfigPtr AppConfig;
 
-    // Local settings with CLI overrides, captured before CMS. RDMA is present
-    // only when loaded from its own file.
+    // Local configuration with CLI overrides, captured before CMS. RDMA is
+    // initialized from its own file or legacy fields.
     NProto::TBlockstoreConfig StaticBlockstoreConfigProto;
 
-    // Startup configuration after CMS and RDMA initialization,
-    // before private_database_config from YAML applied
-    // (both proto and IBlockstoreConfig).
+    // Normalized PrivateDatabaseConfig received from CMS in YAML mode.
+    // Empty in PROTO mode, for temporary servers, or without accepted
+    // PrivateDatabaseConfig overrides.
+    NProto::TBlockstoreConfig CmsBlockstoreConfig;
+
+    // Startup base after CMS application and RDMA initialization in both YAML
+    // and PROTO modes, before applying PrivateDatabaseConfig in YAML mode.
     NProto::TBlockstoreConfig StartupBlockstoreConfigProto;
+
+    // Effective startup snapshot in both YAML and PROTO modes.
+    // In YAML mode, includes accepted PrivateDatabaseConfig overrides.
     IBlockstoreConfigPtr StartupBlockstoreConfig;
 
     ILoggingServicePtr Logging;

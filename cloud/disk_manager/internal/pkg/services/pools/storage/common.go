@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	pools_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -27,17 +28,6 @@ func max(x, y uint64) uint64 {
 		return y
 	}
 	return x
-}
-
-func divideWithRoundingUp(x uint64, divisor uint64) uint64 {
-	res := x / divisor
-
-	if x%divisor != 0 {
-		// Round up.
-		return res + 1
-	}
-
-	return res
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -483,21 +473,22 @@ func slotStatusToString(status slotStatus) string {
 ////////////////////////////////////////////////////////////////////////////////
 
 type slot struct {
-	overlayDiskID       string
-	overlayDiskKind     types.DiskKind
-	overlayDiskSize     uint64
-	baseDiskID          string
-	imageID             string
-	zoneID              string
-	allottedSlots       uint64
-	allottedUnits       uint64
-	releasedAt          time.Time
-	targetZoneID        string
-	targetBaseDiskID    string
-	targetAllottedSlots uint64
-	targetAllottedUnits uint64
-	generation          uint64
-	status              slotStatus
+	overlayDiskID             string
+	overlayDiskKind           types.DiskKind
+	overlayDiskSize           uint64
+	expectedReadBandwidthMiBs uint64
+	baseDiskID                string
+	imageID                   string
+	zoneID                    string
+	allottedSlots             uint64
+	allottedUnits             uint64
+	releasedAt                time.Time
+	targetZoneID              string
+	targetBaseDiskID          string
+	targetAllottedSlots       uint64
+	targetAllottedUnits       uint64
+	generation                uint64
+	status                    slotStatus
 }
 
 func (s *slot) structValue() persistence.Value {
@@ -505,6 +496,7 @@ func (s *slot) structValue() persistence.Value {
 		persistence.StructFieldValue("overlay_disk_id", persistence.UTF8Value(s.overlayDiskID)),
 		persistence.StructFieldValue("overlay_disk_kind", persistence.Int64Value(int64(s.overlayDiskKind))),
 		persistence.StructFieldValue("overlay_disk_size", persistence.Uint64Value(s.overlayDiskSize)),
+		persistence.StructFieldValue("expected_read_bandwidth_mibs", persistence.Uint64Value(s.expectedReadBandwidthMiBs)),
 		persistence.StructFieldValue("base_disk_id", persistence.UTF8Value(s.baseDiskID)),
 		persistence.StructFieldValue("image_id", persistence.UTF8Value(s.imageID)),
 		persistence.StructFieldValue("zone_id", persistence.UTF8Value(s.zoneID)),
@@ -525,6 +517,7 @@ func slotStructTypeString() string {
 		overlay_disk_id: Utf8,
 		overlay_disk_kind: Int64,
 		overlay_disk_size: Uint64,
+		expected_read_bandwidth_mibs: Uint64,
 		base_disk_id: Utf8,
 		image_id: Utf8,
 		zone_id: Utf8,
@@ -544,6 +537,7 @@ func slotsTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("overlay_disk_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("overlay_disk_kind", persistence.Optional(persistence.TypeInt64)),
 		persistence.WithColumn("overlay_disk_size", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("expected_read_bandwidth_mibs", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("base_disk_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("image_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
@@ -566,6 +560,7 @@ func scanSlot(res persistence.Result) (slot slot, err error) {
 		persistence.OptionalWithDefault("overlay_disk_id", &slot.overlayDiskID),
 		persistence.OptionalWithDefault("overlay_disk_kind", &diskKind),
 		persistence.OptionalWithDefault("overlay_disk_size", &slot.overlayDiskSize),
+		persistence.OptionalWithDefault("expected_read_bandwidth_mibs", &slot.expectedReadBandwidthMiBs),
 		persistence.OptionalWithDefault("base_disk_id", &slot.baseDiskID),
 		persistence.OptionalWithDefault("image_id", &slot.imageID),
 		persistence.OptionalWithDefault("zone_id", &slot.zoneID),
@@ -713,6 +708,8 @@ func scanPool(res persistence.Result) (pool pool, err error) {
 
 // TODO: move some constants to configs.
 const (
+	// 4 TB. Size of base disks created without UseImageSize.
+	DefaultBaseDiskSize = uint64(4 << 40)
 	// 32 GB.
 	baseDiskUnitSize            = uint64(32 << 30)
 	minBaseDiskUnits            = 30
@@ -738,7 +735,7 @@ func (s *storageYDB) generateBaseDisk(
 	} else {
 		// Base disks use SSD. Compute the number of SSD allocation units
 		// needed to hold the image.
-		ssdUnits := divideWithRoundingUp(imageSize, baseDiskUnitSize)
+		ssdUnits := common.DivideWithRoundingUp(imageSize, baseDiskUnitSize)
 		size = ssdUnits * baseDiskUnitSize
 
 		// Regular (HDD-equivalent) units with oversubscription.
@@ -791,19 +788,21 @@ func (s *storageYDB) generateBaseDisk(
 	}
 }
 
-func computeAllottedUnits(s *slot) uint64 {
+// Units charged for an overlay disk by its size and kind, with
+// oversubscription.
+func computeAllottedUnitsBySize(s *slot) uint64 {
 	var res uint64
 
 	overlayDiskUnits := s.overlayDiskSize / baseDiskUnitSize
 
 	switch s.overlayDiskKind {
 	case types.DiskKind_DISK_KIND_SSD:
-		res = divideWithRoundingUp(
+		res = common.DivideWithRoundingUp(
 			regularUnitsPerSSDUnit*overlayDiskUnits,
 			overlayDiskOverSubscription,
 		)
 	case types.DiskKind_DISK_KIND_HDD:
-		res = divideWithRoundingUp(
+		res = common.DivideWithRoundingUp(
 			overlayDiskUnits,
 			overlayDiskOverSubscription,
 		)
@@ -813,9 +812,36 @@ func computeAllottedUnits(s *slot) uint64 {
 	return max(1, res)
 }
 
+// Units charged for an overlay disk by its expected read bandwidth (e.g. a
+// proxy overlay disk of disks.CreateDiskFromBaseDisk): as many base disk (SSD)
+// allocation units as needed to provide this bandwidth, without any
+// oversubscription.
+func computeAllottedUnitsByBandwidth(
+	expectedReadBandwidthMiBs uint64,
+	baseDiskUnitMaxReadBandwidthMiBs uint64,
+) uint64 {
+
+	baseDiskUnits := common.DivideWithRoundingUp(
+		expectedReadBandwidthMiBs,
+		baseDiskUnitMaxReadBandwidthMiBs,
+	)
+	return max(1, regularUnitsPerSSDUnit*baseDiskUnits)
+}
+
+func (s *storageYDB) computeAllottedUnits(slot *slot) uint64 {
+	if slot.expectedReadBandwidthMiBs != 0 {
+		return computeAllottedUnitsByBandwidth(
+			slot.expectedReadBandwidthMiBs,
+			s.baseDiskUnitMaxReadBandwidthMiBs,
+		)
+	}
+
+	return computeAllottedUnitsBySize(slot)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
-func acquireUnitsAndSlots(
+func (s *storageYDB) acquireUnitsAndSlots(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	disk *baseDisk,
@@ -838,13 +864,13 @@ func acquireUnitsAndSlots(
 	slot.allottedSlots = 1
 	disk.activeSlots++
 
-	slot.allottedUnits = computeAllottedUnits(slot)
+	slot.allottedUnits = s.computeAllottedUnits(slot)
 	disk.activeUnits += slot.allottedUnits
 
 	return nil
 }
 
-func acquireTargetUnitsAndSlots(
+func (s *storageYDB) acquireTargetUnitsAndSlots(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	disk *baseDisk,
@@ -867,7 +893,7 @@ func acquireTargetUnitsAndSlots(
 	slot.targetAllottedSlots = 1
 	disk.activeSlots++
 
-	slot.targetAllottedUnits = computeAllottedUnits(slot)
+	slot.targetAllottedUnits = s.computeAllottedUnits(slot)
 	disk.activeUnits += slot.targetAllottedUnits
 
 	return nil

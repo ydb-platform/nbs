@@ -4,6 +4,7 @@
 
 #include <cloud/filestore/libs/diagnostics/metrics/public.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
+#include <cloud/filestore/libs/storage/api/rdma.h>
 #include <cloud/filestore/libs/storage/core/public.h>
 #include <cloud/filestore/libs/storage/core/tablet_tx_rescheduler.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/public.h>
@@ -28,6 +29,7 @@ NActors::IActorPtr CreateIndexTablet(
     NMetrics::IMetricsRegistryPtr metricsRegistry,
     NFastShard::IServerPtr fastShardServer,
     NFastShard::IFileSystemShardFactoryPtr fastShardFactory,
+    IRdmaTabletRegistryPtr rdmaTabletRegistry,
     ITxReschedulerPtr txRescheduler);
 
 }   // namespace NCloud::NFileStore::NStorage

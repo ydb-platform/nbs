@@ -160,18 +160,17 @@ public:
                 std::move(systemRequests));
         }
 
-        const auto until = CommonFilterParams.GetUntil(parseResult);
-        if (until.Defined()) {
+        const auto timeRange = CommonFilterParams.GetTimeRange(parseResult);
+        if (timeRange.Until.Defined()) {
             Filter = CreateRequestFilterUntil(
                 std::move(Filter),
-                until.GetRef().MicroSeconds());
+                timeRange.Until.GetRef().MicroSeconds());
         }
 
-        const auto since = CommonFilterParams.GetSince(parseResult);
-        if (since.Defined()) {
+        if (timeRange.Since.Defined()) {
             Filter = CreateRequestFilterSince(
                 std::move(Filter),
-                since.GetRef().MicroSeconds());
+                timeRange.Since.GetRef().MicroSeconds());
         }
 
         const auto fileSystemId =
@@ -182,18 +181,18 @@ public:
                 fileSystemId.GetRef());
         }
 
+        if (!parseResult.Has("no-skip-files")) {
+            ProfileLogFiles = SelectProfileLogFiles(
+                std::move(ProfileLogFiles), timeRange.Since, timeRange.Until);
+        }
+
         return true;
     }
 
     int Execute() override
     {
         TEventProcessor processor(Filter);
-        const char* path[] = {"", PathToProfileLog.c_str()};
-        return IterateEventLog(
-            NEvClass::Factory(),
-            &processor,
-            2,
-            path);
+        return ProcessProfileLogs(processor);
     }
 };
 

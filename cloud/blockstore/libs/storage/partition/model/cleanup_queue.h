@@ -53,11 +53,13 @@ public:
 
     size_t GetCount(ui64 toCommitId = InvalidCommitId) const;
 
-    // Count items after (fromCommitId, fromBlobId) with CommitId <= toCommitId.
+    // Count items after (fromCommitId, fromBlobId) with CommitId <= toCommitId,
+    // up to limit.
     size_t GetCount(
         ui64 fromCommitId,
         const TPartialBlobId& fromBlobId,
-        ui64 toCommitId) const;
+        ui64 toCommitId,
+        size_t limit) const;
 
     TVector<TCleanupQueueItem> GetItems(
         ui64 toCommitId = InvalidCommitId,

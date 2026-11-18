@@ -6,6 +6,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	disks_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/config"
@@ -20,6 +21,8 @@ func RegisterForExecution(
 	ctx context.Context,
 	config *disks_config.DisksConfig,
 	performanceConfig *performance_config.PerformanceConfig,
+	disabledZones *common.DisabledZones,
+	proxyOverlayDiskIDPrefix string,
 	resourceStorage resources.Storage,
 	poolStorage storage.Storage,
 	taskRegistry *tasks.Registry,
@@ -80,6 +83,21 @@ func RegisterForExecution(
 		return err
 	}
 
+	err = taskRegistry.RegisterForExecution("disks.CreateDiskFromBaseDisk", func() tasks.Task {
+		return &createDiskFromBaseDiskTask{
+			storage:                  resourceStorage,
+			scheduler:                taskScheduler,
+			poolService:              poolService,
+			nbsFactory:               nbsFactory,
+			performanceConfig:        performanceConfig,
+			proxyOverlayDiskIDPrefix: proxyOverlayDiskIDPrefix,
+			cellSelector:             cellSelector,
+		}
+	})
+	if err != nil {
+		return err
+	}
+
 	err = taskRegistry.RegisterForExecution("disks.CreateDiskFromSnapshot", func() tasks.Task {
 		return &createDiskFromSnapshotTask{
 			storage:      resourceStorage,
@@ -99,6 +117,7 @@ func RegisterForExecution(
 			scheduler:         taskScheduler,
 			poolService:       poolService,
 			nbsFactory:        nbsFactory,
+			disabledZones:     disabledZones,
 		}
 	})
 	if err != nil {

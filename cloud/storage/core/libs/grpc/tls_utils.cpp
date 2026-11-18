@@ -452,6 +452,13 @@ TVector<TCertificatePair> LoadCertificatePairs(
             ythrow yexception() << keyMatchesCert.GetError().GetMessage();
         }
 
+        auto chain = ParseNonEmptyPemCertificates(
+            identity.GetResult().CertChain,
+            "Identity certificate chain");
+        if (HasError(chain.GetError())) {
+            ythrow yexception() << chain.GetError().GetMessage();
+        }
+
         result.push_back({
             .Files = std::move(cert),
             .Content = identity.ExtractResult(),

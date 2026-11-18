@@ -62,6 +62,8 @@ void TPendingWriteDataRequest::SerializeToAllocation()
         "Buffer is expected to be written completely");
 
     Checksum = Crc32c(AllocationPtr, AllocationByteCount);
+
+    // Publish last; see RequestsToSerialize's lifetime contract.
     Serialized.store(true, std::memory_order_release);
 }
 
@@ -71,7 +73,7 @@ TCachedWriteDataRequest::CreateFromAllocation(
     TInstant time,
     TStringBuf allocation)
 {
-    if (allocation.size() <= sizeof(TSerializedWriteDataRequestHeader)) {
+    if (!HasWriteDataRequestPayload(allocation.size())) {
         return nullptr;
     }
 

@@ -81,6 +81,7 @@ private:
     const TString FileSystemId;
     const TString FilePath;
     const IPersistentStoragePtr PersistentStorage;
+    const ui64 MaxGuestWriteRequestSize;
 
     TWriteBackCacheState State;
 
@@ -111,11 +112,13 @@ public:
         , FilePath(args.FilePath)
         , PersistentStorage(CreateFileRingBufferPersistentStorage(
               args.Stats->GetPersistentStorageStats(),
-              {.FilePath = args.FilePath, .DataCapacity = args.CapacityBytes},
+              {.FilePath = args.FilePath, .StateFileSize = args.StateFileSize},
               Log,
               LogTag))
+        , MaxGuestWriteRequestSize(args.MaxGuestWriteRequestSize)
         , State(
               *this,
+              CreateWriteBackCacheLock(args.LockMethod),
               PersistentStorage,
               Timer,
               args.Stats->GetWriteBackCacheStateStats(),
@@ -136,9 +139,29 @@ public:
                 TStringBuilder()
                 << LogTag << " WriteBackCache initialization failure: "
                 << FormatError(error) << ", FilePath: " << FilePath.Quote());
-        } else {
-            ScheduleAutomaticFlushIfNeeded();
+            return;
         }
+
+        // The ring buffer must fit any WriteData request: one that doesn't fit
+        // stays pending forever and blocks the following ones. Plus some room
+        // for the headers (assume 1 KiB is enough).
+        const ui64 required = MaxGuestWriteRequestSize + 1016;
+        const ui64 supported =
+            PersistentStorage->GetMaxSupportedAllocationByteCount();
+
+        if (supported < required) {
+            // Flush the restored data and serve new requests directly
+            ReportWriteBackCacheInitializationError(
+                TStringBuilder()
+                << LogTag << " WriteBackCache is drained: max supported "
+                << "allocation " << supported << " is less than " << required
+                << ", increase the state file size or decrease "
+                << "MaxRequestSize, FilePath: " << FilePath.Quote());
+            Y_UNUSED(Drain());
+            return;
+        }
+
+        ScheduleAutomaticFlushIfNeeded();
     }
 
     void ScheduleAutomaticFlushIfNeeded()
@@ -544,7 +567,7 @@ private:
     {
         // TODO(#6201): until handleless IO is implemented, flush needs a live
         // handle to execute WriteData requests
-        auto handle = State.GetLiveHandle(flushState->GetNodeId());
+        auto handle = State.AcquireFlushHandle(flushState->GetNodeId());
 
         if (handle == NProto::E_INVALID_HANDLE) {
             // This may happen in the following cases:
@@ -561,13 +584,13 @@ private:
                     "%lu",
                     flushState->GetNodeId()));
 
-            // A live handle could appear concurrently between GetLiveHandle and
-            // FlushFailed
+            // A live handle could appear concurrently between
+            // AcquireFlushHandle and FlushFailed
             if (retryStatus == EFlushRetryStatus::ShouldNotRetry) {
                 return;
             }
 
-            handle = State.GetLiveHandle(flushState->GetNodeId());
+            handle = State.AcquireFlushHandle(flushState->GetNodeId());
             if (handle == NProto::E_INVALID_HANDLE) {
                 ScheduleRetryFlush(flushState);
                 return;

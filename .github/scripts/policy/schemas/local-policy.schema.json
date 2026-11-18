@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nbs:actions-policy:local",
+  "$comment": "NBS policy files are GitHub create-policy request bodies, with exact paths or ~ALL, exact exclusions, and no API metadata. Overlapping policies intersect.",
+  "$defs": {
+    "workflowPath": {
+      "type": "string",
+      "pattern": "^\\.github/workflows/[A-Za-z0-9_.-]+\\.(?:yml|yaml)$",
+      "not": {
+        "pattern": "[\\r\\n\\t]"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "urn:nbs:actions-policy:github:2026-03-10#/$defs/request"
+    },
+    {
+      "$ref": "urn:nbs:actions-policy:shared#/$defs/policy"
+    }
+  ],
+  "type": "object",
+  "properties": {
+    "name": {
+      "pattern": "^NBS: ",
+      "not": {
+        "pattern": "[\\r\\n\\t]"
+      }
+    },
+    "enforcement": {
+      "enum": [
+        "active",
+        "disabled"
+      ],
+      "description": "evaluate requires Enterprise Cloud"
+    },
+    "conditions": {
+      "type": "object",
+      "properties": {
+        "workflow_path": {
+          "type": "object",
+          "properties": {
+            "include": {
+              "items": {
+                "anyOf": [
+                  {
+                    "const": "~ALL"
+                  },
+                  {
+                    "$ref": "#/$defs/workflowPath"
+                  }
+                ]
+              },
+              "if": {
+                "contains": {
+                  "const": "~ALL"
+                }
+              },
+              "then": {
+                "maxItems": 1
+              }
+            },
+            "exclude": {
+              "items": {
+                "$ref": "#/$defs/workflowPath"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "rules": {
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": true,
+          "parameters": true
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "restrict_actions_actors"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            "then": {
+              "properties": {
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "allowed_actors": {
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": true,
+                          "type": true
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "restrict_action_events"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            "then": {
+              "properties": {
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "allowed_events": true
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "additionalProperties": false
+}

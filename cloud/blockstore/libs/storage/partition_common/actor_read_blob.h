@@ -1,5 +1,7 @@
 #pragma once
 
+#include "blob_compressor.h"
+
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
@@ -7,10 +9,19 @@
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString GetBrokenDataMarkerBlock(ui32 blockSize);
+
+std::optional<ui32> GetRepairBlockChecksum(
+    EStorageAccessMode storageAccessMode,
+    ui32 blockSize);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -36,6 +47,8 @@ private:
 
     const bool PassTraceIdToBlobstorage = false;
 
+    TVector<TBlockRange32> QueryBlockRanges;
+
     TInstant RequestSent;
     TInstant ResponseReceived;
 
@@ -58,10 +71,12 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
+    TReadPlan GetQueries() const;
+
     void SendGetRequest(const NActors::TActorContext& ctx);
     void NotifyCompleted(
         const NActors::TActorContext& ctx,
-        const NProto::TError& error);
+        const TResponse& response);
 
     void ReplyAndDie(
         const NActors::TActorContext& ctx,
@@ -70,7 +85,37 @@ private:
     void ReplyError(
         const NActors::TActorContext& ctx,
         const NKikimr::TEvBlobStorage::TEvGetResult& response,
-        const TString& description);
+        const NProto::TError& error,
+        EErrorSource errorSource);
+
+    void ReplyError(
+        const NActors::TActorContext& ctx,
+        const NKikimr::TEvBlobStorage::TEvGetResult& response,
+        const TString& description,
+        EErrorSource errorSource);
+
+    struct TDataThatCanBeProcessed
+    {
+        TSgList Sglist;
+        TVector<ui16> BlockOffsets;
+        TVector<NKikimr::TEvBlobStorage::TEvGetResult::TResponse> Responses;
+    };
+
+    bool FillBrokenDataAndFilterItOut(
+        const NKikimr::TEvBlobStorage::TEvGetResult* msg,
+        const TSgList& sglist,
+        const NActors::TActorContext& ctx,
+        TDataThatCanBeProcessed& dataThatCanBeProcessed) const;
+
+    TResultOrError<TVector<ui32>> CopyReadResultToSglist(
+        std::span<NKikimr::TEvBlobStorage::TEvGetResult::TResponse> responses,
+        std::span<const TBlockDataRef> sglist,
+        std::span<const ui16> blockOffsets);
+
+    TVector<ui32> FillBlockChecksumsForRecoveredBlocksIfNeeded(
+        std::span<const ui16> blockOffsets,
+        std::span<const ui16> blockOffsetsWithoutRecovered,
+        TVector<ui32> blockChecksumsWithoutRecovered);
 
 private:
     STFUNC(StateWork);
@@ -80,7 +125,7 @@ private:
         const NActors::TActorContext& ctx);
 
     void HandleUndelivered(
-        const NActors::TEvents::TEvUndelivered::TPtr &ev,
+        const NActors::TEvents::TEvUndelivered::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(

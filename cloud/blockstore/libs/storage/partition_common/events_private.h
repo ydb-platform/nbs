@@ -23,6 +23,8 @@
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/base/logoblob.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -35,6 +37,14 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetFreshChannelsInfo,      __VA_ARGS__)                                \
     xxx(AddFreshBlocks,            __VA_ARGS__)                                \
 // BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum class EErrorSource
+{
+    Local,
+    BlobStorage,
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -123,6 +133,7 @@ struct TEvPartitionCommonPrivate
     {
         TVector<ui32> BlockChecksums;
         ui64 ExecCycles = 0;
+        std::optional<EErrorSource> ErrorSource = std::nullopt;
     };
 
     // TReadBlobCompleted
@@ -134,6 +145,7 @@ struct TEvPartitionCommonPrivate
         TDuration RequestTime;
         ui32 GroupId = 0;
         bool DeadlineSeen = false;
+        std::optional<EErrorSource> ErrorSource = std::nullopt;
         ui64 BSGroupOperationId = 0;
 
         TReadBlobCompleted() = default;
@@ -263,6 +275,7 @@ struct TEvPartitionCommonPrivate
         // be calculated.
         const ui32 BlockSizeForChecksums;
         const bool Async;
+        const bool CompressedSizeEstimationCandidate;
         const TInstant Deadline;
 
         template <typename TData>
@@ -271,11 +284,13 @@ struct TEvPartitionCommonPrivate
                 TData data,
                 ui32 blockSizeForChecksums,
                 bool async,
+                bool compressedSizeEstimationCandidate,
                 TInstant deadline = TInstant::Max())
             : BlobId(blobId)
             , Data(std::move(data))
             , BlockSizeForChecksums(blockSizeForChecksums)
             , Async(async)
+            , CompressedSizeEstimationCandidate(compressedSizeEstimationCandidate)
             , Deadline(deadline)
         {}
     };
@@ -284,6 +299,7 @@ struct TEvPartitionCommonPrivate
     {
         TVector<ui32> BlockChecksums;
         ui64 ExecCycles = 0;
+        std::optional<EErrorSource> ErrorSource = std::nullopt;
     };
 
     //
@@ -297,6 +313,7 @@ struct TEvPartitionCommonPrivate
         double ApproximateFreeSpaceShare = 0;
         TDuration RequestTime;
         ui64 BSGroupOperationId = 0;
+        std::optional<EErrorSource> ErrorSource;
 
         TWriteBlobCompleted() = default;
 
@@ -351,6 +368,7 @@ struct TEvPartitionCommonPrivate
     struct TPatchBlobResponse
     {
         ui64 ExecCycles = 0;
+        std::optional<EErrorSource> ErrorSource = std::nullopt;
     };
 
     struct TPatchBlobCompleted
@@ -361,6 +379,7 @@ struct TEvPartitionCommonPrivate
         double ApproximateFreeSpaceShare = 0;
         TDuration RequestTime;
         ui64 BSGroupOperationId = 0;
+        std::optional<EErrorSource> ErrorSource = std::nullopt;
 
         TPatchBlobCompleted() = default;
 
@@ -406,6 +425,7 @@ struct TEvPartitionCommonPrivate
         ui64 CommitId;
         ui64 BlobSize;
         TPartialBlobId BlobId;
+        TInstant Timestamp;
         TVector<TBlockRange32> BlockRanges;
         TVector<IWriteBlocksHandlerPtr> WriteHandlers;
 
@@ -413,11 +433,13 @@ struct TEvPartitionCommonPrivate
                 ui64 commitId,
                 ui64 blobSize,
                 TPartialBlobId blobId,
+                TInstant timestamp,
                 TVector<TBlockRange32> blockRanges,
                 TVector<IWriteBlocksHandlerPtr> writeHandlers)
             : CommitId(commitId)
             , BlobSize(blobSize)
             , BlobId(blobId)
+            , Timestamp(timestamp)
             , BlockRanges(std::move(blockRanges))
             , WriteHandlers(std::move(writeHandlers))
         {}

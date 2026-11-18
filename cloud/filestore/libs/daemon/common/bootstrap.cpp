@@ -30,6 +30,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_processor_mon.h>
 #include <cloud/storage/core/libs/diagnostics/trace_processor.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_watcher.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
 #include <cloud/storage/core/libs/kikimr/proxy.h>
@@ -92,6 +93,7 @@ void TBootstrapCommon::Start()
     FILESTORE_LOG_START_COMPONENT(BackgroundThreadPool);
     FILESTORE_LOG_START_COMPONENT(ProfileLog);
     FILESTORE_LOG_START_COMPONENT(RequestStatsUpdater);
+    FILESTORE_LOG_START_COMPONENT(CertificateWatcher);
     FILESTORE_LOG_START_COMPONENT(CertificateProvider);
 
     StartComponents();
@@ -113,6 +115,10 @@ void TBootstrapCommon::Start()
 void TBootstrapCommon::Stop()
 {
     Drain();
+
+    // Before the scheduler: an on-demand certificate update needs it and would
+    // otherwise keep its request in flight until the server stops.
+    FILESTORE_LOG_STOP_COMPONENT(CertificateWatcher);
 
     // stopping scheduler before all other components to avoid races between
     // scheduled tasks and shutting down of component dependencies
@@ -286,7 +292,7 @@ void TBootstrapCommon::InitActorSystem()
         Log);
 
     if (cmsConfig) {
-        Configs->ApplyCMSConfigs(std::move(*cmsConfig));
+        Configs->ApplyCMSConfigs(std::move(cmsConfig->AppConfig));
     }
 
     auto logging = std::make_shared<TLoggingProxy>();

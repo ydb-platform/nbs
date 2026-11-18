@@ -82,10 +82,8 @@ def main() -> None:
     ):
         return
 
-    pr = pull_request_from_event(
-        github_client_from_env(),
-        load_github_event(),
-    )
+    github = github_client_from_env()
+    pr = pull_request_from_event(github, load_github_event())
     run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
 
     if args.command == "init":
@@ -101,7 +99,7 @@ def main() -> None:
 
     job_url = ""
     if args.current_job_name:
-        job_url = find_current_job_url(args.current_job_name, args.runner_name)
+        job_url = find_current_job_url(github, args.current_job_name, args.runner_name)
         write_output(args.job_url_out, job_url)
     gs.update_pr_comment_workload_check(
         run_number=run_number,

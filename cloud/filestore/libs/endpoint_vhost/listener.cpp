@@ -130,9 +130,8 @@ public:
             protoConfig.SetDebug(true);
         }
         protoConfig.SetHandleOpsQueuePath(HandleOpsQueueConfig.PathPrefix);
-        protoConfig.SetHandleOpsQueueSize(HandleOpsQueueConfig.MaxQueueSize);
+        protoConfig.SetHandleOpsQueueSize(HandleOpsQueueConfig.StateFileSize);
         protoConfig.SetWriteBackCachePath(WriteBackCacheConfig.PathPrefix);
-        protoConfig.SetWriteBackCacheCapacity(WriteBackCacheConfig.Capacity);
         protoConfig.SetWriteBackCacheAutomaticFlushPeriod(
             WriteBackCacheConfig.AutomaticFlushPeriod.MilliSeconds());
         protoConfig.SetWriteBackCacheFlushRetryPeriod(
@@ -145,6 +144,8 @@ public:
             WriteBackCacheConfig.FlushMaxSumWriteRequestsSize);
         protoConfig.SetWriteBackCacheMaxQueuedFlushBatchesPerNode(
             WriteBackCacheConfig.MaxQueuedFlushBatchesPerNode);
+        protoConfig.SetWriteBackCacheLockMethod(
+            WriteBackCacheConfig.LockMethod);
         protoConfig.SetDirectoryHandlesStoragePath(
             DirectoryHandleStorageConfig.PathPrefix);
         protoConfig.SetDirectoryHandlesInitialDataSize(

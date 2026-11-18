@@ -26,10 +26,20 @@ message TFileSystemEvent
         bytes Name = 2;
     }
 
+    // Extended attribute was created, changed or removed.
+    message TInvalidateNodeXAttr
+    {
+        uint64 NodeId = 1;
+
+        // Extended attribute name.
+        bytes Name = 2;
+    }
+
     // Main FileSystem identifier.
     string FileSystemId = 1;
 
     // Exactly one of the invalidations is set.
     TInvalidateNode InvalidateNode = 2;
     TInvalidateNodeRef InvalidateNodeRef = 3;
+    TInvalidateNodeXAttr InvalidateNodeXAttr = 4;
 }

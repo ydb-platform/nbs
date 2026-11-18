@@ -16,6 +16,7 @@ PEERDIR(
     cloud/storage/core/libs/common
 
     contrib/libs/protobuf
+    contrib/ydb/library/actors/util
 )
 
 END()

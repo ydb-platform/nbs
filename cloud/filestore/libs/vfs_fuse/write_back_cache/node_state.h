@@ -120,6 +120,10 @@ struct TNodeState
 
     ENodeFlushStatus FlushStatus = ENodeFlushStatus::NothingToFlush;
 
+    // Handle that is currently used by a flush operation and is prevented from
+    // being released until the flush is completed
+    ui64 FlushHandle = NProto::E_INVALID_HANDLE;
+
     // Flush requests are fulfilled when there are no pending or unflushed
     // requests with SequenceId less or equal than |TFlushRequest::SequenceId|.
     // Flush requests are stored in chronological order: SequenceId values are
@@ -150,6 +154,7 @@ struct TNodeState
         if (Cache.Empty() && CachedDataPins.empty() && Barriers.empty()) {
             Y_ABORT_UNLESS(FlushRequests.empty());
             Y_ABORT_UNLESS(FlushStatus == ENodeFlushStatus::NothingToFlush);
+            Y_ABORT_UNLESS(FlushHandle == NProto::E_INVALID_HANDLE);
             Y_ABORT_UNLESS(Handles.empty());
             Y_ABORT_UNLESS(HandlesWithReleaseRequests.empty());
             return true;

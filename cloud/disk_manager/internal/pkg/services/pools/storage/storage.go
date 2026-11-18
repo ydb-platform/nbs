@@ -31,6 +31,10 @@ type Slot struct {
 	OverlayDisk     *types.Disk
 	OverlayDiskKind types.DiskKind
 	OverlayDiskSize uint64
+	// When set, the slot is charged by bandwidth rather than by
+	// OverlayDiskSize/OverlayDiskKind, without any oversubscription (see
+	// computeAllottedUnits).
+	ExpectedReadBandwidthMiBs uint64
 }
 
 type RebaseInfo struct {
@@ -200,6 +204,14 @@ type Storage interface {
 
 	// Used in tests and SRE tools.
 	CheckBaseDiskSlotReleased(ctx context.Context, overlayDiskID string) error
+
+	// Used in tests and SRE tools.
+	// Checks that slots of all overlay disks with ids prefixed by
+	// |overlayDiskIDPrefix| are released. The prefix should not be empty.
+	CheckBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
+		ctx context.Context,
+		overlayDiskIDPrefix string,
+	) error
 
 	// Used in tests and SRE tools.
 	// Executes both CheckPoolsConsistency and CheckBaseDisksConsistency.

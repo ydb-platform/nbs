@@ -4,7 +4,9 @@ import (
 	"context"
 
 	"github.com/golang/protobuf/proto"
+
 	nbs_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	internal_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/nbs"
@@ -21,12 +23,14 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createSnapshotFromDiskTask struct {
-	config            *config.DataplaneConfig
-	performanceConfig *performance_config.PerformanceConfig
-	nbsFactory        nbs_client.Factory
-	storage           storage.Storage
-	request           *protos.CreateSnapshotFromDiskRequest
-	state             *protos.CreateSnapshotFromDiskTaskState
+	config                   *config.DataplaneConfig
+	performanceConfig        *performance_config.PerformanceConfig
+	disabledZones            *internal_common.DisabledZones
+	nbsFactory               nbs_client.Factory
+	storage                  storage.Storage
+	proxyOverlayDiskIDPrefix string
+	request                  *protos.CreateSnapshotFromDiskRequest
+	state                    *protos.CreateSnapshotFromDiskTaskState
 }
 
 func (t *createSnapshotFromDiskTask) Save() ([]byte, error) {
@@ -48,6 +52,15 @@ func (t *createSnapshotFromDiskTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
+
+	if t.disabledZones.IsDisabled(t.request.SrcDisk.ZoneId) {
+		return internal_common.NewNonRetriableAbortedError(
+			"can't create snapshot %q from disk %q in disabled zone %q",
+			t.request.DstSnapshotId,
+			t.request.SrcDisk.DiskId,
+			t.request.SrcDisk.ZoneId,
+		)
+	}
 
 	err := t.run(ctx, execCtx)
 	if err != nil {
@@ -231,9 +244,36 @@ func (t *createSnapshotFromDiskTask) run(
 
 	selfTaskID := execCtx.GetTaskID()
 
+	// Older task requests and image creation do not carry BlockSize. Resolve it
+	// while the source disk still exists, never at export time.
+	blockSize := t.request.BlockSize
+	if blockSize == 0 {
+		existing, err := t.storage.GetSnapshotMeta(ctx, t.request.DstSnapshotId)
+		if err != nil {
+			return err
+		}
+
+		if existing != nil && existing.Ready {
+			return nil
+		}
+
+		client, err := t.getNbsClient(ctx)
+		if err != nil {
+			return err
+		}
+
+		params, err := client.Describe(ctx, t.request.SrcDisk.DiskId)
+		if err != nil {
+			return err
+		}
+
+		blockSize = params.BlockSize
+	}
+
 	snapshotMeta, err := t.storage.CreateSnapshot(
 		ctx,
 		storage.SnapshotMeta{
+			BlockSize:    blockSize,
 			ID:           t.request.DstSnapshotId,
 			Disk:         t.request.SrcDisk,
 			CheckpointID: t.request.SrcDiskCheckpointId,
@@ -278,6 +318,7 @@ func (t *createSnapshotFromDiskTask) run(
 		nbsClient,
 		t.request.SrcDisk.DiskId,
 		proxyOverlayDiskID,
+		len(proxyOverlayDiskID) != 0, // mountLocally
 		t.state.BaseCheckpointId,
 		t.request.SrcDiskCheckpointId,
 		diskParams.EncryptionDesc,
@@ -285,6 +326,7 @@ func (t *createSnapshotFromDiskTask) run(
 		incremental, // duplicateChunkIndices
 		false,       // ignoreBaseDisk
 		false,       // dontReadFromCheckpoint
+		0,           // maxSizeBytes, whole disk
 	)
 	if err != nil {
 		return err
@@ -523,6 +565,18 @@ func (t *createSnapshotFromDiskTask) deleteProxyOverlayDiskIfNeeded(
 		return nil
 	}
 
+	if t.disabledZones.IsDisabled(t.request.SrcDisk.ZoneId) {
+		logging.Warn(
+			ctx,
+			"Skipping deletion of proxy overlay disk %v for snapshot %v of disk %v: zone %v is disabled",
+			t.getProxyOverlayDiskID(),
+			t.request.DstSnapshotId,
+			t.request.SrcDisk.DiskId,
+			t.request.SrcDisk.ZoneId,
+		)
+		return nil
+	}
+
 	nbsClient, err := t.getNbsClient(ctx)
 	if err != nil {
 		return err
@@ -533,7 +587,7 @@ func (t *createSnapshotFromDiskTask) deleteProxyOverlayDiskIfNeeded(
 
 func (t *createSnapshotFromDiskTask) getProxyOverlayDiskID() string {
 	return common.GetProxyOverlayDiskID(
-		t.config.GetProxyOverlayDiskIdPrefix(),
+		t.proxyOverlayDiskIDPrefix,
 		t.request.SrcDisk.DiskId,
 		t.request.DstSnapshotId,
 	)

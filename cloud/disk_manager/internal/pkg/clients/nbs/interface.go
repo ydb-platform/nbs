@@ -141,6 +141,35 @@ type AvailableStorageInfo struct {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type Session interface {
+	BlockSize() uint32
+
+	BlockCount() uint64
+
+	IsOverlayDisk() bool
+
+	EncryptionDesc() (*types.EncryptionDesc, error)
+
+	IsDiskRegistryBasedDisk() bool
+
+	Read(
+		ctx context.Context,
+		startIndex uint64,
+		blockCount uint32,
+		checkpointID string,
+		data []byte,
+		zero *bool,
+	) error
+
+	Write(ctx context.Context, startIndex uint64, data []byte) error
+
+	Zero(ctx context.Context, startIndex uint64, blockCount uint32) error
+
+	Close(ctx context.Context)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type Client interface {
 	Ping(ctx context.Context) error
 
@@ -255,13 +284,13 @@ type Client interface {
 		ctx context.Context,
 		diskID string,
 		encryption *types.EncryptionDesc,
-	) (*Session, error)
+	) (Session, error)
 
 	MountLocalRO(
 		ctx context.Context,
 		diskID string,
 		encryption *types.EncryptionDesc,
-	) (*Session, error)
+	) (Session, error)
 
 	MountRW(
 		ctx context.Context,
@@ -269,7 +298,7 @@ type Client interface {
 		fillGeneration uint64,
 		fillSeqNumber uint64,
 		encryption *types.EncryptionDesc,
-	) (*Session, error)
+	) (Session, error)
 
 	GetChangedBlocks(
 		ctx context.Context,
@@ -290,13 +319,19 @@ type Client interface {
 		milestoneCheckpointSize uint64,
 	) error
 
-	// Returns changed bytes count between two checkpoints of a disk.
+	// Returns changed bytes count between two checkpoints of a disk, within
+	// the first min(|maxSizeBytes|, disk size) bytes of the disk (rounded up to the
+	// block size), zero |maxSizeBytes| means the whole disk.
+	//
+	// !Be careful!: |maxSizeBytes| sets the upper byte offset used to calculate
+	// the amount of changed data. Data beyond this offset is ignored.
 	GetChangedBytes(
 		ctx context.Context,
 		diskID string,
 		baseCheckpointID string,
 		checkpointID string,
 		ignoreBaseDisk bool,
+		maxSizeBytes uint64,
 	) (uint64, error)
 
 	Stat(ctx context.Context, diskID string) (DiskStats, error)

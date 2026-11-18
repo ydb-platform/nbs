@@ -2256,6 +2256,9 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid,
     fuse_log(FUSE_LOG_INFO, "   flags=0x%08x\n", outarg.flags);
     fuse_log(FUSE_LOG_INFO, "   max_readahead=0x%08x\n", outarg.max_readahead);
     fuse_log(FUSE_LOG_INFO, "   max_write=0x%08x\n", outarg.max_write);
+    if (outarg.flags & FUSE_MAX_PAGES) {
+        fuse_log(FUSE_LOG_INFO, "   max_pages=%u\n", outarg.max_pages);
+    }
     fuse_log(FUSE_LOG_INFO, "   max_background=%i\n", outarg.max_background);
     fuse_log(FUSE_LOG_INFO, "   congestion_threshold=%i\n",
              outarg.congestion_threshold);

@@ -141,7 +141,7 @@ class TSessionStorage;
 
 struct TAppContext
 {
-    TServerAppConfigPtr Config;
+    TServerAppConfigConstPtr Config;
     ILoggingServicePtr Logging;
     ICertificateProviderPtr CertificateProvider;
     TLog Log;
@@ -973,7 +973,7 @@ private:
 
 public:
     TServer(
-        TServerAppConfigPtr config,
+        TServerAppConfigConstPtr config,
         ILoggingServicePtr logging,
         IServerStatsPtr serverStats,
         IBlockStorePtr service,
@@ -1005,7 +1005,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TServer::TServer(
-    TServerAppConfigPtr config,
+    TServerAppConfigConstPtr config,
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,
@@ -1281,7 +1281,7 @@ size_t TServer::CollectRequests(const TIncompleteRequestsCollector& collector)
 ////////////////////////////////////////////////////////////////////////////////
 
 IServerPtr CreateServer(
-    TServerAppConfigPtr config,
+    TServerAppConfigConstPtr config,
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,

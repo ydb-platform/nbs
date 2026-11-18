@@ -51,10 +51,15 @@ void TConfigInitializerCommon::InitStorageConfig()
         ParseProtoTextFromFileRobust(Options->StorageConfig, storageConfig);
     }
 
+    SystemTabletBackupPathFromFile =
+        storageConfig.GetSystemTabletBackupDirPath();
+
     ApplyOptionsToStorageConfig(storageConfig);
 
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(
         storageConfig);
+
+    ApplySystemTabletBackupPath(StorageConfig->GetSystemTabletBackupDirPath());
 }
 
 void TConfigInitializerCommon::InitFeaturesConfig()
@@ -111,12 +116,17 @@ void TConfigInitializerCommon::ApplyStorageConfig(const TString& text)
     ParseProtoTextFromStringRobust(text, config);
 
     ApplyOptionsToStorageConfig(config);
+    if (SystemTabletBackupPathFromFile) {
+        config.SetSystemTabletBackupDirPath(SystemTabletBackupPathFromFile);
+    }
 
     StorageConfig = std::make_shared<NStorage::TStorageConfig>(
         std::move(config));
 
     Y_ENSURE(!Options->SchemeShardDir ||
         GetFullSchemeShardDir() == StorageConfig->GetSchemeShardDir());
+
+    ApplySystemTabletBackupPath(StorageConfig->GetSystemTabletBackupDirPath());
 }
 
 void TConfigInitializerCommon::ApplyFeaturesConfig(const TString& text)

@@ -189,6 +189,7 @@ public:
 
     ui32 GetDefaultNodesLimit() const;
     ui32 GetSizeToNodesRatio() const;
+    static ui32 GetDefaultSizeToNodesRatio();
 
     bool GetDisableLocalService() const;
 
@@ -201,6 +202,7 @@ public:
     TString GetTabletBootInfoBackupFilePath() const;
     bool GetUseBinaryFormatForTabletBootInfoBackup() const;
     bool GetHiveProxyFallbackMode() const;
+    TString GetSystemTabletBackupDirPath() const;
 
     ui32 GetMaxBlocksPerTruncateTx() const;
     ui32 GetMaxTruncateTxInflight() const;
@@ -225,12 +227,15 @@ public:
     bool GetThreeStageWriteEnabled() const;
     ui32 GetThreeStageWriteThreshold() const;
     bool GetUnalignedThreeStageWriteEnabled() const;
+    bool GetWriteDataZeroBlockStatsEnabled() const;
     TDuration GetEntryTimeout() const;
     TDuration GetRegularFileEntryTimeout() const;
     TDuration GetNegativeEntryTimeout() const;
     TDuration GetAttrTimeout() const;
     TDuration GetXAttrCacheTimeout() const;
     ui32 GetXAttrCacheLimit() const;
+    ui32 GetNodeRefCacheLimit() const;
+    ui32 GetNodeAttrsCacheLimit() const;
     ui32 GetPreferredBlockSizeMultiplier() const;
 
     ui32 GetMaxOutOfOrderCompactionMapLoadRequestsInQueue() const;
@@ -360,6 +365,7 @@ public:
     bool GetExtendedAttributesDisabled() const;
 
     bool GetServerWriteBackCacheEnabled() const;
+    ui64 GetServerWriteBackCacheStateFileSize() const;
     bool GetServerWriteBackCacheFlushWritesInParallelEnabled() const;
 
     bool GetGuestKeepCacheAllowed() const;
@@ -376,11 +382,15 @@ public:
     bool GetAllowHandlelessIO() const;
     bool GetFileSystemEventsEnabled() const;
     bool GetFileSystemEventsDryRunModeEnabled() const;
+    TDuration GetFileSystemEventSubscriptionsSealPeriod() const;
+    TDuration GetFileSystemEventSubscriptionsCacheTTLMargin() const;
+    bool GetFileSystemListingEventsEnabled() const;
 
     bool GetLazyXAttrsEnabled() const;
 
     ui32 GetMaxBackground() const;
     ui32 GetMaxFuseLoopThreads() const;
+    ui32 GetMaxRequestSize() const;
 
     bool GetStrictFileSystemSizeEnforcementEnabled() const;
 

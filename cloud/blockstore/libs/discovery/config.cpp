@@ -37,11 +37,34 @@ TDuration Mins(ui32 x)
     xxx(MaxPingRequestsPerHealthCheck,  ui32,        20                       )\
 // BLOCKSTORE_DISCOVERY_CONFIG
 
+#define BLOCKSTORE_EDS_DISCOVERY_CONFIG(xxx)                                   \
+    xxx(EdsEndpoint,           Endpoint,           TString,          ""     )\
+    xxx(EdsHostPatterns,       HostPatterns,       TVector<TString>, {}     )\
+    xxx(EdsRequestTimeout,     RequestTimeout,     TDuration,        Secs(15))\
+    xxx(EdsRequestInterval,    RequestInterval,    TDuration,        Mins(5) )\
+    xxx(EdsSecureInstancePort, SecureInstancePort, ui32,             0      )\
+    xxx(EdsClientId,           ClientId,           TString,          "nbs"  )\
+// BLOCKSTORE_EDS_DISCOVERY_CONFIG
+
+// An explicitly configured zero disables the plain NBS port.
+#define BLOCKSTORE_EDS_DISCOVERY_CONFIG_EXPLICIT_ZERO(xxx)                     \
+    xxx(EdsInstancePort,       InstancePort,       ui32,             9766   )\
+// BLOCKSTORE_EDS_DISCOVERY_CONFIG_EXPLICIT_ZERO
+
 #define BLOCKSTORE_DISCOVERY_DECLARE_CONFIG(name, type, value)                 \
     Y_DECLARE_UNUSED static const type Default##name = value;                  \
 // BLOCKSTORE_DISCOVERY_DECLARE_CONFIG
 
 BLOCKSTORE_DISCOVERY_CONFIG(BLOCKSTORE_DISCOVERY_DECLARE_CONFIG)
+
+#define BLOCKSTORE_DISCOVERY_DECLARE_EDS_CONFIG(name, field, type, value)       \
+    BLOCKSTORE_DISCOVERY_DECLARE_CONFIG(name, type, value)                     \
+// BLOCKSTORE_DISCOVERY_DECLARE_EDS_CONFIG
+
+BLOCKSTORE_EDS_DISCOVERY_CONFIG(BLOCKSTORE_DISCOVERY_DECLARE_EDS_CONFIG)
+BLOCKSTORE_EDS_DISCOVERY_CONFIG_EXPLICIT_ZERO(BLOCKSTORE_DISCOVERY_DECLARE_EDS_CONFIG)
+
+#undef BLOCKSTORE_DISCOVERY_DECLARE_EDS_CONFIG
 
 #undef BLOCKSTORE_DISCOVERY_DECLARE_CONFIG
 
@@ -103,8 +126,39 @@ void DumpImpl(const TVector<TString>& value, IOutputStream& os)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TEdsConfig::TEdsConfig(NProto::TEdsConfig config)
+    : Config(std::move(config))
+{
+}
+
+#define BLOCKSTORE_CONFIG_GETTER(name, field, type, ...)                       \
+type TEdsConfig::Get##field() const                                           \
+{                                                                             \
+    const auto value = Config.Get##field();                                   \
+    return IsEmpty(value) ? Default##name : ConvertValue<type>(value);         \
+}                                                                             \
+// BLOCKSTORE_CONFIG_GETTER
+
+BLOCKSTORE_EDS_DISCOVERY_CONFIG(BLOCKSTORE_CONFIG_GETTER)
+
+#undef BLOCKSTORE_CONFIG_GETTER
+
+#define BLOCKSTORE_CONFIG_GETTER(name, field, type, ...)                       \
+type TEdsConfig::Get##field() const                                           \
+{                                                                             \
+    return Config.Has##field() ? Config.Get##field() : Default##name;         \
+}                                                                             \
+// BLOCKSTORE_CONFIG_GETTER
+
+BLOCKSTORE_EDS_DISCOVERY_CONFIG_EXPLICIT_ZERO(BLOCKSTORE_CONFIG_GETTER)
+
+#undef BLOCKSTORE_CONFIG_GETTER
+
+////////////////////////////////////////////////////////////////////////////////
+
 TDiscoveryConfig::TDiscoveryConfig(NProto::TDiscoveryServiceConfig config)
     : Config(std::move(config))
+    , EdsConfig(Config.GetEds())
 {
 }
 
@@ -125,6 +179,18 @@ BLOCKSTORE_DISCOVERY_CONFIG(BLOCKSTORE_CONFIG_GETTER)
 
 #undef BLOCKSTORE_CONFIG_GETTER
 
+#define BLOCKSTORE_CONFIG_GETTER(name, field, type, ...)                       \
+type TDiscoveryConfig::Get##name() const                                       \
+{                                                                             \
+    return EdsConfig.Get##field();                                            \
+}                                                                             \
+// BLOCKSTORE_CONFIG_GETTER
+
+BLOCKSTORE_EDS_DISCOVERY_CONFIG(BLOCKSTORE_CONFIG_GETTER)
+BLOCKSTORE_EDS_DISCOVERY_CONFIG_EXPLICIT_ZERO(BLOCKSTORE_CONFIG_GETTER)
+
+#undef BLOCKSTORE_CONFIG_GETTER
+
 void TDiscoveryConfig::Dump(IOutputStream& out) const
 {
 #define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
@@ -134,6 +200,8 @@ void TDiscoveryConfig::Dump(IOutputStream& out) const
 // BLOCKSTORE_CONFIG_DUMP
 
     BLOCKSTORE_DISCOVERY_CONFIG(BLOCKSTORE_CONFIG_DUMP);
+    BLOCKSTORE_EDS_DISCOVERY_CONFIG(BLOCKSTORE_CONFIG_DUMP);
+    BLOCKSTORE_EDS_DISCOVERY_CONFIG_EXPLICIT_ZERO(BLOCKSTORE_CONFIG_DUMP);
 
 #undef BLOCKSTORE_CONFIG_DUMP
 }
@@ -151,6 +219,8 @@ void TDiscoveryConfig::DumpHtml(IOutputStream& out) const
         TABLE_CLASS("table table-condensed") {
             TABLEBODY() {
                 BLOCKSTORE_DISCOVERY_CONFIG(BLOCKSTORE_CONFIG_DUMP);
+                BLOCKSTORE_EDS_DISCOVERY_CONFIG(BLOCKSTORE_CONFIG_DUMP);
+                BLOCKSTORE_EDS_DISCOVERY_CONFIG_EXPLICIT_ZERO(BLOCKSTORE_CONFIG_DUMP);
             }
         }
     }

@@ -41,6 +41,7 @@
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_events.h>
 #include <contrib/ydb/core/testlib/basics/storage.h>
 
+#include <library/cpp/blockcodecs/codecs.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/bitmap.h>
@@ -139,8 +140,10 @@ NProto::TStorageServiceConfig DefaultConfig(ui32 flushBlobSizeThreshold = 4_KB)
 {
     NProto::TStorageServiceConfig config;
     config.SetFlushBlobSizeThreshold(flushBlobSizeThreshold);
-    config.SetFreshByteCountThresholdForBackpressure(400_KB);
-    config.SetFreshByteCountLimitForBackpressure(1200_KB);
+    config.SetFreshByteCountThresholdForBackpressureHDD(400_KB);
+    config.SetFreshByteCountThresholdForBackpressureSSD(400_KB);
+    config.SetFreshByteCountLimitForBackpressureHDD(1200_KB);
+    config.SetFreshByteCountLimitForBackpressureSSD(1200_KB);
     config.SetFreshByteCountFeatureMaxValue(6);
     config.SetCollectGarbageThreshold(10);
     config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(1_GB);
@@ -148,9 +151,9 @@ NProto::TStorageServiceConfig DefaultConfig(ui32 flushBlobSizeThreshold = 4_KB)
     return config;
 }
 
-TDiagnosticsConfigPtr CreateTestDiagnosticsConfig()
+TDiagnosticsConfigPtr CreateTestDiagnosticsConfig(
+    NProto::TDiagnosticsConfig config = {})
 {
-    NProto::TDiagnosticsConfig config;
     config.SetPassTraceIdToBlobstorage(true);
     return std::make_shared<TDiagnosticsConfig>(std::move(config));
 }
@@ -263,6 +266,53 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TFreshLogTrimCounters
+{
+    ui32 TrimsCompleted = 0;
+    ui32 TrimsFailed = 0;
+    ui32 FlushesCompleted = 0;
+};
+
+TTestActorRuntime::TEventObserver CountFreshLogTrims(
+    TFreshLogTrimCounters& counters)
+{
+    return [&counters](TAutoPtr<IEventHandle>& event)
+    {
+        switch (event->GetTypeRewrite()) {
+            case TEvPartitionCommonPrivate::EvTrimFreshLogCompleted: {
+                auto* msg = event->Get<
+                    TEvPartitionCommonPrivate::TEvTrimFreshLogCompleted>();
+                ++counters.TrimsCompleted;
+                if (FAILED(msg->GetStatus())) {
+                    ++counters.TrimsFailed;
+                }
+                break;
+            }
+            case TEvPartitionPrivate::EvFlushCompleted: {
+                ++counters.FlushesCompleted;
+                break;
+            }
+        }
+        return TTestActorRuntime::DefaultObserverFunc(event);
+    };
+}
+
+void WaitForTrimsCompleted(
+    TTestActorRuntime& runtime,
+    const TFreshLogTrimCounters& counters,
+    ui32 count)
+{
+    TDispatchOptions options;
+    options.CustomFinalCondition = [&]
+    {
+        return counters.TrimsCompleted >= count;
+    };
+    runtime.DispatchEvents(options, TDuration::Seconds(5));
+    UNIT_ASSERT_GE(counters.TrimsCompleted, count);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void InitTestActorRuntime(
     TTestActorRuntime& runtime,
     const NProto::TStorageServiceConfig& config,
@@ -270,7 +320,8 @@ void InitTestActorRuntime(
     ui32 channelCount,
     std::unique_ptr<TTabletStorageInfo> tabletInfo,
     TTestPartitionInfo partitionInfo = TTestPartitionInfo(),
-    EStorageAccessMode storageAccessMode = EStorageAccessMode::Default)
+    EStorageAccessMode storageAccessMode = EStorageAccessMode::Default,
+    NProto::TDiagnosticsConfig diagnosticsConfig = {})
 {
     auto storageConfig = std::make_shared<TStorageConfig>(
         config,
@@ -304,7 +355,7 @@ void InitTestActorRuntime(
 
     cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Fresh));
 
-    auto diagConfig = CreateTestDiagnosticsConfig();
+    auto diagConfig = CreateTestDiagnosticsConfig(std::move(diagnosticsConfig));
 
     auto createFunc =
         [=] (const TActorId& owner, TTabletStorageInfo* info) {
@@ -390,7 +441,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     TMaybe<ui32> channelsCount = {},
     const TTestPartitionInfo& testPartitionInfo = TTestPartitionInfo(),
     IActorPtr volumeProxy = {},
-    EStorageAccessMode storageAccessMode = EStorageAccessMode::Default)
+    EStorageAccessMode storageAccessMode = EStorageAccessMode::Default,
+    NProto::TDiagnosticsConfig diagnosticsConfig = {})
 {
     auto runtime = std::make_unique<TTestBasicRuntime>(1);
 
@@ -438,7 +490,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
         channelsCount ? *channelsCount : tabletInfo->Channels.size(),
         std::move(tabletInfo),
         testPartitionInfo,
-        storageAccessMode
+        storageAccessMode,
+        std::move(diagnosticsConfig)
     );
 
     return runtime;
@@ -1654,6 +1707,73 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     }
 
+    Y_UNIT_TEST(ShouldRecoverFreshBlobTimestampsOnReboot)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        auto getLowestCommitIdTimestamp = [&]()
+        {
+            auto partitionInfo = partition.GetPartitionInfo();
+            auto value =
+                NJson::ReadJsonFastTree(partitionInfo->Record.GetPayload());
+            const auto& state = value["State"];
+            if (!state.Has("FirstUnflushedFreshBlobTimestamp")) {
+                return TInstant::Max();
+            }
+            return TInstant::MicroSeconds(
+                state["FirstUnflushedFreshBlobTimestamp"].GetUInteger());
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(), getLowestCommitIdTimestamp());
+
+        const auto zeroTime = runtime->GetCurrentTime();
+        partition.ZeroBlocks(1);
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(5));
+        const auto writeTime = runtime->GetCurrentTime();
+        partition.WriteBlocks(2, 2);
+
+        const auto lowestCommitIdTimestamp = getLowestCommitIdTimestamp();
+        UNIT_ASSERT_GE(lowestCommitIdTimestamp, zeroTime);
+        UNIT_ASSERT_LT(lowestCommitIdTimestamp, writeTime);
+
+        // Prevent flush after reboot to keep fresh blobs in the partition.
+        ui32 droppedFlushRequests = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvFlushRequest) {
+                    ++droppedFlushRequests;
+                    return true;
+                }
+                return false;
+            });
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(10));
+        partition.RebootTablet();
+        partition.WaitReady();
+        UNIT_ASSERT_GT(droppedFlushRequests, 0);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            lowestCommitIdTimestamp,
+            getLowestCommitIdTimestamp());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(),
+            GetBlockContent(partition.ReadBlocks(1)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(2)));
+    }
+
     Y_UNIT_TEST(ShouldRecoverBlocksOnRebootFromFreshChannelWithLongHistory)
     {
         const ui32 blockCount = 1024;
@@ -1731,7 +1851,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             const auto holders = GetHolders(buffers);
             auto blob = BuildWriteFreshBlocksBlobContent(
                 {TBlockRange32::MakeOneBlock(block)},
-                holders);
+                holders,
+                TInstant::Zero());
 
             TPartialBlobId blobId(
                 gen,
@@ -1971,7 +2092,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldKeepIndexCountersEmptyWhenDisabled)
     {
         auto config = DefaultConfig();
-        config.SetUseBlobChannelDataKindForCounters(false);
+        config.SetExtendedBlobCountersEnabled(false);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
         TPartitionClient partition(*runtime);
@@ -2025,10 +2146,219 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 finalStats.GetMergedBlocksCount());
     }
 
+    Y_UNIT_TEST(ShouldTrackBlobBytesThroughCompactionCleanupAndReboot)
+    {
+        for (const bool enabled: {false, true}) {
+            auto config = DefaultConfig();
+            config.SetExtendedBlobCountersEnabled(enabled);
+            config.SetHDDMaxBlobsPerRange(100);
+            config.SetSSDMaxBlobsPerRange(100);
+            auto runtime = PrepareTestActorRuntime(config, 2048);
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            const auto assertBytes = [&](ui64 mixedBlocks, ui64 mergedBlocks)
+            {
+                partition.SendToPipe(std::make_unique<
+                    TEvPartitionCommonPrivate::TEvGetPartCountersRequest>());
+                const auto response = partition.RecvResponse<
+                    TEvPartitionCommonPrivate::TEvGetPartCountersResponse>();
+                const auto& counters = response->DiskCounters->Simple;
+                const ui64 mixedBytes =
+                    enabled ? 0 : mixedBlocks * DefaultBlockSize;
+                const ui64 mergedBytes =
+                    (mergedBlocks + (enabled ? mixedBlocks : 0)) *
+                    DefaultBlockSize;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    mixedBytes,
+                    counters.MixedBytesCount.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    mergedBytes,
+                    counters.MergedBytesCount.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    mixedBytes,
+                    counters.LogicalMixedBytesCount.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    mergedBytes,
+                    counters.LogicalMergedBytesCount.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled ? mixedBlocks * DefaultBlockSize : 0,
+                    counters.MixedIndexBytesCount.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled ? mergedBlocks * DefaultBlockSize : 0,
+                    counters.MergedIndexBytesCount.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled ? mixedBlocks * DefaultBlockSize : 0,
+                    counters.LogicalMixedIndexBytesCount.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled ? mergedBlocks * DefaultBlockSize : 0,
+                    counters.LogicalMergedIndexBytesCount.Value);
+            };
+
+            assertBytes(0, 0);
+            partition.WriteBlocks(1, 1);
+            partition.WriteBlocks(2, 2);
+            partition.WriteBlocks(3, 3);
+            partition.ZeroBlocks(4);
+            partition.Flush();
+            partition.Flush();   // Flush the deletion marker as well.
+            partition.WriteBlocks(TBlockRange32::WithLength(1024, 1024), 1);
+            assertBytes(3, 1024);
+            partition.RebuildMetadata(NProto::BLOCK_COUNT, 1);
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvPartitionPrivate::EvMetadataRebuildCompleted);
+            runtime->DispatchEvents(options, TDuration::Seconds(1));
+            UNIT_ASSERT(partition.GetRebuildMetadataStatus()
+                            ->Record.GetProgress()
+                            .GetIsCompleted());
+            assertBytes(3, 1024);
+            partition.RebootTablet();
+            assertBytes(3, 1024);
+
+            partition.Compaction();
+            partition.Cleanup();
+            assertBytes(0, 1027);
+            partition.RebootTablet();
+            assertBytes(0, 1027);
+
+            partition.ZeroBlocks(TBlockRange32::WithLength(1, 3));
+            partition.Flush();
+            partition.Compaction();
+            partition.Cleanup();
+            assertBytes(0, 1024);
+            partition.RebootTablet();
+            assertBytes(0, 1024);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldTrackBlobBytesWhenReplacingBlobWithSmallerOne)
+    {
+        auto config = DefaultConfig();
+        config.SetExtendedBlobCountersEnabled(true);
+        config.SetHDDMaxBlobsPerRange(100);
+        config.SetSSDMaxBlobsPerRange(100);
+        auto runtime = PrepareTestActorRuntime(config, 4096);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const ui32 replacementBlobSize = 123;
+        const ui64 untouchedBlobSize = 1024 * DefaultBlockSize;
+        const auto assertBytes = [&](ui64 storedBytes, ui64 logicalBytes)
+        {
+            partition.SendToPipe(
+                std::make_unique<
+                    TEvPartitionCommonPrivate::TEvGetPartCountersRequest>());
+            const auto response = partition.RecvResponse<
+                TEvPartitionCommonPrivate::TEvGetPartCountersResponse>();
+            const auto& counters = response->DiskCounters->Simple;
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.MixedBytesCount.Value);
+            UNIT_ASSERT_VALUES_EQUAL(
+                storedBytes,
+                counters.MergedBytesCount.Value);
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.LogicalMixedBytesCount.Value);
+            UNIT_ASSERT_VALUES_EQUAL(
+                logicalBytes,
+                counters.LogicalMergedBytesCount.Value);
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.MixedIndexBytesCount.Value);
+            UNIT_ASSERT_VALUES_EQUAL(
+                storedBytes,
+                counters.MergedIndexBytesCount.Value);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                counters.LogicalMixedIndexBytesCount.Value);
+            UNIT_ASSERT_VALUES_EQUAL(
+                logicalBytes,
+                counters.LogicalMergedIndexBytesCount.Value);
+        };
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+        partition.Flush();
+        // Keep another blob so an excessive decrement during cleanup
+        // cannot be hidden by clamping the byte counter to zero.
+        partition.WriteBlocks(TBlockRange32::WithLength(2048, 1024), 1);
+
+        ui32 replacedBlobs = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvAddBlobsRequest)
+                {
+                    auto* msg =
+                        event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>();
+                    if (msg->Mode == ADD_COMPACTION_RESULT && !replacedBlobs) {
+                        UNIT_ASSERT_VALUES_EQUAL(1, msg->MergedBlobs.size());
+                        const auto& blob = msg->MergedBlobs.front();
+                        const auto& blobId = blob.BlobId;
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            3 * DefaultBlockSize,
+                            blobId.BlobSize());
+                        // Simulate compression without changing the
+                        // logical blocks described by the blob.
+                        TVector<TAddMergedBlob> replacementBlobs;
+                        replacementBlobs.emplace_back(
+                            TPartialBlobId(
+                                blobId.Generation(),
+                                blobId.Step(),
+                                blobId.Channel(),
+                                replacementBlobSize,
+                                blobId.Cookie(),
+                                blobId.PartId()),
+                            blob.BlockRange,
+                            blob.SkipMask,
+                            blob.Checksums);
+                        msg->MergedBlobs.swap(replacementBlobs);
+                        ++replacedBlobs;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.Compaction(0);
+        UNIT_ASSERT_VALUES_EQUAL(1, replacedBlobs);
+        partition.Cleanup();
+        assertBytes(
+            untouchedBlobSize + replacementBlobSize,
+            untouchedBlobSize + 3 * DefaultBlockSize);
+        partition.RebootTablet();
+        assertBytes(
+            untouchedBlobSize + replacementBlobSize,
+            untouchedBlobSize + 3 * DefaultBlockSize);
+
+        partition.RebuildMetadata(NProto::BLOCK_COUNT, 1);
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TEvPartitionPrivate::EvMetadataRebuildCompleted);
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+        UNIT_ASSERT(partition.GetRebuildMetadataStatus()
+                        ->Record.GetProgress()
+                        .GetIsCompleted());
+        assertBytes(
+            untouchedBlobSize + replacementBlobSize,
+            untouchedBlobSize + 3 * DefaultBlockSize);
+        partition.RebootTablet();
+        assertBytes(
+            untouchedBlobSize + replacementBlobSize,
+            untouchedBlobSize + 3 * DefaultBlockSize);
+
+        // Overwrite every block so compaction does not read the synthetic
+        // blob, and cleanup must subtract its stored size.
+        partition.ZeroBlocks(TBlockRange32::WithLength(1, 3));
+        partition.Flush();
+        partition.Compaction(0);
+        partition.Cleanup();
+        assertBytes(untouchedBlobSize, untouchedBlobSize);
+        partition.RebootTablet();
+        assertBytes(untouchedBlobSize, untouchedBlobSize);
+    }
+
     Y_UNIT_TEST(ShouldClassifyBlobCountersByChannelAndIndexKindWhenEnabled)
     {
         auto config = DefaultConfig();
-        config.SetUseBlobChannelDataKindForCounters(true);
+        config.SetExtendedBlobCountersEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -2057,6 +2387,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         ui64 mixedBytesCount = 0;
         ui64 mergedBytesCount = 0;
+        ui64 logicalMixedBytesCount = 0;
+        ui64 logicalMergedBytesCount = 0;
         ui64 mixedIndexBytesCount = 0;
         ui64 mergedIndexBytesCount = 0;
 
@@ -2070,6 +2402,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     const auto& counters = msg->DiskCounters->Simple;
                     mixedBytesCount = counters.MixedBytesCount.Value;
                     mergedBytesCount = counters.MergedBytesCount.Value;
+                    logicalMixedBytesCount =
+                        counters.LogicalMixedBytesCount.Value;
+                    logicalMergedBytesCount =
+                        counters.LogicalMergedBytesCount.Value;
                     mixedIndexBytesCount = counters.MixedIndexBytesCount.Value;
                     mergedIndexBytesCount = counters.MergedIndexBytesCount.Value;
                 }
@@ -2086,6 +2422,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, mixedBytesCount);
         UNIT_ASSERT_VALUES_EQUAL(3 * DefaultBlockSize, mergedBytesCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, logicalMixedBytesCount);
+        UNIT_ASSERT_VALUES_EQUAL(3 * DefaultBlockSize, logicalMergedBytesCount);
         UNIT_ASSERT_VALUES_EQUAL(3 * DefaultBlockSize, mixedIndexBytesCount);
         UNIT_ASSERT_VALUES_EQUAL(0, mergedIndexBytesCount);
     }
@@ -2228,12 +2566,50 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldAutomaticallyFlushZerosFromFreshChannelBeforeHardLimit)
+    {
+        for (const auto mediaKind:
+             {NProto::STORAGE_MEDIA_SSD, NProto::STORAGE_MEDIA_HDD})
+        {
+            auto config = DefaultConfig();
+            config.SetFreshBlocksWriterEnabled(false);
+            config.SetFreshChannelZeroRequestsEnabled(true);
+            config.SetFlushThresholdSSD(8_KB);
+            config.SetFlushThresholdHDD(8_KB);
+            config.SetFreshLogicalBlocksByteCountHardLimit(16_KB);
+
+            auto runtime = PrepareTestActorRuntime(
+                config,
+                1024,
+                {},
+                {.MediaKind = mediaKind});
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            for (ui32 batch = 0; batch < 3; ++batch) {
+                partition.ZeroBlocks(2 * batch);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    partition.StatPartition()
+                        ->Record.GetStats().GetFreshBlocksCount());
+
+                partition.ZeroBlocks(2 * batch + 1);
+                runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+                auto response = partition.StatPartition();
+                const auto& stats = response->Record.GetStats();
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlobsCount());
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldAutomaticallyFlushBlocksWhenFreshBlobCountThresholdIsReached)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(4_MB);
-        config.SetFreshBlobCountFlushThreshold(4);
-        config.SetFreshBlobByteCountFlushThreshold(999999999);
+        config.SetFreshBlobCountFlushThresholdHDD(4);
+        config.SetFreshBlobByteCountFlushThresholdHDD(999999999);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2281,8 +2657,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(4_MB);
-        config.SetFreshBlobCountFlushThreshold(999999);
-        config.SetFreshBlobByteCountFlushThreshold(15_MB);
+        config.SetFreshBlobCountFlushThresholdHDD(999999);
+        config.SetFreshBlobByteCountFlushThresholdHDD(15_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -2326,6 +2702,275 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldFlushIdleFreshBlobsByAgeOnlyWhenEnabled)
+    {
+        for (const auto mediaKind:
+             {NCloud::NProto::STORAGE_MEDIA_SSD,
+              NCloud::NProto::STORAGE_MEDIA_HDD,
+              NCloud::NProto::STORAGE_MEDIA_HYBRID})
+        {
+            for (bool enabled: {false, true}) {
+                auto config = DefaultConfig();
+                config.SetFreshChannelWriteRequestsEnabled(true);
+                config.SetFreshChannelZeroRequestsEnabled(true);
+                const auto threshold = enabled ? 60000 : 0;
+                const bool isSSD =
+                    mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
+                config.SetFreshBlobAgeFlushThresholdSSD(isSSD ? threshold : 1);
+                config.SetFreshBlobAgeFlushThresholdHDD(isSSD ? 1 : threshold);
+
+                auto runtime = PrepareTestActorRuntime(
+                    config,
+                    1024,
+                    {},
+                    {.MediaKind = mediaKind});
+                TPartitionClient partition(*runtime);
+                partition.WaitReady();
+
+                partition.WriteBlocks(1, 1);
+                partition.ZeroBlocks(2);
+
+                runtime->AdvanceCurrentTime(TDuration::Seconds(30));
+                partition.SendToPipe(
+                    std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2,
+                    partition.StatPartition()
+                        ->Record.GetStats()
+                        .GetFreshBlocksCount());
+
+                runtime->AdvanceCurrentTime(TDuration::Seconds(31));
+                partition.SendToPipe(
+                    std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+                runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled ? 0 : 2,
+                    partition.StatPartition()
+                        ->Record.GetStats()
+                        .GetFreshBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    GetBlockContent(1),
+                    GetBlockContent(partition.ReadBlocks(1)));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(), GetBlockContent(partition.ReadBlocks(2)));
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldFlushFreshBlobsWithUnknownTimestampsByAge)
+    {
+        for (bool enabled: {false, true}) {
+            auto config = DefaultConfig();
+            config.SetFreshChannelWriteRequestsEnabled(true);
+            config.SetFreshBlobAgeFlushThresholdHDD(enabled ? 60000 : 0);
+
+            auto runtime = PrepareTestActorRuntime(config);
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvAddFreshBlocksRequest)
+                    {
+                        auto* msg = event->Get<TEvPartitionCommonPrivate::
+                                                   TEvAddFreshBlocksRequest>();
+                        msg->Timestamp = TInstant::Zero();
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            // The test clock starts at the epoch; move it past the threshold
+            // so that a zero timestamp is older than any real one.
+            runtime->AdvanceCurrentTime(TDuration::Hours(1));
+
+            // Blobs without timestamps count as old, so no time advance is
+            // needed after the write.
+            partition.WriteBlocks(1, 1);
+            partition.SendToPipe(
+                std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled ? 0 : 1,
+                partition.StatPartition()
+                    ->Record.GetStats()
+                    .GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(1),
+                GetBlockContent(partition.ReadBlocks(1)));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldWaitForFutureFreshBlobTimestampsInAgeFlush)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshBlobAgeFlushThresholdHDD(60000);
+
+        auto runtime = PrepareTestActorRuntime(config);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvAddFreshBlocksRequest)
+                {
+                    auto* msg = event->Get<
+                        TEvPartitionCommonPrivate::TEvAddFreshBlocksRequest>();
+                    msg->Timestamp =
+                        runtime->GetCurrentTime() + TDuration::Seconds(120);
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.WriteBlocks(1, 1);
+        runtime->AdvanceCurrentTime(TDuration::Seconds(61));
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(120));
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+    }
+
+    Y_UNIT_TEST(ShouldExcludeObsoleteBlobsBeforeTrimBoundaryFromAgeFlush)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshBlobAgeFlushThresholdHDD(60000);
+
+        auto runtime = PrepareTestActorRuntime(config);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        runtime->AdvanceCurrentTime(TDuration::Seconds(61));
+        partition.WriteBlocks(1, 2);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(61));
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(2),
+                                 GetBlockContent(partition.ReadBlocks(1)));
+    }
+
+    Y_UNIT_TEST(ShouldExcludeFlushedBlobsAwaitingTrimFromAgeFlush)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshBlobAgeFlushThresholdHDD(60000);
+
+        auto runtime = PrepareTestActorRuntime(config);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        bool trimRequested = false;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvTrimFreshLogRequest)
+                {
+                    trimRequested = true;
+                    return true;
+                }
+                return false;
+            });
+
+        partition.WriteBlocks(1, 1);
+        partition.Flush();
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+        UNIT_ASSERT(trimRequested);
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(120));
+        partition.WriteBlocks(2, 2);
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+    }
+
+    Y_UNIT_TEST(ShouldExcludeFlushedBlobsAboveTrimBoundaryFromAgeFlush)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshBlobAgeFlushThresholdHDD(60000);
+
+        auto runtime = PrepareTestActorRuntime(config);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        bool intercept = true;
+        std::unique_ptr<IEventHandle> addFreshBlocks;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvAddFreshBlocksRequest &&
+                    intercept)
+                {
+                    intercept = false;
+                    addFreshBlocks.reset(event.Release());
+                    return true;
+                }
+                return false;
+            });
+
+        // The in-flight write holds the trim boundary below the next blobs.
+        partition.SendWriteBlocksRequest(1, 1);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+        UNIT_ASSERT(addFreshBlocks);
+
+        partition.WriteBlocks(2, 2);
+        partition.Flush();
+
+        runtime->AdvanceCurrentTime(TDuration::Seconds(61));
+        partition.WriteBlocks(3, 3);
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+
+        // The completed write is the oldest unflushed blob.
+        runtime->Send(addFreshBlocks.release());
+        partition.RecvWriteBlocksResponse();
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            partition.StatPartition()->Record.GetStats().GetFreshBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(GetBlockContent(1),
+                                 GetBlockContent(partition.ReadBlocks(1)));
+    }
 
     Y_UNIT_TEST(ShouldAutomaticallyTrimFreshLogOnFlush)
     {
@@ -2369,6 +3014,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             }
         );
+
+        // With a zero dead blob trim threshold, killing the oldest blob
+        // doesn't trim; only a flush does.
+        partition.WriteBlocks(1, 1);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT(!trimSeen);
 
         partition.Flush();
 
@@ -2598,6 +3249,480 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         UNIT_ASSERT_VALUES_EQUAL(2, collectGen);
         UNIT_ASSERT_VALUES_EQUAL(6, collectStep);
+    }
+
+    Y_UNIT_TEST(ShouldTrimFreshLogWithHardBarrierOnlyWhenBarrierAdvances)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        ui32 trimCount = 0;
+        ui64 lastBarrierCommitId = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvCollectGarbage)
+                {
+                    auto* msg =
+                        event->Get<TEvBlobStorage::TEvCollectGarbage>();
+                    if (msg->Channel == 4) {
+                        UNIT_ASSERT(msg->Hard);
+                        UNIT_ASSERT(!msg->Keep || msg->Keep->empty());
+                        UNIT_ASSERT(!msg->DoNotKeep || msg->DoNotKeep->empty());
+                        const ui64 barrierCommitId = MakeCommitId(
+                            msg->CollectGeneration,
+                            msg->CollectStep);
+                        UNIT_ASSERT_GT(barrierCommitId, lastBarrierCommitId);
+                        lastBarrierCommitId = barrierCommitId;
+                        ++trimCount;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // The live blob keeps the barrier below it.
+        partition.WriteBlocks(1, 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.TrimFreshLog()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, trimCount);
+
+        // The barrier cannot move, so nothing is sent.
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_ALREADY,
+            partition.TrimFreshLog()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, trimCount);
+
+        // The overwrite kills the blob, so the barrier can pass it.
+        partition.WriteBlocks(1, 2);
+        partition.WriteBlocks(2, 3);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.TrimFreshLog()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(2, trimCount);
+
+        partition.Flush();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(3, trimCount);
+
+        partition.WriteBlocks(2, 4);
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(1)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(4),
+            GetBlockContent(partition.ReadBlocks(2)));
+    }
+
+    Y_UNIT_TEST(ShouldTrimFreshLogWithHardBarrierBeforeStartupFlush)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(1, 3);
+
+        bool dropFlush = true;
+        ui32 trimCount = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvFlushRequest: {
+                        if (dropFlush) {
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                    case TEvBlobStorage::EvCollectGarbage: {
+                        auto* msg =
+                            event->Get<TEvBlobStorage::TEvCollectGarbage>();
+                        if (msg->Channel == 4 && dropFlush) {
+                            UNIT_ASSERT(msg->Hard);
+                            // Replayed blobs keep the barrier in the previous
+                            // generation.
+                            UNIT_ASSERT_LT(
+                                msg->CollectGeneration,
+                                msg->RecordGeneration);
+                            ++trimCount;
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // RebootTablet replaces the observer while the tablet starts.
+        partition.KillTablet();
+        partition.ReconnectPipe();
+        partition.WaitReady();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.TrimFreshLog()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, trimCount);
+
+        auto check = [&]
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(3),
+                GetBlockContent(partition.ReadBlocks(1)));
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlockContent(2),
+                GetBlockContent(partition.ReadBlocks(2)));
+        };
+
+        check();
+
+        // Replay reads the blobs that the hard barrier kept.
+        dropFlush = false;
+        partition.KillTablet();
+        partition.ReconnectPipe();
+        partition.WaitReady();
+
+        check();
+    }
+
+    Y_UNIT_TEST(ShouldFlushFreshBlobsTrimmedDuringFlush)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(1, 2);
+        partition.WriteBlocks(2, 3);
+
+        bool holdAddBlobs = true;
+        TAutoPtr<IEventHandle> addBlobs;
+        size_t flushedFreshBlobCount = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvAddBlobsRequest: {
+                        using TRequest =
+                            TEvPartitionPrivate::TEvAddBlobsRequest;
+                        const auto* msg = event->Get<TRequest>();
+                        if (holdAddBlobs &&
+                            msg->Mode == EAddBlobMode::ADD_FLUSH_RESULT)
+                        {
+                            holdAddBlobs = false;
+                            addBlobs = event.Release();
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                    case TEvPartitionPrivate::EvFlushCompleted: {
+                        using TEvent = TEvPartitionPrivate::TEvFlushCompleted;
+                        flushedFreshBlobCount =
+                            event->Get<TEvent>()
+                                ->FlushedFreshBlobCommitIds.size();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // The flush captures all three blobs, including the dead one.
+        partition.SendFlushRequest();
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return !!addBlobs;
+            };
+            runtime->DispatchEvents(options);
+        }
+
+        // The trim removes the dead blob while the flush runs.
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, partition.TrimFreshLog()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            partition.StatPartition()->Record.GetStats().GetFreshBlobsCount());
+
+        runtime->Send(addBlobs.Release());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.RecvFlushResponse()->GetStatus());
+
+        const auto stats = partition.StatPartition()->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(3, flushedFreshBlobCount);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(1)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(3),
+            GetBlockContent(partition.ReadBlocks(2)));
+    }
+
+    Y_UNIT_TEST(ShouldTrimFreshLogWhenDeadBlobBytesReachThreshold)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshDeadBlobByteCountTrimThresholdHDD(3 * DefaultBlockSize);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+
+        // Each overwrite kills one blob of a block and a small header. Two
+        // dead blobs stay below the threshold of three blocks.
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(1, 2);
+        partition.WriteBlocks(1, 3);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.TrimsCompleted);
+
+        partition.WriteBlocks(1, 4);
+        WaitForTrimsCompleted(*runtime, counters, 1);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.FlushesCompleted);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetFreshBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(4),
+            GetBlockContent(partition.ReadBlocks(1)));
+
+        // A flush requests an ordinary trim too.
+        partition.Flush();
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(2, counters.TrimsCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            partition.StatPartition()->Record.GetStats().GetFreshBlobsCount());
+    }
+
+    Y_UNIT_TEST(ShouldTrimFreshLogWithoutFlushWhenOverwritesKillBlobs)
+    {
+        constexpr ui32 RegionSize = 4;
+        constexpr ui32 WriteCount = 200;
+
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshBlobCountFlushThresholdHDD(20);
+        config.SetFreshByteCountHardLimitHDD(64_KB);
+        config.SetFreshDeadBlobByteCountTrimThresholdHDD(3 * DefaultBlockSize);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+
+        auto fill = [](ui32 i)
+        {
+            return static_cast<char>('a' + i % 26);
+        };
+
+        for (ui32 i = 0; i < WriteCount; ++i) {
+            partition.WriteBlocks(i % RegionSize, fill(i));
+        }
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.FlushesCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.TrimsFailed);
+        UNIT_ASSERT_GT(counters.TrimsCompleted, 10);
+        UNIT_ASSERT_LT(
+            partition.StatPartition()->Record.GetStats().GetFreshBlobsCount(),
+            10);
+
+        auto check = [&]
+        {
+            for (ui32 i = WriteCount - RegionSize; i < WriteCount; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    GetBlockContent(fill(i)),
+                    GetBlockContent(partition.ReadBlocks(i % RegionSize)));
+            }
+        };
+
+        check();
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        check();
+    }
+
+    Y_UNIT_TEST(ShouldTrimMultiBlockFreshBlobOnlyAfterAllBlocksAreOverwritten)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshChannelZeroRequestsEnabled(true);
+        config.SetFreshDeadBlobByteCountTrimThresholdHDD(2 * DefaultBlockSize);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 2), 1);
+        partition.WriteBlocks(0, 2);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.TrimsCompleted);
+
+        // A zero request kills it, and both its blocks reach the threshold.
+        partition.ZeroBlocks(1);
+        WaitForTrimsCompleted(*runtime, counters, 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(partition.ReadBlocks(0)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(),
+            GetBlockContent(partition.ReadBlocks(1)));
+    }
+
+    Y_UNIT_TEST(ShouldNotTrimFreshLogWhileLiveBlobHoldsOrdinaryTrimToCommitId)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshDeadBlobByteCountTrimThresholdHDD(3 * DefaultBlockSize);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        runtime->SetObserverFunc(CountFreshLogTrims(counters));
+
+        // The live blob holds OrdinaryTrimToCommitId.
+        partition.WriteBlocks(0, 1);
+
+        // Dead blobs above it can't be trimmed.
+        for (ui32 i = 0; i < 7; ++i) {
+            partition.WriteBlocks(1, 2);
+        }
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.TrimsCompleted);
+
+        // Killing the live blob lets one trim collect every dead blob.
+        partition.WriteBlocks(0, 3);
+        WaitForTrimsCompleted(*runtime, counters, 1);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.TrimsCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            partition.StatPartition()->Record.GetStats().GetFreshBlobsCount());
+    }
+
+    Y_UNIT_TEST(ShouldRetryFailedOrdinaryTrim)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+        config.SetFreshDeadBlobByteCountTrimThresholdHDD(3 * DefaultBlockSize);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        auto countTrims = CountFreshLogTrims(counters);
+        bool failTrim = true;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvBlobStorage::EvCollectGarbageResult)
+                {
+                    auto* msg =
+                        event->Get<TEvBlobStorage::TEvCollectGarbageResult>();
+                    if (msg->Channel == 4 && failTrim) {
+                        failTrim = false;
+                        msg->Status = NKikimrProto::ERROR;
+                    }
+                }
+                return countTrims(event);
+            });
+
+        // The flush kills the only blob. It is smaller than the threshold, so
+        // only the flush's request starts the trim and only the failure's
+        // request restarts it.
+        partition.WriteBlocks(1, 1);
+        partition.Flush();
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.TrimsFailed);
+    }
+
+    Y_UNIT_TEST(ShouldUseDeadBlobTrimThresholdOfPartitionMediaKind)
+    {
+        for (const auto mediaKind:
+             {NCloud::NProto::STORAGE_MEDIA_SSD,
+              NCloud::NProto::STORAGE_MEDIA_HDD,
+              NCloud::NProto::STORAGE_MEDIA_HYBRID})
+        {
+            const bool isSSD = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
+            for (const bool ownMediaKind: {false, true}) {
+                auto config = DefaultConfig();
+                config.SetFreshChannelWriteRequestsEnabled(true);
+                if (isSSD == ownMediaKind) {
+                    config.SetFreshDeadBlobByteCountTrimThresholdSSD(
+                        3 * DefaultBlockSize);
+                } else {
+                    config.SetFreshDeadBlobByteCountTrimThresholdHDD(
+                        3 * DefaultBlockSize);
+                }
+
+                TTestPartitionInfo partitionInfo;
+                partitionInfo.MediaKind = mediaKind;
+                auto runtime =
+                    PrepareTestActorRuntime(config, 1024, {}, partitionInfo);
+
+                TPartitionClient partition(*runtime);
+                partition.WaitReady();
+
+                TFreshLogTrimCounters counters;
+                runtime->SetObserverFunc(CountFreshLogTrims(counters));
+
+                for (ui32 i = 0; i < 4; ++i) {
+                    partition.WriteBlocks(1, 1);
+                }
+                runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    ownMediaKind ? 1 : 0,
+                    counters.TrimsCompleted,
+                    "media kind: " << static_cast<int>(mediaKind)
+                                   << ", own: " << ownMediaKind);
+            }
+        }
     }
 
     Y_UNIT_TEST(ShouldNotAddSmallNonDeletionBlobsDuringFlush)
@@ -5253,6 +6378,181 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldSkipMarkerChecksumOnlyInRepairStorageAccessMode)
+    {
+        for (const auto mode:
+             {EStorageAccessMode::Default, EStorageAccessMode::Repair})
+        {
+            auto config = DefaultConfig();
+            config.SetCheckBlockChecksumsInBlobsUponRead(true);
+            auto runtime = PrepareTestActorRuntime(
+                config,
+                1024,
+                {},
+                TTestPartitionInfo(),
+                {},
+                mode);
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            const auto range = TBlockRange32::WithLength(0, 1024);
+            partition.WriteBlocks(range, 1);
+            ui32 replacedResponses = 0;
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() == TEvBlobStorage::EvGetResult)
+                    {
+                        auto* msg = event->Get<TEvBlobStorage::TEvGetResult>();
+                        for (ui32 i = 0; i < msg->ResponseSz; ++i) {
+                            auto& response = msg->Responses[i];
+                            if (response.Buffer.size() ==
+                                range.Size() * DefaultBlockSize)
+                            {
+                                auto data =
+                                    GetBlockContent(1, response.Buffer.size());
+                                data.replace(
+                                    0,
+                                    DefaultBlockSize,
+                                    GetBrokenDataMarker());
+                                response.Buffer = TRope(std::move(data));
+                                ++replacedResponses;
+                            }
+                        }
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            const auto expectedStatus =
+                mode == EStorageAccessMode::Repair ? S_OK : E_REJECTED;
+            partition.SendReadBlocksRequest(range);
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedStatus,
+                partition.RecvReadBlocksResponse()->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(1, replacedResponses);
+
+            partition.SendCompactionRequest(0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedStatus,
+                partition.RecvCompactionResponse()->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(2, replacedResponses);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldVerifyOnlyUnrepairedBlockChecksums)
+    {
+        for (const bool splitCompactionTx: {false, true}) {
+            for (const bool partialRepair: {false, true}) {
+                for (const bool corruptHealthyBlock: {false, true}) {
+                    if (!partialRepair && corruptHealthyBlock) {
+                        continue;
+                    }
+
+                    auto config = DefaultConfig();
+                    config.SetCheckBlockChecksumsInBlobsUponRead(true);
+                    config.SetSplitCompactionTxEnabled(splitCompactionTx);
+                    auto runtime = PrepareTestActorRuntime(
+                        config,
+                        1024,
+                        {},
+                        TTestPartitionInfo(),
+                        {},
+                        EStorageAccessMode::Repair);
+                    TPartitionClient partition(*runtime);
+                    partition.WaitReady();
+
+                    const auto range = TBlockRange32::WithLength(0, 1024);
+                    partition.WriteBlocks(range, 1);
+                    if (partialRepair) {
+                        // Leave two disjoint ranges in the original blob.
+                        partition.WriteBlocks(1, 2);
+                        partition.Flush();
+                    }
+
+                    ui32 repairedResponses = 0;
+                    ui32 corruptedResponses = 0;
+                    auto observer = runtime->SetObserverFunc(
+                        [&](TAutoPtr<IEventHandle>& event)
+                        {
+                            if (event->GetTypeRewrite() ==
+                                TEvBlobStorage::EvGetResult)
+                            {
+                                auto* msg =
+                                    event->Get<TEvBlobStorage::TEvGetResult>();
+                                for (ui32 i = 0; i < msg->ResponseSz; ++i) {
+                                    auto& response = msg->Responses[i];
+                                    if (response.Id.BlobSize() !=
+                                        range.Size() * DefaultBlockSize)
+                                    {
+                                        continue;
+                                    }
+                                    if (response.Shift == 0) {
+                                        response.Status = NKikimrProto::NODATA;
+                                        response.Buffer = TRope();
+                                        ++repairedResponses;
+                                    } else if (corruptHealthyBlock) {
+                                        response.Buffer = TRope(TString(
+                                            response.Buffer.size(),
+                                            'x'));
+                                        ++corruptedResponses;
+                                    }
+                                }
+                            }
+                            return TTestActorRuntime::DefaultObserverFunc(
+                                event);
+                        });
+
+                    partition.SendReadBlocksRequest(range);
+                    auto readResponse = partition.RecvReadBlocksResponse();
+                    UNIT_ASSERT(repairedResponses > 0);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        corruptHealthyBlock ? E_REJECTED : S_OK,
+                        readResponse->GetStatus());
+                    if (!corruptHealthyBlock) {
+                        const auto& blocks = readResponse->Record.GetBlocks();
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            range.Size(),
+                            blocks.BuffersSize());
+                        for (ui32 i = 0; i < range.Size(); ++i) {
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                !partialRepair || i == 0
+                                    ? TString(GetBrokenDataMarker())
+                                    : GetBlockContent(i == 1 ? 2 : 1),
+                                blocks.GetBuffers(i));
+                        }
+                    } else {
+                        UNIT_ASSERT(corruptedResponses > 0);
+                    }
+
+                    repairedResponses = 0;
+                    corruptedResponses = 0;
+                    partition.SendCompactionRequest(0);
+                    auto compactionResponse =
+                        partition.RecvCompactionResponse();
+                    UNIT_ASSERT(repairedResponses > 0);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        corruptHealthyBlock ? E_REJECTED : S_OK,
+                        compactionResponse->GetStatus());
+                    if (corruptHealthyBlock) {
+                        UNIT_ASSERT(corruptedResponses > 0);
+                    }
+
+                    runtime->SetObserverFunc(std::move(observer));
+                    if (!corruptHealthyBlock) {
+                        // Compaction must persist marker checksums so future
+                        // reads and compactions can verify the repaired data.
+                        auto response = partition.ReadBlocks(range);
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            readResponse->Record.GetBlocks()
+                                .SerializeAsString(),
+                            response->Record.GetBlocks().SerializeAsString());
+                        partition.Compaction(0);
+                    }
+                }
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldRejectRequestForBlockOutOfRange)
     {
         auto runtime = PrepareTestActorRuntime();
@@ -5632,7 +6932,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetCleanupThreshold(1);
         config.SetCollectGarbageThreshold(1);
-        config.SetFlushThreshold(8_MB);
+        config.SetFlushThresholdHDD(8_MB);
         config.SetWriteBlobThreshold(4_MB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -5663,7 +6963,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetCollectGarbageThreshold(3);
         config.SetSSDMaxBlobsPerRange(4);
         config.SetHDDMaxBlobsPerRange(4);
-        config.SetFlushThreshold(8_MB);
+        config.SetFlushThresholdHDD(8_MB);
         config.SetWriteBlobThreshold(4_MB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -5696,7 +6996,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetCollectGarbageThreshold(3);
         config.SetSSDMaxBlobsPerRange(4);
         config.SetHDDMaxBlobsPerRange(4);
-        config.SetFlushThreshold(8_MB);
+        config.SetFlushThresholdHDD(8_MB);
         config.SetWriteBlobThreshold(4_MB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -5733,7 +7033,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetSSDMaxBlobsPerRange(2);
         config.SetHDDMaxBlobsPerRange(2);
         config.SetCollectGarbageThreshold(1);
-        config.SetFlushThreshold(8_MB);
+        config.SetFlushThresholdHDD(8_MB);
         config.SetWriteBlobThreshold(4_MB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -5787,7 +7087,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetHDDMaxBlobsPerRange(2);
         config.SetSSDMaxBlobsPerRange(2);
         config.SetCollectGarbageThreshold(3);
-        config.SetFlushThreshold(8_MB);
+        config.SetFlushThresholdHDD(8_MB);
         config.SetWriteBlobThreshold(4_MB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -5836,7 +7136,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldCorrectlyHandleZeroAndNonZeroFreshBlobsDuringFlush)
     {
         auto config = DefaultConfig();
-        config.SetFlushThreshold(12_KB);
+        config.SetFlushThresholdHDD(12_KB);
         config.SetFlushBlobSizeThreshold(8_KB);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
@@ -7967,8 +9267,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldReadBlocksFromBaseDisk)
     {
         TPartitionContent baseContent = {
-        /*|      0      |     1     |     2 ... 5    |     6     |      7      |     8     |      9      |*/
-            TBlob(1, 1) , TFresh(2) , TBlob(2, 3, 4) ,  TEmpty() , TBlob(1, 4) , TFresh(5) , TBlob(2, 6)
+            TBlob(1, 1),      // block 0
+            TFresh(2),        // block 1
+            TBlob(2, 3, 4),   // blocks 2..5
+            TEmpty(),         // block 6
+            TBlob(1, 4),      // block 7
+            TFresh(5),        // block 8
+            TBlob(2, 8),      // block 9
         };
         auto bitmap = CreateBitmap(10);
 
@@ -10220,12 +11525,203 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+// Commit ID overflow reports an impossible event, which aborts debug builds.
+#ifdef NDEBUG
+    Y_UNIT_TEST(ShouldRejectMetadataRebuildOnCommitIdOverflow)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.SendToPipe(
+            std::make_unique<
+                TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoRequest>());
+        auto channelsInfo = partition.RecvResponse<
+            TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse>();
+
+        bool rebuildStarted = false;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvRebuildMetadataRequest) {
+                    channelsInfo->SharedState->Init(
+                        event->GetRecipientRewrite(),
+                        channelsInfo->Generation,
+                        Max<ui32>(),
+                        runtime->GetCurrentTime(),
+                        runtime->GetCurrentMonotonicTime());
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvMetadataRebuildBlockCountRequest)
+                {
+                    rebuildStarted = true;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.SendRebuildMetadataRequest(NProto::BLOCK_COUNT, 10);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            partition.RecvRebuildMetadataResponse()->GetStatus());
+        UNIT_ASSERT(!rebuildStarted);
+    }
+#endif
+
+    Y_UNIT_TEST(ShouldWaitForCommitsBeforeTakingMetadataRebuildSnapshot)
+    {
+        for (ui32 testCase = 0; testCase < 4; ++testCase) {
+            const bool useChannelCounters = testCase & 1;
+            const bool completeNewerWriteFirst = testCase & 2;
+            auto config = DefaultConfig();
+            config.SetExtendedBlobCountersEnabled(useChannelCounters);
+            auto runtime = PrepareTestActorRuntime(config, 4096);
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            TAutoPtr<IEventHandle> savedWrite;
+            TBlockCountRebuildState initialCounters;
+            bool rebuildStarted = false;
+            bool completed = false;
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    switch (event->GetTypeRewrite()) {
+                        case TEvPartitionPrivate::EvAddBlobsRequest:
+                            savedWrite = event.Release();
+                            return TTestActorRuntime::EEventAction::DROP;
+                        case TEvPartitionPrivate::
+                            EvMetadataRebuildBlockCountRequest:
+                            rebuildStarted = true;
+                            break;
+                        case TEvPartitionPrivate::EvMetadataRebuildCompleted:
+                            completed = true;
+                            break;
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(0, 1024), 1);
+            runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+            UNIT_ASSERT(savedWrite);
+
+            partition.RebuildMetadata(NProto::BLOCK_COUNT, 1);
+            runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+            UNIT_ASSERT(!rebuildStarted);
+            UNIT_ASSERT(!partition.GetRebuildMetadataStatus()
+                             ->Record.GetProgress()
+                             .GetIsCompleted());
+
+            partition.SendCleanupRequest();
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_TRY_AGAIN, partition.RecvCleanupResponse()->GetStatus());
+
+            // This newer write is outside the fixed rebuild boundary.
+            TAutoPtr<IEventHandle> firstWrite = savedWrite.Release();
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(1024, 1024), 2);
+            runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+            UNIT_ASSERT(savedWrite);
+
+            // Replay the writes without intercepting them again.
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvMetadataRebuildCompleted)
+                    {
+                        completed = true;
+                    } else if (
+                        event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvMetadataRebuildBlockCountRequest)
+                    {
+                        rebuildStarted = true;
+                        initialCounters =
+                            event
+                                ->Get<TEvPartitionPrivate::
+                                          TEvMetadataRebuildBlockCountRequest>()
+                                ->RebuildState;
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            if (completeNewerWriteFirst) {
+                // Exclude the newer write even if it commits first.
+                runtime->Send(savedWrite.Release());
+                partition.RecvWriteBlocksResponse();
+                UNIT_ASSERT(!rebuildStarted);
+            }
+
+            runtime->Send(firstWrite.Release());
+            partition.RecvWriteBlocksResponse();
+            if (!completed) {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]
+                {
+                    return completed;
+                };
+                runtime->DispatchEvents(options);
+            }
+            UNIT_ASSERT(completed);
+            UNIT_ASSERT_VALUES_EQUAL(
+                useChannelCounters ? 1024 : 0,
+                initialCounters.Initial.Channel.MergedBlocks);
+            UNIT_ASSERT_VALUES_EQUAL(
+                useChannelCounters ? 1 : 0,
+                initialCounters.Initial.Channel.MergedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1024, initialCounters.Initial.Index.MergedBlocks);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1, initialCounters.Initial.Index.MergedBlobs);
+            const ui64 initialBytes =
+                useChannelCounters ? 1024 * DefaultBlockSize : 0;
+            UNIT_ASSERT_VALUES_EQUAL(
+                initialBytes, initialCounters.Initial.Index.MergedBytes);
+            UNIT_ASSERT_VALUES_EQUAL(
+                initialBytes, initialCounters.Initial.Channel.MergedBytes);
+
+            if (savedWrite) {
+                // Rebuild must finish without waiting for the newer write.
+                runtime->Send(savedWrite.Release());
+                partition.RecvWriteBlocksResponse();
+            }
+
+            const auto assertCounters = [&]
+            {
+                const auto stats = partition.StatPartition()->Record.GetStats();
+                UNIT_ASSERT_VALUES_EQUAL(2048, stats.GetMergedBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMergedBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useChannelCounters ? 2048 : 0,
+                    stats.GetMergedIndexBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useChannelCounters ? 2 : 0,
+                    stats.GetMergedIndexBlobsCount());
+                partition.SendToPipe(std::make_unique<
+                    TEvPartitionCommonPrivate::TEvGetPartCountersRequest>());
+                const auto response = partition.RecvResponse<
+                    TEvPartitionCommonPrivate::TEvGetPartCountersResponse>();
+                const auto& counters = response->DiskCounters->Simple;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2048 * DefaultBlockSize,
+                    counters.MergedBytesCount.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useChannelCounters ? 2048 * DefaultBlockSize : 0,
+                    counters.MergedIndexBytesCount.Value);
+            };
+            assertCounters();
+            partition.RebootTablet();
+            assertCounters();
+        }
+    }
+
     Y_UNIT_TEST(ShouldRebuildBlockCountSensors)
     {
         for (bool useChannelCounters: {false, true}) {
             constexpr ui32 blockCount = 1024 * 1024;
             auto config = DefaultConfig();
-            config.SetUseBlobChannelDataKindForCounters(useChannelCounters);
+            config.SetExtendedBlobCountersEnabled(useChannelCounters);
             auto runtime = PrepareTestActorRuntime(config, blockCount);
 
             TPartitionClient partition(*runtime);
@@ -10245,6 +11741,190 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 1024 * 11 + 1,
                 stats.GetMergedBlocksCount());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldPreserveBlobBytesWrittenDuringMetadataRebuild)
+    {
+        for (const bool useChannelCounters: {false, true}) {
+            auto config = DefaultConfig();
+            config.SetExtendedBlobCountersEnabled(useChannelCounters);
+            auto runtime = PrepareTestActorRuntime(config, 4096);
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            partition.WriteBlocks(1, 1);
+            partition.Flush();
+            partition.ZeroBlocks(2);
+            partition.Flush();
+            partition.WriteBlocks(TBlockRange32::WithLength(1024, 1024), 1);
+
+            TAutoPtr<IEventHandle> savedEvent;
+            TBlockCountRebuildState rebuilt;
+            bool pause = true;
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    using TRequest = TEvPartitionPrivate::
+                        TEvMetadataRebuildBlockCountRequest;
+                    using TResponse = TEvPartitionPrivate::
+                        TEvMetadataRebuildBlockCountResponse;
+                    if (event->GetTypeRewrite() == TRequest::EventType && pause) {
+                        pause = false;
+                        savedEvent = event.Release();
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    if (event->GetTypeRewrite() == TResponse::EventType) {
+                        rebuilt = event->Get<TResponse>()->RebuildState;
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            partition.RebuildMetadata(NProto::BLOCK_COUNT, 1);
+            partition.WriteBlocks(3, 1);
+            partition.Flush();
+            partition.WriteBlocks(TBlockRange32::WithLength(2048, 1024), 1);
+            UNIT_ASSERT(savedEvent);
+            runtime->Send(savedEvent.Release());
+
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvPartitionPrivate::EvMetadataRebuildCompleted);
+            runtime->DispatchEvents(options, TDuration::Seconds(1));
+            UNIT_ASSERT(partition.GetRebuildMetadataStatus()
+                            ->Record.GetProgress()
+                            .GetIsCompleted());
+            UNIT_ASSERT_VALUES_EQUAL(
+                DefaultBlockSize, rebuilt.Rebuilt.Index.MixedBytes);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1024 * DefaultBlockSize, rebuilt.Rebuilt.Index.MergedBytes);
+            UNIT_ASSERT_VALUES_EQUAL(0, rebuilt.Rebuilt.Channel.MixedBytes);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1025 * DefaultBlockSize, rebuilt.Rebuilt.Channel.MergedBytes);
+
+            const auto assertBytes = [&]
+            {
+                partition.SendToPipe(std::make_unique<
+                    TEvPartitionCommonPrivate::TEvGetPartCountersRequest>());
+                const auto response = partition.RecvResponse<
+                    TEvPartitionCommonPrivate::TEvGetPartCountersResponse>();
+                const auto& counters = response->DiskCounters->Simple;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    (useChannelCounters ? 0 : 2) * DefaultBlockSize,
+                    counters.MixedBytesCount.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    (useChannelCounters ? 2050 : 2048) * DefaultBlockSize,
+                    counters.MergedBytesCount.Value);
+            };
+            assertBytes();
+            partition.RebootTablet();
+            assertBytes();
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRebuildBlobCountSensors)
+    {
+        for (bool useChannelCounters: {false, true}) {
+            auto config = DefaultConfig();
+            config.SetExtendedBlobCountersEnabled(useChannelCounters);
+            auto runtime = PrepareTestActorRuntime(config, 4096);
+
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            partition.WriteBlocks(1, 1);
+            partition.WriteBlocks(2, 2);
+            partition.WriteBlocks(3, 3);
+            partition.ZeroBlocks(4);
+            partition.Flush();
+            // Flush the remaining zero block as a mixed deletion marker.
+            partition.Flush();
+            partition.WriteBlocks(TBlockRange32::WithLength(1024, 1024), 1);
+
+            TAutoPtr<IEventHandle> savedResponse;
+            TBlockCountRebuildState rebuildState;
+            bool firstBatch = true;
+            bool completed = false;
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::
+                            EvMetadataRebuildBlockCountResponse)
+                    {
+                        using TResponse = TEvPartitionPrivate::
+                            TEvMetadataRebuildBlockCountResponse;
+                        rebuildState = event->Get<TResponse>()->RebuildState;
+                        if (firstBatch) {
+                            firstBatch = false;
+                            savedResponse = event.Release();
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                    } else if (
+                        event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvMetadataRebuildCompleted)
+                    {
+                        completed = true;
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            partition.RebuildMetadata(NProto::BLOCK_COUNT, 1);
+            if (!savedResponse) {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]
+                {
+                    return !!savedResponse;
+                };
+                runtime->DispatchEvents(options);
+            }
+            UNIT_ASSERT(savedResponse);
+            UNIT_ASSERT_VALUES_EQUAL(2, rebuildState.Initial.Index.MixedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(1, rebuildState.Initial.Index.MergedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0, rebuildState.Initial.Channel.MixedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                useChannelCounters ? 2 : 0,
+                rebuildState.Initial.Channel.MergedBlobs);
+
+            // New blobs must be retained even though they are outside the scan.
+            partition.WriteBlocks(5, 5);
+            partition.Flush();
+            partition.WriteBlocks(TBlockRange32::WithLength(2048, 1024), 1);
+            runtime->Send(savedResponse.Release());
+            if (!completed) {
+                TDispatchOptions options;
+                options.CustomFinalCondition = [&]
+                {
+                    return completed;
+                };
+                runtime->DispatchEvents(options);
+            }
+            UNIT_ASSERT(completed);
+            UNIT_ASSERT_VALUES_EQUAL(2, rebuildState.Rebuilt.Index.MixedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(1, rebuildState.Rebuilt.Index.MergedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0, rebuildState.Rebuilt.Channel.MixedBlobs);
+            UNIT_ASSERT_VALUES_EQUAL(
+                2, rebuildState.Rebuilt.Channel.MergedBlobs);
+
+            const auto assertCounters = [&]
+            {
+                const auto stats = partition.StatPartition()->Record.GetStats();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useChannelCounters ? 3 : 0,
+                    stats.GetMixedIndexBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useChannelCounters ? 2 : 0,
+                    stats.GetMergedIndexBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useChannelCounters ? 0 : 3, stats.GetMixedBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useChannelCounters ? 4 : 2, stats.GetMergedBlobsCount());
+            };
+            assertCounters();
+            partition.RebootTablet();
+            assertCounters();
         }
     }
 
@@ -10313,8 +11993,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             event->Get<TEvPartitionPrivate::TEvMetadataRebuildBlockCountResponse>();
                         UNIT_ASSERT_VALUES_UNEQUAL(
                             0,
-                            msg->RebuildState.MixedIndexBlocks +
-                                msg->RebuildState.MergedIndexBlocks);
+                            msg->RebuildState.Rebuilt.Index.MixedBlocks +
+                                msg->RebuildState.Rebuilt.Index.MergedBlocks);
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -10332,6 +12012,83 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             true,
             progress->Record.GetProgress().GetIsCompleted()
         );
+    }
+
+    Y_UNIT_TEST(ShouldRejectMetadataRebuildDuringCleanup)
+    {
+        auto runtime = PrepareTestActorRuntime(DefaultConfig());
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 2);
+        partition.Compaction();
+
+        // Keep cleanup active until its transaction has been committed.
+        std::unique_ptr<IEventHandle> putEvent;
+        bool interceptPut = true;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (interceptPut &&
+                    event->GetTypeRewrite() == TEvBlobStorage::EvPut &&
+                    event->Get<TEvBlobStorage::TEvPut>()->Id.Channel() == 0)
+                {
+                    putEvent.reset(event.Release());
+                    interceptPut = false;
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.SendCleanupRequest();
+        runtime->DispatchEvents({}, 10ms);
+        UNIT_ASSERT(putEvent);
+
+        partition.SendRebuildMetadataRequest(NProto::BLOCK_COUNT, 10);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED, partition.RecvRebuildMetadataResponse()->GetStatus());
+
+        partition.SendGetRebuildMetadataStatusRequest();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_NOT_FOUND,
+            partition.RecvGetRebuildMetadataStatusResponse()->GetStatus());
+
+        bool completed = false;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvMetadataRebuildCompleted)
+                {
+                    completed = true;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        runtime->Send(putEvent.release());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK, partition.RecvCleanupResponse()->GetStatus());
+
+        partition.RebuildMetadata(NProto::BLOCK_COUNT, 10);
+        if (!completed) {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return completed;
+            };
+            runtime->DispatchEvents(options);
+        }
+        UNIT_ASSERT(partition.GetRebuildMetadataStatus()
+                        ->Record.GetProgress()
+                        .GetIsCompleted());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetMergedBlobsCount());
+
+        partition.RebootTablet();
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            partition.StatPartition()->Record.GetStats().GetMergedBlobsCount());
     }
 
     Y_UNIT_TEST(ShouldBlockCleanupDuringMetadataRebuild)
@@ -10431,6 +12188,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         ui32 readBlobCount = 0;
         bool readBlobShouldFail = true;
+        bool readBlobShouldViolateContract = true;
 
         const auto eventHandler = [&] (const TEvBlobStorage::TEvGet::TPtr& ev) {
             auto& msg = *ev->Get();
@@ -10441,6 +12199,28 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
                 if (expected.IsSameBlob(actual)) {
                     readBlobCount++;
+
+                    if (readBlobShouldViolateContract) {
+                        auto response =
+                            std::make_unique<TEvBlobStorage::TEvGetResult>(
+                                NKikimrProto::OK,
+                                msg.QuerySize,
+                                0);
+                        for (ui32 j = 0; j < msg.QuerySize; ++j) {
+                            response->Responses[j].Status = NKikimrProto::OK;
+                            // Leave the blob id invalid to violate the
+                            // contract.
+                        }
+                        runtime.Schedule(
+                            new IEventHandle(
+                                ev->Sender,
+                                ev->Recipient,
+                                response.release(),
+                                0,
+                                ev->Cookie),
+                            TDuration());
+                        return true;
+                    }
 
                     if (readBlobShouldFail) {
                         auto response = std::make_unique<TEvBlobStorage::TEvGetResult>(
@@ -10492,6 +12272,17 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             }
         );
 
+        for (ui32 i = 0; i <= config.GetMaxReadBlobErrorsBeforeSuicide(); ++i) {
+            partition.SendReadBlocksRequest(0);
+            auto response = partition.RecvReadBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+            UNIT_ASSERT_VALUES_EQUAL(i + 1, readBlobCount);
+            UNIT_ASSERT(!suicideHappened);
+        }
+
+        readBlobShouldViolateContract = false;
+        readBlobCount = 0;
+
         for (ui32 i = 1; i < config.GetMaxReadBlobErrorsBeforeSuicide(); i++) {
             partition.SendReadBlocksRequest(0);
             auto response = partition.RecvReadBlocksResponse();
@@ -10529,6 +12320,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1_MB);
         config.SetMaxWriteBlobErrorsBeforeSuicide(5);
+        config.SetMaxIORequestsInFlight(1);
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
 
@@ -10536,14 +12328,20 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.WaitReady();
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1001), 1);
 
-        const auto eventHandler = [&] (const TEvBlobStorage::TEvPut::TPtr& ev) {
+        bool cancelWriteBlob = true;
+        bool writeBlobShouldViolateContract = true;
+        ui32 putRequests = 0;
+        const auto eventHandler = [&](const TEvBlobStorage::TEvPut::TPtr& ev)
+        {
+            ++putRequests;
             TLogoBlobID logoBlobId;
             auto response = std::make_unique<TEvBlobStorage::TEvPutResult>(
-                NKikimrProto::ERROR,
+                writeBlobShouldViolateContract ? NKikimrProto::OK
+                                               : NKikimrProto::ERROR,
                 logoBlobId,
-                0, // statusFlags
-                0, // groupId
-                0 // approximateFreeSpaceShare
+                0,   // statusFlags
+                0,   // groupId
+                0    // approximateFreeSpaceShare
             );
 
             runtime->Schedule(
@@ -10577,6 +12375,36 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& ev) {
                 switch (ev->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvWriteBlobRequest: {
+                        if (cancelWriteBlob) {
+                            TGuardedSgList sglist;
+                            sglist.Close();
+                            ev->Get<TEvPartitionCommonPrivate::
+                                        TEvWriteBlobRequest>()
+                                ->Data = std::move(sglist);
+                        }
+                        break;
+                    }
+                    case TEvPartitionCommonPrivate::EvWriteBlobResponse: {
+                        const auto* msg = ev->Get<
+                            TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
+                        UNIT_ASSERT(
+                            msg->ErrorSource ==
+                            (!cancelWriteBlob && !writeBlobShouldViolateContract
+                                 ? EErrorSource::BlobStorage
+                                 : EErrorSource::Local));
+                        break;
+                    }
+                    case TEvPartitionCommonPrivate::EvWriteBlobCompleted: {
+                        const auto* msg = ev->Get<
+                            TEvPartitionCommonPrivate::TEvWriteBlobCompleted>();
+                        UNIT_ASSERT(
+                            msg->ErrorSource ==
+                            (!cancelWriteBlob && !writeBlobShouldViolateContract
+                                 ? EErrorSource::BlobStorage
+                                 : EErrorSource::Local));
+                        break;
+                    }
                     case TEvTablet::EEv::EvTabletDead: {
                         suicideHappened = true;
                         break;
@@ -10585,6 +12413,32 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 return TTestActorRuntime::DefaultObserverFunc(ev);
             }
         );
+
+        for (ui32 i = 0; i <= config.GetMaxWriteBlobErrorsBeforeSuicide(); ++i)
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(0, 1001),
+                1);
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, response->GetStatus());
+            UNIT_ASSERT(!suicideHappened);
+            UNIT_ASSERT_VALUES_EQUAL(0, putRequests);
+        }
+
+        cancelWriteBlob = false;
+
+        for (ui32 i = 0; i <= config.GetMaxWriteBlobErrorsBeforeSuicide(); ++i)
+        {
+            partition.SendWriteBlocksRequest(
+                TBlockRange32::WithLength(0, 1001),
+                1);
+            auto response = partition.RecvWriteBlocksResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+            UNIT_ASSERT(!suicideHappened);
+            UNIT_ASSERT_VALUES_EQUAL(i + 1, putRequests);
+        }
+
+        writeBlobShouldViolateContract = false;
 
         for (ui32 i = 1; i < config.GetMaxWriteBlobErrorsBeforeSuicide(); i++) {
             partition.SendWriteBlocksRequest(TBlockRange32::WithLength(0, 1001), 1);
@@ -10784,6 +12638,110 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT(evPatchObserved);
     }
 
+    Y_UNIT_TEST(ShouldOnlyKillTabletOnBlobStoragePatchErrors)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1_MB);
+        config.SetBlobPatchingEnabled(true);
+        config.SetHDDMaxBlobsPerRange(999);
+        config.SetSSDMaxBlobsPerRange(999);
+        config.SetCompactionGarbageThreshold(999);
+        config.SetCompactionRangeGarbageThreshold(999);
+        config.SetMaxIORequestsInFlight(1);
+        auto runtime = PrepareTestActorRuntime(config, MaxPartitionBlocksCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 512), 2);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 256), 3);
+
+        bool blobStorageError = false;
+        bool suicideHappened = false;
+        ui32 patchRequests = 0;
+        ui32 patchResponses = 0;
+        ui32 patchCompletions = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() != TEvBlobStorage::EvPatch) {
+                    return false;
+                }
+
+                ++patchRequests;
+                // An OK status with an invalid blob id violates the contract.
+                auto response =
+                    std::make_unique<TEvBlobStorage::TEvPatchResult>(
+                        blobStorageError ? NKikimrProto::ERROR
+                                         : NKikimrProto::OK,
+                        TLogoBlobID(),
+                        0,
+                        TGroupId::FromValue(0),
+                        0);
+                runtime->Schedule(
+                    new IEventHandle(
+                        ev->Sender,
+                        ev->Recipient,
+                        response.release(),
+                        0,
+                        ev->Cookie),
+                    TDuration());
+                return true;
+            });
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvPartitionCommonPrivate::EvPatchBlobResponse: {
+                        const auto* msg = ev->Get<
+                            TEvPartitionCommonPrivate::TEvPatchBlobResponse>();
+                        UNIT_ASSERT(HasError(msg->GetError()));
+                        UNIT_ASSERT(
+                            msg->ErrorSource == (blobStorageError
+                                                     ? EErrorSource::BlobStorage
+                                                     : EErrorSource::Local));
+                        ++patchResponses;
+                        break;
+                    }
+                    case TEvPartitionCommonPrivate::EvPatchBlobCompleted: {
+                        const auto* msg = ev->Get<
+                            TEvPartitionCommonPrivate::TEvPatchBlobCompleted>();
+                        UNIT_ASSERT(HasError(msg->GetError()));
+                        UNIT_ASSERT(
+                            msg->ErrorSource == (blobStorageError
+                                                     ? EErrorSource::BlobStorage
+                                                     : EErrorSource::Local));
+                        ++patchCompletions;
+                        break;
+                    }
+                    case TEvTablet::EvTabletDead: {
+                        suicideHappened = true;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(ev);
+            });
+
+        for (ui32 i = 0; i < 3; ++i) {
+            partition.SendCompactionRequest();
+            auto response = partition.RecvCompactionResponse();
+            UNIT_ASSERT(FAILED(response->GetStatus()));
+            UNIT_ASSERT(!suicideHappened);
+            UNIT_ASSERT_VALUES_EQUAL(i + 1, patchRequests);
+            UNIT_ASSERT_VALUES_EQUAL(i + 1, patchResponses);
+            UNIT_ASSERT_VALUES_EQUAL(i + 1, patchCompletions);
+        }
+
+        blobStorageError = true;
+        partition.SendCompactionRequest();
+        auto response = partition.RecvCompactionResponse();
+        UNIT_ASSERT(FAILED(response->GetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(4, patchRequests);
+        UNIT_ASSERT_VALUES_EQUAL(4, patchCompletions);
+        UNIT_ASSERT(suicideHappened);
+    }
+
     Y_UNIT_TEST(WritingBlobsInsteadOfPatchingIfDiffIsGreaterThanThreshold)
     {
         auto config = DefaultConfig();
@@ -10980,8 +12938,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldRejectSmallWritesAfterReachingFreshByteCountHardLimit)
     {
         NProto::TStorageServiceConfig config;
-        config.SetFreshByteCountHardLimit(8_KB);
-        config.SetFlushThreshold(4_MB);
+        config.SetFreshByteCountHardLimitHDD(8_KB);
+        config.SetFlushThresholdHDD(4_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -11015,7 +12973,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         NProto::TStorageServiceConfig config;
         config.SetFreshLogicalBlocksByteCountHardLimit(8_KB);
-        config.SetFlushThreshold(4_MB);
+        config.SetFlushThresholdHDD(4_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetFreshChannelZeroRequestsEnabled(true);
         auto runtime = PrepareTestActorRuntime(config);
@@ -11913,14 +13871,26 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     void DoTestCompression(
         ui32 writeBlobThreshold,
         ui32 uncompressedExpected,
-        ui32 compressedExpected)
+        ui32 compressedExpected,
+        ui64 chunkSize = 0)
     {
         auto config = DefaultConfig();
         config.SetBlobCompressionRate(1);
         config.SetWriteBlobThreshold(writeBlobThreshold);
         config.SetFreshChannelWriteRequestsEnabled(true);
+        NProto::TDiagnosticsConfig diagnosticsConfig;
+        if (chunkSize) {
+            diagnosticsConfig.AddBlobCompressionChunkSizes(chunkSize);
+        }
 
-        auto runtime = PrepareTestActorRuntime(config);
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            1024,
+            {},
+            TTestPartitionInfo(),
+            {},
+            EStorageAccessMode::Default,
+            std::move(diagnosticsConfig));
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();
@@ -11936,9 +13906,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     auto* msg =
                         event->Get<TEvStatsService::TEvVolumePartCounters>();
 
-                    const auto& cc = msg->DiskCounters->Cumulative;
-                    uncompressed = cc.UncompressedBytesWritten.Value;
-                    compressed = cc.CompressedBytesWritten.Value;
+                    if (chunkSize) {
+                        const auto& cc =
+                            msg->DiskCounters->BlobCompression.at(chunkSize);
+                        uncompressed = cc.UncompressedBytesWritten.Value;
+                        compressed = cc.CompressedBytesWritten.Value;
+                    } else {
+                        const auto& cc = msg->DiskCounters->Cumulative;
+                        uncompressed = cc.UncompressedBytesWritten.Value;
+                        compressed = cc.CompressedBytesWritten.Value;
+                    }
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -11966,9 +13943,232 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         DoTestCompression(1, DefaultBlockSize, 34);
     }
 
-    Y_UNIT_TEST(ShouldCompressFreshBlocks)
+    Y_UNIT_TEST(ShouldSkipCompressionForFreshBlocks)
     {
-        DoTestCompression(Max<ui32>(), 4107, 43);
+        DoTestCompression(Max<ui32>(), 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldSkipChunkCompressionForFreshBlobs)
+    {
+        DoTestCompression(Max<ui32>(), 0, 0, 1);
+    }
+
+    enum class ECompressionBlobSource
+    {
+        MergedWrite,
+        MixedWrite,
+        MixedFlush,
+        MergedCompaction,
+        MixedCompaction,
+    };
+
+    void DoTestChunkCompression(
+        bool local,
+        ui32 compressionRate,
+        ECompressionBlobSource source = ECompressionBlobSource::MergedWrite)
+    {
+        const bool mixedWrite = source == ECompressionBlobSource::MixedWrite ||
+                                source == ECompressionBlobSource::MixedFlush;
+        auto config = DefaultConfig();
+        config.SetBlobCompressionRate(compressionRate);
+        config.SetBlobCompressionCodec("lz4");
+        config.SetWriteBlobThreshold(mixedWrite ? Max<ui32>() : 1);
+        if (source == ECompressionBlobSource::MixedWrite) {
+            config.SetWriteRequestBatchingEnabled(true);
+            config.SetWriteMixedBlobThresholdHDD(DefaultBlockSize);
+        }
+        config.SetCompactionMergedBlobThresholdHDD(
+            source == ECompressionBlobSource::MixedCompaction ? Max<ui32>() : 0);
+        config.SetBlobPatchingEnabled(false);
+        NProto::TDiagnosticsConfig diagnosticsConfig;
+        const TVector<ui64> chunkSizes{
+            0,
+            DefaultBlockSize,
+            2 * DefaultBlockSize,
+            10 * DefaultBlockSize,
+            (1ull << 32) + 1};
+        for (const ui64 size: chunkSizes) {
+            diagnosticsConfig.AddBlobCompressionChunkSizes(size);
+        }
+        // Repeating a size should not count the same experiment twice.
+        diagnosticsConfig.AddBlobCompressionChunkSizes(2 * DefaultBlockSize);
+
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            1024,
+            {},
+            TTestPartitionInfo(),
+            {},
+            EStorageAccessMode::Default,
+            std::move(diagnosticsConfig));
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        THashMap<ui64, TBlobCompressionCounters> compressionCounters;
+        ui64 uncompressedBytes = 0;
+        ui64 compressedBytes = 0;
+        ui32 estimatedWrites = 0;
+        ui32 skippedWrites = 0;
+        runtime->SetObserverFunc(
+            [&](auto& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvWriteBlobRequest)
+                {
+                    const auto* msg = event->template Get<
+                        TEvPartitionCommonPrivate::TEvWriteBlobRequest>();
+                    skippedWrites += !msg->CompressedSizeEstimationCandidate;
+                    estimatedWrites += msg->CompressedSizeEstimationCandidate;
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumePartCounters)
+                {
+                    const auto* msg = event->template Get<
+                        TEvStatsService::TEvVolumePartCounters>();
+                    compressionCounters = msg->DiskCounters->BlobCompression;
+                    uncompressedBytes = msg->DiskCounters->Cumulative
+                                            .UncompressedBytesWritten.Value;
+                    compressedBytes = msg->DiskCounters->Cumulative
+                                          .CompressedBytesWritten.Value;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const TString block(DefaultBlockSize, 1);
+        if (local) {
+            auto request = partition.CreateWriteBlocksLocalRequest(
+                TBlockRange32::WithLength(1, 5),
+                block);
+            request->Record.SetBlockSize(DefaultBlockSize);
+            partition.SendToPipe(std::move(request));
+            const auto response = partition.RecvWriteBlocksLocalResponse();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+        } else {
+            partition.WriteBlocks(TBlockRange32::WithLength(1, 5), 1);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            mixedWrite ? 0 : 1,
+            estimatedWrites);
+        if (source == ECompressionBlobSource::MixedWrite) {
+            UNIT_ASSERT(skippedWrites > 0);
+        }
+        if (source == ECompressionBlobSource::MixedFlush) {
+            partition.Flush();
+            UNIT_ASSERT(skippedWrites > 0);
+            UNIT_ASSERT_VALUES_EQUAL(0, estimatedWrites);
+        } else if (source == ECompressionBlobSource::MergedCompaction ||
+                   source == ECompressionBlobSource::MixedCompaction)
+        {
+            partition.Compaction(
+                0,
+                TCompactionOptions().set(ToBit(ECompactionOption::Full)));
+            if (source == ECompressionBlobSource::MergedCompaction) {
+                UNIT_ASSERT_VALUES_EQUAL(2, estimatedWrites);
+                UNIT_ASSERT_VALUES_EQUAL(0, skippedWrites);
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL(1, estimatedWrites);
+                UNIT_ASSERT(skippedWrites > 0);
+            }
+        }
+
+        // Compression is only an estimate; the original data must be stored.
+        UNIT_ASSERT_VALUES_EQUAL(
+            block,
+            GetBlockContent(partition.ReadBlocks(1)));
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvStatsService::EvVolumePartCounters);
+        runtime->DispatchEvents(options);
+
+        if (!compressionRate || mixedWrite) {
+            UNIT_ASSERT_VALUES_EQUAL(0, uncompressedBytes);
+            UNIT_ASSERT_VALUES_EQUAL(0, compressedBytes);
+            UNIT_ASSERT_VALUES_EQUAL(
+                chunkSizes.size(),
+                compressionCounters.size());
+            for (const auto& [size, counters]: compressionCounters) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    counters.UncompressedBytesWritten.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    counters.CompressedBytesWritten.Value);
+            }
+            return;
+        }
+
+        const auto* codec =
+            NBlockCodecs::Codec(config.GetBlobCompressionCodec());
+        const auto oneBlockSize = codec->Encode(block).size();
+        const auto twoBlocksSize =
+            codec->Encode(TString(2 * DefaultBlockSize, 1)).size();
+        const auto wholeBlobSize =
+            codec->Encode(TString(5 * DefaultBlockSize, 1)).size();
+        UNIT_ASSERT_VALUES_EQUAL(
+            estimatedWrites * 5 * DefaultBlockSize,
+            uncompressedBytes);
+        UNIT_ASSERT_VALUES_EQUAL(
+            estimatedWrites * wholeBlobSize,
+            compressedBytes);
+        UNIT_ASSERT_VALUES_EQUAL(chunkSizes.size(), compressionCounters.size());
+        for (const ui64 size: chunkSizes) {
+            const auto& counters = compressionCounters.at(size);
+            UNIT_ASSERT_VALUES_EQUAL(
+                estimatedWrites * 5 * DefaultBlockSize,
+                counters.UncompressedBytesWritten.Value);
+            ui64 expected = wholeBlobSize;
+            if (size == DefaultBlockSize) {
+                expected = 5 * oneBlockSize;
+            } else if (size == 2 * DefaultBlockSize) {
+                expected = 2 * twoBlocksSize + oneBlockSize;
+            }
+            UNIT_ASSERT_VALUES_EQUAL(
+                estimatedWrites * expected,
+                counters.CompressedBytesWritten.Value);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldEstimateCompressionForEachChunkSize)
+    {
+        DoTestChunkCompression(false, 1);
+    }
+
+    Y_UNIT_TEST(ShouldEstimateChunkCompressionForLocalWrites)
+    {
+        DoTestChunkCompression(true, 1);
+    }
+
+    Y_UNIT_TEST(ShouldDisableChunkCompressionWhenRateIsZero)
+    {
+        DoTestChunkCompression(false, 0);
+    }
+
+    Y_UNIT_TEST(ShouldEstimateChunkCompressionForMergedCompactionBlobs)
+    {
+        DoTestChunkCompression(
+            false,
+            1,
+            ECompressionBlobSource::MergedCompaction);
+    }
+
+    Y_UNIT_TEST(ShouldSkipChunkCompressionForMixedFlushBlobs)
+    {
+        DoTestChunkCompression(false, 1, ECompressionBlobSource::MixedFlush);
+    }
+
+    Y_UNIT_TEST(ShouldSkipChunkCompressionForMixedUserBlobs)
+    {
+        DoTestChunkCompression(false, 1, ECompressionBlobSource::MixedWrite);
+    }
+
+    Y_UNIT_TEST(ShouldSkipChunkCompressionForMixedCompactionBlobs)
+    {
+        DoTestChunkCompression(false, 1, ECompressionBlobSource::MixedCompaction);
     }
 
     class TStatsChecker
@@ -13000,7 +15200,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetWriteBlobThreshold(128_KB);
         config.SetMaxBlobRangeSize(128_MB);
         // disabling flush
-        config.SetFlushThreshold(1_GB);
+        config.SetFlushThresholdHDD(1_GB);
         // enabling fresh channel writes to make stats check a bit more
         // convenient
         config.SetFreshChannelWriteRequestsEnabled(true);
@@ -15351,7 +17551,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         constexpr ui32 FreshChannelId = 4;
 
         auto config = DefaultConfig();
-        config.SetFlushThreshold(4_MB);
+        config.SetFlushThresholdHDD(4_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetTrimFreshLogTimeout(TDuration::Seconds(1).MilliSeconds());
 
@@ -15732,8 +17932,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldRejectSmallZerosAfterReachingFreshByteCountHardLimit)
     {
         NProto::TStorageServiceConfig config;
-        config.SetFreshByteCountHardLimit(8_KB);
-        config.SetFlushThreshold(4_MB);
+        config.SetFreshByteCountHardLimitHDD(8_KB);
+        config.SetFlushThresholdHDD(4_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetFreshChannelZeroRequestsEnabled(true);
         auto runtime = PrepareTestActorRuntime(config);
@@ -17260,7 +19460,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetWriteBlobThresholdSSD(1_MB);
         config.SetCleanupThreshold(1000);
         config.SetSSDMaxBlobsPerRange(1000);
-        config.SetFlushThreshold(1000_MB);
+        config.SetFlushThresholdSSD(1000_MB);
         config.SetV1GarbageCompactionEnabled(true);
         config.SetIgnoringZeroedCompactionEnabled(ignoringZeroedCompactionEnabled);
         config.SetCompactionGarbageThreshold(999999);
@@ -17535,7 +19735,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldDrainWhenFreshByteCountHardLimitExceeded)
     {
         auto config = DefaultConfig();
-        config.SetFreshByteCountHardLimit(8_KB);
+        config.SetFreshByteCountHardLimitHDD(8_KB);
         config.SetFreshChannelWriteRequestsEnabled(true);
 
         auto runtime = PrepareTestActorRuntime(config);

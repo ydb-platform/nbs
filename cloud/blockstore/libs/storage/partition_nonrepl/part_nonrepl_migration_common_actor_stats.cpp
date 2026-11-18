@@ -49,7 +49,7 @@ TNonreplicatedPartitionMigrationCommonActor::ExtractPartCounters()
 {
     auto stats = CreatePartitionDiskCounters(
         EPublishingPolicy::DiskRegistryBased,
-        DiagnosticsConfig->GetHistogramCounterOptions());
+        *DiagnosticsConfig);
 
     if (SrcCounters) {
         stats->AggregateWith(*SrcCounters);
@@ -73,7 +73,7 @@ TNonreplicatedPartitionMigrationCommonActor::ExtractPartCounters()
     stats->AggregateWith(*MigrationCounters);
     MigrationCounters = CreatePartitionDiskCounters(
         EPublishingPolicy::DiskRegistryBased,
-        DiagnosticsConfig->GetHistogramCounterOptions());
+        *DiagnosticsConfig);
 
     return {
         .DiskCounters = std::move(stats),
@@ -200,7 +200,12 @@ void TNonreplicatedPartitionMigrationCommonActor::
     }
 
     for (auto& counters: msg->Counters) {
-        UpdateCounters(ctx, counters.ActorId, std::move(counters.CountersData));
+        for (auto& diskCounters: counters.DisksCounters) {
+            UpdateCounters(
+                ctx,
+                counters.ActorId,
+                std::move(diskCounters.CountersData));
+        }
     }
 
     NCloud::Reply(

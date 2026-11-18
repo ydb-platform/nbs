@@ -1,0 +1,2 @@
+EntryTimeout: 1
+AttrTimeout: 1

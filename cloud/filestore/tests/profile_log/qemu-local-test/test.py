@@ -3,12 +3,17 @@ import cloud.filestore.tools.testing.profile_log.common as profile
 
 import yatest.common as common
 
-from cloud.filestore.tests.python.lib.common import get_filestore_mount_path
+from cloud.filestore.tests.python.lib.common import (
+    flush_logs,
+    get_filestore_mount_path,
+)
 
 
 def test_profile_log():
     for key, value in compliance.get_kikimr_service_suites().items():
         compliance.run_compliance_suite(get_filestore_mount_path(), key, value)
+
+    flush_logs()
 
     fs_name = "nfs_test"
     results_path = common.output_path("results.txt")

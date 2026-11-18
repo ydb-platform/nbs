@@ -500,10 +500,12 @@ struct TEvIndexTabletPrivate
     {
         const ui32 RangeId;
         const bool FilterNodes;
+        const bool Forced;
 
-        TCompactionRequest(ui32 rangeId, bool filterNodes)
+        TCompactionRequest(ui32 rangeId, bool filterNodes, bool forced)
             : RangeId(rangeId)
             , FilterNodes(filterNodes)
+            , Forced(forced)
         {}
     };
 

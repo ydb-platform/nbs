@@ -179,7 +179,10 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
     const auto* msg = ev->Get();
     const auto& record = msg->GetRecord();
 
-    if (HandleError(ctx, MakeDescribeSchemeError(record))) {
+    if (HandleError(
+            ctx,
+            MakeDescribeSchemeError(record, true /* addPathToError */)))
+    {
         return;
     }
 
@@ -238,6 +241,23 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
                     "root path not found in SchemeCache");
                 SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
                 HandleError(ctx, error);
+                return;
+            }
+
+            case TSchemeCacheNavigate::EStatus::LookupError:
+            case TSchemeCacheNavigate::EStatus::RedirectLookupError: {
+                // SchemeBoard is not able to give an authoritative answer
+                // right now: its replicas are unreachable or have not been
+                // populated by SchemeShard yet (e.g. the cluster is starting
+                // up).
+                HandleError(
+                    ctx,
+                    MakeError(
+                        E_REJECTED,
+                        TStringBuilder()
+                            << "SchemeCache is not able to resolve path "
+                            << Path.Quote()
+                            << " at the moment: " << entry.Status));
                 return;
             }
 

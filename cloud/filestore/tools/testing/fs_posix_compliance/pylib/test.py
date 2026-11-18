@@ -32,8 +32,8 @@ def get_kikimr_service_suites(exclude=[]):
     return dict().fromkeys(get_all_suites(exclude=exclude), [])
 
 
-def get_local_service_suites():
-    return dict().fromkeys(get_all_suites(), [])
+def get_local_service_suites(exclude=[]):
+    return dict().fromkeys(get_all_suites(exclude=exclude), [])
 
 
 def __run_test_suite(target_path, suite, tests, verbose=False):

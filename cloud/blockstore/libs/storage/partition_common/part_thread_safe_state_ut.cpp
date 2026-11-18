@@ -4,18 +4,129 @@
 
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
+#include <contrib/ydb/library/actors/core/executor_thread.h>
+#include <contrib/ydb/library/actors/core/mailbox.h>
+#include <contrib/ydb/library/actors/testlib/test_runtime.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <barrier>
 #include <thread>
 
 namespace NCloud::NBlockStore::NStorage {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TTimestampTestRuntime: public NActors::TTestActorRuntimeBase
+{
+private:
+    NActors::TMailbox Mailbox;
+
+public:
+    TTimestampTestRuntime()
+    {
+        Initialize();
+    }
+
+    NActors::TActorContext GetContext()
+    {
+        return NActors::TActorContext(
+            Mailbox,
+            *GetNodeById(GetNodeId())->ExecutorThread,
+            0,
+            {});
+    }
+
+    void SetClocks(TInstant timestamp, NActors::TMonotonic monotonic)
+    {
+        auto* node = GetNodeById(GetNodeId());
+        AtomicStore(node->ActorSystemTimestamp, timestamp.MicroSeconds());
+        AtomicStore(node->ActorSystemMonotonic, monotonic.MicroSeconds());
+    }
+};
+
+}   // namespace
+
 Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
 {
+    Y_UNIT_TEST(ShouldAdvanceFreshWriteTimestampWithMonotonicTime)
+    {
+        TTimestampTestRuntime runtime;
+        const auto ctx = runtime.GetContext();
+        TPartitionThreadSafeState state;
+        state.Init({}, 1, 0, TInstant::Seconds(100), TMonotonic::Seconds(10));
+
+        {
+            // Timestamp reads must work with StateLock held.
+            auto guard = state.AccessTrimFreshLogBarriers();
+            runtime.SetClocks(TInstant::Seconds(100), TMonotonic::Seconds(10));
+            UNIT_ASSERT_VALUES_EQUAL(
+                TInstant::Seconds(100), state.GetFreshWriteTimestamp(ctx));
+
+            runtime.SetClocks(TInstant::Seconds(50), TMonotonic::Seconds(11));
+            UNIT_ASSERT_VALUES_EQUAL(
+                TInstant::Seconds(101), state.GetFreshWriteTimestamp(ctx));
+
+            runtime.SetClocks(TInstant::Seconds(1000), TMonotonic::Seconds(12));
+            UNIT_ASSERT_VALUES_EQUAL(
+                TInstant::Seconds(102), state.GetFreshWriteTimestamp(ctx));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(1, 0), state.GetLastCommitId());
+
+        const auto firstWrite = state.StartFreshWrite(ctx, 1);
+        runtime.SetClocks(TInstant::Seconds(20), TMonotonic::Seconds(13));
+        const auto secondWrite = state.StartFreshWrite(ctx, 1);
+        UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(1, 1), firstWrite.CommitId);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(102), firstWrite.Timestamp);
+        UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(1, 2), secondWrite.CommitId);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(103), secondWrite.Timestamp);
+    }
+
+    Y_UNIT_TEST(ShouldReadFreshWriteTimestampConcurrently)
+    {
+        TTimestampTestRuntime runtime;
+        runtime.SetClocks(TInstant::Seconds(100), TMonotonic::Seconds(10));
+        const auto ctx = runtime.GetContext();
+        TPartitionThreadSafeState state;
+        state.Init({}, 1, 0, TInstant::Seconds(100), TMonotonic::Seconds(10));
+
+        constexpr size_t NumThreads = 10;
+        constexpr size_t RequestsPerThread = 1000;
+        std::barrier start(NumThreads);
+        std::vector<std::thread> threads;
+        std::vector<std::vector<TInstant>> timestamps(NumThreads);
+        for (size_t i = 0; i < NumThreads; ++i) {
+            threads.emplace_back(
+                [&, i]
+                {
+                    timestamps[i].reserve(RequestsPerThread);
+                    start.arrive_and_wait();
+                    for (size_t j = 0; j < RequestsPerThread; ++j) {
+                        timestamps[i].push_back(
+                            i % 2 ? state.StartFreshWrite(ctx, 1).Timestamp
+                                  : state.GetFreshWriteTimestamp(ctx));
+                    }
+                });
+        }
+        for (auto& thread: threads) {
+            thread.join();
+        }
+        for (const auto& values: timestamps) {
+            for (const auto timestamp: values) {
+                UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100), timestamp);
+            }
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            MakeCommitId(1, NumThreads / 2 * RequestsPerThread),
+            state.GetLastCommitId());
+    }
+
     Y_UNIT_TEST(ShouldReturnInvalidCommitIdWhenItOverflows)
     {
         TPartitionThreadSafeState state;
-        state.Init({}, 0, Max());
+        state.Init({}, 0, Max(), {}, {});
 
         UNIT_ASSERT(state.GenerateCommitId() == InvalidCommitId);
     }
@@ -23,7 +134,7 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
     Y_UNIT_TEST(ShouldInitializeWithGenerationAndValue)
     {
         TPartitionThreadSafeState generator;
-        generator.Init({}, 5, 10);
+        generator.Init({}, 5, 10, {}, {});
         ui64 expectedCommitId = MakeCommitId(5, 10);
 
         UNIT_ASSERT_VALUES_EQUAL(expectedCommitId, generator.GetLastCommitId());
@@ -32,7 +143,7 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
     Y_UNIT_TEST(ShouldGenerateCommitId)
     {
         TPartitionThreadSafeState generator;
-        generator.Init({}, 1, 0);
+        generator.Init({}, 1, 0, {}, {});
 
         ui64 commitId = generator.GenerateCommitId();
         ui64 expectedCommitId = MakeCommitId(1, 1);
@@ -44,7 +155,7 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
     Y_UNIT_TEST(ShouldGenerateSequentialCommitIds)
     {
         TPartitionThreadSafeState generator;
-        generator.Init({}, 2, 100);
+        generator.Init({}, 2, 100, {}, {});
 
         ui64 commitId1 = generator.GenerateCommitId();
         UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(2, 101), commitId1);
@@ -63,7 +174,7 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
     Y_UNIT_TEST(ShouldReturnInvalidCommitIdWhenOverflows)
     {
         TPartitionThreadSafeState generator;
-        generator.Init({}, 3, Max<ui32>());
+        generator.Init({}, 3, Max<ui32>(), {}, {});
 
         ui64 commitId = generator.GenerateCommitId();
 
@@ -76,7 +187,7 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
     Y_UNIT_TEST(ShouldHandleGenerationNearMaxValue)
     {
         TPartitionThreadSafeState generator;
-        generator.Init({}, 10, Max<ui32>() - 1);
+        generator.Init({}, 10, Max<ui32>() - 1, {}, {});
 
         ui64 commitId1 = generator.GenerateCommitId();
         UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(10, Max<ui32>()), commitId1);
@@ -88,7 +199,7 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
     Y_UNIT_TEST(ShouldWorkWithZeroGeneration)
     {
         TPartitionThreadSafeState generator;
-        generator.Init({}, 0, 0);
+        generator.Init({}, 0, 0, {}, {});
 
         ui64 commitId = generator.GenerateCommitId();
         UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(0, 1), commitId);
@@ -97,7 +208,7 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
     Y_UNIT_TEST(ShouldWorkWithMaxGeneration)
     {
         TPartitionThreadSafeState generator;
-        generator.Init({}, Max<ui32>(), 0);
+        generator.Init({}, Max<ui32>(), 0, {}, {});
 
         ui64 commitId = generator.GenerateCommitId();
         UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(Max<ui32>(), 1), commitId);
@@ -107,7 +218,7 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
     {
         constexpr ui32 Generation = 12345;
         TPartitionThreadSafeState generator;
-        generator.Init({}, Generation, 0);
+        generator.Init({}, Generation, 0, {}, {});
 
         ui64 commitId = generator.GenerateCommitId();
         auto [gen, step] = ParseCommitId(commitId);
@@ -119,7 +230,7 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
     Y_UNIT_TEST(ShouldBeThreadSafe)
     {
         TPartitionThreadSafeState generator;
-        generator.Init({}, 1, 0);
+        generator.Init({}, 1, 0, {}, {});
         constexpr size_t NumThreads = 10;
         constexpr size_t GenerationsPerThread = 1000;
 

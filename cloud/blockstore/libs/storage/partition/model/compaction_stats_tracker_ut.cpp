@@ -185,7 +185,7 @@ Y_UNIT_TEST_SUITE(TCompactionStatsTrackerTest)
     {
         TFixture fixture;
 
-        fixture.CompactionMap.Update(RangeSize, 4, 6, 5, 2, 3, false);
+        fixture.CompactionMap.Update(RangeSize, 4, 6, 5, 2, 3, false, false);
 
         fixture.Tracker.StartCompaction(100, {1});
 

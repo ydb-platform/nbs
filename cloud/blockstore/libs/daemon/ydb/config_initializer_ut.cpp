@@ -1,4 +1,5 @@
 #include "config_initializer.h"
+
 #include "options.h"
 
 #include <cloud/blockstore/libs/client/client.h>
@@ -13,12 +14,14 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
 #include <cloud/blockstore/libs/ydbstats/config.h>
+
 #include <cloud/storage/core/config/features.pb.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
 
+#include <contrib/ydb/core/control/immediate_control_board_impl.h>
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
 #include <contrib/ydb/core/protos/feature_flags.pb.h>
 
@@ -29,7 +32,9 @@
 #include <util/datetime/cputimer.h>
 #include <util/folder/tempdir.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/vector.h>
 #include <util/stream/file.h>
+#include <util/string/builder.h>
 #include <util/system/sanitizers.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -51,7 +56,7 @@ TOptionsYdbPtr CreateOptions()
     return options;
 }
 
-// Initialize static sections, including RDMA only when its file is provided.
+// Initialize static sections, including RDMA from its file or legacy fields.
 void InitStaticConfigs(TConfigInitializerYdb& ci)
 {
     // Initialize Server and Features before the sections that depend on them.
@@ -74,9 +79,7 @@ void InitStaticConfigs(TConfigInitializerYdb& ci)
     ci.InitCellsConfig();
     ci.InitLocalNVMeConfig();
     ci.InitDiskAgentConfig();
-    if (ci.Options->RdmaConfig) {
-        ci.InitRdmaConfig();
-    }
+    ci.InitRdmaConfig();
 }
 
 /**
@@ -242,7 +245,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 staticValue,
                 ci.GetDynamicYamlConfigurationStaticallyEnabled());
-            UNIT_ASSERT_VALUES_EQUAL(staticValue, controls != nullptr);
+            UNIT_ASSERT(controls);
 
             // Apply CMS with the opposite DynamicYamlConfigurationEnabled
             // value.
@@ -261,7 +264,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             UNIT_ASSERT_EQUAL(controls, ci.StorageConfigControls.get());
             UNIT_ASSERT_EQUAL(
                 controls,
-                ci.StorageConfig->GetStorageConfigControls().get());
+                ci.StorageConfig->GetControls().get());
             UNIT_ASSERT_VALUES_EQUAL(
                 staticValue,
                 staticConfig.GetServer()
@@ -278,10 +281,25 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             UNIT_ASSERT_EQUAL(controls, ci.StorageConfigControls.get());
             UNIT_ASSERT_EQUAL(
                 controls,
-                ci.StorageConfig->GetStorageConfigControls().get());
+                ci.StorageConfig->GetControls().get());
             UNIT_ASSERT_VALUES_EQUAL(
                 staticText,
                 staticConfig.SerializeAsString());
+
+            // Reuse controls and update their defaults for startup CMS changes
+            // regardless of whether runtime dynamic configuration is enabled.
+            ci.ApplyStorageServiceConfig("WriteBlobThreshold: 123");
+            UNIT_ASSERT_EQUAL(controls, ci.StorageConfigControls.get());
+            UNIT_ASSERT_EQUAL(
+                controls,
+                ci.StorageConfig->GetControls().get());
+            NKikimr::TControlBoard board;
+            controls->Register(board);
+            NKikimr::TControlWrapper control;
+            UNIT_ASSERT(!board.RegisterSharedControl(
+                control,
+                "BlockStore_WriteBlobThreshold"));
+            UNIT_ASSERT_VALUES_EQUAL(123, control.GetDefault());
         }
     }
 
@@ -428,18 +446,11 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             fields.size());
     }
 
-    // Verify that the Server flag selects shared controls before other sections
-    // are initialized.
-    Y_UNIT_TEST(ShouldInitializeSharedControlsFromServerConfig)
+    // Verify that storage initialization creates shared controls before the
+    // remaining sections are initialized.
+    Y_UNIT_TEST(ShouldInitializeSharedControlsDuringStorageInitialization)
     {
-        // Initialize ServerConfig with dynamic YAML enabled.
-        TTempDir dir;
-        const auto serverPath = dir.Path() / "server.txt";
-        TOFStream(serverPath.GetPath()).Write(
-            "ServerConfig { DynamicYamlConfigurationEnabled: true }");
-        auto options = CreateOptions();
-        options->ServerConfig = serverPath.GetPath();
-        auto ci = TConfigInitializerYdb(std::move(options));
+        auto ci = TConfigInitializerYdb(CreateOptions());
         ci.InitServerConfig();
 
         // Create shared ICB controls before initializing the remaining
@@ -447,7 +458,6 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         ci.InitFeaturesConfig();
         ci.InitStorageConfig();
 
-        UNIT_ASSERT(ci.GetDynamicYamlConfigurationStaticallyEnabled());
         UNIT_ASSERT(ci.StorageConfigControls);
     }
 
@@ -460,8 +470,9 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         InitStaticConfigs(ci);
         const auto staticConfig = ci.GetCurrentBlockstoreConfig();
         const auto staticText = staticConfig.SerializeAsString();
-        UNIT_ASSERT(!staticConfig.HasRdma());
-        UNIT_ASSERT(!ci.RdmaConfig);
+        UNIT_ASSERT(staticConfig.HasRdma());
+        UNIT_ASSERT_VALUES_EQUAL(0, staticConfig.GetRdma().ByteSizeLong());
+        UNIT_ASSERT(ci.RdmaConfig);
         UNIT_ASSERT_VALUES_EQUAL(
             staticText,
             ci.GetCurrentBlockstoreConfig().SerializeAsString());
@@ -514,6 +525,114 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             23456,
             ci.GetCurrentBlockstoreConfig().GetDiagnostics().GetNbsMonPort());
         UNIT_ASSERT_VALUES_EQUAL(staticText, staticConfig.SerializeAsString());
+    }
+
+    // Verify that local legacy RDMA settings or the explicit RDMA file survive
+    // unrelated dynamic updates and are restored after removing overrides.
+    Y_UNIT_TEST(ShouldPreserveStaticRdmaConfigAcrossUnrelatedDynamicUpdates)
+    {
+        for (const bool useRdmaFile: {false, true}) {
+            // Give legacy fields and the optional RDMA file different values
+            // to check both sources and the file's precedence.
+            TTempDir dir;
+            const auto serverPath = dir.Path() / "server.txt";
+            TOFStream(serverPath.GetPath()).Write(R"(ServerConfig {
+                DynamicYamlConfigurationEnabled: true
+                RdmaClientEnabled: true
+                RdmaClientConfig { QueueSize: 128 }
+            })");
+            const auto diskAgentPath = dir.Path() / "disk-agent.txt";
+            TOFStream(diskAgentPath.GetPath()).Write(
+                "RdmaTarget { Server { QueueSize: 64 } }");
+            auto options = CreateOptions();
+            options->ServerConfig = serverPath.GetPath();
+            options->DiskAgentConfig = diskAgentPath.GetPath();
+            if (useRdmaFile) {
+                const auto rdmaPath = dir.Path() / "rdma.txt";
+                TOFStream(rdmaPath.GetPath()).Write(R"(
+                    ClientEnabled: false
+                    Client { QueueSize: 256 }
+                    ServerEnabled: false
+                    Server { QueueSize: 192 }
+                )");
+                options->RdmaConfig = rdmaPath.GetPath();
+            }
+            auto ci = TConfigInitializerYdb(std::move(options));
+            InitStaticConfigs(ci);
+            const auto staticConfig = ci.GetCurrentBlockstoreConfig();
+
+            // Complete startup initialization independently of the saved base.
+            // Runtime rebuilds must retain these local settings as well.
+            if (!useRdmaFile) {
+                ci.InitRdmaConfig();
+            }
+            const auto localRdma = ci.RdmaConfig->GetConfigProto();
+            UNIT_ASSERT_VALUES_EQUAL(
+                !useRdmaFile,
+                localRdma.GetClientEnabled());
+            UNIT_ASSERT_VALUES_EQUAL(
+                !useRdmaFile,
+                localRdma.GetServerEnabled());
+            UNIT_ASSERT_VALUES_EQUAL(
+                useRdmaFile ? 256 : 128,
+                localRdma.GetClient().GetQueueSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                useRdmaFile ? 192 : 64,
+                localRdma.GetServer().GetQueueSize());
+
+            NProto::TBlockstoreConfig dynamicConfig;
+
+            // Preserve local RDMA settings when only StorageService changes.
+            {
+                dynamicConfig.MutableStorageService()->SetWriteBlobThreshold(
+                    300);
+                const auto config = MakeBlockstoreConfig(
+                    staticConfig,
+                    dynamicConfig,
+                    ci.StorageConfigControls);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    localRdma.DebugString(),
+                    config->GetRdmaConfig()->GetConfigProto().DebugString());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    300,
+                    config->GetStorageConfig()->GetWriteBlobThreshold());
+            }
+
+            // Apply explicit RDMA overrides over the same local base.
+            {
+                auto* rdma = dynamicConfig.MutableRdma();
+                rdma->CopyFrom(localRdma);
+                rdma->SetClientEnabled(useRdmaFile);
+                rdma->SetServerEnabled(useRdmaFile);
+                rdma->MutableClient()->SetQueueSize(512);
+                rdma->MutableServer()->SetQueueSize(384);
+                const auto config = MakeBlockstoreConfig(
+                    staticConfig,
+                    dynamicConfig,
+                    ci.StorageConfigControls);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    dynamicConfig.GetRdma().DebugString(),
+                    config->GetRdmaConfig()->GetConfigProto().DebugString());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    300,
+                    config->GetStorageConfig()->GetWriteBlobThreshold());
+            }
+
+            // Restore local settings after removing the entire dynamic source.
+            {
+                dynamicConfig.Clear();
+                const auto config = MakeBlockstoreConfig(
+                    staticConfig,
+                    dynamicConfig,
+                    ci.StorageConfigControls);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    localRdma.DebugString(),
+                    config->GetRdmaConfig()->GetConfigProto().DebugString());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    ci.StorageConfig->GetWriteBlobThreshold(),
+                    config->GetStorageConfig()->GetWriteBlobThreshold());
+            }
+        }
     }
 
     Y_UNIT_TEST(ShouldLoadStorageConfigFromCms)
@@ -1168,6 +1287,209 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT_VALUES_EQUAL(300, proto.GetNodeRegistrationErrorTimeout());
         UNIT_ASSERT_VALUES_EQUAL("xyz", proto.GetNodeRegistrationToken());
         UNIT_ASSERT_VALUES_EQUAL("123", proto.GetNodeType());
+    }
+
+    Y_UNIT_TEST(ShouldLoadSystemTabletBackupPathFromFile)
+    {
+        const TVector<TString> backupPaths = {"", "/var/backup/nbs"};
+        for (const auto& backupPath: backupPaths) {
+            TTempDir dir;
+            const auto configPath = dir.Path() / "nbs-service.txt";
+            TOFStream(configPath.GetPath())
+                .Write(
+                    TStringBuilder()
+                    << "SystemTabletBackupDirPath: \"" << backupPath << "\"");
+
+            auto options = CreateOptions();
+            options->StorageConfig = configPath.GetPath();
+            auto ci = TConfigInitializerYdb(std::move(options));
+            ci.InitKikimrConfig();
+            ci.InitFeaturesConfig();
+            ci.InitStorageConfig();
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                backupPath,
+                ci.StorageConfig->GetSystemTabletBackupDirPath());
+            UNIT_ASSERT_VALUES_EQUAL(
+                !backupPath.empty(),
+                ci.KikimrConfig->HasSystemTabletBackupConfig());
+            UNIT_ASSERT_VALUES_EQUAL(
+                backupPath,
+                ci.KikimrConfig->GetSystemTabletBackupConfig()
+                    .GetFilesystem()
+                    .GetPath());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldApplySystemTabletBackupPathFromCms)
+    {
+        auto ci = TConfigInitializerYdb(CreateOptions());
+        ci.InitKikimrConfig();
+        InitStaticConfigs(ci);
+
+        const TVector<TString> backupPaths = {
+            "/var/backup/nbs",
+            "/var/backup/nbs-new",
+            ""};
+        for (const auto& backupPath: backupPaths) {
+            NKikimrConfig::TAppConfig appCfg;
+            auto* namedConfig = appCfg.AddNamedConfigs();
+            namedConfig->SetName("Cloud.NBS.StorageServiceConfig");
+            namedConfig->SetConfig(
+                TStringBuilder()
+                << "SystemTabletBackupDirPath: \"" << backupPath << "\"");
+            ci.ApplyCMSConfigs(std::move(appCfg));
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                backupPath,
+                ci.StorageConfig->GetSystemTabletBackupDirPath());
+            UNIT_ASSERT_VALUES_EQUAL(
+                !backupPath.empty(),
+                ci.KikimrConfig->HasSystemTabletBackupConfig());
+            const auto& backupConfig =
+                ci.KikimrConfig->GetSystemTabletBackupConfig();
+            UNIT_ASSERT_VALUES_EQUAL(
+                !backupPath.empty(),
+                backupConfig.HasFilesystem());
+            UNIT_ASSERT_VALUES_EQUAL(
+                backupPath,
+                backupConfig.GetFilesystem().GetPath());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldTakeOtherSystemTabletBackupSettingsFromCms)
+    {
+        const TVector<TString> localPaths = {"", "/var/backup/local"};
+        const TVector<TString> namedPaths = {"/var/backup/named-cms", ""};
+        for (const bool useYamlConfig: {false, true}) {
+            for (const auto& localPath: localPaths) {
+                TTempDir dir;
+                const auto configPath = dir.Path() / "nbs-service.txt";
+                TString storageText;
+                if (localPath) {
+                    storageText = TStringBuilder()
+                                  << "SystemTabletBackupDirPath: \""
+                                  << localPath << "\"";
+                }
+                TOFStream(configPath.GetPath()).Write(storageText);
+
+                const auto serverPath = dir.Path() / "nbs-server.txt";
+                TOFStream(serverPath.GetPath())
+                    .Write(
+                        TStringBuilder()
+                        << "ServerConfig { DynamicYamlConfigurationEnabled: "
+                        << (useYamlConfig ? "true" : "false") << " }");
+
+                auto options = CreateOptions();
+                options->StorageConfig = configPath.GetPath();
+                options->ServerConfig = serverPath.GetPath();
+                auto ci = TConfigInitializerYdb(std::move(options));
+                ci.InitKikimrConfig();
+                InitStaticConfigs(ci);
+
+                for (const auto& namedPath: namedPaths) {
+                    NKikimrConfig::TAppConfig appCfg;
+                    auto* cmsBackupConfig =
+                        appCfg.MutableSystemTabletBackupConfig();
+                    cmsBackupConfig->MutableFilesystem()->SetPath(
+                        "/var/backup/cms");
+                    cmsBackupConfig->SetMaxBackupsLimit(7);
+                    cmsBackupConfig->AddExcludeTabletIds(123);
+                    auto* namedConfig = appCfg.AddNamedConfigs();
+                    namedConfig->SetName("Cloud.NBS.StorageServiceConfig");
+                    namedConfig->SetConfig(
+                        TStringBuilder() << "SystemTabletBackupDirPath: \""
+                                         << namedPath << "\"");
+
+                    ci.ApplyCMSConfigs(std::move(appCfg));
+
+                    TString storagePath = localPath;
+                    if (!storagePath && !useYamlConfig) {
+                        storagePath = namedPath;
+                    }
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        storagePath,
+                        ci.StorageConfig->GetSystemTabletBackupDirPath());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        !storagePath.empty(),
+                        ci.KikimrConfig->HasSystemTabletBackupConfig());
+                    if (!storagePath) {
+                        continue;
+                    }
+
+                    const auto& backupConfig =
+                        ci.KikimrConfig->GetSystemTabletBackupConfig();
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        storagePath,
+                        backupConfig.GetFilesystem().GetPath());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        7,
+                        backupConfig.GetMaxBackupsLimit());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        1,
+                        backupConfig.GetExcludeTabletIds().size());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        123,
+                        backupConfig.GetExcludeTabletIds(0));
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDisableSystemTabletBackupsForTemporaryServer)
+    {
+        const TVector<TString> localPaths = {"", "/var/backup/local"};
+        const TVector<TString> namedPaths = {"", "/var/backup/named-cms"};
+        for (const bool useYamlConfig: {false, true}) {
+            for (const auto& localPath: localPaths) {
+                TTempDir dir;
+                const auto configPath = dir.Path() / "nbs-service.txt";
+                TOFStream(configPath.GetPath())
+                    .Write(
+                        TStringBuilder() << "SystemTabletBackupDirPath: \""
+                                         << localPath << "\"");
+
+                const auto serverPath = dir.Path() / "nbs-server.txt";
+                TOFStream(serverPath.GetPath())
+                    .Write(
+                        TStringBuilder()
+                        << "ServerConfig { DynamicYamlConfigurationEnabled: "
+                        << (useYamlConfig ? "true" : "false") << " }");
+
+                auto options = CreateOptions();
+                options->ServerConfig = serverPath.GetPath();
+                options->TemporaryServer = true;
+                options->StorageConfig = configPath.GetPath();
+                auto ci = TConfigInitializerYdb(std::move(options));
+                ci.InitKikimrConfig();
+                InitStaticConfigs(ci);
+                UNIT_ASSERT(!ci.KikimrConfig->HasSystemTabletBackupConfig());
+
+                for (const bool useCmsBackupConfig: {false, true}) {
+                    for (const auto& namedPath: namedPaths) {
+                        NKikimrConfig::TAppConfig appCfg;
+                        if (useCmsBackupConfig) {
+                            auto* backupConfig =
+                                appCfg.MutableSystemTabletBackupConfig();
+                            backupConfig->MutableFilesystem()->SetPath(
+                                "/var/backup/cms");
+                            backupConfig->SetMaxBackupsLimit(7);
+                            backupConfig->AddExcludeTabletIds(123);
+                        }
+                        auto* namedConfig = appCfg.AddNamedConfigs();
+                        namedConfig->SetName("Cloud.NBS.StorageServiceConfig");
+                        namedConfig->SetConfig(
+                            TStringBuilder() << "SystemTabletBackupDirPath: \""
+                                             << namedPath << "\"");
+
+                        ci.ApplyCMSConfigs(std::move(appCfg));
+
+                        UNIT_ASSERT(
+                            !ci.KikimrConfig->HasSystemTabletBackupConfig());
+                    }
+                }
+            }
+        }
     }
 }
 

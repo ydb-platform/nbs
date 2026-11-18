@@ -21,6 +21,7 @@ PEERDIR(
     cloud/blockstore/libs/cells/iface
     cloud/blockstore/config
     cloud/blockstore/libs/common
+    cloud/blockstore/libs/icv2/iface
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/service
@@ -33,6 +34,7 @@ PEERDIR(
     contrib/ydb/core/mon
     contrib/ydb/library/actors/core
 
+    library/cpp/cgiparam
     library/cpp/html/pcdata
     library/cpp/monlib/service/pages
     library/cpp/threading/hot_swap

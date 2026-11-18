@@ -14,9 +14,38 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include <util/string/split.h>
+
 namespace NCloud::NBlockStore::NClient {
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool ParseBlobId(
+    const TString& str,
+    NKikimr::TLogoBlobID& blobId,
+    TString& errorExplanation)
+{
+    if (NKikimr::TLogoBlobID::Parse(blobId, str, errorExplanation)) {
+        return true;
+    }
+
+    TStringBuf raw = str;
+    ui64 rawX1 = 0;
+    ui64 rawX2 = 0;
+    ui64 rawX3 = 0;
+    if (!raw.SkipPrefix("[") || !raw.ChopSuffix("]") ||
+        !StringSplitter(raw).Split(':').TryCollectInto(&rawX1, &rawX2, &rawX3))
+    {
+        errorExplanation = "expected [tablet:gen:step:channel:cookie:size:part]"
+                           " or [RawX1:RawX2:RawX3]";
+        return false;
+    }
+
+    blobId = NKikimr::TLogoBlobID(rawX1, rawX2, rawX3);
+    return true;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -35,7 +64,10 @@ public:
             .RequiredArgument("STR")
             .StoreResult(&DiskId);
 
-        Opts.AddLongOption("blob-id", "blob id string, fields separated by ':'")
+        Opts.AddLongOption(
+                "blob-id",
+                "blob id as [tablet:gen:step:channel:cookie:size:part]"
+                " or [RawX1:RawX2:RawX3]")
             .RequiredArgument("STR")
             .StoreResult(&BlobId);
     }
@@ -57,7 +89,7 @@ protected:
         } else {
             NKikimr::TLogoBlobID blobId;
             TString errorExplanation;
-            if (!NKikimr::TLogoBlobID::Parse(blobId, BlobId, errorExplanation)) {
+            if (!ParseBlobId(BlobId, blobId, errorExplanation)) {
                 auto error = MakeError(
                     E_ARGUMENT,
                     TStringBuilder()

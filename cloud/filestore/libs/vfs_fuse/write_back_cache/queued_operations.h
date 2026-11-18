@@ -1,5 +1,7 @@
 #pragma once
 
+#include "write_back_cache_lock.h"
+
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -7,9 +9,9 @@
 #include <library/cpp/threading/future/core/future.h>
 
 #include <util/generic/vector.h>
-#include <util/system/spinlock.h>
 
 #include <functional>
+#include <memory>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -34,11 +36,12 @@ class TQueuedOperations
 private:
     struct TEvent;
 
-    TAdaptiveLock Lock;
+    std::unique_ptr<IWriteBackCacheLock> Lock;
     TVector<TEvent> Events;
 
-    // Non-owning pointers. The cache-state lifetime invariant keeps allocated
-    // requests alive until this serialization batch completes.
+    // Non-owning pointers. Each request stays alive until it publishes
+    // Serialized. Another thread may then destroy it, the serializer must not
+    // dereference its pointer after publication.
     TVector<TPendingWriteDataRequest*> RequestsToSerialize;
     IQueuedOperationsProcessor& Processor;
 
@@ -48,20 +51,30 @@ private:
 public:
     TQueuedOperations(
         IQueuedOperationsProcessor& processor,
+        std::unique_ptr<IWriteBackCacheLock> lock,
         std::function<void()> requestsSerializedCallback);
 
     ~TQueuedOperations();
 
-    void Acquire();
+    void Acquire() noexcept;
+
+    // Called from TGuard's destructor through noexcept lock operations.
+    // Event handlers (including synchronous promise subscribers) and
+    // RequestsSerializedCallback must not throw; an escaping exception calls
+    // std::terminate.
     void Release();
 
     void ScheduleFlushNode(ui64 nodeId);
 
-    void CompleteWriteDataPromise(
-        NThreading::TPromise<NProto::TWriteDataResponse> promise);
+    // Complete a promise associated with a WriteData request and delete the
+    // request. The request must be unlinked from all lists.
+    void CompleteWriteDataRequest(
+        std::unique_ptr<TPendingWriteDataRequest> request);
 
-    void FailWriteDataPromise(
-        NThreading::TPromise<NProto::TWriteDataResponse> promise,
+    // Fail the promise with the supplied error and delete the WriteData
+    // request. The request must be unlinked from all lists.
+    void FailWriteDataRequest(
+        std::unique_ptr<TPendingWriteDataRequest> request,
         const NCloud::NProto::TError& error);
 
     void CompleteFlushOrReleasePromise(

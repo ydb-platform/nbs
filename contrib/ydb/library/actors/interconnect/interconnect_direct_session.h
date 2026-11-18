@@ -4,12 +4,22 @@
 #include <contrib/ydb/library/actors/core/event.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/ptr.h>
 #include <util/system/mutex.h>
 
 #include <functional>
 #include <memory>
 
 namespace NActors {
+
+    // Refcounted receiver for incoming events delivered outside the actor system. An instance is
+    // registered for a local ActorId; the session invokes Receive() (on its input thread) for every
+    // incoming event addressed to that ActorId. Held via TIntrusivePtr, so the session co-owns the
+    // receiver for as long as it stays registered.
+    class IReceiveCallback : public TThrRefBase {
+    public:
+        virtual void Receive(TAutoPtr<IEventHandle> ev) = 0;
+    };
 
     // Thread-safe handle to an established interconnect session (v2) that allows sending and receiving
     // events to/from the remote peer without going through the actor system. It is delivered to

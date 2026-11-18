@@ -22,5 +22,8 @@ Tests {
             WriteBytes: 4096
             MinFileCount: 3
         }
+        IndexConsistencyValidation: {
+            Enabled: true
+        }
     }
 }

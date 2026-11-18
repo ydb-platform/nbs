@@ -31,12 +31,17 @@ struct TDiskNotification
 {
     TString DiskId;
     ui64 SeqNo = 0;
+    ui64 ExternalVolumeTabletId = 0;
 
     TDiskNotification() = default;
 
-    TDiskNotification(TString diskId, ui64 seqNo)
+    TDiskNotification(
+            TString diskId,
+            ui64 seqNo,
+            ui64 externalVolumeTabletId)
         : DiskId(std::move(diskId))
         , SeqNo(seqNo)
+        , ExternalVolumeTabletId(externalVolumeTabletId)
     {}
 };
 

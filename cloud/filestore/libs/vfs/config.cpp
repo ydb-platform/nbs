@@ -26,10 +26,9 @@ namespace {
     xxx(VhostQueuesCount,       ui32,           0                             )\
                                                                                \
     xxx(HandleOpsQueuePath,     TString,        ""                            )\
-    xxx(HandleOpsQueueSize,     ui32,           1_GB                          )\
+    xxx(HandleOpsQueueSize,     ui32,           100_MB                        )\
                                                                                \
     xxx(WriteBackCachePath,                 TString,   ""                     )\
-    xxx(WriteBackCacheCapacity,             ui64,      256_MB                 )\
     xxx(WriteBackCacheAutomaticFlushPeriod, TDuration,                         \
                                             TDuration::MilliSeconds(100)      )\
     xxx(WriteBackCacheFlushRetryPeriod,     TDuration,                         \
@@ -38,7 +37,10 @@ namespace {
     xxx(WriteBackCacheFlushMaxWriteRequestSize,     ui32,       1_MB          )\
     xxx(WriteBackCacheFlushMaxWriteRequestsCount,   ui32,       64            )\
     xxx(WriteBackCacheFlushMaxSumWriteRequestsSize, ui32,       32_MB         )\
-    xxx(WriteBackCacheMaxQueuedFlushBatchesPerNode, ui32,       1000          )\
+    xxx(WriteBackCacheMaxQueuedFlushBatchesPerNode, ui32,       8             )\
+    xxx(WriteBackCacheLockMethod,                                              \
+        NProto::EWriteBackCacheLockMethod,                                     \
+        NProto::WBC_LOCK_ADAPTIVE                                             )\
                                                                                \
     xxx(DirectoryHandlesStoragePath,        TString,   ""                     )\
     xxx(DirectoryHandlesInitialDataSize,    ui64,      16_MB                  )\
@@ -71,6 +73,14 @@ template <typename T>
 void DumpImpl(const T& t, IOutputStream& os)
 {
     os << t;
+}
+
+template <>
+void DumpImpl(
+    const NProto::EWriteBackCacheLockMethod& value,
+    IOutputStream& os)
+{
+    os << NProto::EWriteBackCacheLockMethod_Name(value);
 }
 
 }   // namespace

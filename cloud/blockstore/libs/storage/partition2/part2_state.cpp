@@ -1639,7 +1639,8 @@ void TPartitionState::UpdateCompactionMap(
                 Min(static_cast<ui32>(stat.BlockCount), GetMaxBlocksInBlob()),
                 0,
                 0,
-                false
+                false, // compacted
+                false  // resetReadCounters
             );
             db.WriteCompactionMap(prevBlockIndex, stat.BlobCount, stat.BlockCount);
             blockCount = 0;
@@ -1680,7 +1681,8 @@ void TPartitionState::ResetCompactionMap(
                 blockCount + blocksSkipped,
                 0,
                 0,
-                true
+                true,   // compacted
+                true    // resetReadCounters
             );
             db.WriteCompactionMap(
                 prevBlockIndex,

@@ -7,10 +7,31 @@
 #include <util/datetime/base.h>
 #include <util/generic/intrlist.h>
 
+#include <atomic>
+#include <memory>
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 class TWriteDataRequestManager;
 struct THandleStateTag;
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum class ECachedWriteDataRequestTag
+{
+    // No specific actions should be taken
+    Unflushed = 0,
+
+    // Handle associated with the request has been released.
+    // Attempts to flush the request should be made using another handle.
+    UnflushedHandleReleased = 1,
+
+    // Request has been flushed and should be evicted on restart
+    Flushed = 2,
+
+    // Used to validate deserialization
+    Max = Flushed
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -43,9 +64,8 @@ protected:
 
 // A pending request is externally owned (by TNodeCache in production) until
 // it is either promoted to a cached request or rejected.
-// TWriteDataRequestManager, THandleState and TQueuedOperations keep only
-// non-owning pointers. In particular, an allocated request must remain alive
-// while TQueuedOperations serializes it without the cache-state lock.
+// TWriteDataRequestManager and THandleState keep only non-owning pointers.
+// TQueuedOperations owns retired requests until destruction outside the lock.
 class TPendingWriteDataRequest
     : public TWriteDataRequestBase<TPendingWriteDataRequest>
     , public TIntrusiveListItem<TPendingWriteDataRequest, THandleStateTag>
@@ -95,6 +115,11 @@ public:
         return AllocationPtr != nullptr;
     }
 
+    bool IsSerialized() const
+    {
+        return Serialized.load(std::memory_order_acquire);
+    }
+
     // Serializes the request into its persistent storage allocation.
     void SerializeToAllocation();
 };
@@ -109,6 +134,11 @@ struct Y_PACKED TSerializedWriteDataRequestHeader
     ui64 Handle = 0;
     ui64 Offset = 0;
 };
+
+inline bool HasWriteDataRequestPayload(size_t allocationSize)
+{
+    return allocationSize > sizeof(TSerializedWriteDataRequestHeader);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

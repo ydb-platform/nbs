@@ -1,5 +1,15 @@
+//
+// This file intentionally uses `bytes` instead of `string` because client-provided
+// values may contain arbitrary bytes. Do not add `string` fields here.
+//
+// Protobuf serialization in our codebase silently accepts invalid UTF-8 in
+// string fields, but parsing the resulting message fails. A tablet can therefore
+// persist such a message to its local DB, then fail to load its state and crash
+// on every restart
+//
 syntax = "proto3";
 
+import "cloud/storage/core/protos/compressed_bitmap.proto";
 import "cloud/storage/core/protos/error.proto";
 import "cloud/storage/core/protos/media.proto";
 import "cloud/filestore/public/api/protos/fs.proto";
@@ -12,6 +22,32 @@ import "cloud/filestore/config/storage.proto";
 package NCloud.NFileStore.NProtoPrivate;
 
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/private/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// RDMA tablet side channel envelope.
+
+message TActorId
+{
+    fixed64 RawX1 = 1;
+    fixed64 RawX2 = 2;
+}
+
+message TTabletRdmaRequest
+{
+    // Event type of the wrapped request.
+    uint32 MethodId = 1;
+
+    // Pipe server of the client's tablet pipe. The request goes to the tablet
+    // of that pipe, which handles it as one received through the pipe.
+    // TODO(#7890): remove
+    TActorId PipeServerId = 2;
+}
+
+message TTabletRdmaResponse
+{
+    // Event type of the wrapped response.
+    uint32 MethodId = 1;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // WaitReady request/response.
@@ -128,6 +164,7 @@ message TStorageStats
     uint64 TotalBlocksCount = 6;
     // TODO(#2566) Should be dropped after migration.
     uint64 SevenBytesHandlesCount = 7;
+    uint64 TotalNodesCount = 8;
 
     // data stats
     uint64 FreshBlocksCount = 100;
@@ -693,7 +730,7 @@ message TForcedOperationRequest
 
         // Tablet operations
         E_FLUSH = 3;
-        E_FLUSH_BYTES = 4; // Only use when no concurrent writes are possible
+        E_FLUSH_BYTES = 4;
         E_COLLECT_GARBAGE = 5;
     };
 
@@ -767,7 +804,10 @@ message TForcedOperationStatusResponse
         E_COMPLETED = 3;
         E_FAILED = 4;
     }
-    EStatus Status = 5;
+    EStatus OperationStatus = 5;
+
+    // Operation error. Unlike Error contains issue that happened in the op
+    NCloud.NProto.TError OperationError = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -949,6 +989,11 @@ message TGetNodeAttrBatchResponse
 
     // Individual node responses.
     repeated NProto.TGetNodeAttrResponse Responses = 2;
+
+    // For how long (in milliseconds) the client is allowed to cache the
+    // returned Nodes. Zero means that caching is not allowed. The NodeRefs
+    // looked up by GetNodeAttrBatch are shard-internal and are never cached.
+    uint32 NodeCacheTTL = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1101,6 +1146,36 @@ message TUnsafeCreateHandleResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// FileSystem Resize State.
+
+message TFileSystemShardCreationState
+{
+    // Protecting from races. When unset in Request, we do not modify during
+    // the Request the TFileSystem.ShardCreationState and just return current
+    // state.
+    optional uint32 Version = 1;
+
+    // Uses absolute shard indexes. A set bit means the corresponding shard
+    // filestore was physically created and is assumed to still exist.
+    // This state is intentionally retained after a successful resize: clearing
+    // it would be an extra concurrent write that could erase recovery bits from
+    // another in-flight resize. Once the main topology catches up, those bits
+    // are treated as committed history.
+    NCloud.NProto.TCompressedBitmapData CreatedShardBitmap = 2;
+
+    // Number of shards in the main filesystem topology when this shard
+    // creation/resize plan started.
+    uint32 TopologyShardCount = 3;
+
+    // Exclusive upper bound for the target shard range.
+    uint32 TargetShardCount = 4;
+
+    // Hash of target shard create configs in
+    // [TopologyShardCount, TargetShardCount).
+    uint64 TargetShardConfigHash = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // UnsafeChangeTabletState request/response.
 
 message TUnsafeChangeTabletStateRequest
@@ -1192,7 +1267,7 @@ message TRenameNodeInDestinationRequest
     NProto.THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // New parent Node
     uint64 NewParentId = 3;
@@ -1204,8 +1279,8 @@ message TRenameNodeInDestinationRequest
     uint32 Flags = 5;
 
     // Source node info.
-    string SourceNodeShardId = 6;
-    string SourceNodeShardNodeName = 7;
+    bytes SourceNodeShardId = 6;
+    bytes SourceNodeShardNodeName = 7;
 
     // Passing the whole original request might be an overkill but it actually
     // may help with debugging.
@@ -1261,7 +1336,7 @@ message TAbortUnlinkDirectoryNodeInShardRequest
     NProto.THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // The node.
     uint64 NodeId = 3;
@@ -1379,7 +1454,7 @@ message TUnlinkNodeInShardRequest
     NProto.THeaders Headers = 1;
 
     // FileSystem identifier.
-    string FileSystemId = 2;
+    bytes FileSystemId = 2;
 
     // Parent node.
     uint64 NodeId = 3;
@@ -1548,6 +1623,14 @@ message TListNodesInternalResponse
     repeated uint32 ExternalRefIndices = 8;
 
     bytes Cookie = 9;
+
+    // For how long (in milliseconds) the client is allowed to cache the
+    // returned Nodes. Zero means that caching is not allowed.
+    uint32 NodeCacheTTL = 10;
+
+    // For how long (in milliseconds) the client is allowed to cache the
+    // returned NodeRefs. Zero means that caching is not allowed.
+    uint32 NodeRefCacheTTL = 11;
 
     // Optional response headers.
     NProto.TResponseHeaders Headers = 1000;

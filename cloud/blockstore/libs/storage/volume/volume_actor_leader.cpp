@@ -213,6 +213,31 @@ void TVolumeActor::HandleUnlinkLeaderVolumeFromFollower(
         .FollowerCellId = msg->Record.GetFollowerCellId()};
 
     auto follower = State->FindFollower(link);
+    if (follower &&
+        follower->State == TFollowerDiskInfo::EState::LeadershipTransferred)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<
+                TEvVolume::TEvUnlinkLeaderVolumeFromFollowerResponse>(MakeError(
+                E_INVALID_STATE,
+                "Cannot unlink after leadership has been transferred")));
+        return;
+    }
+
+    if (auto* creation = State->FindCreateFollowerRequestInfo(link)) {
+        link = creation->Link;
+        for (const auto& requestInfo: creation->Requests) {
+            auto response = std::make_unique<
+                TEvVolume::TEvLinkLeaderVolumeToFollowerResponse>(
+                MakeError(E_CANCELLED, "Follower link was removed"));
+            response->Record.SetLinkUUID(link.LinkUUID);
+            NCloud::Reply(ctx, *requestInfo, std::move(response));
+        }
+        State->DeleteCreateFollowerRequestInfo(link);
+    }
+
     if (follower) {
         link = follower->Link;
     }
@@ -270,7 +295,19 @@ void TVolumeActor::HandleUpdateFollowerState(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    if (auto currentFollower = State->FindFollower(msg->Follower.Link)) {
+    auto currentFollower = State->FindFollower(msg->Follower.Link);
+    const auto* creation =
+        State->FindCreateFollowerRequestInfo(msg->Follower.Link);
+    const bool fromCreator = creation &&
+                             creation->CreateVolumeLinkActor == ev->Sender;
+    if (!currentFollower && !fromCreator) {
+        replyError(
+            MakeError(E_CANCELLED, "Follower link was removed"),
+            std::move(msg->Follower));
+        return;
+    }
+
+    if (currentFollower) {
         msg->Follower.Link = currentFollower->Link;
 
         if (currentFollower->State == EState::Error) {
@@ -319,9 +356,12 @@ void TVolumeActor::HandleCreateLinkFinished(
         msg->Link.Describe().c_str(),
         FormatError(msg->Error).c_str());
 
-    auto& createFollowerRequest =
-        State->AccessCreateFollowerRequestInfo(msg->Link);
-    for (const auto& requestInfo: createFollowerRequest.Requests) {
+    const auto* creation = State->FindCreateFollowerRequestInfo(msg->Link);
+    if (!creation || creation->CreateVolumeLinkActor != ev->Sender) {
+        return;
+    }
+
+    for (const auto& requestInfo: creation->Requests) {
         auto response =
             std::make_unique<TEvVolume::TEvLinkLeaderVolumeToFollowerResponse>(
                 msg->Error);

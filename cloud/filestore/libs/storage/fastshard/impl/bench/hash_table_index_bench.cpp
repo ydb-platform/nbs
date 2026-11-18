@@ -1,8 +1,8 @@
 #include "null_storage_group.h"
 #include "shard_bench.h"
 
-#include <cloud/fastshard/bootstrap/core.h>
-#include <cloud/fastshard/testlib/delay_policy.h>
+#include <cloud/fastshard/libs/bootstrap/core.h>
+#include <cloud/fastshard/libs/sn/testlib/delay_policy.h>
 
 #include <cloud/filestore/libs/storage/fastshard/impl/hash_table_index/shard.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
@@ -18,8 +18,8 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui32 ShardNo = 1U;
-constexpr ui64 NodesPerGroup = 256U;
-constexpr ui64 GroupCapacity = 256_MB;
+constexpr ui64 NodesPerGroup = 1024U;
+constexpr ui64 GroupCapacity = 1_GB;
 
 ////////////////////////////////////////////////////////////////////////////////
 // The google benchmark module owns main(), so the silk runtime is

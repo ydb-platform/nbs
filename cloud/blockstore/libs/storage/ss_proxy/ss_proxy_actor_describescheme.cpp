@@ -49,6 +49,7 @@ private:
 
     const TStorageConfigConstPtr Config;
     const TString Path;
+    const bool AddPathToError;
     TActorId PathDescriptionBackup;
 
 public:
@@ -56,6 +57,7 @@ public:
         TRequestInfoPtr requestInfo,
         TStorageConfigConstPtr config,
         TString path,
+        bool addPathToError,
         TActorId pathDescriptionBackup);
 
     void Bootstrap(const TActorContext& ctx);
@@ -88,13 +90,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeSchemeActor::TDescribeSchemeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
-        TString path,
-        TActorId pathDescriptionBackup)
+    TRequestInfoPtr requestInfo,
+    TStorageConfigConstPtr config,
+    TString path,
+    bool addPathToError,
+    TActorId pathDescriptionBackup)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , Path(std::move(path))
+    , AddPathToError(addPathToError)
     , PathDescriptionBackup(pathDescriptionBackup)
 {}
 
@@ -174,7 +178,7 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
     const auto* msg = ev->Get();
     const auto& record = msg->GetRecord();
 
-    auto error = MakeDescribeSchemeError(record);
+    auto error = MakeDescribeSchemeError(record, AddPathToError);
 
     LWTRACK(
         ResponseReceived_Proxy,
@@ -246,6 +250,22 @@ void TDescribeSchemeActor::HandleDescribeSchemeResult(
                     "Path doesn't exist");
                 SetErrorProtoFlag(error, NCloud::NProto::EF_SILENT);
                 HandleError(ctx, error);
+                return;
+            }
+            case TSchemeCacheNavigate::EStatus::LookupError:
+            case TSchemeCacheNavigate::EStatus::RedirectLookupError: {
+                // SchemeBoard is not able to give an authoritative answer
+                // right now: its replicas are unreachable or have not been
+                // populated by SchemeShard yet (e.g. the cluster is starting
+                // up).
+                HandleError(
+                    ctx,
+                    MakeError(
+                        E_REJECTED,
+                        TStringBuilder()
+                            << "SchemeCache is not able to resolve path at "
+                               "the moment: "
+                            << entry.Status));
                 return;
             }
             default: {
@@ -370,6 +390,7 @@ void TSSProxyActor::HandleDescribeScheme(
         std::move(requestInfo),
         Config,
         msg->Path,
+        msg->AddPathToError,
         PathDescriptionBackup);
 }
 

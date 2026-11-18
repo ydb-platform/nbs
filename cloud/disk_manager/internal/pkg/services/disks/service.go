@@ -424,6 +424,99 @@ func (s *service) isOverlayDiskAllowed(
 	return !s.config.GetDisableOverlayDisks(), nil
 }
 
+func (s *service) isCreationFromBaseDiskSupportedForDiskKind(
+	params *protos.CreateDiskParams,
+) bool {
+
+	if !nbs.IsDiskRegistryBasedDisk(params.Kind) {
+		return false
+	}
+
+	if s.config.GetEnableDiskRegistryBasedDisksCreationFromBaseDisks() {
+		return true
+	}
+
+	return common.Find(
+		s.config.GetDiskRegistryBasedDisksCreationFromBaseDisksFolderIdAllowList(),
+		params.FolderId,
+	)
+}
+
+// Proxy overlay disks (and base disks) are not encrypted, and the data is
+// written to the disk as is. So the disk is either not encrypted or encrypted
+// at rest by NBS on its side (ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY, such disks
+// are mounted without encryption, see nbs.Client). Client-side encryption is
+// not supported here.
+func isEncryptionSupportedForCreationFromBaseDisk(
+	encryptionDesc *types.EncryptionDesc,
+) bool {
+
+	if encryptionDesc == nil {
+		return true
+	}
+
+	switch encryptionDesc.Mode {
+	case types.EncryptionMode_NO_ENCRYPTION,
+		types.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY:
+		return true
+	default:
+		return false
+	}
+}
+
+// Checks whether the disk should be filled from a base disk from the pool (via
+// disks.CreateDiskFromBaseDisk) instead of from the snapshot storage. Has lower
+// priority than isOverlayDiskAllowed.
+func (s *service) isCreationFromBaseDiskAllowed(
+	ctx context.Context,
+	req *disk_manager.CreateDiskRequest,
+	srcImageID string,
+	params *protos.CreateDiskParams,
+) (bool, error) {
+
+	if !s.isCreationFromBaseDiskSupportedForDiskKind(params) {
+		return false, nil
+	}
+
+	if !isEncryptionSupportedForCreationFromBaseDisk(params.EncryptionDesc) {
+		return false, nil
+	}
+
+	imageMeta, err := s.resourceStorage.GetImageMeta(ctx, srcImageID)
+	if err != nil {
+		return false, err
+	}
+
+	if imageMeta == nil {
+		// Can't check the image, let the regular path report the error.
+		return false, nil
+	}
+
+	if imageMeta.Encryption != nil &&
+		imageMeta.Encryption.Mode != types.EncryptionMode_NO_ENCRYPTION {
+		// Base disks are not created from encrypted images.
+		return false, nil
+	}
+
+	if imageMeta.Size > uint64(req.Size) {
+		// Only the first |req.Size| bytes of the base disk are transferred
+		// (see disks.CreateDiskFromBaseDisk), so the image must fit into the
+		// disk being created.
+		return false, nil
+	}
+
+	// Note: pools are configured per cell, and the cell is selected by the
+	// task (idempotently, the selection may depend on the current state of the
+	// cells), so this is only a hint, as for overlay disks: the task falls
+	// back to the snapshot storage if no pool is configured in the selected
+	// cell.
+	return s.poolService.IsPoolConfigured(
+		ctx,
+		srcImageID,
+		params.Disk.ZoneId,
+	)
+}
+
 func (s *service) getPlacementGroupZoneId(
 	ctx context.Context,
 	req *disk_manager.MigrateDiskRequest,
@@ -491,6 +584,28 @@ func (s *service) CreateDisk(
 				"disks.CreateOverlayDisk",
 				"",
 				&protos.CreateOverlayDiskRequest{
+					SrcImageId: src.SrcImageId,
+					Params:     params,
+				},
+			)
+		}
+
+		allowed, err = s.isCreationFromBaseDiskAllowed(
+			ctx,
+			req,
+			src.SrcImageId,
+			params,
+		)
+		if err != nil {
+			return "", err
+		}
+
+		if allowed {
+			return s.taskScheduler.ScheduleTask(
+				ctx,
+				"disks.CreateDiskFromBaseDisk",
+				"",
+				&protos.CreateDiskFromBaseDiskRequest{
 					SrcImageId: src.SrcImageId,
 					Params:     params,
 				},

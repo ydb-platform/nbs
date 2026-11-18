@@ -50,14 +50,6 @@
 #include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
 
-namespace NBlockCodecs {
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct ICodec;
-
-}   // namespace NBlockCodecs
-
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -112,6 +104,16 @@ class TPartitionActor final
         {}
     };
 
+    enum class ETrimFreshLogKind
+    {
+        // Nothing to trim yet.
+        None,
+        // A hard barrier on the fresh channels at TrimFreshLogToCommitId, the
+        // highest commit id below every live fresh blob. Every fresh blob at or
+        // below it is dead, so the barrier deletes all of them.
+        Ordinary,
+    };
+
     static constexpr ui64 BootWakeupEventTag = 1;
 
     friend TFreshBlocksCompanionClient;
@@ -131,7 +133,6 @@ private:
     const ui32 SiblingCount;
     const NActors::TActorId VolumeActorId;
     const ui64 ChannelHistorySize;
-    const NBlockCodecs::ICodec* BlobCodec;
     const ui64 VolumeTabletId;
     TLogTitle LogTitle;
 
@@ -176,6 +177,7 @@ private:
     std::unique_ptr<TFreshBlocksCompanion> FreshBlocksCompanion;
     std::unique_ptr<TFreshBlocksCompanionClient> FreshBlocksCompanionClient;
 
+    TBlobCompressorPtr BlobCompressor;
     std::unique_ptr<TIOCompanionClient> IOCompanionClient;
     std::unique_ptr<TIOCompanion> IOCompanion;
 
@@ -244,6 +246,7 @@ private:
     void ConfirmBlobs(const NActors::TActorContext& ctx);
     void BlobsConfirmed(const NActors::TActorContext& ctx);
 
+    bool ShouldFlush(const NActors::TActorContext& ctx);
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void StartFlush(const NActors::TActorContext& ctx);
     void EnqueueCompactionIfNeeded(const NActors::TActorContext& ctx);
@@ -251,6 +254,9 @@ private:
     void EnqueueCollectGarbageIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueProcessWriteQueueIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTrimFreshLogIfNeeded(const NActors::TActorContext& ctx);
+    [[nodiscard]] bool ShouldStartOrdinaryTrim(ui64 ordinaryTrimToCommitId);
+    [[nodiscard]] bool CheckDeadFreshBlobByteCount() const;
+    [[nodiscard]] ETrimFreshLogKind ChooseTrimFreshLogKind();
     void EnqueueAddConfirmedBlobsIfNeeded(const NActors::TActorContext& ctx);
 
     void UpdateStats(const NProto::TPartitionStats& update);
@@ -473,10 +479,7 @@ private:
         NActors::TActorId tablet,
         ui64 blobsPerBatch,
         ui64 finalCommitId,
-        ui64 mixedBlocksCount,
-        ui64 mergedBlocksCount,
-        ui64 mixedChannelBlocksCount,
-        ui64 mergedChannelBlocksCount,
+        TPartitionBlobAndBlockCounts initialCounters,
         TDuration retryTimeout);
 
     TBlockBuffer CreateScanDiskBlockBuffer(ui32 blobsPerBatch);
@@ -489,6 +492,8 @@ private:
         TBlockBuffer blockBuffer);
 
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
+    [[nodiscard]] TDuration GetFreshBlobAgeFlushThreshold() const;
+    [[nodiscard]] ui32 GetFreshDeadBlobByteCountTrimThreshold() const;
 
     void CreateFreshBlocksCompanionClient();
 
@@ -763,6 +768,10 @@ private:
         const NActors::TActorContext& ctx,
         NProto::ERebuildMetadataType type,
         ui32 rangesPerBatch);
+
+    NProto::TError StartMetadataRebuildBlockCount(
+        const NActors::TActorContext& ctx,
+        ui32 batchSize);
 
     NProto::TError DoHandleScanDisk(
         const NActors::TActorContext& ctx,

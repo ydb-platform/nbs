@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client_rdma/rdma_client.h>
+#include <cloud/blockstore/libs/icv2/iface/public.h>
 
 namespace NCloud::NBlockStore::NCells {
 
@@ -30,7 +31,12 @@ struct ICellHostEndpointBootstrap
     virtual TRdmaEndpointBootstrapResult SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,
-        NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler) = 0;
+        NCloud::IClientEndpointHandlerPtr handler) = 0;
+
+    virtual TResultOrError<IBlockStorePtr> SetupHostIcV2Endpoint(
+        const TBootstrap& bootstrap,
+        const TCellHostConfig& config,
+        NCloud::IClientEndpointHandlerPtr handler) = 0;
 
     virtual ~ICellHostEndpointBootstrap() = default;
 };

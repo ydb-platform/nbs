@@ -17,7 +17,7 @@ namespace NCloud::NBlockStore::NCells {
 
 NActors::IActorPtr CreateCellsMonActor(
     ICellManagerPtr cellManager,
-    TDiagnosticsConfigPtr diagnosticsConfig);
+    TDiagnosticsConfigConstPtr diagnosticsConfig);
 
 // Renders the plain page: summary, search form, a panel per cell, intercell
 // mounts, inbound, config.

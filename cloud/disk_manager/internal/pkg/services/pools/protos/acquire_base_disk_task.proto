@@ -13,6 +13,14 @@ message AcquireBaseDiskRequest {
     types.Disk OverlayDisk = 2;
     types.DiskKind OverlayDiskKind = 3;
     uint64 OverlayDiskSize = 4;
+    // Expected read bandwidth of the overlay disk. When set, the base disk
+    // slot is charged by bandwidth rather than by the overlay disk size
+    // (OverlayDiskSize and OverlayDiskKind are ignored): as many base disk
+    // allocation units as needed to provide this bandwidth, without any
+    // oversubscription. Meant for overlay disks that read the base disk at
+    // full speed, e.g. proxy overlay disks of disks.CreateDiskFromBaseDisk
+    // task.
+    uint64 ExpectedReadBandwidthMiBs = 5;
 }
 
 message AcquireBaseDiskResponse {

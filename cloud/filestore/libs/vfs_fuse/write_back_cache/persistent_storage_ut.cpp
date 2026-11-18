@@ -6,6 +6,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer_format.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -41,10 +42,14 @@ struct TBootstrap
 
     NProto::TError Initialize()
     {
+        const auto layout =
+            TFileRingBufferLayout::FromCapacity(DefaultCapacity, 0);
+        UNIT_ASSERT(layout);
+
         Storage = CreateFileRingBufferPersistentStorage(
             Stats,
             {.FilePath = TempFile.GetName(),
-             .DataCapacity = DefaultCapacity,
+             .StateFileSize = layout->StateFileSize,
              .MetadataCapacity = 0},
             Log,
             "[tag]");
@@ -139,6 +144,9 @@ Y_UNIT_TEST_SUITE(TPersistentStorageTest)
 
         UNIT_ASSERT(!HasError(b.Initialize()));
         UNIT_ASSERT(b.Storage->Empty());
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultCapacity + TFileRingBufferHeader::ReserveSize,
+            b.TempFile.GetLength());
 
         const auto* ptr1 = b.Alloc("1234");
         UNIT_ASSERT(ptr1);

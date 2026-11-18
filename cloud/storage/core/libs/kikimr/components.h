@@ -36,6 +36,9 @@ struct TStorageEvents
         AUTH_START,
         AUTH_END = AUTH_START + 100,
 
+        TABLET_PROXY_START,
+        TABLET_PROXY_END = TABLET_PROXY_START + 100,
+
 #undef STORAGE_DECLARE_COMPONENT
 
         END

@@ -368,6 +368,8 @@ def get_summary_component(summary_json_uri: str) -> str:
         return ""
 
     relative_parts = parts[6:-1]
+    if relative_parts[:1] == ["variants"]:
+        relative_parts = relative_parts[2:]
     if len(relative_parts) <= 1:
         return ""
     return "/".join(relative_parts[:-1])
@@ -849,6 +851,7 @@ def load_context(gh) -> tuple[
     runs = selected_workflows(labels)
     marker = f"pr-{pr_number}-run-{os.environ['GITHUB_RUN_ID']}-attempt-{os.environ.get('GITHUB_RUN_ATTEMPT', '1')}"
     collector_url = find_current_job_url(
+        gh,
         os.environ.get("GITHUB_JOB", "nightly-builds"),
         os.environ.get("RUNNER_NAME", ""),
     )

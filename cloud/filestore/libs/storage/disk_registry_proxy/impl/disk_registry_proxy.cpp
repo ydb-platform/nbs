@@ -1,5 +1,6 @@
 #include "disk_registry_proxy.h"
 
+#include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/disk_registry_proxy/api/service.h>
 
@@ -8,10 +9,10 @@
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/api/hive_proxy.h>
-#include <cloud/storage/core/libs/kikimr/helpers.h>
+#include <cloud/storage/core/libs/api/tablet_proxy.h>
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/kikimr/tenant.h>
 
-#include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/hfunc.h>
@@ -20,15 +21,17 @@
 #include <util/generic/hash.h>
 #include <util/string/builder.h>
 
+#include <memory>
+#include <optional>
+#include <utility>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
-using namespace NKikimr;
+using namespace NCloud::NStorage;
 
 using NBlockStore::NStorage::TEvDiskRegistry;
 using NBlockStore::NStorage::TEvVolume;
-using NCloud::NStorage::MakeHiveProxyServiceId;
-using NCloud::NStorage::TEvHiveProxy;
 
 namespace {
 
@@ -65,10 +68,10 @@ private:
     const TStorageConfigPtr Config;
     ui64 DiskRegistryTabletId = 0;
 
-    NActors::TActorId TabletClientId;
-
     ui64 RequestId = 0;
     THashMap<ui64, NActors::IEventHandlePtr> ActiveRequests;
+
+    TProtoMessagePrinter ProtoPrinter;
 
 public:
     TDiskRegistryProxyActor(TStorageConfigPtr config);
@@ -86,18 +89,9 @@ private:
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void CreateClient(const NActors::TActorContext& ctx);
-
-    void HandleClientConnected(
-        NKikimr::TEvTabletPipe::TEvClientConnected::TPtr& ev,
+    void HandleDisconnected(
+        const TEvTabletProxy::TEvDisconnected::TPtr& ev,
         const NActors::TActorContext& ctx);
-    void HandleClientDestroyed(
-        NKikimr::TEvTabletPipe::TEvClientDestroyed::TPtr& ev,
-        const NActors::TActorContext& ctx);
-    // Ends the waiting requests with the error and connects again later.
-    void OnConnectionError(
-        const NActors::TActorContext& ctx,
-        const NProto::TError& error);
     void CancelActiveRequests(
         const NActors::TActorContext& ctx,
         const NProto::TError& error);
@@ -189,7 +183,6 @@ void TDiskRegistryProxyActor::Bootstrap(const TActorContext& ctx)
     }
 
     if (DiskRegistryTabletId) {
-        CreateClient(ctx);
         Become(&TThis::StateWork);
         return;
     }
@@ -249,8 +242,13 @@ void TDiskRegistryProxyActor::HandleLookupTabletResponse(
     }
 
     DiskRegistryTabletId = msg->TabletId;
-    CreateClient(ctx);
     Become(&TThis::StateWork);
+
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::DISK_REGISTRY_PROXY,
+        "Disk registry tablet: %lu",
+        DiskRegistryTabletId);
 }
 
 void TDiskRegistryProxyActor::HandleWakeup(
@@ -265,88 +263,6 @@ void TDiskRegistryProxyActor::HandleWakeup(
         "Disk registry lookup timed out");
 
     LookupTablet(ctx);
-}
-
-void TDiskRegistryProxyActor::CreateClient(const TActorContext& ctx)
-{
-    NTabletPipe::TClientConfig clientConfig;
-    clientConfig.RetryPolicy = {
-        .RetryLimitCount = Config->GetPipeClientRetryCount(),
-        .MinRetryTime = Config->GetPipeClientMinRetryTime(),
-        .MaxRetryTime = Config->GetPipeClientMaxRetryTime()
-    };
-
-    TabletClientId = ctx.Register(NTabletPipe::CreateClient(
-        ctx.SelfID,
-        DiskRegistryTabletId,
-        clientConfig));
-
-    LOG_INFO(ctx, TFileStoreComponents::DISK_REGISTRY_PROXY,
-        "Connecting to disk registry tablet: %lu",
-        DiskRegistryTabletId);
-}
-
-void TDiskRegistryProxyActor::HandleClientConnected(
-    TEvTabletPipe::TEvClientConnected::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-    if (msg->ClientId != TabletClientId) {
-        LOG_INFO(ctx, TFileStoreComponents::DISK_REGISTRY_PROXY,
-            "ignoring an expired tablet pipe %s",
-            ToString(msg->ClientId).c_str());
-
-        return;
-    }
-
-    if (msg->Status != NKikimrProto::OK) {
-        auto error = MakeError(
-            E_REJECTED,
-            TStringBuilder() << "failed to connect to disk registry "
-                << msg->TabletId << ": "
-                << NKikimrProto::EReplyStatus_Name(msg->Status));
-
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::DISK_REGISTRY_PROXY,
-            "%s",
-            FormatError(error).c_str());
-
-        OnConnectionError(ctx, error);
-    }
-}
-
-void TDiskRegistryProxyActor::HandleClientDestroyed(
-    TEvTabletPipe::TEvClientDestroyed::TPtr& ev,
-    const TActorContext& ctx)
-{
-    if (ev->Get()->ClientId != TabletClientId) {
-        return;   // a client already given up on
-    }
-
-    LOG_ERROR(
-        ctx,
-        TFileStoreComponents::DISK_REGISTRY_PROXY,
-        "Connection to disk registry %lu broken: %s",
-        DiskRegistryTabletId,
-        ev->Get()->ToString().c_str());
-
-    OnConnectionError(
-        ctx,
-        MakeError(E_REJECTED, "disk registry connection broken"));
-}
-
-void TDiskRegistryProxyActor::OnConnectionError(
-    const TActorContext& ctx,
-    const NProto::TError& error)
-{
-    ++RequestId;
-    if (TabletClientId) {
-        NTabletPipe::CloseClient(ctx, TabletClientId);
-        TabletClientId = {};
-    }
-
-    CancelActiveRequests(ctx, error);
 }
 
 void TDiskRegistryProxyActor::ScheduleWakeup(
@@ -371,21 +287,35 @@ void TDiskRegistryProxyActor::ForwardRequest(
     IEventHandlePtr request,
     std::unique_ptr<TRequest> diskRegistryRequest)
 {
-    if (!TabletClientId) {
-        CreateClient(ctx);
-    }
-
     const ui64 cookie = ++RequestId;
 
-    auto event = std::make_unique<IEventHandle>(
-        SelfId(),
-        SelfId(),
-        diskRegistryRequest.release(),
-        0,   // flags
-        cookie);
+    LOG_TRACE(
+        ctx,
+        TFileStoreComponents::DISK_REGISTRY_PROXY,
+        "Forwarding request to [%lu], cookie [%lu], %s",
+        DiskRegistryTabletId,
+        cookie,
+        ProtoPrinter.ToString(diskRegistryRequest->Record).c_str());
 
-    NCloud::PipeSend(ctx, TabletClientId, std::move(event));
+    ForwardToTablet(
+        DiskRegistryTabletId,
+        std::make_unique<IEventHandle>(
+            request->Recipient,
+            SelfId(),
+            diskRegistryRequest.release(),
+            0,   // flags
+            cookie));
+
     ActiveRequests.emplace(cookie, std::move(request));
+}
+
+void TDiskRegistryProxyActor::HandleDisconnected(
+    const TEvTabletProxy::TEvDisconnected::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (const auto request = GetActiveRequest(ev->Cookie)) {
+        ReplyError(ctx, *request, ev->Get()->GetError());
+    }
 }
 
 IEventHandlePtr TDiskRegistryProxyActor::GetActiveRequest(ui64 cookie)
@@ -531,8 +461,7 @@ void TDiskRegistryProxyActor::HandleAllocateDevices(
     auto request = std::make_unique<TEvDiskRegistry::TEvAllocateDiskRequest>();
     auto& record = request->Record;
     record.SetDiskId(msg->FileSystemId);
-    // TODO(#7373): restore when DiskRegistry supports ExternalVolumeTabletId
-    // record.SetExternalVolumeTabletId(msg->TabletId);
+    record.SetExternalVolumeTabletId(msg->TabletId);
     record.SetCloudId(msg->CloudId);
     record.SetFolderId(msg->FolderId);
     record.SetBlockSize(DefaultBlockSize);
@@ -563,8 +492,7 @@ void TDiskRegistryProxyActor::HandleMarkForCleanup(
     auto request =
         std::make_unique<TEvDiskRegistry::TEvMarkDiskForCleanupRequest>();
     request->Record.SetDiskId(msg->FileSystemId);
-    // TODO(#7373): restore when DiskRegistry supports ExternalVolumeTabletId
-    // request->Record.SetExternalVolumeTabletId(msg->TabletId);
+    request->Record.SetExternalVolumeTabletId(msg->TabletId);
 
     ForwardRequest(ctx, IEventHandlePtr(ev.Release()), std::move(request));
 }
@@ -578,8 +506,7 @@ void TDiskRegistryProxyActor::HandleDeallocateDevices(
     auto request =
         std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
     request->Record.SetDiskId(msg->FileSystemId);
-    // TODO(#7373): restore when DiskRegistry supports ExternalVolumeTabletId
-    // request->Record.SetExternalVolumeTabletId(msg->TabletId);
+    request->Record.SetExternalVolumeTabletId(msg->TabletId);
     request->Record.SetSync(false);
 
     ForwardRequest(ctx, IEventHandlePtr(ev.Release()), std::move(request));
@@ -708,7 +635,7 @@ void TDiskRegistryProxyActor::HandlePoisonPill(
 {
     Y_UNUSED(ev);
 
-    OnConnectionError(
+    CancelActiveRequests(
         ctx,
         MakeError(E_REJECTED, "disk registry proxy is stopping"));
     Die(ctx);
@@ -770,8 +697,7 @@ STFUNC(TDiskRegistryProxyActor::StateWork)
             TEvDiskRegistry::TEvReplaceDeviceResponse,
             HandleReplaceDeviceResponse);
 
-        HFunc(TEvTabletPipe::TEvClientConnected, HandleClientConnected);
-        HFunc(TEvTabletPipe::TEvClientDestroyed, HandleClientDestroyed);
+        HFunc(TEvTabletProxy::TEvDisconnected, HandleDisconnected);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 

@@ -1,0 +1,4 @@
+EntryTimeout: 1
+AttrTimeout: 1
+FileSystemEventsEnabled: true
+FileSystemListingEventsEnabled: true

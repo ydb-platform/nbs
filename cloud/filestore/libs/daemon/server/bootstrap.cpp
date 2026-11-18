@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/server/probes.h>
 #include <cloud/filestore/libs/server/server.h>
 #include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/libs/service/service_actions.h>
 #include <cloud/filestore/libs/service/service_auth.h>
 #include <cloud/filestore/libs/service_kikimr/auth_provider_kikimr.h>
 #include <cloud/filestore/libs/service_kikimr/service.h>
@@ -21,7 +22,7 @@
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 
-#include <cloud/fastshard/bootstrap/core.h>
+#include <cloud/fastshard/libs/bootstrap/core.h>
 
 #include <cloud/storage/core/libs/common/hostname.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
@@ -30,6 +31,7 @@
 #include <cloud/storage/core/libs/diagnostics/trace_reader.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_watcher.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
@@ -145,6 +147,15 @@ void TBootstrapServer::InitComponents()
     InitConfigs();
     SetGrpcThreadsLimit(Configs->ServerConfig->GetGrpcThreadsLimit());
 
+    CertificateWatcher = CreateCertificateWatcher(
+        Logging,
+        GetComponentName(
+            NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
+        Scheduler,
+        LongRunningTaskExecutor,
+        FilestoreCounters->GetSubgroup("component", "certificates"),
+        Configs->ServerConfig->GetRefreshCertsPeriod());
+
     switch (Configs->Options->Service) {
         case NDaemon::EServiceKind::Kikimr:
             InitKikimrService();
@@ -155,6 +166,23 @@ void TBootstrapServer::InitComponents()
         case NDaemon::EServiceKind::Null:
             InitNullService();
             break;
+    }
+
+    Service = CreateActionsService(
+        std::move(Service),
+        {{"updatecertificates",
+          CreateUpdateCertificatesAction(
+              [watcher = CertificateWatcher]
+              { return watcher->UpdateCertificates(); })}});
+
+    // Wraps the actions service, so the actions need admin rights.
+    if (Configs->Options->Service == NDaemon::EServiceKind::Kikimr) {
+        Service = CreateAuthService(
+            std::move(Service),
+            CreateKikimrAuthProvider(ActorSystem),
+            Configs->ServerConfig->GetActionsNoAuth());
+
+        STORAGE_INFO("AuthService initialized");
     }
 
     auto serverCounters =
@@ -176,15 +204,9 @@ void TBootstrapServer::InitComponents()
             "Secure port is configured without certificates");
 
         CertificateProvider = CreateCertificateProvider(
-            Logging,
-            GetComponentName(
-                NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
-            Scheduler,
-            LongRunningTaskExecutor,
-            serverCounters,
+            CertificateWatcher,
             Configs->ServerConfig->GetRootCertsFile(),
-            std::move(certPathList),
-            Configs->ServerConfig->GetRefreshCertsPeriod());
+            std::move(certPathList));
     }
 
     Server = NServer::CreateServer(
@@ -235,13 +257,6 @@ void TBootstrapServer::InitKikimrService()
         ActorSystem,
         nullptr /* sideChannel */,
         0 /* permanentActorCount */);
-
-    Service = CreateAuthService(
-        std::move(Service),
-        CreateKikimrAuthProvider(ActorSystem),
-        Configs->ServerConfig->GetActionsNoAuth());
-
-    STORAGE_INFO("AuthService initialized");
 }
 
 void TBootstrapServer::InitLocalService()

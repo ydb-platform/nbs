@@ -15,6 +15,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/system/spinlock.h>
+
 namespace NCloud::NProto {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,6 +57,23 @@ struct TProcessor: IQueuedOperationsProcessor
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTestLock final: IWriteBackCacheLock
+{
+    TAdaptiveLock Lock;
+
+    void Acquire() noexcept override
+    {
+        Lock.Acquire();
+    }
+
+    void Release() noexcept override
+    {
+        Lock.Release();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TBootstrap
 {
     std::shared_ptr<TTestTimer> Timer;
@@ -62,6 +81,7 @@ struct TBootstrap
     std::shared_ptr<TTestStorage> Storage;
     TProcessor Processor;
     std::unique_ptr<TWriteBackCacheState> State;
+    const TAdaptiveLock* Lock = nullptr;
     TWriteBackCacheMetrics Metrics;
     TFlushBatchLimits FlushBatchLimits;
 
@@ -111,8 +131,11 @@ struct TBootstrap
 
     bool Recreate()
     {
+        auto lock = std::make_unique<TTestLock>();
+        const auto* lockPtr = &lock->Lock;
         State = std::make_unique<TWriteBackCacheState>(
             Processor,
+            std::move(lock),
             Storage,
             Timer,
             Stats->GetWriteBackCacheStateStats(),
@@ -120,6 +143,7 @@ struct TBootstrap
             Stats->GetNodeStateHolderStats(),
             FlushBatchLimits,
             "[test]");
+        Lock = lockPtr;
 
         return !HasError(State->Init());
     }
@@ -1270,11 +1294,88 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         // Note: the code depends on the implementation of THashMap
         // If the implementation changes, this test may need to be updated
-        UNIT_ASSERT_VALUES_EQUAL(101, b.State->GetLiveHandle(1));
+        UNIT_ASSERT_VALUES_EQUAL(101, b.State->AcquireFlushHandle(1));
 
         b.State->FlushFailed(1, error);
 
-        UNIT_ASSERT_VALUES_EQUAL(102, b.State->GetLiveHandle(1));
+        UNIT_ASSERT_VALUES_EQUAL(102, b.State->AcquireFlushHandle(1));
+        b.State->FlushSucceeded(1, 2);
+    }
+
+    struct TDestructionTestBootstrap: TBootstrap
+    {
+        bool Destroyed = false;
+        bool DestroyedBeforeCompletion = false;
+        bool Unlocked = false;
+        bool InspectLock = true;
+
+        ~TDestructionTestBootstrap()
+        {
+            // Retained requests must be destroyed while these flags are alive.
+            InspectLock = false;
+            State.reset();
+        }
+
+        auto MakeRequest()
+        {
+            return std::shared_ptr<NProto::TWriteDataRequest>(
+                new NProto::TWriteDataRequest,
+                [this](auto* request)
+                {
+                    Destroyed = true;
+                    Unlocked = InspectLock && !Lock->IsLocked();
+                    delete request;
+                });
+        }
+
+        void ObserveCompletion(const auto& future)
+        {
+            UNIT_ASSERT(!future.HasValue());
+            future.Subscribe([this](const auto&)
+                             { DestroyedBeforeCompletion = Destroyed; });
+        }
+
+        void CheckCompletion(
+            const NThreading::TFuture<NProto::TWriteDataResponse>& future,
+            ui32 expectedError) const
+        {
+            UNIT_ASSERT(future.HasValue());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedError,
+                future.GetValue().GetError().GetCode());
+            UNIT_ASSERT(DestroyedBeforeCompletion);
+            UNIT_ASSERT(Unlocked);
+        }
+    };
+
+    Y_UNIT_TEST(ShouldDestroyCompletedWriteOutsideLock)
+    {
+        TDestructionTestBootstrap b;
+        b.Storage->SetCapacity(1);
+        b.Add(1, 101, 0, "abc");
+        auto request = b.MakeRequest();
+        request->SetNodeId(2);
+        request->SetHandle(202);
+        request->SetBuffer("def");
+        auto future = b.State->AddWriteDataRequest(std::move(request));
+        b.ObserveCompletion(future);
+        b.State->FlushSucceeded(1, 1);
+        b.CheckCompletion(future, S_OK);
+    }
+
+    Y_UNIT_TEST(ShouldDestroyFailedWriteOutsideLock)
+    {
+        TDestructionTestBootstrap b;
+        b.Storage->SetCapacity(1);
+        b.Add(1, 101, 0, "abc");
+        auto request = b.MakeRequest();
+        request->SetNodeId(2);
+        request->SetHandle(202);
+        request->SetBuffer("def");
+        auto future = b.State->AddWriteDataRequest(std::move(request));
+        b.ObserveCompletion(future);
+        b.State->FlushFailed(1, MakeError(E_FS_NOSPC, "No space left"));
+        b.CheckCompletion(future, E_FS_NOSPC);
     }
 
     Y_UNIT_TEST(ShouldFailPendingRequestsOnFlushFailure)
@@ -1523,6 +1624,95 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(backpressured1.GetValue());
         UNIT_ASSERT(barrier.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
+    }
+
+    void DoShouldNotReleaseHandleBeingUsedForFlush(bool flushFails)
+    {
+        TBootstrap b;
+        b.Storage->SetCapacity(2);
+
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+        UNIT_ASSERT(b.Add(1, 102, 3, "def").GetValue());
+
+        auto release = b.State->AddReleaseHandleRequest(1, 102);
+        UNIT_ASSERT(!release.HasValue());
+
+        UNIT_ASSERT(
+            b.State->FlushFailed(1, MakeError(E_IO)) ==
+            EFlushRetryStatus::ShouldRetry);
+
+        UNIT_ASSERT(release.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, release.GetValue().GetCode());
+
+        auto pending2 = b.Add(2, 201, 0, "ghi");
+        auto pending1 = b.AddAndGetError(1, 103, 10, "jkl");
+
+        UNIT_ASSERT(!pending2.HasValue());
+        UNIT_ASSERT(!pending1.HasValue());
+
+        b.State->FlushSucceeded(1, 1);
+
+        UNIT_ASSERT(pending2.HasValue());
+        UNIT_ASSERT(pending2.GetValue());
+        UNIT_ASSERT(!pending1.HasValue());
+
+        // Current state:
+        // Node 1:
+        // - 1 unflushed request with released handle
+        // - 1 pending request with live handle
+        // Node 2:
+        // - 1 unflushed request with live handle
+
+        // Model the flusher selecting handle 103 for the remaining request.
+        // This flush stays in flight until it succeeds or fails below.
+        const auto flushHandle = b.State->AcquireFlushHandle(1);
+        UNIT_ASSERT_VALUES_EQUAL(103, flushHandle);
+
+        UNIT_ASSERT_VALUES_EQUAL(201, b.State->AcquireFlushHandle(2));
+        UNIT_ASSERT(
+            b.State->FlushFailed(2, MakeError(E_FS_NOSPC)) ==
+            EFlushRetryStatus::ShouldRetry);
+
+        // Reject the pending write promptly, but retain the handle borrowed
+        // by the in-flight flush independently of that write.
+        UNIT_ASSERT(pending1.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_NOSPC, pending1.GetValue().GetCode());
+
+        auto releaseFlushHandle =
+            b.State->AddReleaseHandleRequest(1, flushHandle);
+        UNIT_ASSERT_C(
+            !releaseFlushHandle.HasValue(),
+            "Handle must not be released while a flush is using it");
+
+        if (flushFails) {
+            UNIT_ASSERT(
+                b.State->FlushFailed(1, MakeError(E_IO)) ==
+                EFlushRetryStatus::ShouldNotRetry);
+
+            UNIT_ASSERT(releaseFlushHandle.HasValue());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_IO,
+                releaseFlushHandle.GetValue().GetCode());
+        } else {
+            b.State->FlushSucceeded(1, 1);
+
+            UNIT_ASSERT(releaseFlushHandle.HasValue());
+            UNIT_ASSERT(!HasError(releaseFlushHandle.GetValue()));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui64>(NProto::E_INVALID_HANDLE),
+            b.State->AcquireFlushHandle(1));
+    }
+
+    Y_UNIT_TEST(ShouldNotReleaseHandleBeingUsedForFlush)
+    {
+        DoShouldNotReleaseHandleBeingUsedForFlush(false);
+    }
+
+    Y_UNIT_TEST(ShouldNotReleaseHandleBeingUsedForFailedFlush)
+    {
+        DoShouldNotReleaseHandleBeingUsedForFlush(true);
     }
 }
 

@@ -689,6 +689,8 @@ message TStorageConfig
     // parameters are supposed to be used only for testing purposes - to test
     // fuse / service / tablet layer performance without direct blobstorage
     // reads / writes. Tablet local DB still continues to use blobstorage.
+    // With ReadBlobDisabled two-stage reads don't zero-fill the read buffer
+    // either, so the returned data is arbitrary.
     optional bool ReadBlobDisabled = 474;
     optional bool WriteBlobDisabled = 475;
 
@@ -946,7 +948,11 @@ message TStorageConfig
     optional uint32 FastShardDiskRegistryLookupTimeout = 552;
 
     // If set to true, the tablet sends FileSystemEvents (InvalidateNode,
-    // InvalidateNodeRef) to its clients upon Node and NodeRef changes.
+    // InvalidateNodeRef, InvalidateNodeXAttr) to its clients upon Node,
+    // NodeRef and NodeXAttr changes and returns NodeCacheTTL and
+    // NodeRefCacheTTL values in GetNodeAttrResponses and XAttrCacheTTL in
+    // GetNodeXAttrResponses which tell the client for how long caching of the
+    // corresponding Node, NodeRef and NodeXAttr is allowed.
     optional bool FileSystemEventsEnabled = 553;
 
     // If set to true, the tablet counts the FileSystemEvents generated due to
@@ -967,4 +973,62 @@ message TStorageConfig
     // operations independently of read operations.
     // Requires RDMA to be enabled in the IC config.
     optional bool EnableRdmaForWrites = 557;
+
+    // How often (in milliseconds) the tablet seals the active generation of
+    // the FileSystemEvent subscriptions (the clients that have read Nodes and
+    // NodeRefs) and drops the sealed one. A subscription lives between one
+    // and two periods, so the period should exceed the client-side cache
+    // timeouts.
+    optional uint32 FileSystemEventSubscriptionsSealPeriod = 558;
+
+    // Directory for backups of tenant system tablets. Empty disables backups.
+    // The other backup settings come from TAppConfig.SystemTabletBackupConfig
+    // in CMS, its own path is ignored. A nonempty value in the local storage
+    // file overrides the named storage config from CMS until the file is
+    // changed and the service is restarted. YDB cleans up old backups per
+    // directory, so the directory must not be shared with other processes.
+    optional string SystemTabletBackupDirPath = 559;
+
+    // The responses of GetNodeAttr, GetNodeAttrBatch, ListNodes,
+    // ListNodesInternal (see FileSystemListingEventsEnabled) and GetNodeXAttr
+    // allow the client to cache the returned Nodes, NodeRefs and NodeXAttrs
+    // for
+    // FileSystemEventSubscriptionsSealPeriod minus this margin (in
+    // milliseconds): a subscription lives at least one seal period, the margin
+    // covers the delivery and processing delays.
+    optional uint32 FileSystemEventSubscriptionsCacheTTLMargin = 560;
+
+    // If set to true together with FileSystemEventsEnabled, GetNodeAttrBatch,
+    // ListNodes and ListNodesInternal subscribe the client to the returned
+    // Nodes (and NodeRefs for ListNodes and ListNodesInternal) and return
+    // nonzero NodeCacheTTL (and NodeRefCacheTTL). FileSystemEventsEnabled
+    // alone enables this for GetNodeAttr only.
+    optional bool FileSystemListingEventsEnabled = 561;
+
+    // Server WriteBackCache state file size in bytes per session.
+    // Zero uses the client's default size (currently 256 MiB).
+    // New files are subject to the vhost minimum size and total size limit.
+    optional uint64 ServerWriteBackCacheStateFileSize = 562;
+
+    // NodeRef and node attrs cache size limits (number of entries). Passed to
+    // filestore-vhost the same way as XAttrCacheLimit. Zero means the vhost
+    // default.
+    optional uint32 NodeRefCacheLimit = 563;
+    optional uint32 NodeAttrsCacheLimit = 564;
+
+    // Makes filestore-vhost check the WriteData payloads of the filesystem
+    // for zeroes and report WriteDataZeroCheckedBytes (payload bytes of all
+    // the checked requests, the total for the other two),
+    // WriteDataZeroBlockBytes (bytes in the blocks which are fully covered by
+    // a request and contain only zeroes) and WriteDataZeroRequestBytes (bytes
+    // of the requests which contain only zeroes). Only the successfully
+    // completed requests are counted. The counters are per filestore-vhost
+    // (component=service), i.e. summed across its filesystems with this flag.
+    // The writes which bypass the storage service (the fastshard side channel)
+    // are not counted.
+    optional bool WriteDataZeroBlockStatsEnabled = 565;
+
+    // Max FUSE read / write request size in bytes
+    // Zero uses TVFSConfig.MaxWritePages (default 256) * host page size.
+    optional uint32 MaxRequestSize = 566;
 }

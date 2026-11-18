@@ -298,6 +298,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    TResultOrError<NActors::IActorPtr> CreateSuspendSecureEraseActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     TResultOrError<NActors::IActorPtr> CreateRebindVolumesActionActor(
         TRequestInfoPtr requestInfo,
         TString input);

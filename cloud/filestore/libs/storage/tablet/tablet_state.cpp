@@ -229,6 +229,10 @@ void TIndexTabletState::LoadState(
     FileSystemEventsEnabled = config.GetFileSystemEventsEnabled();
     FileSystemEventsDryRunModeEnabled =
         config.GetFileSystemEventsDryRunModeEnabled();
+    FileSystemListingEventsEnabled =
+        config.GetFileSystemListingEventsEnabled();
+
+    SizeToNodesRatio = config.GetSizeToNodesRatio();
 
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);

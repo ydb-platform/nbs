@@ -62,7 +62,7 @@ TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
     , DeviceStats(CreateDeviceStats(*PartConfig, this))
     , PartCounters(CreatePartitionDiskCounters(
           EPublishingPolicy::DiskRegistryBased,
-          DiagnosticsConfig->GetHistogramCounterOptions()))
+          *DiagnosticsConfig))
 {}
 
 TNonreplicatedPartitionActor::~TNonreplicatedPartitionActor() = default;

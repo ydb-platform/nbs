@@ -1,6 +1,10 @@
 #include "server.h"
 
+#include <cloud/storage/core/libs/common/page_size.h>
+
 #include <library/cpp/monlib/service/pages/templates.h>
+
+#include <util/system/align.h>
 
 namespace NCloud::NStorage::NRdma {
 
@@ -34,6 +38,28 @@ void TServerConfig::Validate(TLog& log)
             "QpRnrRetryCount=" << QpRnrRetryCount
                                << " is greater than 7, set QpRnrRetryCount=7");
         QpRnrRetryCount = ThreeBitsMax;
+    }
+    // Eager receive slots come from the buffer pool, which hands out
+    // page-aligned page-multiple buffers. The alignment is what the aligned
+    // data feature (RDMA_PROTO_FLAG_DATA_AT_THE_END) relies on: data placed at
+    // the end of such a buffer is block-aligned, so the handler can pass it
+    // to O_DIRECT I/O without a copy. Rounding the limit up to a page turns
+    // the padding into usable eager capacity.
+    const size_t pageSize = GetPlatformPageSize();
+    const size_t maxEagerRequestBytes = Min(
+        AlignUp<size_t>(MaxEagerRequestBytes, pageSize),
+        AlignDown<size_t>(MaxBufferSize, pageSize),
+        AlignDown<size_t>(BufferPool.MaxChunkAlloc, pageSize));
+    if (maxEagerRequestBytes != MaxEagerRequestBytes) {
+        RDMA_WARN(
+            log,
+            "MaxEagerRequestBytes=" << MaxEagerRequestBytes
+                                    << " adjusted to " << maxEagerRequestBytes
+                                    << " (page multiple, at most MaxBufferSize "
+                                       "and BufferPool.MaxChunkAlloc so that "
+                                       "receive slot buffers come from pooled "
+                                       "chunks)");
+        MaxEagerRequestBytes = maxEagerRequestBytes;
     }
     if (QpTimeout > FiveBitsMax) {
         RDMA_WARN(
@@ -84,6 +110,7 @@ void TServerConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(QpRetryCount, static_cast<ui32>(QpRetryCount));
                 ENTRY(QpMinRnrTimer, static_cast<ui32>(QpMinRnrTimer));
                 ENTRY(QpRnrRetryCount, static_cast<ui32>(QpRnrRetryCount));
+                ENTRY(MaxEagerRequestBytes, MaxEagerRequestBytes);
             }
         }
     }

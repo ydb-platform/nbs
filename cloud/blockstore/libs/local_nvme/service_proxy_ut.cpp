@@ -66,9 +66,16 @@ struct TTestLocalNVMeService: public ILocalNVMeService
         const TString& idempotenceId)
         -> TFuture<TResultOrError<NProto::TNVMeDevice>> override
     {
-        Y_UNUSED(serialNumber, idempotenceId);
+        Y_UNUSED(idempotenceId);
 
-        return MakeFuture<TResultOrError<NProto::TNVMeDevice>>(MakeError(S_OK));
+        for (const auto& device: Devices) {
+            if (device.GetSerialNumber() == serialNumber) {
+                return MakeFuture<TResultOrError<NProto::TNVMeDevice>>(device);
+            }
+        }
+
+        return MakeFuture<TResultOrError<NProto::TNVMeDevice>>(
+            MakeError(E_NOT_FOUND));
     }
 
     [[nodiscard]] auto ReleaseNVMeDevice(
@@ -114,11 +121,17 @@ struct TFixture: public NUnitTest::TBaseFixture
                 VendorId: 0x300
                 DeviceId: 0x400
                 Model: "Test NVMe 2"
+                DeviceState: NVME_DEVICE_STATE_MAINTENANCE
+            }
+            Devices {
+                SerialNumber: "NVME_2"
+                PCIAddress: "0000:32:00.0"
+                DeviceState: NVME_DEVICE_STATE_OFFLINE
             }
         )",
             list);
 
-        UNIT_ASSERT_VALUES_EQUAL(2, list.DevicesSize());
+        UNIT_ASSERT_VALUES_EQUAL(3, list.DevicesSize());
         TestLocalNVMeService->Devices.assign(
             std::make_move_iterator(list.MutableDevices()->begin()),
             std::make_move_iterator(list.MutableDevices()->end()));
@@ -162,6 +175,10 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceProxyTest)
                 device.GetPCIAddress());
 
             UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(expected.GetDeviceState()),
+                static_cast<int>(device.GetDeviceState()));
+
+            UNIT_ASSERT_VALUES_EQUAL(
                 expected.HasIOMMUGroup(),
                 device.HasIOMMUGroup());
 
@@ -185,13 +202,21 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceProxyTest)
 
     Y_UNIT_TEST_F(ShouldAcquireDevice, TFixture)
     {
-        auto request = std::make_shared<NProto::TAcquireNVMeDeviceRequest>();
-        request->SetSerialNumber("sn");
-        auto future = BlockStore->AcquireNVMeDevice(
-            MakeIntrusive<TCallContext>(),
-            request);
-        const auto& response = future.GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+        for (const auto& expected: TestLocalNVMeService->Devices) {
+            auto request = std::make_shared<NProto::TAcquireNVMeDeviceRequest>();
+            request->SetSerialNumber(expected.GetSerialNumber());
+            auto future = BlockStore->AcquireNVMeDevice(
+                MakeIntrusive<TCallContext>(),
+                request);
+            const auto& response = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected.GetSerialNumber(),
+                response.GetDevice().GetSerialNumber());
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(expected.GetDeviceState()),
+                static_cast<int>(response.GetDevice().GetDeviceState()));
+        }
     }
 
     Y_UNIT_TEST_F(ShouldReleaseDevice, TFixture)

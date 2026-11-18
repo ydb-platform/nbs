@@ -448,11 +448,16 @@ def test_get_latest_github_runner_release_fetches_latest():
     assert release.sha256_by_arch["arm64"] == "b" * 64
 
 
-def test_get_jobs_raw_fetches_workflow_jobs_with_pygithub(monkeypatch):
-    jobs = [SimpleNamespace(name="job-1")]
+def test_get_jobs_fetches_latest_or_one_attempt():
+    jobs = [
+        SimpleNamespace(name="old", run_attempt=1),
+        SimpleNamespace(name="current", run_attempt=2),
+    ]
+    filters = []
 
     class FakeRun:
-        def jobs(self):
+        def jobs(self, *, _filter):
+            filters.append(_filter)
             return jobs
 
     class FakeRepo:
@@ -465,22 +470,22 @@ def test_get_jobs_raw_fetches_workflow_jobs_with_pygithub(monkeypatch):
             assert repo == "owner/repo"
             return FakeRepo()
 
-    def fake_github_client(token):
-        assert token == "token"
-        return FakeGithub()
+    github = FakeGithub()
+    assert h.get_jobs(github, "owner/repo", 123) == jobs
+    assert [
+        job.name for job in h.get_jobs(github, "owner/repo", 123, run_attempt=2)
+    ] == ["current"]
+    assert filters == ["latest", "all"]
 
-    monkeypatch.setattr(h, "github_client", fake_github_client)
 
-    assert h.get_jobs_raw("token", "owner/repo", 123) == jobs
-
-
-def test_get_jobs_raw_retries_pygithub_failures(monkeypatch):
+def test_get_jobs_retries_pygithub_failures(monkeypatch):
     jobs = [SimpleNamespace(name="job-1")]
     attempts = []
     sleeps = []
 
     class FakeRun:
-        def jobs(self):
+        def jobs(self, *, _filter):
+            assert _filter == "latest"
             return jobs
 
     class FakeRepo:
@@ -496,14 +501,9 @@ def test_get_jobs_raw_retries_pygithub_failures(monkeypatch):
             assert repo == "owner/repo"
             return FakeRepo()
 
-    def fake_github_client(token):
-        assert token == "token"
-        return FakeGithub()
-
-    monkeypatch.setattr(h, "github_client", fake_github_client)
     monkeypatch.setattr(h.time, "sleep", sleeps.append)
 
-    assert h.get_jobs_raw("token", "owner/repo", 123) == jobs
+    assert h.get_jobs(FakeGithub(), "owner/repo", 123) == jobs
     assert attempts == [123, 123]
     assert sleeps == [h.GITHUB_API_RETRY_INTERVAL_SEC]
 

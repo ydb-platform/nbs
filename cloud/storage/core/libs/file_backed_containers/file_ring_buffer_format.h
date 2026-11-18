@@ -1,8 +1,10 @@
 #pragma once
 
+#include <util/generic/ylimits.h>
 #include <util/system/types.h>
 
 #include <memory>
+#include <optional>
 #include <span>
 
 namespace NCloud {
@@ -66,6 +68,9 @@ enum class EFileRingBufferVersion : ui32
 
 struct TFileRingBufferHeader
 {
+    // Reserve space for new header fields without requiring data migration
+    static constexpr ui64 ReserveSize = 256;
+
     EFileRingBufferVersion Version = EFileRingBufferVersion::NotInitialized;
     ui32 HeaderSize = 0;
     ui64 DataCapacity = 0;
@@ -80,8 +85,12 @@ struct TFileRingBufferHeader
     ui32 MetadataChecksum = 0;
 };
 
+static_assert(
+    sizeof(TFileRingBufferHeader) <= TFileRingBufferHeader::ReserveSize);
+
 ////////////////////////////////////////////////////////////////////////////////
 
+// These values are packed into bit fields in the 64-bit entry header
 struct TFileRingBufferEntryHeader
 {
     ui32 DataSize = 0;
@@ -98,6 +107,58 @@ struct TFileRingBufferCapabilities
     ui64 MaxTag = 0;
     ui64 Alignment = 0;
     bool EntryHeaderIsProcessedAtomically = false;
+};
+
+inline bool IsSlackSpaceMarker(
+    const TFileRingBufferEntryHeader& entryHeader,
+    const TFileRingBufferCapabilities& capabilities)
+{
+    // DataSize, FreeFlag and Tag are bit fields in the entry header
+    // The specific combination of them is treated as a slack space marker
+    return entryHeader.DataSize == 0 && !entryHeader.FreeFlag &&
+           entryHeader.Tag == 0 &&
+           // V5 writes the two words separately, so an interrupted update can
+           // leave a stale checksum. V6 writes all 64 bits atomically; its
+           // decoded checksum must be zero as well
+           (!capabilities.EntryHeaderIsProcessedAtomically ||
+            entryHeader.DataChecksum == 0);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Canonical state file layout:
+// [reserved header area][metadata][alignment padding][data]
+//
+// Metadata starts right after the reserved header area;
+// Data starts right after the metadata area and is aligned to sizeof(ui64) -
+//   this is needed to read and write entry headers atomically.
+//
+// During metadata resizing, data and/or metadata may temporarily be stored
+// farther into the file. This is valid but not canonical; use the offsets from
+// TFileRingBufferHeader to access it.
+//
+// Guaranteed invariant: MetadataOffset <= DataOffset <= StateFileSize
+struct TFileRingBufferLayout
+{
+    ui64 DataOffset = 0;
+    ui64 MetadataOffset = 0;
+    ui64 StateFileSize = 0;
+
+    static constexpr ui64 MinStateFileSize = sizeof(TFileRingBufferHeader);
+
+    // Maximum supported size by file API
+    static constexpr ui64 MaxStateFileSize = Max<i64>();
+
+    // Returns nullopt if offsets or file size exceed MaxStateFileSize
+    static std::optional<TFileRingBufferLayout> FromCapacity(
+        ui64 dataCapacity,
+        ui64 metadataCapacity);
+
+    // Grows the requested size if needed to fit the header and metadata.
+    // Returns nullopt if the requested size or layout exceeds MaxStateFileSize.
+    static std::optional<TFileRingBufferLayout> FromStateFileSize(
+        ui64 stateFileSize,
+        ui64 metadataCapacity);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

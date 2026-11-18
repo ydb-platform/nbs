@@ -113,6 +113,7 @@ void TIndexTabletActor::ExecuteTx_RemoveNodeXAttr(
 
     RemoveNodeAttr(
         *db,
+        args.FileSystemEvents,
         args.NodeId,
         args.Attr->MinCommitId,
         args.CommitId,

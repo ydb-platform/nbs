@@ -6,6 +6,7 @@ RECURSE(
     client_spdk
     common
     config
+    configs_manager
     daemon
     diagnostics
     discovery
@@ -17,6 +18,7 @@ RECURSE(
     endpoints_rdma
     endpoints_spdk
     endpoints_vhost
+    icv2
     kikimr
     kms
     local_nvme

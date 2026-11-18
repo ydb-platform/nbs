@@ -1,0 +1,43 @@
+#pragma once
+
+#include "public.h"
+
+#include <cloud/fastshard/public/api/protos/device.pb.h>
+
+#include <library/cpp/threading/future/future.h>
+
+namespace NCloud::NJournalled {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IJournalledDevice
+{
+    virtual ~IJournalledDevice() = default;
+
+    [[nodiscard]] virtual auto Start() noexcept
+        -> NThreading::TFuture<NProto::TError> = 0;
+
+    [[nodiscard]] virtual auto Stop() noexcept
+        -> NThreading::TFuture<void> = 0;
+
+    [[nodiscard]] virtual auto ReadPages(NProto::TReadPagesRequest request)
+        -> NThreading::TFuture<NProto::TReadPagesResponse> = 0;
+
+    [[nodiscard]] virtual auto WriteLogRecord(
+        NProto::TWriteLogRecordRequest request)
+        -> NThreading::TFuture<NProto::TWriteLogRecordResponse> = 0;
+
+    [[nodiscard]] virtual auto ReadJournalTail(
+        NProto::TReadJournalTailRequest request)
+        -> NThreading::TFuture<NProto::TReadJournalTailResponse> = 0;
+
+    [[nodiscard]] virtual auto AdvanceLsnLowWatermark(
+        NProto::TAdvanceLsnLowWatermarkRequest request)
+        -> NThreading::TFuture<NProto::TAdvanceLsnLowWatermarkResponse> = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+IJournalledDevicePtr CreateJournalledDeviceStub();
+
+}   // namespace NCloud::NJournalled

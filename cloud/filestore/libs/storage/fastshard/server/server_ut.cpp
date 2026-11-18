@@ -6,7 +6,7 @@
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 
-#include <cloud/fastshard/testlib/silk_env.h>
+#include <cloud/fastshard/libs/sn/testlib/silk_env.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 

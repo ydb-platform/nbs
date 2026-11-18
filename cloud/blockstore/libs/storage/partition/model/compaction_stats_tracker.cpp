@@ -90,7 +90,8 @@ TVector<ui32> TCompactionStatsTracker::FinishCompaction()
             usedBlockCount,
             counter.Stat.NewlyZeroedBlocks,
             counter.Stat.MixedBlockCount,
-            counter.Stat.Compacted);
+            counter.Stat.Compacted,
+            true);   // resetReadCounters
     }
 
     TVector<ui32> rangeIndices = std::move(CurrentCompaction->RangeIndices);

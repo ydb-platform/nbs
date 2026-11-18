@@ -80,6 +80,18 @@ class NbsServiceMock(service_pb2_grpc.TBlockStoreServiceServicer):
         if request.Path != "/dev/disk/by-partlabel/NVMECOMPUTE01":
             response.Error.Code = EResult.E_ARGUMENT.value
 
+        allowed_media_kinds = [
+            protos.EStorageMediaKind.Value(kind) for kind in [
+                "STORAGE_MEDIA_DEFAULT",
+                "STORAGE_MEDIA_SSD_LOCAL",
+                "STORAGE_MEDIA_HDD_LOCAL",
+                "STORAGE_MEDIA_SSD_NONREPLICATED",
+                "STORAGE_MEDIA_HDD_NONREPLICATED",
+            ]
+        ]
+        if request.StorageMediaKind not in allowed_media_kinds:
+            response.Error.Code = EResult.E_ARGUMENT.value
+
         return response
 
     def ResumeDevice(self, request, context):
@@ -223,6 +235,21 @@ def test_create_volume_from_device():
                 "vol0",
                 "unknown",
                 "/dev/disk/by-partlabel/NVMECOMPUTE01")
+
+        client.create_volume_from_device(
+            "vol1",
+            "myt1-ct5-1.cloud.yandex.net",
+            "/dev/disk/by-partlabel/NVMECOMPUTE01",
+            storage_media_kind=protos.EStorageMediaKind.Value(
+                "STORAGE_MEDIA_HDD_NONREPLICATED"))
+
+        with pytest.raises(ClientError):
+            client.create_volume_from_device(
+                "vol2",
+                "myt1-ct5-1.cloud.yandex.net",
+                "/dev/disk/by-partlabel/NVMECOMPUTE01",
+                storage_media_kind=protos.EStorageMediaKind.Value(
+                    "STORAGE_MEDIA_SSD_MIRROR3"))
 
         client.close()
 

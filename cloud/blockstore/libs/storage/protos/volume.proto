@@ -355,6 +355,9 @@ message TReallocateDiskRequest
 
     // Label of volume.
     string DiskId = 2;
+
+    // Tablet of the external volume that owns the disk. Zero uses SchemeShard.
+    uint64 ExternalVolumeTabletId = 3;
 }
 
 message TReallocateDiskResponse
@@ -422,6 +425,8 @@ message TCachedPartStats
     uint32 ConfirmedBlobCount = 14;
     uint32 CompactionIgnoringZeroedScore = 15;
     uint32 NewlyZeroedBlocks = 16;
+    uint64 LogicalMixedBytesCount = 17;
+    uint64 LogicalMergedBytesCount = 18;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -116,6 +116,7 @@ func (t *createPlacementGroupTask) Cancel(
 		t.cellSelector,
 		t.request.GroupId,
 		t.request.ZoneId,
+		nil,
 	)
 	if err != nil {
 		return err

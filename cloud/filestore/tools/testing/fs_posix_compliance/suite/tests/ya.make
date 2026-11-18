@@ -12,4 +12,5 @@ RECURSE(
     symlink
     truncate
     unlink
+    xacl
 )

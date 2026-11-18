@@ -6,14 +6,15 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TMixedBlobBuilder::Accept(const TBlock& block, TStringBuf blockData)
+void TMixedBlobBuilder::Accept(
+    const TBlock& block,
+    const TBlockDataHolder& blockData)
 {
-    Y_ABORT_UNLESS(blockData.size() == BlockSize);
+    auto data = blockData.GetBlockData();
+    Y_DEBUG_ABORT_UNLESS(data.size() == BlockSize);
 
-    auto& range = Ranges[GetMixedRangeIndex(
-        Hasher,
-        block.NodeId,
-        block.BlockIndex)];
+    auto& range =
+        Ranges[GetMixedRangeIndex(Hasher, block.NodeId, block.BlockIndex)];
     AddBlock(range, block, blockData);
 
     if (range.Blocks.size() == MaxBlocksInBlob) {
@@ -24,14 +25,15 @@ void TMixedBlobBuilder::Accept(const TBlock& block, TStringBuf blockData)
 void TMixedBlobBuilder::AddBlock(
     TRange& range,
     const TBlock& block,
-    TStringBuf blockData)
+    const TBlockDataHolder& blockData)
 {
-    if (!range.BlobContent) {
-        range.BlobContent.reserve(MaxBlocksInBlob * BlockSize);
+    if (!range.Content) {
+        range.Blocks.reserve(MaxBlocksInBlob);
+        range.Content.reserve(MaxBlocksInBlob);
     }
 
     range.Blocks.push_back(block);
-    range.BlobContent.append(blockData);
+    range.Content.push_back(blockData);
 
     ++BlocksCount;
 
@@ -45,12 +47,12 @@ void TMixedBlobBuilder::CompleteBlob(TRange& range)
     Blobs.emplace_back(
         TPartialBlobId(), // need to generate BlobId later
         std::move(range.Blocks),
-        std::move(range.BlobContent));
+        std::move(range.Content));
 
     ++BlobsCount;
 
     range.Blocks.clear();
-    range.BlobContent.clear();
+    range.Content.clear();
 }
 
 TVector<TMixedBlob> TMixedBlobBuilder::Finish()
@@ -70,7 +72,7 @@ void TMergedBlobBuilder::Accept(
     const TBlock& block,
     ui32 blocksCount,
     ui32 blockOffset,
-    IBlockBuffer& buffer)
+    const IBlockBuffer& buffer)
 {
     TString blobContent;
     blobContent.reserve(blocksCount * BlockSize);

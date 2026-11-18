@@ -7,6 +7,8 @@
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
 
+#include <contrib/ydb/library/actors/util/rc_buf.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -15,9 +17,9 @@ struct IBlockBuffer
 {
     virtual ~IBlockBuffer() = default;
 
-    virtual TStringBuf GetUnalignedHead() = 0;
-    virtual TStringBuf GetBlock(size_t index) = 0;
-    virtual TStringBuf GetUnalignedTail() = 0;
+    [[nodiscard]] virtual TStringBuf GetUnalignedHead() const = 0;
+    [[nodiscard]] virtual TStringBuf GetBlock(size_t index) const = 0;
+    [[nodiscard]] virtual TStringBuf GetUnalignedTail() const = 0;
     virtual void SetBlock(size_t index, TStringBuf block) = 0;
     virtual void ClearBlock(size_t index) = 0;
 };
@@ -26,6 +28,7 @@ struct IBlockBuffer
 
 IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange);
 IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange, TString buffer);
+IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange, TRcBuf buffer);
 IBlockBufferPtr CreateLazyBlockBuffer(TByteRange byteRange);
 
 ////////////////////////////////////////////////////////////////////////////////

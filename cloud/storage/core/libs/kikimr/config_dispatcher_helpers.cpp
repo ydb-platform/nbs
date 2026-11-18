@@ -26,6 +26,16 @@ TRegisterDynamicNodeOptions::TNodeLabels GetLabels(
     return result;
 }
 
+// Extend an existing allow list; preserve deny lists and unrestricted rules.
+void AllowConfigItem(
+    ui32 kind,
+    NKikimr::NConfig::TConfigsDispatcherInitInfo* info)
+{
+    if (auto* allowList = std::get_if<TAllowList>(&info->ItemsServeRules)) {
+        allowList->Items.insert(kind);
+    }
+}
+
 void SetupConfigDispatcher(
     const NProto::TConfigDispatcherSettings& settings,
     const TString& tenantName,

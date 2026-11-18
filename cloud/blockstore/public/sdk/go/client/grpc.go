@@ -225,6 +225,50 @@ func (client *grpcClient) DestroyVolume(
 	return resp.(*protos.TDestroyVolumeResponse), err
 }
 
+func (client *grpcClient) CreateVolumeLink(
+	ctx context.Context,
+	req *protos.TCreateVolumeLinkRequest,
+) (*protos.TCreateVolumeLinkResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.CreateVolumeLink(ctx, req)
+		})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.(*protos.TCreateVolumeLinkResponse), nil
+}
+
+func (client *grpcClient) DestroyVolumeLink(
+	ctx context.Context,
+	req *protos.TDestroyVolumeLinkRequest,
+) (*protos.TDestroyVolumeLinkResponse, error) {
+
+	if req.Headers == nil {
+		req.Headers = &protos.THeaders{}
+	}
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.DestroyVolumeLink(ctx, req)
+		})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.(*protos.TDestroyVolumeLinkResponse), nil
+}
+
 func (client *grpcClient) ResizeVolume(
 	ctx context.Context,
 	req *protos.TResizeVolumeRequest,

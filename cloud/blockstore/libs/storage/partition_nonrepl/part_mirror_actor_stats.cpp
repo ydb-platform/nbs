@@ -51,7 +51,7 @@ TPartNonreplCountersData TMirrorPartitionActor::ExtractPartCounters(
 {
     auto stats = CreatePartitionDiskCounters(
         EPublishingPolicy::DiskRegistryBased,
-        DiagnosticsConfig->GetHistogramCounterOptions());
+        *DiagnosticsConfig);
 
     for (const auto& counters: ReplicaCounters) {
         if (counters) {
@@ -205,7 +205,12 @@ void TMirrorPartitionActor::HandleDiskRegistryBasedPartCountersCombined(
     }
 
     for (auto& counters: msg->Counters) {
-        UpdateCounters(ctx, counters.ActorId, std::move(counters.CountersData));
+        for (auto& diskCounters: counters.DisksCounters) {
+            UpdateCounters(
+                ctx,
+                counters.ActorId,
+                std::move(diskCounters.CountersData));
+        }
     }
 
     NCloud::Reply(

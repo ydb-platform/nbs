@@ -46,6 +46,24 @@ func (c *NbsClientMock) DestroyVolume(
 	return args.Get(0).(*protos.TDestroyVolumeResponse), args.Error(1)
 }
 
+func (c *NbsClientMock) CreateVolumeLink(
+	ctx context.Context,
+	req *protos.TCreateVolumeLinkRequest,
+) (*protos.TCreateVolumeLinkResponse, error) {
+
+	args := c.Called(ctx, req)
+	return args.Get(0).(*protos.TCreateVolumeLinkResponse), args.Error(1)
+}
+
+func (c *NbsClientMock) DestroyVolumeLink(
+	ctx context.Context,
+	req *protos.TDestroyVolumeLinkRequest,
+) (*protos.TDestroyVolumeLinkResponse, error) {
+
+	args := c.Called(ctx, req)
+	return args.Get(0).(*protos.TDestroyVolumeLinkResponse), args.Error(1)
+}
+
 func (c *NbsClientMock) ResizeVolume(
 	ctx context.Context,
 	req *protos.TResizeVolumeRequest,

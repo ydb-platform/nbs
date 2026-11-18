@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/service/service_events_private.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
+#include <cloud/blockstore/libs/storage/stats_service/stats_service_state.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 #include <cloud/blockstore/libs/ydbstats/ydbrow.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
@@ -141,7 +142,9 @@ void RegisterVolume(
     const TString& diskId,
     NProto::EStorageMediaKind kind,
     bool isSystem,
-    ui64 volumeTabletID = 0)
+    ui64 volumeTabletID = 0,
+    TVector<NKikimr::TTabletChannelInfo> channels = {},
+    TActorId volumeActorId = {})
 {
     NProto::TVolume volume;
     volume.SetDiskId(diskId);
@@ -155,7 +158,8 @@ void RegisterVolume(
         diskId,
         volumeTabletID,
         std::move(volume),
-        runtime.AllocateEdgeActor());
+        volumeActorId ? volumeActorId : runtime.AllocateEdgeActor(),
+        std::move(channels));
     runtime.Send(
         new IEventHandle(
             MakeStorageStatsServiceId(),
@@ -169,9 +173,16 @@ void RegisterVolume(
 void RegisterVolume(
     TTestActorRuntime& runtime,
     const TString& diskId,
-    ui64 volumeTabletId)
+    ui64 volumeTabletId,
+    TVector<NKikimr::TTabletChannelInfo> channels = {})
 {
-    RegisterVolume(runtime, diskId, NProto::STORAGE_MEDIA_SSD, false, volumeTabletId);
+    RegisterVolume(
+        runtime,
+        diskId,
+        NProto::STORAGE_MEDIA_SSD,
+        false,
+        volumeTabletId,
+        std::move(channels));
 }
 
 void RegisterVolume(
@@ -258,7 +269,7 @@ TVector<ui64> BroadcastVolumeCounters(
     for (ui32 i = 0; i < nodes.size(); ++i) {
         auto counters = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
-            EHistogramCounterOption::ReportMultipleCounters);
+            TDiagnosticsConfig{});
         auto volume = CreateVolumeSelfCounters(
             EPublishingPolicy::Repl,
             EHistogramCounterOption::ReportMultipleCounters);
@@ -309,7 +320,7 @@ void ForceYdbStatsUpdate(
     for (ui32 i = 0; i < volumes.size(); ++i) {
         auto counters = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
-            EHistogramCounterOption::ReportMultipleCounters);
+            TDiagnosticsConfig{});
         auto volume = CreateVolumeSelfCounters(
             EPublishingPolicy::Repl,
             EHistogramCounterOption::ReportMultipleCounters);
@@ -508,6 +519,61 @@ public:
 
 Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 {
+    Y_UNIT_TEST(ShouldRegisterCompressionCountersForVolumesAndTotals)
+    {
+        NProto::TDiagnosticsConfig proto;
+        proto.AddBlobCompressionChunkSizes(4096);
+        proto.AddBlobCompressionChunkSizes(8192);
+        const TDiagnosticsConfig diagnostics(proto);
+        const TStorageConfig storage(
+            NProto::TStorageServiceConfig{},
+            std::make_shared<NFeatures::TFeaturesConfig>());
+        TStatsServiceState state(storage, diagnostics);
+
+        NProto::TVolume config;
+        config.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD);
+        auto* volume = state.GetOrAddVolume(DefaultDiskId, std::move(config));
+        auto source = CreatePartitionDiskCounters(
+            EPublishingPolicy::Repl,
+            diagnostics);
+        source->BlobCompression.at(4096).UncompressedBytesWritten.Increment(8192);
+        source->BlobCompression.at(4096).CompressedBytesWritten.Increment(100);
+        source->BlobCompression.at(8192).UncompressedBytesWritten.Increment(8192);
+        source->BlobCompression.at(8192).CompressedBytesWritten.Increment(80);
+
+        NMonitoring::TDynamicCountersPtr volumeCounters =
+            new NMonitoring::TDynamicCounters();
+        volume->PerfCounters.Register(volumeCounters);
+        volume->PerfCounters.DiskCounters.Add(*source);
+        volume->PerfCounters.Publish(TInstant::Now());
+        UNIT_ASSERT_VALUES_EQUAL(
+            100,
+            volumeCounters->GetSubgroup("compression_chunk_size", "4.00 KiB")
+                ->GetCounter("CompressedBytesWritten", true)->Val());
+
+        for (auto* total: {
+                 &state.GetTotalCounters(),
+                 &state.GetHddCounters(),
+                 &state.GetSsdCounters(),
+                 &state.GetHddSystemCounters(),
+                 &state.GetSsdSystemCounters()})
+        {
+            NMonitoring::TDynamicCountersPtr counters =
+                new NMonitoring::TDynamicCounters();
+            total->Register(counters);
+            total->UpdatePartCounters(*source);
+            total->Publish(TInstant::Now());
+            const auto compression =
+                counters->GetSubgroup("compression_chunk_size", "8.00 KiB");
+            UNIT_ASSERT_VALUES_EQUAL(
+                8192,
+                compression->GetCounter("UncompressedBytesWritten", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                80,
+                compression->GetCounter("CompressedBytesWritten", true)->Val());
+        }
+    }
+
     void DoShouldNotReportSolomonMetricsExceptIsLocalMountIfNotMounted(
         bool copiedDisk)
     {
@@ -590,7 +656,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         auto diskCounters = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
-            EHistogramCounterOption::ReportMultipleCounters);
+            TDiagnosticsConfig{});
         diskCounters->Simple.MixedBytesCount.Set(1);
         SendDiskStats(
             runtime,
@@ -687,7 +753,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         auto counters = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
-            EHistogramCounterOption::ReportMultipleCounters);
+            TDiagnosticsConfig{});
         auto volume = CreateVolumeSelfCounters(
             EPublishingPolicy::Repl,
             EHistogramCounterOption::ReportMultipleCounters);
@@ -757,7 +823,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         // The copied disk remains registered under logical name of source disk.
         auto counters = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
-            EHistogramCounterOption::ReportMultipleCounters);
+            TDiagnosticsConfig{});
         auto volume = CreateVolumeSelfCounters(
             EPublishingPolicy::Repl,
             EHistogramCounterOption::ReportMultipleCounters);
@@ -843,7 +909,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             false, // isLocalMount
             CreatePartitionDiskCounters(
                 EPublishingPolicy::Repl,
-                EHistogramCounterOption::ReportMultipleCounters),
+                TDiagnosticsConfig{}),
             CreateVolumeSelfCounters(
                 EPublishingPolicy::Repl,
                 EHistogramCounterOption::ReportMultipleCounters),
@@ -884,7 +950,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             true, // isLocalMount
             CreatePartitionDiskCounters(
                 EPublishingPolicy::Repl,
-                EHistogramCounterOption::ReportMultipleCounters),
+                TDiagnosticsConfig{}),
             CreateVolumeSelfCounters(
                 EPublishingPolicy::Repl,
                 EHistogramCounterOption::ReportMultipleCounters),
@@ -941,7 +1007,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         auto counters1 = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
-            EHistogramCounterOption::ReportMultipleCounters);
+            TDiagnosticsConfig{});
         counters1->Simple.CompactionScore.Set(1);
         SendDiskStats(
             runtime,
@@ -956,7 +1022,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         auto counters2 = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
-            EHistogramCounterOption::ReportMultipleCounters);
+            TDiagnosticsConfig{});
         counters2->Simple.CompactionScore.Set(3);
         SendDiskStats(
             runtime,
@@ -1009,7 +1075,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         auto counters = CreatePartitionDiskCounters(
             policy,
-            EHistogramCounterOption::ReportMultipleCounters);
+            TDiagnosticsConfig{});
         counters->Simple.BytesCount.Set(100500);
         SendDiskStats(
             runtime,
@@ -1285,7 +1351,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                 false, // isLocalMount
                 CreatePartitionDiskCounters(
                     EPublishingPolicy::Repl,
-                    EHistogramCounterOption::ReportMultipleCounters),
+                    TDiagnosticsConfig{}),
                 makeVolumeCounters(diskInfo.LoadTime, diskInfo.StartTime),
                 EVolumeTestOptions::VOLUME_HASCLIENTS,
                 0);
@@ -1530,7 +1596,16 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         TTestBasicRuntime runtime;
         TTestEnv env(runtime, std::move(storageServiceConfig), std::move(ydbStats));
 
-        RegisterVolume(runtime, "vol0", 0 /* volumeTabletId */);
+        TVector<NKikimr::TTabletChannelInfo> volumeChannels(2);
+        volumeChannels[0].Channel = 0;
+        volumeChannels[0].History = {{1, 4}, {3, 5}};
+        volumeChannels[1].Channel = 1;
+        volumeChannels[1].History = {{2, 6}};
+        RegisterVolume(runtime, "vol0", 40, std::move(volumeChannels));
+        TVector<NKikimr::TTabletChannelInfo> copyChannels(1);
+        copyChannels[0].Channel = 0;
+        copyChannels[0].History = {{5, 8}};
+        RegisterVolume(runtime, "vol0-copy", 41, std::move(copyChannels));
         RegisterVolume(runtime, "vol1", 10 /* volumeTabletId */);
         RegisterVolume(runtime, "vol2", 20 /* volumeTabletId */);
         RegisterVolume(runtime, "vol3", 30 /* volumeTabletId */);
@@ -1595,7 +1670,17 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(30, partitions[29].first);
         UNIT_ASSERT_VALUES_EQUAL("vol3", partitions[29].second);
 
-        UNIT_ASSERT_VALUES_EQUAL(7, groups.size());
+        UNIT_ASSERT(!partitions.contains(40));
+        UNIT_ASSERT(!partitions.contains(41));
+        UNIT_ASSERT_VALUES_EQUAL(11, groups.size());
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(41, 0, 8, 5)));
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 0, 4, 1)));
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 0, 5, 3)));
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 1, 6, 2)));
         UNIT_ASSERT(groups.contains(
             std::make_tuple<ui64, ui32, ui32, ui32>(9, 0, 0, 0)));
         UNIT_ASSERT(groups.contains(
@@ -1610,6 +1695,53 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
             std::make_tuple<ui64, ui32, ui32, ui32>(19, 0, 3, 0)));
         UNIT_ASSERT(groups.contains(
             std::make_tuple<ui64, ui32, ui32, ui32>(19, 0, 2, 2)));
+
+        groups.clear();
+        partitions.clear();
+        TVector<NKikimr::TTabletChannelInfo> updatedVolumeChannels(1);
+        updatedVolumeChannels[0].Channel = 0;
+        updatedVolumeChannels[0].History = {{4, 7}};
+        RegisterVolume(runtime, "vol0", 40, std::move(updatedVolumeChannels));
+        ForceYdbStatsUpdate(runtime, {"vol0", "vol1", "vol2", "vol3"}, 1, 1);
+
+        UNIT_ASSERT_VALUES_EQUAL(4, partitions.size());
+        UNIT_ASSERT(!partitions.contains(40));
+        UNIT_ASSERT(!partitions.contains(41));
+        UNIT_ASSERT_VALUES_EQUAL(9, groups.size());
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(41, 0, 8, 5)));
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 0, 7, 4)));
+        UNIT_ASSERT(!groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 0, 4, 1)));
+        UNIT_ASSERT(!groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 0, 5, 3)));
+        UNIT_ASSERT(!groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 1, 6, 2)));
+
+        groups.clear();
+        const auto expectedPartitions = partitions;
+        partitions.clear();
+        UnregisterVolume(runtime, "vol0-copy");
+        ForceYdbStatsUpdate(runtime, {"vol0", "vol1", "vol2", "vol3"}, 1, 1);
+
+        UNIT_ASSERT(partitions == expectedPartitions);
+        UNIT_ASSERT_VALUES_EQUAL(8, groups.size());
+        UNIT_ASSERT(groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 0, 7, 4)));
+        UNIT_ASSERT(!groups.contains(
+            std::make_tuple<ui64, ui32, ui32, ui32>(41, 0, 8, 5)));
+
+        auto expectedGroups = groups;
+        expectedGroups.erase(
+            std::make_tuple<ui64, ui32, ui32, ui32>(40, 0, 7, 4));
+        groups.clear();
+        partitions.clear();
+        RegisterVolume(runtime, "vol0", 40, {});
+        ForceYdbStatsUpdate(runtime, {"vol0", "vol1", "vol2", "vol3"}, 1, 1);
+
+        UNIT_ASSERT(groups == expectedGroups);
+        UNIT_ASSERT(partitions == expectedPartitions);
     }
 
     Y_UNIT_TEST(ShouldSplitRowsIntoMultipleRequests)
@@ -1745,7 +1877,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         auto counters = CreatePartitionDiskCounters(
             publishingPolicy,
-            EHistogramCounterOption::ReportMultipleCounters);
+            TDiagnosticsConfig{});
         counters->RequestCounters.ReadBlocks.Count = 42;
         counters->RequestCounters.ReadBlocks.RequestBytes = 100500;
         SendDiskStats(
@@ -1859,7 +1991,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         auto counters = CreatePartitionDiskCounters(
             EPublishingPolicy::DiskRegistryBased,
-            EHistogramCounterOption::ReportMultipleCounters);
+            TDiagnosticsConfig{});
         counters->RequestCounters.ReadBlocks.Count = 42;
         counters->RequestCounters.ReadBlocks.RequestBytes = 100500;
 
@@ -1878,7 +2010,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
 
         counters = CreatePartitionDiskCounters(
             EPublishingPolicy::DiskRegistryBased,
-            EHistogramCounterOption::ReportMultipleCounters);
+            TDiagnosticsConfig{});
         counters->RequestCounters.ReadBlocks.Count = 42;
         counters->RequestCounters.ReadBlocks.RequestBytes = 100500;
 
@@ -1969,6 +2101,63 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
                                ->GetCounter("RequestBytes");
             UNIT_ASSERT_VALUES_EQUAL(201000, actual);
         }
+    }
+
+    Y_UNIT_TEST(ShouldPullStatisticsOncePerVolumeActor)
+    {
+        NProto::TStorageServiceConfig storageServiceConfig;
+        storageServiceConfig.SetUsePullSchemeForVolumeStatistics(true);
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(
+            runtime,
+            std::move(storageServiceConfig),
+            NYdbStats::CreateVolumesStatsUploaderStub());
+
+        // A volume registers its shadow disks with its own actor id.
+        const auto volumeActorId = runtime.AllocateEdgeActor();
+        const auto otherVolumeActorId = runtime.AllocateEdgeActor();
+        const TVector<std::pair<TString, TActorId>> volumes = {
+            {"vol0", volumeActorId},
+            {"vol0-cp1", volumeActorId},
+            {"vol0-cp2", volumeActorId},
+            {"vol1", otherVolumeActorId}};
+        for (const auto& [diskId, actorId]: volumes) {
+            RegisterVolume(
+                runtime,
+                diskId,
+                NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                false,   // isSystem
+                0,       // volumeTabletID
+                {},      // channels
+                actorId);
+        }
+
+        runtime.Send(
+            new IEventHandle(
+                MakeStorageStatsServiceId(),
+                MakeStorageStatsServiceId(),
+                new TEvents::TEvWakeup()),
+            0);
+
+        // Stay well below UpdateCountersInterval so that neither the next
+        // wakeup nor the collector's timeout fires.
+        const auto timeout = TDuration::Seconds(1);
+        auto countRequests = [&](const TActorId& actorId)
+        {
+            ui32 count = 0;
+            while (runtime.GrabEdgeEvent<
+                   TEvStatsService::TEvGetServiceStatisticsRequest>(
+                actorId,
+                timeout))
+            {
+                ++count;
+            }
+            return count;
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(1, countRequests(volumeActorId));
+        UNIT_ASSERT_VALUES_EQUAL(1, countRequests(otherVolumeActorId));
     }
 
     Y_UNIT_TEST(ShouldNotCrashCrashWhenDiskCountersIsNullptrPullScheme)
@@ -2405,7 +2594,7 @@ struct TServiceVolumeCountersTestEnv
     {
         auto diskCounters = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
-            EHistogramCounterOption::ReportMultipleCounters);
+            TDiagnosticsConfig{});
 
         auto volumeCounters = CreateVolumeSelfCounters(
             EPublishingPolicy::Repl,

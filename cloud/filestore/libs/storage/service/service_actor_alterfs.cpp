@@ -1,5 +1,7 @@
 #include "service_actor.h"
 
+#include "shard_creation_state_companion.h"
+
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
@@ -51,9 +53,10 @@ namespace {
 
 class TAlterFileStoreActor final
     : public TActorBootstrapped<TAlterFileStoreActor>
+    , public IShardCreationOwner
 {
 private:
-    TStorageConfigPtr StorageConfig;
+    const TStorageConfigPtr StorageConfig;
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
     const NProto::TFileStorePerformanceProfile PerformanceProfile;
@@ -71,9 +74,6 @@ private:
     TMultiShardFileStoreConfig FileStoreConfig;
 
     TVector<TString> ExistingShardIds;
-    ui32 NextShardToCreate = 0;
-    ui32 ShardsToCreate = 0;
-
     ui32 NextShardToConfigure = 0;
     ui32 ShardsToConfigure = 0;
     ui32 EndShardToConfigure = 0;
@@ -92,6 +92,8 @@ private:
 
     ui32 MaxShardCount = 0;
     ui64 SevenBytesHandlesCount = 0;
+
+    TShardCreationStateCompanion ShardCreationState;
 
     // These flags are set by HandleGetFileSystemTopologyResponse.
     bool DirectoryCreationInShardsEnabled = false;
@@ -127,7 +129,9 @@ private:
     void AlterShard(const TActorContext& ctx, const ui32 shardIndex);
     void GetFileSystemTopology(const TActorContext& ctx);
     void CreateShards(const TActorContext& ctx);
-    void CreateShard(const TActorContext& ctx, const ui32 shardIndex);
+    void CreateShard(
+        const TActorContext& ctx,
+        ui32 shardIndex) override;
     void ConfigureShards(const TActorContext& ctx);
     void ConfigureShardRange(
         const TActorContext& ctx,
@@ -221,7 +225,11 @@ TAlterFileStoreActor::TAlterFileStoreActor(
         TStorageConfigPtr storageConfig,
         TRequestInfoPtr requestInfo,
         const NProto::TAlterFileStoreRequest& request)
-    : StorageConfig(std::move(storageConfig))
+    // Copying is important: the config is shared by the whole service, and
+    // some functions here change it in place (e.g. PatchStorageConfig()).
+    // Without the copy, a change made for one filesystem would apply to all
+    // the filesystems on this host.
+    : StorageConfig(std::make_shared<TStorageConfig>(*storageConfig))
     , RequestInfo(std::move(requestInfo))
     , FileSystemId(request.GetFileSystemId())
     , Alter(true)
@@ -230,6 +238,10 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , ForceDirectoryCreationInShards(false)
     , EnableStrictFileSystemSizeEnforcement(false)
     , ExplicitShardCount(0)
+    , ShardCreationState(
+          FileSystemId,
+          TShardCreationStateCompanion::EMode::Alter,
+          this)
 {
     TargetConfig.SetCloudId(request.GetCloudId());
     TargetConfig.SetFolderId(request.GetFolderId());
@@ -241,7 +253,11 @@ TAlterFileStoreActor::TAlterFileStoreActor(
         TStorageConfigPtr storageConfig,
         TRequestInfoPtr requestInfo,
         const NProto::TResizeFileStoreRequest& request)
-    : StorageConfig(std::move(storageConfig))
+    // Copying is important: the config is shared by the whole service, and
+    // some functions here change it in place (e.g. PatchStorageConfig()).
+    // Without the copy, a change made for one filesystem would apply to all
+    // the filesystems on this host.
+    : StorageConfig(std::make_shared<TStorageConfig>(*storageConfig))
     , RequestInfo(std::move(requestInfo))
     , FileSystemId(request.GetFileSystemId())
     , PerformanceProfile(request.GetPerformanceProfile())
@@ -254,6 +270,10 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , EnableStrictFileSystemSizeEnforcement(
           request.GetEnableStrictFileSystemSizeEnforcement())
     , ExplicitShardCount(request.GetShardCount())
+    , ShardCreationState(
+          FileSystemId,
+          TShardCreationStateCompanion::EMode::Alter,
+          this)
 {
     TargetConfig.SetBlocksCount(request.GetBlocksCount());
     TargetConfig.SetVersion(request.GetConfigVersion());
@@ -641,7 +661,13 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         if (!StrictFileSystemSizeEnforcementEnabled || ExplicitShardCount) {
             ReplyAndDie(
                 ctx,
-                MakeError(E_ARGUMENT, "Cannot decrease number of shards"));
+                MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "Cannot decrease number of shards: current="
+                        << ExistingShardIds.size()
+                        << ", requested="
+                        << FileStoreConfig.ShardConfigs.size()));
             return;
         } else {
             // We can't reduce shards count but in strict mode we should resize
@@ -702,7 +728,8 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
             FileSystemId.c_str(),
             msg->Record.GetShardNo());
         Y_ABORT_UNLESS(
-            ShardsToCreate == 0 && ShardsToConfigure == 0 &&
+            !ShardCreationState.HasShardsToCreate() &&
+            ShardsToConfigure == 0 &&
             ShardsToAlter == 0 && ShardsToDescribe == 0 &&
             !ShouldConfigureMainFileStore);
 
@@ -725,9 +752,17 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
             "[%s] Will resize filesystem to have %u shards",
             FileSystemId.c_str(),
             FileStoreConfig.ShardConfigs.size());
-        ShardsToCreate =
-            FileStoreConfig.ShardConfigs.size() - ExistingShardIds.size();
-        if (ShardsToCreate || EnableStrictFileSystemSizeEnforcement ||
+        const auto error = ShardCreationState.InitializeShardCreation(
+            ExistingShardIds.size(),
+            FileStoreConfig.ShardConfigs.size(),
+            StorageConfig->GetMaxShardManagementRequestsInFlight());
+        if (HasError(error)) {
+            ReplyAndDie(ctx, error);
+            return;
+        }
+
+        if (ShardCreationState.HasShardsToCreate() ||
+            EnableStrictFileSystemSizeEnforcement ||
             EnableDirectoryCreationInShards)
         {
             ShouldConfigureMainFileStore = true;
@@ -750,20 +785,10 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
 
 void TAlterFileStoreActor::CreateShards(const TActorContext& ctx)
 {
-    if (ShardsToCreate == 0) {
-        ConfigureShards(ctx);
-    }
+    ShardCreationState.StartShardCreation(ctx);
 
-    NextShardToCreate = ExistingShardIds.size();
-    const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
-    const ui32 endShardIndex = (limit == 0)
-                                   ? FileStoreConfig.ShardConfigs.size()
-                                   : std::min<ui32>(
-                                         NextShardToCreate + limit,
-                                         FileStoreConfig.ShardConfigs.size());
-    for (ui32 i = NextShardToCreate; i < endShardIndex; ++i) {
-        CreateShard(ctx, i);
-        NextShardToCreate = i + 1;
+    if (!ShardCreationState.HasShardsToCreate()) {
+        ConfigureShards(ctx);
     }
 }
 
@@ -794,6 +819,7 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    const auto shardIndex = ev->Cookie;
 
     if (HasError(msg->GetError())) {
         LOG_ERROR(
@@ -801,8 +827,8 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
             TFileStoreComponents::SERVICE,
             "[%s] Shard %s (cookie: %lu) creation failed: %s",
             FileSystemId.c_str(),
-            GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str(),
-            ev->Cookie,
+            GetFileSystemIdForLogByCookie(shardIndex).Quote().c_str(),
+            shardIndex,
             FormatError(msg->GetError()).Quote().c_str());
 
         ReplyAndDie(ctx, msg->GetError());
@@ -814,16 +840,18 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
         TFileStoreComponents::SERVICE,
         "[%s] Created shard %s",
         FileSystemId.c_str(),
-        GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str());
+        GetFileSystemIdForLogByCookie(shardIndex).Quote().c_str());
 
-    Y_DEBUG_ABORT_UNLESS(ShardsToCreate);
-    if (--ShardsToCreate == 0) {
+    const auto error = ShardCreationState.OnShardCreated(
+        ctx,
+        shardIndex);
+    if (HasError(error)) {
+        ReplyAndDie(ctx, error);
+        return;
+    }
+
+    if (!ShardCreationState.HasShardsToCreate()) {
         ConfigureShards(ctx);
-    } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
-        if (NextShardToCreate < FileStoreConfig.ShardConfigs.size()) {
-            CreateShard(ctx, NextShardToCreate);
-            ++NextShardToCreate;
-        }
     }
 }
 

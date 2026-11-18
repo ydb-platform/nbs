@@ -3,7 +3,7 @@
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
 #include <cloud/filestore/libs/storage/fastshard/server/protos/fastshard.pb.h>
 
-#include <cloud/fastshard/ipc/ipc.h>
+#include <cloud/fastshard/libs/ipc/ipc.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 

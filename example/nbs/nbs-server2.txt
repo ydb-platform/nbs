@@ -19,7 +19,7 @@ ServerConfig {
   NodeType: "nbs"
   NbdEnabled: true
   VhostEnabled: true
-  VhostServerPath: "../cloud/blockstore/vhost-server/blockstore-vhost-server"
+  VhostServerPath: "data/blockstore-vhost-server"
   ChecksumFlags {
   }
   # UseFakeRdmaClient: true

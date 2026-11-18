@@ -27,4 +27,21 @@ NCloud::NProto::TError ValidateBlockSize(
     return {};
 }
 
+NProto::TError ValidateMediaKindForDiskFromDevice(
+    NProto::EStorageMediaKind mediaKind)
+{
+    if (!IsDiskRegistryMediaKind(mediaKind) ||
+        IsReliableDiskRegistryMediaKind(mediaKind))
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "storage media kind " << MediaKindToString(mediaKind)
+                << " is not allowed, expected one of: ssd_nonrepl, "
+                   "hdd_nonrepl, ssd_local, hdd_local");
+    }
+
+    return {};
+}
+
 }   // namespace NCloud::NBlockStore::NStorage

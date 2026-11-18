@@ -316,4 +316,4 @@ def test_timeout_medium_split_blockstore_filestore_get_component_limits():
 
     by = {r["component"]: r for r in inc}
     assert by["blockstore"]["test_timeout_minutes"] == 90
-    assert by["filestore"]["test_timeout_minutes"] == 90
+    assert by["filestore"]["test_timeout_minutes"] == 120

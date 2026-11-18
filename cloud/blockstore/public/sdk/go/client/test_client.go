@@ -11,6 +11,8 @@ import (
 type pingHandlerFunc func(ctx context.Context, req *protos.TPingRequest) (*protos.TPingResponse, error)
 type createVolumeHandlerFunc func(ctx context.Context, req *protos.TCreateVolumeRequest) (*protos.TCreateVolumeResponse, error)
 type destroyVolumeHandlerFunc func(ctx context.Context, req *protos.TDestroyVolumeRequest) (*protos.TDestroyVolumeResponse, error)
+type createVolumeLinkHandlerFunc func(ctx context.Context, req *protos.TCreateVolumeLinkRequest) (*protos.TCreateVolumeLinkResponse, error)
+type destroyVolumeLinkHandlerFunc func(ctx context.Context, req *protos.TDestroyVolumeLinkRequest) (*protos.TDestroyVolumeLinkResponse, error)
 type resizeVolumeHandlerFunc func(ctx context.Context, req *protos.TResizeVolumeRequest) (*protos.TResizeVolumeResponse, error)
 type alterVolumeHandlerFunc func(ctx context.Context, req *protos.TAlterVolumeRequest) (*protos.TAlterVolumeResponse, error)
 type assignVolumeHandlerFunc func(ctx context.Context, req *protos.TAssignVolumeRequest) (*protos.TAssignVolumeResponse, error)
@@ -58,6 +60,8 @@ type testClient struct {
 	PingHandler                          pingHandlerFunc
 	CreateVolumeHandler                  createVolumeHandlerFunc
 	DestroyVolumeHandler                 destroyVolumeHandlerFunc
+	CreateVolumeLinkHandler              createVolumeLinkHandlerFunc
+	DestroyVolumeLinkHandler             destroyVolumeLinkHandlerFunc
 	ResizeVolumeHandler                  resizeVolumeHandlerFunc
 	AlterVolumeHandler                   alterVolumeHandlerFunc
 	AssignVolumeHandler                  assignVolumeHandlerFunc
@@ -142,6 +146,28 @@ func (client *testClient) DestroyVolume(
 	}
 
 	return &protos.TDestroyVolumeResponse{}, nil
+}
+
+func (client *testClient) CreateVolumeLink(
+	ctx context.Context,
+	req *protos.TCreateVolumeLinkRequest,
+) (*protos.TCreateVolumeLinkResponse, error) {
+
+	if client.CreateVolumeLinkHandler != nil {
+		return client.CreateVolumeLinkHandler(ctx, req)
+	}
+	return &protos.TCreateVolumeLinkResponse{}, nil
+}
+
+func (client *testClient) DestroyVolumeLink(
+	ctx context.Context,
+	req *protos.TDestroyVolumeLinkRequest,
+) (*protos.TDestroyVolumeLinkResponse, error) {
+
+	if client.DestroyVolumeLinkHandler != nil {
+		return client.DestroyVolumeLinkHandler(ctx, req)
+	}
+	return &protos.TDestroyVolumeLinkResponse{}, nil
 }
 
 func (client *testClient) ResizeVolume(

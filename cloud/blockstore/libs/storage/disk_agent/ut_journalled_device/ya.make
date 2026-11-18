@@ -7,7 +7,7 @@ ELSE()
 ENDIF()
 
 SRCS(
-    disk_agent_actor_journalled_device_ut.cpp
+    disk_agent_journalled_device_tcp_server_ut.cpp
 )
 
 PEERDIR(

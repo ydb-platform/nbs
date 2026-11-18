@@ -6,7 +6,7 @@ IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
     )
 
     PEERDIR(
-        cloud/fastshard/ipc
+        cloud/fastshard/libs/ipc
 
         contrib/libs/silk/src/fibers
     )

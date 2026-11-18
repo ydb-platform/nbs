@@ -356,7 +356,8 @@ struct TCompactionMap::TImpl
         ui32 usedBlockCount,
         ui32 newlyZeroedBlocks,
         ui32 mixedBlockCount,
-        bool compacted)
+        bool compacted,
+        bool resetReadCounters)
     {
         // When mixed blocks count compaction is disabled by the policy, force
         // the counter to zero so stale values can never survive in the map.
@@ -373,7 +374,8 @@ struct TCompactionMap::TImpl
                 || prev.UsedBlockCount != usedBlockCount
                 || prev.NewlyZeroedBlocks != newlyZeroedBlocks
                 || prev.MixedBlockCount != mixedBlockCount
-                || prev.Compacted != compacted)
+                || prev.Compacted != compacted
+                || resetReadCounters)
         {
             if (blobCount && !prev.BlobCount) {
                 ++NonEmptyRangeCount;
@@ -394,7 +396,7 @@ struct TCompactionMap::TImpl
                 mixedBlockCount,
                 &group->Stats[index].MixedBlockCount);
 
-            if (compacted) {
+            if (resetReadCounters || compacted) {
                 group->Stats[index].ReadRequestCount = 0;
                 group->Stats[index].ReadRequestBlobCount = 0;
                 group->Stats[index].ReadRequestBlockCount = 0;
@@ -627,8 +629,8 @@ void TCompactionMap::Update(
             usedBlockCount,
             c.Stat.NewlyZeroedBlocks,
             c.Stat.MixedBlockCount,
-            c.Stat.BlobCount < 2   // compacted
-        );
+            c.Stat.BlobCount < 2,   // compacted
+            true);                  // resetReadCounters
     }
 
     for (auto group = Impl->Groups.Begin(); group != Impl->Groups.End();
@@ -649,7 +651,8 @@ void TCompactionMap::Update(
     ui32 usedBlockCount,
     ui32 newlyZeroedBlocks,
     ui32 mixedBlockCount,
-    bool compacted)
+    bool compacted,
+    bool resetReadCounters)
 {
     auto* group = Impl->Update(
         blockIndex,
@@ -658,7 +661,8 @@ void TCompactionMap::Update(
         usedBlockCount,
         newlyZeroedBlocks,
         mixedBlockCount,
-        compacted);
+        compacted,
+        resetReadCounters);
 
     Impl->GroupByScore.Insert(group);
     Impl->GroupByBlobCount.Insert(group);

@@ -11,9 +11,9 @@ PEERDIR(
     cloud/filestore/libs/storage/fastshard/impl/hash_table_index
     cloud/filestore/libs/storage/fastshard/storage_group
 
-    cloud/fastshard/sn/impl
-    cloud/fastshard/sn/server
-    cloud/fastshard/testlib
+    cloud/fastshard/libs/sn/impl
+    cloud/fastshard/libs/sn/server
+    cloud/fastshard/libs/sn/testlib
 
     cloud/storage/core/libs/common
     cloud/storage/core/protos
@@ -26,7 +26,7 @@ PEERDIR(
 )
 
 # The silk crash dumper sources its gdb scripts from the source tree
-# (see SetUpCrashDumperScriptDir in cloud/fastshard/testlib).
+# (see SetUpCrashDumperScriptDir in cloud/fastshard/libs/sn/testlib).
 DATA(arcadia/contrib/libs/silk/src/gdb)
 
 END()

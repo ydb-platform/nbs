@@ -101,14 +101,22 @@ void TFileSystem::ReadDir(
         if (!handle->IsEmpty()) {
             DirectoryHandleCache->ResetHandle(fi->fh);
         }
-    } else if (auto content = handle->ReadContent(size, offset, Log)) {
-        reply(*this, *content);
-        return;
+    } else {
+        auto result = handle->ReadContent(size, offset);
+        if (!CheckError(*callContext, req, result.GetError())) {
+            return;
+        }
+        const auto& readResult = result.GetResult();
+        DirectoryHandleCache->RecordRead(readResult);
+        if (readResult.Status != TReadContentResult::EStatus::Miss) {
+            reply(*this, readResult.DirectoryContent);
+            return;
+        }
     }
 
     auto request = StartRequest<NProto::TListNodesRequest>(ino);
     request->SetCookie(handle->GetCookie());
-    request->SetMaxBytes(Config->GetMaxBufferSize());
+    request->SetMaxBytes(Config->GetMaxMetadataBufferSize());
 
     // We don't know the nodes yet so we have to adjust the node size after
     // receiving ListNodes response.

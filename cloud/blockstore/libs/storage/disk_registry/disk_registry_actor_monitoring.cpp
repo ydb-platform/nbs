@@ -724,17 +724,18 @@ void TDiskRegistryActor::RenderDeviceHtmlInfo(
         }
 
         DIV() {
-            auto agentId = State->GetAgentId(device.GetNodeId());
+            const auto* agentConfig = State->FindAgent(device.GetAgentId());
 
-            if (agentId) {
+            if (agentConfig) {
                 out << "NodeId: <a href='?action=agent&TabletID="
                     << TabletID()
-                    << "&AgentID=" << agentId << "'>"
-                    << agentId << "</a>"
+                    << "&AgentID=" << agentConfig->GetAgentId() << "'>"
+                    << agentConfig->GetAgentId() << "</a>"
                     << " <font color=gray>#"
-                    << device.GetNodeId()
+                    << agentConfig->GetNodeId()
                     << "</font>";
             } else {
+                out << "AgentId: " << device.GetAgentId();
                 out << "NodeId: " << device.GetNodeId();
             }
         }
@@ -1020,14 +1021,14 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
             }
         };
 
-        auto dumpAgent = [&](const ui32 nodeId)
+        auto dumpAgent = [&](const TString& agentId)
         {
-            const auto* agent = State->FindAgent(nodeId);
+            const auto* agent = State->FindAgent(agentId);
             if (agent) {
                 out << "<a href='?action=agent&TabletID=" << TabletID()
                     << "&AgentID=" << agent->GetAgentId() << "'>"
                     << agent->GetAgentId() << "</a>"
-                    << " <font color=gray>#" << nodeId << "</font>";
+                    << " <font color=gray>#" << agent->GetNodeId() << "</font>";
                 if (agent->GetState() != NProto::AGENT_STATE_ONLINE) {
                     out << " ";
 
@@ -1037,7 +1038,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                     DumpAgentState(out, agent->GetState(), connected);
                 }
             } else {
-                out << nodeId;
+                out << agentId;
             }
         };
 
@@ -1050,7 +1051,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                     device.GetDeviceUUID());
             }
             TABLED() {
-                dumpAgent(device.GetNodeId());
+                dumpAgent(device.GetAgentId());
             }
             TABLED() {
                 EDeviceStateFlags flags = GetDeviceStateFlags(*State, device);
@@ -1125,17 +1126,17 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
             }
         }
 
-        TMap<ui32, size_t> allAgents;
+        TMap<TString, size_t> allAgents;
         for (const auto& device: info.Devices) {
-            ++allAgents[device.GetNodeId()];
+            ++allAgents[device.GetAgentId()];
         }
         for (const auto& replica: info.Replicas) {
             for (const auto& device: replica) {
-                ++allAgents[device.GetNodeId()];
+                ++allAgents[device.GetAgentId()];
             }
         }
         for (const auto& migration: info.Migrations) {
-            ++allAgents[migration.GetTargetDevice().GetNodeId()];
+            ++allAgents[migration.GetTargetDevice().GetAgentId()];
         }
 
         TAG (TH3) {
@@ -1155,10 +1156,10 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                 }
             }
 
-            for (const auto& [nodeId, count]: allAgents) {
+            for (const auto& [agentId, count]: allAgents) {
                 TABLER() {
                     TABLED() {
-                        dumpAgent(nodeId);
+                        dumpAgent(agentId);
                     }
                     TABLED() {
                         out << count;
@@ -1193,7 +1194,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
                         }
                         TABLED() {
                             const auto& d = migration.GetTargetDevice();
-                            dumpAgent(d.GetNodeId());
+                            dumpAgent(d.GetAgentId());
                         }
                     }
                 }
@@ -1224,6 +1225,7 @@ void TDiskRegistryActor::RenderDiskHtmlInfo(
         }
 
         GenerateVolumeActionsJS(out);
+        GenerateDiskRegistryActionsJS(out);
 
         TAG(TH3) {
             out << "History";
@@ -2519,7 +2521,7 @@ void TDiskRegistryActor::RenderDirtyDevicesCleanupOverviewDetailed(
             entry.EraseStartedAt = *ts;
         }
         if (const NProto::TAgentConfig* agent =
-                State->FindAgent(device.GetNodeId()))
+                State->FindAgent(device.GetAgentId()))
         {
             entry.AgentId = agent->GetAgentId();
         }
@@ -2794,8 +2796,6 @@ void TDiskRegistryActor::RenderHtmlInfo(IOutputStream& out) const
 
         TAG(TH3) { out << "Storage Config"; }
         Config->DumpHtml(out);
-
-        GenerateDiskRegistryActionsJS(out);
     }
 }
 

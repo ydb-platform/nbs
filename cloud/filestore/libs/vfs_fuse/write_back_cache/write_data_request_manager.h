@@ -120,7 +120,7 @@ public:
     GetBackUnallocatedPendingRequest() const;
 
     // Removes an unallocated request from the pending queue.
-    void RemoveUnallocated(std::unique_ptr<TPendingWriteDataRequest> request);
+    void RemoveUnallocated(TPendingWriteDataRequest* request);
 
     /**
      * Marks the request as flushed

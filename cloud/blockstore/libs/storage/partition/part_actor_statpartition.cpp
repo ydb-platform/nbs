@@ -71,6 +71,17 @@ void TPartitionActor::HandleStatPartition(
         *response->Record.MutableStats(),
         State->GetStats());
 
+    if (State->AreExtendedBlobCountersEnabled()) {
+        response->Record.MutableStats()->SetMixedBlobsCount(
+            State->GetMixedChannelBlobsCount());
+        response->Record.MutableStats()->SetMergedBlobsCount(
+            State->GetMergedChannelBlobsCount());
+        response->Record.MutableStats()->SetMixedBlocksCount(
+            State->GetMixedChannelBlocksCount());
+        response->Record.MutableStats()->SetMergedBlocksCount(
+            State->GetMergedChannelBlocksCount());
+    }
+
     UpdatePartitionCounters(
         *response->Record.MutableStats(),
         State->GetStats());

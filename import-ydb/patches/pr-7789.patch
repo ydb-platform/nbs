@@ -1,0 +1,299 @@
+diff --git a/contrib/ydb/core/driver_lib/run/kikimr_services_initializers.cpp b/contrib/ydb/core/driver_lib/run/kikimr_services_initializers.cpp
+index c478c47726..bc69124b16 100644
+--- a/contrib/ydb/core/driver_lib/run/kikimr_services_initializers.cpp
++++ b/contrib/ydb/core/driver_lib/run/kikimr_services_initializers.cpp
+@@ -544,6 +544,8 @@ static TInterconnectSettings GetInterconnectSettings(const NKikimrConfig::TInter
+     if (config.HasMaxRdmaRetryBackoffLevel()) {
+         result.MaxRdmaRetryBackoffLevel = config.GetMaxRdmaRetryBackoffLevel();
+     }
++    result.RdmaAddress = config.GetRdmaAddress();
++    result.RdmaInterface = config.GetRdmaInterface();
+ 
+     return result;
+ }
+diff --git a/contrib/ydb/core/protos/config.proto b/contrib/ydb/core/protos/config.proto
+index 2f225ef8c3..16945d5f1b 100644
+--- a/contrib/ydb/core/protos/config.proto
++++ b/contrib/ydb/core/protos/config.proto
+@@ -500,6 +500,12 @@ message TInterconnectConfig {
+     optional uint32 RdmaPayloadCopySizeThreshold = 60 [default = 65536]; // 0 disables copying RDMA payload to regular memory
+     optional uint32 MaxRdmaRetryBackoffLevel = 61 [default = 8]; // 5s * 2^8 = 1280s, about 21 minutes by default
+     optional bool EnableRdmaSendReceive = 69 [default = false];
++    // Prefer the RDMA context whose GID corresponds to this local IP address.
++    // Falls back to the local TCP interconnect address when no matching context is found.
++    optional string RdmaAddress = 73;
++    // Prefer the first address of this network interface that has a matching RDMA context.
++    // RdmaAddress has priority. Falls back to the local TCP interconnect address when no match is found.
++    optional string RdmaInterface = 74;
+ 
+     // ballast is added to IC handshake frames to ensure correctness of jumbo frames transmission over network
+     optional uint32 HandshakeBallastSize = 14;
+diff --git a/contrib/ydb/library/actors/interconnect/address/interconnect_address.cpp b/contrib/ydb/library/actors/interconnect/address/interconnect_address.cpp
+index 2d5ac3218f..1b82cc7999 100644
+--- a/contrib/ydb/library/actors/interconnect/address/interconnect_address.cpp
++++ b/contrib/ydb/library/actors/interconnect/address/interconnect_address.cpp
+@@ -48,6 +48,18 @@ namespace NInterconnect {
+         }
+     }
+ 
++    bool TAddress::IsLinkLocal() const noexcept {
++        switch (Addr.Generic.sa_family) {
++            case AF_INET:
++                // Check whether the IPv4 address is link-local 169.254.0.0/16 (RFC3927)
++                return (ntohl(Addr.Ipv4.sin_addr.s_addr) & 0xffff0000u) == 0xa9fe0000u;
++            case AF_INET6:
++                return IN6_IS_ADDR_LINKLOCAL(&Addr.Ipv6.sin6_addr);
++            default:
++                return false;
++        }
++    }
++
+     TString TAddress::ToString() const {
+         return GetAddress() + ":" + ::ToString(GetPort());
+     }
+diff --git a/contrib/ydb/library/actors/interconnect/address/interconnect_address.h b/contrib/ydb/library/actors/interconnect/address/interconnect_address.h
+index 8dddbd3f6f..dd793b17a7 100644
+--- a/contrib/ydb/library/actors/interconnect/address/interconnect_address.h
++++ b/contrib/ydb/library/actors/interconnect/address/interconnect_address.h
+@@ -26,6 +26,7 @@ namespace NInterconnect {
+         ::sockaddr* SockAddr() noexcept;
+         const ::sockaddr* SockAddr() const noexcept;
+         ui16 GetPort() const noexcept;
++        bool IsLinkLocal() const noexcept;
+         TString GetAddress() const;
+         TString ToString() const;
+ 
+diff --git a/contrib/ydb/library/actors/interconnect/address/ut/interconnect_address_ut.cpp b/contrib/ydb/library/actors/interconnect/address/ut/interconnect_address_ut.cpp
+new file mode 100644
+index 0000000000..5f66e7fb20
+--- /dev/null
++++ b/contrib/ydb/library/actors/interconnect/address/ut/interconnect_address_ut.cpp
+@@ -0,0 +1,27 @@
++#include <contrib/ydb/library/actors/interconnect/address/interconnect_address.h>
++
++#include <library/cpp/testing/unittest/registar.h>
++
++namespace NInterconnect {
++
++Y_UNIT_TEST_SUITE(TInterconnectAddress) {
++    Y_UNIT_TEST(IsLinkLocalIPv4) {
++        UNIT_ASSERT(TAddress("169.254.0.0", 0).IsLinkLocal());
++        UNIT_ASSERT(TAddress("169.254.255.255", 0).IsLinkLocal());
++        UNIT_ASSERT(!TAddress("169.253.255.255", 0).IsLinkLocal());
++        UNIT_ASSERT(!TAddress("169.255.0.0", 0).IsLinkLocal());
++    }
++
++    Y_UNIT_TEST(IsLinkLocalIPv6) {
++        UNIT_ASSERT(TAddress("fe80::", 0).IsLinkLocal());
++        UNIT_ASSERT(TAddress("febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff", 0).IsLinkLocal());
++        UNIT_ASSERT(!TAddress("fe7f:ffff:ffff:ffff:ffff:ffff:ffff:ffff", 0).IsLinkLocal());
++        UNIT_ASSERT(!TAddress("fec0::", 0).IsLinkLocal());
++    }
++
++    Y_UNIT_TEST(UnknownAddressIsNotLinkLocal) {
++        UNIT_ASSERT(!TAddress("not-an-address", 0).IsLinkLocal());
++    }
++}
++
++} // namespace NInterconnect
+diff --git a/contrib/ydb/library/actors/interconnect/address/ut/ya.make b/contrib/ydb/library/actors/interconnect/address/ut/ya.make
+new file mode 100644
+index 0000000000..55281a3f86
+--- /dev/null
++++ b/contrib/ydb/library/actors/interconnect/address/ut/ya.make
+@@ -0,0 +1,7 @@
++UNITTEST_FOR(contrib/ydb/library/actors/interconnect/address)
++
++SRCS(
++    interconnect_address_ut.cpp
++)
++
++END()
+diff --git a/contrib/ydb/library/actors/interconnect/address/ya.make b/contrib/ydb/library/actors/interconnect/address/ya.make
+index 44d8f31fcd..e86cd50888 100644
+--- a/contrib/ydb/library/actors/interconnect/address/ya.make
++++ b/contrib/ydb/library/actors/interconnect/address/ya.make
+@@ -10,3 +10,7 @@ PEERDIR(
+ )
+ 
+ END()
++
++RECURSE_FOR_TESTS(
++    ut
++)
+diff --git a/contrib/ydb/library/actors/interconnect/interconnect_common.h b/contrib/ydb/library/actors/interconnect/interconnect_common.h
+index eeb36d0bbf..654e271af6 100644
+--- a/contrib/ydb/library/actors/interconnect/interconnect_common.h
++++ b/contrib/ydb/library/actors/interconnect/interconnect_common.h
+@@ -84,6 +84,8 @@ namespace NActors {
+         // Enables negotiation and usage of TInterconnectSessionTCPv2 (no session continuation, no encryption).
+         // v2 is used only when both peers have this enabled and encryption is not in effect.
+         bool EnableInterconnectSessionV2 = false;
++        TString RdmaAddress;
++        TString RdmaInterface;
+ 
+         struct TV2 {
+             // Enables negotiation and usage of TInterconnectSessionTCPv2 (no session continuation, no encryption).
+diff --git a/contrib/ydb/library/actors/interconnect/interconnect_handshake.cpp b/contrib/ydb/library/actors/interconnect/interconnect_handshake.cpp
+index 0907fa25b8..3c6dfc36a6 100644
+--- a/contrib/ydb/library/actors/interconnect/interconnect_handshake.cpp
++++ b/contrib/ydb/library/actors/interconnect/interconnect_handshake.cpp
+@@ -1508,34 +1508,67 @@ namespace NActors {
+             }
+         }
+ 
+-        void CreateRdmaPrimitives() {
++        NInterconnect::NRdma::TRdmaCtx* GetRdmaCtx() {
+             using namespace NInterconnect::NRdma;
+-            // Rdma disabled
+-            if (!Common->RdmaMemPool) {
+-                return;
+-            }
+-
+-            auto sockname = MainChannel.GetSocketRef()->GetSockName();
+-
+             TRdmaCtx* rdmaCtx = nullptr;
+ 
+-            if (const NInterconnect::TAddress* addr = std::get_if<NInterconnect::TAddress>(&sockname)) {
+-                rdmaCtx = NLinkMgr::GetCtx(*addr);
++            if (Common->Settings.RdmaAddress) {
++                const NInterconnect::TAddress address(Common->Settings.RdmaAddress, 0);
++                rdmaCtx = NLinkMgr::GetCtx(address);
+                 if (rdmaCtx) {
+-                    LOG_TRACE_IC("ICRDMA", "Found verbs fontext for address %s",
+-                        std::get<0>(sockname).ToString().data());
++                    LOG_TRACE_IC("ICRDMA", "Found verbs context for specified RDMA address: %s",
++                        Common->Settings.RdmaAddress.data());
+                 } else {
+-                    LOG_WARN_IC("ICRDMA", "Unable to find verbs context using address %s",
+-                        std::get<0>(sockname).ToString().data());
++                    const TString fallbackTarget = Common->Settings.RdmaInterface
++                        ? "the specified RDMA interface"
++                        : "the local TCP socket address";
++                    LOG_WARN_IC("ICRDMA", "Unable to find verbs context for specified RDMA address: %s. Falling back to %s",
++                        Common->Settings.RdmaAddress.data(), fallbackTarget.data());
+                 }
+-            } else if (int* err = get_if<int>(&sockname)) {
+-                LOG_ERROR_IC("ICRDMA", "Unable to get local address for socket: %d, err: %d. Rdma will not be used",
+-                    (int)(*MainChannel.GetSocketRef()), *err);
+-            } else {
+-                LOG_CRIT_IC("ICRDMA", "Unknown getsockname return type for socket: %d. Rdma will not be used",
+-                    (int)(*MainChannel.GetSocketRef()));
+             }
+ 
++            if (!rdmaCtx && Common->Settings.RdmaInterface) {
++                rdmaCtx = NLinkMgr::GetCtxByInterface(Common->Settings.RdmaInterface);
++                if (rdmaCtx) {
++                    LOG_TRACE_IC("ICRDMA", "Found verbs context for specified RDMA interface: %s",
++                        Common->Settings.RdmaInterface.data());
++                } else {
++                    LOG_WARN_IC("ICRDMA", "Unable to find verbs context for specified RDMA interface: %s. Falling back to the local TCP socket address",
++                        Common->Settings.RdmaInterface.data());
++                }
++            }
++
++            if (!rdmaCtx) {
++                auto sockname = MainChannel.GetSocketRef()->GetSockName();
++                if (const NInterconnect::TAddress* addr = std::get_if<NInterconnect::TAddress>(&sockname)) {
++                    rdmaCtx = NLinkMgr::GetCtx(*addr);
++                    if (rdmaCtx) {
++                        LOG_TRACE_IC("ICRDMA", "Found verbs context for local TCP address: %s",
++                            addr->ToString().data());
++                    } else {
++                        LOG_WARN_IC("ICRDMA", "Unable to find verbs context using local TCP address: %s",
++                            addr->ToString().data());
++                    }
++                } else if (int* err = get_if<int>(&sockname)) {
++                    LOG_ERROR_IC("ICRDMA", "Unable to get local address of the TCP socket: %d, err: %d. RDMA will not be used",
++                        (int)(*MainChannel.GetSocketRef()), *err);
++                } else {
++                    LOG_CRIT_IC("ICRDMA", "Unknown GetSockName return type for socket: %d. It is a BUG. RDMA will not be used",
++                        (int)(*MainChannel.GetSocketRef()));
++                }
++            }
++            return rdmaCtx;
++        }
++
++        void CreateRdmaPrimitives() {
++            using namespace NInterconnect::NRdma;
++            // Rdma disabled
++            if (!Common->RdmaMemPool) {
++                return;
++            }
++
++            TRdmaCtx* rdmaCtx = GetRdmaCtx();
++
+             if (rdmaCtx) {
+                 if (ICq::TPtr cqPtr = CreateRdmaCq(rdmaCtx)) {
+                     LOG_TRACE_IC("ICRDMA", "Got CQ handle at: %p", (void*)cqPtr.get());
+diff --git a/contrib/ydb/library/actors/interconnect/rdma/dummy.cpp b/contrib/ydb/library/actors/interconnect/rdma/dummy.cpp
+index b8d1154810..45f08a13c3 100644
+--- a/contrib/ydb/library/actors/interconnect/rdma/dummy.cpp
++++ b/contrib/ydb/library/actors/interconnect/rdma/dummy.cpp
+@@ -37,6 +37,7 @@ THandshakeData TQueuePair::GetHandshakeData() const noexcept {
+ 
+ namespace NLinkMgr {
+     TRdmaCtx* GetCtx(NInterconnect::TAddress const&) { return nullptr; }
++    TRdmaCtx* GetCtxByInterface(const TString&) { return nullptr; }
+     bool Init() { return false; }
+ }
+ 
+diff --git a/contrib/ydb/library/actors/interconnect/rdma/link_manager.cpp b/contrib/ydb/library/actors/interconnect/rdma/link_manager.cpp
+index ce22deeca4..9756f0ca24 100644
+--- a/contrib/ydb/library/actors/interconnect/rdma/link_manager.cpp
++++ b/contrib/ydb/library/actors/interconnect/rdma/link_manager.cpp
+@@ -16,6 +16,7 @@
+ #include <memory>
+ 
+ #include <util/network/address.h>
++#include <util/network/interface.h>
+ 
+ #if defined(__APPLE__) || defined(_darwin_)
+ /* OSX seems not to define these. */
+@@ -242,4 +243,22 @@ TRdmaCtx* GetCtx(const NInterconnect::TAddress& addr) {
+ 
+ } 
+ 
++TRdmaCtx* GetCtxByInterface(const TString& interfaceName) {
++    TRdmaCtx* linkLocalCtx = nullptr;
++    for (const auto& interface : NAddr::GetNetworkInterfaces()) {
++        if (interface.Name == interfaceName) {
++            NInterconnect::TAddress address(*interface.Address);
++            if (TRdmaCtx* ctx = GetCtx(address)) {
++                if (!address.IsLinkLocal()) {
++                    return ctx;
++                }
++                if (!linkLocalCtx) {
++                    linkLocalCtx = ctx;
++                }
++            }
++        }
++    }
++    return linkLocalCtx;
++}
++
+ }
+diff --git a/contrib/ydb/library/actors/interconnect/rdma/link_manager.h b/contrib/ydb/library/actors/interconnect/rdma/link_manager.h
+index 2542762d29..74855d7943 100644
+--- a/contrib/ydb/library/actors/interconnect/rdma/link_manager.h
++++ b/contrib/ydb/library/actors/interconnect/rdma/link_manager.h
+@@ -48,6 +48,7 @@ using TCtxsMap = std::vector<std::pair<ibv_gid, std::shared_ptr<NInterconnect::N
+ TRdmaCtx* GetCtx(int sockfd);
+ TRdmaCtx* GetCtx(const in6_addr& );
+ TRdmaCtx* GetCtx(const NInterconnect::TAddress& addr);
++TRdmaCtx* GetCtxByInterface(const TString& interfaceName);
+ const TCtxsMap& GetAllCtxs();
+ bool Init();
+   
+diff --git a/contrib/ydb/library/actors/interconnect/ya.make b/contrib/ydb/library/actors/interconnect/ya.make
+index 909031e649..64149f1b76 100644
+--- a/contrib/ydb/library/actors/interconnect/ya.make
++++ b/contrib/ydb/library/actors/interconnect/ya.make
+@@ -126,6 +126,7 @@ IF (OS_LINUX)
+ ENDIF()
+ 
+ RECURSE_FOR_TESTS(
++    address
+     ut
+     ut_fat
+     ut_huge_cluster

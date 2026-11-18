@@ -42,12 +42,15 @@ namespace {
     xxx(MaxResponseEntries,          ui32,          10000                     )\
     xxx(MaxBackground,               ui32,          0                         )\
     xxx(MaxFuseLoopThreads,          ui32,          1                         )\
+    xxx(MaxRequestSize,              ui32,          0                         )\
     xxx(FSyncQueueDisabled,          bool,          false                     )\
     xxx(EntryTimeout,                TDuration,     TDuration::Seconds(15)    )\
     xxx(NegativeEntryTimeout,        TDuration,     TDuration::Zero()         )\
     xxx(AttrTimeout,                 TDuration,     TDuration::Seconds(15)    )\
     xxx(XAttrCacheTimeout,           TDuration,     TDuration::Seconds(15)    )\
     xxx(XAttrCacheLimit,             ui32,          0                         )\
+    xxx(NodeRefCacheLimit,           ui32,          0                         )\
+    xxx(NodeAttrsCacheLimit,         ui32,          0                         )\
     xxx(DirectoryHandlesStorageEnabled, bool,       false                     )\
     xxx(DirectoryHandlesTableSize,      ui64,       100'000                   )\
     xxx(DirectoryHandlesPersistentHandleMaxSize, ui64, 2_GB                   )\

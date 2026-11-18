@@ -281,7 +281,8 @@ func (t *replicateDiskTask) replicate(
 		ctx,
 		client,
 		t.request.SrcDisk.DiskId,
-		"", // proxyDiskID
+		"",    // proxyDiskID
+		false, // mountLocally
 		currentCheckpointID,
 		nextCheckpointID,
 		diskParams.EncryptionDesc,
@@ -289,6 +290,7 @@ func (t *replicateDiskTask) replicate(
 		false, // duplicateChunkIndices
 		t.request.IgnoreBaseDisk,
 		true, // dontReadFromCheckpoint
+		0,    // maxSizeBytes, whole disk
 	)
 	if err != nil {
 		return err
@@ -438,6 +440,7 @@ func (t *replicateDiskTask) getBytesToReplicate(
 		currentCheckpointID,
 		"",
 		false, // ignoreBaseDisk
+		0,     // maxSizeBytes, whole disk
 	)
 	if err != nil {
 		return 0, err

@@ -18,6 +18,7 @@
 #include <util/generic/hash_set.h>
 #include <util/random/random.h>
 #include <util/system/hostname.h>
+#include <util/system/spinlock.h>
 
 namespace NCloud::NBlockStore::NCells {
 
@@ -26,11 +27,14 @@ namespace NCloud::NBlockStore::NCells {
 struct TCellManager: public ICellManager
 {
     const TBootstrap Bootstrap;
+    const ITaskQueuePtr TransportUpdates;
+    TAdaptiveLock TransportUpdatesLock;
+    bool TransportUpdatesEnabled = false;
 
     THashMap<TString, TCellHostPoolPtr> Pools;
     std::shared_ptr<TCellInboundActivity> InboundActivity;
 
-    TCellManager(TCellsConfigPtr config, TBootstrap bootstrap);
+    TCellManager(TCellsConfigConstPtr config, TBootstrap bootstrap);
 
     void Start() override;
     void Stop() override;
@@ -52,8 +56,12 @@ struct TCellManager: public ICellManager
 
     [[nodiscard]] TCellsSnapshot GetSnapshot() override;
 
+    [[nodiscard]] NThreading::TFuture<NProto::TError> SwitchDataTransport(
+        TString connectionId,
+        NProto::ECellDataTransport transport) override;
+
     [[nodiscard]] NThreading::TFuture<TVector<TCellDescribeResult>>
-        SearchVolume(TString diskId, TDuration timeout) override;
+    SearchVolume(TString diskId, TDuration timeout) override;
 
 private:
     [[nodiscard]] TCellHostEndpointsByCellId GetCellsEndpoints(

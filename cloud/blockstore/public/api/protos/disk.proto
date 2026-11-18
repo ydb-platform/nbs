@@ -3,6 +3,7 @@ syntax = "proto3";
 import "cloud/blockstore/public/api/protos/headers.proto";
 import "cloud/blockstore/public/api/protos/local_ssd.proto";
 import "cloud/storage/core/protos/error.proto";
+import "cloud/storage/core/protos/media.proto";
 
 package NCloud.NBlockStore.NProto;
 
@@ -300,6 +301,11 @@ message TCreateVolumeFromDeviceRequest
 
     // Path to the device on the specified agent.
     string Path = 7;
+
+    // Storage media kind of the volume. Only non-replicated and local
+    // DiskRegistry-based media kinds are allowed. STORAGE_MEDIA_SSD_LOCAL is
+    // used if not specified.
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 8;
 }
 
 message TCreateVolumeFromDeviceResponse

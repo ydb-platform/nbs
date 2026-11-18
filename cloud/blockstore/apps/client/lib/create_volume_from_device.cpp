@@ -27,6 +27,10 @@ private:
     TString AgentId;
     TString Path;
 
+    NCloud::NProto::EStorageMediaKind StorageMediaKind =
+        NCloud::NProto::STORAGE_MEDIA_DEFAULT;
+    TString StorageMediaKindArg;
+
 public:
     TCreateVolumeFromDeviceCommand(IBlockStorePtr client)
         : TCommand(std::move(client))
@@ -45,6 +49,13 @@ public:
                 "(e.g. /dev/disk/by-partlabel/COMPUTENVME01).")
             .RequiredArgument("STR")
             .StoreResult(&Path);
+
+        Opts.AddLongOption(
+                "storage-media-kind",
+                "storage media kind of the volume: ssd_local (default), "
+                "hdd_local, ssd_nonrepl or hdd_nonrepl.")
+            .RequiredArgument("STR")
+            .StoreResult(&StorageMediaKindArg);
     }
 protected:
     bool DoExecute() override
@@ -66,6 +77,12 @@ protected:
 
             request->SetAgentId(AgentId);
             request->SetPath(Path);
+
+            if (StorageMediaKindArg) {
+                ParseStorageMediaKind(
+                    *ParseResultPtr, StorageMediaKindArg, StorageMediaKind);
+            }
+            request->SetStorageMediaKind(StorageMediaKind);
         }
 
         STORAGE_DEBUG("Sending CreateVolumeFromDevice request");

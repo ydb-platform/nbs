@@ -2,6 +2,8 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/service/error.h>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -79,11 +81,31 @@ NProto::TError TNameTable::Delete(
         ->Delete(writeContext.Lsn, name, &slot, writeContext.PageGroups);
 }
 
-NProto::TError TNameTable::Get(const TString& name, ui64* nodeId) const
+NProto::TError TNameTable::GetForLookup(const TString& name, ui64* nodeId) const
 {
     ui64 slotNo = 0;
     TNameTableSlot slot{};
-    auto error = Slots->Get(0 /* lsn */, name.c_str(), &slot, &slotNo);
+    auto error = Slots->GetForLookup(name.c_str(), &slot, &slotNo);
+    if (HasError(error)) {
+        return error;
+    }
+
+    *nodeId = slot.NodeId;
+    return {};
+}
+
+NProto::TError TNameTable::GetForUpdate(
+    const TString& name,
+    TWriteContext& writeContext,
+    ui64* nodeId) const
+{
+    ui64 slotNo = 0;
+    TNameTableSlot slot{};
+    auto error = Slots->GetForUpdate(
+        writeContext.Lsn,
+        name.c_str(),
+        &slot,
+        &slotNo);
     if (HasError(error)) {
         return error;
     }

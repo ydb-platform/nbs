@@ -11,6 +11,7 @@ SRCS(
 PEERDIR(
     cloud/blockstore/config
 
+    cloud/blockstore/libs/client
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/service
@@ -19,3 +20,5 @@ PEERDIR(
 )
 
 END()
+
+RECURSE_FOR_TESTS(ut)

@@ -148,7 +148,8 @@ def test_change_device():
         nbs_client_binary_path, "ExecuteAction",
         "--action", "CreateDiskFromDevices",
         "--input-bytes", '{"DiskId":"vol0","BlockSize":4096,"DeviceUUIDs":'
-                         '["MemoryDevice-1","MemoryDevice-2"]}',
+                         '["MemoryDevice-1","MemoryDevice-2"],'
+                         '"StorageMediaKind":"STORAGE_MEDIA_SSD_NONREPLICATED"}',
         "--port", str(nbs.nbs_port),
     ])
     assert result == 0

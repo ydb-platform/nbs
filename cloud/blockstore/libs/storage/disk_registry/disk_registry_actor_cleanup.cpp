@@ -18,7 +18,8 @@ private:
     const TActorId Owner;
     const TChildLogTitle LogTitle;
     const TRequestInfoPtr Request;
-    const TVector<TString> DiskIds;
+    // Only native disks are eligible for SchemeShard-based cleanup.
+    const TVector<TString> Disks;
 
     int PendingRequests = 0;
 
@@ -58,20 +59,20 @@ TCleanupActor::TCleanupActor(
         const TActorId& owner,
         const TLogTitle& logTitle,
         TRequestInfoPtr request,
-        TVector<TString> diskIds)
+        TVector<TString> disks)
     : Owner(owner)
     , LogTitle(logTitle.GetChildWithTags(
           GetCycleCount(),
           {{"TCleanupActor", std::monostate{}}}))
     , Request(std::move(request))
-    , DiskIds(std::move(diskIds))
+    , Disks(std::move(disks))
 {}
 
 void TCleanupActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
-    for (ui64 i = 0; i != DiskIds.size(); ++i) {
+    for (ui64 i = 0; i != Disks.size(); ++i) {
         DescribeVolume(ctx, i);
     }
 
@@ -100,7 +101,7 @@ void TCleanupActor::DescribeVolume(const TActorContext& ctx, ui64 index)
     ++PendingRequests;
 
     auto request = std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
-        DiskIds[index]);
+        Disks[index]);
 
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request), index);
 }
@@ -109,7 +110,7 @@ void TCleanupActor::DeallocateDisk(const TActorContext& ctx, ui64 index)
 {
     ++PendingRequests;
 
-    const auto& id = DiskIds[index];
+    const auto& id = Disks[index];
 
     LOG_INFO(
         ctx,
@@ -120,6 +121,9 @@ void TCleanupActor::DeallocateDisk(const TActorContext& ctx, ui64 index)
 
     auto request = std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
     request->Record.SetDiskId(id);
+    // DiskRegistry checks the stored owner and rejects external disks even if
+    // the caller omitted the cleanup filter.
+    request->Record.SetExternalVolumeTabletId(0);
 
     NCloud::Send(ctx, Owner, std::move(request), index);
 }
@@ -140,7 +144,7 @@ void TCleanupActor::HandleDescribeVolumeResponse(
     {
         DeallocateDisk(ctx, index);
     } else {
-        const auto& id = DiskIds[index];
+        const auto& id = Disks[index];
         LOG_DEBUG(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY_WORKER,
@@ -164,7 +168,7 @@ void TCleanupActor::HandleDeallocateDiskResponse(
 
     const auto* msg = ev->Get();
     const auto index = ev->Cookie;
-    const auto& id = DiskIds[index];
+    const auto& id = Disks[index];
 
     if (HasError(msg->GetError())) {
         LOG_ERROR(
@@ -228,6 +232,26 @@ void TDiskRegistryActor::HandleCleanupDisks(
 {
     BLOCKSTORE_DISK_REGISTRY_COUNTER(CleanupDisks);
 
+    TVector<TString> disks;
+    for (auto& diskId: State->GetDisksToCleanup()) {
+        const ui64 externalVolumeTabletId =
+            State->GetExternalVolumeTabletId(diskId);
+        // SchemeShard cannot confirm that an external volume was deleted.
+        // MarkForCleanup alone must never release its devices: the owner is
+        // responsible for retrying DeallocateDevices after deletion.
+        if (externalVolumeTabletId) {
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::DISK_REGISTRY,
+                "%s Skip external disk %s owned by tablet %lu",
+                LogTitle.GetWithTime().c_str(),
+                diskId.Quote().c_str(),
+                externalVolumeTabletId);
+            continue;
+        }
+        disks.push_back(std::move(diskId));
+    }
+
     auto actor = NCloud::Register<TCleanupActor>(
         ctx,
         SelfId(),
@@ -237,7 +261,7 @@ void TDiskRegistryActor::HandleCleanupDisks(
             ev->Cookie,
             ev->Get()->CallContext
         ),
-        State->GetDisksToCleanup());
+        std::move(disks));
 
     Actors.insert(actor);
 }

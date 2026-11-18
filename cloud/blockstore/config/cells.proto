@@ -12,7 +12,7 @@ enum ECellDataTransport
 {
     CELL_DATA_TRANSPORT_UNSET = 0;
     CELL_DATA_TRANSPORT_GRPC = 1;
-    CELL_DATA_TRANSPORT_NBD = 2;
+    CELL_DATA_TRANSPORT_ICV2 = 2;
     CELL_DATA_TRANSPORT_RDMA = 3;
 };
 
@@ -55,18 +55,18 @@ message TCellConfig
     // whose configured hosts are all down.
     optional uint32 MinCellConnections = 10;
 
-    // While the RDMA data endpoint is unavailable - either because it has not
-    // been set up yet or because the connection broke - serve data over gRPC.
+    // While the RDMA or IC V2 data endpoint is unavailable - either because
+    // it has not been set up yet or because the connection broke - serve data
+    // over gRPC.
     optional bool GrpcDataFallbackEnabled = 11;
 
-    // How long an RDMA connection that has dropped once has to stay up again
-    // before data is moved back onto it, in milliseconds.
-    optional uint32 RdmaSettleTime = 12;
+    // Use EndpointSettleTime. Honoured while EndpointSettleTime is unset.
+    optional uint32 RdmaSettleTime = 12 [deprecated = true];
 
-    // Watch the hosts of this cell over gRPC and move a connection off a host
-    // that stopped answering. Also moves it to the host where the volume
-    // tablet lives, when a mount reports one.
-    optional bool HostMigrationEnabled = 13;
+    // HostMigrationEnabled: the hosts are always watched over gRPC now, and a
+    // connection always moves off a host that stopped answering and onto the
+    // host where the volume tablet lives.
+    reserved 13;
 
     // How often every known host of the cell is pinged, in milliseconds.
     optional uint32 HostPingPeriod = 14;
@@ -74,6 +74,60 @@ message TCellConfig
     // How long a ping may take before the host counts as dead, in
     // milliseconds.
     optional uint32 HostPingTimeout = 15;
+
+    // 16 is taken by EdsHostPatterns in the EDS host discovery change.
+
+    // How long an RDMA or IC V2 connection that has dropped once has to stay
+    // up again before data is moved back onto it, in milliseconds.
+    optional uint32 EndpointSettleTime = 17;
+    // IC V2 port on the hosts listed above. Unset or zero means that the
+    // peer has no configured IC V2 endpoint. Independent of data Transport.
+    optional uint32 IcV2Port = 18;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// IC V2 listener and outgoing data connections.
+// Each peer selects its data transport independently.
+message TCellsIcV2Config
+{
+    optional bool Enabled = 1;
+
+    // Numeric IPv4 or IPv6 address. IPv6 listener accepts only IPv6 sockets.
+    optional string ListenAddress = 2;
+    // Must be set explicitly. Zero selects an ephemeral port.
+    optional uint32 Port = 3;
+    optional uint32 Threads = 4;
+    // For outgoing channels, also includes TCP connection attempts.
+    optional uint32 HandshakeTimeoutMs = 5;
+    optional bool ChecksumEvents = 6;
+
+    // Logical incoming connections, including completing callbacks. These
+    // share the admission limit with pending hellos; with XDC this shared
+    // limit is doubled. A completed auxiliary hello belongs to its main pair.
+    optional uint32 MaxConnections = 7;
+    // Per channel/data endpoint and for the data target; also bounds total
+    // outstanding diagnostic Ping calls. Includes
+    // queued results and running continuations.
+    optional uint32 MaxPendingRequests = 8;
+    // Shared output queue limit for all IC V2 connections in this NBS;
+    // also limits payload bytes held by diagnostic Ping calls.
+    optional uint64 MaxOutputQueueBytes = 9;
+    // Future continuations run here, separately from I/O and timer workers.
+    optional uint32 CompletionThreads = 10;
+    // Outgoing channels, including attempts and queued result continuations.
+    // Also bounds live/retiring data bindings, including queued results.
+    optional uint32 MaxOutgoingConnections = 11;
+    // Serialized request and read/write payload limit.
+    optional uint64 MaxDataRequestBytes = 12;
+    // Per outgoing data endpoint and for the shared incoming data target.
+    optional uint64 MaxDataInflightBytes = 13;
+    // Incoming storage invocation, decoding and replies.
+    optional uint32 DataWorkers = 14;
+
+    // Negotiate a separate data socket when both peers enable XDC.
+    // A peer with XDC disabled selects the ordinary single-socket channel.
+    optional bool EnableXdc = 15;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -98,4 +152,6 @@ message TCellsConfig
 
     // Enable/Disable feature
     optional bool CellsEnabled = 6;
+
+    optional TCellsIcV2Config IcV2 = 7;
 }

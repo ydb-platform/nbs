@@ -6,8 +6,8 @@ page-oriented protocol with a write-ahead journal.
 
 ## Interface
 
-The protocol is defined in `cloud/fastshard/protos/device.proto` and
-served over TCP by `cloud/fastshard/journal/server`.
+The protocol is defined in `cloud/fastshard/public/api/protos/device.proto` and
+served over TCP by `cloud/fastshard/libs/journal/server`.
 Each message is a `TDeviceProtocolRequest` / `TDeviceProtocolResponse` pair
 matched by `RequestId`. Six methods:
 

@@ -2,6 +2,10 @@
 
 #include "storage_group.h"
 
+#include <cloud/fastshard/libs/common/context.h>
+#include <cloud/fastshard/libs/common/error.h>
+#include <cloud/fastshard/libs/fiber/event.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <silk/fibers/fiber.h>
@@ -12,31 +16,9 @@
 #include <util/generic/vector.h>
 #include <util/stream/output.h>
 #include <util/string/builder.h>
-
-#include <type_traits>
+#include <util/system/datetime.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
-
-////////////////////////////////////////////////////////////////////////////////
-
-/**
- * Layout header for initialized groups. Pages 1-7 reserved for the future
- */
-struct TStorageGroupHeader
-{
-    static constexpr ui64 Magic = 0x4653545348415244; // FSTSHARD
-    static constexpr ui32 CurrentVersion = 1;
-    static constexpr ui32 StorageGroupReservedPages = 8;
-
-    ui64 MagicNumber = Magic;
-    ui32 Version:8 = CurrentVersion;
-    ui32 GroupType:24 = 0;
-    ui32 PageSize = 0;
-    ui64 DeviceUUIDHash = 0;
-};
-
-static_assert(sizeof(TStorageGroupHeader) == 24);
-static_assert(std::is_trivially_copyable_v<TStorageGroupHeader>);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -50,12 +32,12 @@ inline void FillHeaders(
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * Repeats the call until it succeeds, fails with a non-retriable error or the
- * total timeout is reached. All time arithmetic goes through the provided
- * timer. See TStorageGroupRetryPolicy.
-*/
+ * Repeats the call until it succeeds, fails with a non-retriable error, is
+ * cancelled or runs out of the policy's total timeout.
+ */
 template <typename TCall>
 auto CallWithRetries(
+    NCloud::NFastShard::TFastShardContext& ctx,
     const TStorageGroupRetryPolicy& policy,
     ITimer& timer,
     TCall call)
@@ -64,6 +46,12 @@ auto CallWithRetries(
     ui32 errorCount = 0;
 
     for (;;) {
+        if (ctx.Cancel.isSet()) {
+            decltype(call()) response;
+            *response.MutableError() = MakeError(E_REJECTED, "cancelled");
+            return response;
+        }
+
         auto response = call();
         const auto& error = response.GetError();
         if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
@@ -72,7 +60,8 @@ auto CallWithRetries(
 
         if (timer.Now() - start >= policy.TotalTimeout) {
             SILK_ERROR(
-                "sg retries timed out after %u errors: %s",
+                "sg req %lu: retries timed out after %u errors: %s",
+                ctx.RequestId,
                 errorCount + 1,
                 FormatError(error).c_str());
 
@@ -82,13 +71,27 @@ auto CallWithRetries(
         ++errorCount;
         const TDuration backoff = policy.BackoffIncrement * errorCount;
         SILK_DEBUG(
-            "sg retry #%u, backoff: %luus, error: %s",
+            "sg req %lu: retry #%u, backoff: %luus, error: %s",
+            ctx.RequestId,
             errorCount,
             backoff.MicroSeconds(),
             FormatError(error).c_str());
 
-        timer.Sleep(backoff);
+        const ui64 parked = GetCycleCount();
+        NCloud::NFastShard::WaitFor(ctx.Cancel, backoff);
+        ctx.BackoffCycles += GetCycleCount() - parked;
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+inline NProto::TError MakeSpawnError(int r)
+{
+    return MakeError(
+        E_FAIL,
+        TStringBuilder()
+            << "failed to spawn fiber: "
+            << NCloud::NFastShard::SystemErrorText(r));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -122,6 +125,7 @@ struct TAcquireDevicesParams
     NProto::TAcquireDevicesResponse* Response;
     const TStorageGroupRetryPolicy* RetryPolicy;
     ITimer* Timer;
+    NCloud::NFastShard::TFastShardContext* Context;
 };
 
 int AcquireDevicesFiberMain(TAcquireDevicesParams* params) noexcept;
@@ -133,6 +137,7 @@ struct TReleaseDevicesParams
     NProto::TReleaseDevicesResponse* Response;
     const TStorageGroupRetryPolicy* RetryPolicy;
     ITimer* Timer;
+    NCloud::NFastShard::TFastShardContext* Context;
 };
 
 int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept;
@@ -150,6 +155,7 @@ int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept;
  */
 template <typename TResponse, typename TRequest, typename TParams>
 NProto::TError MirrorRequest(
+    NCloud::NFastShard::TFastShardContext& ctx,
     const TStorageGroupConfig& config,
     const TVector<TStorageDevice>& devices,
     ITimer& timer,
@@ -175,16 +181,22 @@ NProto::TError MirrorRequest(
                 .Request = &request,
                 .Response = &(*responses)[i],
                 .RetryPolicy = &config.RetryPolicy,
-                .Timer = &timer},
+                .Timer = &timer,
+                .Context = &ctx},
             &futures[i]);
-        Y_ABORT_UNLESS(r == 0, "failed to spawn fiber: %s", ::strerror(r));
+        if (r) {
+            *(*responses)[i].MutableError() = MakeSpawnError(r);
+            futures[i].set(0);
+        }
     }
 
     NProto::TError error;
     for (ui32 i = 0; i < count; ++i) {
         const int r = futures[i].wait();
         if (r) {
-            SILK_ERROR("future error: %s", ::strerror(r));
+            SILK_ERROR(
+                "future error: %s",
+                NCloud::NFastShard::SystemErrorText(r).c_str());
             if (!HasError(error)) {
                 error = MakeError(MAKE_SYSTEM_ERROR(r));
             }

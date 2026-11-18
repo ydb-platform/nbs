@@ -7,14 +7,17 @@ SRCS(
     factory.cpp
     find_bytes_access.cpp
     mask.cpp
+    time_range.cpp
 )
 
 PEERDIR(
     cloud/filestore/libs/diagnostics/events
     cloud/filestore/tools/analytics/libs/event-log
+    cloud/storage/core/libs/systemd_time
 
     library/cpp/eventlog/dumper
     library/cpp/getopt
+    library/cpp/json
 )
 
 END()

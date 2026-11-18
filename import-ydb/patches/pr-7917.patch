@@ -1,0 +1,18 @@
+diff --git a/contrib/ydb/library/actors/interconnect/interconnect_handshake.cpp b/contrib/ydb/library/actors/interconnect/interconnect_handshake.cpp
+index 3c6dfc36a6..0809adb0a9 100644
+--- a/contrib/ydb/library/actors/interconnect/interconnect_handshake.cpp
++++ b/contrib/ydb/library/actors/interconnect/interconnect_handshake.cpp
+@@ -26,7 +26,13 @@
+ #include <variant>
+ 
+ namespace NActors {
++#if defined(_arm_)
++    // Increase StackSize to 128kb to avoid stack overflow on ARM due to older
++    // glibc implementations(< 1.38) allocate a page-sized buffer using alloca
++    static constexpr ui32 StackSize = 128 * 1024;
++#else
+     static constexpr ui32 StackSize = 64 * 1024; // 64k should be enough
++#endif
+ 
+     static constexpr size_t RdmaHandshakeRegionSize = 4096;
+     static constexpr ui32 RdmaSendReceiveVersion = 1;

@@ -299,6 +299,7 @@ NProto::TMountVolumeResponse TCommand::MountVolume(
     }
     sessionConfig.ClientVersionInfo = GetFullVersionString();
     sessionConfig.AccessMode = accessMode;
+    sessionConfig.InstanceId = ClientConfig->GetInstanceId();
 
     auto future = EncryptionClientFactory->CreateEncryptionClient(
         ClientEndpoint,
@@ -639,6 +640,10 @@ void TCommand::InitClientConfig()
     if (!clientConfig.GetClientId()) {
         clientConfig.SetClientId(
             TStringBuilder() << "cli-" << CreateGuidAsString());
+    }
+
+    if (!clientConfig.GetInstanceId()) {
+        clientConfig.SetInstanceId("blockstore-client");
     }
 
     // This retry mode is not expected in blockstore-client

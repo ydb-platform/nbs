@@ -4,4 +4,6 @@ repos:
     hooks:
     -   id: check-yaml
     -   id: end-of-file-fixer
+        exclude: (^|/)canondata/
     -   id: trailing-whitespace
+        exclude: ^import-ydb/patches/.*\.patch$

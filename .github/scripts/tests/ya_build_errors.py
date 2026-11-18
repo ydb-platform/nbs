@@ -14,7 +14,7 @@ from xml.etree import ElementTree as ET
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-YA_MARKUP_RE = re.compile(r"\[\[(?:imp|rst|bad|good|warn|unimp)\]\]")
+YA_MARKUP_RE = re.compile(r"\[\[(?:imp|rst|bad|good|warn|unimp|alt1)\]\]")
 LOG_RECORD_RE = re.compile(r"^\d{4}-\d{2}-\d{2} .* \([^)]+\) \[[^]]+\] ")
 RESOURCE_FETCH_RE = re.compile(r"Unable to fetch resource (?P<resource>\S+)")
 UNRESOLVED_PATTERNS_RE = re.compile(r"unresolved patterns:\s*(?P<patterns>\S.*)$")

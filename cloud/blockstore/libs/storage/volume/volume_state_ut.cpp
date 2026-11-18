@@ -2163,6 +2163,124 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT_EQUAL(deviceUUIDSExpected, devicesUUIDSActual);
     }
 
+    Y_UNIT_TEST(ShouldKeepPendingLeadershipTransferAfterResetMeta)
+    {
+        auto state = CreateVolumeState();
+        const TLeaderFollowerLink link{
+            .LinkUUID = "link",
+            .LeaderDiskId = "source",
+            .LeaderCellId = "cell",
+            .FollowerDiskId = "target",
+            .FollowerCellId = "cell"};
+        auto meta = state.GetMeta();
+        meta.MutableVolumeConfig()->SetTagsStr("source-disk-id=source");
+        state.ResetMeta(meta);
+        state.AddOrUpdateLeader(
+            TLeaderDiskInfo{
+                .Link = link,
+                .State = TLeaderDiskInfo::EState::Leader});
+        state.StartSourceDiskIdTagRemoval();
+        const auto request = MakeIntrusive<TRequestInfo>();
+        UNIT_ASSERT(state.TryAddPendingLeadershipTransferRequest(request, link));
+
+        meta.MutableVolumeConfig()->ClearTagsStr();
+        state.ResetMeta(meta);
+
+        UNIT_ASSERT(state.FindLeader(link));
+        UNIT_ASSERT(state.IsSourceDiskIdTagRemovalInProgress());
+        UNIT_ASSERT(!state.IsLeaderLinkBeingRemoved(link));
+        const auto pending = state.TakePendingLeadershipTransfer();
+        UNIT_ASSERT(pending);
+        UNIT_ASSERT(pending->Link.Match(link));
+        UNIT_ASSERT(pending->Request == request);
+    }
+
+    Y_UNIT_TEST(ShouldKeepPendingLinkRemovalAfterResetMeta)
+    {
+        auto state = CreateVolumeState();
+        const TLeaderFollowerLink link{
+            .LinkUUID = "link",
+            .LeaderDiskId = "source",
+            .LeaderCellId = "cell",
+            .FollowerDiskId = "target",
+            .FollowerCellId = "cell"};
+        state.AddOrUpdateLeader(
+            TLeaderDiskInfo{
+                .Link = link,
+                .State = TLeaderDiskInfo::EState::Following});
+        state.StartRemovingLeaderLink(link);
+
+        auto meta = state.GetMeta();
+        meta.MutableVolumeConfig()->SetVersion(
+            meta.GetVolumeConfig().GetVersion() + 1);
+        state.ResetMeta(meta);
+
+        const auto leader = state.FindLeader(link);
+        UNIT_ASSERT(leader);
+        UNIT_ASSERT_EQUAL(TLeaderDiskInfo::EState::Following, leader->State);
+        UNIT_ASSERT(state.IsLeaderLinkBeingRemoved(link));
+        UNIT_ASSERT(!state.IsSourceDiskIdTagRemovalInProgress());
+        UNIT_ASSERT(!state.TakePendingLeadershipTransfer());
+    }
+
+    Y_UNIT_TEST(ShouldKeepOnlyOnePendingLeadershipTransferRequest)
+    {
+        auto state = CreateVolumeState();
+        const TLeaderFollowerLink link{
+            .LinkUUID = "first-link",
+            .LeaderDiskId = "source",
+            .LeaderCellId = "cell",
+            .FollowerDiskId = "target",
+            .FollowerCellId = "cell"};
+        const auto first = MakeIntrusive<TRequestInfo>();
+        const auto repeated = MakeIntrusive<TRequestInfo>();
+        UNIT_ASSERT(state.TryAddPendingLeadershipTransferRequest(first, link));
+        UNIT_ASSERT(
+            !state.TryAddPendingLeadershipTransferRequest(repeated, link));
+        auto nextLink = link;
+        nextLink.LinkUUID = "next-link";
+        UNIT_ASSERT(
+            !state.TryAddPendingLeadershipTransferRequest(repeated, nextLink));
+        UNIT_ASSERT_VALUES_EQUAL(1, repeated->RefCount());
+
+        const auto pending = state.TakePendingLeadershipTransfer();
+        UNIT_ASSERT(pending);
+        UNIT_ASSERT(pending->Link.Match(link));
+        UNIT_ASSERT(pending->Request == first);
+        UNIT_ASSERT(!state.TakePendingLeadershipTransfer());
+
+        UNIT_ASSERT(
+            state.TryAddPendingLeadershipTransferRequest(repeated, nextLink));
+        UNIT_ASSERT(pending->Request == first);
+        const auto next = state.TakePendingLeadershipTransfer();
+        UNIT_ASSERT(next);
+        UNIT_ASSERT(next->Link.Match(nextLink));
+        UNIT_ASSERT(next->Request == repeated);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreCompletionOfPreviousLinkRemoval)
+    {
+        auto state = CreateVolumeState();
+        const TLeaderFollowerLink firstLink{
+            .LinkUUID = "first-link",
+            .LeaderDiskId = "source",
+            .LeaderCellId = "cell",
+            .FollowerDiskId = "target",
+            .FollowerCellId = "cell"};
+        state.StartRemovingLeaderLink(firstLink);
+        state.FinishRemovingLeaderLink(firstLink);
+
+        auto nextLink = firstLink;
+        nextLink.LinkUUID = "next-link";
+        state.StartRemovingLeaderLink(nextLink);
+        state.StartRemovingLeaderLink(nextLink);
+        state.FinishRemovingLeaderLink(firstLink);
+        UNIT_ASSERT(state.IsLeaderLinkBeingRemoved(nextLink));
+
+        state.FinishRemovingLeaderLink(nextLink);
+        UNIT_ASSERT(!state.IsLeaderLinkBeingRemoved(nextLink));
+    }
+
     Y_UNIT_TEST(FollowerDisks)
     {
         auto volumeState = CreateVolumeState();
@@ -2607,14 +2725,27 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
     Y_UNIT_TEST(ShouldRestrictOperationsWhileLeaderLinkCreationIsPending)
     {
         auto volumeState = CreateVolumeState();
+        const TLeaderFollowerLink link{
+            .LinkUUID = "link",
+            .LeaderDiskId = "source",
+            .FollowerDiskId = "target"};
 
         UNIT_ASSERT(!volumeState.IsVolumeOperationRestricted());
 
-        volumeState.StartCreateLeaderRequest();
+        volumeState.StartCreateLeaderRequest(link);
+        auto meta = volumeState.GetMeta();
+        volumeState.ResetMeta(meta);
         UNIT_ASSERT(volumeState.IsVolumeOperationRestricted());
+        const auto creatingLink = volumeState.FindCreatingLeaderLink(link);
+        UNIT_ASSERT(creatingLink);
+        UNIT_ASSERT(creatingLink->Match(link));
+        auto anotherLink = link;
+        anotherLink.LinkUUID = "another-link";
+        UNIT_ASSERT(!volumeState.FindCreatingLeaderLink(anotherLink));
 
         volumeState.FinishCreateLeaderRequest();
         UNIT_ASSERT(!volumeState.IsVolumeOperationRestricted());
+        UNIT_ASSERT(!volumeState.FindCreatingLeaderLink(link));
     }
 
     Y_UNIT_TEST(ShouldRestrictOperationsUntilCheckpointDataIsDeleted)

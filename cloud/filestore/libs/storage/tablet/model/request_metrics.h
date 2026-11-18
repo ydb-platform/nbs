@@ -28,7 +28,9 @@ struct TTabletRequestMetrics
     ui64 AverageRequestSize() const;
     TDuration AverageLatency() const;
 
-private:
+    ui64 AveragePerRequest(
+        const std::atomic<i64>& counter,
+        ui64 prevCounter) const;
     double Rate(
         TInstant now,
         const std::atomic<i64>& counter,

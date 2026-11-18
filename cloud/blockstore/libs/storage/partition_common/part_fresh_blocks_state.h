@@ -12,6 +12,7 @@
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
 
+#include <util/datetime/base.h>
 #include <util/generic/set.h>
 #include <util/system/types.h>
 
@@ -124,17 +125,48 @@ public:
     }
 };
 
+struct TTrimFreshBlobsResult
+{
+    ui64 UnflushedBytesRemoved = 0;
+};
+
+struct TFlushFreshBlobResult
+{
+    ui64 UnflushedBytesRemoved = 0;
+};
+
 class TPartitionFreshBlobState
 {
 private:
+    struct TUntrimmedFreshBlob
+    {
+        ui64 ByteCount = 0;
+        bool Dead = false;
+    };
+
+    struct TUnflushedFreshBlob
+    {
+        ui64 ByteCount = 0;
+        TInstant Timestamp;
+    };
+
     ui64 TabletID = 0;
 
     ui64 UntrimmedFreshBlobByteCount = 0;
-    TMap<ui64, ui64> UntrimmedFreshBlobByteCountByCommitId;
+
+    using TUntrimmedFreshBlobsByCommitId = TMap<ui64, TUntrimmedFreshBlob>;
+    TUntrimmedFreshBlobsByCommitId UntrimmedFreshBlobsByCommitId;
+    ui64 TrimmedToCommitId = 0;
+
+    ui64 DeadUntrimmedFreshBlobByteCount = 0;
+    ui64 TrimmableByOrdinaryToCommitId = 0;
+    ui64 OrdinaryTrimmableFreshBlobByteCount = 0;
 
     ui32 UnflushedFreshBlobCount = 0;
     ui64 UnflushedFreshBlobByteCount = 0;
-    TMap<ui64, ui64> UnflushedFreshBlobByteCountByCommitId;
+
+    using TUnflushedFreshBlobsByCommitId = TMap<ui64, TUnflushedFreshBlob>;
+    TUnflushedFreshBlobsByCommitId UnflushedFreshBlobsByCommitId;
 
 public:
     explicit TPartitionFreshBlobState(ui64 tabletID)
@@ -144,6 +176,11 @@ public:
     [[nodiscard]] ui64 GetUntrimmedFreshBlobByteCount() const
     {
         return UntrimmedFreshBlobByteCount;
+    }
+
+    [[nodiscard]] ui64 GetDeadUntrimmedFreshBlobByteCount() const
+    {
+        return DeadUntrimmedFreshBlobByteCount;
     }
 
     [[nodiscard]] ui64 GetUnflushedFreshBlobCount() const
@@ -159,9 +196,36 @@ public:
     [[nodiscard]] TVector<ui64> GetUnflushedFreshBlobCommitIds(
         ui64 commitId) const;
 
-    void AddFreshBlob(ui64 commitId, ui64 blobSize);
-    void TrimFreshBlobs(ui64 commitId);
-    ui64 FlushFreshBlob(ui64 commitId);
+    // Returns the timestamp of the first unflushed blob after the trim
+    // boundary.
+    [[nodiscard]] TInstant GetFirstUnflushedFreshBlobTimestamp(
+        ui64 trimFreshLogToCommitId) const;
+
+    void AddFreshBlob(ui64 commitId, ui64 blobSize, TInstant timestamp);
+
+    // Called when the blob's last trim barrier reference is released.
+    void MarkFreshBlobDead(ui64 commitId);
+
+    // Moves the ordinary trim boundary up to ordinaryTrimToCommitId, which must
+    // not decrease between calls. Returns the bytes of every untrimmed blob at
+    // or below it without reading their Dead flags: the caller keeps the
+    // boundary below every trim barrier, so all of these blobs are dead.
+    [[nodiscard]] ui64 GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(
+        ui64 ordinaryTrimToCommitId);
+
+    // Debug check of the dead byte counts. liveCommitIds: all referenced
+    // commits, ascending.
+    [[nodiscard]] bool CheckDeadFreshBlobByteCount(
+        const TVector<ui64>& liveCommitIds) const;
+
+    [[nodiscard]] TTrimFreshBlobsResult TrimFreshBlobs(ui64 commitId);
+
+    [[nodiscard]] TFlushFreshBlobResult FlushFreshBlob(ui64 commitId);
+
+private:
+    void EraseUntrimmedFreshBlob(TUntrimmedFreshBlobsByCommitId::iterator it);
+
+    ui64 EraseUnflushedFreshBlob(TUnflushedFreshBlobsByCommitId::iterator it);
 };
 
 class TPartitionTrimFreshLogState
@@ -173,6 +237,8 @@ private:
         TDuration::Zero(),
         TDuration::MilliSeconds(100),
         TDuration::Seconds(5)};
+
+    bool OrdinaryTrimRequested = false;
 
 public:
     [[nodiscard]] TOperationState& AccessTrimFreshLogState()
@@ -209,6 +275,16 @@ public:
     {
         LastTrimFreshLogToCommitId = commitId;
     }
+
+    [[nodiscard]] bool IsOrdinaryTrimRequested() const
+    {
+        return OrdinaryTrimRequested;
+    }
+
+    void SetOrdinaryTrimRequested(bool requested)
+    {
+        OrdinaryTrimRequested = requested;
+    }
 };
 
 class TPartitionFreshBlocksState
@@ -241,12 +317,14 @@ public:
         ui64 commitId,
         TSgList sglist,
         TPartialBlobId blobId,
-        ui64& removedBlocksCount);
+        ui64& removedBlocksCount,
+        TVector<ui64>& deadCommitIds);
 
     void ZeroFreshBlocks(
         const TBlockRange32& zeroRange,
         ui64 commitId,
-        ui64& removedBlocksCount);
+        ui64& removedBlocksCount,
+        TVector<ui64>& deadCommitIds);
 
     void DeleteFreshBlock(ui32 blockIndex, ui64 commitId);
 
@@ -264,7 +342,8 @@ private:
         ui64 commitId,
         auto getBlockContent,
         TPartialBlobId blobId,
-        ui64& removedBlocksCount);
+        ui64& removedBlocksCount,
+        TVector<ui64>& deadCommitIds);
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

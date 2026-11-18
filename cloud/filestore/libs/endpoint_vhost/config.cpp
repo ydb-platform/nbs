@@ -30,10 +30,10 @@ static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
     xxx(EndpointStorageNotImplementedErrorIsFatal,  bool,   false             )\
                                                                                \
     xxx(HandleOpsQueuePath,                         TString,    ""            )\
-    xxx(HandleOpsQueueSize,                         ui32,       1_GB          )\
+    xxx(HandleOpsQueueSize,                         ui32,       100_MB        )\
     xxx(HandleOpsQueueTotalSizeLimit,               ui64,       0             )\
     xxx(WriteBackCachePath,                         TString,    ""            )\
-    xxx(WriteBackCacheCapacity,                     ui64,       256_MB        )\
+    xxx(WriteBackCacheMinStateFileSize,             ui64,       16_MB         )\
     xxx(WriteBackCacheTotalSizeLimit,               ui64,       10_GB         )\
     xxx(WriteBackCacheAutomaticFlushPeriod,                                    \
         TDuration,                                                             \
@@ -44,7 +44,10 @@ static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
     xxx(WriteBackCacheFlushMaxWriteRequestSize,     ui32,       1_MB          )\
     xxx(WriteBackCacheFlushMaxWriteRequestsCount,   ui32,       64            )\
     xxx(WriteBackCacheFlushMaxSumWriteRequestsSize, ui32,       32_MB         )\
-    xxx(WriteBackCacheMaxQueuedFlushBatchesPerNode, ui32,       1000          )\
+    xxx(WriteBackCacheMaxQueuedFlushBatchesPerNode, ui32,       8             )\
+    xxx(WriteBackCacheLockMethod,                                              \
+        NProto::EWriteBackCacheLockMethod,                                     \
+        NProto::WBC_LOCK_ADAPTIVE                                             )\
     xxx(DirectoryHandlesStoragePath,                TString,    ""            )\
     xxx(DirectoryHandlesInitialDataSize,            ui64,       16_MB         )\
     xxx(PermanentActorCount,                        ui32,       0             )\
@@ -149,6 +152,14 @@ void DumpImpl(
                 << ")";
             break;
     }
+}
+
+template <>
+void DumpImpl(
+    const NProto::EWriteBackCacheLockMethod& value,
+    IOutputStream& os)
+{
+    os << NProto::EWriteBackCacheLockMethod_Name(value);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

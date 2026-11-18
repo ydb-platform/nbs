@@ -14,6 +14,7 @@
 
 #include <contrib/ydb/library/actors/protos/actors.pb.h>
 
+#include <util/generic/overloaded.h>
 #include <util/generic/xrange.h>
 #include <util/stream/str.h>
 #include <util/string/join.h>
@@ -768,6 +769,7 @@ void DumpSessions(
                     TABLEH() { out << "OwnerGeneration"; }
                     TABLEH() { out << "Owner"; }
                     TABLEH() { out << "Deadline"; }
+                    TABLEH() { out << "GuestPosixAclEnabled"; }
                 }
             }
             for (const auto& session: sessions) {
@@ -791,6 +793,12 @@ void DumpSessions(
                         TABLED() { out << ss.OwnerGeneration; }
                         TABLED() { out << ToString(ss.Owner); }
                         TABLED() { out << session.InactivityDeadline.ToString(); }
+                        TABLED() {
+                            out << (session.ProtoInfo.GetPersistentOptions()
+                                            .GetGuestPosixAclEnabled()
+                                        ? "True"
+                                        : "False");
+                        }
                     }
                 };
                 if (session.SubSessions.empty()) {

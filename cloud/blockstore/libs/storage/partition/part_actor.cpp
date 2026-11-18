@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_base_disk_keep_alive.h>
+#include <cloud/blockstore/libs/storage/partition_common/blob_compressor.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/format.h>
@@ -18,8 +19,6 @@
 #include <contrib/ydb/core/mind/local.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 #include <contrib/ydb/core/tablet/tablet_counters_aggregator.h>
-
-#include <library/cpp/blockcodecs/codecs.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -86,7 +85,6 @@ TPartitionActor::TPartitionActor(
     , SiblingCount(siblingCount)
     , VolumeActorId(volumeActorId)
     , ChannelHistorySize(CalcChannelHistorySize())
-    , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
     , VolumeTabletId(volumeTabletId)
     , LogTitle(
           StartTime,
@@ -100,6 +98,23 @@ TPartitionActor::TPartitionActor(
     SharedState = std::make_shared<TPartitionThreadSafeState>(
         PartitionConfig.GetDiskId(),
         TabletID());
+    const auto codec =
+        ParseBlobCompressionCodec(Config->GetBlobCompressionCodec());
+    // An unsupported codec disables compression estimation.
+    if (HasError(codec.GetError())) {
+        ReportInvalidBlobCompressionCodec(
+            FormatError(codec.GetError()),
+            {{"disk", PartitionConfig.GetDiskId()}});
+    }
+
+    BlobCompressor = std::make_shared<TBlobCompressor>(
+        HasError(codec.GetError())
+            ? NProto::TCompressionMetadata::COMPRESSION_NONE
+            : codec.GetResult(),
+        TBlobCompressor::TMetricsConfig{
+            .CompressionRate = Config->GetBlobCompressionRate(),
+            .ChunkSizes = DiagnosticsConfig->GetBlobCompressionChunkSizes(),
+            .PartCounters = SharedState->GetPartCounters()});
 }
 
 TPartitionActor::~TPartitionActor()
@@ -222,10 +237,10 @@ void TPartitionActor::RegisterCounters(const TActorContext& ctx)
     if (!PartCounters) {
         PartCounters = CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
-            DiagnosticsConfig->GetHistogramCounterOptions());
+            *DiagnosticsConfig);
         SharedState->PartCounters.Swap(CreatePartitionDiskCounters(
             EPublishingPolicy::Repl,
-            DiagnosticsConfig->GetHistogramCounterOptions()));
+            *DiagnosticsConfig));
     }
 }
 
@@ -718,6 +733,10 @@ void TPartitionActor::HandleUpdateCounters(
 
     UpdateCounters(ctx);
     ScheduleCountersUpdate(ctx);
+
+    if (CurrentState == STATE_WORK && GetFreshBlobAgeFlushThreshold()) {
+        EnqueueFlushIfNeeded(ctx);
+    }
 }
 
 void TPartitionActor::HandleUpdateYellowState(
@@ -1038,6 +1057,20 @@ TDuration TPartitionActor::GetBlobStorageAsyncRequestTimeout() const
     return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
                ? Config->GetBlobStorageAsyncRequestTimeoutSSD()
                : Config->GetBlobStorageAsyncRequestTimeoutHDD();
+}
+
+TDuration TPartitionActor::GetFreshBlobAgeFlushThreshold() const
+{
+    return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+               ? Config->GetFreshBlobAgeFlushThresholdSSD()
+               : Config->GetFreshBlobAgeFlushThresholdHDD();
+}
+
+ui32 TPartitionActor::GetFreshDeadBlobByteCountTrimThreshold() const
+{
+    return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+               ? Config->GetFreshDeadBlobByteCountTrimThresholdSSD()
+               : Config->GetFreshDeadBlobByteCountTrimThresholdHDD();
 }
 
 void TPartitionActor::CreateFreshBlocksCompanionClient()

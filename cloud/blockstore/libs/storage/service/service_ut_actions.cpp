@@ -11,9 +11,12 @@
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/blockstore/private/api/protos/checkpoints.pb.h>
 #include <cloud/blockstore/private/api/protos/disk.pb.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
+
+#include <cloud/storage/core/libs/common/media.h>
 
 #include <library/cpp/json/json_writer.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -148,6 +151,12 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         service.CreateVolume();
 
         {
+            service.SendExecuteActionRequest("ModifyTags", "{");
+            auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        }
+
+        {
             // Incorrect ConfigVersion.
             NPrivateProto::TModifyTagsRequest request;
             request.SetDiskId(DefaultDiskId);
@@ -252,7 +261,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         {
             NPrivateProto::TModifyTagsRequest request;
             request.SetDiskId(DefaultDiskId);
-            *request.AddTagsToAdd() = "source-disk-id=disk-id";
+            *request.AddTagsToAdd() = MakeTag("source-disk-id", "disk@id");
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -271,13 +280,15 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                 &pathDescr
             ).ok());
             const auto& config = pathDescr.GetVolumeConfig();
-            UNIT_ASSERT_VALUES_EQUAL("source-disk-id=disk-id", config.GetTagsStr());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "source-disk-id=disk@id",
+                config.GetTagsStr());
         }
 
         {
             NPrivateProto::TModifyTagsRequest request;
             request.SetDiskId(DefaultDiskId);
-            *request.AddTagsToRemove() = "source-disk-id=disk-id";
+            *request.AddTagsToRemove() = MakeTag("source-disk-id", "disk@id");
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);
@@ -299,13 +310,17 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             UNIT_ASSERT_VALUES_EQUAL("", config.GetTagsStr());
         }
 
-        // Test AddTagsRequest
+        // Test AddTagsRequest and RemoveTagsRequest.
         {
             service.SendAddTagsRequest(
                 DefaultDiskId,
-                TVector{TString("tag")});
+                TVector{TString("keep"), MakeTag("source-disk-id", "disk@id")});
             auto response = service.RecvAddTagsResponse();
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            service.RemoveTags(
+                DefaultDiskId,
+                TVector{MakeTag("source-disk-id", "disk@id")});
+            service.AddTags(DefaultDiskId, TVector{TString("tag")});
         }
 
         {
@@ -320,7 +335,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
                 &pathDescr
             ).ok());
             const auto& config = pathDescr.GetVolumeConfig();
-            UNIT_ASSERT_VALUES_EQUAL("tag", config.GetTagsStr());
+            UNIT_ASSERT_VALUES_EQUAL("keep,tag", config.GetTagsStr());
         }
 
         service.DestroyVolume();
@@ -454,6 +469,29 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         service.ExecuteAction("diskregistrysetwritablestate", buf);
 
         UNIT_ASSERT(drState->WritableState);
+    }
+
+    Y_UNIT_TEST(ShouldForwardSuspendSecureEraseRequestsToDiskRegistry)
+    {
+        auto drState = MakeIntrusive<TDiskRegistryState>();
+        TTestEnv env(1, 1, 4, 1, {drState});
+
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        UNIT_ASSERT(!drState->SuspendSecureErase);
+
+        NProto::TSetSuspendSecureEraseRequest request;
+        request.SetSuspend(true);
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+
+        service.ExecuteAction("diskregistrysuspendsecureerase", buf);
+
+        UNIT_ASSERT(drState->SuspendSecureErase);
     }
 
     Y_UNIT_TEST(ShouldForwardBackupRequestsToDiskRegistry)
@@ -1006,6 +1044,93 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         const auto response = service.ExecuteAction("creatediskfromdevices", buf);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldCreateDiskFromDevicesWithStorageMediaKind)
+    {
+        auto drState = MakeIntrusive<TDiskRegistryState>();
+        TTestEnv env(1, 1, 4, 1, {drState});
+
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(100);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        struct TTestCase
+        {
+            NCloud::NProto::EStorageMediaKind Requested;
+            NCloud::NProto::EStorageMediaKind Expected;
+        };
+
+        const TVector<TTestCase> testCases = {
+            {NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+             NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL},
+            {NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED},
+            {NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+             NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED},
+            {NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL,
+             NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL},
+            {NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL,
+             NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL},
+        };
+
+        for (size_t i = 0; i != testCases.size(); ++i) {
+            const auto& testCase = testCases[i];
+            const TString diskId = Sprintf("Disk-%zu", i + 1);
+
+            NProto::TCreateVolumeFromDevicesRequest request;
+            request.SetDiskId(diskId);
+            request.SetBlockSize(DefaultBlockSize);
+            request.SetStorageMediaKind(testCase.Requested);
+            request.MutableDeviceUUIDs()->Add(Sprintf("uuid%zu", i + 1));
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+
+            service.ExecuteAction("creatediskfromdevices", buf);
+
+            const auto response = service.DescribeVolume(diskId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                static_cast<int>(testCase.Expected),
+                static_cast<int>(
+                    response->Record.GetVolume().GetStorageMediaKind()),
+                diskId);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectUnsupportedMediaKindsForDiskFromDevices)
+    {
+        auto drState = MakeIntrusive<TDiskRegistryState>();
+        TTestEnv env(1, 1, 4, 1, {drState});
+
+        ui32 nodeIdx = SetupTestEnv(env);
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        for (auto mediaKind:
+             {NCloud::NProto::STORAGE_MEDIA_SSD,
+              NCloud::NProto::STORAGE_MEDIA_HYBRID,
+              NCloud::NProto::STORAGE_MEDIA_HDD,
+              NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP})
+        {
+            NProto::TCreateVolumeFromDevicesRequest request;
+            request.SetDiskId("Disk-1");
+            request.SetBlockSize(DefaultBlockSize);
+            request.SetStorageMediaKind(mediaKind);
+            request.MutableDeviceUUIDs()->Add("uuid1");
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+
+            service.SendExecuteActionRequest("creatediskfromdevices", buf);
+            const auto response = service.RecvExecuteActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                MediaKindToString(mediaKind));
+        }
+
+        UNIT_ASSERT(drState->Disks.empty());
     }
 
     Y_UNIT_TEST(ShouldChangeDiskDevice)
@@ -2309,7 +2434,7 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         {
             NPrivateProto::TModifyTagsRequest request;
             request.SetDiskId(DefaultDiskId);
-            *request.AddTagsToAdd() = "source-disk-id=some-disk";
+            *request.AddTagsToAdd() = MakeTag("source-disk-id", "some-disk");
 
             TString buf;
             google::protobuf::util::MessageToJsonString(request, &buf);

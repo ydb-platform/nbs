@@ -52,11 +52,12 @@ public:
             ITimerPtr timer,
             ISchedulerPtr scheduler,
             TString clientVersionInfo,
-            ui64 mountSeqNumber)
+            ui64 mountSeqNumber,
+            NProto::TClientAppConfig config)
         : Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Logging(CreateLoggingService("console"))
-        , Config(std::make_shared<TClientAppConfig>())
+        , Config(std::make_shared<TClientAppConfig>(std::move(config)))
         , Client(std::move(client))
         , Session(CreateSession(
             Timer,
@@ -141,7 +142,8 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
     std::shared_ptr<TTestService> client,
     ISchedulerPtr scheduler = {},
     TString clientVersionInfo = {},
-    ui64 mountSeqNumber = 0)
+    ui64 mountSeqNumber = 0,
+    NProto::TClientAppConfig config = {})
 {
     if (!scheduler) {
         scheduler = CreateScheduler();
@@ -152,7 +154,8 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
         CreateWallClockTimer(),
         std::move(scheduler),
         std::move(clientVersionInfo),
-        mountSeqNumber);
+        mountSeqNumber,
+        std::move(config));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -570,6 +573,141 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         }
 
         bootstrap->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldWaitForPendingRemountAfterInvalidSession)
+    {
+        for (bool failRemount: {false, true}) {
+            auto client = std::make_shared<TTestService>();
+            auto scheduler = std::make_shared<TTestScheduler>();
+
+            NProto::TClientAppConfig config;
+            config.MutableClientConfig()->SetEnableNonBlockingRemount(true);
+            auto bootstrap =
+                CreateBootstrap(client, scheduler, {}, 0, std::move(config));
+            auto* session = bootstrap->GetSession();
+
+            NProto::TMountVolumeResponse mountResponse;
+            mountResponse.SetSessionId("session-id");
+            mountResponse.SetInactiveClientsTimeout(
+                TDuration::MilliSeconds(100).MilliSeconds());
+
+            auto& volume = *mountResponse.MutableVolume();
+            volume.SetDiskId(DefaultDiskId);
+            volume.SetBlockSize(DefaultBlockSize);
+            volume.SetBlocksCount(DefaultBlocksCount);
+
+            ui32 mountRequests = 0;
+            auto remountResponse = NewPromise<NProto::TMountVolumeResponse>();
+            client->MountVolumeHandler =
+                [&](std::shared_ptr<NProto::TMountVolumeRequest>)
+                {
+                    // Keep only the first periodic remount pending.
+                    if (++mountRequests == 2) {
+                        return remountResponse.GetFuture();
+                    }
+                    return MakeFuture(mountResponse);
+                };
+
+            ui32 writeRequests = 0;
+            auto firstWriteResponse =
+                NewPromise<NProto::TWriteBlocksLocalResponse>();
+            client->WriteBlocksLocalHandler =
+                [&](std::shared_ptr<NProto::TWriteBlocksLocalRequest>)
+                {
+                    if (++writeRequests == 1) {
+                        return firstWriteResponse.GetFuture();
+                    }
+                    // A premature retry must fail the assertions below,
+                    // rather than cause an infinite synchronous retry loop.
+                    return MakeFuture<NProto::TWriteBlocksLocalResponse>();
+                };
+
+            TVector<TString> blocks;
+            const auto sglist =
+                ResizeBlocks(blocks, 1, TString(DefaultBlockSize, 'x'));
+            auto writeBlocks = [&]
+            {
+                auto request =
+                    std::make_shared<NProto::TWriteBlocksLocalRequest>();
+                request->BlocksCount = 1;
+                request->SetBlockSize(DefaultBlockSize);
+                request->Sglist = TGuardedSgList(sglist);
+                return session->WriteBlocksLocal(
+                    MakeIntrusive<TCallContext>(),
+                    std::move(request));
+            };
+
+            bootstrap->Start();
+            UNIT_ASSERT(!HasError(session->MountVolume().GetValueSync()));
+            UNIT_ASSERT_VALUES_EQUAL(mountRequests, 1);
+
+            scheduler->RunAllScheduledTasks();
+            UNIT_ASSERT_VALUES_EQUAL(mountRequests, 2);
+
+            // A planned remount initially allows I/O using the old session.
+            auto write = writeBlocks();
+            UNIT_ASSERT_VALUES_EQUAL(writeRequests, 1);
+            UNIT_ASSERT(!write.HasValue());
+            firstWriteResponse.SetValue(TErrorResponse(
+                E_BS_INVALID_SESSION,
+                "Invalid session (State=INITIAL)"));
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                writeRequests,
+                1,
+                "I/O was retried before the pending remount completed");
+            UNIT_ASSERT(!write.HasValue());
+            UNIT_ASSERT_VALUES_EQUAL(mountRequests, 2);
+
+            // New I/O must wait for the same remount as the rejected request.
+            auto nextWrite = writeBlocks();
+            UNIT_ASSERT_VALUES_EQUAL(writeRequests, 1);
+            UNIT_ASSERT(!nextWrite.HasValue());
+            UNIT_ASSERT_VALUES_EQUAL(mountRequests, 2);
+
+            if (failRemount) {
+                remountResponse.SetValue(
+                    TErrorResponse(E_FAIL, "Remount failed"));
+            } else {
+                remountResponse.SetValue(mountResponse);
+            }
+
+            UNIT_ASSERT(write.HasValue());
+            UNIT_ASSERT(nextWrite.HasValue());
+            UNIT_ASSERT_VALUES_EQUAL(mountRequests, 2);
+            if (failRemount) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    write.GetValue().GetError().GetCode(),
+                    E_FAIL);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    nextWrite.GetValue().GetError().GetCode(),
+                    E_FAIL);
+                UNIT_ASSERT_VALUES_EQUAL(writeRequests, 1);
+
+                // A failed mount is retried on the next I/O, not by a timer.
+                scheduler->RunAllScheduledTasks();
+                UNIT_ASSERT_VALUES_EQUAL(mountRequests, 2);
+                auto recoveryWrite = writeBlocks();
+                UNIT_ASSERT(recoveryWrite.HasValue());
+                UNIT_ASSERT(!HasError(recoveryWrite.GetValue()));
+                UNIT_ASSERT_VALUES_EQUAL(mountRequests, 3);
+                UNIT_ASSERT_VALUES_EQUAL(writeRequests, 2);
+            } else {
+                UNIT_ASSERT(!HasError(write.GetValue()));
+                UNIT_ASSERT(!HasError(nextWrite.GetValue()));
+                UNIT_ASSERT_VALUES_EQUAL(writeRequests, 3);
+            }
+
+            // Invalidating the old mount must not stop periodic remounts.
+            const auto mountsBeforeTimer = mountRequests;
+            scheduler->RunAllScheduledTasks();
+            UNIT_ASSERT_VALUES_EQUAL(mountRequests, mountsBeforeTimer + 1);
+            scheduler->RunAllScheduledTasks();
+            UNIT_ASSERT_VALUES_EQUAL(mountRequests, mountsBeforeTimer + 2);
+
+            bootstrap->Stop();
+        }
     }
 
     Y_UNIT_TEST(ShouldRemountPeriodicallyToPreventUnmountDueToInactivity)

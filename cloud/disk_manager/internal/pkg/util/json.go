@@ -6,6 +6,9 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
+	grpc_codes "google.golang.org/grpc/codes"
+
+	api "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	cells_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/protos"
 	filesystem_scrubbing_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/protos"
 	filesystem_snapshot_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot/protos"
@@ -19,18 +22,30 @@ import (
 	snapshot_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/storage"
-	grpc_codes "google.golang.org/grpc/codes"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 var requestProtoByTaskType = map[string]func() proto.Message{
+	"images.ExportImage": func() proto.Message {
+		return &api.ExportImageRequest{}
+	},
+	"snapshots.ExportSnapshot": func() proto.Message {
+		return &api.ExportSnapshotRequest{}
+	},
+	"dataplane.ExportSnapshotToS3": func() proto.Message {
+		return &dataplane_protos.ExportSnapshotRequest{}
+	},
+	"dataplane.ExportImageToS3": func() proto.Message {
+		return &dataplane_protos.ExportSnapshotRequest{}
+	},
 	"dataplane.CreateSnapshotFromDisk":              func() proto.Message { return &dataplane_protos.CreateSnapshotFromDiskRequest{} },
 	"dataplane.CreateSnapshotFromSnapshot":          func() proto.Message { return &dataplane_protos.CreateSnapshotFromSnapshotRequest{} },
 	"dataplane.CreateSnapshotFromURL":               func() proto.Message { return &dataplane_protos.CreateSnapshotFromURLRequest{} },
 	"dataplane.TransferFromDiskToDisk":              func() proto.Message { return &dataplane_protos.TransferFromDiskToDiskRequest{} },
 	"dataplane.ReplicateDisk":                       func() proto.Message { return &dataplane_protos.ReplicateDiskTaskRequest{} },
 	"dataplane.TransferFromSnapshotToDisk":          func() proto.Message { return &dataplane_protos.TransferFromSnapshotToDiskRequest{} },
+	"dataplane.TransferFromBackupToDisk":            func() proto.Message { return &dataplane_protos.TransferFromBackupToDiskRequest{} },
 	"dataplane.DeleteSnapshot":                      func() proto.Message { return &dataplane_protos.DeleteSnapshotRequest{} },
 	"dataplane.DeleteSnapshotData":                  func() proto.Message { return &dataplane_protos.DeleteSnapshotDataRequest{} },
 	"dataplane.DeleteFilesystemSnapshot":            func() proto.Message { return &filesystem_snapshot_protos.DeleteFilesystemSnapshotRequest{} },
@@ -43,6 +58,7 @@ var requestProtoByTaskType = map[string]func() proto.Message{
 	"disks.CreateEmptyDisk":                         func() proto.Message { return &disk_protos.CreateDiskParams{} },
 	"disks.CreateOverlayDisk":                       func() proto.Message { return &disk_protos.CreateOverlayDiskRequest{} },
 	"disks.CreateDiskFromImage":                     func() proto.Message { return &disk_protos.CreateDiskFromImageRequest{} },
+	"disks.CreateDiskFromBaseDisk":                  func() proto.Message { return &disk_protos.CreateDiskFromBaseDiskRequest{} },
 	"disks.CreateDiskFromSnapshot":                  func() proto.Message { return &disk_protos.CreateDiskFromSnapshotRequest{} },
 	"disks.DeleteDisk":                              func() proto.Message { return &disk_protos.DeleteDiskRequest{} },
 	"disks.ResizeDisk":                              func() proto.Message { return &disk_protos.ResizeDiskRequest{} },
@@ -81,6 +97,11 @@ var requestProtoByTaskType = map[string]func() proto.Message{
 }
 
 var stateProtoByTaskType = map[string]func() proto.Message{
+	"images.ExportImage": func() proto.Message {
+		return &images_protos.ExportImageTaskState{}
+	},
+	"dataplane.ExportSnapshotToS3":                  newExportSnapshotTaskStateJSON,
+	"dataplane.ExportImageToS3":                     newExportSnapshotTaskStateJSON,
 	"cells.CollectClusterCapacity":                  func() proto.Message { return &cells_protos.CollectClusterCapacityTaskState{} },
 	"dataplane.CollectSnapshots":                    func() proto.Message { return &dataplane_protos.CollectSnapshotsTaskState{} },
 	"dataplane.CreateSnapshotFromDisk":              func() proto.Message { return &dataplane_protos.CreateSnapshotFromDiskTaskState{} },
@@ -89,6 +110,7 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"dataplane.TransferFromDiskToDisk":              func() proto.Message { return &dataplane_protos.TransferFromDiskToDiskTaskState{} },
 	"dataplane.ReplicateDisk":                       func() proto.Message { return &dataplane_protos.ReplicateDiskTaskState{} },
 	"dataplane.TransferFromSnapshotToDisk":          func() proto.Message { return &dataplane_protos.TransferFromSnapshotToDiskTaskState{} },
+	"dataplane.TransferFromBackupToDisk":            func() proto.Message { return &dataplane_protos.TransferFromBackupToDiskTaskState{} },
 	"dataplane.DeleteSnapshot":                      func() proto.Message { return &dataplane_protos.DeleteSnapshotTaskState{} },
 	"dataplane.DeleteSnapshotData":                  func() proto.Message { return &dataplane_protos.DeleteSnapshotDataTaskState{} },
 	"dataplane.DeleteFilesystemSnapshot":            func() proto.Message { return &filesystem_snapshot_protos.DeleteFilesystemSnapshotTaskState{} },
@@ -104,6 +126,7 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"disks.CreateEmptyDisk":                         func() proto.Message { return &disk_protos.CreateEmptyDiskTaskState{} },
 	"disks.CreateOverlayDisk":                       func() proto.Message { return &disk_protos.CreateOverlayDiskTaskState{} },
 	"disks.CreateDiskFromImage":                     func() proto.Message { return &disk_protos.CreateDiskFromImageTaskState{} },
+	"disks.CreateDiskFromBaseDisk":                  func() proto.Message { return &disk_protos.CreateDiskFromBaseDiskTaskState{} },
 	"disks.CreateDiskFromSnapshot":                  func() proto.Message { return &disk_protos.CreateDiskFromSnapshotTaskState{} },
 	"disks.DeleteDisk":                              func() proto.Message { return &disk_protos.DeleteDiskTaskState{} },
 	"disks.ResizeDisk":                              func() proto.Message { return &disk_protos.ResizeDiskTaskState{} },
@@ -141,6 +164,21 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"snapshots.DeleteSnapshot":                      func() proto.Message { return &snapshot_protos.DeleteSnapshotTaskState{} },
 	"dataplane.ScrubFilesystem":                     func() proto.Message { return &filesystem_scrubbing_protos.ScrubFilesystemTaskState{} },
 	"dataplane.RegularScrubFilesystems":             func() proto.Message { return &filesystem_scrubbing_protos.RegularScrubFilesystemsTaskState{} },
+	"snapshots.ExportSnapshot": func() proto.Message {
+		return &snapshot_protos.ExportSnapshotTaskState{}
+	},
+}
+
+type exportSnapshotTaskStateJSON struct {
+	*dataplane_protos.ExportSnapshotTaskState
+	// Shadow the opaque checkpoint in JSON without changing the protobuf state.
+	ExportState []byte `json:"ExportState,omitempty"`
+}
+
+func newExportSnapshotTaskStateJSON() proto.Message {
+	return &exportSnapshotTaskStateJSON{
+		ExportSnapshotTaskState: &dataplane_protos.ExportSnapshotTaskState{},
+	}
 }
 
 type FormattableDuration struct {

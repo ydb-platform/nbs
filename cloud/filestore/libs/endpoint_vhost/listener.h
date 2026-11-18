@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/filestore/config/vfs.pb.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/endpoint/public.h>
 #include <cloud/filestore/libs/service/public.h>
@@ -18,7 +19,7 @@ namespace NCloud::NFileStore::NVhost {
 struct THandleOpsQueueConfig
 {
     TString PathPrefix;
-    ui32 MaxQueueSize = 0;
+    ui32 StateFileSize = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,13 +27,13 @@ struct THandleOpsQueueConfig
 struct TWriteBackCacheConfig
 {
     TString PathPrefix;
-    ui64 Capacity = 0;
     TDuration AutomaticFlushPeriod;
     TDuration FlushRetryPeriod;
     ui32 FlushMaxWriteRequestSize = 0;
     ui32 FlushMaxWriteRequestsCount = 0;
     ui32 FlushMaxSumWriteRequestsSize = 0;
     ui32 MaxQueuedFlushBatchesPerNode = 0;
+    NProto::EWriteBackCacheLockMethod LockMethod = NProto::WBC_LOCK_ADAPTIVE;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

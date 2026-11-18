@@ -41,6 +41,11 @@ public:
     // Path to the held state file. Aborts if the guard holds none.
     const TFsPath& GetFilePath() const;
 
+    // Target size selected during acquisition; may differ from the current
+    // file size. Undersized requests for existing files use their current size.
+    // Aborts if the guard holds none.
+    ui64 GetTargetStateFileSize() const;
+
     // Releases the lock and removes the state file, and the session directory
     // too once it is empty. Leaves the guard holding nothing; no-op if it
     // holds nothing already.
@@ -76,10 +81,13 @@ struct IPersistentStateManager
     // size limit of the component is reached. That is the only case in which
     // an empty guard is returned without an error: it means the component is
     // not to be used, since there is no state file for it.
+    // stateFileSize must be positive and is used to create and account a
+    // new file. Zero returns E_ARGUMENT even if the file already exists.
     virtual TResultOrError<TAcquireStateFileGuard>
     AcquireHandleOpsQueueStateFile(
         const TString& fileSystemId,
-        const TString& sessionId) = 0;
+        const TString& sessionId,
+        ui64 stateFileSize) = 0;
 
     // WriteBackCache
 
@@ -87,14 +95,19 @@ struct IPersistentStateManager
         const TString& fileSystemId,
         const TString& sessionId) = 0;
     // If the corresponding state file exists, acquires the advisory lock and
-    // returns the file, otherwise creates the file first, unless the total
-    // size limit of the component is reached. That is the only case in which
-    // an empty guard is returned without an error: it means the component is
+    // returns the file, otherwise creates the file first, unless the requested
+    // size is below the minimum or the total size limit would be exceeded.
+    // These cases return an empty guard without an error: the component is
     // not to be used, since there is no state file for it.
+    // stateFileSize must be positive and is used to create and account a
+    // new file. Zero returns E_ARGUMENT even if the file already exists.
+    // Positive sizes below the minimum reject new-file creation and preserve
+    // the current size of existing files. Both cases report a critical event.
     virtual TResultOrError<TAcquireStateFileGuard>
     AcquireWriteBackCacheStateFile(
         const TString& fileSystemId,
-        const TString& sessionId) = 0;
+        const TString& sessionId,
+        ui64 stateFileSize) = 0;
 
     // DirectoryHandleStorage
 
@@ -114,17 +127,12 @@ struct IPersistentStateManager
 struct TPersistentStateManagerConfig
 {
     TString HandleOpsQueueBasePath;
-    // Size of a single HandleOpsQueue state file. A new file comes into
-    // existence with this size, and it is what a new file is assumed to add
-    // to the total size when the limit below is checked. 0 means the file is
-    // created empty and sized by the component itself.
-    ui64 HandleOpsQueueStateFileSize = 0;
     // Limit of the total size of the HandleOpsQueue state files of all the
     // filesystems and sessions. 0 disables the limiting.
     ui64 HandleOpsQueueTotalSizeLimit = 0;
 
     TString WriteBackCacheBasePath;
-    ui64 WriteBackCacheStateFileSize = 0;
+    ui64 WriteBackCacheMinStateFileSize = 0;
     ui64 WriteBackCacheTotalSizeLimit = 0;
 
     TString DirectoryHandlesStorageBasePath;
@@ -139,10 +147,9 @@ struct TPersistentStateManagerConfig
 // returns false for it. Different components may be configured with the same
 // base path and thus share a session directory.
 //
-// The total size of the state files of a component is the sum of the sizes
-// of all the files present under its base path. It is checked only when a new
-// state file is about to be created: an existing one is acquired regardless,
-// so that the state of a previous session is always restored.
+// For HandleOpsQueue and WriteBackCache, quota accounting reserves the larger
+// of each file's known size and effective target size. The limit applies only
+// to new files; existing files bypass it with valid acquisition arguments.
 IPersistentStateManagerPtr CreatePersistentStateManager(
     TPersistentStateManagerConfig config);
 

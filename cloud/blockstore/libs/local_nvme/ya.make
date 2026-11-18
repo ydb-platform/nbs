@@ -18,6 +18,7 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
 
     library/cpp/threading/future
+    library/cpp/time_provider
 )
 
 IF (OS_LINUX)

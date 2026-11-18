@@ -12,7 +12,7 @@ class TBootstrapLocal final
     : public TBootstrapBase
 {
 private:
-    TConfigInitializerLocalPtr Configs;
+    TConfigInitializerLocalPtr ConfigInitializer;
 
 public:
     TBootstrapLocal(IDeviceHandlerFactoryPtr deviceHandlerFactory);

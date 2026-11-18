@@ -19,23 +19,27 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
     {
         TPartitionFreshBlobState state(/*tabletId=*/0);
 
-        state.AddFreshBlob(1, 10);
-        state.AddFreshBlob(3, 30);
-        state.AddFreshBlob(2, 20);
-        state.AddFreshBlob(5, 50);
-        state.AddFreshBlob(4, 40);
+        state.AddFreshBlob(1, 10, TInstant::Zero());
+        state.AddFreshBlob(3, 30, TInstant::Zero());
+        state.AddFreshBlob(2, 20, TInstant::Zero());
+        state.AddFreshBlob(5, 50, TInstant::Zero());
+        state.AddFreshBlob(4, 40, TInstant::Zero());
 
         UNIT_ASSERT_VALUES_EQUAL(150, state.GetUntrimmedFreshBlobByteCount());
 
-        state.TrimFreshBlobs(3);
+        UNIT_ASSERT_VALUES_EQUAL(
+            60,
+            state.TrimFreshBlobs(3).UnflushedBytesRemoved);
 
         UNIT_ASSERT_VALUES_EQUAL(90, state.GetUntrimmedFreshBlobByteCount());
 
-        state.AddFreshBlob(7, 70);
+        state.AddFreshBlob(7, 70, TInstant::Zero());
 
         UNIT_ASSERT_VALUES_EQUAL(160, state.GetUntrimmedFreshBlobByteCount());
 
-        state.TrimFreshBlobs(10);
+        UNIT_ASSERT_VALUES_EQUAL(
+            160,
+            state.TrimFreshBlobs(10).UnflushedBytesRemoved);
 
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetUntrimmedFreshBlobByteCount());
     }
@@ -44,10 +48,309 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
     {
         TPartitionFreshBlobState state(/*tabletId=*/0);
 
-        state.AddFreshBlob(1, Max<ui32>());
+        state.AddFreshBlob(1, Max<ui32>(), TInstant::Zero());
         UNIT_ASSERT_VALUES_EQUAL(
             Max<ui32>(),
             state.GetUnflushedFreshBlobByteCount());
+    }
+
+    Y_UNIT_TEST(ShouldTrackFirstUnflushedFreshBlobTimestamp)
+    {
+        TPartitionFreshBlobState state(/*tabletId=*/0);
+        const auto t0 = TInstant::Seconds(100);
+
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(0));
+
+        state.AddFreshBlob(1, 10, t0);
+        state.AddFreshBlob(2, 20, t0 + TDuration::Seconds(1));
+        state.AddFreshBlob(3, 30, t0 + TDuration::Seconds(2));
+
+        UNIT_ASSERT_VALUES_EQUAL(t0,
+                                 state.GetFirstUnflushedFreshBlobTimestamp(0));
+
+        // A flushed blob does not count even before it is trimmed.
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            state.FlushFreshBlob(1).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(t0 + TDuration::Seconds(1),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(0));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.TrimFreshBlobs(1).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(t0 + TDuration::Seconds(1),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.FlushFreshBlob(2).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(
+            30,
+            state.FlushFreshBlob(3).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(1));
+
+        // Track the first blob published into empty state again.
+        state.AddFreshBlob(4, 40, t0 + TDuration::Seconds(10));
+        UNIT_ASSERT_VALUES_EQUAL(t0 + TDuration::Seconds(10),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(1));
+    }
+
+    Y_UNIT_TEST(ShouldFindFirstUnflushedBlobAfterTrimBoundary)
+    {
+        TPartitionFreshBlobState state(/*tabletId=*/0);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(0));
+
+        state.AddFreshBlob(3, 30, TInstant::Seconds(110));
+        state.AddFreshBlob(1, 10, TInstant::Seconds(100));
+        state.AddFreshBlob(5, 50, TInstant::Seconds(120));
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(0));
+
+        // A dead blob at or below the trim boundary waits for a trim.
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(110),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(1));
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(110),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(2));
+
+        // A flushed blob above the trim boundary waits for the write that
+        // holds the boundary.
+        UNIT_ASSERT_VALUES_EQUAL(
+            30,
+            state.FlushFreshBlob(3).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(120),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(1));
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(5));
+
+        // Blob 3 is flushed, so only blob 1 counts.
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            state.TrimFreshBlobs(3).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(120),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(3));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            50,
+            state.FlushFreshBlob(5).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(3));
+    }
+
+    Y_UNIT_TEST(ShouldIncludeUnknownTimestampAfterTrimBoundary)
+    {
+        TPartitionFreshBlobState state(/*tabletId=*/0);
+        state.AddFreshBlob(1, 10, TInstant::Zero());
+        state.AddFreshBlob(2, 20, TInstant::Seconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Zero(),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(0));
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            state.TrimFreshBlobs(1).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(1));
+
+        state.AddFreshBlob(3, 30, TInstant::Zero());
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.FlushFreshBlob(2).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Zero(),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(1));
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(3));
+    }
+
+    Y_UNIT_TEST(ShouldPreserveUnknownFreshBlobTimestamp)
+    {
+        TPartitionFreshBlobState state(/*tabletId=*/0);
+        const auto now = TInstant::Seconds(100);
+
+        state.AddFreshBlob(2, 20, now);
+        state.AddFreshBlob(1, 10, TInstant::Zero());
+
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Zero(),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(0));
+    }
+
+    Y_UNIT_TEST(ShouldTrackTimestampByCommitIdRegardlessOfInsertionOrder)
+    {
+        TPartitionFreshBlobState state(/*tabletId=*/0);
+        state.AddFreshBlob(3, 30, TInstant::Seconds(110));
+        state.AddFreshBlob(1, 10, TInstant::Seconds(120));
+        state.AddFreshBlob(2, 20, TInstant::Seconds(100));
+
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(120),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(0));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            state.FlushFreshBlob(1).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(0));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.TrimFreshBlobs(1).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.FlushFreshBlob(2).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.TrimFreshBlobs(2).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(110),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(2));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            30,
+            state.FlushFreshBlob(3).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.TrimFreshBlobs(3).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
+                                 state.GetFirstUnflushedFreshBlobTimestamp(3));
+    }
+
+    Y_UNIT_TEST(ShouldRemoveTrimmedBlobsFromUnflushedAccounting)
+    {
+        TPartitionFreshBlobState state(/*tabletId=*/0);
+        state.AddFreshBlob(1, 10, TInstant::Zero());
+        state.AddFreshBlob(2, 20, TInstant::Zero());
+        state.AddFreshBlob(3, 30, TInstant::Zero());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            state.FlushFreshBlob(1).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(2, state.GetUnflushedFreshBlobCount());
+        UNIT_ASSERT_VALUES_EQUAL(50, state.GetUnflushedFreshBlobByteCount());
+
+        // Blob 1 is flushed, so only blob 2 counts.
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.TrimFreshBlobs(2).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetUnflushedFreshBlobCount());
+        UNIT_ASSERT_VALUES_EQUAL(30, state.GetUnflushedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(30, state.GetUntrimmedFreshBlobByteCount());
+
+        // A flush that captured trimmed blob 2 counts nothing.
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.FlushFreshBlob(2).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetUnflushedFreshBlobCount());
+        UNIT_ASSERT_VALUES_EQUAL(30, state.GetUnflushedFreshBlobByteCount());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            30,
+            state.FlushFreshBlob(3).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetUnflushedFreshBlobCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetUnflushedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(30, state.GetUntrimmedFreshBlobByteCount());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.TrimFreshBlobs(3).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetUntrimmedFreshBlobByteCount());
+    }
+
+    Y_UNIT_TEST(ShouldCountDeadFreshBlobBytes)
+    {
+        TPartitionFreshBlobState state(/*tabletId=*/0);
+        state.AddFreshBlob(1, 10, TInstant::Zero());
+        state.AddFreshBlob(2, 2, TInstant::Zero());
+        state.AddFreshBlob(3, 30, TInstant::Zero());
+        state.AddFreshBlob(4, 40, TInstant::Zero());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDeadUntrimmedFreshBlobByteCount());
+
+        state.MarkFreshBlobDead(2);
+        state.MarkFreshBlobDead(3);
+        UNIT_ASSERT_VALUES_EQUAL(
+            32,
+            state.GetDeadUntrimmedFreshBlobByteCount());
+
+        state.MarkFreshBlobDead(1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            42,
+            state.GetDeadUntrimmedFreshBlobByteCount());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            12,
+            state.TrimFreshBlobs(2).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(
+            30,
+            state.GetDeadUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            30,
+            state.TrimFreshBlobs(3).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDeadUntrimmedFreshBlobByteCount());
+    }
+
+    Y_UNIT_TEST(ShouldCountDeadFreshBlobBytesForOrdinaryTrim)
+    {
+        TPartitionFreshBlobState state(/*tabletId=*/0);
+        for (ui64 commitId = 1; commitId <= 6; ++commitId) {
+            state.AddFreshBlob(commitId, 10, TInstant::Zero());
+        }
+        for (ui64 commitId: {1, 2, 4, 5}) {
+            state.MarkFreshBlobDead(commitId);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            40,
+            state.GetDeadUntrimmedFreshBlobByteCount());
+
+        // Blob 3 is live, so OrdinaryTrimToCommitId is 2.
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(2));
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({3, 6}));
+        // A dead blob reported live and a live blob not reported are caught.
+        UNIT_ASSERT(!state.CheckDeadFreshBlobByteCount({2, 3, 6}));
+        UNIT_ASSERT(!state.CheckDeadFreshBlobByteCount({3}));
+
+        // Blob 3 dies, and OrdinaryTrimToCommitId moves to 5.
+        state.MarkFreshBlobDead(3);
+        UNIT_ASSERT_VALUES_EQUAL(
+            50,
+            state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(5));
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({6}));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            50,
+            state.TrimFreshBlobs(5).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDeadUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(5));
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({6}));
+    }
+
+    Y_UNIT_TEST(ShouldTrimFreshBlobsAboveOrdinaryTrimToCommitId)
+    {
+        TPartitionFreshBlobState state(/*tabletId=*/0);
+        for (ui64 commitId = 1; commitId <= 3; ++commitId) {
+            state.AddFreshBlob(commitId, 10, TInstant::Zero());
+        }
+        state.MarkFreshBlobDead(1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(1));
+
+        // A flush-requested trim may reach past OrdinaryTrimToCommitId.
+        state.MarkFreshBlobDead(2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.TrimFreshBlobs(2).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDeadUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(2));
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({3}));
     }
 }
 

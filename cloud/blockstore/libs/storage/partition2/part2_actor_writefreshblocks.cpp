@@ -252,7 +252,8 @@ void TWriteFreshBlocksActor::WriteBlob(const TActorContext& ctx)
         BlobId,
         std::move(BlobContent),
         0,  // blockSizeForChecksums
-        false);  // async
+        false,  // async
+        false); // compressedSizeEstimationCandidate
 
     NCloud::Send(
         ctx,
@@ -460,7 +461,11 @@ void TPartitionActor::WriteFreshBlocks(
 
     const auto freshByteCount =
         State->GetFreshBlockCount() * State->GetBlockSize();
-    if (freshByteCount >= Config->GetFreshByteCountHardLimit()) {
+    const auto freshByteCountHardLimit =
+        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+            ? Config->GetFreshByteCountHardLimitSSD()
+            : Config->GetFreshByteCountHardLimitHDD();
+    if (freshByteCount >= freshByteCountHardLimit) {
         for (auto& r: requestsInBuffer) {
             ui32 flags = 0;
             SetProtoFlag(flags, NProto::EF_SILENT);

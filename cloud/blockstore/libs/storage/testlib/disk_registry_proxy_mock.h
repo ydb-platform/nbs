@@ -78,6 +78,10 @@ private:
                 HandleSetWritableState);
 
             HFunc(
+                TEvDiskRegistry::TEvSetSuspendSecureEraseRequest,
+                HandleSetSuspendSecureErase);
+
+            HFunc(
                 TEvDiskRegistry::TEvBackupDiskRegistryStateRequest,
                 HandleBackupDiskRegistryState);
 
@@ -569,6 +573,18 @@ private:
         NCloud::Reply(ctx, *ev, std::move(response));
     }
 
+    void HandleSetSuspendSecureErase(
+        const TEvDiskRegistry::TEvSetSuspendSecureEraseRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        State->SuspendSecureErase = ev->Get()->Record.GetSuspend();
+
+        auto response = std::make_unique<
+            TEvDiskRegistry::TEvSetSuspendSecureEraseResponse>();
+
+        NCloud::Reply(ctx, *ev, std::move(response));
+    }
+
     void HandleCreatePlacementGroup(
         const TEvService::TEvCreatePlacementGroupRequest::TPtr& ev,
         const NActors::TActorContext& ctx)
@@ -900,7 +916,8 @@ private:
 
         auto& disk = State->Disks[diskId];
 
-        disk.MediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL;
+        disk.MediaKind = static_cast<NProto::EStorageMediaKind>(
+            req.GetVolumeConfig().GetStorageMediaKind());
         disk.Devices = std::move(devices);
         disk.BlockSize = blockSize;
 

@@ -13,13 +13,16 @@ RECURSE(
     grpc
     hive_proxy
     http
+    icv2
     io_uring
     kikimr
     netlink
     opentelemetry
     rdma
     ss_proxy
+    systemd_time
     tablet
+    tablet_proxy
     throttling
     uds
     user_stats

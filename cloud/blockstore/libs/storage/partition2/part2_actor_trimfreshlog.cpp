@@ -130,6 +130,9 @@ void TPartitionActor::HandleTrimFreshLog(
         trimFreshLogToCommitId,
         ParseCommitId(State->GetLastCommitId()).first,
         nextPerGenerationCounter,
+        false,   // hard
+        TVector<TPartialBlobId>(),   // keep
+        TVector<TPartialBlobId>(),   // doNotKeep
         std::move(freshChannels),
         VolumeLabels,
         Config->GetTrimFreshLogTimeout());

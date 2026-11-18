@@ -229,7 +229,7 @@ def _generate_tests(size, duration, sync, scenarios, sizes, iodepths, compress_p
 
 
 def generate_tests(size=100 * MB, duration=60, sync=False, scenarios=['randread', 'randwrite', 'randrw'],
-                   sizes=[4 * KB, 4 * MB], iodepths=[1, 32], compress_percentage=90, verify=True, unlinks=[False],
+                   sizes=[4 * KB, 4 * MB], iodepths=[1, 32], compress_percentage=20, verify=True, unlinks=[False],
                    numjobs=[1], fsyncs=[0], fdatasyncs=[0], end_fsyncs=[False], write_barriers=[0],
                    unique_name=False, offset=0, randseed=None, io_size=None):
     return {
@@ -242,7 +242,7 @@ def generate_tests(size=100 * MB, duration=60, sync=False, scenarios=['randread'
 
 def generate_default_test():
     return generate_tests(size=100 * MB, duration=60, sync=False, scenarios=['randrw'],
-                          sizes=[4 * KB], iodepths=[32], compress_percentage=90, verify=True, unlinks=[False],
+                          sizes=[4 * KB], iodepths=[32], compress_percentage=20, verify=True, unlinks=[False],
                           numjobs=[1], fsyncs=[0], fdatasyncs=[0], end_fsyncs=[False], write_barriers=[0],
                           unique_name=False)
 

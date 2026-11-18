@@ -1,7 +1,7 @@
 #include "cell_manager_impl.h"
 
-#include "describe_volume.h"
 #include "connection.h"
+#include "describe_volume.h"
 #include "endpoint_bootstrap.h"
 
 #include <cloud/blockstore/libs/client/client.h>
@@ -15,11 +15,11 @@
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/rdma/impl/client.h>
 #include <cloud/storage/core/libs/rdma/impl/verbs.h>
-
 
 #include <util/generic/hash_set.h>
 #include <util/random/random.h>
@@ -29,9 +29,10 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCellManager::TCellManager(TCellsConfigPtr config, TBootstrap bootstrap)
+TCellManager::TCellManager(TCellsConfigConstPtr config, TBootstrap bootstrap)
     : ICellManager(std::move(config))
     , Bootstrap(std::move(bootstrap))
+    , TransportUpdates(CreateThreadPool("CELLS_MON", 1))
 {
     for (const auto& cell: Config->GetCells()) {
         Pools.emplace(
@@ -49,6 +50,10 @@ std::shared_ptr<TCellInboundActivity> TCellManager::GetInboundActivity()
 
 void TCellManager::Start()
 {
+    TransportUpdates->Start();
+    with_lock (TransportUpdatesLock) {
+        TransportUpdatesEnabled = true;
+    }
     Bootstrap.CertProvider->Start();
     Bootstrap.GrpcClient->Start();
 
@@ -59,6 +64,22 @@ void TCellManager::Start()
 
 void TCellManager::Stop()
 {
+    auto drained = NThreading::NewPromise<void>();
+    bool waitForUpdates = false;
+    with_lock (TransportUpdatesLock) {
+        waitForUpdates = TransportUpdatesEnabled;
+        TransportUpdatesEnabled = false;
+        if (waitForUpdates) {
+            // The single worker processes admitted updates before this marker.
+            // TThreadPool::Stop itself does not drain its pending queue.
+            TransportUpdates->ExecuteSimple([drained]() mutable
+                                            { drained.SetValue(); });
+        }
+    }
+    if (waitForUpdates) {
+        drained.GetFuture().GetValueSync();
+    }
+    TransportUpdates->Stop();
     // before the client goes down: a sweep that outlived it would find
     // every host unreachable and migrate every connection on the way out
     for (auto& pool: Pools) {
@@ -77,7 +98,7 @@ TCellsSnapshot TCellManager::GetSnapshot()
         for (const auto& status: pool->GetHostStatuses()) {
             statuses.push_back({
                 .Fqdn = status.Fqdn,
-                .Alive = status.Alive,
+                .Liveness = status.Liveness,
                 .Warm = status.Warm,
                 .Connections = static_cast<ui32>(status.Connections)});
         }
@@ -88,6 +109,53 @@ TCellsSnapshot TCellManager::GetSnapshot()
         snapshot.Mounts = GetCellMounts(*Bootstrap.Connections);
     }
     return snapshot;
+}
+
+NThreading::TFuture<NProto::TError> TCellManager::SwitchDataTransport(
+    TString connectionId,
+    NProto::ECellDataTransport transport)
+{
+    if (!Bootstrap.Connections) {
+        return NThreading::MakeFuture(MakeError(
+            E_INVALID_STATE,
+            "Cell connection registry is unavailable"));
+    }
+
+    auto promise = NThreading::NewPromise<NProto::TError>();
+    with_lock (TransportUpdatesLock) {
+        if (!TransportUpdatesEnabled) {
+            return NThreading::MakeFuture(
+                MakeError(E_CANCELLED, "Cell manager is not running"));
+        }
+        // Endpoint setup can resolve DNS. Keep it off the monitoring actor.
+        TransportUpdates->ExecuteSimple(
+            [connections = Bootstrap.Connections,
+             logging = Bootstrap.Logging,
+             connectionId = std::move(connectionId),
+             transport,
+             promise]() mutable
+            {
+                NProto::TError error;
+                try {
+                    error = SwitchCellDataTransport(
+                        *connections,
+                        connectionId,
+                        transport);
+                } catch (...) {
+                    error = MakeError(E_FAIL, CurrentExceptionMessage());
+                }
+                if (HasError(error)) {
+                    auto Log = logging->CreateLog("BLOCKSTORE_CELLS");
+                    STORAGE_WARN(
+                        "Cell data transport switch failed: connection="
+                        << connectionId
+                        << " to=" << NProto::ECellDataTransport_Name(transport)
+                        << " error=" << FormatError(error));
+                }
+                promise.SetValue(std::move(error));
+            });
+    }
+    return promise.GetFuture();
 }
 
 NThreading::TFuture<TVector<TCellDescribeResult>> TCellManager::SearchVolume(
@@ -209,7 +277,7 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
 ////////////////////////////////////////////////////////////////////////////////
 
 ICellManagerPtr CreateCellManager(
-    TCellsConfigPtr config,
+    TCellsConfigConstPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
@@ -218,12 +286,13 @@ ICellManagerPtr CreateCellManager(
     IServerStatsPtr serverStats,
     ICertificateProviderPtr certificateProvider,
     NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+    NIcV2::IDataEndpointFactoryPtr icV2EndpointFactory,
     IBlockStorePtr localService)
 {
     auto appConfig = std::make_shared<NClient::TClientAppConfig>(
         config->GetGrpcClientConfig());
 
-    auto result = NClient::CreateMultiHostClient(
+    auto result = NClient::CreateEndpointFactory(
         std::move(appConfig),
         timer,
         scheduler,
@@ -252,6 +321,7 @@ ICellManagerPtr CreateCellManager(
         .CertProvider = std::move(certificateProvider),
         .GrpcClient = std::move(result.ExtractResult()),
         .RdmaClient = std::move(rdmaClient),
+        .IcV2EndpointFactory = std::move(icV2EndpointFactory),
         .LocalService = std::move(localService),
         .RdmaTaskQueue = std::move(rdmaTaskQueue),
         .EndpointsSetup = CreateCellHostEndpointBootstrap(),

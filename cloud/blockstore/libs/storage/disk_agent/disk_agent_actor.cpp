@@ -44,6 +44,7 @@ TDiskAgentActor::TDiskAgentActor(
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
     , LocalNVMeService(std::move(localNVMeService))
+    , PreStopSyncFlagPtr(std::make_shared<TPreStopSyncFlag>())
     , Logging(std::move(logging))
     , RdmaServer(std::move(rdmaServer))
     , NvmeManager(std::move(nvmeManager))
@@ -52,6 +53,19 @@ TDiskAgentActor::TDiskAgentActor(
 
 TDiskAgentActor::~TDiskAgentActor()
 {}
+
+void TDiskAgentActor::Registered(
+    NActors::TActorSystem* sys,
+    const NActors::TActorId& owner)
+{
+    sys->DeferPreStop(
+        [preStopSyncFlag = PreStopSyncFlagPtr]()
+        {
+            TWriteGuard guard(preStopSyncFlag->Mutex);
+            preStopSyncFlag->Stopped = true;
+        });
+    TActor::Registered(sys, owner);
+}
 
 void TDiskAgentActor::Bootstrap(const TActorContext& ctx)
 {

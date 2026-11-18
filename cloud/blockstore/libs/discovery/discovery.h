@@ -20,7 +20,7 @@ struct IDiscoveryService
 ////////////////////////////////////////////////////////////////////////////////
 
 IDiscoveryServicePtr CreateDiscoveryService(
-    TDiscoveryConfigPtr config,
+    TDiscoveryConfigConstPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
@@ -28,6 +28,7 @@ IDiscoveryServicePtr CreateDiscoveryService(
     IBanListPtr banList,
     IInstanceFetcherPtr staticInstanceFetcher,
     IInstanceFetcherPtr conductorInstanceFetcher,
+    IInstanceFetcherPtr edsInstanceFetcher,
     IHealthCheckerPtr healthChecker,
     IBalancingPolicyPtr balancingPolicy);
 

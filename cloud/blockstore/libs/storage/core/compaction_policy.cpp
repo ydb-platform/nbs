@@ -212,8 +212,11 @@ ui32 GetMaxBlobsPerRange(
                 : storageConfig.GetHDDMaxBlobsPerRange()
     );
 
-    maxBlobsPerRange = Max(maxBlobsPerRange / siblingCount, 1u);
-    return maxBlobsPerRange;
+    if (!storageConfig.GetIgnorePartitionCountInMaxBlobsPerRange()) {
+        maxBlobsPerRange /= siblingCount;
+    }
+
+    return Max(maxBlobsPerRange, 1u);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

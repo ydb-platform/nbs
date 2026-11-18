@@ -3,7 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
-#include <cloud/fastshard/journal/iface/device.h>
+#include <cloud/fastshard/libs/journal/iface/device.h>
 #include <cloud/storage/core/libs/common/public.h>
 
 #include <util/generic/string.h>

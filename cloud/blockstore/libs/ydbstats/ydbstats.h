@@ -50,7 +50,7 @@ struct IYdbVolumesStatsUploader
 ////////////////////////////////////////////////////////////////////////////////
 
 IYdbStoragePtr CreateYdbStorage(
-    TYdbStatsConfigPtr config,
+    TYdbStatsConfigConstPtr config,
     ILoggingServicePtr logging,
     ISchedulerPtr scheduler,
     NIamClient::IIamTokenClientPtr tokenProvider);
@@ -58,7 +58,7 @@ IYdbStoragePtr CreateYdbStorage(
 IStartable* AsStartable(IYdbStoragePtr storagePtr);
 
 IYdbVolumesStatsUploaderPtr CreateYdbVolumesStatsUploader(
-    TYdbStatsConfigPtr config,
+    TYdbStatsConfigConstPtr config,
     ILoggingServicePtr logging,
     IYdbStoragePtr dbStorage,
     TYDBTableSchemes tableSchemes);

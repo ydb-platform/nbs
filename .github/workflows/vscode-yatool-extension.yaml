@@ -34,7 +34,7 @@ jobs:
         continue-on-error: true
 
       - name: setup node
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "22"
 
@@ -55,7 +55,7 @@ jobs:
         run: npm run package
 
       - name: upload vsix
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: vscode-yatool-extension
           path: .github/vscode-yatool-extension/vscode-yatool-extension.vsix

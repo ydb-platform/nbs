@@ -25,6 +25,30 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void FormatBlobIds(NJson::TJsonValue& json)
+{
+    for (const auto* key: {"FreshBlockRanges", "BlobPieces"}) {
+        if (!json.Has(key)) {
+            continue;
+        }
+
+        for (auto& item: json[key].GetArraySafe()) {
+            if (!item.Has("BlobId")) {
+                continue;
+            }
+
+            auto& blobId = item["BlobId"];
+            const NKikimr::TLogoBlobID id(
+                blobId["RawX1"].GetUIntegerRobust(),
+                blobId["RawX2"].GetUIntegerRobust(),
+                blobId["RawX3"].GetUIntegerRobust());
+            blobId = id.ToString();
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TDescribeBlocksCommand final
     : public TCommand
 {
@@ -33,6 +57,7 @@ private:
     ui64 StartIndex = 0;
     ui32 BlocksCount = 0;
     TString CheckpointId;
+    bool FullBlobIds = false;
 
 public:
     explicit TDescribeBlocksCommand(IBlockStorePtr client)
@@ -53,6 +78,12 @@ public:
         Opts.AddLongOption("checkpoint-id", "checkpoint identifier")
             .RequiredArgument("STR")
             .StoreResult(&CheckpointId);
+
+        Opts.AddLongOption(
+                "full-blob-ids",
+                "print blob ids as [tablet:gen:step:channel:cookie:size:part]")
+            .NoArgument()
+            .SetFlag(&FullBlobIds);
     }
 
 protected:
@@ -62,6 +93,11 @@ protected:
         auto& output = GetOutputStream();
 
         auto request = std::make_shared<NProto::TExecuteActionRequest>();
+
+        if (Proto && FullBlobIds) {
+            STORAGE_ERROR("--full-blob-ids cannot be used along with --proto");
+            return false;
+        }
 
         if (!Proto && !CheckOpts()) {
             return false;
@@ -116,7 +152,24 @@ protected:
             return true;
         }
 
-        output << result.GetOutput() << Endl;
+        if (!FullBlobIds) {
+            output << result.GetOutput() << Endl;
+            return true;
+        }
+
+        NJson::TJsonValue json;
+        if (!NJson::ReadJsonTree(result.GetOutput(), &json)) {
+            auto error = MakeError(
+                E_BADMSG,
+                TStringBuilder() << "failed to parse response json: "
+                    << result.GetOutput());
+            output << FormatError(error) << Endl;
+            return false;
+        }
+
+        FormatBlobIds(json);
+        NJson::WriteJson(&output, &json, false, true);
+        output << Endl;
         return true;
     }
 

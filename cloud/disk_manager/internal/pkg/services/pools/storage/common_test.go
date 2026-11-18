@@ -214,6 +214,7 @@ func TestCommonFreeSlots(t *testing.T) {
 
 func TestCommonAcquireAndReleaseUnitsAndSlots(t *testing.T) {
 	ctx := newContext()
+	s := &storageYDB{baseDiskUnitMaxReadBandwidthMiBs: 100}
 
 	baseDisk := &baseDisk{
 		maxActiveSlots: 4,
@@ -224,7 +225,7 @@ func TestCommonAcquireAndReleaseUnitsAndSlots(t *testing.T) {
 
 	slot1 := &slot{}
 
-	err := acquireUnitsAndSlots(ctx, nil, baseDisk, slot1)
+	err := s.acquireUnitsAndSlots(ctx, nil, baseDisk, slot1)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), baseDisk.activeSlots)
 	require.Equal(t, uint64(1), baseDisk.activeUnits)
@@ -240,7 +241,7 @@ func TestCommonAcquireAndReleaseUnitsAndSlots(t *testing.T) {
 	slot2.overlayDiskKind = types.DiskKind_DISK_KIND_SSD
 	slot2.overlayDiskSize = 3 * ssdUnit
 
-	err = acquireUnitsAndSlots(ctx, nil, baseDisk, slot2)
+	err = s.acquireUnitsAndSlots(ctx, nil, baseDisk, slot2)
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), baseDisk.activeSlots)
 	require.Equal(t, uint64(4), baseDisk.activeUnits)
@@ -253,7 +254,7 @@ func TestCommonAcquireAndReleaseUnitsAndSlots(t *testing.T) {
 	slot3.overlayDiskKind = types.DiskKind_DISK_KIND_HDD
 	slot3.overlayDiskSize = 3 * hddUnit
 
-	err = acquireUnitsAndSlots(ctx, nil, baseDisk, slot3)
+	err = s.acquireUnitsAndSlots(ctx, nil, baseDisk, slot3)
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), baseDisk.activeSlots)
 	require.Equal(t, uint64(7), baseDisk.activeUnits)
@@ -276,6 +277,30 @@ func TestCommonAcquireAndReleaseUnitsAndSlots(t *testing.T) {
 	require.Equal(t, uint64(3), baseDisk.freeSlots())
 	require.True(t, baseDisk.hasFreeSlots())
 
+	// Slot charged by the expected read bandwidth: 2 base disk (SSD)
+	// allocation units of 100 MiB/s each are needed for 101 MiB/s, without
+	// oversubscription. Overlay disk size and kind are ignored.
+	slot4 := &slot{}
+	slot4.overlayDiskKind = types.DiskKind_DISK_KIND_HDD
+	slot4.overlayDiskSize = 3 * hddUnit
+	slot4.expectedReadBandwidthMiBs = 101
+
+	err = s.acquireUnitsAndSlots(ctx, nil, baseDisk, slot4)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), baseDisk.activeSlots)
+	require.Equal(t, uint64(3+2*regularUnitsPerSSDUnit), baseDisk.activeUnits)
+	require.Equal(t, uint64(0), baseDisk.freeSlots())
+	require.False(t, baseDisk.hasFreeSlots())
+	require.Equal(t, uint64(1), slot4.allottedSlots)
+	require.Equal(t, uint64(2*regularUnitsPerSSDUnit), slot4.allottedUnits)
+
+	err = releaseUnitsAndSlots(ctx, nil, baseDisk, *slot4)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), baseDisk.activeSlots)
+	require.Equal(t, uint64(3), baseDisk.activeUnits)
+	require.Equal(t, uint64(3), baseDisk.freeSlots())
+	require.True(t, baseDisk.hasFreeSlots())
+
 	err = releaseUnitsAndSlots(ctx, nil, baseDisk, *slot3)
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), baseDisk.activeSlots)
@@ -286,6 +311,7 @@ func TestCommonAcquireAndReleaseUnitsAndSlots(t *testing.T) {
 
 func TestCommonIdleSinceTracking(t *testing.T) {
 	ctx := newContext()
+	s := &storageYDB{}
 
 	disk := &baseDisk{
 		maxActiveSlots: 4,
@@ -297,13 +323,13 @@ func TestCommonIdleSinceTracking(t *testing.T) {
 	require.True(t, isTimestampUnset(disk.idleSince))
 
 	slot1 := &slot{}
-	err := acquireUnitsAndSlots(ctx, nil, disk, slot1)
+	err := s.acquireUnitsAndSlots(ctx, nil, disk, slot1)
 	disk.applyInvariants()
 	require.NoError(t, err)
 	require.True(t, isTimestampUnset(disk.idleSince))
 
 	slot2 := &slot{}
-	err = acquireUnitsAndSlots(ctx, nil, disk, slot2)
+	err = s.acquireUnitsAndSlots(ctx, nil, disk, slot2)
 	disk.applyInvariants()
 	require.NoError(t, err)
 	require.True(t, isTimestampUnset(disk.idleSince))
@@ -323,7 +349,7 @@ func TestCommonIdleSinceTracking(t *testing.T) {
 	firstUnusedAt := disk.idleSince
 
 	slot3 := &slot{}
-	err = acquireUnitsAndSlots(ctx, nil, disk, slot3)
+	err = s.acquireUnitsAndSlots(ctx, nil, disk, slot3)
 	disk.applyInvariants()
 	require.NoError(t, err)
 	require.True(t, isTimestampUnset(disk.idleSince))
@@ -338,6 +364,7 @@ func TestCommonIdleSinceTracking(t *testing.T) {
 
 func TestCommonIdleSinceSetOncePerIdlePeriod(t *testing.T) {
 	ctx := newContext()
+	s := &storageYDB{}
 
 	disk := &baseDisk{
 		maxActiveSlots: 4,
@@ -349,9 +376,9 @@ func TestCommonIdleSinceSetOncePerIdlePeriod(t *testing.T) {
 	slot1 := &slot{}
 	slot2 := &slot{}
 
-	err := acquireUnitsAndSlots(ctx, nil, disk, slot1)
+	err := s.acquireUnitsAndSlots(ctx, nil, disk, slot1)
 	require.NoError(t, err)
-	err = acquireUnitsAndSlots(ctx, nil, disk, slot2)
+	err = s.acquireUnitsAndSlots(ctx, nil, disk, slot2)
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), disk.activeUnits)
 

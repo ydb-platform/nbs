@@ -9,26 +9,52 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void ValidateRetiredRequest(const TPendingWriteDataRequest& request)
+{
+    Y_ABORT_UNLESS(
+        request.TIntrusiveListItem<TPendingWriteDataRequest>::Empty());
+
+    Y_ABORT_UNLESS(
+        (request.TIntrusiveListItem<TPendingWriteDataRequest, THandleStateTag>::
+             Empty()));
+
+    // Allocated requests must publish Serialized before retirement
+    Y_ABORT_UNLESS(
+        !request.HasAllocation() || request.IsSerialized(),
+        "HasAllocation=%d, IsSerialized=%d",
+        request.HasAllocation(),
+        request.IsSerialized());
+}
+
 struct TWriteDataPromiseCompletedEvent
 {
-    NThreading::TPromise<NProto::TWriteDataResponse> Promise;
+    std::unique_ptr<TPendingWriteDataRequest> Request;
 
     void Invoke()
     {
-        Promise.SetValue({});
+        auto promise = std::move(Request->AccessPromise());
+
+        // SetValue runs subscribers synchronously; they may reply to FUSE and
+        // submit more writes. Release request-owned memory first instead of
+        // retaining it through those callbacks and the rest of the event batch.
+        Request.reset();
+        promise.SetValue({});
     }
 };
 
 struct TWriteDataPromiseFailedEvent
 {
-    NThreading::TPromise<NProto::TWriteDataResponse> Promise;
+    std::unique_ptr<TPendingWriteDataRequest> Request;
     NCloud::NProto::TError Error;
 
     void Invoke()
     {
         NProto::TWriteDataResponse response;
         *response.MutableError() = std::move(Error);
-        Promise.SetValue(std::move(response));
+        auto promise = std::move(Request->AccessPromise());
+        // Free request-owned memory before subscribers can reply or retry.
+        Request.reset();
+        promise.SetValue(std::move(response));
     }
 };
 
@@ -108,16 +134,20 @@ struct TQueuedOperations::TEvent: public TEventVariant
 
 TQueuedOperations::TQueuedOperations(
     IQueuedOperationsProcessor& processor,
+    std::unique_ptr<IWriteBackCacheLock> lock,
     std::function<void()> requestsSerializedCallback)
-    : Processor(processor)
+    : Lock(std::move(lock))
+    , Processor(processor)
     , RequestsSerializedCallback(std::move(requestsSerializedCallback))
-{}
+{
+    Y_ABORT_UNLESS(Lock);
+}
 
 TQueuedOperations::~TQueuedOperations() = default;
 
-void TQueuedOperations::Acquire()
+void TQueuedOperations::Acquire() noexcept
 {
-    Lock.Acquire();
+    Lock->Acquire();
 }
 
 void TQueuedOperations::Release()
@@ -126,11 +156,14 @@ void TQueuedOperations::Release()
         auto events = std::exchange(Events, {});
         auto requestsToSerialize = std::exchange(RequestsToSerialize, {});
 
-        Lock.Release();
+        Lock->Release();
 
         for (auto& event: events) {
             std::visit([](auto& ev) { ev.Invoke(); }, event);
         }
+
+        // Release event-held state while unlocked
+        events.clear();
 
         if (requestsToSerialize.empty()) {
             break;
@@ -146,7 +179,7 @@ void TQueuedOperations::Release()
             request->SerializeToAllocation();
         }
 
-        Lock.Acquire();
+        Lock->Acquire();
 
         // This call may enqueue new events
         RequestsSerializedCallback();
@@ -158,17 +191,21 @@ void TQueuedOperations::ScheduleFlushNode(ui64 nodeId)
     Events.push_back(TScheduleFlushEvent{Processor, nodeId});
 }
 
-void TQueuedOperations::CompleteWriteDataPromise(
-    NThreading::TPromise<NProto::TWriteDataResponse> promise)
+void TQueuedOperations::CompleteWriteDataRequest(
+    std::unique_ptr<TPendingWriteDataRequest> request)
 {
-    Events.push_back(TWriteDataPromiseCompletedEvent{std::move(promise)});
+    ValidateRetiredRequest(*request);
+
+    Events.push_back(TWriteDataPromiseCompletedEvent{std::move(request)});
 }
 
-void TQueuedOperations::FailWriteDataPromise(
-    NThreading::TPromise<NProto::TWriteDataResponse> promise,
+void TQueuedOperations::FailWriteDataRequest(
+    std::unique_ptr<TPendingWriteDataRequest> request,
     const NCloud::NProto::TError& error)
 {
-    Events.push_back(TWriteDataPromiseFailedEvent{std::move(promise), error});
+    ValidateRetiredRequest(*request);
+
+    Events.push_back(TWriteDataPromiseFailedEvent{std::move(request), error});
 }
 
 void TQueuedOperations::CompleteFlushOrReleasePromise(

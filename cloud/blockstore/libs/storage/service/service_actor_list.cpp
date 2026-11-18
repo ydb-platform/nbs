@@ -87,7 +87,9 @@ void TDescribeActor::DescribePath(const TActorContext& ctx, const TString& path)
         TotalRequestsScheduled,
         path.Quote().data());
 
-    auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(path);
+    auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+        path,
+        true /* addPathToError */);
     ++RequestsInFlight;
 
     NCloud::Send(

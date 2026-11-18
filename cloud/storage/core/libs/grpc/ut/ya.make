@@ -6,6 +6,7 @@ SRCS(
     request_ut.cpp
     stable_read_ut.cpp
     tls_certificate_provider_ut.cpp
+    tls_certificate_watcher_ut.cpp
     tls_utils_ut.cpp
     utils_ut.cpp
 )

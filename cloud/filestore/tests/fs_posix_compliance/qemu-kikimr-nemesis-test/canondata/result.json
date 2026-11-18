@@ -43,5 +43,8 @@
     },
     "test.test_posix_compliance[unlink]": {
         "uri": "file://test.test_posix_compliance_unlink_/results-unlink.txt"
+    },
+    "test.test_posix_compliance[xacl]": {
+        "uri": "file://test.test_posix_compliance_xacl_/results-xacl.txt"
     }
 }

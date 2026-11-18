@@ -24,11 +24,13 @@ PEERDIR(
     cloud/filestore/libs/storage/tablet
     cloud/filestore/libs/storage/tablet/events
     cloud/filestore/libs/storage/tablet_proxy
+    cloud/filestore/libs/storage/tablet_rdma
     cloud/storage/core/libs/api
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/hive_proxy
     cloud/storage/core/libs/kikimr
+    cloud/storage/core/libs/tablet_proxy
     contrib/ydb/core/base
     contrib/ydb/core/client/minikql_compile
     contrib/ydb/core/filestore/core

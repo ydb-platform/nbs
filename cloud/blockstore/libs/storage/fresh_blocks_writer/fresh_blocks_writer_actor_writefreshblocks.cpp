@@ -35,7 +35,9 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
             SharedState->UnflushedFreshBlobByteCount.load(),
             SharedState->UnflushedFreshBlocksCount.load() *
                 PartitionConfig.GetBlockSize(),
-            Config->GetFreshByteCountHardLimit(),
+            PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+                ? Config->GetFreshByteCountHardLimitSSD()
+                : Config->GetFreshByteCountHardLimitHDD(),
             Config->GetFreshLogicalBlocksByteCountHardLimit());
         HasError(error))
     {
@@ -101,7 +103,8 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         writeHandlers.push_back(r.Data.Handler);
     }
 
-    const auto commitId = SharedState->StartFreshWrite(blockCount);
+    const auto [commitId, timestamp] =
+        SharedState->StartFreshWrite(ctx, blockCount);
 
     if (commitId == InvalidCommitId) {
         for (auto& r: requestsInBuffer) {
@@ -121,6 +124,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
         SelfId(),
         PartitionActorId,
         commitId,
+        timestamp,
         channel,
         blockCount,
         std::move(requests),
@@ -144,7 +148,9 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
             SharedState->UnflushedFreshBlobByteCount.load(),
             SharedState->UnflushedFreshBlocksCount.load() *
                 PartitionConfig.GetBlockSize(),
-            Config->GetFreshByteCountHardLimit(),
+            PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+                ? Config->GetFreshByteCountHardLimitSSD()
+                : Config->GetFreshByteCountHardLimitHDD(),
             Config->GetFreshLogicalBlocksByteCountHardLimit());
         HasError(error))
     {
@@ -166,7 +172,8 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
     const ui32 blockCount = writeRange.Size();
     SharedState->IncrementFreshBlocksInFlight(blockCount);
 
-    const auto commitId = SharedState->StartFreshWrite(blockCount);
+    const auto [commitId, timestamp] =
+        SharedState->StartFreshWrite(ctx, blockCount);
 
     if (commitId == InvalidCommitId) {
         requestInfo->CancelRequest(ctx);
@@ -206,6 +213,7 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
         SelfId(),
         PartitionActorId,
         commitId,
+        timestamp,
         channel,
         blockCount,
         std::move(requests),

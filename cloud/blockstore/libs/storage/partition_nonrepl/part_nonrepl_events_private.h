@@ -413,20 +413,36 @@ struct TEvNonreplPartitionPrivate
         TGetDiskRegistryBasedPartCountersRequest() = default;
     };
 
+    struct TDiskCounters
+    {
+        TString DiskId;
+        TPartNonreplCountersData CountersData;
+    };
+
     struct TGetDiskRegistryBasedPartCountersResponse
     {
         NActors::TActorId ActorId;
-        TString DiskId;
-        TPartNonreplCountersData CountersData;
+        // One entry per disk. Partitions report only their own disk; a shadow
+        // disk actor reports checkpoint's disk metrics.
+        TVector<TDiskCounters> DisksCounters;
+
+        TGetDiskRegistryBasedPartCountersResponse(
+                const NActors::TActorId& actorId,
+                TVector<TDiskCounters> disksCounters)
+            : ActorId(actorId)
+            , DisksCounters(std::move(disksCounters))
+        {}
 
         TGetDiskRegistryBasedPartCountersResponse(
                 const NActors::TActorId& actorId,
                 TString diskId,
                 TPartNonreplCountersData countersData)
             : ActorId(actorId)
-            , DiskId(std::move(diskId))
-            , CountersData(std::move(countersData))
-        {}
+        {
+            DisksCounters.push_back(
+                {.DiskId = std::move(diskId),
+                 .CountersData = std::move(countersData)});
+        }
     };
 
     //

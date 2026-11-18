@@ -182,6 +182,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(TabletBootInfoBackupFilePath,             TString,   ""               )\
     xxx(UseBinaryFormatForTabletBootInfoBackup,   bool,      false            )\
     xxx(HiveProxyFallbackMode,                    bool,      false            )\
+    xxx(SystemTabletBackupDirPath,                TString,   ""               )\
                                                                                \
     xxx(ThrottlingEnabled,             bool,      false                       )\
                                                                                \
@@ -205,6 +206,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ThreeStageWriteThreshold,        ui32,      64_KB                     )\
     xxx(ThreeStageWriteDisabledForHDD,   bool,      false                     )\
     xxx(UnalignedThreeStageWriteEnabled, bool,      false                     )\
+    xxx(WriteDataZeroBlockStatsEnabled,  bool,      false                     )\
     xxx(ReadAheadCacheMaxNodes,                 ui32,       1024              )\
     xxx(ReadAheadCacheMaxResultsPerNode,        ui32,       32                )\
     xxx(ReadAheadCacheRangeSize,                ui32,       0                 )\
@@ -216,6 +218,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(AttrTimeout,                     TDuration, TDuration::Zero()         )\
     xxx(XAttrCacheTimeout,               TDuration, TDuration::Zero()         )\
     xxx(XAttrCacheLimit,                 ui32,      0                         )\
+    xxx(NodeRefCacheLimit,               ui32,      0                         )\
+    xxx(NodeAttrsCacheLimit,             ui32,      0                         )\
     xxx(MaxOutOfOrderCompactionMapLoadRequestsInQueue,  ui32,      5          )\
     xxx(MaxBackpressureErrorsBeforeSuicide, ui32,       1000                  )\
     xxx(MaxBackpressurePeriodBeforeSuicide, TDuration,  TDuration::Minutes(10))\
@@ -300,6 +304,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ExtendedAttributesDisabled,                bool,     false            )\
                                                                                \
     xxx(ServerWriteBackCacheEnabled,                      bool,     false     )\
+    xxx(ServerWriteBackCacheStateFileSize,                ui64,     0         )\
     xxx(ServerWriteBackCacheFlushWritesInParallelEnabled, bool,     false     )\
                                                                                \
     xxx(GuestKeepCacheAllowed,                     bool,      false           )\
@@ -317,10 +322,18 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(AllowHandlelessIO,                 bool,       false                  )\
     xxx(FileSystemEventsEnabled,           bool,       false                  )\
     xxx(FileSystemEventsDryRunModeEnabled, bool,       false                  )\
+    xxx(FileSystemEventSubscriptionsSealPeriod,                                \
+        TDuration,                                                             \
+        TDuration::Minutes(30))                                                \
+    xxx(FileSystemEventSubscriptionsCacheTTLMargin,                            \
+        TDuration,                                                             \
+        TDuration::Minutes(1))                                                 \
+    xxx(FileSystemListingEventsEnabled,    bool,       false                  )\
                                                                                \
     xxx(LazyXAttrsEnabled,                 bool,       false                  )\
     xxx(MaxBackground,                     ui32,       0                      )\
     xxx(MaxFuseLoopThreads,                ui32,       1                      )\
+    xxx(MaxRequestSize,                    ui32,       0                      )\
                                                                                \
     xxx(StrictFileSystemSizeEnforcementEnabled, bool,  false                  )\
                                                                                \
@@ -394,7 +407,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(SoftBackpressureEnabled,                bool,   false                 )\
     xxx(FlushThresholdForBackpressureSoft,             ui32,    32_MB         )\
     xxx(CleanupThresholdForBackpressureSoft,           ui32,    8192          )\
-    xxx(CompactionThresholdForBackpressureSoft,        ui32,    50            )\
+    xxx(CompactionThresholdForBackpressureSoft,        ui32,    140           )\
     xxx(FlushBytesThresholdForBackpressureSoft,        ui64,    32_MB         )\
     xxx(FlushBytesItemCountThresholdForBackpressureSoft,                       \
                                                        ui64,    125'000       )\
@@ -587,6 +600,11 @@ FILESTORE_STORAGE_CONFIG_REF(DECLARE_FIELD_CHECKER)
 FILESTORE_STORAGE_CONFIG(FILESTORE_CONFIG_GETTER)
 
 #undef FILESTORE_CONFIG_GETTER
+
+ui32 TStorageConfig::GetDefaultSizeToNodesRatio()
+{
+    return DefaultSizeToNodesRatio;
+}
 
 #define FILESTORE_CONFIG_GETTER_REF(name, type, ...)                           \
 const type& TStorageConfig::Get##name() const                                  \

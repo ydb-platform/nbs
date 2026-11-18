@@ -152,6 +152,7 @@ func newResourceStorage(
 		db,
 		endedMigrationExpirationTimeout,
 		false, // backupEnabled
+		nil,   // backupFolderIDs
 	)
 
 	return resourcesStorage, db, err
@@ -169,6 +170,7 @@ func newPoolStorage(
 
 	poolsStorage, err := pools_storage.NewStorage(
 		config.GetPoolsConfig(),
+		config.GetPerformanceConfig(),
 		db,
 		metrics.NewEmptyRegistry(),
 	)

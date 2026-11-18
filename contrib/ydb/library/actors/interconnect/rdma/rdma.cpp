@@ -451,6 +451,14 @@ ibv_send_wr* TIbVerbsBuilderImpl::BuildListOfVerbs(std::vector<TWr*>& wr, size_t
         attach(i);
     }
 
+    // Publish the whole batch with one fence. TSan still needs a distinct
+    // synchronization address for every work request to avoid making
+    // unrelated completions appear synchronized.
+    atomic_thread_fence(std::memory_order_release);
+    for (TWr* item : wr) {
+        item->TsanReleaseForCompletion();
+    }
+
     return &WorkBuf[0].Wr;
 }
 

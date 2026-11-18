@@ -135,6 +135,46 @@ func (client *durableClient) DestroyVolume(
 	return resp.(*protos.TDestroyVolumeResponse), err
 }
 
+func (client *durableClient) CreateVolumeLink(
+	ctx context.Context,
+	req *protos.TCreateVolumeLinkRequest,
+) (*protos.TCreateVolumeLinkResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.CreateVolumeLink(ctx, req)
+		},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.(*protos.TCreateVolumeLinkResponse), nil
+}
+
+func (client *durableClient) DestroyVolumeLink(
+	ctx context.Context,
+	req *protos.TDestroyVolumeLinkRequest,
+) (*protos.TDestroyVolumeLinkResponse, error) {
+
+	resp, err := client.executeRequest(
+		ctx,
+		req,
+		func(ctx context.Context) (response, error) {
+			return client.impl.DestroyVolumeLink(ctx, req)
+		},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.(*protos.TDestroyVolumeLinkResponse), nil
+}
+
 func (client *durableClient) ResizeVolume(
 	ctx context.Context,
 	req *protos.TResizeVolumeRequest,

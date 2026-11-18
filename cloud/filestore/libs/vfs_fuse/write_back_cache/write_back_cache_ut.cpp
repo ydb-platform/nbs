@@ -31,6 +31,7 @@
 #include <util/system/spinlock.h>
 #include <util/system/tempfile.h>
 
+#include <barrier>
 #include <exception>
 #include <latch>
 #include <memory>
@@ -163,6 +164,7 @@ struct TBootstrapArgs
     bool FlushWritesInParallelEnabled = true;
     ui64 CacheCapacityBytes = DefaultCacheCapacityBytes;
     bool LogDataOperations = true;
+    NProto::EWriteBackCacheLockMethod LockMethod = NProto::WBC_LOCK_ADAPTIVE;
 
     // Total number of threads shared by asynchronous submission, session
     // handling, and completion in TTestWriteBackCache.
@@ -207,7 +209,9 @@ struct TBootstrap
     bool FlushWritesInParallelEnabled = false;
     bool DisableExpectedDataValidation = false;
     ui64 CacheCapacityBytes = DefaultCacheCapacityBytes;
+    ui64 MaxGuestWriteRequestSize = 1_MB;
     size_t ThreadCount = 0;
+    NProto::EWriteBackCacheLockMethod LockMethod = NProto::WBC_LOCK_ADAPTIVE;
 
     TCallContextPtr CallContext;
 
@@ -226,6 +230,7 @@ struct TBootstrap
         , FlushWritesInParallelEnabled(args.FlushWritesInParallelEnabled)
         , CacheCapacityBytes(args.CacheCapacityBytes)
         , ThreadCount(args.ThreadCount)
+        , LockMethod(args.LockMethod)
     {
         CacheFlushRetryPeriod = FlushRetryPeriod;
 
@@ -313,6 +318,10 @@ struct TBootstrap
         Stats = CreateWriteBackCacheStats();
         Metrics = Stats->CreateMetrics();
 
+        const auto layout =
+            TFileRingBufferLayout::FromCapacity(CacheCapacityBytes, 0);
+        UNIT_ASSERT(layout);
+
         Cache = TTestWriteBackCache(
             {.Session = Session,
              .Scheduler = Scheduler,
@@ -322,14 +331,16 @@ struct TBootstrap
              .FileSystemId = "FileSystemId",
              .ClientId = "ClientId",
              .FilePath = TempFileHandle.GetName(),
-             .CapacityBytes = CacheCapacityBytes,
+             .StateFileSize = layout->StateFileSize,
              .AutomaticFlushPeriod = CacheAutomaticFlushPeriod,
              .FlushRetryPeriod = CacheFlushRetryPeriod,
              .FlushMaxWriteRequestSize = MaxWriteRequestSize,
              .FlushMaxWriteRequestsCount = MaxWriteRequestsCount,
              .FlushMaxSumWriteRequestsSize = MaxSumWriteRequestsSize,
+             .LockMethod = LockMethod,
              .ZeroCopyWriteEnabled = ZeroCopyWriteEnabled,
-             .FlushWritesInParallelEnabled = FlushWritesInParallelEnabled},
+             .FlushWritesInParallelEnabled = FlushWritesInParallelEnabled,
+             .MaxGuestWriteRequestSize = MaxGuestWriteRequestSize},
             ThreadCount);
 
         ModuleStats = Cache.CreateModuleStats();
@@ -447,11 +458,11 @@ struct TBootstrap
         UnflushedData.Write(nodeId, offset, buffer);
         auto future = Cache.WriteData(CallContext, std::move(request));
 
-        future.Subscribe([&, nodeId, offset, buffer] (auto) {
+        return future.Apply([&, nodeId, offset, buffer](const auto& completed) {
+            auto response = completed.GetValue();
             ExpectedData.Write(nodeId, offset, buffer);
+            return response;
         });
-
-        return future;
     }
 
     TFuture<NProto::TWriteDataResponse> WriteToCache(
@@ -1568,8 +1579,22 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         b.WriteToCacheSync(1, 0, "abc");
 
-        b.TempFileHandle.Pwrite("Corrupt cache", 13, 256);
-        b.TempFileHandle.Flush();
+        {
+            TFileMapFileRingBufferAccessor accessor(
+                b.TempFileHandle.GetName(),
+                EFileRingBufferAccessorValidationMode::Normal,
+                TMemoryMapCommon::EOpenModeFlag::oRdWr);
+            UNIT_ASSERT(!HasError(accessor.Map()));
+            UNIT_ASSERT(
+                EFileRingBufferAccessorValidationStatus::Success ==
+                accessor.ValidateAndInitialize());
+
+            auto* dataProcessor = accessor.GetDataProcessor();
+            const auto entryPos = accessor.GetHeader()->ReadPos;
+            auto header = dataProcessor->ReadEntryHeader(entryPos);
+            header.DataChecksum ^= 1;
+            UNIT_ASSERT(dataProcessor->WriteEntryHeader(entryPos, header));
+        }
 
         b.RecreateCache();
 
@@ -2163,6 +2188,24 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(drain.HasValue());
     }
 
+    Y_UNIT_TEST(ShouldDrainIfMaxGuestWriteRequestDoesNotFit)
+    {
+        TBootstrap b;
+        TManualProceedHandlers write(b.Session->WriteDataHandler);
+
+        b.WriteToCacheSync(1, 0, "abc");
+
+        // The state file fits 1 MiB requests but not 4 MiB ones
+        b.MaxGuestWriteRequestSize = 4_MB;
+        b.RecreateCache();
+
+        // The restored data is flushed, not stranded
+        UNIT_ASSERT(!b.Cache.IsDrained());
+        write.ProceedAll();
+        UNIT_ASSERT(b.Cache.IsDrained());
+        UNIT_ASSERT_VALUES_EQUAL("abc", b.FlushedData.ReadAll(1));
+    }
+
     Y_UNIT_TEST(ShouldReportOperationalStateMetrics)
     {
         TBootstrap b;
@@ -2342,6 +2385,101 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.RunAllScheduledTasks();
         UNIT_ASSERT_VALUES_EQUAL(3, writeHandles.size());
         UNIT_ASSERT_VALUES_EQUAL(102, writeHandles[2]);
+    }
+
+    Y_UNIT_TEST(ShouldNotReleaseHandleBeingUsedForFlush)
+    {
+        TBootstrap b({
+            .MaxWriteRequestsCount = 1,
+            .LogDataOperations = false,
+        });
+
+        THashMap<ui64, TDeque<TPromise<NProto::TWriteDataResponse>>>
+            writeRequests;
+        THashMap<ui64, TVector<ui64>> writeHandles;
+
+        b.Session->WriteDataHandler = [&](auto, auto request)
+        {
+            const auto nodeId = request->GetNodeId();
+            auto promise = NewPromise<NProto::TWriteDataResponse>();
+            writeRequests[nodeId].push_back(promise);
+            writeHandles[nodeId].push_back(request->GetHandle());
+            return promise.GetFuture();
+        };
+
+        auto completeNext = [&](ui64 nodeId, ui32 code = S_OK)
+        {
+            auto& requests = writeRequests[nodeId];
+            UNIT_ASSERT(!requests.empty());
+            auto promise = requests.front();
+            requests.pop_front();
+
+            NProto::TWriteDataResponse response;
+            response.MutableError()->SetCode(code);
+            promise.SetValue(std::move(response));
+        };
+
+        // Two entries fit in the cache, but a third entry of this size cannot
+        const TString data(400_KB, 'x');
+        b.WriteToCacheSync(1, 101, 0, data);
+        b.WriteToCacheSync(1, 102, 1_MB, data);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, writeHandles[1].size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[1][0]);
+
+        // Release handle 102 after a failed flush, retaining its dirty data
+        auto release = b.Cache.ReleaseHandle(1, 102);
+        UNIT_ASSERT(!release.HasValue());
+        completeNext(1, E_IO);
+        UNIT_ASSERT(release.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, release.GetValue().GetCode());
+
+        // Leave room for the ring buffer's separator byte when reusing the
+        // first entry's space after wraparound.
+        auto pending2 = b.WriteToCache(2, 201, 0, data.substr(1_KB), {});
+        auto pending1 = b.WriteToCache(1, 103, 2_MB, data, {});
+        UNIT_ASSERT(!pending2.HasValue());
+        UNIT_ASSERT(!pending1.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.PendingQueue.Count->Get());
+
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles[1].size());
+        UNIT_ASSERT_VALUES_EQUAL(101, writeHandles[1][1]);
+        completeNext(1);
+
+        // Node 2 takes the freed slot. Node 1 flushes the remaining dirty data
+        // through handle 103, whose own write is still pending
+        UNIT_ASSERT(pending2.HasValue());
+        UNIT_ASSERT(!HasError(pending2.GetValue().GetError()));
+        UNIT_ASSERT(!pending1.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(3, writeHandles[1].size());
+        UNIT_ASSERT_VALUES_EQUAL(103, writeHandles[1][2]);
+        UNIT_ASSERT_VALUES_EQUAL(1, writeHandles[2].size());
+        UNIT_ASSERT_VALUES_EQUAL(201, writeHandles[2][0]);
+
+        completeNext(2, E_FS_NOSPC);
+        UNIT_ASSERT(pending1.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_FS_NOSPC,
+            pending1.GetValue().GetError().GetCode());
+
+        auto releaseFlushHandle = b.Cache.ReleaseHandle(1, 103);
+        UNIT_ASSERT_C(
+            !releaseFlushHandle.HasValue(),
+            "Handle must not be released while a session write is in flight");
+
+        completeNext(1);
+        UNIT_ASSERT(releaseFlushHandle.HasValue());
+        UNIT_ASSERT(!HasError(releaseFlushHandle.GetValue()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.WriteDataRequestDroppedCount->Get());
+
+        b.RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, writeHandles[2].size());
+        UNIT_ASSERT_VALUES_EQUAL(201, writeHandles[2][1]);
+        completeNext(2);
+        b.CheckStatsAreEmpty();
     }
 
     Y_UNIT_TEST(ShouldHandleFlushWritesInParallelEnabled)
@@ -2947,10 +3085,19 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     struct TShouldHandleConcurrentReadsAndWritesAcrossNodesTest: TBootstrap
     {
-        static constexpr size_t ClientThreadCount = 16;
+        struct TArgs
+        {
+            NProto::EWriteBackCacheLockMethod LockMethod =
+                NProto::WBC_LOCK_ADAPTIVE;
+            size_t ClientThreadCount = 16;
+            size_t CacheThreadCount = 4;
+            TDuration Duration = TDuration::Seconds(1);
+        };
+
+        const size_t ClientThreadCount;
         static constexpr ui64 MaxRequestSize = 8_KB;
         static constexpr ui64 FileSize = 256_KB;
-        static constexpr TDuration TestDuration = TDuration::Seconds(5);
+        const TDuration TestDuration;
 
         // Incoming write iovecs are borrowed by the cache. Keep one buffer per
         // thread alive through cache teardown so that a timed-out request
@@ -2958,13 +3105,17 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         TVector<TString> WriteBuffers;
         std::atomic<bool> StopRequested = false;
 
-        TShouldHandleConcurrentReadsAndWritesAcrossNodesTest()
+        explicit TShouldHandleConcurrentReadsAndWritesAcrossNodesTest(
+            const TArgs& args)
             : TBootstrap(
                   {.MaxWriteRequestsCount = 2,
                    .ZeroCopyWriteEnabled = true,
                    .DoNotCheckWriteDataRequestBuffer = true,
                    .LogDataOperations = false,
-                   .ThreadCount = 4})
+                   .LockMethod = args.LockMethod,
+                   .ThreadCount = args.CacheThreadCount})
+            , ClientThreadCount(args.ClientThreadCount)
+            , TestDuration(args.Duration)
             , WriteBuffers(ClientThreadCount)
         {}
 
@@ -3094,8 +3245,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         void Run()
         {
-            std::latch start{ClientThreadCount + 1};
-            const TInstant deadline = TInstant::Now() + TestDuration;
+            TInstant deadline;
+            // Start the timed workload only after all clients are ready.
+            std::barrier start(
+                static_cast<ptrdiff_t>(ClientThreadCount + 1),
+                [&]() noexcept { deadline = TInstant::Now() + TestDuration; });
 
             TVector<std::exception_ptr> errors(ClientThreadCount);
             TVector<std::thread> threads;
@@ -3130,9 +3284,44 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         }
     };
 
-    Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodes)
+    Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodesAdaptive)
     {
-        TShouldHandleConcurrentReadsAndWritesAcrossNodesTest test;
+        TShouldHandleConcurrentReadsAndWritesAcrossNodesTest test(
+            {.LockMethod = NProto::WBC_LOCK_ADAPTIVE,
+             .Duration = TDuration::Seconds(5)});
+        test.Run();
+    }
+
+    Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodesSpin)
+    {
+        // The test runner reserves four CPUs. Use two clients and two cache
+        // workers to reduce oversubscription: spinning waiters can otherwise
+        // delay a descheduled lock holder and cause request timeouts.
+        TShouldHandleConcurrentReadsAndWritesAcrossNodesTest test(
+            {.LockMethod = NProto::WBC_LOCK_SPIN,
+             .ClientThreadCount = 2,
+             .CacheThreadCount = 2});
+        test.Run();
+    }
+
+    Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodesMutex)
+    {
+        TShouldHandleConcurrentReadsAndWritesAcrossNodesTest test(
+            {.LockMethod = NProto::WBC_LOCK_MUTEX});
+        test.Run();
+    }
+
+    Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodesSpinThenMutex)
+    {
+        TShouldHandleConcurrentReadsAndWritesAcrossNodesTest test(
+            {.LockMethod = NProto::WBC_LOCK_SPIN_THEN_MUTEX});
+        test.Run();
+    }
+
+    Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodesPthreadAdaptive)
+    {
+        TShouldHandleConcurrentReadsAndWritesAcrossNodesTest test(
+            {.LockMethod = NProto::WBC_LOCK_PTHREAD_ADAPTIVE});
         test.Run();
     }
 

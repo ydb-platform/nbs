@@ -111,7 +111,7 @@ void DeleteDisksToNotify(
                     Now(),
                     db,
                     TDiskNotificationResult{
-                        TDiskNotification{x.first, x.second},
+                        TDiskNotification{x.first, x.second, 0},
                         {},
                     });
             }

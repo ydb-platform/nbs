@@ -3,6 +3,7 @@ CHECK_DEPENDENT_DIRS(
         contrib/ydb
 
     EXCEPT contrib/ydb/library/actors
+    EXCEPT contrib/ydb/library/uring
     EXCEPT contrib/ydb/library/services
     EXCEPT contrib/ydb/library/yql/providers/generic/connector/api/common
     EXCEPT contrib/ydb/library/yql/public/types

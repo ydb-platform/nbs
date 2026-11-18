@@ -46,6 +46,7 @@ using IRequestStatsPtr = std::shared_ptr<IRequestStats>;
 
 struct IDumpable;
 using IDumpablePtr = std::shared_ptr<IDumpable>;
+using IDumpableConstPtr = std::shared_ptr<const IDumpable>;
 
 struct IServerStats;
 using IServerStatsPtr = std::shared_ptr<IServerStats>;

@@ -657,6 +657,7 @@ class Client(_SafeClient):
             project_id: str = "",
             folder_id: str = "",
             cloud_id: str = "",
+            storage_media_kind: protos.EStorageMediaKind = protos.EStorageMediaKind.Value("STORAGE_MEDIA_DEFAULT"),
             idempotence_id: str | None = None,
             timestamp: datetime | None = None,
             trace_id: str | None = None,
@@ -669,6 +670,7 @@ class Client(_SafeClient):
             ProjectId=project_id,
             FolderId=folder_id,
             CloudId=cloud_id,
+            StorageMediaKind=storage_media_kind,
         )
         return self._impl.create_volume_from_device_async(
             request,
@@ -686,6 +688,7 @@ class Client(_SafeClient):
             project_id: str = "",
             folder_id: str = "",
             cloud_id: str = "",
+            storage_media_kind: protos.EStorageMediaKind = protos.EStorageMediaKind.Value("STORAGE_MEDIA_DEFAULT"),
             idempotence_id: str | None = None,
             timestamp: datetime | None = None,
             trace_id: str | None = None,
@@ -698,6 +701,7 @@ class Client(_SafeClient):
             ProjectId=project_id,
             FolderId=folder_id,
             CloudId=cloud_id,
+            StorageMediaKind=storage_media_kind,
         )
         return self._impl.create_volume_from_device(
             request,

@@ -1507,10 +1507,12 @@ TEST_P(TSlowEncryptorServerTest, ShouldWaitForAllThreadPoolTasksBeforeStop)
             Client.WriteAsync(i % QueueCount, {hdr}, {readBuffer, status}));
     }
 
-    // Give AIO time to complete the reads and enqueue decryption tasks onto
-    // the thread pool. Each decryption sleeps 100ms, so most tasks remain
-    // queued at this point.
-    Sleep(TDuration::MilliSeconds(200));
+    // Wait until every read has reached AIO before unregistering the device.
+    // Requests still in the client's virtqueues may not be consumed on stop.
+    const auto stats = GetStats(
+        [requestCount](const TCompleteStats& stats)
+        { return stats.SimpleStats.Submitted == requestCount; });
+    ASSERT_EQ(requestCount, stats.SimpleStats.Submitted);
 
     Server->Stop();
     Server.reset();

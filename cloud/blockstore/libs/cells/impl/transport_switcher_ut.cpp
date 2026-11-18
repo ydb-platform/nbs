@@ -75,9 +75,9 @@ struct TTestEnv
         Scheduler->RunAllScheduledTasksUntilNow();
     }
 
-    void StartSwitching(TEndpointFactory factory)
+    NProto::TError PrepareSwitching(TEndpointFactory factory)
     {
-        Switcher = StartTransportSwitching(
+        auto prepared = PrepareTransportSwitching(
             Router,
             Initial,   // the endpoint the router starts on
             std::move(factory),
@@ -88,12 +88,23 @@ struct TTestEnv
             TTransportSwitcherConfig{
                 .SettleTime = SettleTime,
             });
+        if (HasError(prepared)) {
+            return prepared.GetError();
+        }
+        Switcher = prepared.ExtractResult();
+        return {};
+    }
+
+    void StartSwitching(TEndpointFactory factory)
+    {
+        if (!HasError(PrepareSwitching(std::move(factory)))) {
+            Switcher->Activate();
+        }
     }
 
     TEndpointFactory AlwaysSucceeds()
     {
-        return [this](
-                   NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
+        return [this](NCloud::IClientEndpointHandlerPtr handler)
         {
             Y_UNUSED(handler);
             ++FactoryCalls;
@@ -104,8 +115,7 @@ struct TTestEnv
 
     TEndpointFactory AlwaysFails()
     {
-        return [this](
-                   NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
+        return [this](NCloud::IClientEndpointHandlerPtr handler)
         {
             Y_UNUSED(handler);
             ++FactoryCalls;
@@ -122,6 +132,58 @@ struct TTestEnv
 
 Y_UNIT_TEST_SUITE(TTransportSwitcherTest)
 {
+    Y_UNIT_TEST(ShouldWaitForActivationBeforeUpdatingRouter)
+    {
+        TTestEnv env;
+        const auto error = env.PrepareSwitching(env.AlwaysSucceeds());
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        const auto handler = env.Switcher->GetEndpointHandler();
+        handler->HandleConnected();
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(env.Initial->ReadCount, 1);
+        UNIT_ASSERT_VALUES_EQUAL(env.Better->ReadCount, 0);
+        UNIT_ASSERT(!env.Switcher->IsPreferredActive());
+
+        env.Switcher->Activate();
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(env.Initial->ReadCount, 1);
+        UNIT_ASSERT_VALUES_EQUAL(env.Better->ReadCount, 1);
+        UNIT_ASSERT(env.Switcher->IsPreferredActive());
+
+        handler->HandleDisconnected();
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(env.Initial->ReadCount, 2);
+        UNIT_ASSERT(!env.Switcher->IsPreferredActive());
+    }
+
+    Y_UNIT_TEST(ShouldUseLatestConnectionStateWhenActivated)
+    {
+        TTestEnv env;
+        const auto error = env.PrepareSwitching(env.AlwaysSucceeds());
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        const auto handler = env.Switcher->GetEndpointHandler();
+        handler->HandleConnected();
+        handler->HandleDisconnected();
+        env.Switcher->Activate();
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(env.Initial->ReadCount, 1);
+        UNIT_ASSERT_VALUES_EQUAL(env.Better->ReadCount, 0);
+
+        handler->HandleConnected();
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(env.Better->ReadCount, 1);
+    }
+
+    Y_UNIT_TEST(ShouldReturnPreparationError)
+    {
+        TTestEnv env;
+        const auto error = env.PrepareSwitching(env.AlwaysFails());
+        UNIT_ASSERT_VALUES_EQUAL(error.GetCode(), E_REJECTED);
+        UNIT_ASSERT(!env.Switcher);
+        Read(env.Router);
+        UNIT_ASSERT_VALUES_EQUAL(env.Initial->ReadCount, 1);
+    }
+
     Y_UNIT_TEST(ShouldInstallEndpointIntoRouterWhenItIsReady)
     {
         TTestEnv env;

@@ -155,10 +155,8 @@ void TConfigInitializerYdb::InitStorageConfig()
         storageConfig.SetDisableManuallyPreemptedVolumesTracking(true);
     }
 
-    if (GetDynamicYamlConfigurationStaticallyEnabled()) {
-        StorageConfigControls =
-            std::make_shared<NStorage::TStorageConfigControls>();
-    }
+    SystemTabletBackupPathFromFile =
+        storageConfig.GetSystemTabletBackupDirPath();
 
     SetStorageConfig(std::move(storageConfig));
 }
@@ -297,14 +295,26 @@ void TConfigInitializerYdb::SetupStorageConfig(NProto::TStorageServiceConfig& co
     config.SetServiceVersionInfo(GetFullVersionString());
 }
 
-// Replace StorageConfig using the ICB controls selected during initialization.
+// Replace the startup configuration while retaining the same controls.
+// Update their defaults before starting readers or registering the board.
 void TConfigInitializerYdb::SetStorageConfig(
     NProto::TStorageServiceConfig config)
 {
-    StorageConfig = std::make_shared<NStorage::TStorageConfig>(
+    if (SystemTabletBackupPathFromFile) {
+        config.SetSystemTabletBackupDirPath(SystemTabletBackupPathFromFile);
+    }
+
+    auto storageConfig = std::make_shared<NStorage::TStorageConfig>(
         std::move(config),
         FeaturesConfig,
         StorageConfigControls);
+    StorageConfigControls = storageConfig->GetControls();
+    storageConfig->UpdateControlsDefaults();
+    StorageConfig = std::move(storageConfig);
+
+    ApplySystemTabletBackupPath(
+        StorageConfig->GetSystemTabletBackupDirPath(),
+        !Options->TemporaryServer);
 }
 
 void TConfigInitializerYdb::ApplyYdbStatsConfig(const TString& text)

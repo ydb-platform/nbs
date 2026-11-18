@@ -33,7 +33,8 @@ void TDiskRegistryActor::HandleMarkDiskForCleanup(
     ExecuteTx<TMarkDiskForCleanup>(
         ctx,
         std::move(requestInfo),
-        std::move(diskId));
+        std::move(diskId),
+        msg->Record.GetExternalVolumeTabletId());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -58,7 +59,10 @@ void TDiskRegistryActor::ExecuteMarkDiskForCleanup(
     Y_UNUSED(ctx);
 
     TDiskRegistryDatabase db(tx.DB);
-    args.Error = State->MarkDiskForCleanup(db, args.DiskId);
+    args.Error = State->MarkDiskForCleanup(
+        db,
+        args.DiskId,
+        args.ExternalVolumeTabletId);
 }
 
 void TDiskRegistryActor::CompleteMarkDiskForCleanup(

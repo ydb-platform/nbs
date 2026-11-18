@@ -86,7 +86,6 @@ TFreshBlocksWriterActor::TFreshBlocksWriterActor(
     , StorageAccessMode(storageAccessMode)
     , PartitionTabletID(partitionTabletId)
     , PartitionActorId(partitionActorId)
-    , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
     , VolumeActorId(volumeActorId)
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -342,7 +341,7 @@ void TFreshBlocksWriterActor::HandleFreshChannelsInfo(
         PartitionConfig,
         TabletStorageInfo,
         PartitionTabletID,
-        BlobCodec,
+        nullptr,   // blobsCompressor
         VolumeActorId,
         DiagnosticsConfig,
         StorageAccessMode,

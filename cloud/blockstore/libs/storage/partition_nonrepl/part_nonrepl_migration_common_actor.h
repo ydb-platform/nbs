@@ -178,7 +178,7 @@ private:
     TPartitionDiskCountersPtr DstCounters;
     TPartitionDiskCountersPtr MigrationCounters = CreatePartitionDiskCounters(
         EPublishingPolicy::DiskRegistryBased,
-        DiagnosticsConfig->GetHistogramCounterOptions());
+        *DiagnosticsConfig);
 
     // Usage statistics
     ui64 NetworkBytes = 0;
@@ -284,6 +284,8 @@ protected:
     void SetTargetMigrationIsLagging(bool lagging);
     bool GetTargetMigrationIsLagging() const;
 
+    TPartNonreplCountersData ExtractPartCounters();
+
 private:
     bool IsMigrationFinished() const;
     bool IsIoDepthLimitReached() const;
@@ -315,8 +317,6 @@ private:
         const NActors::TActorContext& ctx,
         const NActors::TActorId& sender,
         TPartNonreplCountersData partCountersData);
-
-    TPartNonreplCountersData ExtractPartCounters();
 
 private:
     STFUNC(StateWork);

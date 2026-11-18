@@ -1387,6 +1387,56 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
         UNIT_ASSERT(!retrySpec.ShouldRetry);
     }
 
+    Y_UNIT_TEST(ShouldSilenceRetryTimeoutWithHardwareProblems)
+    {
+        for (const bool hwProblems: {false, true}) {
+            auto client = std::make_shared<TTestService>();
+            client->ReadBlocksLocalHandler =
+                [hwProblems](std::shared_ptr<NProto::TReadBlocksLocalRequest>)
+            {
+                NProto::TReadBlocksLocalResponse response;
+                auto& error = *response.MutableError();
+                error.SetCode(E_REJECTED);
+                if (hwProblems) {
+                    SetErrorProtoFlag(error, NProto::EF_HW_PROBLEMS_DETECTED);
+                }
+                return MakeFuture(std::move(response));
+            };
+
+            NProto::TClientAppConfig clientAppConfig;
+            // Exhaust the retry budget:
+            clientAppConfig.MutableClientConfig()->SetRetryTimeout(0);
+            auto config = std::make_shared<TClientAppConfig>(clientAppConfig);
+
+            auto durable = CreateDurableClient(
+                config,
+                std::move(client),
+                CreateRetryPolicy(
+                    config,
+                    NProto::STORAGE_MEDIA_SSD_NONREPLICATED),
+                CreateLoggingService("console"),
+                CreateCpuCycleTimer(),
+                std::make_shared<TTestScheduler>(),
+                CreateRequestStatsStub(),
+                CreateVolumeStatsStub());
+
+            auto future = durable->ReadBlocksLocal(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TReadBlocksLocalRequest>());
+
+            const auto& error = future.GetValueSync().GetError();
+            UNIT_ASSERT_VALUES_EQUAL(E_RETRY_TIMEOUT, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                hwProblems,
+                HasProtoFlag(
+                    error.GetFlags(),
+                    NProto::EF_HW_PROBLEMS_DETECTED));
+            UNIT_ASSERT_VALUES_EQUAL(
+                hwProblems,
+                HasProtoFlag(error.GetFlags(), NProto::EF_SILENT));
+        }
+    }
+
     Y_UNIT_TEST(ShouldKeepPostponedTimeDuringRetries)
     {
         auto client = std::make_shared<TPostponedTimeTestService>(4);

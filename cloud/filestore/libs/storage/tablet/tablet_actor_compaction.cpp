@@ -338,7 +338,8 @@ void TIndexTabletActor::EnqueueBlobIndexOpIfNeeded(const TActorContext& ctx)
                     SelfId(),
                     new TEvIndexTabletPrivate::TEvCompactionRequest(
                         compactionInfo.RangeId,
-                        false)
+                        false /* filterNodes */,
+                        false /* forced */)
                 );
                 return;
             }
@@ -595,7 +596,8 @@ void TIndexTabletActor::HandleCompaction(
         ctx,
         std::move(requestInfo),
         msg->RangeId,
-        msg->FilterNodes);
+        msg->FilterNodes,
+        msg->Forced);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -668,7 +670,7 @@ void TIndexTabletActor::ExecuteTx_Compaction(
         UpdateCompactionMap(args.RangeId, 0, stats.DeletionsCount, 0, true);
         db->WriteCompactionMap(args.RangeId, 0, stats.DeletionsCount, 0);
         args.SkipRangeRewrite = true;
-    } else if (garbageThreshold && blobSizeThreshold) {
+    } else if (!args.Forced && garbageThreshold && blobSizeThreshold) {
         ui32 storedBlocks = 0;
         ui32 garbageBlocks = 0;
         for (const auto& blob: args.CompactionBlobs) {

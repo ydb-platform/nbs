@@ -44,13 +44,13 @@ public:
     ui32 GetHandleOpsQueueSize() const;
 
     TString GetWriteBackCachePath() const;
-    ui64 GetWriteBackCacheCapacity() const;
     TDuration GetWriteBackCacheAutomaticFlushPeriod() const;
     TDuration GetWriteBackCacheFlushRetryPeriod() const;
     ui32 GetWriteBackCacheFlushMaxWriteRequestSize() const;
     ui32 GetWriteBackCacheFlushMaxWriteRequestsCount() const;
     ui32 GetWriteBackCacheFlushMaxSumWriteRequestsSize() const;
     ui32 GetWriteBackCacheMaxQueuedFlushBatchesPerNode() const;
+    NProto::EWriteBackCacheLockMethod GetWriteBackCacheLockMethod() const;
 
     TString GetDirectoryHandlesStoragePath() const;
     ui64 GetDirectoryHandlesInitialDataSize() const;

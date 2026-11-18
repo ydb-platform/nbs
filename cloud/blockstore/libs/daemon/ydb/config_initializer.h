@@ -59,8 +59,8 @@ struct TConfigInitializerYdb final
     NYdbStats::TYdbStatsConfigPtr StatsConfig;
     NStorage::TStorageConfigPtr StorageConfig;
 
-    // ICB controls reused when StorageConfig is replaced. Created by
-    // InitStorageConfig if the local DynamicYamlConfigurationEnabled is true.
+    // ICB controls shared by all startup replacements of StorageConfig.
+    // Created by the first SetStorageConfig call, before board registration.
     NStorage::TStorageConfigControlsPtr StorageConfigControls;
     NFeatures::TFeaturesConfigPtr FeaturesConfig;
     NLogbroker::TLogbrokerConfigPtr LogbrokerConfig;
@@ -114,6 +114,9 @@ struct TConfigInitializerYdb final
         const NKikimrConfig::TAppConfig& config);
 
 private:
+    // Nonempty file value overrides the named CMS storage configuration.
+    TString SystemTabletBackupPathFromFile;
+
     // Build TBlockstoreConfig with current configuration sections.
     NProto::TBlockstoreConfig BuildCurrentBlockstoreConfig() const;
 

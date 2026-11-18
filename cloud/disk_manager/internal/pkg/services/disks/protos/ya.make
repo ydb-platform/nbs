@@ -5,6 +5,7 @@ ONLY_TAGS(GO_PROTO)
 SRCS(
     alter_disk_task.proto
     assign_disk_task.proto
+    create_disk_from_base_disk_task.proto
     create_disk_from_image_task.proto
     create_disk_from_snapshot_task.proto
     create_disk_params.proto

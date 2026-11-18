@@ -62,8 +62,6 @@ void TIndexTabletActor::HandleCreateHandle(
     const TEvService::TEvCreateHandleRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    RegisterFileSystemEventClient(ev->Recipient, ev->Sender);
-
     using TResponse = TEvService::TEvCreateHandleResponse;
 
     auto* session = AcceptRequest<TEvService::TCreateHandleMethod>(
@@ -496,7 +494,9 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
             // We set the GuestKeepCache to tell the client not to bother
             // invalidating the caches upon opening a read-only handle
             const bool keepCache =
-                session->HandleStatsByNode.IsAllowedToKeepCache(*node);
+                session->HandleStatsByNode.IsAllowedToKeepCache(
+                    *node,
+                    args.TargetNode->MinCommitId);
             args.Response.SetGuestKeepCache(keepCache);
 
             Metrics->CreateHandleExtra.GuestKeepCacheSet.fetch_add(
@@ -508,7 +508,9 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         // user of a given session in order not to invalidate the cache the next
         // time if the file was not modified
         if (!args.Response.GetGuestKeepCache()) {
-            session->HandleStatsByNode.OnGuestCacheInvalidated(*node);
+            session->HandleStatsByNode.OnGuestCacheInvalidated(
+                *node,
+                args.WriteCommitId);
         }
     } else {
         args.Response.SetShardFileSystemId(args.ShardId);

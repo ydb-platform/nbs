@@ -70,6 +70,7 @@ struct TDiskRegistrySelfCounters
     TCounterPtr DisksInWarningState;
     TCounterPtr MaxWarningTime;
     TCounterPtr MaxMigrationTime;
+    TCounterPtr SuspendSecureErase;
 
     TCounterPtr DevicesInMigrationState;
     TCounterPtr DisksInTemporarilyUnavailableState;

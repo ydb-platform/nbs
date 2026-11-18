@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/filestore/config/vfs.pb.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/vfs_fuse/public.h>
@@ -9,6 +10,8 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/threading/future/future.h>
+
+#include <util/generic/size_literals.h>
 
 #include <memory>
 
@@ -39,8 +42,8 @@ struct TWriteBackCacheArgs
     // Path to the file used for persistent storage
     TString FilePath;
 
-    // Maximum size of persistent storage
-    ui64 CapacityBytes = 0;
+    // The target size of persistent storage
+    ui64 StateFileSize = 0;
 
     // WriteBackCache calls FlushAllData with the specified period
     TDuration AutomaticFlushPeriod = TDuration::Zero();
@@ -72,6 +75,9 @@ struct TWriteBackCacheArgs
     // unflushed WriteData requests.
     ui32 MaxQueuedFlushBatchesPerNode = 0;
 
+    // Lock acquisition method for the shared cache state
+    NProto::EWriteBackCacheLockMethod LockMethod = NProto::WBC_LOCK_ADAPTIVE;
+
     // If the flag is enabled, WriteBackCache will generate WriteData requests
     // with iovecs.
     bool ZeroCopyWriteEnabled = false;
@@ -81,6 +87,12 @@ struct TWriteBackCacheArgs
     // may observe the effects of newer writes before older ones.
     // With parallel writes off, only sequential writes will be optimized.
     bool FlushWritesInParallelEnabled = false;
+
+    // Negotiated FUSE max_write (in bytes). The cache must be able to store
+    // any WriteData request up to this size; if the state file is too small,
+    // the cache is drained on init: saved data is flushed and new requests
+    // bypass the cache.
+    ui64 MaxGuestWriteRequestSize = 1_MB;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

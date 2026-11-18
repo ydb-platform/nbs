@@ -79,17 +79,13 @@ void TIndexTabletState::UpdateNode(
     const NProto::TNode& prevAttrs)
 {
     //
-    // Time-only changes don't produce InvalidateNode. Otherwise every write
-    // (which always updates MTime) would produce an event. A write produces
-    // InvalidateNode only if it changes the file size. The same applies to
-    // the parent directory MTime/CTime updates upon CreateNode/UnlinkNode -
-    // those changes are covered by InvalidateNodeRef. Explicit time changes
-    // via SetNodeAttr produce InvalidateNode in SetNodeAttr itself.
+    // Any attr change produces InvalidateNode, including the time-only ones:
+    // the file MTime/CTime upon writes and the parent directory MTime/CTime
+    // upon CreateNode/UnlinkNode/RenameNode - the clients cache the
+    // timestamps as well.
     //
 
-    if (HasNonTimeAttrChanges(attrs, prevAttrs)) {
-        AddInvalidateNodeEvent(fileSystemEvents, nodeId);
-    }
+    AddInvalidateNodeEvent(fileSystemEvents, nodeId);
 
     UpdateUsedBlocksCount(db, attrs.GetSize(), prevAttrs.GetSize());
 
@@ -385,6 +381,7 @@ void TIndexTabletState::EndNodeCreateInShard(const TString& nodeName)
 
 ui64 TIndexTabletState::CreateNodeAttr(
     IIndexTabletDatabase& db,
+    TVector<NProto::TFileSystemEvent>& fileSystemEvents,
     ui64 nodeId,
     ui64 commitId,
     const TString& name,
@@ -395,11 +392,18 @@ ui64 TIndexTabletState::CreateNodeAttr(
 
     IncrementAttrsUsedBytesCount(db, SizeSum(name, value));
 
+    //
+    // The clients may have cached the absence of the attribute.
+    //
+
+    AddInvalidateNodeXAttrEvent(fileSystemEvents, nodeId, name);
+
     return version;
 }
 
 ui64 TIndexTabletState::UpdateNodeAttr(
     IIndexTabletDatabase& db,
+    TVector<NProto::TFileSystemEvent>& fileSystemEvents,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -430,11 +434,15 @@ ui64 TIndexTabletState::UpdateNodeAttr(
     } else {
         DecrementAttrsUsedBytesCount(db, SizeDiff(attr.Value, newValue));
     }
+
+    AddInvalidateNodeXAttrEvent(fileSystemEvents, nodeId, attr.Name);
+
     return version;
 }
 
 void TIndexTabletState::RemoveNodeAttr(
     IIndexTabletDatabase& db,
+    TVector<NProto::TFileSystemEvent>& fileSystemEvents,
     ui64 nodeId,
     ui64 minCommitId,
     ui64 maxCommitId,
@@ -457,6 +465,8 @@ void TIndexTabletState::RemoveNodeAttr(
     }
 
     DecrementAttrsUsedBytesCount(db, SizeSum(attr.Name, attr.Value));
+
+    AddInvalidateNodeXAttrEvent(fileSystemEvents, nodeId, attr.Name);
 }
 
 bool TIndexTabletState::ReadNodeAttr(
@@ -847,12 +857,28 @@ void TIndexTabletState::AddInvalidateNodeRefEvent(
     ui64 nodeId,
     const TString& name)
 {
-    if (!FileSystemEventsEnabled) {
+    if (!FileSystemEventsEnabled || IsShardInternalNodeRef(nodeId)) {
         return;
     }
 
     NProto::TFileSystemEvent event;
     auto* invalidate = event.MutableInvalidateNodeRef();
+    invalidate->SetNodeId(nodeId);
+    invalidate->SetName(name);
+    fileSystemEvents.push_back(std::move(event));
+}
+
+void TIndexTabletState::AddInvalidateNodeXAttrEvent(
+    TVector<NProto::TFileSystemEvent>& fileSystemEvents,
+    ui64 nodeId,
+    const TString& name)
+{
+    if (!FileSystemEventsEnabled) {
+        return;
+    }
+
+    NProto::TFileSystemEvent event;
+    auto* invalidate = event.MutableInvalidateNodeXAttr();
     invalidate->SetNodeId(nodeId);
     invalidate->SetName(name);
     fileSystemEvents.push_back(std::move(event));

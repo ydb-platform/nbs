@@ -13,6 +13,7 @@ from contrib.ydb.core.protos.config_pb2 import (
     TActorSystemConfig,
     TDynamicNameserviceConfig,
     TBlobStorageConfig,
+    TInterconnectConfig,
 )
 from contrib.ydb.core.protos.auth_pb2 import TAuthConfig
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
@@ -68,6 +69,7 @@ class FilestoreDaemonConfigGenerator:
         trace_sampling_rate=None,
         bs_failure_probability=None,
         use_fast_shard_port=False,
+        enable_external_data_channel=False,
     ):
         self.__binary_path = binary_path
         self.__working_dir, self.__configs_dir = get_directories()
@@ -82,6 +84,7 @@ class FilestoreDaemonConfigGenerator:
         self.__storage_config = storage_config or TStorageConfig()
         self.__diag_config = diag_config or TDiagnosticsConfig()
         self.__bs_failure_probability = bs_failure_probability
+        self.__enable_external_data_channel = enable_external_data_channel
 
         self.__profile_log_path = self.__profile_file_path(profile_log)
 
@@ -304,8 +307,10 @@ class FilestoreDaemonConfigGenerator:
                 config_file.flush()
                 logger.info("written config file: " + path)
 
-    def generate_configs(self, domains_txt, names_txt):
-        self.__proto_configs = {}
+    def generate_configs(self, domains_txt=None, names_txt=None):
+        self.__proto_configs = {
+            "diag.txt": self.__generate_diag_txt(),
+        }
         if self.__is_storage_kikimr():
             self.__proto_configs.update(
                 {
@@ -315,11 +320,14 @@ class FilestoreDaemonConfigGenerator:
                     "sys.txt": self.__generate_sys_txt(),
                     "storage.txt": self.__generate_storage_txt(),
                     "storage-nolocal.txt": self.__generate_storage_txt(True),
-                    "diag.txt": self.__generate_diag_txt(),
                     "dyn_ns.txt": self.__generate_dyn_ns_txt(),
                     "auth.txt": self.__generate_auth_txt(self.__access_service_port),
                 }
             )
+            if self.__enable_external_data_channel:
+                ic_config = TInterconnectConfig()
+                ic_config.EnableExternalDataChannel = True
+                self.__proto_configs["ic.txt"] = ic_config
             if self.__bs_failure_probability:
                 self.__proto_configs["bs.txt"] = self.__generate_bs_txt(self.__bs_failure_probability)
         self.__write_configs()
@@ -340,6 +348,8 @@ class FilestoreDaemonConfigGenerator:
             str(self.__mon_port),
             "--profile-file",
             self.__profile_log_path,
+            "--diag-file",
+            self.__config_file_path("diag.txt"),
         ] + self.generate_aux_params()
 
         if self.__service_type == "kikimr":
@@ -348,8 +358,6 @@ class FilestoreDaemonConfigGenerator:
                 self.__domain,
                 "--ic-port",
                 str(self.__ic_port),
-                "--diag-file",
-                self.__config_file_path("diag.txt"),
                 "--domains-file",
                 self.__config_file_path("domains.txt"),
                 "--naming-file",
@@ -367,6 +375,9 @@ class FilestoreDaemonConfigGenerator:
                 "--node-broker",
                 "localhost:{}".format(self.__kikimr_port),
             ]
+
+            if self.__enable_external_data_channel:
+                command += ["--ic-file", self.__config_file_path("ic.txt")]
 
             if self.__use_secure_registration:
                 command += ["--use-secure-registration"]
@@ -450,6 +461,7 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
         trace_sampling_rate=None,
         bs_failure_probability=None,
         use_fast_shard_port=False,
+        enable_external_data_channel=False,
     ):
         super().__init__(
             binary_path,
@@ -473,6 +485,7 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
             trace_sampling_rate=trace_sampling_rate,
             bs_failure_probability=bs_failure_probability,
             use_fast_shard_port=use_fast_shard_port,
+            enable_external_data_channel=enable_external_data_channel,
         )
 
 
@@ -495,6 +508,7 @@ class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
         secure=False,
         trace_sampling_rate=None,
         bs_failure_probability=None,
+        enable_external_data_channel=False,
     ):
         super().__init__(
             binary_path,
@@ -516,6 +530,7 @@ class FilestoreVhostConfigGenerator(FilestoreDaemonConfigGenerator):
             secure=secure,
             trace_sampling_rate=trace_sampling_rate,
             bs_failure_probability=bs_failure_probability,
+            enable_external_data_channel=enable_external_data_channel,
         )
 
         self.__local_service_port = self._port_manager.reserve_port()

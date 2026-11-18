@@ -8,24 +8,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class ECachedWriteDataRequestTag
-{
-    // No specific actions should be taken
-    Unflushed = 0,
-
-    // Handle associated with the request has been released.
-    // Attempts to flush the request should be made using another handle.
-    UnflushedHandleReleased = 1,
-
-    // Request has been flushed and should be evicted on restart
-    Flushed = 2,
-
-    // Used to validate deserialization
-    Max = Flushed
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TLoadedWriteDataRequest
 {
     ECachedWriteDataRequestTag Tag = ECachedWriteDataRequestTag::Unflushed;
@@ -52,25 +34,6 @@ NProto::TError TWriteDataRequestManager::Init(
 {
     if (PersistentStorage->IsCorrupted()) {
         return MakeError(E_INVALID_STATE, "Persistent storage is corrupted");
-    }
-
-    // File ring buffer should be able to store any valid TWriteDataRequest.
-    // Inability to store it will cause this and future requests to remain
-    // in the pending queue forever (including requests with smaller size).
-    // Should fit 1 MiB of data plus some headers (assume 1 KiB is enough).
-    const ui64 maxAllocationByteCount = 1024 * 1024 + 1016;
-
-    const ui64 maxSupportedAllocationByteCount =
-        PersistentStorage->GetMaxSupportedAllocationByteCount();
-
-    if (maxSupportedAllocationByteCount < maxAllocationByteCount) {
-        return MakeError(
-            E_ARGUMENT,
-            Sprintf(
-                "MaxSupportedAllocationByteCount (%lu) is less than the "
-                "minimal allowed value (%lu)",
-                maxSupportedAllocationByteCount,
-                maxAllocationByteCount));
     }
 
     NProto::TError error = {};
@@ -299,10 +262,10 @@ TWriteDataRequestManager::GetBackUnallocatedPendingRequest() const
 }
 
 void TWriteDataRequestManager::RemoveUnallocated(
-    std::unique_ptr<TPendingWriteDataRequest> request)
+    TPendingWriteDataRequest* request)
 {
     Y_ABORT_UNLESS(!request->HasAllocation());
-    UnallocatedPendingRequestsRemove(request.get());
+    UnallocatedPendingRequestsRemove(request);
 }
 
 bool TWriteDataRequestManager::SetFlushed(TCachedWriteDataRequest* request)

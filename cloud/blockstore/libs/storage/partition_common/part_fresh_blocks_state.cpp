@@ -43,9 +43,7 @@ TVector<ui64> TPartitionFreshBlobState::GetUnflushedFreshBlobCommitIds(
     ui64 commitId) const
 {
     TVector<ui64> commitIds;
-    for (const auto& [blobCommitId, blobSize]:
-         UnflushedFreshBlobByteCountByCommitId)
-    {
+    for (const auto& [blobCommitId, blob]: UnflushedFreshBlobsByCommitId) {
         if (blobCommitId > commitId) {
             break;
         }
@@ -54,12 +52,26 @@ TVector<ui64> TPartitionFreshBlobState::GetUnflushedFreshBlobCommitIds(
     return commitIds;
 }
 
-void TPartitionFreshBlobState::AddFreshBlob(ui64 commitId, ui64 blobSize)
+TInstant TPartitionFreshBlobState::GetFirstUnflushedFreshBlobTimestamp(
+    ui64 trimFreshLogToCommitId) const
+{
+    const auto it =
+        UnflushedFreshBlobsByCommitId.upper_bound(trimFreshLogToCommitId);
+    if (it == UnflushedFreshBlobsByCommitId.end()) {
+        return TInstant::Max();
+    }
+    return it->second.Timestamp;
+}
+
+void TPartitionFreshBlobState::AddFreshBlob(
+    ui64 commitId,
+    ui64 blobSize,
+    TInstant timestamp)
 {
     {
+        const TUntrimmedFreshBlob blob{.ByteCount = blobSize};
         const bool inserted =
-            UntrimmedFreshBlobByteCountByCommitId.insert({commitId, blobSize})
-                .second;
+            UntrimmedFreshBlobsByCommitId.emplace(commitId, blob).second;
         STORAGE_VERIFY_C(
             inserted,
             TWellKnownEntityTypes::TABLET,
@@ -69,9 +81,10 @@ void TPartitionFreshBlobState::AddFreshBlob(ui64 commitId, ui64 blobSize)
     }
 
     {
+        const TUnflushedFreshBlob blob{.ByteCount = blobSize,
+                                       .Timestamp = timestamp};
         const bool inserted =
-            UnflushedFreshBlobByteCountByCommitId.insert({commitId, blobSize})
-                .second;
+            UnflushedFreshBlobsByCommitId.emplace(commitId, blob).second;
         STORAGE_VERIFY_C(
             inserted,
             TWellKnownEntityTypes::TABLET,
@@ -83,41 +96,159 @@ void TPartitionFreshBlobState::AddFreshBlob(ui64 commitId, ui64 blobSize)
     }
 }
 
-void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
+void TPartitionFreshBlobState::MarkFreshBlobDead(ui64 commitId)
 {
-    auto& blobs = UntrimmedFreshBlobByteCountByCommitId;
-
-    while (blobs && blobs.begin()->first <= commitId) {
-        ui64 blobSize = blobs.begin()->second;
-        STORAGE_VERIFY_C(
-            UntrimmedFreshBlobByteCount >= blobSize,
-            TWellKnownEntityTypes::TABLET,
-            TabletID,
-            "UntrimmedFreshBlobByteCount: " << UntrimmedFreshBlobByteCount
-                                            << " < BlobSize: " << blobSize);
-        UntrimmedFreshBlobByteCount -= blobSize;
-        blobs.erase(blobs.begin());
-    }
-}
-
-ui64 TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
-{
-    auto& blobs = UnflushedFreshBlobByteCountByCommitId;
-
-    auto it = blobs.find(commitId);
+    auto it = UntrimmedFreshBlobsByCommitId.find(commitId);
     STORAGE_VERIFY_C(
-        it != blobs.end(),
+        it != UntrimmedFreshBlobsByCommitId.end() && !it->second.Dead,
         TWellKnownEntityTypes::TABLET,
         TabletID,
         "Commit id: " << commitId);
 
-    ui64 blobSize = it->second;
+    it->second.Dead = true;
+    DeadUntrimmedFreshBlobByteCount += it->second.ByteCount;
+}
 
+ui64 TPartitionFreshBlobState::GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(
+    ui64 ordinaryTrimToCommitId)
+{
+    Y_DEBUG_ABORT_UNLESS(
+        ordinaryTrimToCommitId >= TrimmableByOrdinaryToCommitId,
+        "OrdinaryTrimToCommitId moved down: %lu < %lu",
+        ordinaryTrimToCommitId,
+        TrimmableByOrdinaryToCommitId);
+
+    if (ordinaryTrimToCommitId > TrimmableByOrdinaryToCommitId) {
+        for (auto it = UntrimmedFreshBlobsByCommitId.upper_bound(
+                 TrimmableByOrdinaryToCommitId);
+             it != UntrimmedFreshBlobsByCommitId.end() &&
+             it->first <= ordinaryTrimToCommitId;
+             ++it)
+        {
+            OrdinaryTrimmableFreshBlobByteCount += it->second.ByteCount;
+        }
+        TrimmableByOrdinaryToCommitId = ordinaryTrimToCommitId;
+    }
+
+    return OrdinaryTrimmableFreshBlobByteCount;
+}
+
+// A blob is dead once it holds no trim barrier reference, i.e. all its blocks
+// were flushed or overwritten. Only dead blobs may be trimmed.
+//
+// Checks the Dead flags against liveCommitIds and the cached byte counts.
+bool TPartitionFreshBlobState::CheckDeadFreshBlobByteCount(
+    const TVector<ui64>& liveCommitIds) const
+{
+    ui64 deadByteCount = 0;
+    ui64 ordinaryTrimByteCount = 0;
+
+    auto live = liveCommitIds.begin();
+    for (const auto& [commitId, blob]: UntrimmedFreshBlobsByCommitId) {
+        while (live != liveCommitIds.end() && *live < commitId) {
+            ++live;
+        }
+        const bool isLive = live != liveCommitIds.end() && *live == commitId;
+        if (blob.Dead == isLive) {
+            return false;
+        }
+        if (blob.Dead) {
+            deadByteCount += blob.ByteCount;
+        }
+        if (commitId <= TrimmableByOrdinaryToCommitId) {
+            if (isLive) {
+                return false;
+            }
+            ordinaryTrimByteCount += blob.ByteCount;
+        }
+    }
+
+    return deadByteCount == DeadUntrimmedFreshBlobByteCount &&
+           ordinaryTrimByteCount == OrdinaryTrimmableFreshBlobByteCount;
+}
+
+TTrimFreshBlobsResult TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
+{
+    auto& blobs = UntrimmedFreshBlobsByCommitId;
+
+    while (blobs && blobs.begin()->first <= commitId) {
+        EraseUntrimmedFreshBlob(blobs.begin());
+    }
+    TrimmedToCommitId = Max(TrimmedToCommitId, commitId);
+
+    TTrimFreshBlobsResult result;
+    auto& unflushed = UnflushedFreshBlobsByCommitId;
+    while (unflushed && unflushed.begin()->first <= commitId) {
+        result.UnflushedBytesRemoved +=
+            EraseUnflushedFreshBlob(unflushed.begin());
+    }
+    return result;
+}
+
+TFlushFreshBlobResult TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
+{
+    TFlushFreshBlobResult result;
+    auto it = UnflushedFreshBlobsByCommitId.find(commitId);
+    if (it == UnflushedFreshBlobsByCommitId.end()) {
+        STORAGE_VERIFY_C(
+            commitId <= TrimmedToCommitId,
+            TWellKnownEntityTypes::TABLET,
+            TabletID,
+            "Commit id: " << commitId
+                          << ", trimmed to commit id: " << TrimmedToCommitId);
+        return result;
+    }
+    result.UnflushedBytesRemoved = EraseUnflushedFreshBlob(it);
+    return result;
+}
+
+void TPartitionFreshBlobState::EraseUntrimmedFreshBlob(
+    TUntrimmedFreshBlobsByCommitId::iterator it)
+{
+    const auto& [commitId, blob] = *it;
+
+    STORAGE_VERIFY_C(
+        UntrimmedFreshBlobByteCount >= blob.ByteCount,
+        TWellKnownEntityTypes::TABLET,
+        TabletID,
+        "UntrimmedFreshBlobByteCount: " << UntrimmedFreshBlobByteCount
+                                        << " < BlobSize: " << blob.ByteCount);
+    UntrimmedFreshBlobByteCount -= blob.ByteCount;
+
+    if (blob.Dead) {
+        STORAGE_VERIFY_C(
+            DeadUntrimmedFreshBlobByteCount >= blob.ByteCount,
+            TWellKnownEntityTypes::TABLET,
+            TabletID,
+            "Commit id: " << commitId << ", DeadUntrimmedFreshBlobByteCount: "
+                          << DeadUntrimmedFreshBlobByteCount
+                          << " < BlobSize: " << blob.ByteCount);
+        DeadUntrimmedFreshBlobByteCount -= blob.ByteCount;
+    }
+    if (commitId <= TrimmableByOrdinaryToCommitId) {
+        STORAGE_VERIFY_C(
+            OrdinaryTrimmableFreshBlobByteCount >= blob.ByteCount,
+            TWellKnownEntityTypes::TABLET,
+            TabletID,
+            "Commit id: " << commitId
+                          << ", OrdinaryTrimmableFreshBlobByteCount: "
+                          << OrdinaryTrimmableFreshBlobByteCount
+                          << " < BlobSize: " << blob.ByteCount);
+        OrdinaryTrimmableFreshBlobByteCount -= blob.ByteCount;
+    }
+
+    UntrimmedFreshBlobsByCommitId.erase(it);
+}
+
+ui64 TPartitionFreshBlobState::EraseUnflushedFreshBlob(
+    TUnflushedFreshBlobsByCommitId::iterator it)
+{
+    const ui64 blobSize = it->second.ByteCount;
     UnflushedFreshBlobCount = SafeDecrement(UnflushedFreshBlobCount, 1);
     UnflushedFreshBlobByteCount =
         SafeDecrement(UnflushedFreshBlobByteCount, blobSize);
 
-    blobs.erase(it);
+    UnflushedFreshBlobsByCommitId.erase(it);
 
     return blobSize;
 }
@@ -185,7 +316,8 @@ void TPartitionFreshBlocksState::WriteFreshBlocks(
     ui64 commitId,
     TSgList sglist,
     TPartialBlobId blobId,
-    ui64& removedBlocksCount)
+    ui64& removedBlocksCount,
+    TVector<ui64>& deadCommitIds)
 {
     Y_ABORT_UNLESS(writeRange.Size() == sglist.size());
 
@@ -194,20 +326,23 @@ void TPartitionFreshBlocksState::WriteFreshBlocks(
         commitId,
         [&](ui32 index) { return sglist[index]; },
         blobId,
-        removedBlocksCount);
+        removedBlocksCount,
+        deadCommitIds);
 }
 
 void TPartitionFreshBlocksState::ZeroFreshBlocks(
     const TBlockRange32& zeroRange,
     ui64 commitId,
-    ui64& removedBlocksCount)
+    ui64& removedBlocksCount,
+    TVector<ui64>& deadCommitIds)
 {
     WriteFreshBlocksImpl(
         zeroRange,
         commitId,
         [](ui32) { return TBlockDataRef(); },
         {},  // blobId
-        removedBlocksCount);
+        removedBlocksCount,
+        deadCommitIds);
 }
 
 void TPartitionFreshBlocksState::DeleteFreshBlock(
@@ -229,12 +364,14 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
     ui64 commitId,
     auto getBlockContent,
     TPartialBlobId blobId,
-    ui64& removedBlocksCount)
+    ui64& removedBlocksCount,
+    TVector<ui64>& deadCommitIds)
 {
     TVector<ui64> checkpoints;
     CommitIdsState.GetCheckpointCommitIds(checkpoints);
     ThreadSafeState->GetCheckpointsInFlight()->GetCommitIds(checkpoints);
-    SortUnique(checkpoints);
+    // FindGarbageVersions expects checkpoints in descending order.
+    SortUnique(checkpoints, TGreater<ui64>());
 
     TVector<ui64> existingCommitIds;
     TVector<ui64> garbage;
@@ -269,8 +406,11 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
             if (removed) {
                 ++removedBlocksCount;
                 DecrementUnflushedFreshBlocksFromChannelCount(1);
-                ThreadSafeState->AccessTrimFreshLogBarriers()->ReleaseBarrier(
-                    garbageCommitId);
+                if (ThreadSafeState->AccessTrimFreshLogBarriers()
+                        ->ReleaseBarrier(garbageCommitId))
+                {
+                    deadCommitIds.push_back(garbageCommitId);
+                }
             }
         }
 

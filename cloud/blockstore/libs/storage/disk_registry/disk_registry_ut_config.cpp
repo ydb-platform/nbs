@@ -545,6 +545,110 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(backupsFileCount, 1);
     }
 
+    Y_UNIT_TEST_F(ShouldNameBackupFileByStateReadTime, TScheduleBackup)
+    {
+        NProto::TStorageServiceConfig storageConfig =
+            CreateDefaultStorageConfig();
+        storageConfig.SetDiskRegistryBackupPeriod(
+            TDuration::Minutes(2).MilliSeconds());
+        storageConfig.SetDiskRegistryBackupDirPath(Path.data());
+
+        auto runtime = TTestRuntimeBuilder().With(storageConfig).Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {}));
+
+        // The backup was scheduled at boot, so it is overdue by now and the
+        // state is read no earlier than this point.
+        runtime->AdvanceCurrentTime(TDuration::Minutes(3));
+        const TInstant minBackupTs = runtime->GetCurrentTime();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        TVector<std::filesystem::path> files(
+            std::filesystem::directory_iterator{Path.data()},
+            std::filesystem::directory_iterator{});
+        UNIT_ASSERT_VALUES_EQUAL(1, files.size());
+        UNIT_ASSERT_VALUES_EQUAL(".json", files[0].extension().string());
+
+        const TString fileName = files[0].stem().string();
+        const TInstant backupTs = TInstant::ParseIso8601(fileName);
+        UNIT_ASSERT_GE_C(
+            backupTs,
+            minBackupTs,
+            fileName << " < " << FormatIsoLocal(minBackupTs));
+        UNIT_ASSERT_LE_C(
+            backupTs,
+            runtime->GetCurrentTime(),
+            fileName << " > " << FormatIsoLocal(runtime->GetCurrentTime()));
+    }
+
+    Y_UNIT_TEST_F(ShouldIgnoreBackupResponsesToOtherRequests, TScheduleBackup)
+    {
+        NProto::TStorageServiceConfig storageConfig =
+            CreateDefaultStorageConfig();
+        storageConfig.SetDiskRegistryBackupPeriod(
+            TDuration::Minutes(2).MilliSeconds());
+        storageConfig.SetDiskRegistryBackupDirPath(Path.data());
+
+        auto runtime = TTestRuntimeBuilder().With(storageConfig).Build();
+
+        TActorId diskRegistryActorId;
+        ui32 backupRequestCount = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvDiskRegistry::EvWaitReadyResponse:
+                        diskRegistryActorId = event->Sender;
+                        break;
+                    case TEvDiskRegistry::EvBackupDiskRegistryStateRequest:
+                        ++backupRequestCount;
+                        break;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto backupFileCount = [&]
+        {
+            return std::distance(
+                std::filesystem::directory_iterator{Path.data()},
+                std::filesystem::directory_iterator{});
+        };
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(0, {}));
+        UNIT_ASSERT(diskRegistryActorId);
+
+        // A backup request that DR sends to itself without the periodic
+        // backup cookie: the response must neither be written to a file nor
+        // start another backup chain.
+        auto request = std::make_unique<
+            TEvDiskRegistry::TEvBackupDiskRegistryStateRequest>();
+        request->Record.SetSource(NProto::BDRSS_LOCAL_DB);
+        runtime->Send(
+            new IEventHandle(
+                diskRegistryActorId,
+                diskRegistryActorId,
+                request.release()),
+            0,       // senderNodeIndex
+            true);   // viaActorSystem
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, backupRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, backupFileCount());
+
+        // Only the periodic backup scheduled at boot fires.
+        runtime->AdvanceCurrentTime(TDuration::Minutes(3));
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, backupRequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, backupFileCount());
+    }
+
     Y_UNIT_TEST_F(ShouldScheduleBackupAfterReset, TScheduleBackup)
     {
         NProto::TStorageServiceConfig storageConfig =

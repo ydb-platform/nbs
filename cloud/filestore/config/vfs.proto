@@ -6,6 +6,29 @@ option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum EWriteBackCacheLockMethod
+{
+    // TAdaptiveLock (default): spins, yields, then uses timed sleeps.
+    WBC_LOCK_ADAPTIVE = 0;
+
+    // TSpinLock: intended for controlled benchmarks, not production use.
+    // Spins indefinitely if the holder is descheduled or page-faults; avoid
+    // oversubscribed CPUs or priority imbalance that can starve the holder.
+    WBC_LOCK_SPIN = 1;
+
+    // std::mutex: blocks waiting threads using a non-recursive mutex.
+    WBC_LOCK_MUTEX = 2;
+
+    // Tries a bounded spin loop before blocking on a standard mutex.
+    // The spin budget counts iterations, so its duration depends on the CPU.
+    WBC_LOCK_SPIN_THEN_MUTEX = 3;
+
+    // glibc adaptive pthread mutex: bounded adaptive spinning, then blocking.
+    WBC_LOCK_PTHREAD_ADAPTIVE = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 message TVFSConfig
 {
     // FileSystem identifier.
@@ -28,7 +51,8 @@ message TVFSConfig
     // Vhost queues count.
     optional uint32 VhostQueuesCount = 9;
 
-    // Limits max single request length.
+    // Legacy max single request length in host pages (default 256). Used when
+    // no nonzero MaxRequestSize is supplied by the server.
     optional uint32 MaxWritePages = 10;
 
     // Keep attempts to acquire lock.
@@ -42,16 +66,13 @@ message TVFSConfig
     // (and a subdirectory with session id as name) if not present.
     optional string HandleOpsQueuePath = 13;
 
-    // Max HandleOpsQueue size in bytes per session.
+    // HandleOpsQueue state file size in bytes per session.
     optional uint32 HandleOpsQueueSize = 14;
 
     // Path to the directory where WriteBackCache is stored for all
     // sessions. Will create a directory with filesystem id as name
     // (and a subdirectory with session id as name) if not present.
     optional string WriteBackCachePath = 15;
-
-    // Max WriteBackCache capacity in bytes per session.
-    optional uint64 WriteBackCacheCapacity = 16;
 
     // WriteBackCache automatic flush period (in milliseconds).
     optional uint32 WriteBackCacheAutomaticFlushPeriod = 17;
@@ -90,5 +111,9 @@ message TVFSConfig
     // such as SetNodeAttr, ReleaseHandle, data requests with O_DIRECT flag.
     // The value is compared with the number of flush batches needed to drain
     // unflushed WriteData requests.
+    // Default: 8. Value 0 disables this threshold.
     optional uint32 WriteBackCacheMaxQueuedFlushBatchesPerNode = 25;
+
+    // Lock acquisition method for WriteBackCache.
+    optional EWriteBackCacheLockMethod WriteBackCacheLockMethod = 26;
 }

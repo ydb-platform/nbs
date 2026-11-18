@@ -398,6 +398,32 @@ void fuse_session_getparams(
     params->bufsize = se->bufsize;
 }
 
+void fuse_session_update_bufsize(struct fuse_session* se, uint32_t max_write)
+{
+    size_t bufsize = (size_t)max_write + FUSE_BUFFER_HEADER_SIZE;
+    if (se->bufsize < bufsize) {
+        se->bufsize = bufsize;
+    }
+}
+
+uint32_t fuse_bufsize_to_max_write(uint32_t bufsize)
+{
+    if (bufsize <= FUSE_BUFFER_HEADER_SIZE) {
+        return 0;
+    }
+    return bufsize - FUSE_BUFFER_HEADER_SIZE;
+}
+
+uint32_t fuse_negotiated_bufsize(uint32_t bufsize, uint32_t max_write)
+{
+    // Mirrors the bufsize shrink at the end of do_init()
+    size_t negotiated = (size_t)max_write + FUSE_BUFFER_HEADER_SIZE;
+    if (negotiated < bufsize) {
+        return (uint32_t)negotiated;
+    }
+    return bufsize;
+}
+
 int fuse_cancel_request(
     fuse_req_t req,
     enum fuse_cancelation_code code)

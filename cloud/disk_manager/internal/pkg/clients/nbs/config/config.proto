@@ -2,6 +2,7 @@ syntax = "proto2";
 
 package nbs;
 
+import "cloud/storage/core/protos/media.proto";
 import "google/protobuf/duration.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config";
@@ -36,4 +37,5 @@ message ClientConfig {
     optional string DiscoveryClientRetryDelay = 14 [default = "200ms"];
     // Period of automatic root certificates refresh, zero disables it.
     optional string RefreshCertsPeriod = 15 [default = "0s"];
+    optional NCloud.NProto.EStorageMediaKind ProxyOverlayDiskMediaKind = 16 [default = STORAGE_MEDIA_HYBRID];
 }

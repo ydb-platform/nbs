@@ -55,7 +55,8 @@ public:
                 ythrow yexception() << "unknown command: " << name;
             }
 
-            return Command->Run(argc, argv);
+            // To parse all free args as log files need to skip first arg like "dumpevents"
+            return Command->Run(argc - 1, std::next(argv));
 
         } catch (const NLastGetopt::TUsageException& e) {
             Cerr << FormatCmdLine(argc, argv)
