@@ -55,14 +55,12 @@ func diskIsTombstone(state diskState) bool {
 	return state.status == diskStatusDeleting && state.tombstone
 }
 
-// Placeholder written by code without the explicit tombstone flag is
-// indistinguishable from a completed deletion, except that the task which
-// created it is still running. Such a task must finish its external cleanup.
-func diskIsDeletionInProgressLegacy(state diskState, deleteTaskID string) bool {
-	return state.status == diskStatusDeleted &&
-		!state.tombstone &&
-		len(deleteTaskID) != 0 &&
-		state.deleteTaskID == deleteTaskID
+// The deletion is considered legacy if the delete task id is not empty and
+// matches the delete task id of the disk.
+//
+// TODO: Remove when the legacy deletion is no longer supported
+func diskDeletionLegacy(state diskState, deleteTaskID string) bool {
+	return state.status == diskStatusDeleted && len(deleteTaskID) != 0 && state.deleteTaskID == deleteTaskID
 }
 
 func diskCleanupIDs(state diskState) ([]string, error) {
@@ -118,8 +116,7 @@ func (s *storageYDB) PrepareDiskCleanup(
 				return err
 			}
 
-			prepared = diskIsTombstone(state) ||
-				diskIsDeletionInProgressLegacy(state, deleteTaskID)
+			prepared = diskIsTombstone(state) || diskDeletionLegacy(state, deleteTaskID)
 			if !prepared {
 				return tx.Commit(ctx)
 			}

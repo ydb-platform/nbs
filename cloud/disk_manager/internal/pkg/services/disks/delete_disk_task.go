@@ -8,6 +8,7 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
@@ -18,9 +19,12 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+
+const legacyDiskCleanupPrefix = "legacy_disk_cleanup_"
 
 type deleteDiskTask struct {
 	performanceConfig *performance_config.PerformanceConfig
@@ -59,6 +63,7 @@ func (t *deleteDiskTask) deleteDisk(
 
 	selfTaskID := execCtx.GetTaskID()
 	diskID := t.request.Disk.DiskId
+	sync := t.request.Sync
 
 	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
@@ -76,14 +81,46 @@ func (t *deleteDiskTask) deleteDisk(
 
 	zoneID := diskMeta.ZoneID
 
-	err = t.deleteDiskInCell(ctx, execCtx, zoneID)
+	taskID, err := t.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			selfTaskID+"_delete_disk_from_incremental",
+		),
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		&dataplane_protos.DeleteDiskFromIncrementalRequest{
+			Disk: &types.Disk{
+				ZoneId: zoneID,
+				DiskId: diskID,
+			},
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+	if err != nil {
+		return err
+	}
+
+	client, err := t.nbsFactory.GetClient(ctx, zoneID)
+	if err != nil {
+		return err
+	}
+
+	if sync {
+		err = client.DeleteSync(ctx, diskID)
+	} else {
+		err = client.Delete(ctx, diskID)
+	}
 	if err != nil {
 		return err
 	}
 
 	// Only overlay disks (created from image) should be released.
 	if len(diskMeta.SrcImageID) != 0 {
-		taskID, err := t.poolService.ReleaseBaseDisk(
+		taskID, err = t.poolService.ReleaseBaseDisk(
 			headers.SetIncomingIdempotencyKey(
 				ctx,
 				selfTaskID+"_release_base_disk",
@@ -147,6 +184,87 @@ func (t *deleteDiskTask) GetMetadata(
 
 func (t *deleteDiskTask) GetResponse() proto.Message {
 	return &empty.Empty{}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *deleteDiskTask) deleteDiskWithoutMetadata(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	if !t.request.DeleteIfNonExistent {
+		return nil
+	}
+
+	diskID := t.request.Disk.DiskId
+	zoneID := t.request.Disk.ZoneId
+	if len(zoneID) == 0 {
+		// Zone was not specified in the request: nothing to clean up, the
+		// tombstone keeps the disk ID reserved.
+		return nil
+	}
+
+	selfTaskID := execCtx.GetTaskID()
+	cleanupID := legacyDiskCleanupPrefix + selfTaskID
+
+	prepared, err := t.storage.PrepareDiskCleanup(
+		ctx,
+		diskID,
+		selfTaskID,
+		cleanupID,
+	)
+	if err != nil {
+		return err
+	}
+
+	if !prepared {
+		return nil
+	}
+
+	taskID, err := t.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			selfTaskID+"_delete_disk_from_incremental",
+		),
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		&dataplane_protos.DeleteDiskFromIncrementalRequest{
+			Disk: &types.Disk{
+				ZoneId: zoneID,
+				DiskId: diskID,
+			},
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+	if err != nil {
+		return err
+	}
+
+	client, err := t.nbsFactory.GetClient(ctx, zoneID)
+	if err != nil {
+		return err
+	}
+
+	if t.request.Sync {
+		err = client.DeleteSync(ctx, diskID)
+	} else {
+		err = client.Delete(ctx, diskID)
+	}
+	if err != nil {
+		return err
+	}
+
+	return execCtx.FinishWithPreparation(
+		ctx,
+		func(ctx context.Context, tx *persistence.Transaction) error {
+			return t.storage.CompleteDiskCleanup(ctx, tx, diskID, cleanupID)
+		},
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
