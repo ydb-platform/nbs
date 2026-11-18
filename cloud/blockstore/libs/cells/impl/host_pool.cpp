@@ -60,15 +60,9 @@ TCellHostPool::TCellHostPool(TCellConfigPtr config, TBootstrap bootstrap)
     , Counters(MakeCellCounters(Bootstrap.Monitoring, Config->GetCellId()))
 {
     if (Bootstrap.Logging) {
-        // tests build a pool with a bare TBootstrap; a closed TLog swallows
-        // everything the STORAGE_* macros hand it
         Log = Bootstrap.Logging->CreateLog("BLOCKSTORE_CELLS");
     }
 
-    // the pinger reschedules itself HostPingPeriod ahead every sweep, so a
-    // zero period would busy-loop the scheduler thread; a zero timeout would
-    // fail every ping outright. Neither is a running state to recover from -
-    // fail at start rather than limp
     Y_ABORT_UNLESS(Config->GetHostPingPeriod(), "HostPingPeriod must be non-zero");
     Y_ABORT_UNLESS(
         Config->GetHostPingTimeout(),
@@ -98,13 +92,6 @@ TResultOrError<TCellHostConfig> TCellHostPool::PickHostImpl(
     const THashSet<TString>& except,
     bool preferVerified) const
 {
-    // the configured list is the contract; a host we happened to hear about
-    // in a mount response only stands in when that contract has nothing live
-    // left in it. On a move away a host that answered a ping comes before
-    // one nobody has asked: during an outage the latter is as likely dead as
-    // not, and a move there is downtime spent finding that out. A fresh
-    // placement spreads over the whole list instead: only the warm minimum
-    // is pinged, so a cold host that is never picked would never be verified
     TVector<TString> verifiedConfigured;
     TVector<TString> verifiedDiscovered;
     TVector<TString> unknownConfigured;
@@ -195,9 +182,6 @@ bool TCellHostPool::ApplyLiveness(
     ui64 channelEpoch = 0;
 
     with_lock (Lock) {
-        // under the same lock as the write itself: a ping sent before the
-        // stop lands after it, and its error must not send every connection
-        // looking for a new home on the way out
         if (Stopped) {
             return false;
         }
@@ -225,10 +209,10 @@ bool TCellHostPool::ApplyLiveness(
         const auto liveness =
             alive ? EHostLiveness::Alive : EHostLiveness::Dead;
         transition = channel->Liveness != liveness;
-        // only a host that was found dead recovers; the first answer of a
-        // host nobody had asked yet is no event
         recovered = transition && channel->Liveness == EHostLiveness::Dead;
+        AccountChannel(*channel, -1);
         channel->Liveness = liveness;
+        AccountChannel(*channel, 1);
 
         // pruned whatever the liveness: a connection cannot unwatch itself
         // from its own destructor, so a host that never dies would keep a
@@ -247,30 +231,15 @@ bool TCellHostPool::ApplyLiveness(
                 return false;
             });
 
-        // a discovered host that nobody holds and that stopped answering
-        // occupies a slot without earning it
-        bool erased = false;
         if (!channel->Configured && !alive && channel->RefCount == 0) {
-            Channels.erase(fqdn);
-            erased = true;
+            EraseChannel(Channels.find(fqdn));
         }
 
         if (recovered) {
-            // a configured host is back; a discovered one that was kept only
-            // to cover the warm minimum has no reason to linger now. Not on
-            // a first answer: the replacement it would be judged against may
-            // itself be a host nobody has heard from yet
-            PruneRetainedDiscoveredLocked();
-        }
-
-        // not on every ping: the sweep repeats the verdict for every host
-        if (transition || erased) {
-            UpdateHostsUnavailableLocked();
+            DropUnneededDiscoveredHosts();
         }
     }
 
-    // before the watchers run: notifying one starts a migration that logs
-    // its own line, and the cause must not read as the consequence
     if (transition) {
         if (recovered) {
             Counters.HostBecameAvailable->Inc();
@@ -288,8 +257,6 @@ bool TCellHostPool::ApplyLiveness(
         }
     }
 
-    // outside the lock: a watcher asks the pool for another host, and this
-    // lock is not recursive
     for (const auto& watcher: watchers) {
         watcher->OnHostUnavailable(fqdn, channelEpoch);
     }
@@ -331,8 +298,6 @@ TVector<TCellHostPool::THostStatus> TCellHostPool::GetHostStatuses() const
     with_lock (Lock) {
         result.reserve(Channels.size());
         for (const auto& [fqdn, channel]: Channels) {
-            // RefCount, not the watcher count: watchers are weak and only
-            // pruned on the next liveness verdict, so they overcount
             result.push_back(THostStatus{
                 .Fqdn = fqdn,
                 .Liveness = channel.Liveness,
@@ -352,8 +317,6 @@ bool TCellHostPool::WatchHost(const TString& fqdn, ICellHostWatcherPtr watcher)
     }
 
     with_lock (Lock) {
-        // only for a channel that exists: watching a host nobody talks to
-        // would leak the subscription
         auto* channel = Channels.FindPtr(fqdn);
         if (!channel) {
             return false;
@@ -361,10 +324,6 @@ bool TCellHostPool::WatchHost(const TString& fqdn, ICellHostWatcherPtr watcher)
 
         channel->Watchers.push_back(std::move(watcher));
 
-        // read under the same lock as the subscription: a death that lands
-        // after this returns reaches the new watcher, and one that already
-        // landed is reported here - so there is no gap in which a verdict
-        // goes to nobody
         return channel->Liveness == EHostLiveness::Dead;
     }
 }
@@ -394,25 +353,39 @@ size_t TCellHostPool::GetWatcherCount(const TString& fqdn) const
     }
 }
 
-size_t TCellHostPool::CountLiveChannelsLocked(const TString& except) const
+bool TCellHostPool::IsLive(const TChannel& channel)
 {
-    size_t count = 0;
-    for (const auto& [fqdn, channel]: Channels) {
-        // an entry exists for every configured host from the moment the pool
-        // is built; what makes it a connection is having been set up
-        if (channel.Liveness != EHostLiveness::Dead &&
-            channel.Endpoint.Initialized() && fqdn != except)
-        {
-            ++count;
-        }
-    }
-    return count;
+    return channel.Liveness != EHostLiveness::Dead &&
+           channel.Endpoint.Initialized();
 }
 
-void TCellHostPool::TopUpWarmChannelsLocked()
+void TCellHostPool::AccountChannel(const TChannel& channel, int delta)
+{
+    if (channel.Liveness == EHostLiveness::Dead) {
+        Counters.HostsUnavailable->Add(delta);
+    }
+    if (IsLive(channel)) {
+        LiveChannels += delta;
+    }
+}
+
+void TCellHostPool::EraseChannel(
+    THashMap<TString, TChannel>::iterator it)
+{
+    AccountChannel(it->second, -1);
+    Channels.erase(it);
+}
+
+size_t TCellHostPool::CountLiveChannelsExcept(
+    const TChannel& except) const
+{
+    return LiveChannels - IsLive(except);
+}
+
+void TCellHostPool::EnsureMinLiveChannels()
 {
     const auto warm = Config->GetMinCellConnections();
-    auto live = CountLiveChannelsLocked({});
+    auto live = LiveChannels;
 
     for (const auto& [fqdn, hostConfig]: Config->GetHosts()) {
         if (live >= warm) {
@@ -430,12 +403,8 @@ void TCellHostPool::TopUpWarmChannelsLocked()
         }
 
         try {
-            EnsureChannelLocked(fqdn);
+            EnsureChannel(fqdn);
         } catch (...) {
-            // building the gRPC wrapper can throw (a bad address, the client
-            // shutting down). One host failing must not abort warming the
-            // rest - and, since this runs on the scheduler thread whose task
-            // is noexcept, must not escape at all
             Counters.ChannelWarmupErrors->Inc();
             STORAGE_WARN(
                 "[" << fqdn << "] could not warm a channel in cell "
@@ -447,37 +416,22 @@ void TCellHostPool::TopUpWarmChannelsLocked()
     }
 }
 
-void TCellHostPool::UpdateHostsUnavailableLocked()
+void TCellHostPool::DropUnneededDiscoveredHosts()
 {
-    *Counters.HostsUnavailable = CountIf(
-        Channels,
-        [](const auto& c)
-        { return c.second.Liveness == EHostLiveness::Dead; });
-}
-
-void TCellHostPool::PruneRetainedDiscoveredLocked()
-{
-    // repeated to a fixed point: dropping one retained discovered host can
-    // still leave another needed, so each drop is judged against what is
-    // left, not against the original set
-    bool dropped = true;
-    while (dropped) {
-        dropped = false;
-        for (const auto& [fqdn, channel]: Channels) {
-            if (!channel.Configured && channel.RefCount == 0 &&
-                CountLiveChannelsLocked(fqdn) >=
-                    Config->GetMinCellConnections())
-            {
-                Channels.erase(fqdn);
-                dropped = true;
-                break;
-            }
+    for (auto it = Channels.begin(); it != Channels.end();) {
+        auto current = it++;
+        const auto& channel = current->second;
+        if (!channel.Configured && channel.RefCount == 0 &&
+            CountLiveChannelsExcept(channel) >=
+                Config->GetMinCellConnections())
+        {
+            EraseChannel(current);
         }
     }
 }
 
 ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture
-TCellHostPool::EnsureChannelLocked(const TString& fqdn)
+TCellHostPool::EnsureChannel(const TString& fqdn)
 {
     auto& channel = Channels[fqdn];
     if (!channel.Endpoint.Initialized()) {
@@ -486,6 +440,7 @@ TCellHostPool::EnsureChannelLocked(const TString& fqdn)
             Bootstrap,
             MakeHostConfig(fqdn));
         channel.Epoch = ++LastEpoch;
+        AccountChannel(channel, 1);
     }
 
     return channel.Endpoint;
@@ -495,7 +450,7 @@ ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture
 TCellHostPool::AcquireControlChannel(const TString& fqdn)
 {
     with_lock (Lock) {
-        auto future = EnsureChannelLocked(fqdn);
+        auto future = EnsureChannel(fqdn);
         Channels[fqdn].RefCount++;
         Counters.Connections->Inc();
         return future;
@@ -505,7 +460,7 @@ TCellHostPool::AcquireControlChannel(const TString& fqdn)
 void TCellHostPool::Start()
 {
     with_lock (Lock) {
-        TopUpWarmChannelsLocked();
+        EnsureMinLiveChannels();
     }
 
     SchedulePingSweep();
@@ -513,9 +468,6 @@ void TCellHostPool::Start()
 
 void TCellHostPool::Stop()
 {
-    // the sweep talks to a gRPC client that is about to go down: left
-    // running, it would declare every host dead on the way out and send
-    // every connection looking for a new home
     with_lock (Lock) {
         Stopped = true;
     }
@@ -544,7 +496,7 @@ TCellHostEndpoints TCellHostPool::GetDescribeEndpoints(
                 }
 
                 try {
-                    auto future = EnsureChannelLocked(fqdn);
+                    auto future = EnsureChannel(fqdn);
                     if (!future.HasValue() || !future.GetValue()) {
                         // still connecting - skip it rather than block a
                         // describe
@@ -560,9 +512,6 @@ TCellHostEndpoints TCellHostPool::GetDescribeEndpoints(
                         std::move(endpoint),
                         nullptr);
                 } catch (...) {
-                    // building the endpoint can throw (a bad address or port,
-                    // the client shutting down); skip this host rather than
-                    // fail the whole describe or escape to the caller
                     Counters.DescribeEndpointErrors->Inc();
                     STORAGE_WARN(
                         "[" << fqdn << "] could not build a describe endpoint "
@@ -595,15 +544,12 @@ void TCellHostPool::ReleaseControlChannel(const TString& fqdn)
             Counters.Connections->Dec();
         }
 
-        // Configured hosts stay warm. A discovered one normally lives only as
-        // long as somebody is mounted through it - but if letting it go would
-        // leave the pool short of live channels, it is kept: it is then the
-        // only way back into a cell whose configured hosts are all down.
+        // remove unused discovered(heard from MountResponse) channels
         if (!channel.Configured && channel.RefCount == 0 &&
-            CountLiveChannelsLocked(fqdn) >= Config->GetMinCellConnections())
+            CountLiveChannelsExcept(channel) >=
+                Config->GetMinCellConnections())
         {
-            Channels.erase(it);
-            UpdateHostsUnavailableLocked();
+            EraseChannel(it);
         }
     }
 }
@@ -645,11 +591,9 @@ void TCellHostPool::PingSweep()
 
             // hosts die between sweeps, so the minimum is restored here
             // rather than only at start
-            TopUpWarmChannelsLocked();
+            EnsureMinLiveChannels();
 
             for (auto& [fqdn, channel]: Channels) {
-            // a channel that has not finished connecting says nothing about
-            // the host yet
                 if (!channel.Endpoint.Initialized() ||
                     !channel.Endpoint.HasValue() ||
                     !channel.Endpoint.GetValue())
@@ -670,17 +614,10 @@ void TCellHostPool::PingSweep()
         }
 
         for (auto& [fqdn, epoch, endpoint]: targets) {
-        // one request per host: the endpoint of the pool's client writes the
-        // request id and the timestamp into the very request it is given, so
-        // sharing one between hosts would be concurrent mutation of a single
-        // protobuf
             auto request = std::make_shared<NProto::TPingRequest>();
             auto& headers = *request->MutableHeaders();
             headers.SetRequestTimeout(
                 Config->GetHostPingTimeout().MilliSeconds());
-            // a request leaving the pool's client needs a client id, or the
-            // gRPC client aborts; the cell id is always there and makes the
-            // pings easy to spot in the server log
             headers.SetClientId(Config->GetCellId());
 
             endpoint->Ping(MakeIntrusive<TCallContext>(), std::move(request))
@@ -699,17 +636,12 @@ void TCellHostPool::PingSweep()
                     });
         }
     } catch (...) {
-        // nothing here may escape onto the scheduler thread, whose task is
-        // noexcept; and whatever went wrong, the pinger must live to try the
-        // next sweep - so the reschedule below stays unconditional
         Counters.PingSweepErrors->Inc();
         STORAGE_WARN(
             "[cell " << Config->GetCellId() << "] ping sweep failed: "
                 << CurrentExceptionMessage());
     }
 
-    // always, so a throw above cannot silently kill the pinger; a no-op once
-    // the pool is stopped
     SchedulePingSweep();
 }
 
@@ -718,20 +650,12 @@ void TCellHostPool::HandlePingResult(
     ui64 epoch,
     const NProto::TError& error)
 {
-    // a dead host keeps being reported dead every sweep; ApplyLiveness logs
-    // the transitions and stays quiet in between
     const bool transition = ApplyLiveness(fqdn, epoch, !HasError(error), error);
 
     if (transition && HasError(error)) {
-        // a warm host just died; build its replacement now rather than
-        // waiting for the next sweep to notice the pool is short. Only on the
-        // ping path, which always has an endpoint bootstrap to build with
         with_lock (Lock) {
-            // the stop may have landed between ApplyLiveness releasing the
-            // lock and our retaking it; building a channel now would revive
-            // a pool that is on its way down
             if (!Stopped) {
-                TopUpWarmChannelsLocked();
+                EnsureMinLiveChannels();
             }
         }
     }
