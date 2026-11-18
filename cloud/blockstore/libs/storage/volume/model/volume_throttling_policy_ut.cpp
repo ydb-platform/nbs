@@ -1091,6 +1091,177 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         }
     }
 
+    void DoShouldPreserveBoostRefillWhenApplyingCoefficients(
+        TMaybe<double> coefficient,
+        std::initializer_list<std::pair<ui32, ui32>> refillTimes)
+    {
+        // Use 1 IOPS, BurstPercentage == 1 and a 1 ms boost capacity at 200%.
+        // Start with no boost budget to check only its refill rate.
+        auto config = MakeSimpleConfig(0, 1, 1, 1, 100, 200, 8_MB);
+        const TThrottlerConfig
+            throttlerConfig(TDuration::Max(), 1, 1, TDuration::Zero(), false);
+        TVolumeThrottlingPolicy policy(config, throttlerConfig);
+
+        // Apply only BoostRefillTime's coefficient, or leave it absent.
+        NProto::TVolumeThrottlingRule rule;
+        if (coefficient) {
+            rule.MutableCoefficients()->SetBoostRefillTime(*coefficient);
+        }
+        policy.Reset(rule, 1);
+
+        for (const auto& [originalRefillTime, expectedRefillTime]: refillTimes)
+        {
+            const TString context =
+                TStringBuilder()
+                << "BoostRefillTime: " << originalRefillTime
+                << ", coefficient: "
+                << (coefficient ? ToString(*coefficient) : "unset");
+
+            // Change the original profile and check the saved coefficient.
+            config.SetBoostRefillTime(originalRefillTime);
+            policy.Reset(config, throttlerConfig);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedRefillTime,
+                policy.GetConfig().GetBoostRefillTime(),
+                context);
+
+            // Check that refill reduces the delay after the initial 10 ms
+            // burst; an intentional zero must keep the ordinary IOPS rate.
+            const auto delay = policy.SuggestDelay(
+                TInstant::Seconds(1),
+                TDuration::Zero(),
+                {4_KB, static_cast<ui32>(EOpType::Read), policy.GetVersion()});
+            UNIT_ASSERT_C(delay.Defined(), context);
+            const auto requestCost = TDuration::Seconds(1);
+            const auto burstBudget = TDuration::MilliSeconds(10);
+            const auto refillRate =
+                expectedRefillTime ? 1. / expectedRefillTime : 0.;
+            const auto expectedDelay =
+                (requestCost - burstBudget).SecondsFloat() / (1. + refillRate);
+            UNIT_ASSERT_DOUBLES_EQUAL_C(
+                expectedDelay,
+                delay->SecondsFloat(),
+                TDuration::MicroSeconds(2).SecondsFloat(),
+                context);
+
+            // Reapply the rule and check that it still scales the original
+            // profile rather than the previously calculated refill time.
+            policy.Reset(rule, 1);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedRefillTime,
+                policy.GetConfig().GetBoostRefillTime(),
+                context);
+        }
+    }
+
+    // Verify that coefficients keep positive BoostRefillTime at least 1 ms
+    // and preserve refill, intentional zeros and updated original profiles.
+    Y_UNIT_TEST(ShouldPreserveBoostRefillWhenApplyingCoefficients)
+    {
+        // Change the original profile and check that a small positive
+        // coefficient keeps the refill time at least 1 ms after each update.
+        DoShouldPreserveBoostRefillWhenApplyingCoefficients(
+            0.000001,
+            {{100, 1}, {5'000'000, 5}, {100, 1}});
+
+        // Check values below, at and above 1 ms, and preserve
+        // truncation of larger fractions and an original zero value.
+        DoShouldPreserveBoostRefillWhenApplyingCoefficients(
+            0.5,
+            {{1, 1}, {2, 1}, {3, 1}, {5, 2}, {0, 0}});
+
+        // Preserve explicit zeros and unchanged times when the coefficient
+        // is absent or one.
+        DoShouldPreserveBoostRefillWhenApplyingCoefficients(0.0, {{100, 0}});
+        DoShouldPreserveBoostRefillWhenApplyingCoefficients(1.0, {{100, 100}});
+        DoShouldPreserveBoostRefillWhenApplyingCoefficients(
+            Nothing(),
+            {{100, 100}, {0, 0}});
+    }
+
+    void DoShouldPreserveBurstWhenApplyingCoefficients(
+        TMaybe<double> coefficient,
+        std::initializer_list<std::pair<ui32, ui32>> burstPercentages)
+    {
+        // Use 1 IOPS and disable boost to check the burst allowance alone.
+        auto config = MakeSimpleConfig(0, 1, 100, 0, 0, 0, 8_MB);
+        const TThrottlerConfig
+            throttlerConfig(TDuration::Max(), 1, 1, TDuration::Zero(), false);
+        TVolumeThrottlingPolicy policy(config, throttlerConfig);
+
+        // Apply only BurstPercentage's coefficient, or leave it absent.
+        NProto::TVolumeThrottlingRule rule;
+        if (coefficient) {
+            rule.MutableCoefficients()->SetBurstPercentage(*coefficient);
+        }
+        policy.Reset(rule, 1);
+
+        for (const auto& [originalBurst, expectedBurst]: burstPercentages) {
+            const TString context =
+                TStringBuilder()
+                << "BurstPercentage: " << originalBurst << ", coefficient: "
+                << (coefficient ? ToString(*coefficient) : "unset");
+
+            // Change the original profile and check the saved coefficient.
+            config.SetBurstPercentage(originalBurst);
+            policy.Reset(config, throttlerConfig);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedBurst,
+                policy.GetConfig().GetBurstPercentage(),
+                context);
+
+            // Check that the burst allowance determines the request delay.
+            // Only an intentional zero may select the default 10% burst.
+            const auto delay = policy.SuggestDelay(
+                TInstant::Seconds(1),
+                TDuration::Zero(),
+                {4_KB, static_cast<ui32>(EOpType::Read), policy.GetVersion()});
+            UNIT_ASSERT_C(delay.Defined(), context);
+            const auto burstBudget = TDuration::MilliSeconds(
+                (expectedBurst ? expectedBurst : 10) * 10);
+            const auto expectedDelay = TDuration::Seconds(1) - burstBudget;
+            UNIT_ASSERT_DOUBLES_EQUAL_C(
+                expectedDelay.SecondsFloat(),
+                delay->SecondsFloat(),
+                TDuration::MicroSeconds(2).SecondsFloat(),
+                context);
+
+            // Reapply the rule and check that it still scales the original
+            // profile rather than the previously calculated burst percentage.
+            policy.Reset(rule, 1);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedBurst,
+                policy.GetConfig().GetBurstPercentage(),
+                context);
+        }
+    }
+
+    // Verify that coefficients keep positive BurstPercentage at least 1%
+    // without selecting the default 10% burst, and preserve intentional zeros.
+    Y_UNIT_TEST(ShouldPreserveBurstWhenApplyingCoefficients)
+    {
+        // Change the original profile and check that a small positive
+        // coefficient keeps the burst at least 1% after each update.
+        DoShouldPreserveBurstWhenApplyingCoefficients(
+            0.000001,
+            {{100, 1}, {5'000'000, 5}, {100, 1}});
+
+        // Check values below, at and above 1%, and preserve
+        // truncation of larger fractions and an original zero value.
+        DoShouldPreserveBurstWhenApplyingCoefficients(
+            0.5,
+            {{1, 1}, {2, 1}, {3, 1}, {5, 2}, {0, 0}});
+
+        // Preserve explicit zeros and unchanged percentages when the
+        // coefficient is absent or one; keep the default burst for intentional
+        // zeros.
+        DoShouldPreserveBurstWhenApplyingCoefficients(0.0, {{100, 0}});
+        DoShouldPreserveBurstWhenApplyingCoefficients(1.0, {{100, 100}});
+        DoShouldPreserveBurstWhenApplyingCoefficients(
+            Nothing(),
+            {{100, 100}, {0, 0}});
+    }
+
     Y_UNIT_TEST(MergeBackpressureReports)
     {
         const auto config = MakeSimpleConfig(

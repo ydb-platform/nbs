@@ -15,30 +15,46 @@ namespace {
 
 using EOpType = EVolumeThrottlingOpType;
 
+// Apply a coefficient with a minimum of 1 for positive inputs.
+// Preserve original zeros and explicitly zero coefficients.
+template <typename T>
+T ThrottledNonZero(T value, double coefficient)
+{
+    const T throttledValue = value * coefficient;
+
+    if (value && coefficient > 0. && throttledValue < 1) {
+        return 1;
+    }
+
+    return throttledValue;
+}
+
 // Apply a bandwidth coefficient with a minimum of 1 byte/s for positive inputs.
 // Preserve original zeros and explicitly zero coefficients.
 ui64 ThrottledBandwidth(ui64 bandwidth, double coefficient)
 {
-    const ui64 throttledBandwidth = bandwidth * coefficient;
-
-    if (bandwidth && coefficient > 0. && throttledBandwidth < 1) {
-        return 1;
-    }
-
-    return throttledBandwidth;
+    return ThrottledNonZero(bandwidth, coefficient);
 }
 
 // Apply an IOPS coefficient with a minimum of 1 IOPS for positive inputs.
 // Preserve original zeros and explicitly zero coefficients.
 ui32 ThrottledIops(ui32 iops, double coefficient)
 {
-    const ui32 throttledIops = iops * coefficient;
+    return ThrottledNonZero(iops, coefficient);
+}
 
-    if (iops && coefficient > 0. && throttledIops < 1) {
-        return 1;
-    }
+// Apply a BoostRefillTime coefficient with a minimum of 1 ms for positive
+// inputs, so rounding cannot disable boost refill. Preserve intentional zeros.
+ui32 ThrottledBoostRefillTime(ui32 boostRefillTime, double coefficient)
+{
+    return ThrottledNonZero(boostRefillTime, coefficient);
+}
 
-    return throttledIops;
+// Apply a BurstPercentage coefficient with a minimum of 1% for positive inputs,
+// so rounding cannot select the default burst. Preserve intentional zeros.
+ui32 ThrottledBurstPercentage(ui32 burstPercentage, double coefficient)
+{
+    return ThrottledNonZero(burstPercentage, coefficient);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -187,9 +203,9 @@ struct TVolumeThrottlingPolicy::TImpl
                 OriginalConfig.GetBoostTime() * coefficients.GetBoostTime());
         }
         if (coefficients.HasBoostRefillTime()) {
-            result.SetBoostRefillTime(
-                OriginalConfig.GetBoostRefillTime() *
-                coefficients.GetBoostRefillTime());
+            result.SetBoostRefillTime(ThrottledBoostRefillTime(
+                OriginalConfig.GetBoostRefillTime(),
+                coefficients.GetBoostRefillTime()));
         }
         if (coefficients.HasBoostPercentage()) {
             result.SetBoostPercentage(
@@ -207,9 +223,9 @@ struct TVolumeThrottlingPolicy::TImpl
                 coefficients.GetMaxWriteIops()));
         }
         if (coefficients.HasBurstPercentage()) {
-            result.SetBurstPercentage(
-                OriginalConfig.GetBurstPercentage() *
-                coefficients.GetBurstPercentage());
+            result.SetBurstPercentage(ThrottledBurstPercentage(
+                OriginalConfig.GetBurstPercentage(),
+                coefficients.GetBurstPercentage()));
         }
 
         return result;
