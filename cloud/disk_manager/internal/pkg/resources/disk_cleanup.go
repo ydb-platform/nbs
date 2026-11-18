@@ -3,7 +3,6 @@ package resources
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"slices"
 	"time"
 
@@ -12,42 +11,6 @@ import (
 )
 
 ////////////////////////////////////////////////////////////////////////////////
-
-// Unlike getDiskState, does not commit tx when the disk is missing: tx may
-// belong to a task state update.
-func (s *storageYDB) loadDiskCleanupState(
-	ctx context.Context,
-	tx *persistence.Transaction,
-	diskID string,
-) (diskState, error) {
-
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $id as Utf8;
-
-		select *
-		from disks
-		where id = $id
-	`, s.disksPath),
-		persistence.ValueParam("$id", persistence.UTF8Value(diskID)),
-	)
-	if err != nil {
-		return diskState{}, err
-	}
-	defer res.Close()
-
-	states, err := scanDiskStates(ctx, res)
-	if err != nil {
-		return diskState{}, err
-	}
-
-	if len(states) == 0 {
-		return diskState{}, nil
-	}
-
-	return states[0], nil
-}
 
 // Tombstone is a placeholder of a disk without metadata, which deletion is
 // not completed yet.
@@ -111,7 +74,7 @@ func (s *storageYDB) PrepareDiskCleanup(
 			}
 			defer tx.Rollback(ctx)
 
-			state, err := s.loadDiskCleanupState(ctx, tx, diskID)
+			state, err := s.getDiskState(ctx, tx, diskID)
 			if err != nil {
 				return err
 			}
@@ -155,7 +118,7 @@ func (s *storageYDB) CompleteDiskCleanup(
 	cleanupID string,
 ) error {
 
-	state, err := s.loadDiskCleanupState(ctx, tx, diskID)
+	state, err := s.getDiskState(ctx, tx, diskID)
 	if err != nil {
 		return err
 	}

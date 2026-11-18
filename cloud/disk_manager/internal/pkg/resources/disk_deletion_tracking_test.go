@@ -33,9 +33,12 @@ func readTrackedDisk(
 			}
 			defer tx.Rollback(ctx)
 
-			state, err = storage.(*storageYDB).loadDiskCleanupState(ctx, tx, diskID)
+			state, err = storage.(*storageYDB).getDiskState(ctx, tx, diskID)
 			if err != nil {
-				return err
+				// Disk may already be collected by ClearDeletedDisks;
+				// getDiskState commits the tx in that case.
+				state = diskState{}
+				return nil
 			}
 
 			return tx.Commit(ctx)
