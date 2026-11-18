@@ -28,6 +28,7 @@
 #include <array>
 #include <atomic>
 #include <tuple>
+#include <utility>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -816,7 +817,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TPortManager ports;
         const ui16 port = ports.GetPort();
         TTestFactory factory;
-        auto completion = NewPromise<ui32>();
+        auto completion = NewPromise<std::pair<ui32, bool>>();
         auto service = std::make_shared<TTestService>();
         service->ReadBlocksHandler = [](const auto&)
         {
@@ -826,9 +827,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
         };
         auto stats = std::make_shared<TTestServerStats>();
         stats->RequestCompletedHandler =
-            [completion](auto&, auto&, auto&, const auto& error) mutable
+            [completion](auto&, auto& metric, auto&, const auto& error) mutable
         {
-            completion.TrySetValue(error.GetCode());
+            completion.TrySetValue(
+                {error.GetCode(), metric.ResponseDeliveryUncertain});
         };
         NProto::TServerAppConfig proto;
         proto.MutableServerConfig()->SetPort(port);
@@ -868,9 +870,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             E_GRPC_RESOURCE_EXHAUSTED,
             result.GetValue(TDuration::Seconds(5)).GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_CANCELLED,
-            completion.GetFuture().GetValue(TDuration::Seconds(5)));
+        const auto [backendError, deliveryUncertain] =
+            completion.GetFuture().GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, backendError);
+        UNIT_ASSERT(deliveryUncertain);
     }
 
     Y_UNIT_TEST(ShouldCancelRequestsOnServerShutdown)
