@@ -293,7 +293,6 @@ void TVolumeBalancerState::UpdateVolumeToPush()
         }
 
         auto currentCost = info.Cost.value();
-
         if (moveMostHeavy) {
             if (bestCost < currentCost) {
                 bestCost = currentCost;
