@@ -60,11 +60,6 @@ struct TEvConfigsManager
               TEvSetConfigSubscriptionResponse,
               EvSetConfigSubscriptionResponse>
     {
-        // Configuration snapshot captured at registration; non-null.
-        const IBlockstoreConfigConstPtr Config;
-
-        explicit TEvSetConfigSubscriptionResponse(
-            IBlockstoreConfigConstPtr config);
     };
 
     // Removal request; consumers send it before stopping their actor.
@@ -104,12 +99,6 @@ struct TEvConfigsManager
 inline TEvConfigsManager::TEvSetConfigSubscriptionRequest::
     TEvSetConfigSubscriptionRequest(NActors::TActorId subscriber)
     : Subscriber(subscriber)
-{}
-
-inline TEvConfigsManager::TEvSetConfigSubscriptionResponse::
-    TEvSetConfigSubscriptionResponse(
-        IBlockstoreConfigConstPtr config)
-    : Config(std::move(config))
 {}
 
 inline TEvConfigsManager::TEvRemoveConfigSubscriptionRequest::

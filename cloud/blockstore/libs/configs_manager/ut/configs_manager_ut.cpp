@@ -105,7 +105,7 @@ protected:
     void WaitForConfigLog(const TString& message);
 
     // Register the chosen subscriber and check the response to the requester.
-    IBlockstoreConfigConstPtr Subscribe(
+    void Subscribe(
         TActorId requester,
         TActorId subscriber = {});
 
@@ -220,7 +220,7 @@ void TFixture::WaitForConfigLog(const TString& message)
 }
 
 // Register the chosen subscriber and check the response to the requester.
-IBlockstoreConfigConstPtr TFixture::Subscribe(
+void TFixture::Subscribe(
     TActorId requester,
     TActorId subscriber)
 {
@@ -236,10 +236,6 @@ IBlockstoreConfigConstPtr TFixture::Subscribe(
         TDuration::Seconds(1));
     UNIT_ASSERT(response);
     UNIT_ASSERT_VALUES_EQUAL(41, response->Cookie);
-    const auto& config = response->Get()->Config;
-    UNIT_ASSERT(config);
-    UNIT_ASSERT_EQUAL(ConfigHolder->Get().Get(), config.Get());
-    return config;
 }
 
 // Verify that the manager sends a change notification to one subscriber.
@@ -455,10 +451,10 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         // Register two consumers and leave the second initial notification queued.
         const auto first = Runtime.AllocateEdgeActor();
         const auto second = Runtime.AllocateEdgeActor();
-        const auto initial = Subscribe(first);
-        const auto secondInitial = Subscribe(second);
-        UNIT_ASSERT_EQUAL(initial.Get(), secondInitial.Get());
-        UNIT_ASSERT_EQUAL(initial.Get(), WaitForConfigChanged(first).Get());
+        Subscribe(first);
+        Subscribe(second);
+        const auto initial = WaitForConfigChanged(first);
+        UNIT_ASSERT_EQUAL(initial.Get(), ConfigHolder->Get().Get());
         UNIT_ASSERT_VALUES_EQUAL(
             200,
             initial->GetStorageConfig()->GetWriteBlobThreshold());
@@ -483,7 +479,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
             reset->GetStorageConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_EQUAL(reset.Get(), ConfigHolder->Get().Get());
         const auto delayedInitial = WaitForConfigChanged(second);
-        UNIT_ASSERT_EQUAL(secondInitial.Get(), delayedInitial.Get());
+        UNIT_ASSERT_EQUAL(initial.Get(), delayedInitial.Get());
         const auto delayedUpdate = WaitForConfigChanged(second);
         UNIT_ASSERT_EQUAL(updated.Get(), delayedUpdate.Get());
         UNIT_ASSERT_VALUES_EQUAL(
