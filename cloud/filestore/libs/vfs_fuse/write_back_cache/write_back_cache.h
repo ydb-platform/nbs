@@ -146,26 +146,32 @@ public:
      */
     EWriteBackCacheMode GetMode() const;
 
-    /* Irreversibly stops accepting cached writes and starts asynchronous
-     * flushing. WriteDataDirect remains allowed.
+    /* Puts WriteBackCache into draining mode - it prevents new WriteData
+     * requests from being added to the cache and triggers flush
+     * (WriteDataDirect calls will still be allowed).
      *
-     * Backend flush errors retain data for retries while live handles remain.
-     * Without live handles, data is discarded as during normal operation.
+     * WriteBackCache will remain in EWriteBackCacheMode::Draining mode until
+     * all pending and unflushed are flushed - then it will become
+     * EWriteBackCacheMode::Drained.
+     *
+     * Does not drop cached data on flush errors except the scenario described
+     * in ReleaseHandle().
      *
      * Use IsDrained() to check completion. Storage corruption or an internal
      * cache failure suspends draining.
      */
     void SetDrainingMode();
 
-    /* Starts draining for session shutdown, allowing cached writes to be
-     * dropped after flush errors, even with live handles, once their node has
-     * no pending writes.
+    /* Irreversibly stops accepting cached writes and starts asynchronous
+     * flushing similar to SetDrainingMode(). WriteDataDirect remains allowed.
      *
-     * The future completes successfully once the cache is healthy and no
-     * pending or unflushed writes remain, independently of FlushAllData().
-     * Storage corruption or an internal cache failure leaves it pending.
-     * Discarded writes count as drained, so completion does not guarantee
-     * persistence. Keep the cache alive until the future completes.
+     * Unlike SetDrainingMode(), cached data will be dropped on flush errors,
+     * therefore completion does not guarantee persistence. Dropped requests
+     * are reported as critical events.
+     *
+     * The future completes once the cache is healthy and no pending or
+     * unflushed writes remain, otherwise it will hang indefinitely and wait
+     * for manual resolution.
      */
     [[nodiscard]] NThreading::TFuture<void> Shutdown();
 

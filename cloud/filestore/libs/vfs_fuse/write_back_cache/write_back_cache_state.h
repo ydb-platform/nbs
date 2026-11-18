@@ -85,8 +85,9 @@ private:
     // It will be used in the future to prevent hanging on session destroy.
     THangingRequests HangingRequests;
 
-    // Persistent-storage or internal failure suspends normal operations and
-    // shutdown until manual resolution.
+    // Either the persistent storage is corrupted or an internal problem in
+    // the logic has happened. This is fatal and should result in suspending all
+    // operations until manual resolution takes place.
     bool IsFailed = false;
 
     // Set by SetDrainingMode() or Shutdown(): reject new cached writes and
@@ -123,10 +124,13 @@ public:
     // Reads state from the persistent storage and schedules node flush
     NProto::TError Init();
 
-    // Stop accepting cached writes and flush pending and unflushed requests.
+    // Irreversibly stops accepting WriteData requests and triggers data flush.
+    // WriteData requests will fail with E_REJECTED error.
     void SetDrainingMode();
 
-    // Complete successfully after draining; stay pending in a failed state.
+    // Similar to SetDrainingMode() but drops cached data on flush errors.
+    // The future completes once the cache is healthy and no pending or
+    // unflushed writes remain.
     NThreading::TFuture<void> Shutdown();
 
     // Returns true if the cache is in draining mode and there are no more

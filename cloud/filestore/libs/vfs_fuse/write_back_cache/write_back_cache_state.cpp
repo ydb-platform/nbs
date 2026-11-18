@@ -76,9 +76,8 @@ TFuture<void> TWriteBackCacheState::Shutdown()
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    auto future = ShutdownPromise.GetFuture();
     SetDrainingMode(true);
-    return future;
+    return ShutdownPromise.GetFuture();
 }
 
 bool TWriteBackCacheState::IsDrained() const

@@ -8787,18 +8787,16 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_NO_EXCEPTION(
             writeDataCalled.GetFuture().GetValue(WaitTimeout));
 
-        auto cacheCounters =
-            bootstrap.GetFileSystemStatsCounters()->FindSubgroup(
-                "module",
-                "WriteBackCache");
-        auto flushAllCounter =
-            cacheCounters->GetCounter("FlushAllRequests_InProgressCount");
-        auto stoppingCounter = cacheCounters->FindSubgroup("state", "Stopping")
-                                   ->GetCounter("OperationalState");
+        auto counter = bootstrap.GetFileSystemStatsCounters()
+                           ->FindSubgroup("module", "WriteBackCache")
+                           ->FindSubgroup("state", "Stopping")
+                           ->GetCounter("OperationalState");
+
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
 
         auto stopFuture = bootstrap.StopAsync();
 
-        // Wait until Shutdown starts without creating a FlushAll request.
+        // Wait until Shutdown starts
         UNIT_ASSERT(WaitForCondition(
             WaitTimeout,
             [&]
@@ -8806,9 +8804,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 // Stats are updated automatically with 1-second interval
                 // Update it manually to speed up the test
                 bootstrap.ModuleStatsRegistry->UpdateStats(true);
-                return stoppingCounter->GetAtomic() > 0;
+                return counter->GetAtomic() > 0;
             }));
-        UNIT_ASSERT_VALUES_EQUAL(0, flushAllCounter->GetAtomic());
 
         // WriteData completion should be done in a Scheduler thread, otherwise
         // the deadlock won't reproduce

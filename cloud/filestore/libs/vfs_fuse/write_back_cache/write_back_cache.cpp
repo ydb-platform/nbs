@@ -158,7 +158,7 @@ public:
                 << "allocation " << supported << " is less than " << required
                 << ", increase the state file size or decrease "
                 << "MaxRequestSize, FilePath: " << FilePath.Quote());
-            Y_UNUSED(Drain());
+            SetDrainingMode();
             return;
         }
 
@@ -205,19 +205,13 @@ public:
 
     void SetDrainingMode()
     {
-        if (!DrainRequested.exchange(true)) {
-            STORAGE_INFO(LogTag << " Stop accepting cached WriteData requests");
-        }
-
+        SetDrainRequested();
         State.SetDrainingMode();
     }
 
     TFuture<void> Shutdown()
     {
-        if (!DrainRequested.exchange(true)) {
-            STORAGE_INFO(LogTag << " Stop accepting cached WriteData requests");
-        }
-
+        SetDrainRequested();
         return State.Shutdown();
     }
 
@@ -520,6 +514,15 @@ public:
     }
 
 private:
+    void SetDrainRequested()
+    {
+        // Setting DrainRequested flag is irreversible
+        if (!DrainRequested.exchange(true)) {
+            // Report entering draining mode once one
+            STORAGE_INFO(LogTag << " Request WriteBackCache draining");
+        }
+    }
+
     // Implementation of IQueuedOperationsProcessor
     void ScheduleFlushNode(ui64 nodeId) override
     {
