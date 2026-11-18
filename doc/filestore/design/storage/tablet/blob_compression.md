@@ -16,7 +16,7 @@ Non-goals of the first version: compressing data on the write path, shared dicti
 * Compression happens only in Compaction, inside TCompactionActor and not in the tablet actor. Flush, FlushBytes and three-stage writes always write raw blobs.
 * A blob is compressed chunk by chunk with independent chunks (no shared dictionary, no cross-chunk state), so any single block can be read by fetching and decompressing exactly one chunk. A chunk is at most `BlobCompressionChunkSize` and holds whole blocks.
 * Chunks are cut on NodeId boundaries: a chunk never holds blocks of two nodes.
-* The decision is made per chunk: a chunk is stored compressed only if the codec saves at least `BlobCompressionMinSavedPermille` of its size, otherwise the chunk is stored raw inside the same blob. A blob which saves less than `BlobCompressionMinSavedPermille` in total is written raw as a whole, without metadata. Blobs smaller than `BlobCompressionMinBlobSize` are not compressed. (Currently with one limit, later it can be revisited)
+* The decision is made per chunk: a chunk is stored compressed only if the codec saves at least `BlobCompressionMinSavedPercent` of its size, otherwise the chunk is stored raw inside the same blob. A blob which saves less than `BlobCompressionMinSavedPercent` in total is written raw as a whole, without metadata. Blobs smaller than `BlobCompressionMinBlobSize` are not compressed. (Currently with one limit, later it can be revisited)
 * Compression metadata (codec, compressed and uncompressed size of every chunk) is stored in the MixedBlocks index next to the blocklist, not inside the blob. An empty metadata column means a raw blob, so existing blobs need no changes.
 * Readers validate the metadata: the layout is checked against the blob size and the declared length of every chunk is checked before decompression. Any mismatch produces an error and the `BlobDecompressionError` critical event.
 * The DescribeData response carries the compression info, and filestore-vhost decompresses on the two-stage read path. There is no capability flag: the readers are deployed before any compressed blob can appear (see [Implementation stages](#implementation-stages)).
@@ -31,7 +31,7 @@ flowchart LR
     W2["Aligned write, at least WriteBlobThreshold: tablet WriteBlob"] --> RAW
     W3["Small aligned write: fresh blocks"] -->|Flush| RAW
     W4["Unaligned write: fresh bytes"] -->|FlushBytes| RAW
-    RAW -->|Compaction of the range| D{"At least BlobCompressionMinBlobSize and saves at least BlobCompressionMinSavedPermille"}
+    RAW -->|Compaction of the range| D{"At least BlobCompressionMinBlobSize and saves at least BlobCompressionMinSavedPercent"}
     D -->|yes| CMP["Compressed blob: every chunk is compressed or raw"]
     D -->|no| RAW2["Raw blob"]
     CMP -->|next Compaction of the range| D
@@ -76,7 +76,7 @@ A range with one blob and no garbage is never selected. A large file written onc
 
 ## Blob format
 
-Uncompressed blob data is split into chunks. A chunk holds whole blocks of one node and is at most `ChunkSize` bytes. Every chunk is compressed independently with `Codec`. A chunk which saves less than `BlobCompressionMinSavedPermille` is kept raw. The chunks, compressed or raw, are written one after another. The blob id carries the compressed size, so nothing changes for BlobStorage and garbage accounting.
+Uncompressed blob data is split into chunks. A chunk holds whole blocks of one node and is at most `ChunkSize` bytes. Every chunk is compressed independently with `Codec`. A chunk which saves less than `BlobCompressionMinSavedPercent` is kept raw. The chunks, compressed or raw, are written one after another. The blob id carries the compressed size, so nothing changes for BlobStorage and garbage accounting.
 
 ```
 uncompressed:  [ chunk 0 | chunk 1 | ... | chunk N-1 ]    UncompressedChunkSizes[i] bytes each, at most ChunkSize
@@ -101,7 +101,7 @@ A chunk is either compressed or raw:
 * `ChunkSizes[i] == UncompressedChunkSizes[i]`: the chunk is raw. Its bytes are the data, and a reader copies them without decompression.
 * `ChunkSizes[i] > UncompressedChunkSizes[i]` is invalid.
 
-The writer keeps this unambiguous: it stores a chunk compressed only if the frame is smaller than the raw chunk by at least `BlobCompressionMinSavedPermille` (will be guraded to disallow useless compression), so a compressed chunk never has the same size as its data. Readers support raw chunks from the first version, so the per-chunk decision needs no separate rollout.
+The writer keeps this unambiguous: it stores a chunk compressed only if the frame is smaller than the raw chunk by at least `BlobCompressionMinSavedPercent` (will be guarded to disallow useless compression), so a compressed chunk never has the same size as its data. Readers support raw chunks from the first version, so the per-chunk decision needs no separate rollout.
 
 The format does not depend on how the writer cuts chunks: a reader needs only the two size lists. The rule for cutting (NodeId boundaries, `BlobCompressionChunkSize`) can change later without changing the format.
 
@@ -126,11 +126,11 @@ TStorageConfig:
 | `BlobCompressionEnabled` | `false` | store compressed blobs; when `false` compression is only measured for the blobs sampled by `BlobCompressionRate` |
 | `BlobCompressionCodec` | `lz4` | NBlockCodecs codec name used by Compaction; must be a codec from the common registry, e.g. `lz4` (`lz4-fast14-safe`), `zstd_1`, `zstd_3` |
 | `BlobCompressionChunkSize` | `16384` | maximum uncompressed chunk size, rounded down to a multiple of the block size (min one block) |
-| `BlobCompressionMinSavedPermille` | `125` | minimum saving (12.5%), applied twice: a chunk is stored compressed only if it saves at least this share of its size, and a blob keeps the compressed format only if it saves at least this share in total; permille because the default is not a whole number of percent |
+| `BlobCompressionMinSavedPercent` | `12` | minimum saving in percent, applied twice: a chunk is stored compressed only if it saves at least this share of its size, and a blob keeps the compressed format only if it saves at least this share in total |
 | `BlobCompressionMinBlobSize` | `16384` | blobs smaller than this are written raw without measuring |
 | `BlobCompressionRate` | `0` | measurement only: every N-th blob (by blob id hash) is compressed to update the `*BytesWritten` counters and the result is discarded |
 
-`BlobCompressionEnabled`, `BlobCompressionMinSavedPermille` and `BlobCompressionMinBlobSize` are new. The default of `BlobCompressionChunkSize` changes from 80 KiB to 16 KiB, which changes what the existing sampling measures.
+`BlobCompressionEnabled`, `BlobCompressionMinSavedPercent` and `BlobCompressionMinBlobSize` are new. The default of `BlobCompressionChunkSize` changes from 80 KiB to 16 KiB, which changes what the existing sampling measures.
 
 
 ### Why these defaults
@@ -138,7 +138,7 @@ TStorageConfig:
 The numbers come from the read / compress benchmark published in [#7107](https://github.com/ydb-platform/nbs/issues/7107). They were measured on a test node and are given only for relative comparison. Proper numbers will be added later.
 
 * Chunk size 16 KiB. The tablet serves 4 KiB block reads and the typical guest read is 4-16 KiB, so a chunk is the unit of read amplification. With lz4 a random 4 KiB read costs 3.8 us and fetches 6.1 KiB of compressed data with 16 KiB chunks versus 16.9 us and 23.3 KiB with 64 KiB chunks, while the ratio only drops from 2.75 to 2.63 on text and stays equal on record-like data. 16 KiB is also the Cassandra default chunk length.
-* Threshold 12.5%. The same value ZFS uses (a block is stored compressed only if it shrinks by at least 1/8), RocksDB (`max_compressed_bytes_per_kb = 896`, i.e. 7/8) and Ceph BlueStore (`bluestore_compression_required_ratio = 0.875`). Below that, huge-blob slot rounding in the VDisk eats most of the saving while every read still pays for decompression.
+* Threshold 12%. Close to the value ZFS uses (a block is stored compressed only if it shrinks by at least 1/8, i.e. 12.5%), RocksDB (`max_compressed_bytes_per_kb = 896`, i.e. 7/8) and Ceph BlueStore (`bluestore_compression_required_ratio = 0.875`). Below that, huge-blob slot rounding in the VDisk eats most of the saving while every read still pays for decompression.
 * Min blob size 16 KiB, i.e. one chunk. Smaller blobs are produced only by tiny Compaction runs; the metadata row and the per-read decompression are not worth it. This mirrors F2FS, whose default compression cluster is 16 KiB with partial clusters left raw, and Ceph BlueStore's `bluestore_compression_min_blob_size`.
 * lz4. 910 MB/s compression and 2.6x on text on a single core: a 4 MiB blob costs ~4.6 ms of CPU inside the compaction actor. zstd_1 gives 4.8x on text and 2.0x on records but compresses at 510 MB/s and decompresses a 4 KiB read in 12.9 us instead of 3.8 us.
 
@@ -161,7 +161,7 @@ sequenceDiagram
     C->>C: assemble the destination blob
     opt blob size is at least BlobCompressionMinBlobSize
         C->>C: cut chunks on NodeId boundaries, compress every chunk, keep a chunk raw if it saves too little
-        alt BlobCompressionEnabled and the blob saved at least BlobCompressionMinSavedPermille
+        alt BlobCompressionEnabled and the blob saved at least BlobCompressionMinSavedPercent
             C->>C: keep the compressed format, re-issue the blob id with the new size
         else measurement only or incompressible
             C->>C: keep raw
@@ -175,7 +175,7 @@ sequenceDiagram
 
 What is new compared with Compaction today:
 
-* a destination blob of at least `BlobCompressionMinBlobSize` is cut into chunks and compressed. The blocks are already sorted by (NodeId, BlockIndex); a new chunk starts at every NodeId change and after every `BlobCompressionChunkSize` bytes of the same node. A chunk which saves less than `BlobCompressionMinSavedPermille` is kept raw, and the result is used only if the whole blob saves at least `BlobCompressionMinSavedPermille`;
+* a destination blob of at least `BlobCompressionMinBlobSize` is cut into chunks and compressed. The blocks are already sorted by (NodeId, BlockIndex); a new chunk starts at every NodeId change and after every `BlobCompressionChunkSize` bytes of the same node. A chunk which saves less than `BlobCompressionMinSavedPercent` is kept raw, and the result is used only if the whole blob saves at least `BlobCompressionMinSavedPercent`;
 * a compressed blob gets a new blob id with the new size (same generation, step, channel and cookie); the id reserved before is not written;
 * AddBlob carries the compression info of every destination blob and the transaction stores it.
 
