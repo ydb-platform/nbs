@@ -44,7 +44,9 @@ func TestExportCredentialsIdentifyResourceKind(t *testing.T) {
 		requests: make(chan *api.GetExportCredentialsRequest, 1),
 	}
 	api.RegisterDiskServiceServer(server, service)
-	go server.Serve(listener)
+	go func() {
+		_ = server.Serve(listener)
+	}()
 	t.Cleanup(server.Stop)
 	t.Cleanup(func() { _ = listener.Close() })
 	connection, err := grpc.DialContext(
