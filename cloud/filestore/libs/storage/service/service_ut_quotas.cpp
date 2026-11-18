@@ -351,6 +351,21 @@ Y_UNIT_TEST_SUITE(TStorageServiceQuotasTest)
             (ui32)E_ARGUMENT,
             response->GetError().GetCode());
     }
+
+    SERVICE_TEST(ShouldFailQuotaRequestsForNonExistentFileSystem)
+    {
+        auto& service = *fixture.Service;
+
+        auto response = service.AssertSetQuotaFailed(
+            THeaders{},
+            "nonexistent",
+            42,
+            1_GB,
+            100);
+        UNIT_ASSERT_VALUES_EQUAL(
+            (ui32)E_NOT_FOUND,
+            response->GetError().GetCode());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

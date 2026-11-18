@@ -379,13 +379,13 @@ void TStorageServiceActor::ForwardRequestToShard(
 
 #undef FILESTORE_FORWARD_REQUEST
 
-#define FILESTORE_FORWARD_REQUEST_NO_SESSION(name, ns)                        \
-    void TStorageServiceActor::Handle##name(                                  \
-        const ns::TEv##name##Request::TPtr& ev,                               \
-        const TActorContext& ctx)                                             \
-    {                                                                         \
-        ForwardRequestWithoutSession<ns::T##name##Method>(ctx, ev);           \
-    }                                                                         \
+#define FILESTORE_FORWARD_REQUEST_NO_SESSION(name, ns)                         \
+    void TStorageServiceActor::Handle##name(                                   \
+        const ns::TEv##name##Request::TPtr& ev,                                \
+        const TActorContext& ctx)                                              \
+    {                                                                          \
+        ForwardRequestWithoutSession<ns::T##name##Method>(ctx, ev);            \
+    }                                                                          \
 
     FILESTORE_SERVICE_REQUESTS_FWD_NO_SESSION(
         FILESTORE_FORWARD_REQUEST_NO_SESSION,
