@@ -24,4 +24,5 @@ message TInterconnectConfig {
     optional bool UseRdma = 7;
     optional TDuration LostConnectionDuration = 8;
     optional string RdmaInterface = 9;
+    optional TDuration DeadPeerTimeoutDuration = 10;
 }
