@@ -115,7 +115,7 @@ void TVolumeActor::HandleUpdateVolatileThrottlingConfig(
             "Got TVolumeThrottlingConfig version less than known: (%u) <= "
             "(%u): ",
             throttlingConfig.GetVersion(),
-            State->GetThrottlingPolicy().GetVolatileThrottlingVersion());
+            currentVersion);
         return;
     }
 
