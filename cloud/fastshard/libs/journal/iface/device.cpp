@@ -20,7 +20,7 @@ public:
         return MakeFuture(TResultOrError(TVector<TBuffer>()));
     }
 
-    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
+    TFuture<NProto::TError> WritePages(TVector<TPageRangeView> ranges) override
     {
         Y_UNUSED(ranges);
         return MakeFuture<NProto::TError>();
@@ -64,7 +64,7 @@ public:
     }
 
     [[nodiscard]] TFuture<NProto::TError> WritePages(
-        TVector<TPageRange> ranges) final
+        TVector<TPageRangeView> ranges) final
     {
         for (auto& range: ranges) {
             if (auto error = Translate(range.FirstPageNo, range.Pages.size());

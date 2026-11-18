@@ -8,10 +8,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVector<TPageRange> MakePageRangesImpl(
+TVector<TPageRangeView> MakePageRangeViewsImpl(
     const google::protobuf::RepeatedPtrField<NProto::TDevicePageGroup>& groups)
 {
-    TVector<TPageRange> ranges;
+    TVector<TPageRangeView> ranges;
     ranges.reserve(groups.size());
 
     for (const auto& group: groups) {
@@ -20,7 +20,7 @@ TVector<TPageRange> MakePageRangesImpl(
         range.Pages.reserve(group.ContentSize());
 
         for (const auto& content: group.GetContent()) {
-            range.Pages.emplace_back(content.data(), content.size());
+            range.Pages.emplace_back(content);
         }
     }
 
@@ -63,15 +63,16 @@ TVector<TPageRangeRef> MakePageRangeRefs(
     return rangeRefs;
 }
 
-TVector<TPageRange> MakePageRanges(const NProto::TWritePagesRequest& request)
+TVector<TPageRangeView> MakePageRangeViews(
+    const NProto::TWritePagesRequest& request)
 {
-    return MakePageRangesImpl(request.GetPageGroups());
+    return MakePageRangeViewsImpl(request.GetPageGroups());
 }
 
-TVector<TPageRange> MakePageRanges(
+TVector<TPageRangeView> MakePageRangeViews(
     const NProto::TWriteLogRecordRequest& request)
 {
-    return MakePageRangesImpl(request.GetPageGroups());
+    return MakePageRangeViewsImpl(request.GetPageGroups());
 }
 
 NProto::TReadJournalTailResponse MakeReadJournalTailResponse(

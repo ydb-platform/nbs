@@ -1,6 +1,7 @@
 #include "journalled_device_v2.h"
 
 #include "journal.h"
+#include "ut_helpers.h"
 
 #include <cloud/fastshard/libs/journal/iface/device.h>
 #include <cloud/fastshard/libs/journal/iface/journalled_device.h>
@@ -185,7 +186,7 @@ struct TTestJournal final: public IJournal
     }
 
     TFuture<NProto::TError> Write(
-        TVector<TPageRange> ranges,
+        TVector<TPageRangeView> ranges,
         ui64 lsn,
         ui64 prevLsn) override
     {
@@ -373,7 +374,7 @@ struct TTestDevice final: public IDevice
     using TReadHandler = std::function<TResultOrError<TVector<TBuffer>>(
         const TVector<TPageRangeRef>&)>;
     using TWriteHandler =
-        std::function<NProto::TError(const TVector<TPageRange>&)>;
+        std::function<NProto::TError(const TVector<TPageRangeView>&)>;
 
     TReadHandler ReadHandler = ServePagesFromDevice;
 
@@ -403,12 +404,12 @@ struct TTestDevice final: public IDevice
         return MakeFuture(ReadHandler(rangeRefs));
     }
 
-    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
+    TFuture<NProto::TError> WritePages(TVector<TPageRangeView> ranges) override
     {
         bool isFirst = false;
         with_lock (Mutex) {
             isFirst = WriteRequests.empty();
-            WriteRequests.push_back(ranges);
+            WriteRequests.push_back(CopyPageRanges(ranges));
         }
 
         if (isFirst && FirstWriteResult.Initialized()) {
@@ -516,10 +517,10 @@ struct TFixture: public NUnitTest::TBaseFixture
     {
         const TString page = "W10";
 
-        TVector<TPageRange> ranges;
+        TVector<TPageRangeView> ranges;
         auto& range = ranges.emplace_back();
         range.FirstPageNo = 10;
-        range.Pages.emplace_back(page.data(), page.size());
+        range.Pages.push_back(page);
 
         return Device->WriteLogRecord(std::move(ranges), 1, 0).GetValueSync();
     }
@@ -536,7 +537,9 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     NProto::TError WritePages(const TPageRefs& refs = {{10, 2}, {20, 1}})
     {
-        return Device->WritePages(MakePageRanges(refs)).GetValueSync();
+        const auto ranges = MakePageRanges(refs);
+
+        return Device->WritePages(MakePageRangeViews(ranges)).GetValueSync();
     }
 
     void HoldFirstDataStoreWrite()
@@ -890,7 +893,9 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         HoldFirstDataStoreWrite();
 
         // pages 10, 11 and 20 stay in flight
-        auto first = Device->WritePages(MakePageRanges());
+        // the test keeps the pages until the write is done
+        const auto ranges = MakePageRanges();
+        auto first = Device->WritePages(MakePageRangeViews(ranges));
         WaitForFirstDataStoreWrite();
 
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WritePages({{11, 3}}).GetCode());
@@ -914,7 +919,9 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
     {
         HoldFirstDataStoreWrite();
 
-        auto first = Device->WritePages(MakePageRanges());
+        // the test keeps the pages until the write is done
+        const auto ranges = MakePageRanges();
+        auto first = Device->WritePages(MakePageRangeViews(ranges));
         WaitForFirstDataStoreWrite();
 
         DataStore->FirstWriteResult.SetValue(
@@ -940,7 +947,9 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         HoldFirstDataStoreWrite();
 
         // pages 10, 11 and 20 stay in flight
-        auto first = Device->WritePages(MakePageRanges());
+        // the test keeps the pages until the write is done
+        const auto ranges = MakePageRanges();
+        auto first = Device->WritePages(MakePageRangeViews(ranges));
         WaitForFirstDataStoreWrite();
 
         Journal->RestoreResponse = 1;
@@ -1159,7 +1168,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         StartDeviceAndCheck();
         HoldFirstDataStoreWrite();
 
-        auto write = Device->WritePages(MakePageRanges());
+        const auto ranges = MakePageRanges();
+        auto write = Device->WritePages(MakePageRangeViews(ranges));
         WaitForFirstDataStoreWrite();
 
         auto stopped = Device->Stop();

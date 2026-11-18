@@ -39,7 +39,7 @@ public:
     }
 
     TFuture<NProto::TError> WriteLogRecord(
-        TVector<TPageRange> ranges,
+        TVector<TPageRangeView> ranges,
         ui64 lsn,
         ui64 prevLsn) final
     {
@@ -61,7 +61,7 @@ public:
         return MakeFuture<NProto::TError>();
     }
 
-    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) final
+    TFuture<NProto::TError> WritePages(TVector<TPageRangeView> ranges) final
     {
         Y_UNUSED(ranges);
         return MakeFuture<NProto::TError>();

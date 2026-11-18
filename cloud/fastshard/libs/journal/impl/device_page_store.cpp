@@ -107,9 +107,9 @@ public:
         return MakeError(S_OK);
     }
 
-    auto Write(
+    TFuture<NProto::TError> Write(
         const TVector<TPageRangeRef>& pageRanges,
-        const TVector<TBuffer>& pages) -> TFuture<NProto::TError> override
+        const TVector<TStringBuf>& pages) override
     {
         ui64 pageCount = 0;
         for (const auto& pageRange: pageRanges) {
@@ -128,11 +128,11 @@ public:
         }
 
         for (const auto& page: pages) {
-            if (page.Size() != PageSize) {
+            if (page.size() != PageSize) {
                 return MakeFuture(MakeError(
                     E_ARGUMENT,
                     TStringBuilder()
-                        << "a page of " << page.Size()
+                        << "a page of " << page.size()
                         << " bytes, the page size is " << PageSize));
             }
         }
@@ -144,7 +144,7 @@ public:
             }
         }
 
-        TVector<TPageRange> deviceRanges;
+        TVector<TPageRangeView> deviceRanges;
         deviceRanges.reserve(pageRanges.size());
 
         auto page = pages.begin();
@@ -158,8 +158,8 @@ public:
         return Device->WritePages(std::move(deviceRanges));
     }
 
-    auto Read(const TVector<TPageRangeRef>& pageRanges)
-        -> TFuture<TResultOrError<TVector<TBuffer>>> override
+    TFuture<TResultOrError<TVector<TBuffer>>> Read(
+        const TVector<TPageRangeRef>& pageRanges) override
     {
         using TResult = TResultOrError<TVector<TBuffer>>;
 

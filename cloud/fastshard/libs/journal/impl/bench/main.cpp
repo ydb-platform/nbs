@@ -455,18 +455,13 @@ TString MakePage(ui32 pageSize, ui64 seed)
     return page;
 }
 
-// Every page gets its own copy of the content, as in a request that came
-// from the network.
-TPageRange MakePageRange(TPageRangeRef range, const TString& page)
+// Every page of the range points to |page|. |page| must live until the
+// request is done.
+TPageRangeView MakePageRangeView(TPageRangeRef range, const TString& page)
 {
-    TPageRange result{.FirstPageNo = range.FirstPageNo};
-    result.Pages.reserve(range.PageCount);
-
-    for (ui64 i = 0; i < range.PageCount; ++i) {
-        result.Pages.emplace_back(page.data(), page.size());
-    }
-
-    return result;
+    TPageRangeView view{.FirstPageNo = range.FirstPageNo};
+    view.Pages.assign(range.PageCount, TStringBuf(page));
+    return view;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -836,8 +831,8 @@ void TBench::PrefillData()
     for (ui64 pageNo = 0; pageNo < workingSetPages;
          pageNo += PrefillRequestPages)
     {
-        TVector<TPageRange> ranges;
-        ranges.push_back(MakePageRange(
+        TVector<TPageRangeView> ranges;
+        ranges.push_back(MakePageRangeView(
             {.FirstPageNo = pageNo,
              .PageCount = Min(PrefillRequestPages, workingSetPages - pageNo)},
             page));
@@ -863,13 +858,13 @@ void TBench::PrefillJournal(const TVector<TPageRangeRef>& ranges)
     while (i < ranges.size()) {
         const ui64 lsn = LastLsn.fetch_add(1) + 1;
 
-        TVector<TPageRange> recordRanges;
+        TVector<TPageRangeView> recordRanges;
 
         ui64 pageCount = 0;
         while (i < ranges.size() && pageCount < PrefillRequestPages &&
                recordRanges.size() < PrefillRecordGroups)
         {
-            recordRanges.push_back(MakePageRange(ranges[i], page));
+            recordRanges.push_back(MakePageRangeView(ranges[i], page));
             pageCount += ranges[i].PageCount;
             ++i;
         }
@@ -941,8 +936,8 @@ void TBench::WriteLogRecord(
 
     auto makeRequest = [&]()
     {
-        TVector<TPageRange> request;
-        request.push_back(MakePageRange(slot, page));
+        TVector<TPageRangeView> request;
+        request.push_back(MakePageRangeView(slot, page));
         return request;
     };
 

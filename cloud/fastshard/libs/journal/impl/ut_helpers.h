@@ -56,4 +56,36 @@ inline TResultOrError<TVector<TPageGroup>> GroupPages(
     return groups;
 }
 
+// Copies the pages that the views point to. A test device uses it to keep the
+// pages of a write after the write is done.
+inline TVector<TPageRange> CopyPageRanges(const TVector<TPageRangeView>& views)
+{
+    TVector<TPageRange> ranges;
+    ranges.reserve(views.size());
+
+    for (const auto& view: views) {
+        auto& range = ranges.emplace_back();
+        range.FirstPageNo = view.FirstPageNo;
+
+        for (const auto& page: view.Pages) {
+            range.Pages.emplace_back(page.data(), page.size());
+        }
+    }
+
+    return ranges;
+}
+
+// The views point to |pages|, so |pages| must live as long as the views.
+inline TVector<TStringBuf> MakePageViews(const TVector<TBuffer>& pages)
+{
+    TVector<TStringBuf> views;
+    views.reserve(pages.size());
+
+    for (const auto& page: pages) {
+        views.emplace_back(page.Data(), page.Size());
+    }
+
+    return views;
+}
+
 }   // namespace NCloud::NJournalled

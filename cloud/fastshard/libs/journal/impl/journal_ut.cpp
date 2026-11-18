@@ -227,7 +227,7 @@ struct TTestDevice final: public IDevice
 
     struct TBlockedWrite
     {
-        TVector<TPageRange> Ranges;
+        TVector<TPageRangeView> Ranges;
         TPromise<NProto::TError> Error;
     };
 
@@ -261,7 +261,7 @@ struct TTestDevice final: public IDevice
         return Impl->ReadPages(std::move(rangeRefs));
     }
 
-    TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
+    TFuture<NProto::TError> WritePages(TVector<TPageRangeView> ranges) override
     {
         if (FailWrites.load()) {
             return MakeFuture(MakeError(E_IO, "write failed"));
@@ -556,30 +556,42 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     // The response is ready only once the record has made it into the page
     // index, which a record that does not continue the chain yet has not.
+    // The journal takes a view of the record, so the returned future keeps
+    // the record until the write is done.
     TFuture<NProto::TError> WriteAsync(TJournalRecord record)
     {
-        return Run(
+        auto holder = std::make_shared<TJournalRecord>(std::move(record));
+
+        auto future = Run(
             [&]
             {
                 return Journal->Write(
-                    std::move(record.Ranges),
-                    record.Lsn,
-                    record.PrevLsn);
+                    MakePageRangeViews(holder->Ranges),
+                    holder->Lsn,
+                    holder->PrevLsn);
             });
+
+        return future.Apply([holder](const auto& future)
+                            { return future.GetValue(); });
     }
 
     // Returns once the write is on the executor - for a write the test
     // holds up at a store.
     TFuture<NProto::TError> StartWrite(TJournalRecord record)
     {
-        return Executor->Execute(
-            [this, record = std::move(record)]() mutable
+        auto holder = std::make_shared<TJournalRecord>(std::move(record));
+
+        auto future = Executor->Execute(
+            [this, holder]
             {
                 return Journal->Write(
-                    std::move(record.Ranges),
-                    record.Lsn,
-                    record.PrevLsn);
+                    MakePageRangeViews(holder->Ranges),
+                    holder->Lsn,
+                    holder->PrevLsn);
             });
+
+        return future.Apply([holder](const auto& future)
+                            { return future.GetValue(); });
     }
 
     ui32 Write(TJournalRecord record)

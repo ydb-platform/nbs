@@ -47,8 +47,10 @@ struct IJournal
     // Device API
     //
 
+    // The caller must keep the pages of the record alive until the future is
+    // set.
     [[nodiscard]] virtual NThreading::TFuture<NProto::TError> Write(
-        TVector<TPageRange> ranges,
+        TVector<TPageRangeView> ranges,
         ui64 lsn,
         ui64 prevLsn) = 0;
 

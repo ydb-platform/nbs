@@ -1,6 +1,7 @@
 #include "device_page_store.h"
 
 #include "memory_device.h"
+#include "ut_helpers.h"
 
 #include <cloud/fastshard/libs/journal/iface/device.h>
 
@@ -76,7 +77,7 @@ struct TBrokenDevice final: public IDevice
     }
 
     NThreading::TFuture<NProto::TError> WritePages(
-        TVector<TPageRange> ranges) override
+        TVector<TPageRangeView> ranges) override
     {
         Y_UNUSED(ranges);
 
@@ -100,7 +101,8 @@ TVector<TPageRangeRef> WriteRecord(
     auto ranges = store->Allocate(pages.size());
     UNIT_ASSERT(pages.empty() || !ranges.empty());
 
-    const auto error = store->Write(ranges, MakePages(pages)).GetValue();
+    const auto error =
+        store->Write(ranges, MakePageViews(MakePages(pages))).GetValue();
     UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
     return ranges;
@@ -211,7 +213,8 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
                  {"aaaa", ""}})       // empty
         {
             const auto error =
-                store->Write(ranges, MakePages(pages)).GetValue();
+                store->Write(ranges, MakePageViews(MakePages(pages)))
+                    .GetValue();
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
@@ -221,7 +224,8 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
         // a write of the right size still goes through
         const auto error =
-            store->Write(ranges, MakePages({"aaaa", "bbbb"})).GetValue();
+            store->Write(ranges, MakePageViews(MakePages({"aaaa", "bbbb"})))
+                .GetValue();
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -246,7 +250,10 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("1x2, 5x1", Describe(ranges));
 
         const auto error =
-            store->Write(ranges, MakePages({"aaaa", "bbbb", "cccc"}))
+            store
+                ->Write(
+                    ranges,
+                    MakePageViews(MakePages({"aaaa", "bbbb", "cccc"})))
                 .GetValue();
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
@@ -267,12 +274,15 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         auto ranges = store->Allocate(2);
 
         const auto tooMany =
-            store->Write(ranges, MakePages({"aaaa", "bbbb", "cccc"}))
+            store
+                ->Write(
+                    ranges,
+                    MakePageViews(MakePages({"aaaa", "bbbb", "cccc"})))
                 .GetValue();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, tooMany.GetCode());
 
         const auto tooFew =
-            store->Write(ranges, MakePages({"aaaa"})).GetValue();
+            store->Write(ranges, MakePageViews(MakePages({"aaaa"}))).GetValue();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, tooFew.GetCode());
     }
 
@@ -285,14 +295,17 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
             EDevicePageStoreMode::Checked);
 
         // a write does not look at the allocation state of the pages
-        const auto free =
-            store->Write(MakeRanges({{0, 1}}), MakePages({"aaaa"})).GetValue();
+        const auto free = store
+                              ->Write(
+                                  MakeRanges({{0, 1}}),
+                                  MakePageViews(MakePages({"aaaa"})))
+                              .GetValue();
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, free.GetCode(), FormatError(free));
 
         const auto beyond = store
                                 ->Write(
                                     MakeRanges({{DefaultPageCount, 1}}),
-                                    MakePages({"aaaa"}))
+                                    MakePageViews(MakePages({"aaaa"})))
                                 .GetValue();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, beyond.GetCode());
     }
@@ -346,7 +359,9 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
-            store->Write(overlapping, pages).GetValue().GetCode());
+            store->Write(overlapping, MakePageViews(pages))
+                .GetValue()
+                .GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             store->Read(overlapping).GetValue().GetError().GetCode());
@@ -363,7 +378,8 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
         // the ranges that only touch each other do not intersect
         const auto adjacent = MakeRanges({{0, 2}, {2, 2}});
-        const auto written = store->Write(adjacent, pages).GetValue();
+        const auto written =
+            store->Write(adjacent, MakePageViews(pages)).GetValue();
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
             written.GetCode(),
@@ -608,7 +624,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         auto ranges = MakeRanges({{0, 2}});
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
-            store->Write(ranges, MakePages({"aaaa", "bbbb"}))
+            store->Write(ranges, MakePageViews(MakePages({"aaaa", "bbbb"})))
                 .GetValue()
                 .GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -628,7 +644,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
-            checked->Write(ranges, MakePages({"aaaa", "bbbb"}))
+            checked->Write(ranges, MakePageViews(MakePages({"aaaa", "bbbb"})))
                 .GetValue()
                 .GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -699,7 +715,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             E_IO,
-            store->Write(ranges, MakePages({"aaaa", "bbbb"}))
+            store->Write(ranges, MakePageViews(MakePages({"aaaa", "bbbb"})))
                 .GetValue()
                 .GetCode());
 

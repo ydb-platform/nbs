@@ -18,10 +18,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-auto CreateWriteBlocksRequest(
-    const TPageRange& range,
+std::shared_ptr<NProto::TWriteBlocksRequest> CreateWriteBlocksRequest(
+    const TPageRangeView& range,
     ui32 blockSize,
-    ui64 firstBlockIndex) -> std::shared_ptr<NProto::TWriteBlocksRequest>
+    ui64 firstBlockIndex)
 {
     auto request = std::make_shared<NProto::TWriteBlocksRequest>();
 
@@ -32,16 +32,16 @@ auto CreateWriteBlocksRequest(
     buffers.Reserve(range.Pages.size());
 
     for (const auto& page: range.Pages) {
-        buffers.Add()->assign(page.Data(), page.Size());
+        buffers.Add()->assign(page.data(), page.size());
     }
 
     return request;
 }
 
-auto CreateReadBlocksRequest(
+std::shared_ptr<NProto::TReadBlocksRequest> CreateReadBlocksRequest(
     const TPageRangeRef& rangeRef,
     ui32 blockSize,
-    ui64 firstBlockIndex) -> std::shared_ptr<NProto::TReadBlocksRequest>
+    ui64 firstBlockIndex)
 {
     auto request = std::make_shared<NProto::TReadBlocksRequest>();
 
@@ -52,9 +52,9 @@ auto CreateReadBlocksRequest(
     return request;
 }
 
-auto CreateZeroBlocksRequest(
+std::shared_ptr<NProto::TZeroBlocksRequest> CreateZeroBlocksRequest(
     const TPageRangeRef& rangeRef,
-    ui64 firstBlockIndex) -> std::shared_ptr<NProto::TZeroBlocksRequest>
+    ui64 firstBlockIndex)
 {
     auto request = std::make_shared<NProto::TZeroBlocksRequest>();
 
@@ -100,7 +100,7 @@ NProto::TError ValidatePagesInRegion(
 }
 
 TResultOrError<ui32> ValidateWritePagesRequest(
-    const TVector<TPageRange>& ranges,
+    const TVector<TPageRangeView>& ranges,
     const TPageRangeRef& region)
 {
     ui32 blockSize = 0;
@@ -114,22 +114,24 @@ TResultOrError<ui32> ValidateWritePagesRequest(
             return MakeError(E_ARGUMENT, "empty page group");
         }
 
-        for (const TBuffer& block: range.Pages) {
-            if (block.Size() == 0) {
+        for (const auto& block: range.Pages) {
+            if (block.size() == 0) {
                 return MakeError(
                     E_ARGUMENT,
                     "invalid page data: block must not be empty");
             }
 
             if (blockSize == 0) {
-                blockSize = block.Size();
+                blockSize = block.size();
                 continue;
             }
 
-            if (blockSize != block.Size()) {
-                return MakeError(E_ARGUMENT, TStringBuilder()
-                    << "invalid page data: block size mismatch: expected "
-                    << blockSize << ", got " << block.Size());
+            if (blockSize != block.size()) {
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "invalid page data: block size mismatch: expected "
+                        << blockSize << ", got " << block.size());
             }
         }
 
@@ -237,9 +239,8 @@ public:
 
     // NJournalled::IDevice
 
-    [[nodiscard]] auto ReadPages(
-        TVector<TPageRangeRef> rangeRefs)
-        -> TFuture<TResultOrError<TVector<TBuffer>>> final
+    [[nodiscard]] TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
+        TVector<TPageRangeRef> rangeRefs) final
     {
         using TResult = TResultOrError<TVector<TBuffer>>;
 
@@ -297,8 +298,8 @@ public:
             });
     }
 
-    [[nodiscard]] auto WritePages(TVector<TPageRange> ranges)
-        -> TFuture<NProto::TError> final
+    [[nodiscard]] TFuture<NProto::TError> WritePages(
+        TVector<TPageRangeView> ranges) final
     {
         ui32 requestBlockSize = 0;
         if (auto [bs, error] = ValidateWritePagesRequest(ranges, Region);
@@ -351,8 +352,8 @@ public:
             });
     }
 
-    [[nodiscard]] auto ZeroPages(TVector<TPageRangeRef> ranges)
-        -> TFuture<NProto::TError> final
+    [[nodiscard]] TFuture<NProto::TError> ZeroPages(
+        TVector<TPageRangeRef> ranges) final
     {
         if (auto error = ValidateZeroPagesRequest(ranges, Region);
             HasError(error))

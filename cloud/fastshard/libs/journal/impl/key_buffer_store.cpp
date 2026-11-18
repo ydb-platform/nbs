@@ -366,7 +366,7 @@ public:
         }
     }
 
-    TResultOrError<TPageRange> GeneratePage(TEntry entry, ui32 pageSize)
+    TResultOrError<TPageRangeView> GeneratePage(TEntry entry, ui32 pageSize)
     {
         auto pageManager = PageManager.lock();
         if (!pageManager) {
@@ -400,9 +400,14 @@ public:
         }
         NewPage.PageBuffer = result.ExtractResult();
 
-        TPageRange page;
+        //
+        // Point the range to the page buffer of the controller: the caller
+        // keeps the controller alive until the page is written
+        //
+
+        TPageRangeView page;
         page.FirstPageNo = NewPage.PageNo;
-        page.Pages.push_back(NewPage.PageBuffer);
+        page.Pages.push_back(AsStringBuf(NewPage.PageBuffer));
         return page;
     }
 
@@ -614,7 +619,7 @@ TResultOrError<TFuture<NProto::TError>> TDeviceKeyBufferStore::Write(
     }
     auto pageRange = result.ExtractResult();
 
-    TVector<TPageRange> ranges;
+    TVector<TPageRangeView> ranges;
     ranges.push_back(std::move(pageRange));
 
     return Device->WritePages(std::move(ranges))
@@ -736,17 +741,25 @@ TFuture<NProto::TError> TDeviceKeyBufferStore::DoWriteSuperblock(
         return MakeFuture(result.GetError());
     }
 
-    auto superblockPage = result.ExtractResult();
+    //
+    // Keep the page in the callback until the write is done: the range only
+    // points to it
+    //
 
-    TVector<TPageRange> ranges;
+    auto superblockPage =
+        std::make_shared<const TBuffer>(result.ExtractResult());
+
+    TVector<TPageRangeView> ranges;
     ranges.push_back({
         .FirstPageNo = slot,
-        .Pages = {std::move(superblockPage)},
+        .Pages = {AsStringBuf(*superblockPage)},
     });
 
     return Device->WritePages(std::move(ranges))
         .Apply(
-            [weakSelf = weak_from_this(), superblock = std::move(superblock)](
+            [weakSelf = weak_from_this(),
+             superblock = std::move(superblock),
+             superblockPage = std::move(superblockPage)](
                 const TFuture<NProto::TError>& future) mutable
             {
                 auto self = weakSelf.lock();

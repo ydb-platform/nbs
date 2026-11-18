@@ -199,7 +199,7 @@ NProto::TWriteLogRecordResponse TJournalledStorageNode::WriteLogRecord(
     }
 
     return TErrorResponse(WaitInFiber(Device->WriteLogRecord(
-        MakePageRanges(request),
+        MakePageRangeViews(request),
         request.GetLogSequenceNumber(),
         request.GetPrevLogSequenceNumber())));
 }
@@ -265,7 +265,7 @@ NProto::TWritePagesResponse TJournalledStorageNode::WritePages(
     }
 
     return TErrorResponse(
-        WaitInFiber(Device->WritePages(MakePageRanges(request))));
+        WaitInFiber(Device->WritePages(MakePageRangeViews(request))));
 }
 
 }   // namespace NCloud::NFastShard
