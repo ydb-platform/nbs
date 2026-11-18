@@ -364,7 +364,9 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         UNIT_ASSERT(!board.RegisterSharedControl(
             control,
             "BlockStore_WriteBlobThreshold"));
-        const auto initialConfig = ConfigHolder->Get();
+        const auto subscriber = Runtime.AllocateEdgeActor();
+        Subscribe(subscriber);
+        const auto initialConfig = WaitForConfigChanged(subscriber);
         TAtomic previousValue = {};
         board.SetValue("BlockStore_WriteBlobThreshold", 400, previousValue);
 
@@ -374,11 +376,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
             std::make_shared<NProto::TBlockstoreConfig>(dynamicConfig),
             70);
         WaitForAck(70);
+        const auto updatedConfig = WaitForConfigChanged(subscriber);
         UNIT_ASSERT_VALUES_EQUAL(300, control.GetDefault());
         UNIT_ASSERT_VALUES_EQUAL(300, static_cast<i64>(control));
         UNIT_ASSERT_VALUES_EQUAL(
             300,
-            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+            updatedConfig->GetStorageConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(
             200,
             initialConfig->GetStorageConfig()->GetWriteBlobThreshold());
@@ -386,19 +389,17 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         // Publish another field without overwriting the unchanged field's ICB.
         board.SetValue("BlockStore_WriteBlobThreshold", 500, previousValue);
         dynamicConfig.MutableStorageService()->SetMaxMigrationIoDepth(7);
-        const auto beforeUnrelatedUpdate = ConfigHolder->Get();
         SendNotification(
             std::make_shared<NProto::TBlockstoreConfig>(dynamicConfig),
             71);
         WaitForAck(71);
-        UNIT_ASSERT_UNEQUAL(
-            beforeUnrelatedUpdate.Get(),
-            ConfigHolder->Get().Get());
+        const auto publishedConfig = WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_UNEQUAL(updatedConfig.Get(), publishedConfig.Get());
         UNIT_ASSERT_VALUES_EQUAL(300, control.GetDefault());
         UNIT_ASSERT_VALUES_EQUAL(500, static_cast<i64>(control));
         UNIT_ASSERT_VALUES_EQUAL(
             500,
-            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+            publishedConfig->GetStorageConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(
             500,
             initialConfig->GetStorageConfig()->GetWriteBlobThreshold());
@@ -409,12 +410,11 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
                 .Value);
         UNIT_ASSERT_VALUES_EQUAL(
             "300",
-            ConfigHolder->Get()->GetStorageConfig()
+            publishedConfig->GetStorageConfig()
                 ->GetValueByName("WriteBlobThreshold")
                 .Value);
 
         // Preserve the override and snapshot for duplicate and rejected input.
-        const auto publishedConfig = ConfigHolder->Get();
         SendNotification(
             std::make_shared<NProto::TBlockstoreConfig>(dynamicConfig),
             72);
@@ -433,11 +433,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         // Remove the dynamic source and reset only the changed baselines.
         SendNotification({}, 74);
         WaitForAck(74);
+        const auto resetConfig = WaitForConfigChanged(subscriber);
         UNIT_ASSERT_VALUES_EQUAL(100, control.GetDefault());
         UNIT_ASSERT_VALUES_EQUAL(100, static_cast<i64>(control));
         UNIT_ASSERT_VALUES_EQUAL(
             100,
-            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+            resetConfig->GetStorageConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(
             300,
             publishedConfig->GetStorageConfig()->GetWriteBlobThreshold());
