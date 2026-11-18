@@ -99,9 +99,16 @@ void TVolumeActor::HandleUpdateVolatileThrottlingConfig(
         return;
     }
 
-    if (throttlingConfig.GetVersion() <=
-        State->GetThrottlingPolicy().GetVolatileThrottlingVersion())
-    {
+    const auto currentVersion =
+        State->GetThrottlingPolicy().GetVolatileThrottlingVersion();
+
+    // Re-evaluate the rule for the previously accepted configuration version if
+    // volume parameters used for rule selection have changed (e.g. FolderId).
+    const bool needReEvaluate =
+        (throttlingConfig.GetVersion() == currentVersion &&
+         State->IsThrottlingRuleOutdated());
+
+    if (throttlingConfig.GetVersion() <= currentVersion && !needReEvaluate) {
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
