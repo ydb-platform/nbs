@@ -93,9 +93,9 @@ struct TEvConfigsManager
         : NActors::TEventLocal<TEvConfigChanged, EvConfigChanged>
     {
         // Configuration snapshot for this update; non-null.
-        const IBlockstoreConfigConstPtr Config;
+        const IBlockstoreConfigPtr Config;
 
-        explicit TEvConfigChanged(IBlockstoreConfigConstPtr config);
+        explicit TEvConfigChanged(IBlockstoreConfigPtr config);
     };
 };
 
@@ -110,7 +110,7 @@ inline TEvConfigsManager::TEvRemoveConfigSubscriptionRequest::
 {}
 
 inline TEvConfigsManager::TEvConfigChanged::TEvConfigChanged(
-    IBlockstoreConfigConstPtr config)
+    IBlockstoreConfigPtr config)
     : Config(std::move(config))
 {}
 
