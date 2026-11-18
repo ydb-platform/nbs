@@ -404,10 +404,7 @@ void TConfigInitializerYdb::ApplyDiagnosticsConfig(const TString& text)
     NProto::TDiagnosticsConfig diagnosticsConfig;
     ParseProtoTextFromStringRobust(text, diagnosticsConfig);
 
-    if (Options->MonitoringPort) {
-        diagnosticsConfig.SetNbsMonPort(Options->MonitoringPort);
-    }
-
+    SetupDiagnosticsConfig(diagnosticsConfig);
     DiagnosticsConfig = std::make_shared<TDiagnosticsConfig>(diagnosticsConfig);
 }
 
