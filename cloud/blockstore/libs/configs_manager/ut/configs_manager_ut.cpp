@@ -449,7 +449,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         ShouldNotifySubscribersAfterPublicationWithoutWaitingForAck,
         TFixture)
     {
-        // Register two consumers and leave the second initial notification queued.
+        // Register two consumers and leave the second initial notification
+        // queued.
         const auto first = Runtime.AllocateEdgeActor();
         const auto second = Runtime.AllocateEdgeActor();
         Subscribe(first);
