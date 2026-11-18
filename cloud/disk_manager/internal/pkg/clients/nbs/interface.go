@@ -214,6 +214,10 @@ type Client interface {
 		checkpointID string,
 	) error
 
+	// Returns IDs of the checkpoints of the disk, including the checkpoints
+	// whose data is deleted.
+	GetCheckpoints(ctx context.Context, diskID string) ([]string, error)
+
 	Resize(
 		ctx context.Context,
 		saveState func() error,
@@ -468,8 +472,6 @@ type TestingClient interface {
 	MountForReadWrite(diskID string) (func(), error)
 
 	Write(diskID string, startIndex int, bytes []byte) error
-
-	GetCheckpoints(ctx context.Context, diskID string) ([]string, error)
 
 	List(ctx context.Context) ([]string, error)
 

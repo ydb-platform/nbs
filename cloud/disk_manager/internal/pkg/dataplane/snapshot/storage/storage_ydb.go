@@ -307,6 +307,24 @@ func (s *storageYDB) GetIncremental(
 	return snapshotID, checkpointID, err
 }
 
+func (s *storageYDB) ListIncremental(
+	ctx context.Context,
+	after *types.Disk,
+	limit int,
+) (entries []IncrementalEntry, err error) {
+
+	defer s.metrics.StatOperation("ListIncremental")(&err)
+
+	err = s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			entries, err = s.listIncremental(ctx, session, after, limit)
+			return err
+		},
+	)
+	return entries, err
+}
+
 func (s *storageYDB) ListSnapshots(
 	ctx context.Context,
 ) (ids tasks_common.StringSet, err error) {

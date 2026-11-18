@@ -75,4 +75,11 @@ message DataplaneConfig {
     // time and delays the end by one part, not by its whole share. Changing it
     // waits for the tasks of the old split to end.
     optional uint32 BackupChunksRangeCount = 30 [default = 4];
+
+    // Run dataplane.CheckIncrementalSnapshots regularly. The task checks, for
+    // every disk with an incremental chain, that the checkpoint needed to
+    // create the next snapshot of the disk still exists. It makes up to two
+    // NBS requests per disk, one disk at a time.
+    optional bool RegularIncrementalSnapshotsCheckEnabled = 31 [default = false];
+    optional string CheckIncrementalSnapshotsTaskScheduleInterval = 32 [default = "24h"];
 }
