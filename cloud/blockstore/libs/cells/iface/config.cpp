@@ -11,9 +11,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// clang-format off
 #define BLOCKSTORE_CELL_DEFAULT_CONFIG(xxx)                                    \
     xxx(CellId,                      TString,                {}               )\
     xxx(GrpcPort,                    ui32,                   0                )\
+    xxx(IcV2Port,                    ui32,                   0                )\
     xxx(NbdPort,                     ui32,                   {}               )\
     xxx(RdmaPort,                    ui32,                   0                )\
     xxx(SecureGrpcPort,              ui32,                   {}               )\
@@ -55,12 +57,34 @@ namespace {
 
 #define BLOCKSTORE_CELLS_COMPUTED_CONFIG(xxx)                                  \
     xxx(Cells,                     TCellConfigByCellId                        )\
+    xxx(IcV2Config,                 TCellsIcV2Config                           )\
 // BLOCKSTORE_CELLS_COMPUTED_CONFIG
 
 #define BLOCKSTORE_CELLS_CONFIG(xxx)                                           \
     BLOCKSTORE_CELLS_DEFAULT_CONFIG(xxx)                                       \
     BLOCKSTORE_CELLS_COMPUTED_CONFIG(xxx)
 // BLOCKSTORE_CELLS_CONFIG
+
+////////////////////////////////////////////////////////////////////////////////
+
+#define BLOCKSTORE_CELLS_ICV2_DEFAULT_CONFIG(xxx)                              \
+    xxx(Enabled,                     bool,                   false            )\
+    xxx(ListenAddress,               TString,                "::"             )\
+    xxx(Port,                        ui32,                   0                )\
+    xxx(Threads,                     ui32,                   1                )\
+    xxx(HandshakeTimeoutMs,          ui32,                   5000             )\
+    xxx(ChecksumEvents,              bool,                   false            )\
+    xxx(MaxConnections,              ui32,                   128              )\
+    xxx(MaxPendingRequests,          ui32,                   1024             )\
+    xxx(MaxOutputQueueBytes,         ui64,                   64_MB            )\
+    xxx(CompletionThreads,           ui32,                   2                )\
+    xxx(MaxOutgoingConnections,      ui32,                   128              )\
+    xxx(MaxDataRequestBytes,         ui64,                   4_MB             )\
+    xxx(MaxDataInflightBytes,        ui64,                   64_MB            )\
+    xxx(DataWorkers,                 ui32,                   1                )\
+    xxx(EnableXdc,                   bool,                   false            )\
+// BLOCKSTORE_CELLS_ICV2_DEFAULT_CONFIG
+// clang-format on
 
 #define CONFIG_ITEM_IS_SET_CHECKER(name, ...)                                  \
     template <typename TProto>                                                 \
@@ -108,6 +132,11 @@ void DumpImpl(const TConfiguredHostsByFqdn& value, IOutputStream& os)
     Y_UNUSED(os);
 }
 
+void DumpImpl(const TCellsIcV2Config& value, IOutputStream& os)
+{
+    value.Dump(os);
+}
+
 template <>
 void DumpImpl(
     const NProto::ECellDataTransport& value,
@@ -147,6 +176,7 @@ TCellHostConfig::TCellHostConfig(
     , NbdPort(cellConfig.GetNbdPort())
     , Fqdn(hostConfig.GetFqdn())
     , CellId(cellConfig.GetCellId())
+    , IcV2Port(cellConfig.GetIcV2Port())
     , Transport(
           hostConfig.GetTransport() ? hostConfig.GetTransport()
                                     : cellConfig.GetTransport())
@@ -254,11 +284,87 @@ void TCellConfig::DumpHtml(IOutputStream& out) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TCellsIcV2Config::TImpl
+{
+    const NProto::TCellsIcV2Config Config;
+
+    BLOCKSTORE_CELLS_ICV2_DEFAULT_CONFIG(BLOCKSTORE_CELLS_DECLARE_CONFIG);
+    BLOCKSTORE_CELLS_ICV2_DEFAULT_CONFIG(CONFIG_ITEM_IS_SET_CHECKER);
+
+    explicit TImpl(NProto::TCellsIcV2Config config)
+        : Config(std::move(config))
+    {}
+};
+
+TCellsIcV2Config::TCellsIcV2Config(NProto::TCellsIcV2Config config)
+    : Impl(std::make_unique<TImpl>(std::move(config)))
+{}
+
+TCellsIcV2Config::~TCellsIcV2Config() = default;
+
+const NProto::TCellsIcV2Config& TCellsIcV2Config::GetIcV2Config() const
+{
+    return Impl->Config;
+}
+
+#define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
+    type TCellsIcV2Config::Get##name() const                                   \
+    {                                                                          \
+        return Impl->Is##name##Set(Impl->Config)                               \
+                   ? ConvertValue<type>(Impl->Config.Get##name())              \
+                   : TImpl::CellsDefault##name;                                \
+    }
+// BLOCKSTORE_CONFIG_GETTER
+
+BLOCKSTORE_CELLS_ICV2_DEFAULT_CONFIG(BLOCKSTORE_CONFIG_GETTER)
+
+#undef BLOCKSTORE_CONFIG_GETTER
+
+void TCellsIcV2Config::Dump(IOutputStream& out) const
+{
+#define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
+    out << #name << ": ";                                                      \
+    DumpImpl(Get##name(), out);                                                \
+    out << Endl;                                                               \
+    // BLOCKSTORE_CONFIG_DUMP
+
+    BLOCKSTORE_CELLS_ICV2_DEFAULT_CONFIG(BLOCKSTORE_CONFIG_DUMP);
+
+#undef BLOCKSTORE_CONFIG_DUMP
+}
+
+void TCellsIcV2Config::DumpHtml(IOutputStream& out) const
+{
+#define BLOCKSTORE_CONFIG_DUMP(name, ...)                                      \
+    TABLER () {                                                                \
+        TABLED () {                                                            \
+            out << #name;                                                      \
+        }                                                                      \
+        TABLED () {                                                            \
+            DumpImpl(Get##name(), out);                                        \
+        }                                                                      \
+    }                                                                          \
+    // BLOCKSTORE_CONFIG_DUMP
+
+    HTML (out) {
+        TABLE_CLASS ("table table-condensed") {
+            TABLEBODY () {
+                BLOCKSTORE_CELLS_ICV2_DEFAULT_CONFIG(BLOCKSTORE_CONFIG_DUMP);
+            }
+        }
+    }
+
+#undef BLOCKSTORE_CONFIG_DUMP
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TCellsConfig::TImpl
 {
     const NProto::TCellsConfig Config;
     TCellConfigByCellId ConfiguredCells;
     NClient::TClientAppConfig GrpcClientConfig;
+    TCellsIcV2Config IcV2Config;
 
     BLOCKSTORE_CELLS_DEFAULT_CONFIG(BLOCKSTORE_CELLS_DECLARE_CONFIG);
     BLOCKSTORE_CELLS_DEFAULT_CONFIG(CONFIG_ITEM_IS_SET_CHECKER);
@@ -266,6 +372,7 @@ struct TCellsConfig::TImpl
     explicit TImpl(NProto::TCellsConfig config)
         : Config(std::move(config))
         , GrpcClientConfig(CreateClientAppConfig(Config.GetGrpcClientConfig()))
+        , IcV2Config(Config.GetIcV2())
     {
         for (const auto& cell: Config.GetCells()) {
             ConfiguredCells.emplace(
@@ -300,6 +407,11 @@ const NClient::TClientAppConfig& TCellsConfig::GetGrpcClientConfig() const
 const TCellConfigByCellId& TCellsConfig::GetCells() const
 {
     return Impl->ConfiguredCells;
+}
+
+const TCellsIcV2Config& TCellsConfig::GetIcV2Config() const
+{
+    return Impl->IcV2Config;
 }
 
 #define BLOCKSTORE_CELLS_CONFIG_GETTER(name, type, ...)                        \
