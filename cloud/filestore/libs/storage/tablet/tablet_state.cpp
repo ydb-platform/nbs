@@ -304,7 +304,7 @@ void TIndexTabletState::LoadState(
 
 bool TIndexTabletState::UpdateAccessStats(
     ui64 nodeId,
-    ui32 nodeType,
+    NProto::ENodeType nodeType,
     TInstant now)
 {
     if (!IsMainTablet() && nodeId == NProto::E_ROOT_NODE_ID) {
@@ -322,7 +322,7 @@ TVector<TNodeAccessStats> TIndexTabletState::GetNodeAccessStats(
 
 bool TIndexTabletState::UpdateLatencyStats(
     ui64 nodeId,
-    ui32 nodeType,
+    NProto::ENodeType nodeType,
     EFileStoreRequest requestType,
     TInstant now,
     TDuration latency)

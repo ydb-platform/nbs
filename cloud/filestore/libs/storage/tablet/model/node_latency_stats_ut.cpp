@@ -14,6 +14,8 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
 
         const auto start = TInstant::Hours(1);
 
+        UNIT_ASSERT(tracker.GetRequestTypeStats().empty());
+
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             1,
             EFileStoreRequest::ReadData,
@@ -43,6 +45,25 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
         UNIT_ASSERT_DOUBLES_EQUAL(50.0, stats[1].AverageLatencyDecayedUs, 1e-9);
         UNIT_ASSERT_VALUES_EQUAL(start, stats[0].LastAccessed);
         UNIT_ASSERT_VALUES_EQUAL(start, stats[1].LastAccessed);
+
+        UNIT_ASSERT(tracker.UpdateLatencyStats(
+            2,
+            EFileStoreRequest::ReadData,
+            start,
+            TDuration::MicroSeconds(100)));
+
+        const auto requestTypeStats = tracker.GetRequestTypeStats();
+        UNIT_ASSERT_VALUES_EQUAL(2, requestTypeStats.size());
+        for (const auto& item: requestTypeStats) {
+            if (item.RequestType == EFileStoreRequest::ReadData) {
+                UNIT_ASSERT_VALUES_EQUAL(2, item.RequestCount);
+                UNIT_ASSERT_VALUES_EQUAL(150, item.TotalLatencyUs);
+            } else {
+                UNIT_ASSERT(item.RequestType == EFileStoreRequest::WriteData);
+                UNIT_ASSERT_VALUES_EQUAL(1, item.RequestCount);
+                UNIT_ASSERT_VALUES_EQUAL(60, item.TotalLatencyUs);
+            }
+        }
     }
 
     Y_UNIT_TEST(DecayCalculation)
@@ -168,6 +189,32 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
 
         UNIT_ASSERT_VALUES_EQUAL(4, stats[0].NodeId);
         UNIT_ASSERT_VALUES_EQUAL(3, stats[1].NodeId);
+    }
+
+    Y_UNIT_TEST(ShouldClearRequestTypeTotalsOnReset)
+    {
+        TNodeLatencyStatsTracker tracker(10, TDuration::Minutes(10));
+        const auto start = TInstant::Hours(1);
+
+        UNIT_ASSERT(tracker.UpdateLatencyStats(
+            1,
+            EFileStoreRequest::ReadData,
+            start,
+            TDuration::MicroSeconds(100)));
+
+        tracker.Reset(10, TDuration::Minutes(10));
+        UNIT_ASSERT(tracker.GetRequestTypeStats().empty());
+
+        UNIT_ASSERT(tracker.UpdateLatencyStats(
+            1,
+            EFileStoreRequest::ReadData,
+            start,
+            TDuration::MicroSeconds(50)));
+        const auto stats = tracker.GetRequestTypeStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.size());
+        UNIT_ASSERT(stats[0].RequestType == EFileStoreRequest::ReadData);
+        UNIT_ASSERT_VALUES_EQUAL(1, stats[0].RequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(50, stats[0].TotalLatencyUs);
     }
 }
 }   // namespace NCloud::NFileStore::NStorage

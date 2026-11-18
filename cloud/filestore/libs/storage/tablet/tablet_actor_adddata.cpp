@@ -733,17 +733,18 @@ void TIndexTabletActor::HandleAddDataCompleted(
     } else {
         Metrics->AddData.Update(msg->Count, msg->Size, msg->Time);
 
-        if (!UpdateAccessStats(
-                msg->NodeId,
-                NProto::E_REGULAR_NODE,
-                ctx.Now()) ||
-            !UpdateLatencyStats(
-                msg->NodeId,
-                NProto::E_REGULAR_NODE,
-                EFileStoreRequest::AddData,
-                ctx.Now(),
-                msg->Time))
-        {
+        const bool accessUpdated = UpdateAccessStats(
+            msg->NodeId,
+            NProto::E_REGULAR_NODE,
+            ctx.Now());
+        const bool latencyUpdated = UpdateLatencyStats(
+            msg->NodeId,
+            NProto::E_REGULAR_NODE,
+            EFileStoreRequest::AddData,
+            ctx.Now(),
+            msg->Time);
+
+        if (!accessUpdated || !latencyUpdated) {
             ReportDiagnosticStatsInsertFailed();
         }
 

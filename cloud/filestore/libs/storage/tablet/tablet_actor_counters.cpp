@@ -962,7 +962,7 @@ void TIndexTabletActor::HandleGetDiagnosticStats(
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetDiagnosticStatsResponse>();
 
-    const auto limit = ev->Get()->Record.GetLimit();
+    const ui32 limit = ev->Get()->Record.GetLimit();
     for (const auto& accessStats: GetNodeAccessStats(ctx.Now(), limit)) {
         auto* out = response->Record.AddNodeStats();
         out->SetShardId(GetFileSystemId());
