@@ -12,6 +12,7 @@ PEERDIR(
 )
 
 SRCS(
+    latency_sli_ut.cpp
     config_ut.cpp
     block_digest_ut.cpp
     critical_events_ut.cpp
