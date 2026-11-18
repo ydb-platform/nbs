@@ -817,7 +817,7 @@ TResultOrError<IPeerConnectionsPtr> CreatePeerConnections(
             E_ARGUMENT,
             "invalid IC V2 peer connections configuration");
     }
-    const auto& options = config->GetCellsConfig().GetIcV2();
+    const auto& options = config->GetIcV2Config();
     if (!options.GetHandshakeTimeoutMs() ||
         !options.GetMaxOutgoingConnections())
     {

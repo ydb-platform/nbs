@@ -124,10 +124,10 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
         , Log(std::move(log))
         , Completions(CreateThreadPool(
               "ICV2Result",
-              Config->GetCellsConfig().GetIcV2().GetCompletionThreads()))
+              Config->GetIcV2Config().GetCompletionThreads()))
         , DataExecutor(CreateThreadPool(
               "ICV2Data",
-              Config->GetCellsConfig().GetIcV2().GetDataWorkers()))
+              Config->GetIcV2Config().GetDataWorkers()))
         , ResolverExecutor(CreateThreadPool("ICV2Resolve", 2))
         , AcceptedConnections(counters->GetCounter("AcceptedConnections", true))
         , RejectedConnections(counters->GetCounter("RejectedConnections", true))
@@ -188,7 +188,7 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
             if (Stopping) {
                 return;
             }
-            const auto& options = Config->GetCellsConfig().GetIcV2();
+            const auto& options = Config->GetIcV2Config();
             // Reserve room for the auxiliary hello even when every main slot
             // is occupied. Logical channels have their own admission below.
             const ui64 socketLimit = ui64(options.GetMaxConnections()) *
@@ -202,7 +202,7 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
         ++*AcceptedConnections;
         const std::weak_ptr<TServiceState> weak = shared_from_this();
         const auto timeout = TDuration::MilliSeconds(
-            Config->GetCellsConfig().GetIcV2().GetHandshakeTimeoutMs());
+            Config->GetIcV2Config().GetHandshakeTimeoutMs());
         auto future = Handshake->Accept(result.ExtractResult(), timeout);
         future.Subscribe(
             [weak](const TAcceptHandshakeFuture& future)
@@ -253,7 +253,7 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
             std::lock_guard guard(Mutex);
             if (!Stopping &&
                 Channels.size() <
-                    Config->GetCellsConfig().GetIcV2().GetMaxConnections())
+                    Config->GetIcV2Config().GetMaxConnections())
             {
                 Y_ABORT_UNLESS(
                     NextConnectionId,
@@ -304,7 +304,7 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
             connection.XdcSocket,
             {std::move(eventTypes),
              false,
-             Config->GetCellsConfig().GetIcV2().GetMaxPendingRequests()},
+             Config->GetIcV2Config().GetMaxPendingRequests()},
             Timer,
             Scheduler,
             Completions,
@@ -444,7 +444,7 @@ public:
         }
         Y_ABORT_UNLESS(State->NextDataBindingId, "IC V2 binding IDs exhausted");
         const auto id = State->NextDataBindingId++;
-        const auto& options = State->Config->GetCellsConfig().GetIcV2();
+        const auto& options = State->Config->GetIcV2Config();
         for (auto it = State->DataEndpoints.begin();
              it != State->DataEndpoints.end();)
         {
@@ -608,9 +608,9 @@ TResultOrError<IServicePtr> CreateService(
             "logging and "
             "counters");
     }
-    const auto& options = config->GetCellsConfig().GetIcV2();
+    const auto& options = config->GetIcV2Config();
     if (!config->GetCellsEnabled() || !options.GetEnabled() ||
-        !options.HasPort() || options.GetPort() > 65535 ||
+        !options.GetIcV2Config().HasPort() || options.GetPort() > 65535 ||
         !options.GetThreads() || !options.GetHandshakeTimeoutMs() ||
         !options.GetMaxConnections() || !options.GetMaxPendingRequests() ||
         !options.GetMaxOutputQueueBytes() || !options.GetCompletionThreads() ||

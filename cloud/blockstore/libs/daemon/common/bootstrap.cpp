@@ -1071,7 +1071,7 @@ void TBootstrapBase::InitLWTrace(const TString& serviceNameForExporter)
 
 void TBootstrapBase::InitIcV2Service()
 {
-    if (!BootstrapConfig->CellsConfig->GetCellsConfig().GetIcV2().GetEnabled()) {
+    if (!BootstrapConfig->CellsConfig->GetIcV2Config().GetEnabled()) {
         return;
     }
     auto [service, error] = NIcV2::CreateService(
