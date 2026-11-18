@@ -42,12 +42,9 @@ struct TLatencySliConfig
         ui64 elapsedUs,
         bool failed) const
     {
-        if (failed) {
-            return ELatencySliResult::Bad;
-        }
         for (const auto& row: Thresholds[write]) {
             if (bytes >= row.StartBytes && bytes < row.EndBytes) {
-                return elapsedUs <= row.ThresholdUs
+                return !failed && elapsedUs <= row.ThresholdUs
                            ? ELatencySliResult::Good
                            : ELatencySliResult::Bad;
             }

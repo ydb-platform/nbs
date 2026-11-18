@@ -71,9 +71,11 @@ private:
 
     size_t InFlightBytes = 0;
 
-    // Requests read from this connection that may still reach or be executing
-    // in the backend. Includes requests waiting in Limiter::Acquire.
-    std::atomic<size_t> ActiveRequests = 0;
+    // One reference for Send and one for each backend request (including
+    // requests waiting for the limiter). The last reference completes drain.
+    std::atomic<size_t> ActiveRequests = 1;
+    // Only the connection executor accepts requests and consumes replies.
+    size_t PendingResponses = 0;
 
     std::atomic_flag ShuttingDown = false;
     TPromise<void> DrainResult = NewPromise<void>();
@@ -179,7 +181,20 @@ public:
             return false;
         }
 
+        ++PendingResponses;
         return true;
+    }
+
+    void AbandonRequest(size_t requestBytes) override
+    {
+        // Executor shutdown can cancel Send first and release all reservations
+        // while Receive is still waking up from an interrupted payload read.
+        if (InFlightBytes) {
+            ReleaseRequest(requestBytes);
+        }
+        Y_DEBUG_ABORT_UNLESS(PendingResponses != 0);
+        --PendingResponses;
+        CompleteRequest();
     }
 
     size_t CollectRequests(const TIncompleteRequestsCollector& collector)
@@ -230,16 +245,24 @@ private:
         TIntrusivePtr<TConnection> holder(this);
 
         TServerResponsePtr response;
-        while (ResponseQueue.Dequeue(&response)) {
+        bool receiveFinished = false;
+        while ((!receiveFinished || PendingResponses) &&
+               ResponseQueue.Dequeue(&response))
+        {
             if (!response) {
-                // stop signal received
+                // Receive has stopped producing requests. Backend workers may
+                // still send responses for already accepted requests.
+                receiveFinished = true;
+                ShutDown();
+                ReleaseRequest(InFlightBytes);
+                Limiter.reset();
                 Handler->ProcessException(
                     std::make_exception_ptr(TSystemError(-ESHUTDOWN)));
-                break;
+                continue;
             }
 
             try {
-                DoSendResponse(c, *response);
+                DoSendResponse(c, *response, receiveFinished);
             } catch (...) {
                 STORAGE_INFO("lost connection with client, failed to send: "
                     << CurrentExceptionMessage());
@@ -247,17 +270,23 @@ private:
             }
 
             ReleaseRequest(response->RequestBytes);
+            Y_DEBUG_ABORT_UNLESS(PendingResponses != 0);
+            --PendingResponses;
             response.Reset();
         }
 
         ShutDown();
         ReleaseRequest(InFlightBytes);
-        TryCompleteDrain();
+        CompleteRequest();
     }
 
-    void DoSendResponse(TCont* c, TServerResponse& response)
+    void DoSendResponse(TCont* c, TServerResponse& response,
+                        bool receiveFinished)
     {
-        if (IsShutdownError(response.Error)) {
+        const bool serverStopped = IsShutdownError(response.Error);
+        if (receiveFinished || serverStopped) {
+            response.RequestContext->MetricRequest.ResponseDeliveryUncertain =
+                !serverStopped;
             Handler->CancelResponse(response);
             return;
         }
@@ -300,15 +329,7 @@ private:
         const auto previous =
             ActiveRequests.fetch_sub(1, std::memory_order_acq_rel);
         Y_ABORT_UNLESS(previous != 0);
-
-        if (previous == 1 && IsShuttingDown()) {
-            DrainResult.TrySetValue();
-        }
-    }
-
-    void TryCompleteDrain()
-    {
-        if (ActiveRequests.load(std::memory_order_acquire) == 0) {
+        if (previous == 1) {
             DrainResult.TrySetValue();
         }
     }

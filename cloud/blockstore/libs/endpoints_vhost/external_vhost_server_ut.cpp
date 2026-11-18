@@ -451,16 +451,31 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
         for (bool finalRecord: {false, true}) {
             auto stats = std::make_shared<TTestServerStats>();
             auto baseline = NewPromise<void>();
+            auto recovered = NewPromise<void>();
             ui64 errors = 0;
             stats->BatchCompletedHandler =
-                [&](auto&, ui64, ui64, ui64 failed, auto, auto)
+                [&](auto&, ui64 count, ui64, ui64 failed, auto, auto)
             {
                 errors += failed;
+                if (count == 2) {
+                    recovered.TrySetValue();
+                }
                 baseline.TrySetValue();
             };
             const TString script =
                 TStringBuilder()
-                << "trap 'echo \"{\\\"read\\\":{},\\\"write\\\":{}}\"' USR1\n"
+                << R"(n=0
+stats() {
+    n=$((n+1))
+    case $n in
+        1) echo '{"read":{"count":1},"write":{}}' ;;
+        2) : ;;
+        3) echo 'malformed' ;;
+        *) echo '{"read":{"count":2},"write":{}}' ;;
+    esac
+}
+trap stats USR1
+)"
                 << "trap 'sleep 3; "
                 << (finalRecord ? "echo "
                                   "\"{\\\"final\\\":1,\\\"read\\\":{"
@@ -504,6 +519,9 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
                 executor->Stop();
             };
             baseline.GetFuture().GetValue(TDuration::Seconds(5));
+            if (finalRecord) {
+                recovered.GetFuture().GetValue(TDuration::Seconds(15));
+            }
             process->Stop();
             const auto error =
                 stopped.GetFuture().GetValue(TDuration::Seconds(10));

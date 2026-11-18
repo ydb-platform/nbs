@@ -136,6 +136,19 @@ struct TControlledRequestStats final: IRequestStats
     }
 };
 
+struct TCompletion
+{
+    ui64 PostponedUs = 0;
+    ui32 Error = S_OK;
+    bool Write = false;
+    ui64 Bytes = 4096;
+    bool Forwarded = false;
+    ui64 BackoffUs = 0;
+    ui64 OriginalBytes = 0;
+    ui64 SendDelayUs = 0;
+    std::optional<ui64> ThrottleUs = 0;
+};
+
 struct TFixture
 {
     IMonitoringServicePtr Monitoring = CreateMonitoringServiceStub();
@@ -186,26 +199,29 @@ struct TFixture
             ->GetSubgroup("volume", "disk")->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "")->GetSubgroup("folder", "")
             ->GetSubgroup("type", MediaKindToComputeType(mediaKind));
-        // Intentionally aggregate both operations while keeping separate thresholds.
         Sli = group;
     }
 
-    void Complete(
-        ui64 elapsedUs,
-        ui64 postponedUs = 0,
-        ui32 error = S_OK,
-        bool write = false,
-        ui64 bytes = 4096,
-        bool forwarded = false,
-        ui64 backoff = 0,
-        ui64 shaping = 0, ui64 originalBytes = 0, ui64 sendDelayUs = 0)
+    NMonitoring::TDynamicCountersPtr Reads() const
     {
-        TMetricRequest metric{write ? EBlockStoreRequest::WriteBlocksLocal
-                                    : EBlockStoreRequest::ReadBlocksLocal};
-        Server->PrepareMetricRequest(metric, "client", "disk", 0, bytes, false);
-        metric.ForwardedRequest = forwarded;
-        if (originalBytes) {
-            metric.OriginalRequestBytes = originalBytes;
+        return Sli->FindSubgroup("request", "ReadBlocks");
+    }
+
+    NMonitoring::TDynamicCountersPtr Writes() const
+    {
+        return Sli->FindSubgroup("request", "WriteBlocks");
+    }
+
+    void Complete(ui64 elapsedUs, TCompletion op = {})
+    {
+        TMetricRequest metric{
+            op.Write ? EBlockStoreRequest::WriteBlocksLocal
+                     : EBlockStoreRequest::ReadBlocksLocal};
+        Server->PrepareMetricRequest(metric, "client", "disk", 0, op.Bytes,
+                                     false);
+        metric.ForwardedRequest = op.Forwarded;
+        if (op.OriginalBytes) {
+            metric.OriginalRequestBytes = op.OriginalBytes;
         }
         auto ctx = CreateCallContext();
         TLog log;
@@ -214,13 +230,20 @@ struct TFixture
         ctx->SetRequestStartedCycles(start);
         ctx->SetResponseSentCycles(start + DurationToCyclesSafe(
             TDuration::MicroSeconds(elapsedUs)));
-        ctx->AddTime(EProcessingStage::Postponed, TDuration::MicroSeconds(postponedUs));
-        ctx->AddTime(EProcessingStage::Backoff, TDuration::MicroSeconds(backoff));
-        ctx->AddTime(EProcessingStage::Shaping, TDuration::MicroSeconds(shaping));
+        ctx->AddTime(EProcessingStage::Postponed,
+                     TDuration::MicroSeconds(op.PostponedUs));
+        ctx->AddTime(EProcessingStage::Backoff,
+                     TDuration::MicroSeconds(op.BackoffUs));
+        if (op.ThrottleUs) {
+            ctx->AddLatencyThrottleDelay(
+                TDuration::MicroSeconds(*op.ThrottleUs));
+        } else {
+            ctx->MarkLatencyTimingIncomplete();
+        }
         ctx->SetSilenceRetriableErrors(true);
         RequestStats->Elapsed =
-            TDuration::MicroSeconds(elapsedUs + sendDelayUs);
-        Server->RequestCompleted(log, metric, *ctx, MakeError(error));
+            TDuration::MicroSeconds(elapsedUs + op.SendDelayUs);
+        Server->RequestCompleted(log, metric, *ctx, MakeError(op.Error));
     }
 };
 
@@ -244,10 +267,12 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         for (const auto* name:
              {"LatencyGoodOps", "LatencyBadOps", "LatencyTotalOps", "LatencyUnknownOps"})
         {
-            UNIT_ASSERT(f.Sli->FindCounter(name));
+            UNIT_ASSERT(f.Reads()->FindCounter(name));
+            UNIT_ASSERT(f.Writes()->FindCounter(name));
             UNIT_ASSERT(!legacy->FindCounter(name));
         }
-        UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->FindCounter("LatencyGoodOps")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, f.Reads()->FindCounter("LatencyGoodOps")->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             1, legacy->GetSubgroup("request", "ReadBlocks")
                    ->GetCounter("Count", true)->Val());
@@ -274,8 +299,9 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         UNIT_ASSERT(instance);
         UNIT_ASSERT(!instance->FindSubgroup("cloud", ""));
         auto group = instance->GetSubgroup("cloud", "cloud")
-            ->GetSubgroup("folder", "folder")
-            ->GetSubgroup("type", "network-ssd-nonreplicated");
+                         ->GetSubgroup("folder", "folder")
+                         ->GetSubgroup("type", "network-ssd-nonreplicated")
+                         ->GetSubgroup("request", "ReadBlocks");
         UNIT_ASSERT(group->FindCounter("LatencyTotalOps"));
         f.Server->RequestCompleted(log, pending, *context, MakeError(E_IO));
         UNIT_ASSERT_VALUES_EQUAL(1, group->FindCounter("LatencyBadOps")->Val());
@@ -313,20 +339,14 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
                 f.Timer->AdvanceTime(TDuration::Seconds(15));
                 f.Server->UpdateStats(true);
                 for (const auto* name:
-                     {"ObservedSeconds",
-                      "AvailableSeconds",
-                      "HealthySeconds",
-                      "LatencyGoodOps",
-                      "LatencyBadOps",
-                      "LatencyTotalOps",
-                      "LatencyUnknownOps"})
+                     {"ObservedSeconds", "AvailableSeconds", "HealthySeconds"})
                 {
                     UNIT_ASSERT_C(f.Sli->FindCounter(name), name);
                 }
                 UNIT_ASSERT_VALUES_EQUAL(
                     15, f.Sli->FindCounter("ObservedSeconds")->Val());
                 UNIT_ASSERT_VALUES_EQUAL(
-                    1, f.Sli->FindCounter("LatencyGoodOps")->Val());
+                    1, f.Reads()->FindCounter("LatencyGoodOps")->Val());
 
                 auto folder = f.Monitoring->GetCounters()
                     ->GetSubgroup("counters", "blockstore")
@@ -391,42 +411,97 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         UNIT_ASSERT_VALUES_EQUAL("1", empty->Serialize());
     }
 
-    Y_UNIT_TEST(ShouldCountFailuresWithoutThresholds)
+    Y_UNIT_TEST(ShouldLeaveRequestsWithoutThresholdsUnjudged)
     {
         auto config = TLatencySliConfig::TryParse("1;0:1:8193:100").value();
         for (bool failed: {false, true}) {
-            const auto expected = failed ? ELatencySliResult::Bad
-                                         : ELatencySliResult::Unknown;
+            const auto expected = ELatencySliResult::Unknown;
             UNIT_ASSERT(config.Classify(true, 4096, 100, failed) == expected);
         }
         UNIT_ASSERT(config.Classify(false, 4096, 1000, false) == ELatencySliResult::Bad);
         UNIT_ASSERT(config.Classify(false, 4096, 1, true) == ELatencySliResult::Bad);
     }
 
-    Y_UNIT_TEST(ShouldCountAtOriginalCompletionAndRetainAllWaits)
+    Y_UNIT_TEST(ShouldExcludeOnlyVerifiedThrottleDelayAtOriginalCompletion)
     {
         TFixture f;
-        f.Complete(1500); // above the 1000us read threshold
-        UNIT_ASSERT_VALUES_EQUAL(0, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyBadOps", true)->Val());
-        f.Complete(1500, 0, S_OK, true); // below the 2000us write threshold
-        UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyBadOps", true)->Val());
-        f.Complete(2000, 1500, S_OK, true); // inclusive write threshold
-        f.Complete(1500, 1000);
-        f.Complete(1500, 0, S_OK, false, 4096, false, 600, 600);
-        f.Complete(500, 0, S_OK, false, 4096, true); // forwarded cell
-        f.Server->UpdateStats(false);
-        UNIT_ASSERT_VALUES_EQUAL(2, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(3, f.Sli->GetCounter("LatencyBadOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(5, f.Sli->GetCounter("LatencyTotalOps", true)->Val());
+        // The 600us backoff and 600us dependency wait remain service time.
+        f.Complete(1500, {.PostponedUs = 600, .BackoffUs = 600});
+        // 85ms observed, of which 84ms was throttling. Exactly on the read
+        // limit.
+        f.Complete(85000, {.PostponedUs = 84000, .ThrottleUs = 84000});
+        f.Complete(1500, {.Write = true});
+        f.Complete(500, {.Forwarded = true});
+        f.Complete(500, {.ThrottleUs = 501});
+        f.Complete(500, {.Error = E_IO, .ThrottleUs = std::nullopt});
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, f.Reads()->FindCounter("LatencyGoodOps")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, f.Reads()->FindCounter("LatencyBadOps")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2, f.Reads()->FindCounter("LatencyTotalOps")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2, f.Reads()->FindCounter("LatencyUnknownOps")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, f.Writes()->FindCounter("LatencyGoodOps")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, f.Writes()->FindCounter("LatencyTotalOps")->Val());
+    }
+
+    Y_UNIT_TEST(ShouldFinishPendingRequestUnderItsOriginalDiskType)
+    {
+        TFixture f;
+        TMetricRequest pending{EBlockStoreRequest::ReadBlocks};
+        auto context = CreateCallContext();
+        TLog log;
+        f.Server->PrepareMetricRequest(pending, "client", "disk", 0, 4096,
+                                       false);
+        f.Server->RequestStarted(log, pending, *context);
+
+        auto volume = pending.VolumeInfo->GetInfo();
+        volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_HDD);
+        f.Server->MountVolume(volume, "client", "instance");
+        f.Server->RequestCompleted(log, pending, *context, MakeError(E_IO));
+        f.Complete(500);
+
+        auto folder = f.Monitoring->GetCounters()
+                          ->GetSubgroup("counters", "blockstore")
+                          ->GetSubgroup("component", "sli_volume")
+                          ->GetSubgroup("host", "cluster")
+                          ->GetSubgroup("volume", "disk")
+                          ->GetSubgroup("instance", "instance")
+                          ->GetSubgroup("cloud", "")
+                          ->GetSubgroup("folder", "");
+        const auto oldType = folder->FindSubgroup(
+            "type",
+            MediaKindToComputeType(NProto::STORAGE_MEDIA_SSD_NONREPLICATED));
+        const auto newType = folder->FindSubgroup(
+            "type", MediaKindToComputeType(NProto::STORAGE_MEDIA_HDD));
+        UNIT_ASSERT(oldType && newType);
+        UNIT_ASSERT(!oldType->FindCounter("ObservedSeconds"));
+        UNIT_ASSERT(newType->FindCounter("ObservedSeconds"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            oldType->FindSubgroup("request", "ReadBlocks")
+                ->FindCounter("LatencyBadOps")
+                ->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            newType->FindSubgroup("request", "ReadBlocks")
+                ->FindCounter("LatencyUnknownOps")
+                ->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            newType->FindSubgroup("request", "ReadBlocks")
+                ->FindCounter("LatencyTotalOps")
+                ->Val());
     }
 
     Y_UNIT_TEST(ShouldUseOriginalUnalignedLengthWithoutChangingLegacyBytes)
     {
         TFixture f;
-        f.Complete(500, 0, S_OK, false, 12288, false, 0, 0, 8192);
-        f.Complete(500, 0, S_OK, false, 12288);
+        f.Complete(500, {.Bytes = 12288, .OriginalBytes = 8192});
+        f.Complete(500, {.Bytes = 12288});
         f.Server->UpdateStats(true);
         auto legacy = f.Monitoring->GetCounters()
             ->GetSubgroup("counters", "blockstore")
@@ -439,37 +514,43 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
             ->GetSubgroup("request", "ReadBlocks");
         UNIT_ASSERT_VALUES_EQUAL(24576, legacy->GetCounter("RequestBytes", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, legacy->GetCounter("Count", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyUnknownOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, f.Reads()->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, f.Reads()->GetCounter("LatencyUnknownOps", true)->Val());
     }
 
-    Y_UNIT_TEST(ShouldCountErrorsWithoutExclusionsAndKeepUnknownSizesSeparate)
+    Y_UNIT_TEST(ShouldJudgeServiceErrorsOnlyForConfiguredSizes)
     {
         TFixture f;
         for (ui32 error: {E_REJECTED, E_CANCELLED, E_ARGUMENT, E_TIMEOUT}) {
-            f.Complete(500, 0, error);
+            f.Complete(500, {.Error = error});
         }
-        f.Complete(500, 600);
-        f.Complete(500, 0, E_REJECTED, false, 99999);
-        f.Complete(500, 0, S_OK, false, 99999);
-        f.Complete(2000, 1500, E_REJECTED);
+        f.Complete(500, {.PostponedUs = 600});
+        f.Complete(500, {.Error = E_REJECTED, .Bytes = 99999});
+        f.Complete(500, {.Bytes = 99999});
+        f.Complete(2000, {.PostponedUs = 1500, .Error = E_REJECTED});
         f.Server->UpdateStats(true);
-        UNIT_ASSERT_VALUES_EQUAL(6, f.Sli->GetCounter("LatencyBadOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(7, f.Sli->GetCounter("LatencyTotalOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyUnknownOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            5, f.Reads()->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            6, f.Reads()->GetCounter("LatencyTotalOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2, f.Reads()->GetCounter("LatencyUnknownOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, f.Reads()->GetCounter("LatencyGoodOps", true)->Val());
     }
 
     Y_UNIT_TEST(ShouldIncludeResponseDeliveryTime)
     {
         TFixture f;
-        f.Complete(500, 0, S_OK, false, 4096, false, 0, 0, 0, 1500);
+        f.Complete(500, {.SendDelayUs = 1500});
         UNIT_ASSERT_VALUES_EQUAL(
-            0, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
+            0, f.Reads()->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            1, f.Sli->GetCounter("LatencyBadOps", true)->Val());
+            1, f.Reads()->GetCounter("LatencyBadOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            1, f.Sli->GetCounter("LatencyTotalOps", true)->Val());
+            1, f.Reads()->GetCounter("LatencyTotalOps", true)->Val());
     }
 
     Y_UNIT_TEST(ShouldPublishAllOutcomesImmediately)
@@ -477,84 +558,86 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         TFixture f;
         f.Complete(500);
         f.Complete(1500);
-        f.Complete(500, 0, S_OK, false, 16384);
+        f.Complete(500, {.Bytes = 16384});
         UNIT_ASSERT_VALUES_EQUAL(
-            1, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
+            1, f.Reads()->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            1, f.Sli->GetCounter("LatencyBadOps", true)->Val());
+            1, f.Reads()->GetCounter("LatencyBadOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            2, f.Sli->GetCounter("LatencyTotalOps", true)->Val());
+            2, f.Reads()->GetCounter("LatencyTotalOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            1, f.Sli->GetCounter("LatencyUnknownOps", true)->Val());
+            1, f.Reads()->GetCounter("LatencyUnknownOps", true)->Val());
         f.Complete(500);
         f.Server->UpdateStats(true);
         f.Server->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(
-            2, f.Sli->GetCounter("LatencyGoodOps", true)->Val());
+            2, f.Reads()->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            3, f.Sli->GetCounter("LatencyTotalOps", true)->Val());
+            3, f.Reads()->GetCounter("LatencyTotalOps", true)->Val());
     }
 
     Y_UNIT_TEST(ShouldPreserveReusedCounters)
     {
-        NMonitoring::TDynamicCounters group;
+        auto group = MakeIntrusive<NMonitoring::TDynamicCounters>();
         const auto config = TLatencySliConfig::TryParse("1;0:1:8193:100").value();
         {
             TLatencySliCounters counters(config, group);
-            counters.Add(5, 3, 2);
-            counters.Add(7, 0, 1);
+            counters.Add(false, 5, 3, 2);
+            counters.Add(false, 7, 0, 1);
         }
         {
             TLatencySliCounters counters(config, group);
-            counters.Add(2, 4, 8);
+            counters.Add(false, 2, 4, 8);
         }
+        const auto reads = group->FindSubgroup("request", "ReadBlocks");
         UNIT_ASSERT_VALUES_EQUAL(
-            14, group.GetCounter("LatencyGoodOps", true)->Val());
+            14, reads->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            7, group.GetCounter("LatencyBadOps", true)->Val());
+            7, reads->GetCounter("LatencyBadOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            21, group.GetCounter("LatencyTotalOps", true)->Val());
+            21, reads->GetCounter("LatencyTotalOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            11, group.GetCounter("LatencyUnknownOps", true)->Val());
+            11, reads->GetCounter("LatencyUnknownOps", true)->Val());
     }
 
     Y_UNIT_TEST(ShouldNotLoseConcurrentCompletions)
     {
-        NMonitoring::TDynamicCounters group;
+        auto group = MakeIntrusive<NMonitoring::TDynamicCounters>();
         TLatencySliCounters counters({}, group);
         constexpr ui64 iterations = 10000;
         std::thread good(
             [&]
             {
                 for (ui64 i = 0; i < iterations; ++i) {
-                    counters.Add(1, 0, 0);
+                    counters.Add(false, 1, 0, 0);
                 }
             });
         std::thread bad(
             [&]
             {
                 for (ui64 i = 0; i < iterations; ++i) {
-                    counters.Add(0, 1, 0);
+                    counters.Add(false, 0, 1, 0);
                 }
             });
         std::thread unknown(
             [&]
             {
                 for (ui64 i = 0; i < iterations; ++i) {
-                    counters.Add(0, 0, 1);
+                    counters.Add(false, 0, 0, 1);
                 }
             });
         good.join();
         bad.join();
         unknown.join();
+        const auto reads = group->FindSubgroup("request", "ReadBlocks");
         UNIT_ASSERT_VALUES_EQUAL(
-            iterations, group.GetCounter("LatencyGoodOps", true)->Val());
+            iterations, reads->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            iterations, group.GetCounter("LatencyBadOps", true)->Val());
+            iterations, reads->GetCounter("LatencyBadOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            iterations * 2, group.GetCounter("LatencyTotalOps", true)->Val());
+            iterations * 2, reads->GetCounter("LatencyTotalOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            iterations, group.GetCounter("LatencyUnknownOps", true)->Val());
+            iterations, reads->GetCounter("LatencyUnknownOps", true)->Val());
     }
 
     Y_UNIT_TEST(ShouldBeDisabledByDefaultAndLeaveClientStatsUsable)
@@ -563,7 +646,8 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
             TFixture f(enabled);
             f.Complete(500);
             f.Server->UpdateStats(true);
-            UNIT_ASSERT(!f.Sli->FindCounter("LatencyTotalOps"));
+            UNIT_ASSERT(!f.Reads());
+            UNIT_ASSERT(!f.Writes());
         }
         auto client = CreateClientStats(
             std::make_shared<TDumpable>(),

@@ -72,6 +72,11 @@ struct IServerContext : TThrRefBase, ITaskQueue
 {
     virtual bool AcquireRequest(size_t requestBytes) = 0;
 
+    // Contexts reserving resources release an accepted, incomplete payload
+    // here.
+    virtual void AbandonRequest(size_t)
+    {}
+
     virtual const NProto::TReadBlocksLocalResponse& WaitFor(
         const NThreading::TFuture<NProto::TReadBlocksLocalResponse>& future) = 0;
     virtual const NProto::TWriteBlocksLocalResponse& WaitFor(

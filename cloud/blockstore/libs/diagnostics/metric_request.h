@@ -21,6 +21,8 @@ struct TMetricRequest
     TString DiskId;
     TString Peer;
     IVolumeInfoPtr VolumeInfo;
+    // Owned by VolumeInfo. Selected once, when the original request starts.
+    TLatencySliCounters* LatencyCounters = nullptr;
     ui64 StartIndex = 0;
     NCloud::NProto::EStorageMediaKind MediaKind =
         NCloud::NProto::STORAGE_MEDIA_HDD;
@@ -32,6 +34,8 @@ struct TMetricRequest
     bool CellRequest = false;
     // Forwarded data is classified at the original endpoint, including retries.
     bool ForwardedRequest = false;
+    bool ClientFault = false;
+    bool ResponseDeliveryUncertain = false;
     NProto::EVolumeAccessMode AccessMode =
         NProto::EVolumeAccessMode::VOLUME_ACCESS_READ_WRITE;
     NProto::EVolumeMountMode MountMode =

@@ -54,6 +54,7 @@ private:
 
     bool StructuredReply = false;
     bool UseNbsErrors = false;
+    bool ClientDisconnected = false;
 
 public:
     TServerHandler(
@@ -94,6 +95,8 @@ public:
                     response.RequestBytes);
             }
         } catch (...) {
+            response.RequestContext->MetricRequest.ResponseDeliveryUncertain =
+                true;
             CancelResponse(response);
             throw;
         }
@@ -575,6 +578,7 @@ void TServerHandler::ProcessRequests(
                     request,
                     EBlockStoreRequest::WriteBlocks);
                 if (Options.CheckpointId) {
+                    requestCtx->MetricRequest.ClientFault = true;
                     UnregisterRequest(
                         requestCtx,
                         MakeError(E_ARGUMENT, "invalid write request"));
@@ -599,6 +603,8 @@ void TServerHandler::ProcessRequests(
                         in.ReadOrFail(requestData.get(), request.Length);
                     }
                 } catch (...) {
+                    ctx->AbandonRequest(request.Length);
+                    requestCtx->MetricRequest.ResponseDeliveryUncertain = true;
                     UnregisterRequest(requestCtx, cancelError);
                     throw;
                 }
@@ -646,6 +652,7 @@ void TServerHandler::ProcessRequests(
 
             case NBD_CMD_DISC:
                 // soft-disconnect
+                ClientDisconnected = true;
                 return;
 
             default:
@@ -880,6 +887,9 @@ void TServerHandler::UnregisterRequest(
     const NProto::TError& error)
 {
     requestCtx->Unlink();
+    if (ClientDisconnected) {
+        requestCtx->MetricRequest.ClientFault = true;
+    }
 
     ServerStats->RequestCompleted(
         Log,

@@ -33,8 +33,6 @@ enum class EVolumeStatsType
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TLatencySliCounters;
-
 struct IVolumeInfo
 {
     virtual ~IVolumeInfo() = default;

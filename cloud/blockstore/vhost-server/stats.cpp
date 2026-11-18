@@ -196,7 +196,8 @@ void DumpStats(
     if (latencySli && latencySli->Enabled) {
         buf.WriteKey("latency_sli");
         buf.BeginObject();
-        write("version", 2);
+        write("version", 3);
+        write("fresh", completeStats.Fresh);
         buf.WriteKey("config_id");
         buf.WriteString(GetLatencySliConfigFingerprint(*latencySli));
         buf.EndObject();

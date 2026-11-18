@@ -189,10 +189,6 @@ void TServer::Stop()
 
     promise.GetFuture().Wait();
 
-    // Unregister has drained guest I/O, while the backend statistics thread
-    // is still available. Preserve this snapshot for the final parent report.
-    StoppedStats = GetStats(LastStats);
-
     // 2. Stop request queues. For each do:
     // 2.1 Stop a request queue
     for (vhd_request_queue* queue: Queues) {
@@ -203,6 +199,10 @@ void TServer::Stop()
     for (auto& queueThread: QueueThreads) {
         queueThread.join();
     }
+
+    // Queues have published their final counts. The backend can still
+    // provide completion statistics for the last report to the parent.
+    StoppedStats = GetStats(LastStats);
 
     // 3. Stop the completion thread
     Backend->Stop();
@@ -230,7 +230,8 @@ TCompleteStats TServer::GetStats(const TSimpleStats& prevStats)
 
     TCompleteStats result{
         .SimpleStats{completionStats ? *completionStats : prevStats},
-        .CriticalEvents = TakeAccumulatedCriticalEvents()};
+        .CriticalEvents = TakeAccumulatedCriticalEvents(),
+        .Fresh = completionStats.has_value()};
 
     if (completionStats) {
         for (ui32 i = 0; i != Queues.size(); ++i) {

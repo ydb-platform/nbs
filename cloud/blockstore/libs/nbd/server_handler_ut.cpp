@@ -467,23 +467,28 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
             Checkpoint,
             Payload,
             Send,
-            Shutdown
+            Shutdown,
+            Disconnect
         };
 
-        for (auto failure: {Checkpoint, Payload, Send, Shutdown}) {
+        for (auto failure: {Checkpoint, Payload, Send, Shutdown, Disconnect}) {
             auto storage = std::make_shared<TTestStorage>();
             SetupStorage(*storage);
             auto stats = std::make_shared<TTestServerStats>();
             ui32 started = 0;
             TVector<ui32> errors;
+            bool uncertain = false;
+            bool clientFault = false;
             stats->RequestStartedHandler = [&](auto&, auto&, auto&, const auto&)
             {
                 ++started;
             };
             stats->RequestCompletedHandler =
-                [&](auto&, auto&, auto&, const auto& error)
+                [&](auto&, auto& metric, auto&, const auto& error)
             {
                 errors.push_back(error.GetCode());
+                uncertain = metric.ResponseDeliveryUncertain;
+                clientFault = metric.ClientFault;
             };
             TStorageOptions options;
             options.DiskId = DefaultDiskId;
@@ -505,7 +510,13 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
             struct TCaptureContext: TServerContext
             {
                 TServerResponsePtr Response;
+                size_t AbandonedBytes = 0;
                 using TServerContext::TServerContext;
+
+                void AbandonRequest(size_t bytes) override
+                {
+                    AbandonedBytes += bytes;
+                }
 
                 void SendResponse(TServerResponsePtr response) override
                 {
@@ -520,18 +531,23 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
             request.Handle = 1;
             request.Length = failure == Checkpoint ? 0 : 4096;
             TRequestWriter writer(out);
-            writer.WriteRequest(request);
-            if (failure == Send || failure == Shutdown) {
-                out.Write(TString(request.Length, 'a'));
+            writer.WriteRequest(request, TString(request.Length, 'a'));
+            if (failure == Disconnect) {
+                TRequest disconnect{};
+                disconnect.Magic = NBD_REQUEST_MAGIC;
+                disconnect.Type = NBD_CMD_DISC;
+                writer.WriteRequest(disconnect);
             }
             if (failure == Payload) {
+                out.Str().pop_back();
                 UNIT_ASSERT_EXCEPTION(
                     handler->ProcessRequests(ctx, out, in, nullptr),
                     yexception);
             } else {
                 handler->ProcessRequests(ctx, out, in, nullptr);
             }
-            if (failure == Send || failure == Shutdown) {
+            if (failure == Send || failure == Shutdown || failure == Disconnect)
+            {
                 UNIT_ASSERT(ctx->Response);
                 UNIT_ASSERT(errors.empty());
                 if (failure == Send) {
@@ -552,6 +568,12 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
             }
             UNIT_ASSERT_VALUES_EQUAL(1, started);
             UNIT_ASSERT_VALUES_EQUAL(1, errors.size());
+            UNIT_ASSERT_VALUES_EQUAL(failure == Payload || failure == Send,
+                                     uncertain);
+            UNIT_ASSERT_VALUES_EQUAL(
+                failure == Checkpoint || failure == Disconnect, clientFault);
+            UNIT_ASSERT_VALUES_EQUAL(failure == Payload ? 4096 : 0,
+                                     ctx->AbandonedBytes);
             UNIT_ASSERT_VALUES_EQUAL(
                 failure == Checkpoint ? E_ARGUMENT : E_CANCELLED, errors[0]);
             UNIT_ASSERT_VALUES_EQUAL(

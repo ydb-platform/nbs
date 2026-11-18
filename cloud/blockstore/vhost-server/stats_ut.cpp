@@ -149,9 +149,10 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, first["read"]["latency_good"].GetUInteger());
         UNIT_ASSERT_VALUES_EQUAL(2, first["read"]["latency_bad"].GetUInteger());
         UNIT_ASSERT_VALUES_EQUAL(1, first["write"]["latency_unknown"].GetUInteger());
-        UNIT_ASSERT_VALUES_EQUAL(2, first["latency_sli"].GetMap().size());
-        UNIT_ASSERT_VALUES_EQUAL(
-            2, first["latency_sli"]["version"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(1,
+                                 first["latency_sli"]["fresh"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(3,
+                                 first["latency_sli"]["version"].GetUInteger());
         UNIT_ASSERT_VALUES_EQUAL(
             GetLatencySliConfigFingerprint(config),
             first["latency_sli"]["config_id"].GetString());
@@ -163,7 +164,8 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, second["read"]["latency_good"].GetUInteger());
         UNIT_ASSERT_VALUES_EQUAL(2, second["read"]["latency_bad"].GetUInteger());
         UNIT_ASSERT_VALUES_EQUAL(1, second["write"]["latency_unknown"].GetUInteger());
-        UNIT_ASSERT_VALUES_EQUAL(2, second["latency_sli"].GetMap().size());
+        UNIT_ASSERT_VALUES_EQUAL(1,
+                                 second["latency_sli"]["fresh"].GetUInteger());
         UNIT_ASSERT_VALUES_EQUAL(
             GetLatencySliConfigFingerprint(config),
             second["latency_sli"]["config_id"].GetString());

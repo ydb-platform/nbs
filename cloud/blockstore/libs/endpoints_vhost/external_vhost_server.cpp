@@ -57,11 +57,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// When the process starts, there may be a delay until it can process the
-// signals. Therefore, it is possible that the child process will miss our first
-// SIGUSR1 signal. When requesting the first block of statistics, it is
-// necessary to make a reasonable number of repetitions.
-constexpr ui64 ReadFirstStatRetryCount = 10;
+constexpr ui64 StatsErrorLogPeriod = 60;
 
 // It doesn't make sense to make the delay less than
 // COMPLETION_STATS_WAIT_DURATION.
@@ -286,7 +282,7 @@ TChild SpawnChild(
     const TString& latencySli)
 {
     // Use an environment extension so older external binaries can still run:
-    // they ignore the setting and successful operations are reported as Unknown.
+    // they ignore the setting and their operations are reported as Unknown.
     TString latencySliEnv = "NBS_LATENCY_SLI_CONFIG=" + latencySli;
     TVector<char*> qenv;
     for (char** entry = environ; *entry; ++entry) {
@@ -433,6 +429,7 @@ private:
         TIntrusivePtr<TEndpointProcess> holder{this};
         Y_DEFER
         {
+            Stats.FinishExternalStats();
             StatsReadFinished.TrySetValue();
         };
         // Since it is not guaranteed that the vhost-server will receive first
@@ -440,59 +437,34 @@ private:
         // timeout.
         TContIOWithTimeout io{Process.StdOut, c, StatReadDuration * 2};
 
-        bool firstRead = true;
-        for (ui64 i = 0;; ++i) {
+        ui64 failures = 0;
+        for (;;) {
             const auto startReadStatAt = TInstant::Now();
 
             try {
                 if (ReadStatsImpl(io)) {
                     break;
                 }
-                firstRead = false;
+                failures = 0;
             } catch (...) {
-                const bool shouldContinue = HandleReadStatsError(firstRead, i);
-                if (!shouldContinue) {
+                if (Exited) {
                     break;
+                }
+                // The child can keep serving I/O through pipe timeouts or
+                // malformed lines. Its next snapshot holds cumulative counts.
+                if (++failures == 1 || failures % StatsErrorLogPeriod == 0) {
+                    STORAGE_WARN(
+                        LogPrefix
+                        << "Retrying stats read after " << failures
+                        << " failures: " << CurrentExceptionMessage());
                 }
             }
 
             auto elapsedTime = TInstant::Now() - startReadStatAt;
-            if (elapsedTime < StatReadDuration) {
+            if (!Exited && elapsedTime < StatReadDuration) {
                 c->SleepT(StatReadDuration - elapsedTime);
             }
         }
-    }
-
-    bool HandleReadStatsError(bool firstRead, ui64 i)
-    {
-        if (ShouldStop && !Exited) {
-            // Draining backend requests may take longer than a stats timeout.
-            // Keep the pipe reader alive until the final record or child exit.
-            return true;
-        }
-        if (Exited) {
-            STORAGE_INFO(
-                LogPrefix << "Read stats error: " << CurrentExceptionMessage());
-            return false;
-        }
-
-        if (firstRead) {
-            if (i < ReadFirstStatRetryCount) {
-                STORAGE_WARN(
-                    LogPrefix << "Retrying read first stat #" << i + 1
-                              << ". Error: " << CurrentExceptionMessage());
-                return true;
-            }
-            STORAGE_ERROR(
-                LogPrefix << "Stop retrying read first stat. Error: "
-                          << CurrentExceptionMessage());
-            return false;
-        }
-
-        STORAGE_ERROR(
-            LogPrefix << "Stop read stat. On #" << i
-                      << ". Error: " << CurrentExceptionMessage());
-        return false;
     }
 
     bool ReadStatsImpl(TContIOWithTimeout& io)
@@ -501,8 +473,15 @@ private:
             Process.SendSignal(SIGUSR1);
         }
 
+        const auto line = io.ReadLine();
         NJson::TJsonValue stats;
-        NJson::ReadJsonTree(io.ReadLine(), &stats, true);
+        if (!NJson::ReadJsonTree(line, &stats)) {
+            if (Exited) {
+                // The pipe can still contain the child's final frame.
+                return false;
+            }
+            ythrow yexception() << "malformed stats JSON";
+        }
 
         STORAGE_DEBUG(LogPrefix << stats);
 
@@ -669,6 +648,9 @@ public:
 
     void Start() override
     {
+        if (Stats.SocketPath) {
+            Stats.RegisterExternalStats();
+        }
         Process = StartProcess();
         std::thread(&TEndpoint::ThreadProc, shared_from_this()).detach();
     }
@@ -1191,13 +1173,22 @@ private:
             request.GetClientCGroups().begin(),
             request.GetClientCGroups().end());
 
-        auto ep = EndpointFactory(
-            clientId,
-            request.GetDiskId(),
-            std::move(args),
-            std::move(cgroups),
-            latencySli.Serialize()
-        );
+        auto ep = EndpointFactory
+                      ? EndpointFactory(clientId, request.GetDiskId(),
+                                        std::move(args), std::move(cgroups),
+                                        latencySli.Serialize())
+                      : std::make_shared<TEndpoint>(
+                            clientId,
+                            Logging,
+                            Executor,
+                            TEndpointStats{
+                                .ClientId = clientId,
+                                .DiskId = request.GetDiskId(),
+                                .ServerStats = ServerStats,
+                                .SocketPath = latencySli.Enabled ? socketPath
+                                                                 : TString{}},
+                            ServerConfig->GetVhostServerPath(), std::move(args),
+                            std::move(cgroups), latencySli.Serialize());
 
         ep->PrepareToStart();
         ShutdownOldEndpoint(request.GetDiskId());
@@ -1317,38 +1308,11 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     bool isAlignedDataEnabled,
     IEndpointListenerPtr fallbackListener)
 {
-    auto defaultFactory = [=] (
-        const TString& clientId,
-        const TString& diskId,
-        TVector<TString> args,
-        TVector<TString> cgroups,
-        TString latencySli)
-    {
-        return std::make_shared<TEndpoint>(
-            clientId,
-            logging,
-            executor,
-            TEndpointStats {
-                .ClientId = clientId,
-                .DiskId = diskId,
-                .ServerStats = serverStats
-            },
-            serverConfig->GetVhostServerPath(),
-            std::move(args),
-            std::move(cgroups),
-            std::move(latencySli)
-        );
-    };
-
     return std::make_shared<TExternalVhostEndpointListener>(
-        std::move(serverConfig),
-        std::move(logging),
-        std::move(serverStats),
-        std::move(executor),
-        std::move(localAgentId),
-        isAlignedDataEnabled,
+        std::move(serverConfig), std::move(logging), std::move(serverStats),
+        std::move(executor), std::move(localAgentId), isAlignedDataEnabled,
         std::move(fallbackListener),
-        std::move(defaultFactory));
+        TExternalEndpointFactory{});
 }
 
 IEndpointListenerPtr CreateExternalVhostEndpointListener(

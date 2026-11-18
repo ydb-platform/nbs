@@ -83,6 +83,7 @@ private:
     const TString DiskId;
 
     bool RequestCompleted = false;
+    bool ConsumeLatencyTiming = false;
 
 public:
     static constexpr const char ActorName[] =
@@ -110,6 +111,8 @@ public:
             error.SetCode(E_REJECTED);
 
             try {
+                ConsumeVolumeLatencyTiming<T>(ConsumeLatencyTiming,
+                                              *CallContext, response);
                 Response.SetValue(std::move(response));
             } catch (...) {
                 // no way to log error message
@@ -135,6 +138,8 @@ private:
             TRequestInfo(T::Request, CallContext->RequestId, DiskId)
                 << " sending request");
 
+        ConsumeLatencyTiming =
+            RequestVolumeLatencyTiming<T>(*CallContext, *Request);
         auto request =
             std::make_unique<TRequest>(CallContext, std::move(*Request));
 
@@ -153,6 +158,8 @@ private:
 
     void CompleteRequest(const TActorContext& ctx, TResponseProto&& response)
     {
+        ConsumeVolumeLatencyTiming<T>(ConsumeLatencyTiming, *CallContext,
+                                      response);
         try {
             Response.SetValue(std::move(response));
         } catch (...) {

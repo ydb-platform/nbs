@@ -120,16 +120,17 @@ struct TStats
     std::array<TTimeHistogram<T>, 2> Times = {};
     std::array<TSizeHistogram<T>, 2> Sizes = {};
 
-    void RecordLatency(
-        bool write,
-        ui64 bytes,
-        ui64 elapsedCycles,
-        bool failed,
-        const TLatencySliConfig* latencySli) noexcept
+    void RecordLatency(bool write, ui64 bytes, ui64 elapsedCycles, bool failed,
+                       const TLatencySliConfig* latencySli,
+                       bool measurable = true) noexcept
     {
         auto& stats = Requests[write];
         ++(failed ? stats.FinalErrors : stats.FinalCount);
         if (!latencySli || !latencySli->Enabled) {
+            return;
+        }
+        if (!measurable) {
+            ++stats.LatencyUnknown;
             return;
         }
         // Measure the original backend request, including its parts and
@@ -209,6 +210,7 @@ using TSimpleStats = TStats<ui64>;
 struct TCompleteStats {
     TSimpleStats SimpleStats;
     TCriticalEvents CriticalEvents;
+    bool Fresh = true;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

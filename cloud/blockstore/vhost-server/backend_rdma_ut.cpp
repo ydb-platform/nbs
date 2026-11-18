@@ -97,15 +97,16 @@ void CheckRdmaLatency(bool enabled)
         ui64 errors = 0;
         ui64 count = 0;
         using E = ELatencySliResult;
-        // Bytes, elapsed us, failure, expected read/write outcomes.
-        for (const auto& scenario: {
-                 std::tuple<ui64, ui64, bool, E, E>{4096, 500, false, E::Good, E::Good},
-                 {4096, 1500, false, E::Bad, E::Good},
-                 {4096, 3000, false, E::Bad, E::Bad},
-                 {16384, 500, false, E::Unknown, E::Unknown},
-                 {16384, 500, true, E::Bad, E::Bad}})
+        // Bytes, elapsed microseconds, response code and expected outcome.
+        for (const auto& scenario:
+             {std::tuple<ui64, ui64, ui32, E>{4096, 500, S_OK, E::Unknown},
+              {4096, 1500, S_OK, E::Unknown},
+              {4096, 500, E_TIMEOUT, E::Unknown},
+              {4096, 500, E_IO, E::Unknown},
+              {16384, 500, E_IO, E::Unknown}})
         {
-            const auto [size, elapsedUs, failed, readResult, writeResult] = scenario;
+            const auto [size, elapsedUs, code, expected] = scenario;
+            const bool failed = code != S_OK;
             auto readPromise = NThreading::NewPromise<NProto::TReadBlocksLocalResponse>();
             auto writePromise = NThreading::NewPromise<NProto::TWriteBlocksLocalResponse>();
             dataClient->ReadBlocksLocalHandler = [&](const auto&) {
@@ -130,17 +131,16 @@ void CheckRdmaLatency(bool enabled)
             if (write) {
                 NProto::TWriteBlocksLocalResponse response;
                 if (failed) {
-                    *response.MutableError() = MakeError(E_IO);
+                    *response.MutableError() = MakeError(code);
                 }
                 writePromise.SetValue(response);
             } else {
                 NProto::TReadBlocksLocalResponse response;
                 if (failed) {
-                    *response.MutableError() = MakeError(E_IO);
+                    *response.MutableError() = MakeError(code);
                 }
                 readPromise.SetValue(response);
             }
-            const auto expected = write ? writeResult : readResult;
             good += expected == E::Good;
             bad += expected == E::Bad;
             unknown += expected == E::Unknown;

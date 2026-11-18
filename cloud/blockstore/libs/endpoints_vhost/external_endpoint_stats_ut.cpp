@@ -148,13 +148,19 @@ struct TFixture
         ServerStats->MountVolume(volume, ClientId, "instance");
     }
 
-    NMonitoring::TDynamicCountersPtr GetLatencyCounters()
+    NMonitoring::TDynamicCountersPtr GetLatencyRoot()
     {
         return Monitoring->GetCounters()->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "sli_volume")->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", DiskId)->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "")->GetSubgroup("folder", "")
             ->GetSubgroup("type", MediaKindToComputeType(NProto::STORAGE_MEDIA_SSD_LOCAL));
+    }
+
+    NMonitoring::TDynamicCountersPtr GetLatencyCounters(bool write = false)
+    {
+        return GetLatencyRoot()->GetSubgroup(
+            "request", write ? "WriteBlocks" : "ReadBlocks");
     }
 
     void UpdateStats(
@@ -171,16 +177,18 @@ struct TFixture
 auto LatencySnapshot(ui64 good, ui64 bad = 0)
 {
     return NJson::TJsonMap{
-        {"latency_sli", NJson::TJsonMap{
-            {"version", ui64(2)},
-            {"config_id", GetLatencySliConfigFingerprint(
-                TLatencySliConfig::TryParse("1;0:1:8193:1000").value())}}},
-        {"read", NJson::TJsonMap{
-            {"latency_good", good}, {"latency_bad", bad},
-            {"latency_unknown", ui64(0)}}},
-        {"write", NJson::TJsonMap{
-            {"latency_good", ui64(0)}, {"latency_bad", ui64(0)},
-            {"latency_unknown", ui64(0)}}}};
+        {"latency_sli",
+         NJson::TJsonMap{
+             {"version", ui64(3)},
+             {"fresh", ui64(1)},
+             {"config_id",
+              GetLatencySliConfigFingerprint(
+                  TLatencySliConfig::TryParse("1;0:1:8193:1000").value())}}},
+        {"read", NJson::TJsonMap{{"latency_good", good}, {"latency_bad", bad},
+                                 {"latency_unknown", ui64(0)}}},
+        {"write",
+         NJson::TJsonMap{{"latency_good", ui64(0)}, {"latency_bad", ui64(0)},
+                         {"latency_unknown", ui64(0)}}}};
 }
 
 }   // namespace
@@ -204,7 +212,7 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyUnknownOps", true)->Val());
     }
 
-    Y_UNIT_TEST(ShouldPreserveEncryptionFailuresInLegacyFallback)
+    Y_UNIT_TEST(ShouldReportAllLegacyOutcomesAsUnknown)
     {
         for (bool finalOutcomes: {false, true}) {
             TFixture f(true);
@@ -228,15 +236,14 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
                 snapshot["write"]["final_errors"] = ui64(3);
             }
             reader.Update(snapshot);
-            auto group = f.GetLatencyCounters();
-            UNIT_ASSERT_VALUES_EQUAL(
-                0, group->GetCounter("LatencyGoodOps", true)->Val());
-            UNIT_ASSERT_VALUES_EQUAL(
-                6, group->GetCounter("LatencyBadOps", true)->Val());
-            UNIT_ASSERT_VALUES_EQUAL(
-                6, group->GetCounter("LatencyTotalOps", true)->Val());
-            UNIT_ASSERT_VALUES_EQUAL(
-                7, group->GetCounter("LatencyUnknownOps", true)->Val());
+            for (bool write: {false, true}) {
+                auto group = f.GetLatencyCounters(write);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0, group->GetCounter("LatencyTotalOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    write ? 7 : 6,
+                    group->GetCounter("LatencyUnknownOps", true)->Val());
+            }
         }
     }
 
@@ -266,29 +273,35 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
         reader.Update(matching);
         reader.Update(LatencySnapshot(0)); // no unsigned underflow or replay
         reader.Update(LatencySnapshot(13));
-        UNIT_ASSERT_VALUES_EQUAL(11, group->GetCounter("LatencyGoodOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyUnknownOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            12, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, group->GetCounter("LatencyUnknownOps", true)->Val());
 
         // A restarted child owns a fresh stats pipe and a new reader.
         TEndpointStats restarted{f.ClientId, f.DiskId, f.ServerStats};
         restarted.Update(LatencySnapshot(3));
-        UNIT_ASSERT_VALUES_EQUAL(14, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            15, group->GetCounter("LatencyGoodOps", true)->Val());
         auto legacy = NJson::TJsonMap{{"read", NJson::TJsonMap{
             {"count", ui64(2)}, {"errors", ui64(1)}}}};
         restarted.Update(legacy);
         UNIT_ASSERT_VALUES_EQUAL(4, group->GetCounter("LatencyUnknownOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, group->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0, group->GetCounter("LatencyBadOps", true)->Val());
         auto baseline = LatencySnapshot(5);
         baseline["read"]["count"] = ui64(1);
         restarted.Update(baseline); // do not replay legacy operations as Good
         restarted.Update(LatencySnapshot(6));
-        UNIT_ASSERT_VALUES_EQUAL(15, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            16, group->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(5, group->GetCounter("LatencyUnknownOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, group->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0, group->GetCounter("LatencyBadOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(16, group->GetCounter("LatencyTotalOps", true)->Val());
     }
 
-    Y_UNIT_TEST(ShouldKeepFailuresWithIncompatibleLatencyConfig)
+    Y_UNIT_TEST(ShouldTreatAllIncompatibleOutcomesAsUnknown)
     {
         for (const auto* operation: {"read", "write"}) {
             for (const char* configId: {"", "different-config"}) {
@@ -300,13 +313,79 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
                 snapshot[operation]["errors"] = ui64(2);
                 snapshot[operation]["latency_bad"] = ui64(5);
                 reader.Update(snapshot);
-                auto group = f.GetLatencyCounters();
+                auto group =
+                    f.GetLatencyCounters(TStringBuf(operation) == "write");
                 UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyGoodOps", true)->Val());
-                UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyBadOps", true)->Val());
-                UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyTotalOps", true)->Val());
-                UNIT_ASSERT_VALUES_EQUAL(3, group->GetCounter("LatencyUnknownOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0, group->GetCounter("LatencyBadOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0, group->GetCounter("LatencyTotalOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    5, group->GetCounter("LatencyUnknownOps", true)->Val());
             }
         }
+    }
+
+    Y_UNIT_TEST(ShouldReportIncompleteExternalStreamsAcrossRestarts)
+    {
+        TFixture f(true);
+        auto endpoint = f.GetLatencyRoot()->GetSubgroup("endpoint", "socket");
+        auto last = endpoint->GetCounter("LatencyLastFreshSnapshotSeconds");
+        auto gaps = endpoint->GetCounter("LatencyIncompleteStreams", true);
+        TEndpointStats first{f.ClientId, f.DiskId, f.ServerStats, "socket"};
+        first.RegisterExternalStats();
+
+        auto old = LatencySnapshot(2, 1);
+        old["latency_sli"]["version"] = ui64(2);
+        first.Update(old);
+        first.Update(old);
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            f.GetLatencyCounters()
+                ->GetCounter("LatencyUnknownOps", true)
+                ->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, last->Val());
+
+        auto stale = LatencySnapshot(2, 1);
+        stale["latency_sli"]["fresh"] = ui64(0);
+        first.Update(stale);
+        UNIT_ASSERT_VALUES_EQUAL(0, last->Val());
+
+        first.Update(LatencySnapshot(4, 1));
+        UNIT_ASSERT_GT(last->Val(), 0);
+        first.FinishExternalStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, gaps->Val());
+
+        TEndpointStats next{f.ClientId, f.DiskId, f.ServerStats, "socket"};
+        next.RegisterExternalStats();
+        auto final = LatencySnapshot(1);
+        final["final"] = ui64(1);
+        next.Update(final);
+        next.FinishExternalStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, gaps->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            f.GetLatencyCounters()->GetCounter("LatencyGoodOps", true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldKeepExternalDecisionsWithEndpointMediaType)
+    {
+        TFixture f(true);
+        TEndpointStats endpoint{f.ClientId, f.DiskId, f.ServerStats, "socket"};
+        endpoint.RegisterExternalStats();
+        auto first = endpoint;
+        first.Update(LatencySnapshot(1));
+
+        NProto::TVolume volume;
+        volume.SetDiskId(f.DiskId);
+        volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_HDD);
+        f.ServerStats->MountVolume(volume, f.ClientId, "instance");
+        first.Update(LatencySnapshot(2));
+        auto restarted = endpoint;
+        restarted.Update(LatencySnapshot(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            f.GetLatencyCounters()->GetCounter("LatencyGoodOps", true)->Val());
     }
 
     Y_UNIT_TEST(ShouldRecoverFromMalformedLatencyCounts)
@@ -332,10 +411,13 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
                 auto next = LatencySnapshot(5, 2);
                 next["read"]["latency_good"] = i64(5); // nonnegative signed JSON is valid
                 reader.Update(next);
-                UNIT_ASSERT_VALUES_EQUAL(3, group->GetCounter("LatencyGoodOps", true)->Val());
-                UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyUnknownOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    5, group->GetCounter("LatencyGoodOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0, group->GetCounter("LatencyUnknownOps", true)->Val());
                 UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyBadOps", true)->Val());
-                UNIT_ASSERT_VALUES_EQUAL(5, group->GetCounter("LatencyTotalOps", true)->Val());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    7, group->GetCounter("LatencyTotalOps", true)->Val());
             }
         }
     }

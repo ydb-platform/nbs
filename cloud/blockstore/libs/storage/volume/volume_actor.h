@@ -141,10 +141,9 @@ class TVolumeActor final
     struct TVolumeRequest
     {
         using TCancelRoutine = void(
-            const NActors::TActorContext& ctx,
-            NActors::TActorId caller,
-            ui64 callerCookie,
-            TCallContext& callContext,
+            const NActors::TActorContext& ctx, NActors::TActorId caller,
+            ui64 callerCookie, TCallContext& callContext,
+            std::optional<TDuration> latencyThrottleDelay,
             NProto::TError error);
 
         const NActors::TActorId Caller;
@@ -154,19 +153,17 @@ class TVolumeActor final
         const ui64 ReceiveTime;
         const ui64 ExecutionStartTime;
         TThrottlingRequestInfo ThrottlingRequestInfo;
+        const std::optional<TDuration> LatencyThrottleDelay;
         TCancelRoutine* const CancelRoutine;
         const bool IsMultipartitionWriteOrZero;
 
         TVolumeRequest(
-                const NActors::TActorId& caller,
-                ui64 callerCookie,
-                TCallContextPtr callContext,
-                TCallContextPtr forkedContext,
-                ui64 receiveTime,
-                ui64 executionStartTime,
-                TThrottlingRequestInfo throttlingRequestInfo,
-                TCancelRoutine cancelRoutine,
-                bool isMultipartitionWriteOrZero)
+            const NActors::TActorId& caller, ui64 callerCookie,
+            TCallContextPtr callContext, TCallContextPtr forkedContext,
+            ui64 receiveTime, ui64 executionStartTime,
+            TThrottlingRequestInfo throttlingRequestInfo,
+            std::optional<TDuration> latencyThrottleDelay,
+            TCancelRoutine cancelRoutine, bool isMultipartitionWriteOrZero)
             : Caller(caller)
             , CallerCookie(callerCookie)
             , CallContext(std::move(callContext))
@@ -174,6 +171,7 @@ class TVolumeActor final
             , ReceiveTime(receiveTime)
             , ExecutionStartTime(executionStartTime)
             , ThrottlingRequestInfo(std::move(throttlingRequestInfo))
+            , LatencyThrottleDelay(latencyThrottleDelay)
             , CancelRoutine(cancelRoutine)
             , IsMultipartitionWriteOrZero(isMultipartitionWriteOrZero)
         {}
@@ -182,12 +180,8 @@ class TVolumeActor final
             const NActors::TActorContext& ctx,
             NProto::TError error)
         {
-            CancelRoutine(
-                ctx,
-                Caller,
-                CallerCookie,
-                *CallContext,
-                std::move(error));
+            CancelRoutine(ctx, Caller, CallerCookie, *CallContext,
+                          LatencyThrottleDelay, std::move(error));
         }
     };
 
@@ -200,6 +194,7 @@ public:
         TEvService::EEvents EventType = TEvService::EvEnd;
         NActors::IEventHandlePtr Event;
         ui64 ReceiveTime = 0;
+        std::optional<TDuration> LatencyThrottleDelay;
     };
 
 private:

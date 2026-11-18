@@ -115,10 +115,12 @@ void TConfigInitializerCommon::SetupDiagnosticsConfig(
         if (!config.Validate()) {
             for (size_t write = 0; write < config.Thresholds.size(); ++write) {
                 if (populated[write] && config.Thresholds[write].empty()) {
-                    warn(TStringBuilder()
-                        << "Invalid or overlapping latency SLI thresholds for MediaKind="
+                    warn(
+                        TStringBuilder()
+                        << "Invalid or overlapping latency SLI thresholds for "
+                           "MediaKind="
                         << mediaKind << ", Write=" << write
-                        << "; successful requests in this table will be Unknown");
+                        << "; requests in this table will be Unknown");
                 }
             }
         }

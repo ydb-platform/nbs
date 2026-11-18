@@ -265,7 +265,7 @@ private:
 
     TRequestCounters RequestCounters;
     std::unique_ptr<TLatencySliCounters> LatencySli;
-    TDynamicCountersPtr SliCountersGroup;
+    TDynamicCountersPtr LatencyCountersFolder;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
 
     struct TServingCellHost
@@ -697,11 +697,10 @@ public:
     {}
 
     // Not thread-safe
-    bool MountVolumeImpl(
-        NProto::TVolume volume,
-        const TRealInstanceId& realInstanceId,
-        size_t pinCountForNewInstance,
-        TDynamicCountersPtr sliCountersGroup = {})
+    bool MountVolumeImpl(NProto::TVolume volume,
+                         const TRealInstanceId& realInstanceId,
+                         size_t pinCountForNewInstance,
+                         TDynamicCountersPtr latencyCountersFolder = {})
     {
         bool inserted = false;
 
@@ -718,9 +717,9 @@ public:
 
         auto volumeInfoIt = infos.find(realInstanceId);
         if (volumeInfoIt == infos.end()) {
-            auto volumeInfo = RegisterInstance(
-                volumeIt->second.VolumeBase,
-                realInstanceId, std::move(sliCountersGroup));
+            auto volumeInfo =
+                RegisterInstance(volumeIt->second.VolumeBase, realInstanceId,
+                                 std::move(latencyCountersFolder));
             volumeInfoIt = infos.emplace(realInstanceId, volumeInfo).first;
             inserted = true;
             volumeInfoIt->second->PinCount = pinCountForNewInstance;
@@ -810,9 +809,19 @@ public:
 
         for (const auto& item: holder.VolumeInfos) {
             TVolumeInfo& info = *item.second;
-            MountVolumeImpl(
-                volumeConfig,
-                info.RealInstanceId, info.PinCount, info.SliCountersGroup);
+            if (info.LatencyCountersFolder) {
+                // Availability starts a new series on remount. Only latency
+                // groups must stay reachable by operations already in flight.
+                const auto oldType = info.LatencyCountersFolder->GetSubgroup(
+                    "type",
+                    MediaKindToComputeType(
+                        info.VolumeBase->Volume.GetStorageMediaKind()));
+                oldType->RemoveCounter("ObservedSeconds");
+                oldType->RemoveCounter("AvailableSeconds");
+                oldType->RemoveCounter("HealthySeconds");
+            }
+            MountVolumeImpl(volumeConfig, info.RealInstanceId, info.PinCount,
+                            info.LatencyCountersFolder);
 
             Volumes.at(volumeConfig.GetDiskId())
                 .VolumeInfos.at(info.RealInstanceId)
@@ -1271,10 +1280,9 @@ private:
             .VolumeInfos = {}};
     }
 
-    TVolumeInfoPtr RegisterInstance(
-        TVolumeBasePtr volumeBase,
-        const TRealInstanceId& realInstanceId,
-        TDynamicCountersPtr previousSliCountersGroup)
+    TVolumeInfoPtr RegisterInstance(TVolumeBasePtr volumeBase,
+                                    const TRealInstanceId& realInstanceId,
+                                    TDynamicCountersPtr previousLatencyFolder)
     {
         auto info = std::make_shared<TVolumeInfo>(
             volumeBase,
@@ -1314,26 +1322,26 @@ private:
         // produces elsewhere in the codebase.
         // All per-instance trees are rebuilt when a remount changes any label
         // used in their subgroup chains.
-        auto sliFolder =
+        auto sliCloud =
             SliCounters->GetSubgroup("volume", volumeConfig.GetDiskId())
                 ->GetSubgroup("instance", realInstanceId.GetRealInstanceId())
-                ->GetSubgroup("cloud", volumeConfig.GetCloudId())
-                ->GetSubgroup("folder", volumeConfig.GetFolderId());
+                ->GetSubgroup("cloud", volumeConfig.GetCloudId());
+        if (previousLatencyFolder) {
+            sliCloud->RegisterSubgroup("folder", volumeConfig.GetFolderId(),
+                                       std::move(previousLatencyFolder));
+        }
+        auto sliFolder =
+            sliCloud->GetSubgroup("folder", volumeConfig.GetFolderId());
         const auto type =
             MediaKindToComputeType(volumeConfig.GetStorageMediaKind());
-        if (previousSliCountersGroup) {
-            // Keep the counter objects reachable for requests that captured
-            // the previous VolumeInfo. No redirection or lock on completion.
-            sliFolder->RegisterSubgroup("type", type, previousSliCountersGroup);
-        }
         auto sliCountersGroup = sliFolder->GetSubgroup("type", type);
-        info->SliCountersGroup = sliCountersGroup;
 
         auto latencySliConfig = DiagnosticsConfig->GetLatencySliConfig(
             volumeConfig.GetStorageMediaKind());
         if (latencySliConfig.Enabled && Type == EVolumeStatsType::EServerStats) {
+            info->LatencyCountersFolder = std::move(sliFolder);
             info->LatencySli = std::make_unique<TLatencySliCounters>(
-                std::move(latencySliConfig), *sliCountersGroup);
+                std::move(latencySliConfig), sliCountersGroup);
         }
 
         info->ObservedSecondsCounter =

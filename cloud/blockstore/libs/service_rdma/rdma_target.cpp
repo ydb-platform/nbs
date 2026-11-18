@@ -69,6 +69,11 @@ struct TRequestDetails
 template <typename TResponse>
 void FillResponse(const TCallContextPtr& callContext, TResponse& response)
 {
+    if (const auto delay = callContext->GetLatencyThrottleDelay()) {
+        response.MutableHeaders()->SetThrottleDelayUs(delay->MicroSeconds());
+    } else if (response.GetHeaders().HasThrottleDelayUs()) {
+        response.MutableHeaders()->ClearThrottleDelayUs();
+    }
     const ui64 postponeTime =
         callContext->Time(EProcessingStage::Postponed).MicroSeconds();
     response.MutableHeaders()->MutableThrottler()->SetDelay(postponeTime);
@@ -232,6 +237,19 @@ private:
         TStringBuf requestData,
         TStringBuf out) const
     {
+        if (request->GetHeaders().GetLatencyTimingRequested()) {
+            callContext->EnableLatencyTiming();
+            // A split on the sender has its own collector. This hop starts
+            // with a fresh context and returns its complete timing.
+            if (request->GetHeaders()
+                    .GetInternal()
+                    .GetReturnVolumeLatencyTiming())
+            {
+                request->MutableHeaders()
+                    ->MutableInternal()
+                    ->ClearReturnVolumeLatencyTiming();
+            }
+        }
         if (TraceSerializer->HandleTraceRequest(
                 request->GetHeaders().GetInternal().GetTrace(),
                 callContext->LWOrbit))
@@ -341,6 +359,19 @@ private:
         TStringBuf requestData,
         TStringBuf out) const
     {
+        if (request->GetHeaders().GetLatencyTimingRequested()) {
+            callContext->EnableLatencyTiming();
+            // A split on the sender has its own collector. This hop starts
+            // with a fresh context and returns its complete timing.
+            if (request->GetHeaders()
+                    .GetInternal()
+                    .GetReturnVolumeLatencyTiming())
+            {
+                request->MutableHeaders()
+                    ->MutableInternal()
+                    ->ClearReturnVolumeLatencyTiming();
+            }
+        }
         if (TraceSerializer->HandleTraceRequest(
                 request->GetHeaders().GetInternal().GetTrace(),
                 callContext->LWOrbit))
@@ -441,6 +472,19 @@ private:
         TStringBuf requestData,
         TStringBuf out) const
     {
+        if (request->GetHeaders().GetLatencyTimingRequested()) {
+            callContext->EnableLatencyTiming();
+            // A split on the sender has its own collector. This hop starts
+            // with a fresh context and returns its complete timing.
+            if (request->GetHeaders()
+                    .GetInternal()
+                    .GetReturnVolumeLatencyTiming())
+            {
+                request->MutableHeaders()
+                    ->MutableInternal()
+                    ->ClearReturnVolumeLatencyTiming();
+            }
+        }
         if (TraceSerializer->HandleTraceRequest(
                 request->GetHeaders().GetInternal().GetTrace(),
                 callContext->LWOrbit))

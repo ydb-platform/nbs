@@ -103,9 +103,15 @@ Y_UNIT_TEST_SUITE(TServerTest)
         observed->RequestStartedHandler =
             std::bind_front(&IServerStats::RequestStarted, stats.get());
         observed->ResponseSentHandler =
-            std::bind_front(&IServerStats::ResponseSent, stats.get());
+            [&](TMetricRequest& metric, TCallContext& ctx)
+        {
+            if (metric.ForwardedRequest) {
+                ctx.AddLatencyThrottleDelay(TDuration::MilliSeconds(5));
+            }
+            stats->ResponseSent(metric, ctx);
+        };
         using TObservation = std::tuple<ui64, bool, bool>;
-        std::array<TPromise<TObservation>, 14> completed;
+        std::array<TPromise<TObservation>, 18> completed;
         std::atomic<size_t> completionIndex = 0;
         for (auto& promise: completed) {
             promise = NewPromise<TObservation>();
@@ -140,40 +146,64 @@ Y_UNIT_TEST_SUITE(TServerTest)
             return MakeFuture(std::move(response));
         };
         const auto certs = TFsPath(ArcadiaSourceRoot()) / "cloud/blockstore/tests/certs";
-        auto server = CreateServer(config, factory.Logging, observed,
-            service, nullptr, {}, CreateStaticCertificateProvider(
+        auto server = CreateServer(
+            config,
+            factory.Logging,
+            observed,
+            service,
+            nullptr,
+            {.CellId = "cell-1", .CellPeerNames = {"localhost"}},
+            CreateStaticCertificateProvider(
                 (certs / "server.crt").GetPath(),
                 {{(certs / "server.key").GetPath(),
                   (certs / "server.crt").GetPath()}}));
-        auto client = factory.CreateClientBuilder()
-            .SetSecureEndpoint(securePort, "certs/server.crt", "test")
-            .BuildEndpointFactory();
+        auto client =
+            factory.CreateClientBuilder()
+                .SetSecureEndpoint(securePort, "certs/server.crt", "test")
+                .SetCertificate("certs/server.crt", "certs/server.key")
+                .BuildEndpointFactory();
+        auto ordinaryClient =
+            factory.CreateClientBuilder()
+                .SetSecureEndpoint(securePort, "certs/server.crt", "test")
+                .BuildEndpointFactory();
         server->Start();
         client->Start();
+        ordinaryClient->Start();
         Y_DEFER {
+            ordinaryClient->Stop();
             client->Stop();
             server->Stop();
         };
-        // Cell forwarding supports both secure and plaintext control ports.
         auto endpoint = client->CreateIOEndpoint("localhost", port, false);
         endpoint->Start();
         Y_DEFER { endpoint->Stop(); };
         auto secureEndpoint = client->CreateIOEndpoint("localhost", securePort, true);
         secureEndpoint->Start();
         Y_DEFER { secureEndpoint->Stop(); };
+        auto ordinaryEndpoint =
+            ordinaryClient->CreateIOEndpoint("localhost", securePort, true);
+        ordinaryEndpoint->Start();
+        Y_DEFER
+        {
+            ordinaryEndpoint->Stop();
+        };
         for (size_t i = 0; i < completed.size(); ++i) {
-            const bool forwarded = i < 8;
-            const bool spoofedInternal = i >= 12;
+            const bool forwarded = i < 4;
+            const bool spoofedInternal = i == 12 || i == 13;
+            const bool ordinaryTls = i >= 14;
             const bool failed = i % 4 >= 2 || spoofedInternal;
             auto io = i < 4 || (i >= 8 && i < 10) || spoofedInternal
                           ? secureEndpoint : endpoint;
+            if (ordinaryTls) {
+                io = ordinaryEndpoint;
+            }
             auto prepare = [&](auto& request) {
                 request.SetDiskId("disk");
                 auto* headers = request.MutableHeaders();
                 headers->SetClientId("client");
                 headers->SetRequestId(i + 1);
                 headers->SetRetryNumber(failed ? 1 : 0);
-                if (i < 8 || spoofedInternal) {
+                if (i < 8 || spoofedInternal || ordinaryTls) {
                     headers->SetCellId("cell-1");
                 }
                 if (spoofedInternal) {
@@ -181,20 +211,32 @@ Y_UNIT_TEST_SUITE(TServerTest)
                         NProto::SOURCE_SECURE_CONTROL_CHANNEL);
                 }
             };
+            auto clientContext = MakeIntrusive<TCallContext>();
+            if (i < 8 || ordinaryTls) {
+                clientContext->EnableLatencyTiming();
+            }
             if (i % 2) {
                 auto request = std::make_shared<NProto::TWriteBlocksRequest>();
                 prepare(*request);
                 request->MutableBlocks()->AddBuffers(TString(4096, 'x'));
-                const auto response = io->WriteBlocks(
-                    MakeIntrusive<TCallContext>(), request).GetValue(TDuration::Seconds(5));
+                const auto response = io->WriteBlocks(clientContext, request)
+                                          .GetValue(TDuration::Seconds(5));
                 UNIT_ASSERT_VALUES_EQUAL(failed, HasError(response));
             } else {
                 auto request = std::make_shared<NProto::TReadBlocksRequest>();
                 prepare(*request);
                 request->SetBlocksCount(1);
-                const auto response = io->ReadBlocks(
-                    MakeIntrusive<TCallContext>(), request).GetValue(TDuration::Seconds(5));
+                const auto response = io->ReadBlocks(clientContext, request)
+                                          .GetValue(TDuration::Seconds(5));
                 UNIT_ASSERT_VALUES_EQUAL(failed, HasError(response));
+            }
+            if (i < 8 || ordinaryTls) {
+                const auto delay = clientContext->GetLatencyThrottleDelay();
+                UNIT_ASSERT_VALUES_EQUAL(forwarded, delay.has_value());
+                if (delay) {
+                    UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(5),
+                                             *delay);
+                }
             }
             const auto [requestId, forwardedFlag, cellFlag] =
                 completed[i].GetFuture().GetValue(TDuration::Seconds(5));
@@ -214,10 +256,17 @@ Y_UNIT_TEST_SUITE(TServerTest)
             ->GetSubgroup("cloud", "")
             ->GetSubgroup("folder", "")
             ->GetSubgroup("type", "network-ssd-nonreplicated");
-        UNIT_ASSERT_VALUES_EQUAL(2, group->GetCounter("LatencyGoodOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(4, group->GetCounter("LatencyBadOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(6, group->GetCounter("LatencyTotalOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("LatencyUnknownOps", true)->Val());
+        for (const auto* operation: {"ReadBlocks", "WriteBlocks"}) {
+            auto counters = group->GetSubgroup("request", operation);
+            UNIT_ASSERT_VALUES_EQUAL(
+                3, counters->GetCounter("LatencyGoodOps", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                3, counters->GetCounter("LatencyBadOps", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                6, counters->GetCounter("LatencyTotalOps", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0, counters->GetCounter("LatencyUnknownOps", true)->Val());
+        }
     }
 
     Y_UNIT_TEST(ShouldPrepareRequestHeaders)

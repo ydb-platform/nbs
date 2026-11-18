@@ -88,6 +88,7 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         previous.Requests[0].LatencyBad = 3;
 
         const auto missing = server->GetStats(previous);
+        UNIT_ASSERT(!missing.Fresh);
         UNIT_ASSERT_VALUES_EQUAL(12, missing.SimpleStats.Completed);
         UNIT_ASSERT_VALUES_EQUAL(3, missing.SimpleStats.Requests[0].Errors);
         UNIT_ASSERT_VALUES_EQUAL(3, missing.SimpleStats.Requests[0].LatencyBad);
@@ -98,6 +99,7 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         backend->Snapshot->Requests[0].Errors = 4;
         backend->Snapshot->Requests[0].LatencyBad = 4;
         const auto stats = server->GetStats(previous);
+        UNIT_ASSERT(stats.Fresh);
         UNIT_ASSERT_VALUES_EQUAL(17, stats.SimpleStats.Completed);
         UNIT_ASSERT_VALUES_EQUAL(4, stats.SimpleStats.Requests[0].Errors);
         UNIT_ASSERT_VALUES_EQUAL(4, stats.SimpleStats.Requests[0].LatencyBad);

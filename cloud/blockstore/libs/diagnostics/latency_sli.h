@@ -11,6 +11,7 @@ class TLatencySliCounters
 private:
     const TLatencySliConfig Config;
     const TString ConfigFingerprint;
+    const NMonitoring::TDynamicCountersPtr Group;
     struct TCounters
     {
         NMonitoring::TDynamicCounters::TCounterPtr Good;
@@ -18,19 +19,31 @@ private:
         NMonitoring::TDynamicCounters::TCounterPtr Total;
         NMonitoring::TDynamicCounters::TCounterPtr Unknown;
     };
-    TCounters Counters;
+
+    std::array<TCounters, 2> ByOperation;
 
 public:
-    TLatencySliCounters(
-        TLatencySliConfig config, NMonitoring::TDynamicCounters& group)
+    TLatencySliCounters(TLatencySliConfig config,
+                        NMonitoring::TDynamicCountersPtr group)
         : Config(std::move(config))
         , ConfigFingerprint(GetLatencySliConfigFingerprint(Config))
+        , Group(std::move(group))
     {
-        Counters = {
-            group.GetCounter("LatencyGoodOps", true),
-            group.GetCounter("LatencyBadOps", true),
-            group.GetCounter("LatencyTotalOps", true),
-            group.GetCounter("LatencyUnknownOps", true)};
+        for (bool write: {false, true}) {
+            const auto counters = Group->GetSubgroup(
+                "request", write ? "WriteBlocks" : "ReadBlocks");
+            ByOperation[write] = {
+                counters->GetCounter("LatencyGoodOps", true),
+                counters->GetCounter("LatencyBadOps", true),
+                counters->GetCounter("LatencyTotalOps", true),
+                counters->GetCounter("LatencyUnknownOps", true)};
+        }
+    }
+
+    NMonitoring::TDynamicCountersPtr GetExternalEndpointGroup(
+        const TString& socketPath) const
+    {
+        return Group->GetSubgroup("endpoint", socketPath);
     }
 
     const TString& GetConfigFingerprint() const
@@ -38,22 +51,23 @@ public:
         return ConfigFingerprint;
     }
 
-    void Add(ui64 good, ui64 bad, ui64 unknown)
+    void Add(bool write, ui64 good, ui64 bad, ui64 unknown)
     {
+        const auto& counters = ByOperation[write];
         // Add deltas to preserve existing values if the group is reused. Publish
         // Total first so the numerator cannot advance ahead of its denominator.
         // Dynamic counters do not provide an atomic multi-counter snapshot.
         if (good || bad) {
-            Counters.Total->Add(good + bad);
+            counters.Total->Add(good + bad);
         }
         if (good) {
-            Counters.Good->Add(good);
+            counters.Good->Add(good);
         }
         if (bad) {
-            Counters.Bad->Add(bad);
+            counters.Bad->Add(bad);
         }
         if (unknown) {
-            Counters.Unknown->Add(unknown);
+            counters.Unknown->Add(unknown);
         }
     }
 
@@ -65,7 +79,7 @@ public:
     {
         const auto result = Config.Classify(
             write, bytes, elapsedUs, failed);
-        Add(result == ELatencySliResult::Good,
+        Add(write, result == ELatencySliResult::Good,
             result == ELatencySliResult::Bad,
             result == ELatencySliResult::Unknown);
     }

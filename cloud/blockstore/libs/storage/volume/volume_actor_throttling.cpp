@@ -1,7 +1,6 @@
 #include "volume_actor.h"
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
-
 #include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -9,6 +8,8 @@
 
 #include <cloud/storage/core/libs/common/media.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
+
+#include <util/datetime/cputimer.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -208,12 +209,37 @@ NProto::TError TVolumeActor::Throttle(
         return ok;
     }
 
+    if constexpr (IsReadOrWriteMethod<TMethod>) {
+        throttlingRequestInfo->Parallel =
+            msg->Record.GetHeaders().GetInternal().GetParallelSplitPart();
+    }
     const auto status = Throttler->Throttle(
         ctx,
         msg->CallContext,
         *throttlingRequestInfo,
         [&ev]() { return NActors::IEventHandlePtr(ev.Release()); },
         TMethod::Name);
+
+    if constexpr (IsReadOrWriteMethod<TMethod>) {
+        const auto& headers = msg->Record.GetHeaders().GetInternal();
+        if (msg->Record.GetHeaders().GetLatencyTimingRequested() ||
+            throttlingRequestInfo->Parallel)
+        {
+            const ui64 start = headers.GetVolumeThrottleStartCycles();
+            if (status == ETabletThrottlerStatus::POSTPONED && !start) {
+                msg->Record.MutableHeaders()
+                    ->MutableInternal()
+                    ->SetVolumeThrottleStartCycles(GetCycleCount());
+            } else if (status != ETabletThrottlerStatus::POSTPONED && start) {
+                auto* timing = msg->Record.MutableHeaders()->MutableInternal();
+                timing->SetVolumeThrottleDelayUs(
+                    timing->GetVolumeThrottleDelayUs() +
+                    CyclesToDurationSafe(GetCycleCount() - start)
+                        .MicroSeconds());
+                timing->ClearVolumeThrottleStartCycles();
+            }
+        }
+    }
 
     switch (status) {
         case ETabletThrottlerStatus::POSTPONED:

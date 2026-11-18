@@ -348,6 +348,14 @@ void TServerStats::RequestStarted(
         if (IsReadWriteRequest(req.RequestType)) {
             callContext.SetPossiblePostponeDuration(
                 req.VolumeInfo->GetPossiblePostponeDuration());
+            if (!req.ForwardedRequest &&
+                req.RequestType != EBlockStoreRequest::ZeroBlocks)
+            {
+                req.LatencyCounters = req.VolumeInfo->GetLatencySli();
+                if (req.LatencyCounters) {
+                    callContext.EnableLatencyTiming();
+                }
+            }
         }
     }
 }
@@ -452,22 +460,19 @@ void TServerStats::RequestCompleted(
         req.AccessMode,
         req.MountMode);
 
-    if (req.VolumeInfo && !req.ForwardedRequest) {
-        const auto type = TranslateLocalRequestType(req.RequestType);
-        if (type == EBlockStoreRequest::ReadBlocks ||
-            type == EBlockStoreRequest::WriteBlocks)
+    if (req.LatencyCounters && !req.ForwardedRequest && !req.ClientFault) {
+        const bool write = IsWriteRequest(req.RequestType);
+        const auto delay = callContext.GetLatencyThrottleDelay();
+        const bool invalidStart =
+            !started || (responseSentCycles && responseSentCycles < started);
+        if (req.ResponseDeliveryUncertain || invalidStart || !delay ||
+            *delay > requestTime)
         {
-            if (auto* sli = req.VolumeInfo->GetLatencySli()) {
-                // Classify the full original request latency, including
-                // throttling, shaping, backpressure, retry backoff and sending
-                // the response. ResponseSent is stamped before the send.
-                // Every error is Bad, including client errors and cancellation.
-                // Retries issued as separate gRPC calls are separate samples.
-                sli->Complete(
-                    type == EBlockStoreRequest::WriteBlocks,
-                    req.OriginalRequestBytes,
-                    requestTime.MicroSeconds(), HasError(error));
-            }
+            req.LatencyCounters->Add(write, 0, 0, 1);
+        } else {
+            req.LatencyCounters->Complete(write, req.OriginalRequestBytes,
+                                          (requestTime - *delay).MicroSeconds(),
+                                          HasError(error));
         }
     }
 

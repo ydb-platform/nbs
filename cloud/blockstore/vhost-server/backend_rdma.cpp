@@ -475,11 +475,9 @@ void TRdmaBackend::CompleteRequest(
     }
 
     CompletionStatsData.RecordLatency(
-        bio->type == VHD_BDEV_WRITE,
-        bio->total_sectors * VHD_SECTOR_SIZE,
-        elapsed,
-        isError,
-        LatencySli.get());
+        bio->type == VHD_BDEV_WRITE, bio->total_sectors * VHD_SECTOR_SIZE,
+        elapsed, isError, LatencySli.get(),
+        false);   // The RDMA response does not carry remote throttle timing.
     vhd_complete_bio(io, isError ? VHD_BDEV_IOERR : VHD_BDEV_SUCCESS);
 }
 
