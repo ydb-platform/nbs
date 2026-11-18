@@ -16,19 +16,19 @@ Y_UNIT_TEST_SUITE(TCellsIcV2ConfigTest)
         const auto& config = cells.GetIcV2Config();
 
         UNIT_ASSERT(!config.GetEnabled());
-        UNIT_ASSERT_VALUES_EQUAL(config.GetListenAddress(), "::");
-        UNIT_ASSERT_VALUES_EQUAL(config.GetPort(), 0);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetThreads(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetHandshakeTimeoutMs(), 5000);
+        UNIT_ASSERT_VALUES_EQUAL("::", config.GetListenAddress());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetPort());
+        UNIT_ASSERT_VALUES_EQUAL(1, config.GetThreads());
+        UNIT_ASSERT_VALUES_EQUAL(5000, config.GetHandshakeTimeoutMs());
         UNIT_ASSERT(!config.GetChecksumEvents());
-        UNIT_ASSERT_VALUES_EQUAL(config.GetMaxConnections(), 128);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetMaxPendingRequests(), 1024);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetMaxOutputQueueBytes(), 64_MB);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetCompletionThreads(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetMaxOutgoingConnections(), 128);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetMaxDataRequestBytes(), 4_MB);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetMaxDataInflightBytes(), 64_MB);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetDataWorkers(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(128, config.GetMaxConnections());
+        UNIT_ASSERT_VALUES_EQUAL(1024, config.GetMaxPendingRequests());
+        UNIT_ASSERT_VALUES_EQUAL(64_MB, config.GetMaxOutputQueueBytes());
+        UNIT_ASSERT_VALUES_EQUAL(2, config.GetCompletionThreads());
+        UNIT_ASSERT_VALUES_EQUAL(128, config.GetMaxOutgoingConnections());
+        UNIT_ASSERT_VALUES_EQUAL(4_MB, config.GetMaxDataRequestBytes());
+        UNIT_ASSERT_VALUES_EQUAL(64_MB, config.GetMaxDataInflightBytes());
+        UNIT_ASSERT_VALUES_EQUAL(1, config.GetDataWorkers());
         UNIT_ASSERT(!config.GetEnableXdc());
         UNIT_ASSERT(!cells.GetCellsConfig().HasIcV2());
         UNIT_ASSERT(!config.GetIcV2Config().HasPort());
@@ -54,18 +54,18 @@ Y_UNIT_TEST_SUITE(TCellsIcV2ConfigTest)
 
         const TCellsConfig cells(std::move(proto));
         const auto& config = cells.GetIcV2Config();
-        UNIT_ASSERT_VALUES_EQUAL(config.GetListenAddress(), "");
-        UNIT_ASSERT_VALUES_EQUAL(config.GetPort(), 0);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetThreads(), 0);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetHandshakeTimeoutMs(), 0);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetMaxConnections(), 0);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetMaxPendingRequests(), 0);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetMaxOutputQueueBytes(), 0);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetCompletionThreads(), 0);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetMaxOutgoingConnections(), 0);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetMaxDataRequestBytes(), 0);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetMaxDataInflightBytes(), 0);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetDataWorkers(), 0);
+        UNIT_ASSERT_VALUES_EQUAL("", config.GetListenAddress());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetPort());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetThreads());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetHandshakeTimeoutMs());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetMaxConnections());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetMaxPendingRequests());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetMaxOutputQueueBytes());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetCompletionThreads());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetMaxOutgoingConnections());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetMaxDataRequestBytes());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetMaxDataInflightBytes());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetDataWorkers());
         UNIT_ASSERT(config.GetIcV2Config().HasPort());
     }
 
@@ -83,13 +83,13 @@ Y_UNIT_TEST_SUITE(TCellsIcV2ConfigTest)
         const TCellsConfig cells(std::move(proto));
         const auto& config = cells.GetIcV2Config();
         UNIT_ASSERT(config.GetEnabled());
-        UNIT_ASSERT_VALUES_EQUAL(config.GetListenAddress(), "127.0.0.1");
-        UNIT_ASSERT_VALUES_EQUAL(config.GetPort(), 1234);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetThreads(), 3);
+        UNIT_ASSERT_VALUES_EQUAL("127.0.0.1", config.GetListenAddress());
+        UNIT_ASSERT_VALUES_EQUAL(1234, config.GetPort());
+        UNIT_ASSERT_VALUES_EQUAL(3, config.GetThreads());
         UNIT_ASSERT(config.GetChecksumEvents());
         UNIT_ASSERT(config.GetEnableXdc());
-        UNIT_ASSERT_VALUES_EQUAL(config.GetHandshakeTimeoutMs(), 5000);
-        UNIT_ASSERT_VALUES_EQUAL(config.GetMaxDataRequestBytes(), 4_MB);
+        UNIT_ASSERT_VALUES_EQUAL(5000, config.GetHandshakeTimeoutMs());
+        UNIT_ASSERT_VALUES_EQUAL(4_MB, config.GetMaxDataRequestBytes());
     }
 }
 

@@ -50,7 +50,7 @@ Y_UNIT_TEST_SUITE(TAddressResolverTest)
         host = "different-host";
         resolver.reset();
         UNIT_ASSERT(!future.IsReady());
-        UNIT_ASSERT_VALUES_EQUAL(executor->Tasks.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(1, executor->Tasks.size());
         executor->Run();
         UNIT_ASSERT(future.Wait(TDuration::Seconds(5)));
         const auto& result = future.GetValue();
@@ -58,7 +58,7 @@ Y_UNIT_TEST_SUITE(TAddressResolverTest)
             !HasError(result.GetError()),
             FormatError(result.GetError()));
         UNIT_ASSERT(!result.GetResult().empty());
-        UNIT_ASSERT_VALUES_EQUAL(result.GetResult().front().GetPort(), 1234);
+        UNIT_ASSERT_VALUES_EQUAL(1234, result.GetResult().front().GetPort());
     }
 
     Y_UNIT_TEST(ReturnsResolutionFailureAsError)
@@ -71,8 +71,8 @@ Y_UNIT_TEST_SUITE(TAddressResolverTest)
         UNIT_ASSERT(future.Wait(TDuration::Seconds(5)));
         UNIT_ASSERT(!future.HasException());
         UNIT_ASSERT_VALUES_EQUAL(
-            future.GetValue().GetError().GetCode(),
-            E_UNAVAILABLE);
+            E_UNAVAILABLE,
+            future.GetValue().GetError().GetCode());
     }
 }
 
