@@ -24,8 +24,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const diskCleanupPrefix = "legacy_disk_cleanup_"
-
 type deleteDiskTask struct {
 	performanceConfig *performance_config.PerformanceConfig
 	storage           resources.Storage
@@ -173,12 +171,11 @@ func (t *deleteDiskTask) deleteDiskWithoutMetadata(
 	}
 
 	selfTaskID := execCtx.GetTaskID()
-	cleanupID := diskCleanupPrefix + selfTaskID
 
 	// Tombstones are cleaned via Prepare/Complete. Legacy Deleted placeholders
 	// (in-flight tasks from before the tombstone rollout) return prepared=false
 	// and still finish through DiskDeleted after external cleanup.
-	prepared, err := t.storage.PrepareDiskCleanup(ctx, diskID, cleanupID)
+	prepared, err := t.storage.PrepareDiskCleanup(ctx, diskID, selfTaskID)
 	if err != nil {
 		return err
 	}
@@ -192,7 +189,7 @@ func (t *deleteDiskTask) deleteDiskWithoutMetadata(
 		return execCtx.FinishWithPreparation(
 			ctx,
 			func(ctx context.Context, tx *persistence.Transaction) error {
-				return t.storage.CompleteDiskCleanup(ctx, tx, diskID, cleanupID)
+				return t.storage.CompleteDiskCleanup(ctx, tx, diskID, selfTaskID)
 			},
 		)
 	}

@@ -260,10 +260,9 @@ func testDeleteDiskTaskWithNonExistentDisk(
 	).Return((*resources.DiskMeta)(nil), nil)
 
 	if deleteIfNonExistent {
-		cleanupID := diskCleanupPrefix + "toplevel_task_id"
-		storage.On("PrepareDiskCleanup", ctx, "disk", cleanupID).Return(true, nil).Once()
+		storage.On("PrepareDiskCleanup", ctx, "disk", "toplevel_task_id").Return(true, nil).Once()
 		tx := &persistence.Transaction{}
-		storage.On("CompleteDiskCleanup", ctx, tx, "disk", cleanupID).Return(nil).Once()
+		storage.On("CompleteDiskCleanup", ctx, tx, "disk", "toplevel_task_id").Return(nil).Once()
 		execCtx.On("FinishWithPreparation", ctx, mock.Anything).Run(func(args mock.Arguments) {
 			prepare := args.Get(1).(func(context.Context, *persistence.Transaction) error)
 			require.NoError(t, prepare(ctx, tx))
@@ -466,7 +465,7 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 			request, err := proto.Marshal(&protos.DeleteDiskRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}, DeleteIfNonExistent: true, Sync: tc.sync})
 			require.NoError(t, err)
 			require.NoError(t, task.Load(request, nil))
-			id := diskCleanupPrefix + "toplevel_task_id"
+			id := "toplevel_task_id"
 			errorFor := func(step string) error {
 				if tc.errorAt == step {
 					return assert.AnError
