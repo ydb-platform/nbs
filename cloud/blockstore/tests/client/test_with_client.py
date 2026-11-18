@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 import time
 
+import pytest
+
 import yatest.common as common
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
@@ -29,12 +31,14 @@ from cloud.blockstore.public.api.protos.checkpoints_pb2 import (
 )
 from cloud.blockstore.public.sdk.python.client.error_codes import EResult
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
+from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import (
     enable_writable_state,
     setup_disk_registry_config_simple,
 )
 from cloud.blockstore.tests.python.lib.test_base import (
     thread_count,
+    wait_for_nbs_server,
     get_nbs_counters,
     get_sensor_by_name,
     files_equal,
@@ -1013,3 +1017,39 @@ def test_describe_volume_with_exact_disk_id_match():
     assert response.Volume.DiskId == "vol0-copy"
 
     tear_down(env)
+
+
+@pytest.mark.parametrize("service_kind", ["local", "null"])
+def test_full_server_without_actor_system(service_kind):
+    server = TServerAppConfig()
+    server.ServerConfig.ThreadsCount = thread_count()
+    if service_kind == "local":
+        data_dir = common.output_path("local-volumes")
+        os.makedirs(data_dir, exist_ok=True)
+        server.LocalServiceConfig.DataDir = data_dir
+    else:
+        server.NullServiceConfig.SetInParent()
+
+    nbs = LocalNbs(
+        grpc_port=0,
+        server_app_config=server,
+        config_sub_folder="full-server-" + service_kind,
+        nbs_binary_path=common.binary_path("cloud/blockstore/apps/server/nbsd"),
+    )
+    nbs.start()
+    try:
+        # The RPC port opens before SetupCellProxy. Wait for full bootstrap.
+        startup_marker = "Started endpoints restoring"
+        deadline = time.monotonic() + 30
+        startup_log = ""
+        with open(nbs.stderr_file_name) as stderr:
+            while startup_marker not in startup_log:
+                assert nbs.is_alive(), "nbsd exited during bootstrap"
+                startup_log += stderr.read()
+                if startup_marker in startup_log:
+                    break
+                assert time.monotonic() < deadline, "nbsd bootstrap timed out"
+                time.sleep(0.05)
+        wait_for_nbs_server(nbs.nbs_port)
+    finally:
+        nbs.stop()

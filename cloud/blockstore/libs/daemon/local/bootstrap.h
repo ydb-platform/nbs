@@ -53,6 +53,7 @@ protected:
     void InitRdmaRequestServer() override;
 
     void SetupCellManager() override;
+    void SetupCellProxy() override;
     void SetupCellMonitoringActor() override;
     IBlockStorePtr WrapServiceForInterCellForward(
         IBlockStorePtr authorized,

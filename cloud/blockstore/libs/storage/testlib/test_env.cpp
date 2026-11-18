@@ -16,12 +16,14 @@
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/local_nvme/service.h>
+#include <cloud/blockstore/libs/storage/api/cell_proxy.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/cell_proxy/cell_proxy.h>
 #include <cloud/blockstore/libs/storage/core/block_digest_factory.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
@@ -287,6 +289,11 @@ ui32 TTestEnv::CreateBlockStoreNode(
         MakeTenantPoolID(nodeIdx),
         tenantPoolId,
         nodeIdx);
+
+    const auto cellProxyId =
+        Runtime.Register(CreateCellProxy().release(), nodeIdx);
+    Runtime.EnableScheduleForActor(cellProxyId);
+    Runtime.RegisterService(MakeCellProxyServiceId(), cellProxyId, nodeIdx);
 
     auto ssProxy = CreateSSProxy(storageConfig);
     auto ssProxyId = Runtime.Register(
