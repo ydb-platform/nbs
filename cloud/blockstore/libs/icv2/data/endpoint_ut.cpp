@@ -621,9 +621,9 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
             MakeWrite(data));
         const auto* sent = static_cast<TEvService::TEvWriteBlocksRequest*>(
             f.Channel->Requests[0].Event.get());
-        UNIT_ASSERT_VALUES_EQUAL(sent->Record.GetBlocks().BuffersSize(), 0);
-        UNIT_ASSERT_VALUES_EQUAL(sent->GetPayloadCount(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(sent->GetPayload(0).ConvertToString(), data);
+        UNIT_ASSERT_VALUES_EQUAL(0, sent->Record.GetBlocks().BuffersSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, sent->GetPayloadCount());
+        UNIT_ASSERT_VALUES_EQUAL(data, sent->GetPayload(0).ConvertToString());
         f.Run(0);
         UNIT_ASSERT(!HasError(Wait(write)));
         TString buffer(data.size(), '?');
@@ -632,7 +632,7 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
             MakeRead(buffer));
         f.Run(1);
         UNIT_ASSERT(!HasError(Wait(read)));
-        UNIT_ASSERT_VALUES_EQUAL(buffer, data);
+        UNIT_ASSERT_VALUES_EQUAL(data, buffer);
         auto zero =
             f.Endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), MakeZero());
         f.Run(2);
@@ -642,10 +642,10 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
             MakeRead(buffer));
         f.Run(3);
         UNIT_ASSERT(!HasError(Wait(again)));
-        UNIT_ASSERT_VALUES_EQUAL(buffer, TString(data.size(), '\0'));
-        UNIT_ASSERT_VALUES_EQUAL(f.Reads, 2);
-        UNIT_ASSERT_VALUES_EQUAL(f.Writes, 1);
-        UNIT_ASSERT_VALUES_EQUAL(f.Zeroes, 1);
+        UNIT_ASSERT_VALUES_EQUAL(TString(data.size(), '\0'), buffer);
+        UNIT_ASSERT_VALUES_EQUAL(2, f.Reads);
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Writes);
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Zeroes);
     }
 
     Y_UNIT_TEST(ProtobufAndLocalRequestsUseTheSameWireFormat)
@@ -661,9 +661,9 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
             f.Endpoint->WriteBlocks(MakeIntrusive<TCallContext>(), request);
         const auto* sent = static_cast<TEvService::TEvWriteBlocksRequest*>(
             f.Channel->Requests[0].Event.get());
-        UNIT_ASSERT_VALUES_EQUAL(sent->Record.GetBlocks().BuffersSize(), 0);
-        UNIT_ASSERT_VALUES_EQUAL(sent->GetPayloadCount(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(sent->GetPayload(0).ConvertToString(), data);
+        UNIT_ASSERT_VALUES_EQUAL(0, sent->Record.GetBlocks().BuffersSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, sent->GetPayloadCount());
+        UNIT_ASSERT_VALUES_EQUAL(data, sent->GetPayload(0).ConvertToString());
         request->ClearBlocks();
         f.Run(0);
         UNIT_ASSERT(!HasError(Wait(write)));
@@ -676,11 +676,11 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         f.Run(1);
         auto response = Wait(read);
         UNIT_ASSERT(!HasError(response));
-        UNIT_ASSERT_VALUES_EQUAL(response.GetBlocks().BuffersSize(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetBlocks().BuffersSize());
         UNIT_ASSERT_VALUES_EQUAL(
+            data,
             response.GetBlocks().GetBuffers(0) +
-                response.GetBlocks().GetBuffers(1),
-            data);
+                response.GetBlocks().GetBuffers(1));
 
         TString localBuffer(data.size(), '?');
         auto localRead = f.Endpoint->ReadBlocksLocal(
@@ -688,7 +688,7 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
             MakeRead(localBuffer));
         f.Run(2);
         UNIT_ASSERT(!HasError(Wait(localRead)));
-        UNIT_ASSERT_VALUES_EQUAL(localBuffer, data);
+        UNIT_ASSERT_VALUES_EQUAL(data, localBuffer);
 
         data = TString(data.size(), 'l');
         auto localWrite = f.Endpoint->WriteBlocksLocal(
@@ -702,9 +702,9 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         response = Wait(read);
         UNIT_ASSERT(!HasError(response));
         UNIT_ASSERT_VALUES_EQUAL(
+            data,
             response.GetBlocks().GetBuffers(0) +
-                response.GetBlocks().GetBuffers(1),
-            data);
+                response.GetBlocks().GetBuffers(1));
     }
 
     Y_UNIT_TEST(ProtobufWriteUsesPayloadBudget)
@@ -717,7 +717,7 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         request->MutableBlocks()->AddBuffers(TString(2 * BlockSize, 'w'));
         auto write =
             f.Endpoint->WriteBlocks(MakeIntrusive<TCallContext>(), request);
-        UNIT_ASSERT_VALUES_EQUAL(Wait(write).GetError().GetCode(), E_REJECTED);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, Wait(write).GetError().GetCode());
         UNIT_ASSERT(f.Channel->Requests.empty());
     }
 
@@ -750,7 +750,7 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         f.Executor->Run();
         UNIT_ASSERT(!HasError(Wait(future)));
         UNIT_ASSERT(metadata);
-        UNIT_ASSERT_VALUES_EQUAL(snapshot, TString(snapshot.size(), 'a'));
+        UNIT_ASSERT_VALUES_EQUAL(TString(snapshot.size(), 'a'), snapshot);
         UNIT_ASSERT(!captured->Sglist.Acquire());
     }
 
@@ -767,8 +767,8 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         request->Sglist.Close();
         f.ReadCompletion.SetValue({});
         f.Executor->Run();
-        UNIT_ASSERT_VALUES_EQUAL(Wait(future).GetError().GetCode(), E_TIMEOUT);
-        UNIT_ASSERT_VALUES_EQUAL(buffer, TString(buffer.size(), '?'));
+        UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, Wait(future).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), '?'), buffer);
         UNIT_ASSERT(!f.DelayedRead->Sglist.Acquire());
     }
 
@@ -785,9 +785,9 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         f.ReadCompletion.SetValue({});
         f.Executor->Run();
         UNIT_ASSERT_VALUES_EQUAL(
-            Wait(future).GetError().GetCode(),
-            E_CANCELLED);
-        UNIT_ASSERT_VALUES_EQUAL(buffer, TString(buffer.size(), '?'));
+            E_CANCELLED,
+            Wait(future).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), '?'), buffer);
     }
 
     Y_UNIT_TEST(TargetStopWaitsForActualStorageCompletionAfterDisconnect)
@@ -811,8 +811,8 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         UNIT_ASSERT(waits);
         UNIT_ASSERT(alive);
         UNIT_ASSERT(!f.DelayedRead->Sglist.Acquire());
-        UNIT_ASSERT_VALUES_EQUAL(Wait(future).GetError().GetCode(), E_REJECTED);
-        UNIT_ASSERT_VALUES_EQUAL(buffer, TString(buffer.size(), '?'));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, Wait(future).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), '?'), buffer);
     }
 
     Y_UNIT_TEST(EndpointAndTargetApplySharedAdmissionLimits)
@@ -839,8 +839,8 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
             f.ReadCompletion.SetValue({});
             f.Executor->Run();
             UNIT_ASSERT(!HasError(Wait(read)));
-            UNIT_ASSERT_VALUES_EQUAL(code, E_REJECTED);
-            UNIT_ASSERT_VALUES_EQUAL(f.Zeroes, 0);
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, code);
+            UNIT_ASSERT_VALUES_EQUAL(0, f.Zeroes);
             auto next = f.Endpoint->ZeroBlocks(
                 MakeIntrusive<TCallContext>(),
                 MakeZero());
@@ -859,8 +859,8 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
             MakeIntrusive<TCallContext>(),
             MakeRead(buffer));
         f.Run(0);
-        UNIT_ASSERT_VALUES_EQUAL(Wait(read).GetError().GetCode(), S_OK);
-        UNIT_ASSERT_VALUES_EQUAL(f.Reads, 1);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, Wait(read).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Reads);
         auto zero =
             f.Endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), MakeZero());
         f.Run(1);
@@ -876,7 +876,7 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         auto future = f.Endpoint->WriteBlocksLocal(
             MakeIntrusive<TCallContext>(),
             MakeWrite(buffer));
-        UNIT_ASSERT_VALUES_EQUAL(Wait(future).GetError().GetCode(), E_REJECTED);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, Wait(future).GetError().GetCode());
         UNIT_ASSERT(f.Channel->Requests.empty());
     }
 
@@ -903,10 +903,10 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         f.Run(0);
         UNIT_ASSERT(!HasError(Wait(first)));
         UNIT_ASSERT(second.Initialized());
-        UNIT_ASSERT_VALUES_EQUAL(f.Channel->Requests.size(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(2, f.Channel->Requests.size());
         f.Run(1);
         UNIT_ASSERT(!HasError(Wait(second)));
-        UNIT_ASSERT_VALUES_EQUAL(f.Writes, 2);
+        UNIT_ASSERT_VALUES_EQUAL(2, f.Writes);
     }
 
     Y_UNIT_TEST(ChargesOnlyOutgoingWritePayloadBytes)
@@ -950,9 +950,9 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
                 MakeIntrusive<TCallContext>(),
                 MakeZero());
             f.Run(0);
-            UNIT_ASSERT_VALUES_EQUAL(Wait(future).GetError().GetCode(), code);
-            UNIT_ASSERT_VALUES_EQUAL(f.Zeroes, 1);
-            UNIT_ASSERT_VALUES_EQUAL(f.Channel->Requests.size(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(code, Wait(future).GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(1, f.Zeroes);
+            UNIT_ASSERT_VALUES_EQUAL(1, f.Channel->Requests.size());
             UNIT_ASSERT(!f.Channel->Closing);
         }
     }
@@ -982,19 +982,19 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
             MakeIntrusive<TCallContext>(),
             MakeRead(buffer));
         f.Run(0);
-        UNIT_ASSERT_VALUES_EQUAL(Wait(read).GetError().GetCode(), E_FAIL);
-        UNIT_ASSERT_VALUES_EQUAL(buffer, TString(buffer.size(), '?'));
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, Wait(read).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), '?'), buffer);
 
         auto write = f.Endpoint->WriteBlocksLocal(
             MakeIntrusive<TCallContext>(),
             MakeWrite(buffer));
         f.Run(1);
-        UNIT_ASSERT_VALUES_EQUAL(Wait(write).GetError().GetCode(), E_FAIL);
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, Wait(write).GetError().GetCode());
 
         auto zero =
             f.Endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), MakeZero());
         f.Run(2);
-        UNIT_ASSERT_VALUES_EQUAL(Wait(zero).GetError().GetCode(), E_FAIL);
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, Wait(zero).GetError().GetCode());
 
         f.Service->ZeroBlocksHandler = [](const auto& request)
         {
@@ -1048,8 +1048,8 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
             }
             f.Channel->Reply(1, std::move(response));
             UNIT_ASSERT_VALUES_EQUAL(
-                Wait(future).GetError().GetCode(),
-                E_BADMSG);
+                E_BADMSG,
+                Wait(future).GetError().GetCode());
             UNIT_ASSERT(!f.Channel->Closing);
             f.Run(1);
             UNIT_ASSERT(!HasError(Wait(pendingZero)));
@@ -1058,7 +1058,7 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
                 MakeZero());
             f.Run(2);
             UNIT_ASSERT(!HasError(Wait(nextZero)));
-            UNIT_ASSERT_VALUES_EQUAL(buffer, TString(buffer.size(), '?'));
+            UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), '?'), buffer);
         }
     }
 
@@ -1078,8 +1078,8 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         f.Channel->Reply(1, std::move(response));
         UNIT_ASSERT(!HasError(Wait(future)));
         UNIT_ASSERT_VALUES_EQUAL(
-            buffer,
-            TString(17, 'a') + TString(buffer.size() - 17, 'b'));
+            TString(17, 'a') + TString(buffer.size() - 17, 'b'),
+            buffer);
     }
 
     Y_UNIT_TEST(StorageReadErrorHasNoPayloadAndDoesNotCopyData)
@@ -1097,9 +1097,9 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
             MakeIntrusive<TCallContext>(),
             MakeRead(buffer));
         f.Run(0);
-        UNIT_ASSERT_VALUES_EQUAL(Wait(read).GetError().GetCode(), E_IO);
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, Wait(read).GetError().GetCode());
         UNIT_ASSERT(!f.Channel->Closing);
-        UNIT_ASSERT_VALUES_EQUAL(buffer, TString(buffer.size(), '?'));
+        UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), '?'), buffer);
     }
 
     Y_UNIT_TEST(FragmentedWritePayloadOutlivesReceivedEvent)
@@ -1126,12 +1126,12 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         {
             auto guard = f.DelayedWrite->Sglist.Acquire();
             UNIT_ASSERT(guard);
-            UNIT_ASSERT_VALUES_EQUAL(guard.Get().size(), 2);
+            UNIT_ASSERT_VALUES_EQUAL(2, guard.Get().size());
             SgListCopy(guard.Get(), {snapshot.Detach(), snapshot.size()});
         }
         UNIT_ASSERT_VALUES_EQUAL(
-            snapshot,
-            TString(17, 'a') + TString(snapshot.size() - 17, 'b'));
+            TString(17, 'a') + TString(snapshot.size() - 17, 'b'),
+            snapshot);
         f.WriteCompletion.SetValue({});
         f.Executor->Run();
         UNIT_ASSERT(!HasError(Wait(future).GetError()));
@@ -1170,12 +1170,12 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
             auto result = Wait(future);
             UNIT_ASSERT(!HasError(result.GetError()));
             UNIT_ASSERT_VALUES_EQUAL(
+                E_ARGUMENT,
                 result.GetResult()
                     ->Get<TEvService::TEvWriteBlocksResponse>()
                     ->Record.GetError()
-                    .GetCode(),
-                E_ARGUMENT);
-            UNIT_ASSERT_VALUES_EQUAL(f.Writes, 0);
+                    .GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, f.Writes);
         }
     }
 
@@ -1187,14 +1187,14 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         request->SetBlockSize(0);
         auto future =
             f.Endpoint->ReadBlocksLocal(MakeIntrusive<TCallContext>(), request);
-        UNIT_ASSERT_VALUES_EQUAL(Wait(future).GetError().GetCode(), E_ARGUMENT);
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, Wait(future).GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
+            E_NOT_IMPLEMENTED,
             Wait(f.Endpoint->MountVolume(
                      MakeIntrusive<TCallContext>(),
                      std::make_shared<NProto::TMountVolumeRequest>()))
                 .GetError()
-                .GetCode(),
-            E_NOT_IMPLEMENTED);
+                .GetCode());
         UNIT_ASSERT(f.Channel->Requests.empty());
     }
 
@@ -1218,11 +1218,11 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         f.Run(0);
         f.Run(1);
         UNIT_ASSERT_VALUES_EQUAL(
-            f.Channel->Requests[0].Timeout,
-            TDuration::MilliSeconds(1));
+            TDuration::MilliSeconds(1),
+            f.Channel->Requests[0].Timeout);
         UNIT_ASSERT_VALUES_EQUAL(
-            f.Channel->Requests[1].Timeout,
-            TDuration::MilliSeconds(1));
+            TDuration::MilliSeconds(1),
+            f.Channel->Requests[1].Timeout);
 
         // The channel owns timeout handling. Once it delivers a result, the
         // endpoint must preserve that result even after the original timeout.
@@ -1232,7 +1232,7 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         f.Executor->Run();
         UNIT_ASSERT(!HasError(Wait(read)));
         UNIT_ASSERT(!HasError(Wait(write)));
-        UNIT_ASSERT_VALUES_EQUAL(buffer, TString(buffer.size(), 'r'));
+        UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), 'r'), buffer);
     }
 
     Y_UNIT_TEST(TargetRejectsInvalidReadAndWriteBeforeCallingStorage)
@@ -1261,15 +1261,15 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
                         f.Channel->Take(1)));
             });
         f.Run(0);
-        UNIT_ASSERT_VALUES_EQUAL(Wait(zero).GetError().GetCode(), E_REJECTED);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, Wait(zero).GetError().GetCode());
         auto readResponse = Wait(readResult);
         UNIT_ASSERT(!HasError(readResponse.GetError()));
         UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
             readResponse.GetResult()
                 ->Get<TEvService::TEvReadBlocksResponse>()
                 ->Record.GetError()
-                .GetCode(),
-            E_ARGUMENT);
+                .GetCode());
         auto write = std::make_unique<TEvService::TEvWriteBlocksRequest>();
         write->Record.SetDiskId("disk");
         write->Record.SetBlockSize(BlockSize);
@@ -1280,14 +1280,14 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         auto writeResponse = Wait(writeResult);
         UNIT_ASSERT(!HasError(writeResponse.GetError()));
         UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
             writeResponse.GetResult()
                 ->Get<TEvService::TEvWriteBlocksResponse>()
                 ->Record.GetError()
-                .GetCode(),
-            E_ARGUMENT);
-        UNIT_ASSERT_VALUES_EQUAL(f.Reads, 0);
-        UNIT_ASSERT_VALUES_EQUAL(f.Writes, 0);
-        UNIT_ASSERT_VALUES_EQUAL(f.Zeroes, 0);
+                .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, f.Reads);
+        UNIT_ASSERT_VALUES_EQUAL(0, f.Writes);
+        UNIT_ASSERT_VALUES_EQUAL(0, f.Zeroes);
     }
 
     Y_UNIT_TEST(
@@ -1347,8 +1347,8 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         f.Target.reset();
         UNIT_ASSERT(weak.expired());
         f.Executor->Run();
-        UNIT_ASSERT_VALUES_EQUAL(Wait(result).GetError().GetCode(), E_REJECTED);
-        UNIT_ASSERT_VALUES_EQUAL(f.Zeroes, 0);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, Wait(result).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, f.Zeroes);
         UNIT_ASSERT(!f.Channel->Closing);
     }
 
@@ -1414,8 +1414,8 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
             UNIT_ASSERT(!HasError(Wait(next)));
             f.Channel->Fail(index, E_TIMEOUT);
             UNIT_ASSERT_VALUES_EQUAL(
-                Wait(rejected).GetError().GetCode(),
-                E_TIMEOUT);
+                E_TIMEOUT,
+                Wait(rejected).GetError().GetCode());
         }
     }
 
@@ -1437,8 +1437,8 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         auto second =
             f.Endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), MakeZero());
         f.Run(1);
-        UNIT_ASSERT_VALUES_EQUAL(Wait(second).GetError().GetCode(), E_REJECTED);
-        UNIT_ASSERT_VALUES_EQUAL(f.Zeroes, 1);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, Wait(second).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Zeroes);
     }
 
     Y_UNIT_TEST(RealTcpHelloAndIcV2ExchangeBlockDataInBothDirections)
@@ -1497,7 +1497,7 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
             for (size_t peer = 0; peer < reads.size(); ++peer) {
                 for (size_t i = 0; i < Count; ++i) {
                     UNIT_ASSERT(!HasError(f.Pump(reads[peer][i])));
-                    UNIT_ASSERT_VALUES_EQUAL(buffers[peer][i], payloads[i]);
+                    UNIT_ASSERT_VALUES_EQUAL(payloads[i], buffers[peer][i]);
                 }
                 auto request = MakeZero();
                 request->SetBlocksCount(PayloadBytes / BlockSize);
@@ -1508,7 +1508,7 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
                 UNIT_ASSERT(!HasError(f.Pump(f.Endpoints[peer]->ReadBlocksLocal(
                     MakeIntrusive<TCallContext>(),
                     MakeRead(buffer)))));
-                UNIT_ASSERT_VALUES_EQUAL(buffer, TString(PayloadBytes, '\0'));
+                UNIT_ASSERT_VALUES_EQUAL(TString(PayloadBytes, '\0'), buffer);
             }
         }
     }

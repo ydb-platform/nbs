@@ -20,17 +20,17 @@ Y_UNIT_TEST_SUITE(TRequestTrackerTest)
         config.MaxInflightBytes = 16;
         auto tracker = std::make_shared<TRequestTracker>(config);
         UNIT_ASSERT_VALUES_EQUAL(
-            tracker->Acquire(17).GetError().GetCode(),
-            E_REJECTED);
+            E_REJECTED,
+            tracker->Acquire(17).GetError().GetCode());
         auto reservation = tracker->Acquire(16);
         UNIT_ASSERT(!HasError(reservation.GetError()));
         UNIT_ASSERT(!HasError(tracker->CheckRunning()));
         reservation.ExtractResult().reset();
         tracker->Stop();
-        UNIT_ASSERT_VALUES_EQUAL(tracker->CheckRunning().GetCode(), E_REJECTED);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, tracker->CheckRunning().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
-            tracker->Acquire(0).GetError().GetCode(),
-            E_REJECTED);
+            E_REJECTED,
+            tracker->Acquire(0).GetError().GetCode());
     }
 
     Y_UNIT_TEST(ConcurrentReservationsRespectLimitsAndReleaseBudget)
@@ -105,8 +105,8 @@ Y_UNIT_TEST_SUITE(TRequestTrackerTest)
             }
             UNIT_ASSERT(!failed.load());
             UNIT_ASSERT_VALUES_EQUAL(
-                tracker->Acquire(0).GetError().GetCode(),
-                E_REJECTED);
+                E_REJECTED,
+                tracker->Acquire(0).GetError().GetCode());
         }
     }
 
@@ -135,8 +135,8 @@ Y_UNIT_TEST_SUITE(TRequestTrackerTest)
             stopping.join();
             tracker->Stop();
             UNIT_ASSERT_VALUES_EQUAL(
-                tracker->Acquire(0).GetError().GetCode(),
-                E_REJECTED);
+                E_REJECTED,
+                tracker->Acquire(0).GetError().GetCode());
         }
     }
 }
