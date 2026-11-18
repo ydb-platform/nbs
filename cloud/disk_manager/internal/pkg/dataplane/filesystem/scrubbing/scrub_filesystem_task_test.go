@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
@@ -464,4 +465,93 @@ func TestScrubFilesystemTaskNodeDeletedDuringScrubbing(t *testing.T) {
 	err = task.Run(f.ctx, execCtx)
 	require.NoError(t, err)
 	require.True(t, deleted)
+}
+
+func TestAddToFileSizeHistogram(t *testing.T) {
+	state := &scrubbing_protos.ScrubFilesystemTaskState{}
+	addToFileSizeHistogram(state, []nfs.Node{
+		{NodeID: 2, Type: nfs.NODE_KIND_FILE, Size: 0, Links: 1},
+		{NodeID: 3, Type: nfs.NODE_KIND_FILE, Size: 3, Links: 1},
+		// Hard link listed twice.
+		{NodeID: 4, Type: nfs.NODE_KIND_FILE, Size: 4, Links: 2},
+		{NodeID: 4, Type: nfs.NODE_KIND_FILE, Size: 4, Links: 2},
+		{NodeID: 5, Type: nfs.NODE_KIND_SYMLINK, Size: 100, Links: 1},
+		{NodeID: 6, Type: nfs.NODE_KIND_DIR, Size: 100, Links: 1},
+		// Node present in the index tablet but absent in the shard.
+		{NodeID: nfs.InvalidNodeID},
+	})
+
+	require.Equal(t, []float64{1, 0, 1, 1}, state.FileCountBySizeLog2)
+	require.Equal(t, []float64{0, 0, 3, 4}, state.FileBytesBySizeLog2)
+}
+
+func TestScrubFilesystemTaskMarksHistogramUnreliableAfterInterruption(t *testing.T) {
+	f := newFixture(t)
+	defer f.close(t)
+
+	filesystemID := t.Name()
+	f.prepareFilesystem(t, filesystemID)
+	defer f.cleanupFilesystem(t, filesystemID)
+
+	fsModel := f.fillFilesystem(t, filesystemID, nfs_testing.Root(
+		nfs_testing.File("a"),
+		nfs_testing.File("b"),
+	), false /* parallel */)
+	defer fsModel.Close()
+
+	execCtx := tasks_mocks.NewExecutionContextMock()
+	execCtx.On("GetTaskID").Return("scrub-restart-task")
+	execCtx.On("SaveState", mock.Anything).Return(nil)
+
+	listNodesMaxBytes := uint32(1)
+	task := &scrubFilesystemTask{
+		config: &scrubbing_config.FilesystemScrubbingConfig{
+			ListNodesMaxBytes: &listNodesMaxBytes,
+		},
+		factory: f.factory,
+		storage: f.storage,
+		request: &scrubbing_protos.ScrubFilesystemRequest{
+			Filesystem: &types.Filesystem{
+				ZoneId:       "zone",
+				FilesystemId: filesystemID,
+			},
+		},
+		state: &scrubbing_protos.ScrubFilesystemTaskState{},
+	}
+
+	runCtx, cancel := context.WithCancel(f.ctx)
+	defer cancel()
+	task.callback = func([]nfs.Node) { cancel() }
+	require.ErrorIs(t, task.Run(runCtx, execCtx), context.Canceled)
+	require.Equal(t, []float64{1}, task.state.FileCountBySizeLog2)
+	require.False(t, task.state.FileSizeHistogramUnreliable)
+
+	request, err := proto.Marshal(task.request)
+	require.NoError(t, err)
+	state, err := task.Save()
+	require.NoError(t, err)
+
+	// A retriable error can save counts before the page cookie is committed.
+	require.NoError(t, task.Load(request, state))
+	task.callback = func([]nfs.Node) {}
+	require.NoError(t, task.Run(f.ctx, execCtx))
+	require.True(t, task.state.FileSizeHistogramUnreliable)
+
+	state, err = task.Save()
+	require.NoError(t, err)
+	require.NoError(t, task.Load(request, state))
+	require.True(t, task.state.FileSizeHistogramUnreliable)
+
+	// A crash can leave only the initial saved state and an empty queue.
+	state, err = proto.Marshal(&scrubbing_protos.ScrubFilesystemTaskState{
+		RootNodeScheduled: true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, task.Load(request, state))
+	task.callback = func([]nfs.Node) {
+		t.Error("resumed traversal should not rescan completed directories")
+	}
+	require.NoError(t, task.Run(f.ctx, execCtx))
+	require.True(t, task.state.FileSizeHistogramUnreliable)
+	require.Empty(t, task.state.FileCountBySizeLog2)
 }
