@@ -63,7 +63,6 @@ func (t *deleteDiskTask) deleteDisk(
 
 	selfTaskID := execCtx.GetTaskID()
 	diskID := t.request.Disk.DiskId
-	sync := t.request.Sync
 
 	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
@@ -81,46 +80,14 @@ func (t *deleteDiskTask) deleteDisk(
 
 	zoneID := diskMeta.ZoneID
 
-	taskID, err := t.scheduler.ScheduleTask(
-		headers.SetIncomingIdempotencyKey(
-			ctx,
-			selfTaskID+"_delete_disk_from_incremental",
-		),
-		"dataplane.DeleteDiskFromIncremental",
-		"",
-		&dataplane_protos.DeleteDiskFromIncrementalRequest{
-			Disk: &types.Disk{
-				ZoneId: zoneID,
-				DiskId: diskID,
-			},
-		},
-	)
-	if err != nil {
-		return err
-	}
-
-	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
-	if err != nil {
-		return err
-	}
-
-	client, err := t.nbsFactory.GetClient(ctx, zoneID)
-	if err != nil {
-		return err
-	}
-
-	if sync {
-		err = client.DeleteSync(ctx, diskID)
-	} else {
-		err = client.Delete(ctx, diskID)
-	}
+	err = t.deleteDiskFromExternal(ctx, execCtx, diskID, zoneID)
 	if err != nil {
 		return err
 	}
 
 	// Only overlay disks (created from image) should be released.
 	if len(diskMeta.SrcImageID) != 0 {
-		taskID, err = t.poolService.ReleaseBaseDisk(
+		taskID, err := t.poolService.ReleaseBaseDisk(
 			headers.SetIncomingIdempotencyKey(
 				ctx,
 				selfTaskID+"_release_base_disk",
@@ -216,7 +183,7 @@ func (t *deleteDiskTask) deleteDiskWithoutMetadata(
 		return err
 	}
 
-	err = t.deleteDiskFromExternalStores(ctx, execCtx, diskID, zoneID)
+	err = t.deleteDiskFromExternal(ctx, execCtx, diskID, zoneID)
 	if err != nil {
 		return err
 	}
@@ -233,7 +200,7 @@ func (t *deleteDiskTask) deleteDiskWithoutMetadata(
 	return t.storage.DiskDeleted(ctx, diskID, time.Now())
 }
 
-func (t *deleteDiskTask) deleteDiskFromExternalStores(
+func (t *deleteDiskTask) deleteDiskFromExternal(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	diskID string,
