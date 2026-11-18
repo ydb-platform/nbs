@@ -6,8 +6,8 @@ namespace NCloud::NFileStore::NDiagnostics {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/* Using https://en.wikipedia.org/wiki/Bayesian_average
-so that consistent latency across multiple requests ranks above sporadic spikes. */
+/* Using Bayesian Average so that consistent latency across multiple requests
+ * ranks above sporadic spikes. */
 
 inline constexpr double LatencyPriorRequestCount = 20.0;
 
