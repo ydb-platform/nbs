@@ -3328,6 +3328,8 @@ struct TTxIndexTablet
         const NProtoPrivate::TUnsafeChangeTabletStateRequest Request;
         NProtoPrivate::TUnsafeChangeTabletStateResponse Response;
 
+        NProto::TError Error;
+
         TUnsafeChangeTabletState(
                 TRequestInfoPtr requestInfo,
                 NProtoPrivate::TUnsafeChangeTabletStateRequest request)

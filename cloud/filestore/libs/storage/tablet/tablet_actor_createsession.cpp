@@ -20,7 +20,6 @@ void FillFeatures(
     const NProto::TFileSystem& fileSystem,
     const NProto::TFileSystemStats& fileSystemStats,
     const TStorageConfig& config,
-    const TSession& session,
     NProto::TFileStore& fileStore)
 {
     auto* features = fileStore.MutableFeatures();
@@ -116,8 +115,7 @@ void FillFeatures(
 
     features->SetTabletDirectRdmaEnabled(config.GetTabletDirectRdmaEnabled());
 
-    features->SetGuestPosixAclEnabled(
-        session.GetPersistentOptions().GetGuestPosixAclEnabled());
+    features->SetGuestPosixAclEnabled(fileSystem.GetGuestPosixAclEnabled());
 
     features->SetZeroCopyReadEnabled(config.GetZeroCopyReadEnabled());
 
@@ -195,7 +193,6 @@ TActorId DoRecoverSession(
         proto.SetSessionState(session->GetSessionState());
         proto.SetMaxSeqNo(session->GetSessionSeqNo());
         proto.SetMaxRwSeqNo(session->GetSessionRwSeqNo());
-        *proto.MutablePersistentOptions() = session->GetPersistentOptions();
         db.WriteSession(proto);
     }
 
@@ -471,8 +468,6 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
         seqNo);
 
     const auto sessionOptions = TSession::CreateSessionOptions(Config);
-    const auto persistentSessionOptions =
-        TSession::CreatePersistentSessionOptions(*Config);
 
     auto* newSession = CreateSession(
         *db,
@@ -483,8 +478,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
         seqNo,
         readOnly,
         owner,
-        sessionOptions,
-        persistentSessionOptions);
+        sessionOptions);
     const auto subSession =
         newSession->SubSessions.GetSubSessionBySeqNo(seqNo);
     if (subSession) {
@@ -549,7 +543,6 @@ void TIndexTabletActor::CompleteTx_CreateSession(
             GetFileSystem(),
             GetFileSystemStats(),
             *Config,
-            *session,
             fileStore);
 
         LOG_DEBUG(
