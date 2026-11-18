@@ -24,6 +24,7 @@
 #include <util/system/file.h>
 
 #include <atomic>
+#include <optional>
 #include <span>
 #include <thread>
 
@@ -36,8 +37,6 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 TLog Log;
-
-constexpr TDuration COMPLETION_STATS_WAIT_DURATION = TDuration::Seconds(1);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -97,6 +96,8 @@ private:
 
     TVector<vhd_request_queue*> Queues;
     std::unique_ptr<TAtomicStats[]> QueueStats;
+    std::optional<TCompleteStats> StoppedStats;
+    TSimpleStats LastStats;
 
     TVector<std::thread> QueueThreads;
 
@@ -198,6 +199,10 @@ void TServer::Stop()
         queueThread.join();
     }
 
+    // Queues have published their final counts. The backend can still
+    // provide completion statistics for the last report to the parent.
+    StoppedStats = GetStats(LastStats);
+
     // 3. Stop the completion thread
     Backend->Stop();
 
@@ -216,22 +221,23 @@ void TServer::Stop()
 
 TCompleteStats TServer::GetStats(const TSimpleStats& prevStats)
 {
-    auto completionStats =
-        Backend->GetCompletionStats(COMPLETION_STATS_WAIT_DURATION);
-    if (!completionStats) {
-        return TCompleteStats{
-            .SimpleStats{prevStats},
-            .CriticalEvents{TakeAccumulatedCriticalEvents()}};
+    if (StoppedStats) {
+        return *StoppedStats;
     }
+    const auto completionStats = Backend->GetCompletionStats();
 
     TCompleteStats result{
-        .SimpleStats{*completionStats},
-        .CriticalEvents = TakeAccumulatedCriticalEvents()};
+        .SimpleStats{completionStats ? *completionStats : prevStats},
+        .CriticalEvents = TakeAccumulatedCriticalEvents(),
+        .Fresh = completionStats.has_value()};
 
-    for (ui32 i = 0; i != Queues.size(); ++i) {
-        result.SimpleStats += QueueStats[i];
+    if (completionStats) {
+        for (ui32 i = 0; i != Queues.size(); ++i) {
+            result.SimpleStats += QueueStats[i];
+        }
     }
 
+    LastStats = result.SimpleStats;
     return result;
 }
 

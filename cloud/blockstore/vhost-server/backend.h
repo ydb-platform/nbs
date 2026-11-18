@@ -6,6 +6,8 @@
 #include <cloud/contrib/vhost/include/vhost/blockdev.h>
 #include <cloud/storage/core/libs/common/startable.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NVHostServer {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -17,8 +19,7 @@ struct IBackend: public IStartable
         ui32 queueIndex,
         vhd_request_queue* queue,
         TSimpleStats& queueStats) = 0;
-    virtual std::optional<TSimpleStats> GetCompletionStats(
-        TDuration timeout) = 0;
+    virtual std::optional<TSimpleStats> GetCompletionStats() = 0;
 };
 
 }   // namespace NCloud::NBlockStore::NVHostServer

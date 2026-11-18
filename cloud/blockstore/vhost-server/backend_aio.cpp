@@ -33,7 +33,8 @@ void CompleteRequestImpl(
     IEncryptor* encryptor,
     TAioRequestHolder req,
     vhd_bdev_io_result status,
-    TAtomicStats& stats)
+    TAtomicStats& stats,
+    const TLatencySliConfig* latencySli)
 {
     auto* bio = vhd_get_bdev_io(req->Io);
     const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
@@ -68,6 +69,9 @@ void CompleteRequestImpl(
         stats.Sizes[bio->type].Increment(bytes);
     }
 
+    stats.RecordLatency(
+        bio->type == VHD_BDEV_WRITE, bytes, now - req->SubmitTs,
+        status != VHD_BDEV_SUCCESS, latencySli);
     vhd_complete_bio(req->Io, status);
 }
 
@@ -84,13 +88,14 @@ private:
 
     io_context_t Io = {};
     ui32 BlockSize = 0;
+    TLatencySliConfigPtr LatencySli;
 
     ui32 BatchSize = 0;
     TVector<TVector<iocb*>> Batches;
 
     std::thread CompletionThread;
 
-    ICompletionStatsPtr CompletionStats;
+    TAtomicStats CompletionStatsData;
 
     ITaskQueuePtr ThreadPool;
 
@@ -107,7 +112,7 @@ public:
         ui32 queueIndex,
         vhd_request_queue* queue,
         TSimpleStats& queueStats) override;
-    std::optional<TSimpleStats> GetCompletionStats(TDuration timeout) override;
+    std::optional<TSimpleStats> GetCompletionStats() override;
 
 private:
     // Dequeue requests from |queue| and start processing them. Returns the
@@ -144,7 +149,6 @@ TAioBackend::TAioBackend(
     : Logging{std::move(logging)}
     , Log(Logging->CreateLog("AIO"))
     , Encryptor(std::move(encryptor))
-    , CompletionStats(CreateCompletionStats())
     , ThreadPool(
           threadPoolSize > 0 ? CreateThreadPool("ENCRYPTION", threadPoolSize)
                              : nullptr)
@@ -184,6 +188,7 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
         STORAGE_INFO("Encryption enabled");
     }
     BatchSize = options.BatchSize;
+    LatencySli = options.LatencySli;
 
     IoSetup();
 
@@ -365,14 +370,16 @@ void TAioBackend::ProcessQueue(
                     TAioSubRequest::FromIocb(batch[0]),
                     VHD_BDEV_IOERR,
                     stats,
-                    vhd_complete_bio);
+                    vhd_complete_bio,
+                    LatencySli.get());
             } else {
                 CompleteRequestImpl(
                     Log,
                     Encryptor.get(),
                     TAioRequest::FromIocb(batch[0]),
                     VHD_BDEV_IOERR,
-                    stats);
+                    stats,
+                    LatencySli.get());
             }
 
             queueStats += stats;
@@ -387,9 +394,11 @@ void TAioBackend::ProcessQueue(
     }
 }
 
-std::optional<TSimpleStats> TAioBackend::GetCompletionStats(TDuration timeout)
+std::optional<TSimpleStats> TAioBackend::GetCompletionStats()
 {
-    return CompletionStats->Get(timeout);
+    TSimpleStats stats;
+    stats += CompletionStatsData;
+    return stats;
 }
 
 size_t TAioBackend::PrepareBatch(
@@ -411,7 +420,8 @@ size_t TAioBackend::PrepareBatch(
             req.io,
             batch,
             now,
-            queueStats);
+            queueStats,
+            LatencySli.get());
     }
 
     return batch.size() - initialSize;
@@ -436,7 +446,8 @@ void TAioBackend::CompleteCompoundRequest(
             std::move(sub),
             result,
             stats,
-            vhd_complete_bio);
+            vhd_complete_bio,
+            LatencySli.get());
         stats.Completed += 1;
     };
 
@@ -469,7 +480,8 @@ void TAioBackend::CompleteRequest(
             Encryptor.get(),
             std::move(req),
             result,
-            stats);
+            stats,
+            LatencySli.get());
         stats.Completed += 1;
     };
 
@@ -492,7 +504,7 @@ void TAioBackend::CompletionThreadFunc()
 
     TVector<io_event> events(BatchSize);
 
-    TAtomicStats stats;
+    auto& stats = CompletionStatsData;
 
     timespec timeout{.tv_sec = 1, .tv_nsec = 0};
 
@@ -506,8 +518,6 @@ void TAioBackend::CompletionThreadFunc()
         if (ret < 0 && ret != -EINTR) {
             Y_ABORT("io_getevents: %s", strerror(-ret));
         }
-
-        CompletionStats->Sync(stats);
 
         if (shouldStop) {
             break;

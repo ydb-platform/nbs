@@ -123,6 +123,7 @@ class TRdmaBackend final: public IBackend
 {
 private:
     const ILoggingServicePtr Logging;
+    const bool UseRdmaTransport;
     TLog Log;
     IClientPtr RdmaClient;
     IStorageProviderPtr StorageProvider;
@@ -131,14 +132,14 @@ private:
     ITimerPtr Timer;
     NProto::TVolume Volume;
     TString ClientId;
-    ICompletionStatsPtr CompletionStats;
-    TSimpleStats CompletionStatsData;
+    TAtomicStats CompletionStatsData;
+    TLatencySliConfigPtr LatencySli;
     bool ReadOnly = false;
     ui32 BlockSize = 0;
     ui32 SectorsToBlockShift = 0;
 
 public:
-    explicit TRdmaBackend(ILoggingServicePtr logging);
+    TRdmaBackend(ILoggingServicePtr logging, IBlockStorePtr dataClient);
 
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
@@ -147,7 +148,7 @@ public:
         ui32 queueIndex,
         vhd_request_queue* queue,
         TSimpleStats& queueStats) override;
-    std::optional<TSimpleStats> GetCompletionStats(TDuration timeout) override;
+    std::optional<TSimpleStats> GetCompletionStats() override;
 
 private:
     void ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles);
@@ -161,9 +162,12 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRdmaBackend::TRdmaBackend(ILoggingServicePtr logging)
+TRdmaBackend::TRdmaBackend(
+        ILoggingServicePtr logging,
+        IBlockStorePtr dataClient)
     : Logging{std::move(logging)}
-    , CompletionStats(CreateCompletionStats())
+    , UseRdmaTransport{!dataClient}
+    , DataClient{std::move(dataClient)}
 {
     Log = Logging->CreateLog("RDMA");
 }
@@ -176,6 +180,7 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
     Timer = CreateWallClockTimer();
 
     ClientId = options.ClientId;
+    LatencySli = options.LatencySli;
     ReadOnly = options.ReadOnly;
 
     BlockSize = options.BlockSize;
@@ -186,21 +191,23 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 
     SectorsToBlockShift = MostSignificantBit(BlockSize) - VHD_SECTOR_SHIFT;
 
-    auto rdmaClientConfig = std::make_shared<TClientConfig>();
-    rdmaClientConfig->QueueSize = options.RdmaClient.QueueSize;
-    rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
-    rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
+    if (UseRdmaTransport) {
+        auto rdmaClientConfig = std::make_shared<TClientConfig>();
+        rdmaClientConfig->QueueSize = options.RdmaClient.QueueSize;
+        rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
+        rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
 
-    auto monitoring = NCloud::CreateMonitoringServiceStub();
-    RdmaClient = NCloud::NBlockStore::NRdma::CreateRdmaClient(
-        Logging,
-        std::move(monitoring),
-        std::move(rdmaClientConfig));
+        auto monitoring = NCloud::CreateMonitoringServiceStub();
+        RdmaClient = NCloud::NBlockStore::NRdma::CreateRdmaClient(
+            Logging,
+            std::move(monitoring),
+            std::move(rdmaClientConfig));
 
-    StorageProvider = NStorage::CreateRdmaStorageProvider(
-        CreateServerStatsStub(),
-        RdmaClient,
-        NStorage::ERdmaTaskQueueOpt::DontUse);
+        StorageProvider = NStorage::CreateRdmaStorageProvider(
+            CreateServerStatsStub(),
+            RdmaClient,
+            NStorage::ERdmaTaskQueueOpt::DontUse);
+    }
 
     Volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
     Volume.SetBlockSize(BlockSize);
@@ -288,6 +295,11 @@ void TRdmaBackend::Start()
 {
     STORAGE_INFO("Starting RDMA backend");
 
+    if (!UseRdmaTransport) {
+        DataClient->Start();
+        return;
+    }
+
     Scheduler->Start();
     RdmaClient->Start();
 
@@ -304,6 +316,11 @@ void TRdmaBackend::Start()
 void TRdmaBackend::Stop()
 {
     STORAGE_INFO("Stopping RDMA backend");
+
+    if (!UseRdmaTransport) {
+        DataClient->Stop();
+        return;
+    }
 
     RdmaClient->Stop();
     Scheduler->Stop();
@@ -342,9 +359,11 @@ void TRdmaBackend::ProcessQueue(
     }
 }
 
-std::optional<TSimpleStats> TRdmaBackend::GetCompletionStats(TDuration timeout)
+std::optional<TSimpleStats> TRdmaBackend::GetCompletionStats()
 {
-    return CompletionStats->Get(timeout);
+    TSimpleStats stats;
+    stats += CompletionStatsData;
+    return stats;
 }
 
 TSgList ConvertVhdSgList(const vhd_sglist& vhdSglist)
@@ -449,20 +468,22 @@ void TRdmaBackend::CompleteRequest(
 
     ++CompletionStatsData.Completed;
 
+    const auto elapsed = isError ? 0 : GetCycleCount() - startCycles;
     if (!isError) {
         const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
         CompletionStatsData.Requests[bio->type].Count += 1;
         CompletionStatsData.Requests[bio->type].Bytes += bytes;
         CompletionStatsData.Sizes[bio->type].Increment(bytes);
-        CompletionStatsData.Times[bio->type].Increment(
-            GetCycleCount() - startCycles);
+        CompletionStatsData.Times[bio->type].Increment(elapsed);
     } else {
         CompletionStatsData.Requests[bio->type].Errors += 1;
     }
 
+    CompletionStatsData.RecordLatency(
+        bio->type == VHD_BDEV_WRITE, bio->total_sectors * VHD_SECTOR_SIZE,
+        elapsed, isError, LatencySli.get(),
+        false);   // The RDMA response does not carry remote throttle timing.
     vhd_complete_bio(io, isError ? VHD_BDEV_IOERR : VHD_BDEV_SUCCESS);
-
-    CompletionStats->Sync(CompletionStatsData);
 }
 
 }   // namespace
@@ -471,7 +492,16 @@ void TRdmaBackend::CompleteRequest(
 
 IBackendPtr CreateRdmaBackend(ILoggingServicePtr logging)
 {
-    return std::make_shared<TRdmaBackend>(std::move(logging));
+    return CreateRdmaBackend(std::move(logging), nullptr);
+}
+
+IBackendPtr CreateRdmaBackend(
+    ILoggingServicePtr logging,
+    IBlockStorePtr dataClient)
+{
+    return std::make_shared<TRdmaBackend>(
+        std::move(logging),
+        std::move(dataClient));
 }
 
 }   // namespace NCloud::NBlockStore::NVHostServer
