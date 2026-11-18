@@ -45,9 +45,7 @@ TStorageConfigPtr CreateStorageConfig(
     }
     storageConfig.SetInitialPullDelay(initialPullDelay.MilliSeconds());
 
-    return std::make_shared<const TStorageConfig>(
-        storageConfig,
-        std::move(featuresConfig));
+    return std::make_shared<TStorageConfig>(storageConfig, std::move(featuresConfig));
 }
 
 NFeatures::TFeaturesConfigPtr CreateFeatureConfig(
@@ -61,20 +59,16 @@ NFeatures::TFeaturesConfigPtr CreateFeatureConfig(
         feature->SetName(featureName);
         if (blacklist) {
             for (const auto& c: list) {
-                *feature->MutableBlacklist()->MutableCloudIds()->Add() =
-                    c.first;
-                *feature->MutableBlacklist()->MutableFolderIds()->Add() =
-                    c.second;
+                *feature->MutableBlacklist()->MutableCloudIds()->Add() = c.first;
+                *feature->MutableBlacklist()->MutableFolderIds()->Add() = c.second;
             }
             // All but blacklisted
             feature->SetCloudProbability(1);
             feature->SetFolderProbability(1);
         } else {
             for (const auto& c: list) {
-                *feature->MutableWhitelist()->MutableCloudIds()->Add() =
-                    c.first;
-                *feature->MutableWhitelist()->MutableFolderIds()->Add() =
-                    c.second;
+                *feature->MutableWhitelist()->MutableCloudIds()->Add() = c.first;
+                *feature->MutableWhitelist()->MutableFolderIds()->Add() = c.second;
             }
             // None but whitelisted
             feature->SetCloudProbability(0);
@@ -607,8 +601,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 preemptionType,
                 /*volumeBalancerEnabled=*/true,
                 DefaultCpuThreshold,
-                CreateFeatureConfig("Balancer", {}, true),
-                InitialPullDelay),
+                CreateFeatureConfig("Balancer", {}, true)),
             CreateDiagnosticsConfig(),
             {
                 {.DiskId = "vol0",
@@ -694,8 +687,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 preemptionType,
                 /*volumeBalancerEnabled=*/true,
                 DefaultCpuThreshold,
-                /*featuresConfig=*/nullptr,
-                InitialPullDelay),
+                /*featuresConfig=*/nullptr),
             CreateDiagnosticsConfig(),
             {
                 {.DiskId = "vol0", .LoadProfile = LoadHeavy, .SufferCount = 10},
@@ -760,8 +752,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                     preemptionType,
                     /*volumeBalancerEnabled=*/true,
                     DefaultCpuThreshold,
-                    CreateFeatureConfig("Balancer", {}, true),
-                    InitialPullDelay),
+                    CreateFeatureConfig("Balancer", {}, true)),
                 CreateDiagnosticsConfig(),
                 {
                     {.DiskId = "vol0",
