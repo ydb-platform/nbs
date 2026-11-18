@@ -259,6 +259,7 @@ func testDeleteDiskTaskWithNonExistentDisk(
 		// DeleteIfNonExistent option is on. Therefore, should proceed deleting
 		// even though the disk is missing from the database.
 
+		storage.On("GetDiskMeta", ctx, "disk").Return((*resources.DiskMeta)(nil), nil).Once()
 		cleanupID := legacyDiskCleanupPrefix + "toplevel_task_id"
 		storage.On("PrepareDiskCleanup", ctx, "disk", "toplevel_task_id", cleanupID).Return(true, nil).Once()
 		tx := &persistence.Transaction{}

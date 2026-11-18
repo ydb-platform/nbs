@@ -25,9 +25,18 @@ func (t *deleteDiskTask) deleteDiskWithoutMetadata(
 
 	diskID := t.request.Disk.DiskId
 	zoneID := t.request.Disk.ZoneId
+
+	meta, err := t.storage.GetDiskMeta(ctx, diskID)
+	if err != nil {
+		return err
+	}
+	if meta != nil && len(meta.ZoneID) != 0 {
+		zoneID = meta.ZoneID
+	}
+
 	if len(zoneID) == 0 {
-		// Zone was not specified in the request: nothing to clean up, the
-		// tombstone keeps the disk ID reserved.
+		// Zone is unknown both in meta and in the request: nothing to clean
+		// up, the tombstone keeps the disk ID reserved.
 		return nil
 	}
 

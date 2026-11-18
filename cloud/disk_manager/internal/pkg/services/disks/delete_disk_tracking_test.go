@@ -53,9 +53,12 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 				return nil
 			}
 			if tc.sync {
+				// setEstimate reads meta before DeleteDisk.
 				storage.On("GetDiskMeta", ctx, "disk").Return((*resources.DiskMeta)(nil), nil).Once()
 			}
 			storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything).Return((*resources.DiskMeta)(nil), nil).Once()
+			// Missing-disk path prefers zone from meta, then falls back to request.
+			storage.On("GetDiskMeta", ctx, "disk").Return((*resources.DiskMeta)(nil), nil).Once()
 			storage.On("PrepareDiskCleanup", ctx, "disk", "toplevel_task_id", id).Return(tc.prepared, errorFor("PrepareDiskCleanup")).Once()
 			setup := func() {
 				if !tc.prepared || tc.errorAt == "PrepareDiskCleanup" {
@@ -98,4 +101,52 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 			scheduler.AssertNotCalled(t, "ScheduleNonCancellableTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 		})
 	}
+}
+
+func TestDeleteDiskTaskPrefersZoneFromMeta(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	factory := nbs_mocks.NewFactoryMock()
+	client := nbs_mocks.NewClientMock()
+	execCtx := newExecutionContextMock()
+	task := &deleteDiskTask{storage: storage, scheduler: scheduler, nbsFactory: factory}
+
+	// Request zone is empty; zone must be taken from the still-present meta row.
+	request, err := proto.Marshal(&protos.DeleteDiskRequest{
+		Disk:                &types.Disk{DiskId: "disk"},
+		DeleteIfNonExistent: true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, task.Load(request, nil))
+
+	cleanupID := "legacy_disk_cleanup_toplevel_task_id"
+	storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything).
+		Return((*resources.DiskMeta)(nil), nil).Once()
+	storage.On("GetDiskMeta", ctx, "disk").
+		Return(&resources.DiskMeta{ID: "disk", ZoneID: "meta-zone"}, nil).Once()
+	storage.On("PrepareDiskCleanup", ctx, "disk", "toplevel_task_id", cleanupID).
+		Return(true, nil).Once()
+	scheduler.On(
+		"ScheduleTask",
+		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_incremental"),
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		&dataplane_protos.DeleteDiskFromIncrementalRequest{
+			Disk: &types.Disk{DiskId: "disk", ZoneId: "meta-zone"},
+		},
+	).Return("incremental", nil).Once()
+	scheduler.On("WaitTask", ctx, execCtx, "incremental").Return(nil, nil).Once()
+	factory.On("GetClient", ctx, "meta-zone").Return(client, nil).Once()
+	client.On("Delete", ctx, "disk").Return(nil).Once()
+
+	tx := &persistence.Transaction{}
+	storage.On("CompleteDiskCleanup", ctx, tx, "disk", cleanupID).Return(nil).Once()
+	execCtx.On("FinishWithPreparation", ctx, mock.Anything).Run(func(args mock.Arguments) {
+		prep := args.Get(1).(func(context.Context, *persistence.Transaction) error)
+		require.NoError(t, prep(ctx, tx))
+	}).Return(nil).Once()
+
+	require.NoError(t, task.Run(ctx, execCtx))
+	mock.AssertExpectationsForObjects(t, storage, scheduler, factory, client, execCtx)
 }
