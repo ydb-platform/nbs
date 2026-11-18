@@ -668,6 +668,18 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
         }
 
         {
+            auto part = service.CreateReadBlocksRequest(DefaultDiskId, 0, sessionId);
+            part->Record.MutableHeaders()->MutableInternal()->SetParallelSplitPart(true);
+            auto context = part->CallContext;
+            service.SendRequest(MakeStorageServiceId(), std::move(part));
+            auto response = service.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                1'000'000, response->Record.GetHeaders().GetSplitPostponedUs());
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDuration::Zero(), context->Time(EProcessingStage::Postponed));
+        }
+
+        {
             auto request = service.CreateWriteBlocksRequest(
                 DefaultDiskId,
                 TBlockRange64::MakeOneBlock(0),

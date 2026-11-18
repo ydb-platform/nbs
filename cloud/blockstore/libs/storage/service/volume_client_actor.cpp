@@ -55,14 +55,17 @@ class TVolumeClientActor final
         IEventHandlePtr Request;
         TCallContextPtr CallContext;
         ui64 SendTime;
+        bool ParallelSplitPart;
 
         TActiveRequest(
                 IEventHandlePtr request,
                 TCallContextPtr callContext,
-                ui64 sendTime)
+                ui64 sendTime,
+                bool parallelSplitPart)
             : Request(std::move(request))
             , CallContext(std::move(callContext))
             , SendTime(sendTime)
+            , ParallelSplitPart(parallelSplitPart)
         {}
     };
 
@@ -329,7 +332,8 @@ void TVolumeClientActor::HandleRequest(
         TActiveRequest(
             IEventHandlePtr(ev.Release()),
             msg->CallContext,
-            GetCycleCount()));
+            GetCycleCount(),
+            msg->Record.GetHeaders().GetInternal().GetParallelSplitPart()));
 
     LWTRACK(
         RequestSentPipe,
@@ -366,19 +370,10 @@ void TVolumeClientActor::HandleResponse(
     }
 
     if constexpr (RequiresThrottling<TMethod>) {
-        NProto::TThrottlerInfo& throttler =
-            *msg->Record.MutableHeaders()->MutableThrottler();
-        const ui64 throttlerDelay = throttler.GetDelay();
-        it->second.CallContext->AddTime(
-            EProcessingStage::Postponed,
-            TDuration::MicroSeconds(throttlerDelay));
-        throttler.SetDelay(0);
-        it->second.CallContext->SetPossiblePostponeDuration(TDuration::Zero());
-
-        it->second.CallContext->AddTime(
-            EProcessingStage::Shaping,
-            TDuration::MicroSeconds(throttler.GetShapingDelay()));
-        throttler.SetShapingDelay(0);
+        ConsumeRemoteThrottlerInfo(
+            *it->second.CallContext,
+            *msg->Record.MutableHeaders(),
+            it->second.ParallelSplitPart);
     }
 
     LWTRACK(

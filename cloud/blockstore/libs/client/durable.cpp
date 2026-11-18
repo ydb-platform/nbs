@@ -331,7 +331,9 @@ private:
                     {
                         auto nowCycles = GetCycleCount();
                         if (throttling) {
-                            state->CallContext->Advance(nowCycles);
+                            const auto delay =
+                                state->CallContext->Advance(nowCycles);
+                            state->CallContext->AddLatencyThrottleDelay(delay);
                         } else {
                             state->CallContext->AddTime(
                                 EProcessingStage::Backoff,

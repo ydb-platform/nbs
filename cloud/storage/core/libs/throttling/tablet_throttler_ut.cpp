@@ -25,8 +25,11 @@ using namespace NActors;
 class TSampleActorWithThrottler final: public TActor<TSampleActorWithThrottler>
 {
 public:
-    TSampleActorWithThrottler()
+    explicit TSampleActorWithThrottler(ui32 requestsToPostpone = 1,
+                                       TCallContextBasePtr sharedContext = {})
         : TActor(&TThis::StateWork)
+        , RequestsToPostpone(requestsToPostpone)
+        , SharedContext(std::move(sharedContext))
     {}
 
     void ResetThrottler(ITabletThrottlerPtr throttler)
@@ -45,12 +48,13 @@ public:
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx)
     {
-        if (RequestsCount++ == 0) {
-            // The first request should be postponed
-
+        if (RequestsCount++ < RequestsToPostpone) {
             auto callContext =
-                MakeIntrusive<TCallContextBase>(static_cast<ui64>(0));
-            auto requestInfo = TThrottlingRequestInfo{};
+                SharedContext
+                    ? SharedContext
+                    : MakeIntrusive<TCallContextBase>(static_cast<ui64>(0));
+            auto requestInfo = TThrottlingRequestInfo{
+                .Parallel = static_cast<bool>(SharedContext)};
 
             Throttler->Throttle(
                 ctx,
@@ -85,6 +89,8 @@ public:
 private:
     ITabletThrottlerPtr Throttler;
 
+    const ui32 RequestsToPostpone;
+    const TCallContextBasePtr SharedContext;
     ui64 RequestsCount = 0;
 };
 
@@ -154,6 +160,30 @@ struct TTabletThrottlerPolicyAlwaysPostpone: public ITabletThrottlerPolicy
 
 Y_UNIT_TEST_SUITE(TTabletThrottlerTest)
 {
+    Y_UNIT_TEST(ShouldQueueParallelPartsSharingACallContextIndependently)
+    {
+        TTabletThrottlerLoggerStub logger;
+        TTabletThrottlerPolicyAlwaysPostpone policy;
+        auto context = MakeIntrusive<TCallContextBase>(ui64{1});
+        auto actor = std::make_unique<TSampleActorWithThrottler>(2, context);
+        actor->ResetThrottler(CreateTabletThrottler(*actor, logger, policy));
+        TTestActorRuntimeBase runtime;
+        runtime.Initialize();
+        auto sender = runtime.AllocateEdgeActor();
+        auto id = runtime.Register(actor.release());
+
+        // Two parts enter the queue before either resumes. The third message
+        // drains the queue on shutdown. Only the splitter updates the parent.
+        for (size_t i = 0; i < 3; ++i) {
+            runtime.Send(TAutoPtr<IEventHandle>(new IEventHandle(
+                id, sender, new NActors::TEvents::TEvWakeup())));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Zero(), context->GetPostponeTs());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Zero(),
+            context->Time(EProcessingStage::Postponed));
+    }
+
     /**
      * Scenario that caused a crash:
      * 1. A request is present in the postponed queue

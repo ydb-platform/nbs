@@ -58,6 +58,35 @@ concept HasProtoBlockSize = requires (T& r)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Old volumes and RDMA peers return their queue wait in Throttler.Delay.
+// For split I/O the collector applies it once at the original completion.
+inline void ConsumeRemoteThrottlerInfo(
+    TCallContext& callContext,
+    NProto::TResponseHeaders& headers,
+    bool parallelSplitPart)
+{
+    auto& throttler = *headers.MutableThrottler();
+    const ui64 delay = throttler.GetDelay();
+    if (parallelSplitPart) {
+        if (delay) {
+            headers.SetSplitPostponedUs(headers.GetSplitPostponedUs() + delay);
+        }
+    } else {
+        callContext.AddTime(
+            EProcessingStage::Postponed,
+            TDuration::MicroSeconds(delay));
+    }
+    throttler.SetDelay(0);
+    callContext.SetPossiblePostponeDuration(TDuration::Zero());
+
+    callContext.AddTime(
+        EProcessingStage::Shaping,
+        TDuration::MicroSeconds(throttler.GetShapingDelay()));
+    throttler.SetShapingDelay(0);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 ui64 CreateRequestId();
 
 template <typename T>

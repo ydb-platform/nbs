@@ -13,12 +13,34 @@
 
 #include <library/cpp/threading/hot_swap/hot_swap.h>
 
+#include <util/datetime/cputimer.h>
 #include <util/generic/hash.h>
 #include <util/system/spinlock.h>
 
 using namespace NThreading;
 
 namespace NCloud::NBlockStore {
+
+void TParallelRequestLatency::AddPart(TDuration start, TDuration finish,
+                                      std::optional<TDuration> throttleDelay)
+{
+    if (!throttleDelay || finish < start || *throttleDelay > finish - start) {
+        Complete = false;
+        return;
+    }
+
+    LastFinish = Max(LastFinish, finish);
+    LastFinishWithoutThrottling =
+        Max(LastFinishWithoutThrottling, finish - *throttleDelay);
+}
+
+std::optional<TDuration> TParallelRequestLatency::GetThrottleDelay() const
+{
+    if (!Complete) {
+        return std::nullopt;
+    }
+    return LastFinish - LastFinishWithoutThrottling;
+}
 
 namespace {
 
@@ -173,6 +195,12 @@ private:
     TAdaptiveLock Lock;
     size_t SubResponseReceived = 0;
 
+    TCallContextPtr ParentContext;
+    TParallelRequestLatency ParallelPostponed;
+    bool CollectLatency = false;
+    TParallelRequestLatency ParallelLatency;
+    ui64 ForkCycles = 0;
+
 public:
     explicit TCompositeRequest(std::shared_ptr<TRequest> request)
         : Request(std::move(request))
@@ -200,17 +228,28 @@ public:
         // Promise inside the OnSubResponse() function.
         auto future = Promise.GetFuture();
 
+        ParentContext = callContext;
+        CollectLatency = callContext->IsLatencyTimingEnabled();
+        ForkCycles = GetCycleCount();
         for (size_t i = 0; i < subRequests.size(); ++i) {
+            auto* headers = subRequests[i]->MutableHeaders();
+            headers->MutableInternal()->SetParallelSplitPart(true);
+            ui64 launchCycles = 0;
+            if (CollectLatency) {
+                headers->SetLatencyTimingRequested(true);
+                headers->MutableInternal()->SetReturnVolumeLatencyTiming(true);
+                launchCycles = GetCycleCount();
+            }
             auto subFuture = TBlockStoreAdapter::Execute(
                 service,
                 callContext,
                 subRequests[i]);
             subFuture.Subscribe(
-                [self = this->shared_from_this(), requestIndex = i]   //
-                (const TFuture<TResponse>& f)
+                [self = this->shared_from_this(), requestIndex = i,
+                 launchCycles](const TFuture<TResponse>& f)
                 {
                     self->SubResponses[requestIndex] = UnsafeExtractValue(f);
-                    self->OnSubResponse(requestIndex);
+                    self->OnSubResponse(requestIndex, launchCycles);
                 });
         }
 
@@ -218,8 +257,9 @@ public:
     }
 
 private:
-    void OnSubResponse(size_t requestIndex)
+    void OnSubResponse(size_t requestIndex, ui64 launchCycles)
     {
+        const ui64 finishCycles = GetCycleCount();
         TResponse& response = SubResponses[requestIndex];
 
         const bool hasError = HasError(response.GetError());
@@ -234,6 +274,33 @@ private:
                 return;
             }
 
+            // The first error completes a fail-fast request. Only the
+            // failing part lies on the observed path to that reply.
+            if (hasError) {
+                ParallelPostponed = {};
+                ParallelLatency = {};
+            }
+
+            const auto finish = CyclesToDurationSafe(finishCycles - ForkCycles);
+            const auto postponed = TDuration::MicroSeconds(
+                response.GetHeaders().GetSplitPostponedUs());
+            ParallelPostponed.AddPart(TDuration::Zero(), finish, postponed);
+            if (postponed) {
+                response.MutableHeaders()->ClearSplitPostponedUs();
+            }
+            if (launchCycles) {
+                std::optional<TDuration> throttleDelay;
+                if (response.GetHeaders().HasThrottleDelayUs()) {
+                    throttleDelay = TDuration::MicroSeconds(
+                        response.GetHeaders().GetThrottleDelayUs());
+                    response.MutableHeaders()->ClearThrottleDelayUs();
+                }
+                ParallelLatency.AddPart(
+                    CyclesToDurationSafe(launchCycles - ForkCycles),
+                    finish,
+                    throttleDelay);
+            }
+
             const bool isLastResponse =
                 SubResponseReceived == SubResponses.size();
 
@@ -241,6 +308,18 @@ private:
                 return;
             }
 
+            const auto postponedDelay = ParallelPostponed.GetThrottleDelay();
+            if (postponedDelay && *postponedDelay) {
+                ParentContext->AddTime(EProcessingStage::Postponed, *postponedDelay);
+            }
+            if (CollectLatency) {
+                const auto delay = ParallelLatency.GetThrottleDelay();
+                if (delay) {
+                    ParentContext->AddLatencyThrottleDelay(*delay);
+                } else {
+                    ParentContext->MarkLatencyTimingIncomplete();
+                }
+            }
             promise.Swap(Promise);
         }
         // Reply to client without lock.

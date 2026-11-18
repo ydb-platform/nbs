@@ -30,6 +30,45 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TRequest>
+TVolumeThrottleTiming GetVolumeThrottleTiming(const TRequest& request)
+{
+    const auto& headers = request.Record.GetHeaders();
+    const auto& internal = headers.GetInternal();
+    if (!headers.GetLatencyTimingRequested() && !internal.GetParallelSplitPart()) {
+        return {};
+    }
+
+    auto delay = TDuration::MicroSeconds(internal.GetVolumeThrottleDelayUs());
+    const ui64 start = internal.GetVolumeThrottleStartCycles();
+    if (start && internal.GetParallelSplitPart()) {
+        // A queued request may be rejected directly during tablet shutdown.
+        delay += CyclesToDurationSafe(GetCycleCount() - start);
+    }
+    return {
+        .QueueDelay = delay,
+        .LatencyRequested = headers.GetLatencyTimingRequested() && !start,
+        .ParallelSplitPart = internal.GetParallelSplitPart()};
+}
+
+template <typename TMethod>
+void StoreVolumeThrottleTiming(
+    typename TMethod::TResponse& response,
+    TVolumeThrottleTiming timing,
+    TDuration shapingDelay = {})
+{
+    if constexpr (IsReadOrWriteMethod<TMethod>) {
+        if (timing.LatencyRequested) {
+            response.Record.MutableHeaders()->SetThrottleDelayUs(
+                (timing.QueueDelay + shapingDelay).MicroSeconds());
+        }
+        if (timing.ParallelSplitPart && timing.QueueDelay) {
+            response.Record.MutableHeaders()->SetSplitPostponedUs(
+                timing.QueueDelay.MicroSeconds());
+        }
+    }
+}
+
 template <typename TMethod>
 void StoreThrottlerDelay(
     typename TMethod::TResponse& response,
@@ -47,16 +86,15 @@ void StoreThrottlerDelay(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TMethod>
-void RejectVolumeRequest(
-    const TActorContext& ctx,
-    NActors::TActorId caller,
-    ui64 callerCookie,
-    TCallContext& callContext,
-    NProto::TError error)
+void RejectVolumeRequest(const TActorContext& ctx, NActors::TActorId caller,
+                         ui64 callerCookie, TCallContext& callContext,
+                         TVolumeThrottleTiming throttleTiming,
+                         NProto::TError error)
 {
     auto response =
         std::make_unique<typename TMethod::TResponse>(std::move(error));
 
+    StoreVolumeThrottleTiming<TMethod>(*response, throttleTiming);
     StoreThrottlerDelay<TMethod>(
         *response,
         callContext.Time(EProcessingStage::Postponed),
@@ -102,7 +140,9 @@ void TVolumeActor::UpdateIngestTimeStats(
     const auto* msg = ev->Get();
     // If the request was postponed, it has already been taken into account in
     // the ingest time stats.
-    if (msg->CallContext->GetPostponeTs() != TInstant::Zero()) {
+    if (msg->CallContext->GetPostponeTs() != TInstant::Zero() ||
+        msg->Record.GetHeaders().GetInternal().GetVolumeThrottleStartCycles())
+    {
         return;
     }
 
@@ -174,15 +214,10 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
     VolumeRequests.emplace(
         volumeRequestId,
         TVolumeRequest(
-            ev->Sender,
-            ev->Cookie,
-            std::move(originalContext),
-            forkTraces ? msg->CallContext : nullptr,
-            traceTime,
-            GetCycleCount(),
-            throttlingRequestInfo,
-            &RejectVolumeRequest<TMethod>,
-            isMultipartitionWriteOrZero));
+            ev->Sender, ev->Cookie, std::move(originalContext),
+            forkTraces ? msg->CallContext : nullptr, traceTime, GetCycleCount(),
+            throttlingRequestInfo, GetVolumeThrottleTiming(*msg),
+            &RejectVolumeRequest<TMethod>, isMultipartitionWriteOrZero));
 
     if (isMultipartitionWriteOrZero) {
         ++MultipartitionWriteAndZeroRequestsInProgress;
@@ -460,6 +495,8 @@ bool TVolumeActor::ReplyToOriginalRequest(
             shapingDelay);
     }
 
+    StoreVolumeThrottleTiming<TMethod>(
+        *response, volumeRequest.ThrottleTiming, shapingDelay);
     FillResponse<TMethod>(
         *response,
         *volumeRequest.CallContext,
@@ -533,6 +570,8 @@ void TVolumeActor::ReplyToDuplicateRequests(
         switch (duplicateRequest.EventType) {
             case TEvService::EvWriteBlocksRequest: {
                 auto response = std::make_unique<TEvService::TEvWriteBlocksResponse>(error);
+                StoreVolumeThrottleTiming<TEvService::TWriteBlocksMethod>(
+                    *response, duplicateRequest.ThrottleTiming);
                 FillResponse<TEvService::TWriteBlocksMethod>(
                     *response,
                     *duplicateRequest.CallContext,
@@ -544,6 +583,8 @@ void TVolumeActor::ReplyToDuplicateRequests(
 
             case TEvService::EvWriteBlocksLocalRequest: {
                 auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(error);
+                StoreVolumeThrottleTiming<TEvService::TWriteBlocksLocalMethod>(
+                    *response, duplicateRequest.ThrottleTiming);
                 FillResponse<TEvService::TWriteBlocksLocalMethod>(
                     *response,
                     *duplicateRequest.CallContext,
@@ -554,6 +595,8 @@ void TVolumeActor::ReplyToDuplicateRequests(
 
             case TEvService::EvZeroBlocksRequest: {
                 auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>(error);
+                StoreVolumeThrottleTiming<TEvService::TZeroBlocksMethod>(
+                    *response, duplicateRequest.ThrottleTiming);
                 FillResponse<TEvService::TZeroBlocksMethod>(
                     *response,
                     *duplicateRequest.CallContext,
@@ -651,6 +694,8 @@ void TVolumeActor::ForwardRequest(
         auto response = std::make_unique<typename TMethod::TResponse>(
             std::move(error));
 
+        StoreVolumeThrottleTiming<TMethod>(*response,
+                                          GetVolumeThrottleTiming(*msg));
         FillResponse<TMethod>(*response, *msg->CallContext, now);
 
         NCloud::Reply(ctx, *ev, std::move(response));
@@ -1020,8 +1065,8 @@ void TVolumeActor::ForwardRequest(
                         {ev->Get()->CallContext,
                          static_cast<TEvService::EEvents>(
                              TMethod::TRequest::EventType),
-                         NActors::IEventHandlePtr(ev.Release()),
-                         now});
+                         NActors::IEventHandlePtr(ev.Release()), now,
+                         GetVolumeThrottleTiming(*msg)});
                 ++DuplicateRequestCount;
 
                 LOG_DEBUG(
