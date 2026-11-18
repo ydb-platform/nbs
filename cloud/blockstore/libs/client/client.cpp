@@ -51,6 +51,7 @@
 #include <util/stream/file.h>
 #include <util/stream/format.h>
 #include <util/stream/str.h>
+#include <util/string/cast.h>
 #include <util/string/join.h>
 #include <util/system/spinlock.h>
 #include <util/system/thread.h>
@@ -364,6 +365,12 @@ private:
     {
         auto& headers = *Request->MutableHeaders();
 
+        if constexpr (IsReadWriteRequest(TMethod::Request)) {
+            if (CallContext->IsLatencyTimingEnabled()) {
+                headers.SetLatencyTimingRequested(true);
+            }
+        }
+
         if (!headers.GetClientId()) {
             Y_ABORT_UNLESS(AppCtx.Config->GetClientId());
             headers.SetClientId(AppCtx.Config->GetClientId());
@@ -412,6 +419,26 @@ private:
 
     void ProcessResponse()
     {
+        if constexpr (IsReadWriteRequest(TMethod::Request)) {
+            if (CallContext->IsLatencyTimingEnabled()) {
+                const auto& metadata = Context.GetServerTrailingMetadata();
+                const auto [first, last] =
+                    metadata.equal_range(GrpcThrottleDelayHeader);
+                ui64 delayUs = 0;
+                if (Status.ok() && first != last && std::next(first) == last &&
+                    TryFromString(first->second.data(), first->second.size(),
+                                  delayUs))
+                {
+                    CallContext->AddLatencyThrottleDelay(
+                        TDuration::MicroSeconds(delayUs));
+                } else {
+                    // Old peers and unauthenticated routes do not confirm who
+                    // counted this attempt or how much throttling occurred.
+                    CallContext->MarkLatencyTimingIncomplete();
+                }
+            }
+        }
+
         if (!Status.ok() && !Response.HasError()) {
             auto& error = *Response.MutableError();
             error.SetCode(MAKE_GRPC_ERROR(Status.error_code()));

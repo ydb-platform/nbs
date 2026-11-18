@@ -808,20 +808,19 @@ void TBootstrapBase::Init()
             LocalNVMeService);
     }
 
-    Server = CreateServer(
-        BootstrapConfig->ServerConfig,
-        Logging,
-        ServerStats,
-        Service,
-        std::move(udsService),
-        TServerOptions {
-            // Enables cell id checking in DescribeVolume requests
-            // only if "cells" feature is on
-            .CellId = BootstrapConfig->CellsConfig->GetCellsEnabled() ?
-                BootstrapConfig->CellsConfig->GetCellId() :
-                ""
-        },
-        CertificateProvider);
+    TServerOptions serverOptions;
+    if (BootstrapConfig->CellsConfig->GetCellsEnabled()) {
+        serverOptions.CellId = BootstrapConfig->CellsConfig->GetCellId();
+        for (const auto& cell: BootstrapConfig->CellsConfig->GetCells()) {
+            for (const auto& host: cell.second->GetHosts()) {
+                serverOptions.CellPeerNames.insert(host.first);
+            }
+        }
+    }
+
+    Server = CreateServer(BootstrapConfig->ServerConfig, Logging, ServerStats,
+                          Service, std::move(udsService),
+                          std::move(serverOptions), CertificateProvider);
 
     STORAGE_INFO("Server initialized");
 

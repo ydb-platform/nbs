@@ -5,12 +5,12 @@
 #include <cloud/blockstore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/service/public.h>
-
 #include <cloud/blockstore/public/api/protos/headers.pb.h>
 
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/grpc/public.h>
 
+#include <util/generic/hash_set.h>
 #include <util/generic/strbuf.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -29,6 +29,7 @@ struct IServer
 struct TServerOptions
 {
     TString CellId;
+    THashSet<TString> CellPeerNames;
 };
 
 namespace NImpl {

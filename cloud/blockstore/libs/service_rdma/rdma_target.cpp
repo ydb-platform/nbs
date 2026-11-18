@@ -66,9 +66,33 @@ struct TRequestDetails
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TRequest>
+void BeginLatencyTiming(TCallContext& callContext, TRequest& request)
+{
+    if (!request.GetHeaders().GetLatencyTimingRequested()) {
+        return;
+    }
+
+    callContext.EnableLatencyTiming();
+    // The downstream hop owns a fresh timing interval. The sender keeps
+    // its own split collector and timestamps on its side of the connection.
+    if (request.GetHeaders().HasInternal()) {
+        auto* headers = request.MutableHeaders()->MutableInternal();
+        headers->ClearReturnVolumeLatencyTiming();
+        headers->ClearParallelSplitPart();
+        headers->ClearVolumeThrottleStartCycles();
+        headers->ClearVolumeThrottleDelayUs();
+    }
+}
+
 template <typename TResponse>
 void FillResponse(const TCallContextPtr& callContext, TResponse& response)
 {
+    if (const auto delay = callContext->GetLatencyThrottleDelay()) {
+        response.MutableHeaders()->SetThrottleDelayUs(delay->MicroSeconds());
+    } else if (response.GetHeaders().HasThrottleDelayUs()) {
+        response.MutableHeaders()->ClearThrottleDelayUs();
+    }
     const ui64 postponeTime =
         callContext->Time(EProcessingStage::Postponed).MicroSeconds();
     response.MutableHeaders()->MutableThrottler()->SetDelay(postponeTime);
@@ -232,6 +256,7 @@ private:
         TStringBuf requestData,
         TStringBuf out) const
     {
+        BeginLatencyTiming(*callContext, *request);
         if (TraceSerializer->HandleTraceRequest(
                 request->GetHeaders().GetInternal().GetTrace(),
                 callContext->LWOrbit))
@@ -341,6 +366,7 @@ private:
         TStringBuf requestData,
         TStringBuf out) const
     {
+        BeginLatencyTiming(*callContext, *request);
         if (TraceSerializer->HandleTraceRequest(
                 request->GetHeaders().GetInternal().GetTrace(),
                 callContext->LWOrbit))
@@ -441,6 +467,7 @@ private:
         TStringBuf requestData,
         TStringBuf out) const
     {
+        BeginLatencyTiming(*callContext, *request);
         if (TraceSerializer->HandleTraceRequest(
                 request->GetHeaders().GetInternal().GetTrace(),
                 callContext->LWOrbit))

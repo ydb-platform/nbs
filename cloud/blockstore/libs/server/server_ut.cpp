@@ -6,17 +6,25 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
+#include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/diagnostics/start_endpoint_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats_test.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
+
 #include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/testing/unittest/env.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
 
 #include <util/folder/path.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+
+#include <array>
+#include <atomic>
+#include <tuple>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -49,6 +57,161 @@ void CheckDescribe(auto endpoint, TString cellId, ui32 errorCode)
 
 Y_UNIT_TEST_SUITE(TServerTest)
 {
+    Y_UNIT_TEST(ShouldReturnThrottleDelayOnlyForConfirmedCellRequests)
+    {
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort();
+        const ui16 securePort = portManager.GetPort();
+        TTestFactory factory;
+        NProto::TServerAppConfig serverProto;
+        serverProto.MutableServerConfig()->SetPort(port);
+        serverProto.MutableServerConfig()->SetDataPort(0);
+        serverProto.MutableServerConfig()->SetSecurePort(securePort);
+        auto config = std::make_shared<TServerAppConfig>(serverProto);
+        auto observed = std::make_shared<TTestServerStats>();
+        observed->ResponseSentHandler =
+            [](TMetricRequest& metric, TCallContext& ctx)
+        {
+            if (metric.ForwardedRequest) {
+                ctx.AddLatencyThrottleDelay(TDuration::MilliSeconds(5));
+            }
+        };
+        using TObservation = std::tuple<ui64, bool, bool>;
+        std::array<TPromise<TObservation>, 18> completed;
+        std::atomic<size_t> completionIndex = 0;
+        for (auto& promise: completed) {
+            promise = NewPromise<TObservation>();
+        }
+        observed->RequestCompletedHandler = [&](
+            TLog&, TMetricRequest& metric, TCallContext& context,
+            const NProto::TError&)
+        {
+            const auto index = completionIndex.fetch_add(1);
+            if (index < completed.size()) {
+                completed[index].TrySetValue(
+                    {context.RequestId, metric.ForwardedRequest, metric.CellRequest});
+            }
+        };
+
+        auto service = std::make_shared<TTestService>();
+        service->ReadBlocksHandler = [](const auto& request) {
+            NProto::TReadBlocksResponse response;
+            if (request->GetHeaders().GetRetryNumber()) {
+                *response.MutableError() = MakeError(E_REJECTED);
+            } else {
+                response.MutableBlocks()->AddBuffers(TString(4096, 'x'));
+            }
+            return MakeFuture(std::move(response));
+        };
+        service->WriteBlocksHandler = [](const auto& request) {
+            NProto::TWriteBlocksResponse response;
+            if (request->GetHeaders().GetRetryNumber()) {
+                *response.MutableError() = MakeError(E_REJECTED);
+            }
+            return MakeFuture(std::move(response));
+        };
+        const auto certs = TFsPath(ArcadiaSourceRoot()) / "cloud/blockstore/tests/certs";
+        auto server = CreateServer(
+            config,
+            factory.Logging,
+            observed,
+            service,
+            nullptr,
+            {.CellId = "cell-1", .CellPeerNames = {"localhost"}},
+            CreateStaticCertificateProvider(
+                (certs / "server.crt").GetPath(),
+                {{(certs / "server.key").GetPath(),
+                  (certs / "server.crt").GetPath()}}));
+        auto client =
+            factory.CreateClientBuilder()
+                .SetSecureEndpoint(securePort, "certs/server.crt", "test")
+                .SetCertificate("certs/server.crt", "certs/server.key")
+                .BuildEndpointFactory();
+        auto ordinaryClient =
+            factory.CreateClientBuilder()
+                .SetSecureEndpoint(securePort, "certs/server.crt", "test")
+                .BuildEndpointFactory();
+        server->Start();
+        client->Start();
+        ordinaryClient->Start();
+        Y_DEFER {
+            ordinaryClient->Stop();
+            client->Stop();
+            server->Stop();
+        };
+        auto endpoint = client->CreateIOEndpoint("localhost", port, false);
+        endpoint->Start();
+        Y_DEFER { endpoint->Stop(); };
+        auto secureEndpoint = client->CreateIOEndpoint("localhost", securePort, true);
+        secureEndpoint->Start();
+        Y_DEFER { secureEndpoint->Stop(); };
+        auto ordinaryEndpoint =
+            ordinaryClient->CreateIOEndpoint("localhost", securePort, true);
+        ordinaryEndpoint->Start();
+        Y_DEFER
+        {
+            ordinaryEndpoint->Stop();
+        };
+        for (size_t i = 0; i < completed.size(); ++i) {
+            const bool forwarded = i < 4;
+            const bool spoofedInternal = i == 12 || i == 13;
+            const bool ordinaryTls = i >= 14;
+            const bool failed = i % 4 >= 2 || spoofedInternal;
+            auto io = i < 4 || (i >= 8 && i < 10) || spoofedInternal
+                          ? secureEndpoint : endpoint;
+            if (ordinaryTls) {
+                io = ordinaryEndpoint;
+            }
+            auto prepare = [&](auto& request) {
+                request.SetDiskId("disk");
+                auto* headers = request.MutableHeaders();
+                headers->SetClientId("client");
+                headers->SetRequestId(i + 1);
+                headers->SetRetryNumber(failed ? 1 : 0);
+                if (i < 8 || spoofedInternal || ordinaryTls) {
+                    headers->SetCellId("cell-1");
+                }
+                if (spoofedInternal) {
+                    headers->MutableInternal()->SetRequestSource(
+                        NProto::SOURCE_SECURE_CONTROL_CHANNEL);
+                }
+            };
+            auto clientContext = MakeIntrusive<TCallContext>();
+            if (i < 8 || ordinaryTls) {
+                clientContext->EnableLatencyTiming();
+            }
+            if (i % 2) {
+                auto request = std::make_shared<NProto::TWriteBlocksRequest>();
+                prepare(*request);
+                request->MutableBlocks()->AddBuffers(TString(4096, 'x'));
+                const auto response = io->WriteBlocks(clientContext, request)
+                                          .GetValue(TDuration::Seconds(5));
+                UNIT_ASSERT_VALUES_EQUAL(failed, HasError(response));
+            } else {
+                auto request = std::make_shared<NProto::TReadBlocksRequest>();
+                prepare(*request);
+                request->SetBlocksCount(1);
+                const auto response = io->ReadBlocks(clientContext, request)
+                                          .GetValue(TDuration::Seconds(5));
+                UNIT_ASSERT_VALUES_EQUAL(failed, HasError(response));
+            }
+            if (i < 8 || ordinaryTls) {
+                const auto delay = clientContext->GetLatencyThrottleDelay();
+                UNIT_ASSERT_VALUES_EQUAL(forwarded, delay.has_value());
+                if (delay) {
+                    UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(5),
+                                             *delay);
+                }
+            }
+            const auto [requestId, forwardedFlag, cellFlag] =
+                completed[i].GetFuture().GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL(i + 1, requestId);
+            UNIT_ASSERT_VALUES_EQUAL(forwarded, forwardedFlag);
+            UNIT_ASSERT(!cellFlag); // legacy error accounting stays enabled
+        }
+        UNIT_ASSERT_VALUES_EQUAL(completed.size(), completionIndex.load());
+    }
+
     Y_UNIT_TEST(ShouldPrepareRequestHeaders)
     {
         NProto::THeaders headers;
