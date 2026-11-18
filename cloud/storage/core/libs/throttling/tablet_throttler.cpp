@@ -10,6 +10,7 @@
 #include <contrib/ydb/library/actors/core/events.h>
 
 #include <util/datetime/base.h>
+#include <util/datetime/cputimer.h>
 #include <util/generic/list.h>
 #include <util/system/datetime.h>
 
@@ -34,6 +35,20 @@ private:
         TThrottlingRequestInfo Info;
         TCallContextBasePtr CallContext;
         NActors::IEventHandlePtr Event;
+        TInstant ParallelStart;
+        ui64 ParallelStartCycles = 0;
+
+        TDuration Advance()
+        {
+            const ui64 now = GetCycleCount();
+            if (ParallelStartCycles) {
+                const auto delay =
+                    CyclesToDurationSafe(now - ParallelStartCycles);
+                CallContext->AddTime(EProcessingStage::Postponed, delay);
+                return delay;
+            }
+            return CallContext->Advance(now);
+        }
     };
     // TODO: replace with a ring buffer
     TList<TPostponedRequest> PostponedRequests;
@@ -70,7 +85,7 @@ public:
 
         while (PostponedRequests.size()) {
             auto& x = PostponedRequests.front();
-            x.CallContext->Advance(GetCycleCount());
+            x.Advance();
 
             TAutoPtr<NActors::IEventHandle> ev = x.Event.release();
             Owner.Receive(ev);
@@ -136,7 +151,12 @@ public:
             rejected = true;
         } else {
             const auto nowTs = ctx.Now();
-            const auto postponeTs = callContext->GetPostponeTs();
+            const auto postponeTs =
+                requestInfo.Parallel
+                    ? (PostponedQueueFlushInProgress
+                           ? PostponedRequests.front().ParallelStart
+                           : TInstant::Zero())
+                    : callContext->GetPostponeTs();
             TDuration queueTime = TDuration::Zero();
             if (postponeTs) {
                 queueTime = nowTs - postponeTs;
@@ -177,7 +197,7 @@ public:
 
         TDuration delay = TDuration::Zero();
         if (PostponedQueueFlushInProgress) {
-            delay = callContext->Advance(GetCycleCount());
+            delay = PostponedRequests.front().Advance();
         }
         Logger.LogRequestAdvanced(
             ctx,
@@ -202,13 +222,17 @@ private:
             pr.Event = std::move(ev);
             pr.Info = requestInfo;
         } else {
-            callContext->Postpone(GetCycleCount());
-            callContext->SetPostponeTs(ctx.Now());
-            PostponedRequests.push_back({
-                requestInfo,
-                std::move(callContext),
-                std::move(ev)});
-       }
+            const auto now = ctx.Now();
+            const ui64 cycles = GetCycleCount();
+            if (!requestInfo.Parallel) {
+                callContext->Postpone(cycles);
+                callContext->SetPostponeTs(now);
+            }
+            PostponedRequests.push_back(
+                {requestInfo, std::move(callContext), std::move(ev),
+                 requestInfo.Parallel ? now : TInstant::Zero(),
+                 requestInfo.Parallel ? cycles : 0});
+        }
     }
 };
 
