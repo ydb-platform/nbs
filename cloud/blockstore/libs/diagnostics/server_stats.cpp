@@ -3,6 +3,7 @@
 #include "config.h"
 #include "dumpable.h"
 #include "hostname.h"
+#include "latency_sli.h"
 #include "probes.h"
 #include "profile_log.h"
 #include "request_stats.h"
@@ -87,6 +88,12 @@ public:
         const TString& diskId,
         const TString& cloudId,
         const TString& folderId) override;
+
+    TLatencySliConfig GetLatencySliConfig(ui32 mediaKind) const override
+    {
+        return DiagnosticsConfig ? DiagnosticsConfig->GetLatencySliConfig(mediaKind)
+                                 : TLatencySliConfig{};
+    }
 
     ui32 GetBlockSize(const TString& diskId) const override;
 
@@ -283,6 +290,7 @@ void TServerStats::PrepareMetricRequest(
     metricRequest.DiskId = std::move(diskId);
     metricRequest.StartIndex = startIndex;
     metricRequest.RequestBytes = requestBytes;
+    metricRequest.OriginalRequestBytes = requestBytes;
     metricRequest.Unaligned = unaligned;
 
     if (metricRequest.DiskId) {
@@ -340,6 +348,14 @@ void TServerStats::RequestStarted(
         if (IsReadWriteRequest(req.RequestType)) {
             callContext.SetPossiblePostponeDuration(
                 req.VolumeInfo->GetPossiblePostponeDuration());
+            if (!req.ForwardedRequest &&
+                req.RequestType != EBlockStoreRequest::ZeroBlocks)
+            {
+                req.LatencyCounters = req.VolumeInfo->GetLatencySli();
+                if (req.LatencyCounters) {
+                    callContext.EnableLatencyTiming();
+                }
+            }
         }
     }
 }
@@ -443,6 +459,22 @@ void TServerStats::RequestCompleted(
         responseSentCycles,
         req.AccessMode,
         req.MountMode);
+
+    if (req.LatencyCounters && !req.ForwardedRequest && !req.ClientFault) {
+        const bool write = IsWriteRequest(req.RequestType);
+        const auto delay = callContext.GetLatencyThrottleDelay();
+        const bool invalidStart =
+            !started || (responseSentCycles && responseSentCycles < started);
+        if (req.ResponseDeliveryUncertain || invalidStart || !delay ||
+            *delay > requestTime)
+        {
+            req.LatencyCounters->Add(write, 0, 0, 1);
+        } else {
+            req.LatencyCounters->Complete(write, req.OriginalRequestBytes,
+                                          (requestTime - *delay).MicroSeconds(),
+                                          HasError(error));
+        }
+    }
 
     ui32 blockSize = DefaultBlockSize;
 

@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/common/latency_sli.h>
+
 #include <cloud/blockstore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/blockstore/libs/diagnostics/metric_request.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -42,6 +44,12 @@ struct IServerStats
         const TString& diskId,
         const TString& cloudId,
         const TString& folderId) = 0;
+
+    virtual TLatencySliConfig GetLatencySliConfig(ui32 mediaKind) const
+    {
+        Y_UNUSED(mediaKind);
+        return {};
+    }
 
     virtual ui32 GetBlockSize(const TString& diskId) const = 0;
 

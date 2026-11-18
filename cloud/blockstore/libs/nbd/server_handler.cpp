@@ -54,6 +54,7 @@ private:
 
     bool StructuredReply = false;
     bool UseNbsErrors = false;
+    bool ClientDisconnected = false;
 
 public:
     TServerHandler(
@@ -94,6 +95,8 @@ public:
                     response.RequestBytes);
             }
         } catch (...) {
+            response.RequestContext->MetricRequest.ResponseDeliveryUncertain =
+                true;
             CancelResponse(response);
             throw;
         }
@@ -579,7 +582,6 @@ void TServerHandler::ProcessRequests(
                 auto requestCtx = RegisterRequest(
                     request,
                     EBlockStoreRequest::WriteBlocks);
-
                 if (!ctx->AcquireRequest(request.Length)) {
                     // no need to reply, cause server is shutting down
                     UnregisterRequest(requestCtx, cancelError);
@@ -598,6 +600,7 @@ void TServerHandler::ProcessRequests(
                     }
                 } catch (...) {
                     ctx->AbandonRequest(request.Length);
+                    requestCtx->MetricRequest.ResponseDeliveryUncertain = true;
                     UnregisterRequest(requestCtx, cancelError);
                     throw;
                 }
@@ -645,6 +648,7 @@ void TServerHandler::ProcessRequests(
 
             case NBD_CMD_DISC:
                 // soft-disconnect
+                ClientDisconnected = true;
                 return;
 
             default:
@@ -862,6 +866,8 @@ TRequestContextPtr TServerHandler::RegisterRequest(
         ServerStats->GetBlockSize(Options.DiskId) * (endIndex - startIndex),
         unaligned);
 
+    requestCtx->MetricRequest.OriginalRequestBytes = request.Length;
+
     ServerStats->RequestStarted(
         Log,
         requestCtx->MetricRequest,
@@ -877,6 +883,9 @@ void TServerHandler::UnregisterRequest(
     const NProto::TError& error)
 {
     requestCtx->Unlink();
+    if (ClientDisconnected) {
+        requestCtx->MetricRequest.ClientFault = true;
+    }
 
     ServerStats->RequestCompleted(
         Log,
