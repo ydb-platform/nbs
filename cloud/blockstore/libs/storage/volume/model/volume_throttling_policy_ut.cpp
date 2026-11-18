@@ -921,6 +921,176 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         }
     }
 
+    void DoShouldPreserveIopsLimitsWhenApplyingCoefficients(
+        EOpType opType,
+        TMaybe<double> coefficient,
+        std::initializer_list<std::pair<ui32, ui32>> iopsLimits)
+    {
+        // Disable bandwidth and boost to check IOPS limits.
+        const bool isRead = (opType == EOpType::Read);
+        auto config = MakeConfig(0, 0, 1000, 0, 1, 0, 0, 0, 8_MB);
+        const TThrottlerConfig
+            throttlerConfig(TDuration::Max(), 1, 1, TDuration::Zero(), false);
+        TVolumeThrottlingPolicy policy(config, throttlerConfig);
+
+        // Apply only the selected coefficient, or leave it absent.
+        NProto::TVolumeThrottlingRule rule;
+        if (coefficient) {
+            if (isRead) {
+                rule.MutableCoefficients()->SetMaxReadIops(*coefficient);
+            } else {
+                rule.MutableCoefficients()->SetMaxWriteIops(*coefficient);
+            }
+        }
+        policy.Reset(rule, 1);
+
+        for (const auto& [originalIops, expectedIops]: iopsLimits) {
+            const TString context =
+                TStringBuilder()
+                << "operation: " << static_cast<ui32>(opType)
+                << ", IOPS: " << originalIops << ", coefficient: "
+                << (coefficient ? ToString(*coefficient) : "unset");
+
+            // Change the original profile and check the saved coefficient.
+            if (isRead) {
+                config.SetMaxReadIops(originalIops);
+            } else {
+                config.SetMaxWriteIops(originalIops);
+            }
+            policy.Reset(config, throttlerConfig);
+            const auto expectedReadIops =
+                isRead ? expectedIops : config.GetMaxReadIops();
+            const auto expectedWriteIops =
+                isRead ? config.GetMaxWriteIops() : expectedIops;
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedReadIops,
+                policy.GetConfig().GetMaxReadIops(),
+                context);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedWriteIops,
+                policy.GetConfig().GetMaxWriteIops(),
+                context);
+
+            // Check read/write fallback and the limits used for DescribeBlocks.
+            for (const auto requestOpType:
+                 {EOpType::Read, EOpType::Write, EOpType::Describe})
+            {
+                const auto effectiveIops =
+                    requestOpType == EOpType::Write && expectedWriteIops
+                        ? expectedWriteIops
+                        : expectedReadIops;
+                const auto expectedC1 = effectiveIops;
+                const ui64 expectedC2 = 0;
+                const TString requestContext =
+                    TStringBuilder() << context << ", request operation: "
+                                     << static_cast<ui32>(requestOpType);
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    expectedC1,
+                    policy.C1(requestOpType),
+                    requestContext);
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    expectedC2,
+                    policy.C2(requestOpType),
+                    requestContext);
+
+                // Check intentional zeros above without passing zero IOPS to
+                // the request-cost calculation, which requires positive IOPS.
+                if (!effectiveIops) {
+                    continue;
+                }
+
+                // Reset the budget for each request. Use the current version
+                // so the request reaches the cost calculation.
+                const auto getDelay = [&](ui64 byteCount)
+                {
+                    policy.Reset(rule, 1);
+                    const auto delay = policy.SuggestDelay(
+                        TInstant::Seconds(1),
+                        TDuration::Zero(),
+                        {byteCount,
+                         static_cast<ui32>(requestOpType),
+                         policy.GetVersion()});
+                    UNIT_ASSERT_C(delay.Defined(), requestContext);
+
+                    // Account for the 10 ms budget from BurstPercentage == 1
+                    // and microsecond rounding of the resulting delay.
+                    const auto expectedCost =
+                        CostPerIO(expectedC1, expectedC2, byteCount);
+                    const auto burstBudget = TDuration::MilliSeconds(10);
+                    const auto expectedDelay = expectedCost > burstBudget
+                                                   ? expectedCost - burstBudget
+                                                   : TDuration::Zero();
+                    UNIT_ASSERT_DOUBLES_EQUAL_C(
+                        expectedDelay.SecondsFloat(),
+                        delay->SecondsFloat(),
+                        TDuration::MicroSeconds(2).SecondsFloat(),
+                        requestContext);
+                    return *delay;
+                };
+                const auto smallRequestDelay = getDelay(4_KB);
+                const auto largeRequestDelay = getDelay(4_MB);
+
+                // Check that only an active bandwidth limit makes larger
+                // requests wait longer; otherwise their delays must be equal.
+                if (expectedC2) {
+                    UNIT_ASSERT_C(
+                        largeRequestDelay > smallRequestDelay,
+                        requestContext);
+                } else {
+                    UNIT_ASSERT_VALUES_EQUAL_C(
+                        smallRequestDelay,
+                        largeRequestDelay,
+                        requestContext);
+                }
+            }
+
+            // Reapply the rule and check that it still scales the original
+            // profile rather than the previously calculated limit.
+            policy.Reset(rule, 1);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedIops,
+                isRead ? policy.GetConfig().GetMaxReadIops()
+                       : policy.GetConfig().GetMaxWriteIops(),
+                context);
+        }
+    }
+
+    // Verify that coefficients keep positive read/write IOPS limits active,
+    // preserve intentional zeros and use updated original profiles.
+    Y_UNIT_TEST(ShouldPreserveIopsLimitsWhenApplyingCoefficients)
+    {
+        for (const auto opType: {EOpType::Read, EOpType::Write}) {
+            // Change the original profile and check that a small positive
+            // coefficient keeps the limit at least 1 IOPS after each update.
+            DoShouldPreserveIopsLimitsWhenApplyingCoefficients(
+                opType,
+                0.000001,
+                {{100, 1}, {5'000'000, 5}, {100, 1}});
+
+            // Check values below, at and above 1 IOPS, and preserve
+            // truncation of larger fractions and an original zero value.
+            DoShouldPreserveIopsLimitsWhenApplyingCoefficients(
+                opType,
+                0.5,
+                {{1, 1}, {2, 1}, {3, 1}, {5, 2}, {0, 0}});
+
+            // Preserve explicit zeros and unchanged limits when the coefficient
+            // is absent or one; keep the read fallback for zero write limits.
+            DoShouldPreserveIopsLimitsWhenApplyingCoefficients(
+                opType,
+                0.0,
+                {{100, 0}});
+            DoShouldPreserveIopsLimitsWhenApplyingCoefficients(
+                opType,
+                1.0,
+                {{100, 100}});
+            DoShouldPreserveIopsLimitsWhenApplyingCoefficients(
+                opType,
+                Nothing(),
+                {{100, 100}, {0, 0}});
+        }
+    }
+
     Y_UNIT_TEST(MergeBackpressureReports)
     {
         const auto config = MakeSimpleConfig(

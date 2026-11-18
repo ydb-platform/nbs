@@ -28,6 +28,19 @@ ui64 ThrottledBandwidth(ui64 bandwidth, double coefficient)
     return throttledBandwidth;
 }
 
+// Apply an IOPS coefficient with a minimum of 1 IOPS for positive inputs.
+// Preserve original zeros and explicitly zero coefficients.
+ui32 ThrottledIops(ui32 iops, double coefficient)
+{
+    const ui32 throttledIops = iops * coefficient;
+
+    if (iops && coefficient > 0. && throttledIops < 1) {
+        return 1;
+    }
+
+    return throttledIops;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // IOPS throttle
 //
@@ -165,9 +178,9 @@ struct TVolumeThrottlingPolicy::TImpl
                 coefficients.GetMaxPostponedWeight());
         }
         if (coefficients.HasMaxReadIops()) {
-            result.SetMaxReadIops(
-                OriginalConfig.GetMaxReadIops() *
-                coefficients.GetMaxReadIops());
+            result.SetMaxReadIops(ThrottledIops(
+                OriginalConfig.GetMaxReadIops(),
+                coefficients.GetMaxReadIops()));
         }
         if (coefficients.HasBoostTime()) {
             result.SetBoostTime(
@@ -189,9 +202,9 @@ struct TVolumeThrottlingPolicy::TImpl
                 coefficients.GetMaxWriteBandwidth()));
         }
         if (coefficients.HasMaxWriteIops()) {
-            result.SetMaxWriteIops(
-                OriginalConfig.GetMaxWriteIops() *
-                coefficients.GetMaxWriteIops());
+            result.SetMaxWriteIops(ThrottledIops(
+                OriginalConfig.GetMaxWriteIops(),
+                coefficients.GetMaxWriteIops()));
         }
         if (coefficients.HasBurstPercentage()) {
             result.SetBurstPercentage(
