@@ -2,8 +2,24 @@ import os
 
 import yatest.common as common
 
+from cloud.filestore.private.api.protos.tablet_pb2 import TShardTopology
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
 from cloud.filestore.tests.python.lib.fs import request_tablet
+
+
+def make_shard_topology(shard_ids, file_shard_ids):
+    shards = []
+    for shard_id in shard_ids:
+        shard = {
+            "ShardId": shard_id,
+            "Type": TShardTopology.E_ORDINARY,
+            "Role": 1 << (TShardTopology.E_DIRECTORY - 1),
+        }
+        if shard_id in file_shard_ids:
+            shard["Type"] = TShardTopology.E_FASTSHARD
+            shard["Role"] = 1 << (TShardTopology.E_FILE - 1)
+        shards.append(shard)
+    return {"Shards": shards}
 
 
 def configure_fastshard(shard_count, file_shard_count, fast_shard_config):
@@ -24,6 +40,7 @@ def configure_fastshard(shard_count, file_shard_count, fast_shard_config):
         if i >= shard_count - file_shard_count:
             file_shard_ids.append(shard_id)
         shard_ids.append(shard_id)
+    topology = make_shard_topology(shard_ids, file_shard_ids)
 
     for i, shard_id in enumerate(shard_ids):
         shard_no = i + 1
@@ -31,8 +48,7 @@ def configure_fastshard(shard_count, file_shard_count, fast_shard_config):
             "FileSystemId": shard_id,
             "ShardNo": shard_no,
             "MainFileSystemId": filesystem,
-            "ShardFileSystemIds": shard_ids,
-            "FileShardFileSystemIds": file_shard_ids,
+            "ShardTopology": topology,
             "IsFastShard": shard_id in file_shard_ids,
             "DirectoryCreationInShardsEnabled": True,
         }
@@ -45,8 +61,7 @@ def configure_fastshard(shard_count, file_shard_count, fast_shard_config):
         "configureshards",
         {
             "FileSystemId": filesystem,
-            "ShardFileSystemIds": shard_ids,
-            "FileShardFileSystemIds": file_shard_ids,
+            "ShardTopology": topology,
             "DirectoryCreationInShardsEnabled": True,
         },
     )

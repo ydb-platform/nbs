@@ -835,9 +835,33 @@ message TConfigureShardsRequest
     // in shards even if main tablet has already created some nodes.
     bool ForceDirectoryCreationInShards = 6;
 
-    // Shard FileSystem identifiers for regular files. If empty, then
-    // ShardFileSystemIds will be used for regular files.
-    repeated string FileShardFileSystemIds = 7;
+    reserved 7;
+
+    TShardTopology ShardTopology = 8;
+}
+
+message TShardTopology
+{
+    enum EShardType {
+        E_UNSPECIFIED = 0;
+        E_ORDINARY = 1;
+        E_FASTSHARD = 2;
+    }
+
+    enum EShardRole {
+        E_NONE = 0;
+        E_FILE = 1;
+        E_DIRECTORY = 2;
+    }
+
+    message TShardInfo {
+        uint32 Type = 1;
+        uint32 Role = 2;
+        string ShardId = 3;
+        uint64 TabletId = 4;
+    }
+
+    repeated TShardInfo Shards = 1;
 }
 
 message TConfigureShardsResponse
@@ -919,9 +943,7 @@ message TConfigureAsShardRequest
     // in shards even if main tablet has already created some nodes.
     bool ForceDirectoryCreationInShards = 7;
 
-    // Shard FileSystem identifiers for regular files. If empty, then
-    // ShardFileSystemIds will be used for regular files.
-    repeated string FileShardFileSystemIds = 8;
+    reserved 8;
 
     // Override shard list validation.
     bool Force = 9;
@@ -931,6 +953,8 @@ message TConfigureAsShardRequest
     // using BlobStorage.
     bool IsFastShard = 10;
     TFastShardConfig FastShardConfig = 11;
+
+    TShardTopology ShardTopology = 12;
 }
 
 message TConfigureAsShardResponse
@@ -1229,13 +1253,14 @@ message TGetFileSystemTopologyResponse
 
     bool ForceDirectoryCreationInShards = 7;
 
-    // Shard FileSystem identifiers for regular files.
-    repeated string FileShardFileSystemIds = 8;
+    reserved 8;
 
     bool CompressNodeRef = 9;
 
     // Main FileSystem identifier.
     string MainFileSystemId = 10;
+
+    TShardTopology ShardTopology = 11;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -4,6 +4,7 @@ import tempfile
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
+from cloud.filestore.tests.python.lib.fastshard import make_shard_topology
 from cloud.filestore.tests.python.lib.loadtest import run_load_test
 
 
@@ -26,8 +27,9 @@ def configure_memshard():
         {
             "FileSystemId": SHARD_ID,
             "ShardNo": 1,
-            "ShardFileSystemIds": [SHARD_ID, "foo"],
-            "FileShardFileSystemIds": [SHARD_ID],
+            "ShardTopology": make_shard_topology(
+                [SHARD_ID, "foo"],
+                [SHARD_ID]),
             "IsFastShard": True,
             "FastShardConfig": {"MemConfig": {}},
             "DirectoryCreationInShardsEnabled": False,

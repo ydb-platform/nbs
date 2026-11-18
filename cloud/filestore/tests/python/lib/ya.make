@@ -2,6 +2,7 @@ PY3_LIBRARY()
 
 PEERDIR(
     cloud/filestore/config
+    cloud/filestore/private/api/protos
 
     cloud/filestore/public/sdk/python/client
     cloud/filestore/public/sdk/python/protos

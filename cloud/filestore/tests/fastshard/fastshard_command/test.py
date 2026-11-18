@@ -4,6 +4,7 @@ import os
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
+from cloud.filestore.tests.python.lib.fastshard import make_shard_topology
 from cloud.filestore.tests.python.lib.fs import FsItem, fill_fs, DIR, FILE
 
 BLOCK_SIZE = 4 * 1024
@@ -36,6 +37,7 @@ def __configure_fastshards(client):
         if i >= SHARD_COUNT - FILE_SHARD_COUNT:
             file_shard_ids.append(shard_id)
         shard_ids.append(shard_id)
+    topology = make_shard_topology(shard_ids, file_shard_ids)
 
     for i, shard_id in enumerate(shard_ids):
         client.execute_action(
@@ -44,8 +46,7 @@ def __configure_fastshards(client):
                 "FileSystemId": shard_id,
                 "ShardNo": i + 1,
                 "MainFileSystemId": FS_ID,
-                "ShardFileSystemIds": shard_ids,
-                "FileShardFileSystemIds": file_shard_ids,
+                "ShardTopology": topology,
                 "IsFastShard": shard_id in file_shard_ids,
                 "FastShardConfig": {"MemConfig": {}},
                 "DirectoryCreationInShardsEnabled": True,
@@ -56,8 +57,7 @@ def __configure_fastshards(client):
         "configureshards",
         {
             "FileSystemId": FS_ID,
-            "ShardFileSystemIds": shard_ids,
-            "FileShardFileSystemIds": file_shard_ids,
+            "ShardTopology": topology,
             "DirectoryCreationInShardsEnabled": True,
         },
     )

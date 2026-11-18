@@ -33,14 +33,21 @@ type FilesystemModel struct {
 	PerformanceProfile FilesystemPerformanceProfile
 }
 
+type ShardInfo struct {
+	Type     uint32
+	Role     uint32
+	ShardID  string
+	TabletID uint64
+}
+
 type FilesystemTopology struct {
 	ShardFileSystemIDs                     []string
+	ShardTopology                          []ShardInfo
 	ShardNo                                uint32
 	DirectoryCreationInShardsEnabled       bool
 	StrictFileSystemSizeEnforcementEnabled bool
 	MaxShardCount                          uint32
 	ForceDirectoryCreationInShards         bool
-	FileShardFileSystemIDs                 []string
 	CompressNodeRef                        bool
 	MainFileSystemID                       string
 }

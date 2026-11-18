@@ -1,10 +1,12 @@
 #include "helpers.h"
 
 #include <cloud/filestore/libs/storage/core/config.h>
+#include <cloud/filestore/libs/storage/core/helpers.h>
 
 #include <contrib/ydb/core/protos/filestore_config.pb.h>
 
 #include <util/generic/size_literals.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -39,6 +41,12 @@ NProto::TNode CreateAttrs(NProto::ENodeType type, int mode, ui64 size, ui64 uid,
     node.SetGid(gid);
 
     return node;
+}
+
+bool IsFileShard(const NProtoPrivate::TShardTopology::TShardInfo& shard)
+{
+    return HasFlag(shard.GetRole(), NProtoPrivate::TShardTopology::E_FILE) &&
+        !HasFlag(shard.GetRole(), NProtoPrivate::TShardTopology::E_DIRECTORY);
 }
 
 } // namespace
@@ -471,6 +479,70 @@ TLockRange ConvertToImpl(const NProto::TSessionLock& proto, TTag<TLockRange>)
         .LockMode = static_cast<ELockMode>(proto.GetMode()),
         .LockOrigin = ConvertTo<ELockOrigin>(proto.GetLockOrigin()),
     };
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void RestoreShardTopology(
+    const google::protobuf::RepeatedPtrField<TString>& shardIds,
+    NProtoPrivate::TShardTopology& topology)
+{
+    const auto& shards = topology.GetShards();
+
+    // Shards are only appended unless the list is replaced by force.
+    bool matches = shards.size() <= shardIds.size();
+    for (int i = 0; matches && i < shards.size(); ++i) {
+        matches = shards[i].GetShardId() == shardIds[i];
+    }
+
+    auto restored = BuildShardTopology(shardIds);
+    if (matches) {
+        for (int i = 0; i < shards.size(); ++i) {
+            *restored.MutableShards(i) = shards[i];
+        }
+    }
+
+    topology = std::move(restored);
+}
+
+TVector<TString> GetFileShardIds(const NProto::TFileSystem& fileSystem)
+{
+    TVector<TString> fileShardIds;
+    for (const auto& shard: fileSystem.GetShardTopology().GetShards()) {
+        if (IsFileShard(shard)) {
+            fileShardIds.push_back(shard.GetShardId());
+        }
+    }
+
+    return fileShardIds;
+}
+
+NProto::TError ValidateShardTopology(
+    const NProtoPrivate::TShardTopology& topology)
+{
+    THashSet<TString> shardIds;
+    bool hasNonFileShards = topology.GetShards().empty();
+    for (const auto& shard: topology.GetShards()) {
+        if (!shard.GetRole()) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "no role of shard " << shard.GetShardId());
+        }
+        if (!shardIds.insert(shard.GetShardId()).second) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "duplicate shard " << shard.GetShardId());
+        }
+        if (!IsFileShard(shard)) {
+            hasNonFileShards = true;
+        }
+    }
+
+    if (!hasNonFileShards) {
+        return MakeError(E_ARGUMENT, "non-file shard set is empty");
+    }
+
+    return {};
 }
 
 }   // namespace NCloud::NFileStore::NStorage

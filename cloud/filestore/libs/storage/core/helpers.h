@@ -15,6 +15,7 @@ namespace NCloud::NFileStore::NProto {
 
 namespace NCloud::NFileStore::NProtoPrivate {
     class TListNodesInternalResponse;
+    class TShardTopology;
 }   // namespace NCloud::NFileStore::NProtoPrivate
 
 namespace NCloud::NFileStore::NStorage {
@@ -61,6 +62,12 @@ public:
 
     [[nodiscard]] ui32 GetIndex() const;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Converts shard ids list into default topology representation.
+NProtoPrivate::TShardTopology BuildShardTopology(
+    const google::protobuf::RepeatedPtrField<TString>& shardIds);
 
 ////////////////////////////////////////////////////////////////////////////////
 

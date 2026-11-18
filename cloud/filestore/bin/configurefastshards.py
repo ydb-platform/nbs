@@ -194,6 +194,14 @@ def configure_shards(args, groups):
     shard_ids = [
         "%s_s%d" % (args.fs, i) for i in range(1, args.shard_count + 1)]
     file_shard_ids = shard_ids[args.shard_count - args.file_shard_count:]
+    # Role: 1 - files, 2 - directories. Type: 1 - ordinary, 2 - fast shard.
+    shards = []
+    for shard_id in shard_ids:
+        if shard_id in file_shard_ids:
+            shards.append({"ShardId": shard_id, "Role": 1, "Type": 2})
+        else:
+            shards.append({"ShardId": shard_id, "Role": 2, "Type": 1})
+    topology = {"Shards": shards}
 
     for i, shard_id in enumerate(shard_ids):
         shard_no = i + 1
@@ -202,8 +210,7 @@ def configure_shards(args, groups):
             "FileSystemId": shard_id,
             "ShardNo": shard_no,
             "MainFileSystemId": args.fs,
-            "ShardFileSystemIds": shard_ids,
-            "FileShardFileSystemIds": file_shard_ids,
+            "ShardTopology": topology,
             "IsFastShard": is_fast,
             "DirectoryCreationInShardsEnabled": True,
         }
@@ -224,8 +231,7 @@ def configure_shards(args, groups):
 
     filestore_execute_action(args, "configureshards", {
         "FileSystemId": args.fs,
-        "ShardFileSystemIds": shard_ids,
-        "FileShardFileSystemIds": file_shard_ids,
+        "ShardTopology": topology,
         "DirectoryCreationInShardsEnabled": True,
     })
     print("configured %s: %d shards, last %d are fastshard file shards"

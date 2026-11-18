@@ -1,5 +1,6 @@
 #include "helpers.h"
 
+#include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
@@ -286,6 +287,24 @@ bool TListNodesInternalResponseBuilder::AddNodeRef(
 ui32 TListNodesInternalResponseBuilder::GetIndex() const
 {
     return Impl->GetIndex();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProtoPrivate::TShardTopology BuildShardTopology(
+    const google::protobuf::RepeatedPtrField<TString>& shardIds)
+{
+    NProtoPrivate::TShardTopology topology;
+    topology.MutableShards()->Reserve(shardIds.size());
+    for (const auto& shardId: shardIds) {
+        auto& shard = *topology.AddShards();
+        shard.SetShardId(shardId);
+        shard.SetRole(
+            ProtoFlag(NProtoPrivate::TShardTopology::E_FILE) |
+            ProtoFlag(NProtoPrivate::TShardTopology::E_DIRECTORY));
+    }
+
+    return topology;
 }
 
 }   // namespace NCloud::NFileStore::NStorage
