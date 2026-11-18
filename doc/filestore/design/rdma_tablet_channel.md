@@ -1,7 +1,6 @@
 # RDMA channel between filestore-vhost and the index tablet
 
-This document describes the target state of the first version and how
-FileSystemEvents are integrated after it.
+This document describes the target state of the first version.
 
 Today every request from filestore-vhost to an index tablet goes through the
 tablet proxy, the tablet pipe client, the interconnect
@@ -21,9 +20,7 @@ the QP carries the hot requests on behalf of the pipe.
 * Safe fallback: any request can go over the pipe instead. The client uses
   RDMA only when the channel is up and the method is allowed.
 
-Non-goals of the first version: FileSystemEvents for the requests sent over
-RDMA (see [FileSystemEvents](#filesystemevents)), replacing the
-pipe.
+Non-goals of the first version: replacing the pipe.
 
 ## Design summary
 
@@ -43,9 +40,14 @@ pipe.
   request.
 * Control requests (CreateSession, DestroySession, ...) and admin, unsafe and
   shard-internal requests stay on the pipe.
+* FileSystemEvents: an RDMA request subscribes under its pipe, and the events
+  keep going over the pipe (see [FileSystemEvents](#filesystemevents)).
 * The tablet forgets the pipe when it disconnects or when the tablet dies; RDMA
   requests for a forgotten pipe are rejected and the client rebinds after it
   reconnects the pipe.
+* Any transport failure other than throttling turns RDMA off for the pipe: the
+  client resends the request over the pipe and uses RDMA on that pipe again only
+  after the pipe reconnects (see [Errors](#errors)).
 
 ## Request path
 
@@ -68,9 +70,12 @@ sequenceDiagram
     P-->>V: RDMA response {MethodId} + record
 ```
 
-* `TEvTrackRequest` is sent before the request, so the forwarder knows the
-  cookie before the tablet can answer (the actor mailbox is FIFO for one
-  sender).
+* The forwarder knows the cookie before the tablet's response arrives: a local
+  `Send()` adds the event to the recipient's mailbox before it returns, the
+  handler sends `TEvTrackRequest` before it sends the request, and the tablet
+  can respond only after it has received the request. So the response is added
+  to the forwarder's mailbox after `TEvTrackRequest`, and the mailbox delivers
+  the events in the order they were added, whatever their senders.
 * The handler runs on the RDMA poller thread and never blocks: a registry
   lookup, one parse, two actor sends.
 
@@ -93,12 +98,22 @@ sequenceDiagram
   unregisters it on `TEvServerDisconnected`, and unregisters all its pipes in
   `OnTabletDead` and `OnDetach`.
 * FastShard adapter not supported yet.
-* The pipe server sends the connect result to the client before it notifies
-  the tablet, but it notifies the tablet before it forwards any request on the
-  pipe. So the client makes one round trip over a new pipe (CreateSession)
-  before it uses RDMA for that pipe.
-* "Not registered yet" and "already gone" are the same answer: E_REJECTED, and
-  the client retries with its current pipe.
+* When an RDMA request reaches the handler, the tablet has always registered
+  its pipe already: the client uses RDMA on a pipe only after it gets the
+  CreateSession response over that pipe, and the tablet registers the pipe
+  before it sends that response:
+  * the pipe server puts `TEvServerConnected` into the tablet's mailbox before
+    it forwards any request of that pipe, so the tablet registers the pipe
+    before it handles CreateSession;
+* If the request's pipe is not in the registry, the handler answers
+  E_REJECTED, a transport failure: the client turns RDMA off for that pipe (see
+  [Errors](#errors)). There are two cases, and the handler can't tell them
+  apart:
+  * not registered yet: the pipe has just connected and the tablet hasn't
+    registered it. This shouldn't happen because of the CreateSession round
+    trip above;
+  * already gone: the pipe has disconnected, and the client sent an RDMA
+    request before it noticed the disconnect.
 
 ### Forwarder
 
@@ -124,25 +139,46 @@ Everything else stays on the pipe:
 * CreateSession: the tablet takes the sender as the session owner and kills
   the old owner upon a session takeover. Over RDMA the sender is the forwarder,
   which serves every client of the node.
-* Admin and unsafe requests: the RDMA port is not authenticated ( the same model we assume for interconnect or blockstore rdma. After #7890 it will be associated with pipe at connect time and auth model will be even stronger)
+* Admin and unsafe requests: the RDMA port is not authenticated ( the same model we assume for interconnect or blockstore rdma. After #7890 it will be associated with pipe at connect time and auth model will be even stronger). RDMA transport for such request will buy nothing, so they stay on pipe right now.
 * Shard-internal requests: they are a protocol between the tablets of a
-  filesystem, not a client API.
+  filesystem, not a client API. (communication between shards also can use RDMA, but it is not the first priority and will be revisited later wether it make sense)
 
 ### Errors
 
-The tablet's own errors stay inside the response record, as over the pipe.
-The RDMA layer adds:
+The client tells three kinds of errors apart:
 
-| Code | Cases | Client action |
-|------|-------|---------------|
-| E_REJECTED | unknown pipe, tablet gone, tablet shutting down, forwarder stopped | retry; rebind if the pipe has changed |
-| E_TIMEOUT | forwarder timeout | as a client timeout |
-| E_NOT_IMPLEMENTED | method not allowed, unexpected message id, payload response | send this request over the pipe |
-| E_ARGUMENT | no pipe server id, malformed request, response doesn't fit the client's buffer | send this request over the pipe |
-| E_FAIL | exception in the handler | send this request over the pipe |
+1. The tablet's own errors come inside the response record, as over the
+   pipe. The RDMA path has worked: the client handles them with its usual retry
+   logic and keeps using RDMA.
+2. Throttling by the RDMA server (response status `RDMA_PROTO_THROTTLED`): the
+   only transport failure the client retries over the same QP.
+3. Any other transport failure: the client turns RDMA off for the pipe, resends
+   the request over the pipe, and uses RDMA on that pipe again only after the
+   pipe reconnects (a new pipe or after backof timeout for retry). 
 
-Every failure is logged. A malformed request and a forwarder timeout raise the
-`RdmaMalformedTabletRequest` and `RdmaTabletRequestTimeout` critical events.
+The transport failures:
+
+| Code | Cases | Source |
+|------|-------|--------|
+| E_REJECTED | unknown pipe, tablet gone, tablet shutting down, forwarder stopped or unavailable | handler, forwarder |
+| E_TIMEOUT | the forwarder timeout | forwarder |
+| E_NOT_IMPLEMENTED | method not allowed, unexpected message id, payload response | RDMA target, handler, forwarder |
+| E_ARGUMENT | no pipe server id, malformed request, response doesn't fit the client's buffer | RDMA target, handler |
+| E_FAIL | exception in the handler | RDMA target |
+| E_RDMA_UNAVAILABLE, E_TIMEOUT | endpoint unavailable, request timed out | core RDMA client |
+
+
+* The server reports a transport failure only for its own failures. A tablet's
+  error is always passed through inside the response record.
+* So that RDMA is turned off only by real failures:
+  * the CreateSession round trip makes sure the pipe is registered before the
+    first RDMA request, so "unknown pipe" means the pipe is gone
+    (see [Registry](#registry));
+  * the client sizes the response buffer for the largest response of the
+    method, so "doesn't fit" is a bug.
+* A request resent over the pipe after a timeout may execute twice, as with any
+  retry after a timeout; the duplicate request cache covers the requests with a
+  RequestId.
 
 ### Ordering
 
@@ -174,17 +210,6 @@ Two parts matter here:
   (`FileSystemEventClients[pipeServerId] = ev->Sender`), which is the tablet
   proxy of the vhost: it sends every request on the pipe on its own behalf.
 
-### First version: no subscriptions over RDMA
-
-* The handler sets `FileSystemEventSubscriptionDisabled` on every request it
-  forwards. Otherwise the tablet would register the forwarder (the sender of an
-  RDMA request) as the client of the pipe, and the events of the whole pipe
-  would go to the forwarder.
-* The responses to RDMA requests come with zero cache TTLs: vhost doesn't cache
-  what it read over RDMA. 
-
-### Next version: subscribe over the original pipe
-
 An RDMA request subscribes as if it came through the pipe, and the events keep
 going over the pipe; only the reply comes over RDMA.
 
@@ -206,7 +231,16 @@ sequenceDiagram
 * The subscription key needs no change: an RDMA request already arrives with
   the pipe server as `ev->Recipient`, so the subscriptions and the TTL are
   computed for that pipe.
-
+* The sender of an RDMA request
+  is the forwarder, which serves every client of the node; if the tablet
+  registered it, the events of the whole pipe would go to the forwarder. So:
+  * the handler sets a header flag on every request it forwards, and the tablet
+    subscribes such a request under the pipe server without changing the
+    client of the pipe;
+  * the tablet registers the client of the pipe upon CreateSession, which
+    always comes over the pipe before any RDMA request of that pipe (see
+    [Registry](#registry)), so the pipe has its client before the first RDMA
+    request subscribes.
 * The events go over the pipe's interconnect path, as today. Nothing is sent
   over RDMA by the server on its own: the core RDMA library is request/response
   only, and the pipe already gives the delivery and the disconnect
@@ -220,12 +254,11 @@ sequenceDiagram
     disconnect notification and drops its cache; the registry forgets the pipe
     and its RDMA requests are rejected;
   * QP lost, pipe alive: the events keep flowing; RDMA requests fail and go
-    over the pipe;
-
+    over the pipe.
 * Changes: the tablet (`RegisterFileSystemEventClient`, the header flag, the
-  registration upon CreateSession), the handler (the flag instead of disabling
-  the subscription), the client policy (cacheable reads over RDMA too). The
-  vhost cache doesn't change.
+  registration upon CreateSession) and the handler (sets the flag). The vhost
+  cache doesn't change, and the cacheable reads go over RDMA like the other
+  allowed methods.
 
 ## Connection model
 
