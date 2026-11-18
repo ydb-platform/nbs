@@ -31,7 +31,7 @@ NProtoPrivate::TShardTopology GetShardTopology(
 {
     // A tablet of the previous version fills only the list.
     if (!response.HasShardTopology()) {
-        return BuildShardTopology(response.GetShardFileSystemIds());
+        return BuildOrdinaryShardTopology(response.GetShardFileSystemIds());
     }
 
     return response.GetShardTopology();

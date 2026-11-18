@@ -842,21 +842,24 @@ message TConfigureShardsRequest
 
 message TShardTopology
 {
-    enum EShardType {
+    enum EShardType
+    {
         E_UNSPECIFIED = 0;
         E_ORDINARY = 1;
         E_FASTSHARD = 2;
     }
 
-    enum EShardRole {
+    enum EShardRole
+    {
         E_NONE = 0;
         E_FILE = 1;
         E_DIRECTORY = 2;
     }
 
-    message TShardInfo {
-        uint32 Type = 1;
-        uint32 Role = 2;
+    message TShardInfo
+    {
+        EShardType Type = 1;
+        uint32 RoleMask = 2;
         string ShardId = 3;
         uint64 TabletId = 4;
     }

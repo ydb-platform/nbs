@@ -481,8 +481,8 @@ func (c *client) GetFileSystemTopology(
 	var shardTopology []ShardInfo
 	for _, shard := range response.GetShardTopology().GetShards() {
 		shardTopology = append(shardTopology, ShardInfo{
-			Type:     shard.GetType(),
-			Role:     shard.GetRole(),
+			Type:     uint32(shard.GetType()),
+			RoleMask: shard.GetRoleMask(),
 			ShardID:  shard.GetShardId(),
 			TabletID: shard.GetTabletId(),
 		})

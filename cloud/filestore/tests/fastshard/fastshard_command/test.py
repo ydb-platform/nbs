@@ -30,14 +30,16 @@ def __init_test():
 
 
 def __configure_fastshards(client):
-    shard_ids = []
+    directory_shard_ids = []
     file_shard_ids = []
     for i in range(SHARD_COUNT):
         shard_id = "%s_s%s" % (FS_ID, i + 1)
         if i >= SHARD_COUNT - FILE_SHARD_COUNT:
             file_shard_ids.append(shard_id)
-        shard_ids.append(shard_id)
-    topology = make_shard_topology(shard_ids, file_shard_ids)
+        else:
+            directory_shard_ids.append(shard_id)
+    shard_ids = directory_shard_ids + file_shard_ids
+    topology = make_shard_topology(directory_shard_ids, file_shard_ids)
 
     for i, shard_id in enumerate(shard_ids):
         client.execute_action(

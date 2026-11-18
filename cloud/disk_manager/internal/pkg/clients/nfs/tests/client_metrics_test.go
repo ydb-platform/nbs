@@ -304,15 +304,15 @@ func TestClientGetFileSystemTopologySuccess(t *testing.T) {
 				ShardTopology: &private_protos.TShardTopology{
 					Shards: []*private_protos.TShardTopology_TShardInfo{
 						{
-							Type:     uint32(private_protos.TShardTopology_E_FASTSHARD),
-							Role:     common.ProtoFlag(private_protos.TShardTopology_E_FILE),
+							Type:     private_protos.TShardTopology_E_FASTSHARD,
+							RoleMask: common.ProtoFlag(private_protos.TShardTopology_E_FILE),
 							ShardId:  "fs-1_s1",
 							TabletId: 1,
 						},
 						{
-							Type:    uint32(private_protos.TShardTopology_E_ORDINARY),
-							Role:    common.ProtoFlag(private_protos.TShardTopology_E_DIRECTORY),
-							ShardId: "fs-1_s2",
+							Type:     private_protos.TShardTopology_E_ORDINARY,
+							RoleMask: common.ProtoFlag(private_protos.TShardTopology_E_DIRECTORY),
+							ShardId:  "fs-1_s2",
 						},
 					},
 				},
@@ -331,14 +331,14 @@ func TestClientGetFileSystemTopologySuccess(t *testing.T) {
 		ShardTopology: []nfs.ShardInfo{
 			{
 				Type:     uint32(private_protos.TShardTopology_E_FASTSHARD),
-				Role:     common.ProtoFlag(private_protos.TShardTopology_E_FILE),
+				RoleMask: common.ProtoFlag(private_protos.TShardTopology_E_FILE),
 				ShardID:  "fs-1_s1",
 				TabletID: 1,
 			},
 			{
-				Type:    uint32(private_protos.TShardTopology_E_ORDINARY),
-				Role:    common.ProtoFlag(private_protos.TShardTopology_E_DIRECTORY),
-				ShardID: "fs-1_s2",
+				Type:     uint32(private_protos.TShardTopology_E_ORDINARY),
+				RoleMask: common.ProtoFlag(private_protos.TShardTopology_E_DIRECTORY),
+				ShardID:  "fs-1_s2",
 			},
 		},
 		ShardNo:                                1,

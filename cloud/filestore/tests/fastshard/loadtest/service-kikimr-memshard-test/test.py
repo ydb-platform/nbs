@@ -26,10 +26,8 @@ def configure_memshard():
         "configureasshard",
         {
             "FileSystemId": SHARD_ID,
-            "ShardNo": 1,
-            "ShardTopology": make_shard_topology(
-                [SHARD_ID, "foo"],
-                [SHARD_ID]),
+            "ShardNo": 2,
+            "ShardTopology": make_shard_topology(["foo"], [SHARD_ID]),
             "IsFastShard": True,
             "FastShardConfig": {"MemConfig": {}},
             "DirectoryCreationInShardsEnabled": False,

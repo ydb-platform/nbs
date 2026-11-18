@@ -7038,10 +7038,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             request.AddShardFileSystemIds(fsConfig.Shard2Id);
             auto& fileShard = *request.MutableShardTopology()->AddShards();
             fileShard.SetShardId(fsConfig.Shard1Id);
-            fileShard.SetRole(ProtoFlag(NProtoPrivate::TShardTopology::E_FILE));
+            fileShard.SetRoleMask(
+                ProtoFlag(NProtoPrivate::TShardTopology::E_FILE));
             auto& shard = *request.MutableShardTopology()->AddShards();
             shard.SetShardId(fsConfig.Shard2Id);
-            shard.SetRole(
+            shard.SetRoleMask(
                 ProtoFlag(NProtoPrivate::TShardTopology::E_DIRECTORY));
             request.SetDirectoryCreationInShardsEnabled(true);
 
@@ -7069,10 +7070,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             request.AddShardFileSystemIds(fsConfig.Shard2Id);
             auto& fileShard = *request.MutableShardTopology()->AddShards();
             fileShard.SetShardId(fsConfig.Shard1Id);
-            fileShard.SetRole(ProtoFlag(NProtoPrivate::TShardTopology::E_FILE));
+            fileShard.SetRoleMask(
+                ProtoFlag(NProtoPrivate::TShardTopology::E_FILE));
             auto& shard = *request.MutableShardTopology()->AddShards();
             shard.SetShardId(fsConfig.Shard2Id);
-            shard.SetRole(
+            shard.SetRoleMask(
                 ProtoFlag(NProtoPrivate::TShardTopology::E_DIRECTORY));
             request.SetDirectoryCreationInShardsEnabled(true);
 
@@ -7219,12 +7221,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(
             ProtoFlag(TShardTopology::E_FILE) |
             ProtoFlag(TShardTopology::E_DIRECTORY),
-            topology.GetShards(0).GetRole());
+            topology.GetShards(0).GetRoleMask());
 
         // configuration via topology, no shard ids
-        topology.MutableShards(0)->SetRole(ProtoFlag(TShardTopology::E_FILE));
+        topology.MutableShards(0)->SetRoleMask(
+            ProtoFlag(TShardTopology::E_FILE));
         topology.MutableShards(0)->SetTabletId(123);
-        topology.MutableShards(1)->SetRole(ProtoFlag(TShardTopology::E_DIRECTORY));
+        topology.MutableShards(1)->SetRoleMask(
+            ProtoFlag(TShardTopology::E_DIRECTORY));
 
         NProtoPrivate::TConfigureShardsRequest request;
         request.SetFileSystemId(fsConfig.FsId);
@@ -7246,11 +7250,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         // a topology with a shard without a role should be rejected
         invalid = request;
-        invalid.MutableShardTopology()->MutableShards(1)->SetRole(0);
+        invalid.MutableShardTopology()->MutableShards(1)->SetRoleMask(0);
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, configure(invalid));
 
         // a topology without a shard for directories should be rejected
-        invalid.MutableShardTopology()->MutableShards(1)->SetRole(
+        invalid.MutableShardTopology()->MutableShards(1)->SetRoleMask(
             ProtoFlag(TShardTopology::E_FILE));
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, configure(invalid));
 
@@ -7263,7 +7267,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // the reply should keep the configured shards and add the new one
         auto& shard3 = *topology.AddShards();
         shard3.SetShardId(fsConfig.FsId + "_s3");
-        shard3.SetRole(
+        shard3.SetType(TShardTopology::E_ORDINARY);
+        shard3.SetRoleMask(
             ProtoFlag(TShardTopology::E_FILE) |
             ProtoFlag(TShardTopology::E_DIRECTORY));
         UNIT_ASSERT(google::protobuf::util::MessageDifferencer::Equals(
@@ -7273,7 +7278,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // a sender of the previous version adds a shard via shard ids
         auto& shard4 = *topology.AddShards();
         shard4.SetShardId(fsConfig.FsId + "_s4");
-        shard4.SetRole(
+        shard4.SetType(TShardTopology::E_ORDINARY);
+        shard4.SetRoleMask(
             ProtoFlag(TShardTopology::E_FILE) |
             ProtoFlag(TShardTopology::E_DIRECTORY));
 
@@ -7289,18 +7295,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             topology,
             GetFileSystemTopology(service, fsConfig.FsId).GetShardTopology()));
 
-        // the shard list is replaced via shard ids, no topology
+        // the shard list is cut by force via shard ids, no topology
         request.ClearShardFileSystemIds();
-        request.AddShardFileSystemIds(fsConfig.Shard1Id);
+        request.AddShardFileSystemIds(fsConfig.Shard2Id);
         request.SetForce(true);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, configure(request));
         WaitForTabletStart(service);
 
-        // the reply should not have the outdated topology
-        response = GetFileSystemTopology(service, fsConfig.FsId);
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            response.GetShardTopology().GetShards(0).GetTabletId());
+        // the reply should keep the remaining shard as it was configured
+        TShardTopology remaining;
+        *remaining.AddShards() = topology.GetShards(1);
+        UNIT_ASSERT(google::protobuf::util::MessageDifferencer::Equals(
+            remaining,
+            GetFileSystemTopology(service, fsConfig.FsId).GetShardTopology()));
     }
 
     SERVICE_TEST(ShouldUseShardListIfTopologyIsNotFilled)

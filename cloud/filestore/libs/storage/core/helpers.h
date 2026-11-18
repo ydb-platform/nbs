@@ -65,8 +65,13 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Adds a shard that stores both files and directories.
+void AddOrdinaryShard(
+    const TString& shardId,
+    NProtoPrivate::TShardTopology& topology);
+
 // Converts shard ids list into default topology representation.
-NProtoPrivate::TShardTopology BuildShardTopology(
+NProtoPrivate::TShardTopology BuildOrdinaryShardTopology(
     const google::protobuf::RepeatedPtrField<TString>& shardIds);
 
 ////////////////////////////////////////////////////////////////////////////////

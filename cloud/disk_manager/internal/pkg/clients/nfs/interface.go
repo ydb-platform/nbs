@@ -35,7 +35,7 @@ type FilesystemModel struct {
 
 type ShardInfo struct {
 	Type     uint32
-	Role     uint32
+	RoleMask uint32
 	ShardID  string
 	TabletID uint64
 }

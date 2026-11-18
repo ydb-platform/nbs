@@ -152,6 +152,7 @@ void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
                "filesystem without strict file system size enforcement.");
     }
 
+    // TODO issue-8034: switch to shard topology
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     TVector<TString> balancerShardIds;
 

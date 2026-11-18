@@ -7,6 +7,7 @@
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 
@@ -766,11 +767,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
 
         const auto& shardConfigs = FileStoreConfig.ShardConfigs;
         for (ui32 i = ExistingShardIds.size(); i < shardConfigs.size(); ++i) {
-            auto& shard = *ShardTopology.AddShards();
-            shard.SetShardId(shardConfigs[i].GetFileSystemId());
-            shard.SetRole(
-                ProtoFlag(NProtoPrivate::TShardTopology::E_FILE) |
-                ProtoFlag(NProtoPrivate::TShardTopology::E_DIRECTORY));
+            AddOrdinaryShard(shardConfigs[i].GetFileSystemId(), ShardTopology);
         }
 
         if (ShardCreationState.HasShardsToCreate() ||

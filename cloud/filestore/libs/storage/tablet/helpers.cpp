@@ -5,6 +5,7 @@
 
 #include <contrib/ydb/core/protos/filestore_config.pb.h>
 
+#include <util/generic/hash.h>
 #include <util/generic/size_literals.h>
 #include <util/string/builder.h>
 
@@ -45,8 +46,9 @@ NProto::TNode CreateAttrs(NProto::ENodeType type, int mode, ui64 size, ui64 uid,
 
 bool IsFileShard(const NProtoPrivate::TShardTopology::TShardInfo& shard)
 {
-    return HasFlag(shard.GetRole(), NProtoPrivate::TShardTopology::E_FILE) &&
-        !HasFlag(shard.GetRole(), NProtoPrivate::TShardTopology::E_DIRECTORY);
+    const ui32 roleMask = shard.GetRoleMask();
+    return HasFlag(roleMask, NProtoPrivate::TShardTopology::E_FILE) &&
+        !HasFlag(roleMask, NProtoPrivate::TShardTopology::E_DIRECTORY);
 }
 
 } // namespace
@@ -487,18 +489,16 @@ void RestoreShardTopology(
     const google::protobuf::RepeatedPtrField<TString>& shardIds,
     NProtoPrivate::TShardTopology& topology)
 {
-    const auto& shards = topology.GetShards();
-
-    // Shards are only appended unless the list is replaced by force.
-    bool matches = shards.size() <= shardIds.size();
-    for (int i = 0; matches && i < shards.size(); ++i) {
-        matches = shards[i].GetShardId() == shardIds[i];
+    THashMap<TString, const NProtoPrivate::TShardTopology::TShardInfo*> shards;
+    for (const auto& shard: topology.GetShards()) {
+        shards.emplace(shard.GetShardId(), &shard);
     }
 
-    auto restored = BuildShardTopology(shardIds);
-    if (matches) {
-        for (int i = 0; i < shards.size(); ++i) {
-            *restored.MutableShards(i) = shards[i];
+    auto restored = BuildOrdinaryShardTopology(shardIds);
+    for (auto& shard: *restored.MutableShards()) {
+        auto it = shards.find(shard.GetShardId());
+        if (it != shards.end()) {
+            shard = *it->second;
         }
     }
 
@@ -521,9 +521,9 @@ NProto::TError ValidateShardTopology(
     const NProtoPrivate::TShardTopology& topology)
 {
     THashSet<TString> shardIds;
-    bool hasNonFileShards = topology.GetShards().empty();
+    bool hasNonFileShards = false;
     for (const auto& shard: topology.GetShards()) {
-        if (!shard.GetRole()) {
+        if (!shard.GetRoleMask()) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder() << "no role of shard " << shard.GetShardId());
@@ -538,7 +538,7 @@ NProto::TError ValidateShardTopology(
         }
     }
 
-    if (!hasNonFileShards) {
+    if (!topology.GetShards().empty() && !hasNonFileShards) {
         return MakeError(E_ARGUMENT, "non-file shard set is empty");
     }
 

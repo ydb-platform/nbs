@@ -194,13 +194,15 @@ def configure_shards(args, groups):
     shard_ids = [
         "%s_s%d" % (args.fs, i) for i in range(1, args.shard_count + 1)]
     file_shard_ids = shard_ids[args.shard_count - args.file_shard_count:]
-    # Role: 1 - files, 2 - directories. Type: 1 - ordinary, 2 - fast shard.
+    # RoleMask: 1 - files, 2 - directories.
     shards = []
     for shard_id in shard_ids:
         if shard_id in file_shard_ids:
-            shards.append({"ShardId": shard_id, "Role": 1, "Type": 2})
+            shards.append(
+                {"ShardId": shard_id, "RoleMask": 1, "Type": "E_FASTSHARD"})
         else:
-            shards.append({"ShardId": shard_id, "Role": 2, "Type": 1})
+            shards.append(
+                {"ShardId": shard_id, "RoleMask": 2, "Type": "E_ORDINARY"})
     topology = {"Shards": shards}
 
     for i, shard_id in enumerate(shard_ids):

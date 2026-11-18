@@ -278,7 +278,7 @@ void TCreateFileStoreActor::ConfigureShard(
             request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
         }
         *request->Record.MutableShardTopology() =
-            BuildShardTopology(request->Record.GetShardFileSystemIds());
+            BuildOrdinaryShardTopology(request->Record.GetShardFileSystemIds());
     }
 
     LOG_INFO(
@@ -312,7 +312,7 @@ void TCreateFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
         request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
     }
     *request->Record.MutableShardTopology() =
-        BuildShardTopology(request->Record.GetShardFileSystemIds());
+        BuildOrdinaryShardTopology(request->Record.GetShardFileSystemIds());
 
     LOG_INFO(
         ctx,

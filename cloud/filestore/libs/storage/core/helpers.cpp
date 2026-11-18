@@ -291,17 +291,25 @@ ui32 TListNodesInternalResponseBuilder::GetIndex() const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProtoPrivate::TShardTopology BuildShardTopology(
+void AddOrdinaryShard(
+    const TString& shardId,
+    NProtoPrivate::TShardTopology& topology)
+{
+    auto& shard = *topology.AddShards();
+    shard.SetShardId(shardId);
+    shard.SetType(NProtoPrivate::TShardTopology::E_ORDINARY);
+    shard.SetRoleMask(
+        ProtoFlag(NProtoPrivate::TShardTopology::E_FILE) |
+        ProtoFlag(NProtoPrivate::TShardTopology::E_DIRECTORY));
+}
+
+NProtoPrivate::TShardTopology BuildOrdinaryShardTopology(
     const google::protobuf::RepeatedPtrField<TString>& shardIds)
 {
     NProtoPrivate::TShardTopology topology;
     topology.MutableShards()->Reserve(shardIds.size());
     for (const auto& shardId: shardIds) {
-        auto& shard = *topology.AddShards();
-        shard.SetShardId(shardId);
-        shard.SetRole(
-            ProtoFlag(NProtoPrivate::TShardTopology::E_FILE) |
-            ProtoFlag(NProtoPrivate::TShardTopology::E_DIRECTORY));
+        AddOrdinaryShard(shardId, topology);
     }
 
     return topology;
