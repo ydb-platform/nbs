@@ -547,13 +547,13 @@ struct TFixture: public NUnitTest::TBaseFixture
     }
 
     // "5+2, 20+1" - the page ranges the reader has to take from the device
-    TString MissingPageNos(const TGroups& refs)
+    TString MissingRanges(const TGroups& refs)
     {
         auto result = StartRead(refs);
         UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
 
         TVector<TString> ranges;
-        for (const auto& range: result.GetResult().MissingPageNos) {
+        for (const auto& range: result.GetResult().MissingRanges) {
             ranges.push_back(
                 TStringBuilder() << range.FirstPageNo << "+" << range.PageCount);
         }
@@ -1594,31 +1594,31 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(2, response.GetLastAckedLogSequenceNumber());
     }
 
-    Y_UNIT_TEST_F(ShouldReturnMissingPageNos, TFixture)
+    Y_UNIT_TEST_F(ShouldReturnMissingRanges, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
         // nothing is journalled yet, so every page is missing
         UNIT_ASSERT_VALUES_EQUAL(
             "5+2, 20+1",
-            MissingPageNos({{5, 2}, {20, 1}}));
+            MissingRanges({{5, 2}, {20, 1}}));
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{16, 1}}));
 
         // fully journalled ranges
-        UNIT_ASSERT_VALUES_EQUAL("", MissingPageNos({{10, 4}, {16, 1}}));
-        UNIT_ASSERT_VALUES_EQUAL("", MissingPageNos({{11, 2}}));
+        UNIT_ASSERT_VALUES_EQUAL("", MissingRanges({{10, 4}, {16, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL("", MissingRanges({{11, 2}}));
 
         // gaps before, between and after the journalled pages
         UNIT_ASSERT_VALUES_EQUAL(
             "8+2, 14+2, 17+3",
-            MissingPageNos({{8, 12}}));
+            MissingRanges({{8, 12}}));
 
         // every range gets its own gaps, in the order of the request
         UNIT_ASSERT_VALUES_EQUAL(
             "17+1, 30+2, 9+1, 14+1",
-            MissingPageNos({{16, 2}, {30, 2}, {9, 6}}));
+            MissingRanges({{16, 2}, {30, 2}, {9, 6}}));
     }
 
     Y_UNIT_TEST_F(ShouldReturnFlushedPagesAsMissing, TFixture)
@@ -1626,18 +1626,18 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 1}}));
 
-        UNIT_ASSERT_VALUES_EQUAL("", MissingPageNos({{10, 1}, {20, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL("", MissingRanges({{10, 1}, {20, 1}}));
 
         Journal->MarkRecordAsFlushed(1);
 
         // lsn 1 is on the device now, the same pages Read stops returning
-        UNIT_ASSERT_VALUES_EQUAL("10+1", MissingPageNos({{10, 1}, {20, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL("10+1", MissingRanges({{10, 1}, {20, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(
             "20:[B020]",
             DescribeGroups(ReadPages({{10, 1}, {20, 1}})));
     }
 
-    Y_UNIT_TEST_F(ShouldReturnMissingPageNosBeforeJournalIsRead, TFixture)
+    Y_UNIT_TEST_F(ShouldReturnMissingRangesBeforeJournalIsRead, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 

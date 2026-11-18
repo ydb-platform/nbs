@@ -262,7 +262,7 @@ struct TTestJournal final: public IJournal
 
         TJournalReadResult result;
 
-        auto& missing = result.MissingPageNos;
+        auto& missing = result.MissingRanges;
         for (const auto& ref: request.GetPageGroupRefs()) {
             bool extend = false;
 

@@ -21,7 +21,7 @@ using TJournalRecords = TVector<NProto::TJournalRecord>;
 
 struct TJournalReadResult
 {
-    TVector<TPageRangeRef> MissingPageNos;
+    TVector<TPageRangeRef> MissingRanges;
     NThreading::TFuture<NProto::TReadPagesResponse> Future;
 };
 

@@ -173,7 +173,8 @@ private:
 
     TLog Log;
 
-    TLsnBarrier IndexedLsnBarrier;
+    std::shared_ptr<TLsnBarrier> IndexedLsnBarrier =
+        std::make_shared<TLsnBarrier>();
 
     std::atomic_bool ShouldStop = false;
     std::atomic_bool RestoreFailed = false;
@@ -257,7 +258,7 @@ NProto::TError TJournalledDeviceV2::DoStart()
         return response.GetError();
     }
 
-    IndexedLsnBarrier.Advance(response.GetResult());
+    IndexedLsnBarrier->Advance(response.GetResult());
 
     FlushCycleStopped = NewPromise<void>();
     ScheduleFlushCycle();
@@ -299,7 +300,7 @@ NProto::TReadPagesResponse TJournalledDeviceV2::DoReadPages(
     // different lsns
     //
 
-    const auto lsnBarrierGuard = IndexedLsnBarrier.Acquire();
+    const auto lsnBarrierGuard = IndexedLsnBarrier->Acquire();
 
     //
     // Start the journal read. It returns at once with the ranges that
@@ -376,7 +377,7 @@ NProto::TWriteLogRecordResponse TJournalledDeviceV2::DoWriteLogRecord(
         return response;
     }
 
-    IndexedLsnBarrier.Advance(lsn);
+    IndexedLsnBarrier->Advance(lsn);
     return response;
 }
 
@@ -430,7 +431,7 @@ void TJournalledDeviceV2::RunFlushCycle()
         //
 
         auto response = Journal->GetRecordsToFlush(
-            IndexedLsnBarrier.GetBarrierLsn(),
+            IndexedLsnBarrier->GetBarrierLsn(),
             MaxFlushBatchPages);
 
         if (HasError(response)) {

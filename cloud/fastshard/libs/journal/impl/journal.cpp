@@ -310,47 +310,10 @@ TVector<TPageMapping> CreatePageMappings(
     return mappings;
 }
 
-// Returns the parts of |ranges| that |mappings| do not cover.
-TVector<TPageRangeRef> GetMissingPageRanges(
-    const TVector<TPageRangeRef>& ranges,
-    const TVector<TPageMapping>& mappings)
-{
-    TVector<TPageRangeRef> missing;
-
-    auto addGap = [&](ui64 begin, ui64 end)
-    {
-        if (begin < end) {
-            missing.push_back(
-                {.FirstPageNo = begin, .PageCount = end - begin});
-        }
-    };
-
-    size_t i = 0;
-    for (const auto& range: ranges) {
-        const ui64 end = range.FirstPageNo + range.PageCount;
-        ui64 pageNo = range.FirstPageNo;
-
-        for (; i < mappings.size(); ++i) {
-            const auto& [mappedPageNo, location] = mappings[i];
-            if (mappedPageNo < range.FirstPageNo || mappedPageNo >= end) {
-                break;
-            }
-
-            addGap(pageNo, mappedPageNo);
-            pageNo = mappedPageNo + location.PageCount;
-        }
-
-        addGap(pageNo, end);
-    }
-
-    return missing;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class TJournal final
     : public IJournal
-    , public std::enable_shared_from_this<TJournal>
 {
 private:
     const ILoggingServicePtr Logging;
@@ -363,7 +326,8 @@ private:
 
     TLogRecordChain LogRecordChain;
     TLogPageIndex LogPageIndex;
-    mutable TLsnBarrier FlushedLsnBarrier;
+    std::shared_ptr<TLsnBarrier> FlushedLsnBarrier =
+        std::make_shared<TLsnBarrier>();
 
     std::atomic<bool> AdvancingLsnLowWatermark = false;
     std::atomic<ui64> LsnLowWatermark = 0;
@@ -419,10 +383,9 @@ private:
 
     void IndexChainedRecords();
 
-    NProto::TReadPagesResponse OnRead(
+    static NProto::TReadPagesResponse OnRead(
         const TLogPageIndex::TLookupResult& lookup,
-        TLsnBarrier::TGuard& lsnBarrierGuard,
-        const TResultOrError<TVector<TBuffer>>& buffersOrError) const;
+        const TResultOrError<TVector<TBuffer>>& buffersOrError);
 
     NProto::TError ReadPageGroups(
         const TVector<TPageMapping>& mappings,
@@ -547,7 +510,7 @@ TResultOrError<ui64> TJournal::Restore()
 
     LogRecordChain.InitLastErasedLsn(headLsn);
     LogPageIndex.InitLastIndexedLsn(headLsn);
-    FlushedLsnBarrier.Advance(headLsn);
+    FlushedLsnBarrier->Advance(headLsn);
 
     //
     // Rebuild the page store allocation and the chain
@@ -859,7 +822,7 @@ TResultOrError<TJournalReadResult> TJournal::Read(
     //
 
     auto lsnBarrierGuard =
-        std::make_shared<TLsnBarrier::TGuard>(FlushedLsnBarrier.Acquire());
+        std::make_shared<TLsnBarrier::TGuard>(FlushedLsnBarrier->Acquire());
 
     //
     // Look up the journalled pages of the requested ranges, skipping the
@@ -870,7 +833,7 @@ TResultOrError<TJournalReadResult> TJournal::Read(
     auto lookup = LogPageIndex.Lookup(ranges, lsnBarrierGuard->GetLsn());
 
     TJournalReadResult result;
-    result.MissingPageNos = GetMissingPageRanges(ranges, lookup.Mappings);
+    result.MissingRanges = std::move(lookup.MissingRanges);
 
     //
     // Answer at once when no requested page is in the journal - there is
@@ -892,11 +855,14 @@ TResultOrError<TJournalReadResult> TJournal::Read(
     auto future = DataStore->Read(GetLocations(lookup.Mappings));
 
     result.Future = future.Apply(
-        [self = shared_from_this(),
-         lsnBarrierGuard = std::move(lsnBarrierGuard),
+        [lsnBarrierGuard = std::move(lsnBarrierGuard),
          lookup = std::move(lookup)](const auto& future)
         {
-            return self->OnRead(lookup, *lsnBarrierGuard, future.GetValue());
+            // Release the flushed lsn when the read is done and not when the
+            // callback object is destroyed, which can be much later
+            auto guard = std::move(*lsnBarrierGuard);
+
+            return OnRead(lookup, future.GetValue());
         });
 
     return result;
@@ -904,20 +870,8 @@ TResultOrError<TJournalReadResult> TJournal::Read(
 
 NProto::TReadPagesResponse TJournal::OnRead(
     const TLogPageIndex::TLookupResult& lookup,
-    TLsnBarrier::TGuard& lsnBarrierGuard,
-    const TResultOrError<TVector<TBuffer>>& buffersOrError) const
+    const TResultOrError<TVector<TBuffer>>& buffersOrError)
 {
-    //
-    // Release the flushed lsn while the caller keeps the journal alive. The
-    // guard lives as long as the read callback object, and that can be longer
-    // than the journal
-    //
-
-    Y_DEFER
-    {
-        lsnBarrierGuard.Release();
-    };
-
     if (HasError(buffersOrError)) {
         return TErrorResponse(buffersOrError.GetError());
     }
@@ -954,7 +908,7 @@ NProto::TReadJournalTailResponse TJournal::ReadTail(
     //
 
     auto lsnBarrierGuard =
-        FlushedLsnBarrier.AcquireAtLeast(request.GetAfterLogSequenceNumber());
+        FlushedLsnBarrier->AcquireAtLeast(request.GetAfterLogSequenceNumber());
 
     //
     // Walk the ready records that follow each other unbroken past the pinned
@@ -1060,7 +1014,7 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
     // caller allows
     //
 
-    const ui64 flushedLsn = FlushedLsnBarrier.Acquire().GetLsn();
+    const ui64 flushedLsn = FlushedLsnBarrier->Acquire().GetLsn();
 
     const ui64 lsnLowWatermark =
         LsnLowWatermark.load(std::memory_order_acquire);
@@ -1144,7 +1098,7 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
 
 void TJournal::MarkRecordAsFlushed(ui64 lsn)
 {
-    FlushedLsnBarrier.Advance(lsn);
+    FlushedLsnBarrier->Advance(lsn);
 }
 
 NProto::TError TJournal::CleanupFlushedRecords()
@@ -1155,7 +1109,7 @@ NProto::TError TJournal::CleanupFlushedRecords()
     // must not find a record whose pages have been reused
     //
 
-    ui64 eraseUpToLsn = FlushedLsnBarrier.GetBarrierLsn();
+    ui64 eraseUpToLsn = FlushedLsnBarrier->GetBarrierLsn();
 
     // The meta store holds the records by their lsn
     auto future = MetaStore->EraseBelow(eraseUpToLsn + 1);
