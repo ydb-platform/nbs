@@ -13,7 +13,6 @@ import re
 import sys
 import time
 from contextlib import contextmanager
-from enum import Enum
 from operator import attrgetter
 from pathlib import Path
 from typing import IO, Callable, Iterable, Protocol, TypeAlias
@@ -24,11 +23,20 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from ..helpers import (
     github_client_from_env,
     load_github_event,
+    parse_actions_job_url,
     pull_request_from_event,
     setup_logger,
 )
 from ..set_build_and_test_targets import JOIN_GROUPS
 from .junit_utils import get_property_value, iter_xml_files
+from .report_status import TestStatus
+from .status_plaque import (
+    Plaque,
+    Report,
+    WorkflowOutcome,
+    component_for_target,
+    fit_comment,
+)
 
 LOGGER = logging.getLogger(__name__)
 TitlePathTriplet: TypeAlias = tuple[str, str, str]
@@ -47,6 +55,7 @@ SUMMARY_JSON_SCHEMA_VERSION = 1
 WORKLOAD_CHECK_STATUS_ICONS = {
     "pending": ":white_circle:",
     "running": ":hourglass_flowing_sand:",
+    "built": ":hammer:",
     "completed": ":white_check_mark:",
     "failed_build": ":red_circle:",
     "failed": ":x:",
@@ -58,6 +67,7 @@ WORKLOAD_CHECK_STATUS_ICONS = {
 WORKLOAD_CHECK_STATUS_ORDER = {
     "pending": 0,
     "running": 1,
+    "built": 1,
     "completed": 2,
     "failed": 3,
     "cancelled": 3,
@@ -116,6 +126,15 @@ class CommentEditConflict(Exception):
 
 
 @contextmanager
+def warn_on_comment_failure(operation: str) -> Iterable[None]:
+    try:
+        yield
+    except Exception:
+        LOGGER.warning("%s failed", operation, exc_info=True)
+        print(f"::warning::{operation} failed; see the job logs and test reports.")
+
+
+@contextmanager
 def _summary_output_stream(summary_fn: str | None) -> Iterable[IO[str]]:
     if summary_fn:
         with open(summary_fn, "at") as fp:
@@ -123,76 +142,6 @@ def _summary_output_stream(summary_fn: str | None) -> Iterable[IO[str]]:
         return
 
     yield sys.stdout
-
-
-class TestStatus(Enum):
-    PASS = 0
-    FAIL = 1
-    ERROR = 2
-    SKIP = 3
-    MUTE = 4
-    FAIL_BUILD = 5
-
-    def __lt__(self, other: object) -> bool:
-        if not isinstance(other, TestStatus):
-            return NotImplemented
-        return self.value < other.value
-
-    @property
-    def label(self) -> str:
-        return {
-            TestStatus.PASS: "PASS",
-            TestStatus.FAIL: "FAIL",
-            TestStatus.FAIL_BUILD: "FAIL BUILD",
-            TestStatus.ERROR: "ERROR",
-            TestStatus.SKIP: "SKIP",
-            TestStatus.MUTE: "MUTE",
-        }[self]
-
-    @property
-    def summary_header(self) -> str:
-        return {
-            TestStatus.PASS: "PASSED",
-            TestStatus.ERROR: "ERRORS",
-            TestStatus.FAIL: "FAILED",
-            TestStatus.FAIL_BUILD: "FAILED BUILD",
-            TestStatus.SKIP: "SKIPPED",
-            TestStatus.MUTE: "MUTED",
-        }[self]
-
-    @property
-    def report_anchor(self) -> str:
-        return self.name
-
-    @property
-    def is_failure(self) -> bool:
-        return self in (
-            TestStatus.ERROR,
-            TestStatus.FAIL,
-            TestStatus.FAIL_BUILD,
-        )
-
-    @classmethod
-    def summary_table_order(cls) -> tuple["TestStatus", ...]:
-        return (
-            cls.PASS,
-            cls.ERROR,
-            cls.FAIL,
-            cls.FAIL_BUILD,
-            cls.SKIP,
-            cls.MUTE,
-        )
-
-    @classmethod
-    def html_report_order(cls) -> tuple["TestStatus", ...]:
-        return (
-            cls.ERROR,
-            cls.FAIL,
-            cls.FAIL_BUILD,
-            cls.SKIP,
-            cls.MUTE,
-            cls.PASS,
-        )
 
 
 @dataclasses.dataclass
@@ -658,21 +607,11 @@ def get_workload_status_text(
     build_preset: str,
     workload_status: str,
 ) -> list[str]:
-    if workload_status == "in_progress":
-        status_note = [
-            "> [!IMPORTANT]",
-            (
-                f"> Workload for **{build_preset}** is not finished yet. "
-                "This comment will be updated after all workloads complete."
-            ),
-        ]
-    else:
-        status_note = [
-            "> [!NOTE]",
-            f"> All workloads for **{build_preset}** have completed.",
-        ]
-
-    return [WORKLOAD_STATUS_START, *status_note, WORKLOAD_STATUS_END]
+    return [
+        WORKLOAD_STATUS_START,
+        f"<!-- {build_preset}: {workload_status} -->",
+        WORKLOAD_STATUS_END,
+    ]
 
 
 def get_comment_header(
@@ -760,6 +699,7 @@ def get_workload_check_line(
     suffixes = {
         "pending": "",
         "running": "",
+        "built": " (build passed; waiting for test results)",
         "completed": "",
         "failed_build": " (build failed)",
         "failed": " (job failed before reporting completion)",
@@ -813,6 +753,10 @@ def replace_workload_status_block(
     build_preset: str,
     workload_status: str,
 ) -> str:
+    body = body.replace(
+        "> [!NOTE]\n> Build and test status. Updated as each workload progresses.\n",
+        "",
+    )
     status_block = "\n".join(get_workload_status_text(build_preset, workload_status))
     pattern = re.compile(
         rf"{re.escape(WORKLOAD_STATUS_START)}.*?{re.escape(WORKLOAD_STATUS_END)}",
@@ -851,11 +795,24 @@ def ensure_workload_status_block(
     return replace_workload_status_block(body, build_preset, workload_status)
 
 
+def get_workflow_run_attempt() -> int:
+    return int(os.environ.get("GITHUB_RUN_ATTEMPT", "1"))
+
+
 def replace_workload_checks_block(
     body: str,
     build_preset: str,
     components: list[str],
 ) -> str:
+    plaque = Plaque.from_comment(body)
+    if plaque is not None:
+        # Reset previous runs before provisioning, while preserving updates from
+        # workers that have already started in this GitHub run attempt.
+        run_attempt = get_workflow_run_attempt()
+        for component in components:
+            plaque.workload(component, run_attempt)
+        return plaque.replace(body)
+
     checks_block = "\n".join(get_workload_checks_text(build_preset, components))
     pattern = re.compile(
         rf"{re.escape(WORKLOAD_CHECKS_START)}.*?{re.escape(WORKLOAD_CHECKS_END)}",
@@ -876,6 +833,11 @@ def ensure_workload_check_row(
     build_preset: str,
     component: str,
 ) -> str:
+    plaque = Plaque.from_comment(body)
+    if plaque is not None:
+        plaque.workload(component)
+        return plaque.replace(body)
+
     if get_workload_check_line_match(body, component) is not None:
         return body
 
@@ -902,6 +864,13 @@ def get_workload_check_status(
     body: str,
     component: str,
 ) -> str | None:
+    plaque = Plaque.from_comment(body)
+    if plaque is not None:
+        return next(
+            (row.status for row in plaque.workloads if row.component == component),
+            None,
+        )
+
     match = get_workload_check_line_match(body, component)
     if match is None:
         return None
@@ -920,14 +889,29 @@ def is_workload_check_update_applied(
     status: str,
     job_url: str = "",
     require_exact_match: bool = False,
+    build_duration_seconds: int | None = None,
 ) -> bool:
     current_status = get_workload_check_status(body, component)
     if current_status is None:
         return False
 
+    plaque = Plaque.from_comment(body)
+    if (
+        plaque is not None
+        and build_duration_seconds is not None
+        and plaque.workload(component).build_duration_seconds != build_duration_seconds
+    ):
+        return False
+
     if require_exact_match:
         if current_status != status:
             return False
+
+        if plaque is not None:
+            return (
+                not job_url
+                or plaque.run.job_url(plaque.workload(component).job_id) == job_url
+            )
 
         match = get_workload_check_line_match(body, component)
         if match is None:
@@ -938,9 +922,12 @@ def is_workload_check_update_applied(
         )
         return not job_url or current_job_url == job_url
 
+    current_order = WORKLOAD_CHECK_STATUS_ORDER.get(current_status)
+    requested_order = WORKLOAD_CHECK_STATUS_ORDER.get(status)
     return (
-        WORKLOAD_CHECK_STATUS_ORDER[current_status]
-        >= WORKLOAD_CHECK_STATUS_ORDER[status]
+        current_order is not None
+        and requested_order is not None
+        and current_order >= requested_order
     )
 
 
@@ -950,7 +937,20 @@ def update_workload_check_block(
     status: str,
     job_url: str = "",
     build_error_log_url: str = "",
+    build_duration_seconds: int | None = None,
 ) -> str:
+    plaque = Plaque.from_comment(body)
+    if plaque is not None:
+        plaque.run.update_from_env()
+        job_ref = parse_actions_job_url(job_url)
+        plaque.workload(component, get_workflow_run_attempt()).update(
+            status,
+            job_ref[1] if job_ref else (0 if job_url else None),
+            bool(build_error_log_url),
+            build_duration_seconds,
+        )
+        return plaque.replace(body)
+
     match = get_workload_check_line_match(body, component)
     if match is None:
         return body
@@ -988,7 +988,7 @@ def update_workload_check_block(
 
 
 def is_stale_workload_check_status(status: str | None) -> bool:
-    return status in ("pending", "running")
+    return status in ("pending", "running", "built")
 
 
 def workload_check_status_for_job_conclusion(conclusion: str | None) -> str:
@@ -1008,7 +1008,41 @@ def workload_check_status_for_job_conclusion(conclusion: str | None) -> str:
 def complete_workload_checks_block(
     body: str,
     job_conclusion_resolver: Callable[[str, str], str | None] | None = None,
+    workflow_outcome_resolver: Callable[[str, str], WorkflowOutcome] | None = None,
 ) -> str:
+    plaque = Plaque.from_comment(body)
+    if plaque is not None:
+        for row in plaque.workloads:
+            conclusion = (
+                job_conclusion_resolver(plaque.run.job_url(row.job_id), row.component)
+                if job_conclusion_resolver
+                else None
+            )
+            workflow_conclusion = conclusion
+            if workflow_outcome_resolver is not None:
+                outcome = workflow_outcome_resolver(
+                    plaque.run.job_url(row.job_id), row.component
+                )
+                conclusion = outcome.execution
+                workflow_conclusion = outcome.workflow
+                row.execution_status = (
+                    "completed"
+                    if outcome.execution == "success"
+                    else workload_check_status_for_job_conclusion(outcome.execution)
+                )
+                row.cleanup_only_failure = outcome.cleanup_only_failure
+            if workflow_conclusion is not None:
+                row.workflow_status = (
+                    "completed"
+                    if workflow_conclusion in ("success", "neutral")
+                    else workload_check_status_for_job_conclusion(workflow_conclusion)
+                )
+            if is_stale_workload_check_status(row.status):
+                row.update(
+                    workload_check_status_for_job_conclusion(conclusion), None, False
+                )
+        return plaque.replace(body)
+
     pattern = re.compile(
         r"^.*<!-- workload-check component=(?P<component>[^ ]+) -->$",
         re.MULTILINE,
@@ -1044,6 +1078,16 @@ def find_pr_comment(
             LOGGER.info("Found comment with id=%s", comment.id)
             return comment
     return None
+
+
+def create_status_comment(pr: PullRequestLike, body: str) -> None:
+    pr.create_issue_comment(fit_comment(body))
+
+
+def edit_status_comment(comment: IssueCommentLike, body: str) -> str:
+    body = fit_comment(body)
+    comment.edit(body)
+    return body
 
 
 def retry_pr_comment_edit(func: Callable[..., None]) -> Callable[..., None]:
@@ -1092,7 +1136,7 @@ def edit_pr_comment(
         return
 
     updated_body = bump_comment_revision(updated_body)
-    comment.edit(updated_body)
+    updated_body = edit_status_comment(comment, updated_body)
 
     if WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS > 0:
         time.sleep(WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS)
@@ -1102,7 +1146,7 @@ def edit_pr_comment(
         LOGGER.info("Comment disappeared after %s", operation)
         return
 
-    if is_applied(refreshed_comment.body):
+    if refreshed_comment.body == updated_body or is_applied(refreshed_comment.body):
         return
 
     raise CommentEditConflict(operation)
@@ -1125,18 +1169,12 @@ def get_base_comment_body(
                 "",
             ]
         )
-    body.extend(
-        [
-            "> [!NOTE]",
-            "> This is an automated comment that will be appended during run.",
-            "",
-        ]
-    )
     body.extend(get_workload_status_text(build_preset, workload_status))
     body.append("")
-    if workload_components is not None:
-        body.extend(get_workload_checks_text(build_preset, workload_components))
-        body.append("")
+    plaque = Plaque(build_preset)
+    for component in workload_components or []:
+        plaque.workload(component, get_workflow_run_attempt())
+    body.append(plaque.render())
     return body
 
 
@@ -1150,6 +1188,11 @@ def update_pr_comment(
     test_time: str,
     is_dry_run: bool,
     workload_status: str,
+    component: str = "",
+    test_iteration: int = 0,
+    test_exit_code: int | None = None,
+    trace_report_url: str = "",
+    trace_otlp_url: str = "",
 ) -> None:
     header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
     header_prefix = get_comment_header_prefix(
@@ -1159,6 +1202,76 @@ def update_pr_comment(
         is_dry_run,
     )
     comment = find_pr_comment(pr, header_prefix)
+    # Existing comments from older runners retain their legacy format. New
+    # comments keep structured results so retries update one table in place.
+    if comment is None or Plaque.from_comment(comment.body) is not None:
+        component = component or component_for_target(test_target)
+        reports = [
+            Report(
+                iteration=test_iteration,
+                title=line.title if line else "Tests",
+                target=test_target,
+                commit=pr.head.sha,
+                total=line.test_count if line else 0,
+                counts={
+                    status.name: line.count(status) if line else 0
+                    for status in TestStatus.summary_table_order()
+                },
+                filename=(line.report_fn or "") if line else "",
+                build_errors=bool(summary.build_error_log_url),
+                build_failed_count=get_build_failed_count(),
+                elapsed=test_time,
+                exit_code=test_exit_code,
+                trace=bool(trace_report_url),
+                otlp=bool(trace_otlp_url),
+            )
+            for line in summary.lines or [None]
+        ]
+
+        def update_plaque(body: str) -> str:
+            plaque = Plaque.from_comment(body)
+            if plaque is None:
+                plaque = Plaque(build_preset)
+                plaque.mark_state_unavailable()
+            plaque.run.update_from_env()
+            plaque.history_url = test_history_url or plaque.history_url
+            row = plaque.workload(component, get_workflow_run_attempt())
+            for report in reports:
+                row.add_report(report)
+            if workload_status == "completed" and is_stale_workload_check_status(
+                row.status
+            ):
+                row.status = "completed"
+            elif row.status == "pending":
+                row.status = "running"
+            return plaque.replace(
+                replace_workload_status_block(body, build_preset, workload_status)
+            )
+
+        if comment is None:
+            body = "\n".join(
+                get_base_comment_body(
+                    header, build_preset, is_dry_run, workload_status, [component]
+                )
+            )
+            create_status_comment(pr, update_plaque(body))
+            return
+
+        def reports_applied(body: str) -> bool:
+            plaque = Plaque.from_comment(body)
+            return plaque is not None and all(
+                report in plaque.workload(component).reports for report in reports
+            )
+
+        edit_pr_comment(
+            pr=pr,
+            header_prefix=header_prefix,
+            update_body=update_plaque,
+            is_applied=reports_applied,
+            operation=f"test summary for {build_preset}/{component}/{test_iteration}",
+        )
+        return
+
     comment_text = get_comment_text(
         pr,
         summary,
@@ -1168,18 +1281,6 @@ def update_pr_comment(
         test_time,
     )
     comment_block = "\n".join(comment_text)
-
-    if comment is None:
-        body = get_base_comment_body(
-            header,
-            build_preset,
-            is_dry_run,
-            workload_status,
-        )
-        body.extend(comment_text)
-        LOGGER.info("Creating new comment")
-        pr.create_issue_comment("\n".join(body))
-        return
 
     def append_summary_if_missing(body: str) -> str:
         body = replace_workload_status_block(
@@ -1221,14 +1322,15 @@ def update_pr_comment_workload_status(
         return
 
     LOGGER.info("Updating workload status for comment id=%s", comment.id)
-    comment.edit(
+    edit_status_comment(
+        comment,
         bump_comment_revision(
             replace_workload_status_block(
                 comment.body,
                 build_preset,
                 workload_status,
             )
-        )
+        ),
     )
 
 
@@ -1251,7 +1353,8 @@ def initialize_pr_comment(
 
     if comment is None:
         LOGGER.info("Creating new pre-run comment")
-        pr.create_issue_comment(
+        create_status_comment(
+            pr,
             "\n".join(
                 get_base_comment_body(
                     header,
@@ -1260,14 +1363,14 @@ def initialize_pr_comment(
                     workload_status,
                     workload_components,
                 )
-            )
+            ),
         )
         return
 
     LOGGER.info("Refreshing existing pre-run comment id=%s", comment.id)
     body = replace_workload_status_block(comment.body, build_preset, workload_status)
     body = replace_workload_checks_block(body, build_preset, workload_components)
-    comment.edit(bump_comment_revision(body))
+    edit_status_comment(comment, bump_comment_revision(body))
 
 
 def update_pr_comment_workload_check(
@@ -1279,6 +1382,7 @@ def update_pr_comment_workload_check(
     workload_check_status: str,
     job_url: str = "",
     build_error_log_url: str = "",
+    build_duration_seconds: int | None = None,
 ) -> None:
     header_prefix = get_comment_header_prefix(
         pr.number,
@@ -1291,7 +1395,8 @@ def update_pr_comment_workload_check(
     if comment is None:
         LOGGER.info("Creating minimal comment for workload check update")
         header = get_comment_header(pr.number, run_number, build_preset, is_dry_run)
-        pr.create_issue_comment(
+        create_status_comment(
+            pr,
             "\n".join(
                 get_base_comment_body(
                     header,
@@ -1300,7 +1405,7 @@ def update_pr_comment_workload_check(
                     "in_progress",
                     [component],
                 )
-            )
+            ),
         )
     else:
         LOGGER.info("Updating workload check for comment id=%s", comment.id)
@@ -1318,6 +1423,7 @@ def update_pr_comment_workload_check(
             workload_check_status,
             job_url,
             build_error_log_url,
+            build_duration_seconds,
         ),
         is_applied=lambda body: is_workload_check_update_applied(
             body,
@@ -1325,6 +1431,7 @@ def update_pr_comment_workload_check(
             workload_check_status,
             job_url,
             require_exact_match=workload_check_status in ("running", "completed"),
+            build_duration_seconds=build_duration_seconds,
         ),
         operation=f"workload check {component} -> {workload_check_status}",
     )
@@ -1336,6 +1443,7 @@ def complete_pr_comment_workload_checks(
     build_preset: str,
     is_dry_run: bool,
     job_conclusion_resolver: Callable[[str, str], str | None] | None = None,
+    workflow_outcome_resolver: Callable[[str, str], WorkflowOutcome] | None = None,
 ) -> None:
     header_prefix = get_comment_header_prefix(
         pr.number,
@@ -1350,10 +1458,13 @@ def complete_pr_comment_workload_checks(
         return
 
     LOGGER.info("Completing workload checks for comment id=%s", comment.id)
-    comment.edit(
+    edit_status_comment(
+        comment,
         bump_comment_revision(
-            complete_workload_checks_block(comment.body, job_conclusion_resolver)
-        )
+            complete_workload_checks_block(
+                comment.body, job_conclusion_resolver, workflow_outcome_resolver
+            )
+        ),
     )
 
 
@@ -1362,6 +1473,89 @@ def parse_title_html_path_args(args: list[str]) -> list[TitlePathTriplet]:
         raise ValueError("Invalid argument count")
     it = iter(args)
     return list(zip(it, it, it))
+
+
+def generate_and_publish_summary(
+    paths: list[TitlePathTriplet],
+    *,
+    summary_out_path: str,
+    summary_url_prefix: str,
+    summary_out_env_path: str = "",
+    test_history_url: str | None = None,
+    build_preset: str = "default-linux-x86-64-relwithdebinfo",
+    test_target: str = "",
+    component: str = "",
+    test_iteration: int = 0,
+    test_exit_code: int | None = None,
+    is_dry_run: bool = False,
+    test_time: str = "0",
+    build_error_log_url: str = "",
+    trace_report_url: str = "",
+    trace_otlp_url: str = "",
+    workload_status: str = "completed",
+    update_workload_status_only: bool = False,
+) -> None:
+    summary: TestSummary | None = None
+    if paths:
+        summary = gen_summary(
+            summary_url_prefix,
+            summary_out_path,
+            paths,
+            build_error_log_url=build_error_log_url,
+            trace_report_url=trace_report_url,
+        )
+        write_summary(
+            summary,
+            summary_out_env_path,
+        )
+        write_summary_json(
+            summary,
+            summary_out_path,
+            build_failed_count=get_build_failed_count(),
+        )
+    elif not update_workload_status_only:
+        LOGGER.error("No summary inputs provided")
+        raise SystemExit(-1)
+
+    if os.environ.get("GITHUB_EVENT_NAME") not in (
+        "pull_request",
+        "pull_request_target",
+    ):
+        return
+
+    # Local report failures remain fatal. Publishing their status is optional and
+    # must not change the test result or prevent subsequent artifact uploads.
+    with warn_on_comment_failure("PR status publication"):
+        run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
+        pr = pull_request_from_event(
+            github_client_from_env(),
+            load_github_event(),
+        )
+        if update_workload_status_only:
+            update_pr_comment_workload_status(
+                run_number,
+                pr,
+                build_preset,
+                is_dry_run,
+                workload_status,
+            )
+        elif summary is not None:
+            update_pr_comment(
+                run_number,
+                pr,
+                summary,
+                build_preset,
+                test_history_url,
+                test_target,
+                test_time,
+                is_dry_run,
+                workload_status,
+                component=component,
+                test_iteration=test_iteration,
+                test_exit_code=test_exit_code,
+                trace_report_url=trace_report_url,
+                trace_otlp_url=trace_otlp_url,
+            )
 
 
 def main() -> None:
@@ -1380,6 +1574,9 @@ def main() -> None:
         "--build-preset", default="default-linux-x86-64-relwithdebinfo", required=False
     )
     parser.add_argument("--test-target", default="", required=False)
+    parser.add_argument("--component", default="")
+    parser.add_argument("--test-iteration", type=int, default=0)
+    parser.add_argument("--test-exit-code", type=int)
     parser.add_argument(
         "--is-dry-run",
         default=False,
@@ -1389,6 +1586,7 @@ def main() -> None:
     parser.add_argument("--test-time", default="0", required=False)
     parser.add_argument("--build-error-log-url", default="", required=False)
     parser.add_argument("--trace-report-url", default="", required=False)
+    parser.add_argument("--trace-otlp-url", default="")
     parser.add_argument(
         "--workload-status",
         choices=("in_progress", "completed"),
@@ -1402,68 +1600,13 @@ def main() -> None:
         help="Only update the workload status block in an existing PR comment",
     )
     parser.add_argument("args", nargs="*", metavar="TITLE html_out path")
-    args = parser.parse_args()
-
-    summary: TestSummary | None = None
-    if args.args:
-        try:
-            title_path = parse_title_html_path_args(args.args)
-        except ValueError as error:
-            LOGGER.error(str(error))
-            raise SystemExit(-1) from error
-
-        summary = gen_summary(
-            args.summary_url_prefix,
-            args.summary_out_path,
-            title_path,
-            build_error_log_url=args.build_error_log_url,
-            trace_report_url=args.trace_report_url,
-        )
-        write_summary(
-            summary,
-            args.summary_out_env_path,
-        )
-        write_summary_json(
-            summary,
-            args.summary_out_path,
-            build_failed_count=get_build_failed_count(),
-        )
-    elif not args.update_workload_status_only:
-        LOGGER.error("No summary inputs provided")
-        raise SystemExit(-1)
-
-    if os.environ.get("GITHUB_EVENT_NAME") not in (
-        "pull_request",
-        "pull_request_target",
-    ):
-        return
-
-    run_number = int(os.environ.get("GITHUB_RUN_NUMBER", "0"))
-    pr = pull_request_from_event(
-        github_client_from_env(),
-        load_github_event(),
-    )
-    if args.update_workload_status_only:
-        update_pr_comment_workload_status(
-            run_number,
-            pr,
-            args.build_preset,
-            args.is_dry_run,
-            args.workload_status,
-        )
-    else:
-        assert summary is not None
-        update_pr_comment(
-            run_number,
-            pr,
-            summary,
-            args.build_preset,
-            args.test_history_url,
-            args.test_target,
-            args.test_time,
-            args.is_dry_run,
-            args.workload_status,
-        )
+    options = vars(parser.parse_args())
+    try:
+        paths = parse_title_html_path_args(options.pop("args"))
+    except ValueError as error:
+        LOGGER.error(str(error))
+        raise SystemExit(-1) from error
+    generate_and_publish_summary(paths, **options)
 
 
 if __name__ == "__main__":

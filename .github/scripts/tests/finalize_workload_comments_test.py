@@ -1,8 +1,49 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
 
 from scripts.tests import finalize_workload_comments as fwc
+
+
+@pytest.mark.parametrize(
+    "failure_point",
+    ["complete_pr_comment_workload_checks", "update_pr_comment_workload_status"],
+)
+def test_finalization_continues_after_preset_failure(
+    monkeypatch, capsys, failure_point
+):
+    complete = Mock()
+    update = Mock()
+    monkeypatch.setattr(fwc.gs, "complete_pr_comment_workload_checks", complete)
+    monkeypatch.setattr(fwc.gs, "update_pr_comment_workload_status", update)
+    getattr(fwc.gs, failure_point).side_effect = [RuntimeError("unavailable"), None]
+
+    fwc.finalize_workload_comments(
+        [
+            ("linux-x86_64-release-asan", "release-asan", "native"),
+            ("linux-x86_64-relwithdebinfo", "relwithdebinfo", "native"),
+        ],
+        pr=SimpleNamespace(number=77),
+        run_number=12,
+        current_run_id=123,
+        jobs_for_run=Mock(return_value=[]),
+    )
+
+    assert [call.kwargs["build_preset"] for call in complete.call_args_list] == [
+        "linux-x86_64-release-asan",
+        "linux-x86_64-relwithdebinfo",
+    ]
+    assert update.call_args.kwargs["build_preset"] == "linux-x86_64-relwithdebinfo"
+    assert update.call_count == (
+        1 if failure_point == "complete_pr_comment_workload_checks" else 2
+    )
+    assert (
+        "::warning::Status finalization for linux-x86_64-release-asan failed"
+        in capsys.readouterr().out
+    )
 
 
 def test_iter_full_build_presets_uses_target_platform() -> None:
@@ -172,3 +213,133 @@ def test_find_workload_job_conclusion_distinguishes_target_platforms() -> None:
         )
         == "cancelled"
     )
+
+
+@pytest.mark.parametrize("cleanup_conclusion", ["success", "failure", "timed_out"])
+def test_resolve_workflow_conclusion_includes_cleanup_in_the_linked_run(
+    cleanup_conclusion,
+):
+    marker = fwc.workload_job_marker("relwithdebinfo", "blockstore", "native")
+    jobs = [
+        SimpleNamespace(
+            id=123,
+            name=f"Build and test / Build and test {marker}",
+            conclusion="success",
+        ),
+        SimpleNamespace(
+            id=124,
+            name=f"Build and test / Release self-hosted runner {marker}",
+            conclusion=cleanup_conclusion,
+        ),
+    ]
+
+    def jobs_for_run(run_id):
+        assert run_id == 456
+        return jobs
+
+    assert (
+        fwc.resolve_job_conclusion(
+            "https://github.com/org/repo/actions/runs/456/job/123",
+            "relwithdebinfo",
+            "blockstore",
+            "native",
+            999,
+            jobs_for_run,
+            include_related_jobs=True,
+        )
+        == cleanup_conclusion
+    )
+    # Cleanup jobs must not make the build-job fallback ambiguous.
+    assert (
+        fwc.find_workload_job_conclusion(jobs, "relwithdebinfo", "blockstore", "native")
+        == "success"
+    )
+
+
+def test_workflow_conclusion_ignores_failures_in_other_matrix_entries():
+    marker = fwc.workload_job_marker("relwithdebinfo", "blockstore", "native")
+    jobs = [SimpleNamespace(name=f"Build and test {marker}", conclusion="success")]
+    for preset, component, platform in [
+        ("relwithdebinfo", "filestore", "native"),
+        ("release-asan", "blockstore", "native"),
+        ("relwithdebinfo", "blockstore", "default-linux-armv9a_grace"),
+    ]:
+        other = fwc.workload_job_marker(preset, component, platform)
+        jobs.append(
+            SimpleNamespace(
+                name=f"Build and test {marker} / Release self-hosted runner {other}",
+                conclusion="failure",
+            )
+        )
+    assert (
+        fwc.find_workflow_conclusion(jobs, "relwithdebinfo", "blockstore", "native")
+        == "success"
+    )
+
+
+@pytest.mark.parametrize(
+    "conclusions,expected",
+    [
+        (["success", "skipped"], "success"),
+        (["skipped", "skipped"], "skipped"),
+        (["success", "cancelled"], "cancelled"),
+        (["success", None], None),
+        (["success", "unknown"], None),
+        ([], None),
+    ],
+)
+def test_workflow_conclusion_handles_optional_or_unfinished_jobs(conclusions, expected):
+    marker = fwc.workload_job_marker("relwithdebinfo", "blockstore", "native")
+    jobs = [
+        SimpleNamespace(name=f"Job {marker}", conclusion=conclusion)
+        for conclusion in conclusions
+    ]
+    assert (
+        fwc.find_workflow_conclusion(jobs, "relwithdebinfo", "blockstore", "native")
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    "execution,cleanup,other,cleanup_only",
+    [
+        ("success", "failure", None, True),
+        ("failure", "success", None, False),
+        ("failure", "failure", None, False),
+        ("timed_out", "failure", None, False),
+        ("success", "failure", "failure", False),
+        ("success", "failure", "skipped", True),
+        ("success", None, None, False),
+        ("success", "success", None, False),
+    ],
+)
+def test_workflow_outcome_separates_execution_and_cleanup(
+    execution, cleanup, other, cleanup_only
+):
+    marker = fwc.workload_job_marker("relwithdebinfo", "filestore", "native")
+    jobs = [
+        SimpleNamespace(id=1, name=f"Build and test {marker}", conclusion=execution),
+        SimpleNamespace(
+            id=2, name=f"Release self-hosted runner {marker}", conclusion=cleanup
+        ),
+    ]
+    if other is not None:
+        jobs.append(SimpleNamespace(id=3, name=f"Debug {marker}", conclusion=other))
+
+    def jobs_for_run(run_id):
+        assert run_id == 123
+        return jobs
+
+    result = fwc.resolve_workflow_outcome(
+        "https://github.com/org/repo/actions/runs/123/job/1",
+        "relwithdebinfo",
+        "filestore",
+        "native",
+        999,
+        jobs_for_run,
+    )
+    assert result.execution == execution
+    assert result.workflow == fwc.find_workflow_conclusion(
+        jobs, "relwithdebinfo", "filestore", "native"
+    )
+    assert result.cleanup_only_failure is cleanup_only

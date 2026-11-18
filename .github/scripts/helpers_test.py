@@ -6,6 +6,32 @@ import pytest
 from . import helpers as h
 
 
+def test_run_metadata_uses_environment_or_explicit_values(monkeypatch):
+    monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    monkeypatch.setenv("GITHUB_SERVER_URL", "https://github.example")
+    assert (
+        h.RunMetadata.from_env().url
+        == "https://github.example/org/repo/actions/runs/123"
+    )
+    assert (
+        h.RunMetadata(run_id=456, repository="other/repo").url
+        == "https://github.com/other/repo/actions/runs/456"
+    )
+    assert h.RunMetadata().url == ""
+    monkeypatch.delenv("GITHUB_REPOSITORY")
+    assert h.RunMetadata.from_env().url == ""
+
+
+def test_report_url_uses_stored_origin_without_s3_environment(monkeypatch):
+    monkeypatch.delenv("S3_BUCKET", raising=False)
+    monkeypatch.delenv("S3_WEBSITE_SUFFIX", raising=False)
+    assert (
+        h.get_s3_report_url("reports/a b/trace.html", origin="https://reports.example")
+        == "https://reports.example/reports/a%20b/trace.html"
+    )
+
+
 def make_runner_release_payload(version="2.332.0", *, body=None, assets=None):
     if body is None:
         body = (
@@ -562,3 +588,21 @@ def test_resolve_github_runner_release_fetches_pinned_version(monkeypatch):
 
     assert h.resolve_github_runner_release(github, "v2.331.0").version == "2.331.0"
     assert calls == [(github, "v2.331.0")]
+
+
+@pytest.mark.parametrize(
+    "seconds,expected",
+    [
+        (0, "0s"),
+        (59, "59s"),
+        (60, "1m 0s"),
+        (3600, "1h 0m 0s"),
+        ("3661", "1h 1m 1s"),
+        (None, "—"),
+        ("", "—"),
+        (-1, "—"),
+        ("invalid", "—"),
+    ],
+)
+def test_duration_format(seconds, expected):
+    assert h.format_duration(seconds) == expected
