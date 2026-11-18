@@ -501,12 +501,14 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         const auto requester = Runtime.AllocateEdgeActor();
         const auto subscriber = Runtime.AllocateEdgeActor();
         Subscribe(requester, subscriber);
-        WaitForConfigChanged(subscriber);
+        const auto initial = WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_EQUAL(ConfigHolder->Get().Get(), initial.Get());
         AssertNoConfigChanged(requester);
 
         // Refresh the subscription without adding a second recipient entry.
         Subscribe(requester, subscriber);
-        WaitForConfigChanged(subscriber);
+        const auto refreshed = WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_EQUAL(ConfigHolder->Get().Get(), refreshed.Get());
         SendNotification(
             std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300)),
             33);
@@ -617,7 +619,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         // field.
         const auto subscriber = Runtime.AllocateEdgeActor();
         Subscribe(subscriber);
-        WaitForConfigChanged(subscriber);
+        const auto initial = WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_EQUAL(ConfigHolder->Get().Get(), initial.Get());
         Unsubscribe(subscriber);
 
         // Publish while unsubscribed, then notify the consumer on registration.
@@ -627,7 +630,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         WaitForAck(35);
         AssertNoConfigChanged(subscriber);
         Subscribe(subscriber);
-        WaitForConfigChanged(subscriber);
+        const auto resubscribed = WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_EQUAL(ConfigHolder->Get().Get(), resubscribed.Get());
     }
 
     // Check that duplicate and rejected sources do not create publications or
