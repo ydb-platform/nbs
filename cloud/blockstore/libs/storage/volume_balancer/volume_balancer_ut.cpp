@@ -36,37 +36,27 @@ struct TVolumeLoadProfile
     ui64 WriteBlobIops = 0;
     ui64 ReadBlobBW = 0;
     ui64 WriteBlobBW = 0;
-
-    TVolumeLoadProfile& operator+=(const TVolumeLoadProfile& rhs)
-    {
-        ReadBlobIops += rhs.ReadBlobIops;
-        WriteBlobIops += rhs.WriteBlobIops;
-        ReadBlobBW += rhs.ReadBlobBW;
-        WriteBlobBW += rhs.WriteBlobBW;
-
-        return *this;
-    }
 };
 
 constexpr TVolumeLoadProfile LoadHeavy{
-    100,
-    100 * 4_KB,
-    100,
-    100 * 4_KB,
+    .ReadBlobIops = 100,
+    .WriteBlobIops = 100,
+    .ReadBlobBW = 100 * 4_KB,
+    .WriteBlobBW = 100 * 4_KB,
 };
 
 constexpr TVolumeLoadProfile LoadModerate{
-    50,
-    50 * 4_KB,
-    50,
-    50 * 4_KB,
+    .ReadBlobIops = 50,
+    .WriteBlobIops = 50,
+    .ReadBlobBW = 50 * 4_KB,
+    .WriteBlobBW = 50 * 4_KB,
 };
 
 constexpr TVolumeLoadProfile LoadLight{
-    10,
-    10 * 4_KB,
-    10,
-    10 * 4_KB,
+    .ReadBlobIops = 10,
+    .WriteBlobIops = 10,
+    .ReadBlobBW = 10 * 4_KB,
+    .WriteBlobBW = 10 * 4_KB,
 };
 
 constexpr TVolumeLoadProfile LoadZero{};
@@ -474,7 +464,6 @@ TString RunState(
     TVolumeBalancerTestEnv& testEnv,
     TActorId actorId,
     TVector<TVolumeState> volumes,
-    THashMap<TString, TVolumeLoadProfile>& counters,
     TVolumePerfStatuses perfStats,
     TResultOrError<double> cpuWait,
     TMaybe<EChangeBindingOp> expected,
@@ -566,8 +555,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         testEnv.DispatchEvents();
 
-        THashMap<TString, TVolumeLoadProfile> counters;
-
         auto diskId = RunState(
             testEnv,
             volumeBindingActorID,
@@ -626,8 +613,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         testEnv.DispatchEvents();
 
-        THashMap<TString, TVolumeLoadProfile> counters;
-
         auto diskId = RunState(
             testEnv,
             volumeBindingActorID,
@@ -635,11 +620,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol0"},
                 {.DiskId = "vol1"},
             },
-            counters,
             {{"vol0", 1}, {"vol1", 1}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            2 * UpdateCountersInterval);
+            UpdateCountersInterval);
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
@@ -659,7 +643,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                  .IsLocal = true,
                  .Source = NProto::SOURCE_NONE},
             },
-            counters,
             {{"vol0", 1}, {"vol1", 1}},
             0.1,
             EChangeBindingOp::ACQUIRE_FROM_HIVE,
@@ -685,8 +668,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         testEnv.DispatchEvents();
 
-        THashMap<TString, TVolumeLoadProfile> counters;
-
         auto diskId = RunState(
             testEnv,
             volumeBindingActorID,
@@ -694,11 +675,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol0", .IsLocal = true},
                 {.DiskId = "vol1", .IsLocal = true},
             },
-            counters,
             {{"vol0", 1}, {"vol1", 1}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            2 * UpdateCountersInterval);
+            UpdateCountersInterval);
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
@@ -713,7 +693,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                  .IsLocal = true,
                  .Source = NProto::SOURCE_NONE},
             },
-            counters,
             {{"vol0", 1}, {"vol1", 1}},
             0.1,
             {},
@@ -734,8 +713,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         testEnv.DispatchEvents();
 
-        THashMap<TString, TVolumeLoadProfile> counters;
-
         RunState(
             testEnv,
             volumeBindingActorID,
@@ -743,11 +720,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol0"},
                 {.DiskId = "vol1"},
             },
-            counters,
             {{"vol0", 1}, {"vol1", 1}},
             1,
             {},
-            2 * UpdateCountersInterval);
+            UpdateCountersInterval);
     }
 
     Y_UNIT_TEST(ShouldNotDoAnythingIfBalancerIsDisabledViaPrivateApi)
@@ -766,8 +742,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         testEnv.DispatchEvents();
 
-        THashMap<TString, TVolumeLoadProfile> counters;
-
         testEnv.SendConfigureVolumeBalancerRequest(
             volumeBindingActorID,
             EBalancerStatus::DISABLE);
@@ -784,11 +758,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol0"},
                 {.DiskId = "vol1"},
             },
-            counters,
             {{"vol0", 1}, {"vol1", 1}},
             1,
             {},
-            2 * UpdateCountersInterval);
+            UpdateCountersInterval);
     }
 
     Y_UNIT_TEST(ShouldNotDoAnythingIfBalancerDisabledWithConfig)
@@ -805,8 +778,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         testEnv.DispatchEvents();
 
-        THashMap<TString, TVolumeLoadProfile> counters;
-
         RunState(
             testEnv,
             volumeBalancerActorId,
@@ -814,11 +785,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol0"},
                 {.DiskId = "vol1"},
             },
-            counters,
             {{"vol0", 1}, {"vol1", 1}},
             1,
             {},
-            2 * UpdateCountersInterval);
+            UpdateCountersInterval);
     }
 
     Y_UNIT_TEST(ShouldSetCpuWaitCounter)
@@ -838,8 +808,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         testEnv.DispatchEvents();
 
-        THashMap<TString, TVolumeLoadProfile> counters;
-
         auto diskId = RunState(
             testEnv,
             volumeBindingActorID,
@@ -847,7 +815,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             {{"vol0", 10}, {"vol1", 1}},
             .9,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            2 * UpdateCountersInterval);
+            UpdateCountersInterval);
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
@@ -884,8 +852,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         testEnv.DispatchEvents();
 
-        THashMap<TString, TVolumeLoadProfile> counters;
-
         RunState(
             testEnv,
             volumeBindingActorID,
@@ -893,11 +859,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol0"},
                 {.DiskId = "vol1"},
             },
-            counters,
             {{"vol0", 1}, {"vol1", 1}},
             1,
             {},
-            2 * UpdateCountersInterval);
+            UpdateCountersInterval);
     }
 
     Y_UNIT_TEST(ShouldSetCountersForPreemptedVolumes)
@@ -913,8 +878,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv.GetEdgeActor()));
 
         testEnv.DispatchEvents();
-
-        THashMap<TString, TVolumeLoadProfile> counters;
 
         auto root = testEnv.GetRuntime()
                         .GetAppData(0)
@@ -940,11 +903,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol8", .Source = NProto::SOURCE_INITIAL_MOUNT},
                 {.DiskId = "vol9", .Source = NProto::SOURCE_INITIAL_MOUNT},
             },
-            counters,
             {{"vol0", 1}, {"vol1", 1}},
             .9,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            2 * UpdateCountersInterval);
+            UpdateCountersInterval);
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
@@ -970,8 +932,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         testEnv.DispatchEvents();
 
-        THashMap<TString, TVolumeLoadProfile> counters;
-
         auto diskId = RunState(
             testEnv,
             volumeBindingActorID,
@@ -979,7 +939,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol0"},
                 {.DiskId = "vol1"},
             },
-            counters,
             {{"vol0", 1}, {"vol1", 1}},
             MakeError(E_INVALID_STATE),
             {},
@@ -1015,8 +974,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         testEnv.DispatchEvents();
 
-        THashMap<TString, TVolumeLoadProfile> counters;
-
         auto diskId = RunState(
             testEnv,
             volumeBindingActorID,
@@ -1025,11 +982,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol1"},
                 {.DiskId = "vol2"},
             },
-            counters,
             {{"vol0", 1}, {"vol1", 1}, {"vol2", 1}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            2 * UpdateCountersInterval);
+            UpdateCountersInterval);
 
         UNIT_ASSERT_VALUES_EQUAL("vol1", diskId);
 
@@ -1041,7 +997,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol1"},
                 {.DiskId = "vol2"},
             },
-            counters,
             {{"vol0", 1}, {"vol1", 1}, {"vol2", 1}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
@@ -1065,8 +1020,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         testEnv.DispatchEvents();
 
-        THashMap<TString, TVolumeLoadProfile> counters;
-
         auto diskId = RunState(
             testEnv,
             volumeBindingActorID,
@@ -1075,11 +1028,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol1"},
                 {.DiskId = "vol2"},
             },
-            counters,
             {{"vol0", 1}, {"vol1", 1}, {"vol2", 1}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            2 * UpdateCountersInterval);
+            UpdateCountersInterval);
 
         UNIT_ASSERT_VALUES_EQUAL("vol1", diskId);
 
@@ -1095,7 +1047,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                  .Source = NProto::SOURCE_BALANCER},
                 {.DiskId = "vol2"},
             },
-            counters,
             {{"vol0", 1}, {"vol1", 1}, {"vol2", 1}},
             1,
             {},
@@ -1118,7 +1069,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                  .Source = NProto::SOURCE_BALANCER},
                 {.DiskId = "vol2"},
             },
-            counters,
             {{"vol0", 1}, {"vol1", 1}, {"vol2", 1}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
