@@ -460,6 +460,116 @@ void ProcessUnalignedRequests(
 
 Y_UNIT_TEST_SUITE(TServerHandlerTest)
 {
+    Y_UNIT_TEST(ShouldCompleteUndeliverableWritesExactlyOnce)
+    {
+        enum EFailure
+        {
+            Payload,
+            Send,
+            Shutdown,
+            Disconnect
+        };
+
+        for (auto failure: {Payload, Send, Shutdown, Disconnect}) {
+            auto storage = std::make_shared<TTestStorage>();
+            SetupStorage(*storage);
+            auto stats = std::make_shared<TTestServerStats>();
+            ui32 started = 0;
+            TVector<ui32> errors;
+            stats->RequestStartedHandler = [&](auto&, auto&, auto&, const auto&)
+            {
+                ++started;
+            };
+            stats->RequestCompletedHandler =
+                [&](auto&, auto&, auto&, const auto& error)
+            {
+                errors.push_back(error.GetCode());
+            };
+            TStorageOptions options;
+            options.DiskId = DefaultDiskId;
+            options.BlockSize = DefaultBlockSize;
+            options.BlocksCount = DefaultBlocksCount;
+            auto handler =
+                CreateServerHandlerFactory(
+                    CreateDefaultDeviceHandlerFactory(),
+                    CreateLoggingService("console"),
+                    storage, stats, CreateErrorHandlerStub(), options)
+                    ->CreateHandler();
+            TStringStream in;
+            TStringStream out;
+            NegotiateClient(*handler, in, out);
+
+            struct TCaptureContext: TServerContext
+            {
+                TServerResponsePtr Response;
+                size_t AbandonedBytes = 0;
+                using TServerContext::TServerContext;
+
+                void AbandonRequest(size_t bytes) override
+                {
+                    AbandonedBytes += bytes;
+                }
+
+                void SendResponse(TServerResponsePtr response) override
+                {
+                    Response = std::move(response);
+                }
+            };
+
+            auto ctx = MakeIntrusive<TCaptureContext>(in);
+            TRequest request{};
+            request.Magic = NBD_REQUEST_MAGIC;
+            request.Type = NBD_CMD_WRITE;
+            request.Handle = 1;
+            request.Length = 4096;
+            TRequestWriter writer(out);
+            writer.WriteRequest(request, TString(request.Length, 'a'));
+            if (failure == Disconnect) {
+                TRequest disconnect{};
+                disconnect.Magic = NBD_REQUEST_MAGIC;
+                disconnect.Type = NBD_CMD_DISC;
+                writer.WriteRequest(disconnect);
+            }
+            if (failure == Payload) {
+                out.Str().pop_back();
+                UNIT_ASSERT_EXCEPTION(
+                    handler->ProcessRequests(ctx, out, in, nullptr),
+                    yexception);
+            } else {
+                handler->ProcessRequests(ctx, out, in, nullptr);
+            }
+            if (failure == Send || failure == Shutdown || failure == Disconnect)
+            {
+                UNIT_ASSERT(ctx->Response);
+                UNIT_ASSERT(errors.empty());
+                if (failure == Send) {
+                    struct TBrokenOutput: IOutputStream
+                    {
+                        void DoWrite(const void*, size_t) override
+                        {
+                            ythrow yexception() << "disconnected";
+                        }
+                    } broken;
+
+                    UNIT_ASSERT_EXCEPTION(
+                        handler->SendResponse(broken, *ctx->Response),
+                        yexception);
+                } else {
+                    handler->CancelResponse(*ctx->Response);
+                }
+            }
+            UNIT_ASSERT_VALUES_EQUAL(1, started);
+            UNIT_ASSERT_VALUES_EQUAL(1, errors.size());
+            UNIT_ASSERT_VALUES_EQUAL(failure == Payload ? 4096 : 0,
+                                     ctx->AbandonedBytes);
+            UNIT_ASSERT_VALUES_EQUAL(E_CANCELLED, errors[0]);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                handler->CollectRequests(
+                    [](const auto&, const auto&, auto) {}));
+        }
+    }
+
     Y_UNIT_TEST(ShouldNegotiateClient)
     {
         auto storage = std::make_shared<TTestStorage>();
