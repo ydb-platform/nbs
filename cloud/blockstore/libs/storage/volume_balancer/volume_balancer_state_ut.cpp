@@ -1,4 +1,5 @@
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
+
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_state.h>
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_ut_helpers.h>
 
@@ -111,6 +112,7 @@ struct TVolumeStatsRecipe
     const NProto::EPreemptionSource Source = NProto::SOURCE_BALANCER;
     const NProto::EStorageMediaKind Kind = NProto::STORAGE_MEDIA_SSD;
     const TVolumeLoadProfile LoadProfile = LoadZero;
+    const ui32 SufferCount = 0;
 };
 
 NProto::TVolumeBalancerDiskStats CreateVolumeStats(
@@ -147,7 +149,8 @@ public:
     TVolumeBalancerStateTestEnv(
         TStorageConfigConstPtr storageConfig,
         TDiagnosticsConfigConstPtr diagnosticsConfig,
-        const TVector<TVolumeStatsRecipe>& volumes);
+        const TVector<TVolumeStatsRecipe>& volumes,
+        IVolumeBalancerSwitchPtr volumeBalancerSwitch = CreateSwitch(true));
 
     void Push(const TString& diskId);
 
@@ -172,14 +175,18 @@ private:
 TVolumeBalancerStateTestEnv::TVolumeBalancerStateTestEnv(
     TStorageConfigConstPtr storageConfig,
     TDiagnosticsConfigConstPtr diagnosticsConfig,
-    const TVector<TVolumeStatsRecipe>& volumes)
-    : State(std::move(storageConfig), std::move(diagnosticsConfig), CreateSwitch(true))
+    const TVector<TVolumeStatsRecipe>& volumes,
+    IVolumeBalancerSwitchPtr volumeBalancerSwitch)
+    : State(
+          std::move(storageConfig),
+          std::move(diagnosticsConfig),
+          std::move(volumeBalancerSwitch))
     , Now(TInstant::Zero())
 {
     for (const auto& recipe: volumes) {
         VolumeStats.push_back(CreateVolumeStats(recipe));
         LoadProfiles[recipe.DiskId] = recipe.LoadProfile;
-        VolumeSufferMap[recipe.DiskId] = 0;
+        VolumeSufferMap[recipe.DiskId] = recipe.SufferCount;
     }
     State.UpdateVolumeStats(VolumeStats, VolumeSufferMap, CpuUnderload, Now);
 }
@@ -276,68 +283,72 @@ TDuration WholeCyclesOver(const TDuration duration)
 
 Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 {
-    Y_UNIT_TEST(ShouldSelectHaviestVolumeForPreemption)
+    static void TestSelectVolumeForPreemption(
+        NProto::EVolumePreemptionType preemptionType,
+        const TString& expectedDiskId)
     {
         TVolumeBalancerStateTestEnv testEnv(
             CreateStorageConfig(
-                NProto::PREEMPTION_MOVE_MOST_HEAVY,
+                preemptionType,
                 /*volumeBalancerEnabled=*/true,
                 DefaultCpuThreshold,
                 CreateFeatureConfig("Balancer", {}, true),
-                InitialPullDelay
-            ),
+                InitialPullDelay),
             CreateDiagnosticsConfig(),
             {
-                {.DiskId = "vol0", .LoadProfile = LoadHeavy},
-                {.DiskId = "vol1", .LoadProfile = LoadLight},
-            }
-        );
+                {.DiskId = "vol0", .LoadProfile = LoadHeavy, .SufferCount = 1},
+                {.DiskId = "vol1", .LoadProfile = LoadLight, .SufferCount = 10},
+            });
 
         testEnv.Simulate(UpdateCountersInterval, CpuOverload);
 
-        UNIT_ASSERT_VALUES_EQUAL("vol0", testEnv.GetVolumeToPush());
+        UNIT_ASSERT_VALUES_EQUAL(expectedDiskId, testEnv.GetVolumeToPush());
         UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPull());
+    }
+
+    Y_UNIT_TEST(ShouldSelectHaviestVolumeForPreemption)
+    {
+        TestSelectVolumeForPreemption(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            "vol1");
+    }
+
+    Y_UNIT_TEST(ShouldSelectHeaviestVolumeForPreemptionWithCpuRanking)
+    {
+        TestSelectVolumeForPreemption(
+            NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY,
+            "vol0");
     }
 
     Y_UNIT_TEST(ShouldSelectLightestVolumeForPreemption)
     {
-        TVolumeBalancerStateTestEnv testEnv(
-            CreateStorageConfig(
-                NProto::PREEMPTION_MOVE_LEAST_HEAVY,
-                /*volumeBalancerEnabled=*/true,
-                DefaultCpuThreshold,
-                CreateFeatureConfig("Balancer", {}, true),
-                InitialPullDelay
-            ),
-            CreateDiagnosticsConfig(),
-            {
-                {.DiskId = "vol0", .LoadProfile = LoadHeavy},
-                {.DiskId = "vol1", .LoadProfile = LoadLight},
-            }
-        );
-
-        testEnv.Simulate(UpdateCountersInterval, CpuOverload);
-
-        UNIT_ASSERT_VALUES_EQUAL("vol1", testEnv.GetVolumeToPush());
-        UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPull());
+        TestSelectVolumeForPreemption(
+            NProto::PREEMPTION_MOVE_LEAST_HEAVY,
+            "vol0");
     }
 
-    Y_UNIT_TEST(ShouldNotPreemptVolumeIfLoadIsBelowThreshold)
+    Y_UNIT_TEST(ShouldSelectLightestVolumeForPreemptionWithCpuRanking)
+    {
+        TestSelectVolumeForPreemption(
+            NProto::PREEMPTION_MOVE_CPU_LEAST_HEAVY,
+            "vol1");
+    }
+
+    static void TestNotPreemptVolumeIfLoadIsBelowThreshold(
+        NProto::EVolumePreemptionType preemptionType)
     {
         TVolumeBalancerStateTestEnv testEnv(
             CreateStorageConfig(
-                NProto::PREEMPTION_MOVE_MOST_HEAVY,
+                preemptionType,
                 /*volumeBalancerEnabled=*/true,
                 DefaultCpuThreshold,
                 CreateFeatureConfig("Balancer", {}, true),
-                InitialPullDelay
-            ),
+                InitialPullDelay),
             CreateDiagnosticsConfig(),
             {
-                {.DiskId = "vol0", .LoadProfile = LoadHeavy},
-                {.DiskId = "vol1", .LoadProfile = LoadLight},
-            }
-        );
+                {.DiskId = "vol0", .LoadProfile = LoadHeavy, .SufferCount = 10},
+                {.DiskId = "vol1", .LoadProfile = LoadLight, .SufferCount = 1},
+            });
 
         testEnv.Simulate(UpdateCountersInterval, CpuUnderload);
 
@@ -345,10 +356,23 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPull());
     }
 
-    Y_UNIT_TEST(ShouldReturnVolumeIfLoadIsBelowThreshold)
+    Y_UNIT_TEST(ShouldNotPreemptVolumeIfLoadIsBelowThreshold)
+    {
+        TestNotPreemptVolumeIfLoadIsBelowThreshold(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY);
+    }
+
+    Y_UNIT_TEST(ShouldNotPreemptVolumeIfLoadIsBelowThresholdWithCpuRanking)
+    {
+        TestNotPreemptVolumeIfLoadIsBelowThreshold(
+            NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY);
+    }
+
+    static void TestReturnVolumeIfLoadIsBelowThreshold(
+        NProto::EVolumePreemptionType preemptionType)
     {
         auto storageConfig = CreateStorageConfig(
-            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            preemptionType,
             /*volumeBalancerEnabled=*/true,
             DefaultCpuThreshold,
             CreateFeatureConfig("Balancer", {}, true),
@@ -358,8 +382,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             storageConfig,
             CreateDiagnosticsConfig(),
             {
-                {.DiskId = "vol0", .LoadProfile = LoadHeavy},
-                {.DiskId = "vol1", .LoadProfile = LoadLight},
+                {.DiskId = "vol0", .LoadProfile = LoadHeavy, .SufferCount = 10},
+                {.DiskId = "vol1", .LoadProfile = LoadLight, .SufferCount = 1},
             });
 
         testEnv.Simulate(UpdateCountersInterval, CpuOverload);
@@ -381,6 +405,18 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPush());
         UNIT_ASSERT_VALUES_EQUAL("vol0", testEnv.GetVolumeToPull());
+    }
+
+    Y_UNIT_TEST(ShouldReturnVolumeIfLoadIsBelowThreshold)
+    {
+        TestReturnVolumeIfLoadIsBelowThreshold(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY);
+    }
+
+    Y_UNIT_TEST(ShouldReturnVolumeIfLoadIsBelowThresholdWithCpuRanking)
+    {
+        TestReturnVolumeIfLoadIsBelowThreshold(
+            NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY);
     }
 
     Y_UNIT_TEST(ShouldNotSelectVolumeFromBlacklistedCloud)
@@ -412,10 +448,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPull());
     }
 
-    Y_UNIT_TEST(ShouldReturnVolumeOnlyAfterPullDelay)
+    static void TestReturnVolumeOnlyAfterPullDelay(
+        NProto::EVolumePreemptionType preemptionType)
     {
         auto storageConfig = CreateStorageConfig(
-            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            preemptionType,
             /*volumeBalancerEnabled=*/true,
             DefaultCpuThreshold,
             CreateFeatureConfig("Balancer", {}, true),
@@ -425,8 +462,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             storageConfig,
             CreateDiagnosticsConfig(),
             {
-                {.DiskId = "vol0", .LoadProfile = LoadHeavy},
-                {.DiskId = "vol1", .LoadProfile = LoadLight},
+                {.DiskId = "vol0", .LoadProfile = LoadHeavy, .SufferCount = 10},
+                {.DiskId = "vol1", .LoadProfile = LoadLight, .SufferCount = 1},
             });
 
         testEnv.Simulate(UpdateCountersInterval, CpuOverload);
@@ -459,19 +496,31 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         UNIT_ASSERT_VALUES_EQUAL("vol0", testEnv.GetVolumeToPull());
     }
 
-    Y_UNIT_TEST(ShouldResetPullDelayAfterCooldown)
+    Y_UNIT_TEST(ShouldReturnVolumeOnlyAfterPullDelay)
+    {
+        TestReturnVolumeOnlyAfterPullDelay(NProto::PREEMPTION_MOVE_MOST_HEAVY);
+    }
+
+    Y_UNIT_TEST(ShouldReturnVolumeOnlyAfterPullDelayWithCpuRanking)
+    {
+        TestReturnVolumeOnlyAfterPullDelay(
+            NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY);
+    }
+
+    static void TestResetPullDelayAfterCooldown(
+        NProto::EVolumePreemptionType preemptionType)
     {
         TVolumeBalancerStateTestEnv testEnv(
             CreateStorageConfig(
-                NProto::PREEMPTION_MOVE_MOST_HEAVY,
+                preemptionType,
                 /*volumeBalancerEnabled=*/true,
                 DefaultCpuThreshold,
                 CreateFeatureConfig("Balancer", {}, true),
                 InitialPullDelay),
             CreateDiagnosticsConfig(),
             {
-                {.DiskId = "vol0", .LoadProfile = LoadHeavy},
-                {.DiskId = "vol1", .LoadProfile = LoadLight},
+                {.DiskId = "vol0", .LoadProfile = LoadHeavy, .SufferCount = 10},
+                {.DiskId = "vol1", .LoadProfile = LoadLight, .SufferCount = 1},
             });
 
         testEnv.Simulate(UpdateCountersInterval, CpuOverload);
@@ -574,23 +623,33 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         UNIT_ASSERT_VALUES_EQUAL("vol0", testEnv.GetVolumeToPull());
     }
 
-    Y_UNIT_TEST(ShouldNotReturnManuallyPreemptedVolume)
+    Y_UNIT_TEST(ShouldResetPullDelayAfterCooldown)
+    {
+        TestResetPullDelayAfterCooldown(NProto::PREEMPTION_MOVE_MOST_HEAVY);
+    }
+
+    Y_UNIT_TEST(ShouldResetPullDelayAfterCooldownWithCpuRanking)
+    {
+        TestResetPullDelayAfterCooldown(NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY);
+    }
+
+    static void TestNotReturnManuallyPreemptedVolume(
+        NProto::EVolumePreemptionType preemptionType)
     {
         TVolumeBalancerStateTestEnv testEnv(
             CreateStorageConfig(
-                NProto::PREEMPTION_MOVE_MOST_HEAVY,
+                preemptionType,
                 /*volumeBalancerEnabled=*/true,
                 DefaultCpuThreshold,
                 CreateFeatureConfig("Balancer", {}, true),
-                InitialPullDelay
-            ),
+                InitialPullDelay),
             CreateDiagnosticsConfig(),
             {
                 {.DiskId = "vol0",
                  .Source = NProto::SOURCE_INITIAL_MOUNT,
-                 .LoadProfile = LoadHeavy},
-            }
-        );
+                 .LoadProfile = LoadHeavy,
+                 .SufferCount = 10},
+            });
 
         testEnv.Simulate(UpdateCountersInterval, CpuOverload);
 
@@ -610,6 +669,18 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPush());
         UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPull());
+    }
+
+    Y_UNIT_TEST(ShouldNotReturnManuallyPreemptedVolume)
+    {
+        TestNotReturnManuallyPreemptedVolume(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY);
+    }
+
+    Y_UNIT_TEST(ShouldNotReturnManuallyPreemptedVolumeWithCpuRanking)
+    {
+        TestNotReturnManuallyPreemptedVolume(
+            NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY);
     }
 
     Y_UNIT_TEST(ShouldSelectLightestVolumeWhenEnabledWithPreemptionTypeNone)
@@ -639,51 +710,47 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         UNIT_ASSERT(!state.GetVolumeToPull());
     }
 
-    Y_UNIT_TEST(ShouldNotPreemptWhenVolumeBalancerSwitchIsDisabled)
+    static void TestNotPreemptWhenVolumeBalancerSwitchIsDisabled(
+        NProto::EVolumePreemptionType preemptionType)
     {
-        auto storageConfig = CreateStorageConfig(
-            NProto::PREEMPTION_MOVE_MOST_HEAVY,
-            /*volumeBalancerEnabled=*/true,
-            70,
-            /*featuresConfig=*/nullptr,
-            InitialPullDelay);
-
-        TVolumeBalancerState state(
-            storageConfig,
+        TVolumeBalancerStateTestEnv testEnv(
+            CreateStorageConfig(
+                preemptionType,
+                /*volumeBalancerEnabled=*/true,
+                DefaultCpuThreshold,
+                /*featuresConfig=*/nullptr,
+                InitialPullDelay),
             CreateDiagnosticsConfig(),
+            {
+                {.DiskId = "vol0", .LoadProfile = LoadHeavy, .SufferCount = 10},
+                {.DiskId = "vol1", .IsLocal = false},
+            },
             CreateSwitch(false));
-        TInstant now = TInstant::Seconds(0);
 
-        TVolumeBalancerState::TPerfGuaranteesMap perfMap;
-        perfMap["vol0"] = 10;
-        perfMap["vol1"] = 1;
+        testEnv.Simulate(UpdateCountersInterval, CpuOverload);
+        UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPush());
+        UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPull());
 
-        {
-            TVector<NProto::TVolumeBalancerDiskStats> vols{
-                CreateVolumeStats({.DiskId = "vol0", .LoadProfile = LoadHeavy}),
-                CreateVolumeStats({.DiskId = "vol1", .LoadProfile = LoadLight})};
-
-            state.UpdateVolumeStats(vols, perfMap, 80, now);
-
-            UNIT_ASSERT(!state.GetVolumeToPush());
-            UNIT_ASSERT(!state.GetVolumeToPull());
-        }
-
-        {
-            TVector<NProto::TVolumeBalancerDiskStats> vols{
-                CreateVolumeStats({.DiskId = "vol0", .LoadProfile = LoadHeavy}),
-                CreateVolumeStats({.DiskId = "vol1", .LoadProfile = LoadLight})};
-
-            state.UpdateVolumeStats(vols, perfMap, 40, now);
-            now += storageConfig->GetInitialPullDelay();
-            state.UpdateVolumeStats(vols, std::move(perfMap), 40, now);
-
-            UNIT_ASSERT(!state.GetVolumeToPush());
-            UNIT_ASSERT(!state.GetVolumeToPull());
-        }
+        testEnv.Simulate(WholeCyclesOver(InitialPullDelay), CpuUnderload);
+        UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPush());
+        UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPull());
     }
 
-    Y_UNIT_TEST(ShouldNotMoveNonKikimrDisks)
+    Y_UNIT_TEST(ShouldNotPreemptWhenVolumeBalancerSwitchIsDisabled)
+    {
+        TestNotPreemptWhenVolumeBalancerSwitchIsDisabled(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY);
+    }
+
+    Y_UNIT_TEST(
+        ShouldNotPreemptWhenVolumeBalancerSwitchIsDisabledWithCpuRanking)
+    {
+        TestNotPreemptWhenVolumeBalancerSwitchIsDisabled(
+            NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY);
+    }
+
+    static void TestNotMoveNonKikimrDisks(
+        NProto::EVolumePreemptionType preemptionType)
     {
         const TVector kinds{
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
@@ -694,14 +761,17 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         for (const auto kind: kinds) {
             TVolumeBalancerStateTestEnv testEnv(
                 CreateStorageConfig(
-                    NProto::PREEMPTION_MOVE_MOST_HEAVY,
+                    preemptionType,
                     /*volumeBalancerEnabled=*/true,
                     DefaultCpuThreshold,
                     CreateFeatureConfig("Balancer", {}, true),
                     InitialPullDelay),
                 CreateDiagnosticsConfig(),
                 {
-                    {.DiskId = "vol0", .Kind = kind, .LoadProfile = LoadHeavy},
+                    {.DiskId = "vol0",
+                     .Kind = kind,
+                     .LoadProfile = LoadHeavy,
+                     .SufferCount = 10},
                 });
 
             testEnv.Simulate(UpdateCountersInterval, CpuOverload);
@@ -709,6 +779,16 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPush());
             UNIT_ASSERT_VALUES_EQUAL("", testEnv.GetVolumeToPull());
         }
+    }
+
+    Y_UNIT_TEST(ShouldNotMoveNonKikimrDisks)
+    {
+        TestNotMoveNonKikimrDisks(NProto::PREEMPTION_MOVE_MOST_HEAVY);
+    }
+
+    Y_UNIT_TEST(ShouldNotMoveNonKikimrDisksWithCpuRanking)
+    {
+        TestNotMoveNonKikimrDisks(NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY);
     }
 }
 
