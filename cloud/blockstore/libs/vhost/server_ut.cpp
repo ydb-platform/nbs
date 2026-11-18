@@ -1157,6 +1157,14 @@ Y_UNIT_TEST_SUITE(TServerTest)
             ++requestCounter;
         };
 
+        ui32 startedRequests = 0;
+        serverStats->RequestStartedHandler = [&](TLog&, TMetricRequest& request,
+                                                TCallContext&, const TString&) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                totalSectors * sectorSize, request.OriginalRequestBytes);
+            ++startedRequests;
+        };
+
         auto testStorage = std::make_shared<TTestStorage>();
         testStorage->WriteBlocksLocalHandler =
             [&] (TCallContextPtr ctx, std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) {
@@ -1224,6 +1232,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
                 const auto& response = future.GetValue(TDuration::Seconds(5));
                 UNIT_ASSERT(response == TVhostRequest::SUCCESS);
                 UNIT_ASSERT_VALUES_EQUAL(++expectedRequestCounter, requestCounter);
+                UNIT_ASSERT_VALUES_EQUAL(expectedRequestCounter, startedRequests);
             }
 
             {
@@ -1235,6 +1244,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
                 const auto& response = future.GetValue(TDuration::Seconds(5));
                 UNIT_ASSERT(response == TVhostRequest::SUCCESS);
                 UNIT_ASSERT_VALUES_EQUAL(++expectedRequestCounter, requestCounter);
+                UNIT_ASSERT_VALUES_EQUAL(expectedRequestCounter, startedRequests);
             }
         };
 

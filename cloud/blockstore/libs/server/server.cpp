@@ -503,6 +503,7 @@ public:
         if (!ok) {
             auto prevState = AtomicSwap(&RequestState, RequestCompleted);
             if (prevState != WaitingForRequest) {
+                MetricRequest.ResponseDeliveryUncertain = true;
                 CompleteRequest();
             }
         }
@@ -735,6 +736,7 @@ private:
         }
 
         if (Request->GetHeaders().HasInternal()) {
+            MetricRequest.ClientFault = true;
             STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                 << "internal field should not be set by client";
         }
