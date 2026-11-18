@@ -169,7 +169,7 @@ void TConfigsManagerActor::Handle(
     // even when another actor requested the subscription on its behalf.
     ctx.Send(
         ev->Sender,
-        new TEvConfigsManager::TEvSetConfigSubscriptionResponse(config),
+        new TEvConfigsManager::TEvSetConfigSubscriptionResponse(),
         0,
         ev->Cookie);
     ctx.Send(
