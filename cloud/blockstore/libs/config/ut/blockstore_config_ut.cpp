@@ -623,8 +623,8 @@ root_kms: {address: kms}
         const IBlockstoreConfigGetterPtr secondGetter = secondHolder;
         const auto retained = firstGetter->Get();
 
-        // Publish through one writer and preserve the other holder's configuration
-        // and the retained snapshot.
+        // Publish through one writer and preserve the other holder's
+        // configuration and the retained snapshot.
         firstHolder->Set(
             MakeBlockstoreConfig(MakeConfig(300), {}, firstControls));
         UNIT_ASSERT_VALUES_EQUAL(
