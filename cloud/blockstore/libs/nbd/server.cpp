@@ -71,11 +71,8 @@ private:
 
     size_t InFlightBytes = 0;
 
-    // One reference for Send and one for each backend request (including
-    // requests waiting for the limiter). The last reference completes drain.
-    std::atomic<size_t> ActiveRequests = 1;
-    // Only the connection executor accepts requests and consumes replies.
-    size_t PendingResponses = 0;
+    // Receive, Send, and each acquired backend request hold a drain reference.
+    std::atomic<size_t> DrainRefs = 2;
 
     std::atomic_flag ShuttingDown = false;
     TPromise<void> DrainResult = NewPromise<void>();
@@ -153,7 +150,7 @@ public:
     void SendResponse(TServerResponsePtr response) override
     {
         ResponseQueue.Enqueue(std::move(response));
-        CompleteRequest();
+        ReleaseDrainRef();
     }
 
     bool AcquireRequest(size_t requestBytes) override
@@ -162,11 +159,11 @@ public:
             return false;
         }
 
-        ActiveRequests.fetch_add(1, std::memory_order_acq_rel);
+        DrainRefs.fetch_add(1, std::memory_order_acq_rel);
 
         if (Limiter) {
             if (!Limiter->Acquire(requestBytes)) {
-                CompleteRequest();
+                ReleaseDrainRef();
                 return false;
             }
 
@@ -177,11 +174,10 @@ public:
         // shutting down while this request is waiting for capacity.
         if (IsShuttingDown()) {
             ReleaseRequest(requestBytes);
-            CompleteRequest();
+            ReleaseDrainRef();
             return false;
         }
 
-        ++PendingResponses;
         return true;
     }
 
@@ -192,9 +188,7 @@ public:
         if (InFlightBytes) {
             ReleaseRequest(requestBytes);
         }
-        Y_DEBUG_ABORT_UNLESS(PendingResponses != 0);
-        --PendingResponses;
-        CompleteRequest();
+        ReleaseDrainRef();
     }
 
     size_t CollectRequests(const TIncompleteRequestsCollector& collector)
@@ -229,6 +223,7 @@ private:
         }
 
         ResponseQueue.Enqueue(nullptr);
+        ReleaseDrainRef();
     }
 
     void DoReceive(TCont* c)
@@ -246,10 +241,12 @@ private:
 
         TServerResponsePtr response;
         bool receiveFinished = false;
-        while ((!receiveFinished || PendingResponses) &&
-               ResponseQueue.Dequeue(&response))
-        {
+        while (ResponseQueue.Dequeue(&response)) {
             if (!response) {
+                if (receiveFinished) {
+                    // All producers have enqueued their final response.
+                    break;
+                }
                 // Receive has stopped producing requests. Backend workers may
                 // still send responses for already accepted requests.
                 receiveFinished = true;
@@ -270,14 +267,12 @@ private:
             }
 
             ReleaseRequest(response->RequestBytes);
-            Y_DEBUG_ABORT_UNLESS(PendingResponses != 0);
-            --PendingResponses;
             response.Reset();
         }
 
         ShutDown();
         ReleaseRequest(InFlightBytes);
-        CompleteRequest();
+        ReleaseDrainRef();
     }
 
     void DoSendResponse(TCont* c, TServerResponse& response,
@@ -324,13 +319,20 @@ private:
         return ShuttingDown.test(std::memory_order_acquire);
     }
 
-    void CompleteRequest()
+    void ReleaseDrainRef()
     {
         const auto previous =
-            ActiveRequests.fetch_sub(1, std::memory_order_acq_rel);
+            DrainRefs.fetch_sub(1, std::memory_order_acq_rel);
         Y_ABORT_UNLESS(previous != 0);
-        if (previous == 1) {
-            DrainResult.TrySetValue();
+        if (previous <= 2) {
+            if (previous == 2) {
+                // While Send is running it owns the last reference. All
+                // responses and the end-of-receive marker are already queued.
+                ResponseQueue.Enqueue(nullptr);
+            } else {
+                // Executor cancellation may stop Send before the producers.
+                DrainResult.TrySetValue();
+            }
         }
     }
 };

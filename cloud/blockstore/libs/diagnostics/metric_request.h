@@ -17,6 +17,8 @@ namespace NCloud::NBlockStore {
 struct TMetricRequest
 {
     const EBlockStoreRequest RequestType;
+    NCloud::NProto::EStorageMediaKind MediaKind =
+        NCloud::NProto::STORAGE_MEDIA_HDD;
     TString ClientId;
     TString DiskId;
     TString Peer;
@@ -24,8 +26,6 @@ struct TMetricRequest
     // Owned by VolumeInfo. Selected once, when the original request starts.
     TLatencySliCounters* LatencyCounters = nullptr;
     ui64 StartIndex = 0;
-    NCloud::NProto::EStorageMediaKind MediaKind =
-        NCloud::NProto::STORAGE_MEDIA_HDD;
     ui64 RequestBytes = 0;
     // The endpoint's original length, before unaligned I/O is expanded.
     ui64 OriginalRequestBytes = 0;
