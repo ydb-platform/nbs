@@ -1,5 +1,7 @@
 #include "host_endpoint.h"
 
+#include <cloud/blockstore/libs/service/service_method.h>
+
 #include <atomic>
 
 namespace NCloud::NBlockStore::NIcV2 {
@@ -95,6 +97,58 @@ public:
             });
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+class THostDataEndpointAdapter final
+    : public TBlockStoreImpl<THostDataEndpointAdapter, IDataEndpoint>
+{
+private:
+    const IDataEndpointPtr Endpoint;
+    std::atomic<bool> Stopping = false;
+
+public:
+    explicit THostDataEndpointAdapter(IDataEndpointPtr endpoint)
+        : Endpoint(std::move(endpoint))
+    {}
+
+    void Start() override
+    {
+        Endpoint->Start();
+    }
+
+    void RequestStop() override
+    {
+        Stopping = true;
+        Endpoint->RequestStop();
+    }
+
+    void Stop() override
+    {
+        RequestStop();
+        Endpoint->Stop();
+    }
+
+    TStorageBuffer AllocateBuffer(size_t bytesCount) override
+    {
+        return Endpoint->AllocateBuffer(bytesCount);
+    }
+
+    template <typename TMethod>
+    NThreading::TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr context,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        if (Stopping) {
+            return NThreading::MakeFuture<typename TMethod::TResponse>(
+                TErrorResponse(E_CANCELLED, "IC V2 host binding closed"));
+        }
+        return TMethod::Execute(
+            Endpoint.get(),
+            std::move(context),
+            std::move(request));
+    }
+};
 }   // namespace
 
 TResultOrError<THostDataEndpoint> CreateHostDataEndpoint(
@@ -142,6 +196,10 @@ TResultOrError<THostDataEndpoint> CreateHostDataEndpoint(
     if (HasError(endpointError)) {
         return endpointError;
     }
-    return THostDataEndpoint{std::move(endpoint), std::move(closed)};
+    return THostDataEndpoint{
+        .Endpoint =
+            std::make_shared<THostDataEndpointAdapter>(std::move(endpoint)),
+        .Closed = std::move(closed),
+    };
 }
 }   // namespace NCloud::NBlockStore::NIcV2

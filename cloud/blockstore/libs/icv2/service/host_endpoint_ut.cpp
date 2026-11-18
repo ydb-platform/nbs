@@ -472,6 +472,18 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
         }
     }
 
+    Y_UNIT_TEST(RequestStopCancelsNewDurableRequests)
+    {
+        TFixture f;
+        f.Endpoint->RequestStop();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_CANCELLED,
+            Wait(f.Zero(true)).GetError().GetCode());
+        f.Retries->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(0, f.Peers->Calls);
+        UNIT_ASSERT(f.Peers->Channel->Requests.empty());
+    }
+
     Y_UNIT_TEST(AdmissionOverloadRemainsRetriable)
     {
         TDataConfig config;
