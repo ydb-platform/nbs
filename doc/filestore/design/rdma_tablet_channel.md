@@ -141,7 +141,7 @@ Everything else stays on the pipe:
   which serves every client of the node.
 * Admin and unsafe requests: the RDMA port is not authenticated ( the same model we assume for interconnect or blockstore rdma. After #7890 it will be associated with pipe at connect time and auth model will be even stronger). RDMA transport for such request will buy nothing, so they stay on pipe right now.
 * Shard-internal requests: they are a protocol between the tablets of a
-  filesystem, not a client API. (communication between shards also can use RDMA, but it is not the first priority and will be revisited later wether it make sense)
+  filesystem, not a client API. (communication between shards also can use RDMA, but it is not the first priority and will be revisited later whether it make sense)
 
 ### Errors
 
@@ -154,7 +154,7 @@ The client tells three kinds of errors apart:
    only transport failure the client retries over the same QP.
 3. Any other transport failure: the client turns RDMA off for the pipe, resends
    the request over the pipe, and uses RDMA on that pipe again only after the
-   pipe reconnects (a new pipe or after backof timeout for retry). 
+   pipe reconnects (a new pipe or after backoff timeout for retry). 
 
 The transport failures:
 
@@ -231,9 +231,8 @@ sequenceDiagram
 * The subscription key needs no change: an RDMA request already arrives with
   the pipe server as `ev->Recipient`, so the subscriptions and the TTL are
   computed for that pipe.
-* The sender of an RDMA request
-  is the forwarder, which serves every client of the node; if the tablet
-  registered it, the events of the whole pipe would go to the forwarder. So:
+* The sender of an RDMA request is the forwarder, which serves every client of the node;
+  if the tablet registered it, the events of the whole pipe would go to the forwarder. So:
   * the handler sets a header flag on every request it forwards, and the tablet
     subscribes such a request under the pipe server without changing the
     client of the pipe;
