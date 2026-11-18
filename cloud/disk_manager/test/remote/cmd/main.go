@@ -40,6 +40,7 @@ const (
 	folderID                = "DiskManagerDataplaneRemoteTests"
 	s3TestsFolderID         = "DiskManagerS3Tests"
 	dataplaneForURLFolderID = "DiskManagerDataplaneFromUrlRemoteTests"
+	baseDisksTestsFolderID  = "diskManagerBaseDisksRemoteTests"
 
 	// For better testing, disk size should be greater than SSD allocation unit
 	// (32 GB).
@@ -376,6 +377,7 @@ func (r *testRun) sendCreateDiskFromImageRequest(
 	diskID string,
 	diskSize uint64,
 	blockSize uint64,
+	diskKind disk_manager.DiskKind,
 	folderID string,
 ) (*disk_manager.Operation, error) {
 
@@ -385,7 +387,7 @@ func (r *testRun) sendCreateDiskFromImageRequest(
 		},
 		Size:      int64(diskSize),
 		BlockSize: int64(blockSize),
-		Kind:      disk_manager.DiskKind_DISK_KIND_SSD,
+		Kind:      diskKind,
 		DiskId: &disk_manager.DiskId{
 			ZoneId: zoneID,
 			DiskId: diskID,
@@ -422,6 +424,7 @@ func (r *testRun) createDiskFromImage(
 	diskID string,
 	diskSize uint64,
 	blockSize uint64,
+	diskKind disk_manager.DiskKind,
 	folderID string,
 ) error {
 
@@ -432,6 +435,7 @@ func (r *testRun) createDiskFromImage(
 		diskID,
 		diskSize,
 		blockSize,
+		diskKind,
 		folderID,
 	)
 	if err != nil {
@@ -525,13 +529,14 @@ func (r *testRun) sendConfigurePoolRequest(
 	ctx context.Context,
 	zoneID string,
 	imageID string,
+	capacity int64,
 	useImageSize bool,
 ) (*disk_manager.Operation, error) {
 
 	req := &api.ConfigurePoolRequest{
 		ImageId:      imageID,
 		ZoneId:       zoneID,
-		Capacity:     10,
+		Capacity:     capacity,
 		UseImageSize: useImageSize,
 	}
 
@@ -559,6 +564,7 @@ func (r *testRun) configurePool(
 	ctx context.Context,
 	zoneID string,
 	imageID string,
+	capacity int64,
 	useImageSize bool,
 ) error {
 
@@ -566,6 +572,7 @@ func (r *testRun) configurePool(
 		ctx,
 		zoneID,
 		imageID,
+		capacity,
 		useImageSize,
 	)
 	if err != nil {
@@ -862,6 +869,27 @@ func (r *testRun) cleanupResourcesFromPreviousRuns(
 	ctx context.Context,
 ) error {
 
+	folderIDs := []string{
+		folderID,
+		s3TestsFolderID,
+		dataplaneForURLFolderID,
+		baseDisksTestsFolderID,
+	}
+
+	for _, folderID := range folderIDs {
+		err := r.cleanupFolderResourcesFromPreviousRuns(ctx, folderID)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *testRun) cleanupFolderResourcesFromPreviousRuns(
+	ctx context.Context,
+	folderID string,
+) error {
+
 	disks, err := r.listDisks(ctx, folderID)
 	if err != nil {
 		return err
@@ -966,6 +994,7 @@ func testCreateDiskFromImageImpl(
 			ctx,
 			r.testConfig.GetZoneID(),
 			imageID,
+			10, // capacity
 			useImageSize,
 		)
 		if err != nil {
@@ -980,6 +1009,7 @@ func testCreateDiskFromImageImpl(
 		diskID,
 		defaultDiskSize,
 		defaultBlockSize,
+		disk_manager.DiskKind_DISK_KIND_SSD,
 		folderID,
 	)
 	if err != nil {
@@ -1062,6 +1092,7 @@ func testCreateDisksFromImage(
 			diskID,
 			defaultDiskSize,
 			defaultBlockSize,
+			disk_manager.DiskKind_DISK_KIND_SSD,
 			folderID,
 		)
 		if err != nil {
@@ -1113,6 +1144,7 @@ func testRetireBaseDisks(
 		ctx,
 		r.testConfig.GetZoneID(),
 		imageID,
+		10, // capacity
 		useImageSize,
 	)
 	if err != nil {
@@ -1128,6 +1160,7 @@ func testRetireBaseDisks(
 			diskID,
 			defaultDiskSize,
 			defaultBlockSize,
+			disk_manager.DiskKind_DISK_KIND_SSD,
 			folderID,
 		)
 		if err != nil {
@@ -1409,6 +1442,7 @@ func testCreateImageFromImageImpl(
 		diskID2,
 		diskSize,
 		defaultBlockSize,
+		disk_manager.DiskKind_DISK_KIND_SSD,
 		folderID,
 	)
 	if err != nil {
@@ -1571,6 +1605,14 @@ func (r *testRun) runTests(ctx context.Context) error {
 		{
 			Name: "testCreateDiskFromImageUsingImageSize",
 			Run:  testCreateDiskFromImageUsingImageSize,
+		},
+		{
+			Name: "testCreateBaseDiskFromBaseDisk",
+			Run:  testCreateBaseDiskFromBaseDisk,
+		},
+		{
+			Name: "testCreateNrdFromImageWithInitializedPool",
+			Run:  testCreateNrdFromImageWithInitializedPool,
 		},
 		{
 			Name: "testCreateDisksFromImage",
