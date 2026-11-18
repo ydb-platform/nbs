@@ -110,7 +110,7 @@ protected:
         TActorId subscriber = {});
 
     // Verify that the manager sends a change notification to one subscriber.
-    IBlockstoreConfigConstPtr WaitForConfigChanged(TActorId subscriber);
+    IBlockstoreConfigPtr WaitForConfigChanged(TActorId subscriber);
 
     // Check that a subscriber receives no change notification.
     void AssertNoConfigChanged(TActorId subscriber);
@@ -239,7 +239,7 @@ void TFixture::Subscribe(
 }
 
 // Verify that the manager sends a change notification to one subscriber.
-IBlockstoreConfigConstPtr TFixture::WaitForConfigChanged(TActorId subscriber)
+IBlockstoreConfigPtr TFixture::WaitForConfigChanged(TActorId subscriber)
 {
     auto event =
         Runtime.GrabEdgeEventRethrow<TEvConfigsManager::TEvConfigChanged>(
@@ -466,6 +466,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
             std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300)),
             31);
         const auto updated = WaitForConfigChanged(first);
+        UNIT_ASSERT_EQUAL(updated.Get(), ConfigHolder->Get().Get());
         UNIT_ASSERT_VALUES_EQUAL(
             300,
             updated->GetStorageConfig()->GetWriteBlobThreshold());
