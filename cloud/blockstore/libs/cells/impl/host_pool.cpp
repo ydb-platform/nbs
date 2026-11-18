@@ -213,6 +213,11 @@ bool TCellHostPool::ApplyLiveness(
         AccountChannel(*channel, -1);
         channel->Liveness = liveness;
         AccountChannel(*channel, 1);
+        if (recovered) {
+            Counters.HostsUnavailable->Dec();
+        } else if (transition && !alive) {
+            Counters.HostsUnavailable->Inc();
+        }
 
         // pruned whatever the liveness: a connection cannot unwatch itself
         // from its own destructor, so a host that never dies would keep a
@@ -361,9 +366,6 @@ bool TCellHostPool::IsLive(const TChannel& channel)
 
 void TCellHostPool::AccountChannel(const TChannel& channel, int delta)
 {
-    if (channel.Liveness == EHostLiveness::Dead) {
-        Counters.HostsUnavailable->Add(delta);
-    }
     if (IsLive(channel)) {
         LiveChannels += delta;
     }
@@ -373,6 +375,9 @@ void TCellHostPool::EraseChannel(
     THashMap<TString, TChannel>::iterator it)
 {
     AccountChannel(it->second, -1);
+    if (it->second.Liveness == EHostLiveness::Dead) {
+        Counters.HostsUnavailable->Dec();
+    }
     Channels.erase(it);
 }
 
