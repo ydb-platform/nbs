@@ -95,7 +95,7 @@ message TCellsIcV2Config
 
     // Numeric IPv4 or IPv6 address. IPv6 listener accepts only IPv6 sockets.
     optional string ListenAddress = 2;
-    // Must be set explicitly. Zero selects an ephemeral port.
+    // Unset or zero selects an ephemeral port.
     optional uint32 Port = 3;
     optional uint32 Threads = 4;
     // Handshake timeout in milliseconds. For outgoing channels, also includes
