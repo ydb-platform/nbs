@@ -6215,6 +6215,123 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
     }
 
+    Y_UNIT_TEST(ShouldGrowAndReuseWriteActorPoolForParallelRequests)
+    {
+        NProto::TStorageConfig config;
+        config.SetEnablePreallocatedDataActors(true);
+        config.SetThreeStageWriteEnabled(true);
+        config.SetThreeStageWriteThreshold(1);
+        config.SetAddingUnconfirmedDataEnabled(false);
+        TTestEnv env({}, config);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+        const auto headers = service.InitSession(fs, "client");
+        const ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        const ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        auto counters = runtime.GetAppData(nodeIdx).Counters
+                            ->FindSubgroup("counters", "filestore")
+                            ->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        auto poolSize = counters->FindCounter("WriteDataActorPoolSize");
+        UNIT_ASSERT(poolSize);
+        UNIT_ASSERT_VALUES_EQUAL(100, poolSize->GetAtomic());
+
+        auto checkPoolSize = [&](ui32 expectedSize)
+        {
+            service.SendRequest(
+                MakeStorageServiceId(),
+                std::make_unique<TEvServicePrivate::TEvUpdateStats>());
+            // Synchronize with the service after it publishes the pool size.
+            service.GetNodeAttr(headers, fs, nodeId, "");
+            UNIT_ASSERT_VALUES_EQUAL(expectedSize, poolSize->GetAtomic());
+        };
+
+        // Keep every worker busy until the entire batch has started. Merely
+        // sending requests asynchronously could allow reuse within a batch.
+        TVector<TAutoPtr<IEventHandle>> delayedResponses;
+        bool delayResponses = true;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (delayResponses && event->GetTypeRewrite() ==
+                    TEvIndexTablet::EvGenerateBlobIdsResponse)
+                {
+                    delayedResponses.emplace_back(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        ui32 batch = 0;
+        ui32 expectedPoolSize = 100;
+        for (const ui32 requestCount: {50, 200, 200, 50}) {
+            delayResponses = true;
+            ++batch;
+            TString expectedData;
+            for (ui32 i = 0; i < requestCount; ++i) {
+                const TString data(DefaultBlockSize, char(batch + i));
+                expectedData += data;
+                service.SendWriteDataRequest(
+                    headers,
+                    fs,
+                    nodeId,
+                    handle,
+                    ui64(i) * DefaultBlockSize,
+                    data);
+            }
+
+            runtime.DispatchEvents(
+                TDispatchOptions{
+                    .CustomFinalCondition = [&] {
+                        return delayedResponses.size() == requestCount;
+                    }},
+                TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL(requestCount, delayedResponses.size());
+            expectedPoolSize = Max(expectedPoolSize, requestCount);
+            checkPoolSize(expectedPoolSize);
+
+            // Stop intercepting replies before replaying them through the
+            // tablet proxy, allowing all writes to finish.
+            delayResponses = false;
+            for (auto& response: delayedResponses) {
+                runtime.Send(response.Release(), nodeIdx);
+            }
+            delayedResponses.clear();
+            for (ui32 i = 0; i < requestCount; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    S_OK,
+                    service.RecvWriteDataResponse()->GetStatus());
+            }
+
+            // Readback also lets the service process worker releases before
+            // the next batch checks that the grown pool is reused.
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedData,
+                service.ReadData(
+                           headers,
+                           fs,
+                           nodeId,
+                           handle,
+                           0,
+                           expectedData.size())
+                    ->Record.GetBuffer());
+            checkPoolSize(expectedPoolSize);
+        }
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+    }
+
     Y_UNIT_TEST(ShouldIgnoreLateWriteBlobResponses)
     {
         NProto::TStorageConfig config;
