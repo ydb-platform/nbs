@@ -692,6 +692,8 @@ void TBootstrapYdb::InitKikimrService()
             ConfigInitializer->StorageConfigControls,
             std::move(extraParameters));
 
+        StartupBlockstoreConfig->GetStorageConfig()->UpdateControlsDefaults();
+
         STORAGE_INFO(
             (cmsBlockstoreConfig.ByteSizeLong()
                  ? "Applied startup PrivateDatabaseConfig"
@@ -700,7 +702,7 @@ void TBootstrapYdb::InitKikimrService()
     } else {
         StartupBlockstoreConfig = MakeBlockstoreConfig(
             startupBlockstoreConfigProto,
-            {},
+            /*dynamicConfig=*/{},
             *ConfigInitializer->StorageConfig,
             *ConfigInitializer->DiskAgentConfig);
     }

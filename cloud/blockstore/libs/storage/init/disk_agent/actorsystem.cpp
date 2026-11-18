@@ -48,7 +48,7 @@ public:
         TActorSystemSetup* setup,
         const TAppData* appData) override
     {
-        Args.StorageConfig->Register(*appData->Icb);
+        Args.StorageConfig->GetControls()->Register(*appData->Icb);
 
         //
         // HiveProxy
