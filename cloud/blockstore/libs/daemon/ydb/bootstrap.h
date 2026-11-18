@@ -120,6 +120,7 @@ private:
 
     // Current Blockstore configuration source; owns the holder shared with
     // ConfigsManager after the startup snapshot has been constructed.
+    // Initialized only in YDB service mode; unset in Local and Null modes.
     IBlockstoreConfigGetterPtr BlockstoreConfigGetter;
 
     IActorSystemPtr ActorSystem;
