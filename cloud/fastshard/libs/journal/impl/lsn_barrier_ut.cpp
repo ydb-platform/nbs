@@ -3,6 +3,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <atomic>
+#include <memory>
 #include <thread>
 
 namespace NCloud::NJournalled {
@@ -24,222 +25,222 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
 {
     Y_UNIT_TEST(ShouldStartWithZeroLsn)
     {
-        TLsnBarrier barrier;
+        auto barrier = std::make_shared<TLsnBarrier>();
 
-        UNIT_ASSERT_VALUES_EQUAL(0, GetCurrentLsn(barrier));
-        UNIT_ASSERT_VALUES_EQUAL(0, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(0, GetCurrentLsn(*barrier));
+        UNIT_ASSERT_VALUES_EQUAL(0, barrier->GetBarrierLsn());
     }
 
     Y_UNIT_TEST(ShouldAdvanceLsnMonotonically)
     {
-        TLsnBarrier barrier;
+        auto barrier = std::make_shared<TLsnBarrier>();
 
-        barrier.Advance(10);
-        UNIT_ASSERT_VALUES_EQUAL(10, GetCurrentLsn(barrier));
+        barrier->Advance(10);
+        UNIT_ASSERT_VALUES_EQUAL(10, GetCurrentLsn(*barrier));
 
         // stale lsns should be ignored
-        barrier.Advance(5);
-        UNIT_ASSERT_VALUES_EQUAL(10, GetCurrentLsn(barrier));
+        barrier->Advance(5);
+        UNIT_ASSERT_VALUES_EQUAL(10, GetCurrentLsn(*barrier));
 
-        barrier.Advance(10);
-        UNIT_ASSERT_VALUES_EQUAL(10, GetCurrentLsn(barrier));
+        barrier->Advance(10);
+        UNIT_ASSERT_VALUES_EQUAL(10, GetCurrentLsn(*barrier));
 
-        barrier.Advance(20);
-        UNIT_ASSERT_VALUES_EQUAL(20, GetCurrentLsn(barrier));
+        barrier->Advance(20);
+        UNIT_ASSERT_VALUES_EQUAL(20, GetCurrentLsn(*barrier));
     }
 
     Y_UNIT_TEST(ShouldReportCurrentLsnWhenNothingAcquired)
     {
-        TLsnBarrier barrier;
+        auto barrier = std::make_shared<TLsnBarrier>();
 
-        barrier.Advance(10);
-        UNIT_ASSERT_VALUES_EQUAL(10, barrier.GetBarrierLsn());
+        barrier->Advance(10);
+        UNIT_ASSERT_VALUES_EQUAL(10, barrier->GetBarrierLsn());
 
-        barrier.Acquire().Release();
+        barrier->Acquire().Release();
 
-        barrier.Advance(20);
-        UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
+        barrier->Advance(20);
+        UNIT_ASSERT_VALUES_EQUAL(20, barrier->GetBarrierLsn());
     }
 
     Y_UNIT_TEST(ShouldHoldBarrierWhileLsnAdvances)
     {
-        TLsnBarrier barrier;
+        auto barrier = std::make_shared<TLsnBarrier>();
 
-        barrier.Advance(10);
+        barrier->Advance(10);
 
-        auto guard = barrier.Acquire();
+        auto guard = barrier->Acquire();
         UNIT_ASSERT_VALUES_EQUAL(10, guard.GetLsn());
 
-        barrier.Advance(20);
+        barrier->Advance(20);
 
         // the barrier holds back reclamation, the current lsn moves on
-        UNIT_ASSERT_VALUES_EQUAL(20, GetCurrentLsn(barrier));
-        UNIT_ASSERT_VALUES_EQUAL(10, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(20, GetCurrentLsn(*barrier));
+        UNIT_ASSERT_VALUES_EQUAL(10, barrier->GetBarrierLsn());
 
         guard.Release();
-        UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(20, barrier->GetBarrierLsn());
     }
 
     Y_UNIT_TEST(ShouldReportOldestOfSeveralBarriers)
     {
-        TLsnBarrier barrier;
+        auto barrier = std::make_shared<TLsnBarrier>();
 
-        barrier.Advance(10);
-        auto first = barrier.Acquire();
+        barrier->Advance(10);
+        auto first = barrier->Acquire();
 
-        barrier.Advance(20);
-        auto second = barrier.Acquire();
+        barrier->Advance(20);
+        auto second = barrier->Acquire();
 
-        barrier.Advance(30);
-        auto third = barrier.Acquire();
+        barrier->Advance(30);
+        auto third = barrier->Acquire();
 
         UNIT_ASSERT_VALUES_EQUAL(10, first.GetLsn());
         UNIT_ASSERT_VALUES_EQUAL(20, second.GetLsn());
         UNIT_ASSERT_VALUES_EQUAL(30, third.GetLsn());
 
-        UNIT_ASSERT_VALUES_EQUAL(10, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(10, barrier->GetBarrierLsn());
 
         first.Release();
-        UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(20, barrier->GetBarrierLsn());
 
         second.Release();
-        UNIT_ASSERT_VALUES_EQUAL(30, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(30, barrier->GetBarrierLsn());
 
         third.Release();
-        UNIT_ASSERT_VALUES_EQUAL(30, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(30, barrier->GetBarrierLsn());
     }
 
     Y_UNIT_TEST(ShouldRefcountRepeatedBarriersAtSameLsn)
     {
-        TLsnBarrier barrier;
+        auto barrier = std::make_shared<TLsnBarrier>();
 
-        barrier.Advance(10);
+        barrier->Advance(10);
 
-        auto first = barrier.Acquire();
-        auto second = barrier.Acquire();
-        auto third = barrier.Acquire();
+        auto first = barrier->Acquire();
+        auto second = barrier->Acquire();
+        auto third = barrier->Acquire();
 
         UNIT_ASSERT_VALUES_EQUAL(10, first.GetLsn());
         UNIT_ASSERT_VALUES_EQUAL(10, second.GetLsn());
         UNIT_ASSERT_VALUES_EQUAL(10, third.GetLsn());
 
-        barrier.Advance(20);
+        barrier->Advance(20);
 
         first.Release();
-        UNIT_ASSERT_VALUES_EQUAL(10, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(10, barrier->GetBarrierLsn());
 
         second.Release();
-        UNIT_ASSERT_VALUES_EQUAL(10, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(10, barrier->GetBarrierLsn());
 
         // only the last release lets the barrier move
         third.Release();
-        UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(20, barrier->GetBarrierLsn());
     }
 
     Y_UNIT_TEST(ShouldAllowOutOfOrderRelease)
     {
-        TLsnBarrier barrier;
+        auto barrier = std::make_shared<TLsnBarrier>();
 
-        barrier.Advance(10);
-        auto first = barrier.Acquire();
+        barrier->Advance(10);
+        auto first = barrier->Acquire();
 
-        barrier.Advance(20);
-        auto second = barrier.Acquire();
+        barrier->Advance(20);
+        auto second = barrier->Acquire();
 
         second.Release();
-        UNIT_ASSERT_VALUES_EQUAL(10, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(10, barrier->GetBarrierLsn());
 
         first.Release();
-        UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(20, barrier->GetBarrierLsn());
     }
 
     Y_UNIT_TEST(ShouldReleaseBarrierOnGuardDestruction)
     {
-        TLsnBarrier barrier;
+        auto barrier = std::make_shared<TLsnBarrier>();
 
-        barrier.Advance(10);
+        barrier->Advance(10);
 
         {
-            const auto guard = barrier.Acquire();
+            const auto guard = barrier->Acquire();
 
-            barrier.Advance(20);
-            UNIT_ASSERT_VALUES_EQUAL(10, barrier.GetBarrierLsn());
+            barrier->Advance(20);
+            UNIT_ASSERT_VALUES_EQUAL(10, barrier->GetBarrierLsn());
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(20, barrier->GetBarrierLsn());
     }
 
     Y_UNIT_TEST(ShouldMoveGuardWithoutReleasingBarrier)
     {
-        TLsnBarrier barrier;
+        auto barrier = std::make_shared<TLsnBarrier>();
 
-        barrier.Advance(10);
+        barrier->Advance(10);
 
         {
-            auto guard = barrier.Acquire();
+            auto guard = barrier->Acquire();
             auto movedGuard = std::move(guard);
 
-            barrier.Advance(20);
+            barrier->Advance(20);
             UNIT_ASSERT_VALUES_EQUAL(10, movedGuard.GetLsn());
-            UNIT_ASSERT_VALUES_EQUAL(10, barrier.GetBarrierLsn());
+            UNIT_ASSERT_VALUES_EQUAL(10, barrier->GetBarrierLsn());
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(20, barrier->GetBarrierLsn());
     }
 
     Y_UNIT_TEST(ShouldAcquireZeroLsnBeforeFirstAdvance)
     {
-        TLsnBarrier barrier;
+        auto barrier = std::make_shared<TLsnBarrier>();
 
-        auto guard = barrier.Acquire();
+        auto guard = barrier->Acquire();
         UNIT_ASSERT_VALUES_EQUAL(0, guard.GetLsn());
 
-        barrier.Advance(10);
-        UNIT_ASSERT_VALUES_EQUAL(0, barrier.GetBarrierLsn());
+        barrier->Advance(10);
+        UNIT_ASSERT_VALUES_EQUAL(0, barrier->GetBarrierLsn());
 
         guard.Release();
-        UNIT_ASSERT_VALUES_EQUAL(10, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(10, barrier->GetBarrierLsn());
     }
 
     Y_UNIT_TEST(ShouldAcquireAheadOfCurrentLsn)
     {
-        TLsnBarrier barrier;
+        auto barrier = std::make_shared<TLsnBarrier>();
 
-        barrier.Advance(10);
+        barrier->Advance(10);
 
-        auto guard = barrier.AcquireAtLeast(20);
+        auto guard = barrier->AcquireAtLeast(20);
         UNIT_ASSERT_VALUES_EQUAL(20, guard.GetLsn());
 
         // a barrier placed ahead of the current lsn holds nothing back yet
-        UNIT_ASSERT_VALUES_EQUAL(10, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(10, barrier->GetBarrierLsn());
 
-        barrier.Advance(20);
-        UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
+        barrier->Advance(20);
+        UNIT_ASSERT_VALUES_EQUAL(20, barrier->GetBarrierLsn());
 
         // ... and starts holding once the current lsn has reached it
-        barrier.Advance(30);
-        UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
+        barrier->Advance(30);
+        UNIT_ASSERT_VALUES_EQUAL(20, barrier->GetBarrierLsn());
 
         guard.Release();
-        UNIT_ASSERT_VALUES_EQUAL(30, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(30, barrier->GetBarrierLsn());
     }
 
     Y_UNIT_TEST(ShouldNotAcquireBehindCurrentLsn)
     {
-        TLsnBarrier barrier;
+        auto barrier = std::make_shared<TLsnBarrier>();
 
-        barrier.Advance(10);
+        barrier->Advance(10);
 
         // a position that has already been passed cannot be acquired, the
         // caller learns that from the lsn the guard reports
-        auto guard = barrier.AcquireAtLeast(5);
+        auto guard = barrier->AcquireAtLeast(5);
         UNIT_ASSERT_VALUES_EQUAL(10, guard.GetLsn());
 
-        barrier.Advance(20);
-        UNIT_ASSERT_VALUES_EQUAL(10, barrier.GetBarrierLsn());
+        barrier->Advance(20);
+        UNIT_ASSERT_VALUES_EQUAL(10, barrier->GetBarrierLsn());
 
         guard.Release();
-        UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(20, barrier->GetBarrierLsn());
     }
 
     Y_UNIT_TEST(ShouldNotReclaimPastBarrierUnderConcurrency)
@@ -257,7 +258,7 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
         constexpr ui64 AdvanceCount = 100;
         constexpr ui64 TotalIterations = ReaderCount * IterationCount;
 
-        TLsnBarrier barrier;
+        auto barrier = std::make_shared<TLsnBarrier>();
 
         std::atomic<ui64> iterationsDone = 0;
         std::atomic<ui64> contractViolations = 0;
@@ -271,17 +272,17 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
                 [&]
                 {
                     for (ui64 j = 0; j < IterationCount; ++j) {
-                        const auto guard = barrier.Acquire();
+                        const auto guard = barrier->Acquire();
 
-                        if (barrier.GetBarrierLsn() > guard.GetLsn()) {
+                        if (barrier->GetBarrierLsn() > guard.GetLsn()) {
                             ++contractViolations;
                         }
 
                         // read the barrier lsn first - the current one only
                         // grows, so this ordering keeps the comparison
                         // meaningful
-                        const ui64 barrierLsn = barrier.GetBarrierLsn();
-                        if (barrierLsn > GetCurrentLsn(barrier)) {
+                        const ui64 barrierLsn = barrier->GetBarrierLsn();
+                        if (barrierLsn > GetCurrentLsn(*barrier)) {
                             ++orderViolations;
                         }
 
@@ -301,7 +302,7 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
                         std::this_thread::yield();
                     }
 
-                    barrier.Advance(lsn);
+                    barrier->Advance(lsn);
                 }
             });
 
@@ -314,8 +315,8 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
         UNIT_ASSERT_VALUES_EQUAL(0, orderViolations.load());
 
         // every barrier was released, so nothing is held any more
-        UNIT_ASSERT_VALUES_EQUAL(AdvanceCount, GetCurrentLsn(barrier));
-        UNIT_ASSERT_VALUES_EQUAL(AdvanceCount, barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(AdvanceCount, GetCurrentLsn(*barrier));
+        UNIT_ASSERT_VALUES_EQUAL(AdvanceCount, barrier->GetBarrierLsn());
     }
 }
 
