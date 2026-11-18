@@ -17,6 +17,8 @@ TVector<TPageRangeRef> MakePageRangeRefs(
 TVector<TPageRange> MakePageRanges(
     const NProto::TWriteLogRecordRequest& request);
 
+TVector<TPageRange> MakePageRanges(const NProto::TWritePagesRequest& request);
+
 TVector<TPageRange> MakePageRanges(const NProto::TJournalRecord& record);
 
 NProto::TReadPagesResponse MakeReadPagesResponse(

@@ -214,6 +214,53 @@ NProto::TReadPagesResponse MergeResponses(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TPagesInFlight
+{
+private:
+    ui64 LastId = 0;
+    THashMap<ui64 /*id*/, TVector<TPageRangeRef>> Requests;
+
+public:
+    // Fails if any range overlaps a held one. Returns the id to pass to
+    // Release.
+    TResultOrError<ui64> TryAcquire(const TVector<TPageRange>& ranges)
+    {
+        TVector<TPageRangeRef> refs;
+
+        for (const auto& range: ranges) {
+            const ui64 begin = range.FirstPageNo;
+            const ui64 end = begin + range.Pages.size();
+
+            for (const auto& [id, heldRefs]: Requests) {
+                for (const auto& ref: heldRefs) {
+                    const ui64 refEnd = ref.FirstPageNo + ref.PageCount;
+                    if (begin < refEnd && ref.FirstPageNo < end) {
+                        return MakeError(
+                            E_REJECTED,
+                            TStringBuilder()
+                                << "pages [" << begin << ", " << end
+                                << ") overlap pages [" << ref.FirstPageNo
+                                << ", " << refEnd
+                                << ") that are being written");
+                    }
+                }
+            }
+
+            refs.push_back({.FirstPageNo = begin, .PageCount = end - begin});
+        }
+
+        Requests.emplace(++LastId, std::move(refs));
+        return LastId;
+    }
+
+    void Release(ui64 id)
+    {
+        Requests.erase(id);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TJournalledDeviceV2 final
     : public IJournalledDevice
     , public std::enable_shared_from_this<TJournalledDeviceV2>
@@ -228,6 +275,11 @@ private:
     TLog Log;
 
     TLsnBarrier IndexedLsnBarrier;
+
+    // Only WritePages and the flush cycle write directly to the data store.
+    // Their page ranges are tracked here so that overlapping writes do not run
+    // in parallel.
+    TPagesInFlight PagesInFlight;
 
     std::atomic_bool ShouldStop = false;
     std::atomic_bool RestoreFailed = false;
@@ -258,6 +310,9 @@ public:
     auto AdvanceLsnLowWatermark(NProto::TAdvanceLsnLowWatermarkRequest request)
         -> TFuture<NProto::TAdvanceLsnLowWatermarkResponse> override;
 
+    TFuture<NProto::TWritePagesResponse> WritePages(
+        NProto::TWritePagesRequest request) override;
+
 private:
     template <typename TRequest>
     NProto::TError ValidateRequest(const TRequest& request) const;
@@ -271,6 +326,8 @@ private:
 
     NProto::TWriteLogRecordResponse DoWriteLogRecord(
         NProto::TWriteLogRecordRequest request);
+
+    NProto::TWritePagesResponse DoWritePages(NProto::TWritePagesRequest request);
 
     void ScheduleFlushCycle();
 
@@ -438,6 +495,37 @@ auto TJournalledDeviceV2::AdvanceLsnLowWatermark(
         { return self.Journal->AdvanceLsnLowWatermark(std::move(request)); });
 }
 
+TFuture<NProto::TWritePagesResponse> TJournalledDeviceV2::WritePages(
+    NProto::TWritePagesRequest request)
+{
+    if (auto error = ValidateRequest(request); HasError(error)) {
+        return MakeFuture<NProto::TWritePagesResponse>(
+            TErrorResponse(std::move(error)));
+    }
+
+    return Execute<NProto::TWritePagesResponse>(
+        [request = std::move(request)](auto& self) mutable
+        { return self.DoWritePages(std::move(request)); });
+}
+
+NProto::TWritePagesResponse TJournalledDeviceV2::DoWritePages(
+    NProto::TWritePagesRequest request)
+{
+    auto ranges = MakePageRanges(request);
+
+    auto acquired = PagesInFlight.TryAcquire(ranges);
+    if (HasError(acquired)) {
+        return TErrorResponse(acquired.GetError());
+    }
+
+    Y_DEFER {
+        PagesInFlight.Release(acquired.GetResult());
+    };
+
+    auto future = DataStore->WritePages(std::move(ranges));
+    return TErrorResponse(Executor->ExtractResponse(std::move(future)));
+}
+
 void TJournalledDeviceV2::ScheduleFlushCycle()
 {
     Executor->Execute(
@@ -488,9 +576,21 @@ void TJournalledDeviceV2::RunFlushCycle()
 
         auto ranges = MergeRecordPages(records);
         if (!ranges.empty()) {
-            auto writeFuture = DataStore->WritePages(std::move(ranges));
+            auto acquired = PagesInFlight.TryAcquire(ranges);
+            if (HasError(acquired)) {
+                // WritePages holds the pages, the next cycle retries
+                STORAGE_DEBUG(
+                    "postpone the flush of "
+                    << records.size() << " records up to lsn " << lsn
+                    << ": " << FormatError(acquired.GetError()));
+                break;
+            }
 
+            auto writeFuture = DataStore->WritePages(std::move(ranges));
             auto writeError = Executor->WaitFor(writeFuture);
+
+            PagesInFlight.Release(acquired.GetResult());
+
             if (HasError(writeError)) {
                 STORAGE_ERROR(
                     "unable to flush "
