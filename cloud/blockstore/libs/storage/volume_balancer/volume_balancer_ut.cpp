@@ -64,9 +64,9 @@ constexpr TVolumeLoadProfile LoadZero{};
 struct TVolumeState
 {
     TString DiskId;
-    bool IsLocal;
-    NProto::EPreemptionSource Source;
-    TVolumeLoadProfile LoadProfile;
+    bool IsLocal = true;
+    NProto::EPreemptionSource Source = NProto::SOURCE_NONE;
+    TVolumeLoadProfile LoadProfile = LoadZero;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -540,14 +540,15 @@ auto SetupCriticalEvents(IMonitoringServicePtr monitoring)
 
 Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 {
-    Y_UNIT_TEST(ShouldPushMostLoadedVolumeToHiveControl)
+    static void TestPushVolumeToHiveControl(
+        NProto::EVolumePreemptionType preemptionType,
+        const TString& expectedDiskId)
     {
         TVolumeBalancerTestEnv testEnv;
         TVolumeBalancerConfigBuilder config;
 
         auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
-            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY)
-            .WithEnabled(true),
+            config.WithType(preemptionType).WithEnabled(true),
             testEnv.VolumeStats,
             testEnv.Fetcher,
             testEnv.GetEdgeActor()));
@@ -558,56 +559,41 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBindingActorID,
             {
-                {"vol0",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadHeavy},
-                {"vol1",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadLight},
+                {.DiskId = "vol0", .LoadProfile = LoadHeavy},
+                {.DiskId = "vol1", .LoadProfile = LoadLight},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 1}, {"vol1", 10}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
             UpdateCountersInterval);
 
-        UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
+        UNIT_ASSERT_VALUES_EQUAL(expectedDiskId, diskId);
+    }
+
+    Y_UNIT_TEST(ShouldPushMostSufferingVolumeToHiveControl)
+    {
+        TestPushVolumeToHiveControl(NProto::PREEMPTION_MOVE_MOST_HEAVY, "vol1");
+    }
+
+    Y_UNIT_TEST(ShouldPushMostLoadedVolumeToHiveControl)
+    {
+        TestPushVolumeToHiveControl(
+            NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY,
+            "vol0");
+    }
+
+    Y_UNIT_TEST(ShouldPushLeastSufferingVolumeToHiveControl)
+    {
+        TestPushVolumeToHiveControl(
+            NProto::PREEMPTION_MOVE_LEAST_HEAVY,
+            "vol0");
     }
 
     Y_UNIT_TEST(ShouldPushLeastLoadedVolumeToHiveControl)
     {
-        TVolumeBalancerTestEnv testEnv;
-        TVolumeBalancerConfigBuilder config;
-
-        auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
-            config.WithType(NProto::PREEMPTION_MOVE_LEAST_HEAVY)
-            .WithEnabled(true),
-            testEnv.VolumeStats,
-            testEnv.Fetcher,
-            testEnv.GetEdgeActor()));
-
-        testEnv.DispatchEvents();
-
-        auto diskId = RunState(
-            testEnv,
-            volumeBindingActorID,
-            {
-                {"vol0",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadHeavy},
-                {"vol1",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadLight},
-            },
-            {{"vol0", 1}, {"vol1", 1}},
-            1,
-            EChangeBindingOp::RELEASE_TO_HIVE,
-            UpdateCountersInterval);
-
-        UNIT_ASSERT_VALUES_EQUAL("vol1", diskId);
+        TestPushVolumeToHiveControl(
+            NProto::PREEMPTION_MOVE_CPU_LEAST_HEAVY,
+            "vol1");
     }
 
     Y_UNIT_TEST(ShouldPushVolumesToHiveControlAndReturnBack)
@@ -631,19 +617,13 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBindingActorID,
             {
-                {"vol0",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadHeavy},
-                {"vol1",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadLight},
+                {.DiskId = "vol0"},
+                {.DiskId = "vol1"},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
@@ -656,19 +636,17 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBindingActorID,
             {
-                {"vol0",
-                 false,
-                 NProto::EPreemptionSource::SOURCE_BALANCER,
-                 LoadHeavy},
-                {"vol1",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadLight},
+                {.DiskId = "vol0",
+                 .IsLocal = false,
+                 .Source = NProto::SOURCE_BALANCER},
+                {.DiskId = "vol1",
+                 .IsLocal = true,
+                 .Source = NProto::SOURCE_NONE},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             0.1,
             EChangeBindingOp::ACQUIRE_FROM_HIVE,
-            UpdateCountersInterval + TDuration::Seconds(20));
+            TDuration::Seconds(15) + TDuration::Seconds(20));
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
     }
@@ -694,19 +672,13 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBindingActorID,
             {
-                {"vol0",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadHeavy},
-                {"vol1",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadLight},
+                {.DiskId = "vol0", .IsLocal = true},
+                {.DiskId = "vol1", .IsLocal = true},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
@@ -714,19 +686,19 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBindingActorID,
             {
-                {"vol0",
-                 false,
-                 NProto::EPreemptionSource::SOURCE_MANUAL,
-                 LoadHeavy},
-                {"vol1",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadLight},
+                {.DiskId = "vol0",
+                 .IsLocal = false,
+                 .Source = NProto::SOURCE_MANUAL},
+                {.DiskId = "vol1",
+                 .IsLocal = true,
+                 .Source = NProto::SOURCE_NONE},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             0.1,
             {},
-            UpdateCountersInterval + TDuration::Seconds(20));
+            TDuration::Seconds(15) + TDuration::Seconds(20));
+
+        UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
     }
 
     Y_UNIT_TEST(ShouldNotDoAnythingIfBalancerIsDisabled)
@@ -747,19 +719,13 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBindingActorID,
             {
-                {"vol0",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadHeavy},
-                {"vol1",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadLight},
+                {.DiskId = "vol0"},
+                {.DiskId = "vol1"},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             {},
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
     }
 
     Y_UNIT_TEST(ShouldNotDoAnythingIfBalancerIsDisabledViaPrivateApi)
@@ -791,19 +757,13 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBindingActorID,
             {
-                {"vol0",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadHeavy},
-                {"vol1",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadLight},
+                {.DiskId = "vol0"},
+                {.DiskId = "vol1"},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             {},
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
     }
 
     Y_UNIT_TEST(ShouldNotDoAnythingIfBalancerDisabledWithConfig)
@@ -824,19 +784,13 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBalancerActorId,
             {
-                {"vol0",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadHeavy},
-                {"vol1",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadLight},
+                {.DiskId = "vol0"},
+                {.DiskId = "vol1"},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             {},
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
     }
 
     Y_UNIT_TEST(ShouldSetCpuWaitCounter)
@@ -859,27 +813,20 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         auto diskId = RunState(
             testEnv,
             volumeBindingActorID,
-            {{.DiskId = "vol0",
-              .IsLocal = true,
-              .Source = NProto::EPreemptionSource::SOURCE_NONE,
-              .LoadProfile = LoadHeavy},
-             {.DiskId = "vol1",
-              .IsLocal = true,
-              .Source = NProto::EPreemptionSource::SOURCE_NONE,
-              .LoadProfile = LoadLight}},
-            {{"vol0", 1}, {"vol1", 1}},
+            {{.DiskId = "vol0"}, {.DiskId = "vol1"}},
+            {{"vol0", 10}, {"vol1", 1}},
             .9,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
-        auto appCounters = testEnv.GetRuntime()
-                               .GetAppData(0)
-                               .Counters->GetSubgroup("counters", "blockstore")
-                               ->GetSubgroup("component", "server");
+        auto counters = testEnv.GetRuntime()
+                            .GetAppData(0)
+                            .Counters->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server");
 
-        auto cpuWaitCounter = appCounters->GetCounter("CpuWait", false);
+        auto cpuWaitCounter = counters->GetCounter("CpuWait", false);
         UNIT_ASSERT_VALUES_UNEQUAL(0, cpuWaitCounter->Val());
         UNIT_ASSERT(cpuWaitCounter->Val() <= 90);
 
@@ -911,19 +858,13 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBindingActorID,
             {
-                {"vol0",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadHeavy},
-                {"vol1",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadLight},
+                {.DiskId = "vol0"},
+                {.DiskId = "vol1"},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             1,
             {},
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
     }
 
     Y_UNIT_TEST(ShouldSetCountersForPreemptedVolumes)
@@ -953,51 +894,21 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBindingActorID,
             {
-                {"vol0",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadHeavy},
-                {"vol1",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_MANUAL,
-                 LoadLight},
-                {"vol2",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_MANUAL,
-                 LoadZero},
-                {"vol3",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_BALANCER,
-                 LoadZero},
-                {"vol4",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_BALANCER,
-                 LoadZero},
-                {"vol5",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_BALANCER,
-                 LoadZero},
-                {"vol6",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT,
-                 LoadZero},
-                {"vol7",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT,
-                 LoadZero},
-                {"vol8",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT,
-                 LoadZero},
-                {"vol9",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_INITIAL_MOUNT,
-                 LoadZero},
+                {.DiskId = "vol0", .Source = NProto::SOURCE_NONE},
+                {.DiskId = "vol1", .Source = NProto::SOURCE_MANUAL},
+                {.DiskId = "vol2", .Source = NProto::SOURCE_MANUAL},
+                {.DiskId = "vol3", .Source = NProto::SOURCE_BALANCER},
+                {.DiskId = "vol4", .Source = NProto::SOURCE_BALANCER},
+                {.DiskId = "vol5", .Source = NProto::SOURCE_BALANCER},
+                {.DiskId = "vol6", .Source = NProto::SOURCE_INITIAL_MOUNT},
+                {.DiskId = "vol7", .Source = NProto::SOURCE_INITIAL_MOUNT},
+                {.DiskId = "vol8", .Source = NProto::SOURCE_INITIAL_MOUNT},
+                {.DiskId = "vol9", .Source = NProto::SOURCE_INITIAL_MOUNT},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             .9,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId);
 
@@ -1027,26 +938,20 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBindingActorID,
             {
-                {.DiskId = "vol0",
-                 .IsLocal = true,
-                 .Source = NProto::EPreemptionSource::SOURCE_NONE,
-                 .LoadProfile = LoadHeavy},
-                {.DiskId = "vol1",
-                 .IsLocal = true,
-                 .Source = NProto::EPreemptionSource::SOURCE_NONE,
-                 .LoadProfile = LoadLight},
+                {.DiskId = "vol0"},
+                {.DiskId = "vol1"},
             },
-            {{"vol0", 1}, {"vol1", 1}},
+            {{"vol0", 10}, {"vol1", 1}},
             MakeError(E_INVALID_STATE),
             {},
             TDuration::Seconds(15));
 
-        auto appCounters = testEnv.GetRuntime()
-                               .GetAppData(0)
-                               .Counters->GetSubgroup("counters", "blockstore")
-                               ->GetSubgroup("component", "server");
+        auto counters = testEnv.GetRuntime()
+                            .GetAppData(0)
+                            .Counters->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server");
 
-        auto cpuWaitCounter = appCounters->GetCounter("CpuWait", false);
+        auto cpuWaitCounter = counters->GetCounter("CpuWait", false);
         UNIT_ASSERT_VALUES_EQUAL(0, cpuWaitCounter->Val());
 
         UNIT_ASSERT_VALUES_UNEQUAL(
@@ -1075,23 +980,14 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBindingActorID,
             {
-                {"vol0",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadHeavy},
-                {"vol1",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadLight},
-                {"vol2",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadModerate},
+                {.DiskId = "vol0"},
+                {.DiskId = "vol1"},
+                {.DiskId = "vol2"},
             },
-            {{"vol0", 1}, {"vol1", 1}, {"vol2", 1}},
+            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
 
         UNIT_ASSERT_VALUES_EQUAL("vol1", diskId);
 
@@ -1099,23 +995,14 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBindingActorID,
             {
-                {"vol0",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadHeavy},
-                {"vol1",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadLight},
-                {"vol2",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadModerate},
+                {.DiskId = "vol0"},
+                {.DiskId = "vol1"},
+                {.DiskId = "vol2"},
             },
-            {{"vol0", 1}, {"vol1", 1}, {"vol2", 1}},
+            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
-            UpdateCountersInterval);
+            TDuration::Seconds(15));
 
         UNIT_ASSERT_VALUES_EQUAL("vol2", diskId2);
     }
@@ -1139,18 +1026,81 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBindingActorID,
             {
-                {"vol0",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadHeavy},
-                {"vol1",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadLight},
-                {"vol2",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadModerate},
+                {.DiskId = "vol0"},
+                {.DiskId = "vol1"},
+                {.DiskId = "vol2"},
+            },
+            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
+            1,
+            EChangeBindingOp::RELEASE_TO_HIVE,
+            TDuration::Seconds(15));
+
+        UNIT_ASSERT_VALUES_EQUAL("vol1", diskId);
+
+        // Expect to not get any preemption requests while first one
+        // is in progress
+        auto diskId2 = RunState(
+            testEnv,
+            volumeBindingActorID,
+            {
+                {.DiskId = "vol0"},
+                {.DiskId = "vol1",
+                 .IsLocal = false,
+                 .Source = NProto::SOURCE_BALANCER},
+                {.DiskId = "vol2"},
+            },
+            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
+            1,
+            {},
+            TDuration::Seconds(15));
+
+        UNIT_ASSERT(diskId2.empty());
+
+        testEnv.SendChangeVolumeBindingResponse(
+            volumeBindingActorID,
+            "vol1",
+            {});
+
+        auto diskId3 = RunState(
+            testEnv,
+            volumeBindingActorID,
+            {
+                {.DiskId = "vol0"},
+                {.DiskId = "vol1",
+                 .IsLocal = false,
+                 .Source = NProto::SOURCE_BALANCER},
+                {.DiskId = "vol2"},
+            },
+            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
+            1,
+            EChangeBindingOp::RELEASE_TO_HIVE,
+            TDuration::Seconds(15));
+
+        UNIT_ASSERT_VALUES_EQUAL("vol2", diskId3);
+    }
+
+    Y_UNIT_TEST(ShouldRespectInProgressLimitSetToOneCpuRanking)
+    {
+        TVolumeBalancerTestEnv testEnv;
+        TVolumeBalancerConfigBuilder config;
+
+        auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
+            config.WithType(NProto::PREEMPTION_MOVE_CPU_LEAST_HEAVY)
+                .WithEnabled(true)
+                .WithMaxInProgress(1),
+            testEnv.VolumeStats,
+            testEnv.Fetcher,
+            testEnv.GetEdgeActor()));
+
+        testEnv.DispatchEvents();
+
+        auto diskId = RunState(
+            testEnv,
+            volumeBindingActorID,
+            {
+                {.DiskId = "vol0", .LoadProfile = LoadHeavy},
+                {.DiskId = "vol1", .LoadProfile = LoadLight},
+                {.DiskId = "vol2", .LoadProfile = LoadModerate},
             },
             {{"vol0", 1}, {"vol1", 1}, {"vol2", 1}},
             1,
@@ -1165,18 +1115,12 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBindingActorID,
             {
-                {"vol0",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadHeavy},
-                {"vol1",
-                 false,
-                 NProto::EPreemptionSource::SOURCE_BALANCER,
-                 LoadLight},
-                {"vol2",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadModerate},
+                {.DiskId = "vol0", .LoadProfile = LoadHeavy},
+                {.DiskId = "vol1",
+                 .IsLocal = false,
+                 .Source = NProto::SOURCE_BALANCER,
+                 .LoadProfile = LoadLight},
+                {.DiskId = "vol2", .LoadProfile = LoadModerate},
             },
             {{"vol0", 1}, {"vol1", 1}, {"vol2", 1}},
             1,
@@ -1194,18 +1138,12 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv,
             volumeBindingActorID,
             {
-                {"vol0",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadHeavy},
-                {"vol1",
-                 false,
-                 NProto::EPreemptionSource::SOURCE_BALANCER,
-                 LoadLight},
-                {"vol2",
-                 true,
-                 NProto::EPreemptionSource::SOURCE_NONE,
-                 LoadModerate},
+                {.DiskId = "vol0", .LoadProfile = LoadHeavy},
+                {.DiskId = "vol1",
+                 .IsLocal = false,
+                 .Source = NProto::SOURCE_BALANCER,
+                 .LoadProfile = LoadLight},
+                {.DiskId = "vol2", .LoadProfile = LoadModerate},
             },
             {{"vol0", 1}, {"vol1", 1}, {"vol2", 1}},
             1,
