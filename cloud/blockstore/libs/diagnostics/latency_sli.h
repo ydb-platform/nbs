@@ -1,5 +1,7 @@
 #pragma once
 
+#include "public.h"
+
 #include <cloud/blockstore/libs/common/latency_sli_fingerprint.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
