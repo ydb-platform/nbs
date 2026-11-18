@@ -238,7 +238,9 @@ private:
     // Empty for one-shot actors and when shutting down.
     TActorId ServiceActorId;
 
-    // Preserved across cleanup to reject replies from previous requests.
+    // Unique request epoch number. Preserved across resets and used
+    // to filter out delayed TEvPut responses after fallback to
+    // TEvWriteDataRequest.
     ui64 RequestGeneration = 0;
     std::optional<TRequestState> RequestState;
 
@@ -1203,8 +1205,8 @@ private:
             "WriteData");
 
         NCloud::Reply(ctx, *state.RequestContext.RequestInfo, std::move(response));
-        RequestState.reset();
         if (ServiceActorId) {
+            RequestState.reset();
             Become(&TThis::StateIdle);
             NCloud::Send<TEvServicePrivate::TEvReleaseWriteDataActor>(
                 ctx,
