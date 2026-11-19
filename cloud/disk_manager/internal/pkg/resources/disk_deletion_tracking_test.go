@@ -427,6 +427,33 @@ func TestLegacyPlaceholderNotReopenedAfterCleanupEnabled(t *testing.T) {
 	require.Empty(t, state.cleanupTaskIDs)
 }
 
+func TestOwnLegacyPlaceholderResumeReturnsMeta(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+
+	// Old DeleteIfNonExistent wrote a Deleted placeholder before external
+	// cleanup. Simulate that row without going through the new tombstone path.
+	actual, err := storage.DeleteDisk(ctx, "disk", "delete", "", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, actual)
+	require.Equal(t, diskStatusDeleted, readTrackedDisk(t, ctx, db, storage, "disk").status)
+
+	// Same task resumes with cleanup enabled after upgrade: status stays
+	// Deleted, but meta is returned so the task can finish NBS cleanup.
+	actual, err = storage.DeleteDisk(ctx, "disk", "delete", "delete", time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, actual)
+	require.Equal(t, "disk", actual.ID)
+	require.Empty(t, actual.CreateTaskID)
+	require.Empty(t, actual.ZoneID)
+
+	state := readTrackedDisk(t, ctx, db, storage, "disk")
+	require.Equal(t, diskStatusDeleted, state.status)
+	require.False(t, state.tombstone)
+	require.Equal(t, "delete", state.deleteTaskID)
+	require.Empty(t, state.cleanupTaskIDs)
+}
+
 func TestDeletedPlaceholderRetryWithoutCleanupReturnsNil(t *testing.T) {
 	ctx, db, storage := setupTest(t)
 	defer db.Close(ctx)
@@ -500,7 +527,8 @@ func TestZoneLessTombstoneCompletesWithoutDiskDeleted(t *testing.T) {
 
 // Rows written before the explicit tombstone flag was added: a placeholder
 // and a completed deletion look the same. PrepareDiskCleanup must not treat
-// them as tombstones even for the task which wrote the row.
+// them as tombstones; owning DeleteIfNonExistent resume returns meta from
+// DeleteDisk instead (see TestOwnLegacyPlaceholderResumeReturnsMeta).
 func TestLegacyDeletedDiskCleanup(t *testing.T) {
 	for _, tc := range []struct {
 		name          string

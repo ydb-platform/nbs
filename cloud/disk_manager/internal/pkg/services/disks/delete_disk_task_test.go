@@ -487,10 +487,15 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 			if tc.sync {
 				storage.On("GetDiskMeta", ctx, "disk").Return((*resources.DiskMeta)(nil), nil).Once()
 			}
-			// Legacy Deleted placeholders are a storage no-op (nil meta); the task
-			// then sees PrepareDiskCleanup=false and does not touch NBS.
+			// Owning legacy Deleted placeholders stay Deleted but return empty
+			// meta so the task finishes external cleanup via the request zone.
+			// Completed deletions stay a storage no-op (nil meta, Prepare=false).
+			var deleteMeta *resources.DiskMeta
+			if tc.legacy {
+				deleteMeta = &resources.DiskMeta{ID: "disk", DeleteTaskID: id}
+			}
 			storage.On("DeleteDisk", ctx, "disk", id, id, mock.Anything).Return(
-				(*resources.DiskMeta)(nil),
+				deleteMeta,
 				errorFor("DeleteDisk"),
 			).Once()
 			setup := func() {
@@ -498,7 +503,11 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 					return
 				}
 				if tc.legacy {
-					storage.On("PrepareDiskCleanup", ctx, "disk", id).Return(false, nil).Once()
+					scheduler.On("ScheduleTask", headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_incremental"), "dataplane.DeleteDiskFromIncremental", "", &dataplane_protos.DeleteDiskFromIncrementalRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}}).Return("incremental", nil).Once()
+					scheduler.On("WaitTask", ctx, execCtx, "incremental").Return(nil, nil).Once()
+					factory.On("GetClient", ctx, "cell").Return(client, nil).Once()
+					client.On("Delete", ctx, "disk").Return(nil).Once()
+					storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil).Once()
 					return
 				}
 				storage.On("PrepareDiskCleanup", ctx, "disk", id).Return(tc.prepared, nil).Once()
@@ -542,10 +551,6 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 				storage.AssertNotCalled(t, "DiskDeleted", mock.Anything, mock.Anything, mock.Anything)
 			}
 			scheduler.AssertNotCalled(t, "ScheduleNonCancellableTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-			if tc.legacy {
-				storage.AssertNotCalled(t, "DiskDeleted", mock.Anything, mock.Anything, mock.Anything)
-				factory.AssertNotCalled(t, "GetClient", mock.Anything, mock.Anything)
-			}
 		})
 	}
 }

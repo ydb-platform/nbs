@@ -544,7 +544,16 @@ func (s *storageYDB) deleteDisk(
 				(state.tombstone || len(state.createTaskID) != 0):
 				// Completed tombstone or real disk: skip cleanup
 			case state.status == diskStatusDeleted && len(state.createTaskID) == 0:
-				// Legacy missing-disk placeholder: already finalized. Always a no-op
+				// Legacy missing-disk placeholder written before tracked tombstones
+				if len(cleanupTaskID) == 0 || state.deleteTaskID != taskID {
+					break
+				}
+
+				err = tx.Commit(ctx)
+				if err != nil {
+					return nil, err
+				}
+				return state.toDiskMeta(), nil
 			default:
 				// Live deleting disk
 				err = tx.Commit(ctx)
