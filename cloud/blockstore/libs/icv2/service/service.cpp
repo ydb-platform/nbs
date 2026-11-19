@@ -1,7 +1,7 @@
 #include "service.h"
 
 #include "host_endpoint.h"
-#include "peer_connections.h"
+#include "public.h"
 #include "ping_client.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
@@ -29,6 +29,10 @@
 #include <mutex>
 
 namespace NCloud::NBlockStore::NIcV2 {
+
+using namespace NThreading;
+
+using NCloud::NIcV2::TSocketResult;
 
 using NCloud::NIcV2::CreateRequestChannel;
 using NCloud::NIcV2::IIncomingRequestPtr;
@@ -71,6 +75,37 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Register the DNS actor once the server actor system is running.
+class TServiceAddressResolver final: public NCloud::NIcV2::IAddressResolver
+{
+    NActors::TActorSystem* const ActorSystem;
+    NCloud::NIcV2::IAddressResolverPtr Resolver;
+
+public:
+    explicit TServiceAddressResolver(NActors::TActorSystem* actorSystem)
+        : ActorSystem(actorSystem)
+    {}
+
+    void Start(const ITaskQueuePtr& completions)
+    {
+        Resolver =
+            NCloud::NIcV2::CreateAddressResolver(ActorSystem, completions);
+    }
+
+    void Stop()
+    {
+        Resolver.reset();
+    }
+
+    NCloud::NIcV2::TResolveFuture
+    Resolve(const TString& host, ui16 port, TMonotonic deadline) override
+    {
+        return Resolver->Resolve(host, port, deadline);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TServiceState: public std::enable_shared_from_this<TServiceState>
 {
     const NCells::TCellsConfigConstPtr Config;
@@ -79,19 +114,18 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
     TLog Log;
     const ITaskQueuePtr Completions;
     const ITaskQueuePtr DataExecutor;
-    const ITaskQueuePtr ResolverExecutor;
+    const std::shared_ptr<TServiceAddressResolver> Resolver;
     IDataTargetPtr DataTarget;
     bool Running = false;
-    ui64 NextDataBindingId = 1;
 
     struct TDataBinding
     {
-        TString CellId;
         std::weak_ptr<IDataEndpoint> Endpoint;
-        NThreading::TFuture<void> Closed;
+        TFuture<void> Closed;
+        std::weak_ptr<IPeer> Peer;
     };
 
-    THashMap<ui64, TDataBinding> DataEndpoints;
+    TVector<TDataBinding> DataEndpoints;
     const TCounterPtr AcceptedConnections;
     const TCounterPtr RejectedConnections;
     const TCounterPtr ListenerErrors;
@@ -102,7 +136,7 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
     const TCounterPtr PingReplies;
     ITransportPtr Transport;
     IHandshakeProviderPtr Handshake;
-    IPeerConnectionsPtr Peers;
+    IPeerManagerPtr Peers;
     IPingClientPtr Pings;
 
     std::mutex Mutex;
@@ -114,6 +148,7 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
 
     TServiceState(
         NCells::TCellsConfigConstPtr config,
+        NActors::TActorSystem* actorSystem,
         ITimerPtr timer,
         ISchedulerPtr scheduler,
         TLog log,
@@ -128,7 +163,7 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
         , DataExecutor(CreateThreadPool(
               "ICV2Data",
               Config->GetIcV2Config().GetDataWorkers()))
-        , ResolverExecutor(CreateThreadPool("ICV2Resolve", 2))
+        , Resolver(std::make_shared<TServiceAddressResolver>(actorSystem))
         , AcceptedConnections(counters->GetCounter("AcceptedConnections", true))
         , RejectedConnections(counters->GetCounter("RejectedConnections", true))
         , ListenerErrors(counters->GetCounter("ListenerErrors", true))
@@ -146,7 +181,7 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
             std::lock_guard guard(Mutex);
             Stopping = true;
             Running = false;
-            for (const auto& [id, binding]: DataEndpoints) {
+            for (const auto& binding: DataEndpoints) {
                 if (auto endpoint = binding.Endpoint.lock()) {
                     endpoints.push_back(std::move(endpoint));
                 }
@@ -200,12 +235,10 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
             ++ConnectionCount;
         }
         ++*AcceptedConnections;
-        const std::weak_ptr<TServiceState> weak = shared_from_this();
-        const auto timeout = TDuration::MilliSeconds(
-            Config->GetIcV2Config().GetHandshakeTimeoutMs());
+        const auto timeout = Config->GetIcV2Config().GetHandshakeTimeout();
         auto future = Handshake->Accept(result.ExtractResult(), timeout);
         future.Subscribe(
-            [weak](const TAcceptHandshakeFuture& future)
+            [weak = weak_from_this()](const TAcceptHandshakeFuture& future)
             {
                 if (auto state = weak.lock()) {
                     state->OnHello(future.GetValue());
@@ -247,13 +280,11 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
                 "IC V2 channel creation failed: " << FormatError(error));
             return;
         }
-        const std::weak_ptr<TServiceState> weak = shared_from_this();
         ui64 id = 0;
         {
             std::lock_guard guard(Mutex);
             if (!Stopping &&
-                Channels.size() <
-                    Config->GetIcV2Config().GetMaxConnections())
+                Channels.size() < Config->GetIcV2Config().GetMaxConnections())
             {
                 Y_ABORT_UNLESS(
                     NextConnectionId,
@@ -273,7 +304,7 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
             return;
         }
         channel->WhenClosed().Subscribe(
-            [weak, id](const auto&)
+            [weak = weak_from_this(), id](const auto&)
             {
                 if (auto state = weak.lock()) {
                     {
@@ -347,6 +378,29 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
         }
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TServiceChannelFactory final: public IChannelFactory
+{
+private:
+    const std::weak_ptr<TServiceState> State;
+
+public:
+    explicit TServiceChannelFactory(std::weak_ptr<TServiceState> state)
+        : State(std::move(state))
+    {}
+
+    TChannelResult CreateChannel(const THandshakeReady& connection) override
+    {
+        if (auto state = State.lock()) {
+            return state->MakeChannel(connection);
+        }
+        return MakeError(E_REJECTED, "IC V2 service has been destroyed");
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 TChannelHandler::TChannelHandler(std::weak_ptr<TServiceState> state)
     : State(std::move(state))
@@ -442,14 +496,12 @@ public:
         if (!State->Running || State->Stopping) {
             return MakeError(E_REJECTED, "IC V2 service is not running");
         }
-        Y_ABORT_UNLESS(State->NextDataBindingId, "IC V2 binding IDs exhausted");
-        const auto id = State->NextDataBindingId++;
         const auto& options = State->Config->GetIcV2Config();
         for (auto it = State->DataEndpoints.begin();
              it != State->DataEndpoints.end();)
         {
-            if (it->second.Endpoint.expired() && it->second.Closed.HasValue()) {
-                State->DataEndpoints.erase(it++);
+            if (it->Endpoint.expired() && it->Closed.HasValue()) {
+                it = State->DataEndpoints.erase(it);
             } else {
                 ++it;
             }
@@ -459,8 +511,6 @@ public:
             return MakeError(E_REJECTED, "IC V2 data binding limit reached");
         }
         auto [binding, error] = CreateHostDataEndpoint(
-            cellId,
-            id,
             host,
             static_cast<ui16>(it->second->GetIcV2Port()),
             std::move(handler),
@@ -473,35 +523,32 @@ public:
         if (HasError(error)) {
             return error;
         }
-        State->DataEndpoints.emplace(
-            id,
-            TServiceState::TDataBinding{
-                cellId,
-                binding.Endpoint,
-                binding.Closed});
+        State->DataEndpoints.push_back({
+            .Endpoint = binding.Endpoint,
+            .Closed = binding.Closed,
+            .Peer = binding.Peer,
+        });
         return IBlockStorePtr(std::move(binding.Endpoint));
     }
 
-    THostChannelStatus GetDataEndpointStatus(
+    TPeerStatus GetDataEndpointStatus(
         const IBlockStorePtr& endpoint) override
     {
-        TString cellId;
-        ui64 bindingId = 0;
+        IPeerPtr peer;
         {
             std::lock_guard guard(State->Mutex);
-            for (const auto& [id, binding]: State->DataEndpoints) {
-                if (auto current = binding.Endpoint.lock();
-                    current.get() == endpoint.get())
+            for (const auto& binding: State->DataEndpoints) {
+                if (const auto current = binding.Endpoint.lock();
+                    current && current.get() == endpoint.get())
                 {
-                    cellId = binding.CellId;
-                    bindingId = id;
+                    peer = binding.Peer.lock();
                     break;
                 }
             }
         }
-        return bindingId ? State->Peers->GetHostStatus(cellId, bindingId)
-                         : THostChannelStatus{
-                               .State = EHostChannelState::Disconnected};
+        return peer ? peer->GetStatus()
+                    : TPeerStatus{
+                          .State = EPeerState::Disconnected};
     }
 
     void Start() override
@@ -510,7 +557,7 @@ public:
         Y_ABORT_UNLESS(!Started && !Stopped);
         State->Completions->Start();
         State->DataExecutor->Start();
-        State->ResolverExecutor->Start();
+        State->Resolver->Start(State->Completions);
         State->Handshake->Start();
         State->Peers->Start();
         State->Pings->Start();
@@ -554,16 +601,16 @@ public:
             channel->Close();
         }
         State->Peers->Stop();
-        State->ResolverExecutor->Stop();
+        State->Resolver->Stop();
         State->Transport->Stop();
         for (const auto& channel: channels) {
             channel->WhenClosed().GetValueSync();
         }
         TVector<IDataEndpointPtr> endpoints;
-        TVector<NThreading::TFuture<void>> bindings;
+        TVector<TFuture<void>> bindings;
         {
             std::lock_guard guard(State->Mutex);
-            for (const auto& [id, binding]: State->DataEndpoints) {
+            for (const auto& binding: State->DataEndpoints) {
                 if (auto endpoint = binding.Endpoint.lock()) {
                     endpoints.push_back(std::move(endpoint));
                 }
@@ -594,24 +641,24 @@ public:
 TResultOrError<IServicePtr> CreateService(
     NCells::TCellsConfigConstPtr config,
     IBlockStorePtr dataService,
+    NActors::TActorSystem* actorSystem,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     NMonitoring::TDynamicCountersPtr counters)
 {
-    if (!config || !dataService || !timer || !scheduler || !logging ||
-        !counters)
+    if (!config || !dataService || !actorSystem || !timer || !scheduler ||
+        !logging || !counters)
     {
         return MakeError(
             E_ARGUMENT,
-            "IC V2 service requires config, data service, timer, scheduler, "
-            "logging and "
-            "counters");
+            "IC V2 service requires config, data service, actor system, "
+            "timer, scheduler, logging and counters");
     }
     const auto& options = config->GetIcV2Config();
     if (!config->GetCellsEnabled() || !options.GetEnabled() ||
         !options.GetIcV2Config().HasPort() || options.GetPort() > 65535 ||
-        !options.GetThreads() || !options.GetHandshakeTimeoutMs() ||
+        !options.GetThreads() || !options.GetHandshakeTimeout() ||
         !options.GetMaxConnections() || !options.GetMaxPendingRequests() ||
         !options.GetMaxOutputQueueBytes() || !options.GetCompletionThreads() ||
         !options.GetMaxOutgoingConnections() || !options.GetDataWorkers() ||
@@ -640,6 +687,7 @@ TResultOrError<IServicePtr> CreateService(
     }
     auto state = std::make_shared<TServiceState>(
         config,
+        actorSystem,
         std::move(timer),
         std::move(scheduler),
         logging->CreateLog("BLOCKSTORE_SERVER"),
@@ -682,27 +730,38 @@ TResultOrError<IServicePtr> CreateService(
     if (HasError(connectorError)) {
         return connectorError;
     }
-    auto [peers, peersError] = CreatePeerConnections(
-        config,
+    auto [peers, peersError] = CreatePeerManager(
+        {.ConnectTimeout = options.GetHandshakeTimeout()},
         std::move(connector),
         std::move(outgoingHello),
         state->Timer,
         state->Scheduler,
-        NCloud::NIcV2::CreateAddressResolver(state->ResolverExecutor),
+        state->Resolver,
         state->Completions,
-        [weak](const THandshakeReady& connection) -> TChannelResult
-        {
-            if (auto state = weak.lock()) {
-                return state->MakeChannel(connection);
-            }
-            return MakeError(E_REJECTED, "IC V2 service has been destroyed");
-        });
+        std::make_shared<TServiceChannelFactory>(weak));
     if (HasError(peersError)) {
         return peersError;
     }
     state->Peers = std::move(peers);
+    TPingClientConfig pingConfig{
+        .MaxPendingRequests = options.GetMaxPendingRequests(),
+        .MaxPayloadBytes = options.GetMaxOutputQueueBytes(),
+    };
+    for (const auto& [cellId, cell]: config->GetCells()) {
+        if (cellId == config->GetCellId() || !cell->GetIcV2Port()) {
+            continue;
+        }
+        if (cell->GetIcV2Port() > 65535 || cell->GetHosts().empty()) {
+            return MakeError(E_ARGUMENT, "invalid IC V2 diagnostic peer");
+        }
+        auto& hosts = pingConfig.Peers[cellId];
+        for (const auto& host: cell->GetCellConfig().GetHosts()) {
+            hosts.push_back(
+                {host.GetFqdn(), static_cast<ui16>(cell->GetIcV2Port())});
+        }
+    }
     auto [pings, pingError] = CreatePingClient(
-        {options.GetMaxPendingRequests(), options.GetMaxOutputQueueBytes()},
+        std::move(pingConfig),
         state->Peers,
         state->Timer,
         state->Scheduler,

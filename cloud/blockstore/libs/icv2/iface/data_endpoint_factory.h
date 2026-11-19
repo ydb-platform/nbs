@@ -34,7 +34,7 @@ struct IDataEndpointFactory
         IClientEndpointHandlerPtr handler) = 0;
 
     // Pass an endpoint created by this factory.
-    virtual THostChannelStatus GetDataEndpointStatus(
+    virtual TPeerStatus GetDataEndpointStatus(
         const IBlockStorePtr& endpoint) = 0;
 };
 

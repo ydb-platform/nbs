@@ -28,6 +28,10 @@ namespace NCloud::NBlockStore::NProto {
     class TRootKmsConfig;
 }   // namespace NCloud::NBlockStore::NProto
 
+namespace NCloud::NBlockStore::NStorage {
+class TActorSystem;
+}   // namespace NCloud::NBlockStore::NStorage
+
 namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -117,7 +121,7 @@ private:
     // service modes, must read BootstrapConfig.
     IBlockstoreConfigPtr StartupBlockstoreConfig;
 
-    IActorSystemPtr ActorSystem;
+    TIntrusivePtr<NStorage::TActorSystem> ActorSystem;
     IAsyncLoggerPtr AsyncLogger;
     IStatsAggregatorPtr StatsAggregator;
     IClientPercentileCalculatorPtr ClientPercentiles;
@@ -149,6 +153,7 @@ protected:
     TConfigInitializerCommonPtr InitConfigs(int argc, char** argv) override;
 
     IStartable* GetActorSystem() override;
+    NActors::TActorSystem* GetIcV2ActorSystem() const override;
     IStartable* GetAsyncLogger() override;
     IStartable* GetStatsAggregator() override;
     IStartable* GetClientPercentiles() override;

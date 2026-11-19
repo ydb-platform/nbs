@@ -28,10 +28,13 @@ namespace {
 
 using namespace std::chrono_literals;
 
-struct TTestPeers final: IPeerConnections
+struct TTestPeers final: IPeerManager
 {
     std::mutex Mutex;
     size_t Calls = 0;
+    size_t Registrations = 0;
+    NThreading::TPromise<TChannelResult> OtherConnected =
+        NThreading::NewPromise<TChannelResult>();
     NThreading::TPromise<TChannelResult> Connected =
         NThreading::NewPromise<TChannelResult>();
 
@@ -44,45 +47,38 @@ struct TTestPeers final: IPeerConnections
     void RequestStop() override
     {}
 
-    NProto::TError RegisterHost(
-        const TString& cellId,
-        ui64 bindingId,
-        TString host,
-        ui16 port,
-        IClientEndpointHandlerPtr handler) override
+    struct TPeer final: IPeer
     {
-        Y_UNUSED(cellId);
-        Y_UNUSED(bindingId);
-        Y_UNUSED(host);
-        Y_UNUSED(port);
-        Y_UNUSED(handler);
+        TTestPeers& Owner;
+        const bool First;
 
-        UNIT_FAIL("Unexpected host binding");
-        return MakeError(E_NOT_IMPLEMENTED);
-    }
+        TPeer(TTestPeers& owner, bool first)
+            : Owner(owner)
+            , First(first)
+        {}
 
-    TChannelFuture GetHostChannel(const TString&, ui64) override
-    {
-        UNIT_FAIL("Unexpected host binding");
-        return {};
-    }
+        TChannelFuture GetChannel() override
+        {
+            std::lock_guard guard(Owner.Mutex);
+            ++Owner.Calls;
+            return First ? Owner.Connected.GetFuture()
+                         : Owner.OtherConnected.GetFuture();
+        }
 
-    THostChannelStatus GetHostStatus(const TString&, ui64) override
-    {
-        UNIT_FAIL("Unexpected host binding");
-        return {};
-    }
+        TPeerStatus GetStatus() override
+        {
+            return {};
+        }
 
-    void UnregisterHost(const TString&, ui64) override
-    {
-        UNIT_FAIL("Unexpected host binding");
-    }
+        void Close() override
+        {}
+    };
 
-    TChannelFuture GetChannel(const TString&) override
+    TResultOrError<IPeerPtr>
+    CreatePeer(TString, ui16, IClientEndpointHandlerPtr) override
     {
         std::lock_guard guard(Mutex);
-        ++Calls;
-        return Connected.GetFuture();
+        return IPeerPtr(std::make_shared<TPeer>(*this, ++Registrations == 1));
     }
 };
 
@@ -178,8 +174,15 @@ struct TFixture
         TPingClientConfig config = {},
         ITaskQueuePtr queue = CreateTaskQueueStub())
     {
-        auto [client, error] =
-            CreatePingClient(config, Peers, Timer, Scheduler, std::move(queue));
+        if (config.Peers.empty()) {
+            config.Peers["cell-2"].push_back({"host", 1234});
+        }
+        auto [client, error] = CreatePingClient(
+            std::move(config),
+            Peers,
+            Timer,
+            Scheduler,
+            std::move(queue));
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
         Client = std::move(client);
     }
@@ -212,6 +215,21 @@ struct TFixture
 
 Y_UNIT_TEST_SUITE(TIcV2PingClientTest)
 {
+    Y_UNIT_TEST(UsesAnotherHostWhenOnePeerConnectionFails)
+    {
+        TPingClientConfig config;
+        config.Peers["cell-2"] = {{"first", 1234}, {"second", 1234}};
+        TFixture f(std::move(config));
+        f.Client->Start();
+        auto future = f.Ping();
+        UNIT_ASSERT_VALUES_EQUAL(2, f.Peers->Registrations);
+        f.Peers->Connected.SetValue(MakeError(E_IO, "first host failed"));
+        UNIT_ASSERT(!future.HasValue());
+        f.Peers->OtherConnected.SetValue(IRequestChannelPtr(f.Channel));
+        f.Reply();
+        UNIT_ASSERT(!HasError(Wait(future).GetError()));
+    }
+
     Y_UNIT_TEST(UsesRemainingDeadlineAndReturnsTypedPayloadAndDuration)
     {
         TFixture f;
@@ -412,7 +430,7 @@ Y_UNIT_TEST_SUITE(TIcV2PingClientTest)
 
     Y_UNIT_TEST(AdmissionBoundsOutstandingRequestsAndTheirPayloadBytes)
     {
-        TFixture f({2, 6});
+        TFixture f({.MaxPendingRequests = 2, .MaxPayloadBytes = 6});
         f.Client->Start();
         auto first = f.Ping("1234");
         UNIT_ASSERT_VALUES_EQUAL(
@@ -441,7 +459,7 @@ Y_UNIT_TEST_SUITE(TIcV2PingClientTest)
         queue->Start();
         auto release = NThreading::NewPromise<void>();
         queue->ExecuteSimple([release] { release.GetFuture().GetValueSync(); });
-        TFixture f({1, 4}, queue);
+        TFixture f({.MaxPendingRequests = 1, .MaxPayloadBytes = 4}, queue);
         f.Client->Start();
         f.Connect();
         auto result = f.Ping();

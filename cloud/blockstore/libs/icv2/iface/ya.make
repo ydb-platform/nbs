@@ -6,6 +6,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/storage/core/libs/icv2/peer
     cloud/blockstore/libs/service
     cloud/storage/core/libs/common
 )

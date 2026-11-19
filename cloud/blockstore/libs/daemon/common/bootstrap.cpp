@@ -1069,6 +1069,11 @@ void TBootstrapBase::InitLWTrace(const TString& serviceNameForExporter)
     }
 }
 
+NActors::TActorSystem* TBootstrapBase::GetIcV2ActorSystem() const
+{
+    return nullptr;
+}
+
 void TBootstrapBase::InitIcV2Service()
 {
     if (!BootstrapConfig->CellsConfig->GetIcV2Config().GetEnabled()) {
@@ -1077,6 +1082,7 @@ void TBootstrapBase::InitIcV2Service()
     auto [service, error] = NIcV2::CreateService(
         BootstrapConfig->CellsConfig,
         Service,
+        GetIcV2ActorSystem(),
         Timer,
         Scheduler,
         Logging,

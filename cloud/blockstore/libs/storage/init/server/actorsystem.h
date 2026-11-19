@@ -98,6 +98,8 @@ struct TServerActorSystemArgs
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& args);
+class TActorSystem;
+
+TIntrusivePtr<TActorSystem> CreateActorSystem(const TServerActorSystemArgs& args);
 
 }   // namespace NCloud::NBlockStore::NStorage

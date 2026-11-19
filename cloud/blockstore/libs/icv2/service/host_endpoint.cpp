@@ -14,23 +14,14 @@ namespace {
 
 class THostChannel final: public IRequestChannel
 {
-    const TString CellId;
-    const ui64 BindingId;
-    const IPeerConnectionsPtr Peers;
+    const IPeerPtr Peer;
     const IRequestClientPtr Requests;
     const ITimerPtr Timer;
     std::atomic<bool> Closing = false;
 
 public:
-    THostChannel(
-        TString cellId,
-        ui64 bindingId,
-        IPeerConnectionsPtr peers,
-        IRequestClientPtr requests,
-        ITimerPtr timer)
-        : CellId(std::move(cellId))
-        , BindingId(bindingId)
-        , Peers(std::move(peers))
+    THostChannel(IPeerPtr peer, IRequestClientPtr requests, ITimerPtr timer)
+        : Peer(std::move(peer))
         , Requests(std::move(requests))
         , Timer(std::move(timer))
     {}
@@ -59,7 +50,7 @@ public:
         }
         const auto bytes = event->CalculateSerializedSize();
         return Requests
-            ->Request(CellId, std::move(event), Timer->Now() + timeout, bytes)
+            ->Request("data", std::move(event), Timer->Now() + timeout, bytes)
             .Apply(
                 [](TRequestClientFuture future) -> TResponseResult
                 {
@@ -83,7 +74,7 @@ public:
     {
         if (!Closing.exchange(true)) {
             Requests->RequestStop();
-            Peers->UnregisterHost(CellId, BindingId);
+            Peer->Close();
         }
     }
 
@@ -152,51 +143,41 @@ public:
 }   // namespace
 
 TResultOrError<THostDataEndpoint> CreateHostDataEndpoint(
-    const TString& cellId,
-    ui64 bindingId,
     TString host,
     ui16 port,
     IClientEndpointHandlerPtr handler,
-    IPeerConnectionsPtr peers,
+    IPeerManagerPtr peers,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ITaskQueuePtr completions,
     TDataConfig dataConfig)
 {
-    auto error = peers->RegisterHost(
-        cellId,
-        bindingId,
-        std::move(host),
-        port,
-        std::move(handler));
+    auto [peer, error] =
+        peers->CreatePeer(std::move(host), port, std::move(handler));
     if (HasError(error)) {
         return error;
     }
     auto [requests, requestError] = CreateRequestClient(
         {dataConfig.MaxInflightRequests, dataConfig.MaxInflightBytes},
-        [peers, cellId, bindingId](const TString&)
-        { return peers->GetHostChannel(cellId, bindingId); },
+        [peer](const TString&) { return peer->GetChannel(); },
         timer,
         std::move(scheduler),
         std::move(completions));
     if (HasError(requestError)) {
-        peers->UnregisterHost(cellId, bindingId);
+        peer->Close();
         return requestError;
     }
     requests->Start();
     auto closed = requests->WhenClosed();
-    auto channel = std::make_shared<THostChannel>(
-        cellId,
-        bindingId,
-        peers,
-        std::move(requests),
-        timer);
+    auto channel =
+        std::make_shared<THostChannel>(peer, std::move(requests), timer);
     auto [endpoint, endpointError] =
         CreateDataEndpoint(std::move(channel), dataConfig);
     if (HasError(endpointError)) {
         return endpointError;
     }
     return THostDataEndpoint{
+        .Peer = peer,
         .Endpoint =
             std::make_shared<THostDataEndpointAdapter>(std::move(endpoint)),
         .Closed = std::move(closed),

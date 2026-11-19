@@ -10,6 +10,8 @@
 
 namespace NCloud::NBlockStore::NIcV2 {
 
+using namespace NThreading;
+
 using NCloud::NIcV2::IRequestChannel;
 using NCloud::NIcV2::TResponseFuture;
 
@@ -29,8 +31,8 @@ struct TClientRequest
     std::unique_ptr<NActors::IEventBase> Event;
     ui64 Bytes;
     TInstant Deadline;
-    NThreading::TPromise<TRequestClientResult> Promise =
-        NThreading::NewPromise<TRequestClientResult>();
+    TPromise<TRequestClientResult> Promise =
+        NewPromise<TRequestClientResult>();
 };
 
 struct TConnectingPeer
@@ -63,7 +65,7 @@ class TRequestClient final
     bool Started = false;
     bool Stopping = false;
     bool Published = false;
-    NThreading::TPromise<void> Closed = NThreading::NewPromise<void>();
+    TPromise<void> Closed = NewPromise<void>();
 
 public:
     TRequestClient(
@@ -104,23 +106,22 @@ public:
         {
             std::lock_guard guard(Mutex);
             if (!Started || Stopping) {
-                return NThreading::MakeFuture<TRequestClientResult>(MakeError(
+                return MakeFuture<TRequestClientResult>(MakeError(
                     E_CANCELLED,
                     "IC V2 request client is not running"));
             }
             if (key.empty() || !event) {
-                return NThreading::MakeFuture<TRequestClientResult>(
+                return MakeFuture<TRequestClientResult>(
                     MakeError(E_ARGUMENT, "empty IC V2 request key or event"));
             }
             if (Timer->Now() >= deadline) {
-                return NThreading::MakeFuture<TRequestClientResult>(
-                    MakeTimeoutError());
+                return MakeFuture<TRequestClientResult>(MakeTimeoutError());
             }
             if (Outstanding >= Config.MaxPendingRequests ||
                 payloadBytes > Config.MaxPayloadBytes ||
                 PayloadBytes > Config.MaxPayloadBytes - payloadBytes)
             {
-                return NThreading::MakeFuture<TRequestClientResult>(MakeError(
+                return MakeFuture<TRequestClientResult>(MakeError(
                     E_REJECTED,
                     "IC V2 request admission limit reached"));
             }
@@ -148,11 +149,12 @@ public:
         }
         ArmTimer();
         if (connectionId) {
-            const std::weak_ptr<TRequestClient> weak = shared_from_this();
             Provider(request->Key)
                 .Subscribe(
-                    [weak, key = request->Key, connectionId](
-                        const TChannelFuture& future)
+                    [weak = weak_from_this(),
+                     key = request->Key,
+                     connectionId]   //
+                    (const TChannelFuture& future)
                     {
                         if (auto self = weak.lock()) {
                             self->OnChannel(
@@ -166,7 +168,7 @@ public:
         return request->Promise.GetFuture();
     }
 
-    NThreading::TFuture<void> WhenClosed() const override
+    TFuture<void> WhenClosed() const override
     {
         return Closed.GetFuture();
     }
@@ -263,12 +265,12 @@ private:
             Complete(id, result.GetError());
             return;
         }
-        const std::weak_ptr<TRequestClient> weak = shared_from_this();
         const auto& channel = result.GetResult();
         const std::weak_ptr<IRequestChannel> weakChannel = channel;
         channel->Request(std::move(event), remaining)
             .Subscribe(
-                [weak, id, weakChannel](TResponseFuture future)
+                [weak = weak_from_this(), id, weakChannel]   //
+                (TResponseFuture future)
                 {
                     if (auto self = weak.lock()) {
                         auto [event, error] = future.ExtractValue();
@@ -340,11 +342,10 @@ private:
                     Timer->Now() + TDuration::MilliSeconds(10));
             TimerArmed = true;
         }
-        const std::weak_ptr<TRequestClient> weak = shared_from_this();
         Scheduler->Schedule(
             nullptr,
             deadline,
-            [weak]
+            [weak = weak_from_this()]
             {
                 if (auto self = weak.lock()) {
                     self->OnTimer();

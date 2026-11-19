@@ -613,7 +613,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
+TIntrusivePtr<TActorSystem> CreateActorSystem(const TServerActorSystemArgs& sArgs)
 {
     Y_ABORT_UNLESS(sArgs.StartupBlockstoreConfig);
 

@@ -60,6 +60,11 @@ void TActorSystem::Init()
     InitializeActorSystem(runConfig, services, servicesMask);
 }
 
+NActors::TActorSystem* TActorSystem::GetNativeActorSystem() const
+{
+    return ActorSystem.Get();
+}
+
 void TActorSystem::Start()
 {
     KikimrStart();

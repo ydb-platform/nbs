@@ -2,8 +2,6 @@
 
 #include "public.h"
 
-#include "peer_connections.h"
-
 #include <cloud/blockstore/libs/cells/iface/public.h>
 #include <cloud/blockstore/libs/icv2/iface/data_endpoint_factory.h>
 #include <cloud/blockstore/libs/service/public.h>
@@ -65,11 +63,15 @@ struct IService
                              TDuration timeout) = 0;
 };
 
-// Requires CellsEnabled and IcV2.Enabled. Allowed peer identities come from
-// the existing cells configuration. Fails startup if IC V2 is unavailable.
+// Requires CellsEnabled and IcV2.Enabled. Start the actor system before
+// starting this service, and keep its DNS service running until Stop returns.
 TResultOrError<IServicePtr> CreateService(
-    NCells::TCellsConfigConstPtr config, IBlockStorePtr dataService,
-    ITimerPtr timer, ISchedulerPtr scheduler, ILoggingServicePtr logging,
+    NCells::TCellsConfigConstPtr config,
+    IBlockStorePtr dataService,
+    NActors::TActorSystem* actorSystem,
+    ITimerPtr timer,
+    ISchedulerPtr scheduler,
+    ILoggingServicePtr logging,
     NMonitoring::TDynamicCountersPtr counters);
 
 }   // namespace NCloud::NBlockStore::NIcV2

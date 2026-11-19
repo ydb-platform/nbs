@@ -108,7 +108,10 @@ struct TTestChannel final: IRequestChannel
     }
 };
 
-struct TTestPeers final: IPeerConnections
+struct TTestPeers final
+    : IPeerManager
+    , IPeer
+    , std::enable_shared_from_this<TTestPeers>
 {
     const std::shared_ptr<TTestChannel> Channel =
         std::make_shared<TTestChannel>();
@@ -128,29 +131,19 @@ struct TTestPeers final: IPeerConnections
     void RequestStop() override
     {}
 
-    TChannelFuture GetChannel(const TString&) override
-    {
-        UNIT_FAIL("unexpected diagnostic channel");
-        return {};
-    }
-
-    NProto::TError RegisterHost(
-        const TString& cellId,
-        ui64 bindingId,
+    TResultOrError<IPeerPtr> CreatePeer(
         TString host,
         ui16 port,
         IClientEndpointHandlerPtr handler) override
     {
-        Y_UNUSED(cellId);
-        Y_UNUSED(bindingId);
         Y_UNUSED(host);
         Y_UNUSED(port);
         Y_UNUSED(handler);
 
-        return {};
+        return IPeerPtr(shared_from_this());
     }
 
-    TChannelFuture GetHostChannel(const TString&, ui64) override
+    TChannelFuture GetChannel() override
     {
         ++Calls;
         if (WaitForConnect) {
@@ -163,14 +156,14 @@ struct TTestPeers final: IPeerConnections
             IRequestChannelPtr(Channel));
     }
 
-    THostChannelStatus GetHostStatus(const TString&, ui64) override
+    TPeerStatus GetStatus() override
     {
         return {};
     }
 
-    void UnregisterHost(const TString&, ui64) override
+    void Close() override
     {
-        ++Unregistered;
+        Unregistered = 1;
     }
 };
 
@@ -190,8 +183,6 @@ struct TFixture
     explicit TFixture(TDataConfig dataConfig = {})
     {
         auto [host, error] = CreateHostDataEndpoint(
-            "cell-2",
-            1,
             "host",
             1234,
             {},

@@ -41,8 +41,8 @@ class TTestDataEndpoint final
     const IClientEndpointHandlerPtr Handler;
 
     mutable TMutex Mutex;
-    THostChannelStatus Status{
-        .State = EHostChannelState::Connecting,
+    TPeerStatus Status{
+        .State = EPeerState::Connecting,
         .ConnectionAttempts = 1,
     };
     bool Stopped = false;
@@ -65,7 +65,7 @@ public:
             TGuard<TMutex> guard(Mutex);
             if (!Stopped) {
                 Stopped = true;
-                Status.State = EHostChannelState::Disconnected;
+                Status.State = EPeerState::Disconnected;
                 publish = !Requests;
             }
         }
@@ -123,13 +123,13 @@ public:
         }
     }
 
-    THostChannelStatus GetStatus() const
+    TPeerStatus GetStatus() const
     {
         TGuard<TMutex> guard(Mutex);
         return Status;
     }
 
-    void SetStatus(const THostChannelStatus& status)
+    void SetStatus(const TPeerStatus& status)
     {
         TGuard<TMutex> guard(Mutex);
         if (!Stopped) {
@@ -141,10 +141,10 @@ public:
     {
         {
             TGuard<TMutex> guard(Mutex);
-            if (Stopped || Status.State == EHostChannelState::Connected) {
+            if (Stopped || Status.State == EPeerState::Connected) {
                 return;
             }
-            Status.State = EHostChannelState::Connected;
+            Status.State = EPeerState::Connected;
         }
         if (Handler) {
             Handler->HandleConnected();
@@ -158,7 +158,7 @@ public:
             if (Stopped) {
                 return;
             }
-            Status.State = EHostChannelState::Disconnected;
+            Status.State = EPeerState::Disconnected;
             ++Status.ConnectionFailures;
         }
         if (Handler) {
@@ -171,10 +171,10 @@ public:
         IClientEndpointHandlerPtr handler;
         {
             TGuard<TMutex> guard(Mutex);
-            if (Status.State != EHostChannelState::Connected) {
+            if (Status.State != EPeerState::Connected) {
                 return;
             }
-            Status.State = EHostChannelState::Disconnected;
+            Status.State = EPeerState::Disconnected;
             handler = Handler;
         }
         if (handler) {
@@ -278,7 +278,7 @@ TResultOrError<IBlockStorePtr> TTestDataEndpointFactory::CreateDataEndpoint(
             std::move(handler)));
 }
 
-THostChannelStatus TTestDataEndpointFactory::GetDataEndpointStatus(
+TPeerStatus TTestDataEndpointFactory::GetDataEndpointStatus(
     const IBlockStorePtr& endpoint)
 {
     return GetTestEndpoint(endpoint)->GetStatus();
@@ -286,7 +286,7 @@ THostChannelStatus TTestDataEndpointFactory::GetDataEndpointStatus(
 
 void TTestDataEndpointFactory::SetStatus(
     const IBlockStorePtr& endpoint,
-    const THostChannelStatus& status)
+    const TPeerStatus& status)
 {
     GetTestEndpoint(endpoint)->SetStatus(status);
 }

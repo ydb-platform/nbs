@@ -36,6 +36,10 @@
 
 #include <memory>
 
+namespace NActors {
+class TActorSystem;
+}   // namespace NActors
+
 namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -155,6 +159,7 @@ protected:
     void SetBootstrapConfig(TBootstrapConfig config);
 
     virtual IStartable* GetActorSystem() = 0;
+    virtual NActors::TActorSystem* GetIcV2ActorSystem() const;
     virtual IStartable* GetAsyncLogger() = 0;
     virtual IStartable* GetStatsAggregator() = 0;
     virtual IStartable* GetClientPercentiles() = 0;

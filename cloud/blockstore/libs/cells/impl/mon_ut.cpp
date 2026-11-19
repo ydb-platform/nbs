@@ -105,7 +105,8 @@ Y_UNIT_TEST_SUITE(TCellsMonTest)
         UNIT_ASSERT_STRING_CONTAINS(html, "R: 3/1 (12.00 KiB)");
         UNIT_ASSERT_STRING_CONTAINS(html, "W: 2/2 (8.00 KiB)");
         UNIT_ASSERT_STRING_CONTAINS(html, "Z: 1/1");
-        UNIT_ASSERT(html.find("label-success'>icv2") == TString::npos);
+        UNIT_ASSERT_STRING_CONTAINS(html, "label-success'>icv2</span>");
+        UNIT_ASSERT_STRING_CONTAINS(html, "label-warning'>disconnected</span>");
     }
     Y_UNIT_TEST(ShouldDisableManualRdmaSelectionWithoutFallback)
     {

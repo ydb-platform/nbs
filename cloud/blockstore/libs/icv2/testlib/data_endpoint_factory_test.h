@@ -36,12 +36,12 @@ public:
         const TString& cellId,
         const TString& host,
         IClientEndpointHandlerPtr handler) override;
-    THostChannelStatus GetDataEndpointStatus(
+    TPeerStatus GetDataEndpointStatus(
         const IBlockStorePtr& endpoint) override;
 
     void SetStatus(
         const IBlockStorePtr& endpoint,
-        const THostChannelStatus& status);
+        const TPeerStatus& status);
     // Updates status and notifies synchronously.
     void NotifyConnected(const IBlockStorePtr& endpoint);
     void NotifyUnavailable(const IBlockStorePtr& endpoint);

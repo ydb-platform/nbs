@@ -1,6 +1,6 @@
 #include "service.h"
 
-#include "peer_connections.h"
+#include "public.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/icv2/transport/diagnostic.h>
@@ -18,9 +18,11 @@
 #include <cloud/storage/core/libs/icv2/tcp/listener.h>
 #include <cloud/storage/core/libs/icv2/tcp/testlib/socket_test.h>
 
+#include <contrib/ydb/library/actors/dnsresolver/dnsresolver.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect_common.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect_uring_engine.h>
 #include <contrib/ydb/library/actors/interconnect/uring_context.h>
+#include <contrib/ydb/library/actors/testlib/test_runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -35,6 +37,9 @@
 #include <thread>
 
 namespace NCloud::NBlockStore::NIcV2 {
+
+using NCloud::NIcV2::IConnectorPtr;
+using NCloud::NIcV2::TSocketResult;
 
 using NCloud::NIcV2::CreateRequestChannel;
 using NCloud::NIcV2::IIncomingRequestPtr;
@@ -67,7 +72,43 @@ public:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TTestChannelFactory final: public IChannelFactory
+{
+private:
+    const ITransportPtr Transport;
+    const ITimerPtr Timer;
+    const ISchedulerPtr Scheduler;
+
+public:
+    TTestChannelFactory(
+        ITransportPtr transport,
+        ITimerPtr timer,
+        ISchedulerPtr scheduler)
+        : Transport(std::move(transport))
+        , Timer(std::move(timer))
+        , Scheduler(std::move(scheduler))
+    {}
+
+    TChannelResult CreateChannel(const THandshakeReady& connection) override
+    {
+        return CreateRequestChannel(
+            Transport,
+            connection.Socket,
+            {},
+            {{{TEvDiagnostic::EvPingRequest, TEvDiagnostic::EvPingResponse}},
+             false},
+            Timer,
+            Scheduler,
+            CreateTaskQueueStub(),
+            std::make_shared<TUnexpectedRequestHandler>());
+    }
+};
+
 using namespace std::chrono_literals;
+
+constexpr ui64 TestMaxOutputQueueBytes = 64 * 1024 * 1024;
 
 void WaitCounter(
     const NMonitoring::TDynamicCounters::TCounterPtr& counter,
@@ -98,6 +139,7 @@ NProto::TCellsConfig MakeConfig(bool checksums = false)
 
 struct TFixture
 {
+    NActors::TTestActorRuntimeBase Runtime{1, true};
     std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
     std::shared_ptr<TTestScheduler> Scheduler =
         std::make_shared<TTestScheduler>();
@@ -112,7 +154,16 @@ struct TFixture
     IHandshakeProviderPtr Hello;
     ITransportPtr Transport;
     IRequestChannelPtr Channel;
-    IPeerConnectionsPtr Peers;
+    IPeerManagerPtr Peers;
+
+    TFixture()
+    {
+        Runtime.Initialize();
+        Runtime.RegisterService(
+            NActors::NDnsResolver::MakeDnsResolverActorId(),
+            Runtime.Register(
+                NActors::NDnsResolver::CreateOnDemandDnsResolver()));
+    }
 
     ~TFixture()
     {
@@ -139,6 +190,7 @@ struct TFixture
         return CreateService(
             std::make_shared<NCells::TCellsConfig>(std::move(config)),
             DataService,
+            Runtime.GetActorSystem(0),
             Timer,
             Scheduler,
             Logging,
@@ -191,7 +243,7 @@ struct TFixture
         common->Settings.V2.ChecksumEvents = checksums;
         Transport = NCloud::NIcV2::CreateTransport(
             NActors::CreateUringEngine(std::move(common)),
-            0,
+            TestMaxOutputQueueBytes,
             {});
         UNIT_ASSERT(Transport);
         auto [channel, channelError] = CreateRequestChannel(
@@ -478,7 +530,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
             }
             UNIT_ASSERT(
                 factory->GetDataEndpointStatus(endpoint).State ==
-                EHostChannelState::Connected);
+                EPeerState::Connected);
             first.Service->Stop();
             auto rejected =
                 endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), zero);
@@ -502,7 +554,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
         UNIT_ASSERT(handler->Connected.GetFuture().Wait(TDuration::Seconds(5)));
         const auto status = factory->GetDataEndpointStatus(endpoint);
-        UNIT_ASSERT(status.State == EHostChannelState::Connected);
+        UNIT_ASSERT(status.State == EPeerState::Connected);
         UNIT_ASSERT_VALUES_EQUAL(status.ConnectionAttempts, 1);
         endpoint->Stop();
     }
@@ -889,50 +941,41 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         }
         TFixture fixture;
         fixture.Start();
-        auto config = MakeConfig();
-        config.SetCellId("cell-1");
-        auto& peer = *config.MutableCells(0);
-        peer.SetCellId("cell-2");
-        peer.SetIcV2Port(fixture.Service->GetAddress().GetPort());
-        peer.AddHosts()->SetFqdn("localhost");
         auto common = MakeIntrusive<NActors::TInterconnectProxyCommon>();
         common->MonCounters = MakeIntrusive<NMonitoring::TDynamicCounters>();
         common->Settings.V2.Threads = 1;
         common->Settings.V2.EnableSQPOLL = false;
         fixture.Transport = NCloud::NIcV2::CreateTransport(
             NActors::CreateUringEngine(std::move(common)),
-            0,
+            TestMaxOutputQueueBytes,
             {});
         auto [hello, helloError] = CreateHandshakeProvider({false});
         UNIT_ASSERT_C(!HasError(helloError), FormatError(helloError));
-        auto [peers, error] = CreatePeerConnections(
-            std::make_shared<NCells::TCellsConfig>(std::move(config)),
+        auto [peers, error] = CreatePeerManager(
+            {.ConnectTimeout = TDuration::Seconds(5)},
             NCloud::NIcV2::NTests::CreateTestConnector(),
             std::move(hello),
             fixture.Timer,
             fixture.Scheduler,
-            NCloud::NIcV2::CreateAddressResolver(CreateTaskQueueStub()),
+            NCloud::NIcV2::CreateAddressResolver(
+                fixture.Runtime.GetActorSystem(0),
+                CreateTaskQueueStub()),
             CreateTaskQueueStub(),
-            [&](const THandshakeReady& connection)
-            {
-                return CreateRequestChannel(
-                    fixture.Transport,
-                    connection.Socket,
-                    {},
-                    {{{TEvDiagnostic::EvPingRequest,
-                       TEvDiagnostic::EvPingResponse}},
-                     false},
-                    fixture.Timer,
-                    fixture.Scheduler,
-                    CreateTaskQueueStub(),
-                    std::make_shared<TUnexpectedRequestHandler>());
-            });
+            std::make_shared<TTestChannelFactory>(
+                fixture.Transport,
+                fixture.Timer,
+                fixture.Scheduler));
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
         fixture.Peers = std::move(peers);
         fixture.Peers->Start();
+        const auto [peer, createError] = fixture.Peers->CreatePeer(
+            "localhost",
+            fixture.Service->GetAddress().GetPort(),
+            {});
+        UNIT_ASSERT_C(!HasError(createError), FormatError(createError));
         TVector<TChannelFuture> connections;
         for (size_t i = 0; i < 32; ++i) {
-            connections.push_back(fixture.Peers->GetChannel("cell-2"));
+            connections.push_back(peer->GetChannel());
         }
         UNIT_ASSERT(connections[0].Wait(TDuration::Seconds(5)));
         auto [first, connectError] = connections[0].GetValue();
@@ -963,7 +1006,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         const auto port = fixture.Service->GetAddress().GetPort();
         fixture.Service->Stop();
         UNIT_ASSERT(first->WhenClosed().Wait(TDuration::Seconds(5)));
-        auto failed = fixture.Peers->GetChannel("cell-2");
+        auto failed = peer->GetChannel();
         UNIT_ASSERT(failed.Wait(TDuration::Seconds(5)));
         UNIT_ASSERT(HasError(failed.GetValue().GetError()));
         auto restarted = MakeConfig();
@@ -972,9 +1015,21 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         UNIT_ASSERT_C(!HasError(serviceError), FormatError(serviceError));
         fixture.Service = std::move(service);
         fixture.Service->Start();
-        auto connected = fixture.Peers->GetChannel("cell-2");
-        UNIT_ASSERT(connected.Wait(TDuration::Seconds(5)));
-        auto [second, reconnectError] = connected.GetValue();
+        TChannelResult connected = MakeError(E_UNAVAILABLE);
+        const auto deadline = std::chrono::steady_clock::now() + 5s;
+        do {
+            auto future = peer->GetChannel();
+            UNIT_ASSERT(future.Wait(TDuration::Seconds(5)));
+            connected = future.GetValue();
+            if (!HasError(connected.GetError())) {
+                break;
+            }
+            fixture.Timer->AdvanceTime(TDuration::MilliSeconds(10));
+            fixture.Scheduler->AdvanceTime(TDuration::MilliSeconds(10));
+            fixture.Scheduler->RunAllScheduledTasksUntilNow();
+            std::this_thread::sleep_for(10ms);
+        } while (std::chrono::steady_clock::now() < deadline);
+        auto [second, reconnectError] = connected;
         UNIT_ASSERT_C(!HasError(reconnectError), FormatError(reconnectError));
         UNIT_ASSERT(second != first);
         ping(second, "after restart");
@@ -1011,7 +1066,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         }
         TFixture fixture;
         auto config = MakeConfig();
-        config.MutableIcV2()->SetHandshakeTimeoutMs(30000);
+        config.MutableIcV2()->SetHandshakeTimeout(30000);
         auto [service, error] = fixture.Create(std::move(config));
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
         fixture.Service = std::move(service);
@@ -1237,7 +1292,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
                     icv2.SetThreads(0);
                     break;
                 case 6:
-                    icv2.SetHandshakeTimeoutMs(0);
+                    icv2.SetHandshakeTimeout(0);
                     break;
                 case 7:
                     icv2.SetDataWorkers(0);

@@ -153,16 +153,16 @@ TString DescribeDataEndpoint(const TCellHostConfig& hostConfig)
                             << hostConfig.GetRdmaPort();
 }
 
-TStringBuf DescribeIcV2ChannelState(NIcV2::EHostChannelState state)
+TStringBuf DescribeIcV2ChannelState(NIcV2::EPeerState state)
 {
     switch (state) {
-        case NIcV2::EHostChannelState::Idle:
+        case NIcV2::EPeerState::Idle:
             return "idle";
-        case NIcV2::EHostChannelState::Connecting:
+        case NIcV2::EPeerState::Connecting:
             return "connecting";
-        case NIcV2::EHostChannelState::Connected:
+        case NIcV2::EPeerState::Connected:
             return "connected";
-        case NIcV2::EHostChannelState::Disconnected:
+        case NIcV2::EPeerState::Disconnected:
             return "disconnected";
     }
     return "unknown";

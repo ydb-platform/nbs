@@ -57,12 +57,14 @@ public:
 
     void Init();
 
+    NActors::TActorSystem* GetNativeActorSystem() const;
+
     void Start() override;
     void Stop() override;
 
     NActors::TActorId Register(
         NActors::IActorPtr actor,
-        TStringBuf executorName) override;
+        TStringBuf executorName = {}) override;
     bool Send(
         const NActors::TActorId& recipient,
         NActors::IEventBasePtr event) override;

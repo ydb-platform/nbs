@@ -1,26 +1,10 @@
 #pragma once
 
-#include "public.h"
-
-#include <util/system/types.h>
+#include <cloud/storage/core/libs/icv2/peer/peer.h>
 
 namespace NCloud::NBlockStore::NIcV2 {
 
-////////////////////////////////////////////////////////////////////////////////
-
-enum class EHostChannelState
-{
-    Idle,
-    Connecting,
-    Connected,
-    Disconnected,
-};
-
-struct THostChannelStatus
-{
-    EHostChannelState State = EHostChannelState::Idle;
-    ui64 ConnectionAttempts = 0;
-    ui64 ConnectionFailures = 0;
-};
+using NCloud::NIcV2::EPeerState;
+using NCloud::NIcV2::TPeerStatus;
 
 }   // namespace NCloud::NBlockStore::NIcV2

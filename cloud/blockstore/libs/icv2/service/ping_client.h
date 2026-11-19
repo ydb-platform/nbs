@@ -1,16 +1,27 @@
 #pragma once
 
-#include "peer_connections.h"
+#include "public.h"
+
 #include "service.h"
+
+#include <util/generic/hash.h>
+#include <util/generic/vector.h>
 
 namespace NCloud::NBlockStore::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TPingPeerAddress
+{
+    TString Host;
+    ui16 Port;
+};
+
 struct TPingClientConfig
 {
     ui32 MaxPendingRequests = 1024;
     ui64 MaxPayloadBytes = 64 * 1024 * 1024;
+    THashMap<TString, TVector<TPingPeerAddress>> Peers;
 };
 
 // Internal owner of Ping deadlines and completions. Shares a single connection
@@ -30,7 +41,7 @@ using IPingClientPtr = std::shared_ptr<IPingClient>;
 
 TResultOrError<IPingClientPtr> CreatePingClient(
     TPingClientConfig config,
-    IPeerConnectionsPtr peers,
+    IPeerManagerPtr peers,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ITaskQueuePtr completions);

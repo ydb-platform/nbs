@@ -2,13 +2,13 @@ LIBRARY()
 
 SRCS(
     host_endpoint.cpp
-    peer_connections.cpp
     ping_client.cpp
     request_client.cpp
     service.cpp
 )
 
 PEERDIR(
+    cloud/storage/core/libs/icv2/peer
     cloud/blockstore/libs/cells/iface
     cloud/blockstore/libs/client
     cloud/blockstore/libs/icv2/data

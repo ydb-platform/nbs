@@ -56,6 +56,7 @@
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/bootstrap.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
+#include <cloud/blockstore/libs/storage/init/common/actorsystem.h>
 #include <cloud/blockstore/libs/storage/init/server/actorsystem.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
 
@@ -1144,6 +1145,11 @@ void TBootstrapYdb::InitRdmaRequestServer()
         Logging,
         Monitoring,
         std::move(rdmaConfig));
+}
+
+NActors::TActorSystem* TBootstrapYdb::GetIcV2ActorSystem() const
+{
+    return ActorSystem->GetNativeActorSystem();
 }
 
 void TBootstrapYdb::SetupCellManager()

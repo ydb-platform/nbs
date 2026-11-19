@@ -27,12 +27,12 @@ public:
             "IC V2 data transport is unavailable");
     }
 
-    THostChannelStatus GetDataEndpointStatus(
+    TPeerStatus GetDataEndpointStatus(
         const IBlockStorePtr& endpoint) override
     {
         Y_UNUSED(endpoint);
 
-        return {.State = EHostChannelState::Disconnected};
+        return {.State = EPeerState::Disconnected};
     }
 };
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "peer_connections.h"
+#include "public.h"
 
 namespace NCloud::NBlockStore::NIcV2 {
 
