@@ -4,9 +4,9 @@
 
 #include "block_mask.h"
 
-#include <cloud/blockstore/libs/storage/partition_common/model/block.h>
-
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/block.h>
+#include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/sglist.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
@@ -19,10 +19,13 @@ struct IBlobsVisitor
 {
     virtual ~IBlobsVisitor() = default;
 
+    // compressionMetadata is null for uncompressed blobs and valid only during
+    // this callback.
     virtual bool Visit(
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
-        const TBlockMask& skipMask) = 0;
+        const TBlockMask& skipMask,
+        const NProto::TCompressionMetadata* compressionMetadata) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

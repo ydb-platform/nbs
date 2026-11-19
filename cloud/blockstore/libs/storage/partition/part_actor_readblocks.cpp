@@ -739,6 +739,7 @@ class TReadBlocksVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
     , public IMixedBlocksIndexVisitor
+    , public IBlobsVisitor
 {
 private:
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -758,6 +759,16 @@ public:
         , TabletInfo(tabletInfo)
         , Args(args)
     {}
+
+    bool Visit(
+        TBlockRange32 blockRange,
+        const TPartialBlobId& blobId,
+        const TBlockMask& skipMask,
+        const NProto::TCompressionMetadata* compressionMetadata) override
+    {
+        Y_UNUSED(blockRange, blobId, skipMask, compressionMetadata);
+        return true;
+    }
 
     bool Visit(const TFreshBlock& block) override
     {
@@ -1128,11 +1139,11 @@ bool TPartitionActor::PrepareReadBlocks(
 
     ready &= db.FindMergedBlocks(
         visitor,
+        visitor,
         args.ReadRange,
-        false,  // precharge
+        false,   // precharge
         State->GetMaxBlocksInBlob(),
-        commitId
-    );
+        commitId);
 
     const ui32 checksumBoundary =
         Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs()
