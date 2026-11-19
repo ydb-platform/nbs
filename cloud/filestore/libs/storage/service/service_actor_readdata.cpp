@@ -158,8 +158,8 @@ private:
     TActorId ServiceActorId;
 
     // Unique request epoch number. Preserved across resets and used
-    // to filter out delayed TEvGet responses after fallback to
-    // TEvReadDataRequest.
+    // to filter out delayed tablet and blob storage responses
+    // when using preallocated actors.
     ui32 RequestGeneration = 0;
     std::optional<TRequestState> RequestState;
 
@@ -399,7 +399,11 @@ void TReadDataActor::DescribeData(const TActorContext& ctx)
         state.MainInFlightRequest->CallContext->LWOrbit);
 
     // forward request through tablet proxy
-    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+    ctx.Send(
+        MakeIndexTabletProxyServiceId(),
+        request.release(),
+        0 /* flags */,
+        GetCookie(RequestGeneration, 0));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -475,6 +479,10 @@ void TReadDataActor::HandleDescribeDataResponse(
     const TEvIndexTablet::TEvDescribeDataResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (ExtractRequestGeneration(ev->Cookie) != RequestGeneration) {
+        return;
+    }
+
     auto& state = GetState();
     const auto& LogTag = state.RequestContext.LogTag;
 
@@ -847,7 +855,11 @@ void TReadDataActor::ReadData(
     state.RequestContext.ReadRequest.SetLength(request->Record.GetLength());
 
     // forward request through tablet proxy
-    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+    ctx.Send(
+        MakeIndexTabletProxyServiceId(),
+        request.release(),
+        0 /* flags */,
+        GetCookie(RequestGeneration, 0));
 }
 
 NProto::TError TReadDataActor::ProcessExternalPayload(
@@ -924,6 +936,10 @@ void TReadDataActor::HandleReadDataResponse(
     const TEvService::TEvReadDataResponse::TPtr& ev,
     const TActorContext& ctx)
 {
+    if (ExtractRequestGeneration(ev->Cookie) != RequestGeneration) {
+        return;
+    }
+
     auto& state = GetState();
 
     auto response = std::make_unique<TEvService::TEvReadDataResponse>();
