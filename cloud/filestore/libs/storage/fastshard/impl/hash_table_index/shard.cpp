@@ -871,22 +871,24 @@ public:
         const auto& oldPersistentConfig = oldConfig.GetPersistentConfig();
         const auto& newPersistentConfig = newConfig.GetPersistentConfig();
 
-        if (newPersistentConfig.GetNodesPerGroup() != oldPersistentConfig.GetNodesPerGroup()) {
+        const auto oldNodesPerGroup = oldPersistentConfig.GetNodesPerGroup();
+        const auto newNodesPerGroup = newPersistentConfig.GetNodesPerGroup();
+        if (newNodesPerGroup != oldNodesPerGroup) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder()
                     << "fast shard config nodes per group mismatch: old "
-                    << oldPersistentConfig.GetNodesPerGroup()
-                    << ", new " << newPersistentConfig.GetNodesPerGroup());
+                    << oldNodesPerGroup << ", new " << newNodesPerGroup);
         }
 
-        if (newPersistentConfig.GetExpectedGroupCapacity() != oldPersistentConfig.GetExpectedGroupCapacity()) {
+        const auto oldCapacity = oldPersistentConfig.GetExpectedGroupCapacity();
+        const auto newCapacity = newPersistentConfig.GetExpectedGroupCapacity();
+        if (newCapacity != oldCapacity) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder()
                     << "fast shard config expected group capacity mismatch: old "
-                    << oldPersistentConfig.GetExpectedGroupCapacity()
-                    << ", new " << newPersistentConfig.GetExpectedGroupCapacity());
+                    << oldCapacity << ", new " << newCapacity);
         }
 
         return {};

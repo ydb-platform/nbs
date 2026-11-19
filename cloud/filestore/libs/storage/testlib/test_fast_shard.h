@@ -58,7 +58,7 @@ struct TTestFastShard: TNotImplementedFastShard
     bool TornDown = false;
     ui64 Generation = 0;
     NProtoPrivate::TFastShardConfig Config;
-    NCloud::NProto::TError ValidateConfigUpdateResult;
+    NProto::TError ValidateConfigUpdateResult;
 
     NThreading::TFuture<NProtoPrivate::TCreateSessionResponse> CreateSession(
         NProtoPrivate::TCreateSessionRequest request) override;
