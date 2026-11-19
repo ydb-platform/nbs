@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/blob_to_confirm.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
+#include <cloud/blockstore/libs/storage/partition_common/blob_compressor.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_fresh_blocks_state.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
@@ -540,16 +541,19 @@ struct TEvPartitionPrivate
         TVector<TBlobMark> BlobsInBatch;
         TPartialBlobId LastVisitedBlobId;
         bool IsScanCompleted = false;
+        TPartialBlobId2CompressionMetadataMap BlobId2CompressionMetadata;
 
         TScanDiskBatchResponse() = default;
 
         TScanDiskBatchResponse(
-                TVector<TBlobMark> blobs,
-                TPartialBlobId lastVisitedBlobId,
-                bool isScanCompleted)
+            TVector<TBlobMark> blobs,
+            TPartialBlobId lastVisitedBlobId,
+            bool isScanCompleted,
+            TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata)
             : BlobsInBatch(std::move(blobs))
             , LastVisitedBlobId(lastVisitedBlobId)
             , IsScanCompleted(isScanCompleted)
+            , BlobId2CompressionMetadata(std::move(blobId2CompressionMetadata))
         {}
     };
 

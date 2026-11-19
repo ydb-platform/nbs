@@ -167,6 +167,7 @@ private:
 
     TVector<TPartialBlobId> BlobsToReadBlockMasks;
     TVector<TPartialBlobId> BlobsToReadBlobMetas;
+    TPartialBlobId2CompressionMetadataMap BlobId2CompressionMetadata;
 
     EReadBlobInfosState ReadBlobInfosState = EReadBlobInfosState::Initial;
 
@@ -217,7 +218,8 @@ public:
         TChildLogTitle logTitle,
         bool splitTxEnabled,
         TVector<TPartialBlobId> blobsToReadBlockMasks,
-        TVector<TPartialBlobId> blobsToReadBlobMetas);
+        TVector<TPartialBlobId> blobsToReadBlobMetas,
+        TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -294,7 +296,8 @@ TCompactionActor::TCompactionActor(
     TChildLogTitle logTitle,
     bool splitTxEnabled,
     TVector<TPartialBlobId> blobsToReadBlockMasks,
-    TVector<TPartialBlobId> blobsToReadBlobMetas)
+    TVector<TPartialBlobId> blobsToReadBlobMetas,
+    TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata)
     : RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
     , VolumeLabels(std::move(volumeLabels))
@@ -313,6 +316,7 @@ TCompactionActor::TCompactionActor(
     , SplitCompactionTxEnabled(splitTxEnabled)
     , BlobsToReadBlockMasks(std::move(blobsToReadBlockMasks))
     , BlobsToReadBlobMetas(std::move(blobsToReadBlobMetas))
+    , BlobId2CompressionMetadata(std::move(blobId2CompressionMetadata))
     , CompactionTxTime(compactionTxTime)
 {}
 
@@ -615,17 +619,19 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
 
         const bool shouldCalculateChecksums =
             !batch.RangeCompactionInfo->BlockChecksums.empty();
-        auto request = std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
-            MakeBlobId(TabletId, batch.BlobId),
-            batch.Proxy,
-            std::move(batch.BlobOffsets),
-            std::move(subSgList),
-            batch.GroupId,
-            true,            // async
-            readBlobDeadline, // deadline
-            shouldCalculateChecksums
-        );
-
+        const auto* compressionMetadata =
+            BlobId2CompressionMetadata.FindPtr(batch.BlobId);
+        auto request =
+            std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+                MakeBlobId(TabletId, batch.BlobId),
+                batch.Proxy,
+                std::move(batch.BlobOffsets),
+                std::move(subSgList),
+                batch.GroupId,
+                true,               // async
+                readBlobDeadline,   // deadline
+                shouldCalculateChecksums,
+                compressionMetadata ? *compressionMetadata : std::nullopt);
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -2362,7 +2368,8 @@ bool TPartitionActor::PrepareCompaction(
             *State,
             rangeCompaction,
             args.BlobsToReadBlockMasks,
-            args.BlobsToReadBlobMetas);
+            args.BlobsToReadBlobMetas,
+            args.BlobId2CompressionMetadata);
 
         LOG_DEBUG(
             ctx,
@@ -2436,8 +2443,16 @@ void TPartitionActor::CompleteCompaction(
             ? 0
             : Config->GetCompactionMergedBlobThresholdHDD();
     for (auto& rangeCompaction: args.RangeCompactions) {
+        const bool compressedSource = AnyOf(
+            rangeCompaction.AffectedBlobs,
+            [&](const auto& blob)
+            {
+                const auto* info =
+                    args.BlobId2CompressionMetadata.FindPtr(blob.first);
+                return info && info->has_value();
+            });
         CompleteRangeCompaction(
-            blobPatchingEnabled,
+            blobPatchingEnabled && !compressedSource,
             mergedBlobThreshold,
             args.CommitId,
             TabletID(),
@@ -2490,7 +2505,8 @@ void TPartitionActor::CompleteCompaction(
             args.BlobsToReadBlockMasks.end()),
         TVector<TPartialBlobId>(
             args.BlobsToReadBlobMetas.begin(),
-            args.BlobsToReadBlobMetas.end()));
+            args.BlobsToReadBlobMetas.end()),
+        std::move(args.BlobId2CompressionMetadata));
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,

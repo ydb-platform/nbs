@@ -14,6 +14,7 @@
 
 #include <library/cpp/blockcodecs/codecs.h>
 
+#include <util/generic/hash.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -23,6 +24,15 @@
 #include <span>
 
 namespace NCloud::NBlockStore::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TPartialBlobId2CompressionMetadataMap = THashMap<
+    TPartialBlobId,
+    std::optional<NProto::TCompressionMetadata>,
+    TPartialBlobIdHash>;
+using TBlobId2CompressionMetadataMap =
+    THashMap<NKikimr::TLogoBlobID, std::optional<NProto::TCompressionMetadata>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -543,8 +543,8 @@ void TReadBlocksActor::ReadBlocks(
                 batch.GroupId,
                 false,             // async
                 TInstant::Max(),   // deadline
-                false              // shouldCalculateChecksums
-            );
+                false,             // shouldCalculateChecksums
+                std::nullopt);
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
