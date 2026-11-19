@@ -65,10 +65,26 @@ void TIndexTabletActor::HandleChangeStorageConfig(
         MakeIntrusive<TCallContext>());
     requestInfo->StartedTs = ctx.Now();
 
+    const auto* msg = ev->Get();
+
+    // A broken tablet rejects ChangeStorageConfig, so a bad value could not
+    // be fixed with it afterwards.
+    const ui32 hasherTypeOverride =
+        msg->Record.GetStorageConfig().GetRangeIdHasherTypeOverride();
+    if (hasherTypeOverride && !CreateRangeIdHasher(hasherTypeOverride)) {
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvChangeStorageConfigResponse>(
+                MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder() << "unsupported RangeIdHasherTypeOverride "
+                        << hasherTypeOverride));
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+        return;
+    }
+
     AddInFlightRequest<TEvIndexTablet::TChangeStorageConfigMethod>(
         *requestInfo);
 
-    const auto* msg = ev->Get();
     ExecuteTx<TChangeStorageConfig>(
         ctx,
         std::move(requestInfo),

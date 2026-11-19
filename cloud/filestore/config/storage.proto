@@ -1031,4 +1031,12 @@ message TStorageConfig
     // Max FUSE read / write request size in bytes
     // Zero uses TVFSConfig.MaxWritePages (default 256) * host page size.
     optional uint32 MaxRequestSize = 566;
+
+    // If non-zero, the tablet uses this RangeIdHasherType instead of the one
+    // persisted in the filesystem config: 1 - 64 blocks per range, 2 - 128,
+    // 3 - 256. Applied on tablet start only. Set it per tablet via
+    // changestorageconfig (persisted in the tablet DB) on an empty tablet and
+    // restart it. Changing it on a tablet with data loses that data: the
+    // range id is a persisted key of the data tables.
+    optional uint32 RangeIdHasherTypeOverride = 567;
 }

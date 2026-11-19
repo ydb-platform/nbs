@@ -309,6 +309,24 @@ void TIndexTabletActor::CompleteTx_LoadState(
         args.FileSystem.GetFolderId(),
         args.FileSystem.GetFileSystemId());
 
+    // A hasher type unknown to this binary (e.g. a bad
+    // RangeIdHasherTypeOverride) must break only this tablet, not abort the
+    // process.
+    if (!HasError(args.Error)) {
+        const ui32 hasherType = GetRangeIdHasherType(*Config, args.FileSystem);
+        if (!CreateRangeIdHasher(hasherType)) {
+            const TString message = TStringBuilder()
+                << "unsupported RangeIdHasherType " << hasherType;
+            ReportInvalidRangeIdHasherType(LogTag + " " + message);
+            args.Error = MakeError(E_INVALID_STATE, message);
+        } else if (hasherType != args.FileSystem.GetRangeIdHasherType()) {
+            LOG_WARN_S(ctx, TFileStoreComponents::TABLET,
+                LogTag << " Using RangeIdHasherTypeOverride " << hasherType
+                << " instead of the persisted RangeIdHasherType "
+                << args.FileSystem.GetRangeIdHasherType());
+        }
+    }
+
     if (HasError(args.Error)) {
         LOG_ERROR_S(ctx, TFileStoreComponents::TABLET,
             LogTag

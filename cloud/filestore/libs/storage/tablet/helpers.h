@@ -187,6 +187,11 @@ void ApplySoftBackpressureParameters(
     const TStorageConfig& storageConfig,
     TDefaultParameters& parameters);
 
+// RangeIdHasherTypeOverride if set, otherwise the persisted type.
+ui32 GetRangeIdHasherType(
+    const TStorageConfig& storageConfig,
+    const NProto::TFileSystem& fileSystem);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /**

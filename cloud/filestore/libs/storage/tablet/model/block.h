@@ -263,8 +263,15 @@ struct IBlockLocation2RangeIndex
     virtual ~IBlockLocation2RangeIndex() = default;
 
     [[nodiscard]] virtual ui32 Calc(ui64 nodeId, ui32 blockIndex) const = 0;
+
+    // Number of consecutive blocks of a node that map to the same range.
+    [[nodiscard]] virtual ui32 GetBlockGroupSize() const = 0;
 };
 
+// RangeIdHasherType values are persisted, never change their meaning:
+// 0 - legacy, 1 - block locality, BlockGroupSize blocks per range;
+// 2 / 3 - block locality, 128 / 256 blocks per range.
+// Returns nullptr for an unknown type.
 IBlockLocation2RangeIndexPtr CreateRangeIdHasher(ui32 type);
 
 ////////////////////////////////////////////////////////////////////////////////
