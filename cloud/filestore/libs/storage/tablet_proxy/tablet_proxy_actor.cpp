@@ -8,6 +8,8 @@
 
 #include <util/datetime/base.h>
 
+#include <type_traits>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -33,6 +35,50 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
     return std::unique_ptr<NTabletPipe::IClientCache>(
         NTabletPipe::CreateUnboundedClientCache(clientConfig));
 }
+
+//
+// The subscriptions of the client to FileSystemEvents are registered per
+// pipe. The loss of the pipe to a tablet is reported to the FileSystemEvent
+// handler (OnDisconnect) with this id, and the responses received via this
+// pipe are stamped with the same id (see SetCacheSourceIds): the data cached
+// from these responses has to be invalidated upon the loss of the pipe.
+//
+
+ui64 GetFileSystemEventSourceId(ui64 tabletId)
+{
+    return tabletId;
+}
+
+void SetCacheSourceIds(NProto::TGetNodeAttrResponse& response, ui64 sourceId)
+{
+    if (response.GetNodeCacheTTL()) {
+        response.SetNodeCacheSourceId(sourceId);
+    }
+    if (response.GetNodeRefCacheTTL()) {
+        response.SetNodeRefCacheSourceId(sourceId);
+    }
+}
+
+void SetCacheSourceIds(NProto::TGetNodeXAttrResponse& response, ui64 sourceId)
+{
+    if (response.GetXAttrCacheTTL()) {
+        response.SetXAttrCacheSourceId(sourceId);
+    }
+}
+
+void SetCacheSourceIds(NProto::TSetNodeXAttrResponse& response, ui64 sourceId)
+{
+    if (response.GetXAttrCacheTTL()) {
+        response.SetXAttrCacheSourceId(sourceId);
+    }
+}
+
+// The responses whose data the client may cache, see SetCacheSourceIds.
+template <typename TRecord>
+concept TCacheableResponse =
+    requires (TRecord& record) { SetCacheSourceIds(record, ui64{}); };
+
+////////////////////////////////////////////////////////////////////////////////
 
 template <typename TArgs, ui32 EventId>
 TString GetFileSystemId(const TRequestEvent<TArgs, EventId>& request)
@@ -268,12 +314,7 @@ void TIndexTabletProxyActor::NotifyFileSystemEventHandlerDisconnected(
         "Pipe to tablet %lu disconnected, notifying FileSystemEvent handler",
         tabletId);
 
-    //
-    // The tablet reports its id as the source of the invalidations of the
-    // data it allows to cache (see GetFileSystemEventsSourceId).
-    //
-
-    FileSystemEventHandler->OnDisconnect(tabletId);
+    FileSystemEventHandler->OnDisconnect(GetFileSystemEventSourceId(tabletId));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -510,6 +551,22 @@ void TIndexTabletProxyActor::HandleResponse(
 
     auto* conn = ConnectionById[it->second.ConnectionId];
     Y_ABORT_UNLESS(conn);
+
+    using TRecord = std::remove_cvref_t<
+        decltype(std::declval<typename TMethod::TResponse>().Record)>;
+    if constexpr (TCacheableResponse<TRecord>) {
+        //
+        // The response is parsed only if the FileSystemEvents are handled in
+        // this process - otherwise the client doesn't cache anything.
+        //
+
+        if (FileSystemEventHandler) {
+            auto* x = reinterpret_cast<TMethod::TResponse::TPtr*>(&event);
+            SetCacheSourceIds(
+                x->Get()->Get()->Record,
+                GetFileSystemEventSourceId(conn->TabletId));
+        }
+    }
 
     ctx.Send(event);
     ActiveRequests.erase(it);

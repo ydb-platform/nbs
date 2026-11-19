@@ -141,13 +141,8 @@ void TIndexTabletActor::CompleteTx_GetNodeXAttr(
             pipeServerId,
             args.NodeId,
             args.Name);
-        const ui32 cacheTTL =
-            GetFileSystemEventsCacheTTL(pipeServerId).MilliSeconds();
-        response->Record.SetXAttrCacheTTL(cacheTTL);
-        if (cacheTTL) {
-            response->Record.SetXAttrCacheSourceId(
-                GetFileSystemEventsSourceId());
-        }
+        response->Record.SetXAttrCacheTTL(
+            GetFileSystemEventsCacheTTL(pipeServerId).MilliSeconds());
     }
 
     if (!HasError(args.Error)) {

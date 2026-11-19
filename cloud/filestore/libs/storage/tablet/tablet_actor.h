@@ -511,8 +511,6 @@ private:
 
     void RemoveFileSystemEventClient(const NActors::TActorId& pipeServerId);
 
-    ui64 GetFileSystemEventsSourceId() const;
-
     TDuration GetFileSystemEventsCacheTTL(
         const NActors::TActorId& pipeServerId) const;
 

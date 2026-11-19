@@ -29,16 +29,17 @@ struct TTestFileSystemEventHandler final
 {
     TVector<NProto::TFileSystemEvent> Events;
     ui32 DisconnectCount = 0;
+    TVector<ui64> DisconnectedSourceIds;
 
     void OnEvent(const NProto::TFileSystemEvent& event) override
     {
         Events.push_back(event);
     }
 
-    void OnDisconnect(ui64 tabletId) override
+    void OnDisconnect(ui64 sourceId) override
     {
-        Y_UNUSED(tabletId);
         ++DisconnectCount;
+        DisconnectedSourceIds.push_back(sourceId);
     }
 
     bool HasInvalidateNode(ui64 nodeId) const
@@ -553,15 +554,42 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
         service.CreateFileStore("test", 1'000);
         auto headers = service.InitSession("test", "client");
-        service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "f"));
+        const ui64 nodeId =
+            service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "f"))
+                ->Record.GetNode()
+                .GetId();
 
         UNIT_ASSERT_VALUES_UNEQUAL(-1, tabletId);
         UNIT_ASSERT_VALUES_EQUAL(0, handler->DisconnectCount);
+
+        //
+        // The cacheable responses are stamped with the id which is reported
+        // upon the loss of the pipe they have been received via.
+        //
+
+        const auto getNodeAttr =
+            service.GetNodeAttr(headers, "test", RootNodeId, "f");
+        const auto setXAttr =
+            service.SetNodeXAttr(headers, "test", nodeId, "user.a", "1");
+        const auto getXAttr =
+            service.GetNodeXAttr(headers, "test", nodeId, "user.a");
+        const TVector<ui64> sourceIds = {
+            getNodeAttr->Record.GetNodeCacheSourceId(),
+            getNodeAttr->Record.GetNodeRefCacheSourceId(),
+            setXAttr->Record.GetXAttrCacheSourceId(),
+            getXAttr->Record.GetXAttrCacheSourceId(),
+        };
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>(sourceIds.size(), tabletId),
+            sourceIds);
 
         TIndexTabletClient tablet(runtime, nodeIdx, tabletId);
         tablet.RebootTablet();
 
         UNIT_ASSERT_LE(1, handler->DisconnectCount);
+        for (const ui64 sourceId: handler->DisconnectedSourceIds) {
+            UNIT_ASSERT_VALUES_EQUAL(tabletId, sourceId);
+        }
 
         //
         // The rebooted tablet has no clients and subscriptions until the
