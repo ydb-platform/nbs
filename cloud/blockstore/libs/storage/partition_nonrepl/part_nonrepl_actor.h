@@ -54,8 +54,8 @@ class TNonreplicatedPartitionActor final
 private:
     using EDeviceStatus = TDeviceStat::EDeviceStatus;
 
-    const TStorageConfigConstPtr Config;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const NActors::TActorId VolumeActorId;
     const NActors::TActorId StatActorId;
@@ -94,8 +94,8 @@ private:
 
 public:
     TNonreplicatedPartitionActor(
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         NActors::TActorId volumeActorId,
         NActors::TActorId statActorId);

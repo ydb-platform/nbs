@@ -19,8 +19,8 @@ using namespace NActors;
 TNonreplicatedPartitionMigrationCommonActor::
     TNonreplicatedPartitionMigrationCommonActor(
         IMigrationOwner* migrationOwner,
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TString diskId,
         TString cloudId,
         TString folderId,
@@ -64,8 +64,8 @@ TNonreplicatedPartitionMigrationCommonActor::
 TNonreplicatedPartitionMigrationCommonActor::
     TNonreplicatedPartitionMigrationCommonActor(
         IMigrationOwner* migrationOwner,
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TString diskId,
         TString cloudId,
         TString folderId,

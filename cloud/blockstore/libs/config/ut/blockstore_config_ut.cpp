@@ -514,7 +514,7 @@ root_kms: {address: kms}
     // the aggregate config. The section must remain alive and keep its value.
     Y_UNIT_TEST(ShouldKeepTopLevelSectionAliveAfterAggregateConfigIsReleased)
     {
-        NServer::TServerAppConfigConstPtr serverConfig;
+        NServer::TServerAppConfigPtr serverConfig;
         {
             const auto config = MakeBlockstoreConfig(
                 MakeConfig(100),
@@ -562,7 +562,7 @@ root_kms: {address: kms}
     {
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
         auto initial = MakeBlockstoreConfig(MakeConfig(1), {}, controls);
-        auto retained = IBlockstoreConfigConstPtr(initial);
+        auto retained = IBlockstoreConfigPtr(initial);
         TBlockstoreConfigHolder holder(std::move(initial));
 
         std::atomic<bool> stop = false;

@@ -21,7 +21,7 @@ TGetDeviceForRangeCompanion::TGetDeviceForRangeCompanion(
 
 TGetDeviceForRangeCompanion::TGetDeviceForRangeCompanion(
         EAllowedOperation allowedOperation,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TNonreplicatedPartitionConfigPtr partConfig,
         const TVector<TDeviceStat>* const deviceStats)
     : Config(std::move(config))

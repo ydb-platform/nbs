@@ -25,7 +25,7 @@ struct TInitializeSpdkResult
 };
 
 NThreading::TFuture<TInitializeSpdkResult> InitializeSpdk(
-    TDiskAgentConfigConstPtr agentConfig,
+    TDiskAgentConfigPtr agentConfig,
     NSpdk::ISpdkEnvPtr spdk,
     ICachingAllocatorPtr allocator);
 

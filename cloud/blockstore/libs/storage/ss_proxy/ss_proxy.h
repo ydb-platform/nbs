@@ -9,6 +9,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NActors::IActorPtr CreateSSProxy(TStorageConfigConstPtr config);
+NActors::IActorPtr CreateSSProxy(TStorageConfigPtr config);
 
 }   // namespace NCloud::NBlockStore::NStorage
