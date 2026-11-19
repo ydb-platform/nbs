@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include "service_actor_actor_pool.h"
+#include "service_actor_worker_pool.h"
 #include "service_private.h"
 #include "service_state.h"
 
