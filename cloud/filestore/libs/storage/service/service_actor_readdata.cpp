@@ -1365,7 +1365,7 @@ void TStorageServiceActor::HandleReadData(
             !filestore.GetFeatures().GetExternalReadDataPayload(),
         zeroCopyReadEnabled);
 
-    if (StorageConfig->GetEnablePreallocatedDataActors()) {
+    if (StorageConfig->GetPermanentReadWriteDataActorsEnabled()) {
         auto request = std::make_unique<TEvStartReadData>(std::move(context));
         NCloud::Send(
             ctx,

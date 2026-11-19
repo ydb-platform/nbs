@@ -160,13 +160,13 @@ TTabletStorageInfoPtr GetTabletStorageInfo(
     Y_UNIT_TEST(name)                                                        \
     {                                                                        \
         NProto::TStorageConfig storageConfig;                                \
-        storageConfig.SetEnablePreallocatedDataActors(false);                \
+        storageConfig.SetPermanentReadWriteDataActorsEnabled(false);                \
         TestImpl##name(std::move(storageConfig));                            \
     }                                                                        \
     Y_UNIT_TEST(name##WithPreallocatedActors)                                \
     {                                                                        \
         NProto::TStorageConfig storageConfig;                                \
-        storageConfig.SetEnablePreallocatedDataActors(true);                 \
+        storageConfig.SetPermanentReadWriteDataActorsEnabled(true);                 \
         TestImpl##name(std::move(storageConfig));                            \
     }                                                                        \
     void TestImpl##name(NProto::TStorageConfig storageConfig)
@@ -5893,7 +5893,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     {
         NProto::TStorageConfig config;
         config.SetTwoStageReadEnabled(true);
-        config.SetEnablePreallocatedDataActors(true);
+        config.SetPermanentReadWriteDataActorsEnabled(true);
         TTestEnv env({}, config);
 
         const ui32 nodeIdx = env.AddDynamicNode();

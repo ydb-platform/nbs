@@ -489,7 +489,7 @@ public:
 
     [[nodiscard]] bool GetEnableRdmaForWrites() const;
 
-    bool GetEnablePreallocatedDataActors() const;
+    bool GetPermanentReadWriteDataActorsEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -46,7 +46,7 @@ void TStorageServiceActor::Bootstrap(const TActorContext& ctx)
     LastCpuWaitTs = ctx.Monotonic();
     ServiceState = NProto::SERVICE_STATE_RUNNING;
 
-    if (StorageConfig->GetEnablePreallocatedDataActors()) {
+    if (StorageConfig->GetPermanentReadWriteDataActorsEnabled()) {
         ReadDataActorPool.Initialize(ctx, InitialReadDataActorPoolSize);
     }
 
