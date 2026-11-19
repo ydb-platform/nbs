@@ -115,6 +115,17 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
         describeResponse->Record.MutableBlobPieces()->Add(
             std::move(TBlobPiece));
 
+        auto* compressionEntry =
+            describeResponse->Record.AddBlobId2CompressionMetadata();
+        compressionEntry->MutableBlobId()->CopyFrom(protoLogoBlobID);
+        auto* compressionMetadata =
+            compressionEntry->MutableCompressionMetadata();
+        compressionMetadata->SetCodec(
+            NProto::TCompressionMetadata::COMPRESSION_ZSTD_3);
+        compressionMetadata->SetChunkSize(2 * blockSize);
+        const auto expectedCompressionMetadata =
+            compressionMetadata->SerializeAsString();
+
         ActorSystem.Send(new NActors::IEventHandle(
             readActor,
             EdgeActor,
@@ -123,6 +134,16 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
         auto fullResponse = ActorSystem.GrabEdgeEvent<
             TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted>();
         UNIT_ASSERT(!HasError(fullResponse->GetError()));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            fullResponse->BlobId2CompressionMetadata.size());
+        const auto& entry = fullResponse->BlobId2CompressionMetadata.front();
+        UNIT_ASSERT_VALUES_EQUAL(logoBlobID, entry.BlobId);
+        UNIT_ASSERT(entry.CompressionMetadata);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedCompressionMetadata,
+            entry.CompressionMetadata->SerializeAsString());
 
         auto newBlockMarks = std::move(fullResponse->BlockMarks);
         UNIT_ASSERT_EQUAL(newBlockMarks.size(), 5);

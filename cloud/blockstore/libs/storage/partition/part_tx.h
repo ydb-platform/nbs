@@ -1129,6 +1129,7 @@ struct TTxPartition
         using TBlockMark = std::variant<TEmptyMark, TBlobMark, TFreshMark>;
 
         TVector<TBlockMark> Marks;
+        TPartialBlobId2CompressionMetadataMap BlobId2CompressionMetadata;
         bool Interrupted = false;
 
         TDescribeBlocks(
@@ -1146,6 +1147,7 @@ struct TTxPartition
         void Clear()
         {
             std::fill(Marks.begin(), Marks.end(), TEmptyMark());
+            BlobId2CompressionMetadata.clear();
         }
 
         ui32 GetBlockMarkIndex(ui32 blockIndex)

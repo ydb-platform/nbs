@@ -170,13 +170,25 @@ struct TEvPartitionCommonPrivate
     // DescribeBlocksCompleted
     //
 
+    struct TBlobId2CompressionMetadata
+    {
+        NKikimr::TLogoBlobID BlobId;
+        std::optional<NProto::TCompressionMetadata> CompressionMetadata;
+    };
+
+    using TBlobId2CompressionMetadataList =
+        TVector<TBlobId2CompressionMetadata>;
+
     struct TDescribeBlocksCompleted
     {
         NBlobMarkers::TBlockMarks BlockMarks;
+        TBlobId2CompressionMetadataList BlobId2CompressionMetadata;
 
         TDescribeBlocksCompleted(
-                NBlobMarkers::TBlockMarks blockMarks)
+            NBlobMarkers::TBlockMarks blockMarks,
+            TBlobId2CompressionMetadataList blobId2CompressionMetadata = {})
             : BlockMarks(std::move(blockMarks))
+            , BlobId2CompressionMetadata(std::move(blobId2CompressionMetadata))
         {}
     };
 
