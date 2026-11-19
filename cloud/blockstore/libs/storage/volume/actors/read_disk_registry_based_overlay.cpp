@@ -27,19 +27,20 @@ bool operator < (const TRequest& lsv, const TRequest& rsv)
 
 template <ReadRequest TMethod>
 TReadDiskRegistryBasedOverlayActor<TMethod>::TReadDiskRegistryBasedOverlayActor(
-        TRequestInfoPtr requestInfo,
-        TRequest originalRequest,
-        const TCompressedBitmap& usedBlocks,
-        TActorId volumeActorId,
-        TActorId partActorId,
-        ui64 volumeTabletId,
-        TString baseDiskId,
-        TString baseDiskCheckpointId,
-        ui32 blockSize,
-        EStorageAccessMode mode,
-        TDuration longRunningThreshold,
-        TChildLogTitle logTitle,
-        bool enableDataIntegrityValidation)
+    TRequestInfoPtr requestInfo,
+    TRequest originalRequest,
+    const TCompressedBitmap& usedBlocks,
+    TActorId volumeActorId,
+    TActorId partActorId,
+    ui64 volumeTabletId,
+    TString baseDiskId,
+    TString baseDiskCheckpointId,
+    ui32 blockSize,
+    EStorageAccessMode mode,
+    TDuration longRunningThreshold,
+    TChildLogTitle logTitle,
+    bool enableDataIntegrityValidation,
+    bool verifyBlobCompressionMetadata)
     : RequestInfo(std::move(requestInfo))
     , OriginalRequest(std::move(originalRequest))
     , VolumeActorId(volumeActorId)
@@ -51,6 +52,7 @@ TReadDiskRegistryBasedOverlayActor<TMethod>::TReadDiskRegistryBasedOverlayActor(
     , LongRunningThreshold(longRunningThreshold)
     , LogTitle(std::move(logTitle))
     , EnableDataIntegrityValidation(enableDataIntegrityValidation)
+    , VerifyBlobCompressionMetadata(verifyBlobCompressionMetadata)
     , Mode(mode)
     , BlockMarks(MakeUsedBlockMarks(
           usedBlocks,
@@ -222,7 +224,8 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::SendBaseDiskRequest(
             BaseDiskRequest.GetStartIndex(),
             BaseDiskRequest.GetBlocksCount()),
         std::move(BlockMarks),
-        BlockSize);
+        BlockSize,
+        VerifyBlobCompressionMetadata);
 }
 
 template <ReadRequest TMethod>
@@ -373,6 +376,19 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
         blobId2CompressionMetadata.emplace(
             entry.BlobId,
             std::move(entry.CompressionMetadata));
+    }
+
+    if (VerifyBlobCompressionMetadata) {
+        for (const auto& request: requests) {
+            auto error = ValidateBlobCompressionMetadata(
+                VerifyBlobCompressionMetadata,
+                request.BlobMark.BlobId,
+                blobId2CompressionMetadata.contains(request.BlobMark.BlobId));
+            if (HasError(error)) {
+                ReplyAndDie(ctx, error);
+                return;
+            }
+        }
     }
 
     for (const auto& request: requests) {

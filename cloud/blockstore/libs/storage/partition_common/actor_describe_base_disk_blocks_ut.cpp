@@ -1,10 +1,14 @@
 #include "actor_describe_base_disk_blocks.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
+
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
-#include <library/cpp/testing/unittest/registar.h>
-
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
+
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -49,6 +53,76 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
         }
     };
 
+    Y_UNIT_TEST_F(ShouldVerifyBlobCompressionMetadata, TSetupEnvironment)
+    {
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        auto missingMetadata = counters->GetCounter(
+            GetCriticalEventForBlobCompressionMetadataAbsent(),
+            true);
+        ui32 expectedEvents = 0;
+        const NKikimr::TLogoBlobID blobId(42, 1, 1, 3, 512, 0);
+        const NKikimr::TLogoBlobID otherBlobId(42, 1, 1, 3, 512, 1);
+        for (bool verify: {false, true}) {
+            // Missing, wrong blob, explicitly uncompressed, compressed.
+            for (ui32 entryKind = 0; entryKind < 4; ++entryKind) {
+                auto actor =
+                    ActorSystem.Register(new TDescribeBaseDiskBlocksActor(
+                        MakeIntrusive<TRequestInfo>(
+                            EdgeActor,
+                            0ull,
+                            MakeIntrusive<TCallContext>()),
+                        "base-disk",
+                        "checkpoint",
+                        TBlockRange64::MakeOneBlock(0),
+                        TBlockRange64::MakeOneBlock(0),
+                        TBlockMarks{TEmptyMark{}},
+                        512,
+                        verify));
+                ActorSystem
+                    .GrabEdgeEvent<TEvVolume::TEvDescribeBlocksRequest>();
+                auto response =
+                    std::make_unique<TEvVolume::TEvDescribeBlocksResponse>();
+                auto* piece = response->Record.AddBlobPieces();
+                NKikimr::LogoBlobIDFromLogoBlobID(
+                    blobId,
+                    piece->MutableBlobId());
+                auto* range = piece->AddRanges();
+                range->SetBlockIndex(0);
+                range->SetBlocksCount(1);
+                if (entryKind) {
+                    auto* entry =
+                        response->Record.AddBlobId2CompressionMetadata();
+                    NKikimr::LogoBlobIDFromLogoBlobID(
+                        entryKind == 1 ? otherBlobId : blobId,
+                        entry->MutableBlobId());
+                    if (entryKind == 3) {
+                        entry->MutableCompressionMetadata()->SetCodec(
+                            NProto::TCompressionMetadata::COMPRESSION_ZSTD_3);
+                    }
+                }
+                ActorSystem.Send(new NActors::IEventHandle(
+                    actor,
+                    EdgeActor,
+                    response.release()));
+                auto completed = ActorSystem.GrabEdgeEvent<
+                    TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted>();
+                const bool rejected = verify && entryKind < 2;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    rejected ? E_REJECTED : S_OK,
+                    completed->GetStatus());
+                expectedEvents += rejected;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedEvents,
+                    missingMetadata->Val());
+                if (rejected) {
+                    UNIT_ASSERT(completed->GetError().GetMessage().Contains(
+                        blobId.ToString()));
+                }
+            }
+        }
+    }
+
     Y_UNIT_TEST_F(ShouldReadFromOverlayDiskSuccess, TSetupEnvironment)
     {
         const ui32 blockSize = 512;
@@ -60,18 +134,18 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
             TEmptyMark{},
             TFreshMark{}};
 
-        auto readActor = ActorSystem.Register(
-            new TDescribeBaseDiskBlocksActor(
-                MakeIntrusive<TRequestInfo>(
-                    EdgeActor,
-                    0ull,
-                    MakeIntrusive<TCallContext>()),
-                "BaseDiskId",
-                "BaseDiskCheckpointId",
-                TBlockRange64::WithLength(0, 5),
-                TBlockRange64::WithLength(0, 4),
-                std::move(blockMarks),
-                blockSize));
+        auto readActor = ActorSystem.Register(new TDescribeBaseDiskBlocksActor(
+            MakeIntrusive<TRequestInfo>(
+                EdgeActor,
+                0ull,
+                MakeIntrusive<TCallContext>()),
+            "BaseDiskId",
+            "BaseDiskCheckpointId",
+            TBlockRange64::WithLength(0, 5),
+            TBlockRange64::WithLength(0, 4),
+            std::move(blockMarks),
+            blockSize,
+            true));
 
         auto describeRequest = ActorSystem.GrabEdgeEvent<
             TEvVolume::TEvDescribeBlocksRequest>();
@@ -193,18 +267,18 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
             TEmptyMark{},
             TFreshMark{}};
 
-        auto readActor = ActorSystem.Register(
-            new TDescribeBaseDiskBlocksActor(
-                MakeIntrusive<TRequestInfo>(
-                    EdgeActor,
-                    0ull,
-                    MakeIntrusive<TCallContext>()),
-                "BaseDiskId",
-                "BaseDiskCheckpointId",
-                TBlockRange64::WithLength(0, 5),
-                TBlockRange64::WithLength(0, 4),
-                std::move(blockMarks),
-                blockSize));
+        auto readActor = ActorSystem.Register(new TDescribeBaseDiskBlocksActor(
+            MakeIntrusive<TRequestInfo>(
+                EdgeActor,
+                0ull,
+                MakeIntrusive<TCallContext>()),
+            "BaseDiskId",
+            "BaseDiskCheckpointId",
+            TBlockRange64::WithLength(0, 5),
+            TBlockRange64::WithLength(0, 4),
+            std::move(blockMarks),
+            blockSize,
+            false));
 
         auto describeRequest = ActorSystem.GrabEdgeEvent<
             TEvVolume::TEvDescribeBlocksRequest>();
@@ -241,16 +315,16 @@ Y_UNIT_TEST_SUITE(TReadBlocksFromBaseDiskTests)
             TEmptyMark{},
             TFreshMark{}};
 
-        auto readActor = ActorSystem.Register(
-            new TDescribeBaseDiskBlocksActor(
-                MakeIntrusive<TRequestInfo>(),
-                "BaseDiskId",
-                "BaseDiskCheckpointId",
-                TBlockRange64::WithLength(0, 5),
-                TBlockRange64::WithLength(0, 4),
-                std::move(blockMarks),
-                blockSize,
-                EdgeActor));
+        auto readActor = ActorSystem.Register(new TDescribeBaseDiskBlocksActor(
+            MakeIntrusive<TRequestInfo>(),
+            "BaseDiskId",
+            "BaseDiskCheckpointId",
+            TBlockRange64::WithLength(0, 5),
+            TBlockRange64::WithLength(0, 4),
+            std::move(blockMarks),
+            blockSize,
+            false,
+            EdgeActor));
 
         auto describeRequest = ActorSystem.GrabEdgeEvent<
             TEvVolume::TEvDescribeBlocksRequest>();

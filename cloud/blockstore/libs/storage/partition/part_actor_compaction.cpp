@@ -164,6 +164,7 @@ private:
     // read into a separate transaction issued by TCompactionActor instead of
     // doing it inside the main TCompaction prepare phase.
     const bool SplitCompactionTxEnabled;
+    const bool VerifyBlobCompressionMetadata;
 
     TVector<TPartialBlobId> BlobsToReadBlockMasks;
     TVector<TPartialBlobId> BlobsToReadBlobMetas;
@@ -219,7 +220,8 @@ public:
         bool splitTxEnabled,
         TVector<TPartialBlobId> blobsToReadBlockMasks,
         TVector<TPartialBlobId> blobsToReadBlobMetas,
-        TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata);
+        TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata,
+        bool verifyBlobCompressionMetadata);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -297,7 +299,8 @@ TCompactionActor::TCompactionActor(
     bool splitTxEnabled,
     TVector<TPartialBlobId> blobsToReadBlockMasks,
     TVector<TPartialBlobId> blobsToReadBlobMetas,
-    TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata)
+    TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata,
+    bool verifyBlobCompressionMetadata)
     : RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
     , VolumeLabels(std::move(volumeLabels))
@@ -314,6 +317,7 @@ TCompactionActor::TCompactionActor(
     , RangeCompactionInfos(std::move(rangeCompactionInfos))
     , Requests(std::move(requests))
     , SplitCompactionTxEnabled(splitTxEnabled)
+    , VerifyBlobCompressionMetadata(verifyBlobCompressionMetadata)
     , BlobsToReadBlockMasks(std::move(blobsToReadBlockMasks))
     , BlobsToReadBlobMetas(std::move(blobsToReadBlobMetas))
     , BlobId2CompressionMetadata(std::move(blobId2CompressionMetadata))
@@ -512,6 +516,24 @@ void TCompactionActor::InitBlockDigests()
 
 void TCompactionActor::ReadBlocks(const TActorContext& ctx)
 {
+    if (VerifyBlobCompressionMetadata) {
+        for (const auto& request: Requests) {
+            if (IsDeletionMarker(request.BlobId)) {
+                continue;
+            }
+
+            if (HandleError(
+                    ctx,
+                    ValidateBlobCompressionMetadata(
+                        VerifyBlobCompressionMetadata,
+                        MakeBlobId(TabletId, request.BlobId),
+                        BlobId2CompressionMetadata.contains(request.BlobId))))
+            {
+                return;
+            }
+        }
+    }
+
     ReadBlobsStarted = ctx.Now();
 
     TVector<TRequest*> requests(Reserve(Requests.size()));
@@ -2506,7 +2528,8 @@ void TPartitionActor::CompleteCompaction(
         TVector<TPartialBlobId>(
             args.BlobsToReadBlobMetas.begin(),
             args.BlobsToReadBlobMetas.end()),
-        std::move(args.BlobId2CompressionMetadata));
+        std::move(args.BlobId2CompressionMetadata),
+        Config->GetVerifyBlobCompressionMetadata());
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,

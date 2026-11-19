@@ -760,6 +760,7 @@ public:
 
     ui32 GetBlobCompressionRate() const;
     TString GetBlobCompressionCodec() const;
+    bool GetVerifyBlobCompressionMetadata() const;
 
     bool GetSerialNumberValidationEnabled() const;
 
