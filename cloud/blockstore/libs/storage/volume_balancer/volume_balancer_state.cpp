@@ -272,13 +272,13 @@ void TVolumeBalancerState::RenderHtml(TStringStream& out, TInstant now) const
 void TVolumeBalancerState::UpdateVolumeToPush()
 {
     const auto preemptionType = StorageConfig->GetVolumePreemptionType();
-    const bool useCpuLoadRanking =
-        preemptionType == NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY ||
-        preemptionType == NProto::PREEMPTION_MOVE_CPU_LEAST_HEAVY;
+    const bool useIoCostOrdering =
+        preemptionType == NProto::PREEMPTION_MOVE_IO_COST_MOST_HEAVY ||
+        preemptionType == NProto::PREEMPTION_MOVE_IO_COST_LEAST_HEAVY;
 
     const bool moveMostHeavy =
         preemptionType == NProto::PREEMPTION_MOVE_MOST_HEAVY ||
-        preemptionType == NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY;
+        preemptionType == NProto::PREEMPTION_MOVE_IO_COST_MOST_HEAVY;
 
     VolumeToPush = {};
     ui64 bestValue = moveMostHeavy ? 0 : Max<ui64>();
@@ -287,12 +287,12 @@ void TVolumeBalancerState::UpdateVolumeToPush()
         if (!IsVolumePreemptibleToPush(diskId, info)) {
             continue;
         }
-        if (useCpuLoadRanking && !info.Cost) {
+        if (useIoCostOrdering && !info.Cost) {
             continue;
         }
 
         const ui64 currentValue =
-            useCpuLoadRanking ? info.Cost->GetValue() : info.SufferCount;
+            useIoCostOrdering ? info.Cost->GetValue() : info.SufferCount;
 
         if (moveMostHeavy) {
             if (bestValue < currentValue) {

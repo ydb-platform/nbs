@@ -547,7 +547,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
     Y_UNIT_TEST(ShouldPushMostLoadedVolumeToHiveControl)
     {
         TestPushVolumeToHiveControl(
-            NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY,
+            NProto::PREEMPTION_MOVE_IO_COST_MOST_HEAVY,
             "vol0");
     }
 
@@ -561,7 +561,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
     Y_UNIT_TEST(ShouldPushLeastLoadedVolumeToHiveControl)
     {
         TestPushVolumeToHiveControl(
-            NProto::PREEMPTION_MOVE_CPU_LEAST_HEAVY,
+            NProto::PREEMPTION_MOVE_IO_COST_LEAST_HEAVY,
             "vol1");
     }
 
@@ -1048,13 +1048,13 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         UNIT_ASSERT_VALUES_EQUAL("vol2", diskId3);
     }
 
-    Y_UNIT_TEST(ShouldRespectInProgressLimitSetToOneCpuRanking)
+    Y_UNIT_TEST(ShouldRespectInProgressLimitSetToOneIoCostOrdering)
     {
         TVolumeBalancerTestEnv testEnv;
         TVolumeBalancerConfigBuilder config;
 
         auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
-            config.WithType(NProto::PREEMPTION_MOVE_CPU_LEAST_HEAVY)
+            config.WithType(NProto::PREEMPTION_MOVE_IO_COST_LEAST_HEAVY)
                 .WithEnabled(true)
                 .WithMaxInProgress(1),
             testEnv.VolumeStats,

@@ -279,10 +279,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             "vol1");
     }
 
-    Y_UNIT_TEST(ShouldSelectHeaviestVolumeForPreemptionWithCpuRanking)
+    Y_UNIT_TEST(ShouldSelectHeaviestVolumeForPreemptionWithIoCostOrdering)
     {
         TestSelectVolumeForPreemption(
-            NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY,
+            NProto::PREEMPTION_MOVE_IO_COST_MOST_HEAVY,
             "vol0");
     }
 
@@ -293,10 +293,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             "vol0");
     }
 
-    Y_UNIT_TEST(ShouldSelectLightestVolumeForPreemptionWithCpuRanking)
+    Y_UNIT_TEST(ShouldSelectLightestVolumeForPreemptionWithIoCostOrdering)
     {
         TestSelectVolumeForPreemption(
-            NProto::PREEMPTION_MOVE_CPU_LEAST_HEAVY,
+            NProto::PREEMPTION_MOVE_IO_COST_LEAST_HEAVY,
             "vol1");
     }
 
@@ -327,10 +327,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             NProto::PREEMPTION_MOVE_MOST_HEAVY);
     }
 
-    Y_UNIT_TEST(ShouldNotPreemptVolumeIfLoadIsBelowThresholdWithCpuRanking)
+    Y_UNIT_TEST(ShouldNotPreemptVolumeIfLoadIsBelowThresholdWithIoCostOrdering)
     {
         TestNotPreemptVolumeIfLoadIsBelowThreshold(
-            NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY);
+            NProto::PREEMPTION_MOVE_IO_COST_MOST_HEAVY);
     }
 
     static void TestReturnVolumeIfLoadIsBelowThreshold(
@@ -377,10 +377,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             NProto::PREEMPTION_MOVE_MOST_HEAVY);
     }
 
-    Y_UNIT_TEST(ShouldReturnVolumeIfLoadIsBelowThresholdWithCpuRanking)
+    Y_UNIT_TEST(ShouldReturnVolumeIfLoadIsBelowThresholdWithIoCostOrdering)
     {
         TestReturnVolumeIfLoadIsBelowThreshold(
-            NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY);
+            NProto::PREEMPTION_MOVE_IO_COST_MOST_HEAVY);
     }
 
     Y_UNIT_TEST(ShouldNotSelectVolumeFromBlacklistedCloud)
@@ -463,10 +463,10 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         TestReturnVolumeOnlyAfterPullDelay(NProto::PREEMPTION_MOVE_MOST_HEAVY);
     }
 
-    Y_UNIT_TEST(ShouldReturnVolumeOnlyAfterPullDelayWithCpuRanking)
+    Y_UNIT_TEST(ShouldReturnVolumeOnlyAfterPullDelayWithIoCostOrdering)
     {
         TestReturnVolumeOnlyAfterPullDelay(
-            NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY);
+            NProto::PREEMPTION_MOVE_IO_COST_MOST_HEAVY);
     }
 
     static void TestResetPullDelayAfterCooldown(
@@ -589,9 +589,9 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         TestResetPullDelayAfterCooldown(NProto::PREEMPTION_MOVE_MOST_HEAVY);
     }
 
-    Y_UNIT_TEST(ShouldResetPullDelayAfterCooldownWithCpuRanking)
+    Y_UNIT_TEST(ShouldResetPullDelayAfterCooldownWithIoCostOrdering)
     {
-        TestResetPullDelayAfterCooldown(NProto::PREEMPTION_MOVE_CPU_MOST_HEAVY);
+        TestResetPullDelayAfterCooldown(NProto::PREEMPTION_MOVE_IO_COST_MOST_HEAVY);
     }
 
     Y_UNIT_TEST(ShouldNotReturnManuallyPreemptedVolume)
