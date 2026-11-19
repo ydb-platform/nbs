@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,15 +17,21 @@ import (
 	nfs_testing "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs/testing"
 	scrubbing_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/config"
 	scrubbing_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/protos"
+	traversal_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/config"
 	traversal_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage"
 	filesystem_snapshot_schema "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/traversal/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
+	"github.com/ydb-platform/nbs/cloud/tasks"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
+	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
+	tasks_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -485,6 +492,91 @@ func TestAddToFileSizeHistogram(t *testing.T) {
 	require.Equal(t, []float64{0, 0, 3, 4}, state.FileBytesBySizeLog2)
 }
 
+type interruptionMode int
+
+const (
+	noInterruption interruptionMode = iota
+	retriableErrorBeforePageCommit
+	interruptionAfterPageCommit
+	interruptionAfterFinalPageCommit
+)
+
+type interruptingTraversalStorage struct {
+	traversal_storage.Storage
+	mode        interruptionMode
+	interrupted atomic.Bool
+}
+
+func (s *interruptingTraversalStorage) ScheduleChildNodesForListing(
+	ctx context.Context,
+	snapshotID string,
+	parentNodeID uint64,
+	nextCookie string,
+	children []nfs.Node,
+) error {
+
+	interruptOnPage := parentNodeID == nfs.RootNodeID
+	if s.mode == interruptionAfterFinalPageCommit {
+		// ponytail: the fixture has one child directory, which is listed last.
+		interruptOnPage = parentNodeID != nfs.RootNodeID
+	}
+	interrupt := s.mode != noInterruption && interruptOnPage &&
+		!s.interrupted.Swap(true)
+	if interrupt && s.mode == retriableErrorBeforePageCommit {
+		// The runner saves task state on a retriable error, and the page
+		// remains queued for the next attempt.
+		return tasks_errors.NewRetriableErrorf(
+			"interrupted before saving traversal progress",
+		)
+	}
+
+	err := s.Storage.ScheduleChildNodesForListing(
+		ctx,
+		snapshotID,
+		parentNodeID,
+		nextCookie,
+		children,
+	)
+	if err == nil && interrupt {
+		// Leave the task running with only its last saved state, as on a crash.
+		return tasks_errors.NewInterruptExecutionError()
+	}
+	return err
+}
+
+// Session API cannot set the file size, so create the node directly. Each name
+// is a hard link to the same node under the root.
+func (f *fixture) createFileWithSize(
+	t *testing.T,
+	filesystemID string,
+	nodeID uint64,
+	size uint64,
+	names ...string,
+) {
+
+	err := f.client.UnsafeCreateNode(f.ctx, filesystemID, nfs.Node{
+		NodeID: nodeID,
+		Type:   nfs.NODE_KIND_FILE,
+		Mode:   0644,
+		Size:   size,
+		Links:  uint32(len(names)),
+	})
+	require.NoError(t, err)
+
+	for _, name := range names {
+		err = f.client.UnsafeCreateNodeRef(
+			f.ctx,
+			filesystemID,
+			nfs.RootNodeID,
+			name,
+			nodeID,
+			"", // shardID
+			"", // shardNodeName
+		)
+		require.NoError(t, err)
+	}
+}
+
 func TestScrubFilesystemTaskMarksHistogramUnreliableAfterInterruption(t *testing.T) {
 	f := newFixture(t)
 	defer f.close(t)
@@ -493,65 +585,140 @@ func TestScrubFilesystemTaskMarksHistogramUnreliableAfterInterruption(t *testing
 	f.prepareFilesystem(t, filesystemID)
 	defer f.cleanupFilesystem(t, filesystemID)
 
+	// All files below are empty; the symlink and the directories must not be
+	// counted.
 	fsModel := f.fillFilesystem(t, filesystemID, nfs_testing.Root(
 		nfs_testing.File("a"),
-		nfs_testing.File("b"),
+		nfs_testing.Dir("dir", nfs_testing.File("nested")),
+		nfs_testing.Symlink("link", "a"),
 	), false /* parallel */)
 	defer fsModel.Close()
 
-	execCtx := tasks_mocks.NewExecutionContextMock()
-	execCtx.On("GetTaskID").Return("scrub-restart-task")
-	execCtx.On("SaveState", mock.Anything).Return(nil)
+	f.createFileWithSize(t, filesystemID, 1000, 3, "hardlink1", "hardlink2")
 
-	listNodesMaxBytes := uint32(1)
-	task := &scrubFilesystemTask{
-		config: &scrubbing_config.FilesystemScrubbingConfig{
-			ListNodesMaxBytes: &listNodesMaxBytes,
+	testCases := []struct {
+		name                    string
+		mode                    interruptionMode
+		expectedCounts          []float64
+		expectedBytes           []float64
+		expectedRetriableErrors uint64
+		expectedUnreliable      bool
+	}{
+		{
+			name:           "no_interruption",
+			expectedCounts: []float64{2, 0, 1},
+			expectedBytes:  []float64{0, 0, 3},
 		},
-		factory: f.factory,
-		storage: f.storage,
-		request: &scrubbing_protos.ScrubFilesystemRequest{
-			Filesystem: &types.Filesystem{
-				ZoneId:       "zone",
-				FilesystemId: filesystemID,
-			},
+		{
+			// The root page is counted by both attempts, "dir" only once.
+			name:                    "retriable_error_before_page_commit",
+			mode:                    retriableErrorBeforePageCommit,
+			expectedCounts:          []float64{3, 0, 2},
+			expectedBytes:           []float64{0, 0, 6},
+			expectedRetriableErrors: 1,
+			expectedUnreliable:      true,
 		},
-		state: &scrubbing_protos.ScrubFilesystemTaskState{},
+		{
+			// Counts of the root page are lost, only "dir" is listed after
+			// the restart.
+			name:               "interruption_after_page_commit",
+			mode:               interruptionAfterPageCommit,
+			expectedCounts:     []float64{1},
+			expectedBytes:      []float64{0},
+			expectedUnreliable: true,
+		},
+		{
+			name:               "interruption_after_final_page_commit",
+			mode:               interruptionAfterFinalPageCommit,
+			expectedUnreliable: true,
+		},
 	}
 
-	runCtx, cancel := context.WithCancel(f.ctx)
-	defer cancel()
-	task.callback = func([]nfs.Node) { cancel() }
-	require.ErrorIs(t, task.Run(runCtx, execCtx), context.Canceled)
-	require.Equal(t, []float64{1}, task.state.FileCountBySizeLog2)
-	require.False(t, task.state.FileSizeHistogramUnreliable)
-
-	request, err := proto.Marshal(task.request)
-	require.NoError(t, err)
-	state, err := task.Save()
-	require.NoError(t, err)
-
-	// A retriable error can save counts before the page cookie is committed.
-	require.NoError(t, task.Load(request, state))
-	task.callback = func([]nfs.Node) {}
-	require.NoError(t, task.Run(f.ctx, execCtx))
-	require.True(t, task.state.FileSizeHistogramUnreliable)
-
-	state, err = task.Save()
-	require.NoError(t, err)
-	require.NoError(t, task.Load(request, state))
-	require.True(t, task.state.FileSizeHistogramUnreliable)
-
-	// A crash can leave only the initial saved state and an empty queue.
-	state, err = proto.Marshal(&scrubbing_protos.ScrubFilesystemTaskState{
-		RootNodeScheduled: true,
-	})
-	require.NoError(t, err)
-	require.NoError(t, task.Load(request, state))
-	task.callback = func([]nfs.Node) {
-		t.Error("resumed traversal should not rescan completed directories")
+	pollPeriod := proto.String("100ms")
+	config := &tasks_config.TasksConfig{
+		PollForTaskUpdatesPeriod:      pollPeriod,
+		PollForTasksPeriodMin:         pollPeriod,
+		PollForTasksPeriodMax:         pollPeriod,
+		PollForStallingTasksPeriodMin: pollPeriod,
+		PollForStallingTasksPeriodMax: pollPeriod,
+		TaskPingPeriod:                proto.String("250ms"),
+		TaskStallingTimeout:           proto.String("3s"),
+		RunnersCount:                  proto.Uint64(1),
+		StalkingRunnersCount:          proto.Uint64(1),
+		StorageFolder:                 proto.String("scrubbing_tests/" + t.Name() + "/tasks"),
+		RegularSystemTasksEnabled:     proto.Bool(false),
 	}
-	require.NoError(t, task.Run(f.ctx, execCtx))
-	require.True(t, task.state.FileSizeHistogramUnreliable)
-	require.Empty(t, task.state.FileCountBySizeLog2)
+	require.NoError(t, tasks_storage.CreateYDBTables(f.ctx, config, f.db, false))
+	metricsRegistry := metrics.NewEmptyRegistry()
+	taskStorage, err := tasks_storage.NewStorage(config, metricsRegistry, f.db)
+	require.NoError(t, err)
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(f.ctx)
+			defer cancel()
+
+			taskRegistry := tasks.NewRegistry()
+			scheduler, err := tasks.NewScheduler(
+				ctx,
+				taskRegistry,
+				taskStorage,
+				config,
+				metricsRegistry,
+			)
+			require.NoError(t, err)
+
+			// Keep child directories pending until the interrupted worker exits.
+			err = RegisterForExecution(
+				taskRegistry,
+				&scrubbing_config.FilesystemScrubbingConfig{
+					TraversalConfig: &traversal_config.FilesystemTraversalConfig{
+						TraversalWorkersCount: proto.Uint32(1),
+					},
+				},
+				f.factory,
+				&interruptingTraversalStorage{
+					Storage: f.storage,
+					mode:    testCase.mode,
+				},
+				scheduler,
+			)
+			require.NoError(t, err)
+			err = tasks.StartRunners(
+				ctx,
+				taskStorage,
+				taskRegistry,
+				metricsRegistry,
+				config,
+				"localhost",
+			)
+			require.NoError(t, err)
+
+			taskID, err := ScheduleScrubFilesystem(
+				headers.SetIncomingIdempotencyKey(ctx, t.Name()),
+				scheduler,
+				"zone",
+				filesystemID,
+			)
+			require.NoError(t, err)
+			_, err = scheduler.WaitTaskSync(ctx, taskID, 30*time.Second)
+			require.NoError(t, err)
+
+			taskState, err := taskStorage.GetTask(ctx, taskID)
+			require.NoError(t, err)
+			require.Equal(t, tasks_storage.TaskStatusFinished, taskState.Status)
+			require.Equal(t, testCase.expectedRetriableErrors, taskState.RetriableErrorCount)
+
+			var state scrubbing_protos.ScrubFilesystemTaskState
+			require.NoError(t, proto.Unmarshal(taskState.State, &state))
+			require.True(t, state.RootNodeScheduled)
+			require.Equal(
+				t,
+				testCase.expectedUnreliable,
+				state.FileSizeHistogramUnreliable,
+			)
+			require.Equal(t, testCase.expectedCounts, state.FileCountBySizeLog2)
+			require.Equal(t, testCase.expectedBytes, state.FileBytesBySizeLog2)
+		})
+	}
 }
