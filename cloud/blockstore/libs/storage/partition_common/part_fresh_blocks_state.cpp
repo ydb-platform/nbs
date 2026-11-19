@@ -289,6 +289,11 @@ TPartitionFreshBlobState::BuildSelectiveTrimPlan(
     }
     // Drop Keep for the live blobs after the last dead one: they are above
     // the barrier, which does not touch them.
+    Y_DEBUG_ABORT_UNLESS(
+        keepCount <= plan.Keep.size(),
+        "keepCount: %lu, Keep size: %lu",
+        keepCount,
+        plan.Keep.size());
     plan.Keep.resize(keepCount);
     Y_DEBUG_ABORT_UNLESS(
         plan.Keep.size() <= params.MaxFlags,

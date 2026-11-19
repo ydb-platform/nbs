@@ -47,12 +47,14 @@ bool TPartitionActor::ShouldStartSelectiveTrim(
     }
 
     const ui64 ordinaryTrimToCommitId = snapshot.OrdinaryTrimToCommitId;
-    const ui64 trimmableByteCount =
+    const ui64 trimmableByOrdinaryTrimByteCount =
         State->GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(
             ordinaryTrimToCommitId);
     const ui64 threshold = GetFreshDeadBlobByteCountTrimThreshold();
+    // A selective trim is worth doing only if it can trim at least threshold
+    // bytes more than an ordinary trim.
     if (State->GetDeadUntrimmedFreshBlobByteCount() <
-            trimmableByteCount + threshold ||
+            trimmableByOrdinaryTrimByteCount + threshold ||
         !State->IsSelectiveScanAllowed(
             State->GetTotalKilledFreshBlobByteCount()))
     {
