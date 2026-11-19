@@ -404,6 +404,100 @@ func TestConcurrentCleanupHolders(t *testing.T) {
 	require.ElementsMatch(t, append([]string{"delete"}, ids...), got)
 }
 
+func TestLegacyPlaceholderNotReopenedAfterCleanupEnabled(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+
+	// Prior delete without cleanup leaves a Deleted placeholder.
+	actual, err := storage.DeleteDisk(ctx, "disk", "first", "", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, actual)
+	require.Equal(t, diskStatusDeleted, readTrackedDisk(t, ctx, db, storage, "disk").status)
+
+	// Enabling DeleteIfNonExistent later must not reopen cleanup for that ID
+	// while the placeholder still exists.
+	actual, err = storage.DeleteDisk(ctx, "disk", "second", "second", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, actual)
+
+	state := readTrackedDisk(t, ctx, db, storage, "disk")
+	require.Equal(t, diskStatusDeleted, state.status)
+	require.False(t, state.tombstone)
+	require.Equal(t, "first", state.deleteTaskID)
+	require.Empty(t, state.cleanupTaskIDs)
+}
+
+func TestDeletedPlaceholderRetryWithoutCleanupReturnsNil(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+
+	actual, err := storage.DeleteDisk(ctx, "disk", "cancel", "", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, actual)
+
+	// create Cancel retry: same task, empty cleanupTaskID must stay a no-op
+	// and must not return empty-zone meta.
+	actual, err = storage.DeleteDisk(ctx, "disk", "cancel", "", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, actual)
+
+	state := readTrackedDisk(t, ctx, db, storage, "disk")
+	require.Equal(t, diskStatusDeleted, state.status)
+	require.False(t, state.tombstone)
+	require.Equal(t, "cancel", state.deleteTaskID)
+}
+
+func TestCompletedDiskDeleteRetryReturnsNil(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+
+	_, err := storage.CreateDisk(ctx, DiskMeta{
+		ID:            "disk",
+		ZoneID:        "zone",
+		CreateRequest: &wrappers.UInt64Value{Value: 1},
+		CreateTaskID:  "create",
+	})
+	require.NoError(t, err)
+
+	actual, err := storage.DeleteDisk(ctx, "disk", "delete", "delete", time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, actual)
+
+	err = storage.DiskDeleted(ctx, "disk", time.Now())
+	require.NoError(t, err)
+
+	// Same task retry after completion must not return meta again (would
+	// re-run external deletion).
+	actual, err = storage.DeleteDisk(ctx, "disk", "delete", "delete", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, actual)
+
+	state := readTrackedDisk(t, ctx, db, storage, "disk")
+	require.Equal(t, diskStatusDeleted, state.status)
+	require.False(t, state.tombstone)
+	require.Empty(t, state.cleanupTaskIDs)
+}
+
+func TestZoneLessTombstoneCompletesWithoutDiskDeleted(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+
+	actual, err := storage.DeleteDisk(ctx, "disk", "delete", "delete", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, actual)
+	require.True(t, diskIsTombstone(readTrackedDisk(t, ctx, db, storage, "disk")))
+
+	// Zone-less tracked path finishes via CompleteDiskCleanup together with
+	// the task commit, not via an early DiskDeleted.
+	err = completeDiskCleanup(ctx, db, storage, "disk", "delete", true)
+	require.NoError(t, err)
+
+	state := readTrackedDisk(t, ctx, db, storage, "disk")
+	require.Equal(t, diskStatusDeleted, state.status)
+	require.True(t, state.tombstone)
+	require.Equal(t, "[]", state.cleanupTaskIDs)
+}
+
 // Rows written before the explicit tombstone flag was added: a placeholder
 // and a completed deletion look the same. PrepareDiskCleanup must not treat
 // them as tombstones even for the task which wrote the row.

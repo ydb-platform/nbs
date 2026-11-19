@@ -540,13 +540,13 @@ func (s *storageYDB) deleteDisk(
 						return nil, err
 					}
 				}
-			case state.status == diskStatusDeleted && state.deleteTaskID != taskID:
-				// Foreign Deleted: skip cleanup.
 			case state.status == diskStatusDeleted &&
 				(state.tombstone || len(state.createTaskID) != 0):
-				// Completed tombstone or real disk: skip cleanup.
+				// Completed tombstone or real disk: skip cleanup
+			case state.status == diskStatusDeleted && len(state.createTaskID) == 0:
+				// Legacy missing-disk placeholder: already finalized. Always a no-op
 			default:
-				// Live deleting disk, or own legacy Deleted placeholder.
+				// Live deleting disk
 				err = tx.Commit(ctx)
 				if err != nil {
 					return nil, err
