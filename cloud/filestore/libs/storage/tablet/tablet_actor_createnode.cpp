@@ -1,6 +1,7 @@
 #include "tablet_actor.h"
 
 #include "helpers.h"
+#include "model/xattr_acl_helpers.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
@@ -89,6 +90,34 @@ void InitAttrs(NProto::TNode& attrs, const NProto::TCreateNodeRequest& request)
     }
 
     attrs.SetQuotaId(request.GetQuotaId());
+}
+
+void SetRequestMode(NProto::TCreateNodeRequest& request, const ui32 mode)
+{
+    switch (request.GetParamsCase()) {
+        case NProto::TCreateNodeRequest::kDirectory:
+            request.MutableDirectory()->SetMode(mode);
+            break;
+        case NProto::TCreateNodeRequest::kFile:
+            request.MutableFile()->SetMode(mode);
+            break;
+        case NProto::TCreateNodeRequest::kSocket:
+            request.MutableSocket()->SetMode(mode);
+            break;
+        case NProto::TCreateNodeRequest::kFifo:
+            request.MutableFifo()->SetMode(mode);
+            break;
+        case NProto::TCreateNodeRequest::kCharDevice:
+            request.MutableCharDevice()->SetMode(mode);
+            break;
+        case NProto::TCreateNodeRequest::kBlockDevice:
+            request.MutableBlockDevice()->SetMode(mode);
+            break;
+        case NProto::TCreateNodeRequest::kLink:
+        case NProto::TCreateNodeRequest::kSymLink:
+        case NProto::TCreateNodeRequest::PARAMS_NOT_SET:
+            break;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -533,7 +562,8 @@ void TIndexTabletActor::HandleCreateNode(
         std::move(profileLogRequest),
         parentNodeId,
         targetNodeId,
-        std::move(attrs));
+        std::move(attrs),
+        behaveAsShard);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -655,6 +685,49 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         if (!HasNodesLeft(quotaId)) {
             args.Error = ErrorNoSpaceLeft();
             return true;
+        }
+    }
+
+    if (!behaveAsShard &&
+        args.Request.GetGuestPosixAclEnabled() &&
+        !args.Request.HasSymLink() &&
+        args.TargetNodeId == InvalidNodeId)
+    {
+        TMaybe<INodeIndexTabletDatabase::TNodeAttr> parentDefaultAcl;
+        if (!ReadNodeAttr(
+                *db,
+                args.ParentNodeId,
+                args.CommitId,
+                PosixAclDefaultXAttr.data(),
+                parentDefaultAcl))
+        {
+            return false;
+        }
+        if (parentDefaultAcl) {
+            auto childAcl = GetChildXattrAcl(
+                parentDefaultAcl->Value,
+                args.Attrs.GetMode());
+            if (HasError(childAcl)) {
+                args.Error = childAcl.GetError();
+                return true;
+            }
+
+            if (childAcl.GetResult().Type == EXattrAclType::HeaderOnly) {
+                const ui32 mode =
+                    args.Attrs.GetMode() & ~args.Request.GetUmask();
+                args.Attrs.SetMode(mode);
+                SetRequestMode(args.Request, mode);
+            } else {
+                args.Request.SetParentDefaultAcl(parentDefaultAcl->Value);
+                args.Request.SetChildAccessAcl(childAcl.GetResult().Acl);
+                args.Attrs.SetMode(childAcl.GetResult().Mode);
+                SetRequestMode(args.Request, childAcl.GetResult().Mode);
+            }
+        } else {
+            const ui32 mode =
+                args.Attrs.GetMode() & ~args.Request.GetUmask();
+            args.Attrs.SetMode(mode);
+            SetRequestMode(args.Request, mode);
         }
     }
 
@@ -799,6 +872,28 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
                 args.CommitId,
                 InvalidCommitId
             };
+
+            if (args.Request.GetChildAccessAcl()) {
+                CreateNodeAttr(
+                    *db,
+                    args.FileSystemEvents,
+                    args.ChildNodeId,
+                    args.CommitId,
+                    PosixAclAccessXAttr.data(),
+                    args.Request.GetChildAccessAcl());
+            }
+
+            if (args.Request.GetParentDefaultAcl() &&
+                args.Attrs.GetType() == NProto::E_DIRECTORY_NODE)
+            {
+                CreateNodeAttr(
+                    *db,
+                    args.FileSystemEvents,
+                    args.ChildNodeId,
+                    args.CommitId,
+                    PosixAclDefaultXAttr.data(),
+                    args.Request.GetParentDefaultAcl());
+            }
         } else {
             // When the NodeRef references a node in a shard we need to lock it
             // to prevent the node from being unlinked and to avoid races with
