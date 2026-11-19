@@ -2,8 +2,34 @@ import time
 import json
 import subprocess as sp
 import optparse
+import re
 
 BLOCKSTORE_CLIENT = './blockstore-client.sh'
+NO_ENCRYPTION = 0
+ENCRYPTION_AES_XTS = 1
+
+MEDIA_KINDS = {
+    1: 'ssd',
+    2: 'hybrid',
+    3: 'hdd',
+    4: 'nonreplicated',
+    5: 'mirror2',
+    7: 'mirror3',
+    8: 'hdd_nonrepl',
+}
+
+MEDIA_KIND_IDS = {
+    **{name: kind for kind, name in MEDIA_KINDS.items()},
+    'ssd_nonrepl': 4,
+    'ssd_mirror2': 5,
+    'local': 6,
+    'ssd_local': 6,
+    'ssd_mirror3': 7,
+    'hdd_local': 9,
+    'ssd_direct_mirror3of5_group': 10,
+    'ssd-direct-mirror3of5-group': 10,
+}
+
 
 def parse_args():
     parser = optparse.OptionParser()
@@ -13,15 +39,13 @@ def parse_args():
     return parser.parse_args()
 
 
-def exec(cmd):
-    p = sp.Popen(cmd, stdout=sp.PIPE, stderr=sp.STDOUT)
-    stdout, stderr = p.communicate()
-    if p.returncode != 0:
-        s = 'Failed to run {} {} return code: {}'.format(
-            stdout, stderr, p.returncode)
-        raise Exception(s)
-
-    return stdout.decode('utf-8')
+def exec(cmd, request=None):
+    result = sp.run(
+        cmd, input=request, stdout=sp.PIPE, stderr=sp.STDOUT, encoding='utf-8')
+    if result.returncode != 0:
+        raise RuntimeError(
+            f'Command failed with exit code {result.returncode}: {result.stdout}')
+    return result.stdout
 
 
 def execAction(action, input):
@@ -42,22 +66,9 @@ def execAction(action, input):
 
 
 def translate_media_kind(media_kind):
-    if media_kind == 1:
-        return 'ssd'
-    elif media_kind == 2:
-        return 'hybrid'
-    elif media_kind == 3:
-        return 'hdd'
-    elif media_kind == 4:
-        return 'nonreplicated'
-    elif media_kind == 5:
-        return 'mirror2'
-    elif media_kind == 7:
-        return 'mirror3'
-    elif media_kind == 8:
-        return 'hdd_nonrepl'
-    else:
-        raise Exception('Unknown media kind {}'.format(media_kind))
+    if media_kind not in MEDIA_KINDS:
+        raise ValueError(f'Unknown media kind {media_kind}')
+    return MEDIA_KINDS[media_kind]
 
 
 def describe_disk(opts):
@@ -114,8 +125,56 @@ def make_copy_info(volume, opts):
     return copy
 
 
-def copy_disk(src, dst, opts):
-    tags = "source-disk-id={}".format(src["diskId"])
+def create_aes_xts_disk(dst, tags, apply, source_key_hash):
+    media_kind = dst["storageMediaKind"]
+    if media_kind not in MEDIA_KIND_IDS:
+        raise ValueError(f'Unknown media kind {media_kind}')
+
+    fields = {
+        "DiskId": dst["diskId"],
+        "StorageMediaKind": MEDIA_KIND_IDS[media_kind],
+        "BlocksCount": dst["blockCount"],
+        "BlockSize": dst["blockSize"],
+        "FolderId": dst["folderId"],
+        "CloudId": dst["cloudId"],
+        "TabletVersion": 1,
+        "TagsStr": tags,
+    }
+    if dst["placementGroupId"] != '':
+        fields["PlacementGroupId"] = dst["placementGroupId"]
+    if dst["placementPartitionIndex"] != '':
+        fields["PlacementPartitionIndex"] = int(dst["placementPartitionIndex"])
+
+    # The first encrypted mount supplies the key hash. The CLI encryption
+    # options require a key or hash, so send the mode through the proto input.
+    request = ''.join(
+        f'{field}: {json.dumps(value, ensure_ascii=False)}\n'
+        for field, value in fields.items()
+    ) + 'EncryptionSpec { Mode: ENCRYPTION_AES_XTS }\n'
+
+    cmd = [BLOCKSTORE_CLIENT, 'CreateVolume', '--proto', '--verbose', 'error']
+    print(cmd)
+    print(request, end='')
+    if not apply:
+        return
+
+    response = exec(cmd, request)
+    # Proto mode reports RPC errors in the response despite exiting zero.
+    error = re.search(r'^Error\s*\{\s*Code:\s*(\d+)', response, re.MULTILINE)
+    if error and int(error.group(1)) & (1 << 31):
+        raise RuntimeError(f'CreateVolume failed for {dst["diskId"]}: {response}')
+
+    # CreateVolume may reuse an existing disk without comparing encryption.
+    actual = execAction('DescribeVolume', {
+        "DiskId": dst["diskId"], "ExactDiskIdMatch": True,
+    })["VolumeConfig"].get("EncryptionDesc", {})
+    if actual.get("Mode") != ENCRYPTION_AES_XTS:
+        raise RuntimeError(f'Destination disk {dst["diskId"]} must use AES-XTS')
+    if actual.get("KeyHash") and actual["KeyHash"] != source_key_hash:
+        raise RuntimeError(f'Destination disk {dst["diskId"]} has a different key hash')
+
+
+def create_unencrypted_disk(dst, tags, apply):
     create_cmd = [
         BLOCKSTORE_CLIENT,
         'CreateVolume',
@@ -133,8 +192,19 @@ def copy_disk(src, dst, opts):
         create_cmd.append('--placement-partition-index={}'.format(dst["placementPartitionIndex"]))
 
     print(create_cmd)
-    if opts.apply:
+    if apply:
         exec(create_cmd)
+
+
+def copy_disk(src, dst, opts, source_encryption):
+    tags = "source-disk-id={}".format(src["diskId"])
+    mode = source_encryption.get("Mode", NO_ENCRYPTION)
+    if mode == ENCRYPTION_AES_XTS:
+        create_aes_xts_disk(dst, tags, opts.apply, source_encryption.get("KeyHash"))
+    elif mode == NO_ENCRYPTION:
+        create_unencrypted_disk(dst, tags, opts.apply)
+    else:
+        raise ValueError(f'Copying disks with encryption mode {mode} is unsupported')
 
     link_cmd = [
         BLOCKSTORE_CLIENT,
@@ -167,7 +237,8 @@ def main(opts):
     dst = make_copy_info(src, opts)
     print(src)
     print(dst)
-    copy_disk(src, dst, opts)
+    source_encryption = described_disk["VolumeConfig"].get("EncryptionDesc", {})
+    copy_disk(src, dst, opts, source_encryption)
     get_link_status(src, dst)
 
 
