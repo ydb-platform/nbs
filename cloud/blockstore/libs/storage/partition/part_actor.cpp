@@ -74,6 +74,7 @@ TPartitionActor::TPartitionActor(
               PartitionConfig.GetCloudId(),
               PartitionConfig.GetFolderId(),
               PartitionConfig.GetDiskId()))
+    , FlushThresholds(BuildFlushThresholds(*Config, PartitionConfig))
     , VolumeLabels(MakeVolumeLabels(
           PartitionConfig.GetDiskId(),
           PartitionConfig.GetCloudId(),

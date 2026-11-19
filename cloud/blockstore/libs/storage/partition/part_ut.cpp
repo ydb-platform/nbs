@@ -2570,6 +2570,108 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldScaleFlushThresholdByPartitionSize)
+    {
+        struct TTestCase
+        {
+            ui32 FlushThresholdPerAllocationUnit = 0;
+            ui32 MaxFlushThreshold = 0;
+            ui64 PartitionByteCount = 0;
+            ui32 ExpectedFlushThresholdBlockCount = 0;
+        };
+
+        // Allocation unit is 1 GB, the fixed flush threshold is 40 KB.
+        const TTestCase testCases[] = {
+            {.FlushThresholdPerAllocationUnit = 0,
+             .MaxFlushThreshold = 16_KB,
+             .PartitionByteCount = 4_GB,
+             .ExpectedFlushThresholdBlockCount = 10},
+            {.FlushThresholdPerAllocationUnit = 32_KB,
+             .MaxFlushThreshold = 0,
+             .PartitionByteCount = 4_GB,
+             .ExpectedFlushThresholdBlockCount = 10},
+            {.FlushThresholdPerAllocationUnit = 32_KB,
+             .MaxFlushThreshold = 1_MB,
+             .PartitionByteCount = 512_MB,
+             .ExpectedFlushThresholdBlockCount = 8},
+            {.FlushThresholdPerAllocationUnit = 32_KB,
+             .MaxFlushThreshold = 1_MB,
+             .PartitionByteCount = 1536_MB,
+             .ExpectedFlushThresholdBlockCount = 12},
+            {.FlushThresholdPerAllocationUnit = 32_KB,
+             .MaxFlushThreshold = 64_KB,
+             .PartitionByteCount = 4_GB,
+             .ExpectedFlushThresholdBlockCount = 16},
+        };
+
+        for (const auto mediaKind:
+             {NCloud::NProto::STORAGE_MEDIA_SSD,
+              NCloud::NProto::STORAGE_MEDIA_HDD,
+              NCloud::NProto::STORAGE_MEDIA_HYBRID})
+        {
+            for (const auto& testCase: testCases) {
+                const bool isSSD =
+                    mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
+                // The other media kind's settings would flush on every write.
+                const auto pick = [isSSD](ui32 ssdValue, ui32 hddValue)
+                {
+                    return isSSD ? ssdValue : hddValue;
+                };
+                const ui32 perUnit = testCase.FlushThresholdPerAllocationUnit;
+                const ui32 maxThreshold = testCase.MaxFlushThreshold;
+
+                auto config = DefaultConfig();
+                config.SetWriteBlobThreshold(4_MB);
+                config.SetWriteBlobThresholdSSD(4_MB);
+                config.SetAllocationUnitHDD(1);
+                config.SetAllocationUnitSSD(1);
+                config.SetFlushThresholdSSD(pick(40_KB, 4_KB));
+                config.SetFlushThresholdHDD(pick(4_KB, 40_KB));
+                config.SetFlushThresholdPerAllocationUnitSSD(
+                    pick(perUnit, 4_KB));
+                config.SetFlushThresholdPerAllocationUnitHDD(
+                    pick(4_KB, perUnit));
+                config.SetMaxFlushThresholdSSD(pick(maxThreshold, 4_KB));
+                config.SetMaxFlushThresholdHDD(pick(4_KB, maxThreshold));
+
+                const TString caseDescription =
+                    TStringBuilder()
+                    << NCloud::NProto::EStorageMediaKind_Name(mediaKind)
+                    << ", per unit: " << perUnit << ", max: " << maxThreshold
+                    << ", partition bytes: " << testCase.PartitionByteCount;
+
+                auto runtime = PrepareTestActorRuntime(
+                    config,
+                    testCase.PartitionByteCount / DefaultBlockSize,
+                    {},
+                    {.MediaKind = mediaKind});
+                TPartitionClient partition(*runtime);
+                partition.WaitReady();
+
+                const ui32 thresholdBlockCount =
+                    testCase.ExpectedFlushThresholdBlockCount;
+                partition.WriteBlocks(
+                    TBlockRange32::WithLength(0, thresholdBlockCount - 1));
+                runtime->DispatchEvents({}, TDuration::Seconds(1));
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    thresholdBlockCount - 1,
+                    partition.StatPartition()
+                        ->Record.GetStats()
+                        .GetFreshBlocksCount(),
+                    caseDescription);
+
+                partition.WriteBlocks(thresholdBlockCount - 1, 1);
+                runtime->DispatchEvents({}, TDuration::Seconds(1));
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    0,
+                    partition.StatPartition()
+                        ->Record.GetStats()
+                        .GetFreshBlocksCount(),
+                    caseDescription);
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldAutomaticallyFlushZerosFromFreshChannelBeforeHardLimit)
     {
         for (const auto mediaKind:

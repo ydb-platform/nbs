@@ -247,6 +247,10 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(WriteMixedBlobThresholdHDD,    ui32,      0                           )\
     xxx(FlushThresholdHDD,             ui32,      4_MB                        )\
     xxx(FlushThresholdSSD,             ui32,      4_MB                        )\
+    xxx(FlushThresholdPerAllocationUnitHDD,    ui32,      0                   )\
+    xxx(FlushThresholdPerAllocationUnitSSD,    ui32,      0                   )\
+    xxx(MaxFlushThresholdHDD,                  ui32,      0                   )\
+    xxx(MaxFlushThresholdSSD,                  ui32,      0                   )\
     xxx(FreshBlobCountFlushThresholdHDD,       ui32,      3200                )\
     xxx(FreshBlobCountFlushThresholdSSD,       ui32,      3200                )\
     xxx(FreshBlobByteCountFlushThresholdHDD,   ui32,      16_MB               )\
@@ -1572,6 +1576,31 @@ ui64 GetAllocationUnit(
     Y_ABORT_UNLESS(unit != 0); // TODO: this check should be moved to nbs startup
 
     return unit;
+}
+
+ui32 GetFlushThreshold(
+    const TStorageConfig& config,
+    NCloud::NProto::EStorageMediaKind mediaKind,
+    ui64 partitionByteCount)
+{
+    const bool isSSD = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
+    const ui32 thresholdPerUnit =
+        isSSD ? config.GetFlushThresholdPerAllocationUnitSSD()
+              : config.GetFlushThresholdPerAllocationUnitHDD();
+    const ui32 maxThreshold = isSSD ? config.GetMaxFlushThresholdSSD()
+                                    : config.GetMaxFlushThresholdHDD();
+    if (!thresholdPerUnit || !maxThreshold) {
+        return isSSD ? config.GetFlushThresholdSSD()
+                     : config.GetFlushThresholdHDD();
+    }
+
+    const ui64 unit = GetAllocationUnit(config, mediaKind);
+    const double unitCount =
+        static_cast<double>(Max(partitionByteCount, unit)) / unit;
+    const double scaledThreshold = unitCount * thresholdPerUnit;
+
+    return static_cast<ui32>(
+        Min(scaledThreshold, static_cast<double>(maxThreshold)));
 }
 
 TStorageConfig::TValueByName TStorageConfig::GetValueByName(
