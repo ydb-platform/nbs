@@ -34,6 +34,7 @@ public:
     {
         ui64 LastIndexedLsn = 0;
         TVector<TPageMapping> Mappings;
+        TVector<TPageRangeRef> MissingRanges;
     };
 
     void InitLastIndexedLsn(ui64 lastIndexedLsn);
@@ -50,8 +51,9 @@ public:
 
     ui64 GetLastIndexedLsn() const;
 
-    // Returns the mappings for |ranges| written after |afterLsn|, clipped to
-    // the requested ranges, and the LastIndexedLsn they were read at.
+    // Returns the mappings for |ranges| written after |afterLsn|, the parts of
+    // |ranges| that have no such mapping, and the LastIndexedLsn they were
+    // read at.
     TLookupResult Lookup(
         const TVector<TPageRangeRef>& ranges,
         ui64 afterLsn) const;

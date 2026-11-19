@@ -93,6 +93,9 @@ using TCritEventParams =
     xxx(DiskRegistryUnexpectedAffectedDisks)                                   \
     xxx(ReadBlockCountMismatch)                                                \
     xxx(InvalidReadBlobOffsets)                                                \
+    xxx(ContractViolationReadBlobError)                                        \
+    xxx(ContractViolationWriteBlobError)                                       \
+    xxx(ContractViolationPatchBlobError)                                       \
     xxx(CancelRoutineIsNotSet)                                                 \
     xxx(FieldDescriptorNotFound)                                               \
     xxx(DiskRegistryInsertToPendingCleanupFailed)                              \

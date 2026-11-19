@@ -12,11 +12,18 @@
 
 #include <benchmark/benchmark.h>
 
+#include <atomic>
+#include <condition_variable>
+#include <functional>
+#include <mutex>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 namespace {
 
 using namespace NFileStore::NProto;
+
+using TError = NCloud::NProto::TError;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -28,49 +35,157 @@ constexpr ui32 RequestSize = 4_KB;
 ////////////////////////////////////////////////////////////////////////////////
 
 //
-// The shard rejects concurrent ops which touch the same pages with
-// E_REJECTED and expects the caller to retry - so the driver retries,
-// counting the rejects. A shard implementation may be a happy-path
-// prototype: under page conflicts a rejected create/unlink may leave
-// the name in either state, so the caller-provided "already applied"
-// code (E_FS_EXIST for creates, E_FS_NOENT for unlinks) is treated as
-// success. The conflict rate stays visible through the rejects counter.
+// Keeps a fixed number of requests in flight: every slot issues its next
+// request as soon as its previous one completes. The shard rejects
+// concurrent ops which touch the same pages with E_REJECTED and expects the
+// caller to retry - a slot retries the rejected request, counting the
+// rejects.
 //
 
-template <typename TResponse, typename TRequest, typename TIssue>
-void RunBatchWithRetries(
-    TVector<TRequest> requests,
-    TIssue issue,
-    ui32 alreadyAppliedCode,
-    ui64* rejectCount)
+class TInflightDriver
 {
-    while (!requests.empty()) {
-        TVector<NThreading::TFuture<TResponse>> futures;
-        futures.reserve(requests.size());
-        for (const auto& request: requests) {
-            futures.push_back(issue(request));
+public:
+    // Issues the request number step of the slot and returns its error.
+    using TIssue =
+        std::function<NThreading::TFuture<TError>(ui32 slot, ui64 step)>;
+
+private:
+    const TIssue Issue;
+    TVector<ui64> Steps;
+
+    std::atomic<bool> Stopping = false;
+    std::atomic<ui32> ActiveSlots = 0;
+    std::atomic<ui64> Completed = 0;
+    std::atomic<ui64> WaitTarget = 0;
+    std::atomic<ui64> Rejects = 0;
+
+    std::mutex Lock;
+    std::condition_variable Cond;
+
+public:
+    TInflightDriver(ui32 parallelism, TIssue issue)
+        : Issue(std::move(issue))
+        , Steps(parallelism)
+    {}
+
+    void Start()
+    {
+        ActiveSlots = static_cast<ui32>(Steps.size());
+        for (ui32 slot = 0; slot < Steps.size(); ++slot) {
+            Pump(slot);
         }
-
-        TVector<TRequest> rejected;
-        for (ui32 i = 0; i < futures.size(); ++i) {
-            const ui32 code = futures[i].GetValueSync().GetError().GetCode();
-            if (code == E_REJECTED) {
-                rejected.push_back(std::move(requests[i]));
-                ++*rejectCount;
-                continue;
-            }
-
-            if (alreadyAppliedCode && code == alreadyAppliedCode) {
-                continue;
-            }
-
-            Y_ENSURE(
-                code == S_OK,
-                FormatError(futures[i].GetValueSync().GetError()));
-        }
-
-        requests = std::move(rejected);
     }
+
+    // Waits until count requests have completed since Start.
+    void WaitCompleted(ui64 count)
+    {
+        WaitTarget = count;
+        std::unique_lock g(Lock);
+        Cond.wait(g, [&] { return Completed >= count; });
+    }
+
+    // Stops issuing the requests and waits for the ones in flight.
+    void Stop()
+    {
+        Stopping = true;
+        std::unique_lock g(Lock);
+        Cond.wait(g, [&] { return ActiveSlots == 0; });
+    }
+
+    ui64 GetRejectCount() const
+    {
+        return Rejects;
+    }
+
+private:
+    void Pump(ui32 slot)
+    {
+        //
+        // The requests which complete immediately are handled in this loop,
+        // the others continue it from their completion callbacks.
+        //
+
+        while (!Stopping) {
+            auto future = Issue(slot, Steps[slot]);
+            if (!future.HasValue()) {
+                future.Subscribe(
+                    [this, slot](const auto& f)
+                    {
+                        Complete(slot, f.GetValue());
+                        Pump(slot);
+                    });
+                return;
+            }
+
+            Complete(slot, future.GetValue());
+        }
+
+        std::lock_guard g(Lock);
+        --ActiveSlots;
+        Cond.notify_all();
+    }
+
+    void Complete(ui32 slot, const TError& error)
+    {
+        if (error.GetCode() == E_REJECTED) {
+            ++Rejects;
+            return;
+        }
+
+        Y_ABORT_UNLESS(!HasError(error), "%s", FormatError(error).c_str());
+        ++Steps[slot];
+
+        if (++Completed >= WaitTarget) {
+            std::lock_guard g(Lock);
+            Cond.notify_all();
+        }
+    }
+};
+
+//
+// Converts a response to its error. A shard implementation may be a
+// happy-path prototype: under page conflicts a rejected create/unlink may
+// leave the name in either state, so the "already applied" code (E_FS_EXIST
+// for creates, E_FS_NOENT for unlinks) is treated as success. The conflict
+// rate stays visible through the rejects counter.
+//
+
+template <typename TResponse>
+NThreading::TFuture<TError> ToError(
+    NThreading::TFuture<TResponse> future,
+    ui32 alreadyAppliedCode)
+{
+    return future.Apply(
+        [alreadyAppliedCode](const auto& f)
+        {
+            const auto& error = f.GetValue().GetError();
+            if (alreadyAppliedCode && error.GetCode() == alreadyAppliedCode) {
+                return TError();
+            }
+            return error;
+        });
+}
+
+//
+// Runs the benchmark loop: every iteration waits for opsPerIteration more
+// requests to complete while the driver keeps the requests in flight.
+//
+
+void RunInflight(
+    benchmark::State& state,
+    TInflightDriver& driver,
+    ui64 opsPerIteration)
+{
+    ui64 target = 0;
+    for (auto _: state) {
+        if (!target) {
+            driver.Start();
+        }
+        target += opsPerIteration;
+        driver.WaitCompleted(target);
+    }
+
+    driver.Stop();
 }
 
 //
@@ -95,56 +210,49 @@ IFileSystemShard& BuildShard(const TShardFactory& factory)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Scenario 1: create/unlink node pairs, `parallelism` requests in
-// flight at every step.
+// Scenario 1: every slot creates its node and unlinks it, over and over,
+// `parallelism` requests in flight all the time.
 
 void CreateUnlinkNodeBench(benchmark::State& state, const TShardFactory& factory)
 {
     IFileSystemShard& shard = BuildShard(factory);
     const ui32 parallelism = static_cast<ui32>(state.range(0));
 
-    ui64 rejectCount = 0;
-    for (auto _: state) {
-        for (ui32 cycle = 0; cycle < CyclesPerIteration; ++cycle) {
-            TVector<TCreateNodeRequest> creates(parallelism);
-            for (ui32 slot = 0; slot < parallelism; ++slot) {
-                creates[slot].SetNodeId(RootNodeId);
-                creates[slot].SetName("tmp-" + ToString(slot));
-                creates[slot].MutableFile()->SetMode(0644);
+    TInflightDriver driver(
+        parallelism,
+        [&](ui32 slot, ui64 step)
+        {
+            const TString name = "tmp-" + ToString(slot);
+            if (step % 2 == 0) {
+                TCreateNodeRequest request;
+                request.SetNodeId(RootNodeId);
+                request.SetName(name);
+                request.MutableFile()->SetMode(0644);
+                return ToError(
+                    shard.CreateNode(std::move(request)),
+                    NCloud::E_FS_EXIST);
             }
-            RunBatchWithRetries<TCreateNodeResponse>(
-                std::move(creates),
-                [&](const TCreateNodeRequest& request) {
-                    return shard.CreateNode(request);
-                },
-                NCloud::E_FS_EXIST,
-                &rejectCount);
 
-            TVector<TUnlinkNodeRequest> unlinks(parallelism);
-            for (ui32 slot = 0; slot < parallelism; ++slot) {
-                unlinks[slot].SetNodeId(RootNodeId);
-                unlinks[slot].SetName("tmp-" + ToString(slot));
-            }
-            RunBatchWithRetries<TUnlinkNodeResponse>(
-                std::move(unlinks),
-                [&](const TUnlinkNodeRequest& request) {
-                    return shard.UnlinkNode(request);
-                },
-                NCloud::E_FS_NOENT,
-                &rejectCount);
-        }
-    }
+            TUnlinkNodeRequest request;
+            request.SetNodeId(RootNodeId);
+            request.SetName(name);
+            return ToError(
+                shard.UnlinkNode(std::move(request)),
+                NCloud::E_FS_NOENT);
+        });
 
-    state.SetItemsProcessed(
-        state.iterations() * CyclesPerIteration * parallelism);
+    const ui64 opsPerIteration = CyclesPerIteration * parallelism * 2;
+    RunInflight(state, driver, opsPerIteration);
+
+    state.SetItemsProcessed(state.iterations() * opsPerIteration);
     state.counters["rejects"] = benchmark::Counter(
-        rejectCount,
+        driver.GetRejectCount(),
         benchmark::Counter::kIsRate);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Scenario 2: 4K writes and reads over a set of precreated nodes,
-// `parallelism` requests in flight at every step.
+// Scenario 2: 4K writes and reads over a set of precreated nodes, every slot
+// alternates writes and reads, `parallelism` requests in flight all the time.
 
 void WriteReadData4KBench(benchmark::State& state, const TShardFactory& factory)
 {
@@ -175,7 +283,6 @@ void WriteReadData4KBench(benchmark::State& state, const TShardFactory& factory)
         handles.push_back(response.GetHandle());
     }
 
-    const TString data(RequestSize, 'x');
     for (const ui64 handle: handles) {
         TWriteDataRequest request;
         request.SetHandle(handle);
@@ -188,62 +295,46 @@ void WriteReadData4KBench(benchmark::State& state, const TShardFactory& factory)
             FormatError(response.GetError()));
     }
 
-    ui64 counter = 0;
-    auto pickTarget = [&](ui64* handle, ui64* offset) {
-        *handle = handles[counter % PrecreatedNodeCount];
-        *offset =
-            (counter / PrecreatedNodeCount) % PagesPerNode * RequestSize;
-        ++counter;
-    };
+    const TString data(RequestSize, 'x');
+    std::atomic<ui64> counter = 0;
+    TInflightDriver driver(
+        parallelism,
+        [&](ui32 slot, ui64 step)
+        {
+            Y_UNUSED(slot);
 
-    ui64 rejectCount = 0;
-    for (auto _: state) {
-        for (ui32 cycle = 0; cycle < CyclesPerIteration; ++cycle) {
-            TVector<TWriteDataRequest> writes(parallelism);
-            for (ui32 slot = 0; slot < parallelism; ++slot) {
-                ui64 handle = 0;
-                ui64 offset = 0;
-                pickTarget(&handle, &offset);
+            const ui64 target = counter++;
+            const ui64 handle = handles[target % PrecreatedNodeCount];
+            const ui64 offset =
+                (target / PrecreatedNodeCount) % PagesPerNode * RequestSize;
 
-                writes[slot].SetHandle(handle);
-                writes[slot].SetOffset(offset);
-                *writes[slot].MutableBuffer() = data;
+            if (step % 2 == 0) {
+                TWriteDataRequest request;
+                request.SetHandle(handle);
+                request.SetOffset(offset);
+                *request.MutableBuffer() = data;
+                return ToError(
+                    shard.WriteData(std::move(request)),
+                    0U /* alreadyAppliedCode */);
             }
-            RunBatchWithRetries<TWriteDataResponse>(
-                std::move(writes),
-                [&](const TWriteDataRequest& request) {
-                    return shard.WriteData(request);
-                },
-                0U /* alreadyAppliedCode */,
-                &rejectCount);
 
-            TVector<TReadDataRequest> reads(parallelism);
-            for (ui32 slot = 0; slot < parallelism; ++slot) {
-                ui64 handle = 0;
-                ui64 offset = 0;
-                pickTarget(&handle, &offset);
+            TReadDataRequest request;
+            request.SetHandle(handle);
+            request.SetOffset(offset);
+            request.SetLength(RequestSize);
+            return ToError(
+                shard.ReadData(std::move(request)),
+                0U /* alreadyAppliedCode */);
+        });
 
-                reads[slot].SetHandle(handle);
-                reads[slot].SetOffset(offset);
-                reads[slot].SetLength(RequestSize);
-            }
-            RunBatchWithRetries<TReadDataResponse>(
-                std::move(reads),
-                [&](const TReadDataRequest& request) {
-                    return shard.ReadData(request);
-                },
-                0U /* alreadyAppliedCode */,
-                &rejectCount);
-        }
-    }
+    const ui64 opsPerIteration = CyclesPerIteration * parallelism * 2;
+    RunInflight(state, driver, opsPerIteration);
 
-    state.SetItemsProcessed(
-        state.iterations() * CyclesPerIteration * parallelism * 2);
+    state.SetItemsProcessed(state.iterations() * opsPerIteration);
     state.SetBytesProcessed(
-        state.iterations() * CyclesPerIteration * parallelism * 2 *
-        RequestSize);
+        state.iterations() * opsPerIteration * RequestSize);
     state.counters["rejects"] = benchmark::Counter(
-        rejectCount,
+        driver.GetRejectCount(),
         benchmark::Counter::kIsRate);
 }
 
@@ -254,9 +345,9 @@ void WriteReadData4KBench(benchmark::State& state, const TShardFactory& factory)
 void RegisterShardBenchmarks(TString name, TShardFactory factory)
 {
     //
-    // The requests complete on the shard implementation's own threads,
-    // not on the benchmark thread, so the meaningful clock is wall
-    // time.
+    // The requests are executed on the shard implementation's own threads,
+    // not on the benchmark thread: the time is measured as wall time and the
+    // CPU time - as the CPU time of the whole process.
     //
 
     benchmark::RegisterBenchmark(
@@ -266,6 +357,7 @@ void RegisterShardBenchmarks(TString name, TShardFactory factory)
         })
         ->Arg(1)->Arg(8)->Arg(32)->Arg(256)
         ->Unit(benchmark::kMicrosecond)
+        ->MeasureProcessCPUTime()
         ->UseRealTime();
 
     benchmark::RegisterBenchmark(
@@ -275,6 +367,7 @@ void RegisterShardBenchmarks(TString name, TShardFactory factory)
         })
         ->Arg(1)->Arg(8)->Arg(32)->Arg(256)
         ->Unit(benchmark::kMicrosecond)
+        ->MeasureProcessCPUTime()
         ->UseRealTime();
 }
 

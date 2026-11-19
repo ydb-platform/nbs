@@ -3,6 +3,7 @@ UNITTEST_FOR(cloud/storage/core/libs/icv2/tcp)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
+    address_resolver_ut.cpp
     connector_ut.cpp
     listener_ut.cpp
     socket_worker_ut.cpp

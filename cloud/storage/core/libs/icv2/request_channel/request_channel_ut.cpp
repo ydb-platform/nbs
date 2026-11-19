@@ -913,8 +913,8 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
             UNIT_ASSERT(!second.HasValue());
             UNIT_ASSERT(!fixture.Channel->WhenClosed().HasValue());
             UNIT_ASSERT_VALUES_EQUAL(
-                WaitResponse(fixture.Request()).GetError().GetCode(),
-                E_INVALID_STATE);
+                E_REJECTED,
+                WaitResponse(fixture.Request()).GetError().GetCode());
             queue->RunAll();
             UNIT_ASSERT_VALUES_EQUAL(
                 WaitResponse(first).GetError().GetCode(),
@@ -962,7 +962,7 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         }
     }
 
-    Y_UNIT_TEST(ClosedChannelIsNotReportedAsRequestLimit)
+    Y_UNIT_TEST(ClosedChannelRejectsUnsentRequests)
     {
         auto queue = std::make_shared<TManualTaskQueue>();
         auto config = Config;
@@ -984,8 +984,8 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         fixture.Channel->Close();
         UNIT_ASSERT(!pending.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(
-            WaitResponse(fixture.Request()).GetError().GetCode(),
-            E_INVALID_STATE);
+            E_REJECTED,
+            WaitResponse(fixture.Request()).GetError().GetCode());
         UNIT_ASSERT(fixture.Transport->Connection->TakeSent().empty());
 
         queue->RunAll();
@@ -994,8 +994,8 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
             E_REJECTED);
         UNIT_ASSERT(fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
         UNIT_ASSERT_VALUES_EQUAL(
-            WaitResponse(fixture.Request()).GetError().GetCode(),
-            E_INVALID_STATE);
+            E_REJECTED,
+            WaitResponse(fixture.Request()).GetError().GetCode());
     }
 
     Y_UNIT_TEST(RequestAdmissionLimitIsSharedAcrossEventTypes)
@@ -1484,8 +1484,8 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
             UNIT_ASSERT(
                 fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
             UNIT_ASSERT_VALUES_EQUAL(
-                WaitResponse(fixture.Request()).GetError().GetCode(),
-                E_INVALID_STATE);
+                E_REJECTED,
+                WaitResponse(fixture.Request()).GetError().GetCode());
         }
     }
 
@@ -1702,7 +1702,7 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         release.SetValue();
         first.get();
         fixture.Transport->Connection->BeforeClose = {};
-        UNIT_ASSERT_VALUES_EQUAL(replyError.GetCode(), E_INVALID_STATE);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, replyError.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             WaitResponse(response).GetError().GetCode(),
             E_REJECTED);
@@ -1729,8 +1729,8 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         fixture.Channel.reset();
         UNIT_ASSERT(weak.expired());
         UNIT_ASSERT_VALUES_EQUAL(
-            incoming->Reply(MakeReply("closed")).GetCode(),
-            E_INVALID_STATE);
+            E_REJECTED,
+            incoming->Reply(MakeReply("closed")).GetCode());
         incoming->CloseChannel();
     }
 
@@ -1794,12 +1794,9 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
             UNIT_ASSERT(incoming);
 
             fixture.Transport->Connection->SendResult = sendResult;
-            const ui32 expected = sendResult == ESendResult::QueueFull
-                                      ? E_REJECTED
-                                      : E_INVALID_STATE;
             UNIT_ASSERT_VALUES_EQUAL(
-                incoming->Reply(MakeReply("reply")).GetCode(),
-                expected);
+                E_REJECTED,
+                incoming->Reply(MakeReply("reply")).GetCode());
             UNIT_ASSERT(fixture.Transport->Connection->TakeSent().empty());
         }
     }
@@ -2076,8 +2073,8 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
             fixture.Channel->WhenClosed().GetValue().GetCode(),
             E_TRANSPORT_ERROR);
         UNIT_ASSERT_VALUES_EQUAL(
-            WaitResponse(fixture.Request()).GetError().GetCode(),
-            E_INVALID_STATE);
+            E_REJECTED,
+            WaitResponse(fixture.Request()).GetError().GetCode());
     }
 
     Y_UNIT_TEST(SendExceptionDoesNotOverwriteReceivedResponse)
@@ -2268,32 +2265,40 @@ Y_UNIT_TEST_SUITE(TIcV2RequestChannelTest)
         }
     }
 
-    Y_UNIT_TEST(ReportsQueueLimitAndRecovers)
+    Y_UNIT_TEST(ReportsSendRefusalsAndRecovers)
     {
-        TFixture fixture;
-        fixture.Channel->Activate();
-        fixture.Transport->Connection->SendResult = ESendResult::QueueFull;
-        auto rejected = WaitResponse(fixture.Request());
-        UNIT_ASSERT_VALUES_EQUAL(rejected.GetError().GetCode(), E_REJECTED);
-        UNIT_ASSERT_STRING_CONTAINS(
-            rejected.GetError().GetMessage(),
-            "queue limit");
-        UNIT_ASSERT(fixture.Transport->Connection->TakeSent().empty());
-        fixture.Transport->Connection->SendResult = ESendResult::Accepted;
-        auto accepted = fixture.Request();
-        auto sent = fixture.Transport->Connection->TakeSent();
-        UNIT_ASSERT_VALUES_EQUAL(sent.size(), 1);
-        fixture.Transport->Connection->Receive(
-            MakeResponse(sent[0]->Cookie, "accepted"));
-        UNIT_ASSERT_VALUES_EQUAL(GetPayload(accepted), "accepted");
+        for (auto sendResult: {ESendResult::QueueFull, ESendResult::NotActive})
+        {
+            auto config = Config;
+            config.MaxPendingRequests = 1;
+            TFixture fixture(
+                [](IIncomingRequestPtr request) { Y_UNUSED(request); },
+                config);
+            UNIT_ASSERT(fixture.Channel->Activate());
+            fixture.Transport->Connection->SendResult = sendResult;
+            auto rejected = WaitResponse(fixture.Request());
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, rejected.GetError().GetCode());
+            UNIT_ASSERT_STRING_CONTAINS(
+                rejected.GetError().GetMessage(),
+                sendResult == ESendResult::QueueFull ? "queue limit"
+                                                     : "not active");
+            UNIT_ASSERT(fixture.Transport->Connection->TakeSent().empty());
+            fixture.Transport->Connection->SendResult = ESendResult::Accepted;
+            auto accepted = fixture.Request();
+            auto sent = fixture.Transport->Connection->TakeSent();
+            UNIT_ASSERT_VALUES_EQUAL(1, sent.size());
+            fixture.Transport->Connection->Receive(
+                MakeResponse(sent[0]->Cookie, "accepted"));
+            UNIT_ASSERT_VALUES_EQUAL("accepted", GetPayload(accepted));
+        }
     }
 
     Y_UNIT_TEST(RejectsInvalidEventsAndInactiveSend)
     {
         TFixture fixture;
         UNIT_ASSERT_VALUES_EQUAL(
-            WaitResponse(fixture.Request()).GetError().GetCode(),
-            E_INVALID_STATE);
+            E_REJECTED,
+            WaitResponse(fixture.Request()).GetError().GetCode());
         fixture.Channel->Activate();
         UNIT_ASSERT_VALUES_EQUAL(
             WaitResponse(fixture.Channel->Request({}, TDuration::Seconds(5)))

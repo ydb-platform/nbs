@@ -356,6 +356,14 @@ void TIndexTabletState::SetCompressNodeRef(
     db.WriteFileSystem(FileSystem);
 }
 
+void TIndexTabletState::SetGuestPosixAclEnabled(
+    IIndexTabletDatabase& db,
+    bool guestPosixAclEnabled)
+{
+    FileSystem.SetGuestPosixAclEnabled(guestPosixAclEnabled);
+    db.WriteFileSystem(FileSystem);
+}
+
 const NProto::TFileStorePerformanceProfile& TIndexTabletState::GetPerformanceProfile() const
 {
     if (FileSystem.HasPerformanceProfile() &&

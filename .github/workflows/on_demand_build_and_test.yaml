@@ -180,7 +180,7 @@ env:
 
 jobs:
   provide-runner:
-    name: Start self-hosted runner (${{ inputs.build_preset }})
+    name: Start self-hosted runner [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}]
     timeout-minutes: 60
     if: always()
     runs-on: ubuntu-latest
@@ -272,7 +272,7 @@ jobs:
     secrets: inherit
 
   sleep-if-needed:
-    name: Sleep ${{ needs.build-and-test.outputs.sleep_after_tests || '0' }}s if build failed
+    name: Sleep ${{ needs.build-and-test.outputs.sleep_after_tests || '0' }}s if build failed [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}]
     if: ${{ !cancelled() }}
     needs:
       - provide-runner # required to get output from the start-runner job
@@ -288,7 +288,7 @@ jobs:
           echo "sleeping ${{ needs.build-and-test.outputs.sleep_after_tests }}s"
           /usr/bin/sleep ${{ needs.build-and-test.outputs.sleep_after_tests }}
   release-runner:
-    name: Release self-hosted runner (${{ inputs.build_preset }}) [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }}]
+    name: Release self-hosted runner [build_preset=${{ inputs.build_preset }} component=${{ inputs.component == '' && 'all' || inputs.component }} target_platform=${{ inputs.target_platform == '' && 'native' || inputs.target_platform }}] [id=${{ needs.provide-runner.outputs.instance-id }} local_ip=${{ needs.provide-runner.outputs.runner_local_ipv4 }}]
     needs:
       - provide-runner  # required to get output from the start-runner job
       - build-and-test  # required to wait when the main job is done

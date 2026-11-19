@@ -235,6 +235,10 @@ message TCompressionMetadata
     {
         TPlainChunks PlainChunks = 3;
     }
+
+    // Uncompressed size in bytes of the last chunk.
+    // A nonzero multiple of the block size, at most ChunkSize.
+    uint32 LastChunkSize = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
