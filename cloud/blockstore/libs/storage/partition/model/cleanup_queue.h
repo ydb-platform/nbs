@@ -40,7 +40,7 @@ private:
     ui64 QueueMixedBlocks = 0;
 
 public:
-    explicit TCleanupQueue(ui64 blockSize, TVector<ui32> mixedChannels = {});
+    explicit TCleanupQueue(ui64 blockSize, TVector<ui32> mixedChannels);
     ~TCleanupQueue();
 
     //

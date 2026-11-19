@@ -498,7 +498,7 @@ ui32 TPartitionState::GetMixedBlocksCompactionPercentage(
 {
     ui64 mixedBytes = 0;
     ui64 totalBytes = 0;
-    if (config.GetMixedBlocksCompactionUseByteCounters()) {
+    if (config.GetMixedBlocksCompactionByteCountersEnabled()) {
         // Use channel bytes or channel blocks, excluding blobs already
         // overwritten and waiting for cleanup.
         mixedBytes = AreExtendedBlobCountersEnabled()

@@ -4151,7 +4151,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 for (bool perDisk: {false, true}) {
                     auto config = DefaultConfig(1_MB);
                     config.SetMixedBlocksCountCompactionEnabledHDD(true);
-                    config.SetMixedBlocksCompactionUseByteCounters(
+                    config.SetMixedBlocksCompactionByteCountersEnabled(
                         useByteCounters);
                     config.SetExtendedBlobCountersEnabled(true);
                     config.SetMixedBytesCountCompactionThresholdHDD(
@@ -4222,7 +4222,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
                 auto config = DefaultConfig(1_MB);
                 config.SetMixedBlocksCountCompactionEnabledHDD(true);
-                config.SetMixedBlocksCompactionUseByteCounters(true);
+                config.SetMixedBlocksCompactionByteCountersEnabled(true);
                 config.SetExtendedBlobCountersEnabled(extendedCounters);
                 config.SetMixedBytesCountCompactionThresholdHDD(1_MB);
                 config.SetMixedBlocksCompactionThresholdPercentageHDD(50);
@@ -4464,7 +4464,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         bool useByteCounters = false)
     {
         auto config = DefaultConfig(1_MB);
-        config.SetMixedBlocksCompactionUseByteCounters(useByteCounters);
+        config.SetMixedBlocksCompactionByteCountersEnabled(useByteCounters);
         config.SetExtendedBlobCountersEnabled(useByteCounters);
         config.SetMixedBlocksCountCompactionEnabledHDD(enabled);
         config.SetMixedBlocksCountCompactionEnabledSSD(enabled);

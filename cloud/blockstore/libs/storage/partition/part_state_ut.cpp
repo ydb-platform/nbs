@@ -168,7 +168,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                          .CompactionPolicy =
                              BuildDefaultCompactionPolicy(5, 0, true)});
                     NProto::TStorageServiceConfig proto;
-                    proto.SetMixedBlocksCompactionUseByteCounters(
+                    proto.SetMixedBlocksCompactionByteCountersEnabled(
                         useByteCounters);
                     proto.SetMixedBlocksCompactionMinStoredBytesHDD(0);
                     proto.SetMixedBlocksCompactionMinStoredBytesSSD(0);
@@ -245,7 +245,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                     40 * DefaultBlockSize);
 
                 NProto::TStorageServiceConfig proto;
-                proto.SetMixedBlocksCompactionUseByteCounters(useByteCounters);
+                proto.SetMixedBlocksCompactionByteCountersEnabled(
+                    useByteCounters);
                 proto.SetMixedBlocksCompactionMinStoredBytesHDD(0);
                 const auto percentage = [&]
                 {

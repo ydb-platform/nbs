@@ -1018,7 +1018,7 @@ public:
 
     [[nodiscard]] ui64 GetMixedBlocksCompactionMinStoredBytesHDD() const;
 
-    [[nodiscard]] bool GetMixedBlocksCompactionUseByteCounters() const;
+    [[nodiscard]] bool GetMixedBlocksCompactionByteCountersEnabled() const;
 
     [[nodiscard]] bool GetIgnorePartitionCountInMaxBlobsPerRange() const;
 

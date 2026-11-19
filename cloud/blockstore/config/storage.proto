@@ -1799,5 +1799,5 @@ message TStorageServiceConfig
     // multiplied by the block size, assuming index and channel kinds match.
     // Paths that consistently use different kinds require extended counters.
     // Exclude blobs awaiting cleanup from these counts. Disabled by default.
-    optional bool MixedBlocksCompactionUseByteCounters = 557;
+    optional bool MixedBlocksCompactionByteCountersEnabled = 557;
 }

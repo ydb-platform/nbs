@@ -76,7 +76,7 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
 
     Y_UNIT_TEST(ShouldKeepItemsSorted)
     {
-        TCleanupQueue queue(1024);
+        TCleanupQueue queue(1024, {});
 
         ui32 deletionStep = 10;
         for (ui32 step: Steps) {
@@ -171,7 +171,7 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
 
     Y_UNIT_TEST(ShouldGetItemsStartingFromBlobId)
     {
-        TCleanupQueue queue(1024);
+        TCleanupQueue queue(1024, {});
 
         const ui32 deletionStep = 10;
         for (ui32 step: Steps) {
@@ -213,7 +213,7 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
 
     Y_UNIT_TEST(ShouldLimitCount)
     {
-        TCleanupQueue queue(1024);
+        TCleanupQueue queue(1024, {});
 
         ui32 deletionStep = 10;
         for (ui32 step: Steps) {
@@ -245,7 +245,7 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
 
     Y_UNIT_TEST(ShouldTrimQueue)
     {
-        TCleanupQueue queue(1024);
+        TCleanupQueue queue(1024, {});
 
         ui32 deletionStep = 10;
         for (ui32 step: Steps) {
@@ -269,7 +269,7 @@ Y_UNIT_TEST_SUITE(TCleanupQueueTest)
 
     Y_UNIT_TEST(ShouldTrackBlobPresence)
     {
-        TCleanupQueue queue(1024);
+        TCleanupQueue queue(1024, {});
 
         TPartialBlobId blobId(1, 1, 3, 1024, 0, 0);
 

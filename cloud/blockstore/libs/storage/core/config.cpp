@@ -764,7 +764,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CompactionStatsTrackerEnabled,              bool,       false         )\
     xxx(MixedBlocksCompactionMinStoredBytesHDD,     ui64,       1_GB          )\
     xxx(MixedBlocksCompactionMinStoredBytesSSD,     ui64,       1_GB          )\
-    xxx(MixedBlocksCompactionUseByteCounters,       bool,       false         )\
+    xxx(MixedBlocksCompactionByteCountersEnabled,   bool,       false         )\
     xxx(IgnorePartitionCountInMaxBlobsPerRange,     bool,       false         )\
     xxx(VolumeBalancerEnabled,                      bool,       false         )\
 
