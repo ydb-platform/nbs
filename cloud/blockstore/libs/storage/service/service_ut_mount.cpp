@@ -6766,6 +6766,339 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         service.UnmountVolume(DefaultDiskId, response->Record.GetSessionId());
     }
+
+    Y_UNIT_TEST(ShouldKeepVolumeLocalWhenAnotherClientForcesRemoteBinding)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient target(runtime, nodeIdx);
+        target.SetClientId("target");
+        TServiceClient source(runtime, nodeIdx);
+        source.SetClientId("source");
+
+        target.CreateVolume();
+        target.AssignVolume();
+
+        ui32 localStops = 0;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvServicePrivate::EvStartVolumeActorStopped)
+            {
+                ++localStops;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        target.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0,
+            1);
+
+        {
+            auto request = source.CreateMountVolumeRequest(
+                DefaultDiskId,
+                TString(),
+                TString(),
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_REMOTE);
+            request->Record.SetForceRemoteBinding(true);
+            source.SendRequest(MakeStorageServiceId(), std::move(request));
+            auto response = source.RecvMountVolumeResponse();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                response->GetError());
+        }
+
+        target.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0,
+            1);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, localStops);
+    }
+
+    Y_UNIT_TEST(ShouldKeepVolumeLocalOnMountConflictOfRemoteClient)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient target(runtime, nodeIdx);
+        target.SetClientId("target");
+        TServiceClient source(runtime, nodeIdx);
+        source.SetClientId("source");
+
+        target.CreateVolume();
+        target.AssignVolume();
+
+        ui32 localStops = 0;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvServicePrivate::EvStartVolumeActorStopped)
+            {
+                ++localStops;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        target.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0,
+            1);
+
+        source.SendMountVolumeRequest(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE);
+        auto response = source.RecvMountVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_BS_MOUNT_CONFLICT,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, localStops);
+    }
+
+    void ShouldNotStartVolumeForForcedRemoteClientLeftAlone(
+        NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(1);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient local(runtime, nodeIdx);
+        local.SetClientId("local");
+        TServiceClient foreign(runtime, nodeIdx);
+        foreign.SetClientId("foreign");
+
+        local.CreateVolume(
+            DefaultDiskId,
+            1_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            TString(),   // folderId
+            TString(),   // cloudId
+            mediaKind);
+
+        ui32 localStarts = 0;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvServicePrivate::EvStartVolumeRequest)
+            {
+                ++localStarts;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        auto mountForeign = [&] (NProto::EVolumeMountMode mountMode) {
+            auto request = foreign.CreateMountVolumeRequest(
+                DefaultDiskId,
+                TString(),
+                TString(),
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                mountMode);
+            request->Record.SetForceRemoteBinding(true);
+            foreign.SendRequest(MakeStorageServiceId(), std::move(request));
+            auto response = foreign.RecvMountVolumeResponse();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                response->GetError());
+        };
+
+        auto response = local.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0,
+            1);
+        UNIT_ASSERT_VALUES_EQUAL(1, localStarts);
+
+        mountForeign(NProto::VOLUME_MOUNT_REMOTE);
+        mountForeign(NProto::VOLUME_MOUNT_LOCAL);
+
+        local.UnmountVolume(DefaultDiskId, response->Record.GetSessionId());
+
+        mountForeign(NProto::VOLUME_MOUNT_LOCAL);
+        UNIT_ASSERT_VALUES_EQUAL(1, localStarts);
+    }
+
+    Y_UNIT_TEST(ShouldNotStartVolumeForForcedRemoteClientLeftAlone)
+    {
+        ShouldNotStartVolumeForForcedRemoteClientLeftAlone(
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+    }
+
+    Y_UNIT_TEST(ShouldNotStartNonreplicatedVolumeForForcedRemoteClientLeftAlone)
+    {
+        ShouldNotStartVolumeForForcedRemoteClientLeftAlone(
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+    }
+
+    void ShouldKeepVolumeLocalWhenForcedRemoteClientLeaves(bool unmount)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient local(runtime, nodeIdx);
+        local.SetClientId("local");
+        TServiceClient foreign(runtime, nodeIdx);
+        foreign.SetClientId("foreign");
+
+        local.CreateVolume();
+        local.AssignVolume();
+
+        ui32 localStops = 0;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvServicePrivate::EvStartVolumeActorStopped)
+            {
+                ++localStops;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        auto mountForeign = [&] (NProto::EVolumeMountMode mountMode) {
+            auto request = foreign.CreateMountVolumeRequest(
+                DefaultDiskId,
+                TString(),
+                TString(),
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                mountMode);
+            request->Record.SetForceRemoteBinding(true);
+            foreign.SendRequest(MakeStorageServiceId(), std::move(request));
+            auto response = foreign.RecvMountVolumeResponse();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                response->GetError());
+            return response->Record.GetSessionId();
+        };
+
+        local.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0,
+            1);
+
+        mountForeign(NProto::VOLUME_MOUNT_REMOTE);
+        auto sessionId = mountForeign(NProto::VOLUME_MOUNT_LOCAL);
+
+        if (unmount) {
+            foreign.UnmountVolume(DefaultDiskId, sessionId);
+        } else {
+            mountForeign(NProto::VOLUME_MOUNT_REMOTE);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, localStops);
+    }
+
+    Y_UNIT_TEST(ShouldKeepVolumeLocalWhenForcedRemoteClientRemounts)
+    {
+        ShouldKeepVolumeLocalWhenForcedRemoteClientLeaves(false);
+    }
+
+    Y_UNIT_TEST(ShouldKeepVolumeLocalWhenForcedRemoteClientUnmounts)
+    {
+        ShouldKeepVolumeLocalWhenForcedRemoteClientLeaves(true);
+    }
+
+    Y_UNIT_TEST(ShouldNotStartVolumeForForcedRemoteClientPreemptingLocalMounter)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient local(runtime, nodeIdx);
+        local.SetClientId("local");
+        TServiceClient foreign(runtime, nodeIdx);
+        foreign.SetClientId("foreign");
+
+        local.CreateVolume();
+        local.AssignVolume();
+
+        ui32 localStarts = 0;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvServicePrivate::EvStartVolumeRequest)
+            {
+                ++localStarts;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        auto mountForeign = [&] (
+            NProto::EVolumeMountMode mountMode,
+            ui64 mountSeqNumber)
+        {
+            auto request = foreign.CreateMountVolumeRequest(
+                DefaultDiskId,
+                TString(),
+                TString(),
+                NProto::IPC_GRPC,
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                mountMode,
+                0,
+                mountSeqNumber);
+            request->Record.SetForceRemoteBinding(true);
+            foreign.SendRequest(MakeStorageServiceId(), std::move(request));
+            auto response = foreign.RecvMountVolumeResponse();
+            UNIT_ASSERT_C(
+                !HasError(response->GetError()),
+                response->GetError());
+        };
+
+        local.MountVolume(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_ONLY,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0,
+            1);
+        UNIT_ASSERT_VALUES_EQUAL(1, localStarts);
+
+        mountForeign(NProto::VOLUME_MOUNT_REMOTE, 0);
+        mountForeign(NProto::VOLUME_MOUNT_LOCAL, 2);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, localStarts);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

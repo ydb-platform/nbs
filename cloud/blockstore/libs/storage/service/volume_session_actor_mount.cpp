@@ -450,6 +450,8 @@ private:
 
     void RequestVolumeStop(const TActorContext& ctx);
 
+    bool MayStopVolume() const;
+
     void NotifyAndDie(const TActorContext& ctx);
 
     void LockVolume(const TActorContext& ctx);
@@ -529,7 +531,9 @@ TMountRequestActor::TMountRequestActor(
     , Request(std::move(request))
 {
     MountMode = Request.GetVolumeMountMode();
-    if (Params.BindingType == NProto::BINDING_REMOTE) {
+    if (Params.BindingType == NProto::BINDING_REMOTE ||
+        Request.GetForceRemoteBinding())
+    {
         MountMode = NProto::VOLUME_MOUNT_REMOTE;
     // XXX the following 'else if' seems correct but breaks test
     //} else if (Params.BindingType == TVolumeInfo::LOCAL) {
@@ -721,7 +725,7 @@ void TMountRequestActor::HandleDescribeVolumeError(
 
     Error = error;
 
-    if (Params.IsLocalMounter) {
+    if (MayStopVolume()) {
         RequestVolumeStop(ctx);
     } else {
         NotifyAndDie(ctx);
@@ -758,7 +762,7 @@ void TMountRequestActor::HandleAlterVolumeError(
 
     Error = error;
 
-    if (Params.IsLocalMounter) {
+    if (MayStopVolume()) {
         RequestVolumeStop(ctx);
     } else {
         NotifyAndDie(ctx);
@@ -842,6 +846,12 @@ void TMountRequestActor::RequestVolumeStop(const TActorContext& ctx)
     auto request = std::make_unique<TEvServicePrivate::TEvStopVolumeRequest>();
 
     NCloud::Send(ctx, Params.SessionActorId, std::move(request));
+}
+
+bool TMountRequestActor::MayStopVolume() const
+{
+    return VolumeStarted ||
+           (Params.IsLocalMounter && !Request.GetForceRemoteBinding());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -986,9 +996,7 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
             return;
         }
 
-        const bool mayStopVolume = Params.IsLocalMounter || VolumeStarted;
-
-        if (mayStopVolume && MountMode == NProto::VOLUME_MOUNT_REMOTE) {
+        if (MayStopVolume() && MountMode == NProto::VOLUME_MOUNT_REMOTE) {
             if (Params.UseGentlePreemption) {
                 GentlyReleaseVolume(ctx);
             } else {
@@ -996,7 +1004,9 @@ void TMountRequestActor::HandleVolumeAddClientResponse(
             }
             return;
         }
-    } else if (VolumeStarted || error.GetCode() == E_BS_MOUNT_CONFLICT) {
+    } else if (VolumeStarted ||
+               (MayStopVolume() && error.GetCode() == E_BS_MOUNT_CONFLICT))
+    {
         RequestVolumeStop(ctx);
         return;
     } else if (error.GetCode() == E_REJECTED) {
@@ -1350,6 +1360,7 @@ void TVolumeSessionActor::AddClientToVolume(
     auto* clientInfo = VolumeInfo->AddClientInfo(mountRequest.GetHeaders().GetClientId());
     clientInfo->VolumeAccessMode = mountRequest.GetVolumeAccessMode();
     clientInfo->VolumeMountMode = mountRequest.GetVolumeMountMode();
+    clientInfo->ForceRemoteBinding = mountRequest.GetForceRemoteBinding();
     clientInfo->MountFlags = mountRequest.GetMountFlags();
     clientInfo->IpcType = mountRequest.GetIpcType();
     clientInfo->LastActivityTime = ctx.Now();

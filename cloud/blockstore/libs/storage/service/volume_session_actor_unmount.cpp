@@ -326,8 +326,8 @@ void TVolumeSessionActor::HandleUnmountVolume(
 
     auto mountMode = NProto::VOLUME_MOUNT_REMOTE;
     auto* clientInfo = VolumeInfo->GetClientInfo(clientId);
-    if (clientInfo) {
-        mountMode = clientInfo->VolumeMountMode;
+    if (clientInfo && clientInfo->KeepsVolumeLocal()) {
+        mountMode = NProto::VOLUME_MOUNT_LOCAL;
     }
 
     UnmountRequestActor = NCloud::Register<TUnmountRequestActor>(
@@ -382,8 +382,8 @@ void TVolumeSessionActor::HandleUnmountRequestProcessed(
 
             auto mountMode = NProto::VOLUME_MOUNT_REMOTE;
             auto* clientInfo = VolumeInfo->GetClientInfo(clientId);
-            if (clientInfo) {
-                mountMode = clientInfo->VolumeMountMode;
+            if (clientInfo && clientInfo->KeepsVolumeLocal()) {
+                mountMode = NProto::VOLUME_MOUNT_LOCAL;
             }
 
             UnmountRequestActor = NCloud::Register<TUnmountRequestActor>(
