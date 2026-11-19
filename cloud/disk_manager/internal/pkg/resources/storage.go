@@ -179,9 +179,11 @@ type Storage interface {
 	GetDiskMeta(ctx context.Context, diskID string) (*DiskMeta, error)
 
 	// Returns disk if action has been accepted by storage and nil otherwise.
-	// If cleanupTaskID is set, missing-disk / tombstone path also registers it as a
-	// cleanup holder in the same transaction. Legacy Deleted placeholders owned
-	// by taskID are returned as meta so the caller finishes via DiskDeleted.
+	// If cleanupTaskID is set (DeleteIfNonExistent), a missing disk becomes a
+	// Deleting tombstone and the id is registered as a cleanup holder. Without
+	// cleanupTaskID a missing disk is marked Deleted immediately, as before.
+	// Legacy Deleted placeholders owned by taskID are returned as meta so the
+	// caller finishes via DiskDeleted.
 	DeleteDisk(
 		ctx context.Context,
 		diskID string,

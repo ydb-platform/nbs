@@ -489,7 +489,8 @@ func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
 			}
 			var deleteMeta *resources.DiskMeta
 			if tc.legacy {
-				deleteMeta = &resources.DiskMeta{ID: "disk", ZoneID: "cell", DeleteTaskID: id}
+				// Legacy missing-disk placeholders have no create task and no zone.
+				deleteMeta = &resources.DiskMeta{ID: "disk", DeleteTaskID: id}
 			}
 			storage.On("DeleteDisk", ctx, "disk", id, id, mock.Anything).Return(deleteMeta, errorFor("DeleteDisk")).Once()
 			setup := func() {

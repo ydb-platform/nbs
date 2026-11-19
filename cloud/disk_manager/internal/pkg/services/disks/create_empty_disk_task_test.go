@@ -175,7 +175,7 @@ func TestCancelCreateEmptyDiskTask(t *testing.T) {
 		ctx,
 		"disk",
 		"toplevel_task_id",
-		"toplevel_task_id",
+		"",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
 		ID:           "disk",
@@ -222,7 +222,7 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 		ctx,
 		"disk",
 		"toplevel_task_id",
-		"toplevel_task_id",
+		"",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
 		ID:           "disk",
@@ -268,7 +268,7 @@ func TestCancelCreateEmptyDiskTaskBeforeRunIsCalled(t *testing.T) {
 		ctx,
 		"disk",
 		"toplevel_task_id",
-		"toplevel_task_id",
+		"",
 		mock.Anything,
 	).Return((*resources.DiskMeta)(nil), nil)
 

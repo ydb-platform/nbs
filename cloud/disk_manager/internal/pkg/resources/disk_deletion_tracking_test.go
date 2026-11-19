@@ -3,6 +3,7 @@ package resources
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -160,7 +161,7 @@ func TestTombstoneCompletesOnLastCleanupRelease(t *testing.T) {
 	require.Equal(t, "[]", state.cleanupTaskIDs)
 	require.False(t, state.deletedAt.Before(beforeCompletion))
 
-	prepared, err := storage.PrepareDiskCleanup(ctx, "disk", "late")
+	prepared, err = storage.PrepareDiskCleanup(ctx, "disk", "late")
 	require.NoError(t, err)
 	require.False(t, prepared)
 
@@ -179,6 +180,106 @@ func TestTombstoneCompletesOnLastCleanupRelease(t *testing.T) {
 	err = storage.ClearDeletedDisks(ctx, time.Now().Add(time.Second), 100)
 	require.NoError(t, err)
 	require.Empty(t, readTrackedDisk(t, ctx, db, storage, "disk").id)
+}
+
+func TestDeleteDiskWithoutCleanupMarksDeleted(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+
+	// Without cleanupTaskID (DeleteIfNonExistent off) keep the legacy path:
+	// missing disk is marked Deleted immediately, not a Deleting tombstone.
+	actual, err := storage.DeleteDisk(ctx, "disk", "delete", "", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, actual)
+
+	state := readTrackedDisk(t, ctx, db, storage, "disk")
+	require.Equal(t, diskStatusDeleted, state.status)
+	require.False(t, state.tombstone)
+	require.Empty(t, state.cleanupTaskIDs)
+}
+
+func TestConcurrentCleanupHoldersArePreserved(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+
+	// Two DeleteDisk calls race on a missing ID: both must end up as holders
+	// on the same tombstone (serializable RW tx must not drop either append).
+	for _, id := range []string{"first", "second"} {
+		wg.Add(1)
+		taskID := id
+		go func() {
+			defer wg.Done()
+			<-start
+			actual, err := storage.DeleteDisk(ctx, "disk", taskID, taskID, time.Now())
+			if err != nil {
+				errs <- err
+				return
+			}
+			if actual != nil {
+				errs <- fmt.Errorf("DeleteDisk(%q) returned meta %+v", taskID, actual)
+				return
+			}
+			errs <- nil
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	state := readTrackedDisk(t, ctx, db, storage, "disk")
+	require.True(t, diskIsTombstone(state))
+	ids, err := diskCleanupIDs(state)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"first", "second"}, ids)
+
+	start = make(chan struct{})
+	wg = sync.WaitGroup{}
+	errs = make(chan error, 2)
+	for _, id := range []string{"third", "fourth"} {
+		wg.Add(1)
+		cleanupID := id
+		go func() {
+			defer wg.Done()
+			<-start
+			prepared, err := storage.PrepareDiskCleanup(ctx, "disk", cleanupID)
+			if err != nil {
+				errs <- err
+				return
+			}
+			if !prepared {
+				errs <- fmt.Errorf("PrepareDiskCleanup(%q) returned false", cleanupID)
+				return
+			}
+			errs <- nil
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	ids, err = diskCleanupIDs(readTrackedDisk(t, ctx, db, storage, "disk"))
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"first", "second", "third", "fourth"}, ids)
+
+	for _, id := range []string{"first", "second", "third", "fourth"} {
+		err = completeDiskCleanup(ctx, db, storage, "disk", id, true)
+		require.NoError(t, err)
+	}
+	require.Equal(t, diskStatusDeleted, readTrackedDisk(t, ctx, db, storage, "disk").status)
 }
 
 func TestPrepareDiskCleanupRejectsCompletedDisk(t *testing.T) {
@@ -262,6 +363,45 @@ func TestMissingDiskCreatesTombstone(t *testing.T) {
 	err = completeDiskCleanup(ctx, db, storage, "disk2", "delete2", true)
 	require.NoError(t, err)
 	require.Equal(t, diskStatusDeleted, readTrackedDisk(t, ctx, db, storage, "disk2").status)
+}
+
+func TestConcurrentCleanupHolders(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+
+	actual, err := storage.DeleteDisk(ctx, "disk", "delete", "delete", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, actual)
+
+	const n = 8
+	ids := make([]string, n)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("holder-%d", i)
+	}
+
+	var wg sync.WaitGroup
+	errs := make([]error, n)
+	prepared := make([]bool, n)
+	for i, id := range ids {
+		wg.Add(1)
+		go func(i int, id string) {
+			defer wg.Done()
+			prepared[i], errs[i] = storage.PrepareDiskCleanup(ctx, "disk", id)
+		}(i, id)
+	}
+	wg.Wait()
+
+	for i := range ids {
+		require.NoError(t, errs[i], "holder %s", ids[i])
+		require.True(t, prepared[i], "holder %s", ids[i])
+	}
+
+	state := readTrackedDisk(t, ctx, db, storage, "disk")
+	require.True(t, diskIsTombstone(state))
+
+	got, err := diskCleanupIDs(state)
+	require.NoError(t, err)
+	require.ElementsMatch(t, append([]string{"delete"}, ids...), got)
 }
 
 // Rows written before the explicit tombstone flag was added: a placeholder

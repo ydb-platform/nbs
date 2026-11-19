@@ -86,6 +86,17 @@ func (t *deleteDiskTask) deleteDisk(
 	}
 
 	zoneID := diskMeta.ZoneID
+	if len(diskMeta.CreateTaskID) == 0 && len(zoneID) == 0 {
+		// Legacy missing-disk placeholders do not contain a zone.
+		if !t.request.DeleteIfNonExistent {
+			return nil
+		}
+
+		zoneID = t.request.Disk.ZoneId
+		if len(zoneID) == 0 {
+			return t.storage.DiskDeleted(ctx, diskID, time.Now())
+		}
+	}
 
 	err = t.deleteDiskFromExternal(ctx, execCtx, diskID, zoneID)
 	if err != nil {

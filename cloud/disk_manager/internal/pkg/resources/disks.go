@@ -541,9 +541,10 @@ func (s *storageYDB) deleteDisk(
 					}
 				}
 			case state.status == diskStatusDeleted && state.deleteTaskID != taskID:
-				// Foreign Deleted: no unreserved cleanup.
-			case state.status == diskStatusDeleted && state.tombstone:
-				// Completed tombstone: no unreserved cleanup.
+				// Foreign Deleted: skip cleanup.
+			case state.status == diskStatusDeleted &&
+				(state.tombstone || len(state.createTaskID) != 0):
+				// Completed tombstone or real disk: skip cleanup.
 			default:
 				// Live deleting disk, or own legacy Deleted placeholder.
 				err = tx.Commit(ctx)
@@ -561,10 +562,15 @@ func (s *storageYDB) deleteDisk(
 		}
 
 		state.status = diskStatusDeleting
-	} else {
-		// Tombstone keeps the disk ID reserved until cleanup finishes.
+	} else if len(cleanupTaskID) != 0 {
+		// DeleteIfNonExistent: keep the disk ID reserved until cleanup finishes.
 		state.status = diskStatusDeleting
 		state.tombstone = true
+	} else {
+		// Legacy: mark deleted immediately to block concurrent create with the
+		// same ID. No external cleanup is expected for a missing disk.
+		state.status = diskStatusDeleted
+		state.deletedAt = deletingAt
 	}
 
 	state.id = diskID
@@ -588,7 +594,8 @@ func (s *storageYDB) deleteDisk(
 		return nil, err
 	}
 
-	if state.tombstone {
+	// Should be idempotent.
+	if state.status == diskStatusDeleted || state.tombstone {
 		return nil, nil
 	}
 
@@ -641,7 +648,7 @@ func (s *storageYDB) diskDeleted(
 		return tx.Commit(ctx)
 	}
 
-	if state.tombstone {
+	if diskIsTombstone(state) {
 		ids, err := diskCleanupIDs(state)
 		if err != nil {
 			return err
@@ -652,7 +659,7 @@ func (s *storageYDB) diskDeleted(
 			return tx.Commit(ctx)
 		}
 
-		// Legacy missing-disk path: no holders, finalize immediately.
+		// In-flight tombstone with no holders left: finalize immediately.
 		err = s.markDiskDeleted(ctx, tx, diskID, state, deletedAt)
 		if err != nil {
 			return err
