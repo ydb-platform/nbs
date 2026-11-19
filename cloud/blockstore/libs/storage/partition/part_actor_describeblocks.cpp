@@ -44,7 +44,12 @@ public:
         const TBlockMask& skipMask,
         const NProto::TCompressionMetadata* compressionMetadata) override
     {
-        Y_UNUSED(blockRange, blobId, skipMask, compressionMetadata);
+        Y_UNUSED(blockRange, skipMask);
+
+        Args.BlobId2CompressionMetadata[blobId] =
+            compressionMetadata ? std::make_optional(*compressionMetadata)
+                                : std::nullopt;
+
         return true;
     }
 
@@ -76,6 +81,10 @@ public:
         ui8 compactionRangeCount) override
     {
         Y_UNUSED(compactionRangeCount);
+
+        // Mixed blobs are not compressed.
+        Args.BlobId2CompressionMetadata[blobId] = std::nullopt;
+
         Args.MarkWithBlob(blockIndex, commitId, blobId, blobOffset);
         return true;
     }
@@ -405,9 +414,29 @@ void TPartitionActor::FillDescribeBlocksResponse(
 
     TVector<TBlobMark> blobMarks;
     blobMarks.reserve(args.Marks.size());
+    THashSet<TPartialBlobId, TPartialBlobIdHash> blobIds;
     for (const auto& mark: args.Marks) {
         Y_ABORT_UNLESS(std::holds_alternative<TBlobMark>(mark));
         blobMarks.push_back(std::get<TBlobMark>(mark));
+        blobIds.insert(blobMarks.back().BlobId);
+    }
+
+    for (const auto& [partialBlobId, compressionMetadata]:
+         args.BlobId2CompressionMetadata)
+    {
+        // We need export compression metadata only for visible blobs
+        if (!blobIds.contains(partialBlobId)) {
+            continue;
+        }
+        auto* blobIdToCompressionMetadata =
+            response->Record.AddBlobId2CompressionMetadata();
+        LogoBlobIDFromLogoBlobID(
+            MakeBlobId(TabletID(), partialBlobId),
+            blobIdToCompressionMetadata->MutableBlobId());
+        if (compressionMetadata) {
+            *blobIdToCompressionMetadata->MutableCompressionMetadata() =
+                *compressionMetadata;
+        }
     }
 
     auto iter = blobMarks.begin();

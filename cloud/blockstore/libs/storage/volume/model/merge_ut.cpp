@@ -8,6 +8,36 @@ namespace NCloud::NBlockStore::NStorage {
 
 Y_UNIT_TEST_SUITE(TMergeTest)
 {
+    Y_UNIT_TEST(ShouldMergeBlobCompressionMetadata)
+    {
+        NProto::TDescribeBlocksResponse dst;
+        for (ui32 partitionId = 0; partitionId < 2; ++partitionId) {
+            NProto::TDescribeBlocksResponse src;
+            auto* entry = src.AddBlobId2CompressionMetadata();
+            entry->MutableBlobId()->SetRawX1(partitionId + 1);
+            if (partitionId == 0) {
+                auto* info = entry->MutableCompressionMetadata();
+                info->SetCodec(
+                    NProto::TCompressionMetadata::COMPRESSION_ZSTD_3);
+                info->SetChunkSize(2 * 4096);
+                info->MutablePlainChunks()->AddCompressedChunkSize(123);
+            }
+            const auto expected = entry->SerializeAsString();
+            MergeDescribeBlocksResponse(src, dst, 4, 4096, 2, partitionId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                partitionId + 1,
+                dst.BlobId2CompressionMetadataSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected,
+                dst.GetBlobId2CompressionMetadata(partitionId)
+                    .SerializeAsString());
+        }
+        UNIT_ASSERT(
+            dst.GetBlobId2CompressionMetadata(0).HasCompressionMetadata());
+        UNIT_ASSERT(
+            !dst.GetBlobId2CompressionMetadata(1).HasCompressionMetadata());
+    }
+
     Y_UNIT_TEST(ShouldCorrectlyMergeStripedBitMaskSinglePartition)
     {
         const auto originalRange = TBlockRange64::WithLength(0, 6);

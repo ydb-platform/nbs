@@ -711,6 +711,11 @@ void TReadBlocksActor::HandleDescribeBlocksCompleted(
         return;
     }
 
+    for (auto& blobId2CompressionMetadata: msg->BlobId2CompressionMetadata) {
+        BlobId2CompressionMetadata[blobId2CompressionMetadata.BlobId] =
+            std::move(blobId2CompressionMetadata.CompressionMetadata);
+    }
+
     Sort(requests, TCompareByBlobIdAndOffset());
     ReadBlocks(ctx, std::move(requests), true);
 }

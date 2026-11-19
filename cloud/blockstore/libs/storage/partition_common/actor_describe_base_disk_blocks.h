@@ -38,6 +38,8 @@ private:
     const NActors::TActorId NotifyActorId;
 
     NBlobMarkers::TBlockMarks BlockMarks;
+    TEvPartitionCommonPrivate::TBlobId2CompressionMetadataList
+        BlobId2CompressionMetadata;
 
 public:
     TDescribeBaseDiskBlocksActor(

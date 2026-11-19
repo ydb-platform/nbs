@@ -79,6 +79,20 @@ void MergeDescribeBlocksResponse(
         }
         dst.MutableBlobPieces()->Add(std::move(dstBlobPiece));
     }
+
+    auto& srcBlobId2CompressionMetadata =
+        *src.MutableBlobId2CompressionMetadata();
+    for (auto& blobIdToCompressionMetadata: srcBlobId2CompressionMetadata) {
+        auto* newBlobIdToCompressionMetadata =
+            dst.MutableBlobId2CompressionMetadata()->Add();
+        *newBlobIdToCompressionMetadata->MutableBlobId() =
+            std::move(*blobIdToCompressionMetadata.MutableBlobId());
+        if (blobIdToCompressionMetadata.HasCompressionMetadata()) {
+            *newBlobIdToCompressionMetadata->MutableCompressionMetadata() =
+                std::move(
+                    *blobIdToCompressionMetadata.MutableCompressionMetadata());
+        }
+    }
 }
 
 void SplitFreshBlockRangeFromRelativeToGlobalIndices(
