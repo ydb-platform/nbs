@@ -223,6 +223,16 @@ private:
         std::unique_ptr<TEvService::TEvReadDataResponse> response);
     void ReplyTwoStageAndDie(const TActorContext& ctx);
     void HandleError(const TActorContext& ctx, const NProto::TError& error);
+
+    static ui64 GetCookie(ui32 requestGeneration, ui32 blobPieceId)
+    {
+        return (static_cast<ui64>(requestGeneration) << 32U) | blobPieceId;
+    }
+
+    static ui32 ExtractRequestGeneration(ui64 cookie)
+    {
+        return static_cast<ui32>(cookie >> 32U);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -608,8 +618,11 @@ void TReadDataActor::ReadBlobsIfNeeded(const TActorContext& ctx)
             blobPiece.RangesSize(),
             blobId.ToString().c_str());
 
-        const ui64 cookie = (ui64(RequestGeneration) << 32) | blobPieceId++;
-        SendToBSProxy(ctx, proxy, request.release(), cookie);
+        SendToBSProxy(
+            ctx,
+            proxy,
+            request.release(),
+            GetCookie(RequestGeneration, blobPieceId++));
     }
 }
 
@@ -617,7 +630,7 @@ void TReadDataActor::HandleReadBlobResponse(
     const TEvBlobStorage::TEvGetResult::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (static_cast<ui32>(ev->Cookie >> 32) != RequestGeneration) {
+    if (ExtractRequestGeneration(ev->Cookie) != RequestGeneration) {
         return;
     }
 
