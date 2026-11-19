@@ -7,6 +7,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/sglist.h>
+#include <cloud/storage/core/libs/compression/codec.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
@@ -25,11 +26,6 @@
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-// Maps a storage configuration codec family (or its default codec name) to the
-// enum stored in blob metadata. Unsupported names return E_ARGUMENT.
-TResultOrError<NProto::TCompressionMetadata::ECompressionType>
-ParseBlobCompressionCodec(TStringBuf codecName);
 
 struct TCompressedBlob
 {
@@ -72,7 +68,7 @@ struct TReadPlan
 [[nodiscard]] TResultOrError<TCompressedBlob> CompressBlob(
     ui32 blockSize,
     ui32 chunkSize,
-    NProto::TCompressionMetadata::ECompressionType compressionType,
+    NCloud::NProto::ECompressionCodec compressionType,
     std::span<const TBlockDataRef> blobPayload);
 
 /**
@@ -163,7 +159,7 @@ public:
     // Omitting metricsConfig or setting its sampling rate to zero disables
     // estimation. The codec is used only for estimating compressed sizes.
     TBlobCompressor(
-        NProto::TCompressionMetadata::ECompressionType codec,
+        NCloud::NProto::ECompressionCodec codec,
         std::optional<TMetricsConfig> metricsConfig);
 
     /**
