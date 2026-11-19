@@ -8,6 +8,8 @@
 #include <cloud/filestore/public/api/protos/node.pb.h>
 #include <cloud/filestore/public/api/protos/session.pb.h>
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <library/cpp/threading/future/future.h>
 
 #include <util/stream/fwd.h>
@@ -118,6 +120,17 @@ struct IFileSystemShard
      * @param out - Stream the document is written to.
      */
     virtual void DumpLayoutJson(IOutputStream& out) const = 0;
+
+    /**
+     *
+     * Validates proposed config update for fastshard.
+     *
+     * @param oldConfig - existing fastshard config.
+     * @param newConfig - proposed updated fastshard config.
+     */
+    [[nodiscard]] virtual NProto::TError ValidateConfigUpdate(
+        const NProtoPrivate::TFastShardConfig& oldConfig,
+        const NProtoPrivate::TFastShardConfig& newConfig) const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -100,6 +100,7 @@ TIndexTabletActor::TIndexTabletActor(
           Config->GetFileSystemEventSubscriptionsSealPeriod())
     , BaseStorageConfig(Config->GetStorageConfigProto())
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
+    , FastShard(NFastShard::CreateFileSystemShardStub())
     , FastShardServer(std::move(fastShardServer))
     , FastShardFactory(std::move(fastShardFactory))
     , RdmaTabletRegistry(std::move(rdmaTabletRegistry))
