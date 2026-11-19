@@ -45,13 +45,18 @@ SRCS(
     service_actor_pingsession.cpp
     service_actor_readdata.cpp
     service_actor_renamenode.cpp
+    service_actor_resizefs.cpp
+    service_actor_resizeshard.cpp
     service_actor_statfs.cpp
     service_actor_unlinknode.cpp
     service_actor_update_stats.cpp
     service_actor_writedata.cpp
     service_actor_xattr.cpp
     service_state.cpp
+    shard_configuration_companion.cpp
     shard_creation_state_companion.cpp
+    shard_request_companion.cpp
+    shard_resize_companion.cpp
     tablet_action_actor.cpp
     zero_block_stats.cpp
 )

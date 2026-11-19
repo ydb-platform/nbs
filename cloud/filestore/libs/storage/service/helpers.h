@@ -24,6 +24,9 @@ void Convert(
     const NKikimrFileStore::TConfig& config,
     NProto::TFileStore& fileStore);
 
+// The legacy mixed0 channel is allocated again if the filestore has it.
+bool HasMixed0Channel(const NKikimrFileStore::TConfig& config);
+
 // Get topology or generate it from shard id list.
 NProtoPrivate::TShardTopology GetShardTopology(
     const NProtoPrivate::TGetFileSystemTopologyResponse& response);
