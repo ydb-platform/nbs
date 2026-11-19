@@ -469,6 +469,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             Executor,
             MetaStore,
             DataStore,
+            "test-device",
             DevicePageCount);
     }
 

@@ -456,7 +456,9 @@ TFuture<NProto::TWriteLogRecordResponse> TJournalledDeviceV2::WriteLogRecord(
         {
             auto self = weakSelf.lock();
             if (!self) {
-                return TErrorResponse(E_FAIL, "TJournalledDevice is destroyed");
+                return TErrorResponse(
+                    E_CANCELLED,
+                    "TJournalledDevice is destroyed");
             }
 
             return self->OnWriteLogRecord(future.GetValue(), lsn);
@@ -678,7 +680,9 @@ TFuture<T> TJournalledDeviceV2::Execute(F func)
         {
             auto self = weakSelf.lock();
             if (!self) {
-                return TErrorResponse(E_FAIL, "TJournalledDevice is destroyed");
+                return TErrorResponse(
+                    E_CANCELLED,
+                    "TJournalledDevice is destroyed");
             }
 
             return func(*self);
