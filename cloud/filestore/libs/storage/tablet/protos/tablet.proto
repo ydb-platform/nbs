@@ -64,7 +64,7 @@ message TFileSystem
     bool Frozen = 20;
     bool ForceDirectoryCreationInShards = 21;
 
-    repeated bytes FileShardFileSystemIds = 22;
+    reserved 22;
 
     bool IsFastShard = 23;
     NProtoPrivate.TFastShardConfig FastShardConfig = 24;
@@ -73,6 +73,8 @@ message TFileSystem
     optional bool CompressNodeRef = 25;
 
     bool GuestPosixAclEnabled = 26;
+
+    NProtoPrivate.TShardTopology ShardTopology = 27;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -213,6 +213,7 @@ void Convert(
     // TODO need set ConfigVersion?
     fileStore.SetNodesCount(nodesCount);
     fileStore.SetStorageMediaKind(fileSystem.GetStorageMediaKind());
+    // TODO(#8034): switch to shard topology
     fileStore.MutableShardFileSystemIds()->CopyFrom(
         fileSystem.GetShardFileSystemIds());
     fileStore.SetShardNo(fileSystem.GetShardNo());

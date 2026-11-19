@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -276,6 +277,8 @@ void TCreateFileStoreActor::ConfigureShard(
         for (const auto& shard: FileStoreConfig.ShardConfigs) {
             request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
         }
+        *request->Record.MutableShardTopology() =
+            BuildOrdinaryShardTopology(request->Record.GetShardFileSystemIds());
     }
 
     LOG_INFO(
@@ -304,9 +307,12 @@ void TCreateFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
     request->Record.SetStrictFileSystemSizeEnforcementEnabled(
         StorageConfig->GetStrictFileSystemSizeEnforcementEnabled());
 
+    request->Record.MutableShardFileSystemIds()->Reserve(FileStoreConfig.ShardConfigs.size());
     for (const auto& shard: FileStoreConfig.ShardConfigs) {
         request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
     }
+    *request->Record.MutableShardTopology() =
+        BuildOrdinaryShardTopology(request->Record.GetShardFileSystemIds());
 
     LOG_INFO(
         ctx,

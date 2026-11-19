@@ -1264,6 +1264,7 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyResponse>();
 
+    // TODO(#8034): switch to shard topology
     *response->Record.MutableShardFileSystemIds() =
         GetFileSystem().GetShardFileSystemIds();
     response->Record.SetShardNo(GetFileSystem().GetShardNo());
@@ -1276,6 +1277,8 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
     response->Record.SetMaxShardCount(Config->GetMaxShardCount());
     response->Record.SetCompressNodeRef(GetCompressNodeRef());
     response->Record.SetMainFileSystemId(GetMainFileSystemId());
+    *response->Record.MutableShardTopology() =
+        GetFileSystem().GetShardTopology();
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,

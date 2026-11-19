@@ -152,10 +152,11 @@ void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
                "filesystem without strict file system size enforcement.");
     }
 
+    // TODO(#8034): switch to shard topology
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     TVector<TString> balancerShardIds;
 
-    const auto& fileShardIds = GetFileSystem().GetFileShardFileSystemIds();
+    const auto fileShardIds = GetFileShardIds(GetFileSystem());
     if (fileShardIds.size()) {
         Impl->FileShardBalancer = CreateShardBalancer(
             config.GetShardBalancerPolicy(),
@@ -235,6 +236,10 @@ void TIndexTabletState::LoadState(
     SizeToNodesRatio = config.GetSizeToNodesRatio();
 
     FileSystem.CopyFrom(fileSystem);
+    // TODO(#8034): remove after all tablets store the shard topology
+    RestoreShardTopology(
+        FileSystem.GetShardFileSystemIds(),
+        *FileSystem.MutableShardTopology());
     FileSystemStats.CopyFrom(fileSystemStats);
     TabletStorageInfo.CopyFrom(tabletStorageInfo);
     // Changing thresholds in the config may result in a massive amount of

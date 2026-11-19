@@ -139,24 +139,26 @@ NProto::TError ValidateShardList(
     return {};
 }
 
-NProto::TError ValidateFileShardList(
-    const google::protobuf::RepeatedPtrField<TString>& shardIds,
-    const google::protobuf::RepeatedPtrField<TString>& fileShardIds)
+// A request sets the shard list or the topology, the other one is derived.
+// TODO(#8034): switch to shard topology
+void SyncShardIdsAndTopology(
+    const NProtoPrivate::TShardTopology& currentTopology,
+    google::protobuf::RepeatedPtrField<TString>& shardIds,
+    NProtoPrivate::TShardTopology& topology)
 {
-    THashSet<TString> shardIdSet(shardIds.begin(), shardIds.end());
-    for (const auto& fileShardId: fileShardIds) {
-        const bool erased = shardIdSet.erase(fileShardId) > 0;
-        if (!erased) {
-            return MakeError(E_ARGUMENT, TStringBuilder() << "file shard "
-                << fileShardId << " not found in shard list");
-        }
+    // If there is no topology then we assume shard ids a source of truth.
+    if (topology.GetShards().empty()) {
+        topology = currentTopology;
+        RestoreShardTopology(shardIds, topology);
+        return;
     }
 
-    if (shardIdSet.empty() && !shardIds.empty()) {
-        return MakeError(E_ARGUMENT, "non-file shard set is empty");
+    // Other way around we keep shard id synced for backward compatibility.
+    shardIds.Clear();
+    shardIds.Reserve(topology.ShardsSize());
+    for (const auto& shard: topology.GetShards()) {
+        *shardIds.Add() = shard.GetShardId();
     }
-
-    return {};
 }
 
 // Kind and page size are fixed once set. SS operations do not handle fast shard
@@ -286,10 +288,10 @@ void TIndexTabletActor::HandleUpdateConfig(
     }
 
     // Setting the fields that schemeshard is not aware of.
+    // TODO(#8034): switch to shard topology
     *newConfig.MutableShardFileSystemIds() =
         oldConfig.GetShardFileSystemIds();
-    *newConfig.MutableFileShardFileSystemIds() =
-        oldConfig.GetFileShardFileSystemIds();
+    *newConfig.MutableShardTopology() = oldConfig.GetShardTopology();
     newConfig.SetIsFastShard(oldConfig.GetIsFastShard());
     *newConfig.MutableFastShardConfig() = oldConfig.GetFastShardConfig();
     newConfig.SetShardNo(oldConfig.GetShardNo());
@@ -419,6 +421,10 @@ void TIndexTabletActor::HandleConfigureShards(
         MakeIntrusive<TCallContext>(GetFileSystemId()));
     requestInfo->StartedTs = ctx.Now();
 
+    SyncShardIdsAndTopology(
+        GetFileSystem().GetShardTopology(),
+        *msg->Record.MutableShardFileSystemIds(),
+        *msg->Record.MutableShardTopology());
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     const auto& newShardIds = msg->Record.GetShardFileSystemIds();
 
@@ -433,9 +439,8 @@ void TIndexTabletActor::HandleConfigureShards(
         error = ValidateShardList(*Config, shardIds, newShardIds);
     }
 
-    const auto& newFileShardIds = msg->Record.GetFileShardFileSystemIds();
     if (!HasError(error) && !msg->Record.GetForce()) {
-        error = ValidateFileShardList(newShardIds, newFileShardIds);
+        error = ValidateShardTopology(msg->Record.GetShardTopology());
     }
 
     if (error.GetCode() != S_OK) {
@@ -479,8 +484,8 @@ void TIndexTabletActor::ExecuteTx_ConfigureShards(
     auto config = GetFileSystem();
     *config.MutableShardFileSystemIds() =
         std::move(*args.Request.MutableShardFileSystemIds());
-    *config.MutableFileShardFileSystemIds() =
-        std::move(*args.Request.MutableFileShardFileSystemIds());
+    *config.MutableShardTopology() =
+        std::move(*args.Request.MutableShardTopology());
     config.SetDirectoryCreationInShardsEnabled(
         args.Request.GetDirectoryCreationInShardsEnabled());
     config.SetForceDirectoryCreationInShards(
@@ -506,7 +511,7 @@ void TIndexTabletActor::CompleteTx_ConfigureShards(
         "%s Configured shards, new shard list: %s, new file shard list: %s",
         LogTag.c_str(),
         JoinSeq(",", GetFileSystem().GetShardFileSystemIds()).c_str(),
-        JoinSeq(",", GetFileSystem().GetFileShardFileSystemIds()).c_str());
+        JoinSeq(",", GetFileShardIds(GetFileSystem())).c_str());
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvConfigureShardsResponse>();
@@ -539,6 +544,10 @@ void TIndexTabletActor::HandleConfigureAsShard(
     requestInfo->StartedTs = ctx.Now();
 
     const ui32 currentShardNo = GetFileSystem().GetShardNo();
+    SyncShardIdsAndTopology(
+        GetFileSystem().GetShardTopology(),
+        *msg->Record.MutableShardFileSystemIds(),
+        *msg->Record.MutableShardTopology());
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     const auto& newShardIds = msg->Record.GetShardFileSystemIds();
 
@@ -554,9 +563,8 @@ void TIndexTabletActor::HandleConfigureAsShard(
         error = ValidateShardList(*Config, shardIds, newShardIds);
     }
 
-    const auto& newFileShardIds = msg->Record.GetFileShardFileSystemIds();
     if (!HasError(error) && !msg->Record.GetForce()) {
-        error = ValidateFileShardList(newShardIds, newFileShardIds);
+        error = ValidateShardTopology(msg->Record.GetShardTopology());
     }
 
     if (!HasError(error) && !msg->Record.GetForce()) {
@@ -607,8 +615,8 @@ void TIndexTabletActor::ExecuteTx_ConfigureAsShard(
     config.SetMainFileSystemId(args.Request.GetMainFileSystemId());
     *config.MutableShardFileSystemIds() =
         std::move(*args.Request.MutableShardFileSystemIds());
-    *config.MutableFileShardFileSystemIds() =
-        std::move(*args.Request.MutableFileShardFileSystemIds());
+    *config.MutableShardTopology() =
+        std::move(*args.Request.MutableShardTopology());
     config.SetDirectoryCreationInShardsEnabled(
         args.Request.GetDirectoryCreationInShardsEnabled());
     config.SetForceDirectoryCreationInShards(
@@ -632,7 +640,7 @@ void TIndexTabletActor::CompleteTx_ConfigureAsShard(
         LogTag.c_str(),
         args.Request.GetShardNo(),
         JoinSeq(",", GetFileSystem().GetShardFileSystemIds()).c_str(),
-        JoinSeq(",", GetFileSystem().GetFileShardFileSystemIds()).c_str());
+        JoinSeq(",", GetFileShardIds(GetFileSystem())).c_str());
 
     const bool broken = CurrentState == STATE_ADAPTER_BROKEN;
     if (!broken) {
