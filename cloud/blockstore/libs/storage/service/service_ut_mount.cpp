@@ -6929,6 +6929,7 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
             UNIT_ASSERT_C(
                 !HasError(response->GetError()),
                 response->GetError());
+            return response->Record.GetSessionId();
         };
 
         auto response = local.MountVolume(
@@ -6943,9 +6944,17 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(1, localStarts);
 
         mountForeign(NProto::VOLUME_MOUNT_REMOTE);
-        mountForeign(NProto::VOLUME_MOUNT_LOCAL);
+        auto sessionId = mountForeign(NProto::VOLUME_MOUNT_LOCAL);
 
         local.UnmountVolume(DefaultDiskId, response->Record.GetSessionId());
+
+        foreign.WaitForVolume(DefaultDiskId);
+        foreign.SendReadBlocksRequest(DefaultDiskId, 0, sessionId);
+        auto readResponse = foreign.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_UNEQUAL_C(
+            E_BS_INVALID_SESSION,
+            readResponse->GetStatus(),
+            readResponse->GetErrorReason());
 
         mountForeign(NProto::VOLUME_MOUNT_LOCAL);
         UNIT_ASSERT_VALUES_EQUAL(1, localStarts);
