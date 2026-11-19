@@ -48,6 +48,7 @@
 #include <util/generic/bitmap.h>
 #include <util/generic/size_literals.h>
 #include <util/generic/variant.h>
+#include <util/stream/output.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -4077,6 +4078,157 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_LT(counters.LoadedCommitIds.size(), 20);
 
         check();
+    }
+
+    Y_UNIT_TEST(ShouldAccumulateDeadFreshBlobsWhenLivePrefixExceedsFlagBudget)
+    {
+        constexpr ui32 RegionBlockCount = 64_MB / DefaultBlockSize;
+        constexpr ui32 ColdBlockCount = 40_MB / DefaultBlockSize;
+        constexpr ui32 HotBlockCount = RegionBlockCount - ColdBlockCount;
+        constexpr ui32 WriteBlockCount = 64_KB / DefaultBlockSize;
+        constexpr ui32 WritesPerIteration = RegionBlockCount / WriteBlockCount;
+        constexpr ui32 IterationCount = 4;
+        static_assert(ColdBlockCount > MaxCollectGarbageFlagsPerMessage);
+
+        auto config = SelectiveTrimConfig();
+        config.SetWriteRequestBatchingEnabled(false);
+        config.SetFlushThresholdHDD(128_MB);
+        config.SetFreshBlobCountFlushThresholdHDD(64 * 1024);
+        config.SetFreshBlobByteCountFlushThresholdHDD(256_MB);
+        config.SetFreshBlobAgeFlushThresholdHDD(0);
+        config.SetFreshByteCountHardLimitHDD(512_MB);
+        config.SetFreshDeadBlobByteCountTrimThresholdHDD(8_MB);
+
+        auto runtime = PrepareTestActorRuntime(config, RegionBlockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        ui32 trimRequests = 0;
+        ui32 blockedFlushRequests = 0;
+        bool blockFlush = true;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                counters.OnEvent(*event);
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvTrimFreshLogRequest)
+                {
+                    ++trimRequests;
+                }
+                if (blockFlush && event->GetTypeRewrite() ==
+                                      TEvPartitionPrivate::EvFlushRequest)
+                {
+                    ++blockedFlushRequests;
+                    return true;
+                }
+                return false;
+            });
+
+        // The cold 40 MiB prefix consists of 10,240 individual 4 KiB blobs,
+        // so a soft barrier needs more Keep flags than one command allows.
+        // Pipeline requests without batching them into larger blobs.
+        constexpr ui32 InFlightWriteCount = 128;
+        for (ui32 start = 0; start < ColdBlockCount;
+             start += InFlightWriteCount)
+        {
+            for (ui32 i = 0; i < InFlightWriteCount; ++i) {
+                partition.SendWriteBlocksRequest(start + i, 'a');
+            }
+            for (ui32 i = 0; i < InFlightWriteCount; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    S_OK,
+                    partition.RecvWriteBlocksResponse()->GetStatus());
+            }
+            if ((start + InFlightWriteCount) % (8_MB / DefaultBlockSize) == 0) {
+                Cerr << "Cold prefix written: "
+                     << (start + InFlightWriteCount) * DefaultBlockSize / 1_MB
+                     << " MiB" << Endl;
+            }
+        }
+        // Larger hot blobs make the workload faster without changing the
+        // number of Keep flags needed to cross the cold prefix.
+        for (ui32 start = ColdBlockCount; start < RegionBlockCount;
+             start += WriteBlockCount)
+        {
+            partition.WriteBlocks(
+                TBlockRange32::WithLength(start, WriteBlockCount),
+                'a');
+        }
+        const ui64 initialBlobCount =
+            ColdBlockCount + HotBlockCount / WriteBlockCount;
+        UNIT_ASSERT_VALUES_EQUAL(
+            initialBlobCount,
+            GetFreshBlobsCount(partition));
+
+        // Each iteration writes 64 MiB cyclically into the hot 24 MiB tail.
+        // The first two stay below the flush thresholds, yet scans cannot
+        // collect anything. The third requests a flush, which we intercept;
+        // the fourth keeps accumulating dead blobs while the flush is blocked.
+        ui64 previousBlobCount = initialBlobCount;
+        for (ui32 iteration = 0; iteration < IterationCount; ++iteration) {
+            for (ui32 i = 0; i < WritesPerIteration; ++i) {
+                partition.WriteBlocks(
+                    TBlockRange32::WithLength(
+                        ColdBlockCount + i * WriteBlockCount % HotBlockCount,
+                        WriteBlockCount),
+                    static_cast<char>('b' + iteration));
+            }
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
+            const auto stats = partition.StatPartition()->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                RegionBlockCount,
+                stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                initialBlobCount + (iteration + 1) * WritesPerIteration,
+                stats.GetFreshBlobsCount(),
+                "iteration: " << iteration);
+            UNIT_ASSERT_GT(stats.GetFreshBlobsCount(), previousBlobCount);
+            previousBlobCount = stats.GetFreshBlobsCount();
+            Cerr << "Iteration " << iteration + 1
+                 << ": fresh blobs=" << stats.GetFreshBlobsCount()
+                 << ", live blocks=" << stats.GetFreshBlocksCount()
+                 << ", blocked flush requests=" << blockedFlushRequests << Endl;
+            UNIT_ASSERT_GT(trimRequests, 0);
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.HardCommands);
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.SoftCommands);
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.TrimsFailed);
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.FlushesCompleted);
+            if (iteration < 2) {
+                UNIT_ASSERT_VALUES_EQUAL(0, blockedFlushRequests);
+            } else {
+                UNIT_ASSERT_GT(blockedFlushRequests, 0);
+            }
+        }
+
+        // Live data stays at 64 MiB while 320 MiB of written payload remains
+        // in fresh blobs. Verify the cold prefix and the latest hot contents.
+        constexpr ui32 ReadBlockCount = 1_MB / DefaultBlockSize;
+        for (ui32 start = 0; start < RegionBlockCount; start += ReadBlockCount)
+        {
+            const char fill = start < ColdBlockCount
+                                  ? 'a'
+                                  : static_cast<char>('b' + IterationCount - 1);
+            UNIT_ASSERT_C(
+                GetBlocksContent(fill, ReadBlockCount) ==
+                    GetBlocksContent(partition.ReadBlocks(
+                        TBlockRange32::WithLength(start, ReadBlockCount))),
+                "start block: " << start);
+        }
+
+        // Once flushes are allowed, ordinary hard GC removes the backlog
+        // without spending Keep or DoNotKeep flags.
+        blockFlush = false;
+        partition.Flush();
+        WaitForTrimsCompleted(*runtime, counters, 1);
+        const auto stats = partition.StatPartition()->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.FlushesCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.SoftCommands);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.TrimsFailed);
+        UNIT_ASSERT_GT(counters.HardCommands, 0);
     }
 
     Y_UNIT_TEST(ShouldNotPassInFlightFreshWriteWithSoftBarrier)
