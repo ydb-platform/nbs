@@ -160,6 +160,12 @@ struct TPartitionSchema
             using Type = TStringBuf;    // TBlockMask
         };
 
+        struct CompressionMetadata
+            : public Column<7, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = NProto::TCompressionMetadata;
+        };
+
         using TKey = TableKey<RangeEnd, CommitId>;
         using TColumns = TableColumns<
             RangeStart,
@@ -167,8 +173,8 @@ struct TPartitionSchema
             CommitId,
             BlobId,
             HoleMask,
-            SkipMask
-        >;
+            SkipMask,
+            CompressionMetadata>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
         using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;
