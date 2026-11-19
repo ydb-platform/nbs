@@ -1,8 +1,15 @@
 # Selective Fresh Log Trim
 
+## Background
+
+A tablet deletes its blobs with CollectGarbage commands, one per channel. A command sets a barrier at a commit id: blobs at or below it become garbage. Each channel has two independent barriers, and neither may decrease:
+
+- A **soft barrier** spares blobs with a Keep flag. A command can set Keep on a blob, and a later command can set DoNotKeep, which cancels Keep permanently.
+- A **hard barrier** deletes every blob at or below it, Keep flags or not.
+
 ## Problem
 
-Small writes go to fresh channels as fresh blobs. The partition trims them with a CollectGarbage barrier at `TrimFreshLogToCommitId`, which stays below every fresh blob with a referenced block and every in-flight fresh write. A trim used to follow each flush.
+Small writes go to fresh channels as fresh blobs. The partition trims them with a CollectGarbage barrier at `TrimFreshLogToCommitId`, which stays below every fresh blob with a referenced block and every fresh write the partition has not added yet. A trim used to follow each flush.
 
 In an overwrite-heavy workload, most fresh blobs die long before a flush: all their blocks are overwritten. Until the next flush, such blobs:
 
@@ -44,14 +51,14 @@ flowchart TB
 
 A fresh blob is live while any of its blocks holds a trim barrier reference. It dies when its last reference is released by an overwrite or a flush. Versions needed by checkpoints keep their references.
 
-There are two kinds of trims, and only one runs at a time. Each sends CollectGarbage to every group in the history of each fresh channel.
+There are two kinds of trims, and only one runs at a time. An ordinary trim sends CollectGarbage to every group in the history of each fresh channel. A selective trim sends it only to each fresh channel's group for the current tablet generation. It runs only when `TrimFreshLogToCommitId` is in that generation, so the blobs it flags or collects are all from it. Older groups hold only dead blobs, which the next ordinary trim deletes.
 
 | Trim | Barrier | Flags | Trims |
 | --- | --- | --- | --- |
 | Ordinary | Hard, at `TrimFreshLogToCommitId` | None | Every blob at or below the barrier. A hard barrier ignores Keep flags. |
 | Selective | Soft, on the newest dead blob below every in-flight fresh write | Keep for live blobs below the barrier, DoNotKeep for kept blobs that died | Dead blobs at or below the barrier |
 
-A fresh write stays in flight until the partition adds it, so every blob below a selective barrier is known to the partition. The barrier does not go past the newest dead blob it can reach: live blobs above the barrier need no Keep. A trim sends at most `MaxCollectGarbageFlagsPerMessage` flags, and Keep flags come first. The limit can delay DoNotKeep flags or stop the barrier lower, but it never leaves a live blob below the barrier without Keep.
+A fresh write stays in flight until it completes, after the partition adds it, so every blob below a selective barrier is known to the partition. A write whose blocks are all overwritten between the add and the completion holds no trim barrier reference, so `TrimFreshLogToCommitId` can pass it while it is still in flight. The barrier does not go past the newest dead blob it can reach: live blobs above the barrier need no Keep. A trim sends at most `MaxCollectGarbageFlagsPerMessage` flags, and Keep flags come first. The limit can delay DoNotKeep flags or stop the barrier lower, but it never leaves a live blob below the barrier without Keep.
 
 Keep flags are stored by BlobStorage, so a live blob gets Keep only once:
 
@@ -77,9 +84,9 @@ stateDiagram-v2
 | Trim | Starts when |
 | --- | --- |
 | Ordinary | `TrimFreshLogToCommitId` moved since the previous ordinary trim, and one of: `T` is 0 (as before), a flush completed, the previous ordinary trim failed, the dead blobs at or below `TrimFreshLogToCommitId` reach `T`. |
-| Selective | Selective trims are enabled, and all of: the dead blobs above `TrimFreshLogToCommitId` reach `T`, `T` more bytes died since the partition last tried a selective trim, unless that trim failed, no flush runs or is due, `TrimFreshLogToCommitId` is in the current tablet generation. |
+| Selective | Selective trims are enabled, and all of: a soft barrier fits above `TrimFreshLogToCommitId` and below every in-flight fresh write, the dead blobs above `TrimFreshLogToCommitId` reach `T`, `T` more bytes died since the partition last tried a selective trim, unless that trim failed, no flush runs or is due, `TrimFreshLogToCommitId` is in the current tablet generation. |
 
-When both are due, they alternate.
+When both are due, the ordinary trim runs first. It is cheaper, its hard barrier also deletes dead blobs with Keep flags, and it removes as many bytes from the dead blobs as from the trimmable ones, so the selective trim stays due.
 
 ### Failures
 

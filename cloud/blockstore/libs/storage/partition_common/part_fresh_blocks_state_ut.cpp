@@ -5,11 +5,43 @@
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
+#include <cloud/storage/core/libs/tablet/model/commit.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/size_literals.h>
 
 namespace NCloud::NBlockStore::NStorage {
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TPartialBlobId BlobId(ui64 commitId)
+{
+    return TPartialBlobId(commitId, 0);
+}
+
+TVector<ui64> CommitIds(const TVector<TPartialBlobId>& blobIds)
+{
+    TVector<ui64> result;
+    for (const auto& blobId: blobIds) {
+        result.push_back(blobId.CommitId());
+    }
+    return result;
+}
+
+// Untrimmed blobs at commits [first, last], 10 bytes each.
+TPartitionFreshBlobState MakeFreshBlobState(ui64 first, ui64 last)
+{
+    TPartitionFreshBlobState state(/*tabletId=*/0);
+    for (ui64 commitId = first; commitId <= last; ++commitId) {
+        state.AddFreshBlob(commitId, BlobId(commitId), 10, TInstant::Zero());
+    }
+    return state;
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -19,11 +51,11 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
     {
         TPartitionFreshBlobState state(/*tabletId=*/0);
 
-        state.AddFreshBlob(1, 10, TInstant::Zero());
-        state.AddFreshBlob(3, 30, TInstant::Zero());
-        state.AddFreshBlob(2, 20, TInstant::Zero());
-        state.AddFreshBlob(5, 50, TInstant::Zero());
-        state.AddFreshBlob(4, 40, TInstant::Zero());
+        state.AddFreshBlob(1, BlobId(1), 10, TInstant::Zero());
+        state.AddFreshBlob(3, BlobId(3), 30, TInstant::Zero());
+        state.AddFreshBlob(2, BlobId(2), 20, TInstant::Zero());
+        state.AddFreshBlob(5, BlobId(5), 50, TInstant::Zero());
+        state.AddFreshBlob(4, BlobId(4), 40, TInstant::Zero());
 
         UNIT_ASSERT_VALUES_EQUAL(150, state.GetUntrimmedFreshBlobByteCount());
 
@@ -33,7 +65,7 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(90, state.GetUntrimmedFreshBlobByteCount());
 
-        state.AddFreshBlob(7, 70, TInstant::Zero());
+        state.AddFreshBlob(7, BlobId(7), 70, TInstant::Zero());
 
         UNIT_ASSERT_VALUES_EQUAL(160, state.GetUntrimmedFreshBlobByteCount());
 
@@ -48,7 +80,7 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
     {
         TPartitionFreshBlobState state(/*tabletId=*/0);
 
-        state.AddFreshBlob(1, Max<ui32>(), TInstant::Zero());
+        state.AddFreshBlob(1, BlobId(1), Max<ui32>(), TInstant::Zero());
         UNIT_ASSERT_VALUES_EQUAL(
             Max<ui32>(),
             state.GetUnflushedFreshBlobByteCount());
@@ -62,9 +94,9 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
                                  state.GetFirstUnflushedFreshBlobTimestamp(0));
 
-        state.AddFreshBlob(1, 10, t0);
-        state.AddFreshBlob(2, 20, t0 + TDuration::Seconds(1));
-        state.AddFreshBlob(3, 30, t0 + TDuration::Seconds(2));
+        state.AddFreshBlob(1, BlobId(1), 10, t0);
+        state.AddFreshBlob(2, BlobId(2), 20, t0 + TDuration::Seconds(1));
+        state.AddFreshBlob(3, BlobId(3), 30, t0 + TDuration::Seconds(2));
 
         UNIT_ASSERT_VALUES_EQUAL(t0,
                                  state.GetFirstUnflushedFreshBlobTimestamp(0));
@@ -92,7 +124,7 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
                                  state.GetFirstUnflushedFreshBlobTimestamp(1));
 
         // Track the first blob published into empty state again.
-        state.AddFreshBlob(4, 40, t0 + TDuration::Seconds(10));
+        state.AddFreshBlob(4, BlobId(4), 40, t0 + TDuration::Seconds(10));
         UNIT_ASSERT_VALUES_EQUAL(t0 + TDuration::Seconds(10),
                                  state.GetFirstUnflushedFreshBlobTimestamp(1));
     }
@@ -103,9 +135,9 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Max(),
                                  state.GetFirstUnflushedFreshBlobTimestamp(0));
 
-        state.AddFreshBlob(3, 30, TInstant::Seconds(110));
-        state.AddFreshBlob(1, 10, TInstant::Seconds(100));
-        state.AddFreshBlob(5, 50, TInstant::Seconds(120));
+        state.AddFreshBlob(3, BlobId(3), 30, TInstant::Seconds(110));
+        state.AddFreshBlob(1, BlobId(1), 10, TInstant::Seconds(100));
+        state.AddFreshBlob(5, BlobId(5), 50, TInstant::Seconds(120));
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
                                  state.GetFirstUnflushedFreshBlobTimestamp(0));
 
@@ -142,8 +174,8 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
     Y_UNIT_TEST(ShouldIncludeUnknownTimestampAfterTrimBoundary)
     {
         TPartitionFreshBlobState state(/*tabletId=*/0);
-        state.AddFreshBlob(1, 10, TInstant::Zero());
-        state.AddFreshBlob(2, 20, TInstant::Seconds(100));
+        state.AddFreshBlob(1, BlobId(1), 10, TInstant::Zero());
+        state.AddFreshBlob(2, BlobId(2), 20, TInstant::Seconds(100));
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Zero(),
                                  state.GetFirstUnflushedFreshBlobTimestamp(0));
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
@@ -155,7 +187,7 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(100),
                                  state.GetFirstUnflushedFreshBlobTimestamp(1));
 
-        state.AddFreshBlob(3, 30, TInstant::Zero());
+        state.AddFreshBlob(3, BlobId(3), 30, TInstant::Zero());
         UNIT_ASSERT_VALUES_EQUAL(
             20,
             state.FlushFreshBlob(2).UnflushedBytesRemoved);
@@ -170,8 +202,8 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         TPartitionFreshBlobState state(/*tabletId=*/0);
         const auto now = TInstant::Seconds(100);
 
-        state.AddFreshBlob(2, 20, now);
-        state.AddFreshBlob(1, 10, TInstant::Zero());
+        state.AddFreshBlob(2, BlobId(2), 20, now);
+        state.AddFreshBlob(1, BlobId(1), 10, TInstant::Zero());
 
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Zero(),
                                  state.GetFirstUnflushedFreshBlobTimestamp(0));
@@ -180,9 +212,9 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
     Y_UNIT_TEST(ShouldTrackTimestampByCommitIdRegardlessOfInsertionOrder)
     {
         TPartitionFreshBlobState state(/*tabletId=*/0);
-        state.AddFreshBlob(3, 30, TInstant::Seconds(110));
-        state.AddFreshBlob(1, 10, TInstant::Seconds(120));
-        state.AddFreshBlob(2, 20, TInstant::Seconds(100));
+        state.AddFreshBlob(3, BlobId(3), 30, TInstant::Seconds(110));
+        state.AddFreshBlob(1, BlobId(1), 10, TInstant::Seconds(120));
+        state.AddFreshBlob(2, BlobId(2), 20, TInstant::Seconds(100));
 
         UNIT_ASSERT_VALUES_EQUAL(TInstant::Seconds(120),
                                  state.GetFirstUnflushedFreshBlobTimestamp(0));
@@ -221,9 +253,9 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
     Y_UNIT_TEST(ShouldRemoveTrimmedBlobsFromUnflushedAccounting)
     {
         TPartitionFreshBlobState state(/*tabletId=*/0);
-        state.AddFreshBlob(1, 10, TInstant::Zero());
-        state.AddFreshBlob(2, 20, TInstant::Zero());
-        state.AddFreshBlob(3, 30, TInstant::Zero());
+        state.AddFreshBlob(1, BlobId(1), 10, TInstant::Zero());
+        state.AddFreshBlob(2, BlobId(2), 20, TInstant::Zero());
+        state.AddFreshBlob(3, BlobId(3), 30, TInstant::Zero());
 
         UNIT_ASSERT_VALUES_EQUAL(
             10,
@@ -262,10 +294,10 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
     Y_UNIT_TEST(ShouldCountDeadFreshBlobBytes)
     {
         TPartitionFreshBlobState state(/*tabletId=*/0);
-        state.AddFreshBlob(1, 10, TInstant::Zero());
-        state.AddFreshBlob(2, 2, TInstant::Zero());
-        state.AddFreshBlob(3, 30, TInstant::Zero());
-        state.AddFreshBlob(4, 40, TInstant::Zero());
+        state.AddFreshBlob(1, BlobId(1), 10, TInstant::Zero());
+        state.AddFreshBlob(2, BlobId(2), 2, TInstant::Zero());
+        state.AddFreshBlob(3, BlobId(3), 30, TInstant::Zero());
+        state.AddFreshBlob(4, BlobId(4), 40, TInstant::Zero());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetDeadUntrimmedFreshBlobByteCount());
 
         state.MarkFreshBlobDead(2);
@@ -273,11 +305,13 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(
             32,
             state.GetDeadUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(32, state.GetTotalKilledFreshBlobByteCount());
 
         state.MarkFreshBlobDead(1);
         UNIT_ASSERT_VALUES_EQUAL(
             42,
             state.GetDeadUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(42, state.GetTotalKilledFreshBlobByteCount());
 
         UNIT_ASSERT_VALUES_EQUAL(
             12,
@@ -287,16 +321,14 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
             state.GetDeadUntrimmedFreshBlobByteCount());
         UNIT_ASSERT_VALUES_EQUAL(
             30,
-            state.TrimFreshBlobs(3).UnflushedBytesRemoved);
+            state.TrimCollectedFreshBlobs({3}).UnflushedBytesRemoved);
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetDeadUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(42, state.GetTotalKilledFreshBlobByteCount());
     }
 
     Y_UNIT_TEST(ShouldCountDeadFreshBlobBytesForOrdinaryTrim)
     {
-        TPartitionFreshBlobState state(/*tabletId=*/0);
-        for (ui64 commitId = 1; commitId <= 6; ++commitId) {
-            state.AddFreshBlob(commitId, 10, TInstant::Zero());
-        }
+        auto state = MakeFreshBlobState(1, 6);
         for (ui64 commitId: {1, 2, 4, 5}) {
             state.MarkFreshBlobDead(commitId);
         }
@@ -308,34 +340,65 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(
             20,
             state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(2));
-        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({3, 6}));
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({3, 6}, 6));
         // A dead blob reported live and a live blob not reported are caught.
-        UNIT_ASSERT(!state.CheckDeadFreshBlobByteCount({2, 3, 6}));
-        UNIT_ASSERT(!state.CheckDeadFreshBlobByteCount({3}));
+        UNIT_ASSERT(!state.CheckDeadFreshBlobByteCount({2, 3, 6}, 6));
+        UNIT_ASSERT(!state.CheckDeadFreshBlobByteCount({3}, 6));
+        // So is a referenced commit without an entry, unless its write may
+        // still be in flight.
+        UNIT_ASSERT(!state.CheckDeadFreshBlobByteCount({3, 6, 7}, 7));
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({3, 6, 7}, 6));
+        UNIT_ASSERT(!state.CheckDeadFreshBlobByteCount({0, 3, 6}, 6));
+
+        // A selective trim collects dead blobs above OrdinaryTrimToCommitId.
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.TrimCollectedFreshBlobs({4, 5}).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.GetDeadUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(2));
 
         // Blob 3 dies, and OrdinaryTrimToCommitId moves to 5.
         state.MarkFreshBlobDead(3);
         UNIT_ASSERT_VALUES_EQUAL(
-            50,
+            30,
             state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(5));
-        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({6}));
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({6}, 6));
+
+        // OrdinaryTrimToCommitId passes blob 6 while a selective trim that
+        // collects it is in flight.
+        state.AddFreshBlob(7, BlobId(7), 10, TInstant::Zero());
+        state.MarkFreshBlobDead(6);
+        UNIT_ASSERT_VALUES_EQUAL(
+            40,
+            state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(6));
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            state.TrimCollectedFreshBlobs({6}).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(
+            30,
+            state.GetDeadUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            30,
+            state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(6));
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({7}, 7));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            50,
-            state.TrimFreshBlobs(5).UnflushedBytesRemoved);
+            30,
+            state.TrimFreshBlobs(6).UnflushedBytesRemoved);
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetDeadUntrimmedFreshBlobByteCount());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(5));
-        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({6}));
+            state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(6));
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({7}, 7));
     }
 
     Y_UNIT_TEST(ShouldTrimFreshBlobsAboveOrdinaryTrimToCommitId)
     {
-        TPartitionFreshBlobState state(/*tabletId=*/0);
-        for (ui64 commitId = 1; commitId <= 3; ++commitId) {
-            state.AddFreshBlob(commitId, 10, TInstant::Zero());
-        }
+        auto state = MakeFreshBlobState(1, 3);
         state.MarkFreshBlobDead(1);
         UNIT_ASSERT_VALUES_EQUAL(
             10,
@@ -350,7 +413,426 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(2));
-        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({3}));
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({3}, 3));
+    }
+
+    Y_UNIT_TEST(ShouldBuildSelectiveTrimPlan)
+    {
+        // OrdinaryTrimToCommitId is 10 and SelectiveTrimToCommitId is 19, with
+        // a write at 20 in flight and no earlier soft barrier. L is live and D
+        // is dead.
+        //
+        // commit:  11  12  13  14  15  16  17  18  19
+        // state:    L   D   D   L   D   D   L   D   L
+        auto state = MakeFreshBlobState(11, 19);
+        for (ui64 commitId: {12, 13, 15, 16, 18}) {
+            state.MarkFreshBlobDead(commitId);
+        }
+
+        {
+            auto plan = state.BuildSelectiveTrimPlan({
+                .OrdinaryTrimToCommitId = 10,
+                .SelectiveTrimToCommitId = 19,
+                .MaxFlags = 10,
+            });
+            UNIT_ASSERT(plan);
+            UNIT_ASSERT_VALUES_EQUAL(18, plan->TrimToCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TVector<ui64>({11, 14, 17}),
+                CommitIds(plan->Keep));
+            UNIT_ASSERT(!plan->DoNotKeep);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TVector<ui64>({12, 13, 15, 16, 18}),
+                plan->CollectingCommitIds);
+        }
+
+        // The flag budget stops the barrier on the last dead blob that fits.
+        {
+            auto plan = state.BuildSelectiveTrimPlan({
+                .OrdinaryTrimToCommitId = 10,
+                .SelectiveTrimToCommitId = 19,
+                .MaxFlags = 2,
+            });
+            UNIT_ASSERT(plan);
+            UNIT_ASSERT_VALUES_EQUAL(16, plan->TrimToCommitId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TVector<ui64>({11, 14}),
+                CommitIds(plan->Keep));
+            UNIT_ASSERT_VALUES_EQUAL(
+                TVector<ui64>({12, 13, 15, 16}),
+                plan->CollectingCommitIds);
+        }
+
+        // A budget that no dead blob fits in moves nothing.
+        UNIT_ASSERT(!state.BuildSelectiveTrimPlan({
+            .OrdinaryTrimToCommitId = 10,
+            .SelectiveTrimToCommitId = 19,
+            .MaxFlags = 0,
+        }));
+
+        // Every blob up to SelectiveTrimToCommitId is live, and the dead blobs
+        // above it are not collected.
+        UNIT_ASSERT(!state.BuildSelectiveTrimPlan({
+            .OrdinaryTrimToCommitId = 10,
+            .SelectiveTrimToCommitId = 11,
+            .MaxFlags = 10,
+        }));
+
+        // Nothing is untrimmed above OrdinaryTrimToCommitId.
+        UNIT_ASSERT(!state.BuildSelectiveTrimPlan({
+            .OrdinaryTrimToCommitId = 20,
+            .SelectiveTrimToCommitId = 20,
+            .MaxFlags = 10,
+        }));
+    }
+
+    Y_UNIT_TEST(ShouldNotBuildSelectiveTrimPlanWhileOverwrittenWriteIsInFlight)
+    {
+        // The write at 11 was added and then overwritten, so it holds no trim
+        // barrier reference, but it has not completed yet. The live blob at 13
+        // holds OrdinaryTrimToCommitId at 12, above SelectiveTrimToCommitId,
+        // which is 10.
+        //
+        // commit:  11  12  13  14  15  16  17
+        // state:    D   D   L   D   D   D   L
+        auto state = MakeFreshBlobState(11, 17);
+        for (ui64 commitId: {11, 12, 14, 15, 16}) {
+            state.MarkFreshBlobDead(commitId);
+        }
+
+        UNIT_ASSERT(!state.BuildSelectiveTrimPlan({
+            .OrdinaryTrimToCommitId = 12,
+            .SelectiveTrimToCommitId = 10,
+            .MaxFlags = 10,
+        }));
+
+        // The write at 13 has not completed either, and it holds both of them.
+        UNIT_ASSERT(!state.BuildSelectiveTrimPlan({
+            .OrdinaryTrimToCommitId = 12,
+            .SelectiveTrimToCommitId = 12,
+            .MaxFlags = 10,
+        }));
+
+        // Once the writes complete, the soft barrier reaches the dead blobs
+        // above the live one and collects the ones below it.
+        auto plan = state.BuildSelectiveTrimPlan({
+            .OrdinaryTrimToCommitId = 12,
+            .SelectiveTrimToCommitId = 17,
+            .MaxFlags = 10,
+        });
+        UNIT_ASSERT(plan);
+        UNIT_ASSERT_VALUES_EQUAL(16, plan->TrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>({13}), CommitIds(plan->Keep));
+        UNIT_ASSERT(!plan->DoNotKeep);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({14, 15, 16, 11, 12}),
+            plan->CollectingCommitIds);
+    }
+
+    Y_UNIT_TEST(ShouldResendFlagsAfterFailedSelectiveTrim)
+    {
+        // A soft command at 16 failed, so no blob at or below it is known to
+        // carry a Keep flag.
+        //
+        // commit:  11  12  13  14  15  16  17  18  19  20  21  22
+        // state:    L   D   D   D   D   D   L   D   L   D   D   L
+        auto state = MakeFreshBlobState(11, 22);
+        for (ui64 commitId: {12, 13, 14, 15, 16, 18, 20, 21}) {
+            state.MarkFreshBlobDead(commitId);
+        }
+
+        auto plan = state.BuildSelectiveTrimPlan({
+            .OrdinaryTrimToCommitId = 10,
+            .SelectiveTrimToCommitId = 22,
+            .KeptToCommitId = 0,
+            .LastSentSelectiveTrimToCommitId = 16,
+            .MaxFlags = 10,
+        });
+        UNIT_ASSERT(plan);
+        UNIT_ASSERT_VALUES_EQUAL(21, plan->TrimToCommitId);
+        // 11 is mandatory, 17 and 19 are below the new barrier.
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({11, 17, 19}),
+            CommitIds(plan->Keep));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({12, 13, 14, 15, 16}),
+            CommitIds(plan->DoNotKeep));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({18, 20, 21, 12, 13, 14, 15, 16}),
+            plan->CollectingCommitIds);
+
+        // Mandatory Keep flags are never dropped by the budget, and the
+        // barrier does not drop below the failed one.
+        plan = state.BuildSelectiveTrimPlan({
+            .OrdinaryTrimToCommitId = 10,
+            .SelectiveTrimToCommitId = 22,
+            .KeptToCommitId = 0,
+            .LastSentSelectiveTrimToCommitId = 16,
+            .MaxFlags = 1,
+        });
+        UNIT_ASSERT(plan);
+        UNIT_ASSERT_VALUES_EQUAL(16, plan->TrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>({11}), CommitIds(plan->Keep));
+        UNIT_ASSERT(!plan->DoNotKeep);
+        UNIT_ASSERT(!plan->CollectingCommitIds);
+
+        // Blobs kept by a successful command need no flag.
+        plan = state.BuildSelectiveTrimPlan({
+            .OrdinaryTrimToCommitId = 10,
+            .SelectiveTrimToCommitId = 22,
+            .KeptToCommitId = 16,
+            .LastSentSelectiveTrimToCommitId = 16,
+            .MaxFlags = 10,
+        });
+        UNIT_ASSERT(plan);
+        UNIT_ASSERT_VALUES_EQUAL(21, plan->TrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({17, 19}),
+            CommitIds(plan->Keep));
+    }
+
+    Y_UNIT_TEST(ShouldReleaseDeadKeptBlobsWithinFlagBudget)
+    {
+        // Every blob at or below 15 was kept; 12, 13 and 14 died since.
+        //
+        // commit:  11  12  13  14  15  16  17
+        // state:    L   D   D   D   L   L   L
+        auto state = MakeFreshBlobState(11, 17);
+        for (ui64 commitId: {12, 13, 14}) {
+            state.MarkFreshBlobDead(commitId);
+        }
+
+        auto plan = state.BuildSelectiveTrimPlan({
+            .OrdinaryTrimToCommitId = 10,
+            .SelectiveTrimToCommitId = 17,
+            .KeptToCommitId = 15,
+            .LastSentSelectiveTrimToCommitId = 15,
+            .MaxFlags = 10,
+        });
+        UNIT_ASSERT(plan);
+        // Only flags are sent; the barrier stays where it is.
+        UNIT_ASSERT_VALUES_EQUAL(15, plan->TrimToCommitId);
+        UNIT_ASSERT(!plan->Keep);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({12, 13, 14}),
+            CommitIds(plan->DoNotKeep));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({12, 13, 14}),
+            plan->CollectingCommitIds);
+
+        // DoNotKeep gets the budget that Keep left; the rest waits.
+        plan = state.BuildSelectiveTrimPlan({
+            .OrdinaryTrimToCommitId = 10,
+            .SelectiveTrimToCommitId = 17,
+            .KeptToCommitId = 15,
+            .LastSentSelectiveTrimToCommitId = 15,
+            .MaxFlags = 2,
+        });
+        UNIT_ASSERT(plan);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({12, 13}),
+            CommitIds(plan->DoNotKeep));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({12, 13}),
+            plan->CollectingCommitIds);
+    }
+
+    Y_UNIT_TEST(ShouldCollectBlobsWithoutKeepBelowOrdinaryTrimToCommitId)
+    {
+        // OrdinaryTrimToCommitId is 14 and passed the soft barrier at 12, so
+        // 11 and 12 may carry Keep flags, while 13 and 14 carry none.
+        //
+        // commit:  11  12  13  14  15  16  17  18  19
+        // state:    D   D   D   D   L   D   L   D   L
+        auto state = MakeFreshBlobState(11, 19);
+        for (ui64 commitId: {11, 12, 13, 14, 16, 18}) {
+            state.MarkFreshBlobDead(commitId);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            40,
+            state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(14));
+        const TVector<ui64> live = {15, 17, 19};
+
+        auto plan = state.BuildSelectiveTrimPlan({
+            .OrdinaryTrimToCommitId = 14,
+            .SelectiveTrimToCommitId = 19,
+            .KeptToCommitId = 12,
+            .LastSentSelectiveTrimToCommitId = 12,
+            .MaxFlags = 10,
+        });
+        UNIT_ASSERT(plan);
+        UNIT_ASSERT_VALUES_EQUAL(18, plan->TrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({15, 17}),
+            CommitIds(plan->Keep));
+        UNIT_ASSERT(!plan->DoNotKeep);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({16, 18, 13, 14}),
+            plan->CollectingCommitIds);
+
+        // Only the blobs that may carry Keep flags wait for the hard barrier.
+        UNIT_ASSERT_VALUES_EQUAL(
+            40,
+            state.TrimCollectedFreshBlobs(plan->CollectingCommitIds)
+                .UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.GetDeadUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(14));
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount(live, 19));
+    }
+
+    Y_UNIT_TEST(ShouldCollectBlobsBelowOrdinaryTrimToCommitIdAfterRestart)
+    {
+        // Selective trim state is not restored on restart, so no soft barrier
+        // was sent in this tablet lifetime before its first selective trim.
+        // Still, the fresh blobs loaded from generation 1 may carry Keep flags
+        // of the previous lifetime, so only the hard barrier of an ordinary
+        // trim deletes them.
+        const ui64 loaded1 = MakeCommitId(1, 5);
+        const ui64 loaded2 = MakeCommitId(1, 6);
+        const ui64 dead1 = MakeCommitId(2, 1);
+        const ui64 dead2 = MakeCommitId(2, 2);
+        const ui64 live = MakeCommitId(2, 3);
+        const ui64 dead3 = MakeCommitId(2, 4);
+
+        TPartitionFreshBlobState state(/*tabletId=*/0);
+        for (ui64 commitId: {loaded1, loaded2, dead1, dead2, live, dead3}) {
+            state.AddFreshBlob(
+                commitId,
+                BlobId(commitId),
+                10,
+                TInstant::Zero());
+        }
+
+        // The startup flush kills the loaded fresh blobs. The ordinary trim
+        // that it requests has not deleted them yet.
+        for (ui64 commitId: {loaded1, loaded2}) {
+            state.MarkFreshBlobDead(commitId);
+            UNIT_ASSERT_VALUES_EQUAL(
+                10,
+                state.FlushFreshBlob(commitId).UnflushedBytesRemoved);
+        }
+        for (ui64 commitId: {dead1, dead2, dead3}) {
+            state.MarkFreshBlobDead(commitId);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            40,
+            state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(dead2));
+
+        // The barrier collects the dead blobs of the current generation below
+        // OrdinaryTrimToCommitId, but not the loaded ones.
+        auto plan = state.BuildSelectiveTrimPlan({
+            .OrdinaryTrimToCommitId = dead2,
+            .SelectiveTrimToCommitId = dead3,
+            .CurrentGeneration = 2,
+            .MaxFlags = 10,
+        });
+        UNIT_ASSERT(plan);
+        UNIT_ASSERT_VALUES_EQUAL(dead3, plan->TrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>({live}), CommitIds(plan->Keep));
+        UNIT_ASSERT(!plan->DoNotKeep);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({dead3, dead1, dead2}),
+            plan->CollectingCommitIds);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            30,
+            state.TrimCollectedFreshBlobs(plan->CollectingCommitIds)
+                .UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(30, state.GetUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.GetDeadUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(dead2));
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({live}, dead3));
+
+        // The hard barrier of the ordinary trim deletes the loaded blobs.
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.TrimFreshBlobs(dead2).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(10, state.GetUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetDeadUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT(state.CheckDeadFreshBlobByteCount({live}, dead3));
+    }
+
+    Y_UNIT_TEST(ShouldTrimCollectedFreshBlobs)
+    {
+        auto state = MakeFreshBlobState(1, 4);
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            state.FlushFreshBlob(2).UnflushedBytesRemoved);
+
+        // The flush already removed the unflushed entry of blob 2.
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            state.TrimCollectedFreshBlobs({2, 3}).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(20, state.GetUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, state.GetUnflushedFreshBlobCount());
+        UNIT_ASSERT_VALUES_EQUAL(20, state.GetUnflushedFreshBlobByteCount());
+
+        // A flush that captured blob 3 accepts that a selective trim at or
+        // above it removed it.
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            state.FlushFreshBlob(3).UnflushedBytesRemoved);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            state.TrimFreshBlobs(4).UnflushedBytesRemoved);
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetUntrimmedFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetUnflushedFreshBlobCount());
+    }
+
+    Y_UNIT_TEST(ShouldTrackSelectiveTrimState)
+    {
+        TPartitionTrimFreshLogState state;
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetKeptToCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetLastSentSelectiveTrimToCommitId());
+        UNIT_ASSERT(state.IsSelectiveScanAllowed(0));
+
+        auto setStatus = [&state](EOperationStatus status)
+        {
+            state.AccessTrimFreshLogState().SetStatus(status, TInstant::Zero());
+        };
+
+        // After a scan, the next one waits until another threshold of bytes
+        // is killed.
+        state.DeferSelectiveScan(100, 30);
+        UNIT_ASSERT(!state.IsSelectiveScanAllowed(129));
+        UNIT_ASSERT(state.IsSelectiveScanAllowed(130));
+
+        state.StartSelectiveTrim(10);
+        setStatus(EOperationStatus::Started);
+        // The barrier counts as sent before the command succeeds.
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            state.GetLastSentSelectiveTrimToCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetKeptToCommitId());
+
+        state.FailSelectiveTrim();
+        setStatus(EOperationStatus::Idle);
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            state.GetLastSentSelectiveTrimToCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetKeptToCommitId());
+        // After a failure, the next scan does not wait.
+        UNIT_ASSERT(state.IsSelectiveScanAllowed(100));
+
+        state.DeferSelectiveScan(100, 30);
+        state.StartSelectiveTrim(12);
+        setStatus(EOperationStatus::Started);
+        state.CompleteSelectiveTrim();
+        UNIT_ASSERT_VALUES_EQUAL(12, state.GetKeptToCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            12,
+            state.GetLastSentSelectiveTrimToCommitId());
+        // After a success, it does.
+        UNIT_ASSERT(!state.IsSelectiveScanAllowed(129));
     }
 }
 
