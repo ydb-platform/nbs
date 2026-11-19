@@ -528,6 +528,11 @@ void TTestVolumeProxyActor::HandleDescribeBlocksRequest(
                 blobId,
                 blobPiece.MutableBlobId());
 
+            // An entry without CompressionMetadata denotes an uncompressed
+            // blob.
+            *response->Record.AddBlobId2CompressionMetadata()->MutableBlobId() =
+                blobPiece.GetBlobId();
+
             auto* range = blobPiece.AddRanges();
             range->SetBlobOffset(blob.Offset);
             range->SetBlockIndex(blockIndex);
@@ -1226,6 +1231,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 GetBlocksContent('a', range.Size()),
                 GetBlocksContent(response));
             UNIT_ASSERT_VALUES_EQUAL(1, readsWithCompressionMetadata);
+
+            const auto described = partition.DescribeBlocks(range);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                described->Record.BlobId2CompressionMetadataSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                compressionMetadata.SerializeAsString(),
+                described->Record.GetBlobId2CompressionMetadata(0)
+                    .GetCompressionMetadata()
+                    .SerializeAsString());
 
             readsWithCompressionMetadata = 0;
             partition.ScanDisk(10);

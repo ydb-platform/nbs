@@ -301,6 +301,10 @@ void TPartitionActor::FillDescribeBlocksResponse(
         blobPiece->SetBSGroupId(
             Info()->GroupFor(blobId.Channel(), blobId.Generation()));
 
+        auto* compressionMetadata =
+            response->Record.AddBlobId2CompressionMetadata();
+        *compressionMetadata->MutableBlobId() = blobPiece->GetBlobId();
+
         do {
             auto blobOffset = iter->BlobOffset;
             auto blockIndex = iter->BlockIndex;
