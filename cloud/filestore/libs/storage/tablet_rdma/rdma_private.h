@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/rdma/transport.h>
 #include <cloud/filestore/libs/storage/api/components.h>
 
@@ -7,6 +8,8 @@
 #include <contrib/ydb/library/actors/core/event_local.h>
 
 #include <library/cpp/threading/future/future.h>
+
+#include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -47,6 +50,10 @@ struct TEvRdmaTabletPrivate
         {
             // the event was dropped before the forwarder took the promise
             if (Promise.Initialized() && !Promise.HasValue()) {
+                ReportTabletRdmaCritEvent(
+                    TStringBuilder()
+                    << "RDMA request was dropped before the forwarder took it"
+                    << ": tablet " << TabletActorId.ToString());
                 Promise.SetValue(TTabletTransportResponse(
                     MakeError(E_REJECTED, "rdma forwarder unavailable")));
             }

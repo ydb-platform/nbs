@@ -78,8 +78,7 @@ namespace NCloud::NFileStore{
     xxx(PersistentStateUnlistableDir)                                          \
     xxx(DupCacheEntryRequestIdCollision)                                       \
     xxx(FastShardInitFailed)                                                   \
-    xxx(RdmaMalformedTabletRequest)                                            \
-    xxx(RdmaTabletRequestTimeout)                                              \
+    xxx(TabletRdmaCritEvent)                                                   \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \

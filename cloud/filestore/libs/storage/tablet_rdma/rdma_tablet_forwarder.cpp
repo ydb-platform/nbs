@@ -27,6 +27,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr ui32 TimeoutSweepsPerRequestTimeout = 4;
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TRdmaTabletForwarderActor final
     : public TActorBootstrapped<TRdmaTabletForwarderActor>
 {
@@ -168,7 +172,9 @@ private:
         }
         SweepScheduled = true;
         ctx.Schedule(
-            Max(RequestTimeout / 4, TDuration::Seconds(1)),
+            Max(
+                RequestTimeout / TimeoutSweepsPerRequestTimeout,
+                TDuration::Seconds(1)),
             new TEvents::TEvWakeup());
     }
 
@@ -182,10 +188,10 @@ private:
         const auto now = ctx.Now();
         for (auto it = InFlight.begin(); it != InFlight.end();) {
             if (it->second.Deadline <= now) {
-                ReportRdmaTabletRequestTimeout(
+                ReportTabletRdmaCritEvent(
                     TStringBuilder()
-                    << "cookie " << it->first << ", tablet "
-                    << ToString(it->second.TabletActorId));
+                    << "RDMA request timed out: cookie " << it->first
+                    << ", tablet " << ToString(it->second.TabletActorId));
                 Fail(
                     ctx,
                     it->first,
@@ -204,9 +210,12 @@ private:
         const TEvIndexTabletProxy::TEvFileSystemEvent::TPtr& ev,
         const TActorContext& ctx)
     {
-        LOG_DEBUG(ctx, TFileStoreComponents::RDMA,
-            "Drop FileSystemEvent from %s",
-            ev->Sender.ToString().c_str());
+        Y_UNUSED(ctx);
+
+        ReportTabletRdmaCritEvent(
+            TStringBuilder()
+            << "FileSystemEvent reached the RDMA forwarder: sender "
+            << ev->Sender.ToString());
     }
 
     void HandlePoisonPill(

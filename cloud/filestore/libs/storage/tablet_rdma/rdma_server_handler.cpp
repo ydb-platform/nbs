@@ -106,7 +106,7 @@ public:
         {                                                                      \
             const TString message = TStringBuilder()                           \
                 << "malformed RDMA request body for method " << methodId;      \
-            ReportRdmaMalformedTabletRequest(message);                         \
+            ReportTabletRdmaCritEvent(message);                                \
             promise.SetValue(Reject(E_ARGUMENT, message));                     \
             break;                                                             \
         }                                                                      \
@@ -123,8 +123,13 @@ public:
 
 #undef FILESTORE_RDMA_FORWARD_CASE
 
-            default:
-                Y_ABORT("unexpected RDMA method %u", methodId);
+            default: {
+                const TString message = TStringBuilder()
+                    << "unexpected RDMA method " << methodId;
+                ReportTabletRdmaCritEvent(message);
+                promise.SetValue(Reject(E_NOT_IMPLEMENTED, message));
+                break;
+            }
         }
 
         return promise.GetFuture();
