@@ -69,6 +69,7 @@ func (t *deleteDiskTask) deleteDisk(
 		ctx,
 		diskID,
 		selfTaskID,
+		"",
 		time.Now(),
 	)
 	if err != nil {

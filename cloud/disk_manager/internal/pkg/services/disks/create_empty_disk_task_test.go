@@ -175,6 +175,7 @@ func TestCancelCreateEmptyDiskTask(t *testing.T) {
 		ctx,
 		"disk",
 		"toplevel_task_id",
+		"",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
 		ID:           "disk",
@@ -221,6 +222,7 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 		ctx,
 		"disk",
 		"toplevel_task_id",
+		"",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
 		ID:           "disk",
@@ -260,18 +262,63 @@ func TestCancelCreateEmptyDiskTaskBeforeRunIsCalled(t *testing.T) {
 		state:      &protos.CreateEmptyDiskTaskState{},
 	}
 
-	// There is no such disk in storage.
+	// There is no such disk in storage. Cancel must pass empty cleanupTaskID
+	// so a missing disk becomes a plain Deleted placeholder, not a tombstone.
 	storage.On(
 		"DeleteDisk",
 		ctx,
 		"disk",
 		"toplevel_task_id",
+		"",
 		mock.Anything,
 	).Return((*resources.DiskMeta)(nil), nil)
 
 	err := task.Cancel(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, storage, nbsFactory, execCtx)
 	require.NoError(t, err)
+	nbsFactory.AssertNotCalled(t, "GetClient", mock.Anything, mock.Anything)
+}
+
+func TestCancelCreateEmptyDiskTaskRetryAfterDeletedPlaceholder(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	execCtx := newExecutionContextMock()
+
+	params := &protos.CreateDiskParams{
+		BlocksCount: 123,
+		Disk: &types.Disk{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+		BlockSize: 456,
+		Kind:      types.DiskKind_DISK_KIND_SSD,
+		CloudId:   "cloud",
+		FolderId:  "folder",
+	}
+	task := &createEmptyDiskTask{
+		storage:    storage,
+		nbsFactory: nbsFactory,
+		params:     params,
+		state:      &protos.CreateEmptyDiskTaskState{},
+	}
+
+	// Retry after the first Cancel already wrote a Deleted placeholder: storage
+	// must keep returning nil (no empty-zone meta), so Cancel stays a no-op.
+	storage.On(
+		"DeleteDisk",
+		ctx,
+		"disk",
+		"toplevel_task_id",
+		"",
+		mock.Anything,
+	).Return((*resources.DiskMeta)(nil), nil).Twice()
+
+	require.NoError(t, task.Cancel(ctx, execCtx))
+	require.NoError(t, task.Cancel(ctx, execCtx))
+	mock.AssertExpectationsForObjects(t, storage, nbsFactory, execCtx)
+	nbsFactory.AssertNotCalled(t, "GetClient", mock.Anything, mock.Anything)
+	storage.AssertNotCalled(t, "DiskDeleted", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestCreateEmptyDiskTaskWithPlacementGroup(t *testing.T) {
