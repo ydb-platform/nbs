@@ -114,6 +114,14 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
     PartCounters->Simple.CompactionIgnoringZeroedScore.Set(
         State->GetCompactionIgnoringZeroedScore());
 
+    PartCounters->Simple.CompactionMixedBlocksScore.Set(
+        State->GetCompactionMap()
+            .GetTopByMixedBlockCount()
+            .Stat.MixedBlockCount);
+
+    PartCounters->Simple.CompactionMixedBlocksPercentage.Set(
+        State->GetMixedBlocksCompactionPercentage(*Config));
+
     PartCounters->Simple.CompactionRangeCountPerRun.Set(
         State->GetCompactionRangeCountPerRun());
 

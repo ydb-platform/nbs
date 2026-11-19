@@ -237,6 +237,14 @@ struct TSimpleDiskCounters
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Max,
         ECounterExpirationPolicy::Permanent};
+    TCounter CompactionMixedBlocksScore{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Max,
+        ECounterExpirationPolicy::Permanent};
+    TCounter CompactionMixedBlocksPercentage{
+        EPublishingPolicy::Repl,
+        TSimpleCounter::ECounterType::Max,
+        ECounterExpirationPolicy::Permanent};
     TCounter ChannelHistorySize{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Max,
@@ -317,6 +325,8 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::CompactionScore>(),
         MakeMeta<&TSimpleDiskCounters::CompactionGarbageScore>(),
         MakeMeta<&TSimpleDiskCounters::CompactionIgnoringZeroedScore>(),
+        MakeMeta<&TSimpleDiskCounters::CompactionMixedBlocksScore>(),
+        MakeMeta<&TSimpleDiskCounters::CompactionMixedBlocksPercentage>(),
         MakeMeta<&TSimpleDiskCounters::ChannelHistorySize>(),
         MakeMeta<&TSimpleDiskCounters::CompactionRangeCountPerRun>(),
         MakeMeta<
