@@ -1791,4 +1791,9 @@ message TStorageServiceConfig
     // dies when all its blocks are overwritten or flushed.
     optional uint32 FreshDeadBlobByteCountTrimThresholdSSD = 555;
     optional uint32 FreshDeadBlobByteCountTrimThresholdHDD = 556;
+
+    // Reject blob reads and report an impossible event if compression metadata
+    // is unknown. Explicit uncompressed entries are valid. Disabled by default
+    // to allow reading descriptions from servers that do not export metadata.
+    optional bool VerifyBlobCompressionMetadata = 557;
 }

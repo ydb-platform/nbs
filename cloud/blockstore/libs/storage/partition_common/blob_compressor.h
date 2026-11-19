@@ -36,6 +36,13 @@ using TBlobId2CompressionMetadataMap =
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// A metadata entry with no compression value explicitly identifies an
+// uncompressed blob. Only a missing entry is rejected when verification is on.
+NProto::TError ValidateBlobCompressionMetadata(
+    bool verify,
+    const NKikimr::TLogoBlobID& blobId,
+    bool metadataKnown);
+
 // Maps a storage configuration codec family (or its default codec name) to the
 // enum stored in blob metadata. Unsupported names return E_ARGUMENT.
 TResultOrError<NProto::TCompressionMetadata::ECompressionType>

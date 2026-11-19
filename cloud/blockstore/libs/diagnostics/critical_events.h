@@ -114,6 +114,7 @@ using TCritEventParams =
     xxx(DiskDevicesSizeViolation)                                              \
     xxx(RdmaMessageTypeMismatch)                                               \
     xxx(BlockChecksumAbsent)                                                   \
+    xxx(BlobCompressionMetadataAbsent)                                         \
     xxx(CleanupBlobMetaBlocksMismatch)                                         \
     xxx(ServiceProxyReceivedUnknownCookie)                                     \
     xxx(Bug) /* General software bug event.                                    \

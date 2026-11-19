@@ -284,6 +284,7 @@ private:
     const bool ReplyLocal;
     const bool ChecksumsEnabled;
     const bool ReportBlobIdsOnFailure;
+    const bool VerifyBlobCompressionMetadata;
 
     const ui64 CommitId;
     TBlobId2CompressionMetadataMap BlobId2CompressionMetadata;
@@ -319,7 +320,8 @@ public:
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
         TBlobId2CompressionMetadataMap blobId2CompressionMetadata,
-        bool waitBaseDiskRequests);
+        bool waitBaseDiskRequests,
+        bool verifyBlobCompressionMetadata);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -385,7 +387,8 @@ TReadBlocksActor::TReadBlocksActor(
     TReadBlocksRequests ownRequests,
     TVector<IProfileLog::TBlockInfo> blockInfos,
     TBlobId2CompressionMetadataMap blobId2CompressionMetadata,
-    bool waitBaseDiskRequests)
+    bool waitBaseDiskRequests,
+    bool verifyBlobCompressionMetadata)
     : VolumeLabels(std::move(volumeLabels))
     , RequestInfo(std::move(requestInfo))
     , BlockDigestGenerator(blockDigestGenerator)
@@ -398,6 +401,7 @@ TReadBlocksActor::TReadBlocksActor(
     , ReplyLocal(replyLocal)
     , ChecksumsEnabled(checksumsEnabled)
     , ReportBlobIdsOnFailure(reportBlobIdsOnFailure)
+    , VerifyBlobCompressionMetadata(verifyBlobCompressionMetadata)
     , CommitId(commitId)
     , BlobId2CompressionMetadata(std::move(blobId2CompressionMetadata))
     , OwnRequests(std::move(ownRequests))
@@ -433,6 +437,20 @@ void TReadBlocksActor::ReadBlocks(
         requests.end(),
         TCompareByBlobIdAndOffset()
     ));
+
+    if (VerifyBlobCompressionMetadata) {
+        for (const auto& request: requests) {
+            if (HandleError(
+                    ctx,
+                    ValidateBlobCompressionMetadata(
+                        VerifyBlobCompressionMetadata,
+                        request.BlobId,
+                        BlobId2CompressionMetadata.contains(request.BlobId))))
+            {
+                return;
+            }
+        }
+    }
 
     TBatchRequest current;
     for (auto& r: requests) {
@@ -1332,7 +1350,8 @@ void TPartitionActor::CompleteReadBlocks(
             std::move(requests),
             std::move(args.BlockInfos),
             std::move(fullBlobId2CompressionMetadata),
-            describeBlocksRange.Defined());
+            describeBlocksRange.Defined(),
+            Config->GetVerifyBlobCompressionMetadata());
         Actors.Insert(readBlocksActorId);
 
         if (describeBlocksRange.Defined()) {
@@ -1351,6 +1370,7 @@ void TPartitionActor::CompleteReadBlocks(
                     *describeBlocksRange,
                     std::move(args.BlockMarks),
                     State->GetBlockSize(),
+                    Config->GetVerifyBlobCompressionMetadata(),
                     SelfId());
 
             Actors.Insert(describeBlocksActorId);

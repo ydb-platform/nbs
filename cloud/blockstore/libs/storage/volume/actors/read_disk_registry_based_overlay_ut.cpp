@@ -1,13 +1,16 @@
 #include "read_disk_registry_based_overlay.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
-#include <library/cpp/testing/unittest/registar.h>
-
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
+
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+#include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -47,6 +50,61 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
         }
     };
 
+    Y_UNIT_TEST_F(
+        ShouldRejectBaseDiskReadWithoutCompressionMetadata,
+        TSetupEnvironment)
+    {
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        auto missingMetadata = counters->GetCounter(
+            GetCriticalEventForBlobCompressionMetadataAbsent(),
+            true);
+        NProto::TReadBlocksRequest request;
+        request.SetStartIndex(0);
+        request.SetBlocksCount(1);
+        ActorSystem.Register(new TReadDiskRegistryBasedOverlayActor<
+                             TEvService::TReadBlocksMethod>(
+            MakeIntrusive<TRequestInfo>(
+                EdgeActor,
+                0ull,
+                MakeIntrusive<TCallContext>()),
+            request,
+            TCompressedBitmap(1),
+            NActors::TActorId(),
+            EdgeActor,
+            0,
+            "base-disk",
+            "checkpoint",
+            512,
+            EStorageAccessMode::Default,
+            TDuration(),
+            TLogTitle(
+                GetCycleCount(),
+                TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
+                .GetChild(GetCycleCount()),
+            false,
+            true));
+        TAutoPtr<NActors::IEventHandle> handle;
+        ActorSystem.GrabEdgeEventIf<TEvVolume::TEvDescribeBlocksRequest>(
+            handle,
+            [](const auto&) { return true; });
+        auto response =
+            std::make_unique<TEvVolume::TEvDescribeBlocksResponse>();
+        auto* piece = response->Record.AddBlobPieces();
+        NKikimr::LogoBlobIDFromLogoBlobID(
+            NKikimr::TLogoBlobID(42, 1, 1, 3, 512, 0),
+            piece->MutableBlobId());
+        piece->AddRanges()->SetBlocksCount(1);
+        ActorSystem.Send(new NActors::IEventHandle(
+            handle->Sender,
+            EdgeActor,
+            response.release()));
+        auto completed =
+            ActorSystem.GrabEdgeEvent<TEvService::TEvReadBlocksResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, completed->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, missingMetadata->Val());
+    }
+
     Y_UNIT_TEST_F(ShouldReadFromOverlayDiskSuccess, TSetupEnvironment)
     {
         TCompressedBitmap usedBlocks(10);
@@ -78,7 +136,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     GetCycleCount(),
                     TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                     .GetChild(GetCycleCount()),
-                /*enableDataIntegrityValidation=*/false});
+                /*enableDataIntegrityValidation=*/false,
+                /*verifyBlobCompressionMetadata=*/false});
 
         auto requestToPartition = ActorSystem.GrabEdgeEvent<
             TEvService::TReadBlocksLocalMethod::TRequest>();
@@ -150,7 +209,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     GetCycleCount(),
                     TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                     .GetChild(GetCycleCount()),
-                /*enableDataIntegrityValidation=*/false});
+                /*enableDataIntegrityValidation=*/false,
+                /*verifyBlobCompressionMetadata=*/false});
 
         ActorSystem.GrabEdgeEvent<
             TEvService::TReadBlocksLocalMethod::TRequest>();
@@ -208,7 +268,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 GetCycleCount(),
                 TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                 .GetChild(GetCycleCount()),
-            /*enableDataIntegrityValidation=*/false});
+            /*enableDataIntegrityValidation=*/false,
+            /*verifyBlobCompressionMetadata=*/true});
 
         TAutoPtr<NActors::IEventHandle> handle;
         auto describeRequest = ActorSystem.GrabEdgeEventIf<
@@ -417,7 +478,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 GetCycleCount(),
                 TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                 .GetChild(GetCycleCount()),
-            /*enableDataIntegrityValidation=*/false});
+            /*enableDataIntegrityValidation=*/false,
+            /*verifyBlobCompressionMetadata=*/false});
 
         TAutoPtr<NActors::IEventHandle> handle;
         ActorSystem.GrabEdgeEventIf<
@@ -476,7 +538,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 GetCycleCount(),
                 TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                 .GetChild(GetCycleCount()),
-            /*enableDataIntegrityValidation=*/false});
+            /*enableDataIntegrityValidation=*/false,
+            /*verifyBlobCompressionMetadata=*/false});
 
         TAutoPtr<NActors::IEventHandle> handle;
         auto describeRequest = ActorSystem.GrabEdgeEventIf<
@@ -573,7 +636,8 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                     GetCycleCount(),
                     TLogTitle::TVolume{.TabletId = 0, .DiskId = "test"})
                     .GetChild(GetCycleCount()),
-                /*enableDataIntegrityValidation=*/false});
+                /*enableDataIntegrityValidation=*/false,
+                /*verifyBlobCompressionMetadata=*/false});
 
         // read from overlay disk
         auto requestToPartition = ActorSystem.GrabEdgeEvent<
