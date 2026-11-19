@@ -2310,7 +2310,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                                 blobId.PartId()),
                             blob.BlockRange,
                             blob.SkipMask,
-                            blob.Checksums);
+                            blob.Checksums,
+                            blob.CompressionMetadata);
                         msg->MergedBlobs.swap(replacementBlobs);
                         ++replacedBlobs;
                     }
