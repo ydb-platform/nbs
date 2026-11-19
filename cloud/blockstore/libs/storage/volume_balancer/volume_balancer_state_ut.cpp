@@ -46,7 +46,7 @@ TStorageConfigPtr CreateStorageConfig(
     storageConfig.SetInitialPullDelay(initialPullDelay.MilliSeconds());
 
     return std::make_shared<TStorageConfig>(storageConfig, std::move(featuresConfig));
-}
+};
 
 NFeatures::TFeaturesConfigPtr CreateFeatureConfig(
     const TString& featureName,
