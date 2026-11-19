@@ -7165,6 +7165,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 serverWriteBackCacheEnabled);
             features.SetServerWriteBackCacheStateFileSize(
                 WriteBackCacheStateFileSize);
+            features.SetMaxRequestSize(WriteBackCacheMaxRequestSize);
 
             TBootstrap bootstrap(
                 CreateWallClockTimer(),
@@ -7269,6 +7270,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 serverWriteBackCacheEnabled);
             features.SetServerWriteBackCacheStateFileSize(
                 WriteBackCacheStateFileSize);
+            features.SetMaxRequestSize(WriteBackCacheMaxRequestSize);
 
             TBootstrap bootstrap(
                 CreateWallClockTimer(),
