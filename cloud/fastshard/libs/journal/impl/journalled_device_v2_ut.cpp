@@ -1165,6 +1165,46 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(cleanupCount, Journal->GetCleanupCount());
         UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetWriteRequests().size());
     }
+
+    Y_UNIT_TEST_F(ShouldWaitForRequestsInFlightOnStop, TFixture)
+    {
+        StartDeviceAndCheck();
+        HoldFirstDataStoreWrite();
+
+        // the test keeps the pages until the write is done
+        const auto ranges = MakePageRanges();
+        auto write = Device->WritePages(MakePageRangeViews(ranges));
+        WaitForFirstDataStoreWrite();
+
+        auto stopped = Device->Stop();
+
+        // the stop waits for the write
+
+        UNIT_ASSERT(!stopped.Wait(TDuration::MilliSeconds(100)));
+        UNIT_ASSERT(!write.HasValue());
+
+        DataStore->FirstWriteResult.SetValue({});
+
+        UNIT_ASSERT(stopped.Wait(TDuration::Seconds(30)));
+        UNIT_ASSERT(write.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, write.GetValue().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectRequestsAfterStop, TFixture)
+    {
+        StartDeviceAndCheck();
+        StopDevice();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            ReadPages({{10, 1}}).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WriteLogRecord().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, ReadJournalTail().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, AdvanceWatermark().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WritePages().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetWriteRequests().size());
+    }
 }
 
 }   // namespace NCloud::NJournalled
