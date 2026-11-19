@@ -14,13 +14,13 @@
 
 #include <library/cpp/blockcodecs/codecs.h>
 
-#include <util/generic/ptr.h>
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
 #include <memory>
 #include <optional>
+#include <span>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -36,17 +36,14 @@ struct TCompressedBlob
     // Compressed chunks concatenated in their original order.
     TString Data;
 
-    // Codec, uncompressed chunk size and N-1 compressed chunk sizes.
+    // Codec, uncompressed chunk and last chunk sizes, and N-1 compressed sizes.
     NProto::TCompressionMetadata Compression;
 };
 
 struct TReadPlan
 {
-    // Query storage; only the first QueriesCount entries are used.
-    TArrayHolder<NKikimr::TEvBlobStorage::TEvGet::TQuery> Queries;
-
-    // Number of initialized queries, after deduplication and coalescing.
-    size_t QueryCount = 0;
+    // Queries after deduplication and coalescing.
+    TVector<NKikimr::TEvBlobStorage::TEvGet::TQuery> Queries;
 
     // Closed ranges of requested block offsets depending on each query.
     // Ranges are sorted and disjoint; unrequested offsets may lie within them.
@@ -65,19 +62,18 @@ struct TReadPlan
  *  of and at least blockSize.
  * @param compressionType - Compression type used to select the codec and
  *  recorded in the blob metadata.
- * @param blobPayload - Uncompressed blocks in blob order, with one buffer
- *  of exactly blockSize bytes per block. Null data represents a zero block.
+ * @param blobPayload - Nonempty list of uncompressed blocks in blob order,
+ *  with one buffer of exactly blockSize bytes per block. Null data represents
+ *  a zero block.
  *
  * @return - Concatenated compressed chunks and their metadata, or an error.
  *  Invalid arguments return E_ARGUMENT; codec failures return E_FAIL.
- *  An empty payload produces empty data and no chunks, with codec and chunk
- *  size still recorded in the metadata.
  */
 [[nodiscard]] TResultOrError<TCompressedBlob> CompressBlob(
     ui32 blockSize,
     ui32 chunkSize,
     NProto::TCompressionMetadata::ECompressionType compressionType,
-    const TSgList& blobPayload);
+    std::span<const TBlockDataRef> blobPayload);
 
 /**
  * Restores requested blocks using the blob's codec and chunk size. Each
@@ -86,11 +82,10 @@ struct TReadPlan
  * Output buffers may already have been written when a failure occurs.
  *
  * @param blockSize - Block size used for compression.
- * @param compressedBuffers - Data from the ranges returned by PlanReadBlob
+ * @param compressedData - Data from the ranges returned by PlanReadBlob
  *  for these block offsets, concatenated in query order. Compressed chunks
- *  may span ropes and rope segments.
- *  Empty ropes are allowed. Each compressed chunk is extracted into a
- *  reusable buffer before decoding.
+ *  may span rope segments. Each compressed chunk is extracted into a reusable
+ *  buffer before decoding.
  * @param compression - Metadata describing the compressed blob.
  * @param blobSize - Total compressed blob size, including unread chunks.
  * @param blockOffsets - Block positions within the original blob, sorted
@@ -108,11 +103,11 @@ struct TReadPlan
  */
 [[nodiscard]] NProto::TError DecompressBlob(
     ui32 blockSize,
-    const TVector<TRope>& compressedBuffers,
+    const TRope& compressedData,
     const NProto::TCompressionMetadata& compression,
     ui32 blobSize,
-    const TVector<ui16>& blockOffsets,
-    const TSgList& outputBuffers,
+    std::span<const ui16> blockOffsets,
+    std::span<const TBlockDataRef> outputBuffers,
     TVector<ui32>* blockChecksums);
 
 /**
@@ -120,12 +115,9 @@ struct TReadPlan
  * blocks, using the chunk size from the blob's metadata. Each requested
  * chunk is read once and adjacent chunks are coalesced into a single range.
  * Cumulative chunk offsets are rebuilt from sizes for each read plan.
- * Returns E_ARGUMENT for invalid chunk metadata, offsets outside the chunk
- * list or read ranges extending beyond the compressed blob.
- *
- * The caller must supply valid block offsets: the metadata does not store
- * the original blob size, so this function cannot detect offsets beyond the
- * end of a partial final chunk.
+ * Returns E_ARGUMENT for invalid chunk metadata, unsupported or unavailable
+ * codecs, offsets outside the uncompressed blob or read ranges extending beyond
+ * the compressed blob. Codec lookup failures return E_FAIL.
  *
  * @param blockSize - Block size used for compression.
  * @param blobId - ID of the compressed blob to read.
@@ -133,19 +125,16 @@ struct TReadPlan
  * @param blockOffsets - Block positions within the original blob, sorted
  *  in strictly increasing order (no duplicates).
  *
- * @return - A read plan or an error. The plan contains an owning query
- * array and the number of initialized entries. Queries are for blobId,
- * sorted by byte offset (Shift), and cover disjoint ranges of complete
- * compressed chunks. Storage is allocated for at most blockOffsets.size()
- * queries; only the first QueriesCount entries are used. An empty block
- * list returns a null array and zero count without validating the blob ID
- * or metadata.
+ * @return - A read plan or an error. Queries are for blobId, sorted by byte
+ * offset (Shift), and cover disjoint ranges of complete compressed chunks.
+ * An empty block list returns an empty query vector without validating the
+ * blob ID or metadata.
  */
 [[nodiscard]] TResultOrError<TReadPlan> PlanReadBlob(
     ui32 blockSize,
     const NKikimr::TLogoBlobID& blobId,
     const NProto::TCompressionMetadata& compression,
-    const TVector<ui16>& blockOffsets);
+    std::span<const ui16> blockOffsets);
 
 ////////////////////////////////////////////////////////////////////////////////
 
