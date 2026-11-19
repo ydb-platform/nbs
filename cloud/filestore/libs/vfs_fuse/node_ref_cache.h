@@ -63,14 +63,15 @@ public:
     TNodeRefCache(ui32 maxEntryCount, ui32 shardCount);
 
     /**
-     * Caches a NodeRef until deadline unless the NodeRef has been invalidated
-     * after version.
+     * Caches a NodeRef until deadline unless the NodeRef or the source has
+     * been invalidated after version.
      *
      * @param parentNodeId - Parent node id.
      * @param name - Entry name.
      * @param nodeId - Target node id.
      * @param version - Cache version at which the request that has fetched
      *  the NodeRef has started.
+     * @param sourceId - Source of the NodeRef (NodeRefCacheSourceId).
      * @param deadline - Deadline after which the NodeRef is not used.
      */
     void Add(
@@ -78,6 +79,7 @@ public:
         const TString& name,
         ui64 nodeId,
         ui64 version,
+        ui64 sourceId,
         TInstant deadline);
 
     /**
@@ -104,6 +106,16 @@ public:
         ui64 parentNodeId,
         const TString& name,
         ui64 version);
+
+    /**
+     * Invalidates all the NodeRefs received from a source (e.g. upon the loss
+     * of the connection to it): the NodeRefs fetched from it by the requests
+     * started before version are neither cached nor returned.
+     *
+     * @param sourceId - Source of the NodeRefs.
+     * @param version - Cache version of the invalidation.
+     */
+    void InvalidateSource(ui64 sourceId, ui64 version);
 
     /**
      * Erases all the NodeRefs and prevents caching by the requests started

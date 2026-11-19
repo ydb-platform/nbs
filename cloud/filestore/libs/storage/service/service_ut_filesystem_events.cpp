@@ -228,6 +228,25 @@ void CheckClientRegisteredUponListNodesInShards(bool useListNodesInternal)
     UNIT_ASSERT_VALUES_EQUAL(
         cacheTTL,
         getNodeAttrResponse->Record.GetNodeRefCacheTTL());
+
+    //
+    // The NodeRef and the Node are invalidated by different tablets. The
+    // shard is the source of the Node regardless of the request path.
+    //
+
+    const ui64 nodeRefSourceId =
+        getNodeAttrResponse->Record.GetNodeRefCacheSourceId();
+    const ui64 nodeSourceId =
+        getNodeAttrResponse->Record.GetNodeCacheSourceId();
+    UNIT_ASSERT(nodeRefSourceId);
+    UNIT_ASSERT(nodeSourceId);
+    UNIT_ASSERT_VALUES_UNEQUAL(nodeRefSourceId, nodeSourceId);
+
+    const auto getAttrResponse =
+        service.GetNodeAttr(headers, fsConfig.FsId, nodeIds[0], "");
+    UNIT_ASSERT_VALUES_EQUAL(
+        nodeSourceId,
+        getAttrResponse->Record.GetNodeCacheSourceId());
 }
 
 }   // namespace

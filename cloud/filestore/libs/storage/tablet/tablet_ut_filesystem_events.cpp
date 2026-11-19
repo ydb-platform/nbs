@@ -207,6 +207,26 @@ void CheckCacheTTL(
         expectedListingCacheTTL,
     };
     UNIT_ASSERT_VALUES_EQUAL(expected, cacheTTLs);
+
+    //
+    // The tablet is the source of the invalidations of the data it allows
+    // to cache.
+    //
+
+    const ui64 expectedSourceId = expectedCacheTTL ? env.TabletId : 0;
+    const TVector<ui64> sourceIds = {
+        lookup->Record.GetNodeCacheSourceId(),
+        lookup->Record.GetNodeRefCacheSourceId(),
+        getAttr->Record.GetNodeCacheSourceId(),
+        getAttr->Record.GetNodeRefCacheSourceId(),
+    };
+    const TVector<ui64> expectedSourceIds = {
+        expectedSourceId,
+        expectedSourceId,
+        expectedSourceId,
+        0,
+    };
+    UNIT_ASSERT_VALUES_EQUAL(expectedSourceIds, sourceIds);
 }
 
 void CheckXAttrCacheTTL(
@@ -230,23 +250,35 @@ void CheckXAttrCacheTTL(
     // out by GetNodeXAttr or by SetNodeXAttr with F_REPLACE) may be cached.
     //
 
+    const auto set = tablet->SetNodeXAttr(nodeId, "user.a", "1");
+    const auto get = tablet->GetNodeXAttr(nodeId, "user.a");
+    const auto getAbsent = tablet->AssertGetNodeXAttrFailed(nodeId, "user.b");
+    const auto replaceAbsent = tablet->AssertSetNodeXAttrFailed(
+        nodeId,
+        "user.b",
+        "1",
+        NProto::TSetNodeXAttrRequest::F_REPLACE);
+
     const TVector<ui32> cacheTTLs = {
-        tablet->SetNodeXAttr(nodeId, "user.a", "1")
-            ->Record.GetXAttrCacheTTL(),
-        tablet->GetNodeXAttr(nodeId, "user.a")->Record.GetXAttrCacheTTL(),
-        tablet->AssertGetNodeXAttrFailed(nodeId, "user.b")
-            ->Record.GetXAttrCacheTTL(),
-        tablet
-            ->AssertSetNodeXAttrFailed(
-                nodeId,
-                "user.b",
-                "1",
-                NProto::TSetNodeXAttrRequest::F_REPLACE)
-            ->Record.GetXAttrCacheTTL(),
+        set->Record.GetXAttrCacheTTL(),
+        get->Record.GetXAttrCacheTTL(),
+        getAbsent->Record.GetXAttrCacheTTL(),
+        replaceAbsent->Record.GetXAttrCacheTTL(),
     };
 
     const TVector<ui32> expected(cacheTTLs.size(), expectedCacheTTL);
     UNIT_ASSERT_VALUES_EQUAL(expected, cacheTTLs);
+
+    const TVector<ui64> sourceIds = {
+        set->Record.GetXAttrCacheSourceId(),
+        get->Record.GetXAttrCacheSourceId(),
+        getAbsent->Record.GetXAttrCacheSourceId(),
+        replaceAbsent->Record.GetXAttrCacheSourceId(),
+    };
+    const TVector<ui64> expectedSourceIds(
+        sourceIds.size(),
+        expectedCacheTTL ? env.TabletId : 0);
+    UNIT_ASSERT_VALUES_EQUAL(expectedSourceIds, sourceIds);
 }
 
 void CheckNodeXAttrEventsAreSentToSubscribersOnly(bool dryRun)

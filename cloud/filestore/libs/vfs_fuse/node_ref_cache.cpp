@@ -27,12 +27,14 @@ void TNodeRefCache::Add(
     const TString& name,
     ui64 nodeId,
     ui64 version,
+    ui64 sourceId,
     TInstant deadline)
 {
     GetShard(parentNodeId).Add(
         TNodeRefCacheKey{.ParentNodeId = parentNodeId, .Name = name},
         nodeId,
         version,
+        sourceId,
         deadline);
 }
 
@@ -56,6 +58,13 @@ ui64 TNodeRefCache::Invalidate(
             TNodeRefCacheKey{.ParentNodeId = parentNodeId, .Name = name},
             version)
         .GetOrElse(InvalidNodeId);
+}
+
+void TNodeRefCache::InvalidateSource(ui64 sourceId, ui64 version)
+{
+    for (auto& shard: Shards) {
+        shard->InvalidateSource(sourceId, version);
+    }
 }
 
 void TNodeRefCache::InvalidateAll(ui64 version)

@@ -268,6 +268,11 @@ void TIndexTabletProxyActor::NotifyFileSystemEventHandlerDisconnected(
         "Pipe to tablet %lu disconnected, notifying FileSystemEvent handler",
         tabletId);
 
+    //
+    // The tablet reports its id as the source of the invalidations of the
+    // data it allows to cache (see GetFileSystemEventsSourceId).
+    //
+
     FileSystemEventHandler->OnDisconnect(tabletId);
 }
 

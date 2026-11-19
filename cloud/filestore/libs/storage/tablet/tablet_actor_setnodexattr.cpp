@@ -177,8 +177,13 @@ void TIndexTabletActor::CompleteTx_SetNodeXAttr(
             pipeServerId,
             args.NodeId,
             args.Name);
-        response->Record.SetXAttrCacheTTL(
-            GetFileSystemEventsCacheTTL(pipeServerId).MilliSeconds());
+        const ui32 cacheTTL =
+            GetFileSystemEventsCacheTTL(pipeServerId).MilliSeconds();
+        response->Record.SetXAttrCacheTTL(cacheTTL);
+        if (cacheTTL) {
+            response->Record.SetXAttrCacheSourceId(
+                GetFileSystemEventsSourceId());
+        }
     }
     CompleteResponse<TEvService::TSetNodeXAttrMethod>(
         response->Record,

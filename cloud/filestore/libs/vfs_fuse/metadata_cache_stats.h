@@ -44,7 +44,7 @@ private:
     TRelaxedCounter InvalidateNodeEventCount;
     TRelaxedCounter InvalidateNodeRefEventCount;
     TRelaxedCounter InvalidateNodeXAttrEventCount;
-    TRelaxedCounter InvalidateAllCount;
+    TRelaxedCounter InvalidateSourceCount;
 
     TRelaxedCounter NodeAttrsCacheSize;
     TRelaxedCounter NodeRefCacheSize;
@@ -94,7 +94,7 @@ public:
     void IncrementInvalidateNodeEventCount();
     void IncrementInvalidateNodeRefEventCount();
     void IncrementInvalidateNodeXAttrEventCount();
-    void IncrementInvalidateAllCount();
+    void IncrementInvalidateSourceCount();
 };
 
 using TMetadataCacheModuleStatsPtr =

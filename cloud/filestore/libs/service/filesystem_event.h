@@ -23,13 +23,15 @@ struct IFileSystemEventHandler
     virtual void OnEvent(const NProto::TFileSystemEvent& event) = 0;
 
     /**
-     * Called when the transport that delivers the events gets disconnected.
-     * Events sent before the disconnect may have been lost.
+     * Called when the transport that delivers the events of a source gets
+     * disconnected. Events sent by this source before the disconnect may have
+     * been lost.
      *
-     * @param tabletId - the id of the disconnected tablet (can be used for
-     * diagnostic purposes).
+     * @param sourceId - Identifier of the source, the same as the
+     *  *CacheSourceId values in the responses whose data this source
+     *  invalidates.
      */
-    virtual void OnDisconnect(ui64 tabletId) = 0;
+    virtual void OnDisconnect(ui64 sourceId) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

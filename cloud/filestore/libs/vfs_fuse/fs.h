@@ -483,9 +483,10 @@ struct IFileSystem
         ui64 nodeId,
         const TString& name) = 0;
 
-    // Invalidate all the cached metadata - used when invalidations may have
-    // been lost
-    virtual void InvalidateAllCachedMetadata() = 0;
+    // Invalidate all the cached metadata received from a source (see
+    // NodeCacheSourceId and the like in the responses) - used when the
+    // invalidations sent by this source may have been lost
+    virtual void InvalidateCachedMetadataOfSource(ui64 sourceId) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

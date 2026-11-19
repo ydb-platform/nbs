@@ -115,6 +115,17 @@ void TIndexTabletActor::RemoveFileSystemEventClient(
     FileSystemEventClients.erase(pipeServerId);
 }
 
+ui64 TIndexTabletActor::GetFileSystemEventsSourceId() const
+{
+    //
+    // The subscriptions are registered per pipe and the tablet proxy reports
+    // the loss of the pipe to the tablet with the tablet id, see
+    // IFileSystemEventHandler::OnDisconnect.
+    //
+
+    return TabletID();
+}
+
 TDuration TIndexTabletActor::GetFileSystemEventsCacheTTL(
     const TActorId& pipeServerId) const
 {
