@@ -11,6 +11,7 @@ SRCS(
     authorization_mode.proto
     certificate.proto
     compressed_bitmap.proto
+    compression.proto
     config_dispatcher_settings.proto
     diagnostics.proto
     drain.proto
