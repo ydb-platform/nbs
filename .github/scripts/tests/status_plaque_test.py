@@ -10,7 +10,7 @@ from xml.etree import ElementTree as ET
 
 import pytest
 
-from scripts.helpers import RunMetadata, format_duration
+from scripts.helpers import RunMetadata
 from scripts.tests import generate_summary as gs
 from scripts.tests import finalize_workload_comments as fwc
 from scripts.tests.status_plaque import (
@@ -153,7 +153,7 @@ def parsed_table(plaque):
 
 
 def texts(row):
-    return ["".join(cell.itertext()).strip() for cell in row]
+    return [" ".join("".join(cell.itertext()).split()) for cell in row]
 
 
 @pytest.mark.parametrize(
@@ -252,8 +252,8 @@ def test_retries_share_target_and_keep_each_report(pr):
     comment.body = gs.update_workload_check_block(
         comment.body, "filestore", "built", build_duration_seconds=125
     )
-    publish(pr, iteration=0, failed=True, elapsed="6925")
-    publish(pr, iteration=1, failed=True, elapsed="241")
+    publish(pr, iteration=0, failed=True, elapsed="6925", exit_code=1)
+    publish(pr, iteration=1, failed=True, elapsed="241", exit_code=1)
     publish(pr, iteration=2, elapsed="87")
     publish(pr, iteration=2, elapsed="87")  # A retried comment update is idempotent.
     gs.update_pr_comment_workload_check(12, pr, PRESET, "filestore", False, "completed")
@@ -266,23 +266,24 @@ def test_retries_share_target_and_keep_each_report(pr):
         "🔴",
         "filestore",
         "🟢 2m 5s",
-        "0",
-        "🔴 1h 55m 25s",
         "1",
-        "0",
-        "0",
-        "1",
-        "0",
-        "0",
-        "0",
+        "🔴 Tests failed 1h 55m 25s 0 / 1 passed, fail: 1",
         "—",
     ]
     assert rows[0][1].get("rowspan") == "3"
-    assert texts(rows[1])[:4] == ["🔴", "—", "1", "🔴 4m 1s"]
-    assert texts(rows[2])[:4] == ["🟢", "—", "2", "🟢 1m 27s"]
+    assert (
+        rows[0][4].find('sub[@title="Tests duration"]').text == "1h\u00a055m\u00a025s"
+    )
+    assert texts(rows[1])[:4] == [
+        "🔴",
+        "—",
+        "2",
+        "🔴 Tests failed 4m 1s 0 / 1 passed, fail: 1",
+    ]
+    assert texts(rows[2])[:4] == ["🟢", "—", "3", "🟢 Tests passed 1m 27s 1 / 1 passed"]
     assert texts(rows[2])[-1] == "🟢"
     assert (
-        rows[0][8].find("a").get("href")
+        rows[0][4].findall("sub/a")[-1].get("href")
         == f"{SUMMARY_BASE}/summary/filestore/1/ya-test.html#FAIL"
     )
     assert plaque.workload("filestore").reports[-1].commit == "abc123"
@@ -532,14 +533,13 @@ def test_build_failure_and_log_survive_completion(pr):
     assert row.build_duration_seconds == 125
     table = parsed_table(Plaque.from_comment(body))
     assert (
-        table.find('.//td[@colspan="10"]/span[@title="Build duration"]').text == "2m 5s"
+        table.find('.//td[@colspan="3"]/sub[@title="Build duration"]').text
+        == "2m\u00a05s"
     )
 
 
 @pytest.mark.parametrize("build_failed_count", [0, 2])
-def test_empty_summary_is_an_error_with_merged_cells(
-    pr, monkeypatch, build_failed_count
-):
+def test_empty_summary_shows_error_and_log(pr, monkeypatch, build_failed_count):
     monkeypatch.setenv("BUILD_FAILED_COUNT", str(build_failed_count))
     gs.update_pr_comment(
         12,
@@ -556,12 +556,11 @@ def test_empty_summary_is_an_error_with_merged_cells(
     plaque = Plaque.from_comment(pr.comments[0].body)
     row = parsed_table(plaque).find("tbody/tr")
     assert texts(row)[0] == "🔴"
-    assert row[4].get("colspan") == "8"
     assert (
-        row[4].find("a").get("href")
+        row[4].find("sub/a").get("href")
         == f"{SUMMARY_BASE}/summary/filestore/1/build_errors.html"
     )
-    assert row[4].find('span[@title="Tests duration"]').text == "3s"
+    assert row[4].find('sub[@title="Tests duration"]').text == "3s"
     if build_failed_count:
         assert "Build failed" in texts(row)[4]
     else:
@@ -582,22 +581,30 @@ def test_counts_link_to_each_category_and_aggregate_build_log():
         filename="ya-test.html",
     )
     plaque = Plaque(PRESET, [Workload("filestore", reports=[report])])
-    cells = parsed_table(plaque).find("tbody/tr")
-    for status, cell in zip(
-        ("PASS", "ERROR", "FAIL", "FAIL_BUILD", "SKIP", "MUTE"), cells[6:12]
+    table = parsed_table(plaque)
+    cells = table.find("tbody/tr")
+    links = {link.get("href"): link.text for link in cells[4].iter("a")}
+    report_url = f"{SUMMARY_BASE}/summary/filestore/1/ya-test.html"
+    assert links[report_url] == "6"
+    for status, label in (
+        ("PASS", "1"),
+        ("ERROR", "err: 1"),
+        ("FAIL", "fail: 1"),
+        ("FAIL_BUILD", "build fail: 1"),
+        ("SKIP", "skipped: 1"),
+        ("MUTE", "muted: 1"),
     ):
-        assert (
-            cell.find("a").get("href")
-            == f"{SUMMARY_BASE}/summary/filestore/1/ya-test.html#{status}"
-        )
+        assert links[f"{report_url}#{status}"] == label
+    assert table.find('thead/tr/th/sup/a[@title="Mute rules"]') is not None
     report.counts["FAIL_BUILD"] = 0
     report.build_failed_count = 2
     report.build_errors = True
     cells = parsed_table(plaque).find("tbody/tr")
-    assert texts(cells)[9] == "2"
     assert (
-        cells[9].find("a").get("href")
-        == f"{SUMMARY_BASE}/summary/filestore/1/build_errors.html"
+        cells[4]
+        .find(f'sub/a[@href="{SUMMARY_BASE}/summary/filestore/1/build_errors.html"]')
+        .text
+        == "build fail: 2"
     )
 
 
@@ -991,11 +998,20 @@ def test_html_and_hidden_state_escape_values():
     assert texts(cells)[1] == report.target
     html = ET.fromstring(f"<root>{plaque.render_table()}</root>")
     assert html.find("p/strong").text == "linux-arm64-release-asan"
-    assert len(html.find("table/thead/tr")) == 13
+    assert texts(html.find("table/thead/tr")) == [
+        "Status",
+        "Target",
+        "Build",
+        "Attempt",
+        "Tests?",
+        "Workflow",
+    ]
 
 
-@pytest.mark.parametrize("seconds", [None, 0, 3661])
-def test_workload_update_records_build_duration(pr, seconds):
+@pytest.mark.parametrize(
+    "seconds,expected", [(None, None), (0, "0s"), (3661, "1h\u00a01m\u00a01s")]
+)
+def test_workload_update_records_build_duration(pr, seconds, expected):
     gs.update_pr_comment_workload_check(
         run_number=12,
         pr=pr,
@@ -1008,11 +1024,11 @@ def test_workload_update_records_build_duration(pr, seconds):
 
     plaque = Plaque.from_comment(pr.comments[0].body)
     assert plaque.workload("filestore").build_duration_seconds == seconds
-    cell = parsed_table(plaque).find('tbody/tr/td/span[@title="Build duration"]')
+    cell = parsed_table(plaque).find('tbody/tr/td/sub[@title="Build duration"]')
     if seconds is None:
         assert cell is None
     else:
-        assert cell.text == format_duration(seconds)
+        assert cell.text == expected
 
 
 def test_duration_update_retries_when_only_the_timing_is_lost(pr):
@@ -1060,8 +1076,11 @@ def test_repeated_build_failure_can_add_missing_duration(pr):
 
 
 @pytest.mark.parametrize("exit_code", [1, 12, 124, 137])
-def test_passing_partial_junit_does_not_hide_execution_failure(pr, exit_code):
-    publish(pr, exit_code=exit_code)
+@pytest.mark.parametrize("failed", [False, True])
+def test_execution_failure_message_omits_only_redundant_exit_code_one(
+    pr, exit_code, failed
+):
+    publish(pr, exit_code=exit_code, failed=failed)
     gs.update_pr_comment_workload_check(12, pr, PRESET, "filestore", False, "completed")
     body = gs.complete_workload_checks_block(
         pr.comments[0].body,
@@ -1072,11 +1091,14 @@ def test_passing_partial_junit_does_not_hide_execution_failure(pr, exit_code):
     plaque = Plaque.from_comment(body)
     report = plaque.workload("filestore").reports[0]
     assert report.exit_code == exit_code
-    assert report.count("PASS") == 1
+    assert report.count("FAIL" if failed else "PASS") == 1
     assert report.failed
     cells = parsed_table(plaque).find("tbody/tr")
     assert cells[0].find("span").text == cells[4].find("span").text == "🔴"
-    assert f"exit code {exit_code}" in texts(cells)[4]
+    if exit_code == 1 and failed:
+        assert "Test execution failed" not in texts(cells)[4]
+    else:
+        assert f"exit code {exit_code}" in texts(cells)[4]
     assert "you can merge" not in plaque.render_table()
 
 
