@@ -1830,4 +1830,9 @@ message TStorageServiceConfig
     // Zero removes the minimum. Hybrid volumes use the HDD value.
     optional uint64 MixedBlocksCompactionMinUsedBytesHDD = 564;
     optional uint64 MixedBlocksCompactionMinUsedBytesSSD = 565;
+
+    // Reject blob reads and report an impossible event if compression metadata
+    // is unknown. Explicit uncompressed entries are valid. Disabled by default
+    // to allow reading descriptions from servers that do not export metadata.
+    optional bool VerifyBlobCompressionMetadata = 566;
 }

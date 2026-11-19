@@ -1,11 +1,16 @@
 #include "part_ut.h"
 
 #include "part_events_private.h"
+#include "part_ut_overlay.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/core/compaction_options.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/testlib/part_client.h>
+
+#include <cloud/storage/core/libs/common/sglist_test.h>
 
 #include <library/cpp/blockcodecs/codecs.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -253,6 +258,60 @@ void DoTestChunkCompression(
     }
 }
 
+void TestScanWithMissingCompressionMetadata(bool duplicateBlob)
+{
+    auto config = DefaultConfig();
+    config.SetWriteBlobThreshold(1);
+    config.SetVerifyBlobCompressionMetadata(true);
+    auto runtime = PrepareTestActorRuntime(config);
+    TPartitionClient partition(*runtime);
+    partition.WaitReady();
+    partition.WriteBlocks(TBlockRange32::WithLength(0, 4), 'a');
+    auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+    InitCriticalEventsCounter(counters);
+    auto missingMetadata = counters->GetCounter(
+        GetCriticalEventForBlobCompressionMetadataAbsent(),
+        true);
+    ui32 reads = 0;
+    ui32 completionStatus = S_OK;
+    runtime->SetObserverFunc(
+        [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvPartitionPrivate::EvScanDiskBatchResponse)
+            {
+                auto* batch =
+                    event->Get<TEvPartitionPrivate::TEvScanDiskBatchResponse>();
+                if (duplicateBlob) {
+                    UNIT_ASSERT_VALUES_EQUAL(1, batch->BlobsInBatch.size());
+                    const auto blob = batch->BlobsInBatch.front();
+                    batch->BlobsInBatch.push_back(blob);
+                } else {
+                    batch->BlobId2CompressionMetadata.clear();
+                }
+            }
+            if (event->GetTypeRewrite() ==
+                TEvPartitionCommonPrivate::EvReadBlobRequest)
+            {
+                ++reads;
+            }
+            if (event->GetTypeRewrite() ==
+                TEvPartitionPrivate::EvScanDiskCompleted) {
+                completionStatus =
+                    event->Get<TEvPartitionPrivate::TEvScanDiskCompleted>()
+                        ->GetStatus();
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+    partition.ScanDisk(10);
+    TDispatchOptions options;
+    options.FinalEvents.emplace_back(TEvPartitionPrivate::EvScanDiskCompleted);
+    runtime->DispatchEvents(options, TDuration::Seconds(1));
+    UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, completionStatus);
+    UNIT_ASSERT_VALUES_EQUAL(1, missingMetadata->Val());
+    UNIT_ASSERT_VALUES_EQUAL(duplicateBlob ? 1 : 0, reads);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -264,6 +323,7 @@ Y_UNIT_TEST_SUITE(TPartitionCompressionTest)
         for (bool splitCompactionTx: {false, true}) {
             auto config = DefaultConfig();
             config.SetWriteBlobThreshold(1);
+            config.SetVerifyBlobCompressionMetadata(true);
             config.SetBlobPatchingEnabled(true);
             config.SetCompactionMergedBlobThresholdHDD(1);
             config.SetSplitCompactionTxEnabled(splitCompactionTx);
@@ -372,6 +432,62 @@ Y_UNIT_TEST_SUITE(TPartitionCompressionTest)
                 TCompactionOptions().set(ToBit(ECompactionOption::Full)));
             UNIT_ASSERT_VALUES_EQUAL(2, readsWithCompressionMetadata);
         }
+    }
+
+    Y_UNIT_TEST(ShouldRejectScanWithoutCompressionMetadata)
+    {
+        TestScanWithMissingCompressionMetadata(false);
+    }
+
+    Y_UNIT_TEST(ShouldRejectSecondExtractionOfScanCompressionMetadata)
+    {
+        TestScanWithMissingCompressionMetadata(true);
+    }
+
+    Y_UNIT_TEST(ShouldRejectMissingMetadataBeforeDispatchingLocalReads)
+    {
+        auto config = DefaultConfig();
+        config.SetVerifyBlobCompressionMetadata(true);
+        auto [runtime, partition] = NOverlayTest::SetupOverlayPartition(
+            TestTabletId,
+            TestTabletId2,
+            {NOverlayTest::TBlob(1, 0), NOverlayTest::TBlob(2, 0)},
+            {},
+            DefaultBlockSize,
+            2,
+            config);
+
+        ui32 reads = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                using TDescribeCompleted =
+                    TEvPartitionCommonPrivate::TEvDescribeBlocksCompleted;
+                if (event->GetTypeRewrite() == TDescribeCompleted::EventType) {
+                    auto& metadata = event->Get<TDescribeCompleted>()
+                                         ->BlobId2CompressionMetadata;
+                    if (metadata) {
+                        UNIT_ASSERT_VALUES_EQUAL(2, metadata.size());
+                        UNIT_ASSERT(
+                            metadata.front().BlobId < metadata.back().BlobId);
+                        metadata.pop_back();
+                    }
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvReadBlobRequest)
+                {
+                    ++reads;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto range = TBlockRange32::WithLength(0, 2);
+        TVector<TString> blocks;
+        auto sglist = ResizeBlocks(blocks, range.Size(), GetBlockContent(1));
+        partition->SendReadBlocksLocalRequest(range, std::move(sglist));
+        const auto response = partition->RecvReadBlocksLocalResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(0, reads);
     }
 
     Y_UNIT_TEST(ShouldCompressBlobs)

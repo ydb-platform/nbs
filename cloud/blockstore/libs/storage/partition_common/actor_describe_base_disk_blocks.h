@@ -34,6 +34,7 @@ private:
     const TBlockRange64 BlocksRange;
     const TBlockRange64 BaseDiskBlocksRange;
     const ui32 BlockSize;
+    const bool VerifyBlobCompressionMetadata;
 
     const NActors::TActorId NotifyActorId;
 
@@ -50,6 +51,7 @@ public:
         TBlockRange64 baseDiskBlocksRange,
         NBlobMarkers::TBlockMarks blockMarks,
         ui32 blockSize,
+        bool verifyBlobCompressionMetadata,
         NActors::TActorId notifyActorId = {});
 
     void Bootstrap(const NActors::TActorContext& ctx);

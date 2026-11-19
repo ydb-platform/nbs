@@ -45,6 +45,7 @@ private:
     const TDuration LongRunningThreshold;
     TChildLogTitle LogTitle;
     const bool EnableDataIntegrityValidation;
+    const bool VerifyBlobCompressionMetadata;
     const EStorageAccessMode Mode;
 
     // Initially, the block map is built on the basis of the usedBlocks of the
@@ -74,7 +75,8 @@ public:
         EStorageAccessMode mode,
         TDuration longRunningThreshold,
         TChildLogTitle logTitle,
-        bool enableDataIntegrityValidation);
+        bool enableDataIntegrityValidation,
+        bool verifyBlobCompressionMetadata);
 
     void Bootstrap(const TActorContext& ctx);
 

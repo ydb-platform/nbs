@@ -1,7 +1,11 @@
 #include "actor_describe_base_disk_blocks.h"
 
-#include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include "blob_compressor.h"
+
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+
+#include <util/generic/hash_set.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -14,20 +18,22 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeBaseDiskBlocksActor::TDescribeBaseDiskBlocksActor(
-        TRequestInfoPtr requestInfo,
-        TString baseDiskId,
-        TString baseDiskCheckpointId,
-        TBlockRange64 blocksRange,
-        TBlockRange64 baseDiskBlocksRange,
-        TBlockMarks blockMarks,
-        ui32 blockSize,
-        NActors::TActorId notifyActorId)
+    TRequestInfoPtr requestInfo,
+    TString baseDiskId,
+    TString baseDiskCheckpointId,
+    TBlockRange64 blocksRange,
+    TBlockRange64 baseDiskBlocksRange,
+    TBlockMarks blockMarks,
+    ui32 blockSize,
+    bool verifyBlobCompressionMetadata,
+    NActors::TActorId notifyActorId)
     : RequestInfo(std::move(requestInfo))
     , BaseDiskId(std::move(baseDiskId))
     , BaseDiskCheckpointId(std::move(baseDiskCheckpointId))
     , BlocksRange(std::move(blocksRange))
     , BaseDiskBlocksRange(std::move(baseDiskBlocksRange))
     , BlockSize(blockSize)
+    , VerifyBlobCompressionMetadata(verifyBlobCompressionMetadata)
     , NotifyActorId(std::move(notifyActorId))
     , BlockMarks(std::move(blockMarks))
 {
@@ -133,6 +139,14 @@ NProto::TError TDescribeBaseDiskBlocksActor::ValidateDescribeBlocksResponse(
         }
     }
 
+    THashSet<TLogoBlobID> blobsWithKnownCompressionMetadata;
+    if (VerifyBlobCompressionMetadata) {
+        for (const auto& entry: record.GetBlobId2CompressionMetadata()) {
+            blobsWithKnownCompressionMetadata.insert(
+                LogoBlobIDFromLogoBlobID(entry.GetBlobId()));
+        }
+    }
+
     for (const auto& piece: record.GetBlobPieces()) {
         for (const auto& range: piece.GetRanges()) {
             const auto blockRange = TBlockRange64::WithLength(
@@ -147,6 +161,17 @@ NProto::TError TDescribeBaseDiskBlocksActor::ValidateDescribeBlocksResponse(
                     " blockRange:" << DescribeRange(blockRange)
                 );
             }
+        }
+    }
+
+    for (const auto& piece: record.GetBlobPieces()) {
+        const auto blobId = LogoBlobIDFromLogoBlobID(piece.GetBlobId());
+        auto error = ValidateBlobCompressionMetadata(
+            VerifyBlobCompressionMetadata,
+            blobId,
+            blobsWithKnownCompressionMetadata.contains(blobId));
+        if (HasError(error)) {
+            return error;
         }
     }
 
