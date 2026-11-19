@@ -16,6 +16,7 @@
 #include <cloud/blockstore/libs/storage/partition/model/cleanup_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/garbage_queue.h>
 #include <cloud/blockstore/libs/storage/partition/model/mixed_blocks_filter_load_state.h>
+#include <cloud/blockstore/libs/storage/partition_common/blob_compressor.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
@@ -255,6 +256,7 @@ struct TTxPartition
         TBlockMarks BlockMarks;
         TVector<ui64> BlockMarkCommitIds;
         THashMap<TPartialBlobId, NProto::TBlobMeta, TPartialBlobIdHash> BlobId2Meta;
+        TPartialBlobId2CompressionMetadataMap BlobId2CompressionMetadata;
 
         TVector<IProfileLog::TBlockInfo> BlockInfos;
 
@@ -283,6 +285,7 @@ struct TTxPartition
             std::fill(BlockMarks.begin(), BlockMarks.end(), NBlobMarkers::TEmptyMark());
             std::fill(BlockMarkCommitIds.begin(), BlockMarkCommitIds.end(), 0);
             BlobId2Meta.clear();
+            BlobId2CompressionMetadata.clear();
             BlockInfos.clear();
         }
 
@@ -465,6 +468,8 @@ struct TTxPartition
         THashSet<TPartialBlobId, TPartialBlobIdHash> BlobsToReadBlockMasks;
         THashSet<TPartialBlobId, TPartialBlobIdHash> BlobsToReadBlobMetas;
 
+        TPartialBlobId2CompressionMetadataMap BlobId2CompressionMetadata;
+
         TCompaction(
                 TRequestInfoPtr requestInfo,
                 ui64 commitId,
@@ -491,6 +496,7 @@ struct TTxPartition
             }
             BlobsToReadBlockMasks.clear();
             BlobsToReadBlobMetas.clear();
+            BlobId2CompressionMetadata.clear();
         }
     };
 
@@ -639,6 +645,8 @@ struct TTxPartition
         ui32 VisitCount = 0;
         TPartialBlobId LastVisitedBlobId;
 
+        TPartialBlobId2CompressionMetadataMap BlobId2CompressionMetadata;
+
         TScanDiskBatch(
                 TRequestInfoPtr requestInfo,
                 TPartialBlobId startBlobId,
@@ -655,6 +663,7 @@ struct TTxPartition
             BlobsToReadInCurrentBatch.clear();
             VisitCount = 0;
             LastVisitedBlobId = TPartialBlobId();
+            BlobId2CompressionMetadata.clear();
         }
     };
 

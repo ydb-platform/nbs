@@ -838,7 +838,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                     12,
                     false,
                     TInstant::Max(),
-                    checksums);
+                    checksums,
+                    std::nullopt);
                 const auto readActor = ActorSystem.Register(new TReadBlobActor(
                     MakeIntrusive<TRequestInfo>(
                         EdgeActor,
@@ -966,7 +967,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                     12,
                     false,
                     TInstant::Max(),
-                    false);
+                    false,
+                    std::nullopt);
 
                 ActorSystem.Register(new TReadBlobActor(
                     MakeIntrusive<TRequestInfo>(
@@ -1199,7 +1201,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                         12,
                         false,
                         TInstant::Max(),
-                        false);
+                        false,
+                        std::nullopt);
 
                     auto readActor = ActorSystem.Register(new TReadBlobActor(
                         MakeIntrusive<TRequestInfo>(

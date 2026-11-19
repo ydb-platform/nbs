@@ -120,8 +120,7 @@ struct TEvPartitionCommonPrivate
             bool async,
             TInstant deadline,
             bool shouldCalculateChecksums,
-            std::optional<NProto::TCompressionMetadata> compressionMetadata =
-                std::nullopt)
+            std::optional<NProto::TCompressionMetadata> compressionMetadata)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))

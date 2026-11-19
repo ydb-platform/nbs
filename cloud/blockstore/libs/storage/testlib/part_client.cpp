@@ -435,8 +435,8 @@ TPartitionClient::CreateReadBlobRequest(
             bSGroupId,
             false,             // async
             TInstant::Max(),   // deadline
-            false              // shouldCalculateChecksums
-        );
+            false,             // shouldCalculateChecksums
+            std::nullopt);
     return request;
 }
 
