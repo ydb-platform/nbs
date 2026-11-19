@@ -20,4 +20,3 @@ ui64 GetHiveTabletId(const TStorageConfigPtr& config, const NActors::TActorConte
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
-
