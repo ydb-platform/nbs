@@ -24,6 +24,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -209,10 +210,30 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 						execCtx.On("SetEstimatedInflightDuration", time.Second).Once()
 					}
 				}
-				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", "", mock.Anything).
-					Return(tc.diskMeta, errorFor("DeleteDisk")).Once()
+				trackedMissingDisk := tc.diskMeta == nil && tc.deleteIfNonExistent
+				if tc.deleteIfNonExistent {
+					storage.On(
+						"DeleteDisk",
+						ctx,
+						"disk",
+						"toplevel_task_id",
+						"toplevel_task_id",
+						mock.Anything,
+					).Return(tc.diskMeta, errorFor("DeleteDisk")).Once()
+				} else {
+					storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", "", mock.Anything).
+						Return(tc.diskMeta, errorFor("DeleteDisk")).Once()
+				}
 				if tc.errorAt == "DeleteDisk" {
 					return
+				}
+				if trackedMissingDisk {
+					storage.On(
+						"PrepareDiskCleanup",
+						ctx,
+						"disk",
+						"toplevel_task_id",
+					).Return(true, nil).Once()
 				}
 				if !tc.skipIncremental {
 					scheduler.On(
@@ -263,6 +284,26 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 					if tc.errorAt == "WaitRelease" {
 						return
 					}
+				}
+				if trackedMissingDisk {
+					tx := &persistence.Transaction{}
+					storage.On(
+						"CompleteDiskCleanup",
+						ctx,
+						tx,
+						"disk",
+						"toplevel_task_id",
+					).Return(nil).Once()
+					execCtx.On("FinishWithPreparation", ctx, mock.Anything).Run(
+						func(args mock.Arguments) {
+							prepare := args.Get(1).(func(
+								context.Context,
+								*persistence.Transaction,
+							) error)
+							require.NoError(t, prepare(ctx, tx))
+						},
+					).Return(nil).Once()
+					return
 				}
 				if !tc.skipDiskDeleted {
 					storage.On("DiskDeleted", ctx, "disk", mock.Anything).

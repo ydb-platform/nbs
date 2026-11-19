@@ -5,10 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
+	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
@@ -16,8 +19,10 @@ import (
 	pools_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/mocks"
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -59,7 +64,9 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 		"DeleteDisk",
 		ctx,
 		"disk",
-		"toplevel_task_id", "", mock.Anything,
+		"toplevel_task_id",
+		"",
+		mock.Anything,
 	).Return(diskMeta, nil).Once()
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 
@@ -119,7 +126,9 @@ func TestDeleteDiskTaskRunWithDiskCreatedFromImage(t *testing.T) {
 		"DeleteDisk",
 		ctx,
 		"disk",
-		"toplevel_task_id", "", mock.Anything,
+		"toplevel_task_id",
+		"",
+		mock.Anything,
 	).Return(&resources.DiskMeta{
 		ZoneID:       "zone",
 		SrcImageID:   "image",
@@ -179,7 +188,9 @@ func TestDeleteDiskTaskCancel(t *testing.T) {
 		"DeleteDisk",
 		ctx,
 		"disk",
-		"toplevel_task_id", "", mock.Anything,
+		"toplevel_task_id",
+		"",
+		mock.Anything,
 	).Return(&resources.DiskMeta{
 		ZoneID:       "zone",
 		Kind:         "ssd",
@@ -242,19 +253,29 @@ func testDeleteDiskTaskWithNonExistentDisk(
 		state:       &protos.DeleteDiskTaskState{},
 	}
 
+	cleanupTaskID := ""
+	if deleteIfNonExistent {
+		cleanupTaskID = "toplevel_task_id"
+	}
+
 	// There is no such disk in the database, return nil.
 	storage.On(
 		"DeleteDisk",
 		ctx,
 		"disk",
-		"toplevel_task_id", "", mock.Anything,
+		"toplevel_task_id",
+		cleanupTaskID,
+		mock.Anything,
 	).Return((*resources.DiskMeta)(nil), nil)
 
 	if deleteIfNonExistent {
-		// DeleteIfNonExistent option is on. Therefore, should proceed deleting
-		// even though the disk is missing from the database.
-
-		storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
+		storage.On("PrepareDiskCleanup", ctx, "disk", "toplevel_task_id").Return(true, nil).Once()
+		tx := &persistence.Transaction{}
+		storage.On("CompleteDiskCleanup", ctx, tx, "disk", "toplevel_task_id").Return(nil).Once()
+		execCtx.On("FinishWithPreparation", ctx, mock.Anything).Run(func(args mock.Arguments) {
+			prepare := args.Get(1).(func(context.Context, *persistence.Transaction) error)
+			require.NoError(t, prepare(ctx, tx))
+		}).Return(nil).Once()
 
 		nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
 		nbsClient.On("Delete", ctx, "disk").Return(nil)
@@ -339,7 +360,9 @@ func testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
 		"DeleteDisk",
 		ctx,
 		"disk",
-		"toplevel_task_id", "", mock.Anything,
+		"toplevel_task_id",
+		"",
+		mock.Anything,
 	).Return(diskMeta, nil).Once()
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 
@@ -424,4 +447,144 @@ func TestDeleteDiskTaskEstimatedInflightDurationForLocalDisks(t *testing.T) {
 			)
 		})
 	}
+}
+
+func TestDeleteDiskTaskTrackedDeletion(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		prepared bool
+		legacy   bool
+		sync     bool
+		errorAt  string
+	}{
+		{name: "async", prepared: true}, {name: "sync", prepared: true, sync: true},
+		{name: "legacy placeholder", legacy: true},
+		{name: "completed deletion"},
+		{name: "reservation read error", errorAt: "DeleteDisk"},
+		{name: "incremental retry keeps reservation", prepared: true, errorAt: "WaitTask"},
+		{name: "NBS retry keeps reservation", prepared: true, errorAt: "Delete"},
+		{name: "completion callback failure", prepared: true, errorAt: "CompleteDiskCleanup"},
+		{name: "task commit failure", prepared: true, errorAt: "FinishWithPreparation"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			storage := storage_mocks.NewStorageMock()
+			scheduler := tasks_mocks.NewSchedulerMock()
+			factory := nbs_mocks.NewFactoryMock()
+			client := nbs_mocks.NewClientMock()
+			execCtx := newExecutionContextMock()
+			task := &deleteDiskTask{storage: storage, scheduler: scheduler, nbsFactory: factory}
+			request, err := proto.Marshal(&protos.DeleteDiskRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}, DeleteIfNonExistent: true, Sync: tc.sync})
+			require.NoError(t, err)
+			require.NoError(t, task.Load(request, nil))
+			id := "toplevel_task_id"
+			errorFor := func(step string) error {
+				if tc.errorAt == step {
+					return assert.AnError
+				}
+				return nil
+			}
+			if tc.sync {
+				storage.On("GetDiskMeta", ctx, "disk").Return((*resources.DiskMeta)(nil), nil).Once()
+			}
+			// Owning legacy Deleted placeholders stay Deleted but return empty
+			// meta so the task finishes external cleanup via the request zone.
+			// Completed deletions stay a storage no-op (nil meta, Prepare=false).
+			var deleteMeta *resources.DiskMeta
+			if tc.legacy {
+				deleteMeta = &resources.DiskMeta{ID: "disk", DeleteTaskID: id}
+			}
+			storage.On("DeleteDisk", ctx, "disk", id, id, mock.Anything).Return(
+				deleteMeta,
+				errorFor("DeleteDisk"),
+			).Once()
+			setup := func() {
+				if tc.errorAt == "DeleteDisk" {
+					return
+				}
+				if tc.legacy {
+					scheduler.On("ScheduleTask", headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_incremental"), "dataplane.DeleteDiskFromIncremental", "", &dataplane_protos.DeleteDiskFromIncrementalRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}}).Return("incremental", nil).Once()
+					scheduler.On("WaitTask", ctx, execCtx, "incremental").Return(nil, nil).Once()
+					factory.On("GetClient", ctx, "cell").Return(client, nil).Once()
+					client.On("Delete", ctx, "disk").Return(nil).Once()
+					storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil).Once()
+					return
+				}
+				storage.On("PrepareDiskCleanup", ctx, "disk", id).Return(tc.prepared, nil).Once()
+				if !tc.prepared {
+					return
+				}
+				scheduler.On("ScheduleTask", headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_incremental"), "dataplane.DeleteDiskFromIncremental", "", &dataplane_protos.DeleteDiskFromIncrementalRequest{Disk: &types.Disk{DiskId: "disk", ZoneId: "cell"}}).Return("incremental", nil).Once()
+				scheduler.On("WaitTask", ctx, execCtx, "incremental").Return(nil, errorFor("WaitTask")).Once()
+				if tc.errorAt == "WaitTask" {
+					return
+				}
+				factory.On("GetClient", ctx, "cell").Return(client, nil).Once()
+				method := "Delete"
+				if tc.sync {
+					method = "DeleteSync"
+				}
+				client.On(method, ctx, "disk").Return(errorFor("Delete")).Once()
+				if tc.errorAt == "Delete" {
+					return
+				}
+				tx := &persistence.Transaction{}
+				storage.On("CompleteDiskCleanup", ctx, tx, "disk", id).Return(errorFor("CompleteDiskCleanup")).Once()
+				finishErr := errorFor("CompleteDiskCleanup")
+				if finishErr == nil {
+					finishErr = errorFor("FinishWithPreparation")
+				}
+				execCtx.On("FinishWithPreparation", ctx, mock.Anything).Run(func(args mock.Arguments) {
+					prep := args.Get(1).(func(context.Context, *persistence.Transaction) error)
+					require.Equal(t, errorFor("CompleteDiskCleanup"), prep(ctx, tx))
+				}).Return(finishErr).Once()
+			}
+			setup()
+			err = task.Run(ctx, execCtx)
+			if tc.errorAt != "" {
+				require.True(t, errors.Is(err, assert.AnError))
+			} else {
+				require.NoError(t, err)
+			}
+			mock.AssertExpectationsForObjects(t, storage, scheduler, factory, client, execCtx)
+			if tc.prepared {
+				storage.AssertNotCalled(t, "DiskDeleted", mock.Anything, mock.Anything, mock.Anything)
+			}
+			scheduler.AssertNotCalled(t, "ScheduleNonCancellableTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func TestDeleteDiskTaskZoneLessTrackedDeletion(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	factory := nbs_mocks.NewFactoryMock()
+	execCtx := newExecutionContextMock()
+	task := &deleteDiskTask{storage: storage, scheduler: scheduler, nbsFactory: factory}
+
+	// No zone in the request: still reserve via tombstone and finish with
+	// CompleteDiskCleanup, without scheduling external cleanup.
+	request, err := proto.Marshal(&protos.DeleteDiskRequest{
+		Disk:                &types.Disk{DiskId: "disk"},
+		DeleteIfNonExistent: true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, task.Load(request, nil))
+
+	id := "toplevel_task_id"
+	storage.On("DeleteDisk", ctx, "disk", id, id, mock.Anything).Return((*resources.DiskMeta)(nil), nil).Once()
+	storage.On("PrepareDiskCleanup", ctx, "disk", id).Return(true, nil).Once()
+	tx := &persistence.Transaction{}
+	storage.On("CompleteDiskCleanup", ctx, tx, "disk", id).Return(nil).Once()
+	execCtx.On("FinishWithPreparation", ctx, mock.Anything).Run(func(args mock.Arguments) {
+		prep := args.Get(1).(func(context.Context, *persistence.Transaction) error)
+		require.NoError(t, prep(ctx, tx))
+	}).Return(nil).Once()
+
+	require.NoError(t, task.Run(ctx, execCtx))
+	mock.AssertExpectationsForObjects(t, storage, scheduler, factory, execCtx)
+	storage.AssertNotCalled(t, "DiskDeleted", mock.Anything, mock.Anything, mock.Anything)
+	factory.AssertNotCalled(t, "GetClient", mock.Anything, mock.Anything)
+	scheduler.AssertNotCalled(t, "ScheduleTask", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
