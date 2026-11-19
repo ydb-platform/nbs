@@ -483,10 +483,9 @@ public:
         const TString& host,
         IClientEndpointHandlerPtr handler) override
     {
-        const auto it = State->Config->GetCells().find(cellId);
-        if (it == State->Config->GetCells().end() ||
-            cellId == State->Config->GetCellId() || host.empty() ||
-            !it->second->GetIcV2Port() || it->second->GetIcV2Port() > 65535)
+        const auto* cell = State->Config->GetCells().FindPtr(cellId);
+        if (!cell || cellId == State->Config->GetCellId() || host.empty() ||
+            !(*cell)->GetIcV2Port() || (*cell)->GetIcV2Port() > 65535)
         {
             return MakeError(
                 E_ARGUMENT,
@@ -512,7 +511,7 @@ public:
         }
         auto [binding, error] = CreateHostDataEndpoint(
             host,
-            static_cast<ui16>(it->second->GetIcV2Port()),
+            static_cast<ui16>((*cell)->GetIcV2Port()),
             std::move(handler),
             State->Peers,
             State->Timer,

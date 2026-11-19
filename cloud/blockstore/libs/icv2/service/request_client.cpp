@@ -247,14 +247,14 @@ private:
         TDuration remaining;
         {
             std::lock_guard guard(Mutex);
-            const auto it = Pending.find(id);
-            if (Stopping || it == Pending.end()) {
+            const auto* request = Pending.FindPtr(id);
+            if (Stopping || !request) {
                 return;
             }
             const auto now = Timer->Now();
-            if (now < it->second->Deadline) {
-                remaining = it->second->Deadline - now;
-                event = std::move(it->second->Event);
+            if (now < (*request)->Deadline) {
+                remaining = (*request)->Deadline - now;
+                event = std::move((*request)->Event);
             }
         }
         if (!remaining) {
@@ -299,10 +299,8 @@ private:
             request = std::move(it->second);
             Pending.erase(it);
             Deadlines.erase({request->Deadline, id});
-            if (auto peer = Connecting.find(request->Key);
-                peer != Connecting.end())
-            {
-                peer->second.Requests.erase(id);
+            if (auto* peer = Connecting.FindPtr(request->Key)) {
+                peer->Requests.erase(id);
             }
             ++Callbacks;
         }
