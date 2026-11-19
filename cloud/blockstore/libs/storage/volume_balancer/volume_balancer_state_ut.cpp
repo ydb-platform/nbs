@@ -46,7 +46,7 @@ TStorageConfigPtr CreateStorageConfig(
     storageConfig.SetInitialPullDelay(initialPullDelay.MilliSeconds());
 
     return std::make_shared<TStorageConfig>(storageConfig, std::move(featuresConfig));
-}
+};
 
 NFeatures::TFeaturesConfigPtr CreateFeatureConfig(
     const TString& featureName,
@@ -77,8 +77,6 @@ NFeatures::TFeaturesConfigPtr CreateFeatureConfig(
     }
     return std::make_shared<NFeatures::TFeaturesConfig>(config);
 }
-
-////////////////////////////////////////////////////////////////////////////////
 
 struct TVolumeStatsRecipe
 {
@@ -125,15 +123,12 @@ public:
         IVolumeBalancerSwitchPtr volumeBalancerSwitch = CreateSwitch(true));
 
     void Push(const TString& diskId);
-
     void Pull(const TString& diskId);
 
     void Simulate(TDuration elapsed, ui64 cpuLack);
-
     void AddCounters(TDuration elapsed);
 
     TString GetVolumeToPush() const;
-
     TString GetVolumeToPull() const;
 
 private:
