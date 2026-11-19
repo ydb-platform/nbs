@@ -149,7 +149,8 @@ void PrepareRangeCompaction(
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args,
     THashSet<TPartialBlobId, TPartialBlobIdHash>& blobsToReadBlockMasks,
-    THashSet<TPartialBlobId, TPartialBlobIdHash>& blobsToReadBlobMetas);
+    THashSet<TPartialBlobId, TPartialBlobIdHash>& blobsToReadBlobMetas,
+    TPartialBlobId2CompressionMetadataMap& blobId2CompressionMetadata);
 
 void CompleteRangeCompaction(
     const bool blobPatchingEnabled,
