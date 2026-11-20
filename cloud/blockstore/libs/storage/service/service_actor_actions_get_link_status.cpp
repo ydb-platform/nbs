@@ -299,8 +299,12 @@ void TGetLinkStatusActionActor::HandleGetLinkStatusResponse(
         return;
     }
 
+    // The tablet identity is private cleanup metadata. Keep the existing JSON
+    // action response compatible with clients using strict protobuf JSON parsers.
+    auto record = msg->Record;
+    record.ClearVolumeTabletId();
     TString response;
-    google::protobuf::util::MessageToJsonString(msg->Record, &response);
+    google::protobuf::util::MessageToJsonString(record, &response);
 
     HandleSuccess(ctx, response);
 }

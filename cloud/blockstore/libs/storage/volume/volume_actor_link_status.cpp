@@ -59,11 +59,26 @@ void TVolumeActor::HandleGetLinkStatus(
         .FollowerDiskId = msg->Record.GetFollowerDiskId(),
         .FollowerCellId = msg->Record.GetFollowerCellId()};
 
+    const auto exactIdentity = [&](const TLeaderFollowerLink& candidate)
+    {
+        return !msg->Record.GetLinkUUID() ||
+            (candidate.LinkUUID == msg->Record.GetLinkUUID() &&
+             candidate.LeaderDiskId == msg->Record.GetLeaderDiskId() &&
+             candidate.LeaderCellId == msg->Record.GetLeaderCellId() &&
+             candidate.FollowerDiskId == msg->Record.GetFollowerDiskId() &&
+             candidate.FollowerCellId == msg->Record.GetFollowerCellId());
+    };
     auto follower = State->FindFollower(link);
+    if (follower && !exactIdentity(follower->Link)) {
+        follower.reset();
+    }
     if (follower) {
         link = follower->Link;
     }
     auto leader = State->FindLeader(link);
+    if (leader && !exactIdentity(leader->Link)) {
+        leader.reset();
+    }
     if (leader) {
         link = leader->Link;
     }
@@ -72,6 +87,9 @@ void TVolumeActor::HandleGetLinkStatus(
         msg->Record.GetIncludePendingCreation() && !follower && !leader
             ? State->FindCreateFollowerRequestInfo(link)
             : nullptr;
+    if (creation && !exactIdentity(creation->Link)) {
+        creation = nullptr;
+    }
     if (creation) {
         link = creation->Link;
     }
