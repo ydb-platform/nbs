@@ -354,6 +354,21 @@ void TDestroyFileStoreActor::HandleGetFileSystemTopologyResponse(
         msg->Record.Utf8DebugString().Quote().c_str());
 
     const auto topology = GetShardTopology(msg->Record);
+
+    // A shard has no shards of its own, its topology lists the sibling shards.
+    if (msg->Record.GetShardNo()) {
+        NProtoPrivate::TShardTopology shard;
+        // TODO(#6959): Find the shard by filesystem ID and verify its tablet ID
+        // before cleanup. A reordered topology can put a sibling at this index.
+        const ui32 shardIndex = msg->Record.GetShardNo() - 1;
+        if (shardIndex < topology.ShardsSize()) {
+            *shard.AddShards() = topology.GetShards(shardIndex);
+        }
+
+        DeallocateFastShards(ctx, shard);
+        return;
+    }
+
     for (const auto& shard: topology.GetShards()) {
         ShardIds.push_back(shard.GetShardId());
     }
@@ -385,7 +400,6 @@ void TDestroyFileStoreActor::DeallocateFastShards(
     NCloud::Register(
         ctx,
         CreateDeallocateFastShardsActor(
-            StorageConfig,
             SelfId(),
             FileSystemId,
             std::move(fastShards)));

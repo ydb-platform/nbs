@@ -343,16 +343,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceFastShardTest)
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             CreateFileStore(env, "test", BlocksCount, 2, 2, invalidKind));
-        // The devices of a fast shard have to hold the filesystem.
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            CreateFileStore(
-                env,
-                "test",
-                BlocksCount + 1,
-                2,
-                2,
-                NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR));
+        // A fast shard count without a storage kind should be rejected.
+        {
+            auto request =
+                env.Service.CreateCreateFileStoreRequest("test", BlocksCount);
+            request->Record.SetShardCount(2);
+            request->Record.SetFastShardCount(2);
+            env.Service.SendCreateFileStoreRequest(std::move(request));
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_ARGUMENT,
+                env.Service.RecvCreateFileStoreResponse()->GetStatus());
+        }
         // The directories need a shard of their own.
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
@@ -385,16 +386,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceFastShardTest)
                 NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR));
         env.Service.CreateFileStore("plain", BlocksCount);
 
-        // The shards cannot be dropped and the fast shards do not add capacity.
+        // The shards cannot be dropped.
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             ResizeFileStore(env, "test", BlocksCount, 2, 1));
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             ResizeFileStore(env, "test", BlocksCount, 1, 2));
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            ResizeFileStore(env, "test", 2 * BlocksCount, 3, 3));
         // The shards of both kinds count against the shard limit.
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
@@ -404,19 +402,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceFastShardTest)
             E_ARGUMENT,
             ResizeFileStore(env, "plain", BlocksCount, 2, 1));
         // A fast shard is not resized on its own.
+        const ui64 shardBlocksCount = env.Service.GetFileStoreInfo("test_s3")
+            ->Record.GetFileStore()
+            .GetBlocksCount();
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
-            ResizeFileStore(env, "test_s3", BlocksCount, 0, 0));
-
-        // The devices of a new fast shard have to hold the filesystem too.
-        config.SetFastShardAllocationSize(AllocationSize / 2);
-        RestartService(env, config);
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            ResizeFileStore(env, "test", BlocksCount, 2, 3));
+            ResizeFileStore(env, "test_s3", 2 * shardBlocksCount, 0, 0));
 
         // The directories of such a filesystem are created in the other shards.
-        config.SetFastShardAllocationSize(AllocationSize);
         config.SetDirectoryCreationInShardsEnabled(false);
         RestartService(env, config);
         UNIT_ASSERT_VALUES_EQUAL(
@@ -428,26 +421,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceFastShardTest)
                 2,
                 2,
                 NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR));
-
-        // A service without the runtime cannot reach disk registry.
-        config.SetDirectoryCreationInShardsEnabled(true);
-        config.SetFastShardRuntimeEnabled(false);
-        RestartService(env, config);
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_PRECONDITION_FAILED,
-            CreateFileStore(
-                env,
-                "test2",
-                BlocksCount / 2,
-                2,
-                2,
-                NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR));
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_PRECONDITION_FAILED,
-            ResizeFileStore(env, "test", BlocksCount, 2, 3));
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_PRECONDITION_FAILED,
-            DestroyFileStore(env, "test"));
 
         // A rejected request changes nothing.
         UNIT_ASSERT_VALUES_EQUAL(
@@ -548,14 +521,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceFastShardTest)
                     disk.DeviceBlocksCount);
                 UNIT_ASSERT_VALUES_EQUAL("pool", disk.DevicePoolName);
 
-                // The shard gets the devices of its disk.
+                // The capacity is the allocation size minus the reserve.
                 const auto config = GetFastShardConfig(env, shardId);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    c.Size,
+                    1_GB,
                     config.GetExpectedGroupCapacity());
                 UNIT_ASSERT_VALUES_EQUAL(
-                    c.Size / 1_MB,
+                    1_GB / 1_MB,
                     config.GetNodesPerGroup());
+                // The shard gets the devices of its disk.
                 const auto& group = config.GetStorageGroups(0);
                 UNIT_ASSERT_EQUAL(c.Kind, group.GetType());
                 UNIT_ASSERT_VALUES_EQUAL(
@@ -564,6 +538,20 @@ Y_UNIT_TEST_SUITE(TStorageServiceFastShardTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     TStringBuilder() << shardId << "-" << c.ReplicaCount,
                     group.GetDevices(c.ReplicaCount).GetDeviceId());
+            }
+
+            // The main tablet keeps the block size as the page size.
+            const auto topology = GetFileSystemTopology(env.Service, c.Id);
+            for (const auto& shard: topology.GetShardTopology().GetShards()) {
+                if (shard.GetType() ==
+                    NProtoPrivate::TShardTopology::E_FASTSHARD)
+                {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        4_KB,
+                        shard.GetFastShardConfig()
+                            .GetPersistentConfig()
+                            .GetPageSize());
+                }
             }
         }
 
@@ -584,6 +572,79 @@ Y_UNIT_TEST_SUITE(TStorageServiceFastShardTest)
                 NProto::FAST_SHARD_STORAGE_MIRROR));
     }
 
+    Y_UNIT_TEST(ShouldAddFastShardsForFileStoreSize)
+    {
+        TFastShardTestEnv env(MakeFastShardConfig());
+
+        // A fast shard holds 1 GiB, a filesystem of 3 GiB needs three of them.
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            CreateFileStore(
+                env,
+                "test",
+                3 * BlocksCount,
+                1,
+                2,
+                NProto::FAST_SHARD_STORAGE_MIRROR));
+        // Without a fast shard count it gets them.
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            CreateFileStore(
+                env,
+                "test",
+                3 * BlocksCount,
+                1,
+                0,
+                NProto::FAST_SHARD_STORAGE_MIRROR));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "test,test_s1,test_s2,test_s3,test_s4",
+            GetFileStoreIds(env));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "test_s2,test_s3,test_s4",
+            GetFastShardIds(env, "test"));
+
+        // A resize to the same size adds no shards.
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            ResizeFileStore(env, "test", 3 * BlocksCount, 0, 0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "test,test_s1,test_s2,test_s3,test_s4",
+            GetFileStoreIds(env));
+
+        // A bigger filesystem gets the fast shards for the added size.
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            ResizeFileStore(env, "test", 5 * BlocksCount, 0, 0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "test,test_s1,test_s2,test_s3,test_s4,test_s5,test_s6",
+            GetFileStoreIds(env));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "test_s2,test_s3,test_s4,test_s5,test_s6",
+            GetFastShardIds(env, "test"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "test_s2,test_s3,test_s4,test_s5,test_s6",
+            GetDiskIds(env));
+
+        // A block over the capacity of the fast shards needs one more.
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            ResizeFileStore(env, "test", 5 * BlocksCount + 1, 0, 0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "test_s2,test_s3,test_s4,test_s5,test_s6,test_s7",
+            GetFastShardIds(env, "test"));
+
+        // An explicit fast shard count has to hold the filesystem too.
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            ResizeFileStore(env, "test", 7 * BlocksCount, 0, 6));
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            ResizeFileStore(env, "test", 7 * BlocksCount, 0, 7));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "test_s2,test_s3,test_s4,test_s5,test_s6,test_s7,test_s8",
+            GetFastShardIds(env, "test"));
+    }
+
     Y_UNIT_TEST(ShouldResizeFileStoreWithFastShards)
     {
         auto storageConfig = MakeFastShardConfig();
@@ -602,7 +663,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceFastShardTest)
                 NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR));
         const auto config = GetFastShardConfig(env, "test_s3");
 
-        // A new fast shard gets the storage kind of the filesystem.
+        // A new fast shard gets the storage kind and the block size of the
+        // filesystem.
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
             ResizeFileStore(env, "test", BlocksCount, 3, 3));
@@ -613,6 +675,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceFastShardTest)
         UNIT_ASSERT_EQUAL(
             NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR,
             GetFastShardConfig(env, "test_s6").GetStorageGroups(0).GetType());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB,
+            GetFileSystemTopology(env.Service, "test")
+                .GetShardTopology()
+                .GetShards(5)
+                .GetFastShardConfig()
+                .GetPersistentConfig()
+                .GetPageSize());
 
         // A resize without a fast shard count keeps the fast shards.
         UNIT_ASSERT_VALUES_EQUAL(
@@ -741,6 +811,29 @@ Y_UNIT_TEST_SUITE(TStorageServiceFastShardTest)
             "test_s2,test_s3,test_s5",
             GetFastShardIds(env, "test"));
         UNIT_ASSERT_VALUES_EQUAL("test_s2,test_s3,test_s5", GetDiskIds(env));
+    }
+
+    Y_UNIT_TEST(ShouldDestroyFastShardWithoutItsSiblings)
+    {
+        TFastShardTestEnv env(MakeFastShardConfig());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            CreateFileStore(
+                env,
+                "test",
+                BlocksCount,
+                1,
+                2,
+                NProto::FAST_SHARD_STORAGE_MIRROR));
+
+        // A fast shard that is destroyed by its own id takes only its devices.
+        // It is gone before its own destroy, which finds no shard.
+        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, DestroyFileStore(env, "test_s2"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "test,test_s1,test_s3",
+            GetFileStoreIds(env));
+        UNIT_ASSERT_VALUES_EQUAL("test_s3", GetDiskIds(env));
     }
 
     Y_UNIT_TEST(ShouldRetryDestroyFileStoreWithFastShards)

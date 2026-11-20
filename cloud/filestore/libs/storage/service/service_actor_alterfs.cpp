@@ -14,6 +14,8 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <optional>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -82,9 +84,11 @@ private:
 
     ui32 ExistingOrdinaryShardCount = 0;
     ui32 ExistingFastShardCount = 0;
+    ui64 ExistingFastShardCapacity = 0;
     ui32 ExistingTotalShardCount = 0;
 
-    ui32 NewFastShardCount = 0;
+    ui64 NewFastShardCount = 0;
+    std::optional<NProto::EFastShardStorageKind> FastShardStorageKind;
 
     ui32 NextShardToConfigure = 0;
     ui32 ShardsToConfigure = 0;
@@ -155,10 +159,13 @@ private:
     void ConfigureMainFileStore(const TActorContext& ctx);
 
     void PatchStorageConfig();
+    NProto::TError CollectFastShardStats();
     NProto::TError ValidateOrdinaryShards() const;
     NProto::TError ValidateFastShards() const;
     NProto::TError ValidateTotalShards(ui64 totalShardCount) const;
     NProto::TError FillMultiShardFileStoreConfig(ui32 shardCount);
+
+    ui64 CalculateRequiredNewFastShardCount() const;
 
     void HandleDescribeFileStoreForAlterResponse(
         const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
@@ -465,6 +472,46 @@ void TAlterFileStoreActor::PatchStorageConfig()
     StorageConfig->Merge(protoConfig);
 }
 
+NProto::TError TAlterFileStoreActor::CollectFastShardStats()
+{
+    for (const auto& shard: ShardTopology.GetShards()) {
+        if (shard.GetType() != NProtoPrivate::TShardTopology::E_FASTSHARD) {
+            continue;
+        }
+
+        const auto& config = shard.GetFastShardConfig().GetPersistentConfig();
+        if (config.GetStorageGroups().empty()) {
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "fast shard " << shard.GetShardId()
+                    << " has no storage group");
+        }
+
+        ++ExistingFastShardCount;
+        ExistingFastShardCapacity += config.GetExpectedGroupCapacity();
+
+        // The new fast shards get the storage kind of the existing ones.
+        for (const auto& storageGroup: config.GetStorageGroups()) {
+            const auto storageKind = storageGroup.GetType();
+            if (FastShardStorageKind && storageKind != *FastShardStorageKind) {
+                return MakeError(
+                    E_INVALID_STATE,
+                    TStringBuilder()
+                        << "fast shard " << shard.GetShardId()
+                        << " has storage kind "
+                        << EFastShardStorageKind_Name(storageKind)
+                        << ", the other fast shards have "
+                        << EFastShardStorageKind_Name(*FastShardStorageKind));
+            }
+
+            FastShardStorageKind = storageKind;
+        }
+    }
+
+    return {};
+}
+
 NProto::TError TAlterFileStoreActor::ValidateOrdinaryShards() const
 {
     if (ExplicitOrdinaryShardCount &&
@@ -487,21 +534,11 @@ NProto::TError TAlterFileStoreActor::ValidateFastShards() const
         if (ExplicitFastShardCount) {
             return MakeError(
                 E_ARGUMENT,
-                "Cannot add fast shards to a filesystem created without them.");
+                "Cannot add fast shards to a filesystem created without them");
         }
 
         // nothing to do
         return {};
-    }
-
-    if (!StorageConfig->GetFastShardRuntimeEnabled()) {
-        return MakeError(E_PRECONDITION_FAILED, "fast shards are disabled");
-    }
-
-    if (TargetConfig.GetBlocksCount() != MainFileStoreOriginalConfig.GetBlocksCount()) {
-        return MakeError(
-            E_ARGUMENT,
-            "Cannot resize fast shard.");
     }
 
     if (ExplicitFastShardCount &&
@@ -515,10 +552,34 @@ NProto::TError TAlterFileStoreActor::ValidateFastShards() const
                 << ExplicitFastShardCount);
     }
 
-    return ValidateFastShardCapacity(
+    const ui64 requiredNewFastShardCount = CalculateRequiredNewFastShardCount();
+    if (ExplicitFastShardCount &&
+        ExplicitFastShardCount - ExistingFastShardCount <
+            requiredNewFastShardCount)
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "fast shard count " << ExplicitFastShardCount
+                << " cannot hold the filesystem, "
+                << ExistingFastShardCount + requiredNewFastShardCount
+                << " needed");
+    }
+
+    return {};
+}
+
+ui64 TAlterFileStoreActor::CalculateRequiredNewFastShardCount() const
+{
+    const ui32 blockSize = MainFileStoreOriginalConfig.GetBlockSize();
+    const ui64 blocksCount = TargetConfig.GetBlocksCount();
+    const ui64 missingBlocksCount =
+        blocksCount - Min(blocksCount, ExistingFastShardCapacity / blockSize);
+
+    return CalculateFastShardCount(
         *StorageConfig,
-        MainFileStoreOriginalConfig.GetBlocksCount() *
-            MainFileStoreOriginalConfig.GetBlockSize());
+        missingBlocksCount,
+        blockSize);
 }
 
 NProto::TError TAlterFileStoreActor::ValidateTotalShards(
@@ -726,10 +787,9 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
     if (!msg->Record.GetShardNo()) {
         ShardTopology = GetShardTopology(msg->Record);
         ExistingTotalShardCount = ShardTopology.ShardsSize();
-        for (const auto& shard: ShardTopology.GetShards()) {
-            if (shard.GetType() == NProtoPrivate::TShardTopology::E_FASTSHARD) {
-                ++ExistingFastShardCount;
-            }
+        if (auto error = CollectFastShardStats(); HasError(error)) {
+            ReplyAndDie(ctx, error);
+            return;
         }
 
         ExistingOrdinaryShardCount =
@@ -751,8 +811,13 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         totalShardCount += ExplicitOrdinaryShardCount - ExistingOrdinaryShardCount;
     }
 
-    if (ExplicitFastShardCount) {
-        NewFastShardCount = ExplicitFastShardCount - ExistingFastShardCount;
+    if (ExistingFastShardCount) {
+        if (ExplicitFastShardCount) {
+            NewFastShardCount = ExplicitFastShardCount - ExistingFastShardCount;
+        } else {
+            NewFastShardCount = CalculateRequiredNewFastShardCount();
+        }
+
         totalShardCount += NewFastShardCount;
     }
 
@@ -902,7 +967,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         {
             ReplyAndDie(
                 ctx,
-                MakeError(E_ARGUMENT, "Cannot resize fast shard."));
+                MakeError(E_ARGUMENT, "Cannot resize fast shard"));
             return;
         }
 
@@ -1035,29 +1100,16 @@ void TAlterFileStoreActor::AllocateFastShards(const TActorContext& ctx)
         return;
     }
 
-    // The new fast shards get the storage kind of an existing one.
-    for (const auto& shard: ShardTopology.GetShards()) {
-        const auto& storageGroups = shard.GetFastShardConfig()
-            .GetPersistentConfig()
-            .GetStorageGroups();
-        if (!storageGroups.empty()) {
-            NCloud::Register(
-                ctx,
-                CreateAllocateFastShardsActor(
-                    StorageConfig,
-                    SelfId(),
-                    FileSystemId,
-                    MainFileStoreOriginalConfig,
-                    FileStoreConfig.ShardConfigs,
-                    NewFastShardCount,
-                    storageGroups[0].GetType()));
-            return;
-        }
-    }
-
-    ReplyAndDie(
+    NCloud::Register(
         ctx,
-        MakeError(E_INVALID_STATE, "no storage kind for the new fast shards"));
+        CreateAllocateFastShardsActor(
+            StorageConfig,
+            SelfId(),
+            FileSystemId,
+            MainFileStoreOriginalConfig,
+            FileStoreConfig.ShardConfigs,
+            NewFastShardCount,
+            *FastShardStorageKind));
 }
 
 void TAlterFileStoreActor::HandleFastShardsAllocated(
