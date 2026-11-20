@@ -37,6 +37,12 @@ struct TTestBlockVisitor final
         TPartialBlobIdHash>
         BlobToCompressionMetadata;
     bool InterruptOnBlob = false;
+    bool ReadCompressionMetadata = true;
+
+    bool NeedsCompressionMetadata() const override
+    {
+        return ReadCompressionMetadata;
+    }
 
     bool Visit(
         TBlockRange32 blockRange,
@@ -380,37 +386,45 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             db.InitSchema();
         });
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.WriteMergedBlocks(
-                executor.MakeBlobId(),
-                TBlockRange32::WithLength(0, 3),
-                TBlockMask()
-            );
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                    executor.MakeBlobId(),
+                    TBlockRange32::WithLength(0, 3),
+                    TBlockMask(),
+                    DefaultBlockSize)));
+            });
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.WriteMergedBlocks(
-                executor.MakeBlobId(),
-                TBlockRange32::MakeClosedInterval(4, 6),
-                TBlockMask()
-            );
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                    executor.MakeBlobId(),
+                    TBlockRange32::MakeClosedInterval(4, 6),
+                    TBlockMask(),
+                    DefaultBlockSize)));
+            });
 
-        ui64 maxCommitId = executor.WriteTx([&] (TPartitionDatabase db) {
-            db.WriteMergedBlocks(
-                executor.MakeBlobId(),
-                TBlockRange32::MakeClosedInterval(2, 4),
-                TBlockMask()
-            );
-        });
+        ui64 maxCommitId = executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                    executor.MakeBlobId(),
+                    TBlockRange32::MakeClosedInterval(2, 4),
+                    TBlockMask(),
+                    DefaultBlockSize)));
+            });
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.WriteMergedBlocks(
-                executor.MakeBlobId(),
-                TBlockRange32::WithLength(0, 7),
-                TBlockMask()
-            );
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                    executor.MakeBlobId(),
+                    TBlockRange32::WithLength(0, 7),
+                    TBlockMask(),
+                    DefaultBlockSize)));
+            });
 
         executor.ReadTx([&] (TPartitionDatabase db) {
             {
@@ -488,37 +502,45 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             db.InitSchema();
         });
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.WriteMergedBlocks(
-                executor.MakeBlobId(),
-                TBlockRange32::WithLength(0, 3),
-                TBlockMask()
-            );
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                    executor.MakeBlobId(),
+                    TBlockRange32::WithLength(0, 3),
+                    TBlockMask(),
+                    DefaultBlockSize)));
+            });
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.WriteMergedBlocks(
-                executor.MakeBlobId(),
-                TBlockRange32::MakeClosedInterval(4, 6),
-                TBlockMask()
-            );
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                    executor.MakeBlobId(),
+                    TBlockRange32::MakeClosedInterval(4, 6),
+                    TBlockMask(),
+                    DefaultBlockSize)));
+            });
 
-        ui64 maxCommitId = executor.WriteTx([&] (TPartitionDatabase db) {
-            db.WriteMergedBlocks(
-                executor.MakeBlobId(),
-                TBlockRange32::MakeClosedInterval(2, 4),
-                TBlockMask()
-            );
-        });
+        ui64 maxCommitId = executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                    executor.MakeBlobId(),
+                    TBlockRange32::MakeClosedInterval(2, 4),
+                    TBlockMask(),
+                    DefaultBlockSize)));
+            });
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.WriteMergedBlocks(
-                executor.MakeBlobId(),
-                TBlockRange32::WithLength(0, 7),
-                TBlockMask()
-            );
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                    executor.MakeBlobId(),
+                    TBlockRange32::WithLength(0, 7),
+                    TBlockMask(),
+                    DefaultBlockSize)));
+            });
 
         executor.ReadTx([&] (TPartitionDatabase db) {
             {
@@ -583,6 +605,47 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         });
     }
 
+    Y_UNIT_TEST(ShouldRejectMergedWriteWithInvalidCompressionMetadata)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+
+        NProto::TCompressionMetadata metadata;
+        metadata.SetCodec(NProto::TCompressionMetadata::COMPRESSION_SNAPPY);
+        metadata.SetChunkSize(DefaultBlockSize);
+        metadata.SetLastChunkSize(DefaultBlockSize);
+        metadata.MutablePlainChunks();
+
+        const auto range = TBlockRange32::WithLength(0, 2);
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                const auto error = db.WriteMergedBlocks(
+                    executor.MakeBlobId(1),
+                    range,
+                    TBlockMask(),
+                    DefaultBlockSize,
+                    &metadata);
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    E_ARGUMENT,
+                    error.GetCode(),
+                    FormatError(error));
+            });
+
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TTestBlockVisitor visitor;
+                UNIT_ASSERT(db.FindMergedBlocks(
+                    visitor,
+                    visitor,
+                    range,
+                    true,
+                    MaxBlocksCount));
+                UNIT_ASSERT(visitor.BlobToRange.empty());
+            });
+    }
+
     Y_UNIT_TEST(ShouldReadMergedBlobCompressionMetadata)
     {
         TTestExecutor executor;
@@ -591,7 +654,6 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         TVector<std::optional<NProto::TCompressionMetadata>>
             compressionMetadataEntries = {
                 std::nullopt,
-                NProto::TCompressionMetadata(),
             };
         for (auto codec:
              {NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
@@ -600,6 +662,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             NProto::TCompressionMetadata info;
             info.SetCodec(codec);
             info.SetChunkSize(2 * DefaultBlockSize);
+            info.SetLastChunkSize(DefaultBlockSize);
             info.MutablePlainChunks()->AddCompressedChunkSize(123);
             compressionMetadataEntries.push_back(std::move(info));
         }
@@ -607,7 +670,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         TVector<TPartialBlobId> blobIds;
         TVector<ui32> blocks;
         for (ui32 i = 0; i < compressionMetadataEntries.size(); ++i) {
-            const auto range = TBlockRange32::WithLength(i * 128, 3);
+            const auto range = TBlockRange32::WithLength(i * 128, 4);
             blocks.push_back(range.Start);
             blocks.push_back(range.End);
             executor.WriteTx(
@@ -615,22 +678,39 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 {
                     blobIds.push_back(executor.MakeBlobId());
                     const auto& info = compressionMetadataEntries[i];
-                    db.WriteMergedBlocks(
+                    TBlockMask skipMask;
+                    skipMask.Set(1);
+                    UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
                         blobIds.back(),
                         range,
-                        TBlockMask(),
-                        info ? &*info : nullptr);
+                        skipMask,
+                        DefaultBlockSize,
+                        info ? &*info : nullptr)));
                 });
         }
 
+        struct TScanOptions
+        {
+            bool Interrupt;
+            bool ReadCompressionMetadata;
+        };
+
+        const TScanOptions options[] = {
+            {.Interrupt = false, .ReadCompressionMetadata = true},
+            {.Interrupt = true, .ReadCompressionMetadata = true},
+            {.Interrupt = false, .ReadCompressionMetadata = false},
+        };
         for (bool readRange: {false, true}) {
             for (ui64 maxCommitId: {blobIds[1].CommitId(), Max<ui64>()}) {
-                for (bool interrupt: {false, true}) {
+                for (const auto& [interrupt, readCompressionMetadata]: options)
+                {
                     executor.ReadTx(
                         [&](TPartitionDatabase db)
                         {
                             TTestBlockVisitor visitor;
                             visitor.InterruptOnBlob = interrupt;
+                            visitor.ReadCompressionMetadata =
+                                readCompressionMetadata;
                             const bool ready =
                                 readRange
                                     ? db.FindMergedBlocks(
@@ -672,8 +752,9 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                                     compressionMetadataEntries[i];
                                 UNIT_ASSERT_VALUES_EQUAL(
                                     actual.has_value(),
-                                    expected.has_value());
-                                if (expected) {
+                                    readCompressionMetadata &&
+                                        expected.has_value());
+                                if (actual) {
                                     UNIT_ASSERT_VALUES_EQUAL(
                                         actual->SerializeAsString(),
                                         expected->SerializeAsString());
@@ -1016,7 +1097,11 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             mb->SetSkipped(5);
             blob1 = executor.MakeBlobId();
             db.WriteBlobMeta(blob1, meta);
-            db.WriteMergedBlocks(blob1, range1, skipMask1);
+            UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                blob1,
+                range1,
+                skipMask1,
+                DefaultBlockSize)));
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
@@ -1031,7 +1116,11 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             meta.AddBlockChecksums(333);
             blob2 = executor.MakeBlobId();
             db.WriteBlobMeta(blob2, meta);
-            db.WriteMergedBlocks(blob2, range2, skipMask2);
+            UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                blob2,
+                range2,
+                skipMask2,
+                DefaultBlockSize)));
         });
 
         executor.ReadTx([&] (TPartitionDatabase db) {
@@ -1175,10 +1264,11 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 [&](TPartitionDatabase db)
                 {
                     blobIds.push_back(executor.MakeBlobId());
-                    db.WriteMergedBlocks(
+                    UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
                         blobIds.back(),
                         ranges[i],
-                        TBlockMask());
+                        TBlockMask(),
+                        DefaultBlockSize)));
                 });
         }
 

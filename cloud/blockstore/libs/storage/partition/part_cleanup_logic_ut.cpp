@@ -155,10 +155,11 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
             db.WriteCleanupQueue(setup.MixedBlobId, deletionCommitId);
 
             setup.MergedBlobId = MoveToDataChannel(executor.MakeBlobId(4));
-            db.WriteMergedBlocks(
+            UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
                 setup.MergedBlobId,
                 TBlockRange32::MakeClosedInterval(10, 13),
-                TBlockMask{});
+                TBlockMask{},
+                DefaultBlockSize)));
             db.WriteBlobMeta(setup.MergedBlobId, setup.MergedBlobMeta);
             db.WriteCleanupQueue(setup.MergedBlobId, deletionCommitId);
         });
@@ -1018,12 +1019,13 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
                 for (size_t i = 0; i < mergedTestCases.size(); ++i) {
                     const auto& tc = mergedTestCases[i];
                     const auto& blobId = mergedBlobIds[i];
-                    db.WriteMergedBlocks(
+                    UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
                         blobId,
                         TBlockRange32::MakeClosedInterval(
                             tc.StartIndex,
                             tc.EndIndex),
-                        TBlockMask{});
+                        TBlockMask{},
+                        DefaultBlockSize)));
                     db.WriteBlobMeta(
                         blobId,
                         MakeMergedBlobMeta(tc.StartIndex, tc.EndIndex));

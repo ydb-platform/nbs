@@ -2,6 +2,8 @@
 
 #include "part_schema.h"
 
+#include <cloud/blockstore/libs/storage/partition_common/blob_compressor.h>
+
 #include <util/generic/algorithm.h>
 
 #include <optional>
@@ -466,13 +468,31 @@ bool TPartitionDatabaseImpl<TCounters>::FindMixedBlocks(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TCounters>
-void TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
+NProto::TError TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
     const TPartialBlobId& blobId,
     const TBlockRange32& blockRange,
     const TBlockMask& skipMask,
+    ui32 blockSize,
     const NProto::TCompressionMetadata* compressionMetadata)
 {
     using TTable = TPartitionSchema::MergedBlocksIndex;
+
+    if (compressionMetadata) {
+        const ui32 rangeSize = blockRange.Size();
+        if (skipMask.ValueBitCount() > rangeSize) {
+            return MakeError(
+                E_ARGUMENT,
+                "Skip mask extends beyond the merged block range");
+        }
+        const auto error = ValidateCompressionMetadata(
+            blockSize,
+            *compressionMetadata,
+            blobId.BlobSize(),
+            rangeSize - skipMask.Count());
+        if (HasError(error)) {
+            return error;
+        }
+    }
 
     auto value =
         Table<TTable>().Key(blockRange.End, ReverseCommitId(blobId.CommitId()));
@@ -490,6 +510,7 @@ void TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
         value.Update(
             NIceDb::TUpdate<TTable::CompressionMetadata>(*compressionMetadata));
     }
+    return {};
 }
 
 template <typename TCounters>
@@ -514,6 +535,9 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
     ui64 maxCommitId)
 {
     using TTable = TPartitionSchema::MergedBlocksIndex;
+
+    const bool needsCompressionMetadata =
+        blobsVisitor.NeedsCompressionMetadata();
 
     auto query = Table<TTable>()
                      .GreaterOrEqual(readRange.Start)
@@ -562,7 +586,9 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                     it.template GetValueOrDefault<TTable::SkipMask>());
 
                 std::optional<NProto::TCompressionMetadata> compressionMetadata;
-                if (it.template HaveValue<TTable::CompressionMetadata>()) {
+                if (needsCompressionMetadata &&
+                    it.template HaveValue<TTable::CompressionMetadata>())
+                {
                     compressionMetadata =
                         it.template GetValue<TTable::CompressionMetadata>();
                 }
@@ -627,6 +653,9 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
 {
     using TTable = TPartitionSchema::MergedBlocksIndex;
 
+    const bool needsCompressionMetadata =
+        blobsVisitor.NeedsCompressionMetadata();
+
     auto ranges = SplitInRanges(blocks);
     bool ready = true;
 
@@ -670,7 +699,9 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
 
                     std::optional<NProto::TCompressionMetadata>
                         compressionMetadata;
-                    if (it.template HaveValue<TTable::CompressionMetadata>()) {
+                    if (needsCompressionMetadata &&
+                        it.template HaveValue<TTable::CompressionMetadata>())
+                    {
                         compressionMetadata =
                             it.template GetValue<TTable::CompressionMetadata>();
                     }
@@ -973,7 +1004,6 @@ static EIndexProcResult FindBlocksInBlobIndex(
 
         struct TVisitor final
             : public IBlocksIndexVisitor
-            , public IBlobsVisitor
         {
             TBlockRange32 Intersection;
             TPartialBlobId BlobId;
@@ -985,20 +1015,6 @@ static EIndexProcResult FindBlocksInBlobIndex(
                 , BlobId(blobId)
                 , Marks(intersection.Size())
             {}
-
-            bool Visit(
-                TBlockRange32 blockRange,
-                const TPartialBlobId& blobId,
-                const TBlockMask& skipMask,
-                const NProto::TCompressionMetadata* compressionMetadata)
-                override
-            {
-                Y_UNUSED(blockRange);
-                Y_UNUSED(blobId);
-                Y_UNUSED(skipMask);
-                Y_UNUSED(compressionMetadata);
-                return true;
-            }
 
             bool Visit(
                 ui32 blockIndex,
@@ -1019,9 +1035,10 @@ static EIndexProcResult FindBlocksInBlobIndex(
 
         // just using BlobMeta isn't enough - we need SkipMask to properly
         // iterate blocks belonging to this merged blob
+        TIndexOnlyBlobsVisitor blobsVisitor;
         const bool ready = db.FindMergedBlocks(
             helper,
-            helper,
+            blobsVisitor,
             blockRange,
             true,   // precharge
             maxBlocksInBlob,

@@ -342,10 +342,11 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             [&](TPartitionDatabase db)
             {
                 blobId = executor.MakeBlobId(4);
-                db.WriteMergedBlocks(
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    DefaultBlockSize)));
             });
 
         TTxPartition::TRangeCompaction args(
@@ -391,10 +392,11 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             [&](TPartitionDatabase db)
             {
                 blobId = executor.MakeBlobId(4);
-                db.WriteMergedBlocks(
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    DefaultBlockSize)));
             });
 
         TTxPartition::TRangeCompaction args(
@@ -441,10 +443,11 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             [&](TPartitionDatabase db)
             {
                 blobId = executor.MakeBlobId(2);
-                db.WriteMergedBlocks(
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(1023, 1024),
-                    TBlockMask{});
+                    TBlockMask{},
+                    DefaultBlockSize)));
             });
 
         TTxPartition::TRangeCompaction args(
@@ -493,7 +496,11 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             [&](TPartitionDatabase db)
             {
                 blobId = executor.MakeBlobId(blobRange.Size());
-                db.WriteMergedBlocks(blobId, blobRange, skipMask);
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                    blobId,
+                    blobRange,
+                    skipMask,
+                    DefaultBlockSize)));
             });
 
         TTxPartition::TRangeCompaction args(
@@ -542,10 +549,11 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             [&](TPartitionDatabase db)
             {
                 blobId = executor.MakeBlobId(4);
-                db.WriteMergedBlocks(
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    DefaultBlockSize)));
             });
 
         state.GetCleanupQueue().Add({blobId, executor.CommitId(), {}});
@@ -593,10 +601,11 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             [&](TPartitionDatabase db)
             {
                 blobId = executor.MakeBlobId(4);
-                db.WriteMergedBlocks(
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    DefaultBlockSize)));
             });
 
         auto config = MakeStorageConfig(1000 * DefaultBlockSize);
@@ -644,10 +653,11 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             [&](TPartitionDatabase db)
             {
                 blobId = executor.MakeBlobId(4);
-                db.WriteMergedBlocks(
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    DefaultBlockSize)));
             });
 
         TTxPartition::TRangeCompaction args(
@@ -696,16 +706,18 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             [&](TPartitionDatabase db)
             {
                 blobId1 = executor.MakeBlobId(4);
-                db.WriteMergedBlocks(
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
                     blobId1,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    DefaultBlockSize)));
 
                 blobId2 = executor.MakeBlobId(4);
-                db.WriteMergedBlocks(
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
                     blobId2,
                     TBlockRange32::MakeClosedInterval(4, 7),
-                    TBlockMask{});
+                    TBlockMask{},
+                    DefaultBlockSize)));
             });
 
         TTxPartition::TRangeCompaction args(
@@ -855,7 +867,11 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             [&](TPartitionDatabase db)
             {
                 blobId = executor.MakeBlobId(4);
-                db.WriteMergedBlocks(blobId, blockRange, skipMask);
+                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                    blobId,
+                    blockRange,
+                    skipMask,
+                    DefaultBlockSize)));
             });
 
         const auto compactionCommitId = MakeCommitId(0, 100);
@@ -1045,20 +1061,23 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     } else {
                         TBlockMask skipMask;
                         skipMask.Set(3);
-                        db.WriteMergedBlocks(
+                        UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
                             skippedBlobId,
                             TBlockRange32::MakeClosedInterval(0, 3),
-                            skipMask);
+                            skipMask,
+                            DefaultBlockSize)));
                     }
                     // Overwrite one block of the incrementally skipped blob.
-                    db.WriteMergedBlocks(
+                    UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
                         compactedBlobId,
                         TBlockRange32::WithLength(0, 1),
-                        TBlockMask{});
-                    db.WriteMergedBlocks(
+                        TBlockMask{},
+                        DefaultBlockSize)));
+                    UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
                         newerBlobId,
                         TBlockRange32::WithLength(4, 1),
-                        TBlockMask{});
+                        TBlockMask{},
+                        DefaultBlockSize)));
                 });
 
             auto args = MakeArgs();

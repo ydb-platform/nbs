@@ -126,10 +126,11 @@ public:
     // MergedBlocksIndex
     //
 
-    void WriteMergedBlocks(
+    [[nodiscard]] NProto::TError WriteMergedBlocks(
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange,
         const TBlockMask& skipMask,
+        ui32 blockSize,
         const NProto::TCompressionMetadata* compressionMetadata = nullptr);
 
     void DeleteMergedBlocks(

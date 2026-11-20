@@ -19,13 +19,35 @@ struct IBlobsVisitor
 {
     virtual ~IBlobsVisitor() = default;
 
-    // compressionMetadata is null for uncompressed blobs and valid only during
-    // this callback.
+    virtual bool NeedsCompressionMetadata() const
+    {
+        return true;
+    }
+
+    // compressionMetadata is null for uncompressed blobs or when the visitor
+    // opts out. The pointer is valid only during this callback.
     virtual bool Visit(
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
         const TBlockMask& skipMask,
         const NProto::TCompressionMetadata* compressionMetadata) = 0;
+};
+
+struct TIndexOnlyBlobsVisitor final: IBlobsVisitor
+{
+    bool NeedsCompressionMetadata() const override
+    {
+        return false;
+    }
+
+    bool Visit(
+        TBlockRange32 /*blockRange*/,
+        const TPartialBlobId& /*blobId*/,
+        const TBlockMask& /*skipMask*/,
+        const NProto::TCompressionMetadata* /*compressionMetadata*/) override
+    {
+        return true;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

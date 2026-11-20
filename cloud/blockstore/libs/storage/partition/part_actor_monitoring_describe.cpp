@@ -27,7 +27,6 @@ class TDescribeRangeVisitor final
     : public IFreshBlocksIndexVisitor
     , public IBlocksIndexVisitor
     , public IMixedBlocksIndexVisitor
-    , public IBlobsVisitor
 {
 private:
     TTxPartition::TDescribeRange& Args;
@@ -36,19 +35,6 @@ public:
     TDescribeRangeVisitor(TTxPartition::TDescribeRange& args)
         : Args(args)
     {}
-
-    bool Visit(
-        TBlockRange32 blockRange,
-        const TPartialBlobId& blobId,
-        const TBlockMask& skipMask,
-        const NProto::TCompressionMetadata* compressionMetadata) override
-    {
-        Y_UNUSED(blockRange);
-        Y_UNUSED(blobId);
-        Y_UNUSED(skipMask);
-        Y_UNUSED(compressionMetadata);
-        return true;
-    }
 
     bool Visit(const TFreshBlock& block) override
     {
@@ -162,9 +148,10 @@ bool TPartitionActor::PrepareDescribeRange(
         );
     }
     if (!args.BlockFilter || args.BlockFilter.find('M') != TString::npos) {
+        TIndexOnlyBlobsVisitor blobsVisitor;
         ready &= db.FindMergedBlocks(
             visitor,
-            visitor,
+            blobsVisitor,
             args.BlockRange,
             true,   // precharge
             State->GetMaxBlocksInBlob());

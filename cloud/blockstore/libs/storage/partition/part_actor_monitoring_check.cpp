@@ -26,7 +26,6 @@ class TCheckIndexVisitor final
     : public IBlocksIndexVisitor
     , public IExtendedBlocksIndexVisitor
     , public IMixedBlocksIndexVisitor
-    , public IBlobsVisitor
 {
 private:
     TTxPartition::TCheckIndex& Args;
@@ -35,19 +34,6 @@ public:
     TCheckIndexVisitor(TTxPartition::TCheckIndex& args)
         : Args(args)
     {}
-
-    bool Visit(
-        TBlockRange32 blockRange,
-        const TPartialBlobId& blobId,
-        const TBlockMask& skipMask,
-        const NProto::TCompressionMetadata* compressionMetadata) override
-    {
-        Y_UNUSED(blockRange);
-        Y_UNUSED(blobId);
-        Y_UNUSED(skipMask);
-        Y_UNUSED(compressionMetadata);
-        return true;
-    }
 
     bool Visit(
         ui32 blockIndex,
@@ -197,9 +183,10 @@ bool TPartitionActor::PrepareCheckIndex(
         args.BlockRange,
         true    // precharge
     );
+    TIndexOnlyBlobsVisitor blobsVisitor;
     ready &= db.FindMergedBlocks(
         visitorIndex,
-        visitorIndex,
+        blobsVisitor,
         args.BlockRange,
         true,   // precharge
         State->GetMaxBlocksInBlob());

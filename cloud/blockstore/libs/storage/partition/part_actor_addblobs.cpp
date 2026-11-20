@@ -345,11 +345,18 @@ private:
         db.WriteBlockMask(blob.BlobId, blockMask);
 
         // write blocks
-        db.WriteMergedBlocks(
+        const auto error = db.WriteMergedBlocks(
             blob.BlobId,
             blob.BlockRange,
             blob.SkipMask,
+            State.GetBlockSize(),
             blob.CompressionMetadata ? &*blob.CompressionMetadata : nullptr);
+        STORAGE_VERIFY_C(
+            !HasError(error),
+            TWellKnownEntityTypes::TABLET,
+            TabletId,
+            "Invalid compression metadata for merged blob "
+                << blob.BlobId << ": " << FormatError(error));
 
         // update counters
         State.UpdateBlobCounters(
