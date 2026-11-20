@@ -1392,26 +1392,6 @@ Y_UNIT_TEST_SUITE(TInvalidationsTest)
         UNIT_ASSERT(invalidations.IsCacheable(2, 5 /* version */));
     }
 
-    Y_UNIT_TEST(ShouldKeepTombstoneVersionsUponInvalidateAll)
-    {
-        TInvalidations<ui64> invalidations(2 /* maxTombstoneCount */);
-
-        //
-        // The tombstone versions may exceed the version of InvalidateAll -
-        // they are kept in the watermark.
-        //
-
-        invalidations.Invalidate(1, 7 /* version */);
-        invalidations.InvalidateAll(5 /* version */);
-        UNIT_ASSERT(!invalidations.IsCacheable(2, 6 /* version */));
-        UNIT_ASSERT(invalidations.IsCacheable(2, 7 /* version */));
-        UNIT_ASSERT(invalidations.IsCacheable(1, 7 /* version */));
-
-        invalidations.InvalidateAll(9 /* version */);
-        UNIT_ASSERT(!invalidations.IsCacheable(1, 8 /* version */));
-        UNIT_ASSERT(invalidations.IsCacheable(1, 9 /* version */));
-    }
-
     Y_UNIT_TEST(ShouldInvalidateSources)
     {
         TInvalidations<ui64> invalidations(2 /* maxTombstoneCount */);
@@ -1514,12 +1494,12 @@ Y_UNIT_TEST_SUITE(TNodeAttrsCacheTest)
         UNIT_ASSERT(!cache.Get(1, t0));
 
         //
-        // All the nodes are invalidated.
+        // All the nodes of the source are invalidated.
         //
 
         cache.Add(MakeFileAttr(1), 9 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT(cache.Get(1, t0));
-        cache.InvalidateAll(10 /* version */);
+        cache.InvalidateSource(SourceId, 10 /* version */);
         UNIT_ASSERT(!cache.Get(1, t0));
         cache.Add(MakeFileAttr(2), 9 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT(!cache.Get(2, t0));
@@ -1669,7 +1649,7 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
         // An own value which may not be cached erases the cached entry.
         //
 
-        cache.InvalidateAll(10 /* version */);
+        cache.InvalidateSource(SourceId, 10 /* version */);
         cache.AddAbsent(
             1,
             "a",
@@ -1857,7 +1837,7 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             {} /* cacheTTL */);
         UNIT_ASSERT(cache.Get(1, "b"));
 
-        cache.InvalidateAll(10 /* version */);
+        cache.InvalidateSource(SourceId, 10 /* version */);
         UNIT_ASSERT(!cache.Get(1, "a"));
         UNIT_ASSERT(!cache.Get(1, "b"));
         cache.Add(
@@ -1916,7 +1896,7 @@ Y_UNIT_TEST_SUITE(TNodeRefCacheTest)
         cache.Add(1, "a", 11, 6 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT_VALUES_EQUAL(11, cache.Get(1, "a", t0));
 
-        cache.InvalidateAll(7 /* version */);
+        cache.InvalidateSource(SourceId, 7 /* version */);
         UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "a", t0));
         cache.Add(1, "b", 12, 6 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "b", t0));
@@ -1951,28 +1931,6 @@ Y_UNIT_TEST_SUITE(TNodeRefCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(11, cache.Get(1, "d", t0));
         cache.Add(1, "b", 12, 5 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "b", t0));
-    }
-
-    Y_UNIT_TEST(ShouldKeepNewerTombstonesUponInvalidateAll)
-    {
-        TNodeRefCache cache(10 /* maxEntryCount */, 1 /* shardCount */);
-        const auto t0 = TInstant::Seconds(100);
-
-        //
-        // An invalidation with version 6 is applied before InvalidateAll with
-        // version 5 - the requests started at version 5 must not cache
-        // anything for the invalidated NodeRef.
-        //
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            InvalidNodeId,
-            cache.Invalidate(1, "a", 6 /* version */));
-        cache.InvalidateAll(5 /* version */);
-
-        cache.Add(1, "a", 10, 5 /* version */, SourceId, t0 + CacheTTL);
-        UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "a", t0));
-        cache.Add(1, "a", 10, 6 /* version */, SourceId, t0 + CacheTTL);
-        UNIT_ASSERT_VALUES_EQUAL(10, cache.Get(1, "a", t0));
     }
 
     Y_UNIT_TEST(ShouldEvictLeastRecentlyUsedNodeRefs)

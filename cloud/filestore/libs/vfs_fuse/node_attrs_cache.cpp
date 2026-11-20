@@ -69,13 +69,6 @@ void TNodeAttrsCache::InvalidateSource(ui64 sourceId, ui64 version)
     }
 }
 
-void TNodeAttrsCache::InvalidateAll(ui64 version)
-{
-    for (auto& shard: Shards) {
-        shard->InvalidateAll(version);
-    }
-}
-
 size_t TNodeAttrsCache::GetEntryCount()
 {
     size_t count = 0;

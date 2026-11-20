@@ -42,8 +42,6 @@ private:
     // Tombstone versions by key, the least recently invalidated key first.
     TLRUCache<TKey, ui64> Tombstones;
     const ui32 MaxTombstoneCount;
-    // Max version among the tombstones added since the last InvalidateAll.
-    ui64 MaxTombstoneVersion = 0;
     ui64 Watermark = 0;
     // Watermarks by source id, see InvalidateSource.
     THashMap<ui64, ui64> SourceWatermarks;
@@ -113,8 +111,6 @@ public:
      */
     void Invalidate(const TKey& key, ui64 version)
     {
-        MaxTombstoneVersion = Max(MaxTombstoneVersion, version);
-
         //
         // The tombstone of a key keeps the max version of its invalidations,
         // the invalidated key becomes the most recently invalidated one.
@@ -142,26 +138,6 @@ public:
             Watermark = Max(Watermark, oldest.Value());
             Tombstones.Erase(oldest);
         }
-    }
-
-    /**
-     * Remembers an invalidation of all the keys.
-     *
-     * @param version - Cache version of the invalidation.
-     */
-    void InvalidateAll(ui64 version)
-    {
-        //
-        // The cleared tombstones may have versions greater than version: the
-        // versions are generated before taking the users' locks, so a
-        // concurrent invalidation with a greater version may be applied
-        // first. Their versions are kept in the watermark.
-        //
-
-        Watermark = Max(Watermark, version, MaxTombstoneVersion);
-
-        Tombstones.Clear();
-        MaxTombstoneVersion = 0;
     }
 };
 
@@ -305,14 +281,6 @@ public:
         auto g = Guard(Lock);
 
         Invalidations.InvalidateSource(sourceId, version);
-    }
-
-    void InvalidateAll(ui64 version)
-    {
-        auto g = Guard(Lock);
-
-        Invalidations.InvalidateAll(version);
-        Entries.Clear();
     }
 
     size_t GetEntryCount()

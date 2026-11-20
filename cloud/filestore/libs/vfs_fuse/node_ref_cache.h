@@ -118,14 +118,6 @@ public:
     void InvalidateSource(ui64 sourceId, ui64 version);
 
     /**
-     * Erases all the NodeRefs and prevents caching by the requests started
-     * before version.
-     *
-     * @param version - Cache version of the invalidation.
-     */
-    void InvalidateAll(ui64 version);
-
-    /**
      * @return - Number of the cached NodeRefs.
      */
     size_t GetEntryCount();

@@ -162,10 +162,4 @@ void TXAttrCache::InvalidateSource(ui64 sourceId, ui64 version)
     Invalidations.InvalidateSource(sourceId, version);
 }
 
-void TXAttrCache::InvalidateAll(ui64 version)
-{
-    Invalidations.InvalidateAll(version);
-    Cache.Clear();
-}
-
 }   // namespace NCloud::NFileStore::NFuse
