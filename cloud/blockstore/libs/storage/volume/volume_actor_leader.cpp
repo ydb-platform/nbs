@@ -371,7 +371,12 @@ void TVolumeActor::HandleCreateLinkFinished(
 
     State->DeleteCreateFollowerRequestInfo(msg->Link);
 
-    if (!hasError) {
+    // A payload copier reboots the volume itself on failure or handover.
+    // A failed link creator has no copier to release its background start.
+    if (!hasError ||
+        (PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_COPY &&
+         !State->HasActiveFollowerCopy()))
+    {
         RestartPartition(ctx, {});
     }
 }

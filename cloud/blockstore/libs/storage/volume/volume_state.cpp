@@ -1166,6 +1166,17 @@ const TFollowerDisks& TVolumeState::GetAllFollowers() const
     return FollowerDisks;
 }
 
+bool TVolumeState::HasActiveFollowerCopy() const
+{
+    return AnyOf(FollowerDisks, [](const TFollowerDiskInfo& follower)
+    {
+        using EState = TFollowerDiskInfo::EState;
+        return follower.State == EState::Created ||
+            follower.State == EState::Preparing ||
+            follower.State == EState::DataReady;
+    });
+}
+
 std::optional<TLeaderDiskInfo> TVolumeState::FindLeader(
     const TLeaderFollowerLink& link) const
 {

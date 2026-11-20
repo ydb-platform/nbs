@@ -189,7 +189,8 @@ void TVolumeActor::StartPartitionsIfNeeded(const TActorContext& ctx)
                 StartPartitionsForUse(ctx);
                 return;
             }
-            case EPartitionsStartedReason::STARTED_FOR_GC: {
+            case EPartitionsStartedReason::STARTED_FOR_GC:
+            case EPartitionsStartedReason::STARTED_FOR_COPY: {
                 PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_USE;
                 return;
             }
@@ -464,6 +465,13 @@ TActorsStack TVolumeActor::WrapWithFollowerActorIfNeeded(
     return actors;
 }
 
+void TVolumeActor::ResetPartitionsState(const TActorContext& ctx)
+{
+    const auto oldState = State->GetPartitionsState();
+    State->Reset();
+    OnPartitionStateChanged(ctx, oldState);
+}
+
 void TVolumeActor::RestartPartition(
     const TActorContext& ctx,
     TPoisonCallback onPartitionStopped)
@@ -472,7 +480,26 @@ void TVolumeActor::RestartPartition(
 
     switch (PartitionsStartedReason) {
         case EPartitionsStartedReason::STARTED_FOR_GC: {
-            StartPartitionsForGc(ctx);
+            if (State->HasActiveFollowerCopy()) {
+                StartPartitionsForCopy(ctx);
+            } else {
+                StartPartitionsForGc(ctx);
+            }
+            break;
+        }
+        case EPartitionsStartedReason::STARTED_FOR_COPY: {
+            if (State->HasActiveFollowerCopy()) {
+                StartPartitionsForCopy(ctx);
+            } else if (State->HasActiveClients(ctx.Now())) {
+                StartPartitionsForUse(ctx);
+            } else if (State->GetShouldStartPartitionsForGc(ctx.Now()) &&
+                       !Config->GetDisableStartPartitionsForGc())
+            {
+                StartPartitionsForGc(ctx);
+            } else {
+                ResetPartitionsState(ctx);
+                PartitionsStartedReason = EPartitionsStartedReason::NOT_STARTED;
+            }
             break;
         }
         case EPartitionsStartedReason::STARTED_FOR_USE: {
@@ -480,6 +507,9 @@ void TVolumeActor::RestartPartition(
             break;
         }
         case EPartitionsStartedReason::NOT_STARTED: {
+            if (State->HasActiveFollowerCopy()) {
+                StartPartitionsForCopy(ctx);
+            }
             break;
         }
     };
@@ -497,6 +527,8 @@ void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
         OnPartitionStateChanged(ctx, oldState);
     };
 
+    // Completion reports from an earlier partition start belong to its GC cycle.
+    GCCompletedPartitions.clear();
     StartInitializationTimestamp = ctx.Now();
     State->SetReadWriteError({});
 
@@ -525,6 +557,12 @@ void TVolumeActor::StartPartitionsForGc(const TActorContext& ctx)
 {
     StartPartitionsImpl(ctx);
     PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_GC;
+}
+
+void TVolumeActor::StartPartitionsForCopy(const TActorContext& ctx)
+{
+    StartPartitionsImpl(ctx);
+    PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_COPY;
 }
 
 void TVolumeActor::HandleGracefulShutdown(
