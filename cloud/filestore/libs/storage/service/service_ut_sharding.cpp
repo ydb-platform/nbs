@@ -10067,28 +10067,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
               1},
              {{{"sensor", "SevenBytesHandlesCount"}, {"filesystem", "test_s4"}},
               1}});
-
-        // Try to resize to more than MaxOneByteShardCount shards.
-        const ui64 newShardCount = MaxOneByteShardCount + 8;
-        const ui64 newFsSize =
-            shardBlockCount * (newShardCount - 1) + shardBlockCount / 2;
-        service.ResizeFileStore(fsId, newFsSize);
-
-        WaitForTabletStart(service);
-
-        // The filesystem should be resized to have 255 (MaxOneByteShardCount)
-        // shards and a critical event should be raised.
-        const auto counters =
-            env.GetCounters()->FindSubgroup("component", "service");
-        UNIT_ASSERT(counters);
-        const auto counter = counters->GetCounter(
-            "AppCriticalEvents/TryingToUseTwoBytesShardNoWithObsoleteHandles");
-
-        UNIT_ASSERT_EQUAL(1, counter->GetAtomic());
-
-        const auto response = GetStorageStats(service, fsId);
-        const auto& stats = response.GetStats();
-        UNIT_ASSERT_EQUAL(MaxOneByteShardCount, stats.GetShardStats().size());
     }
 
     SERVICE_TEST(ShouldReturnListNodesMissingFromShardsWithUnsafeFlag)

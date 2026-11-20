@@ -1,6 +1,7 @@
 #include "helpers.h"
 
 #include <cloud/filestore/libs/storage/core/helpers.h>
+#include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
@@ -24,6 +25,14 @@ void Convert(
     fileStore.SetNodesCount(config.GetNodesCount());
     fileStore.SetStorageMediaKind(config.GetStorageMediaKind());
     fileStore.SetConfigVersion(config.GetVersion());
+}
+
+bool HasMixed0Channel(const NKikimrFileStore::TConfig& config)
+{
+    Y_ABORT_UNLESS(config.ExplicitChannelProfilesSize() >= 4);
+    const auto thirdChannelDataKind = static_cast<EChannelDataKind>(
+        config.GetExplicitChannelProfiles(3).GetDataKind());
+    return thirdChannelDataKind == EChannelDataKind::Mixed0;
 }
 
 NProtoPrivate::TShardTopology GetShardTopology(
