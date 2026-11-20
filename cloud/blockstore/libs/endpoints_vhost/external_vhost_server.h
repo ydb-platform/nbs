@@ -29,7 +29,8 @@ using TExternalEndpointFactory = std::function<IExternalEndpointPtr (
     const TString& clientId,
     const TString& diskId,
     TVector<TString> args,
-    TVector<TString> cgroups
+    TVector<TString> cgroups,
+    TString latencySli
 )>;
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -4,6 +4,9 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/stream/str.h>
+#include <util/string/builder.h>
+
 namespace NCloud::NBlockStore {
 
 namespace {
@@ -23,6 +26,60 @@ NProto::TDiagnosticsConfig CreateConfig(const TString& protoText)
 
 Y_UNIT_TEST_SUITE(TDiagnosticsConfigTest)
 {
+    Y_UNIT_TEST(ShouldDumpDefaultLatencySliSettings)
+    {
+        const TDiagnosticsConfig config;
+        UNIT_ASSERT(!config.GetEnableLatencySli());
+        UNIT_ASSERT(config.GetLatencySliThresholds().empty());
+        TStringStream text;
+        TStringStream html;
+        config.Dump(text);
+        config.DumpHtml(html);
+        UNIT_ASSERT_STRING_CONTAINS(
+            text.Str(), TStringBuilder() << "EnableLatencySli: " << false);
+        UNIT_ASSERT_STRING_CONTAINS(text.Str(), "LatencySliThresholds: \n");
+        UNIT_ASSERT_STRING_CONTAINS(html.Str(), "EnableLatencySli</td><td>");
+        UNIT_ASSERT_STRING_CONTAINS(html.Str(), "LatencySliThresholds</td><td></td>");
+    }
+
+    Y_UNIT_TEST(ShouldDumpConfiguredLatencySliSettings)
+    {
+        const TDiagnosticsConfig config(CreateConfig(R"(
+EnableLatencySli: true
+LatencySliThresholds {
+    MediaKind: STORAGE_MEDIA_SSD_LOCAL
+    Write: false
+    StartBytes: 1
+    EndBytes: 8193
+    ThresholdUs: 1000
+}
+LatencySliThresholds {
+    MediaKind: STORAGE_MEDIA_HDD
+    Write: true
+    StartBytes: 8193
+    EndBytes: 1048577
+    ThresholdUs: 25000
+}
+)"));
+        UNIT_ASSERT(config.GetEnableLatencySli());
+        const auto thresholds = config.GetLatencySliThresholds();
+        UNIT_ASSERT_VALUES_EQUAL(2, thresholds.size());
+        TStringStream text;
+        TStringStream html;
+        config.Dump(text);
+        config.DumpHtml(html);
+        UNIT_ASSERT_STRING_CONTAINS(
+            text.Str(), TStringBuilder() << "EnableLatencySli: " << true);
+        UNIT_ASSERT_STRING_CONTAINS(
+            html.Str(), TStringBuilder() << "EnableLatencySli</td><td>" << true);
+        UNIT_ASSERT_STRING_CONTAINS(text.Str(), "LatencySliThresholds: ");
+        UNIT_ASSERT_STRING_CONTAINS(html.Str(), "LatencySliThresholds</td><td>");
+        for (const auto& row: thresholds) {
+            UNIT_ASSERT_STRING_CONTAINS(text.Str(), row.ShortDebugString());
+            UNIT_ASSERT_STRING_CONTAINS(html.Str(), row.ShortDebugString());
+        }
+    }
+
     Y_UNIT_TEST(ShouldConfigureBlobCompressionChunkSizes)
     {
         TDiagnosticsConfig defaults;

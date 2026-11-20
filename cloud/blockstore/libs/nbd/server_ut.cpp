@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/client/durable.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
+#include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
@@ -291,12 +292,12 @@ static const TStorageOptions DefaultStorageOptions = {
 ////////////////////////////////////////////////////////////////////////////////
 
 std::unique_ptr<TBootstrap> CreateBootstrap(
-    TNetworkAddress connectAddress,
-    IStoragePtr storage,
+    TNetworkAddress connectAddress, IStoragePtr storage,
     const TStorageOptions& options = DefaultStorageOptions,
     TServerConfig serverConfig = Default<TServerConfig>(),
     IBlockStorePtr grpcClientEndpoint = nullptr,
-    IErrorHandlerPtr errorHandler = nullptr)
+    IErrorHandlerPtr errorHandler = nullptr,
+    IServerStatsPtr stats = CreateServerStatsStub())
 {
     const ui32 clientThreadsCount = 1;
 
@@ -312,12 +313,8 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
     }
 
     auto handlerFactory = CreateServerHandlerFactory(
-        CreateDefaultDeviceHandlerFactory(),
-        logging,
-        std::move(storage),
-        CreateServerStatsStub(),
-        std::move(errorHandler),
-        options);
+        CreateDefaultDeviceHandlerFactory(), logging, std::move(storage),
+        std::move(stats), std::move(errorHandler), options);
 
     auto client = CreateClient(
         logging,
@@ -1177,6 +1174,15 @@ Y_UNIT_TEST_SUITE(TServerTest)
     Y_UNIT_TEST(ShouldCompleteDrainIfRequestFinishesBeforeSendShutdown)
     {
         TManualEvent requestStarted;
+        TManualEvent undelivered;
+        auto stats = std::make_shared<TTestServerStats>();
+        stats->RequestCompletedHandler =
+            [&](auto&, auto& metric, auto&, const auto&)
+        {
+            if (metric.ResponseDeliveryUncertain) {
+                undelivered.Signal();
+            }
+        };
         auto requestCompleted = NewPromise<NProto::TZeroBlocksResponse>();
         std::atomic<size_t> requestCount = 0;
 
@@ -1208,13 +1214,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TServerConfig serverConfig;
         serverConfig.ThreadsCount = 2;
 
-        auto bootstrap = CreateBootstrap(
-            connectAddress,
-            storage,
-            DefaultStorageOptions,
-            serverConfig,
-            nullptr,
-            errorHandler);
+        auto bootstrap =
+            CreateBootstrap(connectAddress, storage, DefaultStorageOptions,
+                            serverConfig, nullptr, errorHandler, stats);
 
         auto error = bootstrap->Start();
         UNIT_ASSERT_C(!HasError(error), error);
@@ -1234,10 +1236,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         requestCompleted.SetValue({});
 
-        // The backend runs on another executor. Keep Send blocked until it has
-        // enqueued the response and decremented ActiveRequests.
-        Sleep(TDuration::MilliSeconds(100));
         errorHandler->ContinueSend.Signal();
+        UNIT_ASSERT(undelivered.WaitT(TDuration::Seconds(5)));
 
         auto secondClientEndpoint = bootstrap->GetClient()->CreateEndpoint(
             connectAddress,

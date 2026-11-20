@@ -320,6 +320,45 @@ struct TTestEnvironment
 
 Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
 {
+    Y_UNIT_TEST(ShouldRemoveOnlyThrottleDelayThatMovesTheLastResponse)
+    {
+        const auto ms = [](ui64 value)
+        {
+            return TDuration::MilliSeconds(value);
+        };
+        TParallelRequestLatency timing;
+        timing.AddPart(ms(0), ms(90), ms(80));
+        timing.AddPart(ms(20), ms(60), ms(0));
+        UNIT_ASSERT_VALUES_EQUAL(ms(30), timing.GetThrottleDelay().value());
+
+        // A third part starting later still determines when we can reply.
+        timing.AddPart(ms(65), ms(95), ms(0));
+        UNIT_ASSERT_VALUES_EQUAL(ms(0), timing.GetThrottleDelay().value());
+        timing.AddPart(ms(0), ms(30), std::nullopt);
+        UNIT_ASSERT(!timing.GetThrottleDelay());
+
+        TParallelRequestLatency invalid;
+        invalid.AddPart(ms(20), ms(30), ms(11));
+        UNIT_ASSERT(!invalid.GetThrottleDelay());
+    }
+
+    Y_UNIT_TEST(ShouldKeepIncompleteTimingAcrossRetries)
+    {
+        auto ctx = CreateCallContext();
+        const auto ms = TDuration::MilliSeconds(10);
+        ctx->AddLatencyThrottleDelay(ms);
+        UNIT_ASSERT(!ctx->GetLatencyThrottleDelay());
+        ctx->EnableLatencyTiming();
+        ctx->AddLatencyThrottleDelay(ms);
+        ctx->AddLatencyThrottleDelay(ms);
+        UNIT_ASSERT_VALUES_EQUAL(ms * 2,
+                                 ctx->GetLatencyThrottleDelay().value());
+        ctx->MarkLatencyTimingIncomplete();
+        ctx->EnableLatencyTiming();
+        ctx->AddLatencyThrottleDelay(ms);
+        UNIT_ASSERT(!ctx->GetLatencyThrottleDelay());
+    }
+
     Y_UNIT_TEST(ShouldSplitReadBlocks)
     {
         TTestEnvironment env;
@@ -981,6 +1020,71 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
                 result.GetError().GetCode(),
                 FormatError(result.GetError()));
 
+        }
+    }
+
+    Y_UNIT_TEST(ShouldConsumeLatencyTimingFromEachSplitWrite)
+    {
+        struct TCheckingStorage final: public TTestBlockStore
+        {
+            TCallContextPtr ExpectedContext;
+
+            TFuture<NProto::TWriteBlocksResponse> WriteBlocks(
+                TCallContextPtr callContext,
+                std::shared_ptr<NProto::TWriteBlocksRequest> request) override
+            {
+                UNIT_ASSERT(callContext == ExpectedContext);
+                const auto& headers = request->GetHeaders();
+                UNIT_ASSERT(headers.GetLatencyTimingRequested());
+                UNIT_ASSERT(
+                    headers.GetInternal().GetReturnVolumeLatencyTiming());
+                return TTestBlockStore::WriteBlocks(std::move(callContext),
+                                                    std::move(request));
+            }
+        };
+
+        for (bool firstPartHasTiming: {false, true}) {
+            auto storage = std::make_shared<TCheckingStorage>();
+            TTestEnvironment env;
+            env.SplitRequestService = CreateSplitRequestService(storage);
+            env.MountVolume();
+
+            auto ctx = MakeIntrusive<TCallContext>();
+            const auto priorDelay = TDuration::MilliSeconds(7);
+            ctx->EnableLatencyTiming();
+            ctx->AddLatencyThrottleDelay(priorDelay);
+            storage->ExpectedContext = ctx;
+
+            auto request = std::make_shared<NProto::TWriteBlocksRequest>();
+            env.SetupRequest(
+                request, TBlockRange64::WithLength(StripeSize - 1, 2), "aabb");
+            auto future =
+                env.SplitRequestService->WriteBlocks(ctx, std::move(request));
+            UNIT_ASSERT_VALUES_EQUAL(2, storage->WriteBlocksPromises.size());
+
+            auto part = storage->WriteBlocksPromises.begin();
+            NProto::TWriteBlocksResponse first;
+            if (firstPartHasTiming) {
+                first.MutableHeaders()->SetThrottleDelayUs(0);
+            }
+            part->second.Promise.SetValue(std::move(first));
+            UNIT_ASSERT(!future.HasValue());
+            ++part;
+            NProto::TWriteBlocksResponse second;
+            second.MutableHeaders()->SetThrottleDelayUs(0);
+            part->second.Promise.SetValue(std::move(second));
+
+            UNIT_ASSERT(future.HasValue());
+            const auto& result = future.GetValue();
+            UNIT_ASSERT(!HasError(result));
+            UNIT_ASSERT(!result.GetHeaders().HasThrottleDelayUs());
+            const auto delay = ctx->GetLatencyThrottleDelay();
+            if (firstPartHasTiming) {
+                UNIT_ASSERT(delay);
+                UNIT_ASSERT_VALUES_EQUAL(priorDelay, *delay);
+            } else {
+                UNIT_ASSERT(!delay);
+            }
         }
     }
 }

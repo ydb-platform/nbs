@@ -1,18 +1,17 @@
 #include "server.h"
 
-#include "config.h"
 #include "client_storage_factory.h"
-
-#include <cloud/blockstore/public/api/grpc/service.grpc.pb.h>
+#include "config.h"
 
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
-#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/request.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
+#include <cloud/blockstore/public/api/grpc/service.grpc.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/thread.h>
@@ -28,6 +27,7 @@
 #include <cloud/storage/core/libs/uds/client_storage.h>
 #include <cloud/storage/core/libs/uds/endpoint_poller.h>
 
+#include <contrib/libs/grpc/include/grpc/grpc_security_constants.h>
 #include <contrib/libs/grpc/include/grpcpp/completion_queue.h>
 #include <contrib/libs/grpc/include/grpcpp/resource_quota.h>
 #include <contrib/libs/grpc/include/grpcpp/security/auth_metadata_processor.h>
@@ -37,7 +37,6 @@
 #include <contrib/libs/grpc/include/grpcpp/server_context.h>
 #include <contrib/libs/grpc/include/grpcpp/server_posix.h>
 #include <contrib/libs/grpc/include/grpcpp/support/status.h>
-
 #include <contrib/ydb/library/actors/prof/tag.h>
 
 #include <library/cpp/string_utils/quote/quote.h>
@@ -157,7 +156,25 @@ struct TAppContext
     TAtomic ShouldStop = 0;
 
     TString CellId;
+    THashSet<TString> CellPeerNames;
 };
+
+bool IsCellPeer(const grpc::AuthContext& auth, const THashSet<TString>& names)
+{
+    if (!auth.IsPeerAuthenticated() || names.empty()) {
+        return false;
+    }
+
+    // gRPC extracts DNS names while verifying the client certificate.
+    for (const auto& [name, value]: auth) {
+        if (name == GRPC_PEER_DNS_PROPERTY_NAME &&
+            names.contains(TStringBuf(value.data(), value.size())))
+        {
+            return true;
+        }
+    }
+    return false;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -448,6 +465,7 @@ private:
     static constexpr ui32 InvalidFd = INVALID_SOCKET;
     ui32 SourceFd = InvalidFd;
     IBlockStorePtr SessionService;
+    bool ReturnThrottleDelay = false;
 
     [[no_unique_address]] TRequestDataHolder<TMethod> DataHolder;
 
@@ -485,6 +503,7 @@ public:
         if (!ok) {
             auto prevState = AtomicSwap(&RequestState, RequestCompleted);
             if (prevState != WaitingForRequest) {
+                MetricRequest.ResponseDeliveryUncertain = true;
                 CompleteRequest();
             }
         }
@@ -717,6 +736,7 @@ private:
         }
 
         if (Request->GetHeaders().HasInternal()) {
+            MetricRequest.ClientFault = true;
             STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                 << "internal field should not be set by client";
         }
@@ -739,6 +759,20 @@ private:
             Context->peer(),
             authToken,
             *Request->MutableHeaders());
+
+        if constexpr (IsReadWriteRequest(TMethod::Request)) {
+            const auto& headers = Request->GetHeaders();
+            MetricRequest.ForwardedRequest =
+                !headers.GetCellId().empty() &&
+                headers.GetCellId() == AppCtx.CellId &&
+                *source == NProto::SOURCE_SECURE_CONTROL_CHANNEL &&
+                IsCellPeer(*authContext, AppCtx.CellPeerNames);
+            ReturnThrottleDelay = MetricRequest.ForwardedRequest &&
+                                  headers.GetLatencyTimingRequested();
+            if (ReturnThrottleDelay) {
+                CallContext->EnableLatencyTiming();
+            }
+        }
 
         if constexpr (std::is_same<TMethod, TDescribeVolumeMethod>()) {
             const auto& cellId = Request->GetHeaders().GetCellId();
@@ -819,6 +853,15 @@ private:
 
         AppCtx.ServerStats->ResponseSent(MetricRequest, *CallContext);
 
+        if constexpr (IsReadWriteRequest(TMethod::Request)) {
+            if (ReturnThrottleDelay) {
+                if (const auto delay = CallContext->GetLatencyThrottleDelay()) {
+                    Context->AddTrailingMetadata(
+                        GrpcThrottleDelayHeader,
+                        ToString(delay->MicroSeconds()));
+                }
+            }
+        }
         Writer.Finish(response, grpc::Status::OK, AcquireCompletionTag());
     }
 
@@ -1022,6 +1065,7 @@ TServer::TServer(
     UdsService = std::move(udsService);
     SessionStorage = std::make_shared<TSessionStorage>(*this);
     CellId = std::move(options.CellId);
+    CellPeerNames = std::move(options.CellPeerNames);
 }
 
 TServer::~TServer()

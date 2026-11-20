@@ -141,7 +141,8 @@ void PrepareIO(
     vhd_io* io,
     TVector<iocb*>& batch,
     TCpuCycles now,
-    TSimpleStats& queueStats);
+    TSimpleStats& queueStats,
+    const TLatencySliConfig* latencySli = nullptr);
 
 using TCompleteBioFn = void (*)(vhd_io* io, vhd_bdev_io_result status);
 
@@ -153,7 +154,8 @@ void CompleteCompoundRequestImpl(
     TAioSubRequestHolder sub,
     vhd_bdev_io_result status,
     TAtomicStats& stats,
-    TCompleteBioFn completeBio);
+    TCompleteBioFn completeBio,
+    const TLatencySliConfig* latencySli = nullptr);
 
 // Copies the data, and if an encryptor is specified, encrypt it. Returns true
 // if successful.

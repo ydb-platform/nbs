@@ -1,3 +1,4 @@
+#include <cloud/blockstore/config/latency_sli.pb.h>
 #include <cloud/blockstore/libs/config/blockstore_config.h>
 #include <cloud/blockstore/libs/config/blockstore_config_holder.h>
 #include <cloud/blockstore/libs/config/blockstore_config_provider.h>
@@ -51,6 +52,52 @@ NCloud::NProto::TFeatureConfig* AddFeature(
 // publication, and explicit ICB override coverage.
 Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
 {
+    Y_UNIT_TEST(ShouldKeepFileThresholdsAcrossYamlMergesAndRuntimeUpdates)
+    {
+        NProto::TBlockstoreConfig base;
+        base.MutableDiagnostics()->SetEnableLatencySli(true);
+        auto* baseRow = base.MutableDiagnostics()->AddLatencySliThresholds();
+        baseRow->SetMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+        baseRow->SetStartBytes(1);
+        baseRow->SetEndBytes(8193);
+        baseRow->SetThresholdUs(1000);
+        auto controls = std::make_shared<NStorage::TStorageConfigControls>();
+        for (bool empty: {false, true}) {
+            auto file = std::make_shared<NProto::TLatencySliThresholdsConfig>();
+            if (!empty) {
+                *file->AddThresholds() = *baseRow;
+                file->MutableThresholds(0)->SetThresholdUs(2000);
+            }
+            for (bool overlaps: {false, true}) {
+                NProto::TBlockstoreConfig dynamic;
+                auto* row =
+                    dynamic.MutableDiagnostics()->AddLatencySliThresholds();
+                *row = *baseRow;
+                row->SetStartBytes(overlaps ? 1 : 8193);
+                row->SetEndBytes(overlaps ? 8193 : 16385);
+                TBlockstoreConfigExtraParameters extra;
+                extra.LatencySliOverride = file;
+                auto config =
+                    MakeBlockstoreConfig(base, dynamic, controls, extra);
+                for (int update = 0; update < 2; ++update) {
+                    const auto& effective = config->GetDiagnosticsConfig();
+                    UNIT_ASSERT(effective->GetEnableLatencySli());
+                    const auto& rows = effective->GetLatencySliThresholds();
+                    UNIT_ASSERT_VALUES_EQUAL(empty ? 0 : 1, rows.size());
+                    if (!empty) {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            2000, rows[0].GetThresholdUs());
+                        UNIT_ASSERT_VALUES_EQUAL(1, rows[0].GetStartBytes());
+                    }
+                    config = MakeBlockstoreConfig(
+                        base,
+                        dynamic,
+                        controls, GetBlockstoreConfigExtraParameters(*config));
+                }
+            }
+        }
+    }
+
     // Check that the aggregate proto contains 19 top-level configuration
     // sections, including the representative sections below.
     Y_UNIT_TEST(ShouldExposeCompleteAggregateSchema)

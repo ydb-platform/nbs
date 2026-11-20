@@ -38,6 +38,8 @@ using TDiagnosticsConfigConstPtr = std::shared_ptr<const TDiagnosticsConfig>;
 struct IVolumeInfo;
 using IVolumeInfoPtr = std::shared_ptr<IVolumeInfo>;
 
+class TLatencySliCounters;
+
 struct IVolumeStats;
 using IVolumeStatsPtr = std::shared_ptr<IVolumeStats>;
 

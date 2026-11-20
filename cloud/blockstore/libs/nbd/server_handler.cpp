@@ -54,6 +54,7 @@ private:
 
     bool StructuredReply = false;
     bool UseNbsErrors = false;
+    bool ClientDisconnected = false;
 
 public:
     TServerHandler(
@@ -83,17 +84,33 @@ public:
         IOutputStream& out,
         TServerResponse& response) override
     {
-        out.Write(
-            response.HeaderBuffer.Data(),
-            response.HeaderBuffer.Size());
-
-        if (response.DataBuffer) {
+        try {
             out.Write(
-                response.DataBuffer.get(),
-                response.RequestBytes);
+                response.HeaderBuffer.Data(),
+                response.HeaderBuffer.Size());
+
+            if (response.DataBuffer) {
+                out.Write(
+                    response.DataBuffer.get(),
+                    response.RequestBytes);
+            }
+        } catch (...) {
+            response.RequestContext->MetricRequest.ResponseDeliveryUncertain =
+                true;
+            CancelResponse(response);
+            throw;
         }
 
         UnregisterRequest(response.RequestContext, response.Error);
+    }
+
+    void CancelResponse(TServerResponse& response) override
+    {
+        UnregisterRequest(
+            response.RequestContext,
+            HasError(response.Error)
+                ? response.Error
+                : MakeError(E_CANCELLED, "NBD response was not delivered"));
     }
 
     void ProcessRequests(
@@ -557,14 +574,17 @@ void TServerHandler::ProcessRequests(
             }
 
             case NBD_CMD_WRITE: {
-                if (Options.CheckpointId) {
-                    replyError(E_ARGUMENT, "invalid write request");
-                    break;
-                }
-
                 auto requestCtx = RegisterRequest(
                     request,
                     EBlockStoreRequest::WriteBlocks);
+                if (Options.CheckpointId) {
+                    requestCtx->MetricRequest.ClientFault = true;
+                    UnregisterRequest(
+                        requestCtx,
+                        MakeError(E_ARGUMENT, "invalid write request"));
+                    replyError(E_ARGUMENT, "invalid write request");
+                    break;
+                }
 
                 if (!ctx->AcquireRequest(request.Length)) {
                     // no need to reply, cause server is shutting down
@@ -576,9 +596,17 @@ void TServerHandler::ProcessRequests(
                     requestCtx->MetricRequest,
                     *requestCtx->CallContext);
 
-                auto requestData = DeviceHandler->AllocateBuffer(request.Length);
-                if (request.Length) {
-                    in.ReadOrFail(requestData.get(), request.Length);
+                TStorageBuffer requestData;
+                try {
+                    requestData = DeviceHandler->AllocateBuffer(request.Length);
+                    if (request.Length) {
+                        in.ReadOrFail(requestData.get(), request.Length);
+                    }
+                } catch (...) {
+                    ctx->AbandonRequest(request.Length);
+                    requestCtx->MetricRequest.ResponseDeliveryUncertain = true;
+                    UnregisterRequest(requestCtx, cancelError);
+                    throw;
                 }
 
                 ctx->ExecuteSimple(
@@ -624,6 +652,7 @@ void TServerHandler::ProcessRequests(
 
             case NBD_CMD_DISC:
                 // soft-disconnect
+                ClientDisconnected = true;
                 return;
 
             default:
@@ -841,6 +870,8 @@ TRequestContextPtr TServerHandler::RegisterRequest(
         ServerStats->GetBlockSize(Options.DiskId) * (endIndex - startIndex),
         unaligned);
 
+    requestCtx->MetricRequest.OriginalRequestBytes = request.Length;
+
     ServerStats->RequestStarted(
         Log,
         requestCtx->MetricRequest,
@@ -856,6 +887,9 @@ void TServerHandler::UnregisterRequest(
     const NProto::TError& error)
 {
     requestCtx->Unlink();
+    if (ClientDisconnected) {
+        requestCtx->MetricRequest.ClientFault = true;
+    }
 
     ServerStats->RequestCompleted(
         Log,
