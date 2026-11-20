@@ -8,6 +8,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr TDuration BlockingLockTimeout = TDuration::Seconds(1);
+
 struct flock MakeCFlock(const NProto::TTestLockResponse& response)
 {
     return {
@@ -57,7 +59,14 @@ void TFileSystem::HandleLock(
     switch (range.LockType) {
         case NProto::ELockType::E_SHARED:
         case NProto::ELockType::E_EXCLUSIVE: {
-            AcquireLock(std::move(callContext), req, ino, range, sleep, origin);
+            AcquireLock(
+                std::move(callContext),
+                req,
+                ino,
+                range,
+                sleep,
+                origin,
+                Timer->Now() + BlockingLockTimeout);
             break;
         }
         case NProto::ELockType::E_UNLOCK: {
@@ -188,9 +197,10 @@ void TFileSystem::AcquireLock(
     fuse_ino_t ino,
     const TRangeLock& range,
     bool sleep,
-    NProto::ELockOrigin origin)
+    NProto::ELockOrigin origin,
+    TInstant deadline)
 {
-    STORAGE_DEBUG(
+    STORAGE_ERROR(
         "AcquireLock #" << ino << " @" << range.Handle << ", pid: " << range.Pid
                         << ", origin: " << NProto::ELockOrigin_Name(origin));
 
@@ -210,11 +220,17 @@ void TFileSystem::AcquireLock(
                 self->ReplyError(*callContext, error, req, 0);
             } else if (error.GetCode() == E_FS_WOULDBLOCK && sleep) {
                 if (callContext->Cancelled) {
-                    STORAGE_DEBUG("Acquire lock cancelled");
+                    STORAGE_ERROR("Acquire lock cancelled");
                     // error code shouldn't really matter for the guest since
                     // if we are in FUSE_SUSPEND mode we won't respond to
                     // the guest anyway
                     CancelRequest(std::move(callContext), req);
+                } else if (self->Timer->Now() >= deadline) {
+                    // Periodically complete contended blocking requests so the
+                    // guest can process signals. This requires a guest kernel
+                    // that retries EINTR lock replies when no signal is pending.
+                    STORAGE_ERROR("Acquire lock returned EINTER");
+                    self->ReplyError(*callContext, {}, req, EINTR);
                 } else {
                     // locks should be acquired synchronously if asked so retry attempt
                     self->ScheduleAcquireLock(
@@ -224,10 +240,11 @@ void TFileSystem::AcquireLock(
                         ino,
                         range,
                         sleep,
-                        origin);
+                        origin,
+                        deadline);
                 }
             } else {
-                STORAGE_DEBUG("Failed to acquire lock: " << error.GetMessage());
+                STORAGE_ERROR("Failed to acquire lock: " << error.GetMessage());
                 self->ReplyError(
                     *callContext,
                     error,
@@ -244,11 +261,12 @@ void TFileSystem::ScheduleAcquireLock(
     fuse_ino_t ino,
     const TRangeLock& range,
     bool sleep,
-    NProto::ELockOrigin origin)
+    NProto::ELockOrigin origin,
+    TInstant deadline)
 {
     RequestStats->RequestCompleted(Log, *callContext, error);
     Scheduler->Schedule(
-        Timer->Now() + Config->GetLockRetryTimeout(),
+        Min(Timer->Now() + Config->GetLockRetryTimeout(), deadline),
         [=, ptr = weak_from_this()] () {
             if (auto self = ptr.lock()) {
                 self->RequestStats->RequestStarted(self->Log, *callContext);
@@ -258,7 +276,8 @@ void TFileSystem::ScheduleAcquireLock(
                     ino,
                     range,
                     sleep,
-                    origin);
+                    origin,
+                    deadline);
             }
         });
 }
