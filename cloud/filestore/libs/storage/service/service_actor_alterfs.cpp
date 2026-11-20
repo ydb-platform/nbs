@@ -158,9 +158,7 @@ private:
     NProto::TError ValidateOrdinaryShards() const;
     NProto::TError ValidateFastShards() const;
     NProto::TError ValidateTotalShards(ui64 totalShardCount) const;
-    void FillMultiShardFileStoreConfig(
-        const TActorContext& ctx,
-        ui32 shardCount);
+    NProto::TError FillMultiShardFileStoreConfig(ui32 shardCount);
 
     void HandleDescribeFileStoreForAlterResponse(
         const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
@@ -540,8 +538,7 @@ NProto::TError TAlterFileStoreActor::ValidateTotalShards(
     return {};
 }
 
-void TAlterFileStoreActor::FillMultiShardFileStoreConfig(
-    const TActorContext& ctx,
+NProto::TError TAlterFileStoreActor::FillMultiShardFileStoreConfig(
     ui32 shardCount)
 {
     NKikimrFileStore::TConfig currentConfig = MainFileStoreOriginalConfig;
@@ -557,10 +554,7 @@ void TAlterFileStoreActor::FillMultiShardFileStoreConfig(
     if (currentConfig.GetBlocksCount() > TargetConfig.GetBlocksCount() &&
         !Force)
     {
-        ReplyAndDie(
-            ctx,
-            MakeError(E_ARGUMENT, "Cannot decrease filestore size"));
-        return;
+        return MakeError(E_ARGUMENT, "Cannot decrease filestore size");
     }
 
     Y_ABORT_UNLESS(
@@ -592,6 +586,8 @@ void TAlterFileStoreActor::FillMultiShardFileStoreConfig(
     if (const auto version = TargetConfig.GetVersion()) {
         FileStoreConfig.MainFileSystemConfig.SetVersion(version);
     }
+
+    return {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -776,7 +772,10 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
     }
 
     PatchStorageConfig();
-    FillMultiShardFileStoreConfig(ctx, shardCount);
+    if (auto error = FillMultiShardFileStoreConfig(shardCount); HasError(error)) {
+        ReplyAndDie(ctx, error);
+        return;
+    }
 
     if (SevenBytesHandlesCount > 0 &&
         ExistingTotalShardCount <= MaxOneByteShardCount &&
@@ -798,7 +797,12 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
             << ". Cannot increase the shard count to more than 255 if there "
                "are handles with the non-zero 7th byte.");
 
-        FillMultiShardFileStoreConfig(ctx, MaxOneByteShardCount);
+        if (auto error = FillMultiShardFileStoreConfig(MaxOneByteShardCount);
+            HasError(error))
+        {
+            ReplyAndDie(ctx, error);
+            return;
+        }
     }
 
     if (FileStoreConfig.ShardConfigs.size() < ExistingTotalShardCount) {
