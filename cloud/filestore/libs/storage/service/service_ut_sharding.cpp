@@ -32,25 +32,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProtoPrivate::TGetFileSystemTopologyResponse GetFileSystemTopology(
-    TServiceClient& service,
-    const TString& fsId)
-{
-    NProtoPrivate::TGetFileSystemTopologyRequest request;
-    request.SetFileSystemId(fsId);
-
-    TString buf;
-    google::protobuf::util::MessageToJsonString(request, &buf);
-    const auto actionResponse =
-        service.ExecuteAction("getfilesystemtopology", buf);
-    NProtoPrivate::TGetFileSystemTopologyResponse response;
-    auto status = google::protobuf::util::JsonStringToMessage(
-        actionResponse->Record.GetOutput(),
-        &response);
-
-    return response;
-}
-
 void CheckShardsSize(
     const TShardedFileSystemConfig& fsConfig,
     TServiceClient& service,
@@ -7194,6 +7175,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         service.GetNodeAttr(headers, fsConfig.FsId, dir1_1Id, "file1");
         service.UnlinkNode(headers, dir1_1Id, "file1", false);
+
+        // The file shards own no devices in disk registry.
+        service.DestroySession(headers);
+        service.DestroyFileStore(fsConfig.FsId);
     }
 
     SERVICE_TEST(ShouldConfigureShardsByTopology)
@@ -7328,6 +7313,59 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             service.ListFileStores()->Record.FileStoresSize());
+    }
+
+    SERVICE_TEST(ShouldNotChangeFastShardsInTopology)
+    {
+        using NProtoPrivate::TShardTopology;
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        const auto configure =
+            [&](const NProtoPrivate::TConfigureShardsRequest& request)
+        {
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.SendExecuteActionRequest("configureshards", buf);
+            return service.RecvExecuteActionResponse()->GetStatus();
+        };
+
+        // the first shard is configured as a fast shard with a tablet id
+        NProtoPrivate::TConfigureShardsRequest request;
+        request.SetFileSystemId(fsConfig.FsId);
+        *request.MutableShardTopology() =
+            GetFileSystemTopology(service, fsConfig.FsId).GetShardTopology();
+        auto& fastShard = *request.MutableShardTopology()->MutableShards(0);
+        fastShard.SetType(TShardTopology::E_FASTSHARD);
+        fastShard.SetRoleMask(ProtoFlag(TShardTopology::E_FILE));
+        fastShard.SetTabletId(123);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, configure(request));
+        WaitForTabletStart(service);
+
+        // another tablet id of the fast shard should be rejected
+        auto invalid = request;
+        invalid.MutableShardTopology()->MutableShards(0)->SetTabletId(456);
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, configure(invalid));
+
+        // another type of the fast shard should be rejected
+        invalid = request;
+        invalid.MutableShardTopology()->MutableShards(0)->SetType(
+            TShardTopology::E_ORDINARY);
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, configure(invalid));
+
+        // a sender of the previous version configures via shard ids
+        auto listOnly = request;
+        listOnly.ClearShardTopology();
+        listOnly.AddShardFileSystemIds(fsConfig.Shard1Id);
+        listOnly.AddShardFileSystemIds(fsConfig.Shard2Id);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, configure(listOnly));
+        WaitForTabletStart(service);
+
+        // the reply should have the fast shard as it was configured
+        UNIT_ASSERT(google::protobuf::util::MessageDifferencer::Equals(
+            request.GetShardTopology(),
+            GetFileSystemTopology(service, fsConfig.FsId).GetShardTopology()));
     }
 
     SERVICE_TEST(ShouldResizeFileSystemWithDirectoryCreationInShardsEnabled)

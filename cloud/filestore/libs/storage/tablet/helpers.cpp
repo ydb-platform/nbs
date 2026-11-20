@@ -518,9 +518,10 @@ TVector<TString> GetFileShardIds(const NProto::TFileSystem& fileSystem)
 }
 
 NProto::TError ValidateShardTopology(
+    const NProtoPrivate::TShardTopology& currentTopology,
     const NProtoPrivate::TShardTopology& topology)
 {
-    THashSet<TString> shardIds;
+    THashMap<TString, const NProtoPrivate::TShardTopology::TShardInfo*> shards;
     bool hasNonFileShards = false;
     for (const auto& shard: topology.GetShards()) {
         if (!shard.GetRoleMask()) {
@@ -528,7 +529,7 @@ NProto::TError ValidateShardTopology(
                 E_ARGUMENT,
                 TStringBuilder() << "no role of shard " << shard.GetShardId());
         }
-        if (!shardIds.insert(shard.GetShardId()).second) {
+        if (!shards.emplace(shard.GetShardId(), &shard).second) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder() << "duplicate shard " << shard.GetShardId());
@@ -540,6 +541,25 @@ NProto::TError ValidateShardTopology(
 
     if (!topology.GetShards().empty() && !hasNonFileShards) {
         return MakeError(E_ARGUMENT, "non-file shard set is empty");
+    }
+
+    // The devices of a fast shard are deallocated by its tablet id.
+    for (const auto& shard: currentTopology.GetShards()) {
+        if (shard.GetType() != NProtoPrivate::TShardTopology::E_FASTSHARD) {
+            continue;
+        }
+
+        auto it = shards.find(shard.GetShardId());
+        if (it == shards.end() ||
+            it->second->GetType() != shard.GetType() ||
+            it->second->GetTabletId() != shard.GetTabletId())
+        {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "fast shard " << shard.GetShardId()
+                    << " change not allowed");
+        }
     }
 
     return {};

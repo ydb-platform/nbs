@@ -1,5 +1,6 @@
 #include "service_actor.h"
 
+#include "service_actor_fastshard.h"
 #include "shard_creation_state_companion.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
@@ -23,7 +24,96 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Without an explicit count a filesystem gets the fast shards its size needs.
+ui64 GetFastShardCount(
+    const TStorageConfig& config,
+    const NProto::TCreateFileStoreRequest& request)
+{
+    if (!request.HasFastShardStorageKind()) {
+        return 0;
+    }
+
+    if (request.GetFastShardCount()) {
+        return request.GetFastShardCount();
+    }
+
+    return CalculateFastShardCount(
+        config,
+        request.GetBlocksCount(),
+        request.GetBlockSize());
+}
+
+NProto::TError ValidateFastShards(
+    const TStorageConfig& config,
+    const NProto::TCreateFileStoreRequest& request)
+{
+    if (request.GetFastShardCount() && !request.HasFastShardStorageKind()) {
+        return MakeError(E_ARGUMENT, "fast shard count needs a storage kind");
+    }
+
+    if (!request.HasFastShardStorageKind()) {
+        return {};
+    }
+
+    if (!config.GetDirectoryCreationInShardsEnabled()) {
+        return MakeError(
+            E_PRECONDITION_FAILED,
+            "fast shards need directory creation in shards");
+    }
+
+    // The directories are not created in the fast shards.
+    if (!request.GetShardCount()) {
+        return MakeError(
+            E_ARGUMENT,
+            "fast shards need an explicit shard count");
+    }
+
+    const auto storageKind = request.GetFastShardStorageKind();
+    if (!NProto::EFastShardStorageKind_IsValid(storageKind)) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "invalid fast shard storage kind: "
+                << static_cast<int>(storageKind));
+    }
+
+    const ui64 requiredFastShardCount = CalculateFastShardCount(
+        config,
+        request.GetBlocksCount(),
+        request.GetBlockSize());
+    if (request.GetFastShardCount() &&
+        request.GetFastShardCount() < requiredFastShardCount)
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "fast shard count " << request.GetFastShardCount()
+                << " cannot hold the filesystem, " << requiredFastShardCount
+                << " needed");
+    }
+
+    return {};
+}
+
+NProto::TError ValidateTotalShards(
+    const TStorageConfig& config,
+    const NProto::TCreateFileStoreRequest& request)
+{
+    ui64 shardCount = request.GetShardCount();
+    shardCount += GetFastShardCount(config, request);
+    if (shardCount > config.GetMaxShardCount()) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "shard count " << shardCount << " should not be bigger than "
+                << config.GetMaxShardCount());
+    }
+
+    return {};
+}
+
 NProto::TError ValidateCreateFileSystemRequest(
+    const TStorageConfig& config,
     const NProto::TCreateFileStoreRequest& request)
 {
     const auto& fileSystemId = request.GetFileSystemId();
@@ -66,7 +156,11 @@ NProto::TError ValidateCreateFileSystemRequest(
             << "invalid blocks count: " << blocksCount);
     }
 
-    return {};
+    if (auto error = ValidateFastShards(config, request); HasError(error)) {
+        return error;
+    }
+
+    return ValidateTotalShards(config, request);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -80,7 +174,9 @@ private:
     const TRequestInfoPtr RequestInfo;
     const NProto::TCreateFileStoreRequest Request;
     const TString& LogTag;
+    const ui32 FastShardCount;
     TMultiShardFileStoreConfig FileStoreConfig;
+    NProtoPrivate::TShardTopology ShardTopology;
 
     bool MainFileSystemCreated = false;
     ui32 NextShardToConfigure = 0;
@@ -104,12 +200,17 @@ private:
     void CreateShard(
         const TActorContext& ctx,
         ui32 shardIndex) override;
+    void AllocateFastShards(const TActorContext& ctx);
     void ConfigureShards(const TActorContext& ctx);
     void ConfigureShard(const TActorContext& ctx, const ui32 shardIndex);
     void ConfigureMainFileStore(const TActorContext& ctx);
 
     void HandleCreateFileStoreResponse(
         const TEvSSProxy::TEvCreateFileStoreResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleFastShardsAllocated(
+        const TEvServicePrivate::TEvFastShardsAllocated::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleConfigureShardResponse(
@@ -143,6 +244,7 @@ TCreateFileStoreActor::TCreateFileStoreActor(
     , RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
     , LogTag(Request.GetFileSystemId())
+    , FastShardCount(GetFastShardCount(*StorageConfig, Request))
     , ShardCreationState(
           Request.GetFileSystemId(),
           TShardCreationStateCompanion::EMode::Create,
@@ -176,7 +278,7 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
             *StorageConfig,
             config,
             Request.GetPerformanceProfile(),
-            Request.GetShardCount());
+            Request.GetShardCount() + FastShardCount);
         const auto error = ShardCreationState.InitializeShardCreation(
             0,
             FileStoreConfig.ShardConfigs.size(),
@@ -187,6 +289,14 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
 
         ShardsToConfigure = FileStoreConfig.ShardConfigs.size();
         config = FileStoreConfig.MainFileSystemConfig;
+
+        // TODO(#8034): use the main filestore config topology once it is there
+        // The fast shards are last, their entries come after allocation.
+        const auto& shardConfigs = FileStoreConfig.ShardConfigs;
+        ui32 fastShardsBegin = shardConfigs.size() - FastShardCount;
+        for (ui32 i = 0; i < fastShardsBegin; ++i) {
+            AddOrdinaryShard(shardConfigs[i].GetFileSystemId(), ShardTopology);
+        }
 
         LOG_INFO(
             ctx,
@@ -215,7 +325,7 @@ void TCreateFileStoreActor::CreateShards(const TActorContext& ctx)
     ShardCreationState.StartShardCreation(ctx);
 
     if (!ShardCreationState.HasShardsToCreate()) {
-        ConfigureShards(ctx);
+        AllocateFastShards(ctx);
     }
 }
 
@@ -239,6 +349,25 @@ void TCreateFileStoreActor::CreateShard(
         std::move(request),
         shardIndex   // cookie
     );
+}
+
+void TCreateFileStoreActor::AllocateFastShards(const TActorContext& ctx)
+{
+    if (!FastShardCount) {
+        ConfigureShards(ctx);
+        return;
+    }
+
+    NCloud::Register(
+        ctx,
+        CreateAllocateFastShardsActor(
+            StorageConfig,
+            SelfId(),
+            LogTag,
+            FileStoreConfig.MainFileSystemConfig,
+            FileStoreConfig.ShardConfigs,
+            FastShardCount,
+            Request.GetFastShardStorageKind()));
 }
 
 void TCreateFileStoreActor::ConfigureShards(const TActorContext& ctx)
@@ -277,8 +406,13 @@ void TCreateFileStoreActor::ConfigureShard(
         for (const auto& shard: FileStoreConfig.ShardConfigs) {
             request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
         }
-        *request->Record.MutableShardTopology() =
-            BuildOrdinaryShardTopology(request->Record.GetShardFileSystemIds());
+        *request->Record.MutableShardTopology() = ShardTopology;
+    }
+
+    const auto& shard = ShardTopology.GetShards(shardIndex);
+    if (shard.HasFastShardConfig()) {
+        request->Record.SetIsFastShard(true);
+        *request->Record.MutableFastShardConfig() = shard.GetFastShardConfig();
     }
 
     LOG_INFO(
@@ -311,8 +445,7 @@ void TCreateFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
     for (const auto& shard: FileStoreConfig.ShardConfigs) {
         request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
     }
-    *request->Record.MutableShardTopology() =
-        BuildOrdinaryShardTopology(request->Record.GetShardFileSystemIds());
+    *request->Record.MutableShardTopology() = ShardTopology;
 
     LOG_INFO(
         ctx,
@@ -367,7 +500,7 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
         }
 
         if (!ShardCreationState.HasShardsToCreate()) {
-            ConfigureShards(ctx);
+            AllocateFastShards(ctx);
         }
 
         return;
@@ -398,6 +531,21 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
     // TODO: fill filestore info
 
     ReplyAndDie(ctx, std::move(response));
+}
+
+void TCreateFileStoreActor::HandleFastShardsAllocated(
+    const TEvServicePrivate::TEvFastShardsAllocated::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    ShardTopology.MergeFrom(msg->Topology);
+
+    ConfigureShards(ctx);
 }
 
 void TCreateFileStoreActor::HandleConfigureShardResponse(
@@ -473,8 +621,9 @@ void TCreateFileStoreActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response =
-        std::make_unique<TEvService::TEvCreateFileStoreResponse>(error);
+    auto response = std::make_unique<TEvService::TEvCreateFileStoreResponse>(
+        error);
+
     ReplyAndDie(ctx, std::move(response));
 }
 
@@ -494,6 +643,9 @@ STFUNC(TCreateFileStoreActor::StateWork)
         HFunc(
             TEvSSProxy::TEvCreateFileStoreResponse,
             HandleCreateFileStoreResponse);
+        HFunc(
+            TEvServicePrivate::TEvFastShardsAllocated,
+            HandleFastShardsAllocated);
         HFunc(
             TEvIndexTablet::TEvConfigureAsShardResponse,
             HandleConfigureShardResponse);
@@ -528,10 +680,11 @@ void TStorageServiceActor::HandleCreateFileStore(
 
     InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
 
-    auto error = ValidateCreateFileSystemRequest(msg->Record);
+    auto error = ValidateCreateFileSystemRequest(*StorageConfig, msg->Record);
     if (HasError(error)) {
-        auto response =
-            std::make_unique<TEvService::TEvCreateFileStoreResponse>(error);
+        auto response = std::make_unique<TEvService::TEvCreateFileStoreResponse>(
+            error);
+
         InFlightRequests->CompleteAndErase(
             ctx.Now(),
             error,
