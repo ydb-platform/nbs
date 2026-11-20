@@ -929,6 +929,9 @@ message TGetLinkStatusResponse
     string LeaderCellId = 6;
     string FollowerCellId = 7;
 
+    // Tablet that evaluated the link, used to bind conditional source cleanup.
+    uint64 VolumeTabletId = 8;
+
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }

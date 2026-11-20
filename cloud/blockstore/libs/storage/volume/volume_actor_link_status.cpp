@@ -88,6 +88,8 @@ void TVolumeActor::HandleGetLinkStatus(
     auto response =
         std::make_unique<TEvVolume::TEvGetLinkStatusResponse>(MakeError(S_OK));
 
+    response->Record.SetVolumeTabletId(TabletID());
+
     if (follower || leader || creation) {
         response->Record.SetLinkUUID(link.LinkUUID);
         response->Record.SetLeaderCellId(link.LeaderCellId);

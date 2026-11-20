@@ -37,7 +37,8 @@ bool IsWhitelisted(
     Y_UNUSED(type);
     TString action = request.GetAction();
     action.to_lower();
-    return action == "updatelinkonfollower" || action == "getlinkstatus";
+    return action == "updatelinkonfollower" || action == "getlinkstatus" ||
+           action == "destroylinksource";
 }
 
 bool IsTrustedSource(NCloud::NProto::ERequestSource source)

@@ -38,6 +38,7 @@ void TServiceActor::HandleExecuteAction(
     using TFunc =
         TResultOrError<NActors::IActorPtr>(TServiceActor::*)(TRequestInfoPtr, TString);
     const THashMap<TString, TFunc> actions = {
+        {"destroylinksource", &TServiceActor::CreateDestroyLinkSourceActionActor},
         {"diskregistrysetwritablestate",      &TServiceActor::CreateWritableStateActionActor               },
         {"diskregistrysuspendsecureerase",    &TServiceActor::CreateSuspendSecureEraseActionActor          },
         {"backupdiskregistrystate",           &TServiceActor::CreateBackupDiskRegistryStateActor           },

@@ -470,6 +470,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    TResultOrError<NActors::IActorPtr> CreateDestroyLinkSourceActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     TResultOrError<NActors::IActorPtr> CreateUpdateLinkOnFollowerActionActor(
         TRequestInfoPtr requestInfo,
         TString input);

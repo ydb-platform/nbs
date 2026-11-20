@@ -1246,6 +1246,8 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvService::TEvDestroyVolumeResponse,
             HandleDestroyOutdatedLeaderVolumeResponse);
+        HFunc(TEvCellProxy::TEvExecuteActionResponse,
+            HandleRemoteDestroyOutdatedLeaderResponse);
 
         HFunc(
             TEvService::TEvRemoveTagsResponse,

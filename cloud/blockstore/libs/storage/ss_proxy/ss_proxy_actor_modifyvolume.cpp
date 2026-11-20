@@ -30,6 +30,8 @@ private:
     const ui64 TokenVersion;
 
     const ui64 FillGeneration;
+    const ui64 ExpectedPathId;
+    const ui64 ExpectedPathVersion;
 
     bool FallbackRequest = false;
 
@@ -41,7 +43,9 @@ public:
         TString diskId,
         TString newMountToken,
         ui64 tokenVersion,
-        ui64 fillGeneration);
+        ui64 fillGeneration,
+        ui64 expectedPathId,
+        ui64 expectedPathVersion);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -64,7 +68,9 @@ TModifyVolumeActor::TModifyVolumeActor(
         TString diskId,
         TString newMountToken,
         ui64 tokenVersion,
-        ui64 fillGeneration)
+        ui64 fillGeneration,
+        ui64 expectedPathId,
+        ui64 expectedPathVersion)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , OpType(opType)
@@ -72,6 +78,8 @@ TModifyVolumeActor::TModifyVolumeActor(
     , NewMountToken(std::move(newMountToken))
     , TokenVersion(tokenVersion)
     , FillGeneration(fillGeneration)
+    , ExpectedPathId(expectedPathId)
+    , ExpectedPathVersion(expectedPathVersion)
 {}
 
 void TModifyVolumeActor::Bootstrap(const TActorContext& ctx)
@@ -126,6 +134,12 @@ void TModifyVolumeActor::TryModifyScheme(const TActorContext& ctx)
 
             break;
         }
+    }
+
+    if (ExpectedPathId && OpType == EOpType::Destroy) {
+        auto* condition = modifyScheme.MutableApplyIf()->Add();
+        condition->SetPathId(ExpectedPathId);
+        condition->SetPathVersion(ExpectedPathVersion);
     }
 
     auto request =
@@ -214,7 +228,9 @@ void TSSProxyActor::HandleModifyVolume(
         msg->DiskId,
         msg->NewMountToken,
         msg->TokenVersion,
-        msg->FillGeneration);
+        msg->FillGeneration,
+        msg->ExpectedPathId,
+        msg->ExpectedPathVersion);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

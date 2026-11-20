@@ -1,4 +1,5 @@
 #include "service_actor.h"
+#include "service_destroy_volume_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
@@ -52,6 +53,8 @@ private:
     const bool DestroyIfBroken;
     const bool Sync;
     const ui64 FillGeneration;
+    const ui64 ExpectedPathId;
+    const ui64 ExpectedPathVersion;
     const TDuration Timeout;
     const EDiskIdTolerance DiskIdTolerance = EDiskIdTolerance::AllowMangled;
 
@@ -69,7 +72,9 @@ public:
         bool destroyIfBroken,
         bool sync,
         ui64 fillGeneration,
-        TDuration timeout);
+        TDuration timeout,
+        ui64 expectedPathId = 0,
+        ui64 expectedPathVersion = 0);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -129,7 +134,9 @@ TDestroyVolumeActor::TDestroyVolumeActor(
         bool destroyIfBroken,
         bool sync,
         ui64 fillGeneration,
-        TDuration timeout)
+        TDuration timeout,
+        ui64 expectedPathId,
+        ui64 expectedPathVersion)
     : Sender(sender)
     , Cookie(cookie)
     , AttachedDiskDestructionTimeout(attachedDiskDestructionTimeout)
@@ -139,6 +146,8 @@ TDestroyVolumeActor::TDestroyVolumeActor(
     , DestroyIfBroken(destroyIfBroken)
     , Sync(sync)
     , FillGeneration(fillGeneration)
+    , ExpectedPathId(expectedPathId)
+    , ExpectedPathVersion(expectedPathVersion)
     , Timeout(timeout)
     , DiskIdTolerance(diskIdTolerance)
 {}
@@ -177,7 +186,9 @@ void TDestroyVolumeActor::DestroyVolume(const TActorContext& ctx)
             DiskId,
             "", // newMountToken
             0,  // tokenVersion
-            FillGeneration));
+            FillGeneration,
+            ExpectedPathId,
+            ExpectedPathVersion));
 }
 
 void TDestroyVolumeActor::NotifyDiskRegistry(const TActorContext& ctx)
@@ -570,6 +581,29 @@ STFUNC(TDestroyVolumeActor::StateWork)
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+NActors::IActorPtr CreateConditionalDestroyVolumeActor(
+    TRequestInfoPtr requestInfo,
+    TStorageConfigPtr config,
+    TString diskId,
+    ui64 fillGeneration,
+    ui64 expectedPathId,
+    ui64 expectedPathVersion)
+{
+    return std::make_unique<TDestroyVolumeActor>(
+        requestInfo->Sender,
+        requestInfo->Cookie,
+        config->GetAttachedDiskDestructionTimeout(),
+        config->GetDestructionAllowedOnlyForDisksWithIdPrefixes(),
+        std::move(diskId),
+        TDestroyVolumeActor::EDiskIdTolerance::StrictMatch,
+        false,
+        false,
+        fillGeneration,
+        config->GetDestroyVolumeTimeout(),
+        expectedPathId,
+        expectedPathVersion);
+}
 
 void TServiceActor::HandleDestroyVolume(
     const TEvService::TEvDestroyVolumeRequest::TPtr& ev,

@@ -1,5 +1,8 @@
 #include "volume_actor.h"
 
+#include <cloud/blockstore/libs/storage/api/cell_proxy.h>
+#include <google/protobuf/util/json_util.h>
+
 #include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
@@ -306,17 +309,35 @@ void TVolumeActor::DestroyOutdatedLeaderIfNeeded(
         const auto& destruction =
             State->StartOutdatedLeaderDestructionAttempt();
 
-        auto request = std::make_unique<TEvService::TEvDestroyVolumeRequest>();
-        request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
-        request->Record.SetDiskId(leader.Link.LeaderDiskId);
+        std::unique_ptr<IEventBase> request;
+        TActorId recipient;
+        if (leader.Link.LeaderCellId != leader.Link.FollowerCellId) {
+            NProto::TGetLinkStatusRequest payload;
+            payload.SetDiskId(leader.Link.LeaderDiskId);
+            payload.SetLeaderDiskId(leader.Link.LeaderDiskId);
+            payload.SetLeaderCellId(leader.Link.LeaderCellId);
+            payload.SetFollowerDiskId(leader.Link.FollowerDiskId);
+            payload.SetFollowerCellId(leader.Link.FollowerCellId);
+            payload.SetLinkUUID(leader.Link.LinkUUID);
+            TString input;
+            google::protobuf::util::MessageToJsonString(payload, &input);
+            NProto::TExecuteActionRequest action;
+            action.SetAction("destroylinksource");
+            action.SetInput(std::move(input));
+            request = std::make_unique<TEvCellProxy::TEvExecuteActionRequest>(
+                MakeIntrusive<TCallContext>(), leader.Link.LeaderCellId,
+                std::move(action));
+            recipient = MakeCellProxyServiceId();
+        } else {
+            auto local = std::make_unique<TEvService::TEvDestroyVolumeRequest>();
+            local->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+            local->Record.SetDiskId(leader.Link.LeaderDiskId);
+            request = std::move(local);
+            recipient = MakeStorageServiceId();
+        }
 
         auto event = std::make_unique<IEventHandle>(
-            MakeStorageServiceId(),
-            SelfId(),
-            request.release(),
-            0,                      // flags
-            leader.Link.GetHash()   // cookie
-        );
+            recipient, SelfId(), request.release(), 0, leader.Link.GetHash());
 
         LOG_INFO(
             ctx,
@@ -475,21 +496,34 @@ void TVolumeActor::HandleRetryRemoveSourceDiskIdTag(
 
 void TVolumeActor::HandleDestroyOutdatedLeaderVolumeResponse(
     const TEvService::TEvDestroyVolumeResponse::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    ProcessDestroyOutdatedLeaderResponse(ev->Cookie, ev->Get()->GetError(), ctx);
+}
 
-    auto leader = State->FindLeaderByHash(ev->Cookie);
+void TVolumeActor::HandleRemoteDestroyOutdatedLeaderResponse(
+    const TEvCellProxy::TEvExecuteActionResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ProcessDestroyOutdatedLeaderResponse(ev->Cookie, ev->Get()->GetError(), ctx);
+}
+
+void TVolumeActor::ProcessDestroyOutdatedLeaderResponse(
+    ui64 cookie,
+    const NProto::TError& error,
+    const TActorContext& ctx)
+{
+    auto leader = State->FindLeaderByHash(cookie);
     TString diskId = leader ? leader->Link.LeaderDiskId : "unknown";
 
-    if (HasError(msg->GetError())) {
+    if (HasError(error)) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::VOLUME,
             "%s Destroy leader volume %s error: %s",
             LogTitle.GetWithTime().c_str(),
             diskId.Quote().c_str(),
-            FormatError(msg->GetError()).c_str());
+            FormatError(error).c_str());
 
         if (leader) {
             State->IncreaseOutdatedLeaderDestructionDelay();

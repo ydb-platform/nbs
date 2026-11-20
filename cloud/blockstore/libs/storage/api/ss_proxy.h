@@ -105,18 +105,24 @@ struct TEvSSProxy
         const ui64 TokenVersion;
 
         const ui64 FillGeneration;
+        const ui64 ExpectedPathId;
+        const ui64 ExpectedPathVersion;
 
         TModifyVolumeRequest(
                 EOpType opType,
                 TString diskId,
                 TString newMountToken,
                 ui64 tokenVersion,
-                ui64 fillGeneration = 0)
+                ui64 fillGeneration = 0,
+                ui64 expectedPathId = 0,
+                ui64 expectedPathVersion = 0)
             : OpType(opType)
             , DiskId(std::move(diskId))
             , NewMountToken(std::move(newMountToken))
             , TokenVersion(tokenVersion)
             , FillGeneration(fillGeneration)
+            , ExpectedPathId(expectedPathId)
+            , ExpectedPathVersion(expectedPathVersion)
         {}
     };
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/blockstore/libs/storage/api/cell_proxy.h>
+
 #include "public.h"
 
 #include "volume.h"
@@ -1393,6 +1395,14 @@ private:
     void HandleRetryRemoveSourceDiskIdTag(
         const TEvVolumePrivate::TEvRetryRemoveSourceDiskIdTag::TPtr& ev,
         const NActors::TActorContext& ctx);
+    void HandleRemoteDestroyOutdatedLeaderResponse(
+        const TEvCellProxy::TEvExecuteActionResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void ProcessDestroyOutdatedLeaderResponse(
+        ui64 cookie,
+        const NProto::TError& error,
+        const NActors::TActorContext& ctx);
+
     void HandleDestroyOutdatedLeaderVolumeResponse(
         const TEvService::TEvDestroyVolumeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
