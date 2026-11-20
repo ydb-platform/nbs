@@ -7,6 +7,7 @@ SET_APPEND(RECIPE_ARGS --list-nodes-max-bytes=10000)
 SET_APPEND(RECIPE_ARGS --regular-filesystem-scrubbing-config=cloud/disk_manager/internal/pkg/facade/filesystem_scrubbing_test/scrubbing_config.txt)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/internal/pkg/facade/testcommon/common.inc)
+SPLIT_FACTOR(2)
 
 GO_XTEST_SRCS(
     ../filesystem_scrubbing_test/filesystem_scrubbing_test.go
