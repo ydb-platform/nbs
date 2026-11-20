@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/cells/iface/cell_manager.h>
 #include <cloud/blockstore/libs/service/service_method.h>
+#include <cloud/blockstore/libs/service/storage.h>
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 
 #include <cloud/storage/core/libs/actors/helpers.h>
@@ -33,6 +35,18 @@ struct TExecuteActionMethod: TBlockStoreExecuteActionMethod
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TWriteBlocksLocalMethod: TBlockStoreWriteBlocksLocalMethod
+{
+    using TRequestEvent = TEvService::TEvWriteBlocksLocalRequest;
+    using TResponseEvent = TEvService::TEvWriteBlocksLocalResponse;
+};
+
+struct TZeroBlocksMethod: TBlockStoreZeroBlocksMethod
+{
+    using TRequestEvent = TEvService::TEvZeroBlocksRequest;
+    using TResponseEvent = TEvService::TEvZeroBlocksResponse;
+};
+
 template <typename TMethod>
 class TServiceRequestActor final
     : public TActorBootstrapped<TServiceRequestActor<TMethod>>
@@ -62,13 +76,13 @@ public:
     void Bootstrap(const TActorContext& ctx)
     {
         Become(&TThis::StateWork);
+        const auto timeout =
+            TDuration::MilliSeconds(Request->GetHeaders().GetRequestTimeout());
         NCloud::SendWithUndeliveryTracking(
             ctx,
             MakeStorageServiceId(),
-            std::make_unique<TRequestEvent>(CallContext, *Request));
-        ctx.Schedule(
-            TDuration::MilliSeconds(Request->GetHeaders().GetRequestTimeout()),
-            new TEvents::TEvWakeup());
+            std::make_unique<TRequestEvent>(CallContext, std::move(*Request)));
+        ctx.Schedule(timeout, new TEvents::TEvWakeup());
     }
 
 private:
@@ -147,6 +161,15 @@ public:
                 std::move(request));
         }
 
+        if constexpr (std::is_same_v<TMethod, TBlockStoreWriteBlocksLocalMethod>) {
+            return SendRequest<TWriteBlocksLocalMethod>(
+                std::move(callContext), std::move(request));
+        }
+        if constexpr (std::is_same_v<TMethod, TBlockStoreZeroBlocksMethod>) {
+            return SendRequest<TZeroBlocksMethod>(
+                std::move(callContext), std::move(request));
+        }
+
         return MakeFuture(
             ErrorResponse<typename TMethod::TResponse>(
                 E_NOT_IMPLEMENTED,
@@ -160,6 +183,15 @@ private:
         TCallContextPtr callContext,
         std::shared_ptr<typename TMethod::TRequest> request)
     {
+        auto* headers = request->MutableHeaders();
+        if (!headers->GetRequestTimeout()) {
+            headers->SetRequestTimeout(30000);
+        }
+        // This mock replaces the trusted internal transport boundary only.
+        headers->MutableInternal()->SetIsCellCopyRequest(
+            headers->GetCopyLinkUUID() && headers->GetCellId() &&
+            headers->GetExactDiskIdMatch() &&
+            headers->GetClientId() == CopyVolumeClientId);
         auto promise = NewPromise<typename TMethod::TResponse>();
         const auto actor = Runtime.Register(
             new TServiceRequestActor<TMethod>(
@@ -174,12 +206,54 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TCellStorage final: public IStorage
+{
+    const IBlockStorePtr Service;
+
+public:
+    explicit TCellStorage(IBlockStorePtr service)
+        : Service(std::move(service))
+    {}
+
+    TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
+        TCallContextPtr context,
+        std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
+    {
+        return Service->WriteBlocksLocal(std::move(context), std::move(request));
+    }
+    TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
+        TCallContextPtr context,
+        std::shared_ptr<NProto::TZeroBlocksRequest> request) override
+    {
+        return Service->ZeroBlocks(std::move(context), std::move(request));
+    }
+    TFuture<NProto::TReadBlocksLocalResponse> ReadBlocksLocal(
+        TCallContextPtr context,
+        std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
+    {
+        return Service->ReadBlocksLocal(std::move(context), std::move(request));
+    }
+    TFuture<NProto::TError> EraseDevice(NProto::EDeviceEraseMethod) override
+    {
+        return MakeFuture(MakeError(E_NOT_IMPLEMENTED));
+    }
+    TStorageBuffer AllocateBuffer(size_t) override
+    {
+        return {};
+    }
+    void ReportIOError() override
+    {}
+};
+
 struct TConnection final: NCells::ICellConnection
 {
     IBlockStorePtr Service;
 
-    explicit TConnection(IBlockStorePtr service)
+    const bool EnableCopyData;
+
+    explicit TConnection(IBlockStorePtr service, bool enableCopyData)
         : Service(std::move(service))
+        , EnableCopyData(enableCopyData)
     {}
 
     TString GetHost() const override
@@ -194,7 +268,7 @@ struct TConnection final: NCells::ICellConnection
 
     IStoragePtr GetStorage() override
     {
-        return {};
+        return EnableCopyData ? std::make_shared<TCellStorage>(Service) : nullptr;
     }
 };
 
@@ -204,13 +278,16 @@ struct TCellManagerMock final: NCells::ICellManager
 {
     TTestActorRuntimeBase& Runtime;
     const THashMap<TString, ui32> CellNodes;
+    const bool EnableCopyData;
 
     TCellManagerMock(
         TTestActorRuntimeBase& runtime,
-        THashMap<TString, ui32> cellNodes)
+        THashMap<TString, ui32> cellNodes,
+        bool enableCopyData)
         : ICellManager(nullptr)
         , Runtime(runtime)
         , CellNodes(std::move(cellNodes))
+        , EnableCopyData(enableCopyData)
     {}
 
     NCells::TCellConnectionFuture CreateConnection(
@@ -230,7 +307,7 @@ struct TCellManagerMock final: NCells::ICellManager
         return MakeFuture(
             TResultOrError<NCells::ICellConnectionPtr>(
                 std::make_shared<TConnection>(
-                    std::make_shared<TCellService>(Runtime, *node))));
+                    std::make_shared<TCellService>(Runtime, *node), EnableCopyData)));
     }
 
     NCells::TDescribeVolumeFuture DescribeVolume(
@@ -282,9 +359,11 @@ struct TCellManagerMock final: NCells::ICellManager
 
 NCells::ICellManagerPtr CreateCellManagerMock(
     TTestActorRuntimeBase& runtime,
-    THashMap<TString, ui32> cellNodes)
+    THashMap<TString, ui32> cellNodes,
+    bool enableCopyData)
 {
-    return std::make_shared<TCellManagerMock>(runtime, std::move(cellNodes));
+    return std::make_shared<TCellManagerMock>(
+        runtime, std::move(cellNodes), enableCopyData);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

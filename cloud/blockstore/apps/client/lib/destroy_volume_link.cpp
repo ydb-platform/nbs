@@ -20,6 +20,7 @@ class TDestroyVolumeLinkCommand final: public TCommand
 private:
     TString LeaderDiskId;
     TString FollowerDiskId;
+    TString FollowerCellId;
 
 public:
     explicit TDestroyVolumeLinkCommand(IBlockStorePtr client)
@@ -32,6 +33,10 @@ public:
         Opts.AddLongOption("follower-disk-id", "follower volume identifier")
             .RequiredArgument("STR")
             .StoreResult(&FollowerDiskId);
+
+        Opts.AddLongOption("follower-cell-id", "target cell; empty means source cell")
+            .RequiredArgument("STR")
+            .StoreResult(&FollowerCellId);
     }
 
 protected:
@@ -51,6 +56,7 @@ protected:
         } else {
             request->SetLeaderDiskId(LeaderDiskId);
             request->SetFollowerDiskId(FollowerDiskId);
+            request->SetFollowerCellId(FollowerCellId);
         }
 
         STORAGE_DEBUG("Sending DestroyVolumeLink request");

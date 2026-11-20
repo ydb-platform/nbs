@@ -63,6 +63,7 @@ struct TRemoteLinkMock
     const ui32 NodeIdx;
     TSet<TActorId> PendingActions;
     ui32 ActionCount = 0;
+    ui32 StatusCount = 0;
     std::function<bool(TAutoPtr<IEventHandle>&)> HoldRequest;
     std::function<void(IEventHandle&)> Observe;
 
@@ -110,6 +111,20 @@ struct TRemoteLinkMock
                 const auto* request =
                     event->Get<TEvCellProxy::TEvExecuteActionRequest>();
                 UNIT_ASSERT_VALUES_EQUAL("cell-b", request->CellId);
+                if (request->Record.GetAction() == "getlinkstatus") {
+                    // These fixtures have no link in the other cell.
+                    NProto::TGetLinkStatusResponse status;
+                    status.SetStatus(NProto::LINK_STATUS_NOT_FOUND);
+                    auto response = std::make_unique<
+                        TEvCellProxy::TEvExecuteActionResponse>();
+                    UNIT_ASSERT(google::protobuf::util::MessageToJsonString(
+                        status, &response->Output).ok());
+                    ++StatusCount;
+                    Runtime.Send(new IEventHandle(
+                        event->Sender, event->Recipient, response.release(),
+                        0, event->Cookie), NodeIdx, true);
+                    return true;
+                }
                 UNIT_ASSERT_VALUES_EQUAL(
                     "updatelinkonfollower",
                     request->Record.GetAction());
@@ -1582,7 +1597,7 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
             linkStatus.ShortDebugString());
     }
 
-    Y_UNIT_TEST(ShouldRejectFollowerInAnotherCell)
+    Y_UNIT_TEST(ShouldMatchConfiguredCellIdsStrictly)
     {
         TTestEnv env(1, 1, 4);
         ui32 nodeIdx = SetupTestEnvWithCellId(env, "cell-a");
@@ -1592,14 +1607,7 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         service.CreateVolume("vol-1", DefaultBlocksCount);
         service.CreateVolume("vol-2", DefaultBlocksCount);
 
-        {
-            service.SendCreateVolumeLinkRequest("vol-1", "vol-2", "cell-b");
-            auto response = service.RecvCreateVolumeLinkResponse();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_NOT_IMPLEMENTED,
-                response->GetError().GetCode(),
-                FormatError(response->GetError()));
-        }
+        TRemoteLinkMock remote(runtime, nodeIdx);
 
         service.CreateVolumeLink("vol-1", "vol-2", "cell-a");
 
@@ -1609,6 +1617,7 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
             NProto::ELinkStatus::LINK_STATUS_NOT_FOUND,
             linkStatus.GetStatus(),
             linkStatus.ShortDebugString());
+        UNIT_ASSERT_VALUES_EQUAL(1, remote.StatusCount);
         {
             service.SendDestroyVolumeLinkRequest("vol-1", "vol-2", "cell-b");
             auto response = service.RecvDestroyVolumeLinkResponse();
@@ -1637,6 +1646,7 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         auto& runtime = env.GetRuntime();
         TServiceClient oldService(runtime, oldNodeIdx);
         TServiceClient newService(runtime, newNodeIdx);
+        TRemoteLinkMock remote(runtime, newNodeIdx);
         oldService.CreateVolume("vol-1", DefaultBlocksCount);
         oldService.CreateVolume("vol-2", DefaultBlocksCount);
 
@@ -1657,6 +1667,8 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
             NProto::ELinkStatus::LINK_STATUS_NOT_FOUND,
             linkStatus.GetStatus(),
             linkStatus.ShortDebugString());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, remote.StatusCount);
 
         newService.DestroyVolumeLink("vol-1", "vol-2");
 

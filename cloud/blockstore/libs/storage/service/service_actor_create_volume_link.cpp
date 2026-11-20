@@ -157,7 +157,11 @@ void TServiceActor::HandleCreateVolumeLink(
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
-    if (request.GetLeaderDiskId() == request.GetFollowerDiskId()) {
+    const auto& followerCellId =
+        request.GetFollowerCellId() ? request.GetFollowerCellId() : CellId;
+    if (request.GetLeaderDiskId() == request.GetFollowerDiskId() &&
+        followerCellId == CellId)
+    {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
@@ -171,15 +175,9 @@ void TServiceActor::HandleCreateVolumeLink(
         return;
     }
 
-    const auto& followerCellId =
-        request.GetFollowerCellId() ? request.GetFollowerCellId() : CellId;
-    if (followerCellId != CellId) {
-        // The copy still goes through the local proxies; a follower in another
-        // cell would clash with a local disk of the same name.
-        auto response =
-            std::make_unique<TEvService::TEvCreateVolumeLinkResponse>(MakeError(
-                E_NOT_IMPLEMENTED,
-                "Follower in another cell is not supported yet"));
+    if (followerCellId != CellId && !CellId) {
+        auto response = std::make_unique<TEvService::TEvCreateVolumeLinkResponse>(
+            MakeError(E_ARGUMENT, "Cross-cell copying requires an explicit source cell"));
         NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }

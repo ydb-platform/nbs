@@ -11,6 +11,7 @@ namespace NCloud::NBlockStore::NStorage {
 // Replaces the transport only: requests execute in the target service.
 NCells::ICellManagerPtr CreateCellManagerMock(
     NActors::TTestActorRuntimeBase& runtime,
-    THashMap<TString, ui32> cellNodes);
+    THashMap<TString, ui32> cellNodes,
+    bool enableCopyData = false);
 
 }   // namespace NCloud::NBlockStore::NStorage
