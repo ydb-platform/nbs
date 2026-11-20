@@ -76,23 +76,15 @@ struct TEvServicePrivate
     static_assert(EvEnd < (int)TFileStoreEventsPrivate::SERVICE_WORKER_END,
         "EvEnd expected to be < TFileStoreEventsPrivate::SERVICE_WORKER_END");
 
-    struct TEvReleaseReadDataActor final
-        : public NActors::
-              TEventLocal<TEvReleaseReadDataActor, EvReleaseReadDataActor>
-    {
-    };
-
-    struct TEvReleaseWriteDataActor final
-        : public NActors::
-              TEventLocal<TEvReleaseWriteDataActor, EvReleaseWriteDataActor>
-    {
-    };
-
     using TEvPingSession = TRequestEvent<TEmpty, EvPingSession>;
     using TEvCreateSession = TRequestEvent<TCreateSession, EvCreateSession>;
     using TEvSessionCreated = TResponseEvent<TSessionCreated, EvSessionCreated>;
     using TEvSessionDestroyed = TResponseEvent<TSessionDestroyed, EvSessionDestroyed>;
     using TEvUpdateStats = TRequestEvent<TEmpty, EvUpdateStats>;
+    using TEvReleaseReadDataActor =
+        TRequestEvent<TEmpty, EvReleaseReadDataActor>;
+    using TEvReleaseWriteDataActor =
+        TRequestEvent<TEmpty, EvReleaseWriteDataActor>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage
