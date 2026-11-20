@@ -7108,6 +7108,44 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
 
         UNIT_ASSERT_VALUES_EQUAL(1, localStarts);
     }
+
+    Y_UNIT_TEST(ShouldStopVolumeWhenLocalMounterForcesRemoteBinding)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+        service.AssignVolume();
+
+        ui32 localStops = 0;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvServicePrivate::EvStartVolumeActorStopped)
+            {
+                ++localStops;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        service.MountVolume();
+
+        auto request = service.CreateMountVolumeRequest(
+            DefaultDiskId,
+            TString(),
+            TString(),
+            NProto::IPC_GRPC,
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_REMOTE);
+        request->Record.SetForceRemoteBinding(true);
+        service.SendRequest(MakeStorageServiceId(), std::move(request));
+        auto response = service.RecvMountVolumeResponse();
+        UNIT_ASSERT_C(!HasError(response->GetError()), response->GetError());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, localStops);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

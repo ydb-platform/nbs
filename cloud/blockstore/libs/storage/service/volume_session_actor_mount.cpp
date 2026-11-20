@@ -395,6 +395,7 @@ struct TMountRequestParams
     bool UseGentlePreemption = false;
 
     bool IsLocalMounter = false;
+    bool KeepsVolumeLocal = false;
     bool RejectOnAddClientTimeout = false;
 
     ui64 KnownTabletId = 0;
@@ -850,8 +851,7 @@ void TMountRequestActor::RequestVolumeStop(const TActorContext& ctx)
 
 bool TMountRequestActor::MayStopVolume() const
 {
-    return VolumeStarted ||
-           (Params.IsLocalMounter && !Request.GetForceRemoteBinding());
+    return VolumeStarted || Params.KeepsVolumeLocal;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1487,6 +1487,7 @@ void TVolumeSessionActor::HandleInternalMountVolume(
         .UseGentlePreemption = msg->UseGentlePreemption,
         .IsLocalMounter = clientInfo &&
             clientInfo->VolumeMountMode == NProto::VOLUME_MOUNT_LOCAL,
+        .KeepsVolumeLocal = clientInfo && clientInfo->KeepsVolumeLocal(),
         .RejectOnAddClientTimeout = Config->GetRejectMountOnAddClientTimeout(),
         .KnownTabletId = TabletId};
 
