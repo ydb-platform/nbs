@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/storage/api/cell_proxy.h>
+#include <cloud/blockstore/libs/storage/volume/model/follower_disk.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
@@ -51,6 +53,8 @@ private:
     const ui32 OriginalBlockSize;
     const TString DiskId;
     const TDuration ShutdownTimeout;
+    const TLeaderFollowerLink Link;
+    IStoragePtr RemoteStorage;
 
     EState State = EState::Describing;
     ui64 BlockCount = 0;
@@ -67,7 +71,8 @@ public:
         TChildLogTitle logTitle,
         ui32 originalBlockSize,
         TString diskId,
-        TDuration shutdownTimeout);
+        TDuration shutdownTimeout,
+        TLeaderFollowerLink link = {});
 
     ~TVolumeAsPartitionActor() override;
 
@@ -75,6 +80,17 @@ public:
 
 private:
     bool CheckRange(TBlockRange64 range) const;
+    bool IsRemote() const;
+    void RequestRemoteResources(const NActors::TActorContext& ctx);
+    void HandleRemoteError(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error);
+    void HandleRemoteDescribe(
+        const TEvCellProxy::TEvDescribeVolumeResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void HandleRemoteStorage(
+        const TEvCellProxy::TEvGetStorageResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     template <typename TEvent>
     void ForwardRequestToFollower(

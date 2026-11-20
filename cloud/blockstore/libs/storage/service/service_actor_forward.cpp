@@ -1,5 +1,7 @@
 #include "service_actor.h"
 
+#include <cloud/blockstore/libs/common/constants.h>
+
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>

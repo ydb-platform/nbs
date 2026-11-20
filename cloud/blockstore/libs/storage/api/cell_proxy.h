@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/cells/iface/public.h>
 #include <cloud/blockstore/libs/client/public.h>
+#include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
 #include <cloud/blockstore/public/api/protos/actions.pb.h>
@@ -81,6 +82,29 @@ struct TEvCellProxy
         {}
     };
 
+    struct TGetStorageRequest
+    {
+        TString CellId;
+        TDuration Timeout;
+
+        explicit TGetStorageRequest(
+            TString cellId,
+            TDuration timeout = TDuration::Seconds(30))
+            : CellId(std::move(cellId))
+            , Timeout(timeout)
+        {}
+    };
+
+    struct TGetStorageResponse
+    {
+        IStoragePtr Storage;
+
+        TGetStorageResponse() = default;
+        explicit TGetStorageResponse(IStoragePtr storage)
+            : Storage(std::move(storage))
+        {}
+    };
+
     enum EEvents
     {
         EvBegin = TBlockStoreEvents::CELLS_START,
@@ -90,6 +114,8 @@ struct TEvCellProxy
         EvDescribeVolumeResponse,
         EvExecuteActionRequest,
         EvExecuteActionResponse,
+        EvGetStorageRequest,
+        EvGetStorageResponse,
         EvEnd
     };
 
@@ -106,6 +132,10 @@ struct TEvCellProxy
         TRequestEvent<TExecuteActionRequest, EvExecuteActionRequest>;
     using TEvExecuteActionResponse =
         TResponseEvent<TExecuteActionResponse, EvExecuteActionResponse>;
+    using TEvGetStorageRequest =
+        TRequestEvent<TGetStorageRequest, EvGetStorageRequest>;
+    using TEvGetStorageResponse =
+        TResponseEvent<TGetStorageResponse, EvGetStorageResponse>;
 };
 
 NActors::TActorId MakeCellProxyServiceId();

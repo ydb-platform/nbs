@@ -1,6 +1,11 @@
 #include "volume_as_partition_actor.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/service/storage.h>
+
+#include <type_traits>
+
+#include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
@@ -25,11 +30,13 @@ TVolumeAsPartitionActor::TVolumeAsPartitionActor(
         TChildLogTitle logTitle,
         ui32 originalBlockSize,
         TString diskId,
-        TDuration shutdownTimeout)
+        TDuration shutdownTimeout,
+        TLeaderFollowerLink link)
     : LogTitle(std::move(logTitle))
     , OriginalBlockSize(originalBlockSize)
     , DiskId(std::move(diskId))
     , ShutdownTimeout(shutdownTimeout)
+    , Link(std::move(link))
 {}
 
 TVolumeAsPartitionActor::~TVolumeAsPartitionActor() = default;
@@ -44,10 +51,84 @@ void TVolumeAsPartitionActor::Bootstrap(const TActorContext& ctx)
         "%s VolumeAsPartitionActor created",
         LogTitle.GetWithTime().c_str());
 
+    if (IsRemote()) {
+        RequestRemoteResources(ctx);
+        return;
+    }
+
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
         std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId));
+}
+
+bool TVolumeAsPartitionActor::IsRemote() const
+{
+    return Link.FollowerCellId && Link.LeaderCellId != Link.FollowerCellId;
+}
+
+void TVolumeAsPartitionActor::RequestRemoteResources(const TActorContext& ctx)
+{
+    NCloud::Send(ctx, MakeCellProxyServiceId(),
+        std::make_unique<TEvCellProxy::TEvDescribeVolumeRequest>(
+            Link.FollowerCellId, DiskId));
+}
+
+void TVolumeAsPartitionActor::HandleRemoteError(
+    const TActorContext& ctx,
+    const NProto::TError& error)
+{
+    if (State == EState::Zombie) {
+        return;
+    }
+    LOG_WARN(ctx, TBlockStoreComponents::PARTITION,
+        "%s Remote follower is unavailable: %s",
+        LogTitle.GetWithTime().c_str(), FormatError(error).c_str());
+    if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
+        State = EState::Describing;
+        ctx.Schedule(TDuration::Seconds(1), new TEvents::TEvWakeup());
+    } else {
+        State = EState::Error;
+    }
+}
+
+void TVolumeAsPartitionActor::HandleRemoteDescribe(
+    const TEvCellProxy::TEvDescribeVolumeResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (State == EState::Zombie) {
+        return;
+    }
+    if (HasError(ev->Get()->GetError())) {
+        HandleRemoteError(ctx, ev->Get()->GetError());
+        return;
+    }
+    BlockCount = ev->Get()->Volume.GetBlocksCount();
+    BlockSize = ev->Get()->Volume.GetBlockSize();
+    if (!BlockSize || !BlockCount || ev->Get()->Volume.GetDiskId() != DiskId) {
+        HandleRemoteError(ctx, MakeError(E_ARGUMENT, "Invalid follower geometry"));
+        return;
+    }
+    NCloud::Send(ctx, MakeCellProxyServiceId(),
+        std::make_unique<TEvCellProxy::TEvGetStorageRequest>(
+            Link.FollowerCellId));
+}
+
+void TVolumeAsPartitionActor::HandleRemoteStorage(
+    const TEvCellProxy::TEvGetStorageResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (State == EState::Zombie) {
+        return;
+    }
+    if (HasError(ev->Get()->GetError()) || !ev->Get()->Storage) {
+        HandleRemoteError(ctx, HasError(ev->Get()->GetError())
+            ? ev->Get()->GetError()
+            : MakeError(E_NOT_IMPLEMENTED, "Cell storage is empty"));
+        return;
+    }
+    RemoteStorage = ev->Get()->Storage;
+    State = EState::Ready;
 }
 
 bool TVolumeAsPartitionActor::CheckRange(TBlockRange64 range) const
@@ -70,6 +151,74 @@ void TVolumeAsPartitionActor::ForwardRequestToFollower(
             .Sender = ev->Sender,
             .Cookie = ev->Cookie,
             .RequestType = requestType});
+
+    if (IsRemote()) {
+        auto* headers = msg->Record.MutableHeaders();
+        headers->ClearInternal();
+        headers->SetCellId(Link.FollowerCellId);
+        headers->SetCopyLinkUUID(Link.LinkUUID);
+        headers->SetRequestId(msg->CallContext->RequestId);
+        const auto error = SafeExecute<NProto::TError>([&]
+        {
+            if constexpr (std::is_same_v<
+                std::decay_t<decltype(msg->Record)>, NProto::TZeroBlocksRequest>)
+            {
+                auto request = std::make_shared<NProto::TZeroBlocksRequest>(
+                    msg->Record);
+                RemoteStorage->ZeroBlocks(msg->CallContext, request).Subscribe(
+                    [system = ctx.ActorSystem(), self = SelfId(), requestId,
+                     request, storage = RemoteStorage](const auto& future)
+                    {
+                        Y_UNUSED(request);
+                        Y_UNUSED(storage);
+                        auto response =
+                            std::make_unique<TEvService::TEvZeroBlocksResponse>();
+                        response->Record = ExtractResponse(future);
+                        system->Send(new IEventHandle(
+                            self, {}, response.release(), 0, requestId));
+                    });
+            } else {
+                auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
+                request->CopyFrom(msg->Record);
+                request->SetBlockSize(BlockSize);
+                request->BlocksCount = BuildRequestBlockRange(*msg, BlockSize).Size();
+                TSgList sglist;
+                for (const auto& buffer: request->GetBlocks().GetBuffers()) {
+                    sglist.emplace_back(buffer.data(), buffer.size());
+                }
+                request->Sglist = TGuardedSgList(std::move(sglist));
+                RemoteStorage->WriteBlocksLocal(msg->CallContext, request).Subscribe(
+                    [system = ctx.ActorSystem(), self = SelfId(), requestId,
+                     request, storage = RemoteStorage](const auto& future)
+                    {
+                        Y_UNUSED(request);
+                        Y_UNUSED(storage);
+                        const auto result = ExtractResponse(future);
+                        auto response =
+                            std::make_unique<TEvService::TEvWriteBlocksResponse>();
+                        *response->Record.MutableError() = result.GetError();
+                        *response->Record.MutableHeaders() = result.GetHeaders();
+                        system->Send(new IEventHandle(
+                            self, {}, response.release(), 0, requestId));
+                    });
+            }
+            return MakeError(S_OK);
+        });
+        if (HasError(error)) {
+            if constexpr (std::is_same_v<
+                std::decay_t<decltype(msg->Record)>, NProto::TZeroBlocksRequest>)
+            {
+                NCloud::Send(ctx, SelfId(),
+                    std::make_unique<TEvService::TEvZeroBlocksResponse>(error),
+                    requestId);
+            } else {
+                NCloud::Send(ctx, SelfId(),
+                    std::make_unique<TEvService::TEvWriteBlocksResponse>(error),
+                    requestId);
+            }
+        }
+        return;
+    }
 
     NActors::TActorId nondeliveryActor = SelfId();
     auto message = std::make_unique<NActors::IEventHandle>(
@@ -587,6 +736,11 @@ void TVolumeAsPartitionActor::HandleShutdownTimeout(
 {
     Y_UNUSED(ev);
 
+    if (State == EState::Describing && IsRemote()) {
+        RequestRemoteResources(ctx);
+        return;
+    }
+
     if (State != EState::Zombie || !Poisoner) {
         return;
     }
@@ -608,6 +762,9 @@ STFUNC(TVolumeAsPartitionActor::StateWork)
         HFunc(
             TEvSSProxy::TEvDescribeVolumeResponse,
             HandleDescribeVolumeResponse);
+
+        HFunc(TEvCellProxy::TEvDescribeVolumeResponse, HandleRemoteDescribe);
+        HFunc(TEvCellProxy::TEvGetStorageResponse, HandleRemoteStorage);
 
         HFunc(TEvService::TEvWriteBlocksRequest, HandleWriteBlocks);
         HFunc(TEvService::TEvWriteBlocksLocalRequest, HandleWriteBlocksLocal);

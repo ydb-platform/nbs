@@ -324,6 +324,109 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The returned IStorage co-owns its connection. It can outlive this actor and
+// remains valid while the copier has requests in flight.
+class TGetCellStorageActor final
+    : public TActorBootstrapped<TGetCellStorageActor>
+{
+    const NCells::ICellManagerPtr Manager;
+    const NClient::TClientAppConfigPtr Config;
+    const TRequestInfoPtr RequestInfo;
+    const TString CellId;
+    const TDuration Timeout;
+
+public:
+    TGetCellStorageActor(
+        NCells::ICellManagerPtr manager,
+        NClient::TClientAppConfigPtr config,
+        TRequestInfoPtr requestInfo,
+        TString cellId,
+        TDuration timeout)
+        : Manager(std::move(manager))
+        , Config(std::move(config))
+        , RequestInfo(std::move(requestInfo))
+        , CellId(std::move(cellId))
+        , Timeout(timeout)
+    {}
+
+    void Bootstrap(const TActorContext& ctx)
+    {
+        Become(&TThis::StateWork);
+        ctx.Schedule(Timeout, new TEvents::TEvWakeup());
+        const auto error = SafeExecute<NProto::TError>([&]
+        {
+            Manager->CreateConnection(CellId, {}, Config, {}).Subscribe(
+                [system = ctx.ActorSystem(), self = SelfId()](const auto& future)
+                {
+                    system->Send(self, new TEvPrivate::TEvConnectionCreated(
+                        ExtractResponse(future)));
+                });
+            return MakeError(S_OK);
+        });
+        if (HasError(error)) {
+            Reply(ctx, error);
+        }
+    }
+
+private:
+    void Reply(
+        const TActorContext& ctx,
+        NProto::TError error,
+        IStoragePtr storage = {})
+    {
+        NCloud::Reply(ctx, *RequestInfo,
+            std::make_unique<TEvCellProxy::TEvGetStorageResponse>(
+                std::move(error), std::move(storage)));
+        Die(ctx);
+    }
+
+    void HandleConnection(
+        const TEvPrivate::TEvConnectionCreated::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        auto& result = ev->Get()->Result;
+        if (HasError(result)) {
+            Reply(ctx, result.GetError());
+            return;
+        }
+        IStoragePtr storage;
+        const auto error = SafeExecute<NProto::TError>([&]
+        {
+            auto connection = result.ExtractResult();
+            if (!connection) {
+                return MakeError(E_FAIL, "Cell connection is empty");
+            }
+            storage = connection->GetStorage();
+            return storage ? MakeError(S_OK)
+                           : MakeError(E_NOT_IMPLEMENTED, "Cell storage is empty");
+        });
+        Reply(ctx, error, std::move(storage));
+    }
+
+    void HandleTimeout(const TActorContext& ctx)
+    {
+        Reply(ctx, MakeError(E_TIMEOUT, "Cell storage acquisition timed out"));
+    }
+
+    void HandlePoison(const TActorContext& ctx)
+    {
+        Reply(ctx, MakeError(E_REJECTED, "Cell storage acquisition stopped"));
+    }
+
+    STFUNC(StateWork)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(TEvPrivate::TEvConnectionCreated, HandleConnection);
+            CFunc(TEvents::TEvWakeup::EventType, HandleTimeout);
+            CFunc(TEvents::TEvPoisonPill::EventType, HandlePoison);
+            default:
+                HandleUnexpectedEvent(ev, TBlockStoreComponents::CELLS,
+                    __PRETTY_FUNCTION__);
+                break;
+        }
+    }
+};
+
 class TCellProxyActor final: public TActorBootstrapped<TCellProxyActor>
 {
 private:
@@ -447,12 +550,37 @@ private:
                 msg->Timeout));
     }
 
+    void HandleGetStorage(
+        const TEvCellProxy::TEvGetStorageRequest::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        const auto* request = ev->Get();
+        NProto::TError error;
+        if (!CellManager) {
+            error = MakeError(E_REJECTED, "CellProxy is not initialized");
+        } else if (!request->CellId || request->Timeout <= TDuration::Zero() ||
+                   request->Timeout > MaxRequestTimeout)
+        {
+            error = MakeError(E_ARGUMENT, "CellId and a valid timeout are required");
+        }
+        if (HasError(error)) {
+            NCloud::Reply(ctx, *ev,
+                std::make_unique<TEvCellProxy::TEvGetStorageResponse>(error));
+            return;
+        }
+        NCloud::Register<TGetCellStorageActor>(
+            ctx, CellManager, ClientConfig,
+            CreateRequestInfo(ev->Sender, ev->Cookie, request->CallContext),
+            request->CellId, request->Timeout);
+    }
+
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
             HFunc(TEvCellProxy::TEvInitializeRequest, HandleInitialize);
             HFunc(TEvCellProxy::TEvDescribeVolumeRequest, HandleDescribeVolume);
             HFunc(TEvCellProxy::TEvExecuteActionRequest, HandleExecuteAction);
+            HFunc(TEvCellProxy::TEvGetStorageRequest, HandleGetStorage);
             CFunc(TEvents::TEvPoisonPill::EventType, Die);
             default:
                 HandleUnexpectedEvent(
