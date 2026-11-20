@@ -90,6 +90,25 @@ void TServiceActor::ForwardRequest(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
+    const auto& headers = msg->Record.GetHeaders();
+    if (headers.GetCopyLinkUUID()) {
+        if constexpr (!IsWriteMethod<TMethod>) {
+            replyError(ctx, ev, E_ARGUMENT, "Copy context is valid only for writes");
+        } else {
+            if (!headers.GetInternal().GetIsCellCopyRequest() ||
+                !headers.GetExactDiskIdMatch() || headers.GetCellId() != CellId ||
+                clientId != CopyVolumeClientId)
+            {
+                replyError(ctx, ev, E_UNAUTHORIZED, "Untrusted cell copy request");
+                return;
+            }
+            // The destination Volume owns the persisted link and validates its
+            // UUID and role. A copy never creates a user mount/session here.
+            ctx.Send(ev->Forward(MakeVolumeProxyServiceId()));
+        }
+        return;
+    }
+
     if constexpr (!RequiresMount<TMethod>) {
         auto volume = State.GetVolume(diskId);
         if (volume) {

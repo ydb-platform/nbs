@@ -27,6 +27,9 @@ constexpr TStringBuf IntermediateWriteBufferTagName =
 // the disk from where the copy is being made should be taken from the tag.
 constexpr TStringBuf SourceDiskIdTagName = "source-disk-id";
 
+// Reserved client id for writes performed by the volume copier.
+constexpr TStringBuf CopyVolumeClientId = "copy-volume-client";
+
 constexpr TStringBuf UseFastPathTagName = "use-fastpath";
 
 constexpr TStringBuf DropDiscardRequestsTagName = "drop-discard-requests";

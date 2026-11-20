@@ -485,6 +485,15 @@ TFuture<TResponse> TSplitRequestService::ExecuteRequestWithSplit(
     TCallContextPtr callContext,
     std::shared_ptr<TRequest> request)
 {
+    // Trusted inter-cell copy writes have no mount session. Volume validates
+    // their link identity and routes the range without a client split config.
+    if (request->GetHeaders().GetInternal().GetIsCellCopyRequest()) {
+        return TBlockStoreAdapter::Execute(
+            Service.get(),
+            std::move(callContext),
+            std::move(request));
+    }
+
     TSplitConfigRegistryPtr registry = Registry.AtomicLoad();
     const auto* config = registry->GetConfig(request->GetDiskId());
 

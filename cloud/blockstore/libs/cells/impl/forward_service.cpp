@@ -1,6 +1,7 @@
 #include <cloud/blockstore/libs/cells/iface/forward_service.h>
 
 #include <cloud/blockstore/libs/service/request_helpers.h>
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
@@ -104,6 +105,15 @@ public:
         const bool trustedSource =
             IsTrustedSource(headers.GetInternal().GetRequestSource());
 
+        const bool copyWrite = trustedSource && hasCellId &&
+            headers.GetExactDiskIdMatch() && headers.GetCopyLinkUUID() &&
+            headers.GetClientId() == CopyVolumeClientId &&
+            (TMethod::BlockStoreRequest == EBlockStoreRequest::WriteBlocks ||
+             TMethod::BlockStoreRequest == EBlockStoreRequest::WriteBlocksLocal ||
+             TMethod::BlockStoreRequest == EBlockStoreRequest::ZeroBlocks);
+        request->MutableHeaders()->MutableInternal()->SetIsCellCopyRequest(
+            copyWrite);
+
         if (whitelisted && hasCellId && !trustedSource) {
             STORAGE_WARN(
                 "[cell " << headers.GetCellId() << "] inter-cell marker from"
@@ -113,7 +123,7 @@ public:
                     << ", authorizing normally");
         }
 
-        if (whitelisted && hasCellId && trustedSource) {
+        if ((whitelisted || copyWrite) && hasCellId && trustedSource) {
             const auto& cellId = headers.GetCellId();
             const auto& peer = headers.GetInternal().GetPeer();
             const auto diskId = GetDiskId(*request);

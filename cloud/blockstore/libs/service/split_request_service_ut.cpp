@@ -1,6 +1,9 @@
 #include "split_request_service.h"
 
+#include "overlapping_requests_guard_service.h"
+
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service_method.h>
@@ -313,6 +316,48 @@ struct TTestEnvironment
         request->SetBlocksCount(range.Size());
     }
 };
+
+template <typename TMethod, typename TRequests>
+void CheckCellCopyRequestWithoutMount(
+    TTestEnvironment& env,
+    std::shared_ptr<typename TMethod::TRequest> request,
+    TRequests& requests,
+    TBlockRange64 range)
+{
+    auto* headers = request->MutableHeaders();
+    headers->SetClientId(TString(CopyVolumeClientId));
+    headers->SetCellId("target-cell");
+    headers->SetExactDiskIdMatch(true);
+    headers->SetCopyLinkUUID("copy-link");
+
+    // Public copy markers alone do not bypass the mount requirement.
+    const auto rejected = TMethod::Execute(
+        env.SplitRequestService.get(),
+        MakeIntrusive<TCallContext>(),
+        request);
+    UNIT_ASSERT_VALUES_EQUAL(
+        E_BS_INVALID_SESSION,
+        rejected.GetValue().GetError().GetCode());
+    UNIT_ASSERT(requests.empty());
+
+    headers->MutableInternal()->SetIsCellCopyRequest(true);
+    const auto forwarded = TMethod::Execute(
+        env.SplitRequestService.get(),
+        MakeIntrusive<TCallContext>(),
+        request);
+    UNIT_ASSERT(!forwarded.HasValue());
+    UNIT_ASSERT_VALUES_EQUAL(1, requests.size());
+    auto* pending = requests.FindPtr(range);
+    UNIT_ASSERT(pending);
+    UNIT_ASSERT(pending->Request == request);
+
+    typename TMethod::TResponse response;
+    *response.MutableError() = MakeError(E_REJECTED, "volume link rejected");
+    pending->Promise.SetValue(std::move(response));
+    UNIT_ASSERT_VALUES_EQUAL(
+        E_REJECTED,
+        forwarded.GetValue().GetError().GetCode());
+}
 
 }   // namespace
 
@@ -982,6 +1027,39 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
                 FormatError(result.GetError()));
 
         }
+    }
+
+    Y_UNIT_TEST(ShouldForwardTrustedCellCopyWithoutMount)
+    {
+        TTestEnvironment env;
+        env.SplitRequestService = CreateOverlappingRequestsGuardsService(
+            env.SplitRequestService);
+        const TString data = "aabbccddeeffgghhjjkk";
+        const auto range = TBlockRange64::WithLength(1, 10);
+
+        auto write = std::make_shared<NProto::TWriteBlocksRequest>();
+        env.SetupRequest(write, range, data);
+        CheckCellCopyRequestWithoutMount<TBlockStoreWriteBlocksMethod>(
+            env,
+            write,
+            env.Storage->WriteBlocksPromises,
+            range);
+
+        auto writeLocal = std::make_shared<NProto::TWriteBlocksLocalRequest>();
+        env.SetupRequest(writeLocal, range, data);
+        CheckCellCopyRequestWithoutMount<TBlockStoreWriteBlocksLocalMethod>(
+            env,
+            writeLocal,
+            env.Storage->WriteBlocksLocalPromises,
+            range);
+
+        auto zero = std::make_shared<NProto::TZeroBlocksRequest>();
+        env.SetupRequest(zero, range);
+        CheckCellCopyRequestWithoutMount<TBlockStoreZeroBlocksMethod>(
+            env,
+            zero,
+            env.Storage->ZeroBlocksPromises,
+            range);
     }
 }
 

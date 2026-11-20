@@ -731,6 +731,28 @@ void TVolumeActor::ForwardRequest(
         const bool isCopyingClient =
             clientId == CopyVolumeClientId || clientId == DMCopyVolumeClientId;
 
+        const auto& headers = msg->Record.GetHeaders();
+        if (headers.GetCopyLinkUUID()) {
+            const TLeaderFollowerLink expected{
+                .LinkUUID = headers.GetCopyLinkUUID(),
+                .LeaderDiskId = {},
+                .LeaderCellId = {},
+                .FollowerDiskId = State->GetDiskId(),
+                .FollowerCellId = headers.GetCellId()};
+            const auto leader = State->FindLeader(expected);
+            if (!headers.GetInternal().GetIsCellCopyRequest() ||
+                !isCopyingClient || !leader ||
+                leader->Link.FollowerDiskId != State->GetDiskId() ||
+                leader->Link.FollowerCellId != headers.GetCellId() ||
+                leader->State != TLeaderDiskInfo::EState::Following)
+            {
+                replyError(MakeError(
+                    E_PRECONDITION_FAILED,
+                    "Copy request does not match an active follower link"));
+                return;
+            }
+        }
+
         auto makeMessage = [&](NLog::EPriority priority) -> TString
         {
             auto message = TStringBuilder()

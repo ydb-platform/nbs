@@ -3,6 +3,7 @@
 #include "rdma_protocol.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
@@ -33,6 +34,17 @@ LWTRACE_USING(STORAGE_RDMA_PROVIDER);
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// This target is the existing internal RDMA service endpoint. Its deployment
+// boundary must admit trusted NBS peers only. Always derive the copy marker
+// here rather than accepting a caller-supplied Internal marker.
+void PrepareCellCopyHeaders(NProto::THeaders* headers)
+{
+    const bool copy = headers->GetCopyLinkUUID() && headers->GetCellId() &&
+        headers->GetExactDiskIdMatch() &&
+        headers->GetClientId() == CopyVolumeClientId;
+    headers->MutableInternal()->SetIsCellCopyRequest(copy);
+}
 
 constexpr size_t MaxRealProtoSize =
     4_KB - NCloud::NStorage::NRdma::RDMA_PROTO_HEADER_SIZE;
@@ -368,6 +380,7 @@ private:
         req->SetBlockSize(request->GetBlockSize());
         req->BlocksCount = requestData.length() / req->GetBlockSize();
 
+        PrepareCellCopyHeaders(req->MutableHeaders());
         auto future = Service->WriteBlocksLocal(callContext, std::move(req));
 
         future.Subscribe(
@@ -456,6 +469,7 @@ private:
         auto req =
             std::make_shared<NProto::TZeroBlocksRequest>(std::move(*request));
 
+        PrepareCellCopyHeaders(req->MutableHeaders());
         auto future = Service->ZeroBlocks(callContext, std::move(req));
 
         future.Subscribe(

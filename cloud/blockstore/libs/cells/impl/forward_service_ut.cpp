@@ -1,6 +1,7 @@
 #include <cloud/blockstore/libs/cells/iface/forward_service.h>
 
 #include <cloud/blockstore/libs/cells/iface/inbound_activity.h>
+#include <cloud/blockstore/libs/common/constants.h>
 
 #include <cloud/blockstore/libs/service/service_test.h>
 
@@ -236,6 +237,51 @@ Y_UNIT_TEST_SUITE(TCellForwardServiceTest)
         }
         UNIT_ASSERT_VALUES_EQUAL(0, env.Trusted->Actions);
         UNIT_ASSERT_VALUES_EQUAL(3, env.Authorized->Actions);
+    }
+
+    Y_UNIT_TEST(ShouldMarkCopyWriteOnlyForTrustedCellIngress)
+    {
+        TEnv env;
+        bool trusted = false;
+        env.Trusted->WriteBlocksHandler = [&](auto request)
+        {
+            trusted = true;
+            UNIT_ASSERT(request->GetHeaders().GetInternal().GetIsCellCopyRequest());
+            return MakeFuture(NProto::TWriteBlocksResponse());
+        };
+        auto request = std::make_shared<NProto::TWriteBlocksRequest>();
+        auto* headers = request->MutableHeaders();
+        headers->SetCellId("cell-b");
+        headers->SetClientId(TString(CopyVolumeClientId));
+        headers->SetExactDiskIdMatch(true);
+        headers->SetCopyLinkUUID("copy-link");
+        headers->MutableInternal()->SetRequestSource(
+            NCloud::NProto::SOURCE_SECURE_CONTROL_CHANNEL);
+        env.Service->WriteBlocks(MakeIntrusive<TCallContext>(), request).GetValue();
+        UNIT_ASSERT(trusted);
+    }
+
+    Y_UNIT_TEST(ShouldNotTrustCopyMarkerFromInsecureChannel)
+    {
+        TEnv env;
+        bool authorized = false;
+        env.Authorized->ZeroBlocksHandler = [&](auto request)
+        {
+            authorized = true;
+            UNIT_ASSERT(!request->GetHeaders().GetInternal().GetIsCellCopyRequest());
+            return MakeFuture(NProto::TZeroBlocksResponse());
+        };
+        auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+        auto* headers = request->MutableHeaders();
+        headers->SetCellId("cell-b");
+        headers->SetClientId(TString(CopyVolumeClientId));
+        headers->SetExactDiskIdMatch(true);
+        headers->SetCopyLinkUUID("copy-link");
+        headers->MutableInternal()->SetIsCellCopyRequest(true);
+        headers->MutableInternal()->SetRequestSource(
+            NCloud::NProto::SOURCE_INSECURE_CONTROL_CHANNEL);
+        env.Service->ZeroBlocks(MakeIntrusive<TCallContext>(), request).GetValue();
+        UNIT_ASSERT(authorized);
     }
 }
 

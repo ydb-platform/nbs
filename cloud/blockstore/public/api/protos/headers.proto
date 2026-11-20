@@ -71,6 +71,9 @@ message THeaders
 
         // Peer address of the request sender.
         string Peer = 6;
+
+        // Derived by a trusted NBS ingress, never accepted from public clients.
+        bool IsCellCopyRequest = 7;
     }
 
     // These headers must not be set by end clients. They will be overwritten
@@ -106,6 +109,10 @@ message THeaders
     // When set it does not allow the execution of request on a disk that is a
     // copy with a mangled name with an additional suffix.
     bool ExactDiskIdMatch = 16;
+
+    // Active volume-link identity for server-to-server copy writes.
+    // This identifier is not an authorization credential.
+    string CopyLinkUUID = 17;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

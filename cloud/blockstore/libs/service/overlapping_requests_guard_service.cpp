@@ -140,6 +140,15 @@ private:
         TCallContextPtr callContext,
         std::shared_ptr<TRequest> request)
     {
+        // Copy writes are ordered by the source's follower actor and have no
+        // mount session. Keep the direct-to-volume path used by local copies.
+        if (request->GetHeaders().GetInternal().GetIsCellCopyRequest()) {
+            return TBlockStoreAdapter::Execute(
+                Service.get(),
+                std::move(callContext),
+                std::move(request));
+        }
+
         const auto& diskId = request->GetDiskId();
 
         TOverlappingRequestsServicesRegistryPtr servicesRegistry =

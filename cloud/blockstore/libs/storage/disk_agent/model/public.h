@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/blockstore/libs/common/constants.h>
+
 #include <util/generic/strbuf.h>
 
 #include <memory>
@@ -22,7 +24,7 @@ constexpr TStringBuf CheckHealthClientId = "check-health";
 constexpr TStringBuf AnyWriterClientId = "any-writer";
 constexpr TStringBuf ShadowDiskClientId = "shadow-disk-client";
 constexpr TStringBuf CheckRangeClientId = "check-range";
-constexpr TStringBuf CopyVolumeClientId = "copy-volume-client";
+using NCloud::NBlockStore::CopyVolumeClientId;
 constexpr TStringBuf DMCopyVolumeClientId = "dm-copy-volume-client";
 constexpr TStringBuf AnyReaderClientId = "any-reader";
 
