@@ -11,7 +11,6 @@
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
 #include <contrib/ydb/core/protos/filestore_config.pb.h>
@@ -43,7 +42,7 @@ private:
     const NProto::EFastShardStorageKind StorageKind;
     const TString CloudId;
     const TString FolderId;
-    const ui64 FileSystemSize;
+    const ui32 BlockSize;
 
     NProtoPrivate::TShardTopology Topology;
 
@@ -59,7 +58,7 @@ public:
         NProto::EFastShardStorageKind storageKind,
         TString cloudId,
         TString folderId,
-        ui64 fileSystemSize);
+        ui32 blockSize);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -89,7 +88,7 @@ TAllocateFastShardsActor::TAllocateFastShardsActor(
         NProto::EFastShardStorageKind storageKind,
         TString cloudId,
         TString folderId,
-        ui64 fileSystemSize)
+        ui32 blockSize)
     : StorageConfig(std::move(storageConfig))
     , Owner(owner)
     , LogTag(std::move(logTag))
@@ -97,7 +96,7 @@ TAllocateFastShardsActor::TAllocateFastShardsActor(
     , StorageKind(storageKind)
     , CloudId(std::move(cloudId))
     , FolderId(std::move(folderId))
-    , FileSystemSize(fileSystemSize)
+    , BlockSize(blockSize)
 {}
 
 void TAllocateFastShardsActor::Bootstrap(const TActorContext& ctx)
@@ -213,9 +212,10 @@ void TAllocateFastShardsActor::HandleAllocateDevicesResponse(
     auto& config = *Topology.MutableShards(ev->Cookie)
         ->MutableFastShardConfig()
         ->MutablePersistentConfig();
-    config.SetExpectedGroupCapacity(FileSystemSize);
-    config.SetNodesPerGroup(
-        FileSystemSize / StorageConfig->GetSizeToNodesRatio());
+    const ui64 capacity = GetFastShardCapacity(*StorageConfig);
+    config.SetExpectedGroupCapacity(capacity);
+    config.SetNodesPerGroup(capacity / StorageConfig->GetSizeToNodesRatio());
+    config.SetPageSize(BlockSize);
     auto& group = *config.AddStorageGroups();
     group.SetType(StorageKind);
     for (const auto& replica: msg->Layout.Replicas) {
@@ -284,13 +284,10 @@ STFUNC(TAllocateFastShardsActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The devices are deallocated only after their shard is destroyed. The tablet
-// ids come from the main tablet: a retry has them when the shard is gone.
 class TDeallocateFastShardsActor final
     : public TActorBootstrapped<TDeallocateFastShardsActor>
 {
 private:
-    const TStorageConfigPtr StorageConfig;
     const TActorId Owner;
     const TString LogTag;
     const NProtoPrivate::TShardTopology Topology;
@@ -299,7 +296,6 @@ private:
 
 public:
     TDeallocateFastShardsActor(
-        TStorageConfigPtr storageConfig,
         TActorId owner,
         TString logTag,
         NProtoPrivate::TShardTopology topology);
@@ -330,12 +326,10 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDeallocateFastShardsActor::TDeallocateFastShardsActor(
-        TStorageConfigPtr storageConfig,
         TActorId owner,
         TString logTag,
         NProtoPrivate::TShardTopology topology)
-    : StorageConfig(std::move(storageConfig))
-    , Owner(owner)
+    : Owner(owner)
     , LogTag(std::move(logTag))
     , Topology(std::move(topology))
 {}
@@ -343,14 +337,6 @@ TDeallocateFastShardsActor::TDeallocateFastShardsActor(
 void TDeallocateFastShardsActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
-
-    // The disk registry proxy exists only with the runtime.
-    if (!StorageConfig->GetFastShardRuntimeEnabled()) {
-        ReplyAndDie(
-            ctx,
-            MakeError(E_PRECONDITION_FAILED, "fast shards are disabled"));
-        return;
-    }
 
     MarkShard(ctx);
 }
@@ -478,28 +464,24 @@ STFUNC(TDeallocateFastShardsActor::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError ValidateFastShardCapacity(
-    const TStorageConfig& config,
-    ui64 fileSystemSize)
+ui64 GetFastShardCapacity(const TStorageConfig& config)
 {
-    if (config.GetFastShardAllocationSize() <= config.GetFastShardReservedSize()) {
-        return MakeError(
-            E_PRECONDITION_FAILED,
-            "fast shard allocation size is not configured");
+    return config.GetFastShardAllocationSize() -
+           config.GetFastShardReservedSize();
+}
+
+ui64 CalculateFastShardCount(
+    const TStorageConfig& config,
+    ui64 blocksCount,
+    ui32 blockSize)
+{
+    const ui64 capacity = GetFastShardCapacity(config) / blockSize;
+    ui64 count = blocksCount / capacity;
+    if (blocksCount % capacity) {
+        ++count;
     }
 
-    const ui64 capacity = config.GetFastShardAllocationSize()
-        - config.GetFastShardReservedSize();
-
-    if (capacity < fileSystemSize) {
-        return MakeError(
-            E_ARGUMENT,
-            TStringBuilder()
-                << "filesystem size " << FormatByteSize(fileSystemSize)
-                << " exceeds fast shard capacity " << FormatByteSize(capacity));
-    }
-
-    return {};
+    return count;
 }
 
 IActorPtr CreateAllocateFastShardsActor(
@@ -525,17 +507,15 @@ IActorPtr CreateAllocateFastShardsActor(
         storageKind,
         mainConfig.GetCloudId(),
         mainConfig.GetFolderId(),
-        mainConfig.GetBlocksCount() * mainConfig.GetBlockSize());
+        mainConfig.GetBlockSize());
 }
 
 IActorPtr CreateDeallocateFastShardsActor(
-    TStorageConfigPtr storageConfig,
     TActorId owner,
     TString logTag,
     NProtoPrivate::TShardTopology topology)
 {
     return std::make_unique<TDeallocateFastShardsActor>(
-        std::move(storageConfig),
         owner,
         std::move(logTag),
         std::move(topology));

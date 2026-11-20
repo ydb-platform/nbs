@@ -25,17 +25,35 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Without an explicit count a filesystem gets the fast shards its size needs.
+ui64 GetFastShardCount(
+    const TStorageConfig& config,
+    const NProto::TCreateFileStoreRequest& request)
+{
+    if (!request.HasFastShardStorageKind()) {
+        return 0;
+    }
+
+    if (request.GetFastShardCount()) {
+        return request.GetFastShardCount();
+    }
+
+    return CalculateFastShardCount(
+        config,
+        request.GetBlocksCount(),
+        request.GetBlockSize());
+}
+
 NProto::TError ValidateFastShards(
     const TStorageConfig& config,
     const NProto::TCreateFileStoreRequest& request)
 {
-    const ui32 fastShardCount = request.GetFastShardCount();
-    if (!fastShardCount) {
-        return {};
+    if (request.GetFastShardCount() && !request.HasFastShardStorageKind()) {
+        return MakeError(E_ARGUMENT, "fast shard count needs a storage kind");
     }
 
-    if (!config.GetFastShardRuntimeEnabled()) {
-        return MakeError(E_PRECONDITION_FAILED, "fast shards are disabled");
+    if (!request.HasFastShardStorageKind()) {
+        return {};
     }
 
     if (!config.GetDirectoryCreationInShardsEnabled()) {
@@ -60,9 +78,22 @@ NProto::TError ValidateFastShards(
                 << static_cast<int>(storageKind));
     }
 
-    return ValidateFastShardCapacity(
+    const ui64 requiredFastShardCount = CalculateFastShardCount(
         config,
-        request.GetBlocksCount() * request.GetBlockSize());
+        request.GetBlocksCount(),
+        request.GetBlockSize());
+    if (request.GetFastShardCount() &&
+        request.GetFastShardCount() < requiredFastShardCount)
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "fast shard count " << request.GetFastShardCount()
+                << " cannot hold the filesystem, " << requiredFastShardCount
+                << " needed");
+    }
+
+    return {};
 }
 
 NProto::TError ValidateTotalShards(
@@ -70,7 +101,7 @@ NProto::TError ValidateTotalShards(
     const NProto::TCreateFileStoreRequest& request)
 {
     ui64 shardCount = request.GetShardCount();
-    shardCount += request.GetFastShardCount();
+    shardCount += GetFastShardCount(config, request);
     if (shardCount > config.GetMaxShardCount()) {
         return MakeError(
             E_ARGUMENT,
@@ -144,6 +175,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const NProto::TCreateFileStoreRequest Request;
     const TString& LogTag;
+    const ui32 FastShardCount;
     TMultiShardFileStoreConfig FileStoreConfig;
     NProtoPrivate::TShardTopology ShardTopology;
 
@@ -218,6 +250,7 @@ TCreateFileStoreActor::TCreateFileStoreActor(
     , RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
     , LogTag(Request.GetFileSystemId())
+    , FastShardCount(GetFastShardCount(*StorageConfig, Request))
     , ShardCreationState(
           Request.GetFileSystemId(),
           TShardCreationStateCompanion::EMode::Create,
@@ -251,7 +284,7 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
             *StorageConfig,
             config,
             Request.GetPerformanceProfile(),
-            Request.GetShardCount() + Request.GetFastShardCount());
+            Request.GetShardCount() + FastShardCount);
         const auto error = ShardCreationState.InitializeShardCreation(
             0,
             FileStoreConfig.ShardConfigs.size(),
@@ -266,7 +299,7 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
         // TODO(#8034): use the main filestore config topology once it is there
         // The fast shards are last, their entries come after allocation.
         const auto& shardConfigs = FileStoreConfig.ShardConfigs;
-        const ui32 fastShardsBegin = shardConfigs.size() - Request.GetFastShardCount();
+        ui32 fastShardsBegin = shardConfigs.size() - FastShardCount;
         for (ui32 i = 0; i < fastShardsBegin; ++i) {
             AddOrdinaryShard(shardConfigs[i].GetFileSystemId(), ShardTopology);
         }
@@ -338,7 +371,7 @@ void TCreateFileStoreActor::CreateShard(
 
 void TCreateFileStoreActor::AllocateFastShards(const TActorContext& ctx)
 {
-    if (!Request.GetFastShardCount()) {
+    if (!FastShardCount) {
         ConfigureShards(ctx);
         return;
     }
@@ -351,7 +384,7 @@ void TCreateFileStoreActor::AllocateFastShards(const TActorContext& ctx)
             LogTag,
             FileStoreConfig.MainFileSystemConfig,
             FileStoreConfig.ShardConfigs,
-            Request.GetFastShardCount(),
+            FastShardCount,
             Request.GetFastShardStorageKind()));
 }
 

@@ -7,7 +7,6 @@
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
 #include <cloud/storage/core/libs/actors/public.h>
-#include <cloud/storage/core/libs/common/error.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 
@@ -22,11 +21,17 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError ValidateFastShardCapacity(
-    const TStorageConfig& config,
-    ui64 fileSystemSize);
+// Capacity of one fast shard for file data.
+ui64 GetFastShardCapacity(const TStorageConfig& config);
 
-// Allocates devices for the fast shards, they are the last ones of the shards.
+// The number of fast shards that hold the given blocks.
+ui64 CalculateFastShardCount(
+    const TStorageConfig& config,
+    ui64 blocksCount,
+    ui32 blockSize);
+
+// Allocates devices for the last fastShardCount shards and replies with their
+// topology entries.
 NActors::IActorPtr CreateAllocateFastShardsActor(
     TStorageConfigPtr storageConfig,
     NActors::TActorId owner,
@@ -36,8 +41,9 @@ NActors::IActorPtr CreateAllocateFastShardsActor(
     ui32 fastShardCount,
     NProto::EFastShardStorageKind storageKind);
 
+// Destroys the fast shards and then deallocates their devices. A shard without
+// devices is skipped, so a retry completes a failed attempt.
 NActors::IActorPtr CreateDeallocateFastShardsActor(
-    TStorageConfigPtr storageConfig,
     NActors::TActorId owner,
     TString logTag,
     NProtoPrivate::TShardTopology topology);

@@ -233,7 +233,7 @@ message TCreateFileStoreRequest
     uint32 FastShardCount = 11;
 
     // Storage kind of the fast shards.
-    EFastShardStorageKind FastShardStorageKind = 12;
+    optional EFastShardStorageKind FastShardStorageKind = 12;
 }
 
 message TCreateFileStoreResponse
