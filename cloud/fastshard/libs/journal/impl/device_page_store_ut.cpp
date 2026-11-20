@@ -7,6 +7,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/buffer.h>
+#include <util/generic/size_literals.h>
 
 namespace NCloud::NJournalled {
 
@@ -89,6 +90,36 @@ struct TBrokenDevice final: public IDevice
         Y_UNUSED(ranges);
 
         return NThreading::MakeFuture(MakeError(E_IO, "device is broken"));
+    }
+};
+
+// remembers the ranges of the last read
+struct TReadRecordingDevice final: public IDevice
+{
+    const IDevicePtr Device;
+    TVector<TPageRangeRef> LastReadRanges;
+
+    explicit TReadRecordingDevice(IDevicePtr device)
+        : Device(std::move(device))
+    {}
+
+    NThreading::TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
+        TVector<TPageRangeRef> rangeRefs) override
+    {
+        LastReadRanges = rangeRefs;
+        return Device->ReadPages(std::move(rangeRefs));
+    }
+
+    NThreading::TFuture<NProto::TError> WritePages(
+        TVector<TPageRange> ranges) override
+    {
+        return Device->WritePages(std::move(ranges));
+    }
+
+    NThreading::TFuture<NProto::TError> ZeroPages(
+        TVector<TPageRangeRef> ranges) override
+    {
+        return Device->ZeroPages(std::move(ranges));
     }
 };
 
@@ -684,6 +715,67 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, store->Free(ranges).GetCode());
         UNIT_ASSERT_VALUES_EQUAL("0x4", Describe(store->Allocate(4)));
+    }
+
+    Y_UNIT_TEST(ShouldMergeNeighbourRangesOnRead)
+    {
+        auto device = std::make_shared<TReadRecordingDevice>(
+            CreateInMemoryDevice(DefaultPageSize));
+
+        auto store = CreateDevicePageStore(
+            device,
+            DefaultPageCount,
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
+
+        WriteRecord(
+            store,
+            {"aaaa", "bbbb", "cccc", "dddd", "eeee", "ffff", "gggg", "hhhh"});
+
+        // 0x1, 1x2 and 3x1 follow each other. 5x1 comes after a gap. 4x1 is
+        // a neighbour of 5x1, but it comes before it, so it stays apart: the
+        // order of the pages must not change
+
+        const auto ranges =
+            MakeRanges({{0, 1}, {1, 2}, {7, 0}, {3, 1}, {5, 1}, {4, 1}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "aaaa|bbbb|cccc|dddd|ffff|eeee",
+            Join(store->Read(ranges).GetValue().GetResult()));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "0x4, 5x1, 4x1",
+            Describe(device->LastReadRanges));
+    }
+
+    Y_UNIT_TEST(ShouldLimitSizeOfMergedRead)
+    {
+        // a merged read holds at most 1 MiB, which is 4 pages here
+        constexpr ui32 pageSize = 256_KB;
+        constexpr ui64 pageCount = 6;
+
+        auto device = std::make_shared<TReadRecordingDevice>(
+            CreateInMemoryDevice(pageSize));
+
+        auto store = CreateDevicePageStore(
+            device,
+            pageCount,
+            pageSize,
+            EDevicePageStoreMode::Checked);
+
+        UNIT_ASSERT_VALUES_EQUAL("0x6", Describe(store->Allocate(pageCount)));
+
+        const auto ranges =
+            MakeRanges({{0, 1}, {1, 1}, {2, 1}, {3, 1}, {4, 1}, {5, 1}});
+
+        const auto result = store->Read(ranges).GetValue();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            result.GetError().GetCode(),
+            FormatError(result.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(pageCount, result.GetResult().size());
+
+        UNIT_ASSERT_VALUES_EQUAL("0x4, 4x2", Describe(device->LastReadRanges));
     }
 
     Y_UNIT_TEST(ShouldReportDeviceWriteError)
