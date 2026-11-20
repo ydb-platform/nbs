@@ -13,6 +13,7 @@ using namespace NKikimr;
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui32 RequestCookieBit = 63;
+constexpr ui32 InitialReadDataActorPoolSize = 100;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -31,6 +32,7 @@ TStorageServiceActor::TStorageServiceActor(
     , State{std::make_unique<TStorageServiceState>()}
     , StatsRegistry{std::move(statsRegistry)}
     , InFlightRequests(MakeIntrusive<TInFlightRequestStorage>(ProfileLog))
+    , ReadDataActorPool(ProfileLog, TraceSerializer, InFlightRequests)
 {}
 
 TStorageServiceActor::~TStorageServiceActor()
@@ -43,6 +45,10 @@ void TStorageServiceActor::Bootstrap(const TActorContext& ctx)
 
     LastCpuWaitTs = ctx.Monotonic();
     ServiceState = NProto::SERVICE_STATE_RUNNING;
+
+    if (StorageConfig->GetPermanentReadWriteDataActorsEnabled()) {
+        ReadDataActorPool.Initialize(ctx, InitialReadDataActorPoolSize);
+    }
 
     RegisterPages(ctx);
     RegisterCounters(ctx);
@@ -101,6 +107,10 @@ void TStorageServiceActor::RegisterCounters(const NActors::TActorContext& ctx)
     auto ssdCounters = serviceCounters->GetSubgroup("type", "ssd");
     SsdFileSystemCount = ssdCounters->GetCounter("FileSystemCount", false);
     SsdTabletCount = ssdCounters->GetCounter("TabletCount", false);
+
+    ReadDataActorPoolSize =
+        serviceCounters->GetCounter("ReadDataActorPoolSize");
+    ReadDataActorPoolSize->Set(ReadDataActorPool.GetSize());
 }
 
 void TStorageServiceActor::ScheduleUpdateStats(const NActors::TActorContext& ctx)
@@ -197,6 +207,9 @@ bool TStorageServiceActor::HandleRequests(STFUNC_SIG)
         HFunc(TEvServicePrivate::TEvSessionCreated, HandleSessionCreated);
         HFunc(TEvServicePrivate::TEvSessionDestroyed, HandleSessionDestroyed);
         HFunc(TEvServicePrivate::TEvUpdateStats, HandleUpdateStats);
+        HFunc(
+            TEvServicePrivate::TEvReleaseReadDataActor,
+            HandleReleaseReadDataActor);
 
         default:
             return false;

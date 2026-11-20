@@ -54,6 +54,7 @@ SRCS(
     shard_creation_state_companion.cpp
     tablet_action_actor.cpp
     zero_block_stats.cpp
+    worker_actor_pool.cpp
 )
 
 PEERDIR(
