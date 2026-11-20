@@ -5,6 +5,7 @@
 #include <cloud/storage/core/libs/common/disjoint_interval_map.h>
 #include <cloud/storage/core/libs/common/future_helper.h>
 
+#include <util/generic/size_literals.h>
 #include <util/generic/utility.h>
 #include <util/generic/ylimits.h>
 #include <util/string/builder.h>
@@ -27,6 +28,12 @@ enum class EPageState
     Free,
     Allocated,
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+// A merged read is not larger than this: a very large request to the device
+// is slow as a whole and delays the other requests.
+constexpr ui64 MaxMergedReadBytes = 1_MB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -180,7 +187,14 @@ public:
             return MakeFuture<TResult>(TVector<TBuffer>());
         }
 
-        return Device->ReadPages(pageRanges)
+        //
+        // Join the ranges that follow each other on the device. Records that
+        // were written in a row become a few large reads. The device returns
+        // the pages as one list in the request order, so the result is the
+        // same
+        //
+
+        return Device->ReadPages(MergeNeighbours(pageRanges))
             .Apply(
                 [pageCount](const auto& future) -> TResult
                 {
@@ -204,6 +218,37 @@ public:
     }
 
 private:
+    // Joins every range with the previous one if it starts right after it.
+    // Keeps the order of the pages and drops the empty ranges.
+    TVector<TPageRangeRef> MergeNeighbours(
+        const TVector<TPageRangeRef>& pageRanges) const
+    {
+        const ui64 maxPageCount = Max<ui64>(1, MaxMergedReadBytes / PageSize);
+
+        TVector<TPageRangeRef> merged;
+        merged.reserve(pageRanges.size());
+
+        for (const auto& pageRange: pageRanges) {
+            if (!pageRange.PageCount) {
+                continue;
+            }
+
+            if (!merged.empty()) {
+                auto& last = merged.back();
+                if (last.FirstPageNo + last.PageCount == pageRange.FirstPageNo &&
+                    last.PageCount + pageRange.PageCount <= maxPageCount)
+                {
+                    last.PageCount += pageRange.PageCount;
+                    continue;
+                }
+            }
+
+            merged.push_back(pageRange);
+        }
+
+        return merged;
+    }
+
     TVector<TPageRangeRef> AllocateImpl(ui64 pageCount)
     {
         if (!pageCount || pageCount > FreeRanges.GetIntervalSum()) {
