@@ -1,8 +1,6 @@
 GO_TEST()
 
-GO_TEST_SRCS(
-    storage_test.go
-)
+GO_TEST_SRCS(storage_test.go)
 
 DEPENDS(
     cloud/disk_manager/internal/pkg/dataplane/snapshot/exporter/storage/tests/recipe
@@ -16,3 +14,7 @@ REQUIREMENTS(ram:16)
 SIZE(MEDIUM)
 
 END()
+
+RECURSE(
+    recipe
+)

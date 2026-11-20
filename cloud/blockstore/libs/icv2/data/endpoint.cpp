@@ -263,6 +263,11 @@ public:
 
         const auto bytes =
             CalculateBytesCount(*request, request->GetBlockSize());
+        if (!bytes) {
+            return Fail<NProto::TWriteBlocksResponse>(
+                MakeError(E_ARGUMENT, "empty IC V2 write payload"));
+        }
+
         return ExecuteDataRequest<NProto::TWriteBlocksResponse>(
             std::move(context),
             std::move(request),
@@ -277,6 +282,11 @@ public:
 
         const auto bytes =
             CalculateBytesCount(*request, request->GetBlockSize());
+        if (!bytes) {
+            return Fail<NProto::TWriteBlocksLocalResponse>(
+                MakeError(E_ARGUMENT, "empty IC V2 write payload"));
+        }
+
         return ExecuteDataRequest<NProto::TWriteBlocksLocalResponse>(
             std::move(context),
             std::move(request),
