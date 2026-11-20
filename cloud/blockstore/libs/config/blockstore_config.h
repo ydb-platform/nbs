@@ -34,6 +34,10 @@ configuration for a logical operation.
 
 namespace NCloud::NBlockStore {
 
+namespace NProto {
+class TLatencySliThresholdsConfig;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 using TGrpcClientConfigConstPtr =
@@ -55,6 +59,10 @@ struct TBlockstoreConfigExtraParameters
         // the throughput is not specified.
         ui32 NetworkMbitThroughput = 0;
     } DiskAgent;
+
+    // A present startup file replaces all YAML thresholds, even when empty.
+    std::shared_ptr<const NProto::TLatencySliThresholdsConfig>
+        LatencySliOverride;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,6 +98,9 @@ public:
     GetStorageConfig() const = 0;
     [[nodiscard]] virtual const TDiagnosticsConfigConstPtr&
     GetDiagnosticsConfig() const = 0;
+    [[nodiscard]] virtual const std::shared_ptr<
+        const NProto::TLatencySliThresholdsConfig>&
+    GetLatencySliOverride() const noexcept = 0;
     [[nodiscard]] virtual const NDiscovery::TDiscoveryConfigConstPtr&
     GetDiscoveryServiceConfig() const = 0;
     [[nodiscard]] virtual const NClient::TClientAppConfigConstPtr&
