@@ -16,6 +16,8 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+inline constexpr char GrpcThrottleDelayHeader[] = "x-nbs-throttle-delay-us";
+
 struct TRequestInfo
 {
     const EBlockStoreRequest Request;
