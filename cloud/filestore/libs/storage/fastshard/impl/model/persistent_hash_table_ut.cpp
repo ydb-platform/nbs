@@ -17,6 +17,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr size_t PageSize = 4_KB;
+constexpr ui64 MaxCachedPages = 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -58,7 +59,9 @@ struct TFixture
     const ui64 PageCount = 1024;
     const ui64 SlotSize = sizeof(TSlot);
 
-    IPageStorePtr PageStore = CreateMemPageStore(PageSize);
+    IPageStorePtr PageStore = CreateMemPageStore({
+        .PageSize = PageSize,
+        .MaxCachedPages = MaxCachedPages});
     TPersistentHashTable<ui64, TSlot> Ht;
 
     TFixture()

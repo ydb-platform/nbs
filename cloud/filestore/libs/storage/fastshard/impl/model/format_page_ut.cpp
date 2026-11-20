@@ -17,6 +17,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr size_t PageSize = 4_KB;
+constexpr ui64 MaxCachedPages = 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -52,7 +53,9 @@ void Rollback(TWriteContext& writeContext, IPageStore& pageStore)
 
 TEST(FormatPageTest, ChecksVersions)
 {
-    auto pageStore = CreateMemPageStore(PageSize);
+    auto pageStore = CreateMemPageStore({
+        .PageSize = PageSize,
+        .MaxCachedPages = MaxCachedPages});
 
     const ui64 pageNo = 11;
     TFormatPage formatPage;
@@ -122,7 +125,10 @@ TEST(FormatPageTest, ChecksVersions)
 
 TEST(FormatPageTest, ErrorsOnGarbage)
 {
-    auto pageStore = CreateMemPageStore(PageSize);
+    auto pageStore = CreateMemPageStore({
+        .PageSize = PageSize,
+        .MaxCachedPages = MaxCachedPages});
+
     const ui64 pageNo = 11;
     TFormatPage formatPage;
     formatPage.Init(pageNo, pageStore);
@@ -165,7 +171,10 @@ TEST(FormatPageTest, ErrorsOnGarbage)
 
 TEST(FormatPageTest, ErrorsOnWrongPageNo)
 {
-    auto pageStore = CreateMemPageStore(PageSize);
+    auto pageStore = CreateMemPageStore({
+        .PageSize = PageSize,
+        .MaxCachedPages = MaxCachedPages});
+
     const ui64 pageNo = 11;
     TFormatPage formatPage;
     formatPage.Init(pageNo, pageStore);
