@@ -48,7 +48,10 @@ TIOCompanion::TIOCompanion(
 void TIOCompanion::ProcessIOQueue(const TActorContext& ctx, ui32 channel)
 {
     while (auto request = ChannelsState.DequeueIORequest(channel)) {
-        auto actorId = NCloud::Register(ctx, std::move(request->Actor));
+        const auto actorId =
+            request->UseSameMailbox
+                ? NCloud::RegisterLocal(ctx, std::move(request->Actor))
+                : NCloud::Register(ctx, std::move(request->Actor));
         LOG_TRACE(
             ctx,
             TBlockStoreComponents::PARTITION,

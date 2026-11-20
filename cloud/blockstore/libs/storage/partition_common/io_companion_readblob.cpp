@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/actor_read_blob.h>
 
 #include <cloud/storage/core/libs/common/alloc.h>
+#include <cloud/storage/core/libs/common/public.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -46,6 +47,12 @@ void TIOCompanion::HandleReadBlob(
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
     ui64 bsGroupOperationId = BSGroupOperationId++;
 
+    // Keep the short worker on the partition mailbox. Larger reads retain
+    // a separate mailbox so their copying and CRC work cannot delay the tablet.
+    const bool useSameMailbox =
+        msg->BlobOffsets.size() == 1 &&
+        PartitionConfig.GetBlockSize() == DefaultBlockSize;
+
     auto readBlobActor = std::make_unique<TReadBlobActor>(
         requestInfo,
         ctx.SelfID,
@@ -83,7 +90,7 @@ void TIOCompanion::HandleReadBlob(
         bsGroupOperationId,
         groupId,
         TBSGroupOperationTimeTracker::EOperationType::Read,
-        PartitionConfig.GetBlockSize());
+        PartitionConfig.GetBlockSize(), useSameMailbox);
     ProcessIOQueue(ctx, channel);
 }
 

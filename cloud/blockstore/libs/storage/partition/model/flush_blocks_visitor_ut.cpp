@@ -32,7 +32,7 @@ ui32 ExpectedChecksum(size_t visitOrderIndex)
 }
 
 void VisitDataBlock(
-    TFlushBlocksVisitor& visitor,
+    IFreshBlocksIndexVisitor& visitor,
     ui32 blockIndex,
     const TString& content)
 {
@@ -43,6 +43,41 @@ void VisitDataBlock(
     };
 
     visitor.Visit(block);
+}
+
+void VisitZeroBlock(IFreshBlocksIndexVisitor& visitor, ui32 blockIndex)
+{
+    visitor.Visit({TBlock(blockIndex, 1, false), {}, {}});
+}
+
+void CheckBlobContent(
+    const TFlushBlocksVisitor::TBlob& blob,
+    const TVector<size_t>& visitOrderIndices)
+{
+    UNIT_ASSERT(blob.BlobContent.IsContiguous());
+    UNIT_ASSERT_VALUES_EQUAL(
+        visitOrderIndices.size(),
+        blob.BlobContent.GetBlocksCount());
+    UNIT_ASSERT_VALUES_EQUAL(
+        visitOrderIndices.size() * BlockSize,
+        blob.BlobContent.GetBytesCount());
+
+    const auto owned = blob.BlobContent.ShareContent();
+    UNIT_ASSERT_VALUES_EQUAL(
+        visitOrderIndices.size() * BlockSize,
+        owned.GetSize());
+    for (size_t i = 0; i < visitOrderIndices.size(); ++i) {
+        const auto block = blob.BlobContent.GetBlock(i);
+        UNIT_ASSERT_EQUAL(owned.GetData() + i * BlockSize, block.Data());
+        UNIT_ASSERT_VALUES_EQUAL(
+            MakeBlockContent(visitOrderIndices[i]),
+            block.AsStringBuf());
+        if (i < blob.Checksums.size()) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                ComputeDefaultDigest(block),
+                blob.Checksums[i]);
+        }
+    }
 }
 
 TVector<TFlushBlocksVisitor::TBlob> BuildBlobs(
@@ -76,6 +111,13 @@ TVector<TFlushBlocksVisitor::TBlob> BuildBlobs(
     }
 
     visitor.Finish();
+
+    TFlushBlocksMaterializer materializer(BlockSize, blobs);
+    for (size_t i = 0; i < blockIndices.size(); ++i) {
+        const TString content = MakeBlockContent(i);
+        VisitDataBlock(materializer, blockIndices[i], content);
+    }
+    materializer.Finish();
     return blobs;
 }
 
@@ -376,6 +418,196 @@ Y_UNIT_TEST_SUITE(TFlushBlocksVisitorTest)
         for (size_t i = 0; i < 5; ++i) {
             UNIT_ASSERT_VALUES_EQUAL(ExpectedChecksum(i), blobs[0].Checksums[i]);
         }
+    }
+
+    Y_UNIT_TEST(ShouldMaterializeSplitPayloadIntoFinalOwnedBuffers)
+    {
+        const auto blobs = BuildBlobs(
+            {1, 2, 10, 11, 20},
+            /*readBlockMaskOnCompactionOptimizationEnabled*/ true,
+            /*splitByCompactionRangeMaxBlobCount*/ 3,
+            /*diskPrefixLengthWithBlockChecksumsInBlobs*/ 11 * BlockSize);
+
+        UNIT_ASSERT_VALUES_EQUAL(3, blobs.size());
+        CheckBlobContent(blobs[0], {0, 1});
+        CheckBlobContent(blobs[1], {2, 3});
+        CheckBlobContent(blobs[2], {4});
+        UNIT_ASSERT_VALUES_EQUAL(2, blobs[0].Checksums.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, blobs[1].Checksums.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, blobs[2].Checksums.size());
+    }
+
+    Y_UNIT_TEST(ShouldMaterializeUnsplitPayloadIntoFinalOwnedBuffer)
+    {
+        const auto blobs = BuildBlobs(
+            {1, 2, 10, 11, 20},
+            /*readBlockMaskOnCompactionOptimizationEnabled*/ true,
+            /*splitByCompactionRangeMaxBlobCount*/ 0,
+            /*diskPrefixLengthWithBlockChecksumsInBlobs*/ 11 * BlockSize);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, blobs.size());
+        CheckBlobContent(blobs[0], {0, 1, 2, 3, 4});
+        UNIT_ASSERT_VALUES_EQUAL(3, blobs[0].Checksums.size());
+    }
+
+    Y_UNIT_TEST(ShouldCopySourcesDuringMaterializationVisit)
+    {
+        TCompactionMap compactionMap(
+            CompactionRangeSize,
+            BuildDefaultCompactionPolicy(CompactionThreshold, 0, false));
+        TVector<TFlushBlocksVisitor::TBlob> blobs;
+        TFlushBlocksVisitor planner(
+            BlockSize,
+            1,
+            MaxBlobRangeSize,
+            MaxBlocksInBlob,
+            100 * BlockSize,
+            compactionMap,
+            true,
+            3,
+            TabletId,
+            1,
+            blobs);
+
+        for (ui32 i = 0; i < 3; ++i) {
+            const TString content = MakeBlockContent(i);
+            VisitDataBlock(planner, i * CompactionRangeSize, content);
+        }
+        planner.Finish();
+
+        TFlushBlocksMaterializer materializer(BlockSize, blobs);
+        for (ui32 i = 0; i < 3; ++i) {
+            TString content = MakeBlockContent(i);
+            VisitDataBlock(materializer, i * CompactionRangeSize, content);
+            // The source is changed and destroyed before Finish(). No source
+            // pointer may be retained by the materializer.
+            content.assign(BlockSize, 'z');
+        }
+        materializer.Finish();
+
+        UNIT_ASSERT_VALUES_EQUAL(3, blobs.size());
+        for (size_t i = 0; i < blobs.size(); ++i) {
+            CheckBlobContent(blobs[i], {i});
+        }
+    }
+
+    Y_UNIT_TEST(ShouldMaterializeDataWithInterleavedZeroBlobs)
+    {
+        TCompactionMap compactionMap(
+            CompactionRangeSize,
+            BuildDefaultCompactionPolicy(CompactionThreshold, 0, false));
+        TVector<TFlushBlocksVisitor::TBlob> blobs;
+        TFlushBlocksVisitor planner(
+            BlockSize,
+            1,
+            MaxBlobRangeSize,
+            2,
+            15 * BlockSize,
+            compactionMap,
+            true,
+            3,
+            TabletId,
+            1,
+            blobs);
+
+        auto visit = [&](IFreshBlocksIndexVisitor& visitor) {
+            VisitDataBlock(visitor, 1, MakeBlockContent(0));
+            VisitZeroBlock(visitor, 2);
+            VisitZeroBlock(visitor, 3);
+            VisitDataBlock(visitor, 10, MakeBlockContent(1));
+            VisitDataBlock(visitor, 11, MakeBlockContent(2));
+            VisitZeroBlock(visitor, 20);
+            VisitDataBlock(visitor, 21, MakeBlockContent(3));
+        };
+
+        visit(planner);
+        planner.Finish();
+        TFlushBlocksMaterializer materializer(BlockSize, blobs);
+        visit(materializer);
+        materializer.Finish();
+
+        UNIT_ASSERT_VALUES_EQUAL(6, blobs.size());
+        UNIT_ASSERT(!blobs[0].BlobContent);
+        UNIT_ASSERT_VALUES_EQUAL(2, blobs[0].Blocks.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, blobs[0].BlobContent.GetBytesCount());
+        for (size_t i = 0; i < 4; ++i) {
+            CheckBlobContent(blobs[i + 1], {i});
+        }
+        UNIT_ASSERT(!blobs[5].BlobContent);
+        UNIT_ASSERT_VALUES_EQUAL(1, blobs[5].Blocks.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, blobs[5].BlobContent.GetBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, blobs[4].Checksums.size());
+    }
+
+    Y_UNIT_TEST(ShouldKeepZeroBlobsWithoutPayload)
+    {
+        TCompactionMap compactionMap(
+            CompactionRangeSize,
+            BuildDefaultCompactionPolicy(CompactionThreshold, 0, false));
+        TVector<TFlushBlocksVisitor::TBlob> blobs;
+        TFlushBlocksVisitor planner(
+            BlockSize,
+            1,
+            MaxBlobRangeSize,
+            MaxBlocksInBlob,
+            100 * BlockSize,
+            compactionMap,
+            true,
+            3,
+            TabletId,
+            1,
+            blobs);
+
+        for (ui32 i: {1, 10, 20}) {
+            VisitZeroBlock(planner, i);
+        }
+        planner.Finish();
+        TFlushBlocksMaterializer materializer(BlockSize, blobs);
+        for (ui32 i: {1, 10, 20}) {
+            VisitZeroBlock(materializer, i);
+        }
+        materializer.Finish();
+
+        UNIT_ASSERT_VALUES_EQUAL(3, blobs.size());
+        for (const auto& blob: blobs) {
+            UNIT_ASSERT(!blob.BlobContent);
+            UNIT_ASSERT_VALUES_EQUAL(0, blob.BlobContent.GetBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, blob.BlobContent.GetBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, blob.Checksums.size());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotMaterializeUnflushedDataTail)
+    {
+        TCompactionMap compactionMap(
+            CompactionRangeSize,
+            BuildDefaultCompactionPolicy(CompactionThreshold, 0, false));
+        TVector<TFlushBlocksVisitor::TBlob> blobs;
+        TFlushBlocksVisitor planner(
+            BlockSize,
+            2 * BlockSize,
+            MaxBlobRangeSize,
+            2,
+            100 * BlockSize,
+            compactionMap,
+            true,
+            0,
+            TabletId,
+            1,
+            blobs);
+
+        for (ui32 i = 0; i < 3; ++i) {
+            VisitDataBlock(planner, i, MakeBlockContent(i));
+        }
+        planner.Finish();
+        TFlushBlocksMaterializer materializer(BlockSize, blobs);
+        for (ui32 i = 0; i < 3; ++i) {
+            VisitDataBlock(materializer, i, MakeBlockContent(i));
+        }
+        materializer.Finish();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, blobs.size());
+        CheckBlobContent(blobs[0], {0, 1});
     }
 }
 

@@ -9,6 +9,7 @@ SRCS(
     actor_loadfreshblobs_ut.cpp
     actor_writefreshblocks_ut.cpp
     blob_compressor_ut.cpp
+    blob_buffer_ut.cpp
     checkpoints_in_flight_ut.cpp
     drain_actor_companion_ut.cpp
     long_running_operation_companion_ut.cpp

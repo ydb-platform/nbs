@@ -48,7 +48,7 @@ TRangeCompactionInfo::TRangeCompactionInfo(
     ui32 mixedBlockCountSkippedByCompaction,
     TVector<std::optional<ui32>> blockChecksums,
     EChannelDataKind channelDataKind,
-    TBlockBuffer blobContent,
+    TBlobBuffer blobContent,
     TVector<ui32> zeroBlocks,
     TAffectedBlobs affectedBlobs,
     TAffectedBlocks affectedBlocks,
@@ -471,7 +471,7 @@ void FillBlobsInfoToRead(
 
 struct TBuildBlobContentAndMasksResult
 {
-    TBlockBuffer BlobContent;
+    TBlobBuffer BlobContent;
     TVector<std::optional<ui32>> BlockChecksums;
     TVector<ui32> ZeroBlocks;
     TBlockMask DataBlobSkipMask;
@@ -482,6 +482,8 @@ struct TBuildBlobContentAndMasksResult
 TBuildBlobContentAndMasksResult BuildBlobContentAndMasks(
     const TPartialBlobId& dataBlobId,
     const TPartialBlobId& zeroBlobId,
+    bool useContiguousBuffer,
+    ui32 dataBlockCount,
     TTabletStorageInfo& tabletStorageInfo,
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args,
@@ -489,7 +491,15 @@ TBuildBlobContentAndMasksResult BuildBlobContentAndMasks(
     size_t rangeCompactionInfosSize)
 {
     TBuildBlobContentAndMasksResult result;
-    result.BlobContent = TBlockBuffer(TProfilingAllocator::Instance());
+    result.BlobContent = useContiguousBuffer
+                             ? TBlobBuffer::Allocate(
+                                   state.GetBlockSize(),
+                                   dataBlockCount,
+                                   TProfilingAllocator::Instance())
+                             : TBlobBuffer(TProfilingAllocator::Instance());
+    if (args.ChecksumsEnabled) {
+        result.BlockChecksums.reserve(dataBlockCount);
+    }
 
     ui32 blockIndex = args.BlockRange.Start;
     for (auto& mark: args.BlockMarks) {
@@ -938,15 +948,6 @@ void CompleteRangeCompaction(
         args,
         rangeCompactionInfos.size());
 
-    auto buildBlobContentResult = BuildBlobContentAndMasks(
-        resultBlobIds.DataBlobId,
-        resultBlobIds.ZeroBlobId,
-        tabletStorageInfo,
-        state,
-        args,
-        requests,
-        rangeCompactionInfos.size());
-
     TBlobPatchingResult patchingResult{
         .DataBlobId = resultBlobIds.DataBlobId,
         .PatchingCandidate = {}};
@@ -960,6 +961,22 @@ void CompleteRangeCompaction(
             tabletStorageInfo,
             state);
     }
+
+    // Patch requests intentionally retain the existing per-block buffers: their
+    // unchanged slots are not read, and MakeDiffs consumes only changed slots.
+    // Ordinary writes can read directly into the final owned blob buffer.
+    const bool useContiguousBuffer =
+        resultBlobIds.DataBlobId && !patchingResult.PatchingCandidate;
+    auto buildBlobContentResult = BuildBlobContentAndMasks(
+        resultBlobIds.DataBlobId,
+        resultBlobIds.ZeroBlobId,
+        useContiguousBuffer,
+        dataBlockCount,
+        tabletStorageInfo,
+        state,
+        args,
+        requests,
+        rangeCompactionInfos.size());
 
     if (shouldRecreateBlobMetas) {
         RecreateBlobMetas(args, commitId, tabletId);

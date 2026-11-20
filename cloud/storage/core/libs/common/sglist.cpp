@@ -1,5 +1,7 @@
 #include "sglist.h"
 
+#include <library/cpp/digest/crc32c/crc32c.h>
+
 #include <util/string/builder.h>
 
 namespace NCloud {
@@ -173,6 +175,67 @@ size_t SgListCopy(std::span<const TBlockDataRef> srcList, TBlockDataRef dstBuf)
 size_t SgListCopy(const TSgList& srcList, TBlockDataRef dstBuf)
 {
     return SgListCopy(std::span<const TBlockDataRef>(srcList), dstBuf);
+}
+
+TVector<ui32> SgListCopyWithBlockChecksums(
+    TBlockDataRefSpan src,
+    TBlockDataRef dst,
+    ui32 blockSize)
+{
+    Y_ABORT_UNLESS(blockSize);
+    Y_ABORT_UNLESS(dst.Size() % blockSize == 0);
+
+    size_t sourceSize = 0;
+    for (const auto& fragment: src) {
+        // Also rejects an overflowing source size before touching any bytes.
+        Y_ABORT_UNLESS(fragment.Size() <= dst.Size() - sourceSize);
+        sourceSize += fragment.Size();
+    }
+    Y_ABORT_UNLESS(sourceSize == dst.Size());
+    Y_ABORT_UNLESS(dst.Data() || !dst.Size());
+
+    TVector<ui32> checksums;
+    checksums.reserve(dst.Size() / blockSize);
+
+    char* const destination = const_cast<char*>(dst.Data());
+    size_t sourceIndex = 0;
+    size_t sourceOffset = 0;
+    size_t copied = 0;
+
+    while (copied < dst.Size()) {
+        char* const block = destination + copied;
+        const size_t blockEnd = copied + blockSize;
+
+        while (copied < blockEnd) {
+            while (sourceIndex < src.size() &&
+                   sourceOffset == src[sourceIndex].Size())
+            {
+                ++sourceIndex;
+                sourceOffset = 0;
+            }
+            Y_ABORT_UNLESS(sourceIndex < src.size());
+
+            const auto& fragment = src[sourceIndex];
+            const size_t count =
+                Min(blockEnd - copied, fragment.Size() - sourceOffset);
+            if (fragment.Data()) {
+                memcpy(
+                    destination + copied,
+                    fragment.Data() + sourceOffset,
+                    count);
+            } else {
+                memset(destination + copied, 0, count);
+            }
+            sourceOffset += count;
+            copied += count;
+        }
+
+        // The source can change independently. Only the private bytes that
+        // will actually be sent to storage are valid input for this checksum.
+        checksums.push_back(Crc32c(block, blockSize));
+    }
+
+    return checksums;
 }
 
 TResultOrError<TSgList> SgListNormalize(TBlockDataRef buffer, ui32 blockSize)

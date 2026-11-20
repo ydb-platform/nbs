@@ -810,6 +810,126 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         }
     }
 
+
+    Y_UNIT_TEST_F(
+        ShouldCalculateChecksumsForContiguousAndFragmentedReads,
+        TSetupEnvironment)
+    {
+        constexpr ui32 blockSize = 4096;
+        const NKikimr::TLogoBlobID blobId(142, 1, 2, 3, 5 * blockSize, 4);
+        const TVector<ui16> blobOffsets{0, 2, 3};
+
+        for (const bool checksums: {false, true}) {
+            for (const bool fragmented: {false, true}) {
+                TVector<TString> blocks;
+                auto sglist = ResizeBlocks(
+                    blocks,
+                    blobOffsets.size(),
+                    TString(blockSize, 'x'));
+                TGuardedSgList guardedSglist(std::move(sglist));
+                auto request = std::make_unique<
+                    TEvPartitionCommonPrivate::TEvReadBlobRequest>(
+                    blobId,
+                    EdgeActor,
+                    blobOffsets,
+                    guardedSglist,
+                    12,
+                    false,
+                    TInstant::Max(),
+                    checksums);
+                const auto readActor = ActorSystem.Register(new TReadBlobActor(
+                    MakeIntrusive<TRequestInfo>(
+                        EdgeActor,
+                        0ull,
+                        MakeIntrusive<TCallContext>()),
+                    EdgeActor,
+                    NActors::TActorId(),
+                    0,
+                    blockSize,
+                    checksums,
+                    EStorageAccessMode::Default,
+                    std::move(request),
+                    TDuration(),
+                    0ull,
+                    false));
+
+                auto readBlob =
+                    ActorSystem
+                        .GrabEdgeEvent<NKikimr::TEvBlobStorage::TEvGet>();
+                UNIT_ASSERT_VALUES_EQUAL(2, readBlob->QuerySize);
+
+                auto getResult =
+                    std::make_unique<NKikimr::TEvBlobStorage::TEvGetResult>(
+                        NKikimrProto::OK,
+                        readBlob->QuerySize,
+                        12);
+                for (ui32 i = 0; i < readBlob->QuerySize; ++i) {
+                    const auto& query = readBlob->Queries[i];
+                    auto& response = getResult->Responses[i];
+                    response.Status = NKikimrProto::OK;
+                    response.Id = blobId;
+                    response.Shift = query.Shift;
+                    response.RequestedSize = query.Size;
+                    TString data;
+                    for (ui32 offset = query.Shift / blockSize;
+                         offset < (query.Shift + query.Size) / blockSize;
+                         ++offset)
+                    {
+                        data.append(TString(blockSize, 'a' + offset));
+                    }
+
+                    if (fragmented && i == 1) {
+                        // Both blocks cross source fragment boundaries.
+                        for (size_t offset = 0; offset < data.size();
+                             offset += blockSize / 2)
+                        {
+                            response.Buffer.Insert(
+                                response.Buffer.End(),
+                                TRope(TString(
+                                    data.data() + offset,
+                                    blockSize / 2)));
+                        }
+                        UNIT_ASSERT(
+                            response.Buffer.begin().ContiguousSize() <
+                            blockSize);
+                    } else {
+                        response.Buffer = TRope(std::move(data));
+                        UNIT_ASSERT(
+                            response.Buffer.begin().ContiguousSize() >=
+                            blockSize);
+                    }
+                }
+
+                ActorSystem.Send(new NActors::IEventHandle(
+                    readActor,
+                    EdgeActor,
+                    getResult.release()));
+                auto response = ActorSystem.GrabEdgeEvent<
+                    TEvPartitionCommonPrivate::TEvReadBlobResponse>();
+                UNIT_ASSERT_C(
+                    !HasError(response->GetError()),
+                    response->GetError());
+                UNIT_ASSERT(response->ErrorSource == std::nullopt);
+                auto completed = ActorSystem.GrabEdgeEvent<
+                    TEvPartitionCommonPrivate::TEvReadBlobCompleted>();
+                UNIT_ASSERT(completed->ErrorSource == std::nullopt);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    checksums ? blobOffsets.size() : 0,
+                    response->BlockChecksums.size());
+                for (size_t i = 0; i < blocks.size(); ++i) {
+                    const TString expected(blockSize, 'a' + blobOffsets[i]);
+                    UNIT_ASSERT_VALUES_EQUAL(expected, blocks[i]);
+                    if (checksums) {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            ComputeDefaultDigest(
+                                {expected.data(), expected.size()}),
+                            response->BlockChecksums[i]);
+                    }
+                }
+            }
+        }
+    }
+
     Y_UNIT_TEST_F(ShouldRepairBrokenRanges, TSetupEnvironment)
     {
         const ui32 blockSize = 512;
