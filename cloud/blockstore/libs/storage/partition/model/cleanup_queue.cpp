@@ -1,5 +1,6 @@
 #include "cleanup_queue.h"
 
+#include <util/generic/algorithm.h>
 #include <util/generic/set.h>
 
 #include <utility>
@@ -118,10 +119,13 @@ struct TCleanupQueue::TImpl
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCleanupQueue::TCleanupQueue(ui64 blockSize)
+TCleanupQueue::TCleanupQueue(ui64 blockSize, TVector<ui32> mixedChannels)
     : Impl(new TImpl())
     , BlockSize(blockSize)
-{}
+    , MixedChannels(std::move(mixedChannels))
+{
+    Sort(MixedChannels);
+}
 
 TCleanupQueue::~TCleanupQueue()
 {}
@@ -132,6 +136,14 @@ bool TCleanupQueue::Add(const TCleanupQueueItem& item)
     if (result) {
         QueueBytes += item.BlobId.BlobSize();
         QueueBlocks += item.BlobId.BlobSize() / BlockSize;
+        const bool isMixed = BinarySearch(
+            MixedChannels.begin(),
+            MixedChannels.end(),
+            item.BlobId.Channel());
+        if (isMixed) {
+            QueueMixedBytes += item.BlobId.BlobSize();
+            QueueMixedBlocks += item.BlobId.BlobSize() / BlockSize;
+        }
     }
     return result;
 }
@@ -139,12 +151,10 @@ bool TCleanupQueue::Add(const TCleanupQueueItem& item)
 bool TCleanupQueue::Add(const TVector<TCleanupQueueItem>& items)
 {
     for (const auto& item: items) {
-        bool result = Impl->Add(item);
+        bool result = Add(item);
         if (!result) {
             return false;
         }
-        QueueBytes += item.BlobId.BlobSize();
-        QueueBlocks += item.BlobId.BlobSize() / BlockSize;
     }
     return true;
 }
@@ -155,6 +165,14 @@ bool TCleanupQueue::Remove(const TCleanupQueueItem& item)
     if (result) {
         QueueBytes -= item.BlobId.BlobSize();
         QueueBlocks -= item.BlobId.BlobSize() / BlockSize;
+        const bool isMixed = BinarySearch(
+            MixedChannels.begin(),
+            MixedChannels.end(),
+            item.BlobId.Channel());
+        if (isMixed) {
+            QueueMixedBytes -= item.BlobId.BlobSize();
+            QueueMixedBlocks -= item.BlobId.BlobSize() / BlockSize;
+        }
     }
     return result;
 }
@@ -202,6 +220,16 @@ ui64 TCleanupQueue::GetQueueBytes() const
 ui64 TCleanupQueue::GetQueueBlocks() const
 {
     return QueueBlocks;
+}
+
+ui64 TCleanupQueue::GetQueueMixedBytes() const
+{
+    return QueueMixedBytes;
+}
+
+ui64 TCleanupQueue::GetQueueMixedBlocks() const
+{
+    return QueueMixedBlocks;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

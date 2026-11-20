@@ -232,6 +232,9 @@ TEST(TFastShardLoadTest, ShouldStopAdvancingWhenNotImplemented)
         NCloud::E_NOT_IMPLEMENTED);
 
     auto config = MakeConfig();
+    // one fiber: with more, a second advance can be issued before the
+    // first one is answered
+    config.IoDepth = 1;
     config.ReadPercent = 0;
     config.Requests = 100;
     config.AdvanceEvery = 10;

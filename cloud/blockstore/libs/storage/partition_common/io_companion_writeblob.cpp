@@ -247,8 +247,16 @@ void TWriteBlobActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TResponse> response)
 {
-    if (HasError(response->GetError()) && !response->ErrorSource) {
-        response->ErrorSource = EErrorSource::Local;
+    if (HasError(response->GetError())) {
+        if (!response->ErrorSource) {
+            response->ErrorSource = EErrorSource::Regular;
+        }
+        if (response->ErrorSource == EErrorSource::ContractViolation) {
+            ReportContractViolationWriteBlobError(
+                FormatError(response->GetError()),
+                {{"tabletId", TabletId},
+                 {"blobId", MakeBlobId(TabletId, Request->BlobId).ToString()}});
+        }
     }
 
     NotifyCompleted(ctx, *response);
@@ -309,7 +317,11 @@ void TWriteBlobActor::HandlePutResult(
 
     auto blobId = MakeBlobId(TabletId, Request->BlobId);
     if (msg->Id != blobId) {
-        ReplyError(ctx, *msg, "invalid response received", EErrorSource::Local);
+        ReplyError(
+            ctx,
+            *msg,
+            "invalid response received",
+            EErrorSource::ContractViolation);
         return;
     }
 

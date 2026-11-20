@@ -61,9 +61,9 @@ ui64 TLogPageIndex::GetLastIndexedLsn() const
     return LastIndexedLsn;
 }
 
-auto TLogPageIndex::Lookup(
+TLogPageIndex::TLookupResult TLogPageIndex::Lookup(
     const TVector<TPageRangeRef>& ranges,
-    ui64 afterLsn) const -> TLookupResult
+    ui64 afterLsn) const
 {
     TLookupResult result;
 
@@ -73,12 +73,24 @@ auto TLogPageIndex::Lookup(
         result.LastIndexedLsn = LastIndexedLsn;
 
         if (afterLsn >= LastIndexedLsn) {
+            result.MissingRanges = ranges;
             return result;
         }
 
         for (const auto& range: ranges) {
             const ui64 from = range.FirstPageNo;
             const ui64 to = from + range.PageCount;
+
+            // The first page of the range that is not looked at yet
+            ui64 pageNo = from;
+
+            auto addMissing = [&](ui64 end)
+            {
+                if (pageNo < end) {
+                    result.MissingRanges.push_back(
+                        {.FirstPageNo = pageNo, .PageCount = end - pageNo});
+                }
+            };
 
             auto it = Entries.lower_bound(from);
             if (it != Entries.begin()) {
@@ -101,6 +113,9 @@ auto TLogPageIndex::Lookup(
                 const ui64 clipFrom = Max(entryFrom, from);
                 const ui64 clipTo = Min(entryTo, to);
 
+                addMissing(clipFrom);
+                pageNo = clipTo;
+
                 result.Mappings.push_back(
                     TPageMapping{
                         .PageNo = clipFrom,
@@ -109,6 +124,8 @@ auto TLogPageIndex::Lookup(
                                 location.FirstPageNo + (clipFrom - entryFrom),
                             .PageCount = clipTo - clipFrom}});
             }
+
+            addMissing(to);
         }
     }
 

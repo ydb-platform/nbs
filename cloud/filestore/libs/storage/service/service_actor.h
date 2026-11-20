@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "service_actor_worker_pool.h"
 #include "service_private.h"
 #include "service_state.h"
 
@@ -71,6 +72,8 @@ private:
     TInFlightRequestStoragePtr InFlightRequests;
     ui64 InFlightRequestCounter = 0;
 
+    TReadDataActorPool ReadDataActorPool;
+
     using TCounterPtr = NMonitoring::TDynamicCounters::TCounterPtr;
 
     TCounterPtr CpuWaitCounter;
@@ -90,6 +93,8 @@ private:
     TCounterPtr SsdTabletCount;
 
     TWriteDataZeroCounters WriteDataZeroCounters;
+
+    TCounterPtr ReadDataActorPoolSize;
 
     NProto::EServiceState ServiceState = NProto::SERVICE_STATE_UNKNOWN;
 
@@ -125,8 +130,17 @@ private:
         const TEvServicePrivate::TEvUpdateStats::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleReleaseReadDataActor(
+        const TEvServicePrivate::TEvReleaseReadDataActor::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     template <typename TMethod>
     void ForwardRequest(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev);
+
+    template <typename TMethod>
+    void ForwardRequestWithoutSession(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev);
 

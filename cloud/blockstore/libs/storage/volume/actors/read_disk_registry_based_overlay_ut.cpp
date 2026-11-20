@@ -306,7 +306,7 @@ Y_UNIT_TEST_SUITE(TNonreplReadTests)
                 1,
                 2181038123);
             getResult->Responses[0].Status = NKikimrProto::OK;
-            getResult->Responses[0].Shift = 0;
+            getResult->Responses[0].Shift = readBlob->Queries[0].Shift;
             getResult->Responses[0].RequestedSize = blockSize * 3;
             getResult->Responses[0].Id = readBlob->Queries[0].Id;
 

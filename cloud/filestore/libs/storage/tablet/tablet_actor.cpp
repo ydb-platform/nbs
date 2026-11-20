@@ -100,6 +100,7 @@ TIndexTabletActor::TIndexTabletActor(
           Config->GetFileSystemEventSubscriptionsSealPeriod())
     , BaseStorageConfig(Config->GetStorageConfigProto())
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
+    , FastShard(NFastShard::CreateFileSystemShardStub())
     , FastShardServer(std::move(fastShardServer))
     , FastShardFactory(std::move(fastShardFactory))
     , RdmaTabletRegistry(std::move(rdmaTabletRegistry))
@@ -1152,9 +1153,7 @@ void TIndexTabletActor::HandleServerConnected(
 {
     Y_UNUSED(ctx);
 
-    if (RdmaTabletRegistry) {
-        RdmaTabletRegistry->RegisterPipe(ev->Get()->ServerId, SelfId());
-    }
+    RegisterRdmaPipe(ev->Get()->ServerId);
 }
 
 void TIndexTabletActor::HandleSessionDisconnected(
@@ -1166,7 +1165,7 @@ void TIndexTabletActor::HandleSessionDisconnected(
         LogTag.c_str(),
         ev->Sender.ToString().c_str());
 
-    UnregisterRdmaPipe(ev->Get()->ServerId);
+    UnregisterRdmaPipe(ev->Sender);
     RemoveFileSystemEventClient(ev->Sender);
     OrphanSession(ev->Sender, ctx.Now());
 }
@@ -1264,6 +1263,7 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyResponse>();
 
+    // TODO(#8034): switch to shard topology
     *response->Record.MutableShardFileSystemIds() =
         GetFileSystem().GetShardFileSystemIds();
     response->Record.SetShardNo(GetFileSystem().GetShardNo());
@@ -1276,6 +1276,8 @@ void TIndexTabletActor::HandleGetFileSystemTopology(
     response->Record.SetMaxShardCount(Config->GetMaxShardCount());
     response->Record.SetCompressNodeRef(GetCompressNodeRef());
     response->Record.SetMainFileSystemId(GetMainFileSystemId());
+    *response->Record.MutableShardTopology() =
+        GetFileSystem().GetShardTopology();
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
@@ -2190,6 +2192,13 @@ void TIndexTabletActor::UnregisterFileStore(const NActors::TActorContext& ctx)
         GetGeneration());
 
     ctx.Send(MakeStorageServiceId(), request.release());
+}
+
+void TIndexTabletActor::RegisterRdmaPipe(const TActorId& pipeServerId)
+{
+    if (RdmaTabletRegistry) {
+        RdmaTabletRegistry->RegisterPipe(pipeServerId, SelfId());
+    }
 }
 
 void TIndexTabletActor::UnregisterRdmaPipe(const TActorId& pipeServerId)

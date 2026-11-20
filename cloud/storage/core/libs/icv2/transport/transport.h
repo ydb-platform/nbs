@@ -3,7 +3,6 @@
 #include "connection.h"
 
 #include <util/generic/ptr.h>
-#include <util/generic/size_literals.h>
 
 namespace NActors {
 
@@ -22,8 +21,6 @@ class TStreamSocket;
 namespace NCloud::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-constexpr ui64 DefaultMaxOutputQueueBytes = 512_MB;
 
 struct ITransport
 {
@@ -55,10 +52,9 @@ using ITransportPtr = std::shared_ptr<ITransport>;
 // Requires exclusive control of an unused engine.
 // maxOutputQueueBytes limits the combined output queues of all connections,
 // including data not yet released after a connection closes.
-// Zero maxOutputQueueBytes selects DefaultMaxOutputQueueBytes.
 // Optional eventDestructor receives outgoing payloads for deferred destruction.
 // Stop() does not wait for deferred destruction to complete.
-// Returns null if engine is null.
+// Returns null if engine is null or maxOutputQueueBytes is zero.
 ITransportPtr CreateTransport(
     NActors::TUringEnginePtr engine,
     ui64 maxOutputQueueBytes,

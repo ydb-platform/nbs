@@ -342,7 +342,10 @@ void WriteReadData4KBench(benchmark::State& state, const TShardFactory& factory)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void RegisterShardBenchmarks(TString name, TShardFactory factory)
+void RegisterShardBenchmarks(
+    TString name,
+    TShardFactory factory,
+    ui32 cpuCount)
 {
     //
     // The requests are executed on the shard implementation's own threads,
@@ -352,8 +355,9 @@ void RegisterShardBenchmarks(TString name, TShardFactory factory)
 
     benchmark::RegisterBenchmark(
         (name + "CreateUnlinkNode").c_str(),
-        [factory](benchmark::State& state) {
+        [factory, cpuCount](benchmark::State& state) {
             CreateUnlinkNodeBench(state, factory);
+            state.counters["cpus"] = cpuCount;
         })
         ->Arg(1)->Arg(8)->Arg(32)->Arg(256)
         ->Unit(benchmark::kMicrosecond)
@@ -362,8 +366,9 @@ void RegisterShardBenchmarks(TString name, TShardFactory factory)
 
     benchmark::RegisterBenchmark(
         (name + "WriteReadData4K").c_str(),
-        [factory](benchmark::State& state) {
+        [factory, cpuCount](benchmark::State& state) {
             WriteReadData4KBench(state, factory);
+            state.counters["cpus"] = cpuCount;
         })
         ->Arg(1)->Arg(8)->Arg(32)->Arg(256)
         ->Unit(benchmark::kMicrosecond)

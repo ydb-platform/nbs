@@ -15,6 +15,7 @@ namespace NCloud::NFileStore::NProto {
 
 namespace NCloud::NFileStore::NProtoPrivate {
     class TListNodesInternalResponse;
+    class TShardTopology;
 }   // namespace NCloud::NFileStore::NProtoPrivate
 
 namespace NCloud::NFileStore::NStorage {
@@ -61,6 +62,17 @@ public:
 
     [[nodiscard]] ui32 GetIndex() const;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Adds a shard that stores both files and directories.
+void AddOrdinaryShard(
+    const TString& shardId,
+    NProtoPrivate::TShardTopology& topology);
+
+// Converts shard ids list into default topology representation.
+NProtoPrivate::TShardTopology BuildOrdinaryShardTopology(
+    const google::protobuf::RepeatedPtrField<TString>& shardIds);
 
 ////////////////////////////////////////////////////////////////////////////////
 

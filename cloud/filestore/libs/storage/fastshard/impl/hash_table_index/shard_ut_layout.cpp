@@ -280,3 +280,27 @@ TEST(HashTableIndexShardLayoutTest, DumpsLayout)
 
     EXPECT_FALSE(html.Str().Contains("{{")) << html.Str();
 }
+
+TEST(HashTableIndexShardLayoutTest, RejectsLayoutChange)
+{
+    TStorageFixture fx;
+
+    auto shard = CreateHashTableIndexFileSystemShard(
+        "fs0",
+        ShardNo,
+        1 /* generation */,
+        fx.Factory,
+        fx.Config);
+
+    NProtoPrivate::TFastShardConfig config;
+    *config.MutablePersistentConfig() = fx.Config;
+    EXPECT_EQ(S_OK, shard->ValidateConfigUpdate(config, config).GetCode());
+
+    auto nodes = config;
+    nodes.MutablePersistentConfig()->SetNodesPerGroup(NodesPerGroup / 2);
+    EXPECT_EQ(E_ARGUMENT, shard->ValidateConfigUpdate(config, nodes).GetCode());
+
+    auto capacity = config;
+    capacity.MutablePersistentConfig()->SetExpectedGroupCapacity(128_MB);
+    EXPECT_EQ(E_ARGUMENT, shard->ValidateConfigUpdate(config, capacity).GetCode());
+}

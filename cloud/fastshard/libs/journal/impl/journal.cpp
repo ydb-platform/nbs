@@ -17,6 +17,7 @@
 #include <util/string/builder.h>
 
 #include <atomic>
+#include <mutex>
 #include <utility>
 
 namespace NCloud::NJournalled {
@@ -189,6 +190,21 @@ TVector<TPageRangeRef> GetPageRanges(
     return ranges;
 }
 
+TVector<TPageRangeRef> GetPageRanges(
+    const NProto::TReadPagesRequest& request)
+{
+    TVector<TPageRangeRef> ranges;
+    ranges.reserve(request.PageGroupRefsSize());
+
+    for (const auto& ref: request.GetPageGroupRefs()) {
+        ranges.push_back(
+            {.FirstPageNo = ref.GetFirstPageNo(),
+             .PageCount = ref.GetPageCount()});
+    }
+
+    return ranges;
+}
+
 // TODO(#6956): return TVector<TArrayRef> to avoid unnecessary copying
 TVector<TBuffer> GetPages(const NProto::TWriteLogRecordRequest& request)
 {
@@ -219,7 +235,9 @@ TLogRecordPtr CreateRecord(const NProto::TWriteLogRecordRequest& request)
 // in the i-th page of the locations.
 TVector<TPageMapping> CreatePageMappings(
     const TVector<TPageRangeRef>& requestPageRanges,
-    const TVector<TPageRangeRef>& locations)
+    const TVector<TPageRangeRef>& locations,
+    const TString& deviceUUID,
+    ui64 recordLsn)
 {
     auto totalPageCount = [](const TVector<TPageRangeRef>& ranges)
     {
@@ -234,10 +252,11 @@ TVector<TPageMapping> CreatePageMappings(
 
     // Verify that the locations hold exactly as many pages as the request -
     // the page store allocates the page count it is asked for
-    STORAGE_VERIFY(
+    STORAGE_VERIFY_C(
         pageCount == totalPageCount(locations),
-        "PageCount",
-        pageCount);
+        "JournalledDevice",
+        deviceUUID,
+        "Lsn: " << recordLsn << ", pageCount: " << pageCount);
 
     TVector<TPageMapping> mappings;
 
@@ -306,13 +325,17 @@ private:
     const TExecutorPtr Executor;
     const IKeyBufferStorePtr MetaStore;
     const IDevicePageStorePtr DataStore;
+    const TString DeviceUUID;
     const ui64 DevicePageCount;
 
     TLog Log;
 
+    // Lets one thread at a time move a ready record to the page index.
+    std::mutex ChainLock;
     TLogRecordChain LogRecordChain;
     TLogPageIndex LogPageIndex;
-    mutable TLsnBarrier FlushedLsnBarrier;
+    std::shared_ptr<TLsnBarrier> FlushedLsnBarrier =
+        std::make_shared<TLsnBarrier>();
 
     std::atomic<bool> AdvancingLsnLowWatermark = false;
     std::atomic<ui64> LsnLowWatermark = 0;
@@ -323,6 +346,7 @@ public:
         TExecutorPtr executor,
         IKeyBufferStorePtr metaStore,
         IDevicePageStorePtr dataStore,
+        TString deviceUUID,
         ui64 devicePageCount);
 
     // Restores the journal state and returns lsn of the last indexed record
@@ -331,8 +355,8 @@ public:
     [[nodiscard]] auto Write(NProto::TWriteLogRecordRequest request)
         -> TFuture<NProto::TWriteLogRecordResponse> override;
 
-    [[nodiscard]] auto Read(NProto::TReadPagesRequest request) const
-        -> TFuture<NProto::TReadPagesResponse> override;
+    [[nodiscard]] TResultOrError<TJournalReadResult> Read(
+        NProto::TReadPagesRequest request) const override;
 
     [[nodiscard]] NProto::TReadJournalTailResponse ReadTail(
         NProto::TReadJournalTailRequest request) const override;
@@ -362,11 +386,19 @@ private:
     NProto::TError ValidateWriteRequest(
         const NProto::TWriteLogRecordRequest& request) const;
 
-    NProto::TError WriteLogRecord(
+    TFuture<NProto::TError> WriteLogRecord(
         TLogRecord& record,
         const NProto::TWriteLogRecordRequest& request);
 
+    void OnWriteLogRecord(NProto::TError error, TLogRecord& record);
+
+    void FreePages(const TVector<TPageRangeRef>& locations, ui64 lsn);
+
     void IndexChainedRecords();
+
+    static NProto::TReadPagesResponse OnRead(
+        const TLogPageIndex::TLookupResult& lookup,
+        const TResultOrError<TVector<TBuffer>>& buffersOrError);
 
     NProto::TError ReadPageGroups(
         const TVector<TPageMapping>& mappings,
@@ -380,11 +412,13 @@ TJournal::TJournal(
     TExecutorPtr executor,
     IKeyBufferStorePtr metaStore,
     IDevicePageStorePtr dataStore,
+    TString deviceUUID,
     ui64 devicePageCount)
     : Logging(std::move(logging))
     , Executor(std::move(executor))
     , MetaStore(std::move(metaStore))
     , DataStore(std::move(dataStore))
+    , DeviceUUID(std::move(deviceUUID))
     , DevicePageCount(devicePageCount)
     , Log(Logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
 {}
@@ -491,7 +525,7 @@ TResultOrError<ui64> TJournal::Restore()
 
     LogRecordChain.InitLastErasedLsn(headLsn);
     LogPageIndex.InitLastIndexedLsn(headLsn);
-    FlushedLsnBarrier.Advance(headLsn);
+    FlushedLsnBarrier->Advance(headLsn);
 
     //
     // Rebuild the page store allocation and the chain
@@ -509,7 +543,11 @@ TResultOrError<ui64> TJournal::Restore()
         }
 
         bool marked = LogRecordChain.MarkAsReady(record->PrevLsn);
-        STORAGE_VERIFY(marked, "MarkAsReady", record->PrevLsn);
+        STORAGE_VERIFY_C(
+            marked,
+            "JournalledDevice",
+            DeviceUUID,
+            "Lsn: " << record->Lsn);
     }
 
     //
@@ -665,18 +703,38 @@ TFuture<NProto::TWriteLogRecordResponse> TJournal::Write(
     // while it was being written as well - or mark a written one as ready
     //
 
-    auto error = WriteLogRecord(*record, request);
+    auto future = WriteLogRecord(*record, request);
+    return future.Apply(
+        [record = std::move(record), weakSelf = weak_from_this()](auto future)
+        {
+            auto self = weakSelf.lock();
+            if (!self) {
+                record->Promise.SetValue(
+                    TErrorResponse(E_CANCELLED, "TJournal is destroyed"));
+            } else {
+                self->OnWriteLogRecord(future.ExtractValue(), *record);
+            }
 
+            return record->Promise.GetFuture();
+        });
+}
+
+void TJournal::OnWriteLogRecord(NProto::TError error, TLogRecord& record)
+{
     const bool completed = HasError(error)
-        ? LogRecordChain.Remove(record->PrevLsn)
-        : LogRecordChain.MarkAsReady(record->PrevLsn);
+        ? LogRecordChain.Remove(record.PrevLsn)
+        : LogRecordChain.MarkAsReady(record.PrevLsn);
 
     // Verify that the record was still held in the chain and not ready yet
-    STORAGE_VERIFY(completed, "PrevLsn", record->PrevLsn);
+    STORAGE_VERIFY_C(
+        completed,
+        "JournalledDevice",
+        DeviceUUID,
+        "Lsn: " << record.Lsn);
 
     if (HasError(error)) {
-        record->Promise.SetValue(TErrorResponse(error));
-        return record->Promise.GetFuture();
+        record.Promise.SetValue(TErrorResponse(std::move(error)));
+        return;
     }
 
     //
@@ -686,8 +744,6 @@ TFuture<NProto::TWriteLogRecordResponse> TJournal::Write(
     //
 
     IndexChainedRecords();
-
-    return record->Promise.GetFuture();
 }
 
 NProto::TError TJournal::ValidateWriteRequest(
@@ -696,7 +752,7 @@ NProto::TError TJournal::ValidateWriteRequest(
     return ValidatePageRanges(request.GetPageGroups(), DevicePageCount);
 }
 
-NProto::TError TJournal::WriteLogRecord(
+TFuture<NProto::TError> TJournal::WriteLogRecord(
     TLogRecord& record,
     const NProto::TWriteLogRecordRequest& request)
 {
@@ -711,37 +767,29 @@ NProto::TError TJournal::WriteLogRecord(
 
     auto locations = DataStore->Allocate(pages.size());
     if (locations.empty() && !pages.empty()) {
-        return MakeError(
+        return MakeFuture(MakeError(
             E_REJECTED,
             TStringBuilder() << "not enough free journal pages to write "
-                             << pages.size() << " pages");
+                             << pages.size() << " pages"));
     }
 
-    bool success = false;
-
-    Y_DEFER
-    {
-        if (!success) {
-            auto freeError = DataStore->Free(locations);
-            if (HasError(freeError)) {
-                STORAGE_ERROR(
-                    "unable to free the pages of the failed record with lsn "
-                    << record.Lsn << ": " << FormatError(freeError));
-            }
-        }
-    };
-
-    record.PageMappings = CreatePageMappings(requestPageRanges, locations);
+    record.PageMappings = CreatePageMappings(
+        requestPageRanges,
+        locations,
+        DeviceUUID,
+        record.Lsn);
     record.PagesCrc = CalculatePagesCrc(pages);
 
     //
     // Issue the record write first: the log metadata rejects a record it cannot
     // take right away. Nothing is in flight then, so skip the page write and
     // free the pages at once
+    //
 
     auto futureOrError = MetaStore->Write(record.Lsn, SerializeRecord(record));
     if (HasError(futureOrError)) {
-        return futureOrError.GetError();
+        FreePages(locations, record.Lsn);
+        return MakeFuture(futureOrError.GetError());
     }
 
     auto metaFuture = futureOrError.ExtractResult();
@@ -754,85 +802,171 @@ NProto::TError TJournal::WriteLogRecord(
 
     auto dataFuture = DataStore->Write(locations, pages);
 
-    const auto& metaError = Executor->WaitFor(metaFuture);
-    const auto& dataError = Executor->WaitFor(dataFuture);
+    return WaitAll(metaFuture.IgnoreResult(), dataFuture.IgnoreResult())
+        .Apply(
+            [weakSelf = weak_from_this(),
+             locations,
+             lsn = record.Lsn,
+             metaFuture,
+             dataFuture](const auto&)
+            {
+                const auto& metaError = metaFuture.GetValue();
+                const auto& dataError = dataFuture.GetValue();
 
-    if (HasError(metaError)) {
-        return metaError;
+                if (HasError(metaError) || HasError(dataError)) {
+                    if (auto self = weakSelf.lock()) {
+                        self->FreePages(locations, lsn);
+                    }
+                    return HasError(metaError) ? metaError : dataError;
+                }
+
+                return NProto::TError();
+            });
+}
+
+void TJournal::FreePages(const TVector<TPageRangeRef>& locations, ui64 lsn)
+{
+    auto error = DataStore->Free(locations);
+    if (HasError(error)) {
+        STORAGE_ERROR(
+            "unable to free the pages of the failed record with lsn "
+            << lsn << ": " << FormatError(error));
     }
-
-    if (HasError(dataError)) {
-        return dataError;
-    }
-
-    success = true;
-    return {};
 }
 
 void TJournal::IndexChainedRecords()
 {
     //
-    // Index the ready records that continue the page index and complete
-    // their promises
+    // Index the ready records that continue the page index. Several threads
+    // can do this at the same time
     //
 
-    while (auto r = LogRecordChain.GetNext(LogPageIndex.GetLastIndexedLsn())) {
-        bool applied = LogPageIndex.TryApplyNext(*r);
+    while (true) {
+        TLogRecordPtr record;
 
-        // Verify that the page index has taken the record - it is the ready
-        // one chained to the last indexed lsn, so it continues the index
-        STORAGE_VERIFY(applied, "Lsn", r->Lsn);
+        {
+            //
+            // Take the lock, or two threads could index the same record
+            //
 
-        r->Promise.SetValue(TErrorResponse(S_OK));
+            std::lock_guard lock(ChainLock);
+
+            auto lastIndexedLsn = LogPageIndex.GetLastIndexedLsn();
+            record = LogRecordChain.GetNext(lastIndexedLsn);
+            if (!record) {
+                break;
+            }
+
+            bool applied = LogPageIndex.TryApplyNext(*record);
+
+            // Verify that the page index has taken the record
+            STORAGE_VERIFY_C(
+                applied,
+                "JournalledDevice",
+                DeviceUUID,
+                "Lsn: " << record->Lsn);
+        }
+
+        //
+        // Complete the promise without the lock: its subscribers send the
+        // response, and other threads must not wait for that
+        //
+
+        record->Promise.SetValue(TErrorResponse(S_OK));
     }
 }
 
-TFuture<NProto::TReadPagesResponse> TJournal::Read(
+TResultOrError<TJournalReadResult> TJournal::Read(
     NProto::TReadPagesRequest request) const
 {
-    using TResponse = NProto::TReadPagesResponse;
-
     auto err = ValidatePageRanges(request.GetPageGroupRefs(), DevicePageCount);
     if (HasError(err)) {
-        return MakeFuture<TResponse>(TErrorResponse(std::move(err)));
+        return err;
     }
 
     //
     // Pin the flushed lsn until the read is done: the records past it stay in
-    // the journal, and the ones up to it are on the device already
+    // the journal, and the ones up to it are on the device already. The read
+    // finishes after this method returns, so the guard is shared with the
+    // callback below
     //
 
-    auto lsnBarrierGuard = FlushedLsnBarrier.Acquire();
+    auto lsnBarrierGuard =
+        std::make_shared<TLsnBarrier::TGuard>(FlushedLsnBarrier->Acquire());
 
     //
     // Look up the journalled pages of the requested ranges, skipping the
     // flushed records - the reader takes their pages from the device
     //
 
-    TVector<TPageRangeRef> ranges;
-    ranges.reserve(request.PageGroupRefsSize());
-    for (const auto& ref: request.GetPageGroupRefs()) {
-        ranges.push_back(
-            {.FirstPageNo = ref.GetFirstPageNo(),
-             .PageCount = ref.GetPageCount()});
+    const auto ranges = GetPageRanges(request);
+    auto lookup = LogPageIndex.Lookup(ranges, lsnBarrierGuard->GetLsn());
+
+    TJournalReadResult result;
+    result.MissingRanges = std::move(lookup.MissingRanges);
+
+    //
+    // Answer at once when no requested page is in the journal - there is
+    // nothing to read from the data store
+    //
+
+    if (lookup.Mappings.empty()) {
+        NProto::TReadPagesResponse response;
+        response.SetLastAckedLogSequenceNumber(lookup.LastIndexedLsn);
+        result.Future = MakeFuture(std::move(response));
+        return result;
     }
 
-    auto lookup = LogPageIndex.Lookup(ranges, lsnBarrierGuard.GetLsn());
+    //
+    // Start reading the journalled pages and return without waiting, so that
+    // the caller can read the missing pages from the device at the same time
+    //
+
+    auto future = DataStore->Read(GetLocations(lookup.Mappings));
+
+    result.Future = future.Apply(
+        [lsnBarrierGuard = std::move(lsnBarrierGuard),
+         lookup = std::move(lookup)](const auto& future)
+        {
+            // Release the flushed lsn when the read is done and not when the
+            // callback object is destroyed, which can be much later
+            auto guard = std::move(*lsnBarrierGuard);
+
+            return OnRead(lookup, future.GetValue());
+        });
+
+    return result;
+}
+
+NProto::TReadPagesResponse TJournal::OnRead(
+    const TLogPageIndex::TLookupResult& lookup,
+    const TResultOrError<TVector<TBuffer>>& buffersOrError)
+{
+    if (HasError(buffersOrError)) {
+        return TErrorResponse(buffersOrError.GetError());
+    }
 
     //
     // Fill the response with the content of the journalled pages and the lsn
     // the page index was looked up at
     //
 
-    TResponse response;
+    NProto::TReadPagesResponse response;
     response.SetLastAckedLogSequenceNumber(lookup.LastIndexedLsn);
 
-    auto error = ReadPageGroups(lookup.Mappings, response.MutablePageGroups());
+    size_t bufferCount = 0;
+    auto error = FillPageGroups(
+        lookup.Mappings,
+        buffersOrError.GetResult(),
+        0, /* firstBufferIndex */
+        &bufferCount,
+        response.MutablePageGroups());
+
     if (HasError(error)) {
-        return MakeFuture<TResponse>(TErrorResponse(error));
+        return TErrorResponse(std::move(error));
     }
 
-    return MakeFuture(std::move(response));
+    return response;
 }
 
 NProto::TReadJournalTailResponse TJournal::ReadTail(
@@ -844,7 +978,7 @@ NProto::TReadJournalTailResponse TJournal::ReadTail(
     //
 
     auto lsnBarrierGuard =
-        FlushedLsnBarrier.AcquireAtLeast(request.GetAfterLogSequenceNumber());
+        FlushedLsnBarrier->AcquireAtLeast(request.GetAfterLogSequenceNumber());
 
     //
     // Walk the ready records that follow each other unbroken past the pinned
@@ -945,19 +1079,19 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
     ui64 maxPageCount) const
 {
     //
-    // Pin the flushed lsn and take the ready records right after it, in
-    // chain order - stop at the first one that has not been acked yet or is
-    // past what the caller allows
+    // Take the ready records right after the flushed lsn, in chain order -
+    // stop at the first one that has not been acked yet or is past what the
+    // caller allows
     //
 
-    auto lsnBarrierGuard = FlushedLsnBarrier.Acquire();
+    const ui64 flushedLsn = FlushedLsnBarrier->Acquire().GetLsn();
 
     const ui64 lsnLowWatermark =
         LsnLowWatermark.load(std::memory_order_acquire);
     const ui64 maxLsn = Min(maxAllowedLsn, lsnLowWatermark);
 
     auto run = LogRecordChain.GetReadyRun(
-        lsnBarrierGuard.GetLsn(),
+        flushedLsn,
         0 /* maxRecordCount */);
 
     //
@@ -1034,7 +1168,7 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
 
 void TJournal::MarkRecordAsFlushed(ui64 lsn)
 {
-    FlushedLsnBarrier.Advance(lsn);
+    FlushedLsnBarrier->Advance(lsn);
 }
 
 NProto::TError TJournal::CleanupFlushedRecords()
@@ -1045,7 +1179,7 @@ NProto::TError TJournal::CleanupFlushedRecords()
     // must not find a record whose pages have been reused
     //
 
-    ui64 eraseUpToLsn = FlushedLsnBarrier.GetBarrierLsn();
+    ui64 eraseUpToLsn = FlushedLsnBarrier->GetBarrierLsn();
 
     // The meta store holds the records by their lsn
     auto future = MetaStore->EraseBelow(eraseUpToLsn + 1);
@@ -1064,39 +1198,40 @@ NProto::TError TJournal::CleanupFlushedRecords()
     // record the chain does not hold ready
     STORAGE_VERIFY_C(
         !HasError(recordsOrError),
-        "Lsn",
-        eraseUpToLsn,
-        FormatError(recordsOrError.GetError()));
+        "JournalledDevice",
+        DeviceUUID,
+        "Lsn: " << eraseUpToLsn << ", error: "
+                << FormatError(recordsOrError.GetError()));
 
-    auto records = recordsOrError.ExtractResult();
+    auto erased = recordsOrError.ExtractResult();
 
     // The index holds the records by their lsn
     LogPageIndex.EraseBelow(eraseUpToLsn + 1);
 
-    auto result = MakeError(S_OK);
-    for (const auto& record: records) {
-        //
-        // Fail the writer still waiting on a ready record stranded below the
-        // erased watermark - a flushed record has its promise set already
-        //
+    //
+    // Fail the writers of the stranded records: nobody else answers them.
+    // The thread that indexed a chained record sets its promise
+    //
 
+    for (const auto& record: erased.Stranded) {
         const TString message = TStringBuilder()
             << "record with lsn " << record->Lsn << " chaining from lsn "
             << record->PrevLsn << " can no longer join the chain";
 
-        const bool stranded = record->Promise.TrySetValue(
-            TErrorResponse(E_INVALID_STATE, message));
+        record->Promise.SetValue(TErrorResponse(E_INVALID_STATE, message));
+        ReportJournalStrandedRecordDetectedError(message);
+    }
 
-        if (stranded) {
-            ReportJournalStrandedRecordDetectedError(message);
-        }
-
-        auto error = DataStore->Free(GetLocations(record->PageMappings));
-        if (HasError(error)) {
-            STORAGE_ERROR(
-                "unable to free the pages of the flushed record with lsn "
-                << record->Lsn << ": " << FormatError(error));
-            result = error;
+    auto result = MakeError(S_OK);
+    for (const auto* records: {&erased.Chained, &erased.Stranded}) {
+        for (const auto& record: *records) {
+            auto error = DataStore->Free(GetLocations(record->PageMappings));
+            if (HasError(error)) {
+                STORAGE_ERROR(
+                    "unable to free the pages of the erased record with lsn "
+                    << record->Lsn << ": " << FormatError(error));
+                result = error;
+            }
         }
     }
 
@@ -1131,6 +1266,7 @@ IJournalPtr CreateJournal(
     TExecutorPtr executor,
     IKeyBufferStorePtr metaStore,
     IDevicePageStorePtr dataStore,
+    TString deviceUUID,
     ui64 devicePageCount)
 {
     return std::make_shared<TJournal>(
@@ -1138,6 +1274,7 @@ IJournalPtr CreateJournal(
         std::move(executor),
         std::move(metaStore),
         std::move(dataStore),
+        std::move(deviceUUID),
         devicePageCount);
 }
 

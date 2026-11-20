@@ -20,7 +20,7 @@ namespace {
 struct TEnvironment
     : public NUnitTest::TBaseFixture
 {
-    TTestEnv Env;
+    std::unique_ptr<TTestEnv> Env;
     std::unique_ptr<TIndexTabletClient> Tablet;
 
     ui64 Id = 0;
@@ -28,11 +28,13 @@ struct TEnvironment
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
-        const ui32 nodeIdx = Env.AddDynamicNode();
-        const ui64 tabletId = Env.BootIndexTablet(nodeIdx);
+        Env = std::make_unique<TTestEnv>();
+
+        const ui32 nodeIdx = Env->AddDynamicNode();
+        const ui64 tabletId = Env->BootIndexTablet(nodeIdx);
 
         Tablet = std::make_unique<TIndexTabletClient>(
-            Env.GetRuntime(),
+            Env->GetRuntime(),
             nodeIdx,
             tabletId
         );
@@ -43,7 +45,10 @@ struct TEnvironment
     }
 
     void TearDown(NUnitTest::TTestContext& /*context*/) override
-    {}
+    {
+        Tablet.reset();
+        Env.reset();
+    }
 
     void WriteData(ui64 offset, ui64 length, char fill)
     {

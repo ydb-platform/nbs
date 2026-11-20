@@ -149,7 +149,7 @@ void TIndexTabletActor::CompleteResponse(
         TraceSerializer,
         *SystemCounters,
         GetFileSystemId(),
-        FastShard != nullptr,
+        GetFileSystem().GetIsFastShard(),
         *Metrics,
         response,
         callContext,

@@ -19,6 +19,9 @@
 #include <contrib/ydb/core/base/logoblob.h>
 
 #include <util/generic/maybe.h>
+#include <util/generic/string.h>
+#include <util/generic/vector.h>
+
 #include <util/system/align.h>
 #include <util/system/yassert.h>
 
@@ -159,6 +162,20 @@ NProto::TError ValidateNodeName(const TString& name);
 NProto::TError ValidateXAttrName(const TString& name);
 NProto::TError ValidateXAttrValue(const TString& name, const TString& value);
 NProto::TError ValidateRange(TByteRange byteRange, ui32 maxFileBlocks);
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Ensures that every shard id has an entry in the topology. Handles the rare
+// case when a filesystem is created by the new code, then rolled back and
+// altered by the old code. This is not expected to happen.
+void RestoreShardTopology(
+    const google::protobuf::RepeatedPtrField<TString>& shardIds,
+    NProtoPrivate::TShardTopology& topology);
+
+TVector<TString> GetFileShardIds(const NProto::TFileSystem& fileSystem);
+
+NProto::TError ValidateShardTopology(
+    const NProtoPrivate::TShardTopology& topology);
 
 ////////////////////////////////////////////////////////////////////////////////
 

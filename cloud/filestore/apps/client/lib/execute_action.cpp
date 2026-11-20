@@ -129,6 +129,7 @@ private:
                     << fileSystemId));
         }
 
+        // TODO(#8034): switch to shard topology
         TVector<TString> targets{fileSystemId};
         targets.insert(
             targets.end(),

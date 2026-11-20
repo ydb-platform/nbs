@@ -22,6 +22,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/scope.h>
+#include <util/generic/size_literals.h>
 #include <util/system/mutex.h>
 
 #include <future>
@@ -539,7 +540,7 @@ struct TNetworkFixture
             common->Settings.V2.ChecksumEvents = checksums;
             Transports[i] = NCloud::NIcV2::CreateTransport(
                 NActors::CreateUringEngine(std::move(common)),
-                0,
+                64_MB,
                 {});
             UNIT_ASSERT(Transports[i]);
             TRequestChannelConfig config;
@@ -719,6 +720,35 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         auto write =
             f.Endpoint->WriteBlocks(MakeIntrusive<TCallContext>(), request);
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, Wait(write).GetError().GetCode());
+        UNIT_ASSERT(f.Channel->Requests.empty());
+    }
+
+    Y_UNIT_TEST(RejectsEmptyProtobufWrite)
+    {
+        TFixture f;
+        auto request = MakeRequest<NProto::TWriteBlocksRequest>();
+        request->SetBlockSize(BlockSize);
+
+        auto write =
+            f.Endpoint->WriteBlocks(MakeIntrusive<TCallContext>(), request);
+
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, Wait(write).GetError().GetCode());
+        UNIT_ASSERT(f.Channel->Requests.empty());
+    }
+
+    Y_UNIT_TEST(RejectsEmptyLocalWrite)
+    {
+        TFixture f;
+        auto request = MakeRequest<NProto::TWriteBlocksLocalRequest>();
+        request->SetBlockSize(BlockSize);
+        request->BlocksCount = 0;
+        request->Sglist = TGuardedSgList(TSgList{});
+
+        auto write = f.Endpoint->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            request);
+
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, Wait(write).GetError().GetCode());
         UNIT_ASSERT(f.Channel->Requests.empty());
     }
 

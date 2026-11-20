@@ -318,7 +318,7 @@ func (s *storageYDB) checkBaseDiskSlotsReleasedByOverlayDiskIDPrefix(
 	defer res.Close()
 
 	for res.NextResultSet(ctx) {
-		for res.NextRow() {
+		if res.NextRow() {
 			slot, err := scanSlot(res)
 			if err != nil {
 				return err

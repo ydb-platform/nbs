@@ -4,6 +4,7 @@ RECURSE(
     api
     auth
     common
+    compression
     coroutine
     daemon
     diagnostics

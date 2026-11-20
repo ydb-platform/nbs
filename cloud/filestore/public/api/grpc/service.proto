@@ -9,6 +9,7 @@ import "cloud/filestore/public/api/protos/fs.proto";
 import "cloud/filestore/public/api/protos/locks.proto";
 import "cloud/filestore/public/api/protos/node.proto";
 import "cloud/filestore/public/api/protos/ping.proto";
+import "cloud/filestore/public/api/protos/quota.proto";
 import "cloud/filestore/public/api/protos/server.proto";
 import "cloud/filestore/public/api/protos/session.proto";
 
@@ -193,6 +194,31 @@ service TFileStoreService
     rpc DestroyCheckpoint(TDestroyCheckpointRequest) returns (TDestroyCheckpointResponse) {
         option (google.api.http) = {
             post: "/destroy_checkpoint"
+            body: "*"
+        };
+    }
+
+    //
+    // Quota management.
+    //
+
+    rpc SetQuota(TSetQuotaRequest) returns (TSetQuotaResponse) {
+        option (google.api.http) = {
+            post: "/set_quota"
+            body: "*"
+        };
+    }
+
+    rpc DeleteQuota(TDeleteQuotaRequest) returns (TDeleteQuotaResponse) {
+        option (google.api.http) = {
+            post: "/delete_quota"
+            body: "*"
+        };
+    }
+
+    rpc ListQuotas(TListQuotasRequest) returns (TListQuotasResponse) {
+        option (google.api.http) = {
+            post: "/list_quotas"
             body: "*"
         };
     }
