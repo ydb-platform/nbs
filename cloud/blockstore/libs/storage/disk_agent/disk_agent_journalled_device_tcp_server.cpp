@@ -107,6 +107,14 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
 
     Executor = TExecutor::Create("JD");
 
+    const ui32 connectionExecutors =
+        AgentConfig->GetJournalConnectionExecutors();
+
+    for (ui32 i = 0; i != connectionExecutors; ++i) {
+        ConnectionExecutors.push_back(
+            TExecutor::Create(TStringBuilder() << "JD.Conn" << i));
+    }
+
     auto deviceManager = CreateDeviceManager(
         CreateWallClockTimer(),
         State->GetDeviceClient(),
@@ -121,13 +129,15 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
         TBlockStoreComponents::DISK_AGENT,
         "Starting journalled device TCP server on "
             << address.Quote() << ", restoring up to " << restoreConcurrency
-            << " journals at once...");
+            << " journals at once, with " << connectionExecutors
+            << " connection executor(s)...");
 
     try {
         JournalledDeviceTcpServer = NJournalled::TServerBuilder(
             Logging,
             Executor,
             deviceManager,
+            ConnectionExecutors,
             NJournalled::TServerConfig{
                 .ListenAddress = CreateNetworkAddress(address),
                 .JournalEnabled = AgentConfig->GetJournalEnabled(),
@@ -136,6 +146,9 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
             std::move(configs)).Build();
 
         Executor->Start();
+        for (const auto& executor: ConnectionExecutors) {
+            executor->Start();
+        }
 
         JournalledDeviceTcpServer->Start();
 
