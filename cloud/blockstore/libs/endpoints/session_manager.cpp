@@ -70,6 +70,7 @@ private:
 
     std::weak_ptr<TSessionSwitchingGuard> SwitchingGuard;
     TString SessionId;
+    NProto::TVolume MountedVolume;
 
 public:
     TEndpoint(
@@ -107,6 +108,7 @@ public:
             DataClient->Stop();
         } else {
             SessionId = response.GetSessionId();
+            MountedVolume = response.GetVolume();
         }
 
         return response.GetError();
@@ -145,6 +147,11 @@ public:
         }
 
         return response.GetError();
+    }
+
+    const NProto::TVolume& GetMountedVolume() const
+    {
+        return MountedVolume;
     }
 
     ISessionPtr GetSession() const
@@ -531,11 +538,17 @@ public:
     void SwitchSession(
         const TString& diskId,
         const TString& newDiskId) override;
+    void SwitchSessionToCell(
+        const TString& diskId,
+        const TString& newDiskId,
+        const TString& cellId,
+        const TString& newCellId) override;
 
 private:
     TSessionOrError CreateSessionImpl(
         TCallContextPtr callContext,
-        NProto::TStartEndpointRequest request);
+        NProto::TStartEndpointRequest request,
+        ui32 redirects = 0);
 
     NProto::TError RemoveSessionImpl(
         TCallContextPtr callContext,
@@ -588,7 +601,14 @@ private:
         const TString& socketPath,
         TEndpointPtr endpoint,
         const TString& diskId,
-        const TString& newDiskId);
+        const TString& newDiskId,
+        const TString& newCellId);
+    void SwitchSessionImpl(
+        const TString& diskId,
+        const TString& newDiskId,
+        const TString& cellId,
+        const TString& newCellId,
+        bool matchCell);
     void StopEndpoint(TCallContextPtr callContext, TEndpointPtr oldEndpoint);
     void StopEndpointImpl(
         TCallContextPtr callContext,
@@ -611,8 +631,12 @@ TFuture<TSessionManager::TSessionOrError> TSessionManager::CreateSession(
 
 TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
     TCallContextPtr callContext,
-    NProto::TStartEndpointRequest request)
+    NProto::TStartEndpointRequest request,
+    ui32 redirects)
 {
+    if (redirects >= 8) {
+        return TErrorResponse(E_REJECTED, "Too many principal redirects");
+    }
     auto describeResponse = DescribeVolume(
         callContext,
         request.GetDiskId(),
@@ -629,7 +653,11 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
     } else if (volume.GetPrincipalDiskId()) {
         // The original volume has lost leadership. Use principal volume instead.
         request.SetDiskId(volume.GetPrincipalDiskId());
-        return CreateSessionImpl(std::move(callContext), std::move(request));
+        if (volume.GetPrincipalCellId()) {
+            request.MutableHeaders()->SetCellId(volume.GetPrincipalCellId());
+        }
+        return CreateSessionImpl(
+            std::move(callContext), std::move(request), redirects + 1);
     }
 
     auto result = CreateEndpoint(request, volume, cellId);
@@ -638,9 +666,24 @@ TSessionManager::TSessionOrError TSessionManager::CreateSessionImpl(
     }
     const auto& endpoint = result.GetResult();
 
-    auto error = endpoint->Start(std::move(callContext), request.GetHeaders());
+    auto error = endpoint->Start(callContext, request.GetHeaders());
     if (HasError(error)) {
         return TErrorResponse(error);
+    }
+
+    const auto& mounted = endpoint->GetMountedVolume();
+    if (mounted.GetPrincipalDiskId()) {
+        auto redirected = request;
+        redirected.SetDiskId(mounted.GetPrincipalDiskId());
+        const auto targetCell = mounted.GetPrincipalCellId()
+            ? mounted.GetPrincipalCellId() : cellId;
+        redirected.MutableHeaders()->SetCellId(targetCell);
+        const auto stopError = endpoint->Stop(callContext, request.GetHeaders());
+        if (HasError(stopError)) {
+            return TErrorResponse(stopError);
+        }
+        return CreateSessionImpl(
+            std::move(callContext), std::move(redirected), redirects + 1);
     }
 
     with_lock (EndpointLock) {
@@ -844,10 +887,31 @@ void TSessionManager::SwitchSession(
     const TString& diskId,
     const TString& newDiskId)
 {
+    SwitchSessionImpl(diskId, newDiskId, {}, {}, false);
+}
+
+void TSessionManager::SwitchSessionToCell(
+    const TString& diskId,
+    const TString& newDiskId,
+    const TString& cellId,
+    const TString& newCellId)
+{
+    SwitchSessionImpl(diskId, newDiskId, cellId, newCellId, true);
+}
+
+void TSessionManager::SwitchSessionImpl(
+    const TString& diskId,
+    const TString& newDiskId,
+    const TString& cellId,
+    const TString& newCellId,
+    bool matchCell)
+{
     bool endpointFound = false;
     with_lock (EndpointLock) {
         for (const auto& [socketPath, endpoint]: Endpoints) {
-            if (endpoint->GetDiskId() != diskId) {
+            if (endpoint->GetDiskId() != diskId ||
+                (matchCell && endpoint->GetCellId() != cellId))
+            {
                 continue;
             }
             endpointFound = true;
@@ -873,7 +937,8 @@ void TSessionManager::SwitchSession(
                             socketPath,
                             std::move(endpoint),
                             diskId,
-                            newDiskId);
+                            newDiskId,
+                            newCellId);
                     }
                     switchingGuard.reset();
                 });
@@ -959,7 +1024,8 @@ TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(
         Logging,
         weak_from_this(),
         volume.GetDiskId(),
-        std::move(client));
+        std::move(client),
+        cellId);
     client = switchableClient;
 
     if (Options.TemporaryServer) {
@@ -1128,7 +1194,8 @@ void TSessionManager::SwitchSessionForEndpoint(
     const TString& socketPath,
     TEndpointPtr endpoint,
     const TString& diskId,
-    const TString& newDiskId)
+    const TString& newDiskId,
+    const TString& newCellId)
 {
     STORAGE_INFO(
         "Start session switching: " << diskId.Quote() << " -> "
@@ -1139,6 +1206,12 @@ void TSessionManager::SwitchSessionForEndpoint(
     // Prepare request for new endpoint
     auto newStartRequest = endpoint->GetStartRequest();
     newStartRequest.SetDiskId(newDiskId);
+    if (newCellId) {
+        newStartRequest.MutableHeaders()->SetCellId(newCellId);
+        newStartRequest.MutableHeaders()->SetExactDiskIdMatch(true);
+    } else {
+        newStartRequest.MutableHeaders()->ClearCellId();
+    }
 
     // Describe new disk
     auto describeResponse =

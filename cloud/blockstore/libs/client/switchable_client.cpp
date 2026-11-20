@@ -105,6 +105,7 @@ private:
     TLog Log;
     const ISessionSwitcherWeakPtr SessionSwitcher;
     const TClientInfo PrimaryClientInfo;
+    const TString PrimaryCellId;
     TClientInfo SecondaryClientInfo;
 
     // BeforeSwitching() sets the WillSwitchToSecondary to true. After that,
@@ -126,13 +127,15 @@ public:
         ILoggingServicePtr logging,
         ISessionSwitcherWeakPtr sessionSwitcher,
         TString diskId,
-        IBlockStorePtr client)
+        IBlockStorePtr client,
+        TString cellId)
         : Log(logging->CreateLog("BLOCKSTORE_CLIENT"))
         , SessionSwitcher(std::move(sessionSwitcher))
         , PrimaryClientInfo(
               {.Client = std::move(client),
                .DiskId = std::move(diskId),
                .SessionId = {}})
+        , PrimaryCellId(std::move(cellId))
     {}
 
     void BeforeSwitching() override
@@ -291,7 +294,7 @@ private:
                 std::move(request));
 
         return future.Subscribe(
-            [sessionSwitcher = SessionSwitcher]   //
+            [sessionSwitcher = SessionSwitcher, cellId = PrimaryCellId]   //
             (const TFuture<NProto::TMountVolumeResponse>& future)
             {
                 const NProto::TMountVolumeResponse& response =
@@ -301,9 +304,13 @@ private:
                     response.GetVolume().GetPrincipalDiskId())
                 {
                     if (auto switcher = sessionSwitcher.lock()) {
-                        switcher->SwitchSession(
-                            response.GetVolume().GetDiskId(),
-                            response.GetVolume().GetPrincipalDiskId());
+                        const auto& volume = response.GetVolume();
+                        switcher->SwitchSessionToCell(
+                            volume.GetDiskId(),
+                            volume.GetPrincipalDiskId(),
+                            cellId,
+                            volume.GetPrincipalCellId()
+                                ? volume.GetPrincipalCellId() : cellId);
                     }
                 }
             });
@@ -338,13 +345,15 @@ ISwitchableBlockStorePtr CreateSwitchableClient(
     ILoggingServicePtr logging,
     ISessionSwitcherWeakPtr sessionSwitcher,
     TString diskId,
-    IBlockStorePtr client)
+    IBlockStorePtr client,
+    TString cellId)
 {
     return std::make_shared<TSwitchableBlockStore>(
         std::move(logging),
         std::move(sessionSwitcher),
         std::move(diskId),
-        std::move(client));
+        std::move(client),
+        std::move(cellId));
 }
 
 TSessionSwitchingGuardPtr CreateSessionSwitchingGuard(

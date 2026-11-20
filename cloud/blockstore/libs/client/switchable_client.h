@@ -41,6 +41,19 @@ struct ISessionSwitcher
     virtual void SwitchSession(
         const TString& diskId,
         const TString& newDiskId) = 0;
+
+    // Existing implementations keep their same-cell callback. NBS endpoint
+    // management overrides this method to route an explicit cell transition.
+    virtual void SwitchSessionToCell(
+        const TString& diskId,
+        const TString& newDiskId,
+        const TString& cellId,
+        const TString& newCellId)
+    {
+        Y_UNUSED(cellId);
+        Y_UNUSED(newCellId);
+        SwitchSession(diskId, newDiskId);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -58,7 +71,8 @@ ISwitchableBlockStorePtr CreateSwitchableClient(
     ILoggingServicePtr logging,
     ISessionSwitcherWeakPtr sessionSwitcher,
     TString diskId,
-    IBlockStorePtr client);
+    IBlockStorePtr client,
+    TString cellId = {});
 
 ////////////////////////////////////////////////////////////////////////////////
 

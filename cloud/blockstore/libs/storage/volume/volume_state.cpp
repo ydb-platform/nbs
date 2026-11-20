@@ -1348,7 +1348,9 @@ void TVolumeState::UpdateLeadershipStatus()
         {
             LeadershipStatus = ELeadershipStatus::LeadershipTransferred;
             PrincipalDiskId = followerInfo.Link.FollowerDiskId;
-            PrincipalCellId = followerInfo.Link.FollowerCellId;
+            if (followerInfo.Link.LeaderCellId != followerInfo.Link.FollowerCellId) {
+                PrincipalCellId = followerInfo.Link.FollowerCellId;
+            }
             return;
         }
     }

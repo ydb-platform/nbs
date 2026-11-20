@@ -246,6 +246,57 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     request.MutableHeaders()->CopyFrom(headers);
     request.SetDiskId(diskId);
 
+    // Explicit principal redirects address one cell. Ordinary endpoint discovery
+    // without a cell header keeps the existing fan-out/filtering behaviour.
+    if (const auto cellId = headers.GetCellId(); cellId) {
+        request.MutableHeaders()->SetCellId(cellId);
+        if (cellId == Config->GetCellId()) {
+            return Bootstrap.LocalService->DescribeVolume(
+                std::move(callContext),
+                std::make_shared<NProto::TDescribeVolumeRequest>(std::move(request)))
+                .Apply([](const auto& future)
+                {
+                    auto response = ExtractResponse(future);
+                    response.ClearCellId(); // local storage path
+                    return response;
+                });
+        }
+        // The endpoint's headers may contain local request metadata. Only
+        // public fields may cross the cell's client/server boundary.
+        request.MutableHeaders()->ClearInternal();
+        NProto::TClientAppConfig app;
+        *app.MutableClientConfig() = clientConfig;
+        auto config = std::make_shared<NClient::TClientAppConfig>(std::move(app));
+        return CreateConnection(cellId, {}, config, {}).Apply(
+            [callContext = std::move(callContext), request = std::move(request),
+             cellId](const auto& future) mutable -> TDescribeVolumeFuture
+            {
+                auto result = ExtractResponse(future);
+                if (HasError(result)) {
+                    NProto::TDescribeVolumeResponse response;
+                    *response.MutableError() = result.GetError();
+                    return NThreading::MakeFuture(std::move(response));
+                }
+                auto connection = result.ExtractResult();
+                auto service = connection ? connection->GetService() : nullptr;
+                if (!service) {
+                    return NThreading::MakeFuture(
+                        ErrorResponse<NProto::TDescribeVolumeResponse>(
+                            E_REJECTED, "Cell service is unavailable"));
+                }
+                return service->DescribeVolume(
+                    std::move(callContext),
+                    std::make_shared<NProto::TDescribeVolumeRequest>(std::move(request)))
+                    .Apply([connection = std::move(connection), cellId](const auto& reply)
+                    {
+                        Y_UNUSED(connection);
+                        auto response = ExtractResponse(reply);
+                        response.SetCellId(cellId);
+                        return response;
+                    });
+            });
+    }
+
     auto configuredCellCount = Config->GetCells().size();
     if (configuredCellCount == 0) {
         return Bootstrap.LocalService->DescribeVolume(
