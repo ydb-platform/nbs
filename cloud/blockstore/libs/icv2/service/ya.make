@@ -16,6 +16,7 @@ PEERDIR(
     cloud/blockstore/libs/icv2/transport
     cloud/storage/core/libs/icv2/request_channel
     cloud/blockstore/libs/service
+    cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/icv2/handshake
     cloud/storage/core/libs/icv2/tcp

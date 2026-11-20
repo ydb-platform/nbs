@@ -1,50 +1,34 @@
 #pragma once
 
-#include "public.h"
+#include <cloud/storage/core/libs/common/startable.h>
+#include <cloud/storage/core/libs/icv2/peer/peer.h>
 
 namespace NCloud::NBlockStore::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TRequestClientConfig
-{
-    ui32 MaxPendingRequests = 1024;
-    ui64 MaxPayloadBytes = 64 * 1024 * 1024;
-};
-
-struct TRequestClientResponse
-{
-    std::unique_ptr<NActors::IEventHandle> Event;
-    std::weak_ptr<NCloud::NIcV2::IRequestChannel> Channel;
-};
-
-using TRequestClientResult = TResultOrError<TRequestClientResponse>;
-// Consume the result once with ExtractValue().
-using TRequestClientFuture = NThreading::TFuture<TRequestClientResult>;
-using TChannelProvider = std::function<TChannelFuture(const TString&)>;
-
-// Shared deadline/admission owner for requests waiting for a connection.
-// One subscription per key, one timer for all requests. Never resends events.
-// Results and their continuations run on completions and stay in its budget.
-// Provider and completions must remain operational through external Stop.
+// Requests for one peer share a subscription while waiting for its channel.
+// The channel receives the remaining request time at send. Each event is sent
+// at most once. Consume the response with ExtractValue().
+// Asynchronous results are dispatched through completions.
+// RequestStop closes the peer to complete requests already sent to a channel.
+// WhenClosed waits for completion tasks and calls that enqueue them.
+// Keep the completion queue running through external Stop.
 // Calls outside the running lifetime and unpublished results at shutdown get
-// E_CANCELLED. Admission overload gets E_REJECTED.
-struct IRequestClient: public IStartable
+// E_CANCELLED.
+struct IPeerRequestClient: public IStartable
 {
-    virtual TRequestClientFuture Request(
-        TString key,
+    virtual NCloud::NIcV2::TResponseFuture Request(
         std::unique_ptr<NActors::IEventBase> event,
-        TInstant deadline,
-        ui64 payloadBytes) = 0;
+        TInstant deadline) = 0;
     virtual void RequestStop() = 0;
-    virtual NThreading::TFuture<void> WhenClosed() const = 0;
+    [[nodiscard]] virtual NThreading::TFuture<void> WhenClosed() const = 0;
 };
 
-using IRequestClientPtr = std::shared_ptr<IRequestClient>;
+using IPeerRequestClientPtr = std::shared_ptr<IPeerRequestClient>;
 
-TResultOrError<IRequestClientPtr> CreateRequestClient(
-    TRequestClientConfig config,
-    TChannelProvider provider,
+TResultOrError<IPeerRequestClientPtr> CreatePeerRequestClient(
+    NCloud::NIcV2::IPeerPtr peer,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ITaskQueuePtr completions);

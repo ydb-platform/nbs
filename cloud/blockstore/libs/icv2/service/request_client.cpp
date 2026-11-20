@@ -1,19 +1,28 @@
 #include "request_client.h"
 
+#include <cloud/storage/core/libs/common/scheduler.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/common/timer.h>
+
 #include <util/generic/hash.h>
-#include <util/generic/hash_set.h>
+#include <util/generic/scope.h>
+#include <util/generic/set.h>
 #include <util/generic/vector.h>
 #include <util/generic/yexception.h>
+#include <util/system/mutex.h>
 
-#include <mutex>
-#include <set>
+#include <atomic>
+#include <optional>
 
 namespace NCloud::NBlockStore::NIcV2 {
 
 using namespace NThreading;
 
-using NCloud::NIcV2::IRequestChannel;
+using NCloud::NIcV2::IPeerPtr;
+using NCloud::NIcV2::TChannelFuture;
+using NCloud::NIcV2::TChannelResult;
 using NCloud::NIcV2::TResponseFuture;
+using NCloud::NIcV2::TResponseResult;
 
 namespace {
 
@@ -24,148 +33,122 @@ NProto::TError MakeTimeoutError()
     return MakeError(E_TIMEOUT, "IC V2 request timed out");
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 struct TClientRequest
 {
-    ui64 Id;
-    TString Key;
     std::unique_ptr<NActors::IEventBase> Event;
-    ui64 Bytes;
     TInstant Deadline;
-    TPromise<TRequestClientResult> Promise =
-        NewPromise<TRequestClientResult>();
+    TPromise<TResponseResult> Promise;
 };
 
-struct TConnectingPeer
-{
-    ui64 Id;
-    THashSet<ui64> Requests;
-};
+////////////////////////////////////////////////////////////////////////////////
 
-class TRequestClient final
-    : public IRequestClient
-    , public std::enable_shared_from_this<TRequestClient>
+class TPeerRequestClient final
+    : public IPeerRequestClient
+    , public std::enable_shared_from_this<TPeerRequestClient>
 {
-    const TRequestClientConfig Config;
-    const TChannelProvider Provider;
+    enum class EPhase: ui32
+    {
+        Created,
+        Running,
+        Stopping,
+        Stopped,
+    };
+
+    struct TState
+    {
+        ui32 Operations = 0;
+        EPhase Phase = EPhase::Created;
+    };
+
+    static_assert(std::atomic<TState>::is_always_lock_free);
+    static constexpr ui32 RequestOperationCount = 3;
+
+    const IPeerPtr Peer;
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;
     const ITaskQueuePtr Completions;
 
-    std::mutex LifecycleMutex;
-    std::mutex Mutex;
-    THashMap<ui64, std::shared_ptr<TClientRequest>> Pending;
-    THashMap<TString, TConnectingPeer> Connecting;
-    std::set<std::pair<TInstant, ui64>> Deadlines;
-    ui64 NextRequestId = 1;
-    ui64 NextConnectionId = 1;
-    size_t Outstanding = 0;
-    ui64 PayloadBytes = 0;
-    size_t Callbacks = 0;
-    bool TimerArmed = false;
-    bool Started = false;
-    bool Stopping = false;
-    bool Published = false;
+    std::atomic<TState> State{TState{}};
     TPromise<void> Closed = NewPromise<void>();
 
+    TMutex WaitingMutex;
+    // Keep the subscription even if every waiter expires.
+    std::atomic<bool> WaitingForChannel = false;
+    THashMap<ui64, TClientRequest> WaitingRequests;
+    TSet<std::pair<TInstant, ui64>> ConnectionDeadlines;
+    std::optional<TInstant> ScheduledDeadline;
+    ui64 TimerGeneration = 0;
+    ui64 NextRequestId = 1;
+
 public:
-    TRequestClient(
-        TRequestClientConfig config,
-        TChannelProvider provider,
+    TPeerRequestClient(
+        IPeerPtr peer,
         ITimerPtr timer,
         ISchedulerPtr scheduler,
         ITaskQueuePtr completions)
-        : Config(config)
-        , Provider(std::move(provider))
+        : Peer(std::move(peer))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Completions(std::move(completions))
     {}
 
-    ~TRequestClient() override
+    ~TPeerRequestClient() override
     {
         Stop();
     }
 
+    // IPeerRequestClient implementation
+
     void Start() override
     {
-        std::lock_guard lifecycle(LifecycleMutex);
-        std::lock_guard guard(Mutex);
-        Y_ABORT_UNLESS(!Started && !Stopping);
-        Started = true;
+        TState expected;
+        Y_ABORT_UNLESS(State.compare_exchange_strong(
+            expected,
+            TState{.Operations = 0, .Phase = EPhase::Running}));
     }
 
-    TRequestClientFuture Request(
-        TString key,
+    TResponseFuture Request(
         std::unique_ptr<NActors::IEventBase> event,
-        TInstant deadline,
-        ui64 payloadBytes) override
+        TInstant deadline) override
     {
         const auto keepAlive = shared_from_this();
-        std::shared_ptr<TClientRequest> request;
-        ui64 connectionId = 0;
+        // The request call, completion task and Enqueue may finish separately.
+        if (!TryReserveOperations(RequestOperationCount)) {
+            return MakeFuture<TResponseResult>(MakeCancelledError());
+        }
+        Y_DEFER
         {
-            std::lock_guard guard(Mutex);
-            if (!Started || Stopping) {
-                return MakeFuture<TRequestClientResult>(MakeError(
-                    E_CANCELLED,
-                    "IC V2 request client is not running"));
-            }
-            if (key.empty() || !event) {
-                return MakeFuture<TRequestClientResult>(
-                    MakeError(E_ARGUMENT, "empty IC V2 request key or event"));
-            }
-            if (Timer->Now() >= deadline) {
-                return MakeFuture<TRequestClientResult>(MakeTimeoutError());
-            }
-            if (Outstanding >= Config.MaxPendingRequests ||
-                payloadBytes > Config.MaxPayloadBytes ||
-                PayloadBytes > Config.MaxPayloadBytes - payloadBytes)
-            {
-                return MakeFuture<TRequestClientResult>(MakeError(
-                    E_REJECTED,
-                    "IC V2 request admission limit reached"));
-            }
-            Y_ABORT_UNLESS(NextRequestId, "IC V2 request IDs exhausted");
-            request = std::make_shared<TClientRequest>(
-                NextRequestId++,
-                std::move(key),
-                std::move(event),
-                payloadBytes,
-                deadline);
-            Pending.emplace(request->Id, request);
-            Deadlines.emplace(deadline, request->Id);
-            ++Outstanding;
-            PayloadBytes += payloadBytes;
-            auto [it, inserted] = Connecting.try_emplace(request->Key);
-            if (inserted) {
-                Y_ABORT_UNLESS(
-                    NextConnectionId,
-                    "IC V2 connection IDs exhausted");
-                connectionId = NextConnectionId++;
-                it->second.Id = connectionId;
-                ++Callbacks;
-            }
-            it->second.Requests.insert(request->Id);
+            ReleaseOperations(1);
+        };
+
+        if (!event) {
+            ReleaseOperations(RequestOperationCount - 1);
+            return MakeFuture<TResponseResult>(
+                MakeError(E_ARGUMENT, "empty IC V2 request event"));
         }
-        ArmTimer();
-        if (connectionId) {
-            Provider(request->Key)
-                .Subscribe(
-                    [weak = weak_from_this(),
-                     key = request->Key,
-                     connectionId]   //
-                    (const TChannelFuture& future)
-                    {
-                        if (auto self = weak.lock()) {
-                            self->OnChannel(
-                                key,
-                                connectionId,
-                                future.GetValue());
-                        }
-                    });
-            FinishCallback();
+        if (Timer->Now() >= deadline) {
+            ReleaseOperations(RequestOperationCount - 1);
+            return MakeFuture<TResponseResult>(MakeTimeoutError());
         }
-        return request->Promise.GetFuture();
+
+        TClientRequest request{
+            .Event = std::move(event),
+            .Deadline = deadline,
+            .Promise = NewPromise<TResponseResult>(),
+        };
+        auto future = request.Promise.GetFuture();
+        TChannelFuture channel;
+        if (!WaitingForChannel.load()) {
+            channel = Peer->GetChannel();
+            if (channel.HasValue()) {
+                DispatchRequest(std::move(request), channel.GetValue());
+                return future;
+            }
+        }
+        EnqueueForChannel(std::move(request), std::move(channel));
+        return future;
     }
 
     TFuture<void> WhenClosed() const override
@@ -175,241 +158,268 @@ public:
 
     void RequestStop() override
     {
-        THashMap<ui64, std::shared_ptr<TClientRequest>> pending;
-        ui64 bytes = 0;
+        if (!TryBeginStop()) {
+            return;
+        }
+
+        THashMap<ui64, TClientRequest> waiting;
         {
-            std::lock_guard guard(Mutex);
-            if (Stopping) {
-                return;
-            }
-            Stopping = true;
-            pending.swap(Pending);
-            Connecting.clear();
-            Deadlines.clear();
-            if (!pending.empty()) {
-                ++Callbacks;
-                for (const auto& [id, request]: pending) {
-                    bytes += request->Bytes;
-                }
-            }
+            TGuard<TMutex> guard(WaitingMutex);
+            waiting.swap(WaitingRequests);
+            WaitingForChannel.store(false);
+            ConnectionDeadlines.clear();
+            ScheduledDeadline.reset();
         }
-        if (!pending.empty()) {
+        if (!waiting.empty()) {
+            const auto count = static_cast<ui32>(waiting.size());
             Completions->ExecuteSimple(
-                [self = shared_from_this(), pending = std::move(pending), bytes]
+                [self = shared_from_this(),
+                 waiting = std::move(waiting),
+                 count]() mutable
                 {
-                    const auto error = MakeError(
-                        E_CANCELLED,
-                        "IC V2 request client is stopping");
-                    for (const auto& [id, request]: pending) {
-                        request->Promise.SetValue(error);
+                    const auto error = MakeCancelledError();
+                    for (auto& [id, request]: waiting) {
+                        request.Promise.SetValue(error);
                     }
-                    self->FinishResults(pending.size(), bytes);
+                    self->ReleaseOperations(count);
                 });
+            ReleaseOperations(count);
         }
-        PublishClosed();
+        Peer->Close();
+        ReleaseOperations(1);
     }
 
     void Stop() override
     {
-        std::lock_guard lifecycle(LifecycleMutex);
         RequestStop();
         Closed.GetFuture().GetValueSync();
     }
 
 private:
-    void OnChannel(
-        const TString& cellId,
-        ui64 connectionId,
-        const TChannelResult& result)
+    static NProto::TError MakeCancelledError()
     {
-        THashSet<ui64> requests;
-        {
-            std::lock_guard guard(Mutex);
-            const auto it = Connecting.find(cellId);
-            if (Stopping || it == Connecting.end() ||
-                it->second.Id != connectionId)
-            {
-                return;
-            }
-            requests.swap(it->second.Requests);
-            Connecting.erase(it);
-            ++Callbacks;
-        }
-        for (ui64 id: requests) {
-            Send(id, result);
-        }
-        FinishCallback();
+        return MakeError(E_CANCELLED, "IC V2 request client is stopping");
     }
 
-    void Send(ui64 id, const TChannelResult& result)
+    void EnqueueForChannel(TClientRequest request, TChannelFuture channel)
     {
-        std::unique_ptr<NActors::IEventBase> event;
-        TDuration remaining;
+        bool subscribe = false;
         {
-            std::lock_guard guard(Mutex);
-            const auto* request = Pending.FindPtr(id);
-            if (Stopping || !request) {
+            TGuard<TMutex> guard(WaitingMutex);
+            if (!IsRunning()) {
+                guard.Release();
+                EnqueueCompletion(
+                    std::move(request.Promise),
+                    MakeCancelledError());
                 return;
             }
-            const auto now = Timer->Now();
-            if (now < (*request)->Deadline) {
-                remaining = (*request)->Deadline - now;
-                event = std::move((*request)->Event);
+            const ui64 id = NextRequestId++;
+            ConnectionDeadlines.emplace(request.Deadline, id);
+            WaitingRequests.emplace(id, std::move(request));
+            if (!WaitingForChannel.load()) {
+                WaitingForChannel.store(true);
+                subscribe = true;
             }
         }
-        if (!remaining) {
-            Complete(id, MakeTimeoutError());
+        if (subscribe) {
+            if (!channel.Initialized()) {
+                channel = Peer->GetChannel();
+            }
+            channel.Subscribe(
+                [weak = weak_from_this()](const TChannelFuture& future)
+                {
+                    if (auto self = weak.lock()) {
+                        self->HandleChannelResult(future.GetValue());
+                    }
+                });
+        }
+        ArmTimer();
+    }
+
+    void HandleChannelResult(const TChannelResult& result)
+    {
+        if (!TryReserveOperations(1)) {
+            return;
+        }
+
+        THashMap<ui64, TClientRequest> waiting;
+        {
+            TGuard<TMutex> guard(WaitingMutex);
+            waiting.swap(WaitingRequests);
+            ConnectionDeadlines.clear();
+            ScheduledDeadline.reset();
+            WaitingForChannel.store(false);
+        }
+        for (auto& [id, request]: waiting) {
+            DispatchRequest(std::move(request), result);
+        }
+        ReleaseOperations(1);
+    }
+
+    void DispatchRequest(TClientRequest request, const TChannelResult& result)
+    {
+        if (!IsRunning()) {
+            EnqueueCompletion(std::move(request.Promise), MakeCancelledError());
+            return;
+        }
+        const auto now = Timer->Now();
+        if (now >= request.Deadline) {
+            EnqueueCompletion(std::move(request.Promise), MakeTimeoutError());
             return;
         }
         if (HasError(result.GetError())) {
-            Complete(id, result.GetError());
+            EnqueueCompletion(std::move(request.Promise), result.GetError());
             return;
         }
-        const auto& channel = result.GetResult();
-        const std::weak_ptr<IRequestChannel> weakChannel = channel;
-        channel->Request(std::move(event), remaining)
+
+        result.GetResult()
+            ->Request(std::move(request.Event), request.Deadline - now)
             .Subscribe(
-                [weak = weak_from_this(), id, weakChannel]   //
-                (TResponseFuture future)
+                [self = shared_from_this(),
+                 promise = std::move(request.Promise)]   //
+                (TResponseFuture future) mutable
                 {
-                    if (auto self = weak.lock()) {
-                        auto [event, error] = future.ExtractValue();
-                        if (HasError(error)) {
-                            self->Complete(id, error);
-                        } else {
-                            self->Complete(
-                                id,
-                                TRequestClientResponse{
-                                    .Event = std::move(event),
-                                    .Channel = weakChannel});
-                        }
-                    }
+                    self->EnqueueCompletion(
+                        std::move(promise),
+                        future.ExtractValue());
                 });
     }
 
-    void Complete(ui64 id, TRequestClientResult result)
+    void EnqueueCompletion(
+        TPromise<TResponseResult> promise,
+        TResponseResult result)
     {
-        std::shared_ptr<TClientRequest> request;
-        {
-            std::lock_guard guard(Mutex);
-            const auto it = Pending.find(id);
-            if (it == Pending.end()) {
-                return;
-            }
-            request = std::move(it->second);
-            Pending.erase(it);
-            Deadlines.erase({request->Deadline, id});
-            if (auto* peer = Connecting.FindPtr(request->Key)) {
-                peer->Requests.erase(id);
-            }
-            ++Callbacks;
-        }
         Completions->ExecuteSimple(
             [self = shared_from_this(),
-             request,
+             promise = std::move(promise),
              result = std::move(result)]() mutable
             {
-                bool stopping;
-                {
-                    std::lock_guard guard(self->Mutex);
-                    stopping = self->Stopping;
+                if (!self->IsRunning()) {
+                    result = MakeCancelledError();
                 }
-                const auto now = self->Timer->Now();
-                if (stopping) {
-                    result = MakeError(
-                        E_CANCELLED,
-                        "IC V2 request client is stopping");
-                } else if (now >= request->Deadline) {
-                    result = MakeTimeoutError();
-                }
-                request->Promise.SetValue(std::move(result));
-                self->FinishResults(1, request->Bytes);
+                promise.SetValue(std::move(result));
+                self->ReleaseOperations(1);
             });
+        ReleaseOperations(1);
     }
 
     void ArmTimer()
     {
         TInstant deadline;
+        ui64 generation = 0;
         {
-            std::lock_guard guard(Mutex);
-            if (Stopping || TimerArmed || Deadlines.empty()) {
+            TGuard<TMutex> guard(WaitingMutex);
+            if (!IsRunning() || ConnectionDeadlines.empty()) {
                 return;
             }
-            deadline =
-                Min(Deadlines.begin()->first,
-                    Timer->Now() + TDuration::MilliSeconds(10));
-            TimerArmed = true;
+
+            deadline = ConnectionDeadlines.begin()->first;
+            if (ScheduledDeadline && *ScheduledDeadline <= deadline) {
+                return;
+            }
+
+            ScheduledDeadline = deadline;
+            generation = ++TimerGeneration;
         }
         Scheduler->Schedule(
             nullptr,
             deadline,
-            [weak = weak_from_this()]
+            [weak = weak_from_this(), generation]
             {
                 if (auto self = weak.lock()) {
-                    self->OnTimer();
+                    self->OnTimer(generation);
                 }
             });
     }
 
-    void OnTimer()
+    void OnTimer(ui64 generation)
     {
-        TVector<ui64> expired;
+        if (!TryReserveOperations(1)) {
+            return;
+        }
+        Y_DEFER
         {
-            std::lock_guard guard(Mutex);
-            if (Stopping) {
-                TimerArmed = false;
+            ReleaseOperations(1);
+        };
+
+        TVector<TClientRequest> expired;
+        {
+            TGuard<TMutex> guard(WaitingMutex);
+            if (!ScheduledDeadline || generation != TimerGeneration) {
                 return;
             }
+
+            ScheduledDeadline.reset();
             const auto now = Timer->Now();
-            for (const auto& [deadline, id]: Deadlines) {
-                if (deadline > now) {
-                    break;
-                }
-                expired.push_back(id);
+            while (!ConnectionDeadlines.empty() &&
+                   ConnectionDeadlines.begin()->first <= now)
+            {
+                const auto deadline = ConnectionDeadlines.begin();
+                const auto request = WaitingRequests.find(deadline->second);
+                Y_ABORT_UNLESS(request != WaitingRequests.end());
+
+                expired.push_back(std::move(request->second));
+                WaitingRequests.erase(request);
+                ConnectionDeadlines.erase(deadline);
             }
         }
-        for (ui64 id: expired) {
-            Complete(id, MakeTimeoutError());
-        }
-        {
-            std::lock_guard guard(Mutex);
-            TimerArmed = false;
+        for (auto& request: expired) {
+            EnqueueCompletion(std::move(request.Promise), MakeTimeoutError());
         }
         ArmTimer();
     }
 
-    void FinishResults(size_t count, ui64 bytes)
+    bool TryReserveOperations(ui32 count)
     {
-        {
-            std::lock_guard guard(Mutex);
-            Y_ABORT_UNLESS(Outstanding >= count && PayloadBytes >= bytes);
-            Outstanding -= count;
-            PayloadBytes -= bytes;
+        auto state = State.load();
+        while (state.Phase == EPhase::Running) {
+            auto next = state;
+            next.Operations += count;
+            if (State.compare_exchange_weak(state, next)) {
+                return true;
+            }
         }
-        FinishCallback();
+        return false;
     }
 
-    void FinishCallback()
+    bool TryBeginStop()
     {
+        auto state = State.load();
+        while (state.Phase == EPhase::Created || state.Phase == EPhase::Running)
         {
-            std::lock_guard guard(Mutex);
-            Y_ABORT_UNLESS(Callbacks);
-            --Callbacks;
+            auto next = state;
+            next.Phase = EPhase::Stopping;
+            ++next.Operations;
+            if (State.compare_exchange_weak(state, next)) {
+                return true;
+            }
         }
-        PublishClosed();
+        return false;
     }
 
-    void PublishClosed()
+    bool IsRunning() const
     {
-        {
-            std::lock_guard guard(Mutex);
-            if (!Stopping || Callbacks || Published) {
+        return State.load().Phase == EPhase::Running;
+    }
+
+    void ReleaseOperations(ui32 count)
+    {
+        auto state = State.load();
+        for (;;) {
+            Y_ABORT_UNLESS(state.Operations >= count);
+
+            auto next = state;
+            next.Operations -= count;
+            if (next.Phase == EPhase::Stopping && !next.Operations) {
+                next.Phase = EPhase::Stopped;
+            }
+            if (State.compare_exchange_weak(state, next)) {
+                if (next.Phase == EPhase::Stopped) {
+                    Closed.SetValue();
+                }
                 return;
             }
-            Y_ABORT_UNLESS(!Outstanding && !PayloadBytes && Pending.empty());
-            Published = true;
         }
-        Closed.SetValue();
     }
 };
 
@@ -417,24 +427,20 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IRequestClientPtr> CreateRequestClient(
-    TRequestClientConfig config,
-    TChannelProvider provider,
+TResultOrError<IPeerRequestClientPtr> CreatePeerRequestClient(
+    IPeerPtr peer,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ITaskQueuePtr completions)
 {
-    if (!config.MaxPendingRequests || !config.MaxPayloadBytes || !provider ||
-        !timer || !scheduler || !completions)
-    {
+    if (!peer || !timer || !scheduler || !completions) {
         return MakeError(
             E_ARGUMENT,
             "invalid IC V2 request client configuration");
     }
-    return IRequestClientPtr(
-        std::make_shared<TRequestClient>(
-            config,
-            std::move(provider),
+    return IPeerRequestClientPtr(
+        std::make_shared<TPeerRequestClient>(
+            std::move(peer),
             std::move(timer),
             std::move(scheduler),
             std::move(completions)));

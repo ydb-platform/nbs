@@ -1,58 +1,56 @@
 #include "host_endpoint.h"
 
+#include "request_client.h"
+
 #include <cloud/blockstore/libs/service/service_method.h>
+
+#include <cloud/storage/core/libs/common/timer.h>
 
 #include <atomic>
 
 namespace NCloud::NBlockStore::NIcV2 {
 
+using namespace NThreading;
+
+using NCloud::NIcV2::IPeerManagerPtr;
+using NCloud::NIcV2::IPeerPtr;
 using NCloud::NIcV2::IRequestChannel;
 using NCloud::NIcV2::TResponseFuture;
 using NCloud::NIcV2::TResponseResult;
 
 namespace {
 
-class THostChannel final: public IRequestChannel
+////////////////////////////////////////////////////////////////////////////////
+
+class THostRequestChannel final: public IRequestChannel
 {
-    const IPeerPtr Peer;
-    const IRequestClientPtr Requests;
+    const IPeerRequestClientPtr Requests;
     const ITimerPtr Timer;
-    std::atomic<bool> Closing = false;
 
 public:
-    THostChannel(IPeerPtr peer, IRequestClientPtr requests, ITimerPtr timer)
-        : Peer(std::move(peer))
-        , Requests(std::move(requests))
+    THostRequestChannel(IPeerRequestClientPtr requests, ITimerPtr timer)
+        : Requests(std::move(requests))
         , Timer(std::move(timer))
     {}
 
-    ~THostChannel() override
+    ~THostRequestChannel() override
     {
         Close();
     }
 
     bool Activate() override
     {
+        // The peer supplies an already active channel.
         return false;
-    }   // cache activates the real channel
+    }
 
     TResponseFuture Request(
         std::unique_ptr<NActors::IEventBase> event,
         TDuration timeout) override
     {
-        if (Closing) {
-            return NThreading::MakeFuture<TResponseResult>(
-                MakeError(E_CANCELLED, "IC V2 host binding closed"));
-        }
-        if (!event) {
-            return NThreading::MakeFuture<TResponseResult>(
-                MakeError(E_ARGUMENT, "empty IC V2 data event"));
-        }
-        const auto bytes = event->CalculateSerializedSize();
-        return Requests
-            ->Request("data", std::move(event), Timer->Now() + timeout, bytes)
+        return Requests->Request(std::move(event), Timer->Now() + timeout)
             .Apply(
-                [](TRequestClientFuture future) -> TResponseResult
+                [](TResponseFuture future) -> TResponseResult
                 {
                     auto [response, error] = future.ExtractValue();
                     if (HasError(error)) {
@@ -60,25 +58,23 @@ public:
                         // Storage errors travel inside the response event.
                         const auto code = error.GetCode();
                         if (code == E_TRANSPORT_ERROR || code == E_IO ||
+                            code == E_ABORTED ||
                             FACILITY_FROM_CODE(code) == FACILITY_SYSTEM)
                         {
                             error.SetCode(E_UNAVAILABLE);
                         }
                         return error;
                     }
-                    return std::move(response.Event);
+                    return std::move(response);
                 });
     }
 
     void Close() override
     {
-        if (!Closing.exchange(true)) {
-            Requests->RequestStop();
-            Peer->Close();
-        }
+        Requests->RequestStop();
     }
 
-    NThreading::TFuture<NProto::TError> WhenClosed() const override
+    [[nodiscard]] TFuture<NProto::TError> WhenClosed() const override
     {
         return Requests->WhenClosed().Apply(
             [](const auto& future)
@@ -126,21 +122,36 @@ public:
     }
 
     template <typename TMethod>
-    NThreading::TFuture<typename TMethod::TResponse> Execute(
+    TFuture<typename TMethod::TResponse> Execute(
         TCallContextPtr context,
         std::shared_ptr<typename TMethod::TRequest> request)
     {
+        using TResponse = TMethod::TResponse;
         if (Stopping) {
-            return NThreading::MakeFuture<typename TMethod::TResponse>(
+            return MakeFuture<TResponse>(
                 TErrorResponse(E_CANCELLED, "IC V2 host binding closed"));
         }
+
+        // The data endpoint can also detect a bad message while decoding.
         return TMethod::Execute(
-            Endpoint.get(),
-            std::move(context),
-            std::move(request));
+                   Endpoint.get(),
+                   std::move(context),
+                   std::move(request))
+            .Apply(
+                [](TFuture<TResponse> future)
+                {
+                    auto response = future.ExtractValue();
+                    if (response.GetError().GetCode() == E_BADMSG) {
+                        response.MutableError()->SetCode(E_UNAVAILABLE);
+                    }
+                    return response;
+                });
     }
 };
+
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
 
 TResultOrError<THostDataEndpoint> CreateHostDataEndpoint(
     TString host,
@@ -152,14 +163,20 @@ TResultOrError<THostDataEndpoint> CreateHostDataEndpoint(
     ITaskQueuePtr completions,
     TDataConfig dataConfig)
 {
+    if (!peers || !timer || !scheduler || !completions || !dataConfig.IsValid())
+    {
+        return MakeError(
+            E_ARGUMENT,
+            "invalid IC V2 host endpoint configuration");
+    }
+
     auto [peer, error] =
         peers->CreatePeer(std::move(host), port, std::move(handler));
     if (HasError(error)) {
         return error;
     }
-    auto [requests, requestError] = CreateRequestClient(
-        {dataConfig.MaxInflightRequests, dataConfig.MaxInflightBytes},
-        [peer](const TString&) { return peer->GetChannel(); },
+    auto [requests, requestError] = CreatePeerRequestClient(
+        peer,
         timer,
         std::move(scheduler),
         std::move(completions));
@@ -170,7 +187,7 @@ TResultOrError<THostDataEndpoint> CreateHostDataEndpoint(
     requests->Start();
     auto closed = requests->WhenClosed();
     auto channel =
-        std::make_shared<THostChannel>(peer, std::move(requests), timer);
+        std::make_shared<THostRequestChannel>(std::move(requests), timer);
     auto [endpoint, endpointError] =
         CreateDataEndpoint(std::move(channel), dataConfig);
     if (HasError(endpointError)) {

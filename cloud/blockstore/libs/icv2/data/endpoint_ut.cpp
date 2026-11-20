@@ -539,7 +539,7 @@ struct TNetworkFixture
             common->Settings.V2.ChecksumEvents = checksums;
             Transports[i] = NCloud::NIcV2::CreateTransport(
                 NActors::CreateUringEngine(std::move(common)),
-                64 * 1024 * 1024,
+                64_MB,
                 {});
             UNIT_ASSERT(Transports[i]);
             TRequestChannelConfig config;
