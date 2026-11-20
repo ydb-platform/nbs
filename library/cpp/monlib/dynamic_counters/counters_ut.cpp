@@ -2,6 +2,10 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <array>
+#include <atomic>
+#include <thread>
+
 using namespace NMonitoring;
 
 class TCountersPrinter: public ICountableConsumer {
@@ -54,6 +58,79 @@ private:
 };
 
 Y_UNIT_TEST_SUITE(TDynamicCountersTest) {
+    Y_UNIT_TEST(ShouldRegisterAndReuseCounterPair)
+    {
+        auto group = MakeIntrusive<TDynamicCounters>();
+        auto unrelated = group->GetCounter("Unrelated");
+        ui32 created = 0;
+        auto createCounters = [&]
+        {
+            ++created;
+            return TDynamicCounters::TCounterPair{
+                MakeIntrusive<TCounterForPtr>(
+                    true, TCountableBase::EVisibility::Private),
+                MakeIntrusive<TCounterForPtr>(
+                    true, TCountableBase::EVisibility::Private)};
+        };
+
+        const auto pair = group->GetNamedCounterPair(
+            "sensor", "First", "Second", createCounters);
+        pair.first->Add(3);
+        pair.second->Add(12);
+        const auto reused = group->GetNamedCounterPair(
+            "sensor", "First", "Second", createCounters);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, created);
+        UNIT_ASSERT(pair == reused);
+        UNIT_ASSERT(pair.first == group->GetCounter("First"));
+        UNIT_ASSERT(pair.second == group->GetCounter("Second"));
+        UNIT_ASSERT(unrelated == group->GetCounter("Unrelated"));
+        UNIT_ASSERT_VALUES_EQUAL(3, reused.first->Val());
+        UNIT_ASSERT_VALUES_EQUAL(12, reused.second->Val());
+        UNIT_ASSERT(reused.first->ForDerivative());
+        UNIT_ASSERT(reused.second->ForDerivative());
+        UNIT_ASSERT(
+            reused.first->Visibility() == TCountableBase::EVisibility::Private);
+        UNIT_ASSERT(
+            reused.second->Visibility() ==
+            TCountableBase::EVisibility::Private);
+    }
+
+    Y_UNIT_TEST(ShouldRegisterCounterPairConcurrently)
+    {
+        auto group = MakeIntrusive<TDynamicCounters>();
+        std::atomic<ui32> created = 0;
+        std::array<TDynamicCounters::TCounterPair, 4> pairs;
+        std::array<std::thread, 4> threads;
+        for (size_t i = 0; i < threads.size(); ++i) {
+            threads[i] = std::thread(
+                [&, i]
+                {
+                    pairs[i] = group->GetNamedCounterPair(
+                        "sensor",
+                        "First",
+                        "Second",
+                        [&]
+                        {
+                            ++created;
+                            return TDynamicCounters::TCounterPair{
+                                MakeIntrusive<TCounterForPtr>(true),
+                                MakeIntrusive<TCounterForPtr>(true)};
+                        });
+                });
+        }
+        for (auto& thread: threads) {
+            thread.join();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, created.load());
+        for (const auto& pair: pairs) {
+            UNIT_ASSERT(pair == pairs.front());
+        }
+        UNIT_ASSERT(pairs.front().first == group->GetCounter("First"));
+        UNIT_ASSERT(pairs.front().second == group->GetCounter("Second"));
+    }
+
     Y_UNIT_TEST(CountersConsumer) {
         TDynamicCounterPtr rootGroup(new TDynamicCounters());
 

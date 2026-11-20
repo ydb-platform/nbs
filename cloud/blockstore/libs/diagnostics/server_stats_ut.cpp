@@ -129,6 +129,78 @@ void CheckHwProblems(
 
 Y_UNIT_TEST_SUITE(TServerStatsTest)
 {
+    Y_UNIT_TEST(ShouldForwardLogicalIoSizeAndErrorPolicyToVolume)
+    {
+        auto timer = CreateWallClockTimer();
+        auto monitoring = CreateMonitoringServiceStub();
+        auto serverGroup =
+            monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
+        auto serverStats = CreateServerStats(
+            std::make_shared<TTestDumpable>(),
+            std::make_shared<TDiagnosticsConfig>(),
+            monitoring,
+            CreateProfileLogStub(),
+            CreateServerRequestStats(
+                serverGroup,
+                timer,
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            CreateVolumeStats(
+                monitoring,
+                {}, EVolumeStatsType::EServerStats, timer));
+        NProto::TVolume volume;
+        volume.SetDiskId("volume");
+        volume.SetCloudId("cloud");
+        volume.SetFolderId("folder");
+        volume.SetBlockSize(4096);
+        volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD);
+        serverStats->MountVolume(volume, "client", "instance");
+
+        TLog log;
+        for (auto type:
+             {EBlockStoreRequest::ReadBlocks, EBlockStoreRequest::WriteBlocks})
+        {
+            for (auto code: {S_OK, E_FAIL, E_REJECTED}) {
+                TMetricRequest request{type};
+                serverStats->PrepareMetricRequest(
+                    request, "client", "volume", 0, 4096, true);
+                UNIT_ASSERT_VALUES_EQUAL(4096, request.LogicalRequestBytes);
+                request.LogicalRequestBytes = 512;
+                auto context = MakeIntrusive<TCallContext>();
+                context->SetSilenceRetriableErrors(code == E_REJECTED);
+                serverStats->RequestStarted(log, request, *context, "");
+                serverStats->RequestCompleted(
+                    log, request, *context, MakeError(code));
+            }
+        }
+        serverStats->UpdateStats(true);
+        auto instance =
+            serverGroup->GetSubgroup("component", "server_volume")
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", "volume")
+                ->GetSubgroup("instance", "instance")
+                ->GetSubgroup("cloud", "cloud")
+                ->GetSubgroup("folder", "folder")
+                ->GetSubgroup(
+                    "type",
+                    MediaKindToStatsString(volume.GetStorageMediaKind()));
+        for (const auto* name: {"ReadBlocks", "WriteBlocks"}) {
+            auto group = instance->GetSubgroup("request", name);
+            UNIT_ASSERT_VALUES_EQUAL(
+                2, group->GetCounter("Count", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2, group->GetCounter("IoSizeCount", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1024, group->GetCounter("IoSizeBytes", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                12288, group->GetCounter("RequestBytes", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1, group->GetCounter("Errors", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1, group->GetCounter("Errors/Silent", true)->Val());
+        }
+    }
+
     Y_UNIT_TEST(ShouldTrackIncompleteRequestsPerVolume)
     {
         auto timer = std::make_shared<TTestTimer>();

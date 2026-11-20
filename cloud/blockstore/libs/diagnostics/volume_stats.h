@@ -14,6 +14,7 @@
 #include <util/generic/ptr.h>
 #include <util/generic/string.h>
 
+#include <optional>
 #include <span>
 
 namespace NCloud::NBlockStore {
@@ -54,7 +55,8 @@ struct IVolumeInfo
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,
-        ui64 responseSent) = 0;
+        ui64 responseSent,
+        std::optional<ui64> logicalRequestBytes = std::nullopt) = 0;
 
     virtual void AddIncompleteStats(
         EBlockStoreRequest requestType,
