@@ -6218,7 +6218,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldGrowAndReuseWriteActorPoolForParallelRequests)
     {
         NProto::TStorageConfig config;
-        config.SetEnablePreallocatedDataActors(true);
+        config.SetPermanentReadWriteDataActorsEnabled(true);
         config.SetThreeStageWriteEnabled(true);
         config.SetThreeStageWriteThreshold(1);
         config.SetAddingUnconfirmedDataEnabled(false);
@@ -6338,7 +6338,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetThreeStageWriteThreshold(1);
         config.SetAddingUnconfirmedDataEnabled(false);
-        config.SetEnablePreallocatedDataActors(true);
+        config.SetPermanentReadWriteDataActorsEnabled(true);
         TTestEnv env({}, config);
 
         const ui32 nodeIdx = env.AddDynamicNode();
