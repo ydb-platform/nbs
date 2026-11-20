@@ -2231,7 +2231,17 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                     }
                     case TEvVolume::EvWaitReadyRequest: {
                         detectedWaitReadyRequest = true;
-                        break;
+                        auto response =
+                            std::make_unique<TEvVolume::TEvWaitReadyResponse>();
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            nodeIdx);
+                        return TTestActorRuntime::EEventAction::DROP;
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -2249,7 +2259,7 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
         auto response = service.RecvCreateVolumeResponse();
 
         UNIT_ASSERT(detectedCreateVolumeRequest);
-        UNIT_ASSERT(!detectedWaitReadyRequest);
+        UNIT_ASSERT(detectedWaitReadyRequest);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
     }
 
@@ -2271,7 +2281,20 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
+                                event->Cookie),
+                            nodeIdx);
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    case TEvVolume::EvWaitReadyRequest: {
+                        auto response =
+                            std::make_unique<TEvVolume::TEvWaitReadyResponse>();
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
                         return TTestActorRuntime::EEventAction::DROP;
