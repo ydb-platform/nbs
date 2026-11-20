@@ -31,6 +31,7 @@ NActors::IActorPtr CreateDiskAgent(
     NCloud::NStorage::NRdma::IServerPtr rdmaServer,
     NNvme::INvmeManagerPtr nvmeManager,
     ITaskQueuePtr backgroundThreadPool,
-    ILocalNVMeServicePtr localNVMeService);
+    ILocalNVMeServicePtr localNVMeService,
+    IJournalledDeviceServerProviderPtr journalledDeviceServerProvider);
 
 }   // namespace NCloud::NBlockStore::NStorage

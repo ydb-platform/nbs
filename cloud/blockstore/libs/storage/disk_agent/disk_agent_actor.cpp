@@ -34,7 +34,8 @@ TDiskAgentActor::TDiskAgentActor(
         NCloud::NStorage::NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager,
         ITaskQueuePtr backgroundThreadPool,
-        ILocalNVMeServicePtr localNVMeService)
+        ILocalNVMeServicePtr localNVMeService,
+        IJournalledDeviceServerProviderPtr journalledDeviceServerProvider)
     : Config(std::move(config))
     , AgentConfig(std::move(agentConfig))
     , RdmaConfig(std::move(rdmaConfig))
@@ -48,6 +49,7 @@ TDiskAgentActor::TDiskAgentActor(
     , Logging(std::move(logging))
     , RdmaServer(std::move(rdmaServer))
     , NvmeManager(std::move(nvmeManager))
+    , JournalledDeviceServerProvider(std::move(journalledDeviceServerProvider))
     , BackgroundThreadPool(std::move(backgroundThreadPool))
 {}
 
@@ -261,14 +263,6 @@ void TDiskAgentActor::HandlePoisonPill(
         NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
     }
     IOParserActors.clear();
-
-    if (JournalledDeviceTcpServer) {
-        JournalledDeviceTcpServer->Stop();
-    }
-
-    if (Executor) {
-        Executor->Stop();
-    }
 
     Die(ctx);
 }

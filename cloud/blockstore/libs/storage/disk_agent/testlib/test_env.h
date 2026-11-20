@@ -504,6 +504,9 @@ struct TTestEnv
 
     ITaskQueuePtr BackgroundThreadPool;
 
+    // The env owns the providers and stops them, like the daemon does.
+    TVector<IJournalledDeviceServerProviderPtr> JournalledDeviceServerProviders;
+
     THashSet<NActors::TActorId> Actors;
 
     explicit TTestEnv(NActors::TTestActorRuntime& runtime);
@@ -528,6 +531,7 @@ struct TTestEnvBuilder
     NSpdk::ISpdkEnvPtr Spdk;
     NProto::TStorageServiceConfig StorageServiceConfig;
     TDiskRegistryState::TPtr DiskRegistryState;
+    IJournalledDeviceServerProviderPtr JournalledDeviceServerProvider;
 
     explicit TTestEnvBuilder(NActors::TTestActorRuntime& runtime);
 
@@ -539,6 +543,7 @@ struct TTestEnvBuilder
     TTestEnvBuilder& WithAgents(TVector<NProto::TDiskAgentConfig> configs);
     TTestEnvBuilder& With(NProto::TStorageServiceConfig storageServiceConfig);
     TTestEnvBuilder& With(TDiskRegistryState::TPtr diskRegistryState);
+    TTestEnvBuilder& With(IJournalledDeviceServerProviderPtr provider);
 
     TTestEnv Build();
 };

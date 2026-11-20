@@ -1,5 +1,7 @@
 #include "disk_agent_actor.h"
 
+#include "journalled_device_server.h"
+
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/io_request_parser.h>
@@ -172,9 +174,18 @@ void TDiskAgentActor::HandleInitAgentCompleted(
         }
     }
 
-    auto error = StartJournalledDeviceTcpServer(ctx, msg->JournalledDevices);
-    if (HasError(error)) {
-        ReportDiskAgentJournalledDeviceTcpServerStartError(FormatError(error));
+    if (JournalledDeviceServerProvider) {
+        auto error = JournalledDeviceServerProvider->StartServer(
+            State->GetDevices(),
+            msg->JournalledDevices,
+            State->GetDeviceClient(),
+            TActivationContext::ActorSystem(),
+            ctx.SelfID);
+
+        if (HasError(error)) {
+            ReportDiskAgentJournalledDeviceTcpServerStartError(
+                FormatError(error));
+        }
     }
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Ready to work");

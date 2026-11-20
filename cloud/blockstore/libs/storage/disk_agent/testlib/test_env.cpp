@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/service_local/file_io_service_provider.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/disk_agent.h>
+#include <cloud/blockstore/libs/storage/disk_agent/journalled_device_server.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
@@ -272,6 +273,12 @@ TTestEnv::~TTestEnv()
         Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
     }
 
+    // stop the journalled devices before the file IO service: their requests
+    // in flight need it
+    for (auto& provider: JournalledDeviceServerProviders) {
+        provider->Stop();
+    }
+
     if (BackgroundThreadPool) {
         BackgroundThreadPool->Stop();
     }
@@ -332,6 +339,13 @@ TTestEnvBuilder& TTestEnvBuilder::With(NProto::TStorageServiceConfig storageServ
 TTestEnvBuilder& TTestEnvBuilder::With(TDiskRegistryState::TPtr diskRegistryState)
 {
     DiskRegistryState = std::move(diskRegistryState);
+    return *this;
+}
+
+TTestEnvBuilder& TTestEnvBuilder::With(
+    IJournalledDeviceServerProviderPtr provider)
+{
+    JournalledDeviceServerProvider = std::move(provider);
     return *this;
 }
 
@@ -406,6 +420,15 @@ TTestEnv TTestEnvBuilder::Build()
     auto backgroundThreadPool = CreateThreadPool("Background", 1);
     backgroundThreadPool->Start();
 
+    TVector<IJournalledDeviceServerProviderPtr> providers;
+
+    if (!JournalledDeviceServerProvider) {
+        JournalledDeviceServerProvider = CreateJournalledDeviceServerProvider(
+            agentConfig,
+            CreateLoggingService("console"));
+    }
+    providers.push_back(JournalledDeviceServerProvider);
+
     auto diskAgent = CreateDiskAgent(
         config,
         agentConfig,
@@ -419,7 +442,8 @@ TTestEnv TTestEnvBuilder::Build()
         nullptr,   // rdmaServer
         NvmeManager,
         backgroundThreadPool,
-        CreateLocalNVMeServiceStub());
+        CreateLocalNVMeServiceStub(),
+        JournalledDeviceServerProvider);
 
     const ui32 firstDiskAgentNodeIndex = 0;
     const TActorId firstDiskAgentActorId =
@@ -434,12 +458,18 @@ TTestEnv TTestEnvBuilder::Build()
 
     ui32 additionalDiskAgentNodeIndex = 1;
     for (auto& additionalAgent : AdditionalAgentConfigsProto) {
+        auto additionalAgentConfig = std::make_shared<TDiskAgentConfig>(
+            std::move(additionalAgent),
+            "the-rack",
+            0);
+
+        providers.push_back(CreateJournalledDeviceServerProvider(
+            additionalAgentConfig,
+            CreateLoggingService("console")));
+
         auto diskAgent = CreateDiskAgent(
             config,
-            std::make_shared<TDiskAgentConfig>(
-                std::move(additionalAgent),
-                "the-rack",
-                0),
+            additionalAgentConfig,
             nullptr,   // rdmaConfig
             Spdk,
             allocator,
@@ -450,7 +480,8 @@ TTestEnv TTestEnvBuilder::Build()
             nullptr,   // rdmaServer
             NvmeManager,
             CreateThreadPool("Background", 1),
-            CreateLocalNVMeServiceStub());
+            CreateLocalNVMeServiceStub(),
+            providers.back());
 
         const TActorId additionalDiskAgentActorId = MakeDiskAgentServiceId(
             Runtime.GetNodeId(additionalDiskAgentNodeIndex));
@@ -481,6 +512,7 @@ TTestEnv TTestEnvBuilder::Build()
     env.NvmeManager = NvmeManager;
     env.DiskAgentActorId = firstDiskAgentActorId;
     env.BackgroundThreadPool = std::move(backgroundThreadPool);
+    env.JournalledDeviceServerProviders = std::move(providers);
     env.Actors = std::move(actors);
 
     return env;
