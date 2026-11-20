@@ -1422,7 +1422,7 @@ void TStorageServiceActor::HandleWriteData(
         filestore.GetFeatures().GetEnableRdmaForWrites(),
         std::move(zeroCounters));
 
-    if (StorageConfig->GetEnablePreallocatedDataActors()) {
+    if (StorageConfig->GetPermanentReadWriteDataActorsEnabled()) {
         auto request = std::make_unique<TEvStartWriteData>(std::move(context));
         NCloud::Send(
             ctx,

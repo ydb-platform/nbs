@@ -66,7 +66,8 @@ struct TTestSetup
         bool unalignedThreeStageWriteEnabled = true,
         IProfileLogPtr profileLog = CreateProfileLogStub())
     {
-        StorageConfig.SetEnablePreallocatedDataActors(preallocatedActors);
+        StorageConfig.SetPermanentReadWriteDataActorsEnabled(
+            preallocatedActors);
         StorageConfig.SetAddingUnconfirmedDataEnabled(unconfirmedEnabled);
         StorageConfig.SetUnconfirmedDataCountHardLimit(100);
         StorageConfig.SetWriteBlobThreshold(128_KB);
