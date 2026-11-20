@@ -325,6 +325,7 @@ func TestCancelCreateOverlayDiskTask(t *testing.T) {
 		ctx,
 		"disk",
 		"toplevel_task_id",
+		"",
 		mock.Anything,
 	).Return(&resources.DiskMeta{
 		ID:           "disk",
@@ -390,6 +391,7 @@ func TestCancelCreateOverlayDiskTaskBeforeRunIsCalled(t *testing.T) {
 		ctx,
 		"disk",
 		"toplevel_task_id",
+		"",
 		mock.Anything,
 	).Return((*resources.DiskMeta)(nil), nil)
 

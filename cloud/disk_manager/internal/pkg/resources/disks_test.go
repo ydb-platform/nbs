@@ -142,7 +142,7 @@ func TestDisksDeleteDisk(t *testing.T) {
 	expected.CreateRequest = nil
 	expected.DeleteTaskID = "delete"
 
-	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())
+	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", "delete", time.Now())
 	require.NoError(t, err)
 	requireDisksAreEqual(t, expected, *actual)
 
@@ -152,7 +152,7 @@ func TestDisksDeleteDisk(t *testing.T) {
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
 	// Check idempotency.
-	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())
+	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", "delete", time.Now())
 	require.NoError(t, err)
 	requireDisksAreEqual(t, expected, *actual)
 
@@ -164,7 +164,7 @@ func TestDisksDeleteDisk(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check that DeleteDisk returns nil for already deleted disk.
-	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())
+	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", "delete", time.Now())
 	require.NoError(t, err)
 	require.Nil(t, actual)
 
@@ -187,7 +187,7 @@ func TestDisksDeleteNonexistentDisk(t *testing.T) {
 	}
 
 	deletingAt := time.Now()
-	actual, err := storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt)
+	actual, err := storage.DeleteDisk(ctx, disk.ID, "delete", "delete", deletingAt)
 	require.NoError(t, err)
 	require.Nil(t, actual)
 
@@ -199,7 +199,7 @@ func TestDisksDeleteNonexistentDisk(t *testing.T) {
 
 	// Check idempotency.
 	deletingAt = deletingAt.Add(time.Second)
-	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt)
+	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", "delete", deletingAt)
 	require.NoError(t, err)
 	require.Nil(t, actual)
 
@@ -232,7 +232,7 @@ func TestDisksClearDeletedDisks(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, actual)
 
-	_, err = storage.DeleteDisk(ctx, disk.ID, "delete", deletedAt)
+	_, err = storage.DeleteDisk(ctx, disk.ID, "delete", "delete", deletedAt)
 	require.NoError(t, err)
 
 	err = storage.DiskDeleted(ctx, disk.ID, deletedAt)

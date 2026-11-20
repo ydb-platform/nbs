@@ -174,10 +174,12 @@ func (t *createDiskFromBaseDiskTask) Cancel(
 
 	params := t.request.Params
 
+	selfTaskID := execCtx.GetTaskID()
 	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
 		params.Disk.DiskId,
-		execCtx.GetTaskID(),
+		selfTaskID,
+		"",
 		time.Now(),
 	)
 	if err != nil {
