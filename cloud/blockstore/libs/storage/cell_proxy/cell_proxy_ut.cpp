@@ -880,6 +880,39 @@ Y_UNIT_TEST_SUITE(TCellProxyTest)
                 env.Recv()->Get()->GetStatus());
         }
     }
+
+    Y_UNIT_TEST(ShouldValidateStorageAcquisitionBeforeConnecting)
+    {
+        TEnv env;
+        env.Initialize();
+        env.Send(new IEventHandle(
+            MakeCellProxyServiceId(), env.Sender,
+            new TEvCellProxy::TEvGetStorageRequest("")));
+        auto response = env.GrabEdgeEventRethrow<
+            TEvCellProxy::TEvGetStorageResponse>(env.Sender);
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->Get()->GetStatus());
+        env.Send(new IEventHandle(
+            MakeCellProxyServiceId(), env.Sender,
+            new TEvCellProxy::TEvGetStorageRequest("cell-b", TDuration::Zero())));
+        response = env.GrabEdgeEventRethrow<
+            TEvCellProxy::TEvGetStorageResponse>(env.Sender);
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->Get()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(0, env.Manager->Requests);
+    }
+
+    Y_UNIT_TEST(ShouldReturnMissingDataInterfaceWithoutCreatingAnotherConnection)
+    {
+        TEnv env;
+        env.Initialize();
+        env.Send(new IEventHandle(
+            MakeCellProxyServiceId(), env.Sender,
+            new TEvCellProxy::TEvGetStorageRequest("cell-b")));
+        const auto response = env.GrabEdgeEventRethrow<
+            TEvCellProxy::TEvGetStorageResponse>(env.Sender);
+        UNIT_ASSERT_VALUES_EQUAL(E_NOT_IMPLEMENTED, response->Get()->GetStatus());
+        UNIT_ASSERT(!response->Get()->Storage);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Manager->Requests);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
