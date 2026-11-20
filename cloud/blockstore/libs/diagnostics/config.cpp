@@ -38,7 +38,7 @@ namespace {
     xxx(LocalSSDPerfSettings,           TVolumePerfSettings,  {}                                        )\
     xxx(LocalHDDPerfSettings,           TVolumePerfSettings,  {}                                        )\
     xxx(SsdMirror3Of5GroupPerfSettings, TVolumePerfSettings,  {}                                        )\
-    xxx(VolumeBalancerPerfSettings,     TVolumePerfSettings,  {}                                        )\
+    xxx(BalancerYDBBasedPerfSettings,   TVolumePerfSettings,  {}                                        )\
     xxx(ExpectedIoParallelism,          ui32,                 32                                        )\
     xxx(CloudIdsWithStrictSLA,          TVector<TString>,     {}                                        )\
     xxx(LWTraceShuttleCount,            ui32,                 2000                                      )\

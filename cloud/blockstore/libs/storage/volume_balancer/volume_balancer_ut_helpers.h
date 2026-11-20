@@ -13,7 +13,7 @@ inline TDiagnosticsConfigConstPtr CreateDiagnosticsConfig()
     NProto::TDiagnosticsConfig config;
     ParseProtoTextFromString(
         R"(
-        SsdPerfSettings {
+        BalancerYDBBasedPerfSettings {
           Write {
             Iops: 100
             Bandwidth: 409600
