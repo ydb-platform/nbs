@@ -7,6 +7,7 @@ SRCS(
     service_ut_actions.cpp
     service_ut_update_link_on_follower.cpp
     service_ut_cell_proxy.cpp
+    service_ut_cross_cell_copy.cpp
     service_ut_get_tablet_boot_infos.cpp
     service_ut_get_tablet_state.cpp
     service_ut_alter.cpp

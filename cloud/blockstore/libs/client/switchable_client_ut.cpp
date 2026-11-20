@@ -546,6 +546,52 @@ Y_UNIT_TEST_SUITE(TSwitchableClientTest)
                 sessionSwitcher->NewDiskId);
         }
     }
+
+    Y_UNIT_TEST(ShouldSwitchCellWhenPrincipalDiskIdIsUnchanged)
+    {
+        struct TCellSwitcher final: ISessionSwitcher
+        {
+            TString FromCell;
+            TString ToCell;
+            TString FromDisk;
+            TString ToDisk;
+
+            void SwitchSession(const TString&, const TString&) override
+            {
+                UNIT_FAIL("Expected the cell-aware callback");
+            }
+            void SwitchSessionToCell(
+                const TString& disk,
+                const TString& newDisk,
+                const TString& cell,
+                const TString& newCell) override
+            {
+                FromDisk = disk;
+                ToDisk = newDisk;
+                FromCell = cell;
+                ToCell = newCell;
+            }
+        };
+        auto service = std::make_shared<TTestService>();
+        service->MountVolumeHandler = [](auto)
+        {
+            NProto::TMountVolumeResponse response;
+            response.MutableVolume()->SetDiskId("disk");
+            response.MutableVolume()->SetPrincipalDiskId("disk");
+            response.MutableVolume()->SetPrincipalCellId("cell-b");
+            return MakeFuture(std::move(response));
+        };
+        auto switcher = std::make_shared<TCellSwitcher>();
+        auto client = CreateSwitchableClient(
+            CreateLoggingService("console"), switcher, "disk", service, "cell-a");
+        auto request = std::make_shared<NProto::TMountVolumeRequest>();
+        request->SetDiskId("disk");
+        client->MountVolume(MakeIntrusive<TCallContext>(), request).GetValue();
+        UNIT_ASSERT_VALUES_EQUAL("disk", switcher->FromDisk);
+        UNIT_ASSERT_VALUES_EQUAL("disk", switcher->ToDisk);
+        UNIT_ASSERT_VALUES_EQUAL("cell-a", switcher->FromCell);
+        UNIT_ASSERT_VALUES_EQUAL("cell-b", switcher->ToCell);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NClient

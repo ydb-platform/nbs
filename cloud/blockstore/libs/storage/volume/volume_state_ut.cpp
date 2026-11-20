@@ -2826,6 +2826,57 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT(store.GetCheckpointsWithData().empty());
         UNIT_ASSERT(!volumeState.IsVolumeOperationRestricted());
     }
+
+    Y_UNIT_TEST(ShouldExposePrincipalCellAfterCrossCellHandover)
+    {
+        auto state = CreateVolumeState();
+        const TLeaderFollowerLink link{
+            .LinkUUID = "link",
+            .LeaderDiskId = "disk",
+            .LeaderCellId = "cell-a",
+            .FollowerDiskId = "disk",
+            .FollowerCellId = "cell-b"};
+        state.AddOrUpdateFollower(TFollowerDiskInfo{
+            .Link = link,
+            .State = TFollowerDiskInfo::EState::LeadershipTransferred,
+            .MediaKind = NProto::STORAGE_MEDIA_SSD});
+        UNIT_ASSERT_VALUES_EQUAL("disk", state.GetPrincipalDiskId());
+        UNIT_ASSERT_VALUES_EQUAL("cell-b", state.GetPrincipalCellId());
+        state.AddOrUpdateFollower(TFollowerDiskInfo{
+            .Link = link,
+            .State = TFollowerDiskInfo::EState::Error,
+            .MediaKind = NProto::STORAGE_MEDIA_SSD});
+        UNIT_ASSERT(!state.GetPrincipalCellId());
+    }
+
+    Y_UNIT_TEST(ShouldUseStoredCrossCellLeaderInsteadOfRawSourceTag)
+    {
+        auto state = CreateVolumeState();
+        NProto::TVolumeMeta meta;
+        meta.MutableVolumeConfig()->SetTagsStr("source-disk-id=cell-a/disk");
+        state.ResetMeta(meta);
+        const TLeaderFollowerLink link{
+            .LinkUUID = "link",
+            .LeaderDiskId = "disk",
+            .LeaderCellId = "cell-a",
+            .FollowerDiskId = "disk",
+            .FollowerCellId = "cell-b"};
+        state.AddOrUpdateLeader(TLeaderDiskInfo{
+            .Link = link,
+            .State = TLeaderDiskInfo::EState::Following});
+        UNIT_ASSERT_VALUES_EQUAL("disk", state.GetPrincipalDiskId());
+        UNIT_ASSERT_VALUES_EQUAL("cell-a", state.GetPrincipalCellId());
+    }
+
+    Y_UNIT_TEST(ShouldKeepLegacySourceDiskIdContainingSlash)
+    {
+        auto state = CreateVolumeState();
+        NProto::TVolumeMeta meta;
+        meta.MutableVolumeConfig()->SetTagsStr("source-disk-id=folder/disk");
+        state.ResetMeta(meta);
+        UNIT_ASSERT_VALUES_EQUAL("folder/disk", state.GetPrincipalDiskId());
+        UNIT_ASSERT(!state.GetPrincipalCellId());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

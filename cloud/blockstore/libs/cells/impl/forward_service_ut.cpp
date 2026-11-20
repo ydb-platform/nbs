@@ -283,6 +283,19 @@ Y_UNIT_TEST_SUITE(TCellForwardServiceTest)
         env.Service->ZeroBlocks(MakeIntrusive<TCallContext>(), request).GetValue();
         UNIT_ASSERT(authorized);
     }
+
+    Y_UNIT_TEST(ShouldTrustOnlyNamedStatusAndCleanupActions)
+    {
+        TEnv env;
+        env.ExecuteAction("getlinkstatus",
+            NCloud::NProto::SOURCE_SECURE_CONTROL_CHANNEL, "cell-b");
+        env.ExecuteAction("DestroyLinkSource",
+            NCloud::NProto::SOURCE_SECURE_CONTROL_CHANNEL, "cell-a");
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Trusted->Actions);
+        env.ExecuteAction("destroylinksource-extra",
+            NCloud::NProto::SOURCE_SECURE_CONTROL_CHANNEL, "cell-a");
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Authorized->Actions);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NCells
