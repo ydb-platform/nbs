@@ -63,7 +63,7 @@ void AssertEntry(
 }
 
 void AssertError(
-    const TResultOrError<TChildXattrAcl>& resultOrError,
+    const TResultOrError<TNodeXattrAcl>& resultOrError,
     ui32 code,
     TStringBuf message)
 {

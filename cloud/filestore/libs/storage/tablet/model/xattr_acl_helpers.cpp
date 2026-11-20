@@ -107,7 +107,7 @@ void PosixAclToXattr(const TVector<posix_acl_xattr_entry>& acls, TString& value)
     }
 }
 
-TResultOrError<TChildXattrAcl> PosixAclCreateMasq(
+TResultOrError<TNodeXattrAcl> PosixAclCreateMasq(
     const TString& xattrAcl,
     TVector<posix_acl_xattr_entry>& acls,
     const ui32& srcMode)
@@ -115,7 +115,7 @@ TResultOrError<TChildXattrAcl> PosixAclCreateMasq(
     posix_acl_xattr_entry* groupObj = nullptr;
     posix_acl_xattr_entry* maskObj = nullptr;
 
-    TChildXattrAcl result;
+    TNodeXattrAcl result;
     ui32 mode = srcMode;
 
     constexpr __le16 s_irwxo_16 = S_IRWXO;
@@ -223,7 +223,7 @@ TResultOrError<TChildXattrAcl> PosixAclCreateMasq(
 
 }   // namespace
 
-TResultOrError<TChildXattrAcl> GetChildXattrAcl(
+TResultOrError<TNodeXattrAcl> GetChildXattrAcl(
     const TString& xattrAcl,
     const ui32 mode)
 {
@@ -234,11 +234,9 @@ TResultOrError<TChildXattrAcl> GetChildXattrAcl(
         return error;
     }
 
-    // In case only header is passed to GetChildXattrAcl,
-    // the kernel behaves as if no xattrAcl is present.
-    // This case should be explicitely taken into account by a caller.
+    // Treat a header-only ACL as absent. The caller should apply the umask.
     if (!acls) {
-        return TChildXattrAcl{
+        return TNodeXattrAcl{
             .Acl = "",
             .Mode = mode,
             .Type = EXattrAclType::HeaderOnly};

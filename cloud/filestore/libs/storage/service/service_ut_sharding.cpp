@@ -20,6 +20,9 @@
 
 #include <contrib/ydb/core/base/hive.h>
 
+#include <contrib/libs/linux-headers/linux/posix_acl.h>
+#include <contrib/libs/linux-headers/linux/posix_acl_xattr.h>
+
 #include <google/protobuf/util/json_util.h>
 #include <google/protobuf/util/message_differencer.h>
 
@@ -29,6 +32,367 @@ using namespace NActors;
 using namespace NKikimr;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TPosixAcl = TVector<posix_acl_xattr_entry>;
+
+ui32 Permissions(const TString& value)
+{
+    UNIT_ASSERT_C(
+        value.size() == 3 || value.size() == 9,
+        "Permission string must describe one ACL entry or a complete mode");
+
+    ui32 result = 0;
+    constexpr TStringBuf permissionChars = "rwx";
+    for (size_t i = 0; i < value.size(); ++i) {
+        UNIT_ASSERT_C(
+            value[i] == '-' || value[i] == permissionChars[i % 3],
+            "Invalid permission string: " << value);
+        if (value[i] != '-') {
+            result |= 1U << (value.size() - i - 1);
+        }
+    }
+    return result;
+}
+
+posix_acl_xattr_entry MakeAclEntry(
+    ui16 tag,
+    const TString& permissions,
+    ui32 id = ACL_UNDEFINED_ID)
+{
+    return {
+        .e_tag = tag,
+        .e_perm = static_cast<ui16>(Permissions(permissions)),
+        .e_id = id,
+    };
+}
+
+TString SerializeAcl(const TPosixAcl& acl)
+{
+    const posix_acl_xattr_header header = {POSIX_ACL_XATTR_VERSION};
+
+    TString value;
+    value.resize(sizeof(header) + acl.size() * sizeof(acl.front()));
+    std::memcpy(value.Detach(), &header, sizeof(header));
+    std::memcpy(
+        value.Detach() + sizeof(header),
+        acl.data(),
+        acl.size() * sizeof(acl.front()));
+    return value;
+}
+
+void SetFacl(
+    TServiceClient& service,
+    const THeaders& headers,
+    const TString& fileSystemId,
+    ui64 nodeId,
+    const TString& xattrName,
+    const TPosixAcl& acl)
+{
+    service.SetNodeXAttr(
+        headers,
+        fileSystemId,
+        nodeId,
+        xattrName,
+        SerializeAcl(acl));
+}
+
+TPosixAcl GetFacl(
+    TServiceClient& service,
+    const THeaders& headers,
+    const TString& fileSystemId,
+    ui64 nodeId,
+    const TString& xattrName)
+{
+    const auto response = service.GetNodeXAttr(
+        headers,
+        fileSystemId,
+        nodeId,
+        xattrName);
+    const TString& value = response->Record.GetValue();
+
+    UNIT_ASSERT_GE(value.size(), sizeof(posix_acl_xattr_header));
+    posix_acl_xattr_header header;
+    std::memcpy(&header, value.data(), sizeof(header));
+    UNIT_ASSERT_VALUES_EQUAL(POSIX_ACL_XATTR_VERSION, header.a_version);
+
+    const size_t entriesSize = value.size() - sizeof(header);
+    UNIT_ASSERT_VALUES_EQUAL(0, entriesSize % sizeof(posix_acl_xattr_entry));
+
+    TPosixAcl acl(entriesSize / sizeof(posix_acl_xattr_entry));
+    std::memcpy(
+        acl.data(),
+        value.data() + sizeof(header),
+        entriesSize);
+    return acl;
+}
+
+void AssertFacl(const TPosixAcl& expected, const TPosixAcl& actual)
+{
+    UNIT_ASSERT_VALUES_EQUAL(expected.size(), actual.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expected[i].e_tag,
+            actual[i].e_tag,
+            "ACL entry " << i << " has an unexpected tag");
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expected[i].e_perm,
+            actual[i].e_perm,
+            "ACL entry " << i << " has unexpected permissions");
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expected[i].e_id,
+            actual[i].e_id,
+            "ACL entry " << i << " has an unexpected id");
+    }
+}
+
+NProtoPrivate::TChangeStorageConfigResponse ExecuteChangeStorageConfig(
+    NProto::TStorageConfig config,
+    TServiceClient& service,
+    bool mergeWithConfig)
+{
+    NProtoPrivate::TChangeStorageConfigRequest request;
+    request.SetFileSystemId("test");
+    *request.MutableStorageConfig() = std::move(config);
+    request.SetMergeWithStorageConfigFromTabletDB(mergeWithConfig);
+
+    TString buf;
+    google::protobuf::util::MessageToJsonString(request, &buf);
+    const auto jsonResponse = service.ExecuteAction("changestorageconfig", buf);
+
+    NProtoPrivate::TChangeStorageConfigResponse response;
+    UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+        jsonResponse->Record.GetOutput(),
+        &response).ok());
+    return response;
+}
+
+NProto::TNodeAttr CreateNodeWithUmask(
+    TServiceClient& service,
+    const THeaders& headers,
+    const TCreateNodeArgs& args,
+    ui32 umask)
+{
+    auto request = service.CreateCreateNodeRequest(headers, args);
+    request->Record.SetUmask(umask);
+    auto response = service.SendAndRecvCreateNode(std::move(request));
+    UNIT_ASSERT_C(
+        SUCCEEDED(response->GetStatus()),
+        response->GetErrorReason());
+    return response->Record.GetNode();
+}
+
+NProto::TNodeAttr CreateHandleWithUmask(
+    TServiceClient& service,
+    const THeaders& headers,
+    const TString& fileSystemId,
+    ui64 nodeId,
+    const TString& name,
+    ui32 mode,
+    ui32 umask)
+{
+    auto request = service.CreateCreateHandleRequest(
+        headers,
+        fileSystemId,
+        nodeId,
+        name,
+        TCreateHandleArgs::CREATE);
+    request->Record.SetMode(mode);
+    request->Record.SetUmask(umask);
+    auto response = service.SendAndRecvCreateHandle(std::move(request));
+    UNIT_ASSERT_C(
+        SUCCEEDED(response->GetStatus()),
+        response->GetErrorReason());
+    return response->Record.GetNodeAttr();
+}
+
+void DoShouldApplyUmaskAndInheritDefaultAcl(
+    NProto::TStorageConfig config,
+    TServiceClient& service,
+    const TString& fileSystemId)
+{
+    THeaders headers;
+    auto createSessionResponse =
+        service.InitSession(headers, fileSystemId, "client");
+    const TString sessionId = headers.SessionId;
+    UNIT_ASSERT(createSessionResponse->Record.GetFileStore()
+                    .GetFeatures()
+                    .GetGuestPosixAclEnabled());
+
+    config.SetGuestPosixAclEnabled(false);
+    const auto response = ExecuteChangeStorageConfig(config, service, true);
+    UNIT_ASSERT_VALUES_EQUAL(
+        false,
+        response.GetStorageConfig().GetGuestPosixAclEnabled());
+
+    WaitForTabletStart(service);
+
+    createSessionResponse =
+        service.InitSession(headers, fileSystemId, "client", {}, true);
+    UNIT_ASSERT_VALUES_EQUAL(sessionId, headers.SessionId);
+    UNIT_ASSERT(createSessionResponse->Record.GetFileStore()
+                    .GetFeatures()
+                    .GetGuestPosixAclEnabled());
+
+    const ui32 umask = Permissions("----w--w-");
+
+    const auto testDir = CreateNodeWithUmask(
+        service,
+        headers,
+        TCreateNodeArgs::Directory(
+            RootNodeId,
+            "test-dir",
+            Permissions("rwxrwxrwx")),
+        umask);
+    UNIT_ASSERT_VALUES_EQUAL(Permissions("rwxr-xr-x"), testDir.GetMode());
+
+    const auto ordinaryFile = CreateNodeWithUmask(
+        service,
+        headers,
+        TCreateNodeArgs::File(
+            testDir.GetId(),
+            "ordinary-file",
+            Permissions("rw-rw-rw-")),
+        umask);
+    UNIT_ASSERT_VALUES_EQUAL(Permissions("rw-r--r--"), ordinaryFile.GetMode());
+
+    const auto ordinaryHandle = CreateHandleWithUmask(
+        service,
+        headers,
+        fileSystemId,
+        testDir.GetId(),
+        "ordinary-handle",
+        Permissions("rw-rw-rw-"),
+        umask);
+    UNIT_ASSERT_VALUES_EQUAL(
+        Permissions("rw-r--r--"),
+        ordinaryHandle.GetMode());
+
+    constexpr ui32 namedUid = 12345;
+    constexpr ui32 namedGid = 12346;
+    const TPosixAcl defaultAcl = {
+        MakeAclEntry(ACL_USER_OBJ, "rwx"),
+        MakeAclEntry(ACL_USER, "r-x", namedUid),
+        MakeAclEntry(ACL_GROUP_OBJ, "r--"),
+        MakeAclEntry(ACL_GROUP, "-wx", namedGid),
+        MakeAclEntry(ACL_MASK, "rwx"),
+        MakeAclEntry(ACL_OTHER, "---"),
+    };
+    SetFacl(
+        service,
+        headers,
+        fileSystemId,
+        testDir.GetId(),
+        "system.posix_acl_default",
+        defaultAcl);
+
+    const auto childFile = CreateNodeWithUmask(
+        service,
+        headers,
+        TCreateNodeArgs::File(
+            testDir.GetId(),
+            "child-file",
+            Permissions("rw-rw-rw-")),
+        umask);
+    const auto childHandle = CreateHandleWithUmask(
+        service,
+        headers,
+        fileSystemId,
+        testDir.GetId(),
+        "child-handle",
+        Permissions("rw-rw-rw-"),
+        umask);
+    const auto childDir = CreateNodeWithUmask(
+        service,
+        headers,
+        TCreateNodeArgs::Directory(
+            testDir.GetId(),
+            "child-dir",
+            Permissions("rwxrwxrwx")),
+        umask);
+
+    const TPosixAcl fileAccessAcl = {
+        MakeAclEntry(ACL_USER_OBJ, "rw-"),
+        MakeAclEntry(ACL_USER, "r-x", namedUid),
+        MakeAclEntry(ACL_GROUP_OBJ, "r--"),
+        MakeAclEntry(ACL_GROUP, "-wx", namedGid),
+        MakeAclEntry(ACL_MASK, "rw-"),
+        MakeAclEntry(ACL_OTHER, "---"),
+    };
+    UNIT_ASSERT_VALUES_EQUAL(Permissions("rw-rw----"), childFile.GetMode());
+    AssertFacl(
+        fileAccessAcl,
+        GetFacl(
+            service,
+            headers,
+            fileSystemId,
+            childFile.GetId(),
+            "system.posix_acl_access"));
+    UNIT_ASSERT_VALUES_EQUAL(Permissions("rw-rw----"), childHandle.GetMode());
+    AssertFacl(
+        fileAccessAcl,
+        GetFacl(
+            service,
+            headers,
+            fileSystemId,
+            childHandle.GetId(),
+            "system.posix_acl_access"));
+    UNIT_ASSERT_VALUES_EQUAL(Permissions("rwxrwx---"), childDir.GetMode());
+    AssertFacl(
+        defaultAcl,
+        GetFacl(
+            service,
+            headers,
+            fileSystemId,
+            childDir.GetId(),
+            "system.posix_acl_access"));
+    AssertFacl(
+        defaultAcl,
+        GetFacl(
+            service,
+            headers,
+            fileSystemId,
+            childDir.GetId(),
+            "system.posix_acl_default"));
+
+    const auto nestedFile = CreateNodeWithUmask(
+        service,
+        headers,
+        TCreateNodeArgs::File(
+            childDir.GetId(),
+            "nested-file",
+            Permissions("rw-rw-rw-")),
+        umask);
+    const auto nestedHandle = CreateHandleWithUmask(
+        service,
+        headers,
+        fileSystemId,
+        childDir.GetId(),
+        "nested-handle",
+        Permissions("rw-rw-rw-"),
+        umask);
+    UNIT_ASSERT_VALUES_EQUAL(Permissions("rw-rw----"), nestedFile.GetMode());
+    AssertFacl(
+        fileAccessAcl,
+        GetFacl(
+            service,
+            headers,
+            fileSystemId,
+            nestedFile.GetId(),
+            "system.posix_acl_access"));
+    UNIT_ASSERT_VALUES_EQUAL(
+        Permissions("rw-rw----"),
+        nestedHandle.GetMode());
+    AssertFacl(
+        fileAccessAcl,
+        GetFacl(
+            service,
+            headers,
+            fileSystemId,
+            nestedHandle.GetId(),
+            "system.posix_acl_access"));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1628,6 +1992,38 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
             UNIT_ASSERT_VALUES_EQUAL(3, getCount("ListNodeXAttr"));
         }
+    }
+
+    Y_UNIT_TEST(ShouldApplyUmaskAndInheritDefaultAclWithoutShards)
+    {
+        auto config = MakeStorageConfig();
+        config.SetGuestPosixAclEnabled(true);
+
+        TTestEnv env({}, config);
+        const ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TString fileSystemId = "test";
+        service.CreateFileStore(fileSystemId, 1'000);
+
+        DoShouldApplyUmaskAndInheritDefaultAcl(
+            config,
+            service,
+            fileSystemId);
+    }
+
+    SERVICE_TEST_DIR_CREATION_IN_SHARDS(
+        ShouldApplyUmaskAndInheritDefaultAclWithShards)
+    {
+        config.SetGuestPosixAclEnabled(true);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        DoShouldApplyUmaskAndInheritDefaultAcl(
+            config,
+            service,
+            fsConfig.FsId);
     }
 
     SERVICE_TEST(ShouldCreateDirectoryStructureInLeader)
