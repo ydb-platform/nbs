@@ -45,10 +45,19 @@ public:
     [[nodiscard]] bool MarkAsReady(ui64 prevLsn);
     [[nodiscard]] bool Remove(ui64 prevLsn);
 
+    struct TErasedRecords
+    {
+        // The chained run below the erased lsn.
+        TVector<TLogRecordPtr> Chained;
+
+        // The ready records that can no longer join the chain.
+        TVector<TLogRecordPtr> Stranded;
+    };
+
     // Removes and returns the run below |lsn|, plus the ready records left
     // starting below the new watermark; failing their promises is up to the
     // caller. Fails without changing anything when |lsn| > LastChainedLsn + 1.
-    TResultOrError<TVector<TLogRecordPtr>> EraseBelow(ui64 lsn);
+    TResultOrError<TErasedRecords> EraseBelow(ui64 lsn);
 
     // The head of the chained run, nullptr when the run is empty.
     TLogRecordPtr GetOldest() const;

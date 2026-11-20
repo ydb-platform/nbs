@@ -275,8 +275,9 @@ private:
         TFuture<NProto::TReadPagesResponse> journalFuture,
         TFuture<TResultOrError<TVector<TBuffer>>> deviceFuture);
 
-    NProto::TWriteLogRecordResponse DoWriteLogRecord(
-        NProto::TWriteLogRecordRequest request);
+    NProto::TWriteLogRecordResponse OnWriteLogRecord(
+        NProto::TWriteLogRecordResponse response,
+        ui64 lsn);
 
     NProto::TWritePagesResponse DoWritePages(NProto::TWritePagesRequest request);
 
@@ -447,17 +448,27 @@ TFuture<NProto::TWriteLogRecordResponse> TJournalledDeviceV2::WriteLogRecord(
             TErrorResponse(std::move(error)));
     }
 
-    return Execute<NProto::TWriteLogRecordResponse>(
-        [request = std::move(request)](auto& self)
-        { return self.DoWriteLogRecord(std::move(request)); });
-}
-
-NProto::TWriteLogRecordResponse TJournalledDeviceV2::DoWriteLogRecord(
-    NProto::TWriteLogRecordRequest request)
-{
     ui64 lsn = request.GetLogSequenceNumber();
     auto future = Journal->Write(std::move(request));
-    auto response = Executor->ExtractResponse(std::move(future));
+    return future.Apply(
+        [lsn, weakSelf = weak_from_this()](
+            auto future) -> NProto::TWriteLogRecordResponse
+        {
+            auto self = weakSelf.lock();
+            if (!self) {
+                return TErrorResponse(
+                    E_CANCELLED,
+                    "TJournalledDevice is destroyed");
+            }
+
+            return self->OnWriteLogRecord(future.GetValue(), lsn);
+        });
+}
+
+NProto::TWriteLogRecordResponse TJournalledDeviceV2::OnWriteLogRecord(
+    NProto::TWriteLogRecordResponse response,
+    ui64 lsn)
+{
     if (HasError(response)) {
         return response;
     }
@@ -577,7 +588,7 @@ void TJournalledDeviceV2::RunFlushCycle()
             auto acquired = PagesInFlight.TryAcquire(ranges);
             if (HasError(acquired)) {
                 // WritePages holds the pages, the next cycle retries
-                STORAGE_DEBUG(
+                STORAGE_INFO(
                     "postpone the flush of "
                     << records.size() << " records up to lsn " << lsn
                     << ": " << FormatError(acquired.GetError()));
@@ -669,7 +680,9 @@ TFuture<T> TJournalledDeviceV2::Execute(F func)
         {
             auto self = weakSelf.lock();
             if (!self) {
-                return TErrorResponse(E_FAIL, "TJournalledDevice is destroyed");
+                return TErrorResponse(
+                    E_CANCELLED,
+                    "TJournalledDevice is destroyed");
             }
 
             return func(*self);
