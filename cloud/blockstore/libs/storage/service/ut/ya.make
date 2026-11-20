@@ -5,6 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 SRCS(
     service_state_ut.cpp
     service_ut_actions.cpp
+    service_ut_update_link_on_follower.cpp
     service_ut_cell_proxy.cpp
     service_ut_get_tablet_boot_infos.cpp
     service_ut_get_tablet_state.cpp

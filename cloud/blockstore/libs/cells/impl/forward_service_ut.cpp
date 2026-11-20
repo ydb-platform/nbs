@@ -20,9 +20,17 @@ namespace {
 struct TTarget: public TTestService
 {
     ui32 Mounts = 0;
+    ui32 Actions = 0;
 
     TTarget()
     {
+        ExecuteActionHandler =
+            [this](std::shared_ptr<NProto::TExecuteActionRequest> request)
+        {
+            Y_UNUSED(request);
+            ++Actions;
+            return MakeFuture(NProto::TExecuteActionResponse());
+        };
         MountVolumeHandler =
             [this] (std::shared_ptr<NProto::TMountVolumeRequest> request)
         {
@@ -64,6 +72,19 @@ struct TEnv
             Activity,
             CreateLoggingService("console"),
             Timer);
+    }
+
+    void ExecuteAction(
+        const TString& action,
+        NCloud::NProto::ERequestSource source,
+        const TString& cellId)
+    {
+        auto request = std::make_shared<NProto::TExecuteActionRequest>();
+        request->SetAction(action);
+        auto* headers = request->MutableHeaders();
+        headers->SetCellId(cellId);
+        headers->MutableInternal()->SetRequestSource(source);
+        Service->ExecuteAction(MakeIntrusive<TCallContext>(), std::move(request));
     }
 
     void Mount(
@@ -160,6 +181,61 @@ Y_UNIT_TEST_SUITE(TCellForwardServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             env.Activity->Snapshot(env.Timer->Now()).size());
+    }
+
+    Y_UNIT_TEST(ShouldTrustOnlyUpdateLinkOnFollowerAction)
+    {
+        TEnv env;
+        for (const TString action:
+             {"updatelinkonfollower", "UpdateLinkOnFollower"})
+        {
+            env.ExecuteAction(
+                action,
+                NCloud::NProto::SOURCE_SECURE_CONTROL_CHANNEL,
+                "cell-1");
+        }
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Trusted->Actions);
+        UNIT_ASSERT_VALUES_EQUAL(0, env.Authorized->Actions);
+        UNIT_ASSERT(env.Activity->Snapshot(env.Timer->Now()).empty());
+    }
+
+    Y_UNIT_TEST(ShouldAuthorizeLinkActionWithoutCellId)
+    {
+        TEnv env;
+        env.ExecuteAction(
+            "updatelinkonfollower",
+            NCloud::NProto::SOURCE_SECURE_CONTROL_CHANNEL,
+            "");
+        UNIT_ASSERT_VALUES_EQUAL(0, env.Trusted->Actions);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Authorized->Actions);
+    }
+
+    Y_UNIT_TEST(ShouldAuthorizeLinkActionFromUntrustedSource)
+    {
+        TEnv env;
+        for (const auto source:
+             {NCloud::NProto::SOURCE_INSECURE_CONTROL_CHANNEL,
+              NCloud::NProto::SOURCE_TCP_DATA_CHANNEL})
+        {
+            env.ExecuteAction("updatelinkonfollower", source, "cell-1");
+        }
+        UNIT_ASSERT_VALUES_EQUAL(0, env.Trusted->Actions);
+        UNIT_ASSERT_VALUES_EQUAL(2, env.Authorized->Actions);
+    }
+
+    Y_UNIT_TEST(ShouldAuthorizeOtherActionsEvenFromTrustedCell)
+    {
+        TEnv env;
+        for (const TString action:
+             {"getstorageconfig", "updatelinkonfollower-extra", ""})
+        {
+            env.ExecuteAction(
+                action,
+                NCloud::NProto::SOURCE_SECURE_CONTROL_CHANNEL,
+                "cell-1");
+        }
+        UNIT_ASSERT_VALUES_EQUAL(0, env.Trusted->Actions);
+        UNIT_ASSERT_VALUES_EQUAL(3, env.Authorized->Actions);
     }
 }
 

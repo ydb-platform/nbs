@@ -470,6 +470,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    TResultOrError<NActors::IActorPtr> CreateUpdateLinkOnFollowerActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     TResultOrError<NActors::IActorPtr> CreateGetLinkStatusActionActor(
         TRequestInfoPtr requestInfo,
         TString input);

@@ -22,6 +22,23 @@ bool IsWhitelisted(EBlockStoreRequest request)
         || request == EBlockStoreRequest::DescribeVolume;
 }
 
+template <typename TRequest>
+bool IsWhitelisted(const TRequest& request, EBlockStoreRequest type)
+{
+    Y_UNUSED(request);
+    return IsWhitelisted(type);
+}
+
+bool IsWhitelisted(
+    const NProto::TExecuteActionRequest& request,
+    EBlockStoreRequest type)
+{
+    Y_UNUSED(type);
+    TString action = request.GetAction();
+    action.to_lower();
+    return action == "updatelinkonfollower";
+}
+
 bool IsTrustedSource(NCloud::NProto::ERequestSource source)
 {
     // the single trusted source for now; rdma adds its own here when control
@@ -81,7 +98,8 @@ public:
         std::shared_ptr<typename TMethod::TRequest> request)
     {
         const auto& headers = request->GetHeaders();
-        const bool whitelisted = IsWhitelisted(TMethod::BlockStoreRequest);
+        const bool whitelisted =
+            IsWhitelisted(*request, TMethod::BlockStoreRequest);
         const bool hasCellId = !headers.GetCellId().empty();
         const bool trustedSource =
             IsTrustedSource(headers.GetInternal().GetRequestSource());
