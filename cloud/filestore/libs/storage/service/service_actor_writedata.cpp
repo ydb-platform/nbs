@@ -388,14 +388,13 @@ private:
             HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
             // Ignore responses and retries left over from a completed request.
-            case TEvIndexTablet::TEvGenerateBlobIdsResponse::EventType:
-            case TEvBlobStorage::TEvPutResult::EventType:
-            case TEvIndexTablet::TEvAddDataResponse::EventType:
-            case TEvIndexTablet::TEvConfirmAddDataResponse::EventType:
-            case TEvIndexTablet::TEvCancelAddDataResponse::EventType:
-            case TEvService::TEvWriteDataResponse::EventType:
-            case TEvents::TEvWakeup::EventType:
-                break;
+            IgnoreFunc(TEvIndexTablet::TEvGenerateBlobIdsResponse);
+            IgnoreFunc(TEvBlobStorage::TEvPutResult);
+            IgnoreFunc(TEvIndexTablet::TEvAddDataResponse);
+            IgnoreFunc(TEvIndexTablet::TEvConfirmAddDataResponse);
+            IgnoreFunc(TEvIndexTablet::TEvCancelAddDataResponse);
+            IgnoreFunc(TEvService::TEvWriteDataResponse);
+            IgnoreFunc(TEvents::TEvWakeup);
 
             default:
                 HandleUnexpectedEvent(
