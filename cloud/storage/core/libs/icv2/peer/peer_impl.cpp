@@ -7,6 +7,7 @@
 #include <util/generic/noncopyable.h>
 #include <util/generic/vector.h>
 #include <util/network/address.h>
+#include <util/system/guard.h>
 
 #include <exception>
 #include <new>
@@ -147,7 +148,7 @@ TChannelFuture TPeer::GetChannel()
     IRequestChannelPtr retired;
     TNotificationContext disconnected;
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         if (HasError(CloseError)) {
             return MakeFuture<TChannelResult>(CloseError);
         }
@@ -180,7 +181,7 @@ TChannelFuture TPeer::GetChannel()
 
 TPeerStatus TPeer::GetStatus()
 {
-    TGuard<TMutex> guard(Mutex);
+    TGuard<TAdaptiveLock> guard(Lock);
     if (HasError(CloseError)) {
         return {.State = EPeerState::Disconnected};
     }
@@ -212,7 +213,7 @@ void TPeer::Close(NProto::TError error)
     std::shared_ptr<TConnectionAttempt> attempt;
     IClientEndpointHandlerPtr handler;
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         if (HasError(CloseError)) {
             return;
         }
@@ -268,7 +269,7 @@ void TPeer::DispatchNotifications(TNotificationContext context)
     while (true) {
         EPeerEvent event = EPeerEvent::Connected;
         {
-            TGuard<TMutex> guard(Mutex);
+            TGuard<TAdaptiveLock> guard(Lock);
             if (Notifications.empty()) {
                 DispatchingNotifications = false;
                 break;
@@ -293,7 +294,7 @@ void TPeer::DispatchNotifications(TNotificationContext context)
 void TPeer::StartConnectionAttempt(ui64 generation)
 {
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         if (Generation != generation) {
             return;
         }
@@ -335,7 +336,7 @@ void TPeer::ResolveHost(std::shared_ptr<TConnectionAttempt> attempt)
     try {
         std::shared_ptr<TActivity> activity;
         {
-            TGuard<TMutex> guard(Mutex);
+            TGuard<TAdaptiveLock> guard(Lock);
             if (Attempt != attempt) {
                 return;
             }
@@ -378,7 +379,7 @@ void TPeer::ConnectNext(
     NProto::TError error)
 {
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         if (Attempt != attempt) {
             return;
         }
@@ -393,7 +394,7 @@ void TPeer::ConnectNext(
     while (true) {
         ConnectNextAddress(attempt, std::move(error));
 
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         if (attempt->ConnectState != EConnectState::RetryPending) {
             attempt->ConnectState = EConnectState::Idle;
             return;
@@ -410,7 +411,7 @@ void TPeer::ConnectNextAddress(
     NInterconnect::TAddress address;
     TDuration remaining;
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         if (Attempt != attempt) {
             return;
         }
@@ -454,7 +455,7 @@ void TPeer::HandleConnectionResult(
 {
     TDuration remaining;
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         if (Attempt != attempt) {
             return;
         }
@@ -482,7 +483,7 @@ void TPeer::HandleConnectionResult(
 {
     std::shared_ptr<TActivity> activity;
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         if (Attempt != attempt) {
             return;
         }
@@ -500,7 +501,7 @@ void TPeer::HandleConnectionResult(
     }
     bool accepted = false;
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         if (Attempt == attempt) {
             Channel = channel;
             accepted = true;
@@ -541,7 +542,7 @@ void TPeer::FinishAttempt(
     TInstant retryAt;
     TNotificationContext notifications;
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         if (Attempt != attempt) {
             return;
         }
@@ -580,7 +581,7 @@ void TPeer::OnClosed(ui64 generation)
     TInstant retryAt;
     TNotificationContext disconnected;
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         if (Generation == generation && Channel) {
             retired = TakeChannel();
             attempt = std::move(Attempt);

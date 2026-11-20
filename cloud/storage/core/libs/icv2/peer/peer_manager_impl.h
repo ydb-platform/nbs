@@ -4,7 +4,8 @@
 #include "peer_manager.h"
 
 #include <util/generic/hash.h>
-#include <util/system/mutex.h>
+#include <util/generic/noncopyable.h>
+#include <util/system/spinlock.h>
 
 namespace NCloud::NIcV2 {
 
@@ -13,10 +14,11 @@ namespace NCloud::NIcV2 {
 class TPeerManager final
     : public IPeerManager
     , public std::enable_shared_from_this<TPeerManager>
+    , private TNonCopyable
 {
     const TPeerDependencies Dependencies;
 
-    TMutex Mutex;
+    TAdaptiveLock Lock;
     THashMap<ui64, std::weak_ptr<TPeer>> Peers;
     ui64 NextPeerId = 1;
     enum class EState

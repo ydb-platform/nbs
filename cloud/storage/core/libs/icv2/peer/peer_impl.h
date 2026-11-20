@@ -10,7 +10,8 @@
 #include <library/cpp/threading/hot_swap/hot_swap.h>
 
 #include <util/generic/deque.h>
-#include <util/system/mutex.h>
+#include <util/generic/noncopyable.h>
+#include <util/system/spinlock.h>
 
 namespace NCloud::NIcV2 {
 
@@ -37,6 +38,7 @@ struct TPeerDependencies
 class TPeer final
     : public IPeer
     , public std::enable_shared_from_this<TPeer>
+    , private TNonCopyable
 {
     struct TActivity;
     struct TConnectionAttempt;
@@ -48,7 +50,7 @@ class TPeer final
     const TString Host;
     const ui16 Port;
 
-    TMutex Mutex;
+    TAdaptiveLock Lock;
     NProto::TError CloseError;
     std::shared_ptr<TActivity> Activity;
     TInstant RetryAt;

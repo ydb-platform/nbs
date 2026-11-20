@@ -6,13 +6,15 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/noncopyable.h>
 #include <util/generic/scope.h>
 #include <util/string/builder.h>
+#include <util/system/guard.h>
+#include <util/system/spinlock.h>
 
 #include <array>
 #include <atomic>
 #include <future>
-#include <mutex>
 #include <stdexcept>
 
 namespace NCloud::NIcV2 {
@@ -27,7 +29,9 @@ using namespace std::chrono_literals;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestConnector final: IConnector
+struct TTestConnector final
+    : IConnector
+    , TNonCopyable
 {
     struct TRequest
     {
@@ -39,7 +43,7 @@ struct TTestConnector final: IConnector
     bool ThrowOnConnect = false;
     TSocketFuture ConnectResult;
     std::function<void()> OnStop;
-    std::mutex Mutex;
+    TAdaptiveLock Lock;
     TVector<TRequest> Requests;
 
     void Start() override
@@ -62,7 +66,7 @@ struct TTestConnector final: IConnector
         if (ThrowOnConnect) {
             throw std::runtime_error("connect failed");
         }
-        std::lock_guard guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         auto& request = Requests.emplace_back(address, timeout);
         return ConnectResult.Initialized() ? ConnectResult
                                            : request.Promise.GetFuture();

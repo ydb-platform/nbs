@@ -3,6 +3,7 @@
 #include "peer_impl.h"
 
 #include <util/generic/vector.h>
+#include <util/system/guard.h>
 
 namespace NCloud::NIcV2 {
 
@@ -21,7 +22,7 @@ TPeerManager::~TPeerManager()
 
 void TPeerManager::Start()
 {
-    TGuard<TMutex> guard(Mutex);
+    TGuard<TAdaptiveLock> guard(Lock);
     Y_ABORT_UNLESS(State == EState::Created);
     // No peers can be created before the workers have started.
     Dependencies.Connector->Start();
@@ -36,7 +37,7 @@ TResultOrError<IPeerPtr> TPeerManager::CreatePeer(
 {
     std::shared_ptr<TPeer> peer;
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         if (State != EState::Running) {
             return MakeError(
                 E_REJECTED,
@@ -63,7 +64,7 @@ void TPeerManager::RequestStop()
 {
     TVector<std::shared_ptr<TPeer>> peers;
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         if (State >= EState::StopRequested) {
             return;
         }
@@ -81,7 +82,7 @@ void TPeerManager::RequestStop()
     Dependencies.Connector->RequestStop();
     Dependencies.Handshake->RequestStop();
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         if (!Peers.empty()) {
             return;
         }
@@ -93,7 +94,7 @@ void TPeerManager::Stop()
 {
     RequestStop();
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         if (State == EState::Stopped) {
             return;
         }
@@ -108,7 +109,7 @@ void TPeerManager::Stop()
     Dependencies.Handshake->Stop();
     Closed.GetFuture().GetValueSync();
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         State = EState::Stopped;
     }
     Joined.SetValue();
@@ -117,7 +118,7 @@ void TPeerManager::Stop()
 void TPeerManager::UnregisterPeer(ui64 id)
 {
     {
-        TGuard<TMutex> guard(Mutex);
+        TGuard<TAdaptiveLock> guard(Lock);
         Peers.erase(id);
         if (State < EState::StopRequested || !Peers.empty()) {
             return;
