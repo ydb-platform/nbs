@@ -310,6 +310,20 @@ struct TCellManagerMock final: NCells::ICellManager
                     std::make_shared<TCellService>(Runtime, *node), EnableCopyData)));
     }
 
+    NCells::TCellControlServiceFuture GetControlService(
+        const TString& cellId,
+        const NClient::TClientAppConfigPtr&) override
+    {
+        const auto* node = CellNodes.FindPtr(cellId);
+        if (!node) {
+            return MakeFuture(TResultOrError<IBlockStorePtr>(MakeError(
+                E_INVALID_STATE,
+                "Test cell is not configured: " + cellId)));
+        }
+        return MakeFuture(TResultOrError<IBlockStorePtr>(
+            std::make_shared<TCellService>(Runtime, *node)));
+    }
+
     NCells::TDescribeVolumeFuture DescribeVolume(
         TCallContextPtr,
         const TString&,

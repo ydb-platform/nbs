@@ -32,6 +32,16 @@ struct TCellManagerStub: public ICellManager
             MakeError(E_NOT_IMPLEMENTED, "not implemented")));
     }
 
+    [[nodiscard]] TCellControlServiceFuture GetControlService(
+        const TString& cellId,
+        const NClient::TClientAppConfigPtr& clientConfig) override
+    {
+        Y_UNUSED(cellId);
+        Y_UNUSED(clientConfig);
+        return NThreading::MakeFuture(TResultOrError<IBlockStorePtr>(
+            MakeError(E_NOT_IMPLEMENTED, "not implemented")));
+    }
+
     [[nodiscard]] TDescribeVolumeFuture DescribeVolume(
         TCallContextPtr callContext,
         const TString& diskId,

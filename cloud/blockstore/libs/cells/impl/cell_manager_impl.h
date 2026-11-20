@@ -45,6 +45,10 @@ struct TCellManager: public ICellManager
         const NClient::TClientAppConfigPtr& clientConfig,
         ICellConnectionObserverPtr observer) override;
 
+    [[nodiscard]] TCellControlServiceFuture GetControlService(
+        const TString& cellId,
+        const NClient::TClientAppConfigPtr& clientConfig) override;
+
     [[nodiscard]] TDescribeVolumeFuture DescribeVolume(
         TCallContextPtr callContext,
         const TString& diskId,

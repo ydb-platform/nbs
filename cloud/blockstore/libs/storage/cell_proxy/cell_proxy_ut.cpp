@@ -47,10 +47,12 @@ struct TConnection final: NCells::ICellConnection
 
 struct TCellManager final: NCells::ICellManager
 {
-    std::function<NCells::TCellConnectionFuture()> Handler;
+    std::function<NCells::TCellControlServiceFuture()> Handler;
+    std::function<NCells::TCellConnectionFuture()> ConnectionHandler;
     TString LastCellId;
     NClient::TClientAppConfigPtr LastClientConfig;
     ui32 Requests = 0;
+    ui32 ConnectionRequests = 0;
 
     TCellManager()
         : ICellManager(nullptr)
@@ -62,8 +64,23 @@ struct TCellManager final: NCells::ICellManager
         const NClient::TClientAppConfigPtr& config,
         NCells::ICellConnectionObserverPtr observer) override
     {
+        Y_UNUSED(cellId);
+        Y_UNUSED(config);
         UNIT_ASSERT(fqdn.empty());
         UNIT_ASSERT(!observer);
+        ++ConnectionRequests;
+        if (!ConnectionHandler) {
+            UNIT_FAIL("Control requests must not prepare a data connection");
+            return MakeFuture(TResultOrError<NCells::ICellConnectionPtr>(
+                MakeError(E_NOT_IMPLEMENTED)));
+        }
+        return ConnectionHandler();
+    }
+
+    NCells::TCellControlServiceFuture GetControlService(
+        const TString& cellId,
+        const NClient::TClientAppConfigPtr& config) override
+    {
         LastCellId = cellId;
         LastClientConfig = config;
         ++Requests;
@@ -173,9 +190,7 @@ struct TEnv: TTestActorRuntimeBase
             Register(CreateCellProxy().release()));
         Manager->Handler = [&]
         {
-            return MakeFuture(
-                TResultOrError<NCells::ICellConnectionPtr>(
-                    std::make_shared<TConnection>(Service)));
+            return MakeFuture(TResultOrError<IBlockStorePtr>(Service));
         };
         Service->DescribeVolumeHandler = [](auto request)
         {
@@ -399,7 +414,7 @@ Y_UNIT_TEST_SUITE(TCellProxyTest)
         env.Manager->Handler = []
         {
             return MakeFuture(
-                TResultOrError<NCells::ICellConnectionPtr>(
+                TResultOrError<IBlockStorePtr>(
                     MakeError(E_INVALID_STATE, "unknown cell")));
         };
         env.Service->ExecuteActionHandler =
@@ -550,7 +565,7 @@ Y_UNIT_TEST_SUITE(TCellProxyTest)
         env.Manager->Handler = [&]
         {
             return MakeFuture(
-                TResultOrError<NCells::ICellConnectionPtr>(error));
+                TResultOrError<IBlockStorePtr>(error));
         };
         env.Service->DescribeVolumeHandler =
             [](auto) -> TFuture<NProto::TDescribeVolumeResponse>
@@ -602,7 +617,7 @@ Y_UNIT_TEST_SUITE(TCellProxyTest)
         TEnv env;
         env.Initialize();
         const auto handler = env.Manager->Handler;
-        env.Manager->Handler = []() -> NCells::TCellConnectionFuture
+        env.Manager->Handler = []() -> NCells::TCellControlServiceFuture
         {
             throw TServiceError(MakeError(E_REJECTED, "connection exception"));
         };
@@ -622,7 +637,7 @@ Y_UNIT_TEST_SUITE(TCellProxyTest)
     {
         TEnv env;
         env.Initialize();
-        auto promise = NewPromise<TResultOrError<NCells::ICellConnectionPtr>>();
+        auto promise = NewPromise<TResultOrError<IBlockStorePtr>>();
         env.Manager->Handler = [&]
         {
             return promise.GetFuture();
@@ -638,12 +653,12 @@ Y_UNIT_TEST_SUITE(TCellProxyTest)
     {
         TEnv env;
         env.Initialize();
-        auto connectionPromise =
-            NewPromise<TResultOrError<NCells::ICellConnectionPtr>>();
+        auto servicePromise =
+            NewPromise<TResultOrError<IBlockStorePtr>>();
         auto describePromise = NewPromise<NProto::TDescribeVolumeResponse>();
         env.Manager->Handler = [&]
         {
-            return connectionPromise.GetFuture();
+            return servicePromise.GetFuture();
         };
         bool described = false;
         env.Service->DescribeVolumeHandler = [&](auto request)
@@ -661,9 +676,8 @@ Y_UNIT_TEST_SUITE(TCellProxyTest)
         env.DispatchEvents(options);
         env.UpdateCurrentTime(
             env.GetCurrentTime() + TDuration::MilliSeconds(5));
-        connectionPromise.SetValue(
-            TResultOrError<NCells::ICellConnectionPtr>(
-                std::make_shared<TConnection>(env.Service)));
+        servicePromise.SetValue(
+            TResultOrError<IBlockStorePtr>(env.Service));
         UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, env.Recv()->Get()->GetStatus());
         UNIT_ASSERT(described);
         env.CheckNoLateResponses(
@@ -714,7 +728,7 @@ Y_UNIT_TEST_SUITE(TCellProxyTest)
     {
         TEnv env;
         env.Initialize();
-        auto promise = NewPromise<TResultOrError<NCells::ICellConnectionPtr>>();
+        auto promise = NewPromise<TResultOrError<IBlockStorePtr>>();
         env.Manager->Handler = [&]
         {
             return promise.GetFuture();
@@ -733,8 +747,7 @@ Y_UNIT_TEST_SUITE(TCellProxyTest)
             [&]
             {
                 promise.SetValue(
-                    TResultOrError<NCells::ICellConnectionPtr>(
-                        std::make_shared<TConnection>(env.Service)));
+                    TResultOrError<IBlockStorePtr>(env.Service));
             });
         UNIT_ASSERT(!described);
     }
@@ -845,7 +858,7 @@ Y_UNIT_TEST_SUITE(TCellProxyTest)
             env.Initialize();
             env.DisableTimeoutDelivery();
             auto promise =
-                NewPromise<TResultOrError<NCells::ICellConnectionPtr>>();
+                NewPromise<TResultOrError<IBlockStorePtr>>();
             env.Manager->Handler = [&]
             {
                 return promise.GetFuture();
@@ -868,11 +881,10 @@ Y_UNIT_TEST_SUITE(TCellProxyTest)
 
             if (connected) {
                 promise.SetValue(
-                    TResultOrError<NCells::ICellConnectionPtr>(
-                        std::make_shared<TConnection>(env.Service)));
+                    TResultOrError<IBlockStorePtr>(env.Service));
             } else {
                 promise.SetValue(
-                    TResultOrError<NCells::ICellConnectionPtr>(
+                    TResultOrError<IBlockStorePtr>(
                         MakeError(E_INVALID_STATE, "cell is not configured")));
             }
             UNIT_ASSERT_VALUES_EQUAL(
@@ -898,12 +910,18 @@ Y_UNIT_TEST_SUITE(TCellProxyTest)
             TEvCellProxy::TEvGetStorageResponse>(env.Sender);
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->Get()->GetStatus());
         UNIT_ASSERT_VALUES_EQUAL(0, env.Manager->Requests);
+        UNIT_ASSERT_VALUES_EQUAL(0, env.Manager->ConnectionRequests);
     }
 
     Y_UNIT_TEST(ShouldReturnMissingDataInterfaceWithoutCreatingAnotherConnection)
     {
         TEnv env;
         env.Initialize();
+        env.Manager->ConnectionHandler = [&]
+        {
+            return MakeFuture(TResultOrError<NCells::ICellConnectionPtr>(
+                std::make_shared<TConnection>(env.Service)));
+        };
         env.Send(new IEventHandle(
             MakeCellProxyServiceId(), env.Sender,
             new TEvCellProxy::TEvGetStorageRequest("cell-b")));
@@ -911,7 +929,8 @@ Y_UNIT_TEST_SUITE(TCellProxyTest)
             TEvCellProxy::TEvGetStorageResponse>(env.Sender);
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_IMPLEMENTED, response->Get()->GetStatus());
         UNIT_ASSERT(!response->Get()->Storage);
-        UNIT_ASSERT_VALUES_EQUAL(1, env.Manager->Requests);
+        UNIT_ASSERT_VALUES_EQUAL(0, env.Manager->Requests);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.Manager->ConnectionRequests);
     }
 }
 

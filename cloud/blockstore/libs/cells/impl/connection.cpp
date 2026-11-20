@@ -84,7 +84,8 @@ TResultOrError<THostBindingPtr> BuildHostBinding(
     const TBootstrap& bootstrap,
     const TCellHostConfig& hostConfig,
     const IBlockStorePtr& controlService,
-    IBlockStorePtr grpcDataEndpoint);
+    IBlockStorePtr grpcDataEndpoint,
+    bool dataEnabled = true);
 
 IBlockStorePtr CreateGrpcDataEndpoint(
     const TBootstrap& bootstrap,
@@ -188,15 +189,18 @@ private:
     const IBlockStorePtr Impl;
     const TCellConnectionPtr Connection;
     const TString CellId;
+    const bool KeepConnectionForRequests;
 
 public:
     TControlService(
             IBlockStorePtr impl,
             TCellConnectionPtr connection,
-            TString cellId)
+            TString cellId,
+            bool keepConnectionForRequests)
         : Impl(std::move(impl))
         , Connection(std::move(connection))
         , CellId(std::move(cellId))
+        , KeepConnectionForRequests(keepConnectionForRequests)
     {}
 
     void Start() override
@@ -215,10 +219,10 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<typename TMethod::TRequest> request)
     {
-        return TMethod::Execute(
+        return RetainConnection(TMethod::Execute(
             Impl.get(),
             std::move(callContext),
-            std::move(request));
+            std::move(request)));
     }
 
     // the mounted disk is noted on the answer, not on the request: a mount
@@ -239,7 +243,9 @@ public:
 
         auto diskId = request->GetDiskId();
         auto clientId = request->GetHeaders().GetClientId();
-        return Impl->MountVolume(std::move(callContext), std::move(request))
+        auto future = Impl->MountVolume(
+            std::move(callContext),
+            std::move(request))
             .Apply(
                 [connection = std::weak_ptr<TCellConnection>(Connection),
                  diskId = std::move(diskId),
@@ -257,6 +263,7 @@ public:
                     }
                     return response;
                 });
+        return RetainConnection(std::move(future));
     }
 
     TFuture<NProto::TUnmountVolumeResponse> UnmountVolume(
@@ -266,7 +273,9 @@ public:
         request->MutableHeaders()->SetCellId(CellId);
 
         auto diskId = request->GetDiskId();
-        return Impl->UnmountVolume(std::move(callContext), std::move(request))
+        auto future = Impl->UnmountVolume(
+            std::move(callContext),
+            std::move(request))
             .Apply(
                 [connection = std::weak_ptr<TCellConnection>(Connection),
                  diskId = std::move(diskId)](const auto& f)
@@ -279,6 +288,21 @@ public:
                     }
                     return response;
                 });
+        return RetainConnection(std::move(future));
+    }
+
+private:
+    template <typename TResponse>
+    TFuture<TResponse> RetainConnection(TFuture<TResponse> future)
+    {
+        if (KeepConnectionForRequests) {
+            future.Subscribe(
+                [connection = Connection](const auto&)
+                {
+                    Y_UNUSED(connection);
+                });
+        }
+        return future;
     }
 };
 
@@ -321,6 +345,7 @@ private:
     const TBootstrap Bootstrap;
     const NClient::TClientAppConfigPtr ClientConfig;
     const ICellConnectionObserverPtr Observer;
+    const bool DataEnabled;
 
     // outlive any binding: this is what makes a move invisible from outside
     const IEndpointRouterPtr ControlRouter;
@@ -393,11 +418,13 @@ public:
             ICellConnectionObserverPtr observer,
             IEndpointRouterPtr controlRouter,
             IEndpointRouterPtr dataRouter,
-            THostBindingPtr binding)
+            THostBindingPtr binding,
+            bool dataEnabled)
         : Pool(std::move(pool))
         , Bootstrap(std::move(bootstrap))
         , ClientConfig(std::move(clientConfig))
         , Observer(std::move(observer))
+        , DataEnabled(dataEnabled)
         , ControlRouter(std::move(controlRouter))
         , DataRouter(std::move(dataRouter))
         , Log(Bootstrap.Logging->CreateLog("BLOCKSTORE_CELLS"))
@@ -475,6 +502,10 @@ public:
 
     NProto::TError SwitchDataTransport(NProto::ECellDataTransport transport)
     {
+        if (!DataEnabled) {
+            return MakeError(E_INVALID_STATE, "Control-only connection");
+        }
+
         if (transport != NProto::CELL_DATA_TRANSPORT_GRPC &&
             !UsesEndpointHandler(transport))
         {
@@ -559,12 +590,15 @@ public:
         return std::make_shared<TControlService>(
             ControlRouter,
             shared_from_this(),
-            Pool->GetCellId());
+            Pool->GetCellId(),
+            !DataEnabled);
     }
 
     IStoragePtr GetStorage() override
     {
-        return CreateRemoteStorage(DataRouter, shared_from_this());
+        return DataEnabled
+                   ? CreateRemoteStorage(DataRouter, shared_from_this())
+                   : nullptr;
     }
 
     // Builds whatever of the data path can still fail, and touches nothing
@@ -994,7 +1028,12 @@ private:
                     hostConfig.SetTransport(*TransportOverride);
                 }
             }
-            built = BuildHostBinding(Bootstrap, hostConfig, controlService, {});
+            built = BuildHostBinding(
+                Bootstrap,
+                hostConfig,
+                controlService,
+                {},
+                DataEnabled);
         } catch (...) {
             AbortMigration(fqdn, CurrentExceptionMessage(), true);
             return;
@@ -1299,6 +1338,7 @@ public:
 NProto::TError TCellConnection::PrepareDataPath(
     const THostBindingPtr& binding)
 {
+    // Control response fencing is needed even when there is no data path.
     binding->Generation = ReserveGeneration();
     binding->ControlGeneration = binding->Generation;
 
@@ -1308,6 +1348,10 @@ NProto::TError TCellConnection::PrepareDataPath(
         binding->ControlService,
         weak_from_this(),
         binding->ControlGeneration);
+
+    if (!DataEnabled) {
+        return {};
+    }
 
     const auto& hostConfig = binding->HostConfig;
     const bool noFallback = UsesEndpointHandler(hostConfig.GetTransport()) &&
@@ -1342,6 +1386,9 @@ void TCellConnection::InstallBinding(const THostBindingPtr& binding)
     const auto& hostConfig = binding->HostConfig;
 
     ControlRouter->SetTarget(binding->BoundControlService);
+    if (!DataEnabled) {
+        return;
+    }
 
     // the target goes in before the switcher starts: the switcher may point
     // the router at the preferred transport straight away, and installing
@@ -1404,11 +1451,15 @@ TResultOrError<THostBindingPtr> BuildHostBinding(
     const TBootstrap& bootstrap,
     const TCellHostConfig& hostConfig,
     const IBlockStorePtr& controlService,
-    IBlockStorePtr grpcDataEndpoint)
+    IBlockStorePtr grpcDataEndpoint,
+    bool dataEnabled)
 {
     auto binding = std::make_shared<THostBinding>();
     binding->HostConfig = hostConfig;
     binding->ControlService = controlService;
+    if (!dataEnabled) {
+        return binding;
+    }
 
     switch (hostConfig.GetTransport()) {
         case NProto::CELL_DATA_TRANSPORT_RDMA:
@@ -1529,12 +1580,15 @@ NProto::TError SwitchCellDataTransport(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCellConnectionFuture CreateCellConnection(
+namespace {
+
+TCellConnectionFuture CreateCellConnectionImpl(
     TCellHostPoolPtr pool,
     TCellHostConfig hostConfig,
     TBootstrap bootstrap,
     NClient::TClientAppConfigPtr clientConfig,
-    ICellConnectionObserverPtr observer)
+    ICellConnectionObserverPtr observer,
+    bool dataEnabled)
 {
     auto fqdn = hostConfig.GetFqdn();
     auto controlFuture = pool->AcquireControlChannel(fqdn);
@@ -1545,6 +1599,7 @@ TCellConnectionFuture CreateCellConnection(
          bootstrap = std::move(bootstrap),
          clientConfig = std::move(clientConfig),
          observer = std::move(observer),
+         dataEnabled,
          fqdn = std::move(fqdn)](const auto& f) mutable -> TCellConnectionFuture
         {
             auto controlService = f.GetValue();
@@ -1557,10 +1612,16 @@ TCellConnectionFuture CreateCellConnection(
             }
 
             auto controlRouter = CreateEndpointRouter(controlService);
-            auto dataRouter = CreateEndpointRouter(controlService);
+            auto dataRouter = dataEnabled
+                                  ? CreateEndpointRouter(controlService)
+                                  : nullptr;
 
-            auto built =
-                BuildHostBinding(bootstrap, hostConfig, controlService, {});
+            auto built = BuildHostBinding(
+                bootstrap,
+                hostConfig,
+                controlService,
+                {},
+                dataEnabled);
             if (HasError(built)) {
                 pool->ReleaseControlChannel(fqdn);
                 return MakeFuture(
@@ -1576,7 +1637,8 @@ TCellConnectionFuture CreateCellConnection(
                 std::move(observer),
                 std::move(controlRouter),
                 std::move(dataRouter),
-                built.GetResult());
+                built.GetResult(),
+                dataEnabled);
 
             // The data endpoint handler needs the connection to exist first.
             auto error = connection->PrepareDataPath(built.GetResult());
@@ -1600,13 +1662,55 @@ TCellConnectionFuture CreateCellConnection(
             // last: from here on callbacks may act on their own
             connection->CompleteSetup();
 
-            if (registry) {
+            if (registry && dataEnabled) {
                 registry->Add(connection);
             }
 
             return MakeFuture(
                 TResultOrError<ICellConnectionPtr>(std::move(connection)));
         });
+}
+
+}   // namespace
+
+TCellConnectionFuture CreateCellConnection(
+    TCellHostPoolPtr pool,
+    TCellHostConfig hostConfig,
+    TBootstrap bootstrap,
+    NClient::TClientAppConfigPtr clientConfig,
+    ICellConnectionObserverPtr observer)
+{
+    return CreateCellConnectionImpl(
+        std::move(pool),
+        std::move(hostConfig),
+        std::move(bootstrap),
+        std::move(clientConfig),
+        std::move(observer),
+        true);
+}
+
+TCellControlServiceFuture CreateCellControlService(
+    TCellHostPoolPtr pool,
+    TCellHostConfig hostConfig,
+    TBootstrap bootstrap,
+    NClient::TClientAppConfigPtr clientConfig)
+{
+    return CreateCellConnectionImpl(
+               std::move(pool),
+               std::move(hostConfig),
+               std::move(bootstrap),
+               std::move(clientConfig),
+               {},
+               false)
+        .Apply(
+            [](const auto& future) -> TResultOrError<IBlockStorePtr>
+            {
+                const auto& result = future.GetValue();
+                if (HasError(result)) {
+                    return result.GetError();
+                }
+                return result.GetResult()->GetService();
+            });
 }
 
 }   // namespace NCloud::NBlockStore::NCells

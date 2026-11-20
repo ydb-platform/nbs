@@ -49,6 +49,10 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
     TPromise<NProto::TMountVolumeResponse> MountPromise =
         NewPromise<NProto::TMountVolumeResponse>();
 
+    bool DeferAction = false;
+    TPromise<NProto::TExecuteActionResponse> ActionPromise =
+        NewPromise<NProto::TExecuteActionResponse>();
+
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
         Y_UNUSED(bytesCount);
@@ -79,6 +83,11 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
                 return MountPromise.GetFuture();
             }
             response.SetTabletHost(TabletHostToReport);
+        }
+        if constexpr (std::is_same_v<TMethod, TBlockStoreExecuteActionMethod>) {
+            if (DeferAction) {
+                return ActionPromise.GetFuture();
+            }
         }
 
         return MakeFuture(std::move(response));
@@ -114,12 +123,21 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
     NCloud::IClientEndpointHandlerPtr IcV2Handler;
     THashMap<TString, std::shared_ptr<TTestBlockStore>> IcV2Services;
 
+    bool RefuseDataEndpoints = false;
+    ui32 DataSetupCalls = 0;
+
     TResultOrError<IBlockStorePtr> SetupHostIcV2Endpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,
         NCloud::IClientEndpointHandlerPtr handler) override
     {
         Y_UNUSED(bootstrap);
+        ++DataSetupCalls;
+        if (RefuseDataEndpoints) {
+            return MakeError(
+                E_NOT_IMPLEMENTED,
+                "Data transport is unavailable");
+        }
 
         IcV2Handler = std::move(handler);
 
@@ -175,6 +193,12 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
         NCloud::IClientEndpointHandlerPtr handler) override
     {
         Y_UNUSED(bootstrap);
+        ++DataSetupCalls;
+        if (RefuseDataEndpoints) {
+            return MakeError(
+                E_NOT_IMPLEMENTED,
+                "Data transport is unavailable");
+        }
 
         if (RefuseRdmaFor && config.GetFqdn() == RefuseRdmaFor) {
             return MakeError(E_REJECTED, "no rdma endpoint for this host");
@@ -390,6 +414,29 @@ struct TTestEnv
         auto result = future.GetValue();
         UNIT_ASSERT_C(!HasError(result), result.GetError());
         return result.GetResult();
+    }
+
+    IBlockStorePtr ConnectControl(const TString& fqdn)
+    {
+        auto future = CreateCellControlService(
+            Pool,
+            Pool->MakeHostConfig(fqdn),
+            Bootstrap,
+            std::make_shared<NClient::TClientAppConfig>());
+        UNIT_ASSERT(future.HasValue());
+        auto result = future.GetValue();
+        UNIT_ASSERT_C(!HasError(result), result.GetError());
+        return result.ExtractResult();
+    }
+
+    ui32 GetConnectionCount(const TString& fqdn) const
+    {
+        for (const auto& host: Pool->GetHostStatuses()) {
+            if (host.Fqdn == fqdn) {
+                return host.Connections;
+            }
+        }
+        return 0;
     }
 
     static void Read(const ICellConnectionPtr& connection)
@@ -2232,6 +2279,98 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::Seconds(5),
             both.GetEndpointSettleTime());
+    }
+
+    Y_UNIT_TEST(ShouldCreateControlServiceWithoutPreparingDataTransport)
+    {
+        for (const auto transport: {
+                 NProto::CELL_DATA_TRANSPORT_GRPC,
+                 NProto::CELL_DATA_TRANSPORT_RDMA,
+                 NProto::CELL_DATA_TRANSPORT_ICV2})
+        {
+            for (const bool fallback: {false, true}) {
+                TTestEnv env(transport, fallback);
+                env.EndpointsSetup->RefuseDataEndpoints = true;
+                env.GrpcClient->CreateSeparateDataEndpoints = true;
+                auto service = env.ConnectControl("host-a");
+
+                auto describe =
+                    std::make_shared<NProto::TDescribeVolumeRequest>();
+                describe->SetDiskId("disk");
+                UNIT_ASSERT(!HasError(
+                    service->DescribeVolume(
+                        MakeIntrusive<TCallContext>(),
+                        std::move(describe))
+                        .GetValue()));
+                auto action = std::make_shared<NProto::TExecuteActionRequest>();
+                action->SetAction("getstorageconfig");
+                UNIT_ASSERT(!HasError(
+                    service->ExecuteAction(
+                        MakeIntrusive<TCallContext>(),
+                        std::move(action))
+                        .GetValue()));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "host-a",
+                    env.GrpcClient->LastControlHost);
+                UNIT_ASSERT_VALUES_EQUAL(0, env.EndpointsSetup->DataSetupCalls);
+                UNIT_ASSERT(env.GrpcClient->DataEndpoints.empty());
+
+                if (transport != NProto::CELL_DATA_TRANSPORT_GRPC &&
+                    !fallback)
+                {
+                    const auto full = env.ConnectAsync("host-a").GetValue();
+                    UNIT_ASSERT(HasError(full));
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        E_NOT_IMPLEMENTED,
+                        full.GetError().GetCode());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        1,
+                        env.GetConnectionCount("host-a"));
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldMigrateControlServiceWithoutPreparingDataTransport)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_RDMA, true, 0, true);
+        env.EndpointsSetup->RefuseDataEndpoints = true;
+        env.GrpcClient->CreateSeparateDataEndpoints = true;
+        auto service = env.ConnectControl("host-a");
+        env.Pool->SetHostAlive("host-a", false);
+
+        UNIT_ASSERT(!HasError(
+            service->ExecuteAction(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TExecuteActionRequest>())
+                .GetValue()));
+        UNIT_ASSERT_VALUES_EQUAL("host-b", env.GrpcClient->LastControlHost);
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetConnectionCount("host-a"));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetConnectionCount("host-b"));
+        UNIT_ASSERT_VALUES_EQUAL(0, env.EndpointsSetup->DataSetupCalls);
+        UNIT_ASSERT(env.GrpcClient->DataEndpoints.empty());
+        service.reset();
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetConnectionCount("host-b"));
+    }
+
+    Y_UNIT_TEST(ShouldRetainControlConnectionUntilRequestCompletes)
+    {
+        TTestEnv env;
+        env.GrpcClient->Service->DeferAction = true;
+        auto service = env.ConnectControl("host-a");
+        auto request = std::make_shared<NProto::TExecuteActionRequest>();
+        request->SetAction("getstorageconfig");
+        auto future = service->ExecuteAction(
+            MakeIntrusive<TCallContext>(),
+            std::move(request));
+        UNIT_ASSERT(!future.HasValue());
+        service.reset();
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetConnectionCount("host-a"));
+
+        env.GrpcClient->Service->ActionPromise.SetValue(
+            NProto::TExecuteActionResponse());
+        UNIT_ASSERT(!HasError(future.GetValue()));
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetConnectionCount("host-a"));
     }
 }
 

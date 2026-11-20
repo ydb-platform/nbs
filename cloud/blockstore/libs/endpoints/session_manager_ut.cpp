@@ -109,6 +109,15 @@ struct TTestCellManager: public ICellManager
         return MakeFuture(CreateConnectionHandler(cellId, clientConfig));
     }
 
+    TCellControlServiceFuture GetControlService(
+        const TString&,
+        const NClient::TClientAppConfigPtr&) override
+    {
+        UNIT_FAIL("SessionManager must create a full cell connection");
+        return MakeFuture(TResultOrError<IBlockStorePtr>(
+            MakeError(E_NOT_IMPLEMENTED)));
+    }
+
     TDescribeVolumeFuture DescribeVolume(
         TCallContextPtr callContext,
         const TString& diskId,

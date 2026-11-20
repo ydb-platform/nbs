@@ -35,6 +35,7 @@ struct TEvPrivate
     {
         EvConnectionCreated = TBlockStorePrivateEvents::CELLS_PROXY_START,
         EvRequestCompleted,
+        EvControlServiceCreated,
         EvEnd
     };
 
@@ -49,6 +50,16 @@ struct TEvPrivate
 
         explicit TEvConnectionCreated(
             TResultOrError<NCells::ICellConnectionPtr> result)
+            : Result(std::move(result))
+        {}
+    };
+
+    struct TEvControlServiceCreated
+        : TEventLocal<TEvControlServiceCreated, EvControlServiceCreated>
+    {
+        TResultOrError<IBlockStorePtr> Result;
+
+        explicit TEvControlServiceCreated(TResultOrError<IBlockStorePtr> result)
             : Result(std::move(result))
         {}
     };
@@ -153,7 +164,7 @@ private:
 
     typename TMethod::TRequest Request;
 
-    NCells::ICellConnectionPtr Connection;
+    IBlockStorePtr Service;
     TMonotonic Deadline;
 
 public:
@@ -178,14 +189,14 @@ public:
             [&]
             {
                 CellManager
-                    ->CreateConnection(Request.CellId, {}, ClientConfig, {})
+                    ->GetControlService(Request.CellId, ClientConfig)
                     .Subscribe(
                         [actorSystem = ctx.ActorSystem(),
                          self = SelfId()](const auto& future)
                         {
                             actorSystem->Send(
                                 self,
-                                new TEvPrivate::TEvConnectionCreated(
+                                new TEvPrivate::TEvControlServiceCreated(
                                     ExtractResponse(future)));
                         });
                 return MakeError(S_OK);
@@ -220,8 +231,8 @@ private:
         return false;
     }
 
-    void HandleConnectionCreated(
-        const TEvPrivate::TEvConnectionCreated::TPtr& ev,
+    void HandleControlServiceCreated(
+        const TEvPrivate::TEvControlServiceCreated::TPtr& ev,
         const TActorContext& ctx)
     {
         auto& result = ev->Get()->Result;
@@ -234,19 +245,15 @@ private:
             return;
         }
 
-        Connection = result.ExtractResult();
-        if (!Connection) {
-            ReplyAndDie(ctx, MakeError(E_FAIL, "Cell connection is empty"));
+        Service = result.ExtractResult();
+        if (!Service) {
+            ReplyAndDie(ctx, MakeError(E_FAIL, "Cell service is empty"));
             return;
         }
 
         const auto error = SafeExecute<NProto::TError>(
             [&]
             {
-                auto service = Connection->GetService();
-                if (!service) {
-                    return MakeError(E_FAIL, "Cell service is empty");
-                }
                 NProto::THeaders headers;
                 headers.SetClientId(FQDNHostName());
                 headers.SetCellId(Request.CellId);
@@ -256,7 +263,7 @@ private:
                         1,
                         (Deadline - ctx.Monotonic()).MilliSeconds()));
                 TMethod::Execute(
-                    *service,
+                    *Service,
                     RequestInfo->CallContext,
                     Request,
                     headers)
@@ -308,7 +315,9 @@ private:
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
-            HFunc(TEvPrivate::TEvConnectionCreated, HandleConnectionCreated);
+            HFunc(
+                TEvPrivate::TEvControlServiceCreated,
+                HandleControlServiceCreated);
             HFunc(TResponseEvent, HandleResponse);
             CFunc(TEvents::TEvWakeup::EventType, HandleTimeout);
             CFunc(TEvents::TEvPoisonPill::EventType, HandlePoisonPill);

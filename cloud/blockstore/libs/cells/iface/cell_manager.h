@@ -23,6 +23,9 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TCellControlServiceFuture =
+    NThreading::TFuture<TResultOrError<IBlockStorePtr>>;
+
 using TDescribeVolumeFuture =
     NThreading::TFuture<NProto::TDescribeVolumeResponse>;
 
@@ -96,6 +99,12 @@ struct ICellManager: public IStartable
         const TString& fqdn,
         const NClient::TClientAppConfigPtr& clientConfig,
         ICellConnectionObserverPtr observer) = 0;
+
+    // Uses the existing host pool and routing without preparing a data path.
+    // The returned service and its in-flight requests retain their connection.
+    [[nodiscard]] virtual TCellControlServiceFuture GetControlService(
+        const TString& cellId,
+        const NClient::TClientAppConfigPtr& clientConfig) = 0;
 
     [[nodiscard]] virtual TDescribeVolumeFuture DescribeVolume(
         TCallContextPtr callContext,

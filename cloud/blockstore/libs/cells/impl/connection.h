@@ -26,6 +26,13 @@ TCellConnectionFuture CreateCellConnection(
     NClient::TClientAppConfigPtr clientConfig,
     ICellConnectionObserverPtr observer);
 
+// Keeps control routing and host migration, without any data endpoint setup.
+TCellControlServiceFuture CreateCellControlService(
+    TCellHostPoolPtr pool,
+    TCellHostConfig hostConfig,
+    TBootstrap bootstrap,
+    NClient::TClientAppConfigPtr clientConfig);
+
 TCellConnectionRegistryPtr CreateCellConnectionRegistry();
 
 // What the live connections in the registry serve; forgets the ones that are

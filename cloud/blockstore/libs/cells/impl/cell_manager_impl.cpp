@@ -222,6 +222,28 @@ TCellConnectionFuture TCellManager::CreateConnection(
         std::move(observer));
 }
 
+TCellControlServiceFuture TCellManager::GetControlService(
+    const TString& cellId,
+    const NClient::TClientAppConfigPtr& clientConfig)
+{
+    auto* pool = Pools.FindPtr(cellId);
+    if (!pool) {
+        return MakeFuture(TResultOrError<IBlockStorePtr>(MakeError(
+            E_INVALID_STATE,
+            TStringBuilder() << "Cell " << cellId << " is not configured")));
+    }
+
+    auto host = (*pool)->PickHost();
+    if (HasError(host)) {
+        return MakeFuture(TResultOrError<IBlockStorePtr>(host.GetError()));
+    }
+    return CreateCellControlService(
+        *pool,
+        host.ExtractResult(),
+        Bootstrap,
+        clientConfig);
+}
+
 TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     const NClient::TClientAppConfigPtr& clientConfig)
 {
@@ -267,7 +289,7 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
         NProto::TClientAppConfig app;
         *app.MutableClientConfig() = clientConfig;
         auto config = std::make_shared<NClient::TClientAppConfig>(std::move(app));
-        return CreateConnection(cellId, {}, config, {}).Apply(
+        return GetControlService(cellId, config).Apply(
             [callContext = std::move(callContext), request = std::move(request),
              cellId](const auto& future) mutable -> TDescribeVolumeFuture
             {
@@ -277,8 +299,7 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
                     *response.MutableError() = result.GetError();
                     return NThreading::MakeFuture(std::move(response));
                 }
-                auto connection = result.ExtractResult();
-                auto service = connection ? connection->GetService() : nullptr;
+                auto service = result.ExtractResult();
                 if (!service) {
                     return NThreading::MakeFuture(
                         ErrorResponse<NProto::TDescribeVolumeResponse>(
@@ -287,9 +308,9 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
                 return service->DescribeVolume(
                     std::move(callContext),
                     std::make_shared<NProto::TDescribeVolumeRequest>(std::move(request)))
-                    .Apply([connection = std::move(connection), cellId](const auto& reply)
+                    .Apply([service = std::move(service), cellId](const auto& reply)
                     {
-                        Y_UNUSED(connection);
+                        Y_UNUSED(service);
                         auto response = ExtractResponse(reply);
                         response.SetCellId(cellId);
                         return response;

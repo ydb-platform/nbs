@@ -967,6 +967,129 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             "<td>host-3</td><td><span class='label label-default'>"
             "not probed</span></td>");
     }
+
+    Y_UNIT_TEST(ShouldRejectUnknownCellForControlService)
+    {
+        TCellManager manager(
+            std::make_shared<TCellsConfig>(NProto::TCellsConfig{}),
+            TBootstrap{});
+        const auto future = manager.GetControlService(
+            "missing",
+            std::make_shared<TClientAppConfig>());
+        UNIT_ASSERT(future.HasValue());
+        const auto result = future.GetValue();
+        UNIT_ASSERT(HasError(result));
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldExecuteControlRequestsWithoutConfiguredDataTransport)
+    {
+        TPortManager ports;
+        const auto port = ports.GetPort(9001);
+        TTestContext context;
+        auto target = std::make_shared<TTestService>();
+        target->DescribeVolumeHandler = [](auto request)
+        {
+            NProto::TDescribeVolumeResponse response;
+            response.MutableVolume()->SetDiskId(request->GetDiskId());
+            return MakeFuture(std::move(response));
+        };
+        target->ExecuteActionHandler = [](auto request)
+        {
+            NProto::TExecuteActionResponse response;
+            response.SetOutput(request->GetInput());
+            return MakeFuture(std::move(response));
+        };
+        auto server = TTestServerBuilder(context)
+                          .SetPort(port)
+                          .SetCellId("target")
+                          .BuildServer(target);
+        server->Start();
+        Y_DEFER
+        {
+            server->Stop();
+        };
+
+        for (const auto transport: {
+                 NProto::CELL_DATA_TRANSPORT_RDMA,
+                 NProto::CELL_DATA_TRANSPORT_ICV2})
+        {
+            auto proto = TCellConfigBuilder("source", true)
+                             .AddCell("target", port, 0, 1, 1, {"localhost"})
+                             .Build();
+            proto.MutableCells(0)->SetTransport(transport);
+            proto.MutableCells(0)->SetGrpcDataFallbackEnabled(false);
+            auto config = std::make_shared<TCellsConfig>(std::move(proto));
+            auto manager = CreateCellManager(
+                config,
+                context.Timer,
+                context.Scheduler,
+                context.Logging,
+                context.Monitoring,
+                context.TraceSerializer,
+                context.ServerStats,
+                CreateClientCertificateProvider(config),
+                nullptr,
+                {},
+                CreateLocalService());
+            manager->Start();
+            Y_DEFER
+            {
+                manager->Stop();
+            };
+
+            const auto result = manager
+                                    ->GetControlService(
+                                        "target",
+                                        std::make_shared<TClientAppConfig>())
+                                    .GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(result), result.GetError());
+            auto service = result.GetResult();
+            auto describe = std::make_shared<NProto::TDescribeVolumeRequest>();
+            describe->SetDiskId("target-disk");
+            describe->MutableHeaders()->SetClientId("client");
+            describe->MutableHeaders()->SetCellId("target");
+            const auto description = service
+                                         ->DescribeVolume(
+                                             MakeIntrusive<TCallContext>(),
+                                             std::move(describe))
+                                         .GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(description), description.GetError());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "target-disk",
+                description.GetVolume().GetDiskId());
+
+            NProto::THeaders headers;
+            headers.SetClientId("client");
+            headers.SetCellId("target");
+            headers.SetExactDiskIdMatch(true);
+            headers.MutableInternal()->SetIsCellCopyRequest(true);
+            const auto directed = manager
+                                      ->DescribeVolume(
+                                          MakeIntrusive<TCallContext>(),
+                                          "target-disk",
+                                          headers,
+                                          NProto::TClientConfig{})
+                                      .GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(directed), directed.GetError());
+            UNIT_ASSERT_VALUES_EQUAL("target", directed.GetCellId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "target-disk",
+                directed.GetVolume().GetDiskId());
+
+            auto action = std::make_shared<NProto::TExecuteActionRequest>();
+            action->SetAction("getstorageconfig");
+            action->SetInput("remote-result");
+            action->MutableHeaders()->SetClientId("client");
+            const auto response = service
+                                      ->ExecuteAction(
+                                          MakeIntrusive<TCallContext>(),
+                                          std::move(action))
+                                      .GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(response), response.GetError());
+            UNIT_ASSERT_VALUES_EQUAL("remote-result", response.GetOutput());
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NCells
