@@ -278,7 +278,10 @@ private:
     void DoSendResponse(TCont* c, TServerResponse& response,
                         bool receiveFinished)
     {
-        if (receiveFinished || IsShutdownError(response.Error)) {
+        const bool serverStopped = IsShutdownError(response.Error);
+        if (receiveFinished || serverStopped) {
+            response.RequestContext->MetricRequest.ResponseDeliveryUncertain =
+                !serverStopped;
             Handler->CancelResponse(response);
             return;
         }

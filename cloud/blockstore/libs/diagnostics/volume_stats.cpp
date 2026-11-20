@@ -1,5 +1,7 @@
 #include "volume_stats.h"
 
+#include "latency_sli.h"
+
 #include "config.h"
 #include "stats_helpers.h"
 #include "user_counter.h"
@@ -262,6 +264,8 @@ private:
     const TRealInstanceId RealInstanceId;
 
     TRequestCounters RequestCounters;
+    std::unique_ptr<TLatencySliCounters> LatencySli;
+    TDynamicCountersPtr LatencyCountersFolder;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
 
     struct TServingCellHost
@@ -339,6 +343,11 @@ public:
               executionTimeSizeClasses))
         , AvailabilityLastUpdateTime(VolumeBase->Timer->Now())
     {}
+
+    TLatencySliCounters* GetLatencySli() const override
+    {
+        return LatencySli.get();
+    }
 
     bool IsPinned() const noexcept
     {
@@ -643,14 +652,14 @@ private:
     TDynamicCountersPtr Counters;
     // Separate, narrow counters tree (component=sli_volume) for the
     // cumulative availability counters (ObservedSeconds/AvailableSeconds/
-    // HealthySeconds) only. The main per-volume tree (component=
-    // server_volume / client_volume) also carries ~200-280 other per-volume
-    // perf counters, so scraping the whole subtree just to reach our ~3
+    // HealthySeconds) and latency SLI counters. The main per-volume tree
+    // (component=server_volume / client_volume) carries ~200-280 other per-volume
+    // perf counters, so scraping the whole subtree just to reach the SLI
     // sensors is wasteful; this sibling group lets a monitoring agent pull
     // only these specific counters. Populated for both EServerStats and
     // EClientStats in InitCounters; see RegisterInstance() for the per-volume
     // subgroup layout.
-    TDynamicCountersPtr AvailabilityCounters;
+    TDynamicCountersPtr SliCounters;
     std::shared_ptr<NUserCounter::IUserCounterSupplier> UserCounters;
     std::unique_ptr<TSufferCounters> SufferCounters;
     std::unique_ptr<TSufferCounters> SmoothSufferCounters;
@@ -688,10 +697,10 @@ public:
     {}
 
     // Not thread-safe
-    bool MountVolumeImpl(
-        NProto::TVolume volume,
-        const TRealInstanceId& realInstanceId,
-        size_t pinCountForNewInstance)
+    bool MountVolumeImpl(NProto::TVolume volume,
+                         const TRealInstanceId& realInstanceId,
+                         size_t pinCountForNewInstance,
+                         TDynamicCountersPtr latencyCountersFolder = {})
     {
         bool inserted = false;
 
@@ -709,7 +718,8 @@ public:
         auto volumeInfoIt = infos.find(realInstanceId);
         if (volumeInfoIt == infos.end()) {
             auto volumeInfo =
-                RegisterInstance(volumeIt->second.VolumeBase, realInstanceId);
+                RegisterInstance(volumeIt->second.VolumeBase, realInstanceId,
+                                 std::move(latencyCountersFolder));
             volumeInfoIt = infos.emplace(realInstanceId, volumeInfo).first;
             inserted = true;
             volumeInfoIt->second->PinCount = pinCountForNewInstance;
@@ -799,7 +809,19 @@ public:
 
         for (const auto& item: holder.VolumeInfos) {
             TVolumeInfo& info = *item.second;
-            MountVolumeImpl(volumeConfig, info.RealInstanceId, info.PinCount);
+            if (info.LatencyCountersFolder) {
+                // Availability starts a new series on remount. Only latency
+                // groups must stay reachable by operations already in flight.
+                const auto oldType = info.LatencyCountersFolder->GetSubgroup(
+                    "type",
+                    MediaKindToComputeType(
+                        info.VolumeBase->Volume.GetStorageMediaKind()));
+                oldType->RemoveCounter("ObservedSeconds");
+                oldType->RemoveCounter("AvailableSeconds");
+                oldType->RemoveCounter("HealthySeconds");
+            }
+            MountVolumeImpl(volumeConfig, info.RealInstanceId, info.PinCount,
+                            info.LatencyCountersFolder);
 
             Volumes.at(volumeConfig.GetDiskId())
                 .VolumeInfos.at(info.RealInstanceId)
@@ -1258,9 +1280,9 @@ private:
             .VolumeInfos = {}};
     }
 
-    TVolumeInfoPtr RegisterInstance(
-        TVolumeBasePtr volumeBase,
-        const TRealInstanceId& realInstanceId)
+    TVolumeInfoPtr RegisterInstance(TVolumeBasePtr volumeBase,
+                                    const TRealInstanceId& realInstanceId,
+                                    TDynamicCountersPtr previousLatencyFolder)
     {
         auto info = std::make_shared<TVolumeInfo>(
             volumeBase,
@@ -1292,29 +1314,42 @@ private:
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
         info->CountersGroup = countersGroup;
 
-        // Register the cumulative counters in the narrow component=sli_volume
-        // tree (see AvailabilityCounters comment).
+        // Register latency and availability counters in the narrow
+        // component=sli_volume tree (see SliCounters comment).
         // "type" uses MediaKindToComputeType (not MediaKindToStatsString, the
         // convention used by the DownDisks aggregate below) to produce the
         // same disk-type spelling ("network-ssd", ...) this helper already
         // produces elsewhere in the codebase.
         // All per-instance trees are rebuilt when a remount changes any label
         // used in their subgroup chains.
-        auto availabilityCountersGroup =
-            AvailabilityCounters
-                ->GetSubgroup("volume", volumeConfig.GetDiskId())
+        auto sliCloud =
+            SliCounters->GetSubgroup("volume", volumeConfig.GetDiskId())
                 ->GetSubgroup("instance", realInstanceId.GetRealInstanceId())
-                ->GetSubgroup("cloud", volumeConfig.GetCloudId())
-                ->GetSubgroup("folder", volumeConfig.GetFolderId())
-                ->GetSubgroup(
-                    "type",
-                    MediaKindToComputeType(volumeConfig.GetStorageMediaKind()));
+                ->GetSubgroup("cloud", volumeConfig.GetCloudId());
+        if (previousLatencyFolder) {
+            sliCloud->RegisterSubgroup("folder", volumeConfig.GetFolderId(),
+                                       std::move(previousLatencyFolder));
+        }
+        auto sliFolder =
+            sliCloud->GetSubgroup("folder", volumeConfig.GetFolderId());
+        const auto type =
+            MediaKindToComputeType(volumeConfig.GetStorageMediaKind());
+        auto sliCountersGroup = sliFolder->GetSubgroup("type", type);
+
+        auto latencySliConfig = DiagnosticsConfig->GetLatencySliConfig(
+            volumeConfig.GetStorageMediaKind());
+        if (latencySliConfig.Enabled && Type == EVolumeStatsType::EServerStats) {
+            info->LatencyCountersFolder = std::move(sliFolder);
+            info->LatencySli = std::make_unique<TLatencySliCounters>(
+                std::move(latencySliConfig), sliCountersGroup);
+        }
+
         info->ObservedSecondsCounter =
-            availabilityCountersGroup->GetCounter("ObservedSeconds", true);
+            sliCountersGroup->GetCounter("ObservedSeconds", true);
         info->AvailableSecondsCounter =
-            availabilityCountersGroup->GetCounter("AvailableSeconds", true);
+            sliCountersGroup->GetCounter("AvailableSeconds", true);
         info->HealthySecondsCounter =
-            availabilityCountersGroup->GetCounter("HealthySeconds", true);
+            sliCountersGroup->GetCounter("HealthySeconds", true);
 
         auto reportZeroBlocksMetrics =
             !DiagnosticsConfig
@@ -1344,7 +1379,7 @@ private:
         Counters->GetSubgroup("volume", volumeBase->Volume.GetDiskId())->
             RemoveSubgroup("instance", realInstanceId.GetRealInstanceId());
 
-        AvailabilityCounters
+        SliCounters
             ->GetSubgroup("volume", volumeBase->Volume.GetDiskId())
             ->RemoveSubgroup("instance", realInstanceId.GetRealInstanceId());
 
@@ -1364,7 +1399,7 @@ private:
 
         Counters->RemoveSubgroup("volume", volumeBase->Volume.GetDiskId());
 
-        AvailabilityCounters->RemoveSubgroup(
+        SliCounters->RemoveSubgroup(
             "volume",
             volumeBase->Volume.GetDiskId());
     }
@@ -1408,7 +1443,7 @@ private:
                     ++mk;
                 }
 
-                AvailabilityCounters = Counters
+                SliCounters = Counters
                     ->GetSubgroup("component", "sli_volume")
                     ->GetSubgroup("host", "cluster");
 
@@ -1416,7 +1451,7 @@ private:
                 break;
             }
             case EVolumeStatsType::EClientStats: {
-                AvailabilityCounters = Counters
+                SliCounters = Counters
                     ->GetSubgroup("component", "sli_volume")
                     ->GetSubgroup("host", "cluster");
 

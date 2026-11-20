@@ -1177,9 +1177,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TManualEvent undelivered;
         auto stats = std::make_shared<TTestServerStats>();
         stats->RequestCompletedHandler =
-            [&](auto&, auto&, auto&, const auto& error)
+            [&](auto&, auto& metric, auto&, const auto&)
         {
-            if (error.GetCode() == E_CANCELLED) {
+            if (metric.ResponseDeliveryUncertain) {
                 undelivered.Signal();
             }
         };

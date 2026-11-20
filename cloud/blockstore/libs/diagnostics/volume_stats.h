@@ -37,6 +37,11 @@ struct IVolumeInfo
 {
     virtual ~IVolumeInfo() = default;
 
+    virtual TLatencySliCounters* GetLatencySli() const
+    {
+        return nullptr;
+    }
+
     virtual const NProto::TVolume& GetInfo() const = 0;
     virtual TDuration GetPossiblePostponeDuration() const = 0;
 

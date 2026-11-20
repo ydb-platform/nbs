@@ -3,14 +3,17 @@
 #include "server_test.h"
 
 #include <cloud/blockstore/libs/client/client.h>
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/diagnostics/start_endpoint_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats_test.h>
+#include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
@@ -25,6 +28,7 @@
 #include <array>
 #include <atomic>
 #include <tuple>
+#include <utility>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -57,24 +61,55 @@ void CheckDescribe(auto endpoint, TString cellId, ui32 errorCode)
 
 Y_UNIT_TEST_SUITE(TServerTest)
 {
-    Y_UNIT_TEST(ShouldReturnThrottleDelayOnlyForConfirmedCellRequests)
+    Y_UNIT_TEST(ShouldClassifyOnlyOriginalIoOverGrpc)
     {
         TPortManager portManager;
         const ui16 port = portManager.GetPort();
         const ui16 securePort = portManager.GetPort();
         TTestFactory factory;
+        NProto::TDiagnosticsConfig proto;
+        proto.SetEnableLatencySli(true);
+        for (bool write: {false, true}) {
+            auto* row = proto.AddLatencySliThresholds();
+            row->SetMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+            row->SetWrite(write);
+            row->SetStartBytes(1);
+            row->SetEndBytes(8193);
+            row->SetThresholdUs(10000000);
+        }
+        auto diagnostics = std::make_shared<TDiagnosticsConfig>(proto);
         NProto::TServerAppConfig serverProto;
         serverProto.MutableServerConfig()->SetPort(port);
         serverProto.MutableServerConfig()->SetDataPort(0);
         serverProto.MutableServerConfig()->SetSecurePort(securePort);
         auto config = std::make_shared<TServerAppConfig>(serverProto);
+        auto stats = CreateServerStats(
+            config, diagnostics, factory.Monitoring, factory.ProfileLog,
+            factory.RequestStats,
+            CreateVolumeStats(factory.Monitoring, diagnostics, {},
+                EVolumeStatsType::EServerStats, factory.Timer));
+        NProto::TVolume volume;
+        volume.SetDiskId("disk");
+        volume.SetBlockSize(4096);
+        volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+        stats->MountVolume(volume, "client", "instance");
+
+        // Observe the metric prepared by the real gRPC handler, then run the
+        // real collector. Waiting for this callback avoids publication races.
         auto observed = std::make_shared<TTestServerStats>();
+        observed->GetBlockSizeHandler =
+            std::bind_front(&IServerStats::GetBlockSize, stats.get());
+        observed->PrepareMetricRequestHandler =
+            std::bind_front(&IServerStats::PrepareMetricRequest, stats.get());
+        observed->RequestStartedHandler =
+            std::bind_front(&IServerStats::RequestStarted, stats.get());
         observed->ResponseSentHandler =
-            [](TMetricRequest& metric, TCallContext& ctx)
+            [&](TMetricRequest& metric, TCallContext& ctx)
         {
             if (metric.ForwardedRequest) {
                 ctx.AddLatencyThrottleDelay(TDuration::MilliSeconds(5));
             }
+            stats->ResponseSent(metric, ctx);
         };
         using TObservation = std::tuple<ui64, bool, bool>;
         std::array<TPromise<TObservation>, 18> completed;
@@ -83,9 +118,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
             promise = NewPromise<TObservation>();
         }
         observed->RequestCompletedHandler = [&](
-            TLog&, TMetricRequest& metric, TCallContext& context,
-            const NProto::TError&)
+            TLog& log, TMetricRequest& metric, TCallContext& context,
+            const NProto::TError& error)
         {
+            stats->RequestCompleted(log, metric, context, error);
             const auto index = completionIndex.fetch_add(1);
             if (index < completed.size()) {
                 completed[index].TrySetValue(
@@ -210,6 +246,28 @@ Y_UNIT_TEST_SUITE(TServerTest)
             UNIT_ASSERT(!cellFlag); // legacy error accounting stays enabled
         }
         UNIT_ASSERT_VALUES_EQUAL(completed.size(), completionIndex.load());
+
+        stats->UpdateStats(false);
+        auto group = factory.Monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "disk")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", "")
+            ->GetSubgroup("folder", "")
+            ->GetSubgroup("type", "network-ssd-nonreplicated");
+        for (const auto* operation: {"ReadBlocks", "WriteBlocks"}) {
+            auto counters = group->GetSubgroup("request", operation);
+            UNIT_ASSERT_VALUES_EQUAL(
+                3, counters->GetCounter("LatencyGoodOps", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                3, counters->GetCounter("LatencyBadOps", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                6, counters->GetCounter("LatencyTotalOps", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0, counters->GetCounter("LatencyUnknownOps", true)->Val());
+        }
     }
 
     Y_UNIT_TEST(ShouldPrepareRequestHeaders)
@@ -752,6 +810,70 @@ Y_UNIT_TEST_SUITE(TServerTest)
             E_GRPC_UNIMPLEMENTED,
             response.GetError().GetCode()
         );
+    }
+
+    Y_UNIT_TEST(ShouldReportFailedDeliveryAfterSuccessfulBackendCompletion)
+    {
+        TPortManager ports;
+        const ui16 port = ports.GetPort();
+        TTestFactory factory;
+        auto completion = NewPromise<std::pair<ui32, bool>>();
+        auto service = std::make_shared<TTestService>();
+        service->ReadBlocksHandler = [](const auto&)
+        {
+            NProto::TReadBlocksResponse response;
+            response.MutableBlocks()->AddBuffers(TString(4096, 'x'));
+            return MakeFuture(std::move(response));
+        };
+        auto stats = std::make_shared<TTestServerStats>();
+        stats->RequestCompletedHandler =
+            [completion](auto&, auto& metric, auto&, const auto& error) mutable
+        {
+            completion.TrySetValue(
+                {error.GetCode(), metric.ResponseDeliveryUncertain});
+        };
+        NProto::TServerAppConfig proto;
+        proto.MutableServerConfig()->SetPort(port);
+        proto.MutableServerConfig()->SetDataPort(0);
+        // The request fits this limit, but the successful backend response
+        // exceeds it, making gRPC response delivery fail deterministically.
+        proto.MutableServerConfig()->SetMaxMessageSize(1024);
+        auto server = CreateServer(
+            std::make_shared<TServerAppConfig>(proto),
+            factory.Logging,
+            stats,
+            service,
+            nullptr,
+            {}, nullptr);
+        auto client = factory.CreateClientBuilder()
+                          .SetPort(port)
+                          .SetDataPort(0)
+                          .BuildClient();
+        server->Start();
+        client->Start();
+        Y_DEFER
+        {
+            client->Stop();
+            server->Stop();
+        };
+        auto endpoint = client->CreateEndpoint();
+        endpoint->Start();
+        Y_DEFER
+        {
+            endpoint->Stop();
+        };
+        auto request = std::make_shared<NProto::TReadBlocksRequest>();
+        request->SetBlocksCount(1);
+        request->SetBlockSize(4096);
+        auto result =
+            endpoint->ReadBlocks(MakeIntrusive<TCallContext>(), request);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_GRPC_RESOURCE_EXHAUSTED,
+            result.GetValue(TDuration::Seconds(5)).GetError().GetCode());
+        const auto [backendError, deliveryUncertain] =
+            completion.GetFuture().GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, backendError);
+        UNIT_ASSERT(deliveryUncertain);
     }
 
     Y_UNIT_TEST(ShouldCancelRequestsOnServerShutdown)
