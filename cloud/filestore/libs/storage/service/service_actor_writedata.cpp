@@ -177,17 +177,8 @@ struct TWriteRequestContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEvStartWriteData final
-    : public TEventLocal<TEvStartWriteData, TEvServicePrivate::EvStartWriteData>
-{
-    TWriteRequestContext RequestContext;
-
-    TEvStartWriteData(TWriteRequestContext&& context)
-        : RequestContext(std::move(context))
-    {}
-};
-
-////////////////////////////////////////////////////////////////////////////////
+using TEvStartWriteData =
+    TRequestEvent<TWriteRequestContext, TEvServicePrivate::EvStartWriteData>;
 
 class TWriteDataActor final: public TActorBootstrapped<TWriteDataActor>
 {
@@ -277,7 +268,7 @@ private:
         const TActorContext& ctx)
     {
         auto* msg = ev->Get();
-        Initialize(std::move(msg->RequestContext));
+        Initialize(std::move(*msg));
         StartRequest(ctx);
     }
 
