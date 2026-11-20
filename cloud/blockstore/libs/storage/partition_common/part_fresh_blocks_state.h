@@ -149,8 +149,6 @@ struct TSelectiveTrimPlanParams
     // Blobs of earlier generations may carry Keep flags of an earlier tablet
     // lifetime.
     ui32 CurrentGeneration = 0;
-    // The limit on the Keep and DoNotKeep flags of the plan together.
-    ui64 MaxFlags = 0;
 };
 
 struct TSelectiveTrimPlan
@@ -270,15 +268,15 @@ public:
         const TVector<ui64>& commitIds);
 
     // Places the soft barrier on the newest dead blob in
-    // (OrdinaryTrimToCommitId, SelectiveTrimToCommitId] that the flag budget
-    // allows, with Keep flags for the live blobs below it and DoNotKeep flags
-    // for kept blobs that died. The barrier also collects the blobs at or
-    // below OrdinaryTrimToCommitId that are known to carry no Keep flag: those
-    // of the current generation above LastSentSelectiveTrimToCommitId.
-    // Every blob at or below SelectiveTrimToCommitId must have been added, so
-    // that its Dead flag tells whether it is live. Returns std::nullopt when no
-    // soft command is needed, in particular when SelectiveTrimToCommitId is not
-    // above OrdinaryTrimToCommitId.
+    // (OrdinaryTrimToCommitId, SelectiveTrimToCommitId], with Keep flags for
+    // the live blobs below it and DoNotKeep flags for kept blobs that died. The
+    // barrier also collects the blobs at or below OrdinaryTrimToCommitId that
+    // are known to carry no Keep flag: those of the current generation above
+    // LastSentSelectiveTrimToCommitId. Every blob at or below
+    // SelectiveTrimToCommitId must have been added, so that its Dead flag tells
+    // whether it is live. Returns std::nullopt when no soft command is needed,
+    // in particular when SelectiveTrimToCommitId is not above
+    // OrdinaryTrimToCommitId.
     [[nodiscard]] std::optional<TSelectiveTrimPlan> BuildSelectiveTrimPlan(
         const TSelectiveTrimPlanParams& params) const;
 

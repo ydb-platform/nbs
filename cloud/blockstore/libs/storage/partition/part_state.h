@@ -1226,7 +1226,9 @@ public:
 
     ui32 NextCollectPerGenerationCounter()
     {
-        if (LastCollectPerGenerationCounter == InvalidCollectPerGenerationCounter) {
+        if (LastCollectPerGenerationCounter ==
+            InvalidCollectPerGenerationCounter)
+        {
             return InvalidCollectPerGenerationCounter;
         }
         return ++LastCollectPerGenerationCounter;

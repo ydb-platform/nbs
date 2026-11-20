@@ -218,7 +218,6 @@ void TPartitionActor::HandleTrimFreshLog(
             .LastSentSelectiveTrimToCommitId =
                 State->GetLastSentSelectiveTrimToCommitId(),
             .CurrentGeneration = Executor()->Generation(),
-            .MaxFlags = MaxCollectGarbageFlagsPerMessage,
         });
 
         LOG_DEBUG(

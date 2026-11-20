@@ -4795,6 +4795,124 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldKeepMoreLiveBlobsThanOneCollectGarbageMessageHolds)
+    {
+        constexpr ui32 FreshChannelId = 4;
+        constexpr ui32 LiveBlobCount =
+            static_cast<ui32>(MaxCollectGarbageFlagsPerMessage) + 1;
+        constexpr ui32 HotBlockIndex = LiveBlobCount;
+
+        auto config = SelectiveTrimConfig();
+        config.SetWriteRequestBatchingEnabled(false);
+        // A flush would let an ordinary trim delete every blob with a hard
+        // barrier, which needs no flags.
+        config.SetFlushThresholdHDD(128_MB);
+        config.SetFreshBlobCountFlushThresholdHDD(64 * 1024);
+        config.SetFreshBlobByteCountFlushThresholdHDD(256_MB);
+
+        auto runtime = PrepareTestActorRuntime(config, LiveBlobCount + 1);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        TFreshLogTrimCounters counters;
+        ui64 maxKeepFlagCount = 0;
+        // The DS proxy sends the flags that do not fit into the message with
+        // the barrier in commands without a barrier.
+        ui32 flagOnlyCommandCount = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                counters.OnEvent(*event);
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvCollectGarbage)
+                {
+                    auto* msg = event->Get<TEvBlobStorage::TEvCollectGarbage>();
+                    if (msg->Channel == FreshChannelId && !msg->Hard) {
+                        maxKeepFlagCount = Max<ui64>(
+                            maxKeepFlagCount,
+                            msg->Keep ? msg->Keep->size() : 0);
+                        if (!msg->Collect) {
+                            ++flagOnlyCommandCount;
+                        }
+                    }
+                }
+                return false;
+            });
+        const auto& commits = counters.FreshBlobCommitIds;
+
+        // A live single-block blob per block. Writes run in parallel only to
+        // make the test faster.
+        constexpr ui32 InFlightWriteCount = 128;
+        for (ui32 start = 0; start < LiveBlobCount; start += InFlightWriteCount)
+        {
+            const ui32 end = Min(start + InFlightWriteCount, LiveBlobCount);
+            for (ui32 i = start; i < end; ++i) {
+                partition.SendWriteBlocksRequest(i, 'a');
+            }
+            for (ui32 i = start; i < end; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    S_OK,
+                    partition.RecvWriteBlocksResponse()->GetStatus());
+            }
+        }
+
+        // Overwrites of the hot block kill three blobs. The soft barrier on
+        // the newest of them needs a Keep flag for each blob written before.
+        for (char c = 'b'; c <= 'e'; ++c) {
+            partition.WriteBlocks(HotBlockIndex, c);
+        }
+        WaitForTrimsCompleted(*runtime, counters, 1);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.TrimsFailed);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.FlushesCompleted);
+        UNIT_ASSERT_VALUES_EQUAL(LiveBlobCount, maxKeepFlagCount);
+        UNIT_ASSERT_GT(flagOnlyCommandCount, 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            commits[LiveBlobCount + 2],
+            counters.SelectiveTrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            LiveBlobCount + 1,
+            GetFreshBlobsCount(partition));
+
+        // The kept blobs are below the soft barrier now, so the next soft
+        // command needs no flags for them.
+        for (char c = 'f'; c <= 'h'; ++c) {
+            partition.WriteBlocks(HotBlockIndex, c);
+        }
+        WaitForTrimsCompleted(*runtime, counters, 2);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.TrimsFailed);
+        UNIT_ASSERT_VALUES_EQUAL(
+            commits[LiveBlobCount + 5],
+            counters.SelectiveTrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>(), counters.Keep);
+        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>(), counters.DoNotKeep);
+        UNIT_ASSERT_VALUES_EQUAL(
+            LiveBlobCount + 1,
+            GetFreshBlobsCount(partition));
+
+        // Only the Keep flags saved the blobs below the soft barriers.
+        TVector<ui64> liveCommits(
+            commits.begin(),
+            commits.begin() + LiveBlobCount);
+        liveCommits.push_back(commits.back());
+        Sort(liveCommits);
+        RestartTablet(partition);
+        UNIT_ASSERT_VALUES_EQUAL(liveCommits, counters.LoadedCommitIds);
+
+        constexpr ui32 ReadBlockCount = 1024;
+        for (ui32 start = 0; start < LiveBlobCount; start += ReadBlockCount) {
+            const auto range = TBlockRange32::WithLength(
+                start,
+                Min(ReadBlockCount, LiveBlobCount - start));
+            UNIT_ASSERT_C(
+                GetBlocksContent('a', range.Size()) ==
+                    GetBlocksContent(partition.ReadBlocks(range)),
+                "start block: " << start);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent('h'),
+            GetBlockContent(partition.ReadBlocks(HotBlockIndex)));
+    }
+
     Y_UNIT_TEST(ShouldNotSendSoftBarrierWhileOrdinaryTrimToCommitIdIsInPreviousGeneration)
     {
         auto config = SelectiveTrimConfig();

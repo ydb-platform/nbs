@@ -7,6 +7,8 @@
 
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 
+#include <contrib/ydb/core/base/blobstorage.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/size_literals.h>
@@ -433,7 +435,6 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
             auto plan = state.BuildSelectiveTrimPlan({
                 .OrdinaryTrimToCommitId = 10,
                 .SelectiveTrimToCommitId = 19,
-                .MaxFlags = 10,
             });
             UNIT_ASSERT(plan);
             UNIT_ASSERT_VALUES_EQUAL(18, plan->TrimToCommitId);
@@ -446,44 +447,46 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
                 plan->CollectingCommitIds);
         }
 
-        // The flag budget stops the barrier on the last dead blob that fits.
-        {
-            auto plan = state.BuildSelectiveTrimPlan({
-                .OrdinaryTrimToCommitId = 10,
-                .SelectiveTrimToCommitId = 19,
-                .MaxFlags = 2,
-            });
-            UNIT_ASSERT(plan);
-            UNIT_ASSERT_VALUES_EQUAL(16, plan->TrimToCommitId);
-            UNIT_ASSERT_VALUES_EQUAL(
-                TVector<ui64>({11, 14}),
-                CommitIds(plan->Keep));
-            UNIT_ASSERT_VALUES_EQUAL(
-                TVector<ui64>({12, 13, 15, 16}),
-                plan->CollectingCommitIds);
-        }
-
-        // A budget that no dead blob fits in moves nothing.
-        UNIT_ASSERT(!state.BuildSelectiveTrimPlan({
-            .OrdinaryTrimToCommitId = 10,
-            .SelectiveTrimToCommitId = 19,
-            .MaxFlags = 0,
-        }));
-
         // Every blob up to SelectiveTrimToCommitId is live, and the dead blobs
         // above it are not collected.
         UNIT_ASSERT(!state.BuildSelectiveTrimPlan({
             .OrdinaryTrimToCommitId = 10,
             .SelectiveTrimToCommitId = 11,
-            .MaxFlags = 10,
         }));
 
         // Nothing is untrimmed above OrdinaryTrimToCommitId.
         UNIT_ASSERT(!state.BuildSelectiveTrimPlan({
             .OrdinaryTrimToCommitId = 20,
             .SelectiveTrimToCommitId = 20,
-            .MaxFlags = 10,
         }));
+    }
+
+    Y_UNIT_TEST(ShouldPlaceSoftBarrierBehindMoreLiveBlobsThanOneMessageHolds)
+    {
+        // The live blobs before the first dead one need more Keep flags than
+        // one TEvCollectGarbage message holds.
+        constexpr ui64 LiveBlobCount =
+            NKikimr::MaxCollectGarbageFlagsPerMessage + 1;
+        constexpr ui64 FirstCommitId = 11;
+        constexpr ui64 DeadCommitId = FirstCommitId + LiveBlobCount;
+        auto state = MakeFreshBlobState(FirstCommitId, DeadCommitId);
+        state.MarkFreshBlobDead(DeadCommitId);
+
+        auto plan = state.BuildSelectiveTrimPlan({
+            .OrdinaryTrimToCommitId = FirstCommitId - 1,
+            .SelectiveTrimToCommitId = DeadCommitId,
+        });
+        UNIT_ASSERT(plan);
+        UNIT_ASSERT_VALUES_EQUAL(DeadCommitId, plan->TrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(LiveBlobCount, plan->Keep.size());
+        UNIT_ASSERT_VALUES_EQUAL(FirstCommitId, plan->Keep.front().CommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            DeadCommitId - 1,
+            plan->Keep.back().CommitId());
+        UNIT_ASSERT(!plan->DoNotKeep);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui64>({DeadCommitId}),
+            plan->CollectingCommitIds);
     }
 
     Y_UNIT_TEST(ShouldNotBuildSelectiveTrimPlanWhileOverwrittenWriteIsInFlight)
@@ -503,14 +506,12 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT(!state.BuildSelectiveTrimPlan({
             .OrdinaryTrimToCommitId = 12,
             .SelectiveTrimToCommitId = 10,
-            .MaxFlags = 10,
         }));
 
         // The write at 13 has not completed either, and it holds both of them.
         UNIT_ASSERT(!state.BuildSelectiveTrimPlan({
             .OrdinaryTrimToCommitId = 12,
             .SelectiveTrimToCommitId = 12,
-            .MaxFlags = 10,
         }));
 
         // Once the writes complete, the soft barrier reaches the dead blobs
@@ -518,7 +519,6 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         auto plan = state.BuildSelectiveTrimPlan({
             .OrdinaryTrimToCommitId = 12,
             .SelectiveTrimToCommitId = 17,
-            .MaxFlags = 10,
         });
         UNIT_ASSERT(plan);
         UNIT_ASSERT_VALUES_EQUAL(16, plan->TrimToCommitId);
@@ -546,7 +546,6 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
             .SelectiveTrimToCommitId = 22,
             .KeptToCommitId = 0,
             .LastSentSelectiveTrimToCommitId = 16,
-            .MaxFlags = 10,
         });
         UNIT_ASSERT(plan);
         UNIT_ASSERT_VALUES_EQUAL(21, plan->TrimToCommitId);
@@ -558,23 +557,8 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
             TVector<ui64>({12, 13, 14, 15, 16}),
             CommitIds(plan->DoNotKeep));
         UNIT_ASSERT_VALUES_EQUAL(
-            TVector<ui64>({18, 20, 21, 12, 13, 14, 15, 16}),
+            TVector<ui64>({12, 13, 14, 15, 16, 18, 20, 21}),
             plan->CollectingCommitIds);
-
-        // Mandatory Keep flags are never dropped by the budget, and the
-        // barrier does not drop below the failed one.
-        plan = state.BuildSelectiveTrimPlan({
-            .OrdinaryTrimToCommitId = 10,
-            .SelectiveTrimToCommitId = 22,
-            .KeptToCommitId = 0,
-            .LastSentSelectiveTrimToCommitId = 16,
-            .MaxFlags = 1,
-        });
-        UNIT_ASSERT(plan);
-        UNIT_ASSERT_VALUES_EQUAL(16, plan->TrimToCommitId);
-        UNIT_ASSERT_VALUES_EQUAL(TVector<ui64>({11}), CommitIds(plan->Keep));
-        UNIT_ASSERT(!plan->DoNotKeep);
-        UNIT_ASSERT(!plan->CollectingCommitIds);
 
         // Blobs kept by a successful command need no flag.
         plan = state.BuildSelectiveTrimPlan({
@@ -582,7 +566,6 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
             .SelectiveTrimToCommitId = 22,
             .KeptToCommitId = 16,
             .LastSentSelectiveTrimToCommitId = 16,
-            .MaxFlags = 10,
         });
         UNIT_ASSERT(plan);
         UNIT_ASSERT_VALUES_EQUAL(21, plan->TrimToCommitId);
@@ -591,7 +574,7 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
             CommitIds(plan->Keep));
     }
 
-    Y_UNIT_TEST(ShouldReleaseDeadKeptBlobsWithinFlagBudget)
+    Y_UNIT_TEST(ShouldReleaseDeadKeptBlobs)
     {
         // Every blob at or below 15 was kept; 12, 13 and 14 died since.
         //
@@ -607,7 +590,6 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
             .SelectiveTrimToCommitId = 17,
             .KeptToCommitId = 15,
             .LastSentSelectiveTrimToCommitId = 15,
-            .MaxFlags = 10,
         });
         UNIT_ASSERT(plan);
         // Only flags are sent; the barrier stays where it is.
@@ -618,22 +600,6 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
             CommitIds(plan->DoNotKeep));
         UNIT_ASSERT_VALUES_EQUAL(
             TVector<ui64>({12, 13, 14}),
-            plan->CollectingCommitIds);
-
-        // DoNotKeep gets the budget that Keep left; the rest waits.
-        plan = state.BuildSelectiveTrimPlan({
-            .OrdinaryTrimToCommitId = 10,
-            .SelectiveTrimToCommitId = 17,
-            .KeptToCommitId = 15,
-            .LastSentSelectiveTrimToCommitId = 15,
-            .MaxFlags = 2,
-        });
-        UNIT_ASSERT(plan);
-        UNIT_ASSERT_VALUES_EQUAL(
-            TVector<ui64>({12, 13}),
-            CommitIds(plan->DoNotKeep));
-        UNIT_ASSERT_VALUES_EQUAL(
-            TVector<ui64>({12, 13}),
             plan->CollectingCommitIds);
     }
 
@@ -658,7 +624,6 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
             .SelectiveTrimToCommitId = 19,
             .KeptToCommitId = 12,
             .LastSentSelectiveTrimToCommitId = 12,
-            .MaxFlags = 10,
         });
         UNIT_ASSERT(plan);
         UNIT_ASSERT_VALUES_EQUAL(18, plan->TrimToCommitId);
@@ -728,7 +693,6 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
             .OrdinaryTrimToCommitId = dead2,
             .SelectiveTrimToCommitId = dead3,
             .CurrentGeneration = 2,
-            .MaxFlags = 10,
         });
         UNIT_ASSERT(plan);
         UNIT_ASSERT_VALUES_EQUAL(dead3, plan->TrimToCommitId);

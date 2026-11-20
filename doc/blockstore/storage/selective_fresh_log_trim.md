@@ -58,7 +58,9 @@ There are two kinds of trims, and only one runs at a time. An ordinary trim send
 | Ordinary | Hard, at `TrimFreshLogToCommitId` | None | Every blob at or below the barrier. A hard barrier ignores Keep flags. |
 | Selective | Soft, on the newest dead blob below every in-flight fresh write | Keep for live blobs below the barrier, DoNotKeep for kept blobs that died | Dead blobs at or below the barrier |
 
-A fresh write stays in flight until it completes, after the partition adds it, so every blob below a selective barrier is known to the partition. A write whose blocks are all overwritten between the add and the completion holds no trim barrier reference, so `TrimFreshLogToCommitId` can pass it while it is still in flight. The barrier does not go past the newest dead blob it can reach: live blobs above the barrier need no Keep. A trim sends at most `MaxCollectGarbageFlagsPerMessage` flags, and Keep flags come first. The limit can delay DoNotKeep flags or stop the barrier lower, but it never leaves a live blob below the barrier without Keep.
+A fresh write stays in flight until it completes, after the partition adds it, so every blob below a selective barrier is known to the partition. A write whose blocks are all overwritten between the add and the completion holds no trim barrier reference, so `TrimFreshLogToCommitId` can pass it while it is still in flight. The planner advances the barrier to the newest dead blob it can reach. Live blobs above the barrier need no Keep.
+
+The partition sends all Keep and DoNotKeep flags needed for the chosen barrier in one trim. For each fresh channel, DSProxy splits a large request into messages of at most 10,000 flags each (`MaxCollectGarbageFlagsPerMessage`, counting both kinds together). Once the flag-only messages succeed, DSProxy sends the final message with the remaining flags and the barrier. [Partition request](../../../cloud/blockstore/libs/storage/partition_common/actor_trimfreshlog.cpp#L129) · [DSProxy message sizing](../../../contrib/ydb/core/blobstorage/dsproxy/dsproxy_multicollect.cpp#L126) · [barrier ordering](../../../contrib/ydb/core/blobstorage/dsproxy/dsproxy_multicollect.cpp#L57)
 
 Keep flags are stored by BlobStorage, so a live blob gets Keep only once:
 
@@ -123,5 +125,5 @@ SSD settings apply to SSD disks, HDD settings to HDD and hybrid disks.
 
 ### Costs
 
-- More CollectGarbage requests and flags, and Keep flags stored by BlobStorage. `T` and `MaxCollectGarbageFlagsPerMessage` bound them.
-- Many live blobs between dead ones spend many Keep flags for little space.
+- The dead-byte threshold `T` controls when a scan is due. A trim that passes many live blobs can require a large Keep list to reclaim little space.
+- The partition builds the full flag lists in memory. Larger lists can require several BlobStorage messages, and BlobStorage stores the Keep flags.

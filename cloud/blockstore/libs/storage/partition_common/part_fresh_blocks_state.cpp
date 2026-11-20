@@ -244,8 +244,6 @@ TPartitionFreshBlobState::BuildSelectiveTrimPlan(
             params.LastSentSelectiveTrimToCommitId);
 
     TSelectiveTrimPlan plan{.TrimToCommitId = minTrimToCommitId};
-    // Dead blobs at or below minTrimToCommitId that may carry Keep flags.
-    TVector<std::pair<ui64, TPartialBlobId>> deadKept;
     // The number of Keep flags at or below plan.TrimToCommitId. The flags for
     // the live blobs after the last dead one are dropped at the end.
     size_t keepCount = 0;
@@ -260,12 +258,13 @@ TPartitionFreshBlobState::BuildSelectiveTrimPlan(
 
         if (commitId <= minTrimToCommitId) {
             if (blob.Dead) {
-                deadKept.emplace_back(commitId, blob.BlobId);
+                // An earlier soft command may have kept it, and only DoNotKeep
+                // lets a soft barrier collect a kept blob.
+                plan.DoNotKeep.push_back(blob.BlobId);
+                plan.CollectingCommitIds.push_back(commitId);
             } else if (commitId > params.KeptToCommitId) {
                 // Covered by a soft command that failed. The new barrier is at
-                // least as high, so this Keep is mandatory. These live blobs
-                // are a subset of the Keep list of that command, so they fit
-                // into the flag budget.
+                // least as high, so this Keep is mandatory.
                 plan.Keep.push_back(blob.BlobId);
                 keepCount = plan.Keep.size();
             }
@@ -273,10 +272,6 @@ TPartitionFreshBlobState::BuildSelectiveTrimPlan(
         }
 
         if (!blob.Dead) {
-            if (plan.Keep.size() >= params.MaxFlags) {
-                // The flag budget is spent.
-                break;
-            }
             plan.Keep.push_back(blob.BlobId);
             continue;
         }
@@ -295,21 +290,6 @@ TPartitionFreshBlobState::BuildSelectiveTrimPlan(
         keepCount,
         plan.Keep.size());
     plan.Keep.resize(keepCount);
-    Y_DEBUG_ABORT_UNLESS(
-        plan.Keep.size() <= params.MaxFlags,
-        "Too many mandatory Keep flags: %lu",
-        plan.Keep.size());
-
-    // DoNotKeep uses the budget that Keep left. Entries left out stay in the
-    // map until a later selective trim sends their DoNotKeep, or until the hard
-    // barrier of an ordinary trim, which ignores Keep, passes them.
-    for (const auto& [commitId, blobId]: deadKept) {
-        if (plan.Keep.size() + plan.DoNotKeep.size() >= params.MaxFlags) {
-            break;
-        }
-        plan.DoNotKeep.push_back(blobId);
-        plan.CollectingCommitIds.push_back(commitId);
-    }
 
     // Without flags, a barrier at minTrimToCommitId collects nothing that the
     // hard barrier of an ordinary trim does not.

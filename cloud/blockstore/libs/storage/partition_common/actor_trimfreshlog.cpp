@@ -78,12 +78,6 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
         "Hard barrier with flags, keep: " << Keep.size()
                                           << ", do not keep: "
                                           << DoNotKeep.size());
-    STORAGE_VERIFY_C(
-        Keep.size() + DoNotKeep.size() <= MaxCollectGarbageFlagsPerMessage,
-        TWellKnownEntityTypes::TABLET,
-        tabletId,
-        "Too many flags, keep: " << Keep.size()
-                                 << ", do not keep: " << DoNotKeep.size());
     // Only a selective trim, which sends a soft barrier, collects blobs by id.
     STORAGE_VERIFY_C(
         SelectiveTrim ? !Hard : !CollectingCommitIds,
@@ -143,7 +137,7 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
                 flags.Keep.release(),        // keep
                 flags.DoNotKeep.release(),   // do not keep
                 deadline,                    // deadline
-                false,                       // multicollect not allowed
+                true,                        // multicollect allowed
                 Hard);                       // hard barrier
 
             LOG_DEBUG(
