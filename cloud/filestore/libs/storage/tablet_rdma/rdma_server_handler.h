@@ -11,9 +11,8 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// True for the methods the handler forwards to the tablet: the
-// FILESTORE_SERVICE_REQUESTS and FILESTORE_TABLET_REQUESTS requests except
-// CreateSession.
+// True for the methods the handler forwards to the tablet: the service
+// requests and the data-path tablet requests (FILESTORE_RDMA_REQUESTS).
 bool IsRdmaTabletMethod(ui32 methodId);
 
 /**

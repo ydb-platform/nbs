@@ -260,12 +260,7 @@ private:
 // FILESTORE_HANDLE_RDMA_RESPONSE
 
         switch (ev->GetTypeRewrite()) {
-            FILESTORE_SERVICE_REQUESTS(
-                FILESTORE_HANDLE_RDMA_RESPONSE,
-                TEvService)
-            FILESTORE_TABLET_REQUESTS(
-                FILESTORE_HANDLE_RDMA_RESPONSE,
-                TEvIndexTablet)
+            FILESTORE_RDMA_REQUESTS(FILESTORE_HANDLE_RDMA_RESPONSE)
 
             default:
                 return false;
