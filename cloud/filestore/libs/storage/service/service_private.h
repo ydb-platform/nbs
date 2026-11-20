@@ -97,10 +97,19 @@ struct TEvServicePrivate
         TResponseEvent<TFastShardsAllocated, EvFastShardsAllocated>;
     using TEvFastShardsDeallocated =
         TResponseEvent<TEmpty, EvFastShardsDeallocated>;
-    using TEvReleaseReadDataActor =
-        TRequestEvent<TEmpty, EvReleaseReadDataActor>;
-    using TEvReleaseWriteDataActor =
-        TRequestEvent<TEmpty, EvReleaseWriteDataActor>;
+
+    // Unlike TRequestEvent following events dont allocalte TCallContext on
+    // the heap
+    struct TEvReleaseReadDataActor final
+        : public NActors::
+              TEventLocal<TEvReleaseReadDataActor, EvReleaseReadDataActor>
+    {
+    };
+    struct TEvReleaseWriteDataActor final
+        : public NActors::
+              TEventLocal<TEvReleaseWriteDataActor, EvReleaseWriteDataActor>
+    {
+    };
 };
 
 }   // namespace NCloud::NFileStore::NStorage

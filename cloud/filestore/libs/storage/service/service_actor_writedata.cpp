@@ -1056,7 +1056,7 @@ private:
                 "actual=%lu",
                 state.RequestContext.LogTag.c_str(),
                 RequestGeneration,
-                ev->Cookie);
+                ev->Get()->Tag);
             return;
         }
 
