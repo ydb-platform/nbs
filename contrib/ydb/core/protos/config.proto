@@ -1962,6 +1962,13 @@ message THiveConfig {
         HIVE_BOOT_STRATEGY_FAST = 1 [(EnumDescription) = "when the per-node startup limit is reached on one node, continue starting tablets on other nodes"];
     }
 
+    enum ECountersExportMode {
+        COUNTERS_EXPORT_MODE_BASIC = 0 [(EnumDescription) = "only the basic Hive counters"];
+        COUNTERS_EXPORT_MODE_PER_RESOURCE_COUNTERS = 10 [(EnumDescription) = "also per-resource balancing counters (BalanceScatterCpu, BalancerExecuted by balancer type etc.)"];
+        COUNTERS_EXPORT_MODE_LOCAL_PER_NODE_COUNTERS = 20 [(EnumDescription) = "also node usage counters in Locals of this Hive, each node exports its own"];
+        COUNTERS_EXPORT_MODE_HIVE_PER_NODE_COUNTERS = 30 [(EnumDescription) = "also counters per node in Hive itself: all of them on the Hive node, the heaviest mode"];
+    }
+
     message TBootPriority {
         optional NKikimrTabletBase.TTabletTypes.EType TabletType = 1;
         optional double Priority = 2;
