@@ -3,6 +3,8 @@ package scrubbing
 import (
 	"context"
 	"fmt"
+	"math/bits"
+	"sync"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -74,11 +76,20 @@ func (t *scrubFilesystemTask) Run(
 	)
 
 	rootNodeAlreadyScheduled := t.state.GetRootNodeScheduled()
+	// The histogram is not saved periodically, so a resumed traversal can have
+	// missing or duplicate counts. Keep this flag sticky.
+	t.state.FileSizeHistogramUnreliable =
+		t.state.FileSizeHistogramUnreliable || rootNodeAlreadyScheduled
+	var histogramMutex sync.Mutex
 	onListedNodes := func(
 		ctx context.Context,
 		nodes []nfs.Node,
 		_ listers.FilesystemLister,
 	) error {
+
+		histogramMutex.Lock()
+		addToFileSizeHistogram(t.state, nodes)
+		histogramMutex.Unlock()
 
 		t.callback(nodes)
 		for _, node := range nodes {
@@ -109,6 +120,33 @@ func (t *scrubFilesystemTask) Run(
 	}
 
 	return traverser.Traverse(ctx)
+}
+
+func addToFileSizeHistogram(
+	state *scrubbing_protos.ScrubFilesystemTaskState,
+	nodes []nfs.Node,
+) {
+
+	for _, node := range nodes {
+		if node.Type != nfs.NODE_KIND_FILE {
+			continue
+		}
+
+		// Hard links are weighted 1/Links instead of deduplicating NodeIDs.
+		weight := 1.0
+		if node.Links > 1 {
+			weight /= float64(node.Links)
+		}
+
+		bucket := bits.Len64(node.Size)
+		for len(state.FileCountBySizeLog2) <= bucket {
+			state.FileCountBySizeLog2 = append(state.FileCountBySizeLog2, 0)
+			state.FileBytesBySizeLog2 = append(state.FileBytesBySizeLog2, 0)
+		}
+
+		state.FileCountBySizeLog2[bucket] += weight
+		state.FileBytesBySizeLog2[bucket] += weight * float64(node.Size)
+	}
 }
 
 func (t *scrubFilesystemTask) Cancel(
