@@ -77,7 +77,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         THolder<NKikimr::TEvBlobStorage::TEvGet> ReadRequest;
 
         void StartCompressedRead(
-            NProto::TCompressionMetadata::ECompressionType codec,
+            NCloud::NProto::ECompressionCodec codec,
             bool shouldCalculateChecksums,
             EStorageAccessMode storageAccessMode = EStorageAccessMode::Default,
             bool waitForReadRequest = true)
@@ -223,7 +223,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         for (const ui16 offset: {17, 19, 20, 40}) {
             BlobOffsets = {offset};
             StartCompressedRead(
-                NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
+                NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
                 true,
                 EStorageAccessMode::Default,
                 false);   // waitForReadRequest
@@ -263,7 +263,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                     }
                 }
                 StartCompressedRead(
-                    NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
+                    NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
                     false);
 
                 UNIT_ASSERT_VALUES_EQUAL(1, ReadRequest->QuerySize);
@@ -290,8 +290,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
     Y_UNIT_TEST_F(ShouldReadCompressedBlob, TCompressedReadEnvironment)
     {
         for (const auto codec:
-             {NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
-              NProto::TCompressionMetadata::COMPRESSION_ZSTD_3})
+             {NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+              NCloud::NProto::COMPRESSION_CODEC_ZSTD_3})
         {
             for (const bool checksums: {false, true}) {
                 StartCompressedRead(codec, checksums);
@@ -355,8 +355,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
             TString(GetBrokenDataMarker()).resize(BlockSize, '\0');
 
         for (const auto codec:
-             {NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
-              NProto::TCompressionMetadata::COMPRESSION_ZSTD_3})
+             {NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+              NCloud::NProto::COMPRESSION_CODEC_ZSTD_3})
         {
             for (const bool checksums: {false, true}) {
                 for (const auto status:
@@ -426,7 +426,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         TCompressedReadEnvironment)
     {
         StartCompressedRead(
-            NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
             true);
         auto result = MakeReadResult();
         result->Responses[0].Status = NKikimrProto::NODATA;
@@ -445,7 +445,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         TCompressedReadEnvironment)
     {
         StartCompressedRead(
-            NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
             true,
             EStorageAccessMode::Repair);
         auto result = MakeReadResult();
@@ -465,8 +465,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         TCompressedReadEnvironment)
     {
         for (const auto codec:
-             {NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
-              NProto::TCompressionMetadata::COMPRESSION_ZSTD_3})
+             {NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+              NCloud::NProto::COMPRESSION_CODEC_ZSTD_3})
         {
             for (const ui32 responseIndex: {0, 1}) {
                 StartCompressedRead(codec, true);
@@ -509,8 +509,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 // any blocks are decoded or replaced with repair markers.
                 for (const int delta: {0, -1, 1}) {
                     StartCompressedRead(
-                        NProto::TCompressionMetadata::
-                            COMPRESSION_LZ4_FAST14_SAFE,
+                        NCloud::NProto::
+                            COMPRESSION_CODEC_LZ4_FAST14_SAFE,
                         true,
                         mode);
                     auto result = MakeReadResult();
@@ -571,7 +571,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         {
             for (const ui32 responseIndex: {0, 1}) {
                 StartCompressedRead(
-                    NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
+                    NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
                     true,
                     mode);
                 auto result = MakeReadResult();
@@ -611,8 +611,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
     {
         ui64 expectedCriticalEvents = 0;
         for (const auto codec:
-             {NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
-              NProto::TCompressionMetadata::COMPRESSION_ZSTD_3})
+             {NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+              NCloud::NProto::COMPRESSION_CODEC_ZSTD_3})
         {
             StartCompressedRead(codec, true);
             auto result = MakeReadResult();
@@ -643,7 +643,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         TCompressedReadEnvironment)
     {
         StartCompressedRead(
-            NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
             true);
         auto result = MakeReadResult();
         result->Responses[1].Status = NKikimrProto::ERROR;
@@ -665,7 +665,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         TCompressedReadEnvironment)
     {
         StartCompressedRead(
-            NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
             true);
         GuardedSglist.Close();
 
@@ -686,7 +686,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         TCompressedReadEnvironment)
     {
         StartCompressedRead(
-            NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
             true);
 
         ActorSystem.Send(new NActors::IEventHandle(

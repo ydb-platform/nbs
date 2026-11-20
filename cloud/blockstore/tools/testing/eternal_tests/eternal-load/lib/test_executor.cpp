@@ -5,6 +5,7 @@
 #include <cloud/blockstore/tools/testing/eternal_tests/eternal-load/lib/config.h>
 
 #include <cloud/storage/core/libs/common/file_io_service.h>
+#include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/io_uring/service.h>
 
@@ -19,6 +20,7 @@
 #include <util/thread/pool.h>
 
 #include <atomic>
+#include <cerrno>
 
 namespace NCloud::NBlockStore::NTesting {
 
@@ -41,9 +43,14 @@ class TTestExecutor: public ITestExecutor
 private:
     class TWorkerService;
 
+    using TRequestHandler =
+        std::function<void(const NProto::TError& error, ui32 value)>;
+    using TSubmitRequest = std::function<void(TRequestHandler handler)>;
+
     const TInstant TestStartTimestamp;
     TVector<std::unique_ptr<TTestScenario>> TestScenarios;
     ITestFileIOServicePtr FileService;
+    const ISchedulerPtr Scheduler = CreateScheduler();
 
     std::atomic_bool ShouldStop = false;
     std::atomic_bool Failed = false;
@@ -65,6 +72,8 @@ private:
     const bool PrintDebugStats = false;
 
     static constexpr TDuration PrintStatsInterval = TDuration::Seconds(5);
+    static constexpr TDuration RejectedRequestRetryDelay =
+        TDuration::MilliSeconds(1);
 
 public:
     TTestExecutor(TTestExecutorSettings settings, ITestFileIOServicePtr service);
@@ -74,6 +83,7 @@ public:
 
 private:
     void PrintStats();
+    void SubmitRequest(TSubmitRequest submit, TRequestHandler handler);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -172,6 +182,7 @@ bool TTestExecutor::Run()
 
     STORAGE_INFO("Started TTestExecutor");
 
+    Scheduler->Start();
     FileService->Start();
 
     TVector<TFuture<void>> workerFutures;
@@ -202,6 +213,7 @@ bool TTestExecutor::Run()
     }
 
     FileService->Stop();
+    Scheduler->Stop();
 
     for (const auto& it: TestScenarios) {
         it->File.Close();
@@ -251,6 +263,33 @@ void TTestExecutor::PrintStats()
     PreviousBytesRead = currentBytesRead;
     PreviousBytesWritten = currentBytesWritten;
     PreviousBytesZeroed = currentBytesZeroed;
+}
+
+// Calls submit and calls it again after a delay while the request is rejected.
+// The retry can't be immediate: the file service may need to handle the
+// completions of other requests to accept new ones, and the rejection may be
+// reported in its completion thread.
+void TTestExecutor::SubmitRequest(
+    TSubmitRequest submit,
+    TRequestHandler handler)
+{
+    submit(
+        [this, submit, handler = std::move(handler)](
+            const NProto::TError& error,
+            ui32 value) mutable
+        {
+            if (error.GetCode() != E_REJECTED) {
+                handler(error, value);
+                return;
+            }
+
+            Scheduler->Schedule(
+                Now() + RejectedRequestRetryDelay,
+                [this,
+                 submit = std::move(submit),
+                 handler = std::move(handler)]() mutable
+                { SubmitRequest(std::move(submit), std::move(handler)); });
+        });
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -336,10 +375,15 @@ void TTestExecutor::TWorkerService::Read(
     RequestCount++;
     PendingRequestCount++;
 
-    Executor.FileService->AsyncRead(
-        Scenario.File,
-        static_cast<i64>(offset),
-        TArrayRef(static_cast<char*>(buffer), count),
+    Executor.SubmitRequest(
+        [this, buffer, count, offset](TRequestHandler handler)
+        {
+            Executor.FileService->AsyncRead(
+                Scenario.File,
+                static_cast<i64>(offset),
+                TArrayRef(static_cast<char*>(buffer), count),
+                std::move(handler));
+        },
         [this, count, callback = std::move(callback)](
             const NProto::TError& error,
             ui32 value)
@@ -370,10 +414,15 @@ void TTestExecutor::TWorkerService::Write(
     RequestCount++;
     PendingRequestCount++;
 
-    Executor.FileService->AsyncWrite(
-        Scenario.File,
-        static_cast<i64>(offset),
-        TArrayRef(static_cast<const char*>(buffer), count),
+    Executor.SubmitRequest(
+        [this, buffer, count, offset](TRequestHandler handler)
+        {
+            Executor.FileService->AsyncWrite(
+                Scenario.File,
+                static_cast<i64>(offset),
+                TArrayRef(static_cast<const char*>(buffer), count),
+                std::move(handler));
+        },
         [this, count, callback = std::move(callback)](
             const NProto::TError& error,
             ui32 value)
@@ -403,10 +452,15 @@ void TTestExecutor::TWorkerService::Zero(
     RequestCount++;
     PendingRequestCount++;
 
-    Executor.FileService->AsyncZero(
-        Scenario.File,
-        static_cast<i64>(offset),
-        count,
+    Executor.SubmitRequest(
+        [this, count, offset](TRequestHandler handler)
+        {
+            Executor.FileService->AsyncZero(
+                Scenario.File,
+                static_cast<i64>(offset),
+                count,
+                std::move(handler));
+        },
         [this, count, callback = std::move(callback)](
             const NProto::TError& error,
             ui32 value)
@@ -452,15 +506,16 @@ public:
         TArrayRef<char> buffer,
         TFileIOCompletion* completion) override
     {
-        auto future = TAsyncIOService::Read(
-            file,
-            buffer.data(),
-            static_cast<ui32>(buffer.size()),
-            static_cast<ui64>(offset));
-
-        future.Subscribe([completion](const auto& f) {
-            RunCompletion(f, completion);
-        });
+        Submit(
+            [&]
+            {
+                return TAsyncIOService::Read(
+                    file,
+                    buffer.data(),
+                    static_cast<ui32>(buffer.size()),
+                    static_cast<ui64>(offset));
+            },
+            completion);
     }
 
     void AsyncWrite(
@@ -471,15 +526,16 @@ public:
         ui32 flags) override
     {
         Y_UNUSED(flags);
-        auto future = TAsyncIOService::Write(
-            file,
-            buffer.data(),
-            static_cast<ui32>(buffer.size()),
-            static_cast<ui64>(offset));
-
-        future.Subscribe([completion](const auto& f) {
-            RunCompletion(f, completion);
-        });
+        Submit(
+            [&]
+            {
+                return TAsyncIOService::Write(
+                    file,
+                    buffer.data(),
+                    static_cast<ui32>(buffer.size()),
+                    static_cast<ui64>(offset));
+            },
+            completion);
     }
 
     void AsyncReadV(
@@ -521,6 +577,30 @@ public:
         Y_UNUSED(count);
         Y_UNUSED(completion);
         Y_ABORT("Not supported");
+    }
+
+private:
+    // Like the AIO service in cloud/storage/core/libs/aio, reports submission
+    // errors through the completion and rejects the request when io_submit
+    // fails with EAGAIN: the AIO context has no free slots until the poller
+    // thread reaps the completions of other requests.
+    template <typename TSubmit>
+    static void Submit(TSubmit submit, TFileIOCompletion* completion)
+    {
+        TFuture<ui32> future;
+        try {
+            future = submit();
+        } catch (const TSystemError& e) {
+            const auto error =
+                e.Status() == EAGAIN
+                    ? MakeError(E_REJECTED, "EAGAIN received")
+                    : MakeError(MAKE_SYSTEM_ERROR(e.Status()), e.what());
+            completion->Func(completion, error, 0);
+            return;
+        }
+
+        future.Subscribe([completion](const auto& f)
+                         { RunCompletion(f, completion); });
     }
 
     static void RunCompletion(

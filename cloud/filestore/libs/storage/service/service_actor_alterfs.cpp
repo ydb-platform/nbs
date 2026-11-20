@@ -1,11 +1,13 @@
 #include "service_actor.h"
 
+#include "helpers.h"
 #include "shard_creation_state_companion.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 
@@ -74,6 +76,7 @@ private:
     TMultiShardFileStoreConfig FileStoreConfig;
 
     TVector<TString> ExistingShardIds;
+    NProtoPrivate::TShardTopology ShardTopology;
     ui32 NextShardToConfigure = 0;
     ui32 ShardsToConfigure = 0;
     ui32 EndShardToConfigure = 0;
@@ -634,8 +637,9 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         msg->Record.GetStrictFileSystemSizeEnforcementEnabled();
     MaxShardCount = msg->Record.GetMaxShardCount();
 
-    for (auto& shardId: *msg->Record.MutableShardFileSystemIds()) {
-        ExistingShardIds.push_back(std::move(shardId));
+    ShardTopology = GetShardTopology(msg->Record);
+    for (const auto& shard: ShardTopology.GetShards()) {
+        ExistingShardIds.push_back(shard.GetShardId());
     }
 
     // Intentionally called after the ExistingShardIds are filled because this
@@ -759,6 +763,11 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         if (HasError(error)) {
             ReplyAndDie(ctx, error);
             return;
+        }
+
+        const auto& shardConfigs = FileStoreConfig.ShardConfigs;
+        for (ui32 i = ExistingShardIds.size(); i < shardConfigs.size(); ++i) {
+            AddOrdinaryShard(shardConfigs[i].GetFileSystemId(), ShardTopology);
         }
 
         if (ShardCreationState.HasShardsToCreate() ||
@@ -930,6 +939,7 @@ void TAlterFileStoreActor::ConfigureShard(
         for (const auto& shard: FileStoreConfig.ShardConfigs) {
             request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
         }
+        *request->Record.MutableShardTopology() = ShardTopology;
     }
 
     LOG_INFO(
@@ -1026,6 +1036,7 @@ void TAlterFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
     for (const auto& shard: FileStoreConfig.ShardConfigs) {
         request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
     }
+    *request->Record.MutableShardTopology() = ShardTopology;
 
     LOG_INFO(
         ctx,

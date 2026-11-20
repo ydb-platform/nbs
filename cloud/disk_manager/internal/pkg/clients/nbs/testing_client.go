@@ -12,6 +12,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
 	nbs_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -281,7 +282,7 @@ func (c *testingClient) CalculateCrc32WithEncryption(
 	}
 
 	opts := nbs_client.MountVolumeOpts{
-		MountFlags:     protoFlags(protos.EMountFlag_MF_THROTTLING_DISABLED),
+		MountFlags:     common.ProtoFlag(protos.EMountFlag_MF_THROTTLING_DISABLED),
 		MountSeqNumber: 0,
 		AccessMode:     protos.EVolumeAccessMode_VOLUME_ACCESS_READ_ONLY,
 		MountMode:      protos.EVolumeMountMode_VOLUME_MOUNT_REMOTE,
@@ -489,7 +490,7 @@ func (c *testingClient) MountForReadWrite(
 	)
 
 	opts := nbs_client.MountVolumeOpts{
-		MountFlags:     protoFlags(protos.EMountFlag_MF_THROTTLING_DISABLED),
+		MountFlags:     common.ProtoFlag(protos.EMountFlag_MF_THROTTLING_DISABLED),
 		MountSeqNumber: 0,
 		AccessMode:     protos.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		MountMode:      protos.EVolumeMountMode_VOLUME_MOUNT_REMOTE,
@@ -531,7 +532,7 @@ func (c *testingClient) Write(
 	defer session.Close()
 
 	opts := nbs_client.MountVolumeOpts{
-		MountFlags:     protoFlags(protos.EMountFlag_MF_THROTTLING_DISABLED),
+		MountFlags:     common.ProtoFlag(protos.EMountFlag_MF_THROTTLING_DISABLED),
 		MountSeqNumber: 0,
 		AccessMode:     protos.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
 		MountMode:      protos.EVolumeMountMode_VOLUME_MOUNT_REMOTE,

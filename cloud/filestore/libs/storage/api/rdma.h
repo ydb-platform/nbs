@@ -20,9 +20,11 @@ struct IRdmaTabletRegistry
         const NActors::TActorId& pipeServerId,
         const NActors::TActorId& tabletActorId) = 0;
 
-    virtual void UnregisterPipe(const NActors::TActorId& pipeServerId) = 0;
+    virtual void UnregisterPipe(
+        const NActors::TActorId& pipeServerId) noexcept = 0;
 
-    virtual void UnregisterTablet(const NActors::TActorId& tabletActorId) = 0;
+    virtual void UnregisterTablet(
+        const NActors::TActorId& tabletActorId) noexcept = 0;
 };
 
 using IRdmaTabletRegistryPtr = std::shared_ptr<IRdmaTabletRegistry>;

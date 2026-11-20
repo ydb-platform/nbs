@@ -372,6 +372,13 @@ public:
     {
         Impl->DumpLayoutJson(out);
     }
+
+    [[nodiscard]] NCloud::NProto::TError ValidateConfigUpdate(
+        const NProtoPrivate::TFastShardConfig& oldConfig,
+        const NProtoPrivate::TFastShardConfig& newConfig) const override
+    {
+        return Impl->ValidateConfigUpdate(oldConfig, newConfig);
+    }
 };
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

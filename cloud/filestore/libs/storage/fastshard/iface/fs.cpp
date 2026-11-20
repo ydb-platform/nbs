@@ -64,6 +64,13 @@ struct TFileSystemShardStub: IFileSystemShard
     {
         out << "{}";
     }
+
+    [[nodiscard]] NCloud::NProto::TError ValidateConfigUpdate(
+        const NProtoPrivate::TFastShardConfig&,
+        const NProtoPrivate::TFastShardConfig&) const override
+    {
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1,5 +1,7 @@
 #include "tablet_state_impl.h"
 
+#include "helpers.h"
+
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
@@ -1874,8 +1876,9 @@ NProto::TError TIndexTabletState::UpdateShardBalancer(
             minFreeSpaceReserve);
     }
 
+    // TODO(#8034): switch to shard topology
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-    const auto& fileShardIds = GetFileSystem().GetFileShardFileSystemIds();
+    const auto fileShardIds = GetFileShardIds(GetFileSystem());
     THashSet<TString> fileShardIdSet(fileShardIds.begin(), fileShardIds.end());
     TVector<TShardStats> filteredStats;
     TVector<TShardStats> fileShardStats;

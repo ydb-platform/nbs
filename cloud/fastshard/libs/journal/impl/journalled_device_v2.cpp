@@ -269,7 +269,11 @@ private:
 
     NProto::TError DoStart();
 
-    NProto::TReadPagesResponse DoReadPages(NProto::TReadPagesRequest request);
+    static NProto::TReadPagesResponse OnReadPages(
+        NProto::TReadPagesRequest request,
+        TVector<TPageRangeRef> missing,
+        TFuture<NProto::TReadPagesResponse> journalFuture,
+        TFuture<TResultOrError<TVector<TBuffer>>> deviceFuture);
 
     NProto::TWriteLogRecordResponse DoWriteLogRecord(
         NProto::TWriteLogRecordRequest request);
@@ -341,14 +345,6 @@ TFuture<NProto::TReadPagesResponse> TJournalledDeviceV2::ReadPages(
             TErrorResponse(std::move(error)));
     }
 
-    return Execute<NProto::TReadPagesResponse>(
-        [request = std::move(request)](auto& self) mutable
-        { return self.DoReadPages(std::move(request)); });
-}
-
-NProto::TReadPagesResponse TJournalledDeviceV2::DoReadPages(
-    NProto::TReadPagesRequest request)
-{
     //
     // Pin the indexed lsn until the read is done: the flush cycle does
     // not flush records above the pinned lsn. Without the pin, a record
@@ -357,7 +353,8 @@ NProto::TReadPagesResponse TJournalledDeviceV2::DoReadPages(
     // different lsns
     //
 
-    const auto lsnBarrierGuard = IndexedLsnBarrier->Acquire();
+    auto lsnBarrierGuard =
+        std::make_shared<TLsnBarrier::TGuard>(IndexedLsnBarrier->Acquire());
 
     //
     // Start the journal read. It returns at once with the ranges that
@@ -366,7 +363,8 @@ NProto::TReadPagesResponse TJournalledDeviceV2::DoReadPages(
 
     auto journalResult = Journal->Read(request);
     if (HasError(journalResult)) {
-        return TErrorResponse(journalResult.GetError());
+        return MakeFuture<NProto::TReadPagesResponse>(
+            TErrorResponse(journalResult.GetError()));
     }
 
     auto [missing, journalFuture] = journalResult.ExtractResult();
@@ -376,12 +374,42 @@ NProto::TReadPagesResponse TJournalledDeviceV2::DoReadPages(
     // the journal, so that the two reads run in parallel
     //
 
+    TVector<TFuture<void>> futures;
+    futures.push_back(journalFuture.IgnoreResult());
+
     TFuture<TResultOrError<TVector<TBuffer>>> deviceFuture;
     if (missing) {
         deviceFuture = DataStore->ReadPages(missing);
+        futures.push_back(deviceFuture.IgnoreResult());
     }
 
-    auto journalResp = Executor->ExtractResponse(std::move(journalFuture));
+    return WaitAll(std::move(futures))
+        .Apply(
+            [lsnBarrierGuard = std::move(lsnBarrierGuard),
+             request = std::move(request),
+             missing = std::move(missing),
+             journalFuture = std::move(journalFuture),
+             deviceFuture = std::move(deviceFuture)](const auto&)
+            {
+                // Release the indexed lsn when the read is done and not when
+                // the callback object is destroyed, which can be much later
+                auto guard = std::move(*lsnBarrierGuard);
+
+                return OnReadPages(
+                    std::move(request),
+                    std::move(missing),
+                    std::move(journalFuture),
+                    std::move(deviceFuture));
+            });
+}
+
+NProto::TReadPagesResponse TJournalledDeviceV2::OnReadPages(
+    NProto::TReadPagesRequest request,
+    TVector<TPageRangeRef> missing,
+    TFuture<NProto::TReadPagesResponse> journalFuture,
+    TFuture<TResultOrError<TVector<TBuffer>>> deviceFuture)
+{
+    auto journalResp = journalFuture.ExtractValue();
     if (HasError(journalResp)) {
         return journalResp;
     }
@@ -391,7 +419,7 @@ NProto::TReadPagesResponse TJournalledDeviceV2::DoReadPages(
     NProto::TReadPagesResponse deviceResp;
 
     if (missing) {
-        auto result = Executor->ExtractResponse(std::move(deviceFuture));
+        auto result = deviceFuture.ExtractValue();
         if (HasError(result)) {
             return TErrorResponse(result.GetError());
         }
@@ -420,7 +448,7 @@ TFuture<NProto::TWriteLogRecordResponse> TJournalledDeviceV2::WriteLogRecord(
     }
 
     return Execute<NProto::TWriteLogRecordResponse>(
-        [request = std::move(request)](auto& self) mutable
+        [request = std::move(request)](auto& self)
         { return self.DoWriteLogRecord(std::move(request)); });
 }
 
@@ -447,7 +475,7 @@ TFuture<NProto::TReadJournalTailResponse> TJournalledDeviceV2::ReadJournalTail(
     }
 
     return Execute<NProto::TReadJournalTailResponse>(
-        [request = std::move(request)](auto& self) mutable
+        [request = std::move(request)](auto& self)
         { return self.Journal->ReadTail(std::move(request)); });
 }
 
@@ -461,7 +489,7 @@ auto TJournalledDeviceV2::AdvanceLsnLowWatermark(
     }
 
     return Execute<NProto::TAdvanceLsnLowWatermarkResponse>(
-        [request = std::move(request)](auto& self) mutable
+        [request = std::move(request)](auto& self)
         { return self.Journal->AdvanceLsnLowWatermark(std::move(request)); });
 }
 
@@ -474,7 +502,7 @@ TFuture<NProto::TWritePagesResponse> TJournalledDeviceV2::WritePages(
     }
 
     return Execute<NProto::TWritePagesResponse>(
-        [request = std::move(request)](auto& self) mutable
+        [request = std::move(request)](auto& self)
         { return self.DoWritePages(std::move(request)); });
 }
 
@@ -637,7 +665,7 @@ template <typename T, typename F>
 TFuture<T> TJournalledDeviceV2::Execute(F func)
 {
     return Executor->Execute(
-        [weakSelf = weak_from_this(), func = std::move(func)]() mutable -> T
+        [weakSelf = weak_from_this(), func = std::move(func)]() -> T
         {
             auto self = weakSelf.lock();
             if (!self) {

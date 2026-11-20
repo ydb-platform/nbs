@@ -71,8 +71,9 @@ void TFileSystem::ReadDir(
             c.Size(),
             [&] (ui64 nodeId) {
                 return content.CacheVersion == 0 || // loaded from persistent storage
-                       fs.NodeCache.GetNodeVersion(nodeId) >
-                       content.CacheVersion;
+                       !fs.NodeAttrsCache.IsCacheable(
+                           nodeId,
+                           content.CacheVersion);
             },
             [&] (TStringBuf name) {
                 return content.CacheVersion == 0 || // loaded from persistent storage

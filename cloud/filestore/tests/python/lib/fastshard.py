@@ -2,8 +2,26 @@ import os
 
 import yatest.common as common
 
+from cloud.filestore.private.api.protos.tablet_pb2 import TShardTopology
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
 from cloud.filestore.tests.python.lib.fs import request_tablet
+
+
+def make_shard_topology(directory_shard_ids, file_shard_ids):
+    shards = []
+    for shard_id in directory_shard_ids:
+        shards.append({
+            "ShardId": shard_id,
+            "Type": TShardTopology.E_ORDINARY,
+            "RoleMask": 1 << (TShardTopology.E_DIRECTORY - 1),
+        })
+    for shard_id in file_shard_ids:
+        shards.append({
+            "ShardId": shard_id,
+            "Type": TShardTopology.E_FASTSHARD,
+            "RoleMask": 1 << (TShardTopology.E_FILE - 1),
+        })
+    return {"Shards": shards}
 
 
 def configure_fastshard(shard_count, file_shard_count, fast_shard_config):
@@ -16,14 +34,17 @@ def configure_fastshard(shard_count, file_shard_count, fast_shard_config):
         cwd=common.output_path())
 
     filesystem = os.getenv("NFS_FILESYSTEM")
-    shard_ids = []
+    directory_shard_ids = []
     file_shard_ids = []
     for i in range(shard_count):
         shard_no = i + 1
         shard_id = "%s_s%s" % (filesystem, shard_no)
         if i >= shard_count - file_shard_count:
             file_shard_ids.append(shard_id)
-        shard_ids.append(shard_id)
+        else:
+            directory_shard_ids.append(shard_id)
+    shard_ids = directory_shard_ids + file_shard_ids
+    topology = make_shard_topology(directory_shard_ids, file_shard_ids)
 
     for i, shard_id in enumerate(shard_ids):
         shard_no = i + 1
@@ -31,8 +52,7 @@ def configure_fastshard(shard_count, file_shard_count, fast_shard_config):
             "FileSystemId": shard_id,
             "ShardNo": shard_no,
             "MainFileSystemId": filesystem,
-            "ShardFileSystemIds": shard_ids,
-            "FileShardFileSystemIds": file_shard_ids,
+            "ShardTopology": topology,
             "IsFastShard": shard_id in file_shard_ids,
             "DirectoryCreationInShardsEnabled": True,
         }
@@ -45,8 +65,7 @@ def configure_fastshard(shard_count, file_shard_count, fast_shard_config):
         "configureshards",
         {
             "FileSystemId": filesystem,
-            "ShardFileSystemIds": shard_ids,
-            "FileShardFileSystemIds": file_shard_ids,
+            "ShardTopology": topology,
             "DirectoryCreationInShardsEnabled": True,
         },
     )
