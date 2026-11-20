@@ -17,6 +17,7 @@
 #include <util/network/address.h>
 
 #include <optional>
+#include <type_traits>
 
 namespace NCloud::NJournalled {
 
@@ -37,37 +38,40 @@ struct TServerMethod
     using TRequest = TProtoRequest;
     using TResponse = TProtoResponse;
 
-    static auto Execute(
+    // The response holds pages: move it out of the future, do not copy.
+    constexpr static bool MovesResponse =
+        std::is_same_v<TProtoResponse, NProto::TReadPagesResponse> ||
+        std::is_same_v<TProtoResponse, NProto::TReadJournalTailResponse>;
+
+    static TFuture<TResponse> Execute(
         IServerBackend& backend,
-        TRequest&& request) -> TFuture<TResponse>
+        TRequest&& request)
     {
         return (backend.*Method)(std::move(request));
     }
 
-    static auto MutableProto(NProto::TDeviceProtocolRequest& request)
-        -> TRequest&
+    static TRequest& MutableProto(NProto::TDeviceProtocolRequest& request)
     {
         return *(request.*mutableRequest)();
     }
 
-    static auto MutableProto(NProto::TDeviceProtocolResponse& response)
-        -> TResponse&
+    static TResponse& MutableProto(NProto::TDeviceProtocolResponse& response)
     {
         return *(response.*mutableResponse)();
     }
 };
 
-#define STORAGE_DECLARE_METHOD(name, ...)                      \
-    struct T##name##Method                                     \
-        : TServerMethod<                                       \
-              NProto::T##name##Request,                        \
-              NProto::T##name##Response,                       \
-              &IServerBackend::name,                           \
-              &NProto::TDeviceProtocolRequest::Mutable##name,  \
-              &NProto::TDeviceProtocolResponse::Mutable##name> \
-    {                                                          \
-        constexpr static TStringBuf Name = #name;              \
-    };                                                         \
+#define STORAGE_DECLARE_METHOD(name, ...)                                      \
+    struct T##name##Method                                                     \
+        : TServerMethod<                                                       \
+              NProto::T##name##Request,                                        \
+              NProto::T##name##Response,                                       \
+              &IServerBackend::name,                                           \
+              &NProto::TDeviceProtocolRequest::Mutable##name,                  \
+              &NProto::TDeviceProtocolResponse::Mutable##name>                 \
+    {                                                                          \
+        constexpr static TStringBuf Name = #name;                              \
+    };                                                                         \
     // STORAGE_DECLARE_METHOD
 
 SN_METHODS(STORAGE_DECLARE_METHOD)
@@ -206,8 +210,15 @@ private:
                 response.SetRequestId(requestId);
 
                 auto& proto = TMethod::MutableProto(response);
-                proto.CopyFrom(
-                    SafeExecute<TResponse>([&] { return future.GetValue(); }));
+
+                if constexpr (TMethod::MovesResponse) {
+                    // Move the value: nobody else reads this future
+                    proto = ExtractResponse(future);
+                } else {
+                    // Copy the value: MakeFuture<T>() returns a shared future
+                    proto.CopyFrom(SafeExecute<TResponse>(
+                        [&] { return future.GetValue(); }));
+                }
 
                 const bool failed = HasError(proto.GetError());
 

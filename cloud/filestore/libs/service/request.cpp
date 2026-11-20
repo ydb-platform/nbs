@@ -213,6 +213,9 @@ static const TString RequestNames[] = {
     "FuseFsync",
     "FuseFsyncDir",
     "AsyncDestroyHandle",
+    "SetQuota",
+    "DeleteQuota",
+    "ListQuotas",
 };
 
 static_assert(

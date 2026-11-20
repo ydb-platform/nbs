@@ -131,6 +131,11 @@ private:
         const typename TMethod::TRequest::TPtr& ev);
 
     template <typename TMethod>
+    void ForwardRequestWithoutSession(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev);
+
+    template <typename TMethod>
     void ForwardRequestToShard(
         const NActors::TActorContext& ctx,
         const typename TMethod::TRequest::TPtr& ev,

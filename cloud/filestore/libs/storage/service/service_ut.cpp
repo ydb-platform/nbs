@@ -1787,8 +1787,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
     }
 
-    Y_UNIT_TEST(ShouldRetainGuestPosixAclSettingWhenRecoveringSession)
+    Y_UNIT_TEST(ShouldChangeGuestPosixAclEnabledWhenThereAreNoSessions)
     {
+        // Create a filesystem while GuestPosixAclEnabled is enabled in the
+        // storage config. The value should be copied to the persistent
+        // filesystem state during creation.
         NProto::TStorageConfig config;
         config.SetGuestPosixAclEnabled(true);
         TTestEnv env({}, config);
@@ -1799,87 +1802,136 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const TString fsId = "test";
         service.CreateFileStore(fsId, 1'000);
 
-        THeaders headers = {
-            .FileSystemId = fsId,
-            .ClientId = "client",
-            .SessionId = "",
-            .SessionSeqNo = 0};
-        const TString checkpointId = "";
-        bool restoreClientSession = false;
-        const bool readOnly = false;
+        // This lambda changes the value stored in the filesystem state through
+        // the unsafe tablet-state action and verifies the expected action
+        // status.
+        auto changeGuestPosixAclEnabled = [&](bool enabled, ui32 status) {
+            NProtoPrivate::TUnsafeChangeTabletStateRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetGuestPosixAclEnabled(enabled);
 
-        const auto session1 = service.CreateSession(
-            headers,
-            checkpointId,
-            restoreClientSession,
-            headers.SessionSeqNo,
-            readOnly);
+            TString input;
+            google::protobuf::util::MessageToJsonString(request, &input);
+            const auto response = service.SendAndRecvExecuteAction(
+                "UnsafeChangeTabletState",
+                input);
 
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                status,
+                response->GetStatus(),
+                response->GetErrorReason());
+        };
+
+        // A session created immediately after the filesystem should observe
+        // the value copied from the initial storage config.
+        THeaders headers;
+        auto session = service.InitSession(headers, fsId, "client-1");
         UNIT_ASSERT(
-            session1->Record.GetFileStore()
+            session->Record.GetFileStore()
                 .GetFeatures()
                 .GetGuestPosixAclEnabled());
+        service.DestroySession(headers);
 
+        // Updating the tablet's storage config must not change the value in
+        // the persistent filesystem state.
         NProto::TStorageConfig newConfig;
         newConfig.SetGuestPosixAclEnabled(false);
-        const auto response =
-            ExecuteChangeStorageConfig(std::move(newConfig), service);
-        UNIT_ASSERT(
-            !response.GetStorageConfig().GetGuestPosixAclEnabled());
-
+        ExecuteChangeStorageConfig(std::move(newConfig), service, true);
         WaitForTabletStart(service);
 
-        // Even though SessionId changes, the old session should be restored.
-        headers.SessionId = "session_id";
-        restoreClientSession = true;
-        const auto session2 = service.CreateSession(
-            headers,
-            checkpointId,
-            restoreClientSession,
-            headers.SessionSeqNo,
-            readOnly);
-
-        // The restored session should preserve the GuestPosixAclEnabled value
-        // from its creation.
+        headers = {};
+        session = service.InitSession(headers, fsId, "client-2");
         UNIT_ASSERT(
-            session2->Record.GetFileStore()
+            session->Record.GetFileStore()
+                .GetFeatures()
+                .GetGuestPosixAclEnabled());
+        service.DestroySession(headers);
+
+        // With no sessions on the tablet, the unsafe action may disable the
+        // setting.
+        changeGuestPosixAclEnabled(false, S_OK);
+
+        // A new session should observe the value written by the unsafe action.
+        headers = {};
+        session = service.InitSession(headers, fsId, "client-3");
+        UNIT_ASSERT(
+            !session->Record.GetFileStore()
                 .GetFeatures()
                 .GetGuestPosixAclEnabled());
 
-        // If SessionSeqNo increases, the GuestPosixAclEnabled value should be
-        // preserved as well.
-        headers.SessionSeqNo = 1;
-        const auto session3 = service.CreateSession(
-            headers,
-            checkpointId,
-            restoreClientSession,
-            headers.SessionSeqNo,
-            readOnly);
+        // Changing the value while a session exists must be rejected.
+        changeGuestPosixAclEnabled(true, E_PRECONDITION_FAILED);
 
+        // Once the last session is destroyed, changing the value is allowed.
+        service.DestroySession(headers);
+        changeGuestPosixAclEnabled(true, S_OK);
+
+        // Finally, verify that subsequent sessions observe the new value.
+        headers = {};
+        session = service.InitSession(headers, fsId, "client-4");
         UNIT_ASSERT(
-            session3->Record.GetFileStore()
+            session->Record.GetFileStore()
                 .GetFeatures()
                 .GetGuestPosixAclEnabled());
+        service.DestroySession(headers);
+    }
 
-        // Recovering a session with a higher sequence number rewrites its DB
-        // record. Restart the tablet to ensure persistent options survived
-        // that rewrite.
-        NProto::TStorageConfig sameConfig;
-        sameConfig.SetGuestPosixAclEnabled(false);
-        ExecuteChangeStorageConfig(std::move(sameConfig), service);
-        WaitForTabletStart(service);
+    Y_UNIT_TEST(ShouldInitializeGuestPosixAclEnabledInCreateRequests)
+    {
+        NProto::TStorageConfig config;
+        config.SetGuestPosixAclEnabled(true);
+        TTestEnv env({}, config);
 
-        const auto session4 = service.CreateSession(
+        const ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TString fsId = "test";
+        service.CreateFileStore(fsId, 1'000);
+        const auto headers = service.InitSession(fsId, "client");
+
+        bool createNodeRequestObserved = false;
+        bool createHandleRequestObserved = false;
+        env.GetRuntime().SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->Recipient != MakeIndexTabletProxyServiceId()) {
+                    return false;
+                }
+
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvCreateNodeRequest)
+                {
+                    const auto* request =
+                        event->Get<TEvService::TEvCreateNodeRequest>();
+                    UNIT_ASSERT(request->Record.GetGuestPosixAclEnabled());
+                    createNodeRequestObserved = true;
+                } else if (event->GetTypeRewrite() ==
+                           TEvService::EvCreateHandleRequest)
+                {
+                    const auto* request =
+                        event->Get<TEvService::TEvCreateHandleRequest>();
+                    UNIT_ASSERT(request->Record.GetGuestPosixAclEnabled());
+                    createHandleRequestObserved = true;
+                }
+
+                return false;
+            });
+
+        const ui64 nodeId = service
+            .CreateNode(
+                headers,
+                TCreateNodeArgs::File(RootNodeId, "file"))
+            ->Record.GetNode().GetId();
+        service.CreateHandle(
             headers,
-            checkpointId,
-            restoreClientSession,
-            headers.SessionSeqNo,
-            readOnly);
+            fsId,
+            nodeId,
+            "",
+            TCreateHandleArgs::RDWR);
 
-        UNIT_ASSERT(
-            session4->Record.GetFileStore()
-                .GetFeatures()
-                .GetGuestPosixAclEnabled());
+        UNIT_ASSERT(createNodeRequestObserved);
+        UNIT_ASSERT(createHandleRequestObserved);
+        service.DestroySession(headers);
     }
 
     Y_UNIT_TEST(ShouldSetHasXAttrs)
@@ -5519,6 +5571,77 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.ReadData(headers, fs, nodeId, handle, 0, data.size());
 
         UNIT_ASSERT_VALUES_EQUAL(1, fakeBlobWasRead->Val());
+    }
+
+    Y_UNIT_TEST(ShouldNotZeroFillReadBufferWhenReadBlobDisabled)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::STORAGE_MEDIA_SSD);
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            // Zero-copy read makes TReadDataActor work directly with our
+            // buffers, which lets us see whether it touched them
+            newConfig.SetZeroCopyReadEnabled(true);
+            newConfig.SetReadBlobDisabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                response.GetStorageConfig().GetReadBlobDisabled());
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto fakeBlobWasRead =
+            counters->GetCounter("AppCriticalEvents/FakeBlobWasRead", true);
+
+        // Large aligned write goes directly to blobs => there will be no fresh
+        // data in the DescribeData response
+        const TString data(1_MB, 'b');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+
+        const size_t iovecSize = 4_KB;
+        TVector<TString> iovecs;
+        for (size_t i = 0; i < data.size() / iovecSize; ++i) {
+            iovecs.emplace_back(iovecSize, 'x');
+        }
+
+        auto response =
+            service
+                .ReadData(headers, fs, nodeId, handle, 0, data.size(), iovecs);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, fakeBlobWasRead->Val());
+        UNIT_ASSERT_VALUES_EQUAL(data.size(), response->Record.GetLength());
+        // Neither the data nor zeroes should have been written to the buffers
+        const TString expected(data.size(), 'x');
+        UNIT_ASSERT_C(
+            expected == GetBufferFromIovecs(iovecs, data.size()),
+            "read buffers were modified");
     }
 
     Y_UNIT_TEST(ShouldReadFakeDataWhenFakeDescribeDataEnabled)

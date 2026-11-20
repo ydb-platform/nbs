@@ -260,10 +260,12 @@ void TConfigsManagerActor::Handle(
         dynamicConfig,
         StorageConfigControls,
         GetBlockstoreConfigExtraParameters(*currentConfig));
+    const auto newStorageConfig = newConfig->GetStorageConfig();
 
     // Publish before notifying consumers and acknowledging the dispatcher
     // so the new configuration is already available to readers.
     ConfigHolder->Set(std::move(newConfig));
+    newStorageConfig->UpdateControlsDefaults();
     DynamicConfig = std::move(dynamicConfig);
 
     LOG_INFO_S(

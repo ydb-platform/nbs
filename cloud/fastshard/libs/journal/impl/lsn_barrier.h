@@ -2,6 +2,7 @@
 
 #include <util/generic/map.h>
 
+#include <memory>
 #include <mutex>
 
 namespace NCloud::NJournalled {
@@ -10,6 +11,7 @@ namespace NCloud::NJournalled {
 
 // A monotonically advancing lsn with reference-counted barriers.
 class TLsnBarrier
+    : public std::enable_shared_from_this<TLsnBarrier>
 {
 private:
     mutable std::mutex Lock;
@@ -22,10 +24,10 @@ public:
         friend class TLsnBarrier;
 
     private:
-        TLsnBarrier* Barrier;
+        std::shared_ptr<TLsnBarrier> Barrier;
         const ui64 Lsn;
 
-        TGuard(TLsnBarrier* barrier, ui64 lsn);
+        TGuard(std::shared_ptr<TLsnBarrier> barrier, ui64 lsn);
 
     public:
         TGuard(TGuard&& rhs) noexcept;

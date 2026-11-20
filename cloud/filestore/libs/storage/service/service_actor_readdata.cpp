@@ -189,6 +189,8 @@ private:
         const TActorContext& ctx,
         NProto::TReadDataResponse& response);
 
+    void FillZeroIntervals();
+
     void SendResponseAndDie(
         const TActorContext& ctx,
         std::unique_ptr<TEvService::TEvReadDataResponse> response);
@@ -977,6 +979,28 @@ void TReadDataActor::MoveBufferToIovecsIfNeeded(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TReadDataActor::FillZeroIntervals()
+{
+    auto& state = GetState();
+
+    if (state.RequestContext.ReadBlobDisabled) {
+        // ReadBlobDisabled is a testing-only mode in which blobs are not read,
+        // so the returned data is fake anyway. Zero-filling is skipped in this
+        // mode because it would only burn CPU and distort the profile of the
+        // read path: everything apart from the fresh data ranges is left as is.
+        return;
+    }
+
+    for (const auto& zeroInterval: state.ZeroIntervals) {
+        TRopeUtils::Memset(
+            state.TargetBuffers.Begin() + zeroInterval.Start,
+            0,
+            zeroInterval.End - zeroInterval.Start);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
 {
     auto& state = GetState();
@@ -1011,12 +1035,7 @@ void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
             offset);
     }
 
-    for (const auto& zeroInterval: state.ZeroIntervals) {
-        TRopeUtils::Memset(
-            state.TargetBuffers.Begin() + zeroInterval.Start,
-            0,
-            zeroInterval.End - zeroInterval.Start);
-    }
+    FillZeroIntervals();
 
     // The actual file size may already be bigger than the returned one (see
     // TDescribeDataResponse::FileSize), it can only be used to clamp the read

@@ -36,6 +36,7 @@ private:
     ui32 NbdPort = 0;
     TString Fqdn;
     TString CellId;
+    ui32 IcV2Port = 0;
     NProto::ECellDataTransport Transport = NProto::CELL_DATA_TRANSPORT_UNSET;
     bool GrpcDataFallbackEnabled = false;
     TDuration EndpointSettleTime;
@@ -48,6 +49,11 @@ public:
     TCellHostConfig() = default;
 
     const TString& GetCellId() const;
+
+    ui32 GetIcV2Port() const
+    {
+        return IcV2Port;
+    }
 
     ui32 GetGrpcPort() const
     {
@@ -110,6 +116,7 @@ public:
 
     [[nodiscard]] TString GetCellId() const;
     [[nodiscard]] ui32 GetGrpcPort() const;
+    [[nodiscard]] ui32 GetIcV2Port() const;
     [[nodiscard]] ui32 GetSecureGrpcPort() const;
     [[nodiscard]] ui32 GetRdmaPort() const;
     [[nodiscard]] ui32 GetNbdPort() const;
@@ -132,6 +139,40 @@ using TCellConfigByCellId = THashMap<TString, TCellConfigPtr>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TCellsIcV2Config: public IDumpable
+{
+private:
+    struct TImpl;
+    std::unique_ptr<TImpl> Impl;
+
+public:
+    explicit TCellsIcV2Config(NProto::TCellsIcV2Config config);
+    ~TCellsIcV2Config() override;
+
+    [[nodiscard]] const NProto::TCellsIcV2Config& GetIcV2Config() const;
+
+    [[nodiscard]] bool GetEnabled() const;
+    [[nodiscard]] TString GetListenAddress() const;
+    [[nodiscard]] ui32 GetPort() const;
+    [[nodiscard]] ui32 GetThreads() const;
+    [[nodiscard]] ui32 GetHandshakeTimeoutMs() const;
+    [[nodiscard]] bool GetChecksumEvents() const;
+    [[nodiscard]] ui32 GetMaxConnections() const;
+    [[nodiscard]] ui32 GetMaxPendingRequests() const;
+    [[nodiscard]] ui64 GetMaxOutputQueueBytes() const;
+    [[nodiscard]] ui32 GetCompletionThreads() const;
+    [[nodiscard]] ui32 GetMaxOutgoingConnections() const;
+    [[nodiscard]] ui64 GetMaxDataRequestBytes() const;
+    [[nodiscard]] ui64 GetMaxDataInflightBytes() const;
+    [[nodiscard]] ui32 GetDataWorkers() const;
+    [[nodiscard]] bool GetEnableXdc() const;
+
+    void Dump(IOutputStream& out) const override;
+    void DumpHtml(IOutputStream& out) const override;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TCellsConfig: public IDumpable
 {
 private:
@@ -148,6 +189,7 @@ public:
     [[nodiscard]] const TCellConfigByCellId& GetCells() const;
     [[nodiscard]] TDuration GetDescribeVolumeTimeout() const;
     [[nodiscard]] const NClient::TClientAppConfig& GetGrpcClientConfig() const;
+    [[nodiscard]] const TCellsIcV2Config& GetIcV2Config() const;
     [[nodiscard]] ui32 GetRdmaTransportWorkers() const;
     [[nodiscard]] bool GetCellsEnabled() const;
 

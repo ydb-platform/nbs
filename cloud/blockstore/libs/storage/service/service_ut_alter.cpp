@@ -573,7 +573,7 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         auto storageConfig =
             CreateTestStorageConfig(std::move(storageServiceConfig));
         TControlBoard controlBoard;
-        storageConfig->Register(controlBoard);
+        storageConfig->GetControls()->Register(controlBoard);
         ui32 nodeIdx = env.CreateBlockStoreNode(
             "nbs",
             storageConfig,

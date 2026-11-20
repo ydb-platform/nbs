@@ -689,6 +689,8 @@ message TStorageConfig
     // parameters are supposed to be used only for testing purposes - to test
     // fuse / service / tablet layer performance without direct blobstorage
     // reads / writes. Tablet local DB still continues to use blobstorage.
+    // With ReadBlobDisabled two-stage reads don't zero-fill the read buffer
+    // either, so the returned data is arbitrary.
     optional bool ReadBlobDisabled = 474;
     optional bool WriteBlobDisabled = 475;
 
@@ -1025,4 +1027,8 @@ message TStorageConfig
     // The writes which bypass the storage service (the fastshard side channel)
     // are not counted.
     optional bool WriteDataZeroBlockStatsEnabled = 565;
+
+    // Max FUSE read / write request size in bytes
+    // Zero uses TVFSConfig.MaxWritePages (default 256) * host page size.
+    optional uint32 MaxRequestSize = 566;
 }

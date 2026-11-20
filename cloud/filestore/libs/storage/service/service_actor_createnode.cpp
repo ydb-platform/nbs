@@ -373,6 +373,9 @@ void TStorageServiceActor::HandleCreateNode(
         return;
     }
 
+    msg->Record.SetGuestPosixAclEnabled(
+        session->FileStore.GetFeatures().GetGuestPosixAclEnabled());
+
     if (TryHandleControlNamespaceCreateNode(ctx, ev, session)) {
         return;
     }

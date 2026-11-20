@@ -990,6 +990,7 @@ bool EventHandler(
 
             r.Id = blobId;
             r.Status = NKikimrProto::OK;
+            r.Shift = q.Shift;
 
             UNIT_ASSERT(q.Size % blockSize == 0);
             UNIT_ASSERT(q.Shift % blockSize == 0);
@@ -12324,10 +12325,18 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         auto runtime = PrepareTestActorRuntime(config, 2048);
 
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        auto contractViolationErrors = counters->GetCounter(
+            GetCriticalEventForContractViolationWriteBlobError(),
+            true);
+
         TPartitionClient partition(*runtime);
         partition.WaitReady();
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1001), 1);
 
+        UNIT_ASSERT_VALUES_EQUAL(0, contractViolationErrors->Val());
+        ui64 expectedContractViolationErrors = 0;
         bool cancelWriteBlob = true;
         bool writeBlobShouldViolateContract = true;
         ui32 putRequests = 0;
@@ -12390,9 +12399,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             TEvPartitionCommonPrivate::TEvWriteBlobResponse>();
                         UNIT_ASSERT(
                             msg->ErrorSource ==
-                            (!cancelWriteBlob && !writeBlobShouldViolateContract
-                                 ? EErrorSource::BlobStorage
-                                 : EErrorSource::Local));
+                            (cancelWriteBlob
+                                 ? EErrorSource::Regular
+                                 : (writeBlobShouldViolateContract
+                                        ? EErrorSource::ContractViolation
+                                        : EErrorSource::BlobStorage)));
                         break;
                     }
                     case TEvPartitionCommonPrivate::EvWriteBlobCompleted: {
@@ -12400,9 +12411,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             TEvPartitionCommonPrivate::TEvWriteBlobCompleted>();
                         UNIT_ASSERT(
                             msg->ErrorSource ==
-                            (!cancelWriteBlob && !writeBlobShouldViolateContract
-                                 ? EErrorSource::BlobStorage
-                                 : EErrorSource::Local));
+                            (cancelWriteBlob
+                                 ? EErrorSource::Regular
+                                 : (writeBlobShouldViolateContract
+                                        ? EErrorSource::ContractViolation
+                                        : EErrorSource::BlobStorage)));
+                        expectedContractViolationErrors +=
+                            msg->ErrorSource == EErrorSource::ContractViolation;
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            expectedContractViolationErrors,
+                            contractViolationErrors->Val());
                         break;
                     }
                     case TEvTablet::EEv::EvTabletDead: {
@@ -12567,6 +12585,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             MaxPartitionBlocksCount
         );
 
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
         bool evPatchObserved = false;
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
@@ -12636,6 +12656,20 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
 
         UNIT_ASSERT(evPatchObserved);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters
+                ->GetCounter(
+                    GetCriticalEventForContractViolationWriteBlobError(),
+                    true)
+                ->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            counters
+                ->GetCounter(
+                    GetCriticalEventForContractViolationPatchBlobError(),
+                    true)
+                ->Val());
     }
 
     Y_UNIT_TEST(ShouldOnlyKillTabletOnBlobStoragePatchErrors)
@@ -12650,12 +12684,20 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetMaxIORequestsInFlight(1);
         auto runtime = PrepareTestActorRuntime(config, MaxPartitionBlocksCount);
 
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        auto contractViolationErrors = counters->GetCounter(
+            GetCriticalEventForContractViolationPatchBlobError(),
+            true);
+
         TPartitionClient partition(*runtime);
         partition.WaitReady();
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 1);
         partition.WriteBlocks(TBlockRange32::WithLength(0, 512), 2);
         partition.WriteBlocks(TBlockRange32::WithLength(0, 256), 3);
 
+        UNIT_ASSERT_VALUES_EQUAL(0, contractViolationErrors->Val());
+        ui64 expectedContractViolationErrors = 0;
         bool blobStorageError = false;
         bool suicideHappened = false;
         ui32 patchRequests = 0;
@@ -12698,9 +12740,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             TEvPartitionCommonPrivate::TEvPatchBlobResponse>();
                         UNIT_ASSERT(HasError(msg->GetError()));
                         UNIT_ASSERT(
-                            msg->ErrorSource == (blobStorageError
-                                                     ? EErrorSource::BlobStorage
-                                                     : EErrorSource::Local));
+                            msg->ErrorSource ==
+                            (blobStorageError
+                                 ? EErrorSource::BlobStorage
+                                 : EErrorSource::ContractViolation));
                         ++patchResponses;
                         break;
                     }
@@ -12709,10 +12752,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             TEvPartitionCommonPrivate::TEvPatchBlobCompleted>();
                         UNIT_ASSERT(HasError(msg->GetError()));
                         UNIT_ASSERT(
-                            msg->ErrorSource == (blobStorageError
-                                                     ? EErrorSource::BlobStorage
-                                                     : EErrorSource::Local));
+                            msg->ErrorSource ==
+                            (blobStorageError
+                                 ? EErrorSource::BlobStorage
+                                 : EErrorSource::ContractViolation));
                         ++patchCompletions;
+                        expectedContractViolationErrors +=
+                            msg->ErrorSource == EErrorSource::ContractViolation;
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            expectedContractViolationErrors,
+                            contractViolationErrors->Val());
                         break;
                     }
                     case TEvTablet::EvTabletDead: {

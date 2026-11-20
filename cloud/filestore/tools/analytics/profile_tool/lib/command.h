@@ -1,18 +1,29 @@
 #pragma once
 
+#include "time_range.h"
+
 #include <library/cpp/getopt/small/last_getopt.h>
 
+class IEventProcessor;
+
 namespace NCloud::NFileStore::NProfileTool {
+
+void PrintProfileLogProgress(const TProfileLogFile& file);
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TCommand
 {
+private:
+    TVector<TString> ProfileLogPaths;
+
 protected:
+    bool IgnoreErrors = false;
+
     NLastGetopt::TOpts Opts;
     TMaybe<NLastGetopt::TOptsParseResultException> OptsParseResult;
 
-    TString PathToProfileLog;
+    TVector<TProfileLogFile> ProfileLogFiles;
 
 public:
     TCommand();
@@ -24,6 +35,8 @@ public:
     const NLastGetopt::TOpts& GetOpts() const;
 
 protected:
+    int ProcessProfileLogs(IEventProcessor& processor);
+
     virtual bool Init(NLastGetopt::TOptsParseResultException& parseResult);
     virtual int Execute() = 0;
 };

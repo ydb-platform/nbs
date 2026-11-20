@@ -3,21 +3,21 @@
 #include <util/generic/utility.h>
 #include <util/system/yassert.h>
 
+#include <utility>
+
 namespace NCloud::NJournalled {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TLsnBarrier::TGuard::TGuard(TLsnBarrier* barrier, ui64 lsn)
-    : Barrier(barrier)
+TLsnBarrier::TGuard::TGuard(std::shared_ptr<TLsnBarrier> barrier, ui64 lsn)
+    : Barrier(std::move(barrier))
     , Lsn(lsn)
 {}
 
 TLsnBarrier::TGuard::TGuard(TGuard&& rhs) noexcept
-    : Barrier(rhs.Barrier)
+    : Barrier(std::exchange(rhs.Barrier, nullptr))
     , Lsn(rhs.Lsn)
-{
-    rhs.Barrier = nullptr;
-}
+{}
 
 TLsnBarrier::TGuard::~TGuard()
 {
@@ -54,7 +54,7 @@ TLsnBarrier::TGuard TLsnBarrier::Acquire()
 
     auto it = BarrierCountByLsn.emplace(CurrentLsn, 0).first;
     ++it->second;
-    return TGuard(this, CurrentLsn);
+    return TGuard(shared_from_this(), CurrentLsn);
 }
 
 TLsnBarrier::TGuard TLsnBarrier::AcquireAtLeast(ui64 lsn)
@@ -64,7 +64,7 @@ TLsnBarrier::TGuard TLsnBarrier::AcquireAtLeast(ui64 lsn)
     lsn = Max(lsn, CurrentLsn);
     auto it = BarrierCountByLsn.emplace(lsn, 0).first;
     ++it->second;
-    return TGuard(this, lsn);
+    return TGuard(shared_from_this(), lsn);
 }
 
 void TLsnBarrier::Release(ui64 lsn)
