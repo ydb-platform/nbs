@@ -17,6 +17,7 @@ import (
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
@@ -600,6 +601,137 @@ func newMigrateSnapshotDatabaseCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type saveSnapshotChecksumCmd struct {
+	commandWithScheduler
+	snapshotID string
+}
+
+func (c *saveSnapshotChecksumCmd) run() error {
+	err := c.init()
+	if err != nil {
+		return err
+	}
+	defer c.close()
+
+	// There is no idempotency key in the context, so a new task is scheduled.
+	taskID, err := snapshots.ScheduleSaveSnapshotChecksum(
+		c.ctx,
+		c.scheduler,
+		c.snapshotID,
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+
+func newSaveSnapshotChecksumCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
+	c := &saveSnapshotChecksumCmd{
+		commandWithScheduler: cmdWithScheduler,
+	}
+
+	cmd := &cobra.Command{
+		Use:     "save-checksum",
+		Aliases: []string{"save_checksum"},
+		Short:   "Schedule a task that computes and saves a snapshot checksum",
+		Long: "Schedule a task that computes the checksum of the data of a " +
+			"ready snapshot and saves it; a checksum saved earlier is " +
+			"overwritten. The task ID is printed without waiting for " +
+			"completion: use tasks get --id <task-id> to check the task and " +
+			"snapshots get --id <id> to see checksum and checksum_calculated.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.snapshotID,
+		"id",
+		"",
+		"ID of snapshot to save the checksum of; required",
+	)
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type validateSnapshotChecksumCmd struct {
+	commandWithScheduler
+	snapshotID string
+}
+
+func (c *validateSnapshotChecksumCmd) run() error {
+	err := c.init()
+	if err != nil {
+		return err
+	}
+	defer c.close()
+
+	// There is no idempotency key in the context, so a new task is scheduled.
+	taskID, err := snapshots.ScheduleValidateSnapshotChecksum(
+		c.ctx,
+		c.scheduler,
+		c.snapshotID,
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+
+func newValidateSnapshotChecksumCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
+	c := &validateSnapshotChecksumCmd{
+		commandWithScheduler: cmdWithScheduler,
+	}
+
+	cmd := &cobra.Command{
+		Use:     "validate-checksum",
+		Aliases: []string{"validate_checksum"},
+		Short:   "Schedule a task that validates the saved snapshot checksum",
+		Long: "Schedule a task that computes the checksum of the data of a " +
+			"ready snapshot once again and compares it with the one saved by " +
+			"save-checksum. The task fails with a checksum mismatch error if " +
+			"they differ, and also if no checksum is saved. The task ID is " +
+			"printed without waiting for completion: use tasks get --id " +
+			"<task-id> to check the task.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.snapshotID,
+		"id",
+		"",
+		"ID of snapshot to validate the checksum of; required",
+	)
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newSnapshotsCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
@@ -625,6 +757,8 @@ func newSnapshotsCmd(
 			clientConfig,
 			serverConfig,
 		),
+		newSaveSnapshotChecksumCmd(clientConfig, serverConfig),
+		newValidateSnapshotChecksumCmd(clientConfig, serverConfig),
 	)
 
 	return cmd

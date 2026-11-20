@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -29,6 +31,8 @@ func requireImagesAreEqual(t *testing.T, expected ImageMeta, actual ImageMeta) {
 	require.Equal(t, expected.Size, actual.Size)
 	require.Equal(t, expected.StorageSize, actual.StorageSize)
 	require.Equal(t, expected.Ready, actual.Ready)
+	require.Equal(t, expected.Checksum, actual.Checksum)
+	require.Equal(t, expected.ChecksumCalculated, actual.ChecksumCalculated)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -795,4 +799,460 @@ func TestImageBackupQueueStats(t *testing.T) {
 	stats, err = storage.GetImageBackupQueueStats(ctx)
 	require.NoError(t, err)
 	require.Equal(t, ImageBackupQueueStats{Queued: 1, Scheduled: 1}, stats)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func requireImageChecksum(
+	t *testing.T,
+	ctx context.Context,
+	storage Storage,
+	imageID string,
+	checksum uint32,
+) {
+
+	meta, err := storage.GetImageMeta(ctx, imageID)
+	require.NoError(t, err, imageID)
+	require.NotNil(t, meta, imageID)
+	require.True(t, meta.ChecksumCalculated, imageID)
+	require.Equal(t, checksum, meta.Checksum, imageID)
+}
+
+func requireNoImageChecksum(
+	t *testing.T,
+	ctx context.Context,
+	storage Storage,
+	imageID string,
+) {
+
+	meta, err := storage.GetImageMeta(ctx, imageID)
+	require.NoError(t, err, imageID)
+	require.NotNil(t, meta, imageID)
+	require.False(t, meta.ChecksumCalculated, imageID)
+	require.Zero(t, meta.Checksum, imageID)
+}
+
+func TestImageChecksumCalculated(t *testing.T) {
+	ctx, storage := newImageBackupTestStorage(t)
+
+	requireNoImageChecksum(t, ctx, storage, "image")
+
+	// Zero is a valid checksum and differs from a checksum that is not set.
+	// A repeated value checks idempotency, another value replaces the stored
+	// one.
+	checksums := []uint32{0, 0, 0xDEADBEEF, 0xDEADBEEF, 0xFFFFFFFF, 1, 0}
+	for _, checksum := range checksums {
+		err := storage.ImageChecksumCalculated(
+			ctx,
+			"image",
+			"create_image",
+			checksum,
+		)
+		require.NoError(t, err)
+
+		requireImageChecksum(t, ctx, storage, "image", checksum)
+	}
+}
+
+// The checksum is stored by rewriting the whole row, which should keep the
+// other fields.
+func TestImageChecksumCalculatedKeepsOtherFields(t *testing.T) {
+	ctx, storage := newImageBackupTestStorage(t)
+
+	image := ImageMeta{
+		ID:            "other",
+		FolderID:      "folder",
+		SrcDiskID:     "src_disk",
+		SrcImageID:    "src_image",
+		SrcSnapshotID: "src_snapshot",
+		CreateRequest: &wrappers.UInt64Value{Value: 1},
+		CreateTaskID:  "create_other",
+		CreatingAt:    time.Now(),
+		CreatedBy:     "user",
+		Encryption: &types.EncryptionDesc{
+			Mode: types.EncryptionMode_ENCRYPTION_AES_XTS,
+			Key: &types.EncryptionDesc_KeyHash{
+				KeyHash: []byte("key hash"),
+			},
+		},
+	}
+
+	_, err := storage.CreateImage(ctx, image)
+	require.NoError(t, err)
+
+	expected := image
+	expected.CreateRequest = nil
+	expected.CheckpointID = "checkpoint"
+	expected.Size = 2 * 1024 * 1024
+	expected.StorageSize = 3 * 1024 * 1024
+	expected.Ready = true
+	expected.BackupCompleted = true
+
+	err = storage.ImageCreated(
+		ctx,
+		image.ID,
+		expected.CheckpointID,
+		time.Now(),
+		expected.Size,
+		expected.StorageSize,
+	)
+	require.NoError(t, err)
+
+	err = storage.ImageBackupCompleted(ctx, image.ID)
+	require.NoError(t, err)
+
+	checkImage := func() {
+		actual, err := storage.GetImageMeta(ctx, image.ID)
+		require.NoError(t, err)
+		require.NotNil(t, actual)
+		requireImagesAreEqual(t, expected, *actual)
+		require.Equal(t, expected.SrcDiskID, actual.SrcDiskID)
+		require.Equal(t, expected.SrcImageID, actual.SrcImageID)
+		require.Equal(t, expected.SrcSnapshotID, actual.SrcSnapshotID)
+		require.True(t, proto.Equal(expected.Encryption, actual.Encryption))
+		require.Equal(t, expected.BackupCompleted, actual.BackupCompleted)
+	}
+
+	checkImage()
+
+	err = storage.ImageChecksumCalculated(
+		ctx,
+		image.ID,
+		image.CreateTaskID,
+		42,
+	)
+	require.NoError(t, err)
+
+	expected.Checksum = 42
+	expected.ChecksumCalculated = true
+	checkImage()
+
+	// The create request is kept too: creation is still idempotent.
+	created, err := storage.CreateImage(ctx, image)
+	require.NoError(t, err)
+	requireImagesAreEqual(t, expected, created)
+}
+
+func TestImageChecksumCalculatedRejectsUnavailableImage(t *testing.T) {
+	ctx, storage := newImageBackupTestStorage(t)
+
+	_, err := storage.CreateImage(ctx, ImageMeta{
+		ID:            "creating",
+		FolderID:      "other",
+		CreateRequest: &wrappers.UInt64Value{Value: 1},
+		CreateTaskID:  "create_creating",
+		CreatingAt:    time.Now(),
+	})
+	require.NoError(t, err)
+
+	// Its checksum was stored before the deletion.
+	createReadyImage(t, ctx, storage, "deleting", "other")
+	err = storage.ImageChecksumCalculated(ctx, "deleting", "create_deleting", 7)
+	require.NoError(t, err)
+	_, err = storage.DeleteImage(ctx, "deleting", "delete", time.Now())
+	require.NoError(t, err)
+
+	createReadyImage(t, ctx, storage, "deleted", "other")
+	_, err = storage.DeleteImage(ctx, "deleted", "delete", time.Now())
+	require.NoError(t, err)
+	err = storage.ImageDeleted(ctx, "deleted", time.Now())
+	require.NoError(t, err)
+
+	// A ready snapshot is not an image.
+	createReadySnapshotForBackup(t, ctx, storage, "snapshot")
+
+	testCases := []struct {
+		imageID  string
+		checksum uint32
+		message  string
+	}{
+		{"missing", 42, "image with id missing is not found"},
+		{"snapshot", 42, "image with id snapshot is not found"},
+		{"creating", 42, "status creating can't be set"},
+		{"deleting", 42, "status deleting can't be set"},
+		// The stored value is not accepted either.
+		{"deleting", 7, "status deleting can't be set"},
+		{"deleted", 42, "status deleted can't be set"},
+	}
+
+	for _, testCase := range testCases {
+		err = storage.ImageChecksumCalculated(
+			ctx,
+			testCase.imageID,
+			"create_"+testCase.imageID,
+			testCase.checksum,
+		)
+		require.Error(t, err, testCase.imageID)
+		require.True(
+			t,
+			errors.Is(err, errors.NewEmptyNonRetriableError()),
+			testCase.imageID,
+		)
+		require.True(t, errors.IsSilent(err), testCase.imageID)
+		require.ErrorContains(t, err, testCase.message)
+	}
+
+	// Nothing is written.
+	requireNoImageChecksum(t, ctx, storage, "creating")
+	requireImageChecksum(t, ctx, storage, "deleting", 7)
+	requireNoImageChecksum(t, ctx, storage, "deleted")
+	requireNoSnapshotChecksum(t, ctx, storage, "snapshot")
+
+	for _, imageID := range []string{"missing", "snapshot"} {
+		meta, err := storage.GetImageMeta(ctx, imageID)
+		require.NoError(t, err, imageID)
+		require.Nil(t, meta, imageID)
+	}
+}
+
+// An image that is deleted and created again with the same id is another
+// image: it is created by another task.
+func TestImageChecksumCalculatedRejectsImageCreatedByAnotherTask(
+	t *testing.T,
+) {
+
+	ctx, storage := newImageBackupTestStorage(t)
+
+	err := storage.ImageChecksumCalculated(ctx, "image", "create_image", 7)
+	require.NoError(t, err)
+
+	err = storage.ImageChecksumCalculated(ctx, "image", "another", 42)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.False(t, errors.IsSilent(err))
+	require.ErrorContains(
+		t,
+		err,
+		"it is created by task create_image, not by task another",
+	)
+
+	// Nothing is written.
+	requireImageChecksum(t, ctx, storage, "image", 7)
+}
+
+// Guards the row mapping: a column that is written but not scanned (or the
+// other way round) loses the checksum on the next whole-row rewrite.
+func TestImageChecksumSurvivesOtherUpdates(t *testing.T) {
+	ctx, storage := newImageBackupTestStorage(t)
+
+	err := storage.ImageChecksumCalculated(ctx, "image", "create_image", 42)
+	require.NoError(t, err)
+	requireImageChecksum(t, ctx, storage, "image", 42)
+
+	// Updates a single column.
+	err = storage.ImageBackupCompleted(ctx, "image")
+	require.NoError(t, err)
+	requireImageChecksum(t, ctx, storage, "image", 42)
+
+	// Rewrites the whole row.
+	meta, err := storage.DeleteImage(ctx, "image", "delete", time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, meta)
+	require.True(t, meta.BackupCompleted)
+	require.True(t, meta.ChecksumCalculated)
+	require.EqualValues(t, 42, meta.Checksum)
+	requireImageChecksum(t, ctx, storage, "image", 42)
+
+	err = storage.ImageDeleted(ctx, "image", time.Now())
+	require.NoError(t, err)
+	requireImageChecksum(t, ctx, storage, "image", 42)
+}
+
+func TestImageChecksumCalculatedRacesWithDeletion(t *testing.T) {
+	ctx, storage := newImageBackupTestStorage(t)
+
+	for i := 0; i < 8; i++ {
+		imageID := fmt.Sprintf("image_%v", i)
+		createReadyImage(t, ctx, storage, imageID, "other")
+
+		// The deletion takes longer than storing the checksum, so the
+		// checksum is delayed to meet the deletion at its different stages.
+		delay := time.Duration(i) * time.Millisecond
+
+		start := make(chan struct{})
+		set := make(chan error, 1)
+		deleted := make(chan error, 1)
+		var deleting *ImageMeta
+		go func() {
+			<-start
+			time.Sleep(delay)
+			set <- storage.ImageChecksumCalculated(
+				ctx,
+				imageID,
+				"create_"+imageID,
+				42,
+			)
+		}()
+		go func() {
+			<-start
+			var err error
+			deleting, err = storage.DeleteImage(
+				ctx,
+				imageID,
+				"delete",
+				time.Now(),
+			)
+			deleted <- err
+		}()
+		close(start)
+
+		setErr, deleteErr := <-set, <-deleted
+		require.NoError(t, deleteErr)
+		require.NotNil(t, deleting)
+		if setErr != nil {
+			require.True(
+				t,
+				errors.Is(setErr, errors.NewEmptyNonRetriableError()),
+			)
+			require.ErrorContains(t, setErr, "status deleting can't be set")
+		}
+
+		// The checksum is stored only if it was set before the deletion, and
+		// then the deletion has seen it.
+		require.Equal(t, setErr == nil, deleting.ChecksumCalculated)
+
+		meta, err := storage.GetImageMeta(ctx, imageID)
+		require.NoError(t, err)
+		require.NotNil(t, meta)
+		require.False(t, meta.Ready)
+
+		if setErr == nil {
+			requireImageChecksum(t, ctx, storage, imageID, 42)
+		} else {
+			requireNoImageChecksum(t, ctx, storage, imageID)
+		}
+	}
+}
+
+// Storing the checksum rewrites the whole row and should not lose a column
+// that is updated at the same time.
+func TestImageChecksumCalculatedRacesWithBackupCompletion(t *testing.T) {
+	ctx, storage := newImageBackupTestStorage(t)
+
+	// Several attempts give more interleavings of the two transactions.
+	for i := 0; i < 8; i++ {
+		imageID := fmt.Sprintf("image_%v", i)
+		createReadyImage(t, ctx, storage, imageID, "other")
+
+		start := make(chan struct{})
+		set := make(chan error, 1)
+		completed := make(chan error, 1)
+		go func() {
+			<-start
+			set <- storage.ImageChecksumCalculated(
+				ctx,
+				imageID,
+				"create_"+imageID,
+				42,
+			)
+		}()
+		go func() {
+			<-start
+			completed <- storage.ImageBackupCompleted(ctx, imageID)
+		}()
+		close(start)
+
+		setErr, completeErr := <-set, <-completed
+		require.NoError(t, setErr)
+		require.NoError(t, completeErr)
+
+		meta, err := storage.GetImageMeta(ctx, imageID)
+		require.NoError(t, err)
+		require.NotNil(t, meta)
+		require.True(t, meta.Ready)
+		require.True(t, meta.BackupCompleted)
+		require.True(t, meta.ChecksumCalculated)
+		require.EqualValues(t, 42, meta.Checksum)
+	}
+}
+
+// An image created before the checksum columns were added has no checksum.
+func TestImageChecksumOfImageCreatedBeforeMigration(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	// Should be in sync with newStorage.
+	folder := fmt.Sprintf("%v/images", t.Name())
+
+	err = db.CreateOrAlterTable(
+		ctx,
+		folder,
+		"images",
+		withoutChecksumColumns(t, imageStateTableDescription()),
+		false, // dropUnusedColumns
+	)
+	require.NoError(t, err)
+
+	_, err = db.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+		declare $folder_id as Utf8;
+		declare $size as Uint64;
+		declare $status as Int64;
+
+		upsert into images (id, folder_id, size, status)
+		values ($id, $folder_id, $size, $status)
+	`, db.AbsolutePath(folder)),
+		persistence.ValueParam("$id", persistence.UTF8Value("image")),
+		persistence.ValueParam("$folder_id", persistence.UTF8Value("folder")),
+		persistence.ValueParam("$size", persistence.Uint64Value(42)),
+		persistence.ValueParam(
+			"$status",
+			persistence.Int64Value(int64(imageStatusReady)),
+		),
+	)
+	require.NoError(t, err)
+
+	// The table has no checksum columns yet, so they can't be read.
+	_, err = readStoredChecksum(ctx, db, folder, "images", "image")
+	require.Error(t, err)
+
+	// Adds the checksum columns to the existing table.
+	storage := newStorage(t, ctx, db)
+
+	// The existing row holds NULL in both columns...
+	stored, err := readStoredChecksum(ctx, db, folder, "images", "image")
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		storedChecksum{checksumIsNull: true, calculatedIsNull: true},
+		stored,
+	)
+
+	// ... which is read as a checksum that is not calculated.
+	checkImage := func(checksumCalculated bool) {
+		meta, err := storage.GetImageMeta(ctx, "image")
+		require.NoError(t, err)
+		require.NotNil(t, meta)
+		require.True(t, meta.Ready)
+		require.Equal(t, "folder", meta.FolderID)
+		require.EqualValues(t, 42, meta.Size)
+		require.Equal(t, checksumCalculated, meta.ChecksumCalculated)
+		require.Zero(t, meta.Checksum)
+	}
+
+	checkImage(false)
+
+	// Zero differs from a checksum that is not calculated.
+	err = storage.ImageChecksumCalculated(
+		ctx,
+		"image",
+		"", // createTaskID
+		0,
+	)
+	require.NoError(t, err)
+	checkImage(true)
+
+	stored, err = readStoredChecksum(ctx, db, folder, "images", "image")
+	require.NoError(t, err)
+	require.Equal(t, storedChecksum{calculated: true}, stored)
+
+	// The next run of the migration keeps the checksum.
+	storage = newStorage(t, ctx, db)
+	checkImage(true)
 }

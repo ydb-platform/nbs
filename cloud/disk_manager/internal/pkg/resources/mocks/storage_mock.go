@@ -202,6 +202,17 @@ func (s *StorageMock) ImageBackupCompleted(
 	return args.Error(0)
 }
 
+func (s *StorageMock) ImageChecksumCalculated(
+	ctx context.Context,
+	imageID string,
+	createTaskID string,
+	checksum uint32,
+) error {
+
+	args := s.Called(ctx, imageID, createTaskID, checksum)
+	return args.Error(0)
+}
+
 func (s *StorageMock) GetImageBackupQueueStats(
 	ctx context.Context,
 ) (resources.ImageBackupQueueStats, error) {
@@ -412,6 +423,17 @@ func (s *StorageMock) SnapshotBackupCompleted(
 ) error {
 
 	args := s.Called(ctx, snapshotID)
+	return args.Error(0)
+}
+
+func (s *StorageMock) SnapshotChecksumCalculated(
+	ctx context.Context,
+	snapshotID string,
+	createTaskID string,
+	checksum uint32,
+) error {
+
+	args := s.Called(ctx, snapshotID, createTaskID, checksum)
 	return args.Error(0)
 }
 

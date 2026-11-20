@@ -10,6 +10,7 @@ SET_APPEND(RECIPE_ARGS --encryption)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/internal/pkg/facade/testcommon/common.inc)
 
 GO_XTEST_SRCS(
+    ../snapshot_service_test/snapshot_checksum_test.go
     ../snapshot_service_test/snapshot_service_test.go
 )
 

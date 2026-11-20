@@ -60,6 +60,10 @@ type ImageMeta struct {
 	Ready             bool                  `json:"ready"`
 	// A backup of the image completed; a deleting image is never marked.
 	BackupCompleted bool `json:"backup_completed"`
+
+	// Checksum is meaningful only if ChecksumCalculated is set.
+	Checksum           uint32 `json:"checksum"`
+	ChecksumCalculated bool   `json:"checksum_calculated"`
 }
 
 type SnapshotMeta struct {
@@ -80,6 +84,10 @@ type SnapshotMeta struct {
 	Encryption        *types.EncryptionDesc `json:"encryption"`
 	Ready             bool                  `json:"ready"`
 	BackupCompleted   bool                  `json:"backup_completed"`
+
+	// Checksum is meaningful only if ChecksumCalculated is set.
+	Checksum           uint32 `json:"checksum"`
+	ChecksumCalculated bool   `json:"checksum_calculated"`
 }
 
 type FilesystemMeta struct {
@@ -212,6 +220,19 @@ type Storage interface {
 
 	GetImageMeta(ctx context.Context, imageID string) (*ImageMeta, error)
 
+	// Stores the checksum of a ready image that is created by the task with
+	// |createTaskID|. Storing the same value again does nothing, another value
+	// replaces the stored one. Fails with a silent non retriable error if the
+	// image is not found or is not ready. Fails with a non retriable error if
+	// the image is created by another task: it has been deleted and created
+	// again with the same id.
+	ImageChecksumCalculated(
+		ctx context.Context,
+		imageID string,
+		createTaskID string,
+		checksum uint32,
+	) error
+
 	// Returns image if action has been accepted by storage and nil otherwise.
 	DeleteImage(
 		ctx context.Context,
@@ -293,6 +314,19 @@ type Storage interface {
 	) error
 
 	GetSnapshotMeta(ctx context.Context, snapshotID string) (*SnapshotMeta, error)
+
+	// Stores the checksum of a ready snapshot that is created by the task
+	// with |createTaskID|. Storing the same value again does nothing, another
+	// value replaces the stored one. Fails with a silent non retriable error
+	// if the snapshot is not found or is not ready. Fails with a non retriable
+	// error if the snapshot is created by another task: it has been deleted
+	// and created again with the same id.
+	SnapshotChecksumCalculated(
+		ctx context.Context,
+		snapshotID string,
+		createTaskID string,
+		checksum uint32,
+	) error
 
 	// Returns snapshot if action has been accepted by storage and nil otherwise.
 	DeleteSnapshot(

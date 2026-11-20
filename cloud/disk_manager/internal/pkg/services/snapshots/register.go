@@ -2,8 +2,11 @@ package snapshots
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/gofrs/uuid"
+	"github.com/golang/protobuf/proto"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
@@ -12,7 +15,9 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	snapshots_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -207,6 +212,32 @@ func RegisterForExecution(
 		return err
 	}
 
+	err = taskRegistry.RegisterForExecution(
+		"snapshots.SaveSnapshotChecksum",
+		func() tasks.Task {
+			return &saveSnapshotChecksumTask{
+				scheduler: taskScheduler,
+				storage:   storage,
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	err = taskRegistry.RegisterForExecution(
+		"snapshots.ValidateSnapshotChecksum",
+		func() tasks.Task {
+			return &validateSnapshotChecksumTask{
+				scheduler: taskScheduler,
+				storage:   storage,
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
 	err = taskRegistry.RegisterForExecution("snapshots.ClearDeletedSnapshots", func() tasks.Task {
 		return &clearDeletedSnapshotsTask{
 			storage:           storage,
@@ -228,4 +259,76 @@ func RegisterForExecution(
 	)
 
 	return nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Schedules the task that computes the checksum of the snapshot and saves it
+// to the database. Returns id of the task.
+//
+// The task is scheduled with the incoming idempotency key of |ctx|, so the
+// same key gives the same task: it should not be used for another snapshot or
+// for a task of another type. If |ctx| has no such key, a new one is
+// generated, so each call schedules a new task.
+func ScheduleSaveSnapshotChecksum(
+	ctx context.Context,
+	scheduler tasks.Scheduler,
+	snapshotID string,
+) (string, error) {
+
+	return scheduleChecksumTask(
+		ctx,
+		scheduler,
+		"snapshots.SaveSnapshotChecksum",
+		snapshotID,
+		&protos.SaveSnapshotChecksumRequest{
+			SnapshotId: snapshotID,
+		},
+	)
+}
+
+// Schedules the task that computes the checksum of the snapshot and compares
+// it with the saved one. The task fails if they differ or if there is no
+// saved checksum. Returns id of the task.
+//
+// See ScheduleSaveSnapshotChecksum for the idempotency key.
+func ScheduleValidateSnapshotChecksum(
+	ctx context.Context,
+	scheduler tasks.Scheduler,
+	snapshotID string,
+) (string, error) {
+
+	return scheduleChecksumTask(
+		ctx,
+		scheduler,
+		"snapshots.ValidateSnapshotChecksum",
+		snapshotID,
+		&protos.ValidateSnapshotChecksumRequest{
+			SnapshotId: snapshotID,
+		},
+	)
+}
+
+func scheduleChecksumTask(
+	ctx context.Context,
+	scheduler tasks.Scheduler,
+	taskType string,
+	snapshotID string,
+	request proto.Message,
+) (string, error) {
+
+	if len(headers.GetIdempotencyKey(ctx)) == 0 {
+		// The scheduler does not accept a task without a key.
+		ctx = headers.SetIncomingIdempotencyKey(
+			ctx,
+			fmt.Sprintf(
+				"%v_%v_%v",
+				taskType,
+				snapshotID,
+				uuid.Must(uuid.NewV4()).String(),
+			),
+		)
+	}
+
+	return scheduler.ScheduleTask(ctx, taskType, "", request)
 }
