@@ -88,9 +88,10 @@ message TMountVolumeRequest
     // Forces MountVolume handler to ignore encryption spec.
     bool ForceDisableEncryption = 18;
 
-    // Forces the service handling this request to keep the volume tablet
-    // remotely bound. VolumeMountMode still describes the logical mounter
-    // priority and is passed to the volume tablet unchanged.
+    // Keeps the service handling this request from starting the volume tablet
+    // locally for this client; a tablet started there for another client
+    // stays. VolumeMountMode still describes the logical mounter priority and
+    // is passed to the volume tablet unchanged.
     bool ForceRemoteBinding = 19;
 }
 
