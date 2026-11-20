@@ -51,14 +51,14 @@ private:
 
 private:
     TVolumePerfSettings GetConfigSettings(
-        TDiagnosticsConfigConstPtr diagnosticsConfig) const;
+        TDiagnosticsConfigPtr diagnosticsConfig) const;
     bool
     DidSuffer(ui64 expectedScore, ui64 actualScore, TDuration window) const;
 
 public:
     TVolumePerformanceCalculator(
         const NProto::TVolume& volume,
-        TDiagnosticsConfigConstPtr diagnosticsConfig);
+        TDiagnosticsConfigPtr diagnosticsConfig);
 
     void Register(
         NMonitoring::TDynamicCounters& counters,

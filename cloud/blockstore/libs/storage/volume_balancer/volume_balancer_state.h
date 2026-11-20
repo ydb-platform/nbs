@@ -51,8 +51,8 @@ public:
     using TPerfGuaranteesMap = THashMap<TString, ui32>;
 
 private:
-    TStorageConfigConstPtr StorageConfig;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    TStorageConfigPtr StorageConfig;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
 
     ui64 CpuLack = 0;
 
@@ -72,8 +72,8 @@ private:
 
 public:
     TVolumeBalancerState(
-        TStorageConfigConstPtr storageConfig,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr storageConfig,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         IVolumeBalancerSwitchPtr volumeBalancerSwitch);
 
     TString GetVolumeToPush() const;

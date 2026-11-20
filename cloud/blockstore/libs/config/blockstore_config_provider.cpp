@@ -23,7 +23,7 @@ TBlockstoreConfigHolderPtr& BlockstoreConfigHolder()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IBlockstoreConfigConstPtr GetCurrentBlockstoreConfig()
+IBlockstoreConfigPtr GetCurrentBlockstoreConfig()
 {
     const auto& holder = BlockstoreConfigHolder();
     Y_ABORT_UNLESS(
@@ -33,7 +33,7 @@ IBlockstoreConfigConstPtr GetCurrentBlockstoreConfig()
 }
 
 TBlockstoreConfigHolderPtr InitializeBlockstoreConfigProvider(
-    IBlockstoreConfigPtr initialConfig)
+    IBlockstoreConfigMutablePtr initialConfig)
 {
     auto& holder = BlockstoreConfigHolder();
     Y_ABORT_UNLESS(

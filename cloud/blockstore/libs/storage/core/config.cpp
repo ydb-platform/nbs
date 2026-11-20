@@ -1278,14 +1278,14 @@ std::optional<i64> TStorageConfigControls::GetOverride(TStringBuf name) const
 struct TStorageConfig::TImpl
 {
     NProto::TStorageServiceConfig StorageServiceConfig;
-    NFeatures::TFeaturesConfigConstPtr FeaturesConfig;
+    NFeatures::TFeaturesConfigPtr FeaturesConfig;
 
     // Non-null ICB controls shared by copies and Merge results.
     TStorageConfigControlsPtr Controls;
 
     TImpl(
         NProto::TStorageServiceConfig storageServiceConfig,
-        NFeatures::TFeaturesConfigConstPtr featuresConfig,
+        NFeatures::TFeaturesConfigPtr featuresConfig,
         TStorageConfigControlsPtr controls)
         : StorageServiceConfig(std::move(storageServiceConfig))
         , FeaturesConfig(std::move(featuresConfig))
@@ -1294,7 +1294,7 @@ struct TStorageConfig::TImpl
         Y_ABORT_UNLESS(Controls);
     }
 
-    void SetFeaturesConfig(NFeatures::TFeaturesConfigConstPtr featuresConfig)
+    void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig)
     {
         FeaturesConfig = std::move(featuresConfig);
     }
@@ -1325,7 +1325,7 @@ struct TStorageConfig::TImpl
 
 TStorageConfig::TStorageConfig(
     NProto::TStorageServiceConfig storageServiceConfig,
-    NFeatures::TFeaturesConfigConstPtr featuresConfig)
+    NFeatures::TFeaturesConfigPtr featuresConfig)
     : TStorageConfig(
           std::move(storageServiceConfig),
           std::move(featuresConfig),
@@ -1334,7 +1334,7 @@ TStorageConfig::TStorageConfig(
 
 TStorageConfig::TStorageConfig(
     NProto::TStorageServiceConfig storageServiceConfig,
-    NFeatures::TFeaturesConfigConstPtr featuresConfig,
+    NFeatures::TFeaturesConfigPtr featuresConfig,
     TStorageConfigControlsPtr controls)
 {
     if (!controls) {
@@ -1373,7 +1373,7 @@ void TStorageConfig::UpdateControlsDefaults() const
 }
 
 void TStorageConfig::SetFeaturesConfig(
-    NFeatures::TFeaturesConfigConstPtr featuresConfig)
+    NFeatures::TFeaturesConfigPtr featuresConfig)
 {
     Impl->SetFeaturesConfig(std::move(featuresConfig));
 }
@@ -1511,8 +1511,8 @@ TString TStorageConfig::Get##name##FeatureValue(                               \
 
 // Apply the patch without materializing ICB overrides into the raw proto.
 // Reuse unchanged configurations and retain live controls when creating a copy.
-TStorageConfigConstPtr TStorageConfig::Merge(
-    TStorageConfigConstPtr config,
+TStorageConfigPtr TStorageConfig::Merge(
+    TStorageConfigPtr config,
     const NProto::TStorageServiceConfig& patch)
 {
     const auto& configProto = config->Impl->StorageServiceConfig;

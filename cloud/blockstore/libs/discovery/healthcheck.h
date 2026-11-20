@@ -25,7 +25,7 @@ struct IHealthChecker
 ////////////////////////////////////////////////////////////////////////////////
 
 IHealthCheckerPtr CreateHealthChecker(
-    TDiscoveryConfigConstPtr config,
+    TDiscoveryConfigPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     IPingClientPtr insecurePingClient,

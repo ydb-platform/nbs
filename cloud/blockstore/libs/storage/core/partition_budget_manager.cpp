@@ -6,7 +6,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TPartitionBudgetManager::TPartitionBudgetManager(TStorageConfigConstPtr config)
+TPartitionBudgetManager::TPartitionBudgetManager(TStorageConfigPtr config)
     : Config(std::move(config))
 {}
 

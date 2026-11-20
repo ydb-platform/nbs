@@ -56,7 +56,7 @@ struct TServerActorSystemArgs
 
     // Effective startup snapshot in both YAML and PROTO modes.
     // In YAML mode, includes accepted PrivateDatabaseConfig overrides.
-    IBlockstoreConfigPtr StartupBlockstoreConfig;
+    IBlockstoreConfigMutablePtr StartupBlockstoreConfig;
 
     ILoggingServicePtr Logging;
     IAsyncLoggerPtr AsyncLogger;

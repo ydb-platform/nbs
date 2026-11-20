@@ -106,7 +106,7 @@ class THealthChecker final
     : public IHealthChecker
 {
 private:
-    TDiscoveryConfigConstPtr Config;
+    TDiscoveryConfigPtr Config;
     ILoggingServicePtr Logging;
     IMonitoringServicePtr Monitoring;
 
@@ -118,7 +118,7 @@ private:
 
 public:
     THealthChecker(
-            TDiscoveryConfigConstPtr config,
+            TDiscoveryConfigPtr config,
             ILoggingServicePtr logging,
             IMonitoringServicePtr monitoring,
             IPingClientPtr insecureClient,
@@ -302,7 +302,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IHealthCheckerPtr CreateHealthChecker(
-    TDiscoveryConfigConstPtr config,
+    TDiscoveryConfigPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     IPingClientPtr insecurePingClient,

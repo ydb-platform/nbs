@@ -18,7 +18,7 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 TMirrorPartitionState::TMirrorPartitionState(
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TString rwClientId,
         TNonreplicatedPartitionConfigPtr partConfig,
         TMigrations migrations,

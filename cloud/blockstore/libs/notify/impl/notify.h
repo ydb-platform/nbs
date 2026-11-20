@@ -20,12 +20,12 @@ using IJsonGeneratorPtr = std::unique_ptr<IJsonGenerator>;
 ////////////////////////////////////////////////////////////////////////////////
 
 IServicePtr CreateService(
-    TNotifyConfigConstPtr config,
+    TNotifyConfigPtr config,
     NCloud::NIamClient::IIamTokenClientPtr iamTokenClientPtr,
     IJsonGeneratorPtr jsonGenerator);
 
 IServicePtr CreateService(
-    TNotifyConfigConstPtr config,
+    TNotifyConfigPtr config,
     NCloud::NIamClient::IIamTokenClientPtr iamTokenClientPtr);
 
 }   // namespace NCloud::NBlockStore::NNotify

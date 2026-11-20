@@ -989,8 +989,10 @@ NProto::TReadJournalTailResponse TJournal::ReadTail(
     ui64 lsnLowWatermark = LsnLowWatermark.load(std::memory_order_acquire);
     ui64 afterLsn = Max(lsnBarrierGuard.GetLsn(), lsnLowWatermark);
 
-    auto records =
-        LogRecordChain.GetReadyRun(afterLsn, request.GetMaxRecordCount());
+    auto records = LogRecordChain.GetReadyRun(
+        afterLsn,
+        Max<ui64>() /* maxLsn */,
+        request.GetMaxRecordCount());
 
     //
     // Fill the response with the records and their page contents
@@ -1092,6 +1094,7 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
 
     auto run = LogRecordChain.GetReadyRun(
         flushedLsn,
+        maxLsn,
         0 /* maxRecordCount */);
 
     //
@@ -1105,10 +1108,6 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
     ui64 pageCount = 0;
 
     for (const auto& record: run) {
-        if (record->Lsn > maxLsn) {
-            break;
-        }
-
         const ui64 recordPageCount = GetPageCount(record->PageMappings);
         if (!records.empty() && pageCount + recordPageCount > maxPageCount) {
             break;

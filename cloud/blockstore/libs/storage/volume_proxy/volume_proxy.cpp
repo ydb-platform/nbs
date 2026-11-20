@@ -222,7 +222,7 @@ class TVolumeProxyActor final
     };
 
 private:
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     const TDuration PipeInactivityTimeout;
     const ITraceSerializerPtr TraceSerializer;
     const bool TemporaryServer = false;
@@ -256,7 +256,7 @@ private:
 
 public:
     TVolumeProxyActor(
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         ITraceSerializerPtr traceSerializer,
         bool temporaryServer);
 
@@ -359,7 +359,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeProxyActor::TVolumeProxyActor(
-    TStorageConfigConstPtr config,
+    TStorageConfigPtr config,
     ITraceSerializerPtr traceSerializer,
     bool temporaryServer)
     : TActor(&TThis::StateWork)
@@ -1286,7 +1286,7 @@ STFUNC(TVolumeProxyActor::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 IActorPtr CreateVolumeProxy(
-    TStorageConfigConstPtr config,
+    TStorageConfigPtr config,
     ITraceSerializerPtr traceSerializer,
     bool temporaryServer)
 {

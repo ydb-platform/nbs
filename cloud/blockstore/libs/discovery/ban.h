@@ -26,7 +26,7 @@ struct IBanList
 ////////////////////////////////////////////////////////////////////////////////
 
 IBanListPtr CreateBanList(
-    TDiscoveryConfigConstPtr config,
+    TDiscoveryConfigPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring);
 

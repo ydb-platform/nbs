@@ -2,6 +2,7 @@
 
 #include "shard_creation_state_companion.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
@@ -85,6 +86,7 @@ private:
     bool MainFileSystemCreated = false;
     ui32 NextShardToConfigure = 0;
     ui32 ShardsToConfigure = 0;
+    bool ShardConfigurationStarted = false;
 
     TShardCreationStateCompanion ShardCreationState;
 
@@ -110,6 +112,10 @@ private:
 
     void HandleCreateFileStoreResponse(
         const TEvSSProxy::TEvCreateFileStoreResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleShardCreationStateResponse(
+        const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleConfigureShardResponse(
@@ -212,6 +218,18 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
 
 void TCreateFileStoreActor::CreateShards(const TActorContext& ctx)
 {
+    if (ShardCreationState.IsPersistentStateSupported()) {
+        // Unlike resize, create has no existing shards to load from topology.
+        // The target configs are already known when shard creation starts.
+        const auto error = ShardCreationState.SetupCreatedShardBitmap(
+            0,
+            FileStoreConfig.ShardConfigs);
+        if (HasError(error)) {
+            ReplyAndDie(ctx, error);
+            return;
+        }
+    }
+
     ShardCreationState.StartShardCreation(ctx);
 
     if (!ShardCreationState.HasShardsToCreate()) {
@@ -243,6 +261,7 @@ void TCreateFileStoreActor::CreateShard(
 
 void TCreateFileStoreActor::ConfigureShards(const TActorContext& ctx)
 {
+    ShardConfigurationStarted = true;
     NextShardToConfigure = 0;
     const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
     const ui32 endShardIndex = (limit == 0)
@@ -366,6 +385,13 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
             return;
         }
 
+        if (ShardCreationState.HasCreatedShardBitmap()) {
+            // Wait for HandleShardCreationStateResponse to call ConfigureShards
+            // after all shards are created and their bits are persisted in the
+            // Tablet's shard creation bitmap.
+            return;
+        }
+
         if (!ShardCreationState.HasShardsToCreate()) {
             ConfigureShards(ctx);
         }
@@ -381,7 +407,11 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
 
     MainFileSystemCreated = true;
     if (ShardCreationState.HasShardsToCreate()) {
-        CreateShards(ctx);
+        if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
+            ShardCreationState.ReadShardCreationState(ctx);
+        } else {
+            CreateShards(ctx);
+        }
         return;
     }
     if (StorageConfig->GetDirectoryCreationInShardsEnabled() ||
@@ -398,6 +428,43 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
     // TODO: fill filestore info
 
     ReplyAndDie(ctx, std::move(response));
+}
+
+void TCreateFileStoreActor::HandleShardCreationStateResponse(
+    const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto result = ShardCreationState.HandleShardCreationStateResponse(
+        ev->Get()->Record,
+        ctx);
+    if (HasError(result)) {
+        ReplyAndDie(ctx, result.GetError());
+        return;
+    }
+
+    switch (result.GetResult()) {
+        case TShardCreationStateCompanion::
+            EChangeTabletStateResponseAction::StartWithoutPersistentState:
+        case TShardCreationStateCompanion::EChangeTabletStateResponseAction::InitialStateLoaded:
+            CreateShards(ctx);
+            return;
+        case TShardCreationStateCompanion::EChangeTabletStateResponseAction::IgnoreStaleResponse:
+            // A newer state is already saved. Discarding this stale response
+            // does not stall the operation.
+            return;
+        case TShardCreationStateCompanion::EChangeTabletStateResponseAction::PersistLocalProgress:
+            // The returned bitmap lacks local progress. The update response
+            // will resume the operation after the merged bits are persisted.
+            ShardCreationState.UpdateShardCreationState(ctx);
+            return;
+        case TShardCreationStateCompanion::EChangeTabletStateResponseAction::Continue:
+            if (!ShardCreationState.HasShardsToCreate() &&
+                !ShardConfigurationStarted)
+            {
+                ConfigureShards(ctx);
+            }
+            return;
+    }
 }
 
 void TCreateFileStoreActor::HandleConfigureShardResponse(
@@ -500,6 +567,9 @@ STFUNC(TCreateFileStoreActor::StateWork)
         HFunc(
             TEvIndexTablet::TEvConfigureShardsResponse,
             HandleConfigureMainFileStoreResponse);
+        HFunc(
+            TEvIndexTablet::TEvUnsafeChangeTabletStateResponse,
+            HandleShardCreationStateResponse);
 
         default:
             HandleUnexpectedEvent(
