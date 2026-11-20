@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include <cloud/blockstore/libs/storage/api/cell_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
@@ -51,6 +52,14 @@ private:
     void HandlePersistedOnFollower(
         const TEvVolume::TEvUpdateLinkOnFollowerResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
+
+    void HandleRemotePersistedOnFollower(
+        const TEvCellProxy::TEvExecuteActionResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void ProcessFollowerResponse(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error);
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,

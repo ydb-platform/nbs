@@ -7,6 +7,7 @@ SRCS(
     read_and_clear_empty_blocks_actor_ut.cpp
     read_disk_registry_based_overlay_ut.cpp
     volume_as_partition_actor_ut.cpp
+    link_actors_ut.cpp
 )
 
 PEERDIR(

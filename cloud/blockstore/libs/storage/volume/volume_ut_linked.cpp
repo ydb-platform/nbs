@@ -129,6 +129,8 @@ struct TFixture: public NUnitTest::TBaseFixture
         config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
         config.SetMaxShadowDiskFillIoDepth(2);
         config.SetMigrationIndexCachingInterval(16_MB / DefaultBlockSize);
+        // Preserve streaming-copy coverage for both DiskRegistry media kinds.
+        config.SetUseDirectCopyRange(false);
 
         auto state = MakeIntrusive<TDiskRegistryState>();
         Runtime = PrepareTestActorRuntime(
@@ -850,6 +852,9 @@ Y_UNIT_TEST_SUITE(TUpdateLinkOnFollowerTest)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// All volumes in these regression fixtures use local proxy and data paths.
+// Their old distinct cell labels did not represent remote transport. Keep the
+// fixtures same-cell; remote A/B routing is covered by actor and service tests.
 Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
 {
     Y_UNIT_TEST(ShouldKeepOneRetryTimerForRetriableLinkErrors)
@@ -1127,7 +1132,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             .LeaderDiskId = "vol1",
             .LeaderCellId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerCellId = "su2"};
+            .FollowerCellId = "su1"};
         {
             // Create link
             auto response = volume1.LinkLeaderVolumeToFollower(link);
@@ -1324,7 +1329,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             .LeaderDiskId = "vol1",
             .LeaderCellId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerCellId = "su2"};
+            .FollowerCellId = "su1"};
 
         // Create link
         volume1.LinkLeaderVolumeToFollower(link);
@@ -1422,7 +1427,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             .LeaderDiskId = "vol1",
             .LeaderCellId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerCellId = "su2"};
+            .FollowerCellId = "su1"};
 
         // Create link
         volume1.SendLinkLeaderVolumeToFollowerRequest(link);
@@ -1580,7 +1585,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             .LeaderDiskId = "vol1",
             .LeaderCellId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerCellId = "su2"};
+            .FollowerCellId = "su1"};
         {
             volume1.SendLinkLeaderVolumeToFollowerRequest(link);
             auto response = volume1.RecvLinkLeaderVolumeToFollowerResponse();
@@ -1892,7 +1897,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             .LeaderDiskId = "vol1",
             .LeaderCellId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerCellId = "su2"};
+            .FollowerCellId = "su1"};
         {
             auto response = volume1.LinkLeaderVolumeToFollower(link);
             link.LinkUUID = response->Record.GetLinkUUID();
@@ -2151,7 +2156,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 .LeaderDiskId = "vol1",
                 .LeaderCellId = "su1",
                 .FollowerDiskId = "vol2",
-                .FollowerCellId = "su2"};
+                .FollowerCellId = "su1"};
 
             auto response = volume1.LinkLeaderVolumeToFollower(link);
             link.LinkUUID = response->Record.GetLinkUUID();
@@ -2320,7 +2325,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 .LeaderDiskId = "vol1",
                 .LeaderCellId = "su1",
                 .FollowerDiskId = "vol2",
-                .FollowerCellId = "su2"};
+                .FollowerCellId = "su1"};
 
             auto response = volume1.LinkLeaderVolumeToFollower(link);
             link.LinkUUID = response->Record.GetLinkUUID();
@@ -2432,7 +2437,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 .LeaderDiskId = "vol1",
                 .LeaderCellId = "su1",
                 .FollowerDiskId = "vol2",
-                .FollowerCellId = "su2"};
+                .FollowerCellId = "su1"};
 
             auto response = volume1.LinkLeaderVolumeToFollower(link);
             link.LinkUUID = response->Record.GetLinkUUID();
@@ -2948,7 +2953,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             .LeaderDiskId = "vol1",
             .LeaderCellId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerCellId = "su2"};
+            .FollowerCellId = "su1"};
         auto linkResponse = volume1.LinkLeaderVolumeToFollower(link);
         link.LinkUUID = linkResponse->Record.GetLinkUUID();
 
@@ -3054,7 +3059,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                          .LeaderDiskId = "vol1",
                          .LeaderCellId = "leader-cell",
                          .FollowerDiskId = "vol2",
-                         .FollowerCellId = "follower-cell"},
+                         .FollowerCellId = "leader-cell"},
                     .CreatedAt = TInstant::Now(),
                     .State = persistedState,
                     .MediaKind = NProto::STORAGE_MEDIA_SSD}});
@@ -3406,7 +3411,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                              .LeaderDiskId = "vol1",
                              .LeaderCellId = "leader-cell",
                              .FollowerDiskId = "vol2",
-                             .FollowerCellId = "follower-cell"},
+                             .FollowerCellId = "leader-cell"},
                         .CreatedAt = TInstant::Now(),
                         .State = persistedState,
                         .MediaKind = NProto::STORAGE_MEDIA_SSD}}));
@@ -3642,7 +3647,7 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             .LeaderDiskId = "vol1",
             .LeaderCellId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerCellId = "su2"};
+            .FollowerCellId = "su1"};
         volume1.LinkLeaderVolumeToFollower(link);
         UNIT_ASSERT_EQUAL(TFollowerDiskInfo::EState::Preparing, followerState);
 
@@ -3795,7 +3800,8 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             .LeaderDiskId = "vol1",
             .LeaderCellId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerCellId = "su2"};
+            // This fixture forwards both volumes through the local proxy.
+            .FollowerCellId = "su1"};
         volume1.LinkLeaderVolumeToFollower(link);
         UNIT_ASSERT_EQUAL(TFollowerDiskInfo::EState::Preparing, followerState);
 

@@ -68,6 +68,14 @@ void TVolumeActor::HandleGetLinkStatus(
         link = leader->Link;
     }
 
+    const auto* creation =
+        msg->Record.GetIncludePendingCreation() && !follower && !leader
+            ? State->FindCreateFollowerRequestInfo(link)
+            : nullptr;
+    if (creation) {
+        link = creation->Link;
+    }
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
@@ -80,7 +88,7 @@ void TVolumeActor::HandleGetLinkStatus(
     auto response =
         std::make_unique<TEvVolume::TEvGetLinkStatusResponse>(MakeError(S_OK));
 
-    if (follower || leader) {
+    if (follower || leader || creation) {
         response->Record.SetLinkUUID(link.LinkUUID);
         response->Record.SetLeaderCellId(link.LeaderCellId);
         response->Record.SetFollowerCellId(link.FollowerCellId);
@@ -93,6 +101,8 @@ void TVolumeActor::HandleGetLinkStatus(
     } else if (leader) {
         response->Record.SetStatus(TranslateState(leader->State));
         response->Record.SetErrorMessage(leader->ErrorMessage);
+    } else if (creation) {
+        response->Record.SetStatus(NProto::ELinkStatus::LINK_STATUS_PREPARING);
     } else {
         response->Record.SetStatus(NProto::ELinkStatus::LINK_STATUS_NOT_FOUND);
     }

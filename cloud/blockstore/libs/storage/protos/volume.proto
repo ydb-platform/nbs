@@ -900,6 +900,10 @@ message TGetLinkStatusRequest
 
     // Follower volume cell.
     string FollowerCellId = 6;
+
+    // Include a source-side link whose creation has not been persisted yet.
+    // Used by remote cancellation to pin its expected UUID before mutation.
+    bool IncludePendingCreation = 7;
 }
 
 message TGetLinkStatusResponse
@@ -946,6 +950,9 @@ message TUnlinkLeaderVolumeFromFollowerRequest
 
     // Follower volume cell Id.
     string FollowerCellId = 5;
+
+    // Optional expected UUID. Empty preserves legacy same-cell matching.
+    string LinkUUID = 6;
 }
 
 message TUnlinkLeaderVolumeFromFollowerResponse

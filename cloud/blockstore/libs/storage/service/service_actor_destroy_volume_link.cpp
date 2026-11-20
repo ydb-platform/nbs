@@ -4,6 +4,8 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/volume/actors/propagate_to_follower.h>
+#include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -31,6 +33,7 @@ private:
     const TString FollowerDiskId;
     const TString FollowerCellId;
 
+    TString LinkUUID;
     NProto::TError FollowerUnlinkResult;
 
 public:
@@ -45,8 +48,21 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
+    void GetLinkUUID(const NActors::TActorContext& ctx);
     void UnlinkLeaderVolumeFromFollower(const NActors::TActorContext& ctx);
     void RemoveLinkOnFollower(const NActors::TActorContext& ctx);
+
+    void HandleGetLinkStatusResponse(
+        const TEvVolume::TEvGetLinkStatusResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleRemoteLinkRemovedOnFollower(
+        const TEvVolumePrivate::TEvLinkOnFollowerDestroyed::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void ProcessLinkRemovedOnFollower(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error);
 
     void HandleUnlinkLeaderVolumeFromFollowerResponse(
         const TEvVolume::TEvUnlinkLeaderVolumeFromFollowerResponse::TPtr& ev,
@@ -85,6 +101,46 @@ void TDestroyVolumeLinkActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateWork);
 
+    if (LeaderCellId != FollowerCellId) {
+        GetLinkUUID(ctx);
+    } else {
+        RemoveLinkOnFollower(ctx);
+    }
+}
+
+void TDestroyVolumeLinkActor::GetLinkUUID(const NActors::TActorContext& ctx)
+{
+    auto request = std::make_unique<TEvVolume::TEvGetLinkStatusRequest>(
+        RequestInfo->CallContext);
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+    request->Record.SetDiskId(LeaderDiskId);
+    request->Record.SetLeaderDiskId(LeaderDiskId);
+    request->Record.SetLeaderCellId(LeaderCellId);
+    request->Record.SetFollowerDiskId(FollowerDiskId);
+    request->Record.SetFollowerCellId(FollowerCellId);
+    request->Record.SetIncludePendingCreation(true);
+    NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
+}
+
+void TDestroyVolumeLinkActor::HandleGetLinkStatusResponse(
+    const TEvVolume::TEvGetLinkStatusResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    auto error = msg->GetError();
+    if (!HasError(error) && !msg->Record.GetLinkUUID()) {
+        error = MakeError(
+            E_INVALID_STATE,
+            "Cannot cancel remote link without its source-side UUID");
+    }
+    if (HasError(error)) {
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TEvService::TEvDestroyVolumeLinkResponse>(error));
+        return;
+    }
+
+    LinkUUID = msg->Record.GetLinkUUID();
     RemoveLinkOnFollower(ctx);
 }
 
@@ -95,6 +151,10 @@ void TDestroyVolumeLinkActor::UnlinkLeaderVolumeFromFollower(
         std::make_unique<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>(
             RequestInfo->CallContext);
     request->Record.SetDiskId(LeaderDiskId);
+    request->Record.SetLinkUUID(LinkUUID);
+    if (LinkUUID) {
+        request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+    }
     request->Record.SetLeaderCellId(LeaderCellId);
     request->Record.SetFollowerDiskId(FollowerDiskId);
     request->Record.SetFollowerCellId(FollowerCellId);
@@ -105,6 +165,21 @@ void TDestroyVolumeLinkActor::UnlinkLeaderVolumeFromFollower(
 void TDestroyVolumeLinkActor::RemoveLinkOnFollower(
     const NActors::TActorContext& ctx)
 {
+    if (LeaderCellId != FollowerCellId) {
+        NCloud::Register<TPropagateLinkToFollowerActor>(
+            ctx,
+            "DestroyVolumeLink",
+            CreateRequestInfo(SelfId(), 0, RequestInfo->CallContext),
+            TLeaderFollowerLink{
+                .LinkUUID = LinkUUID,
+                .LeaderDiskId = LeaderDiskId,
+                .LeaderCellId = LeaderCellId,
+                .FollowerDiskId = FollowerDiskId,
+                .FollowerCellId = FollowerCellId},
+            TPropagateLinkToFollowerActor::EReason::Destruction);
+        return;
+    }
+
     auto request =
         std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
     request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
@@ -147,8 +222,20 @@ void TDestroyVolumeLinkActor::HandleLinkRemovedOnFollower(
     const TEvVolume::TEvUpdateLinkOnFollowerResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    auto* message = ev->Get();
-    const auto& error = message->GetError();
+    ProcessLinkRemovedOnFollower(ctx, ev->Get()->GetError());
+}
+
+void TDestroyVolumeLinkActor::HandleRemoteLinkRemovedOnFollower(
+    const TEvVolumePrivate::TEvLinkOnFollowerDestroyed::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    ProcessLinkRemovedOnFollower(ctx, ev->Get()->GetError());
+}
+
+void TDestroyVolumeLinkActor::ProcessLinkRemovedOnFollower(
+    const NActors::TActorContext& ctx,
+    const NProto::TError& error)
+{
     FollowerUnlinkResult = error;
 
     if (HasError(error) && !IsNotFoundSchemeShardError(error)) {
@@ -180,6 +267,12 @@ void TDestroyVolumeLinkActor::ReplyAndDie(
 STFUNC(TDestroyVolumeLinkActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
+        HFunc(TEvVolume::TEvGetLinkStatusResponse, HandleGetLinkStatusResponse);
+
+        HFunc(
+            TEvVolumePrivate::TEvLinkOnFollowerDestroyed,
+            HandleRemoteLinkRemovedOnFollower);
+
         HFunc(
             TEvVolume::TEvUnlinkLeaderVolumeFromFollowerResponse,
             HandleUnlinkLeaderVolumeFromFollowerResponse);

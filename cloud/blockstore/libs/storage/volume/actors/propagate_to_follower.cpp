@@ -7,6 +7,8 @@
 
 #include <contrib/ydb/library/actors/core/log.h>
 
+#include <google/protobuf/util/json_util.h>
+
 #include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -69,7 +71,28 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
         }
     }
 
-    NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
+    if (Link.LeaderCellId != Link.FollowerCellId) {
+        NProto::TExecuteActionRequest action;
+        action.SetAction("updatelinkonfollower");
+        TString input;
+        const auto status = google::protobuf::util::MessageToJsonString(
+            request->Record,
+            &input);
+        if (!status.ok()) {
+            ReplyAndDie(ctx, MakeError(E_ARGUMENT, status.ToString()));
+            return;
+        }
+        action.SetInput(std::move(input));
+        NCloud::Send(
+            ctx,
+            MakeCellProxyServiceId(),
+            std::make_unique<TEvCellProxy::TEvExecuteActionRequest>(
+                RequestInfo->CallContext,
+                Link.FollowerCellId,
+                std::move(action)));
+    } else {
+        NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
+    }
 
     ctx.Schedule(
         DelayProvider.GetDelayAndIncrease(),
@@ -80,8 +103,20 @@ void TPropagateLinkToFollowerActor::HandlePersistedOnFollower(
     const TEvVolume::TEvUpdateLinkOnFollowerResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    auto* message = ev->Get();
-    const auto& error = message->GetError();
+    ProcessFollowerResponse(ctx, ev->Get()->GetError());
+}
+
+void TPropagateLinkToFollowerActor::HandleRemotePersistedOnFollower(
+    const TEvCellProxy::TEvExecuteActionResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    ProcessFollowerResponse(ctx, ev->Get()->GetError());
+}
+
+void TPropagateLinkToFollowerActor::ProcessFollowerResponse(
+    const NActors::TActorContext& ctx,
+    const NProto::TError& error)
+{
     const bool hasError = HasError(error);
 
     LOG_LOG(
@@ -99,7 +134,7 @@ void TPropagateLinkToFollowerActor::HandlePersistedOnFollower(
         return;
     }
 
-    ReplyAndDie(ctx, message->GetError());
+    ReplyAndDie(ctx, error);
 }
 
 void TPropagateLinkToFollowerActor::HandleWakeup(
@@ -163,6 +198,10 @@ STFUNC(TPropagateLinkToFollowerActor::StateWork)
         HFunc(
             TEvVolume::TEvUpdateLinkOnFollowerResponse,
             HandlePersistedOnFollower);
+
+        HFunc(
+            TEvCellProxy::TEvExecuteActionResponse,
+            HandleRemotePersistedOnFollower);
 
         HFunc(NActors::TEvents::TEvWakeup, HandleWakeup);
 

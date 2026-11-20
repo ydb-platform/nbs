@@ -1,18 +1,25 @@
 #include "service_ut.h"
 
+#include <cloud/blockstore/libs/client/config.h>
+
+#include <cloud/blockstore/libs/storage/api/cell_proxy.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/testlib/cell_manager_mock.h>
+#include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+#include <cloud/blockstore/libs/ydbstats/ydbstats.h>
 #include <cloud/blockstore/private/api/protos/checkpoints.pb.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 
 #include <util/generic/algorithm.h>
+#include <util/generic/set.h>
 #include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -46,6 +53,157 @@ NProto::TGetLinkStatusResponse GetLinkStatus(
             .ok(),
         response->Record.GetOutput());
     return proto;
+}
+
+// Mock only the CellProxy transport boundary. The volume handlers and their
+// source/follower persistence are real; this does not test network or auth.
+struct TRemoteLinkMock
+{
+    TTestActorRuntimeBase& Runtime;
+    const ui32 NodeIdx;
+    TSet<TActorId> PendingActions;
+    ui32 ActionCount = 0;
+    std::function<bool(TAutoPtr<IEventHandle>&)> HoldRequest;
+    std::function<void(IEventHandle&)> Observe;
+
+    TRemoteLinkMock(TTestActorRuntimeBase& runtime, ui32 nodeIdx)
+        : Runtime(runtime)
+        , NodeIdx(nodeIdx)
+    {
+        Runtime.SetEventFilter([&](auto&, TAutoPtr<IEventHandle>& event)
+        {
+            if (Observe) {
+                Observe(*event);
+            }
+            if (event->GetTypeRewrite() ==
+                TEvCellProxy::EvDescribeVolumeRequest)
+            {
+                if (HoldRequest && HoldRequest(event)) {
+                    return true;
+                }
+                const auto* request =
+                    event->Get<TEvCellProxy::TEvDescribeVolumeRequest>();
+                UNIT_ASSERT_VALUES_EQUAL("cell-b", request->CellId);
+                NProto::TVolume volume;
+                volume.SetDiskId(request->DiskId);
+                volume.SetBlockSize(DefaultBlockSize);
+                volume.SetBlocksCount(DefaultBlocksCount);
+                volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD);
+                Runtime.Send(
+                    new IEventHandle(
+                        event->Sender,
+                        event->Recipient,
+                        new TEvCellProxy::TEvDescribeVolumeResponse(
+                            std::move(volume)),
+                        0,
+                        event->Cookie),
+                    NodeIdx,
+                    true);
+                return true;
+            }
+            if (event->GetTypeRewrite() ==
+                TEvCellProxy::EvExecuteActionRequest)
+            {
+                if (HoldRequest && HoldRequest(event)) {
+                    return true;
+                }
+                const auto* request =
+                    event->Get<TEvCellProxy::TEvExecuteActionRequest>();
+                UNIT_ASSERT_VALUES_EQUAL("cell-b", request->CellId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "updatelinkonfollower",
+                    request->Record.GetAction());
+                auto forward =
+                    std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>(
+                        request->CallContext);
+                const auto status = google::protobuf::util::JsonStringToMessage(
+                    request->Record.GetInput(),
+                    &forward->Record);
+                UNIT_ASSERT_C(status.ok(), status.ToString());
+                UNIT_ASSERT(forward->Record.GetLinkUUID());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "cell-b",
+                    forward->Record.GetFollowerCellId());
+                PendingActions.insert(event->Sender);
+                ++ActionCount;
+                Runtime.Send(
+                    new IEventHandle(
+                        MakeVolumeProxyServiceId(),
+                        event->Sender,
+                        forward.release(),
+                        0,
+                        event->Cookie),
+                    NodeIdx,
+                    true);
+                return true;
+            }
+            if (event->GetTypeRewrite() ==
+                    TEvVolume::EvUpdateLinkOnFollowerResponse &&
+                PendingActions.contains(event->GetRecipientRewrite()))
+            {
+                const auto* response =
+                    event->Get<TEvVolume::TEvUpdateLinkOnFollowerResponse>();
+                Runtime.Send(
+                    new IEventHandle(
+                        event->GetRecipientRewrite(),
+                        event->Sender,
+                        new TEvCellProxy::TEvExecuteActionResponse(
+                            response->GetError()),
+                        0,
+                        event->Cookie),
+                    NodeIdx,
+                    true);
+                return true;
+            }
+            return false;
+        });
+    }
+};
+
+std::unique_ptr<TEvVolume::TEvLinkLeaderVolumeToFollowerRequest>
+MakeRemoteLinkRequest()
+{
+    auto request =
+        std::make_unique<TEvVolume::TEvLinkLeaderVolumeToFollowerRequest>();
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+    request->Record.SetDiskId("vol-1");
+    request->Record.SetLeaderCellId("cell-a");
+    request->Record.SetFollowerDiskId("vol-2");
+    request->Record.SetFollowerCellId("cell-b");
+    return request;
+}
+
+std::unique_ptr<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>
+MakeRemoteUnlinkRequest(const TString& uuid)
+{
+    auto request =
+        std::make_unique<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>();
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+    request->Record.SetDiskId("vol-1");
+    request->Record.SetLeaderCellId("cell-a");
+    request->Record.SetFollowerDiskId("vol-2");
+    request->Record.SetFollowerCellId("cell-b");
+    request->Record.SetLinkUUID(uuid);
+    return request;
+}
+
+NProto::TGetLinkStatusResponse GetRemoteLinkStatus(
+    TServiceClient& service,
+    bool follower = false,
+    bool includePendingCreation = false)
+{
+    auto request = std::make_unique<TEvVolume::TEvGetLinkStatusRequest>();
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+    request->Record.SetDiskId(follower ? "vol-2" : "vol-1");
+    request->Record.SetLeaderDiskId("vol-1");
+    request->Record.SetLeaderCellId("cell-a");
+    request->Record.SetFollowerDiskId("vol-2");
+    request->Record.SetFollowerCellId("cell-b");
+    request->Record.SetIncludePendingCreation(includePendingCreation);
+    service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+    auto response = service.RecvResponse<TEvVolume::TEvGetLinkStatusResponse>();
+    UNIT_ASSERT_C(!HasError(response->GetError()), response->GetErrorReason());
+    return response->Record;
 }
 
 enum class ETagRemovalRecovery
@@ -1455,7 +1613,7 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
             service.SendDestroyVolumeLinkRequest("vol-1", "vol-2", "cell-b");
             auto response = service.RecvDestroyVolumeLinkResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                S_ALREADY,
+                E_INVALID_STATE,
                 response->GetError().GetCode(),
                 FormatError(response->GetError()));
         }
@@ -1507,6 +1665,346 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
             NProto::ELinkStatus::LINK_STATUS_NOT_FOUND,
             linkStatus.GetStatus(),
             linkStatus.ShortDebugString());
+    }
+    Y_UNIT_TEST(ShouldRejectRemoteDestroyWithoutSourceUUIDBeforeMutation)
+    {
+        TTestEnv env(1, 1, 4);
+        const ui32 nodeIdx = SetupTestEnvWithCellId(env, "cell-a");
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("vol-1", DefaultBlocksCount);
+        service.CreateVolume("vol-2", DefaultBlocksCount);
+        TRemoteLinkMock remote(runtime, nodeIdx);
+        ui32 sourceUnlinks = 0;
+        remote.Observe = [&](IEventHandle& event)
+        {
+            if (event.GetTypeRewrite() ==
+                TEvVolume::EvUnlinkLeaderVolumeFromFollowerRequest)
+            {
+                ++sourceUnlinks;
+            }
+        };
+
+        service.SendDestroyVolumeLinkRequest("vol-1", "vol-2", "cell-b");
+        const auto response = service.RecvDestroyVolumeLinkResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(0, remote.ActionCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, sourceUnlinks);
+    }
+
+    Y_UNIT_TEST(ShouldPinPendingRemoteLinkWithoutChangingLegacyStatus)
+    {
+        TTestEnv env(1, 1, 4);
+        const ui32 nodeIdx = SetupTestEnvWithCellId(env, "cell-a");
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("vol-1", DefaultBlocksCount);
+        service.CreateVolume("vol-2", DefaultBlocksCount);
+        TRemoteLinkMock remote(runtime, nodeIdx);
+        std::unique_ptr<IEventHandle> description;
+        bool holdDescription = true;
+        remote.HoldRequest = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (holdDescription && event->GetTypeRewrite() ==
+                                       TEvCellProxy::EvDescribeVolumeRequest)
+            {
+                description.reset(event.Release());
+                return true;
+            }
+            return false;
+        };
+
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            MakeRemoteLinkRequest());
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&] { return description != nullptr; };
+        runtime.DispatchEvents(options, TDuration::Seconds(10));
+        UNIT_ASSERT(description);
+        const auto legacy = GetRemoteLinkStatus(service);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::LINK_STATUS_NOT_FOUND),
+            static_cast<ui32>(legacy.GetStatus()));
+        UNIT_ASSERT(!legacy.GetLinkUUID());
+        const auto pinned = GetRemoteLinkStatus(service, false, true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::LINK_STATUS_PREPARING),
+            static_cast<ui32>(pinned.GetStatus()));
+        UNIT_ASSERT(pinned.GetLinkUUID());
+
+        // An old UUID must not cancel the new source-side pending creation.
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            MakeRemoteUnlinkRequest("stale-link-uuid"));
+        const auto stale =
+            service.RecvResponse<
+                TEvVolume::TEvUnlinkLeaderVolumeFromFollowerResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, stale->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            pinned.GetLinkUUID(),
+            GetRemoteLinkStatus(service, false, true).GetLinkUUID());
+
+        holdDescription = false;
+        runtime.SendAsync(description.release(), nodeIdx);
+        const auto created =
+            service.RecvResponse<
+                TEvVolume::TEvLinkLeaderVolumeToFollowerResponse>();
+        UNIT_ASSERT_C(
+            !HasError(created->GetError()),
+            created->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(
+            pinned.GetLinkUUID(),
+            created->Record.GetLinkUUID());
+        UNIT_ASSERT_VALUES_EQUAL(
+            pinned.GetLinkUUID(),
+            GetRemoteLinkStatus(service, true).GetLinkUUID());
+    }
+
+    Y_UNIT_TEST(ShouldKeepPinnedRemoteDestroyFromRemovingRecreatedLink)
+    {
+        TTestEnv env(1, 1, 4);
+        const ui32 nodeIdx = SetupTestEnvWithCellId(env, "cell-a");
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("vol-1", DefaultBlocksCount);
+        service.CreateVolume("vol-2", DefaultBlocksCount);
+        TRemoteLinkMock remote(runtime, nodeIdx);
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            MakeRemoteLinkRequest());
+        const auto original =
+            service.RecvResponse<
+                TEvVolume::TEvLinkLeaderVolumeToFollowerResponse>();
+        UNIT_ASSERT_C(
+            !HasError(original->GetError()),
+            original->GetErrorReason());
+        const auto oldUUID = original->Record.GetLinkUUID();
+        UNIT_ASSERT(oldUUID);
+
+        TVector<std::unique_ptr<IEventHandle>> heldDestroy;
+        TActorId propagationActor;
+        TActorId destroyActor;
+        ui32 guardedUnlinks = 0;
+        bool holdDestroy = true;
+        remote.Observe = [&](IEventHandle& event)
+        {
+            if (!destroyActor &&
+                event.GetTypeRewrite() == TEvVolume::EvGetLinkStatusRequest &&
+                event.Get<TEvVolume::TEvGetLinkStatusRequest>()
+                    ->Record.GetIncludePendingCreation())
+            {
+                destroyActor = event.Sender;
+            }
+            if (event.GetTypeRewrite() ==
+                    TEvVolume::EvUnlinkLeaderVolumeFromFollowerRequest &&
+                event.Sender == destroyActor)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    oldUUID,
+                    event.Get<
+                        TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>()
+                        ->Record.GetLinkUUID());
+                ++guardedUnlinks;
+            }
+        };
+        remote.HoldRequest = [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (holdDestroy && event->GetTypeRewrite() ==
+                                   TEvCellProxy::EvExecuteActionRequest)
+            {
+                const auto* request =
+                    event->Get<TEvCellProxy::TEvExecuteActionRequest>();
+                NProto::TUpdateLinkOnFollowerRequest payload;
+                const auto status = google::protobuf::util::JsonStringToMessage(
+                    request->Record.GetInput(),
+                    &payload);
+                UNIT_ASSERT_C(status.ok(), status.ToString());
+                if (!propagationActor &&
+                    payload.GetAction() == NProto::LINK_ACTION_DESTROY)
+                {
+                    propagationActor = event->Sender;
+                }
+                if (event->Sender == propagationActor) {
+                    UNIT_ASSERT_VALUES_EQUAL(oldUUID, payload.GetLinkUUID());
+                    heldDestroy.emplace_back(event.Release());
+                    return true;
+                }
+            }
+            return false;
+        };
+        service.SendDestroyVolumeLinkRequest("vol-1", "vol-2", "cell-b");
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&] { return !heldDestroy.empty(); };
+        runtime.DispatchEvents(options, TDuration::Seconds(10));
+        UNIT_ASSERT(!heldDestroy.empty());
+        UNIT_ASSERT_VALUES_EQUAL(0, guardedUnlinks);
+
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            MakeRemoteUnlinkRequest(oldUUID));
+        const auto unlinked =
+            service.RecvResponse<
+                TEvVolume::TEvUnlinkLeaderVolumeFromFollowerResponse>();
+        UNIT_ASSERT_C(
+            !HasError(unlinked->GetError()),
+            unlinked->GetErrorReason());
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            MakeRemoteLinkRequest());
+        const auto recreated =
+            service.RecvResponse<
+                TEvVolume::TEvLinkLeaderVolumeToFollowerResponse>();
+        UNIT_ASSERT_C(
+            !HasError(recreated->GetError()),
+            recreated->GetErrorReason());
+        const auto newUUID = recreated->Record.GetLinkUUID();
+        UNIT_ASSERT(newUUID && newUUID != oldUUID);
+
+        holdDestroy = false;
+        for (auto& request: heldDestroy) {
+            runtime.SendAsync(request.release(), nodeIdx);
+        }
+        const auto destroyed = service.RecvDestroyVolumeLinkResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, destroyed->GetStatus());
+        UNIT_ASSERT(guardedUnlinks > 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            newUUID,
+            GetRemoteLinkStatus(service).GetLinkUUID());
+        UNIT_ASSERT_VALUES_EQUAL(
+            newUUID,
+            GetRemoteLinkStatus(service, true).GetLinkUUID());
+    }
+
+    Y_UNIT_TEST(ShouldDestroyRemoteLinkWithPinnedUUID)
+    {
+        TTestEnv env(1, 1, 4);
+        const ui32 nodeIdx = SetupTestEnvWithCellId(env, "cell-a");
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("vol-1", DefaultBlocksCount);
+        service.CreateVolume("vol-2", DefaultBlocksCount);
+        TRemoteLinkMock remote(runtime, nodeIdx);
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            MakeRemoteLinkRequest());
+        const auto created =
+            service.RecvResponse<
+                TEvVolume::TEvLinkLeaderVolumeToFollowerResponse>();
+        UNIT_ASSERT_C(
+            !HasError(created->GetError()),
+            created->GetErrorReason());
+
+        service.DestroyVolumeLink("vol-1", "vol-2", "cell-b");
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::LINK_STATUS_NOT_FOUND),
+            static_cast<ui32>(GetRemoteLinkStatus(service).GetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::LINK_STATUS_NOT_FOUND),
+            static_cast<ui32>(GetRemoteLinkStatus(service, true).GetStatus()));
+    }
+
+    Y_UNIT_TEST(ShouldLeaveRemoteOrphanUntouchedWhenSourceIsGone)
+    {
+        TTestEnv env(1, 1, 4);
+        const ui32 nodeIdx = SetupTestEnvWithCellId(env, "cell-a");
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("vol-2", DefaultBlocksCount);
+        auto request =
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+        request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+        request->Record.SetDiskId("vol-2");
+        request->Record.SetLeaderDiskId("vol-1");
+        request->Record.SetLeaderCellId("cell-a");
+        request->Record.SetFollowerCellId("cell-b");
+        request->Record.SetLinkUUID("orphan-link");
+        request->Record.SetAction(NProto::LINK_ACTION_CREATE);
+        service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+        const auto linked =
+            service.RecvResponse<TEvVolume::TEvUpdateLinkOnFollowerResponse>();
+        UNIT_ASSERT_C(!HasError(linked->GetError()), linked->GetErrorReason());
+        TRemoteLinkMock remote(runtime, nodeIdx);
+
+        service.SendDestroyVolumeLinkRequest("vol-1", "vol-2", "cell-b");
+        const auto response = service.RecvDestroyVolumeLinkResponse();
+        UNIT_ASSERT_C(
+            HasError(response->GetError()),
+            response->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(0, remote.ActionCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "orphan-link",
+            GetRemoteLinkStatus(service, true).GetLinkUUID());
+    }
+
+    Y_UNIT_TEST(ShouldCreateAndDestroyLinkThroughCellProxyAndFollowerAction)
+    {
+        TTestEnv env(1, 2, 4);
+        auto createCellNode = [&](const TString& cellId)
+        {
+            env.CreateSubDomain(cellId);
+            NProto::TStorageServiceConfig config;
+            config.SetSchemeShardDir("/local/" + cellId);
+            return env.CreateBlockStoreNode(
+                cellId,
+                CreateTestStorageConfig(std::move(config)),
+                CreateTestDiagnosticsConfig(),
+                NYdbStats::CreateVolumesStatsUploaderStub(),
+                CreateManuallyPreemptedVolumes(),
+                cellId);
+        };
+        const auto nodeA = createCellNode("cell-a");
+        const auto nodeB = createCellNode("cell-b");
+        auto& runtime = env.GetRuntime();
+        TServiceClient serviceA(runtime, nodeA);
+        TServiceClient serviceB(runtime, nodeB);
+        serviceA.CreateVolume("vol-1", DefaultBlocksCount);
+        serviceB.CreateVolume("vol-2", DefaultBlocksCount);
+
+        // Only networking is mocked. CellProxy, the target service action and
+        // both volume handlers execute through their normal actor paths.
+        serviceA.SendRequest(
+            MakeCellProxyServiceId(),
+            std::make_unique<TEvCellProxy::TEvInitializeRequest>(
+                CreateCellManagerMock(runtime, {{"cell-b", nodeB}}),
+                std::make_shared<NClient::TClientAppConfig>()));
+        const auto initialized =
+            serviceA.RecvResponse<TEvCellProxy::TEvInitializeResponse>();
+        UNIT_ASSERT_C(
+            !HasError(initialized->GetError()),
+            FormatError(initialized->GetError()));
+
+        // Public cross-cell creation remains disabled until the full copy
+        // pipeline is ready; enter the source volume through its private API.
+        serviceA.SendRequest(
+            MakeVolumeProxyServiceId(),
+            MakeRemoteLinkRequest());
+        const auto created = serviceA.RecvResponse<
+            TEvVolume::TEvLinkLeaderVolumeToFollowerResponse>();
+        UNIT_ASSERT_C(
+            !HasError(created->GetError()),
+            created->GetErrorReason());
+        const auto uuid = created->Record.GetLinkUUID();
+        UNIT_ASSERT(uuid);
+        const auto source = GetRemoteLinkStatus(serviceA);
+        const auto follower = GetRemoteLinkStatus(serviceB, true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::LINK_STATUS_PREPARING),
+            static_cast<ui32>(source.GetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::LINK_STATUS_PREPARING),
+            static_cast<ui32>(follower.GetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(uuid, source.GetLinkUUID());
+        UNIT_ASSERT_VALUES_EQUAL(uuid, follower.GetLinkUUID());
+        UNIT_ASSERT_VALUES_EQUAL("cell-a", follower.GetLeaderCellId());
+        UNIT_ASSERT_VALUES_EQUAL("cell-b", follower.GetFollowerCellId());
+
+        serviceA.DestroyVolumeLink("vol-1", "vol-2", "cell-b");
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::LINK_STATUS_NOT_FOUND),
+            static_cast<ui32>(GetRemoteLinkStatus(serviceA).GetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::LINK_STATUS_NOT_FOUND),
+            static_cast<ui32>(GetRemoteLinkStatus(serviceB, true).GetStatus()));
     }
 }
 
