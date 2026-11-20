@@ -294,6 +294,52 @@ func (s *storageYDB) getDiskMeta(
 	}
 }
 
+func (s *storageYDB) getDiskCreateRequest(
+	ctx context.Context,
+	session *persistence.Session,
+	diskID string,
+) ([]byte, error) {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+
+		select create_request
+		from disks
+		where id = $id
+	`, s.disksPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(diskID)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	var createRequest []byte
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			err = res.ScanNamed(
+				persistence.OptionalWithDefault(
+					"create_request",
+					&createRequest,
+				),
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	err = res.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return createRequest, nil
+}
+
 func (s *storageYDB) createDisk(
 	ctx context.Context,
 	session *persistence.Session,
@@ -970,6 +1016,24 @@ func (s *storageYDB) GetDiskMeta(
 		},
 	)
 	return disk, err
+}
+
+func (s *storageYDB) GetDiskCreateRequest(
+	ctx context.Context,
+	diskID string,
+) ([]byte, error) {
+
+	var createRequest []byte
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			createRequest, err = s.getDiskCreateRequest(ctx, session, diskID)
+			return err
+		},
+	)
+	return createRequest, err
 }
 
 func (s *storageYDB) DeleteDisk(

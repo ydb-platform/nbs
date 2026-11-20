@@ -62,8 +62,20 @@ func TestExportDiskMetadataSourceDiskLookup(t *testing.T) {
 		{name: "image disk", image: &resources.ImageMeta{SrcDiskID: "disk"}, disk: &resources.DiskMeta{BlockSize: 512}, blockSize: 512},
 		{name: "deleted disk", diskID: "disk"},
 		{name: "unknown block size", diskID: "disk", disk: &resources.DiskMeta{}},
-		{name: "invalid create request preserves block size", diskID: "disk", disk: &resources.DiskMeta{BlockSize: 4096}, createRequest: []byte{0xff}, blockSize: 4096},
-		{name: "create request read error preserves block size", diskID: "disk", disk: &resources.DiskMeta{BlockSize: 4096}, createRequestErr: lookupErr, blockSize: 4096},
+		{
+			name:          "invalid create request preserves block size",
+			diskID:        "disk",
+			disk:          &resources.DiskMeta{BlockSize: 4096},
+			createRequest: []byte{0xff},
+			blockSize:     4096,
+		},
+		{
+			name:             "create request read error keeps block size",
+			diskID:           "disk",
+			disk:             &resources.DiskMeta{BlockSize: 4096},
+			createRequestErr: lookupErr,
+			blockSize:        4096,
+		},
 		{name: "unknown image"},
 		{name: "image without source disk", image: &resources.ImageMeta{}},
 		{name: "disk read error", diskID: "disk", diskErr: lookupErr},
@@ -81,19 +93,16 @@ func TestExportDiskMetadataSourceDiskLookup(t *testing.T) {
 			if diskID != "" {
 				storage.On("GetDiskMeta", mock.Anything, diskID).Return(tc.disk, tc.diskErr).Once()
 			}
-			ctx := logging.SetLogger(context.Background(), newExportLogger(logging.InfoLevel))
-			var requestReads int
-			metadata, err := readExportDiskMetadata(ctx, storage, "snapshot", tc.diskID,
-				func(ctx context.Context, id string) ([]byte, error) {
-					require.Equal(t, diskID, id)
-					requestReads++
-					return tc.createRequest, tc.createRequestErr
-				})
 			if tc.disk != nil && tc.diskErr == nil {
-				require.Equal(t, 1, requestReads)
-			} else {
-				require.Zero(t, requestReads)
+				// The create request is read only for an existing disk.
+				storage.On(
+					"GetDiskCreateRequest",
+					mock.Anything,
+					diskID,
+				).Return(tc.createRequest, tc.createRequestErr).Once()
 			}
+			ctx := logging.SetLogger(context.Background(), newExportLogger(logging.InfoLevel))
+			metadata, err := readExportDiskMetadata(ctx, storage, "snapshot", tc.diskID)
 			if tc.imageErr != nil || tc.diskErr != nil {
 				require.ErrorIs(t, err, lookupErr)
 			} else {
@@ -157,12 +166,13 @@ func TestExportDiskEncryptionMetadataFromCreateRequest(t *testing.T) {
 				ID: "disk", SrcImageID: tc.imageID, SrcSnapshotID: tc.snapshotID,
 				BlockSize: 4096,
 			}, nil).Once()
+			storage.On(
+				"GetDiskCreateRequest",
+				mock.Anything,
+				"disk",
+			).Return(data, nil).Once()
 			ctx := logging.SetLogger(context.Background(), newExportLogger(logging.InfoLevel))
-			metadata, err := readExportDiskMetadata(ctx, storage, "snapshot", "disk",
-				func(ctx context.Context, diskID string) ([]byte, error) {
-					require.Equal(t, "disk", diskID)
-					return data, nil
-				})
+			metadata, err := readExportDiskMetadata(ctx, storage, "snapshot", "disk")
 			require.NoError(t, err)
 			require.Equal(t, exportDiskMetadata{BlockSize: 4096, KekID: "kek", EncryptedDEK: []byte{1, 2, 3}}, metadata)
 			storage.AssertExpectations(t)

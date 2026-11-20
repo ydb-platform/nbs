@@ -42,6 +42,15 @@ func (s *StorageMock) GetDiskMeta(
 	return args.Get(0).(*resources.DiskMeta), args.Error(1)
 }
 
+func (s *StorageMock) GetDiskCreateRequest(
+	ctx context.Context,
+	diskID string,
+) ([]byte, error) {
+
+	args := s.Called(ctx, diskID)
+	return args.Get(0).([]byte), args.Error(1)
+}
+
 func (s *StorageMock) DeleteDisk(
 	ctx context.Context,
 	diskID string,

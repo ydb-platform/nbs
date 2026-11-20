@@ -183,14 +183,22 @@ func TestExportDisabledDoesNotInitializeOrRegister(t *testing.T) {
 		cleanup, err := initSnapshotExport(
 			context.Background(),
 			&server_config.ServerConfig{GrpcConfig: grpcConfig},
-			nil, nil, registry, nil, nil,
+			nil, // exportRegistry
+			nil, // creds
+			registry,
+			nil, // backupS3
+			nil, // db
 		)
 		if err != nil {
 			t.Fatal(err)
 		}
 		cleanup()
+
 		if len(registry.TaskTypes()) != 0 {
-			t.Fatalf("disabled export registered tasks: %v", registry.TaskTypes())
+			t.Fatalf(
+				"disabled export registered tasks: %v",
+				registry.TaskTypes(),
+			)
 		}
 	}
 }

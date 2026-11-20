@@ -26,6 +26,7 @@ import (
 
 type exportResourceStorage interface {
 	GetDiskMeta(context.Context, string) (*resources.DiskMeta, error)
+	GetDiskCreateRequest(context.Context, string) ([]byte, error)
 	GetImageMeta(context.Context, string) (*resources.ImageMeta, error)
 }
 
@@ -39,6 +40,7 @@ func diskCreateEncryptionDesc(
 	disk *resources.DiskMeta,
 	createRequest []byte,
 ) (*types.EncryptionDesc, error) {
+
 	if params, ok := disk.CreateRequest.(*disk_protos.CreateDiskParams); ok {
 		return params.GetEncryptionDesc(), nil
 	}
@@ -63,7 +65,8 @@ func diskCreateEncryptionDesc(
 		} else {
 			request = &disk_protos.CreateDiskFromImageRequest{}
 		}
-		if err := proto.Unmarshal(createRequest, request); err == nil && request.GetParams() != nil {
+		err := proto.Unmarshal(createRequest, request)
+		if err == nil && request.GetParams() != nil {
 			return request.GetParams().GetEncryptionDesc(), nil
 		}
 	}
@@ -79,7 +82,6 @@ func readExportDiskMetadata(
 	resourceStorage exportResourceStorage,
 	snapshotID string,
 	diskID string,
-	readCreateRequest func(context.Context, string) ([]byte, error),
 ) (exportDiskMetadata, error) {
 
 	if diskID == "" {
@@ -110,7 +112,7 @@ func readExportDiskMetadata(
 		logging.Warn(ctx, "disk %v block size is unknown; omitting block_size", diskID)
 	}
 
-	createRequest, err := readCreateRequest(ctx, diskID)
+	createRequest, err := resourceStorage.GetDiskCreateRequest(ctx, diskID)
 	if err != nil {
 		logging.Warn(ctx, "failed to read disk create request: %v", err)
 		return metadata, nil
@@ -125,35 +127,6 @@ func readExportDiskMetadata(
 	metadata.KekID = key.GetKekId()
 	metadata.EncryptedDEK = key.GetEncryptedDEK()
 	return metadata, nil
-}
-
-func readDiskCreateRequest(
-	ctx context.Context,
-	db *persistence.YDBClient,
-	disksFolder string,
-	diskID string,
-) ([]byte, error) {
-	res, err := db.ExecuteRO(ctx, fmt.Sprintf(`
-  --!syntax_v1
-  pragma TablePathPrefix = "%v";
-  declare $id as Utf8;
-  select create_request from disks where id = $id;
- `, db.AbsolutePath(disksFolder)),
-		persistence.ValueParam("$id", persistence.UTF8Value(diskID)),
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Close()
-	var data []byte
-	for res.NextResultSet(ctx) {
-		for res.NextRow() {
-			if err := res.ScanNamed(persistence.OptionalWithDefault("create_request", &data)); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return data, res.Err()
 }
 
 func (c *exportResource) getExportDiskMetadata(
@@ -180,12 +153,10 @@ func (c *exportResource) getExportDiskMetadata(
 	defer db.Close(ctx)
 
 	return readExportDiskMetadata(
-		ctx, resourceStorage, c.resourceID, meta.Disk.GetDiskId(),
-		func(ctx context.Context, diskID string) ([]byte, error) {
-			return readDiskCreateRequest(
-				ctx, db, c.serverConfig.GetDisksConfig().GetStorageFolder(), diskID,
-			)
-		},
+		ctx,
+		resourceStorage,
+		c.resourceID,
+		meta.Disk.GetDiskId(),
 	)
 }
 

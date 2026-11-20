@@ -186,17 +186,45 @@ func TestImageExportRegistrationRequiresConfig(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		registry := tasks.NewRegistry()
 		scheduler := tasks_mocks.NewSchedulerMock()
-		scheduler.On("ScheduleRegularTasks", mock.Anything, mock.Anything, mock.Anything).Return()
+		scheduler.On(
+			"ScheduleRegularTasks",
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).Return()
+
 		var exportConfig *server_config.ExportConfig
 		if enabled {
 			exportConfig = &server_config.ExportConfig{}
 		}
-		err := RegisterForExecution(context.Background(), &service_config.ImagesConfig{},
-			nil, registry, scheduler, nil, nil, nil, nil, nil, nil, exportConfig)
+
+		err := RegisterForExecution(
+			context.Background(),
+			&service_config.ImagesConfig{},
+			nil, // disabledZones
+			registry,
+			scheduler,
+			nil, // storage
+			nil, // nbsFactory
+			nil, // poolService
+			nil, // cellSelector
+			nil, // backupS3
+			nil, // backupMetricsRegistry
+			exportConfig,
+		)
 		require.NoError(t, err)
-		require.Contains(t, registry.TaskTypesForExecution(), "images.ClearDeletedImages")
+		require.Contains(
+			t,
+			registry.TaskTypesForExecution(),
+			"images.ClearDeletedImages",
+		)
+
 		if enabled {
-			require.Contains(t, registry.TaskTypesForExecution(), "images.ExportImage")
+			require.Contains(
+				t,
+				registry.TaskTypesForExecution(),
+				"images.ExportImage",
+			)
 			_, err := registry.NewTask("images.ExportImage")
 			require.NoError(t, err)
 		} else {

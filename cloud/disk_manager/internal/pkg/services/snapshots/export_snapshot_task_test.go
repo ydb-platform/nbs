@@ -121,21 +121,52 @@ func TestSnapshotExportRegistrationRequiresConfig(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		registry := tasks.NewRegistry()
 		scheduler := tasks_mocks.NewSchedulerMock()
-		scheduler.On("ScheduleRegularTasks", mock.Anything, mock.Anything, mock.Anything).Return()
+		scheduler.On(
+			"ScheduleRegularTasks",
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).Return()
+
 		var exportConfig *server_config.ExportConfig
 		if enabled {
 			exportConfig = &server_config.ExportConfig{}
 		}
-		err := RegisterForExecution(context.Background(), &service_config.SnapshotsConfig{},
-			nil, registry, scheduler, nil, nil, nil, nil, nil, exportConfig)
+
+		err := RegisterForExecution(
+			context.Background(),
+			&service_config.SnapshotsConfig{},
+			nil, // disabledZones
+			registry,
+			scheduler,
+			nil, // storage
+			nil, // nbsFactory
+			nil, // cellSelector
+			nil, // backupS3
+			nil, // backupMetricsRegistry
+			exportConfig,
+		)
 		require.NoError(t, err)
-		require.Contains(t, registry.TaskTypesForExecution(), "snapshots.ClearDeletedSnapshots")
+		require.Contains(
+			t,
+			registry.TaskTypesForExecution(),
+			"snapshots.ClearDeletedSnapshots",
+		)
+
 		if enabled {
-			require.Contains(t, registry.TaskTypesForExecution(), "snapshots.ExportSnapshot")
+			require.Contains(
+				t,
+				registry.TaskTypesForExecution(),
+				"snapshots.ExportSnapshot",
+			)
 			_, err := registry.NewTask("snapshots.ExportSnapshot")
 			require.NoError(t, err)
 		} else {
-			require.NotContains(t, registry.TaskTypes(), "snapshots.ExportSnapshot")
+			require.NotContains(
+				t,
+				registry.TaskTypes(),
+				"snapshots.ExportSnapshot",
+			)
 			_, err := registry.NewTask("snapshots.ExportSnapshot")
 			require.Error(t, err)
 		}

@@ -135,7 +135,8 @@ func initSnapshotExport(
 		if backupS3 == nil {
 			cleanup()
 			return nil, fmt.Errorf(
-				"snapshot export source %v requires SnapshotStorageBackupConfig",
+				"snapshot export source %v requires "+
+					"SnapshotStorageBackupConfig",
 				source,
 			)
 		}

@@ -39,13 +39,16 @@ func RegisterForExecution(
 	}
 
 	if exportConfig != nil {
-		err := taskRegistry.RegisterForExecution("images.ExportImage", func() tasks.Task {
-			return &exportImageTask{
-				scheduler: taskScheduler,
-				storage:   storage,
-				config:    exportConfig,
-			}
-		})
+		err := taskRegistry.RegisterForExecution(
+			"images.ExportImage",
+			func() tasks.Task {
+				return &exportImageTask{
+					scheduler: taskScheduler,
+					storage:   storage,
+					config:    exportConfig,
+				}
+			},
+		)
 		if err != nil {
 			return err
 		}

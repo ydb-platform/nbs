@@ -175,6 +175,11 @@ type Storage interface {
 
 	GetDiskMeta(ctx context.Context, diskID string) (*DiskMeta, error)
 
+	// Returns the serialized create request of the disk, nil if the disk is
+	// not found. Its protobuf type depends on whether the disk was created
+	// empty, from an image, or from a snapshot.
+	GetDiskCreateRequest(ctx context.Context, diskID string) ([]byte, error)
+
 	// Returns disk if action has been accepted by storage and nil otherwise.
 	DeleteDisk(
 		ctx context.Context,
