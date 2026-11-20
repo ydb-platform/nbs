@@ -16,6 +16,6 @@ namespace NCloud::NBlockStore {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Return the Blockstore configuration published at the time of the call.
-[[nodiscard]] IBlockstoreConfigConstPtr GetCurrentBlockstoreConfig();
+[[nodiscard]] IBlockstoreConfigPtr GetCurrentBlockstoreConfig();
 
 }   // namespace NCloud::NBlockStore

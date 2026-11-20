@@ -89,8 +89,8 @@ private:
 public:
     TFollowerDiskActor(
         const TLogTitle& parentLogTitle,
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         TFollowerDiskActorParams params);

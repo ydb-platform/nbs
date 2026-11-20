@@ -126,8 +126,8 @@ private:
         TEvNonreplPartitionPrivate::TEvRangeMigrated::EExecutionSide;
 
     IMigrationOwner* const MigrationOwner = nullptr;
-    const TStorageConfigConstPtr Config;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const TString DiskId;
     const TString CloudId;
@@ -210,8 +210,8 @@ protected:
 public:
     TNonreplicatedPartitionMigrationCommonActor(
         IMigrationOwner* migrationOwner,
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TString diskId,
         TString cloudId,
         TString folderId,
@@ -228,8 +228,8 @@ public:
 
     TNonreplicatedPartitionMigrationCommonActor(
         IMigrationOwner* migrationOwner,
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TString diskId,
         TString cloudId,
         TString folderId,
@@ -276,8 +276,8 @@ public:
 
 protected:
     [[nodiscard]] TString GetNonZeroBlocks(TBlockRange64 range) const;
-    const TStorageConfigConstPtr& GetConfig() const;
-    const TDiagnosticsConfigConstPtr& GetDiagnosticsConfig() const;
+    const TStorageConfigPtr& GetConfig() const;
+    const TDiagnosticsConfigPtr& GetDiagnosticsConfig() const;
     NActors::TActorId GetSrcActorId() const;
     NActors::TActorId GetDstActorId() const;
 

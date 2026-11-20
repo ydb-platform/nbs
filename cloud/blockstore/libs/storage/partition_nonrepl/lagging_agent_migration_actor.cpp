@@ -12,8 +12,8 @@ using namespace NKikimr;
 ////////////////////////////////////////////////////////////////////////////////
 
 TLaggingAgentMigrationActor::TLaggingAgentMigrationActor(
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         TActorId parentActorId,
         IProfileLogPtr profileLog,

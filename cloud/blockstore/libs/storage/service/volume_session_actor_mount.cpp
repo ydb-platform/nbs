@@ -407,7 +407,7 @@ class TMountRequestActor final
 {
 private:
     const TChildLogTitle LogTitle;
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     const TRequestInfoPtr RequestInfo;
     const TString SessionId;
     const TMountRequestParams Params;
@@ -431,7 +431,7 @@ private:
 public:
     TMountRequestActor(
         TChildLogTitle logTitle,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TRequestInfoPtr requestInfo,
         NProto::TMountVolumeRequest request,
         TString sessionId,
@@ -514,7 +514,7 @@ private:
 
 TMountRequestActor::TMountRequestActor(
         TChildLogTitle logTitle,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TRequestInfoPtr requestInfo,
         NProto::TMountVolumeRequest request,
         TString sessionId,

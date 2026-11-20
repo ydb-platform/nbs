@@ -21,8 +21,8 @@ using namespace NCloud::NStorage::NUserStats;
 ////////////////////////////////////////////////////////////////////////////////
 
 TStatsServiceActor::TStatsServiceActor(
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         NYdbStats::IYdbVolumesStatsUploaderPtr uploader,
         IStatsAggregatorPtr clientStatsAggregator)
     : Config(std::move(config))

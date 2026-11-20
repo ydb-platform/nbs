@@ -27,7 +27,7 @@ TVolumeBalancerState::TVolumeInfo::TVolumeInfo(TDuration pullInterval)
 {}
 
 TVolumeBalancerState::TVolumeBalancerState(
-    TStorageConfigConstPtr storageConfig,
+    TStorageConfigPtr storageConfig,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch)
     : StorageConfig(std::move(storageConfig))
     , PullDelayResetTimespan(StorageConfig->GetInitialPullDelay())

@@ -19,7 +19,7 @@ class TLaggingAgentMigrationActor final
     , public IMigrationOwner
 {
 private:
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const NActors::TActorId ParentActorId;
     const NActors::TActorId TargetActorId;
@@ -32,8 +32,8 @@ private:
 
 public:
     TLaggingAgentMigrationActor(
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         NActors::TActorId parentActorId,
         IProfileLogPtr profileLog,

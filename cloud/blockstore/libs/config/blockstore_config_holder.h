@@ -22,16 +22,16 @@ namespace NCloud::NBlockStore {
 class TBlockstoreConfigHolder final
 {
 public:
-    explicit TBlockstoreConfigHolder(IBlockstoreConfigPtr initialConfig);
+    explicit TBlockstoreConfigHolder(IBlockstoreConfigMutablePtr initialConfig);
 
     TBlockstoreConfigHolder(const TBlockstoreConfigHolder&) = delete;
     TBlockstoreConfigHolder& operator=(const TBlockstoreConfigHolder&) = delete;
 
-    [[nodiscard]] IBlockstoreConfigConstPtr Get() const;
+    [[nodiscard]] IBlockstoreConfigPtr Get() const;
 
     // Publish a non-null configuration atomically. Only one writer may call
     // Set().
-    void Set(IBlockstoreConfigPtr config);
+    void Set(IBlockstoreConfigMutablePtr config);
 
 private:
     // The non-null configuration currently visible to new readers.

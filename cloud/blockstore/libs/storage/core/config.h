@@ -100,13 +100,13 @@ private:
 public:
     TStorageConfig(
         NProto::TStorageServiceConfig storageServiceConfig,
-        NFeatures::TFeaturesConfigConstPtr featuresConfig);
+        NFeatures::TFeaturesConfigPtr featuresConfig);
 
     // Reuse the supplied controls without changing their defaults. If controls
     // is null, create controls from storageServiceConfig.
     TStorageConfig(
         NProto::TStorageServiceConfig storageServiceConfig,
-        NFeatures::TFeaturesConfigConstPtr featuresConfig,
+        NFeatures::TFeaturesConfigPtr featuresConfig,
         TStorageConfigControlsPtr controls);
 
     // Create a raw-proto copy that shares Features and the live ICB controls.
@@ -122,12 +122,12 @@ public:
     // See TStorageConfigControls::UpdateDefaults().
     void UpdateControlsDefaults() const;
 
-    void SetFeaturesConfig(NFeatures::TFeaturesConfigConstPtr featuresConfig);
+    void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
     // Apply a patch to the raw proto while retaining the same live ICB
     // controls without changing their defaults.
-    static TStorageConfigConstPtr Merge(
-        TStorageConfigConstPtr config,
+    static TStorageConfigPtr Merge(
+        TStorageConfigPtr config,
         const NProto::TStorageServiceConfig& patch);
 
     struct TValueByName

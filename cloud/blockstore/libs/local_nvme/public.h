@@ -7,8 +7,7 @@ namespace NCloud::NBlockStore {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TLocalNVMeConfig;
-using TLocalNVMeConfigPtr = std::shared_ptr<TLocalNVMeConfig>;
-using TLocalNVMeConfigConstPtr = std::shared_ptr<const TLocalNVMeConfig>;
+using TLocalNVMeConfigPtr = std::shared_ptr<const TLocalNVMeConfig>;
 
 struct ILocalNVMeService;
 using ILocalNVMeServicePtr = std::shared_ptr<ILocalNVMeService>;

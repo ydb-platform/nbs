@@ -52,8 +52,8 @@ const TString DiskRegistryTransactions[] = {
 TDiskRegistryActor::TDiskRegistryActor(
         const TActorId& owner,
         TTabletStorageInfoPtr storage,
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TLogbrokerServicePtr logbrokerService,
         NNotify::IServicePtr notifyService,
         ILoggingServicePtr logging)

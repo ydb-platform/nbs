@@ -1300,7 +1300,7 @@ TDuration InterpolateCompactionExecTime(
 class TCompactionTriggerer
 {
 private:
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     TPartitionState& State;
 
     TRangeStat TopRangeStat;
@@ -1356,7 +1356,7 @@ public:
 
 public:
     TCompactionTriggerer(
-        const TStorageConfigConstPtr config,
+        const TStorageConfigPtr config,
         TPartitionState& state,
         TInstant now)
         : Config(config)
