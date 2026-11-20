@@ -8,6 +8,7 @@
 #include <util/thread/pool.h>
 
 #include <exception>
+#include <type_traits>
 #include <utility>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
@@ -119,7 +120,12 @@ private:
                      completed = std::move(completed)]() mutable
                     {
                         try {
-                            promise.TrySetValue(completed.ExtractValue());
+                            if constexpr (std::is_void_v<T>) {
+                                completed.GetValue();
+                                promise.TrySetValue();
+                            } else {
+                                promise.TrySetValue(completed.ExtractValue());
+                            }
                         } catch (...) {
                             promise.TrySetException(std::current_exception());
                         }
@@ -160,9 +166,14 @@ public:
         ThreadPool.Stop();
     }
 
-    TFuture<NProto::TError> Drain()
+    void SetDrainingMode()
     {
-        return Execute([this] { return Cache.Drain(); });
+        Cache.SetDrainingMode();
+    }
+
+    TFuture<void> Shutdown()
+    {
+        return Execute([this] { return Cache.Shutdown(); });
     }
 
     bool IsDrained() const
@@ -305,9 +316,14 @@ TTestWriteBackCache::TTestWriteBackCache(
 TTestWriteBackCache& TTestWriteBackCache::operator=(
     TTestWriteBackCache&&) noexcept = default;
 
-TFuture<NProto::TError> TTestWriteBackCache::Drain()
+void TTestWriteBackCache::SetDrainingMode()
 {
-    return Impl->Drain();
+    Impl->SetDrainingMode();
+}
+
+TFuture<void> TTestWriteBackCache::Shutdown()
+{
+    return Impl->Shutdown();
 }
 
 bool TTestWriteBackCache::IsDrained() const
