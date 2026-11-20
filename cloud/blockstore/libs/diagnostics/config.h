@@ -158,7 +158,7 @@ public:
     TVolumePerfSettings GetLocalSSDPerfSettings() const;
     TVolumePerfSettings GetLocalHDDPerfSettings() const;
     TVolumePerfSettings GetSsdMirror3Of5GroupPerfSettings() const;
-    TVolumePerfSettings GetVolumeBalancerPerfSettings() const;
+    TVolumePerfSettings GetBalancerYDBBasedPerfSettings() const;
     ui32 GetExpectedIoParallelism() const;
     TVector<TString> GetCloudIdsWithStrictSLA() const;
     TMonitoringUrlData GetMonitoringUrlData() const;

@@ -333,7 +333,7 @@ std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(
     const NProto::TVolumeBalancerDiskStats& stats) const
 {
     const auto perfSettings =
-        DiagnosticsConfig->GetVolumeBalancerPerfSettings();
+        DiagnosticsConfig->GetBalancerYDBBasedPerfSettings();
     if (!perfSettings.Write.Iops || !perfSettings.Read.Iops) {
         // Unable to calculate cost: CostPerIO is undefined for 0 maxIops
         return std::nullopt;
