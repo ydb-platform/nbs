@@ -2,7 +2,7 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/common/latency_sli.h>
+#include <cloud/blockstore/libs/common/latency_sli_fingerprint.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
@@ -12,6 +12,7 @@ class TLatencySliCounters
 {
 private:
     const TLatencySliConfig Config;
+    const TString ConfigFingerprint;
     const NMonitoring::TDynamicCountersPtr Group;
     struct TCounters
     {
@@ -27,6 +28,7 @@ public:
     TLatencySliCounters(TLatencySliConfig config,
                         NMonitoring::TDynamicCountersPtr group)
         : Config(std::move(config))
+        , ConfigFingerprint(GetLatencySliConfigFingerprint(Config))
         , Group(std::move(group))
     {
         for (bool write: {false, true}) {
@@ -38,6 +40,17 @@ public:
                 counters->GetCounter("LatencyTotalOps", true),
                 counters->GetCounter("LatencyUnknownOps", true)};
         }
+    }
+
+    NMonitoring::TDynamicCountersPtr GetExternalEndpointGroup(
+        const TString& socketPath) const
+    {
+        return Group->GetSubgroup("endpoint", socketPath);
+    }
+
+    const TString& GetConfigFingerprint() const
+    {
+        return ConfigFingerprint;
     }
 
     void Add(bool write, ui64 good, ui64 bad, ui64 unknown)
