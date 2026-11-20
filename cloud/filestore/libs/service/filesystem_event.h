@@ -32,13 +32,27 @@ struct IFileSystemEventHandler
      *  invalidates.
      */
     virtual void OnDisconnect(ui64 sourceId) = 0;
+
+    /**
+     * Tells whether the events are consumed by anybody. If not, the responses
+     * don't need to be stamped with the source ids.
+     *
+     * A consumer has to be registered before it issues the requests whose
+     * responses it caches - otherwise these responses may be left unstamped.
+     * An unstamped response is still safe to cache: its data is attributed to
+     * UnknownSourceId and is invalidated upon the disconnect of any source.
+     *
+     * @return - True if the events are consumed.
+     */
+    virtual bool HasConsumers() const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 //
 // Handler that forwards OnEvent to the handlers registered for the event's
-// FileSystemId and OnDisconnect - to all the registered handlers.
+// FileSystemId and OnDisconnect - to all the registered handlers. It has
+// consumers while any handler is registered.
 //
 
 struct IMultiFileSystemEventHandler

@@ -1354,6 +1354,15 @@ private:
                 std::move(handleOpsQueue),
                 std::move(directoryHandleStorage),
                 WriteBackCache);
+
+            //
+            // The handler has to be registered before FuseLoop starts: the
+            // tablet proxy stamps the cacheable responses with their sources
+            // only if the events are consumed (see HasConsumers). If a
+            // response is left unstamped anyway, it's still safe - its data
+            // is invalidated upon the disconnect of any source.
+            //
+
             RegisterFileSystemEventHandler();
 
             RequestStats->RegisterIncompleteRequestProvider(CompletionQueue);

@@ -58,6 +58,11 @@ public:
         }
     }
 
+    bool HasConsumers() const override
+    {
+        return true;
+    }
+
     void OnDisconnect(ui64 sourceId) override
     {
         STORAGE_INFO(

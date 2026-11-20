@@ -117,8 +117,10 @@ sequenceDiagram
   a pipe - currently the tablet id - and uses it in both places:
   - stamps the cacheable responses received via the pipe
     (`NodeCacheSourceId`, `NodeRefCacheSourceId`, `XAttrCacheSourceId`; set
-    only next to a nonzero TTL, only if FileSystemEvents are handled in the
-    process - stamping requires parsing the response)
+    only next to a nonzero TTL and only if the events are consumed in the
+    process - `IFileSystemEventHandler::HasConsumers`, i.e. if libs/vfs_fuse
+    has registered its handlers: stamping requires parsing the response in
+    the tablet proxy, which is a bottleneck)
   - reports the loss of the pipe via `IFileSystemEventHandler::OnDisconnect`
 - Upon `OnDisconnect(sourceId)` the client invalidates only the data of this
   source: the data fetched from it by the requests started before the

@@ -556,11 +556,17 @@ void TIndexTabletProxyActor::HandleResponse(
         decltype(std::declval<typename TMethod::TResponse>().Record)>;
     if constexpr (TCacheableResponse<TRecord>) {
         //
-        // The response is parsed only if the FileSystemEvents are handled in
-        // this process - otherwise the client doesn't cache anything.
+        // The response is parsed only if the FileSystemEvents are consumed
+        // in this process - otherwise nobody caches the data. This actor is
+        // a bottleneck, so the processes without the consumers (e.g. the
+        // ones without libs/vfs_fuse) don't parse anything. The consumers
+        // register before issuing requests; a response left unstamped (e.g.
+        // while a consumer is re-registered) is still safe - the client
+        // attributes its data to UnknownSourceId, which is invalidated upon
+        // the disconnect of any source.
         //
 
-        if (FileSystemEventHandler) {
+        if (FileSystemEventHandler && FileSystemEventHandler->HasConsumers()) {
             auto* x = reinterpret_cast<TMethod::TResponse::TPtr*>(&event);
             SetCacheSourceIds(
                 x->Get()->Get()->Record,
