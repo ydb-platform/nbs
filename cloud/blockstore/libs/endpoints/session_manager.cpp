@@ -930,6 +930,7 @@ void TSessionManager::SwitchSessionImpl(
                  switchingGuard = std::move(switchingGuard),
                  diskId = diskId,
                  newDiskId = newDiskId,
+                 newCellId = newCellId ? newCellId : endpoint->GetCellId(),
                  weakSelf = weak_from_this()]() mutable
                 {
                     if (auto self = weakSelf.lock()) {
@@ -1245,6 +1246,12 @@ void TSessionManager::SwitchSessionForEndpoint(
         STORAGE_WARN(
             "Can't start new endpoint for " << newEndpoint->GetDiskId().Quote()
                                             << " " << FormatError(error));
+        return;
+    }
+
+    if (newEndpoint->GetMountedVolume().GetPrincipalDiskId()) {
+        newEndpoint->Stop(callContext, newStartRequest.GetHeaders());
+        STORAGE_WARN("Principal changed while mounting the replacement endpoint");
         return;
     }
 

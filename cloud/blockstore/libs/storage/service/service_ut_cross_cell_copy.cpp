@@ -3,11 +3,17 @@
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/storage/api/cell_proxy.h>
+#include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+#include <cloud/blockstore/libs/storage/volume/actors/follower_disk_actor.h>
+#include <cloud/blockstore/libs/storage/volume/actors/volume_as_partition_actor.h>
+#include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 #include <cloud/blockstore/libs/storage/testlib/cell_manager_mock.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 #include <cloud/blockstore/libs/ydbstats/ydbstats.h>
+
+#include <contrib/ydb/core/testlib/tablet_helpers.h>
 
 #include <google/protobuf/util/json_util.h>
 
@@ -27,12 +33,57 @@ struct TCopyCells
 
     explicit TCopyCells(bool data = false)
     {
+        auto& runtime = Env.GetRuntime();
+        if (data) {
+            auto previous = runtime.SetRegistrationObserverFunc({});
+            runtime.SetRegistrationObserverFunc(
+                [previous = std::move(previous)](
+                    TTestActorRuntimeBase& runtime,
+                    const TActorId& parent,
+                    const TActorId& actor)
+                {
+                    if (previous) {
+                        previous(runtime, parent, actor);
+                    }
+                    auto* instance = runtime.FindActor(actor);
+                    if (dynamic_cast<TFollowerDiskActor*>(instance) ||
+                        dynamic_cast<TVolumeAsPartitionActor*>(instance))
+                    {
+                        runtime.EnableScheduleForActor(actor);
+                    }
+                });
+            auto scheduled = runtime.SetScheduledEventFilter({});
+            runtime.SetScheduledEventFilter(
+                [scheduled = std::move(scheduled)](
+                    TTestActorRuntimeBase& runtime,
+                    TAutoPtr<IEventHandle>& event,
+                    TDuration delay,
+                    TInstant& deadline)
+                {
+                    if (event->GetTypeRewrite() ==
+                            TEvCellProxy::EvExecuteActionRequest &&
+                        event->Get<TEvCellProxy::TEvExecuteActionRequest>()
+                                ->Record.GetAction() == "destroylinksource")
+                    {
+                        return false;
+                    }
+                    return scheduled
+                        ? scheduled(runtime, event, delay, deadline) : false;
+                });
+        }
         auto createNode = [&](const TString& cell)
         {
             Env.CreateSubDomain(cell);
             NProto::TStorageServiceConfig config;
             config.SetSchemeShardDir("/local/" + cell);
             config.SetUseDirectCopyRange(false);
+            if (data) {
+                auto* bandwidth = config.AddLinkedDiskFillBandwidth();
+                bandwidth->SetReadBandwidth(64 * 1024 * 1024);
+                bandwidth->SetWriteBandwidth(64 * 1024 * 1024);
+                bandwidth->SetReadIoDepth(1);
+                bandwidth->SetWriteIoDepth(1);
+            }
             return Env.CreateBlockStoreNode(
                 cell, CreateTestStorageConfig(std::move(config)),
                 CreateTestDiagnosticsConfig(),
@@ -41,7 +92,6 @@ struct TCopyCells
         };
         NodeA = createNode("cell-a");
         NodeB = createNode("cell-b");
-        auto& runtime = Env.GetRuntime();
         A = std::make_unique<TServiceClient>(runtime, NodeA);
         B = std::make_unique<TServiceClient>(runtime, NodeB);
         for (auto* service: {A.get(), B.get()}) {
@@ -95,6 +145,29 @@ struct TCopyCells
         return result;
     }
 
+    void WaitForCopy(const TString& source, const TString& target)
+    {
+        auto& runtime = Env.GetRuntime();
+        for (ui32 attempt = 0; attempt < 40; ++attempt) {
+            const auto status = Status(*A, source, target);
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                static_cast<ui32>(NProto::LINK_STATUS_ERROR),
+                static_cast<ui32>(status.GetStatus()));
+            if (status.GetStatus() == NProto::LINK_STATUS_COMPLETED) {
+                return;
+            }
+            runtime.UpdateCurrentTime(
+                runtime.GetCurrentTime() + TDuration::Seconds(2));
+            runtime.DispatchEvents(
+                TDispatchOptions(), TDuration::MilliSeconds(10));
+        }
+        const auto status = Status(*A, source, target);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            static_cast<ui32>(NProto::LINK_STATUS_COMPLETED),
+            static_cast<ui32>(status.GetStatus()),
+            status.ShortDebugString());
+    }
+
     void FollowerAction(
         const TString& source,
         const TString& target,
@@ -130,34 +203,35 @@ struct TCopyCells
     }
 };
 
-void CopyAndReadBack(const TString& source, const TString& target)
+enum class ECopySourceMount
+{
+    Mounted,
+    Unmounted,
+    NeverMounted,
+};
+
+void CopyAndReadBack(
+    const TString& source,
+    const TString& target,
+    ECopySourceMount mount = ECopySourceMount::Mounted)
 {
     TCopyCells cells(true);
     cells.A->CreateVolume(source, 128);
     cells.B->CreateVolume(target, 128);
-    cells.B->AddTags(target, {MakeTag("source-disk-id", "cell-a/" + source)});
-    const auto mounted = cells.A->MountVolume(source);
-    const auto session = mounted->Record.GetSessionId();
-    cells.A->WriteBlocks(source, TBlockRange64::MakeOneBlock(0), session, 'a');
-    cells.A->WriteBlocks(source, TBlockRange64::MakeOneBlock(63), session, 'z');
-    cells.A->ZeroBlocks(source, 1, session);
-    cells.A->UnmountVolume(source, session);
+    cells.B->AddTags(target, TVector{MakeTag("source-disk-id", "cell-a/" + source)});
+    if (mount != ECopySourceMount::NeverMounted) {
+        const auto mounted = cells.A->MountVolume(source);
+        const auto session = mounted->Record.GetSessionId();
+        cells.A->WriteBlocks(source, TBlockRange64::MakeOneBlock(0), session, 'a');
+        cells.A->WriteBlocks(source, TBlockRange64::MakeOneBlock(63), session, 'z');
+        cells.A->ZeroBlocks(source, 1, session);
+        if (mount == ECopySourceMount::Unmounted) {
+            cells.A->UnmountVolume(source, session);
+        }
+    }
     cells.A->CreateVolumeLink(source, target, "cell-b");
 
-    bool completed = false;
-    for (ui32 attempt = 0; attempt < 30; ++attempt) {
-        const auto status = cells.Status(*cells.A, source, target);
-        UNIT_ASSERT_VALUES_UNEQUAL(
-            static_cast<ui32>(NProto::LINK_STATUS_ERROR),
-            static_cast<ui32>(status.GetStatus()));
-        if (status.GetStatus() == NProto::LINK_STATUS_COMPLETED) {
-            completed = true;
-            break;
-        }
-        cells.Env.GetRuntime().DispatchEvents(
-            TDispatchOptions(), TDuration::Seconds(1));
-    }
-    UNIT_ASSERT_C(completed, "Cross-cell copy did not finish");
+    cells.WaitForCopy(source, target);
     cells.A->SendDescribeVolumeRequest(source);
     const auto gone = cells.A->RecvDescribeVolumeResponse();
     UNIT_ASSERT(IsNotFoundSchemeShardError(gone->GetError()));
@@ -166,14 +240,76 @@ void CopyAndReadBack(const TString& source, const TString& target)
     const auto targetSession = targetMount->Record.GetSessionId();
     const auto first = cells.B->ReadBlocks(target, 0, targetSession);
     const auto last = cells.B->ReadBlocks(target, 63, targetSession);
-    UNIT_ASSERT_VALUES_EQUAL(
-        TString(DefaultBlockSize, 'a'), first->Record.GetBlocks().GetBuffers(0));
-    UNIT_ASSERT_VALUES_EQUAL(
-        TString(DefaultBlockSize, 'z'), last->Record.GetBlocks().GetBuffers(0));
+    if (mount == ECopySourceMount::NeverMounted) {
+        for (const auto* response: {first.get(), last.get()}) {
+            for (const auto& buffer: response->Record.GetBlocks().GetBuffers()) {
+                for (const char byte: buffer) {
+                    UNIT_ASSERT_VALUES_EQUAL(0, byte);
+                }
+            }
+        }
+    } else {
+        UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'a'),
+            first->Record.GetBlocks().GetBuffers(0));
+        UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'z'),
+            last->Record.GetBlocks().GetBuffers(0));
+    }
     const auto finalStatus = cells.Status(*cells.B, source, target);
     UNIT_ASSERT_VALUES_EQUAL(
         static_cast<ui32>(NProto::LINK_STATUS_COMPLETED),
         static_cast<ui32>(finalStatus.GetStatus()));
+}
+
+
+void CheckCrossCellUnmountDuringCopy(bool reboot)
+{
+    TCopyCells cells(true);
+    cells.A->CreateVolume("source", 128);
+    cells.B->CreateVolume("target", 128);
+    cells.B->AddTags("target", TVector{MakeTag("source-disk-id", "cell-a/source")});
+    const auto mounted = cells.A->MountVolume("source");
+    const auto session = mounted->Record.GetSessionId();
+    cells.A->WriteBlocks("source", TBlockRange64::MakeOneBlock(0), session, 'a');
+    cells.A->SendRequest(MakeSSProxyServiceId(),
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>("source"));
+    const auto described = cells.A->RecvResponse<TEvSSProxy::TEvDescribeVolumeResponse>();
+    UNIT_ASSERT(!HasError(described->GetError()));
+    const auto tabletId = described->PathDescription
+        .GetBlockStoreVolumeDescription().GetVolumeTabletId();
+    auto& runtime = cells.Env.GetRuntime();
+    std::unique_ptr<IEventHandle> held;
+    bool captured = false;
+    runtime.SetEventFilter([&](auto&, TAutoPtr<IEventHandle>& event)
+    {
+        if (!captured && event->GetTypeRewrite() == TEvService::EvWriteBlocksLocalRequest &&
+            event->Get<TEvService::TEvWriteBlocksLocalRequest>()
+                ->Record.GetHeaders().GetCopyLinkUUID())
+        {
+            captured = true;
+            held.reset(event.Release());
+            return true;
+        }
+        return false;
+    });
+    cells.A->CreateVolumeLink("source", "target", "cell-b");
+    TDispatchOptions options;
+    options.CustomFinalCondition = [&] { return captured; };
+    runtime.DispatchEvents(options, TDuration::Seconds(10));
+    UNIT_ASSERT(held);
+    cells.A->UnmountVolume("source", session);
+    if (reboot) {
+        held.reset(); // Lose the old request while restarting its owner.
+        NKikimr::RebootTablet(runtime, tabletId, cells.A->GetSender(), cells.NodeA);
+    } else {
+        runtime.SendAsync(held.release(), cells.NodeB);
+    }
+    runtime.SetEventFilter([](auto&, auto&) { return false; });
+    cells.WaitForCopy("source", "target");
+    const auto targetMount = cells.B->MountVolume("target");
+    const auto response = cells.B->ReadBlocks(
+        "target", 0, targetMount->Record.GetSessionId());
+    UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'a'),
+        response->Record.GetBlocks().GetBuffers(0));
 }
 
 }   // namespace
@@ -269,6 +405,100 @@ Y_UNIT_TEST_SUITE(TCrossCellCopyTest)
     Y_UNIT_TEST(ShouldCopyAndDeleteSourceWithDifferentDiskIds)
     {
         CopyAndReadBack("source-copy", "target");
+    }
+
+    Y_UNIT_TEST(ShouldMirrorForegroundWritesAndZeroesDuringCopy)
+    {
+        TCopyCells cells(true);
+        cells.A->CreateVolume("disk", 4096);
+        cells.B->CreateVolume("disk", 4096);
+        cells.B->AddTags("disk", TVector{MakeTag("source-disk-id", "cell-a/disk")});
+        const auto mounted = cells.A->MountVolume("disk");
+        const auto session = mounted->Record.GetSessionId();
+        cells.A->WriteBlocks("disk", TBlockRange64::MakeOneBlock(3000), session, 'a');
+        cells.A->WriteBlocks("disk", TBlockRange64::MakeOneBlock(3001), session, 'b');
+        auto& runtime = cells.Env.GetRuntime();
+        std::unique_ptr<IEventHandle> held;
+        bool captured = false;
+        runtime.SetEventFilter([&](auto&, TAutoPtr<IEventHandle>& event)
+        {
+            const auto type = event->GetTypeRewrite();
+            if (!captured &&
+                (type == TEvService::EvWriteBlocksLocalRequest ||
+                 type == TEvService::EvZeroBlocksRequest))
+            {
+                const auto& headers =
+                    type == TEvService::EvWriteBlocksLocalRequest
+                        ? event->Get<TEvService::TEvWriteBlocksLocalRequest>()
+                              ->Record.GetHeaders()
+                        : event->Get<TEvService::TEvZeroBlocksRequest>()
+                              ->Record.GetHeaders();
+                if (headers.GetCopyLinkUUID()) {
+                    captured = true;
+                    held.reset(event.Release());
+                    return true;
+                }
+            }
+            return false;
+        });
+        cells.A->CreateVolumeLink("disk", "disk", "cell-b");
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&] { return captured; };
+        runtime.DispatchEvents(options, TDuration::Seconds(10));
+        UNIT_ASSERT(held);
+        // These blocks are outside the first migration range. Their mirror
+        // writes must reach the destination while that range is still in flight.
+        cells.A->WriteBlocks("disk", TBlockRange64::MakeOneBlock(3000), session, 'f');
+        cells.A->ZeroBlocks("disk", 3001, session);
+        runtime.SendAsync(held.release(), cells.NodeB);
+        runtime.SetEventFilter([](auto&, auto&) { return false; });
+        cells.WaitForCopy("disk", "disk");
+        const auto targetMount = cells.B->MountVolume("disk");
+        const auto targetSession = targetMount->Record.GetSessionId();
+        const auto written = cells.B->ReadBlocks("disk", 3000, targetSession);
+        UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'f'),
+            written->Record.GetBlocks().GetBuffers(0));
+        const auto zeroed = cells.B->ReadBlocks("disk", 3001, targetSession);
+        for (const auto& buffer: zeroed->Record.GetBlocks().GetBuffers()) {
+            for (const char byte: buffer) {
+                UNIT_ASSERT_VALUES_EQUAL(0, byte);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldAllowCellInSourceTagWithoutRelaxingOtherTags)
+    {
+        TCopyCells cells;
+        cells.B->CreateVolume("disk", 128);
+        const TVector<TString> sourceTags = {
+            MakeTag("source-disk-id", "cell-a/disk")};
+        cells.B->AddTags("disk", sourceTags);
+        cells.B->RemoveTags("disk", sourceTags);
+
+        cells.B->SendAddTagsRequest(
+            "disk", TVector{MakeTag("owner", "cell-a/disk")});
+        const auto response = cells.B->RecvAddTagsResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldCopyAfterSourceUnmount)
+    {
+        CopyAndReadBack("source", "target", ECopySourceMount::Unmounted);
+    }
+
+    Y_UNIT_TEST(ShouldCopyNeverMountedSource)
+    {
+        CopyAndReadBack("source", "target", ECopySourceMount::NeverMounted);
+    }
+
+    Y_UNIT_TEST(ShouldContinueCrossCellCopyWhenLastClientUnmounts)
+    {
+        CheckCrossCellUnmountDuringCopy(false);
+    }
+
+    Y_UNIT_TEST(ShouldResumeCrossCellCopyAfterUnmountedSourceReboot)
+    {
+        CheckCrossCellUnmountDuringCopy(true);
     }
 }
 
