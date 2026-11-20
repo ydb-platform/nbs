@@ -304,7 +304,7 @@ message TNodeLatencyStats
 
 message TRequestTypeLatencyStats
 {
-    bytes RequestType = 1;
+    string RequestType = 1;
     uint64 RequestCount = 2;
     uint64 TotalLatencyUs = 3;
 }
