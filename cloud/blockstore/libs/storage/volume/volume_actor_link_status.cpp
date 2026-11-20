@@ -53,7 +53,7 @@ void TVolumeActor::HandleGetLinkStatus(
     const auto* msg = ev->Get();
 
     auto link = TLeaderFollowerLink{
-        .LinkUUID = "",
+        .LinkUUID = msg->Record.GetLinkUUID(),
         .LeaderDiskId = msg->Record.GetLeaderDiskId(),
         .LeaderCellId = msg->Record.GetLeaderCellId(),
         .FollowerDiskId = msg->Record.GetFollowerDiskId(),

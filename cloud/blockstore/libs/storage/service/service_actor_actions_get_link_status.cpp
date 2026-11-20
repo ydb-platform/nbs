@@ -1,6 +1,7 @@
 #include "service_actor.h"
 
 #include <cloud/blockstore/libs/kikimr/helpers.h>
+#include <cloud/blockstore/libs/storage/api/cell_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
@@ -36,6 +37,7 @@ struct TRequest
     TString LeaderCellId;
     TString FollowerDiskId;
     TString FollowerCellId;
+    TString LinkUUID;
 
     NProto::TError Parse(const TString& inputStr);
 };
@@ -60,6 +62,10 @@ public:
 private:
     void SendRequestToLeader(const TActorContext& ctx);
     void SendRequestToFollower(const TActorContext& ctx);
+    void SendRemoteRequest(const TActorContext& ctx, const TString& cellId);
+    void HandleRemoteResponse(
+        const TEvCellProxy::TEvExecuteActionResponse::TPtr& ev,
+        const TActorContext& ctx);
 
     void HandleSuccess(const TActorContext& ctx, const TString& output);
     void HandleError(const TActorContext& ctx, const NProto::TError& error);
@@ -90,6 +96,7 @@ NProto::TError TRequest::Parse(const TString& inputStr)
     LeaderCellId = getValue("LeaderCellId");
     FollowerDiskId = getValue("FollowerDiskId");
     FollowerCellId = getValue("FollowerCellId");
+    LinkUUID = getValue("LinkUUID");
 
     if (!LeaderDiskId || !FollowerDiskId) {
         return MakeError(
@@ -123,16 +130,27 @@ void TGetLinkStatusActionActor::Bootstrap(const TActorContext& ctx)
         Request.FollowerCellId = Request.LeaderCellId;
     }
 
-    SendRequestToLeader(ctx);
-
     Become(&TThis::StateWork);
+    if (CellId == Request.FollowerCellId &&
+        Request.FollowerCellId != Request.LeaderCellId)
+    {
+        SendRequestToFollower(ctx);
+    } else {
+        SendRequestToLeader(ctx);
+    }
 }
 
 void TGetLinkStatusActionActor::SendRequestToLeader(const TActorContext& ctx)
 {
+    if (Request.LeaderCellId != CellId) {
+        SendRemoteRequest(ctx, Request.LeaderCellId);
+        return;
+    }
     auto request = std::make_unique<TEvVolume::TEvGetLinkStatusRequest>(
         RequestInfo->CallContext);
     request->Record.SetDiskId(Request.LeaderDiskId);
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+    request->Record.SetLinkUUID(Request.LinkUUID);
     request->Record.SetLeaderDiskId(Request.LeaderDiskId);
     request->Record.SetLeaderCellId(Request.LeaderCellId);
     request->Record.SetFollowerDiskId(Request.FollowerDiskId);
@@ -147,9 +165,15 @@ void TGetLinkStatusActionActor::SendRequestToLeader(const TActorContext& ctx)
 
 void TGetLinkStatusActionActor::SendRequestToFollower(const TActorContext& ctx)
 {
+    if (Request.FollowerCellId != CellId) {
+        SendRemoteRequest(ctx, Request.FollowerCellId);
+        return;
+    }
     auto request = std::make_unique<TEvVolume::TEvGetLinkStatusRequest>(
         RequestInfo->CallContext);
     request->Record.SetDiskId(Request.FollowerDiskId);
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+    request->Record.SetLinkUUID(Request.LinkUUID);
     request->Record.SetLeaderDiskId(Request.LeaderDiskId);
     request->Record.SetLeaderCellId(Request.LeaderCellId);
     request->Record.SetFollowerDiskId(Request.FollowerDiskId);
@@ -160,6 +184,46 @@ void TGetLinkStatusActionActor::SendRequestToFollower(const TActorContext& ctx)
         MakeVolumeProxyServiceId(),
         std::move(request),
         QueryFollower);
+}
+
+void TGetLinkStatusActionActor::SendRemoteRequest(
+    const TActorContext& ctx,
+    const TString& cellId)
+{
+    NProto::TGetLinkStatusRequest payload;
+    payload.SetLeaderDiskId(Request.LeaderDiskId);
+    payload.SetLeaderCellId(Request.LeaderCellId);
+    payload.SetFollowerDiskId(Request.FollowerDiskId);
+    payload.SetFollowerCellId(Request.FollowerCellId);
+    payload.SetLinkUUID(Request.LinkUUID);
+    google::protobuf::util::JsonPrintOptions options;
+    options.preserve_proto_field_names = true;
+    TString input;
+    const auto status = google::protobuf::util::MessageToJsonString(
+        payload, &input, options);
+    if (!status.ok()) {
+        HandleError(ctx, MakeError(E_ARGUMENT, status.ToString()));
+        return;
+    }
+    NProto::TExecuteActionRequest action;
+    action.SetAction("getlinkstatus");
+    action.SetInput(std::move(input));
+    NCloud::Send(
+        ctx,
+        MakeCellProxyServiceId(),
+        std::make_unique<TEvCellProxy::TEvExecuteActionRequest>(
+            RequestInfo->CallContext, cellId, std::move(action)));
+}
+
+void TGetLinkStatusActionActor::HandleRemoteResponse(
+    const TEvCellProxy::TEvExecuteActionResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (HasError(ev->Get()->GetError())) {
+        HandleError(ctx, ev->Get()->GetError());
+        return;
+    }
+    HandleSuccess(ctx, ev->Get()->Output);
 }
 
 void TGetLinkStatusActionActor::HandleSuccess(
@@ -202,6 +266,7 @@ STFUNC(TGetLinkStatusActionActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvVolume::TEvGetLinkStatusResponse, HandleGetLinkStatusResponse);
+        HFunc(TEvCellProxy::TEvExecuteActionResponse, HandleRemoteResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -219,7 +284,12 @@ void TGetLinkStatusActionActor::HandleGetLinkStatusResponse(
     const auto* msg = ev->Get();
     const auto& error = msg->GetError();
 
-    if (ev->Cookie == QueryLeader && IsNotFoundSchemeShardError(error)) {
+    const bool missingCrossCellLink =
+        Request.LeaderCellId != Request.FollowerCellId && !HasError(error) &&
+        msg->Record.GetStatus() == NProto::LINK_STATUS_NOT_FOUND;
+    if (ev->Cookie == QueryLeader &&
+        (IsNotFoundSchemeShardError(error) || missingCrossCellLink))
+    {
         SendRequestToFollower(ctx);
         return;
     }

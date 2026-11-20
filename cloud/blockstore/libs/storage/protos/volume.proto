@@ -904,6 +904,9 @@ message TGetLinkStatusRequest
     // Include a source-side link whose creation has not been persisted yet.
     // Used by remote cancellation to pin its expected UUID before mutation.
     bool IncludePendingCreation = 7;
+
+    // Optional expected operation; empty preserves legacy address matching.
+    string LinkUUID = 8;
 }
 
 message TGetLinkStatusResponse
