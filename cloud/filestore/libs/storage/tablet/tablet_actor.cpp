@@ -1160,20 +1160,6 @@ void TIndexTabletActor::HandleSessionDisconnected(
     const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
-        "%s Server disconnected, ev->Sender: %s",
-        LogTag.c_str(),
-        ev->Sender.ToString().c_str());
-
-    UnregisterRdmaPipe(ev->Sender);
-    RemoveFileSystemEventClient(ev->Sender);
-    OrphanSession(ev->Sender, ctx.Now());
-}
-
-void TIndexTabletActor::HandleSessionDisconnectedInWork(
-    const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
-    const TActorContext& ctx)
-{
     const auto& msg = *ev->Get();
 
     LOG_INFO(
@@ -1191,6 +1177,11 @@ void TIndexTabletActor::HandleSessionDisconnectedInWork(
     // GenerateBlobIds, so clean it up when the pipe disconnects.
     DeleteUnconfirmedDataForPipeServer(msg.ServerId, ctx);
     RemoveFileSystemEventClient(msg.ServerId);
+
+    OrphanSession(
+        msg.ServerId,
+        ctx.Now() + Config->GetIdleSessionTimeout(),
+        Config->GetSessionOrphaningEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1856,9 +1847,7 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(TEvTabletPipe::TEvServerConnected, HandleServerConnected);
-        HFunc(
-            TEvTabletPipe::TEvServerDisconnected,
-            HandleSessionDisconnectedInWork);
+        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
 
         HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
@@ -1954,9 +1943,7 @@ STFUNC(TIndexTabletActor::StateAdapter)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
-        HFunc(
-            TEvTabletPipe::TEvServerDisconnected,
-            HandleSessionDisconnectedInWork);
+        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
 
         HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
@@ -1981,7 +1968,10 @@ STFUNC(TIndexTabletActor::StateZombie)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
-        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
+
+        // Tablet is rebooting - sessions get orphaned and unconfirmed data gets
+        // cleaned up on startup anyway, no need to do anything extra on stop.
+        IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         // If compaction/cleanup/collectgarbage/flush started before the tablet
         // reload and completed during the zombie state, we should ignore it.
@@ -2080,7 +2070,7 @@ STFUNC(TIndexTabletActor::StateBroken)
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
-        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
+        IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
         IgnoreFunc(TEvFileStore::TEvUpdateConfig);

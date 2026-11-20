@@ -768,6 +768,7 @@ void DumpSessions(
                     TABLEH() { out << "ReadOnly"; }
                     TABLEH() { out << "OwnerGeneration"; }
                     TABLEH() { out << "Owner"; }
+                    TABLEH() { out << "PipeServer"; }
                     TABLEH() { out << "Deadline"; }
                 }
             }
@@ -790,7 +791,7 @@ void DumpSessions(
                         TABLED() { out << ss.SeqNo; }
                         TABLED() { out << (ss.ReadOnly ? "True" : "False"); }
                         TABLED() { out << ss.OwnerGeneration; }
-                        TABLED() { out << ToString(ss.Owner); }
+                        TABLED() { out << ToString(ss.PipeInfo.Owner); }
                         TABLED() { out << session.InactivityDeadline.ToString(); }
                     }
                 };
