@@ -600,6 +600,58 @@ func newMigrateSnapshotDatabaseCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type checkIncrementalSnapshotsCmd struct {
+	commandWithScheduler
+}
+
+func (c *checkIncrementalSnapshotsCmd) run() error {
+	err := c.init()
+	if err != nil {
+		return err
+	}
+	defer c.close()
+
+	taskID, err := c.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(
+			c.ctx,
+			"dataplane.CheckIncrementalSnapshots_"+generateID(),
+		),
+		"dataplane.CheckIncrementalSnapshots",
+		"",
+		&empty.Empty{},
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+
+func newCheckIncrementalSnapshotsCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	cmdWithScheduler := newCommandWithScheduler(clientConfig, serverConfig)
+	c := &checkIncrementalSnapshotsCmd{
+		commandWithScheduler: cmdWithScheduler,
+	}
+
+	return &cobra.Command{
+		Use:     "schedule-check-incremental-snapshots-task",
+		Aliases: []string{"schedule_check_incremental_snapshots_task"},
+		Short: "Check that the next snapshot can be created for every disk " +
+			"with an incremental chain; see the state of the task for " +
+			"the result",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newSnapshotsCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
@@ -622,6 +674,10 @@ func newSnapshotsCmd(
 			serverConfig,
 		),
 		newMigrateSnapshotDatabaseCmd(
+			clientConfig,
+			serverConfig,
+		),
+		newCheckIncrementalSnapshotsCmd(
 			clientConfig,
 			serverConfig,
 		),

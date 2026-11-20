@@ -33,6 +33,17 @@ type SnapshotMeta struct {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// A row of the incremental table: a head of the incremental chain of the disk,
+// i.e. the snapshot the next snapshot of this disk is based on.
+type IncrementalEntry struct {
+	Disk         *types.Disk
+	SnapshotID   string
+	CheckpointID string
+	CreatedAt    time.Time
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type ChunkMapEntry struct {
 	ChunkIndex uint32
 	ChunkID    string
@@ -189,6 +200,16 @@ type Storage interface {
 		ctx context.Context,
 		disk *types.Disk,
 	) (snapshotID string, checkpointID string, err error)
+
+	// Returns up to limit rows of the incremental table that belong to disks,
+	// ordered by disk (zone ID, disk ID) and then by snapshot ID. The rows of
+	// the disks that go after the given one are returned, nil starts from the
+	// beginning.
+	ListIncremental(
+		ctx context.Context,
+		after *types.Disk,
+		limit int,
+	) ([]IncrementalEntry, error)
 
 	ListSnapshots(ctx context.Context) (tasks_common.StringSet, error)
 

@@ -104,6 +104,7 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"dataplane.ExportImageToS3":                     newExportSnapshotTaskStateJSON,
 	"cells.CollectClusterCapacity":                  func() proto.Message { return &cells_protos.CollectClusterCapacityTaskState{} },
 	"dataplane.CollectSnapshots":                    func() proto.Message { return &dataplane_protos.CollectSnapshotsTaskState{} },
+	"dataplane.CheckIncrementalSnapshots":           func() proto.Message { return &dataplane_protos.CheckIncrementalSnapshotsTaskState{} },
 	"dataplane.CreateSnapshotFromDisk":              func() proto.Message { return &dataplane_protos.CreateSnapshotFromDiskTaskState{} },
 	"dataplane.CreateSnapshotFromSnapshot":          func() proto.Message { return &dataplane_protos.CreateSnapshotFromSnapshotTaskState{} },
 	"dataplane.CreateSnapshotFromURL":               func() proto.Message { return &dataplane_protos.CreateSnapshotFromURLTaskState{} },

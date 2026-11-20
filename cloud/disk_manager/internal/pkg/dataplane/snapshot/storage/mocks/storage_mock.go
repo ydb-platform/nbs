@@ -271,8 +271,19 @@ func (s *StorageMock) GetIncremental(
 	disk *types.Disk,
 ) (snapshotID string, checkpointID string, err error) {
 
-	args := s.Called(ctx, snapshotID)
+	args := s.Called(ctx, disk)
 	return args.String(0), args.String(1), args.Error(2)
+}
+
+func (s *StorageMock) ListIncremental(
+	ctx context.Context,
+	after *types.Disk,
+	limit int,
+) ([]storage.IncrementalEntry, error) {
+
+	args := s.Called(ctx, after, limit)
+	res, _ := args.Get(0).([]storage.IncrementalEntry)
+	return res, args.Error(1)
 }
 
 func (s *StorageMock) ListSnapshots(

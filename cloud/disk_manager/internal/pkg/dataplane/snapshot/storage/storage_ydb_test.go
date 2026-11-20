@@ -619,6 +619,133 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 	}
 }
 
+func TestSnapshotsListIncremental(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	createSnapshot := func(snapshotID string, disk *types.Disk) {
+		created, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+			ID:           snapshotID,
+			Disk:         disk,
+			CheckpointID: snapshotID + "-checkpoint",
+			CreateTaskID: "create-" + snapshotID,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, created)
+	}
+
+	snapshotCreated := func(snapshotID string) {
+		err := f.storage.SnapshotCreated(f.ctx, snapshotID, 0, 0, 0, nil)
+		require.NoError(t, err)
+	}
+
+	type row struct {
+		zoneID       string
+		diskID       string
+		snapshotID   string
+		checkpointID string
+	}
+
+	list := func(after *types.Disk, limit int) []row {
+		entries, err := f.storage.ListIncremental(f.ctx, after, limit)
+		require.NoError(t, err)
+
+		rows := make([]row, 0)
+		for _, entry := range entries {
+			require.False(t, entry.CreatedAt.IsZero())
+			rows = append(rows, row{
+				zoneID:       entry.Disk.ZoneId,
+				diskID:       entry.Disk.DiskId,
+				snapshotID:   entry.SnapshotID,
+				checkpointID: entry.CheckpointID,
+			})
+		}
+
+		return rows
+	}
+
+	require.Empty(t, list(nil, 10))
+
+	// Snapshots that are not created from a disk should not be listed.
+	createSnapshot("image", nil)
+	snapshotCreated("image")
+	require.Empty(t, list(nil, 10))
+
+	disk1 := &types.Disk{ZoneId: "zone-a", DiskId: "disk1"}
+	disk2 := &types.Disk{ZoneId: "zone-a", DiskId: "disk2"}
+	// Disk with the same ID in another zone is another disk.
+	disk3 := &types.Disk{ZoneId: "zone-b", DiskId: "disk1"}
+
+	createSnapshot("snapshot3", disk3)
+	snapshotCreated("snapshot3")
+
+	// Not ready snapshot is not in the chain yet.
+	createSnapshot("snapshot1", disk1)
+	require.Equal(
+		t,
+		[]row{{"zone-b", "disk1", "snapshot3", "snapshot3-checkpoint"}},
+		list(nil, 10),
+	)
+	snapshotCreated("snapshot1")
+
+	// Both snapshots are created without a base, so both of them become heads
+	// of the chain of the disk.
+	createSnapshot("snapshot2-b", disk2)
+	createSnapshot("snapshot2-a", disk2)
+	snapshotCreated("snapshot2-b")
+	snapshotCreated("snapshot2-a")
+
+	rows := []row{
+		{"zone-a", "disk1", "snapshot1", "snapshot1-checkpoint"},
+		{"zone-a", "disk2", "snapshot2-a", "snapshot2-a-checkpoint"},
+		{"zone-a", "disk2", "snapshot2-b", "snapshot2-b-checkpoint"},
+		{"zone-b", "disk1", "snapshot3", "snapshot3-checkpoint"},
+	}
+	require.Equal(t, rows, list(nil, 10))
+	require.Equal(t, rows[:2], list(nil, 2))
+	require.Equal(t, rows[1:], list(disk1, 10))
+	require.Equal(t, rows[1:2], list(disk1, 1))
+	require.Equal(t, rows[3:], list(disk2, 10))
+	require.Empty(t, list(disk3, 10))
+	// The disk to start after does not have to exist.
+	require.Equal(
+		t,
+		rows[3:],
+		list(&types.Disk{ZoneId: "zone-a", DiskId: "disk3"}, 10),
+	)
+
+	entries, err := f.storage.ListIncremental(f.ctx, disk1, 2)
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+	require.True(t, entries[0].CreatedAt.After(entries[1].CreatedAt))
+
+	// The next snapshot replaces its base only.
+	createSnapshot("snapshot2-c", disk2)
+	snapshotMeta, err := f.storage.GetSnapshotMeta(f.ctx, "snapshot2-c")
+	require.NoError(t, err)
+	baseSnapshotID := snapshotMeta.BaseSnapshotID
+	require.Contains(t, []string{"snapshot2-a", "snapshot2-b"}, baseSnapshotID)
+	snapshotCreated("snapshot2-c")
+
+	headsOfDisk2 := list(disk1, 2)
+	require.Len(t, headsOfDisk2, 2)
+	for _, head := range headsOfDisk2 {
+		require.Equal(t, "disk2", head.diskID)
+		require.NotEqual(t, baseSnapshotID, head.snapshotID)
+	}
+
+	// Deleted snapshots are removed from the chain.
+	for _, head := range headsOfDisk2 {
+		_, err = f.storage.DeletingSnapshot(f.ctx, head.snapshotID, "delete")
+		require.NoError(t, err)
+	}
+	require.Equal(t, []row{rows[0], rows[3]}, list(nil, 10))
+
+	err = f.storage.DeleteDiskFromIncremental(f.ctx, "zone-a", "disk1")
+	require.NoError(t, err)
+	require.Equal(t, rows[3:], list(nil, 10))
+}
+
 func TestSnapshotsLocks(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {

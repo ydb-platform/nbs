@@ -1117,6 +1117,18 @@ func (c *client) EnsureCheckpointReady(
 	return nil
 }
 
+func (c *client) GetCheckpoints(
+	ctx context.Context,
+	diskID string,
+) (checkpoints []string, err error) {
+
+	defer c.metrics.StatRequest("GetCheckpoints")(&err)
+
+	ctx = c.withTimeoutHeader(ctx)
+	checkpoints, err = c.nbs.GetCheckpoints(ctx, diskID)
+	return checkpoints, wrapError(err)
+}
+
 func (c *client) Resize(
 	ctx context.Context,
 	checkpoint func() error,

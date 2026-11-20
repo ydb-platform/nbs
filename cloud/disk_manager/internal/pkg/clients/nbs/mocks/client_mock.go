@@ -86,6 +86,16 @@ func (c *ClientMock) GetCheckpointStatus(
 	return args.Get(0).(nbs.CheckpointStatus), args.Error(1)
 }
 
+func (c *ClientMock) GetCheckpoints(
+	ctx context.Context,
+	diskID string,
+) ([]string, error) {
+
+	args := c.Called(ctx, diskID)
+	res, _ := args.Get(0).([]string)
+	return res, args.Error(1)
+}
+
 func (c *ClientMock) DeleteCheckpoint(
 	ctx context.Context,
 	diskID string,
