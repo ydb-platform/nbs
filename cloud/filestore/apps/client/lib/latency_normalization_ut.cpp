@@ -2,7 +2,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-namespace NCloud::NFileStore::NDiagnostics {
+namespace NCloud::NFileStore::NClient {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -43,4 +43,4 @@ Y_UNIT_TEST_SUITE(TLatencyNormalizationTest)
     }
 }
 
-}   // namespace NCloud::NFileStore::NDiagnostics
+}   // namespace NCloud::NFileStore::NClient
