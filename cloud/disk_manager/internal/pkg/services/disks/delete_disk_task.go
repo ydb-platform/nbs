@@ -21,6 +21,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -63,83 +64,48 @@ func (t *deleteDiskTask) deleteDisk(
 
 	selfTaskID := execCtx.GetTaskID()
 	diskID := t.request.Disk.DiskId
-	sync := t.request.Sync
+
+	cleanupTaskID := ""
+	if t.request.DeleteIfNonExistent {
+		cleanupTaskID = selfTaskID
+	}
 
 	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
 		diskID,
 		selfTaskID,
+		cleanupTaskID,
 		time.Now(),
 	)
 	if err != nil {
 		return err
 	}
 
-	zoneID := ""
 	if diskMeta == nil {
-		// Disk does not exist in the database.
+		return t.deleteDiskWithoutMetadata(ctx, execCtx)
+	}
+
+	zoneID := diskMeta.ZoneID
+	if len(diskMeta.CreateTaskID) == 0 && len(zoneID) == 0 {
+		// Legacy missing-disk placeholders do not contain a zone.
 		if !t.request.DeleteIfNonExistent {
 			return nil
 		}
 
 		zoneID = t.request.Disk.ZoneId
 		if len(zoneID) == 0 {
-			// Zone was not specified in the request.
 			return t.storage.DiskDeleted(ctx, diskID, time.Now())
 		}
-	} else {
-		zoneID = diskMeta.ZoneID
 	}
 
-	taskID, err := t.scheduler.ScheduleTask(
-		headers.SetIncomingIdempotencyKey(
-			ctx,
-			selfTaskID+"_delete_disk_from_incremental",
-		),
-		"dataplane.DeleteDiskFromIncremental",
-		"",
-		&dataplane_protos.DeleteDiskFromIncrementalRequest{
-			Disk: &types.Disk{
-				ZoneId: zoneID,
-				DiskId: diskID,
-			},
-		},
-	)
+	err = t.deleteDiskFromExternal(ctx, execCtx, diskID, zoneID)
 	if err != nil {
 		return err
-	}
-
-	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
-	if err != nil {
-		return err
-	}
-
-	if t.disabledZones.IsDisabled(zoneID) {
-		logging.Warn(
-			ctx,
-			"Skipping NBS deletion of disk %v: zone %v is disabled",
-			diskID,
-			zoneID,
-		)
-	} else {
-		client, err := t.nbsFactory.GetClient(ctx, zoneID)
-		if err != nil {
-			return err
-		}
-
-		if sync {
-			err = client.DeleteSync(ctx, diskID)
-		} else {
-			err = client.Delete(ctx, diskID)
-		}
-		if err != nil {
-			return err
-		}
 	}
 
 	// Only overlay disks (created from image) should be released.
-	if diskMeta != nil && len(diskMeta.SrcImageID) != 0 {
-		taskID, err = t.poolService.ReleaseBaseDisk(
+	if len(diskMeta.SrcImageID) != 0 {
+		taskID, err := t.poolService.ReleaseBaseDisk(
 			headers.SetIncomingIdempotencyKey(
 				ctx,
 				selfTaskID+"_release_base_disk",
@@ -182,6 +148,10 @@ func (t *deleteDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	// NOTE: the task is scheduled as non-cancellable, so this is unreachable.
+	// If that changes, deleteDiskWithoutMetadata must not finish the task
+	// via FinishWithPreparation here: the runner would then fail to mark it
+	// as cancelled.
 	return t.deleteDisk(ctx, execCtx)
 }
 
@@ -199,6 +169,100 @@ func (t *deleteDiskTask) GetMetadata(
 
 func (t *deleteDiskTask) GetResponse() proto.Message {
 	return &empty.Empty{}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *deleteDiskTask) deleteDiskWithoutMetadata(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	if !t.request.DeleteIfNonExistent {
+		return nil
+	}
+
+	diskID := t.request.Disk.DiskId
+	zoneID := t.request.Disk.ZoneId
+	selfTaskID := execCtx.GetTaskID()
+
+	prepared, err := t.storage.PrepareDiskCleanup(ctx, diskID, selfTaskID)
+	if err != nil {
+		return err
+	}
+	if !prepared {
+		return nil
+	}
+
+	// Zone-less: no external stores to clean; still finish via Complete so the
+	// tombstone stays reserved until the task itself commits.
+	if len(zoneID) != 0 {
+		err = t.deleteDiskFromExternal(ctx, execCtx, diskID, zoneID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return execCtx.FinishWithPreparation(
+		ctx,
+		func(ctx context.Context, tx *persistence.Transaction) error {
+			return t.storage.CompleteDiskCleanup(ctx, tx, diskID, selfTaskID)
+		},
+	)
+}
+
+func (t *deleteDiskTask) deleteDiskFromExternal(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	diskID string,
+	zoneID string,
+) error {
+
+	selfTaskID := execCtx.GetTaskID()
+
+	taskID, err := t.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(
+			ctx,
+			selfTaskID+"_delete_disk_from_incremental",
+		),
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		&dataplane_protos.DeleteDiskFromIncrementalRequest{
+			Disk: &types.Disk{
+				ZoneId: zoneID,
+				DiskId: diskID,
+			},
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+	if err != nil {
+		return err
+	}
+
+	if t.disabledZones.IsDisabled(zoneID) {
+		logging.Warn(
+			ctx,
+			"Skipping NBS deletion of disk %v: zone %v is disabled",
+			diskID,
+			zoneID,
+		)
+		return nil
+	}
+
+	client, err := t.nbsFactory.GetClient(ctx, zoneID)
+	if err != nil {
+		return err
+	}
+
+	if t.request.Sync {
+		return client.DeleteSync(ctx, diskID)
+	}
+
+	return client.Delete(ctx, diskID)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

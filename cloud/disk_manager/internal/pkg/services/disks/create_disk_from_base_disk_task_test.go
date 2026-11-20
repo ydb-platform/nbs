@@ -317,6 +317,7 @@ func TestCreateDiskFromBaseDiskTaskFallbackToSnapshotStorage(t *testing.T) {
 		ctx,
 		"disk",
 		"toplevel_task_id",
+		"",
 		mock.Anything,
 	).Return(&resources.DiskMeta{ID: "disk", ZoneID: "zone"}, nil)
 	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)
@@ -529,6 +530,7 @@ func TestCreateDiskFromBaseDiskTaskCancelAfterDiskIsDeletedConcurrently(
 		ctx,
 		"disk",
 		"toplevel_task_id",
+		"",
 		mock.Anything,
 	).Return((*resources.DiskMeta)(nil), nil)
 
@@ -590,6 +592,7 @@ func TestCreateDiskFromBaseDiskTaskCancelBeforeCellIsSelected(t *testing.T) {
 		ctx,
 		"disk",
 		"toplevel_task_id",
+		"",
 		mock.Anything,
 	).Return((*resources.DiskMeta)(nil), nil)
 

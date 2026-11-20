@@ -46,11 +46,34 @@ func (s *StorageMock) DeleteDisk(
 	ctx context.Context,
 	diskID string,
 	taskID string,
+	cleanupTaskID string,
 	deletingAt time.Time,
 ) (*resources.DiskMeta, error) {
 
-	args := s.Called(ctx, diskID, taskID, deletingAt)
-	return args.Get(0).(*resources.DiskMeta), args.Error(1)
+	args := s.Called(ctx, diskID, taskID, cleanupTaskID, deletingAt)
+	disk, _ := args.Get(0).(*resources.DiskMeta)
+	return disk, args.Error(1)
+}
+
+func (s *StorageMock) PrepareDiskCleanup(
+	ctx context.Context,
+	diskID string,
+	cleanupTaskID string,
+) (bool, error) {
+
+	args := s.Called(ctx, diskID, cleanupTaskID)
+	return args.Bool(0), args.Error(1)
+}
+
+func (s *StorageMock) CompleteDiskCleanup(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	diskID string,
+	cleanupTaskID string,
+) error {
+
+	args := s.Called(ctx, tx, diskID, cleanupTaskID)
+	return args.Error(0)
 }
 
 func (s *StorageMock) DiskDeleted(
