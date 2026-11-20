@@ -292,9 +292,9 @@ TVector<ui64> GetCommitIds(const TVector<TLogoBlobID>* blobIds)
 
 struct TFreshLogTrimCounters
 {
-    // TEvCollectGarbage commands sent to the fresh channel.
-    ui32 HardCommands = 0;
-    ui32 SoftCommands = 0;
+    // TEvCollectGarbage requests sent to the fresh channel.
+    ui32 HardCollectRequestsSent = 0;
+    ui32 SoftCollectRequestsSent = 0;
     // 'H' for hard commands and 'S' for soft ones, in order.
     TString CommandKinds;
     ui32 TrimsCompleted = 0;
@@ -321,11 +321,11 @@ struct TFreshLogTrimCounters
                     break;
                 }
                 if (msg->Hard) {
-                    ++HardCommands;
+                    ++HardCollectRequestsSent;
                     CommandKinds += 'H';
                     break;
                 }
-                ++SoftCommands;
+                ++SoftCollectRequestsSent;
                 CommandKinds += 'S';
                 SelectiveTrimToCommitId =
                     MakeCommitId(msg->CollectGeneration, msg->CollectStep);
@@ -428,14 +428,15 @@ void InitTestActorRuntime(
     NProto::TDiagnosticsConfig diagnosticsConfig = {},
     TControlBoard* controlBoard = nullptr)
 {
+    auto controls = std::make_shared<TStorageConfigControls>(config);
+    if (controlBoard) {
+        controls->Register(*controlBoard);
+    }
     auto storageConfig = std::make_shared<TStorageConfig>(
         config,
         std::make_shared<NFeatures::TFeaturesConfig>(
-            NCloud::NProto::TFeaturesConfig())
-    );
-    if (controlBoard) {
-        storageConfig->Register(*controlBoard);
-    }
+            NCloud::NProto::TFeaturesConfig()),
+        std::move(controls));
 
     NProto::TPartitionConfig partConfig;
 
@@ -4160,8 +4161,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // and no ordinary trim starts.
         UNIT_ASSERT_VALUES_EQUAL(0, counters.FlushesCompleted);
         UNIT_ASSERT_VALUES_EQUAL(0, counters.TrimsFailed);
-        UNIT_ASSERT_VALUES_EQUAL(0, counters.HardCommands);
-        UNIT_ASSERT_GT(counters.SoftCommands, 10);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.HardCollectRequestsSent);
+        UNIT_ASSERT_GT(counters.SoftCollectRequestsSent, 10);
         UNIT_ASSERT_LT(GetFreshBlobsCount(partition), 20);
 
         auto check = [&]
@@ -4435,7 +4436,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         // Every overwrite below kills a blob that a soft barrier can collect,
         // while the previous soft command is in flight. Still, a soft barrier
-        // is sent only once per threshold of killed bytes.
+        // is sent only once per threshold of dead bytes.
         holdCommands = true;
         for (ui32 blockIndex = 10; blockIndex < 19; ++blockIndex) {
             auto commandsInFlight = std::exchange(heldCommands, {});

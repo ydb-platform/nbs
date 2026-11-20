@@ -307,13 +307,13 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(
             32,
             state.GetDeadUntrimmedFreshBlobByteCount());
-        UNIT_ASSERT_VALUES_EQUAL(32, state.GetTotalKilledFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(32, state.GetTotalDeadFreshBlobByteCount());
 
         state.MarkFreshBlobDead(1);
         UNIT_ASSERT_VALUES_EQUAL(
             42,
             state.GetDeadUntrimmedFreshBlobByteCount());
-        UNIT_ASSERT_VALUES_EQUAL(42, state.GetTotalKilledFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(42, state.GetTotalDeadFreshBlobByteCount());
 
         UNIT_ASSERT_VALUES_EQUAL(
             12,
@@ -325,7 +325,7 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
             30,
             state.TrimCollectedFreshBlobs({3}).UnflushedBytesRemoved);
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetDeadUntrimmedFreshBlobByteCount());
-        UNIT_ASSERT_VALUES_EQUAL(42, state.GetTotalKilledFreshBlobByteCount());
+        UNIT_ASSERT_VALUES_EQUAL(42, state.GetTotalDeadFreshBlobByteCount());
     }
 
     Y_UNIT_TEST(ShouldCountDeadFreshBlobBytesForOrdinaryTrim)

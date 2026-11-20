@@ -119,7 +119,7 @@ void TPartitionFreshBlobState::MarkFreshBlobDead(ui64 commitId)
 
     it->second.Dead = true;
     DeadUntrimmedFreshBlobByteCount += it->second.ByteCount;
-    TotalKilledFreshBlobByteCount += it->second.ByteCount;
+    TotalDeadFreshBlobByteCount += it->second.ByteCount;
 }
 
 ui64 TPartitionFreshBlobState::GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(

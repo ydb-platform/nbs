@@ -559,8 +559,8 @@ TString GetBlocksContent(
 // Fresh-log trims and flushes of the test partition.
 struct TFreshLogTrimObserver
 {
-    // Soft TEvCollectGarbage commands sent to the fresh channels.
-    ui32 SoftCommands = 0;
+    // Soft TEvCollectGarbage requests sent to the fresh channels.
+    ui32 SoftCollectRequestsSent = 0;
     ui32 TrimsCompleted = 0;
     ui32 TrimsFailed = 0;
     ui32 FlushesCompleted = 0;
@@ -583,7 +583,7 @@ struct TFreshLogTrimObserver
                 if (!IsFreshChannel(msg->Channel) || msg->Hard) {
                     break;
                 }
-                ++SoftCommands;
+                ++SoftCollectRequestsSent;
                 MaxSelectiveTrimToCommitId =
                     Max(MaxSelectiveTrimToCommitId,
                         MakeCommitId(msg->CollectGeneration, msg->CollectStep));
@@ -1862,7 +1862,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         runtime.DispatchEvents({}, 100ms);
 
         UNIT_ASSERT_VALUES_EQUAL(0, trims.FlushesCompleted);
-        UNIT_ASSERT_GT(trims.SoftCommands, 10);
+        UNIT_ASSERT_GT(trims.SoftCollectRequestsSent, 10);
         UNIT_ASSERT(trims.Kept.contains(trims.FreshBlobCommitIds[0]));
         UNIT_ASSERT_LT(GetFreshBlobsCount(partition), 20);
 
@@ -1949,7 +1949,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             fbwClient.WriteBlocks(1, c);
         }
         runtime.DispatchEvents({}, 100ms);
-        UNIT_ASSERT_VALUES_EQUAL(0, trims.SoftCommands);
+        UNIT_ASSERT_VALUES_EQUAL(0, trims.SoftCollectRequestsSent);
 
         runtime.Send(heldPut.release());
         auto response = fbwClient.RecvWriteBlocksResponse();

@@ -189,8 +189,8 @@ private:
     TUntrimmedFreshBlobsByCommitId UntrimmedFreshBlobsByCommitId;
 
     ui64 DeadUntrimmedFreshBlobByteCount = 0;
-    // Every blob killed in this tablet lifetime. Only grows.
-    ui64 TotalKilledFreshBlobByteCount = 0;
+    // Every blob marked dead in this tablet lifetime. Only grows.
+    ui64 TotalDeadFreshBlobByteCount = 0;
     ui64 TrimmableByOrdinaryToCommitId = 0;
     ui64 OrdinaryTrimmableFreshBlobByteCount = 0;
 
@@ -215,9 +215,9 @@ public:
         return DeadUntrimmedFreshBlobByteCount;
     }
 
-    [[nodiscard]] ui64 GetTotalKilledFreshBlobByteCount() const
+    [[nodiscard]] ui64 GetTotalDeadFreshBlobByteCount() const
     {
-        return TotalKilledFreshBlobByteCount;
+        return TotalDeadFreshBlobByteCount;
     }
 
     [[nodiscard]] ui64 GetUnflushedFreshBlobCount() const
@@ -311,9 +311,9 @@ private:
     // rejects a decreasing one.
     ui64 LastSentSelectiveTrimToCommitId = 0;
 
-    // After a scan, the next one waits until the total killed byte count
+    // After a scan, the next one waits until the total dead byte count
     // reaches this value, unless the soft command of the scan failed.
-    ui64 NextSelectiveScanTotalKilledByteCount = 0;
+    ui64 NextSelectiveScanTotalDeadByteCount = 0;
 
 public:
     [[nodiscard]] TOperationState& AccessTrimFreshLogState()
@@ -371,17 +371,16 @@ public:
         return LastSentSelectiveTrimToCommitId;
     }
 
-    [[nodiscard]] bool IsSelectiveScanAllowed(ui64 totalKilledByteCount) const
+    [[nodiscard]] bool IsSelectiveScanAllowed(ui64 totalDeadByteCount) const
     {
-        return totalKilledByteCount >= NextSelectiveScanTotalKilledByteCount;
+        return totalDeadByteCount >= NextSelectiveScanTotalDeadByteCount;
     }
 
     // Called on every scan, so that soft commands that collect little cannot
     // follow each other while dead blobs out of reach keep the trim due.
-    void DeferSelectiveScan(ui64 totalKilledByteCount, ui64 threshold)
+    void DeferSelectiveScan(ui64 totalDeadByteCount, ui64 threshold)
     {
-        NextSelectiveScanTotalKilledByteCount =
-            totalKilledByteCount + threshold;
+        NextSelectiveScanTotalDeadByteCount = totalDeadByteCount + threshold;
     }
 
     void StartSelectiveTrim(ui64 trimToCommitId)
@@ -406,7 +405,7 @@ public:
         // untrimmed, so the next scan is due again. It resends Keep for live
         // blobs in (KeptToCommitId, LastSentSelectiveTrimToCommitId] and
         // DoNotKeep for dead ones.
-        NextSelectiveScanTotalKilledByteCount = 0;
+        NextSelectiveScanTotalDeadByteCount = 0;
     }
 };
 

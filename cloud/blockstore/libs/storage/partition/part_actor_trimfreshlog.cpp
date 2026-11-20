@@ -55,8 +55,7 @@ bool TPartitionActor::ShouldStartSelectiveTrim(
     // bytes more than an ordinary trim.
     if (State->GetDeadUntrimmedFreshBlobByteCount() <
             trimmableByOrdinaryTrimByteCount + threshold ||
-        !State->IsSelectiveScanAllowed(
-            State->GetTotalKilledFreshBlobByteCount()))
+        !State->IsSelectiveScanAllowed(State->GetTotalDeadFreshBlobByteCount()))
     {
         return false;
     }
@@ -235,7 +234,7 @@ void TPartitionActor::HandleTrimFreshLog(
             plan ? plan->CollectingCommitIds.size() : 0);
 
         State->DeferSelectiveScan(
-            State->GetTotalKilledFreshBlobByteCount(),
+            State->GetTotalDeadFreshBlobByteCount(),
             GetFreshDeadBlobByteCountTrimThreshold());
 
         if (!plan) {
@@ -316,9 +315,9 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    const bool failed = FAILED(msg->GetStatus());
 
-    if (failed) {
+    ui64 unflushedByteCount = 0;
+    if (HasError(msg->GetError())) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION,
@@ -328,6 +327,11 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
             FormatError(msg->GetError()).c_str());
 
         State->RegisterTrimFreshLogError();
+        if (msg->SelectiveTrim) {
+            State->FailSelectiveTrim();
+        } else {
+            State->SetOrdinaryTrimRequested(true);
+        }
     } else {
         LOG_DEBUG(
             ctx,
@@ -336,24 +340,16 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
             LogTitle.GetWithTime().c_str());
 
         State->RegisterTrimFreshLogSuccess();
-    }
-
-    ui64 unflushedByteCount = 0;
-    if (msg->SelectiveTrim) {
-        if (!failed) {
+        if (msg->SelectiveTrim) {
             State->CompleteSelectiveTrim();
             unflushedByteCount =
                 State->TrimCollectedFreshBlobs(msg->CollectedCommitIds)
                     .UnflushedBytesRemoved;
         } else {
-            State->FailSelectiveTrim();
+            State->SetLastTrimFreshLogToCommitId(msg->CommitId);
+            unflushedByteCount =
+                State->TrimFreshBlobs(msg->CommitId).UnflushedBytesRemoved;
         }
-    } else if (!failed) {
-        State->SetLastTrimFreshLogToCommitId(msg->CommitId);
-        unflushedByteCount =
-            State->TrimFreshBlobs(msg->CommitId).UnflushedBytesRemoved;
-    } else {
-        State->SetOrdinaryTrimRequested(true);
     }
 
     if (IsFreshBlocksWriterEnabled()) {
