@@ -11,7 +11,10 @@ namespace NCloud {
 // NWilson::TTraceId from it and the requestId, which is used for tracing in
 // YDB. Thread-safe.
 NWilson::TTraceId GetTraceIdForRequestId(
-    NLWTrace::TOrbit& orbit,
-    ui64 requestId);
+    NLWTrace::TOrbit& orbit, ui64 requestId);
 
-} // namespace NCloud
+// Each outgoing attempt needs its own parent id: LWTrace shuttles are pooled.
+NWilson::TTraceId CreateTraceIdForRequestId(
+    NLWTrace::TOrbit& orbit, ui64 requestId);
+
+}   // namespace NCloud

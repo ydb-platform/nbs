@@ -612,6 +612,10 @@ void TReadBlocksActor::HandleReadBlobResponse(
     Y_ABORT_UNLESS(batchIndex < BatchRequests.size());
     auto& batch = BatchRequests[batchIndex];
 
+    Y_ABORT_UNLESS(batchIndex < ForkedCallContexts.size());
+    RequestInfo->CallContext->LWOrbit.Join(
+        ForkedCallContexts[batchIndex]->LWOrbit);
+
     RequestsCompleted += batch.Requests.size();
     Y_ABORT_UNLESS(RequestsCompleted <= RequestsScheduled);
 
@@ -632,18 +636,9 @@ void TReadBlocksActor::HandleReadBlobResponse(
         return;
     }
 
-    for (auto& context: ForkedCallContexts) {
-        RequestInfo->CallContext->LWOrbit.Join(context->LWOrbit);
-    }
-
     auto response = CreateReadBlocksResponse(
         ReadRange,
-        *BlockDigestGenerator,
-        BlockSize,
-        ReplyLocal,
-        BlockInfos,
-        *ReadHandler
-    );
+        *BlockDigestGenerator, BlockSize, ReplyLocal, BlockInfos, *ReadHandler);
     ReplyAndDie(ctx, std::move(response), {});
 }
 

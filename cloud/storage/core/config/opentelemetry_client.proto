@@ -13,4 +13,8 @@ message TOpentelemetryTraceConfig
     optional TGrpcClientConfig ClientConfig = 1;
 
     optional string ServiceName = 2;
+
+    // HTTP(S) trace viewer URL containing exactly one {trace_id} placeholder.
+    // The placeholder is replaced with the exported 128-bit trace id in hex.
+    optional string TraceViewerUrlTemplate = 3;
 }

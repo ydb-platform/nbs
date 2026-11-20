@@ -1,6 +1,7 @@
 #include "trace_convert.h"
 
 #include "helpers.h"
+#include "trace_spans.h"
 
 #include <contrib/proto/opentelemetry/opentelemetry/proto/common/v1/common.pb.h>
 #include <contrib/proto/opentelemetry/opentelemetry/proto/trace/v1/trace.pb.h>
@@ -163,7 +164,15 @@ T FindFirst(
                     item.Probe->Event.Signature.ParamNames[paramIdx],
                     fieldName) == 0)
             {
-                return item.Params.Param[paramIdx].Get<T>();
+                using TStore = typename NLWTrace::TParamTraits<T>::TStoreType;
+                if (strcmp(
+                        item.Probe->Event.Signature.ParamTypes[paramIdx],
+                        NLWTrace::TParamType<TStore>::NameString) != 0)
+                {
+                    continue;
+                }
+                return static_cast<T>(
+                    item.Params.Param[paramIdx].Get<TStore>());
             }
         }
     }
@@ -231,7 +240,7 @@ private:
     const TReferenceTimeCycle ReferenceTimeCycle;
     const bool HasConflicts;
 
-    ui64 NextSpanId = 0;
+    THashSet<ui64> ReservedSpanIds;
 
 public:
     TTraceConverter(
@@ -245,6 +254,14 @@ public:
 
     TSpanTree ProcessItemsToSpanTree(const NLWTrace::TTrackLog& tl)
     {
+        // Reserve source ids so exported spans do not alias pooled shuttles.
+        for (const auto& item: tl.Items) {
+            if (item.Probe && (TStringBuf(item.Probe->Event.Name) == "Fork" ||
+                               TStringBuf(item.Probe->Event.Name) == "Join"))
+            {
+                ReservedSpanIds.insert(item.Params.Param[0].Get<ui64>());
+            }
+        }
         return ProcessItemsToSpanTreeImpl(
             tl,
             TakeSpanId(),
@@ -288,9 +305,8 @@ private:
             }
 
             if (TStringBuf(name) == "Join") {
-                const auto childSpanId = HasConflicts
-                                             ? TakeSpanId()
-                                             : item.Params.Param[0].Get<ui64>();
+                const auto sourceSpanId = item.Params.Param[0].Get<ui64>();
+                const auto childSpanId = TakeSpanId();
                 const auto itemsCount = item.Params.Param[1].Get<ui64>();
 
                 // recursively process child spans
@@ -302,7 +318,7 @@ private:
 
                 if (!HasConflicts) {
                     subSpans.GetParentSpan().set_start_time_unix_nano(
-                        spanIdToStartTime[childSpanId]);
+                        spanIdToStartTime[sourceSpanId]);
                 }
                 subSpans.GetParentSpan().set_end_time_unix_nano(
                     curTimeStampNano);
@@ -325,7 +341,12 @@ private:
 
     ui64 TakeSpanId()
     {
-        return NextSpanId++;
+        for (;;) {
+            const ui64 id = RandomNumber<ui64>();
+            if (id && ReservedSpanIds.insert(id).second) {
+                return id;
+            }
+        }
     }
 };
 
@@ -338,15 +359,14 @@ TReferenceTimeCycle GetReferenceTimeCycle()
 
 struct TConflictDetecter
 {
-    THashSet<ui64> SpanIdsParents;
+    THashSet<ui64> SeenSpanIds;
     THashSet<ui64> SpanIdsDeclaredAndNotJoinedYet;
 
     bool HasConflict(
         const NLWTrace::TTrackLog& tl,
-        TLogItemsIterationContext iCtx,
-        ui64 currentSpanId)
+        TLogItemsIterationContext iCtx, ui64 currentSpanId)
     {
-        auto [_, inserted] = SpanIdsParents.insert(currentSpanId);
+        auto [_, inserted] = SeenSpanIds.insert(currentSpanId);
         if (!inserted) {
             return true;
         }
@@ -383,7 +403,6 @@ struct TConflictDetecter
             }
         }
 
-        SpanIdsParents.erase(currentSpanId);
         return false;
     }
 };
@@ -400,18 +419,25 @@ TTraceInfo ConvertToOpenTelemetrySpans(const NLWTrace::TTrackLog& tl)
 
     traceInfo.RequestId = FindRequestId(tl, traceItCtx);
     traceInfo.DiskId = FindFirst<TString>(tl, "diskId", traceItCtx);
-    traceInfo.MediaKind =
-        FindFirst<NProto::EStorageMediaKind>(tl, "mediaKind", traceItCtx);
+    // Storage media probes use ui32, whose LWTrace storage type is ui64.
+    traceInfo.MediaKind = static_cast<NProto::EStorageMediaKind>(
+        FindFirst<ui64>(tl, "mediaKind", traceItCtx));
     traceInfo.RequestSize = FindFirst<ui64>(tl, "requestSize", traceItCtx);
 
+    ui64 traceId = traceInfo.RequestId;
+    while (!traceId) {
+        // An uncorrelated track still needs a valid, independent OTel id.
+        traceId = RandomNumber<ui64>();
+    }
     auto converter = TTraceConverter(
-        {traceInfo.RequestId, 0},   // traceId
+        {traceId, 0},   // traceId
         GetReferenceTimeCycle(),
         TConflictDetecter().HasConflict(tl, traceItCtx, 0));
 
     traceInfo.Spans =
         TSpanTree::ExtractSpans(converter.ProcessItemsToSpanTree(tl));
 
+    AddDiagnosticSpans(traceInfo.Spans);
     return traceInfo;
 }
 

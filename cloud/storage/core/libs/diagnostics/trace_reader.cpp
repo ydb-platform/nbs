@@ -288,8 +288,12 @@ void TTraceReaderWithRingBuffer::Push(
 
     ui64 minSeenTimestamp = tl.Items[0].TimestampCycles;
 
+    const auto now = TInstant::Now();
+    const auto cycles = GetCycleCount();
+    const auto elapsed =
+        CyclesToDurationSafe(cycles - Min(cycles, minSeenTimestamp));
     RingBuffer.PushBack(
-        {.Ts = TInstant::Now(),
+        {.Ts = now - elapsed,
          .Date = minSeenTimestamp,
          .TrackLog = tl,
          .Tag = Tag});

@@ -600,6 +600,13 @@ void TConfigInitializerYdb::ApplyAllowedKikimrFeatureFlags(
 void TConfigInitializerYdb::ApplyCustomCMSConfigs(
     const NKikimrConfig::TAppConfig& config)
 {
+    // DSProxy runs in this process and needs the same explicit Wilson
+    // configuration as the YDB nodes hosting VDisks.
+    if (config.HasTracingConfig()) {
+        KikimrConfig->MutableTracingConfig()->CopyFrom(
+            config.GetTracingConfig());
+    }
+
     if (!GetDynamicYamlConfigurationStaticallyEnabled()) {
         ApplyNamedConfigs(config);
         ApplyAllowedKikimrFeatureFlags(config);

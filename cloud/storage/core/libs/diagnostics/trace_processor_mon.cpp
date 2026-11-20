@@ -10,11 +10,55 @@
 #include <library/cpp/monlib/service/pages/index_mon_page.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <util/string/hex.h>
+
 namespace NCloud {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TString EscapeHtml(TStringBuf value)
+{
+    TString result;
+    for (const char c: value) {
+        switch (c) {
+            case '&':
+                result += "&amp;";
+                break;
+            case '<':
+                result += "&lt;";
+                break;
+            case '>':
+                result += "&gt;";
+                break;
+            case '"':
+                result += "&quot;";
+                break;
+            case '\'':
+                result += "&#39;";
+                break;
+            default:
+                result += c;
+                break;
+        }
+    }
+    return result;
+}
+
+struct TTraceTimeRange
+{
+    TInstant From = TInstant::Zero();
+    TInstant To = TInstant::Max();
+
+    bool Parse(const TCgiParameters& params)
+    {
+        const auto from = params.Get("from");
+        const auto to = params.Get("to");
+        return (from.empty() || TInstant::TryParseIso8601(from, From)) &&
+               (to.empty() || TInstant::TryParseIso8601(to, To)) && From <= To;
+    }
+};
 
 using TTraceKey = std::pair<TStringBuf, TStringBuf>;
 using TTraceLog = std::pair<TStringBuf, TEntry>;
@@ -88,7 +132,10 @@ const NLWTrace::TParam* FindParam(
     const TStringBuf name)
 {
     if (const auto* probe = logItem.Probe) {
-        for (ui32 i = 0; i < probe->Event.Signature.ParamCount; ++i) {
+        for (ui32 i = 0; i < probe->Event.Signature.ParamCount &&
+                         i < logItem.SavedParamsCount;
+             ++i)
+        {
             if (probe->Event.Signature.ParamNames[i] == name) {
                 return &logItem.Params.Param[i];
             }
@@ -128,6 +175,49 @@ TResult GetIdParam(const TCgiParameters& cgiParams)
     return TResult{};
 }
 
+TString TraceViewerUrl(
+    const TString& urlTemplate, const NLWTrace::TTrackLog& track)
+{
+    constexpr TStringBuf Placeholder = "{trace_id}";
+    const auto pos = urlTemplate.find(Placeholder);
+    if (!(urlTemplate.StartsWith("https://") ||
+          urlTemplate.StartsWith("http://")) ||
+        pos == TString::npos ||
+        urlTemplate.find(Placeholder, pos + Placeholder.size()) !=
+            TString::npos)
+    {
+        return {};
+    }
+    for (const auto& item: track.Items) {
+        if (!item.Probe) {
+            continue;
+        }
+        const auto& signature = item.Probe->Event.Signature;
+        for (ui32 i = 0; i < item.SavedParamsCount; ++i) {
+            if (TStringBuf(signature.ParamNames[i]) != "requestId" ||
+                NLWTrace::ParamTypeToProtobuf(signature.ParamTypes[i]) !=
+                    NLWTrace::PT_Ui64)
+            {
+                continue;
+            }
+            const ui64 traceId[2] = {item.Params.Param[i].Get<ui64>(), 0};
+            if (!traceId[0]) {
+                return {};
+            }
+            auto hex = HexEncode(traceId, sizeof(traceId));
+            for (auto& c: hex) {
+                if (c >= 'A' && c <= 'F') {
+                    c += 'a' - 'A';
+                }
+            }
+            TString result = urlTemplate;
+            result.replace(pos, Placeholder.size(), hex);
+            return result;
+        }
+    }
+    return {};
+}
+
 void DisplayJsonErrorMessage(IOutputStream& out, const TString& message)
 {
     out << "HTTP/1.1 400 Invalid Request\r\n"
@@ -146,13 +236,12 @@ bool ReaderIdMatch(const TString& traceType, const TString& readerId)
 
 TVector<TTraceLog> PrepareTraceLogDump(
     ITraceProcessorPtr processor,
-    const TString& traceType,
-    const TString& id)
+    const TString& traceType, const TString& id, const TTraceTimeRange& range)
 {
     TVector<TTraceLog> traceLogDump;
 
     processor->ForEach(
-        [&traceType, &id, &traceLogDump](ITraceReaderPtr reader)
+        [&traceType, &id, &traceLogDump, &range](ITraceReaderPtr reader)
         {
             const auto& readerId = reader->Id;
 
@@ -161,8 +250,13 @@ TVector<TTraceLog> PrepareTraceLogDump(
             }
 
             reader->ForEach(
-                [&traceLogDump, &id, &readerId](const TEntry& item)
+                [&traceLogDump, &id, &readerId, &range](const TEntry& item)
                 {
+                    if (item.TrackLog.Items.empty() || item.Ts < range.From ||
+                        item.Ts > range.To)
+                    {
+                        return;
+                    }
                     const auto traceId =
                         GetIdParam<TString>(item.TrackLog.Items.front());
 
@@ -175,12 +269,11 @@ TVector<TTraceLog> PrepareTraceLogDump(
     return traceLogDump;
 }
 
-
 void DumpTraceLogHtml(
     IOutputStream& out,
-    const TVector<TTraceLog>& traceLogDump)
+    const TVector<TTraceLog>& traceLogDump, const TString& viewerUrlTemplate)
 {
-    HTML(out) {
+    HTML (out) {
         TABLE_SORTABLE() {
             TABLEHEAD() {
                 TABLER() {
@@ -192,11 +285,25 @@ void DumpTraceLogHtml(
             }
             TABLEBODY() {
                 for (auto& [requestId, entry]: traceLogDump) {
-                    TABLER() {
-                        TABLED() { out << entry.Ts.ToStringLocalUpToSeconds(); }
-                        TABLED() { out << requestId; }
-                        TABLED() { out << SerializeTraceToString(entry.TrackLog, entry.Date, entry.Tag); }
-                        TABLED() { out << ""; }
+                    TABLER () {
+                        TABLED () {
+                            out << entry.Ts.ToStringLocalUpToSeconds();
+                        }
+                        TABLED () {
+                            out << EscapeHtml(requestId);
+                        }
+                        TABLED () {
+                            out << EscapeHtml(SerializeTraceToString(
+                                entry.TrackLog, entry.Date, entry.Tag));
+                        }
+                        TABLED () {
+                            const auto url = TraceViewerUrl(
+                                viewerUrlTemplate, entry.TrackLog);
+                            if (url) {
+                                out << "<a href=\"" << EscapeHtml(url)
+                                    << "\">Open trace</a>";
+                            }
+                        }
                     }
                 }
             }
@@ -272,12 +379,14 @@ private:
 
 private:
     ITraceProcessorPtr Impl;
+    const TString TraceViewerUrlTemplate;
 
 public:
     TTraceProcessorMon(
-            IMonitoringServicePtr monitoring,
-            ITraceProcessorPtr impl)
+        IMonitoringServicePtr monitoring,
+        ITraceProcessorPtr impl, TString traceViewerUrlTemplate)
         : Impl(std::move(impl))
+        , TraceViewerUrlTemplate(std::move(traceViewerUrlTemplate))
     {
         auto rootPage =
             monitoring->RegisterIndexPage("tracelogs", "Traces Logs");
@@ -305,15 +414,25 @@ public:
     }
 
     void OutputHtml(
-        IOutputStream& out,
-        IMonHttpRequest& request,
-        const TString& traceType)
+        IOutputStream& out, IMonHttpRequest& request, const TString& traceType)
     {
+        const auto& params = request.GetParams();
+        out << "<form method=\"get\">";
+        for (const auto* name: {"diskId", "fsId", "from", "to"}) {
+            out << "<label>" << name << " <input name=\"" << name
+                << "\" value=\"" << EscapeHtml(params.Get(name))
+                << "\"></label> ";
+        }
+        out << "<button type=\"submit\">Filter</button></form>"
+               "<p>Interval: ISO 8601, for example 2026-01-01T00:00:00Z.</p>";
+        TTraceTimeRange range;
+        if (!range.Parse(params)) {
+            out << "<p>Invalid time interval</p>";
+            return;
+        }
         const auto traceLogDump = PrepareTraceLogDump(
-            Impl,
-            traceType,
-            GetIdParam<TString>(request.GetParams()));
-        DumpTraceLogHtml(out, traceLogDump);
+            Impl, traceType, GetIdParam<TString>(params), range);
+        DumpTraceLogHtml(out, traceLogDump, TraceViewerUrlTemplate);
     }
 
     void OutputJson(IOutputStream& out, IMonHttpRequest& request)
@@ -322,15 +441,17 @@ public:
         if (slowName != traceType && randomName != traceType &&
             !traceType.empty())
         {
-            DisplayJsonErrorMessage(
-                out,
-                "Invalid traceType set '" + traceType + "'");
+            DisplayJsonErrorMessage(out, "Invalid traceType");
+            return;
+        }
+        TTraceTimeRange range;
+        if (!range.Parse(request.GetParams())) {
+            DisplayJsonErrorMessage(out, "Invalid time interval");
+            return;
         }
 
         const auto traceLogDump = PrepareTraceLogDump(
-            Impl,
-            traceType,
-            GetIdParam<TString>(request.GetParams()));
+            Impl, traceType, GetIdParam<TString>(request.GetParams()), range);
 
         out << HTTPOKJSON;
         DumpTraceLogJson(out, traceLogDump);
@@ -342,12 +463,18 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 ITraceProcessorPtr CreateTraceProcessorMon(
+    IMonitoringServicePtr monitoring, ITraceProcessorPtr impl)
+{
+    return CreateTraceProcessorMon(std::move(monitoring), std::move(impl), {});
+}
+
+ITraceProcessorPtr CreateTraceProcessorMon(
     IMonitoringServicePtr monitoring,
-    ITraceProcessorPtr impl)
+    ITraceProcessorPtr impl, TString traceViewerUrlTemplate)
 {
     return std::make_shared<TTraceProcessorMon>(
         std::move(monitoring),
-        std::move(impl));
+        std::move(impl), std::move(traceViewerUrlTemplate));
 }
 
 }   // namespace NCloud

@@ -15,6 +15,8 @@ namespace NCloud::NBlockStore::NStorage {
 using namespace NActors;
 using namespace NKikimr;
 
+LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -208,12 +210,27 @@ NProto::TError TVolumeActor::Throttle(
         return ok;
     }
 
+    const auto callContext = msg->CallContext;
+    LWTRACK(
+        RequestReceived_Throttler,
+        callContext->LWOrbit, TMethod::Name, callContext->RequestId);
+
     const auto status = Throttler->Throttle(
         ctx,
         msg->CallContext,
         *throttlingRequestInfo,
         [&ev]() { return NActors::IEventHandlePtr(ev.Release()); },
         TMethod::Name);
+
+    // This is the decision interval. Postponed time is recorded separately
+    // by RequestPostponed_Volume / RequestAdvanced_Volume.
+    LWTRACK(
+        RequestCompleted_Throttler,
+        callContext->LWOrbit,
+        TMethod::Name,
+        callContext->RequestId,
+        status == ETabletThrottlerStatus::REJECTED ? E_BS_THROTTLED : S_OK,
+        static_cast<ui32>(status));
 
     switch (status) {
         case ETabletThrottlerStatus::POSTPONED:

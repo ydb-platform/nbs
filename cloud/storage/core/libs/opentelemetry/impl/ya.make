@@ -3,6 +3,7 @@ LIBRARY()
 SRCS(
     helpers.cpp
     trace_convert.cpp
+    trace_spans.cpp
     trace_reader.cpp
     trace_service_client.cpp
 )
