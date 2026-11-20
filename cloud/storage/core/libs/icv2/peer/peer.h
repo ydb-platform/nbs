@@ -15,12 +15,12 @@ enum class EPeerState
     Idle,
     Connecting,
     Connected,
-    Disconnected,   // Mean waiting to reconnect or permanently closed.
+    Disconnected,   // Waiting to reconnect or permanently closed.
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Counts connection attempts and failed attempts for this registration.
+// Counts connection attempts and failed attempts for this peer.
 struct TPeerStatus
 {
     EPeerState State = EPeerState::Idle;
@@ -28,7 +28,7 @@ struct TPeerStatus
     ui64 ConnectionFailures = 0;
 };
 
-using TChannelResult = TResultOrError<NCloud::NIcV2::IRequestChannelPtr>;
+using TChannelResult = TResultOrError<IRequestChannelPtr>;
 using TChannelFuture = NThreading::TFuture<TChannelResult>;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -45,6 +45,8 @@ struct IPeer
     // The future may be ready immediately or wait for one connection attempt.
     // It can fail during retry backoff. Call again to get a replacement after
     // a disconnect. A channel obtained earlier does not follow reconnections.
+    // Close() on an open peer rejects channel acquisition with E_REJECTED;
+    // retry through a replacement peer or another transport.
     virtual TChannelFuture GetChannel() = 0;
 
     // Read a snapshot for monitoring without starting a connection. A closed

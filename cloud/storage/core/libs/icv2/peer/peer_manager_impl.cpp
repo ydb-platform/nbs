@@ -43,7 +43,7 @@ TResultOrError<IPeerPtr> TPeerManager::CreatePeer(
                 "IC V2 peer connections are not running");
         }
         if (host.empty() || !port) {
-            return MakeError(E_ARGUMENT, "invalid IC V2 host binding");
+            return MakeError(E_ARGUMENT, "invalid IC V2 peer address");
         }
         const auto id = NextPeerId++;
         peer = std::make_shared<TPeer>(
@@ -138,7 +138,7 @@ TResultOrError<IPeerManagerPtr> CreatePeerManager(
     IHandshakeProviderPtr handshake,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
-    NCloud::NIcV2::IAddressResolverPtr resolver,
+    IAddressResolverPtr resolver,
     ITaskQueuePtr completions,
     IChannelFactoryPtr channelFactory)
 {

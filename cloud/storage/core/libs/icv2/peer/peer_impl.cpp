@@ -4,6 +4,7 @@
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 
+#include <util/generic/noncopyable.h>
 #include <util/generic/vector.h>
 #include <util/network/address.h>
 
@@ -65,7 +66,7 @@ enum class TPeer::EPeerEvent
 
 // Kept by callbacks and completion tasks without retaining the peer itself.
 // The last reference removes the peer from the manager's shutdown wait.
-struct TPeer::TActivity
+struct TPeer::TActivity: TNonCopyable
 {
     const std::shared_ptr<TPeerManager> Manager;
     const ui64 Id;
@@ -96,7 +97,7 @@ struct TPeer::TConnectionAttempt
     ui64 Generation;
     TInstant Deadline;
     TVector<NInterconnect::TAddress> Addresses;
-    size_t NextAddress = 0;
+    size_t AddressesTried = 0;
     TPromise<TChannelResult> Promise = NewPromise<TChannelResult>();
     EConnectState ConnectState = EConnectState::Idle;
     NProto::TError RetryError;
@@ -158,7 +159,7 @@ TChannelFuture TPeer::GetChannel()
         }
         if (RetryAt > Dependencies.Timer->Now()) {
             return MakeFuture<TChannelResult>(
-                MakeError(E_UNAVAILABLE, "IC V2 host is waiting to reconnect"));
+                MakeError(E_UNAVAILABLE, "IC V2 peer is waiting to reconnect"));
         }
         if (Channel) {
             retired = TakeChannel();
@@ -200,7 +201,7 @@ TPeerStatus TPeer::GetStatus()
 
 void TPeer::Close()
 {
-    Close(MakeError(E_CANCELLED, "IC V2 peer is closed"));
+    Close(MakeError(E_REJECTED, "IC V2 peer is closed"));
 }
 
 void TPeer::Close(NProto::TError error)
@@ -227,7 +228,7 @@ void TPeer::Close(NProto::TError error)
     if (attempt) {
         DeliverAttemptResult(
             std::move(attempt),
-            MakeError(E_REJECTED, "IC V2 host binding closed"),
+            MakeError(E_REJECTED, "IC V2 peer is closed"),
             activity);
     }
 }
@@ -296,6 +297,7 @@ void TPeer::StartConnectionAttempt(ui64 generation)
         if (Generation != generation) {
             return;
         }
+        RetryAt = {};
     }
     GetChannel();
 }
@@ -418,8 +420,11 @@ void TPeer::ConnectNextAddress(
                 error =
                     MakeError(E_TIMEOUT, "IC V2 connect and hello timed out");
             }
-        } else if (attempt->NextAddress < attempt->Addresses.size()) {
-            address = attempt->Addresses[attempt->NextAddress++];
+        } else if (attempt->AddressesTried < attempt->Addresses.size()) {
+            const auto index =
+                (attempt->Generation - 1 + attempt->AddressesTried++) %
+                attempt->Addresses.size();
+            address = attempt->Addresses[index];
             remaining = attempt->Deadline - now;
         }
     }
@@ -475,11 +480,13 @@ void TPeer::HandleConnectionResult(
     std::shared_ptr<TConnectionAttempt> attempt,
     const TConnectHandshakeResult& result)
 {
+    std::shared_ptr<TActivity> activity;
     {
         TGuard<TMutex> guard(Mutex);
         if (Attempt != attempt) {
             return;
         }
+        activity = Activity;
     }
     if (HasError(result.GetError())) {
         ConnectNext(std::move(attempt), result.GetError());
@@ -491,17 +498,13 @@ void TPeer::HandleConnectionResult(
         FinishAttempt(std::move(attempt), std::move(error));
         return;
     }
-    std::shared_ptr<TActivity> activity;
+    bool accepted = false;
     {
         TGuard<TMutex> guard(Mutex);
         if (Attempt == attempt) {
             Channel = channel;
-            activity = Activity;
+            accepted = true;
         }
-    }
-    if (!activity) {
-        CloseChannel(std::move(channel));
-        return;
     }
     channel->WhenClosed().Subscribe(
         [activity = std::move(activity),
@@ -513,6 +516,10 @@ void TPeer::HandleConnectionResult(
                 self->OnClosed(generation);
             }
         });
+    if (!accepted) {
+        CloseChannel(std::move(channel));
+        return;
+    }
     if (!channel->Activate()) {
         FinishAttempt(
             std::move(attempt),
@@ -581,13 +588,10 @@ void TPeer::OnClosed(ui64 generation)
                 ++ConnectionFailures;
                 activity = Activity;
             }
-            if (!HasError(CloseError)) {
-                retryAt = Dependencies.Timer->Now() + ReconnectDelay;
-                RetryAt = retryAt;
-                disconnected = QueueNotification(
-                    attempt ? EPeerEvent::Unavailable
-                            : EPeerEvent::Disconnected);
-            }
+            retryAt = Dependencies.Timer->Now() + ReconnectDelay;
+            RetryAt = retryAt;
+            disconnected = QueueNotification(
+                attempt ? EPeerEvent::Unavailable : EPeerEvent::Disconnected);
         }
     }
     if (attempt) {

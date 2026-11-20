@@ -22,8 +22,7 @@ struct IChannelFactory
 
     // Create a channel from the connected sockets. XdcSocket may be empty.
     // Return it inactive for the manager to activate.
-    virtual TChannelResult CreateChannel(
-        const NCloud::NIcV2::THandshakeReady& connection) = 0;
+    virtual TChannelResult CreateChannel(const THandshakeReady& connection) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -45,10 +44,13 @@ struct IPeerManager: public IStartable
 {
     // Pass a hostname or IP address and a nonzero port. Each successful call
     // creates an independent peer and starts connecting asynchronously.
+    // Retries rotate their starting address within the latest DNS result.
     // Pass a handler for connection, disconnection and failed-attempt events,
-    // or an empty pointer if you only need GetChannel(). Handler calls for
-    // this peer are serialized and may begin before CreatePeer() returns.
-    // Handlers and future continuations must not throw or wait for shutdown.
+    // or an empty pointer if you only need GetChannel(). Calls for this peer
+    // are serialized and run inline on worker threads or the caller's thread.
+    // They may begin before CreatePeer() returns. Keep handlers short and
+    // non-blocking. Handlers and future continuations must not throw or wait
+    // for shutdown.
     virtual TResultOrError<IPeerPtr>
     CreatePeer(TString host, ui16 port, IClientEndpointHandlerPtr handler) = 0;
 
@@ -66,10 +68,10 @@ using IPeerManagerPtr = std::shared_ptr<IPeerManager>;
 TResultOrError<IPeerManagerPtr> CreatePeerManager(
     TPeerManagerConfig config,
     IConnectorPtr connector,
-    NCloud::NIcV2::IHandshakeProviderPtr handshake,
+    IHandshakeProviderPtr handshake,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
-    NCloud::NIcV2::IAddressResolverPtr resolver,
+    IAddressResolverPtr resolver,
     ITaskQueuePtr completions,
     IChannelFactoryPtr channelFactory);
 

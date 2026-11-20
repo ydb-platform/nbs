@@ -14,25 +14,10 @@
 #include <future>
 #include <mutex>
 #include <stdexcept>
-#include <thread>
 
 namespace NCloud::NIcV2 {
 
 using namespace NThreading;
-
-using NCloud::NIcV2::IRequestChannel;
-using NCloud::NIcV2::IRequestChannelPtr;
-using NCloud::NIcV2::TResponseFuture;
-
-using NCloud::NIcV2::IHandshakeProvider;
-using NCloud::NIcV2::TAcceptHandshakeFuture;
-using NCloud::NIcV2::TConnectHandshakeFuture;
-using NCloud::NIcV2::TConnectHandshakeResult;
-using NCloud::NIcV2::THandshakeReady;
-
-using NCloud::NIcV2::TSocketPtr;
-
-using NCloud::NIcV2::IConnector;
 
 namespace {
 
@@ -133,22 +118,21 @@ struct TTestHandshake final: IHandshakeProvider
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestResolver final: NCloud::NIcV2::IAddressResolver
+struct TTestResolver final: IAddressResolver
 {
     struct TRequest
     {
         TString Host;
         ui16 Port;
         TMonotonic Deadline;
-        TPromise<NCloud::NIcV2::TResolveResult> Promise =
-            NewPromise<NCloud::NIcV2::TResolveResult>();
+        TPromise<TResolveResult> Promise = NewPromise<TResolveResult>();
     };
 
     bool Deferred = false;
     bool ThrowOnResolve = false;
     TVector<TRequest> Requests;
 
-    NCloud::NIcV2::TResolveFuture
+    TResolveFuture
     Resolve(const TString& host, ui16 port, TMonotonic deadline) override
     {
         if (ThrowOnResolve) {
@@ -260,6 +244,7 @@ struct TTestChannel final: IRequestChannel
 {
     TPromise<NProto::TError> Closed = NewPromise<NProto::TError>();
     std::atomic<bool> Closing = false;
+    bool DeferClose = false;
     std::function<void()> OnActivate;
     std::function<void()> OnClose;
     std::function<void()> OnWhenClosed;
@@ -279,7 +264,7 @@ struct TTestChannel final: IRequestChannel
         Y_UNUSED(request);
         Y_UNUSED(timeout);
 
-        UNIT_FAIL("channel requests are outside cache admission");
+        UNIT_FAIL("unexpected channel request in peer manager test");
         return {};
     }
 
@@ -289,7 +274,9 @@ struct TTestChannel final: IRequestChannel
             if (OnClose) {
                 OnClose();
             }
-            Closed.SetValue(NProto::TError{});
+            if (!DeferClose) {
+                Closed.SetValue(NProto::TError{});
+            }
         }
     }
 
@@ -631,6 +618,50 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         f.Peers->Stop();
     }
 
+    Y_UNIT_TEST(StopWaitsForChannelCreatedDuringPeerClose)
+    {
+        IPeerPtr peer;
+        TFixture f;
+        std::future<void> stop;
+        Y_DEFER
+        {
+            for (const auto& channel: f.ChannelFactory->Channels) {
+                channel->Closed.TrySetValue(NProto::TError{});
+            }
+        };
+
+        f.ChannelFactory->PrepareChannel = [&](TTestChannel& channel)
+        {
+            channel.DeferClose = true;
+            peer->Close();
+        };
+        f.Peers->Start();
+        peer = f.CreatePeer("host", 1111, {});
+        const auto pending = peer->GetChannel();
+        f.Connect();
+        f.Hello();
+        const auto channel = f.ChannelFactory->Channels.at(0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            Wait(pending).GetError().GetCode());
+        UNIT_ASSERT(channel->Closing.load());
+        UNIT_ASSERT(!channel->Closed.GetFuture().HasValue());
+
+        auto stopEntered = NewPromise<void>();
+        f.Connector->OnStop = [stopEntered]() mutable
+        {
+            stopEntered.TrySetValue();
+        };
+        stop = std::async(std::launch::async, [&] { f.Peers->Stop(); });
+        const bool started =
+            stopEntered.GetFuture().Wait(TDuration::Seconds(5));
+        const bool waits = stop.wait_for(1s) == std::future_status::timeout;
+        channel->Closed.SetValue(NProto::TError{});
+        stop.get();
+        UNIT_ASSERT(started);
+        UNIT_ASSERT(waits);
+    }
+
     Y_UNIT_TEST(CloseDuringActivationCompletesAttemptWhenChannelCloseThrows)
     {
         IPeerPtr peer;
@@ -737,6 +768,26 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, handler->Disconnects.load());
         f.Retry();
         UNIT_ASSERT_VALUES_EQUAL(3, f.Connector->Requests.size());
+    }
+
+    Y_UNIT_TEST(ScheduledRetryIsNotLostWhenPeerClockLags)
+    {
+        TFixture f;
+        f.Peers->Start();
+        const auto peer = f.CreatePeer("host", 1111, {});
+        f.Connector->Requests.at(0).Promise.SetValue(
+            MakeError(E_IO, "connection refused"));
+        f.Timer->AdvanceTime(TDuration::MilliSeconds(999));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_UNAVAILABLE,
+            Wait(peer->GetChannel()).GetError().GetCode());
+
+        f.Scheduler->AdvanceTime(TDuration::Seconds(1));
+        f.Scheduler->RunAllScheduledTasksUntilNow();
+        UNIT_ASSERT_VALUES_EQUAL(2, f.Connector->Requests.size());
+        f.Connect(1);
+        f.Hello();
+        UNIT_ASSERT(peer->GetStatus().State == EPeerState::Connected);
     }
 
     Y_UNIT_TEST(EnforcesRetryBackoffDuringHostNotifications)
@@ -847,6 +898,59 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, peer->GetStatus().ConnectionFailures);
     }
 
+    Y_UNIT_TEST(RotatesAddressesAfterAttemptTimeout)
+    {
+        for (const bool failRotatedAddress: {false, true}) {
+            const auto config = MakeConfig();
+            TFixture f(config);
+            f.Resolver->Deferred = true;
+            const TVector<NInterconnect::TAddress> addresses{
+                NInterconnect::TAddress("127.0.0.1", 1111),
+                NInterconnect::TAddress("127.0.0.1", 2222),
+            };
+            f.Peers->Start();
+            const auto peer = f.CreatePeer("host", 1111, {});
+            const auto first = peer->GetChannel();
+            f.Resolver->Requests.at(0).Promise.SetValue(addresses);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1111,
+                f.Connector->Requests.at(0).Address.GetPort());
+            f.Timer->AdvanceTime(config.ConnectTimeout);
+            f.Scheduler->AdvanceTime(config.ConnectTimeout);
+            auto expired = f.Connector->Requests.at(0).Promise;
+            expired.SetValue(MakeError(E_TIMEOUT, "connect timed out"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_TIMEOUT,
+                Wait(first).GetError().GetCode());
+
+            f.Retry();
+            UNIT_ASSERT_VALUES_EQUAL(2, f.Resolver->Requests.size());
+            const auto next = peer->GetChannel();
+            f.Resolver->Requests.at(1).Promise.SetValue(addresses);
+            UNIT_ASSERT_VALUES_EQUAL(2, f.Connector->Requests.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2222,
+                f.Connector->Requests.at(1).Address.GetPort());
+            UNIT_ASSERT_VALUES_EQUAL(
+                config.ConnectTimeout,
+                f.Connector->Requests.at(1).Timeout);
+
+            size_t connectIndex = 1;
+            if (failRotatedAddress) {
+                auto refused = f.Connector->Requests.at(1).Promise;
+                refused.SetValue(MakeError(E_IO, "connection refused"));
+                UNIT_ASSERT_VALUES_EQUAL(3, f.Connector->Requests.size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1111,
+                    f.Connector->Requests.at(2).Address.GetPort());
+                connectIndex = 2;
+            }
+            f.Connect(connectIndex);
+            f.Hello();
+            UNIT_ASSERT(!HasError(Wait(next).GetError()));
+        }
+    }
+
     Y_UNIT_TEST(ImmediateConnectionFailuresDoNotRecurse)
     {
         enum class EStep
@@ -953,7 +1057,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, handler->Connects.load());
     }
 
-    Y_UNIT_TEST(PendingDnsDoesNotBlockAnotherBindingAndRetiredResultIsIgnored)
+    Y_UNIT_TEST(PendingDnsDoesNotBlockAnotherPeerAndRetiredResultIsIgnored)
     {
         TFixture f;
         f.Resolver->Deferred = true;
@@ -993,7 +1097,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT(third != first);
         UNIT_ASSERT(third != second);
         UNIT_ASSERT_VALUES_EQUAL(
-            E_CANCELLED,
+            E_REJECTED,
             Wait(first->GetChannel()).GetError().GetCode());
     }
 
@@ -1040,7 +1144,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         replacement->Close();
         replacement->Close();
         UNIT_ASSERT_VALUES_EQUAL(
-            E_CANCELLED,
+            E_REJECTED,
             Wait(replacement->GetChannel()).GetError().GetCode());
     }
 
@@ -1137,18 +1241,24 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, f.Connector->Requests.size());
     }
 
-    Y_UNIT_TEST(SerializesReentrantHostNotificationsOutsideCacheLock)
+    Y_UNIT_TEST(SerializesReentrantHostNotificationsOutsidePeerLock)
     {
         IPeerPtr peer;
         TFixture f;
         auto handler = std::make_shared<TTestHostHandler>();
+        std::future<TPeerStatus> status;
+        bool queriedOutsideLock = false;
         bool connectedCallback = false;
         bool nested = false;
         handler->OnConnected = [&]
         {
             connectedCallback = true;
-            Y_UNUSED(peer->GetStatus());
-            f.ChannelFactory->Channels[0]->Close();
+            status = std::async(
+                std::launch::async,
+                [peer] { return peer->GetStatus(); });
+            queriedOutsideLock =
+                status.wait_for(5s) == std::future_status::ready;
+            f.ChannelFactory->Channels.at(0)->Close();
             connectedCallback = false;
         };
         handler->OnDisconnected = [&]
@@ -1162,6 +1272,10 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, handler->Connects.load());
         UNIT_ASSERT_VALUES_EQUAL(1, handler->Disconnects.load());
         UNIT_ASSERT(!nested);
+        UNIT_ASSERT(status.valid());
+        const auto snapshot = status.get();
+        UNIT_ASSERT(queriedOutsideLock);
+        UNIT_ASSERT(snapshot.State == EPeerState::Connected);
     }
 
     Y_UNIT_TEST(CloseFromNotificationPreservesQueuedEvents)
@@ -1229,7 +1343,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, handler->Disconnects.load());
     }
 
-    Y_UNIT_TEST(DataBindingsStayOnTheirHostAndIgnoreRetiredAttempts)
+    Y_UNIT_TEST(PeersStayOnTheirHostAndIgnoreRetiredAttempts)
     {
         TFixture f;
         f.Peers->Start();
@@ -1256,7 +1370,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
             secondPeer->GetChannel().GetValue().GetResult() ==
             f.ChannelFactory->Channels[0]);
         UNIT_ASSERT_VALUES_EQUAL(
-            E_CANCELLED,
+            E_REJECTED,
             Wait(firstPeer->GetChannel()).GetError().GetCode());
         secondPeer->Close();
         UNIT_ASSERT(f.ChannelFactory->Channels[0]->Closing);
@@ -1403,7 +1517,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
                 peer->Close();
             }
             UNIT_ASSERT_VALUES_EQUAL(
-                stopManager ? E_REJECTED : E_CANCELLED,
+                E_REJECTED,
                 Wait(duringClose).GetError().GetCode());
         }
     }
@@ -1502,6 +1616,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         channel->Close();
         UNIT_ASSERT_VALUES_EQUAL(1, f.Connector->Requests.size());
         f.Retry();
+        UNIT_ASSERT_VALUES_EQUAL(2, f.Connector->Requests.size());
         auto next = peer->GetChannel();
         f.Connect(1);
         f.Hello(1);
@@ -1575,7 +1690,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         const bool delayed = entered.GetFuture().Wait(TDuration::Seconds(5));
         TChannelFuture next;
         if (delayed) {
-            // The close future is ready, but the cache's close callback has
+            // The close future is ready, but the peer's close callback has
             // not run. A new generation can already replace the old channel.
             next = peer->GetChannel();
             if (f.Connector->Requests.size() == 2) {
@@ -1612,7 +1727,11 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         auto first = peer->GetChannel();
         f.Connect();
         f.Hello();
-        UNIT_ASSERT(Wait(first).GetResult() == Wait(joined).GetResult());
+        const auto result = Wait(first);
+        UNIT_ASSERT_C(
+            !HasError(result.GetError()),
+            FormatError(result.GetError()));
+        UNIT_ASSERT(result.GetResult() == Wait(joined).GetResult());
     }
 
     Y_UNIT_TEST(StopRejectsAttemptsAndIgnoresLateConnectOrHello)
@@ -1766,7 +1885,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT(f.ChannelFactory->Channels[0]->Closing);
     }
 
-    Y_UNIT_TEST(RejectsCallsBeforeStartAfterStopAndUnknownPeers)
+    Y_UNIT_TEST(RejectsInvalidAddressesAndCallsOutsideRunningState)
     {
         TFixture f;
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1781,6 +1900,9 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
             f.Peers->CreatePeer("host", 0, {}).GetError().GetCode());
         const auto peer = f.CreatePeer("host", 1111, {});
         f.Peers->Stop();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            f.Peers->CreatePeer("host", 1111, {}).GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
             Wait(peer->GetChannel()).GetError().GetCode());
