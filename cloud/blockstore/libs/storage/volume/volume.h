@@ -26,8 +26,8 @@ enum class EVolumeStartMode
 NActors::IActorPtr CreateVolumeTablet(
     const NActors::TActorId& owner,
     NKikimr::TTabletStorageInfoPtr storage,
-    TStorageConfigConstPtr config,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
     ITraceSerializerPtr traceSerializer,

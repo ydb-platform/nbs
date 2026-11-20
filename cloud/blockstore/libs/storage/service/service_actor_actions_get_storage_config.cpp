@@ -28,13 +28,13 @@ class TGetStorageConfigActor final
 {
 private:
     const TRequestInfoPtr RequestInfo;
-    const TStorageConfigConstPtr StorageConfig;
+    const TStorageConfigPtr StorageConfig;
     TString Input;
 
 public:
     TGetStorageConfigActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr storageConfig,
+        TStorageConfigPtr storageConfig,
         TString input);
 
     void Bootstrap(const TActorContext& ctx);
@@ -57,7 +57,7 @@ private:
 
 TGetStorageConfigActor::TGetStorageConfigActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr storageConfig,
+        TStorageConfigPtr storageConfig,
         TString input)
     : RequestInfo(std::move(requestInfo))
     , StorageConfig(std::move(storageConfig))

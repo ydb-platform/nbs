@@ -39,7 +39,7 @@ class TCreateVolumeActor final
 {
 private:
     const TRequestInfoPtr RequestInfo;
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     const TVolumeConfig VolumeConfig;
 
     bool FirstCreationAttempt = true;
@@ -53,7 +53,7 @@ private:
 public:
     TCreateVolumeActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TVolumeConfig volumeConfig);
 
     void Bootstrap(const TActorContext& ctx);
@@ -103,7 +103,7 @@ private:
 
 TCreateVolumeActor::TCreateVolumeActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TVolumeConfig volumeConfig)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))

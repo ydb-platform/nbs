@@ -408,7 +408,7 @@ IActorPtr CreateVolumeBalancerActor(
     IVolumeStatsPtr volumeStats,
     NCloud::NStorage::IStatsFetcherPtr statsFetcher,
     TActorId serviceActorId,
-    NFeatures::TFeaturesConfigConstPtr featureConfig = nullptr)
+    NFeatures::TFeaturesConfigPtr featureConfig = nullptr)
 {
     NProto::TStorageServiceConfig storageConfig = config.Build();
 

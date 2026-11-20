@@ -291,8 +291,8 @@ STFUNC(TSplitRequestSenderActor<TMethod>::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 TLaggingAgentsReplicaProxyActor::TLaggingAgentsReplicaProxyActor(
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         ui32 replicaIndex,

@@ -27,7 +27,7 @@ class TUnmountRequestActor final
 {
 private:
     const TChildLogTitle LogTitle;
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     const TRequestInfoPtr RequestInfo;
     const TString DiskId;
     const TString ClientId;
@@ -43,7 +43,7 @@ private:
 public:
     TUnmountRequestActor(
         TChildLogTitle logTitle,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TRequestInfoPtr requestInfo,
         TString diskId,
         TString clientId,
@@ -84,7 +84,7 @@ private:
 
 TUnmountRequestActor::TUnmountRequestActor(
         TChildLogTitle logTitle,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TRequestInfoPtr requestInfo,
         TString diskId,
         TString clientId,

@@ -28,8 +28,8 @@ TVolumeBalancerState::TVolumeInfo::TVolumeInfo(TDuration pullInterval)
 {}
 
 TVolumeBalancerState::TVolumeBalancerState(
-    TStorageConfigConstPtr storageConfig,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    TStorageConfigPtr storageConfig,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch)
     : StorageConfig(std::move(storageConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))

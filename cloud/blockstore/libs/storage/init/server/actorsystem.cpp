@@ -441,8 +441,8 @@ class TCustomLocalServiceInitializer final
 private:
     const NKikimrConfig::TAppConfig& AppConfig;
     const ILoggingServicePtr Logging;
-    const TStorageConfigConstPtr StorageConfig;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    const TStorageConfigPtr StorageConfig;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -459,8 +459,8 @@ public:
     TCustomLocalServiceInitializer(
             const NKikimrConfig::TAppConfig& appConfig,
             ILoggingServicePtr logging,
-            TStorageConfigConstPtr storageConfig,
-            TDiagnosticsConfigConstPtr diagnosticsConfig,
+            TStorageConfigPtr storageConfig,
+            TDiagnosticsConfigPtr diagnosticsConfig,
             IProfileLogPtr profileLog,
             IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
             IBlockDigestGeneratorPtr blockDigestGenerator,

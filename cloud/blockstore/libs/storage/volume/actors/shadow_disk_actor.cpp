@@ -114,7 +114,7 @@ private:
 public:
     TAcquireShadowDiskActor(
         TChildLogTitle logTitle,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TString shadowDiskId,
         TDevices shadowDiskDevices,
         TShadowDiskActor::EAcquireReason acquireReason,
@@ -178,7 +178,7 @@ private:
 
 TAcquireShadowDiskActor::TAcquireShadowDiskActor(
         TChildLogTitle logTitle,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TString shadowDiskId,
         TDevices shadowDiskDevices,
         TShadowDiskActor::EAcquireReason acquireReason,
@@ -570,8 +570,8 @@ void TAcquireShadowDiskActor::MaybeReady(const NActors::TActorContext& ctx)
 
 TShadowDiskActor::TShadowDiskActor(
         TChildLogTitle logTitle,
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticConfig,
         NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,

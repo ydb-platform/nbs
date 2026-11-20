@@ -27,82 +27,82 @@ class TBlockstoreConfigImpl final: public IBlockstoreConfig
 public:
     TBlockstoreConfigImpl(
         const NProto::TBlockstoreConfig& config,
-        NFeatures::TFeaturesConfigConstPtr featuresConfig,
-        NStorage::TStorageConfigConstPtr storageConfig,
-        NStorage::TDiskAgentConfigConstPtr diskAgentConfig);
+        NFeatures::TFeaturesConfigPtr featuresConfig,
+        NStorage::TStorageConfigPtr storageConfig,
+        NStorage::TDiskAgentConfigPtr diskAgentConfig);
 
-    const NServer::TServerAppConfigConstPtr& GetServerConfig() const override;
+    const NServer::TServerAppConfigPtr& GetServerConfig() const override;
 
-    const NFeatures::TFeaturesConfigConstPtr&
+    const NFeatures::TFeaturesConfigPtr&
     GetFeaturesConfig() const override;
 
-    const NStorage::TStorageConfigConstPtr& GetStorageConfig() const override;
+    const NStorage::TStorageConfigPtr& GetStorageConfig() const override;
 
-    const TDiagnosticsConfigConstPtr& GetDiagnosticsConfig() const override;
+    const TDiagnosticsConfigPtr& GetDiagnosticsConfig() const override;
 
-    const NDiscovery::TDiscoveryConfigConstPtr&
+    const NDiscovery::TDiscoveryConfigPtr&
     GetDiscoveryServiceConfig() const override;
 
-    const NClient::TClientAppConfigConstPtr& GetEndpointConfig() const override;
+    const NClient::TClientAppConfigPtr& GetEndpointConfig() const override;
 
-    const NStorage::TDiskAgentConfigConstPtr&
+    const NStorage::TDiskAgentConfigPtr&
     GetDiskAgentConfig() const override;
 
-    const NStorage::TDiskRegistryProxyConfigConstPtr&
+    const NStorage::TDiskRegistryProxyConfigPtr&
     GetDiskRegistryProxyConfig() const override;
 
-    const NSpdk::TSpdkEnvConfigConstPtr& GetSpdkEnvConfig() const override;
+    const NSpdk::TSpdkEnvConfigPtr& GetSpdkEnvConfig() const override;
 
-    const NRdma::TRdmaConfigConstPtr& GetRdmaConfig() const override;
+    const NRdma::TRdmaConfigPtr& GetRdmaConfig() const override;
 
-    const NYdbStats::TYdbStatsConfigConstPtr&
+    const NYdbStats::TYdbStatsConfigPtr&
     GetYdbStatsConfig() const override;
 
-    const NLogbroker::TLogbrokerConfigConstPtr&
+    const NLogbroker::TLogbrokerConfigPtr&
     GetLogbrokerConfig() const override;
 
-    const NNotify::TNotifyConfigConstPtr& GetNotifyConfig() const override;
+    const NNotify::TNotifyConfigPtr& GetNotifyConfig() const override;
 
-    const NIamClient::TIamClientConfigConstPtr&
+    const NIamClient::TIamClientConfigPtr&
     GetIamClientConfig() const override;
 
-    const TGrpcClientConfigConstPtr& GetKmsClientConfig() const override;
+    const TGrpcClientConfigPtr& GetKmsClientConfig() const override;
 
-    const TGrpcClientConfigConstPtr& GetComputeClientConfig() const override;
+    const TGrpcClientConfigPtr& GetComputeClientConfig() const override;
 
-    const TRootKmsConfigConstPtr& GetRootKmsConfig() const override;
+    const TRootKmsConfigPtr& GetRootKmsConfig() const override;
 
-    const NCells::TCellsConfigConstPtr& GetCellsConfig() const override;
+    const NCells::TCellsConfigPtr& GetCellsConfig() const override;
 
-    const TLocalNVMeConfigConstPtr& GetLocalNVMeConfig() const override;
+    const TLocalNVMeConfigPtr& GetLocalNVMeConfig() const override;
 
 private:
-    const NServer::TServerAppConfigConstPtr ServerConfig;
-    const NFeatures::TFeaturesConfigConstPtr FeaturesConfig;
-    const NStorage::TStorageConfigConstPtr StorageConfig;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
-    const NDiscovery::TDiscoveryConfigConstPtr DiscoveryServiceConfig;
-    const NClient::TClientAppConfigConstPtr EndpointConfig;
-    const NStorage::TDiskAgentConfigConstPtr DiskAgentConfig;
-    const NStorage::TDiskRegistryProxyConfigConstPtr DiskRegistryProxyConfig;
-    const NSpdk::TSpdkEnvConfigConstPtr SpdkEnvConfig;
-    const NRdma::TRdmaConfigConstPtr RdmaConfig;
-    const NYdbStats::TYdbStatsConfigConstPtr YdbStatsConfig;
-    const NLogbroker::TLogbrokerConfigConstPtr LogbrokerConfig;
-    const NNotify::TNotifyConfigConstPtr NotifyConfig;
-    const NIamClient::TIamClientConfigConstPtr IamClientConfig;
-    const TGrpcClientConfigConstPtr KmsClientConfig;
-    const TGrpcClientConfigConstPtr ComputeClientConfig;
-    const TRootKmsConfigConstPtr RootKmsConfig;
-    const NCells::TCellsConfigConstPtr CellsConfig;
-    const TLocalNVMeConfigConstPtr LocalNVMeConfig;
+    const NServer::TServerAppConfigPtr ServerConfig;
+    const NFeatures::TFeaturesConfigPtr FeaturesConfig;
+    const NStorage::TStorageConfigPtr StorageConfig;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const NDiscovery::TDiscoveryConfigPtr DiscoveryServiceConfig;
+    const NClient::TClientAppConfigPtr EndpointConfig;
+    const NStorage::TDiskAgentConfigPtr DiskAgentConfig;
+    const NStorage::TDiskRegistryProxyConfigPtr DiskRegistryProxyConfig;
+    const NSpdk::TSpdkEnvConfigPtr SpdkEnvConfig;
+    const NRdma::TRdmaConfigPtr RdmaConfig;
+    const NYdbStats::TYdbStatsConfigPtr YdbStatsConfig;
+    const NLogbroker::TLogbrokerConfigPtr LogbrokerConfig;
+    const NNotify::TNotifyConfigPtr NotifyConfig;
+    const NIamClient::TIamClientConfigPtr IamClientConfig;
+    const TGrpcClientConfigPtr KmsClientConfig;
+    const TGrpcClientConfigPtr ComputeClientConfig;
+    const TRootKmsConfigPtr RootKmsConfig;
+    const NCells::TCellsConfigPtr CellsConfig;
+    const TLocalNVMeConfigPtr LocalNVMeConfig;
 };
 
 TBlockstoreConfigImpl::TBlockstoreConfigImpl(
     const NProto::TBlockstoreConfig& config,
-    NFeatures::TFeaturesConfigConstPtr featuresConfig,
-    NStorage::TStorageConfigConstPtr storageConfig,
-    NStorage::TDiskAgentConfigConstPtr diskAgentConfig)
+    NFeatures::TFeaturesConfigPtr featuresConfig,
+    NStorage::TStorageConfigPtr storageConfig,
+    NStorage::TDiskAgentConfigPtr diskAgentConfig)
     : ServerConfig(
           std::make_shared<NServer::TServerAppConfig>(config.GetServer()))
     , FeaturesConfig(std::move(featuresConfig))
@@ -143,113 +143,113 @@ TBlockstoreConfigImpl::TBlockstoreConfigImpl(
     Y_ABORT_UNLESS(DiskAgentConfig);
 }
 
-const NServer::TServerAppConfigConstPtr&
+const NServer::TServerAppConfigPtr&
 TBlockstoreConfigImpl::GetServerConfig() const
 {
     return ServerConfig;
 }
 
-const NFeatures::TFeaturesConfigConstPtr&
+const NFeatures::TFeaturesConfigPtr&
 TBlockstoreConfigImpl::GetFeaturesConfig() const
 {
     return FeaturesConfig;
 }
 
-const NStorage::TStorageConfigConstPtr&
+const NStorage::TStorageConfigPtr&
 TBlockstoreConfigImpl::GetStorageConfig() const
 {
     return StorageConfig;
 }
 
-const TDiagnosticsConfigConstPtr&
+const TDiagnosticsConfigPtr&
 TBlockstoreConfigImpl::GetDiagnosticsConfig() const
 {
     return DiagnosticsConfig;
 }
 
-const NDiscovery::TDiscoveryConfigConstPtr&
+const NDiscovery::TDiscoveryConfigPtr&
 TBlockstoreConfigImpl::GetDiscoveryServiceConfig() const
 {
     return DiscoveryServiceConfig;
 }
 
-const NClient::TClientAppConfigConstPtr&
+const NClient::TClientAppConfigPtr&
 TBlockstoreConfigImpl::GetEndpointConfig() const
 {
     return EndpointConfig;
 }
 
-const NStorage::TDiskAgentConfigConstPtr&
+const NStorage::TDiskAgentConfigPtr&
 TBlockstoreConfigImpl::GetDiskAgentConfig() const
 {
     return DiskAgentConfig;
 }
 
-const NStorage::TDiskRegistryProxyConfigConstPtr&
+const NStorage::TDiskRegistryProxyConfigPtr&
 TBlockstoreConfigImpl::GetDiskRegistryProxyConfig() const
 {
     return DiskRegistryProxyConfig;
 }
 
-const NSpdk::TSpdkEnvConfigConstPtr&
+const NSpdk::TSpdkEnvConfigPtr&
 TBlockstoreConfigImpl::GetSpdkEnvConfig() const
 {
     return SpdkEnvConfig;
 }
 
-const NRdma::TRdmaConfigConstPtr& TBlockstoreConfigImpl::GetRdmaConfig() const
+const NRdma::TRdmaConfigPtr& TBlockstoreConfigImpl::GetRdmaConfig() const
 {
     return RdmaConfig;
 }
 
-const NYdbStats::TYdbStatsConfigConstPtr&
+const NYdbStats::TYdbStatsConfigPtr&
 TBlockstoreConfigImpl::GetYdbStatsConfig() const
 {
     return YdbStatsConfig;
 }
 
-const NLogbroker::TLogbrokerConfigConstPtr&
+const NLogbroker::TLogbrokerConfigPtr&
 TBlockstoreConfigImpl::GetLogbrokerConfig() const
 {
     return LogbrokerConfig;
 }
 
-const NNotify::TNotifyConfigConstPtr&
+const NNotify::TNotifyConfigPtr&
 TBlockstoreConfigImpl::GetNotifyConfig() const
 {
     return NotifyConfig;
 }
 
-const NIamClient::TIamClientConfigConstPtr&
+const NIamClient::TIamClientConfigPtr&
 TBlockstoreConfigImpl::GetIamClientConfig() const
 {
     return IamClientConfig;
 }
 
-const TGrpcClientConfigConstPtr&
+const TGrpcClientConfigPtr&
 TBlockstoreConfigImpl::GetKmsClientConfig() const
 {
     return KmsClientConfig;
 }
 
-const TGrpcClientConfigConstPtr&
+const TGrpcClientConfigPtr&
 TBlockstoreConfigImpl::GetComputeClientConfig() const
 {
     return ComputeClientConfig;
 }
 
-const TRootKmsConfigConstPtr& TBlockstoreConfigImpl::GetRootKmsConfig() const
+const TRootKmsConfigPtr& TBlockstoreConfigImpl::GetRootKmsConfig() const
 {
     return RootKmsConfig;
 }
 
-const NCells::TCellsConfigConstPtr&
+const NCells::TCellsConfigPtr&
 TBlockstoreConfigImpl::GetCellsConfig() const
 {
     return CellsConfig;
 }
 
-const TLocalNVMeConfigConstPtr&
+const TLocalNVMeConfigPtr&
 TBlockstoreConfigImpl::GetLocalNVMeConfig() const
 {
     return LocalNVMeConfig;
@@ -337,7 +337,7 @@ TBlockstoreConfigExtraParameters GetBlockstoreConfigExtraParameters(
     };
 }
 
-IBlockstoreConfigPtr MakeBlockstoreConfig(
+IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
     NStorage::TStorageConfigControlsPtr controls,
@@ -364,7 +364,7 @@ IBlockstoreConfigPtr MakeBlockstoreConfig(
         std::move(diskAgentConfig));
 }
 
-IBlockstoreConfigPtr MakeBlockstoreConfig(
+IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
     const NStorage::TStorageConfig& storageConfig,

@@ -8,7 +8,7 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-inline TDiagnosticsConfigConstPtr CreateDiagnosticsConfig()
+inline TDiagnosticsConfigPtr CreateDiagnosticsConfig()
 {
     NProto::TDiagnosticsConfig config;
     ParseProtoTextFromString(

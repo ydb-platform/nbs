@@ -7,20 +7,20 @@ namespace NCloud::NBlockStore {
 ////////////////////////////////////////////////////////////////////////////////
 
 TBlockstoreConfigHolder::TBlockstoreConfigHolder(
-    IBlockstoreConfigPtr initialConfig)
+    IBlockstoreConfigMutablePtr initialConfig)
 {
     Y_ABORT_UNLESS(initialConfig);
     Current.AtomicStore(initialConfig);
 }
 
-IBlockstoreConfigConstPtr TBlockstoreConfigHolder::Get() const
+IBlockstoreConfigPtr TBlockstoreConfigHolder::Get() const
 {
     auto config = Current.AtomicLoad();
     Y_ABORT_UNLESS(config);
     return config;
 }
 
-void TBlockstoreConfigHolder::Set(IBlockstoreConfigPtr config)
+void TBlockstoreConfigHolder::Set(IBlockstoreConfigMutablePtr config)
 {
     Y_ABORT_UNLESS(config);
     Current.AtomicStore(config);

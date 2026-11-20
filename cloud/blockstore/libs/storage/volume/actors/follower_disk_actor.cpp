@@ -1,5 +1,8 @@
 #include "follower_disk_actor.h"
 
+#include <cloud/blockstore/libs/storage/api/partition.h>
+#include <cloud/blockstore/libs/storage/api/service.h>
+#include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/forward_helpers.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
@@ -38,10 +41,18 @@ EDirectCopyPolicy GetDirectCopyUsage(const TFollowerDiskActorParams& params)
 
 ///////////////////////////////////////////////////////////////////////////////
 
+#define BLOCKSTORE_FORWARD_TO_LEADER_PARTITION(name, ns)                       \
+    HFunc(                                                                     \
+        ns::TEv##name##Request,                                                \
+        ForwardRequestToLeaderPartition<ns::T##name##Method>)                  \
+// BLOCKSTORE_FORWARD_TO_LEADER_PARTITION
+
+///////////////////////////////////////////////////////////////////////////////
+
 TFollowerDiskActor::TFollowerDiskActor(
         const TLogTitle& parentLogTitle,
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         TFollowerDiskActorParams params)
@@ -156,6 +167,24 @@ bool TFollowerDiskActor::OnMessage(
             TEvNonreplPartitionPrivate::
                 TEvGetDiskRegistryBasedPartCountersRequest,
             ForwardGetDiskRegistryBasedPartCounters);
+
+        BLOCKSTORE_FORWARD_TO_LEADER_PARTITION(
+            StatPartition,
+            NPartition::TEvPartition);
+        BLOCKSTORE_FORWARD_TO_LEADER_PARTITION(GetChangedBlocks, TEvService);
+        BLOCKSTORE_FORWARD_TO_LEADER_PARTITION(DescribeBlocks, TEvVolume);
+        BLOCKSTORE_FORWARD_TO_LEADER_PARTITION(DescribeBlob, TEvVolume);
+        BLOCKSTORE_FORWARD_TO_LEADER_PARTITION(GetUsedBlocks, TEvVolume);
+        BLOCKSTORE_FORWARD_TO_LEADER_PARTITION(GetPartitionInfo, TEvVolume);
+        BLOCKSTORE_FORWARD_TO_LEADER_PARTITION(CompactRange, TEvVolume);
+        BLOCKSTORE_FORWARD_TO_LEADER_PARTITION(GetCompactionStatus, TEvVolume);
+        BLOCKSTORE_FORWARD_TO_LEADER_PARTITION(RebuildMetadata, TEvVolume);
+        BLOCKSTORE_FORWARD_TO_LEADER_PARTITION(
+            GetRebuildMetadataStatus,
+            TEvVolume);
+        BLOCKSTORE_FORWARD_TO_LEADER_PARTITION(ScanDisk, TEvVolume);
+        BLOCKSTORE_FORWARD_TO_LEADER_PARTITION(GetScanDiskStatus, TEvVolume);
+        BLOCKSTORE_FORWARD_TO_LEADER_PARTITION(CheckRange, TEvVolume);
 
         // ClientId changed event.
         case TEvVolume::TEvRWClientIdChanged::EventType: {

@@ -10,7 +10,6 @@ struct IService;
 using IServicePtr = std::shared_ptr<IService>;
 
 class TLogbrokerConfig;
-using TLogbrokerConfigPtr = std::shared_ptr<TLogbrokerConfig>;
-using TLogbrokerConfigConstPtr = std::shared_ptr<const TLogbrokerConfig>;
+using TLogbrokerConfigPtr = std::shared_ptr<const TLogbrokerConfig>;
 
 }   // namespace NCloud::NBlockStore::NLogbroker

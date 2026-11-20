@@ -46,7 +46,7 @@ private:
     };
 
     const TRequestInfoPtr RequestInfo;
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     const TString DiskId;
     const bool ExactDiskIdMatch = false;
 
@@ -56,7 +56,7 @@ private:
 public:
     TDescribeVolumeActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TString diskId,
         bool exactDiskIdMatch);
 
@@ -91,7 +91,7 @@ private:
 
 TDescribeVolumeActor::TDescribeVolumeActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TString diskId,
         bool exactDiskIdMatch)
     : RequestInfo(std::move(requestInfo))

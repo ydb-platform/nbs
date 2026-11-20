@@ -160,6 +160,7 @@ TLogRecordPtr TLogRecordChain::GetNextImpl(ui64 lsn) const
 
 TVector<TLogRecordPtr> TLogRecordChain::GetReadyRun(
     ui64 afterLsn,
+    ui64 maxLsn,
     ui64 maxRecordCount) const
 {
     TVector<TLogRecordPtr> records;
@@ -177,6 +178,10 @@ TVector<TLogRecordPtr> TLogRecordChain::GetReadyRun(
         while (records.size() < recordCount) {
             auto it = Records.find(tailLsn);
             if (it == Records.end() || !it->second.Ready) {
+                break;
+            }
+
+            if (it->second.Record->Lsn > maxLsn) {
                 break;
             }
 
