@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package NCloud.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// Codec of a compressed blob.
+//
+// The values are stored in the blob metadata of blockstore and filestore:
+// never renumber or reuse them. Each value identifies a specific
+// library/cpp/blockcodecs configuration.
+// Keep in sync with CompressionCodecs in
+// cloud/storage/core/libs/compression/codec.cpp.
+
+enum ECompressionCodec
+{
+    COMPRESSION_CODEC_NONE = 0;
+    COMPRESSION_CODEC_LZ4_FAST14_SAFE = 1;
+    COMPRESSION_CODEC_SNAPPY = 2;
+    COMPRESSION_CODEC_ZSTD_3 = 3;
+    COMPRESSION_CODEC_ZSTD_1 = 4;
+}

@@ -2879,7 +2879,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             FormatError(response->GetError()));
     }
 
-    TABLET_TEST_4K_ONLY(ShouldReturnErrorUponFileUnlinkWithUnlinkDirectoryFlag)
+    void TestUnlinkWithMismatchedNodeType(
+        const TFileSystemConfig& tabletConfig,
+        const TTestEnvConfig& testEnvConfig,
+        bool unlinkDirectory,
+        ui32 expectedStatus)
     {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetDirectoryCreationInShardsEnabled(true);
@@ -2911,20 +2915,38 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         const TString name1 = "name1";
         const TString uuid1 = CreateGuidAsString();
 
-        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, uuid1));
+        const auto nodeArgs = unlinkDirectory
+            ? TCreateNodeArgs::File(RootNodeId, uuid1)
+            : TCreateNodeArgs::Directory(RootNodeId, uuid1);
+        CreateNode(tablet, nodeArgs);
         CreateExternalRef(tablet, RootNodeId, name1, shardId1, uuid1);
 
-        tablet.SendUnlinkNodeRequest(
-            RootNodeId,
-            name1,
-            true /* unlinkDirectory */);
-        auto response = tablet.RecvUnlinkNodeResponse();
+        auto response =
+            tablet.SendAndRecvUnlinkNode(RootNodeId, name1, unlinkDirectory);
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_FS_NOTDIR,
+            expectedStatus,
             response->GetStatus(),
             FormatError(response->GetError()));
 
         UNIT_ASSERT_VALUES_EQUAL(0, nodeOpErrorFromShardCounter->Val());
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldReturnErrorUponFileUnlinkWithUnlinkDirectoryFlag)
+    {
+        TestUnlinkWithMismatchedNodeType(
+            tabletConfig,
+            testEnvConfig,
+            true /* unlinkDirectory */,
+            E_FS_NOTDIR);
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldReturnIsDirWithoutUnlinkDirectoryFlag)
+    {
+        TestUnlinkWithMismatchedNodeType(
+            tabletConfig,
+            testEnvConfig,
+            false /* unlinkDirectory */,
+            E_FS_ISDIR);
     }
 
     void DoTestShouldProperlyCompleteUnlinkNodeUponTabletRebootAfterRenameNode(

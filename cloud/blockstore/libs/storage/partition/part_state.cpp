@@ -1,5 +1,7 @@
 #include "part_state.h"
 
+#include <cloud/blockstore/libs/storage/core/config.h>
+
 #include <cloud/storage/core/libs/tablet/model/channels.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -118,7 +120,10 @@ TPartitionState::TPartitionState(
           Max<ui32>()))
     , MaxBlobsPerRange(maxBlobsPerRange)
     , CompactionRangeCountPerRun(compactionRangeCountPerRun)
-    , CleanupQueue(GetBlockSize())
+    , CleanupQueue(
+          GetBlockSize(),
+          GetChannelsByKind([](EChannelDataKind kind)
+                            { return kind == EChannelDataKind::Mixed; }))
     , CleanupScoreHistory(cleanupScoreHistorySize)
     , CheckpointAwareCleanupEnabled(checkpointAwareCleanupEnabled)
 {
@@ -486,6 +491,44 @@ void TPartitionState::ConfirmBlobs(
 
     UnconfirmedBlobs.clear();
     UnconfirmedBlobCount = 0;
+}
+
+ui32 TPartitionState::GetMixedBlocksCompactionPercentage(
+    const TStorageConfig& config) const
+{
+    ui64 mixedBytes = 0;
+    ui64 totalBytes = 0;
+    if (config.GetMixedBlocksCompactionByteCountersEnabled()) {
+        // Use channel bytes or channel blocks, excluding blobs already
+        // overwritten and waiting for cleanup.
+        mixedBytes = AreExtendedBlobCountersEnabled()
+                         ? GetMixedBytesCount()
+                         : GetMixedBlocksCount() * GetBlockSize();
+        const ui64 mergedBytes = AreExtendedBlobCountersEnabled()
+                                     ? GetMergedBytesCount()
+                                     : GetMergedBlocksCount() * GetBlockSize();
+        totalBytes = mixedBytes + mergedBytes;
+        const ui64 queueMixedBytes = CleanupQueue.GetQueueMixedBytes();
+        const ui64 queueBytes = CleanupQueue.GetQueueBytes();
+        mixedBytes -= Min(mixedBytes, queueMixedBytes);
+        totalBytes -= Min(totalBytes, queueBytes);
+    } else {
+        mixedBytes =
+            CompactionMap.GetMixedBlocksCountPerDisk() * GetBlockSize();
+        totalBytes =
+            CompactionMap.GetStoredBlocksCountPerDisk() * GetBlockSize();
+    }
+
+    const bool isSSD =
+        GetConfig().GetStorageMediaKind() == NCloud::NProto::STORAGE_MEDIA_SSD;
+    const ui64 minStoredBytes =
+        isSSD ? config.GetMixedBlocksCompactionMinStoredBytesSSD()
+              : config.GetMixedBlocksCompactionMinStoredBytesHDD();
+    if (!totalBytes || totalBytes < minStoredBytes) {
+        return 0;
+    }
+
+    return static_cast<ui32>(mixedBytes * 100. / totalBytes);
 }
 
 ui64 TPartitionState::GetMixedBytesCount() const

@@ -36,6 +36,15 @@ func Remove(slice []string, value string) []string {
 	return slice
 }
 
+// Enum value N stands for bit N-1, as ProtoFlag does in the C++ code.
+func ProtoFlag[T ~int32](flag T) uint32 {
+	if flag <= 0 {
+		return 0
+	}
+
+	return 1 << (flag - 1)
+}
+
 func RandomShuffle(slice []string) {
 	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(

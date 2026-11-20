@@ -672,6 +672,16 @@ public:
     {
         out << "{}";
     }
+
+    [[nodiscard]] NCloud::NProto::TError ValidateConfigUpdate(
+        const NProtoPrivate::TFastShardConfig& oldConfig,
+        const NProtoPrivate::TFastShardConfig& newConfig) const override
+    {
+        Y_UNUSED(oldConfig);
+        Y_UNUSED(newConfig);
+
+        return {};
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

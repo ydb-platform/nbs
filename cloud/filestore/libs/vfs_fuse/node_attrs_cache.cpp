@@ -30,6 +30,11 @@ void TNodeAttrsCache::Add(
     GetShard(attrs.GetId()).Add(attrs.GetId(), attrs, version, deadline);
 }
 
+bool TNodeAttrsCache::IsCacheable(ui64 nodeId, ui64 version)
+{
+    return GetShard(nodeId).IsCacheable(nodeId, version);
+}
+
 TMaybe<NProto::TNodeAttr> TNodeAttrsCache::Get(ui64 nodeId, TInstant now)
 {
     return GetShard(nodeId).Get(nodeId, now);
@@ -42,6 +47,17 @@ void TNodeAttrsCache::Invalidate(ui64 nodeId, ui64 version)
     //
 
     Y_UNUSED(GetShard(nodeId).Invalidate(nodeId, version));
+}
+
+bool TNodeAttrsCache::CheckAndInvalidate(
+    ui64 nodeId,
+    ui64 version,
+    ui64 invalidationVersion)
+{
+    return GetShard(nodeId).CheckAndInvalidate(
+        nodeId,
+        version,
+        invalidationVersion);
 }
 
 void TNodeAttrsCache::InvalidateAll(ui64 version)

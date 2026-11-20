@@ -427,7 +427,8 @@ func (c *client) executeAction(
 		return wrapError(err)
 	}
 
-	err = new(jsonpb.Unmarshaler).Unmarshal(
+	unmarshaler := jsonpb.Unmarshaler{AllowUnknownFields: true}
+	err = unmarshaler.Unmarshal(
 		bytes.NewReader(output),
 		response,
 	)
@@ -477,14 +478,24 @@ func (c *client) GetFileSystemTopology(
 		return FilesystemTopology{}, err
 	}
 
+	var shardTopology []ShardInfo
+	for _, shard := range response.GetShardTopology().GetShards() {
+		shardTopology = append(shardTopology, ShardInfo{
+			Type:     uint32(shard.GetType()),
+			RoleMask: shard.GetRoleMask(),
+			ShardID:  shard.GetShardId(),
+			TabletID: shard.GetTabletId(),
+		})
+	}
+
 	return FilesystemTopology{
 		ShardFileSystemIDs:                     response.ShardFileSystemIds,
+		ShardTopology:                          shardTopology,
 		ShardNo:                                response.ShardNo,
 		DirectoryCreationInShardsEnabled:       response.DirectoryCreationInShardsEnabled,
 		StrictFileSystemSizeEnforcementEnabled: response.StrictFileSystemSizeEnforcementEnabled,
 		MaxShardCount:                          response.MaxShardCount,
 		ForceDirectoryCreationInShards:         response.ForceDirectoryCreationInShards,
-		FileShardFileSystemIDs:                 response.FileShardFileSystemIds,
 		CompressNodeRef:                        response.CompressNodeRef,
 		MainFileSystemID:                       response.MainFileSystemId,
 	}, nil

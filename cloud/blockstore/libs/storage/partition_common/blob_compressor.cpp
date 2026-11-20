@@ -23,40 +23,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TCompressionCodec
-{
-    TCompressionMetadata::ECompressionType Type;
-    TStringBuf Family;
-    TStringBuf Name;
-};
-
-constexpr TCompressionCodec CompressionCodecs[] = {
-    {TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
-     "lz4",
-     "lz4-fast14-safe"},
-    {TCompressionMetadata::COMPRESSION_SNAPPY, "snappy", "snappy"},
-    {TCompressionMetadata::COMPRESSION_ZSTD_3, "zstd", "zstd_3"}};
-
-static_assert(
-    TCompressionMetadata::ECompressionType_ARRAYSIZE - 1 ==
-    sizeof(CompressionCodecs) / sizeof(CompressionCodecs[0]));
-
-constexpr bool IsValidCodecList(const TCompressionCodec* codecList, size_t size)
-{
-    for (size_t i = 0; i < size; ++i) {
-        if (codecList[i].Type !=
-            static_cast<TCompressionMetadata::ECompressionType>(i + 1))
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
-static_assert(IsValidCodecList(
-    CompressionCodecs,
-    TCompressionMetadata::ECompressionType_ARRAYSIZE - 1));
-
 std::optional<TBlobCompressor::TMetricsConfig> PrepareMetricsConfig(
     std::optional<TBlobCompressor::TMetricsConfig> config)
 {
@@ -64,35 +30,6 @@ std::optional<TBlobCompressor::TMetricsConfig> PrepareMetricsConfig(
         SortUnique(config->ChunkSizes);
     }
     return config;
-}
-
-TResultOrError<const NBlockCodecs::ICodec*> GetCodec(
-    TCompressionMetadata::ECompressionType codec)
-{
-    try {
-        if (codec < TCompressionMetadata::ECompressionType_MIN ||
-            codec > TCompressionMetadata::ECompressionType_MAX ||
-            codec == TCompressionMetadata::COMPRESSION_NONE)
-        {
-            return MakeError(
-                E_ARGUMENT,
-                TStringBuilder() << "Unsupported blob compression type: "
-                                 << static_cast<int>(codec));
-        }
-        const auto& entry = CompressionCodecs[static_cast<size_t>(codec) - 1];
-
-        return NBlockCodecs::Codec(entry.Name);
-    } catch (const NBlockCodecs::TNotFound&) {
-        return MakeError(
-            E_ARGUMENT,
-            TStringBuilder() << "Unavailable blob compression type: "
-                             << static_cast<int>(codec));
-    } catch (...) {
-        return MakeError(
-            E_FAIL,
-            TStringBuilder() << "Failed to look up blob compression codec: "
-                             << CurrentExceptionMessage());
-    }
 }
 
 TError ValidateCompressionSettings(ui32 blockSize, ui32 chunkSize)
@@ -289,24 +226,10 @@ ui64 EstimateCompressedSize(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<TCompressionMetadata::ECompressionType>
-ParseBlobCompressionCodec(TStringBuf codecName)
-{
-    for (const auto& entry: CompressionCodecs) {
-        if (entry.Family == codecName || entry.Name == codecName) {
-            return entry.Type;
-        }
-    }
-    return MakeError(
-        E_ARGUMENT,
-        TStringBuilder() << "Unsupported blob compression codec: "
-                         << codecName);
-}
-
 TResultOrError<TCompressedBlob> CompressBlob(
     ui32 blockSize,
     ui32 chunkSize,
-    TCompressionMetadata::ECompressionType compressionType,
+    NCloud::NProto::ECompressionCodec compressionType,
     std::span<const TBlockDataRef> blobPayload)
 {
     if (auto error =
@@ -315,7 +238,7 @@ TResultOrError<TCompressedBlob> CompressBlob(
     {
         return error;
     }
-    auto codecOrError = GetCodec(compressionType);
+    auto codecOrError = GetCompressionCodec(compressionType);
     if (HasError(codecOrError.GetError())) {
         return codecOrError.GetError();
     }
@@ -393,7 +316,7 @@ TError DecompressBlob(
         return {};
     }
 
-    auto codecOrError = GetCodec(compression.GetCodec());
+    auto codecOrError = GetCompressionCodec(compression.GetCodec());
     if (HasError(codecOrError.GetError())) {
         return codecOrError.GetError();
     }
@@ -491,7 +414,7 @@ TResultOrError<TReadPlan> PlanReadBlob(
         return error;
     }
 
-    auto codecOrError = GetCodec(compression.GetCodec());
+    auto codecOrError = GetCompressionCodec(compression.GetCodec());
     if (HasError(codecOrError.GetError())) {
         return codecOrError.GetError();
     }
@@ -560,9 +483,9 @@ TResultOrError<TReadPlan> PlanReadBlob(
 }
 
 TBlobCompressor::TBlobCompressor(
-    TCompressionMetadata::ECompressionType codec,
+    NCloud::NProto::ECompressionCodec codec,
     std::optional<TMetricsConfig> metricsConfig)
-    : BlobCodec(GetCodec(codec))
+    : BlobCodec(GetCompressionCodec(codec))
     , MetricsConfig(PrepareMetricsConfig(std::move(metricsConfig)))
 {}
 

@@ -329,14 +329,17 @@ void TFileSystem::Create(
                 }
 
                 self->InvalidateCachedNodeAttrs(parent);
-                self->InvalidateCachedNodeAttrs(response.GetNodeAttr().GetId());
+                const bool cacheable =
+                    self->InvalidateCachedNodeAttrsUponOwnChange(
+                        response.GetNodeAttr().GetId(),
+                        version);
                 self->ReplyCreateWithCache(
                     *callContext,
                     error,
                     req,
                     response.GetHandle(),
                     response.GetNodeAttr(),
-                    version,
+                    cacheable,
                     HasFlag(
                         flags,
                         NProto::TCreateHandleRequest::E_CREATE));
@@ -818,7 +821,7 @@ void TFileSystem::DoWrite(
             // that read node attributes.
             //
 
-            self->InvalidateNodeInCache(ino);
+            self->InvalidateCachedNodeAttrs(ino);
             self->ReplyWrite(*callContext, error, req, size);
         }
     };
@@ -972,7 +975,7 @@ void TFileSystem::FAllocate(
                 // operations that read node attributes.
                 //
 
-                InvalidateNodeInCache(ino);
+                InvalidateCachedNodeAttrs(ino);
                 self->ReplyError(*callContext, error, req, 0);
             }
         });

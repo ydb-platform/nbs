@@ -288,6 +288,54 @@ void CheckReadAfterSetXAttrRacingWithDelayedGetXAttr(bool xattrExists)
     UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("GetXAttrCacheMissCount"));
 }
 
+//
+// Sends a Lookup (if name is set) or a GetAttr of nodeId, delays its backend
+// request until race is done and returns the attr and entry timeouts of the
+// reply to the guest.
+//
+
+std::pair<ui64, ui64> GetTimeoutsUponRace(
+    TMetadataCachingEnv& env,
+    const TString& name,
+    ui64 nodeId,
+    const std::function<void()>& race)
+{
+    auto promise = NewPromise();
+    std::atomic<bool> requested = false;
+    env.Bootstrap.Service->SetHandlerGetNodeAttr(
+        [&] (auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+            requested = true;
+            auto response = env.HandleGetNodeAttr(*request);
+            return promise.GetFuture().Apply(
+                [response] (const auto&) { return response; });
+        });
+
+    auto release = [&] {
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&] { return requested.load(); }));
+        race();
+        promise.SetValue();
+    };
+
+    if (!name.empty()) {
+        auto lookup =
+            std::make_shared<TLookupRequest>(name, RootNodeId);
+        auto future = env.Bootstrap.Fuse->SendRequest(lookup);
+        release();
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        return {lookup->Out->Body.attr_valid, lookup->Out->Body.entry_valid};
+    }
+
+    auto getAttr = std::make_shared<TGetAttrRequest>(nodeId);
+    auto future = env.Bootstrap.Fuse->SendRequest(getAttr);
+    release();
+    UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+    return {getAttr->Out->Body.attr_valid, 0};
+}
+
 NProto::TNodeAttr MakeFileAttr(ui64 nodeId)
 {
     NProto::TNodeAttr attrs;
@@ -819,6 +867,214 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         }
 
         UNIT_ASSERT_GT(env.GetCounter("LookupCacheMissCount"), Limit + 1);
+    }
+
+    Y_UNIT_TEST(ShouldNotAllowGuestCachingUponLookupAndLocalChangeRace)
+    {
+        TMetadataCachingEnv env;
+        env.Bootstrap.Service->SetHandlerSetNodeAttr(
+            [] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                NProto::TSetNodeAttrResponse response;
+                *response.MutableNode() = MakeFileAttr(request->GetNodeId());
+                return MakeFuture(response);
+            });
+
+        const auto timeouts = GetTimeoutsUponRace(
+            env,
+            "f",
+            InvalidNodeId,
+            [&] {
+                auto setAttr =
+                    env.Bootstrap.Fuse->SendRequest<TSetAttrRequest>(
+                        FileNodeId,
+                        0 /* fh */);
+                UNIT_ASSERT_NO_EXCEPTION(setAttr.GetValue(WaitTimeout));
+            });
+        UNIT_ASSERT_VALUES_EQUAL(0, timeouts.first);
+        UNIT_ASSERT_VALUES_EQUAL(0, timeouts.second);
+
+        //
+        // Without a race the guest may cache the reply.
+        //
+
+        const auto noRaceTimeouts =
+            GetTimeoutsUponRace(env, "f", InvalidNodeId, [] {});
+        UNIT_ASSERT_GT(noRaceTimeouts.first, 0);
+        UNIT_ASSERT_GT(noRaceTimeouts.second, 0);
+    }
+
+    Y_UNIT_TEST(ShouldNotAllowGuestCachingUponGetAttrAndEventRace)
+    {
+        TMetadataCachingEnv env;
+
+        const auto timeouts = GetTimeoutsUponRace(
+            env,
+            {} /* name */,
+            FileNodeId,
+            [&] {
+                NProto::TFileSystemEvent event;
+                event.MutableInvalidateNode()->SetNodeId(FileNodeId);
+                env.SendEvent(event);
+            });
+        UNIT_ASSERT_VALUES_EQUAL(0, timeouts.first);
+    }
+
+    Y_UNIT_TEST(ShouldNotAllowGuestCachingUponEvictedInvalidation)
+    {
+        constexpr ui32 Limit = 16;
+
+        NProto::TFileStoreFeatures features;
+        features.SetNodeAttrsCacheLimit(Limit);
+        TMetadataCachingEnv env(features);
+
+        //
+        // The invalidations of many other nodes may evict the invalidation of
+        // the requested node - the reply still may not be cached.
+        //
+
+        const auto timeouts = GetTimeoutsUponRace(
+            env,
+            {} /* name */,
+            FileNodeId,
+            [&] {
+                for (ui64 i = 0; i <= 64 * Limit; ++i) {
+                    NProto::TFileSystemEvent event;
+                    event.MutableInvalidateNode()->SetNodeId(FileNodeId + i);
+                    env.SendEvent(event);
+                }
+            });
+        UNIT_ASSERT_VALUES_EQUAL(0, timeouts.first);
+    }
+
+    Y_UNIT_TEST(ShouldAllowGuestCachingOfOwnChanges)
+    {
+        TMetadataCachingEnv env;
+
+        std::atomic<ui64> lastNodeId = FileNodeId;
+        env.Bootstrap.Service->SetHandlerCreateNode(
+            [&] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                NProto::TCreateNodeResponse response;
+                auto* node = response.MutableNode();
+                if (request->HasLink()) {
+                    *node = MakeFileAttr(request->GetLink().GetTargetNode());
+                } else {
+                    *node = MakeFileAttr(++lastNodeId);
+                    if (request->HasDirectory()) {
+                        node->SetType(NProto::E_DIRECTORY_NODE);
+                    } else if (request->HasSymLink()) {
+                        node->SetType(NProto::E_LINK_NODE);
+                    }
+                }
+                return MakeFuture(response);
+            });
+        env.Bootstrap.Service->SetHandlerCreateHandle(
+            [&] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                Y_UNUSED(request);
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(1);
+                *response.MutableNodeAttr() = MakeFileAttr(++lastNodeId);
+                return MakeFuture(response);
+            });
+
+        env.Bootstrap.Service->SetHandlerSetNodeAttr(
+            [] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                NProto::TSetNodeAttrResponse response;
+                *response.MutableNode() = MakeFileAttr(request->GetNodeId());
+                return MakeFuture(response);
+            });
+
+        auto assertCacheable = [] (const fuse_entry_out& entry)
+        {
+            UNIT_ASSERT_GT(entry.attr_valid, 0);
+            UNIT_ASSERT_GT(entry.entry_valid, 0);
+        };
+
+        auto check = [&] {
+            auto mkDir = std::make_shared<TMkDirRequest>("d", RootNodeId);
+            env.Bootstrap.Fuse->SendRequest(mkDir).GetValue(WaitTimeout);
+            assertCacheable(mkDir->Out->Body);
+
+            auto mkNode = std::make_shared<TMkNodeRequest>("n", RootNodeId);
+            env.Bootstrap.Fuse->SendRequest(mkNode).GetValue(WaitTimeout);
+            assertCacheable(mkNode->Out->Body);
+
+            auto symLink =
+                std::make_shared<TSymLinkRequest>("s", "t", RootNodeId);
+            env.Bootstrap.Fuse->SendRequest(symLink).GetValue(WaitTimeout);
+            assertCacheable(symLink->Out->Body);
+
+            auto link =
+                std::make_shared<TLinkRequest>("l", FileNodeId, RootNodeId);
+            env.Bootstrap.Fuse->SendRequest(link).GetValue(WaitTimeout);
+            assertCacheable(link->Out->Body);
+
+            auto create =
+                std::make_shared<TCreateHandleRequest>("c", RootNodeId);
+            create->In->Body.flags = O_CREAT | O_RDWR;
+            create->In->Body.mode = 0644;
+            env.Bootstrap.Fuse->SendRequest(create).GetValue(WaitTimeout);
+            assertCacheable(create->Out->Body.Entry);
+
+            auto setAttr =
+                std::make_shared<TSetAttrRequest>(FileNodeId, 0 /* fh */);
+            env.Bootstrap.Fuse->SendRequest(setAttr).GetValue(WaitTimeout);
+            UNIT_ASSERT_GT(setAttr->Out->Body.attr_valid, 0);
+        };
+
+        check();
+
+        //
+        // The invalidations of everything raise the watermark.
+        //
+
+        env.EventHandler->OnDisconnect(1 /* tabletId */);
+        check();
+    }
+
+    Y_UNIT_TEST(ShouldNotAllowGuestCachingUponSetAttrAndEventRace)
+    {
+        TMetadataCachingEnv env;
+
+        auto promise = NewPromise();
+        std::atomic<bool> requested = false;
+        env.Bootstrap.Service->SetHandlerSetNodeAttr(
+            [&] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                requested = true;
+                NProto::TSetNodeAttrResponse response;
+                *response.MutableNode() = MakeFileAttr(request->GetNodeId());
+                return promise.GetFuture().Apply(
+                    [response] (const auto&) { return response; });
+            });
+
+        auto setAttr =
+            std::make_shared<TSetAttrRequest>(FileNodeId, 0 /* fh */);
+        auto future = env.Bootstrap.Fuse->SendRequest(setAttr);
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&] { return requested.load(); }));
+
+        //
+        // The node is changed by another client while SetAttr is in flight -
+        // the response may not reflect that change.
+        //
+
+        NProto::TFileSystemEvent event;
+        event.MutableInvalidateNode()->SetNodeId(FileNodeId);
+        env.SendEvent(event);
+
+        promise.SetValue();
+        UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(0, setAttr->Out->Body.attr_valid);
     }
 
     Y_UNIT_TEST(ShouldCacheAttrsOfNodesNotLookedUp)

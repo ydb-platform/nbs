@@ -344,8 +344,9 @@ void TDestroyFileStoreActor::HandleGetFileSystemTopologyResponse(
         FileSystemId.c_str(),
         msg->Record.Utf8DebugString().Quote().c_str());
 
-    for (auto& shardId: *msg->Record.MutableShardFileSystemIds()) {
-        ShardIds.push_back(std::move(shardId));
+    const auto topology = GetShardTopology(msg->Record);
+    for (const auto& shard: topology.GetShards()) {
+        ShardIds.push_back(shard.GetShardId());
     }
 
     if (ShardIds) {

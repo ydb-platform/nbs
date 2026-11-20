@@ -5893,6 +5893,64 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(3, writeDataCalled.load());
     }
 
+    Y_UNIT_TEST(ShouldIncludeCachedDataInSetAttrReplyWithServerWriteBackCache)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            1000 /* handleOpsQueueStateFileSize */,
+            0 /* writeBackCacheAutomaticFlushPeriodMs */);
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+
+        std::atomic<int> writeDataCalled = 0;
+        bootstrap.Service->WriteDataHandler = [&] (auto callContext, auto) {
+            Y_UNUSED(callContext);
+            writeDataCalled++;
+            return MakeFuture(NProto::TWriteDataResponse());
+        };
+        bootstrap.Service->SetNodeAttrHandler = [&] (auto callContext, auto) {
+            Y_UNUSED(callContext);
+            NProto::TSetNodeAttrResponse response;
+            auto* node = response.MutableNode();
+            node->SetId(nodeId);
+            node->SetType(NProto::E_REGULAR_NODE);
+            return MakeFuture(response);
+        };
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto write = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0 /* offset */,
+            CreateBuffer(4_KB, 'a'));
+        write->In->Body.flags |= O_WRONLY;
+        UNIT_ASSERT_NO_EXCEPTION(
+            bootstrap.Fuse->SendRequest(write).GetValue(WaitTimeout));
+
+        //
+        // chmod doesn't flush the cached data - the backend doesn't know
+        // about it yet, but the reply has to include it.
+        //
+
+        auto setAttr = std::make_shared<TSetAttrRequest>(nodeId, handleId);
+        setAttr->In->Body.valid = FUSE_SET_ATTR_MODE;
+        setAttr->In->Body.mode = S_IFREG | 0600;
+        UNIT_ASSERT_NO_EXCEPTION(
+            bootstrap.Fuse->SendRequest(setAttr).GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, setAttr->Out->Body.attr.size);
+    }
+
     Y_UNIT_TEST(ShouldFsyncDirWithServerWriteBackCacheEnabled)
     {
         NProto::TFileStoreFeatures features;
@@ -7107,6 +7165,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 serverWriteBackCacheEnabled);
             features.SetServerWriteBackCacheStateFileSize(
                 WriteBackCacheStateFileSize);
+            features.SetMaxRequestSize(WriteBackCacheMaxRequestSize);
 
             TBootstrap bootstrap(
                 CreateWallClockTimer(),
@@ -7211,6 +7270,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 serverWriteBackCacheEnabled);
             features.SetServerWriteBackCacheStateFileSize(
                 WriteBackCacheStateFileSize);
+            features.SetMaxRequestSize(WriteBackCacheMaxRequestSize);
 
             TBootstrap bootstrap(
                 CreateWallClockTimer(),
@@ -7886,8 +7946,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         bootstrap.GetNodeAttrResponse.SetValue(std::move(response));
     }
 
-    void TestForgetNodeAfterAttrReply(
-        const std::function<void(TAttrRaceBootstrap&)>& attrRequest)
+    Y_UNIT_TEST(ShouldNotAllowGuestAttrCachingUponRaceWithForget)
     {
         TAttrRaceBootstrap bootstrap;
         bootstrap.Start();
@@ -7902,44 +7961,24 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         ReplyGetNodeAttr(bootstrap);
         lookup.GetValue(WaitTimeout);
 
-        attrRequest(bootstrap);
-
         auto request = std::make_shared<TGetAttrRequest>(bootstrap.NodeId);
         auto pending = bootstrap.Fuse->SendRequest(request);
         UNIT_ASSERT(bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout));
 
-        // Record a version newer than the probe's, then drop the guest's only
-        // lookup reference. If an attr reply had leaked a reference, the entry
-        // would survive FORGET with that newer version, and the probe would
-        // get attr_valid == 0 as if its reply raced with a modification.
-        bootstrap.Write(/* offset */ 0, 4_KB);
+        //
+        // The node is modified while GetAttr is in flight and the guest drops
+        // its only lookup reference. The reply may be stale - the guest must
+        // not cache it.
+        //
+
+        bootstrap.Write(0 /* offset */, 4_KB);
         bootstrap.Fuse->SendRequest<TForgetRequest>(bootstrap.NodeId, 1)
             .GetValue(WaitTimeout);
 
         ReplyGetNodeAttr(bootstrap);
         pending.GetValue(WaitTimeout);
-        UNIT_ASSERT_GT(request->Out->Body.attr_valid, 0);
-    }
-
-    Y_UNIT_TEST(ShouldForgetNodeAfterGetAttrReply)
-    {
-        TestForgetNodeAfterAttrReply(
-            [] (TAttrRaceBootstrap& bootstrap) {
-                auto getAttr = bootstrap.Fuse->SendRequest<TGetAttrRequest>(
-                    bootstrap.NodeId);
-                UNIT_ASSERT(
-                    bootstrap.GetNodeAttrRequestEvent.WaitT(WaitTimeout));
-                ReplyGetNodeAttr(bootstrap);
-                getAttr.GetValue(WaitTimeout);
-            });
-    }
-
-    Y_UNIT_TEST(ShouldForgetNodeAfterSetAttrReply)
-    {
-        TestForgetNodeAfterAttrReply(
-            [] (TAttrRaceBootstrap& bootstrap) {
-                bootstrap.SetSize(0);
-            });
+        UNIT_ASSERT_VALUES_EQUAL(0, request->Out->Body.attr_valid);
+        UNIT_ASSERT_VALUES_EQUAL(0, request->Out->Body.attr_valid_nsec);
     }
 
     Y_UNIT_TEST(

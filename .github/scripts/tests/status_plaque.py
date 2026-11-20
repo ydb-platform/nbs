@@ -24,7 +24,6 @@ BLOCK_RE = re.compile(rf"{re.escape(START)}.*?{re.escape(END)}", re.DOTALL)
 COMMENT_SIZE_LIMIT = 60_000
 LOGGER = logging.getLogger(__name__)
 STATE_NOTICE = "Some stored results were unavailable. Check the workflow reports."
-COUNT_STATUSES = tuple(status.name for status in TestStatus.summary_table_order())
 STATE_ENCODING = "zlib-v1:"
 ICONS = {
     "pending": "⏳",
@@ -99,6 +98,10 @@ class Report:
     @property
     def execution_message(self) -> str:
         if self.exit_code in (None, 0):
+            return ""
+        if self.exit_code == 1 and any(
+            self.count(status.name) for status in TestStatus if status.is_failure
+        ):
             return ""
         if self.exit_code == 124:
             return "Test execution timed out (exit code 124)"
@@ -436,7 +439,7 @@ class Plaque:
             icons=ICONS,
             labels=LABELS,
             messages=MESSAGES,
-            count_statuses=COUNT_STATUSES,
+            count_statuses=TestStatus.summary_table_order(),
             notice=self.notice,
             workflow_url=self.run.url,
         )

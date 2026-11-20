@@ -39,7 +39,7 @@ public:
         // (the request future vs this handler), so an invalidation may be
         // applied before the response it invalidates is put into the caches.
         // Each invalidation gets a new cache version and the responses to the
-        // requests started before it are not cached (see TNodeCache and
+        // requests started before it are not cached (see TNodeAttrsCache and
         // TNodeRefCache).
         //
 

@@ -178,7 +178,8 @@ void TUnlinkNodeInShardActor::HandleUnlinkNodeResponse(
 
         const ui32 code = msg->GetError().GetCode();
         if (Request.GetShouldUnlockUponCompletion() && (code == E_FS_NOTEMPTY
-            || Request.GetUnlinkDirectory() && code == E_FS_NOTDIR))
+            || Request.GetUnlinkDirectory() && code == E_FS_NOTDIR
+            || !Request.GetUnlinkDirectory() && code == E_FS_ISDIR))
         {
             //
             // These errors may happen during normal operation.

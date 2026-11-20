@@ -213,6 +213,7 @@ void Convert(
     // TODO need set ConfigVersion?
     fileStore.SetNodesCount(nodesCount);
     fileStore.SetStorageMediaKind(fileSystem.GetStorageMediaKind());
+    // TODO(#8034): switch to shard topology
     fileStore.MutableShardFileSystemIds()->CopyFrom(
         fileSystem.GetShardFileSystemIds());
     fileStore.SetShardNo(fileSystem.GetShardNo());
@@ -553,7 +554,7 @@ void TIndexTabletActor::CompleteTx_CreateSession(
             fileStore.GetFeatures().ShortDebugString().c_str());
     }
 
-    if (FastShard) {
+    if (GetFileSystem().GetIsFastShard()) {
         response->Record.SetAdapterModeEnabled(true);
         if (!args.Request.GetNoFileStoreInfo()) {
             auto* f = response->Record.MutableFileStore()->MutableFeatures();
