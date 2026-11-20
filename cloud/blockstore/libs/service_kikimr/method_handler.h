@@ -28,6 +28,38 @@ namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The splitter reads each part's timing separately, using the same call
+// context for the existing statistics and traces. A plain request consumes the
+// volume timing here, once, even when the volume lives on another node.
+template <typename T>
+bool RequestVolumeLatencyTiming(const TCallContext& callContext,
+                                typename T::TRequestProto& request)
+{
+    if constexpr (IsReadRequest(T::Request) || IsWriteRequest(T::Request)) {
+        if (callContext.IsLatencyTimingEnabled()) {
+            const bool consume = !request.GetHeaders()
+                                      .GetInternal()
+                                      .GetReturnVolumeLatencyTiming();
+            auto* headers = request.MutableHeaders();
+            headers->SetLatencyTimingRequested(true);
+            headers->MutableInternal()->SetReturnVolumeLatencyTiming(true);
+            return consume;
+        }
+    }
+    return false;
+}
+
+template <typename T>
+void ConsumeVolumeLatencyTiming(bool consume, TCallContext& callContext,
+                                typename T::TResponseProto& response)
+{
+    if constexpr (IsReadRequest(T::Request) || IsWriteRequest(T::Request)) {
+        if (consume) {
+            callContext.ConsumeLatencyTiming(*response.MutableHeaders());
+        }
+    }
+}
+
 // Tracks in-flight requests of one method type for a permanent handler actor.
 // SendRequest may be called concurrently from arbitrary service threads, while
 // responses and timeouts arrive on actor-system threads. Lock protects the
@@ -55,6 +87,7 @@ class TMethodHandler final
         // dispatching thread can safely finish and reject it in FinishDispatch.
         // Access after publication is protected by Lock.
         bool Dispatching = true;
+        bool ConsumeLatencyTiming = false;
 
         TRequestState(
             NThreading::TPromise<TResponseProto> response,
@@ -94,6 +127,9 @@ public:
             std::move(response),
             std::move(callContext),
             GetDiskId(*request));
+
+        state->ConsumeLatencyTiming =
+            RequestVolumeLatencyTiming<T>(*state->CallContext, *request);
 
         auto event = std::make_unique<NActors::IEventHandle>(
             NStorage::MakeStorageServiceId(),
@@ -298,6 +334,8 @@ private:
         TResponseProto&& response)
     {
         try {
+            ConsumeVolumeLatencyTiming<T>(state.ConsumeLatencyTiming,
+                                          *state.CallContext, response);
             state.Response.SetValue(std::move(response));
         } catch (...) {
             LOG_ERROR_S(
@@ -318,6 +356,8 @@ private:
         response.MutableError()->SetCode(E_REJECTED);
 
         try {
+            ConsumeVolumeLatencyTiming<T>(state.ConsumeLatencyTiming,
+                                          *state.CallContext, response);
             state.Response.SetValue(std::move(response));
         } catch (...) {
             STORAGE_ERROR(

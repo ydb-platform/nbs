@@ -216,18 +216,17 @@ private:
             return;                                                            \
         }                                                                      \
         guard.Release();                                                       \
-        ThrottlerTracker->TrackAdvancedRequest(                                \
-            *concreteState->CallContext,                                       \
-            *concreteState->Request);                                          \
-        concreteState->CallContext->Advance(cycles);                           \
-        ThrottlerLogger->LogAdvancedRequest(                                   \
-            concreteState->VolumeInfo.get(),                                   \
-            *concreteState->Request);                                          \
+        ThrottlerTracker->TrackAdvancedRequest(*concreteState->CallContext,    \
+                                               *concreteState->Request);       \
+        const auto delay = concreteState->CallContext->Advance(cycles);        \
+        concreteState->CallContext->AddLatencyThrottleDelay(delay);            \
+        ThrottlerLogger->LogAdvancedRequest(concreteState->VolumeInfo.get(),   \
+                                            *concreteState->Request);          \
         ExecuteRequest<TMethod>(*concreteState);                               \
                                                                                \
         break;                                                                 \
     }                                                                          \
-// REQUEST_TYPE_CASE
+        // REQUEST_TYPE_CASE
 
             switch (head->Type) {
                 REQUEST_TYPE_CASE(ZeroBlocks);
