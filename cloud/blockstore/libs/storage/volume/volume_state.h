@@ -281,6 +281,7 @@ private:
     TFollowerDisks FollowerDisks;
     TLeaderDisks LeaderDisks;
     TString PrincipalDiskId;   // Set when in ELeadershipStatus::Outdated
+    TString PrincipalCellId;
     ELeadershipStatus LeadershipStatus = ELeadershipStatus::Principal;
     std::optional<TLeaderFollowerLink> LeaderLinkBeingCreated;
 
@@ -886,6 +887,7 @@ public:
     void RemoveLeader(const TLeaderFollowerLink& link);
     const TLeaderDisks& GetAllLeaders() const;
     TString GetPrincipalDiskId() const;
+    TString GetPrincipalCellId() const;
     ELeadershipStatus GetLeadershipStatus() const;
 
     const TOutdatedLeaderDestruction& StartOutdatedLeaderDestructionAttempt();

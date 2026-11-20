@@ -297,6 +297,10 @@ message TVolume
 
     // Number of blocks per stripe (for multipartition YDB-based volumes).
     uint32 BlocksPerStripe = 40;
+
+    // Cell of PrincipalDiskId. Empty means the responding volume's cell.
+    // This field is set together with PrincipalDiskId for cross-cell redirects.
+    string PrincipalCellId = 41;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

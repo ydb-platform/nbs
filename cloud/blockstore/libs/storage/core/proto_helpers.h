@@ -100,7 +100,8 @@ TString GetSessionId(const TProtoRequestEvent<TArgs, EventId>& request)
 void VolumeConfigToVolume(
     const NKikimrBlockStore::TVolumeConfig& volumeConfig,
     const TString& principalDiskId,
-    NProto::TVolume& volume);
+    NProto::TVolume& volume,
+    const TString& principalCellId = {});
 
 void VolumeConfigToVolumeModel(
     const NKikimrBlockStore::TVolumeConfig& volumeConfig,

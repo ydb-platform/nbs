@@ -193,7 +193,8 @@ ui64 GetVolumeRequestIdFromHeaders(const TEv& request)
 void VolumeConfigToVolume(
     const NKikimrBlockStore::TVolumeConfig& volumeConfig,
     const TString& principalDiskId,
-    NProto::TVolume& volume)
+    NProto::TVolume& volume,
+    const TString& principalCellId)
 {
     VolumeConfigToVolumeModelFields(volumeConfig, volume);
 
@@ -214,6 +215,7 @@ void VolumeConfigToVolume(
     volume.SetIsSystem(volumeConfig.GetIsSystem());
     volume.SetIsFillFinished(volumeConfig.GetIsFillFinished());
     volume.SetPrincipalDiskId(principalDiskId);
+    volume.SetPrincipalCellId(principalCellId);
     volume.SetVhostDiscardEnabled(volumeConfig.GetVhostDiscardEnabled());
     const auto tags = ParseTags(volumeConfig.GetTagsStr());
     for (const auto& [key, value]: tags) {

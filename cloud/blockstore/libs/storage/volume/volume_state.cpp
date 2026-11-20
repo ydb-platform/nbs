@@ -1236,6 +1236,11 @@ TString TVolumeState::GetPrincipalDiskId() const
     return PrincipalDiskId;
 }
 
+TString TVolumeState::GetPrincipalCellId() const
+{
+    return PrincipalCellId;
+}
+
 ELeadershipStatus TVolumeState::GetLeadershipStatus() const
 {
     return LeadershipStatus;
@@ -1324,6 +1329,7 @@ TVolumeState::TakePendingLeadershipTransfer()
 
 void TVolumeState::UpdateLeadershipStatus()
 {
+    PrincipalCellId.clear();
     // We need to return the diskId of the disk that is currently the principal.
     // The principal changes when all data is transferred to the follower. At
     // this point, the follower is appointed as the new principal.
@@ -1342,6 +1348,7 @@ void TVolumeState::UpdateLeadershipStatus()
         {
             LeadershipStatus = ELeadershipStatus::LeadershipTransferred;
             PrincipalDiskId = followerInfo.Link.FollowerDiskId;
+            PrincipalCellId = followerInfo.Link.FollowerCellId;
             return;
         }
     }
@@ -1351,6 +1358,14 @@ void TVolumeState::UpdateLeadershipStatus()
         if (leaderInfo.State == TLeaderDiskInfo::EState::Following) {
             LeadershipStatus = ELeadershipStatus::Follower;
             PrincipalDiskId = SourceDiskId;
+            if (leaderInfo.Link.LeaderCellId &&
+                leaderInfo.Link.LeaderCellId != leaderInfo.Link.FollowerCellId)
+            {
+                // The stored link is authoritative. Do not split legacy disk
+                // names containing a slash by guessing from the tag alone.
+                PrincipalDiskId = leaderInfo.Link.LeaderDiskId;
+                PrincipalCellId = leaderInfo.Link.LeaderCellId;
+            }
             return;
         }
         if (leaderInfo.State == TLeaderDiskInfo::EState::Leader ||

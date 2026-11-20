@@ -2,6 +2,7 @@
 
 #include "cloud/blockstore/libs/storage/ss_proxy/ss_proxy_actor.h"
 
+#include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
@@ -100,8 +101,12 @@ bool TModifyTagsActionActor::ValidateTag(
     const TActorContext& ctx,
     const TString& tag)
 {
+    // A cross-cell source address is stored as cell/disk in this tag only.
+    const bool sourceDiskTag =
+        TStringBuf(tag).Before('=') == SourceDiskIdTagName;
     for (const auto c: tag) {
-        const bool ok = IsAlnum(c) || TStringBuf("-_=.@").Contains(c);
+        const bool ok = IsAlnum(c) || TStringBuf("-_=.@").Contains(c) ||
+            (sourceDiskTag && c == '/');
         if (!ok) {
             auto error =
                 MakeError(E_ARGUMENT, Sprintf("Invalid tag: %s", tag.c_str()));
