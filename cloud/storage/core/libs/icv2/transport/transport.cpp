@@ -823,12 +823,11 @@ ITransportPtr CreateTransport(
     ui64 maxOutputQueueBytes,
     std::shared_ptr<NActors::IEventDestructor> eventDestructor)
 {
-    return engine ? std::make_shared<TTransport>(
-                        std::move(engine),
-                        maxOutputQueueBytes ? maxOutputQueueBytes
-                                            : DefaultMaxOutputQueueBytes,
-                        std::move(eventDestructor))
-                  : nullptr;
+    return engine && maxOutputQueueBytes ? std::make_shared<TTransport>(
+                                               std::move(engine),
+                                               maxOutputQueueBytes,
+                                               std::move(eventDestructor))
+                                         : nullptr;
 }
 
 }   // namespace NCloud::NIcV2

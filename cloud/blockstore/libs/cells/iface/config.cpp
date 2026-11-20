@@ -67,22 +67,22 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define BLOCKSTORE_CELLS_ICV2_DEFAULT_CONFIG(xxx)                              \
-    xxx(Enabled,                     bool,                   false            )\
-    xxx(ListenAddress,               TString,                "::"             )\
-    xxx(Port,                        ui32,                   0                )\
-    xxx(Threads,                     ui32,                   1                )\
-    xxx(HandshakeTimeoutMs,          ui32,                   5000             )\
-    xxx(ChecksumEvents,              bool,                   false            )\
-    xxx(MaxConnections,              ui32,                   128              )\
-    xxx(MaxPendingRequests,          ui32,                   1024             )\
-    xxx(MaxOutputQueueBytes,         ui64,                   64_MB            )\
-    xxx(CompletionThreads,           ui32,                   2                )\
-    xxx(MaxOutgoingConnections,      ui32,                   128              )\
-    xxx(MaxDataRequestBytes,         ui64,                   4_MB             )\
-    xxx(MaxDataInflightBytes,        ui64,                   64_MB            )\
-    xxx(DataWorkers,                 ui32,                   1                )\
-    xxx(EnableXdc,                   bool,                   false            )\
+#define BLOCKSTORE_CELLS_ICV2_DEFAULT_CONFIG(xxx)                             \
+    xxx(Enabled,                    bool,           false                    )\
+    xxx(ListenAddress,              TString,        "::"                     )\
+    xxx(Port,                       ui32,           0                        )\
+    xxx(Threads,                    ui32,           1                        )\
+    xxx(HandshakeTimeout,           TDuration,      TDuration::Seconds(5)    )\
+    xxx(ChecksumEvents,             bool,           false                    )\
+    xxx(MaxConnections,             ui32,           128                      )\
+    xxx(MaxPendingRequests,         ui32,           1024                     )\
+    xxx(MaxOutputQueueBytes,        ui64,           64_MB                    )\
+    xxx(CompletionThreads,          ui32,           2                        )\
+    xxx(MaxOutgoingConnections,     ui32,           128                      )\
+    xxx(MaxDataRequestBytes,        ui64,           4_MB                     )\
+    xxx(MaxDataInflightBytes,       ui64,           64_MB                    )\
+    xxx(DataWorkers,                ui32,           1                        )\
+    xxx(EnableXdc,                  bool,           false                    )\
 // BLOCKSTORE_CELLS_ICV2_DEFAULT_CONFIG
 // clang-format on
 

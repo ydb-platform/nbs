@@ -12,6 +12,7 @@ SRCS(
 PEERDIR(
     cloud/storage/core/libs/icv2/tcp/testlib
     contrib/ydb/library/actors/interconnect
+    contrib/ydb/library/actors/testlib
 )
 
 END()
