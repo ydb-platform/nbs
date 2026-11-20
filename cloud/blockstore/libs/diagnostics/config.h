@@ -158,6 +158,7 @@ public:
     TVolumePerfSettings GetLocalSSDPerfSettings() const;
     TVolumePerfSettings GetLocalHDDPerfSettings() const;
     TVolumePerfSettings GetSsdMirror3Of5GroupPerfSettings() const;
+    TVolumePerfSettings GetVolumeBalancerPerfSettings() const;
     ui32 GetExpectedIoParallelism() const;
     TVector<TString> GetCloudIdsWithStrictSLA() const;
     TMonitoringUrlData GetMonitoringUrlData() const;
@@ -207,11 +208,6 @@ public:
 
 // Returns the DowntimeThreshold corresponding to the media kind.
 TDuration GetDowntimeThreshold(
-    const TDiagnosticsConfig& config,
-    NCloud::NProto::EStorageMediaKind kind);
-
-// Returns the PerfSettings corresponding to the media kind.
-TVolumePerfSettings GetPerfSettings(
     const TDiagnosticsConfig& config,
     NCloud::NProto::EStorageMediaKind kind);
 

@@ -39,11 +39,52 @@ template <typename T>
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TVolumePerfSettings TVolumePerformanceCalculator::GetConfigSettings(
+    TDiagnosticsConfigConstPtr diagnosticsConfig) const
+{
+    switch (MediaKind) {
+        case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: {
+            return diagnosticsConfig->GetNonreplPerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: {
+            return diagnosticsConfig->GetHddNonreplPerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2: {
+            return diagnosticsConfig->GetMirror2PerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3: {
+            return diagnosticsConfig->GetMirror3PerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL: {
+            return diagnosticsConfig->GetLocalSSDPerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL: {
+            return diagnosticsConfig->GetLocalHDDPerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD: {
+            return diagnosticsConfig->GetSsdPerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP: {
+            return diagnosticsConfig->GetSsdMirror3Of5GroupPerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_HDD:
+        case NCloud::NProto::STORAGE_MEDIA_HYBRID:
+        case NCloud::NProto::STORAGE_MEDIA_DEFAULT: {
+            return diagnosticsConfig->GetHddPerfSettings();
+        }
+        default: {
+            return {};
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TVolumePerformanceCalculator::TVolumePerformanceCalculator(
         const NProto::TVolume& volume,
         TDiagnosticsConfigConstPtr diagnosticsConfig)
     : MediaKind(volume.GetStorageMediaKind())
-    , ConfigSettings(GetPerfSettings(*diagnosticsConfig, MediaKind))
+    , ConfigSettings(GetConfigSettings(diagnosticsConfig))
     , ExpectedIoParallelism(diagnosticsConfig->GetExpectedIoParallelism())
 {
     TIntrusivePtr<TVolumePerfSettings> settings =

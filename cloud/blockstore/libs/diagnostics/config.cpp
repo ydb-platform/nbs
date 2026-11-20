@@ -38,6 +38,7 @@ namespace {
     xxx(LocalSSDPerfSettings,           TVolumePerfSettings,  {}                                        )\
     xxx(LocalHDDPerfSettings,           TVolumePerfSettings,  {}                                        )\
     xxx(SsdMirror3Of5GroupPerfSettings, TVolumePerfSettings,  {}                                        )\
+    xxx(VolumeBalancerPerfSettings,     TVolumePerfSettings,  {}                                        )\
     xxx(ExpectedIoParallelism,          ui32,                 32                                        )\
     xxx(CloudIdsWithStrictSLA,          TVector<TString>,     {}                                        )\
     xxx(LWTraceShuttleCount,            ui32,                 2000                                      )\
@@ -277,46 +278,6 @@ TDuration GetDowntimeThreshold(
         }
         default: {
             return config.GetHDDDowntimeThreshold();
-        }
-    }
-}
-
-TVolumePerfSettings GetPerfSettings(
-    const TDiagnosticsConfig& config,
-    const NCloud::NProto::EStorageMediaKind kind)
-{
-    switch (kind) {
-        case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: {
-            return config.GetNonreplPerfSettings();
-        }
-        case NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED: {
-            return config.GetHddNonreplPerfSettings();
-        }
-        case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2: {
-            return config.GetMirror2PerfSettings();
-        }
-        case NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3: {
-            return config.GetMirror3PerfSettings();
-        }
-        case NCloud::NProto::STORAGE_MEDIA_SSD_LOCAL: {
-            return config.GetLocalSSDPerfSettings();
-        }
-        case NCloud::NProto::STORAGE_MEDIA_HDD_LOCAL: {
-            return config.GetLocalHDDPerfSettings();
-        }
-        case NCloud::NProto::STORAGE_MEDIA_SSD: {
-            return config.GetSsdPerfSettings();
-        }
-        case NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP: {
-            return config.GetSsdMirror3Of5GroupPerfSettings();
-        }
-        case NCloud::NProto::STORAGE_MEDIA_HDD:
-        case NCloud::NProto::STORAGE_MEDIA_HYBRID:
-        case NCloud::NProto::STORAGE_MEDIA_DEFAULT: {
-            return config.GetHddPerfSettings();
-        }
-        default: {
-            return {};
         }
     }
 }
