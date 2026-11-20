@@ -432,11 +432,19 @@ private:
         const TEvIndexTablet::TEvGenerateBlobIdsResponse::TPtr& ev,
         const TActorContext& ctx)
     {
+        auto& state = GetState();
         if (ev->Cookie != RequestGeneration) {
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s unexpected GenerateBlobIds response cookie: expected=%lu; "
+                "actual=%lu",
+                state.RequestContext.LogTag.c_str(),
+                RequestGeneration,
+                ev->Cookie);
             return;
         }
 
-        auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
         auto* msg = ev->Get();
@@ -620,11 +628,19 @@ private:
         const TEvBlobStorage::TEvPutResult::TPtr& ev,
         const TActorContext& ctx)
     {
+        auto& state = GetState();
         if (ev->Cookie != RequestGeneration) {
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s unexpected WriteBlob response cookie: expected=%lu; "
+                "actual=%lu",
+                state.RequestContext.LogTag.c_str(),
+                RequestGeneration,
+                ev->Cookie);
             return;
         }
 
-        auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
         if (HasError(state.WriteBlobError)) {
@@ -819,11 +835,19 @@ private:
         const TEvIndexTablet::TEvAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
+        auto& state = GetState();
         if (ev->Cookie != RequestGeneration) {
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s unexpected AddData response cookie: expected=%lu; "
+                "actual=%lu",
+                state.RequestContext.LogTag.c_str(),
+                RequestGeneration,
+                ev->Cookie);
             return;
         }
 
-        auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
         auto* msg = ev->Get();
@@ -932,12 +956,19 @@ private:
         const TEvIndexTablet::TEvConfirmAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-
+        auto& state = GetState();
         if (ev->Cookie != RequestGeneration) {
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s unexpected ConfirmAddData response cookie: expected=%lu; "
+                "actual=%lu",
+                state.RequestContext.LogTag.c_str(),
+                RequestGeneration,
+                ev->Cookie);
             return;
         }
 
-        auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
         auto* msg = ev->Get();
@@ -972,11 +1003,19 @@ private:
         const TEvIndexTablet::TEvCancelAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
+        auto& state = GetState();
         if (ev->Cookie != RequestGeneration) {
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s unexpected CancelAddData response cookie: expected=%lu; "
+                "actual=%lu",
+                state.RequestContext.LogTag.c_str(),
+                RequestGeneration,
+                ev->Cookie);
             return;
         }
 
-        auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
         auto* msg = ev->Get();
@@ -1008,11 +1047,18 @@ private:
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx)
     {
+        auto& state = GetState();
         if (ev->Get()->Tag != RequestGeneration) {
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s unexpected HandleWakeup cookie: expected=%lu; "
+                "actual=%lu",
+                state.RequestContext.LogTag.c_str(),
+                RequestGeneration,
+                ev->Cookie);
             return;
         }
-
-        auto& state = GetState();
 
         if (state.TabletRetryRequest == ETabletRetryRequest::None) {
             return;
