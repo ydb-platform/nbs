@@ -82,8 +82,9 @@ private:
 
     NNvme::INvmeManagerPtr NvmeManager;
 
-    TExecutorPtr Executor;
-    std::shared_ptr<IStartable> JournalledDeviceTcpServer;
+    // The daemon owns the provider and stops it. Null when the daemon does
+    // not support journalled devices.
+    const IJournalledDeviceServerProviderPtr JournalledDeviceServerProvider;
 
     std::unique_ptr<TDiskAgentState> State;
     std::unique_ptr<NKikimr::TTabletCountersBase> Counters;
@@ -133,7 +134,8 @@ public:
         NCloud::NStorage::NRdma::IServerPtr rdmaServer,
         NNvme::INvmeManagerPtr nvmeManager,
         ITaskQueuePtr backgroundThreadPool,
-        ILocalNVMeServicePtr localNVMeService);
+        ILocalNVMeServicePtr localNVMeService,
+        IJournalledDeviceServerProviderPtr journalledDeviceServerProvider);
 
     ~TDiskAgentActor() override;
 
@@ -202,10 +204,6 @@ private:
 
     NProto::TError UpdateControlPlaneRequestNumber(
         TControlPlaneRequestNumber controlPlaneRequestNumber);
-
-    NProto::TError StartJournalledDeviceTcpServer(
-        const NActors::TActorContext& ctx,
-        const THashMap<TString, NProto::TJournalConfig>& journalledDevices);
 
 private:
     STFUNC(StateInit);

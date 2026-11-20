@@ -1,7 +1,9 @@
 #include "disk_agent.h"
 
 #include "disk_agent_actor.h"
+#include "journalled_device_server.h"
 
+#include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
@@ -100,6 +102,16 @@ struct TFixture: public NUnitTest::TBaseFixture
             FileDevices.end());
 
         return config;
+    }
+
+    auto CreateProvider() const -> IJournalledDeviceServerProviderPtr
+    {
+        return CreateJournalledDeviceServerProvider(
+            std::make_shared<TDiskAgentConfig>(
+                CreateDiskAgentConfig(),
+                "the-rack",
+                0),
+            CreateLoggingService("console"));
     }
 };
 
@@ -394,6 +406,49 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTcpServerTest)
                 E_BS_INVALID_SESSION,
                 error.GetCode(),
                 FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldStopServerWhenProviderStops, TFixture)
+    {
+        // the provider belongs to the test, like it belongs to the daemon
+        auto provider = CreateProvider();
+
+        auto env = TTestEnvBuilder(*Runtime)
+            .With(CreateDiskAgentConfig())
+            .With(provider)
+            .Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        // the server accepts connections
+        {
+            TTestClient client(Port);
+        }
+
+        provider->Stop();
+
+        UNIT_ASSERT_EXCEPTION(TTestClient(Port), yexception);
+
+        // the second stop does nothing
+        provider->Stop();
+    }
+
+    Y_UNIT_TEST_F(ShouldNotStopServerOnPoisonPill, TFixture)
+    {
+        auto env =
+            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        diskAgent.SendRequest(std::make_unique<TEvents::TEvPoisonPill>());
+        Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // only the owner of the provider stops the server
+        {
+            TTestClient client(Port);
         }
     }
 }

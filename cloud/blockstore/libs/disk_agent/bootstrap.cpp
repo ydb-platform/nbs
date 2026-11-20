@@ -26,6 +26,7 @@
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/disk_agent/journalled_device_server.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/bootstrap.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_generator.h>
@@ -552,6 +553,13 @@ bool TBootstrap::InitKikimrService()
 
     STORAGE_INFO("Local NVMe service initialized");
 
+    JournalledDeviceServerProvider =
+        NStorage::CreateJournalledDeviceServerProvider(
+            Configs->DiskAgentConfig,
+            logging);
+
+    STORAGE_INFO("JournalledDeviceServerProvider initialized");
+
     NStorage::TDiskAgentActorSystemArgs args;
     args.ModuleFactories = ModuleFactories;
     args.NodeId = nodeId;
@@ -573,6 +581,7 @@ bool TBootstrap::InitKikimrService()
     args.StatsFetcher = StatsFetcher;
     args.BackgroundThreadPool = BackgroundThreadPool;
     args.LocalNVMeService = LocalNVMeService;
+    args.JournalledDeviceServerProvider = JournalledDeviceServerProvider;
 
     ActorSystem = NStorage::CreateDiskAgentActorSystem(args);
 
@@ -727,6 +736,10 @@ void TBootstrap::Stop()
     // scheduled tasks and shutting down of component dependencies
     STOP_COMPONENT(Scheduler);
     STOP_COMPONENT(CriticalEventsStatsUpdater);
+
+    // stop the journalled devices before ActorSystem and
+    // FileIOServiceProvider: their requests in flight need both
+    STOP_COMPONENT(JournalledDeviceServerProvider);
 
     STOP_COMPONENT(ActorSystem);
     // stop FileIOServiceProvider after ActorSystem to ensure that there are no

@@ -80,6 +80,7 @@ private:
     NNvme::INvmeManagerPtr NvmeManager;
     NCloud::NStorage::NRdma::IServerPtr RdmaServer;
     ILocalNVMeServicePtr LocalNVMeService;
+    NStorage::IJournalledDeviceServerProviderPtr JournalledDeviceServerProvider;
 
     TProgramShouldContinue ShouldContinue;
     TVector<TString> PostponedCriticalEvents;
