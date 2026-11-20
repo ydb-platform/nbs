@@ -378,6 +378,25 @@ void TVolumeSelfCounters::Publish(TInstant now)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TBlobIoCounters::Add(const THistogramRequestCounters& counters)
+{
+    ReadBlob.Count += counters.ReadBlob.Count;
+    ReadBlob.Bytes += counters.ReadBlob.RequestBytes;
+
+    // Currently patched blobs are supported as written blobs
+    WriteBlob.Count += counters.WriteBlob.Count + counters.PatchBlob.Count;
+    WriteBlob.Bytes +=
+        counters.WriteBlob.RequestBytes + counters.PatchBlob.RequestBytes;
+}
+
+void TBlobIoCounters::Reset()
+{
+    ReadBlob = TCounters();
+    WriteBlob = TCounters();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TVolumeSelfCountersPtr CreateVolumeSelfCounters(
     EPublishingPolicy policy,
     EHistogramCounterOptions histCounterOptions)
