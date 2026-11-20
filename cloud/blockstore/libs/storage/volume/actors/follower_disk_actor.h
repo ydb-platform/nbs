@@ -147,10 +147,6 @@ private:
         const TEvVolume::TEvRWClientIdChanged::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleGetChangedBlocks(
-        const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleUpdateFollowerStateResponse(
         const TEvVolumePrivate::TEvUpdateFollowerStateResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
