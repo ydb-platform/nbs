@@ -866,7 +866,7 @@ private:
             return;
         }
 
-        ReplyAndDie(ctx, {} /* record */);
+        SendResponse(ctx, {} /* record */);
     }
 
     void ConfirmAddData(const TActorContext& ctx)
@@ -996,7 +996,7 @@ private:
         }
 
         ResetTabletProxyRetryState();
-        ReplyAndDie(ctx, {});
+        SendResponse(ctx, {});
     }
 
     void HandleCancelAddDataResponse(
@@ -1201,10 +1201,10 @@ private:
             "%s WriteData succeeded",
             state.RequestContext.LogTag.c_str());
 
-        ReplyAndDie(ctx, std::move(msg->Record));
+        SendResponse(ctx, std::move(msg->Record));
     }
 
-    void ReplyAndDie(
+    void SendResponse(
         const TActorContext& ctx,
         NProto::TWriteDataResponse record)
     {
@@ -1221,19 +1221,14 @@ private:
 
         auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
         response->Record = std::move(record);
-        SendResponseAndDie(ctx, std::move(response));
+        NCloud::Reply(
+            ctx,
+            *state.RequestContext.RequestInfo,
+            std::move(response));
+        ReleaseToPoolOrDie(ctx);
     }
 
     void HandleError(const TActorContext& ctx, const NProto::TError& error)
-    {
-        SendResponseAndDie(
-            ctx,
-            std::make_unique<TEvService::TEvWriteDataResponse>(error));
-    }
-
-    void SendResponseAndDie(
-        const TActorContext& ctx,
-        std::unique_ptr<TEvService::TEvWriteDataResponse> response)
     {
         auto& state = GetState();
 
@@ -1242,7 +1237,17 @@ private:
             state.RequestContext.RequestInfo->CallContext,
             "WriteData");
 
-        NCloud::Reply(ctx, *state.RequestContext.RequestInfo, std::move(response));
+        auto response =
+            std::make_unique<TEvService::TEvWriteDataResponse>(error);
+        NCloud::Reply(
+            ctx,
+            *state.RequestContext.RequestInfo,
+            std::move(response));
+        ReleaseToPoolOrDie(ctx);
+    }
+
+    void ReleaseToPoolOrDie(const TActorContext& ctx)
+    {
         if (ServiceActorId) {
             RequestState.reset();
             Become(&TThis::StateIdle);
