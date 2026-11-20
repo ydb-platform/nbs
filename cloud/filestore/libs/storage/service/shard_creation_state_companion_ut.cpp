@@ -380,9 +380,17 @@ private:
 public:
     TShardSchedulingActor(
         ui32 topologyShardCount,
-        ui32 maxShardManagementRequestsInFlight)
+        ui32 maxShardManagementRequestsInFlight,
+        bool loadCreatedShardBitmap = false)
         : TActor(&TThis::StateWork)
     {
+        if (loadCreatedShardBitmap) {
+            Companion.SetShardCreationState(MakeState(42, {1, 4}));
+            const auto error = Companion.SetupCreatedShardBitmap(
+                topologyShardCount,
+                ShardConfigs);
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        }
         const auto error = Companion.InitializeShardCreation(
             topologyShardCount,
             ShardCount,
@@ -604,6 +612,47 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
         UNIT_ASSERT(response->Get()->Error.GetMessage().Contains(
             "shard 6"));
         UNIT_ASSERT(!response->Get()->HasShardsToCreate);
+    }
+
+    Y_UNIT_TEST(ShouldSkipCreatedShardsWithoutUsingRequestLimit)
+    {
+        TActorSystem runtime;
+        runtime.Start();
+        const auto sender = runtime.AllocateEdgeActor();
+        const auto ssProxy = runtime.AllocateEdgeActor();
+        runtime.RegisterService(MakeSSProxyServiceId(), ssProxy);
+        const ui32 currentShardCount = 0;
+        const ui32 maxShardManagementRequestsInFlight = 2;
+        const bool loadCreatedShardBitmap = true;
+        const auto actorId = runtime.Register(
+            new TShardSchedulingActor(
+                currentShardCount,
+                maxShardManagementRequestsInFlight,
+                loadCreatedShardBitmap));
+
+        auto schedule = [&](bool complete, ui32 shardIndex) {
+            runtime.Send(new IEventHandle(
+                actorId,
+                sender,
+                new TEvScheduleShardCreation(complete, shardIndex)));
+            return runtime.GrabEdgeEvent<TEvShardCreationScheduled>(sender)
+                ->Get()->HasShardsToCreate;
+        };
+        auto assertNextShard = [&](ui32 shardIndex) {
+            const auto request = runtime.GrabEdgeEvent<
+                TEvSSProxy::TEvCreateFileStoreRequest>(ssProxy);
+            UNIT_ASSERT_VALUES_EQUAL(shardIndex, request->Cookie);
+        };
+
+        UNIT_ASSERT(schedule(false, 0));
+        assertNextShard(0);
+        assertNextShard(2);
+        UNIT_ASSERT(schedule(true, 0));
+        assertNextShard(3);
+        UNIT_ASSERT(schedule(true, 2));
+        assertNextShard(5);
+        UNIT_ASSERT(schedule(true, 3));
+        UNIT_ASSERT(!schedule(true, 5));
     }
 
     Y_UNIT_TEST(ShouldIgnoreVolatileShardConfigFieldsInNewShardConfigsHash)

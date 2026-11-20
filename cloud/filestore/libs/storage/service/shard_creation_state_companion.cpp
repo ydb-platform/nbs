@@ -12,8 +12,6 @@
 #include <util/digest/city.h>
 #include <util/string/builder.h>
 
-#include <algorithm>
-
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -236,17 +234,24 @@ NProto::TError TShardCreationStateCompanion::InitializeShardCreation(
 void TShardCreationStateCompanion::StartShardCreation(
     const TActorContext& ctx)
 {
-    const ui32 limit = MaxShardManagementRequestsInFlight;
-    const ui32 endShardIndex = (limit == 0)
-                                   ? TargetShardCount
-                                   : std::min<ui32>(
-                                         NextShardToCreate + limit,
-                                         TargetShardCount);
-    for (ui32 shardIndex = NextShardToCreate; shardIndex < endShardIndex;
-         ++shardIndex)
+    SendShardCreationRequests(ctx, MaxShardManagementRequestsInFlight);
+}
+
+void TShardCreationStateCompanion::SendShardCreationRequests(
+    const TActorContext& ctx,
+    const ui32 limit)
+{
+    ui32 requestsSent = 0;
+    while (ShardsToCreate && NextShardToCreate < TargetShardCount &&
+           (limit == 0 || requestsSent < limit))
     {
-        Owner->CreateShard(ctx, shardIndex);
-        NextShardToCreate = shardIndex + 1;
+        if (IsShardCreated(NextShardToCreate)) {
+            --ShardsToCreate;
+        } else {
+            Owner->CreateShard(ctx, NextShardToCreate);
+            ++requestsSent;
+        }
+        ++NextShardToCreate;
     }
 }
 
@@ -268,10 +273,7 @@ NProto::TError TShardCreationStateCompanion::OnShardCreated(
     }
 
     if (ShardsToCreate && MaxShardManagementRequestsInFlight) {
-        if (NextShardToCreate < TargetShardCount) {
-            Owner->CreateShard(ctx, NextShardToCreate);
-            ++NextShardToCreate;
-        }
+        SendShardCreationRequests(ctx, 1);
     }
 
     return {};

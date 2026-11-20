@@ -171,8 +171,8 @@ public:
         ui32 topologyShardCount,
         ui32 targetShardCount,
         ui32 maxShardManagementRequestsInFlight);
-    // Send creation requests up to the configured limit.
-    // Advance the cursor after each request is sent.
+    // Send creation requests up to the configured limit. Already-created
+    // shards do not consume the limit. Advance the cursor after each request.
     void StartShardCreation(const NActors::TActorContext& ctx);
     // Account for a successful response for shardIndex, update persistent
     // progress when supported, and send the next request when limited. Return
@@ -191,6 +191,11 @@ public:
     void UpdateShardCreationState(const NActors::TActorContext& ctx) const;
 
 private:
+    // Send up to limit creation requests, skipping shards already in the bitmap.
+    // Zero limit sends all remaining requests.
+    void SendShardCreationRequests(
+        const NActors::TActorContext& ctx,
+        ui32 limit);
     // Mark the shard in the working bitmap and send an update to the Tablet.
     // Log and skip if the bitmap is unavailable or the index is invalid.
     void RecordCreatedShard(
