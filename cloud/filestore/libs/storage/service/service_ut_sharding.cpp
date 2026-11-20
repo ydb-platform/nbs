@@ -23,8 +23,6 @@
 #include <contrib/libs/linux-headers/linux/posix_acl.h>
 #include <contrib/libs/linux-headers/linux/posix_acl_xattr.h>
 
-#include <cstring>
-
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -2084,9 +2082,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             fileSystemId);
     }
 
-    Y_UNIT_TEST(ShouldApplyUmaskAndInheritDefaultAclWithShards)
+    SERVICE_TEST_DIR_CREATION_IN_SHARDS(
+        ShouldApplyUmaskAndInheritDefaultAclWithShards)
     {
-        auto config = MakeStorageConfigWithDirectoryCreationInShards();
         config.SetGuestPosixAclEnabled(true);
 
         TShardedFileSystemConfig fsConfig;

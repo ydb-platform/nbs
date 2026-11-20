@@ -703,32 +703,24 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         {
             return false;
         }
-        if (parentDefaultAcl) {
-            auto childAcl = GetChildXattrAcl(
-                parentDefaultAcl->Value,
-                args.Attrs.GetMode());
-            if (HasError(childAcl)) {
-                args.Error = childAcl.GetError();
-                return true;
-            }
 
-            if (childAcl.GetResult().Type == EXattrAclType::HeaderOnly) {
-                const ui32 mode =
-                    args.Attrs.GetMode() & ~args.Request.GetUmask();
-                args.Attrs.SetMode(mode);
-                SetRequestMode(args.Request, mode);
-            } else {
-                args.Request.SetParentDefaultAcl(parentDefaultAcl->Value);
-                args.Request.SetChildAccessAcl(childAcl.GetResult().Acl);
-                args.Attrs.SetMode(childAcl.GetResult().Mode);
-                SetRequestMode(args.Request, childAcl.GetResult().Mode);
-            }
-        } else {
-            const ui32 mode =
-                args.Attrs.GetMode() & ~args.Request.GetUmask();
-            args.Attrs.SetMode(mode);
-            SetRequestMode(args.Request, mode);
+        auto [permissions, error] = GetNodeCreationPermissions(
+            parentDefaultAcl,
+            args.Attrs.GetMode(),
+            args.Request.GetUmask());
+        if (HasError(error)) {
+            args.Error = std::move(error);
+            return true;
         }
+
+        if (permissions.ParentDefaultAcl) {
+            args.Request.SetParentDefaultAcl(
+                std::move(permissions.ParentDefaultAcl));
+            args.Request.SetChildAccessAcl(
+                std::move(permissions.ChildAccessAcl));
+        }
+        args.Attrs.SetMode(permissions.Mode);
+        SetRequestMode(args.Request, permissions.Mode);
     }
 
     // TODO: AccessCheck

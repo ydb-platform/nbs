@@ -309,27 +309,18 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
                     return false;
                 }
 
-                if (parentDefaultAcl) {
-                    auto childAcl = GetChildXattrAcl(
-                        parentDefaultAcl->Value,
-                        args.Mode);
-                    if (HasError(childAcl)) {
-                        args.Error = childAcl.GetError();
-                        return true;
-                    }
-
-                    if (childAcl.GetResult().Type ==
-                        EXattrAclType::HeaderOnly)
-                    {
-                        args.Mode &= ~args.Request.GetUmask();
-                    } else {
-                        args.ParentDefaultAcl = parentDefaultAcl->Value;
-                        args.ChildAccessAcl = childAcl.GetResult().Acl;
-                        args.Mode = childAcl.GetResult().Mode;
-                    }
-                } else {
-                    args.Mode &= ~args.Request.GetUmask();
+                auto [permissions, error] = GetNodeCreationPermissions(
+                    parentDefaultAcl,
+                    args.Mode,
+                    args.Request.GetUmask());
+                if (HasError(error)) {
+                    args.Error = std::move(error);
+                    return true;
                 }
+
+                args.Mode = permissions.Mode;
+                args.ParentDefaultAcl = std::move(permissions.ParentDefaultAcl);
+                args.ChildAccessAcl = std::move(permissions.ChildAccessAcl);
             }
 
             auto shardId = args.RequestShardId;

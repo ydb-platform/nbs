@@ -1,5 +1,7 @@
 #include "helpers.h"
 
+#include "model/xattr_acl_helpers.h"
+
 #include <cloud/filestore/libs/storage/core/config.h>
 
 #include <contrib/ydb/core/protos/filestore_config.pb.h>
@@ -96,6 +98,34 @@ NProto::TNode CreateBlockDeviceAttrs(ui32 mode, ui32 uid, ui32 gid, ui64 dev)
     auto attrs = CreateAttrs(NProto::E_BLOCKDEV_NODE, mode, 0, uid, gid);
     attrs.SetDevId(dev);
     return attrs;
+}
+
+TResultOrError<TNodeCreationPermissions> GetNodeCreationPermissions(
+    const TMaybe<INodeIndexTabletDatabase::TNodeAttr>& parentDefaultAcl,
+    const ui32 srcMode,
+    const ui32 umask)
+{
+    if (parentDefaultAcl) {
+        auto [childAcl, error] =
+            GetChildXattrAcl(parentDefaultAcl->Value, srcMode);
+        if (HasError(error)) {
+            return std::move(error);
+        }
+
+        if (childAcl.Type != EXattrAclType::HeaderOnly) {
+            return TNodeCreationPermissions{
+                .Mode = childAcl.Mode,
+                .ParentDefaultAcl = parentDefaultAcl->Value,
+                .ChildAccessAcl = std::move(childAcl.Acl),
+            };
+        }
+    }
+
+    return TNodeCreationPermissions{
+        .Mode = srcMode & ~umask,
+        .ParentDefaultAcl = {},
+        .ChildAccessAcl = {},
+    };
 }
 
 NProto::TNode CopyAttrs(const NProto::TNode& src, ui32 mode)

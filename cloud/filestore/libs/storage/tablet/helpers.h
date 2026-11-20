@@ -1,5 +1,6 @@
 #pragma once
 #include "public.h"
+#include "tablet_state_iface.h"
 
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
@@ -17,6 +18,7 @@
 
 #include <contrib/ydb/core/base/logoblob.h>
 
+#include <util/generic/maybe.h>
 #include <util/system/align.h>
 #include <util/system/yassert.h>
 
@@ -89,6 +91,18 @@ NProto::TNode CreateSocketAttrs(ui32 mode, ui32 uid, ui32 gid);
 NProto::TNode CreateFifoAttrs(ui32 mode, ui32 uid, ui32 gid);
 NProto::TNode CreateCharDeviceAttrs(ui32 mode, ui32 uid, ui32 gid, ui64 dev);
 NProto::TNode CreateBlockDeviceAttrs(ui32 mode, ui32 uid, ui32 gid, ui64 dev);
+
+struct TNodeCreationPermissions
+{
+    ui32 Mode = 0;
+    TString ParentDefaultAcl;
+    TString ChildAccessAcl;
+};
+
+TResultOrError<TNodeCreationPermissions> GetNodeCreationPermissions(
+    const TMaybe<INodeIndexTabletDatabase::TNodeAttr>& parentDefaultAcl,
+    ui32 srcMode,
+    ui32 umask);
 
 NProto::TNode CopyAttrs(const NProto::TNode& src, ui32 mode = E_CM_CTIME);
 
