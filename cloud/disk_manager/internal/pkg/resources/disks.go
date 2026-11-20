@@ -81,17 +81,20 @@ type diskState struct {
 }
 
 func (s *diskState) toDiskMeta() *DiskMeta {
+	// Keep the serialized request because its protobuf type depends on the
+	// disk's source.
 	return &DiskMeta{
-		ID:               s.id,
-		ZoneID:           s.zoneID,
-		SrcImageID:       s.srcImageID,
-		SrcSnapshotID:    s.srcSnapshotID,
-		BlocksCount:      s.blocksCount,
-		BlockSize:        s.blockSize,
-		Kind:             s.kind,
-		CloudID:          s.cloudID,
-		FolderID:         s.folderID,
-		PlacementGroupID: s.placementGroupID,
+		ID:                s.id,
+		ZoneID:            s.zoneID,
+		SrcImageID:        s.srcImageID,
+		SrcSnapshotID:     s.srcSnapshotID,
+		BlocksCount:       s.blocksCount,
+		BlockSize:         s.blockSize,
+		Kind:              s.kind,
+		CloudID:           s.cloudID,
+		FolderID:          s.folderID,
+		PlacementGroupID:  s.placementGroupID,
+		CreateRequestData: s.createRequest,
 
 		CreateTaskID: s.createTaskID,
 		CreatingAt:   s.creatingAt,
@@ -292,52 +295,6 @@ func (s *storageYDB) getDiskMeta(
 	} else {
 		return nil, nil
 	}
-}
-
-func (s *storageYDB) getDiskCreateRequest(
-	ctx context.Context,
-	session *persistence.Session,
-	diskID string,
-) ([]byte, error) {
-
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $id as Utf8;
-
-		select create_request
-		from disks
-		where id = $id
-	`, s.disksPath),
-		persistence.ValueParam("$id", persistence.UTF8Value(diskID)),
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Close()
-
-	var createRequest []byte
-
-	for res.NextResultSet(ctx) {
-		for res.NextRow() {
-			err = res.ScanNamed(
-				persistence.OptionalWithDefault(
-					"create_request",
-					&createRequest,
-				),
-			)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	err = res.Err()
-	if err != nil {
-		return nil, err
-	}
-
-	return createRequest, nil
 }
 
 func (s *storageYDB) createDisk(
@@ -1016,24 +973,6 @@ func (s *storageYDB) GetDiskMeta(
 		},
 	)
 	return disk, err
-}
-
-func (s *storageYDB) GetDiskCreateRequest(
-	ctx context.Context,
-	diskID string,
-) ([]byte, error) {
-
-	var createRequest []byte
-
-	err := s.db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			var err error
-			createRequest, err = s.getDiskCreateRequest(ctx, session, diskID)
-			return err
-		},
-	)
-	return createRequest, err
 }
 
 func (s *storageYDB) DeleteDisk(

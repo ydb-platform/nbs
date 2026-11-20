@@ -26,7 +26,6 @@ import (
 
 type exportResourceStorage interface {
 	GetDiskMeta(context.Context, string) (*resources.DiskMeta, error)
-	GetDiskCreateRequest(context.Context, string) ([]byte, error)
 	GetImageMeta(context.Context, string) (*resources.ImageMeta, error)
 }
 
@@ -36,11 +35,7 @@ type exportDiskMetadata struct {
 	EncryptedDEK []byte
 }
 
-func diskCreateEncryptionDesc(
-	disk *resources.DiskMeta,
-	createRequest []byte,
-) (*types.EncryptionDesc, error) {
-
+func diskCreateEncryptionDesc(disk *resources.DiskMeta) (*types.EncryptionDesc, error) {
 	if params, ok := disk.CreateRequest.(*disk_protos.CreateDiskParams); ok {
 		return params.GetEncryptionDesc(), nil
 	}
@@ -49,7 +44,7 @@ func diskCreateEncryptionDesc(
 	}); ok {
 		return request.GetParams().GetEncryptionDesc(), nil
 	}
-	if len(createRequest) == 0 {
+	if len(disk.CreateRequestData) == 0 {
 		return nil, nil
 	}
 
@@ -65,13 +60,12 @@ func diskCreateEncryptionDesc(
 		} else {
 			request = &disk_protos.CreateDiskFromImageRequest{}
 		}
-		err := proto.Unmarshal(createRequest, request)
-		if err == nil && request.GetParams() != nil {
+		if err := proto.Unmarshal(disk.CreateRequestData, request); err == nil && request.GetParams() != nil {
 			return request.GetParams().GetEncryptionDesc(), nil
 		}
 	}
 	params := &disk_protos.CreateDiskParams{}
-	if err := proto.Unmarshal(createRequest, params); err != nil {
+	if err := proto.Unmarshal(disk.CreateRequestData, params); err != nil {
 		return nil, fmt.Errorf("decoding disk %q create request: %w", disk.ID, err)
 	}
 	return params.GetEncryptionDesc(), nil
@@ -112,13 +106,7 @@ func readExportDiskMetadata(
 		logging.Warn(ctx, "disk %v block size is unknown; omitting block_size", diskID)
 	}
 
-	createRequest, err := resourceStorage.GetDiskCreateRequest(ctx, diskID)
-	if err != nil {
-		logging.Warn(ctx, "failed to read disk create request: %v", err)
-		return metadata, nil
-	}
-
-	encryption, err := diskCreateEncryptionDesc(disk, createRequest)
+	encryption, err := diskCreateEncryptionDesc(disk)
 	if err != nil {
 		logging.Warn(ctx, "failed to obtain disk encryption metadata: %v", err)
 		return metadata, nil
@@ -152,12 +140,7 @@ func (c *exportResource) getExportDiskMetadata(
 	}
 	defer db.Close(ctx)
 
-	return readExportDiskMetadata(
-		ctx,
-		resourceStorage,
-		c.resourceID,
-		meta.Disk.GetDiskId(),
-	)
+	return readExportDiskMetadata(ctx, resourceStorage, c.resourceID, meta.Disk.GetDiskId())
 }
 
 ////////////////////////////////////////////////////////////////////////////////

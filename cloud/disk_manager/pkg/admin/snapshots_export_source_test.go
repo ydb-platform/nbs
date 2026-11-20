@@ -48,34 +48,19 @@ import (
 func TestExportDiskMetadataSourceDiskLookup(t *testing.T) {
 	lookupErr := errors.New("YDB read failed")
 	for _, tc := range []struct {
-		name             string
-		diskID           string
-		image            *resources.ImageMeta
-		imageErr         error
-		disk             *resources.DiskMeta
-		diskErr          error
-		createRequest    []byte
-		createRequestErr error
-		blockSize        uint32
+		name      string
+		diskID    string
+		image     *resources.ImageMeta
+		imageErr  error
+		disk      *resources.DiskMeta
+		diskErr   error
+		blockSize uint32
 	}{
 		{name: "snapshot disk", diskID: "disk", disk: &resources.DiskMeta{BlockSize: 4096}, blockSize: 4096},
 		{name: "image disk", image: &resources.ImageMeta{SrcDiskID: "disk"}, disk: &resources.DiskMeta{BlockSize: 512}, blockSize: 512},
 		{name: "deleted disk", diskID: "disk"},
 		{name: "unknown block size", diskID: "disk", disk: &resources.DiskMeta{}},
-		{
-			name:          "invalid create request preserves block size",
-			diskID:        "disk",
-			disk:          &resources.DiskMeta{BlockSize: 4096},
-			createRequest: []byte{0xff},
-			blockSize:     4096,
-		},
-		{
-			name:             "create request read error keeps block size",
-			diskID:           "disk",
-			disk:             &resources.DiskMeta{BlockSize: 4096},
-			createRequestErr: lookupErr,
-			blockSize:        4096,
-		},
+		{name: "invalid create request preserves block size", diskID: "disk", disk: &resources.DiskMeta{BlockSize: 4096, CreateRequestData: []byte{0xff}}, blockSize: 4096},
 		{name: "unknown image"},
 		{name: "image without source disk", image: &resources.ImageMeta{}},
 		{name: "disk read error", diskID: "disk", diskErr: lookupErr},
@@ -92,14 +77,6 @@ func TestExportDiskMetadataSourceDiskLookup(t *testing.T) {
 			}
 			if diskID != "" {
 				storage.On("GetDiskMeta", mock.Anything, diskID).Return(tc.disk, tc.diskErr).Once()
-			}
-			if tc.disk != nil && tc.diskErr == nil {
-				// The create request is read only for an existing disk.
-				storage.On(
-					"GetDiskCreateRequest",
-					mock.Anything,
-					diskID,
-				).Return(tc.createRequest, tc.createRequestErr).Once()
 			}
 			ctx := logging.SetLogger(context.Background(), newExportLogger(logging.InfoLevel))
 			metadata, err := readExportDiskMetadata(ctx, storage, "snapshot", tc.diskID)
@@ -164,13 +141,8 @@ func TestExportDiskEncryptionMetadataFromCreateRequest(t *testing.T) {
 			storage := resource_mocks.NewStorageMock()
 			storage.On("GetDiskMeta", mock.Anything, "disk").Return(&resources.DiskMeta{
 				ID: "disk", SrcImageID: tc.imageID, SrcSnapshotID: tc.snapshotID,
-				BlockSize: 4096,
+				BlockSize: 4096, CreateRequestData: data,
 			}, nil).Once()
-			storage.On(
-				"GetDiskCreateRequest",
-				mock.Anything,
-				"disk",
-			).Return(data, nil).Once()
 			ctx := logging.SetLogger(context.Background(), newExportLogger(logging.InfoLevel))
 			metadata, err := readExportDiskMetadata(ctx, storage, "snapshot", "disk")
 			require.NoError(t, err)
