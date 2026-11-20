@@ -84,7 +84,7 @@ TVolumePerformanceCalculator::TVolumePerformanceCalculator(
         const NProto::TVolume& volume,
         TDiagnosticsConfigPtr diagnosticsConfig)
     : MediaKind(volume.GetStorageMediaKind())
-    , ConfigSettings(GetPerfSettings(*diagnosticsConfig, MediaKind))
+    , ConfigSettings(GetConfigSettings(diagnosticsConfig))
     , ExpectedIoParallelism(diagnosticsConfig->GetExpectedIoParallelism())
 {
     TIntrusivePtr<TVolumePerfSettings> settings =
