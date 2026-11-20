@@ -539,6 +539,72 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
                 env.Pipe.Sender,
                 TDuration::Seconds(5)));
     }
+
+    Y_UNIT_TEST(ShouldDeleteUnconfirmedDataOnPipeDisconnection)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TEnv env(TDuration::Zero(), std::move(storageConfig));
+
+        const ui64 nodeId =
+            CreateNode(env.Tablet, TCreateNodeArgs::File(RootNodeId, "file"));
+        const ui64 handle = CreateHandle(env.Tablet, nodeId);
+
+        auto generated = env.Wait(env.Send(
+            env.Tablet.CreateGenerateBlobIdsRequest(nodeId, handle, 0, 4_KB)));
+        UNIT_ASSERT(
+            env.Record<NProtoPrivate::TGenerateBlobIdsResponse>(generated)
+                .GetUnconfirmedFlowEnabled());
+        env.Runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            GetStorageStats(env.Tablet).GetUnconfirmedDataCount());
+
+        // the session's pipe stays connected
+        env.Runtime.ClosePipe(env.Pipe.ClientId, env.Pipe.Sender, env.NodeIdx);
+        env.Runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            GetStorageStats(env.Tablet).GetUnconfirmedDataCount());
+    }
+
+    Y_UNIT_TEST(ShouldDeduplicateRequestsRetriedOverPipe)
+    {
+        TEnv env(TDuration::Zero());
+
+        auto createRequest = [&]
+        {
+            auto request = env.Tablet.CreateCreateNodeRequest(
+                TCreateNodeArgs::File(RootNodeId, "file"));
+            request->Record.MutableHeaders()->SetRequestId(100500);
+            return request;
+        };
+
+        auto created = env.Wait(env.Send(createRequest()));
+        const ui64 nodeId = env.Record<NProto::TCreateNodeResponse>(created)
+            .GetNode()
+            .GetId();
+        UNIT_ASSERT(nodeId != InvalidNodeId);
+
+        env.Tablet.SendRequest(createRequest());
+        auto retried = env.Tablet.RecvCreateNodeResponse();
+        UNIT_ASSERT_C(
+            !HasError(retried->GetError()),
+            FormatError(retried->GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, retried->Record.GetNode().GetId());
+
+        auto retriedOverRdma = env.Wait(env.Send(createRequest()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId,
+            env.Record<NProto::TCreateNodeResponse>(retriedOverRdma)
+                .GetNode()
+                .GetId());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

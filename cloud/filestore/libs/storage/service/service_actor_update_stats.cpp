@@ -108,6 +108,8 @@ void TStorageServiceActor::HandleUpdateStats(
         }
     }
 
+    ReadDataActorPoolSize->Set(ReadDataActorPool.GetSize());
+
     StatsRegistry->UpdateStats(true);
     ScheduleUpdateStats(ctx);
 }

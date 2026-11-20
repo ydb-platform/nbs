@@ -734,6 +734,7 @@ void TBench::Start()
             Executor,
             std::move(logMetaStore),
             std::move(logDataStore),
+            TString(DeviceUUID),
             dataPages);
 
         Device = CreateJournalledDeviceV2(

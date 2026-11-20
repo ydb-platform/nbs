@@ -446,7 +446,7 @@ private:
                 auto self = weakSelf.lock();
                 if (!self) {
                     return MakeErrorResponse<T>(
-                        E_FAIL,
+                        E_CANCELLED,
                         "TJournalledDeviceHandler is destroyed");
                 }
 
