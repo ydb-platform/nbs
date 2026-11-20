@@ -35,7 +35,9 @@ void TVolumeActor::ExecuteResetStartPartitionsNeeded(
     STORAGE_VERIFY(State, TWellKnownEntityTypes::TABLET, TabletID());
 
     if (State->GetShouldStartPartitionsForGc(ctx.Now())) {
-        if (PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC) {
+        if (PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC ||
+            PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_COPY)
+        {
             if (FindPtr(GCCompletedPartitions, args.PartitionTabletId)) {
                 // This partition has already sent GC report
                 return;
@@ -45,15 +47,20 @@ void TVolumeActor::ExecuteResetStartPartitionsNeeded(
                 GCCompletedPartitions.push_back(args.PartitionTabletId);
                 return;
             }
-            LOG_INFO(
-                ctx,
-                TBlockStoreComponents::VOLUME,
-                "%s Stopping partitions after gc finished",
-                LogTitle.GetWithTime().c_str());
+            if (State->HasActiveFollowerCopy()) {
+                // GC is done, but the copier still owns a need for source data.
+                PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_COPY;
+            } else {
+                LOG_INFO(
+                    ctx,
+                    TBlockStoreComponents::VOLUME,
+                    "%s Stopping partitions after gc finished",
+                    LogTitle.GetWithTime().c_str());
 
-            StopPartitions(ctx, {});
-            State->Reset();
-            PartitionsStartedReason = EPartitionsStartedReason::NOT_STARTED;
+                StopPartitions(ctx, {});
+                ResetPartitionsState(ctx);
+                PartitionsStartedReason = EPartitionsStartedReason::NOT_STARTED;
+            }
         }
         TVolumeDatabase db(tx.DB);
         State->SetStartPartitionsNeeded(false);

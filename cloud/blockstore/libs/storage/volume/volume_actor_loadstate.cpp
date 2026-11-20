@@ -189,6 +189,9 @@ void TVolumeActor::CompleteLoadState(
 
         if (State->IsDiskRegistryMediaKind() || PendingRequests.size()) {
             StartPartitionsForUse(ctx);
+        } else if (State->HasActiveFollowerCopy()) {
+            // A persisted copy must resume even without clients or pending GC.
+            StartPartitionsForCopy(ctx);
         } else if (State->GetShouldStartPartitionsForGc(ctx.Now())
             && !Config->GetDisableStartPartitionsForGc())
         {
