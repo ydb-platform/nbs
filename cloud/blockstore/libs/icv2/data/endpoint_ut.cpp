@@ -22,6 +22,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/scope.h>
+#include <util/generic/size_literals.h>
 #include <util/system/mutex.h>
 
 #include <future>
@@ -539,7 +540,7 @@ struct TNetworkFixture
             common->Settings.V2.ChecksumEvents = checksums;
             Transports[i] = NCloud::NIcV2::CreateTransport(
                 NActors::CreateUringEngine(std::move(common)),
-                0,
+                64_MB,
                 {});
             UNIT_ASSERT(Transports[i]);
             TRequestChannelConfig config;
