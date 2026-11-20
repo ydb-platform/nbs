@@ -14,6 +14,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr size_t PageSize = 4_KB;
+constexpr ui64 MaxCachedPages = 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -42,7 +43,9 @@ struct TFixture
 {
     const ui64 FirstPageNo = 10;
 
-    IPageStorePtr PageStore = CreateMemPageStore(PageSize);
+    IPageStorePtr PageStore = CreateMemPageStore({
+        .PageSize = PageSize,
+        .MaxCachedPages = MaxCachedPages});
     TSuperBlock SB;
 
     TFixture()

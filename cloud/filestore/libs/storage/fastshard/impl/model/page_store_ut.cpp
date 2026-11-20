@@ -16,6 +16,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui64 PageSize = 16;
+constexpr ui64 MaxCachedPages = 1024;
 constexpr ui64 P = 1;
 constexpr ui64 Q = 2;
 
@@ -92,7 +93,9 @@ struct TEnv
 {
     std::shared_ptr<TTestStorageGroup> Storage =
         std::make_shared<TTestStorageGroup>();
-    IPageStorePtr Store = CreatePageStore(Storage, PageSize);
+    IPageStorePtr Store = CreatePageStore(
+        Storage,
+        {.PageSize = PageSize, .MaxCachedPages = MaxCachedPages});
     TVector<TPageGroup> LogRecord;
 
     void Write(ui64 lsn, ui64 pageNo, char c)
@@ -101,7 +104,7 @@ struct TEnv
         ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
     }
 
-    TResultOrError<char> Lookup(ui64 pageNo)
+    [[nodiscard]] TResultOrError<char> Lookup(ui64 pageNo) const
     {
         TBuffer page;
         auto error = Store->ReadPageForLookup(pageNo, &page);
@@ -111,7 +114,7 @@ struct TEnv
         return page.Data()[0];
     }
 
-    TResultOrError<char> Update(ui64 lsn, ui64 pageNo)
+    [[nodiscard]] TResultOrError<char> Update(ui64 lsn, ui64 pageNo) const
     {
         TBuffer page;
         auto error = Store->ReadPageForUpdate(lsn, pageNo, &page);
@@ -234,6 +237,8 @@ TEST(PageStoreTest, ShouldRollbackDirtyVersion)
     env.Store->RollbackPages(1, {P});
     ASSERT_PAGE('a', env.Update(3, P));
     ASSERT_PAGE('a', env.Lookup(P));
+
+    env.Store->RollbackPages(3, {P});
     env.Store->Clear();
 }
 

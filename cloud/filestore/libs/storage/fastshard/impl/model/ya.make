@@ -23,6 +23,7 @@ PEERDIR(
 
     contrib/libs/silk/src/fibers
 
+    library/cpp/cache
     library/cpp/json
 )
 
