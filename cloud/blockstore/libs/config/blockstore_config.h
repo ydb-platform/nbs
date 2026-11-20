@@ -36,6 +36,12 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Configuration pointer aliases provide read-only access by default:
+// ...ConfigPtr points to a const configuration. Consumers must always accept
+// and retain ...ConfigPtr. Only configuration builders may retain
+// ...ConfigMutablePtr to prepare and publish configurations. Define a mutable
+// alias only when needed.
+
 using TGrpcClientConfigPtr = std::shared_ptr<const NProto::TGrpcClientConfig>;
 using TRootKmsConfigPtr = std::shared_ptr<const NProto::TRootKmsConfig>;
 

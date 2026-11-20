@@ -29,8 +29,8 @@ public:
 
     [[nodiscard]] IBlockstoreConfigPtr Get() const;
 
-    // Publish a non-null configuration atomically. THotSwap requires mutable
-    // intrusive ownership for reference counting. Only one writer may call Set().
+    // Publish a non-null configuration atomically. Only one writer may call
+    // Set().
     void Set(IBlockstoreConfigMutablePtr config);
 
 private:
