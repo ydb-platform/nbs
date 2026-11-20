@@ -81,10 +81,19 @@ struct TEvServicePrivate
     using TEvSessionCreated = TResponseEvent<TSessionCreated, EvSessionCreated>;
     using TEvSessionDestroyed = TResponseEvent<TSessionDestroyed, EvSessionDestroyed>;
     using TEvUpdateStats = TRequestEvent<TEmpty, EvUpdateStats>;
-    using TEvReleaseReadDataActor =
-        TRequestEvent<TEmpty, EvReleaseReadDataActor>;
-    using TEvReleaseWriteDataActor =
-        TRequestEvent<TEmpty, EvReleaseWriteDataActor>;
+
+    // Unlike TRequestEvent following events dont allocalte TCallContext on
+    // the heap
+    struct TEvReleaseReadDataActor final
+        : public NActors::
+              TEventLocal<TEvReleaseReadDataActor, EvReleaseReadDataActor>
+    {
+    };
+    struct TEvReleaseWriteDataActor final
+        : public NActors::
+              TEventLocal<TEvReleaseWriteDataActor, EvReleaseWriteDataActor>
+    {
+    };
 };
 
 }   // namespace NCloud::NFileStore::NStorage
