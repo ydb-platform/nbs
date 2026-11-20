@@ -32,20 +32,6 @@ std::optional<TBlobCompressor::TMetricsConfig> PrepareMetricsConfig(
     return config;
 }
 
-TError ValidateCompressionSettings(ui32 blockSize, ui32 chunkSize)
-{
-    if (!blockSize) {
-        return MakeError(E_ARGUMENT, "Block size must be nonzero");
-    }
-    if (chunkSize < blockSize || chunkSize % blockSize != 0) {
-        return MakeError(
-            E_ARGUMENT,
-            TStringBuilder() << "Invalid chunk size " << chunkSize
-                             << " for block size " << blockSize);
-    }
-    return {};
-}
-
 TError ValidateCompressBlobInput(
     ui32 blockSize,
     ui32 chunkSize,
@@ -81,14 +67,12 @@ ui32 GetCompressedChunkSize(
     return values[chunk];
 }
 
-TError ValidateReadBlobInput(
+TResultOrError<ui32> GetLastCompressedChunkSize(
     ui32 blockSize,
-    ui32 chunkSize,
     const TCompressionMetadata& compression,
-    ui32 blobSize,
-    std::span<const ui16> blockOffsets,
-    ui32& lastChunkSize)
+    ui32 blobSize)
 {
+    const ui32 chunkSize = compression.GetChunkSize();
     if (auto error = ValidateCompressionSettings(blockSize, chunkSize);
         HasError(error))
     {
@@ -112,15 +96,34 @@ TError ValidateReadBlobInput(
         }
         previousOffset = static_cast<ui32>(offset);
     }
-    lastChunkSize = blobSize - previousOffset;
     const ui32 lastUncompressedChunkSize = compression.GetLastChunkSize();
     if (!lastUncompressedChunkSize || lastUncompressedChunkSize > chunkSize ||
         lastUncompressedChunkSize % blockSize != 0)
     {
         return MakeError(E_ARGUMENT, "Invalid uncompressed last chunk size");
     }
-    const ui64 uncompressedSize = static_cast<ui64>(values.size()) * chunkSize +
-                                  lastUncompressedChunkSize;
+    return blobSize - previousOffset;
+}
+
+ui64 GetUncompressedBlobSize(const TCompressionMetadata& compression)
+{
+    const ui64 fullChunkCount =
+        compression.GetPlainChunks().CompressedChunkSizeSize();
+    return fullChunkCount * compression.GetChunkSize() +
+           compression.GetLastChunkSize();
+}
+
+TResultOrError<ui32> GetLastCompressedChunkSizeForRead(
+    ui32 blockSize,
+    const TCompressionMetadata& compression,
+    ui32 blobSize,
+    std::span<const ui16> blockOffsets)
+{
+    auto size = GetLastCompressedChunkSize(blockSize, compression, blobSize);
+    if (HasError(size.GetError())) {
+        return size.GetError();
+    }
+    const ui64 uncompressedSize = GetUncompressedBlobSize(compression);
     if (!blockOffsets.empty() &&
         static_cast<ui64>(blockOffsets.back()) * blockSize >= uncompressedSize)
     {
@@ -129,33 +132,19 @@ TError ValidateReadBlobInput(
             TStringBuilder() << "Block offset " << blockOffsets.back()
                              << " is outside the uncompressed blob");
     }
-    return {};
+    return size;
 }
 
-TError ValidateDecompressBlobInput(
+TError ValidateDecompressionBuffers(
     ui32 blockSize,
-    ui32 chunkSize,
-    const TCompressionMetadata& compression,
-    ui32 blobSize,
+    const TRope& compressedData,
     std::span<const ui16> blockOffsets,
-    std::span<const TBlockDataRef> outputBuffers,
-    ui32& lastChunkSize)
+    std::span<const TBlockDataRef> outputBuffers)
 {
     if (outputBuffers.size() != blockOffsets.size()) {
         return MakeError(
             E_ARGUMENT,
             "Output buffer count must match block offset count");
-    }
-    if (auto error = ValidateReadBlobInput(
-            blockSize,
-            chunkSize,
-            compression,
-            blobSize,
-            blockOffsets,
-            lastChunkSize);
-        HasError(error))
-    {
-        return error;
     }
     for (const auto& buffer: outputBuffers) {
         if (!buffer.Data()) {
@@ -168,6 +157,9 @@ TError ValidateDecompressBlobInput(
         }
     }
 
+    if (compressedData.empty() && !blockOffsets.empty()) {
+        return MakeError(E_REJECTED, "Missing compressed buffers");
+    }
     return {};
 }
 
@@ -225,6 +217,41 @@ ui64 EstimateCompressedSize(
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TError ValidateCompressionSettings(ui32 blockSize, ui32 chunkSize)
+{
+    if (!blockSize) {
+        return MakeError(E_ARGUMENT, "Block size must be nonzero");
+    }
+    if (chunkSize < blockSize || chunkSize % blockSize != 0) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "Invalid chunk size " << chunkSize
+                             << " for block size " << blockSize);
+    }
+    return {};
+}
+
+TError ValidateCompressionMetadata(
+    ui32 blockSize,
+    const TCompressionMetadata& compression,
+    ui32 blobSize,
+    ui32 expectedBlockCount)
+{
+    auto lastChunkSize =
+        GetLastCompressedChunkSize(blockSize, compression, blobSize);
+    if (HasError(lastChunkSize.GetError())) {
+        return lastChunkSize.GetError();
+    }
+    const ui64 blockCount = GetUncompressedBlobSize(compression) / blockSize;
+    if (blockCount != expectedBlockCount) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "Compression metadata covers " << blockCount
+                             << " blocks, expected " << expectedBlockCount);
+    }
+    return GetCompressionCodec(compression.GetCodec()).GetError();
+}
 
 TResultOrError<TCompressedBlob> CompressBlob(
     ui32 blockSize,
@@ -285,6 +312,27 @@ TResultOrError<TCompressedBlob> CompressBlob(
     return result;
 }
 
+TResultOrError<TValidatedBlobRead> ValidateReadBlobInput(
+    ui32 blockSize,
+    const TCompressionMetadata& compression,
+    ui32 blobSize,
+    std::span<const ui16> blockOffsets)
+{
+    auto size = GetLastCompressedChunkSizeForRead(
+        blockSize,
+        compression,
+        blobSize,
+        blockOffsets);
+    if (HasError(size.GetError())) {
+        return size.GetError();
+    }
+    auto codec = GetCompressionCodec(compression.GetCodec());
+    if (HasError(codec.GetError())) {
+        return codec.GetError();
+    }
+    return TValidatedBlobRead{blockSize, size.GetResult(), codec.GetResult()};
+}
+
 TError DecompressBlob(
     ui32 blockSize,
     const TRope& compressedData,
@@ -294,34 +342,53 @@ TError DecompressBlob(
     std::span<const TBlockDataRef> outputBuffers,
     TVector<ui32>* blockChecksums)
 {
-    const ui32 chunkSize = compression.GetChunkSize();
-    ui32 lastChunkSize = 0;
-    if (auto error = ValidateDecompressBlobInput(
+    if (compressedData.empty()) {
+        auto size = GetLastCompressedChunkSizeForRead(
             blockSize,
-            chunkSize,
             compression,
             blobSize,
+            blockOffsets);
+        if (HasError(size.GetError())) {
+            return size.GetError();
+        }
+        return ValidateDecompressionBuffers(
+            blockSize,
+            compressedData,
             blockOffsets,
-            outputBuffers,
-            lastChunkSize);
+            outputBuffers);
+    }
+    auto read =
+        ValidateReadBlobInput(blockSize, compression, blobSize, blockOffsets);
+    if (HasError(read.GetError())) {
+        return read.GetError();
+    }
+    return DecompressBlob(
+        read.GetResult(),
+        compressedData,
+        compression,
+        blockOffsets,
+        outputBuffers,
+        blockChecksums);
+}
+
+TError DecompressBlob(
+    const TValidatedBlobRead& read,
+    const TRope& compressedData,
+    const TCompressionMetadata& compression,
+    std::span<const ui16> blockOffsets,
+    std::span<const TBlockDataRef> outputBuffers,
+    TVector<ui32>* blockChecksums)
+{
+    if (auto error = ValidateDecompressionBuffers(
+            read.BlockSize,
+            compressedData,
+            blockOffsets,
+            outputBuffers);
         HasError(error))
     {
         return error;
     }
-
-    if (compressedData.empty()) {
-        if (!blockOffsets.empty()) {
-            return MakeError(E_REJECTED, "Missing compressed buffers");
-        }
-        return {};
-    }
-
-    auto codecOrError = GetCompressionCodec(compression.GetCodec());
-    if (HasError(codecOrError.GetError())) {
-        return codecOrError.GetError();
-    }
-    const auto* codec = codecOrError.GetResult();
-
+    const ui32 chunkSize = compression.GetChunkSize();
     TRope::TConstIterator iter = compressedData.Begin();
     size_t remainingBytes = compressedData.GetSize();
 
@@ -332,11 +399,14 @@ TError DecompressBlob(
         compression.GetPlainChunks().GetCompressedChunkSize().size() + 1;
     size_t currentChunk = chunkCount;
     for (size_t i = 0; i < blockOffsets.size(); ++i) {
-        const ui64 blockStart = static_cast<ui64>(blockOffsets[i]) * blockSize;
+        const ui64 blockStart =
+            static_cast<ui64>(blockOffsets[i]) * read.BlockSize;
         const size_t chunk = blockStart / chunkSize;
         if (chunk != currentChunk) {
-            const size_t compressedSize =
-                GetCompressedChunkSize(compression, lastChunkSize, chunk);
+            const size_t compressedSize = GetCompressedChunkSize(
+                compression,
+                read.LastCompressedChunkSize,
+                chunk);
 
             if (compressedSize > remainingBytes) {
                 return MakeError(
@@ -354,7 +424,7 @@ TError DecompressBlob(
 
             const bool lastChunk = chunk + 1 == chunkCount;
             auto error = DecodeChunk(
-                *codec,
+                *read.Codec,
                 compressedChunk,
                 lastChunk ? compression.GetLastChunkSize() : chunkSize,
                 decoded);
@@ -366,21 +436,21 @@ TError DecompressBlob(
 
         const size_t offset = blockStart % chunkSize;
 
-        if (offset + blockSize > decoded.size()) {
+        if (offset + read.BlockSize > decoded.size()) {
             return MakeError(
                 E_REJECTED,
                 "Requested block is outside the decompressed chunk");
         }
 
         if (blockChecksums) {
-            blockChecksums->push_back(
-                ComputeDefaultDigest({decoded.data() + offset, blockSize}));
+            blockChecksums->push_back(ComputeDefaultDigest(
+                {decoded.data() + offset, read.BlockSize}));
         }
 
         std::memcpy(
             const_cast<char*>(outputBuffers[i].Data()),
             decoded.data() + offset,
-            blockSize);
+            read.BlockSize);
     }
 
     if (remainingBytes != 0) {
@@ -399,33 +469,31 @@ TResultOrError<TReadPlan> PlanReadBlob(
         return TReadPlan{};
     }
 
+    auto read = ValidateReadBlobInput(
+        blockSize,
+        compression,
+        blobId.BlobSize(),
+        blockOffsets);
+    if (HasError(read.GetError())) {
+        return read.GetError();
+    }
+    return PlanReadBlob(read.GetResult(), blobId, compression, blockOffsets);
+}
+
+TReadPlan PlanReadBlob(
+    const TValidatedBlobRead& read,
+    const NKikimr::TLogoBlobID& blobId,
+    const TCompressionMetadata& compression,
+    std::span<const ui16> blockOffsets)
+{
     const ui32 chunkSize = compression.GetChunkSize();
-    const ui32 blobSize = blobId.BlobSize();
-    ui32 lastChunkSize = 0;
-    if (auto error = ValidateReadBlobInput(
-            blockSize,
-            chunkSize,
-            compression,
-            blobSize,
-            blockOffsets,
-            lastChunkSize);
-        HasError(error))
-    {
-        return error;
-    }
-
-    auto codecOrError = GetCompressionCodec(compression.GetCodec());
-    if (HasError(codecOrError.GetError())) {
-        return codecOrError.GetError();
-    }
-
     using TQuery = NKikimr::TEvBlobStorage::TEvGet::TQuery;
 
     size_t queryCount = 0;
     std::optional<size_t> lastChunkIndex;
     for (const auto blockOffset: blockOffsets) {
         const size_t chunk =
-            (static_cast<ui64>(blockOffset) * blockSize) / chunkSize;
+            (static_cast<ui64>(blockOffset) * read.BlockSize) / chunkSize;
         if (!lastChunkIndex ||
             (*lastChunkIndex != chunk && *lastChunkIndex + 1 != chunk))
         {
@@ -443,7 +511,7 @@ TResultOrError<TReadPlan> PlanReadBlob(
     queryBlocksRanges.reserve(queryCount);
 
     for (const auto blockOffset: blockOffsets) {
-        const ui64 blockStart = static_cast<ui64>(blockOffset) * blockSize;
+        const ui64 blockStart = static_cast<ui64>(blockOffset) * read.BlockSize;
         const size_t chunk = blockStart / chunkSize;
 
         if (chunk < nextChunk) {
@@ -452,12 +520,16 @@ TResultOrError<TReadPlan> PlanReadBlob(
         }
 
         while (nextChunk < chunk) {
-            offset +=
-                GetCompressedChunkSize(compression, lastChunkSize, nextChunk);
+            offset += GetCompressedChunkSize(
+                compression,
+                read.LastCompressedChunkSize,
+                nextChunk);
             ++nextChunk;
         }
-        const ui64 size =
-            GetCompressedChunkSize(compression, lastChunkSize, chunk);
+        const ui64 size = GetCompressedChunkSize(
+            compression,
+            read.LastCompressedChunkSize,
+            chunk);
         auto* previousQuery = queries.empty() ? nullptr : &queries.back();
         if (previousQuery &&
             static_cast<ui64>(previousQuery->Shift) + previousQuery->Size ==

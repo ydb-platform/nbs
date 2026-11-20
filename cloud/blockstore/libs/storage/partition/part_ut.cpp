@@ -2302,6 +2302,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                             blobId.BlobSize());
                         // Simulate compression without changing the
                         // logical blocks described by the blob.
+                        NProto::TCompressionMetadata compression;
+                        compression.SetCodec(
+                            NCloud::NProto::COMPRESSION_CODEC_SNAPPY);
+                        compression.SetChunkSize(blobId.BlobSize());
+                        compression.SetLastChunkSize(blobId.BlobSize());
+                        compression.MutablePlainChunks();
                         TVector<TAddMergedBlob> replacementBlobs;
                         replacementBlobs.emplace_back(
                             TPartialBlobId(
@@ -2313,7 +2319,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                                 blobId.PartId()),
                             blob.BlockRange,
                             blob.SkipMask,
-                            blob.Checksums);
+                            blob.Checksums,
+                            std::move(compression));
                         msg->MergedBlobs.swap(replacementBlobs);
                         ++replacedBlobs;
                     }
