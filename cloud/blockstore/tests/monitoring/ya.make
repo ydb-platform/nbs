@@ -7,6 +7,7 @@ TEST_SRCS(test.py)
 DEPENDS(
     cloud/blockstore/apps/client
     cloud/blockstore/apps/server
+    cloud/storage/core/tools/testing/access_service/mock
     contrib/ydb/apps/ydbd
 )
 

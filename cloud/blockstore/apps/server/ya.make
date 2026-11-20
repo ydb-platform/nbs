@@ -1,5 +1,16 @@
 PROGRAM(nbsd)
 
+# Shared protocols and interfaces are allowed; tablet implementation and
+# its private services must never enter the lightweight dependency graph.
+CHECK_DEPENDENT_DIRS(DENY PEERDIRS
+    GLOB contrib/ydb/core/tx/columnshard
+    contrib/ydb/core/tx/columnshard/column_fetching
+    contrib/ydb/core/tx/columnshard/data_accessor/cache_policy
+    contrib/ydb/core/tx/columnshard/engines/reader
+    contrib/ydb/core/tx/conveyor_composite/service
+    contrib/ydb/core/tx/priorities/service
+)
+
 ALLOCATOR(TCMALLOC_256K)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/binaries_dependency.inc)
