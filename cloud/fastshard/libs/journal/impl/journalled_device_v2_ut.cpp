@@ -1371,6 +1371,65 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(cleanupCount, Journal->GetCleanupCount());
         UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetWriteRequests().size());
     }
+
+    Y_UNIT_TEST_F(ShouldWaitForRequestsInFlightOnStop, TFixture)
+    {
+        StartDeviceAndCheck();
+        HoldFirstDataStoreWrite();
+
+        auto write =
+            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID));
+        WaitForFirstDataStoreWrite();
+
+        auto stopped = Device->Stop();
+
+        // the stop waits for the write
+
+        UNIT_ASSERT(!stopped.Wait(TDuration::MilliSeconds(100)));
+        UNIT_ASSERT(!write.HasValue());
+
+        DataStore->FirstWriteResult.SetValue({});
+
+        UNIT_ASSERT(stopped.Wait(TDuration::Seconds(30)));
+        UNIT_ASSERT(write.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, write.GetValue().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectRequestsAfterStop, TFixture)
+    {
+        StartDeviceAndCheck();
+        StopDevice();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            ReadPages(MakeReadRequest({{10, 1}})).GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            Device->WriteLogRecord(MakeWriteRequest(DefaultDeviceUUID))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            Device->ReadJournalTail(MakeTailRequest(DefaultDeviceUUID))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            Device
+                ->AdvanceLsnLowWatermark(MakeAdvanceRequest(DefaultDeviceUUID))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WritePages({{10, 1}}).GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetWriteRequests().size());
+    }
 }
 
 }   // namespace NCloud::NJournalled
