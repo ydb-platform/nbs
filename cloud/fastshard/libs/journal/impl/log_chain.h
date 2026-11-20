@@ -65,10 +65,12 @@ public:
     // The ready record following |lsn|, nullptr when missing or not ready.
     TLogRecordPtr GetNext(ui64 lsn) const;
 
-    // Ready records following |afterLsn| up to the first gap or record not
-    // ready yet. A zero |maxRecordCount| means no limit.
+    // Ready records following |afterLsn| with lsn not above |maxLsn|, up to
+    // the first gap or record not ready yet. A zero |maxRecordCount| means no
+    // limit.
     TVector<TLogRecordPtr> GetReadyRun(
         ui64 afterLsn,
+        ui64 maxLsn,
         ui64 maxRecordCount) const;
 };
 
