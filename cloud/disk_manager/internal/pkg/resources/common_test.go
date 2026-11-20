@@ -81,7 +81,7 @@ func newStorageWithBackupFolders(
 		placementGroupsFolder,
 		db,
 		false, // dropUnusedColumns
-		true,
+		true,  // backupEnabled
 	)
 	require.NoError(t, err)
 

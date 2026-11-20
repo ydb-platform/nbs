@@ -155,29 +155,29 @@ func (s *storageCommon) unrefChunk(
 	var backupQuery string
 	if len(s.followerChunksTableName) != 0 {
 		backupQuery = fmt.Sprintf(`
-		-- The chunk dies with its last ref, and its follower object, queued
-		-- or copied, goes to backup_chunk_delete_queue. Chunk IDs are never
-		-- reused, so a late write or delete of the object cannot hit a live
-		-- chunk. Goes before the changes of chunk_blobs so that it reads the table
-		-- before they are made.
-		$dead = (
-			select chunk_id
-			from $to_delete
-			where referer = ""
-		);
+			-- The chunk dies with its last ref, and its follower object, queued
+			-- or copied, goes to backup_chunk_delete_queue. Chunk IDs are never
+			-- reused, so a late write or delete of the object cannot hit a live
+			-- chunk. Goes before the changes of chunk_blobs so that it reads the table
+			-- before they are made.
+			$dead = (
+				select chunk_id
+				from $to_delete
+				where referer = ""
+			);
 
-		$dead_follower_chunks = (
-			select chunk_id
-			from %[1]v
-			where chunk_id = $chunk_id and
-				$chunk_id in $dead
-		);
+			$dead_follower_chunks = (
+				select chunk_id
+				from %[1]v
+				where chunk_id = $chunk_id and
+					$chunk_id in $dead
+			);
 
-		upsert into backup_chunk_delete_queue
-		select chunk_id from $dead_follower_chunks;
+			upsert into backup_chunk_delete_queue
+			select chunk_id from $dead_follower_chunks;
 
-		delete from %[1]v
-		on select chunk_id from $dead_follower_chunks;
+			delete from %[1]v
+			on select chunk_id from $dead_follower_chunks;
 		`, s.followerChunksTableName)
 	}
 

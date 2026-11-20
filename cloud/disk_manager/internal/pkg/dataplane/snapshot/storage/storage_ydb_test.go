@@ -314,6 +314,7 @@ func newStorage(
 	db *persistence.YDBClient,
 	s3 *persistence.S3Client,
 	registry metrics.Registry,
+	backupEnabled bool,
 ) Storage {
 
 	err := schema.Create(
@@ -322,11 +323,11 @@ func newStorage(
 		db,
 		s3,
 		false, // dropUnusedColumns
-		true,  // backupEnabled
+		backupEnabled,
 	)
 	require.NoError(t, err)
 
-	storage, err := NewStorage(config, registry, db, s3, true)
+	storage, err := NewStorage(config, registry, db, s3, backupEnabled)
 	require.NoError(t, err)
 
 	return storage
@@ -335,13 +336,14 @@ func newStorage(
 ////////////////////////////////////////////////////////////////////////////////
 
 type fixture struct {
-	t       *testing.T
-	ctx     context.Context
-	cancel  context.CancelFunc
-	db      *persistence.YDBClient
-	s3      *persistence.S3Client
-	config  *snapshot_config.SnapshotConfig
-	storage Storage
+	t             *testing.T
+	ctx           context.Context
+	cancel        context.CancelFunc
+	db            *persistence.YDBClient
+	s3            *persistence.S3Client
+	config        *snapshot_config.SnapshotConfig
+	storage       Storage
+	backupEnabled bool
 }
 
 // Reads the whole queue in key order.
@@ -366,44 +368,18 @@ func (f *fixture) teardown() {
 func (f *fixture) storageWithFollowerChunksTable(name string) Storage {
 	config := proto.Clone(f.config).(*snapshot_config.SnapshotConfig)
 	config.FollowerChunksTableName = &name
-	return newStorage(f.t, f.ctx, config, f.db, f.s3, metrics.NewEmptyRegistry())
-}
-
-func (f *fixture) checkDeleteSnapshotWithoutBackups(useS3 bool) {
-	f.t.Helper()
-
-	// Snapshot deletion must work when backup tables are absent.
-	for _, table := range []string{
-		"backup_chunk_queue",
-		f.config.GetFollowerChunksTableName(),
-		"backup_chunk_delete_queue",
-		"backup_chunk_failures",
-	} {
-		err := f.db.DropTable(
-			f.ctx,
-			f.config.GetStorageFolder(),
-			table,
-		)
-		require.NoError(f.t, err)
-	}
-
-	var err error
-	f.storage, err = NewStorage(
-		f.config,
-		metrics.NewEmptyRegistry(),
+	return newStorage(
+		f.t,
+		f.ctx,
+		config,
 		f.db,
 		f.s3,
-		false, // backupEnabled
+		metrics.NewEmptyRegistry(),
+		f.backupEnabled,
 	)
-	require.NoError(f.t, err)
-
-	chunkID := createSnapshotWithChunk(f, "snapshot", useS3)
-	deleteSnapshot(f, "snapshot")
-
-	require.Empty(f.t, readChunkBlobsFromYDB(f, chunkID))
 }
 
-func createFixture(t *testing.T) *fixture {
+func createFixture(t *testing.T, backupEnabled bool) *fixture {
 	ctx, cancel := context.WithCancel(test.NewContext())
 
 	db, err := newYDB(ctx)
@@ -433,16 +409,25 @@ func createFixture(t *testing.T) *fixture {
 		ChunkBlobsS3KeyPrefix:     &chunkBlobsS3KeyPrefix,
 	}
 
-	storage := newStorage(t, ctx, config, db, s3, metrics.NewEmptyRegistry())
+	storage := newStorage(
+		t,
+		ctx,
+		config,
+		db,
+		s3,
+		metrics.NewEmptyRegistry(),
+		backupEnabled,
+	)
 
 	return &fixture{
-		t:       t,
-		ctx:     ctx,
-		cancel:  cancel,
-		db:      db,
-		s3:      s3,
-		config:  config,
-		storage: storage,
+		t:             t,
+		ctx:           ctx,
+		cancel:        cancel,
+		db:            db,
+		s3:            s3,
+		config:        config,
+		storage:       storage,
+		backupEnabled: backupEnabled,
 	}
 }
 
@@ -465,15 +450,38 @@ func makeZeroChunk(chunkIndex uint32) dataplane_common.Chunk {
 ////////////////////////////////////////////////////////////////////////////////
 
 type differentChunkStorageTestCase struct {
-	name  string
-	useS3 bool
+	name          string
+	useS3         bool
+	backupEnabled bool
 }
 
 func testCases() []differentChunkStorageTestCase {
 	return []differentChunkStorageTestCase{
-		{"store chunks in ydb", false},
-		{"store chunks in s3", true},
+		{name: "ydb without backups"},
+		{name: "s3 without backups", useS3: true},
+		{name: "ydb with backups", backupEnabled: true},
+		{name: "s3 with backups", useS3: true, backupEnabled: true},
 	}
+}
+
+func testCasesWithBackupsEnabled() []differentChunkStorageTestCase {
+	var cases []differentChunkStorageTestCase
+	for _, testCase := range testCases() {
+		if testCase.backupEnabled {
+			cases = append(cases, testCase)
+		}
+	}
+	return cases
+}
+
+func testCasesWithBackupsDisabled() []differentChunkStorageTestCase {
+	var cases []differentChunkStorageTestCase
+	for _, testCase := range testCases() {
+		if !testCase.backupEnabled {
+			cases = append(cases, testCase)
+		}
+	}
+	return cases
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -649,7 +657,7 @@ func TestCreateSchemaWithoutBackups(t *testing.T) {
 func TestCreateSnapshot(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			snapshotMeta, err := f.storage.CreateSnapshot(
@@ -693,7 +701,7 @@ func TestCreateSnapshot(t *testing.T) {
 func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			disk := types.Disk{
@@ -790,7 +798,7 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 func TestSnapshotsLocks(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			snapshot1 := SnapshotMeta{
@@ -899,7 +907,7 @@ func requireNotHeldForBackup(
 }
 
 func TestSnapshotBackupHoldIsIdempotentAndOwnedByOneCopy(t *testing.T) {
-	f := createFixture(t)
+	f := createFixture(t, true /* backupEnabled */)
 	defer f.teardown()
 
 	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snapshot", CreateTaskID: "create"})
@@ -932,9 +940,9 @@ func TestSnapshotBackupHoldIsIdempotentAndOwnedByOneCopy(t *testing.T) {
 }
 
 func TestSnapshotBackupHoldPreservesInheritedChunks(t *testing.T) {
-	for _, testCase := range testCases() {
+	for _, testCase := range testCasesWithBackupsEnabled() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			chunkID, err := f.storage.WriteChunk(
@@ -974,7 +982,7 @@ func TestSnapshotBackupHoldPreservesInheritedChunks(t *testing.T) {
 }
 
 func TestSnapshotBackupHoldRejectsUnavailableSnapshot(t *testing.T) {
-	f := createFixture(t)
+	f := createFixture(t, true /* backupEnabled */)
 	defer f.teardown()
 
 	requireNotHeldForBackup(t, f, "missing", "backup")
@@ -996,7 +1004,7 @@ func TestSnapshotBackupHoldRejectsUnavailableSnapshot(t *testing.T) {
 }
 
 func TestSnapshotBackupHoldRacesWithDeletion(t *testing.T) {
-	f := createFixture(t)
+	f := createFixture(t, true /* backupEnabled */)
 	defer f.teardown()
 
 	for i := 0; i != 10; i++ {
@@ -1052,7 +1060,7 @@ func TestSnapshotBackupHoldRacesWithDeletion(t *testing.T) {
 func TestDeletingSnapshot(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			_, err := f.storage.CreateSnapshot(
@@ -1104,18 +1112,21 @@ func TestDeletingSnapshot(t *testing.T) {
 }
 
 func TestDeleteSnapshotWithoutBackups(t *testing.T) {
-	for _, testCase := range testCases() {
+	for _, testCase := range testCasesWithBackupsDisabled() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
-			f.checkDeleteSnapshotWithoutBackups(testCase.useS3)
+			chunkID := createSnapshotWithChunk(f, "snapshot", testCase.useS3)
+			deleteSnapshot(f, "snapshot")
+
+			require.Empty(t, readChunkBlobsFromYDB(f, chunkID))
 		})
 	}
 }
 
 func TestDeletingSnapshotWithoutBackups(t *testing.T) {
-	f := createFixture(t)
+	f := createFixture(t, true /* backupEnabled */)
 	defer f.teardown()
 
 	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
@@ -1149,7 +1160,7 @@ func TestDeletingSnapshotWithoutBackups(t *testing.T) {
 func TestDeleteNonexistentSnapshot(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			_, err := f.storage.DeletingSnapshot(f.ctx, "snapshot", "task")
@@ -1181,7 +1192,7 @@ func TestDeleteNonexistentSnapshot(t *testing.T) {
 func TestClearDeletingSnapshots(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			_, err := f.storage.CreateSnapshot(
@@ -1242,7 +1253,7 @@ func TestClearDeletingSnapshots(t *testing.T) {
 func TestDeleteSnapshotData(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			dataChunk := makeChunk(0, "abc")
@@ -1268,7 +1279,7 @@ func TestDeleteSnapshotData(t *testing.T) {
 func TestShallowCopySnapshot(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			chunk1 := makeChunk(0, "abc")
@@ -1345,7 +1356,7 @@ func TestShallowCopySnapshot(t *testing.T) {
 func TestDeleteCopiedSnapshot(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			chunk := makeChunk(0, "abc")
@@ -1392,7 +1403,7 @@ func TestDeleteCopiedSnapshot(t *testing.T) {
 func TestDeleteCopiedSnapshotSource(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			chunk := makeChunk(0, "abc")
@@ -1439,7 +1450,7 @@ func TestDeleteCopiedSnapshotSource(t *testing.T) {
 func TestShallowCopySnapshotWithRandomFailure(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			chunkCount := uint32(1000)
@@ -1581,7 +1592,7 @@ func TestShallowCopySnapshotWithRandomFailure(t *testing.T) {
 func TestWriteChunk(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			chunk := makeChunk(0, "data")
@@ -1602,7 +1613,7 @@ func TestWriteChunk(t *testing.T) {
 }
 
 func TestReadChunkMapRange(t *testing.T) {
-	f := createFixture(t)
+	f := createFixture(t, false /* backupEnabled */)
 	defer f.teardown()
 	var expected []ChunkMapEntry
 	for _, index := range []uint32{0, 1, 2, 4} {
@@ -1656,7 +1667,7 @@ func TestReadChunkMapEmptyAndInvalidRangesDoNotQueryYDB(t *testing.T) {
 func TestWriteChunkIdempotency(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			chunk := makeChunk(0, "data")
@@ -1684,7 +1695,7 @@ func TestWriteChunkIdempotency(t *testing.T) {
 func TestFlattenChunkData(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			chunk := dataplane_common.Chunk{
@@ -1706,7 +1717,7 @@ func TestFlattenChunkData(t *testing.T) {
 func TestReadChunk(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			snapshotID := "test"
@@ -1732,7 +1743,7 @@ func TestReadChunk(t *testing.T) {
 func TestReadNonExistentChunk(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			readChunk := dataplane_common.Chunk{
@@ -1750,7 +1761,7 @@ func TestReadNonExistentChunk(t *testing.T) {
 func TestWriteZeroChunk(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			chunk := makeZeroChunk(0)
@@ -1772,7 +1783,7 @@ func TestWriteZeroChunk(t *testing.T) {
 func TestShallowCopyZeroChunk(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			chunk := makeZeroChunk(0)
@@ -1796,7 +1807,7 @@ func TestShallowCopyZeroChunk(t *testing.T) {
 func TestCheckSnapshotReady(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			_, err := f.storage.CreateSnapshot(
@@ -1825,7 +1836,7 @@ func TestCheckSnapshotReady(t *testing.T) {
 func TestChunkChecksumMismatch(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			chunk := makeChunk(0, "abc")
@@ -1847,7 +1858,7 @@ func TestChunkChecksumMismatch(t *testing.T) {
 }
 
 func TestS3BlobMetadataMissing(t *testing.T) {
-	f := createFixture(t)
+	f := createFixture(t, false /* backupEnabled */)
 	defer f.teardown()
 
 	chunk := makeChunk(0, "abc")
@@ -1869,7 +1880,7 @@ func TestS3BlobMetadataMissing(t *testing.T) {
 func TestChunkCompression(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			comp := "lz4"
@@ -1881,6 +1892,7 @@ func TestChunkCompression(t *testing.T) {
 				f.db,
 				f.s3,
 				metrics.NewEmptyRegistry(),
+				f.backupEnabled,
 			)
 
 			chunk := makeChunk(0, "abc")
@@ -1902,7 +1914,7 @@ func TestChunkCompression(t *testing.T) {
 func TestReadChunkMapReturnsErrorWhenContextIsAlreadyCancelled(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			ctx, cancel := context.WithCancel(f.ctx)
@@ -1921,7 +1933,7 @@ func TestReadChunkMapReturnsErrorWhenContextIsAlreadyCancelled(t *testing.T) {
 func TestGetDataChunkCount(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			chunks := []string{
@@ -1951,7 +1963,7 @@ func TestCompressionMetricsCollection(t *testing.T) {
 	for _, testCase := range testCases() {
 		t.Run(
 			testCase.name, func(t *testing.T) {
-				f := createFixture(t)
+				f := createFixture(t, testCase.backupEnabled)
 				defer f.teardown()
 
 				comp := "lz4"
@@ -1972,7 +1984,15 @@ func TestCompressionMetricsCollection(t *testing.T) {
 					)
 				}
 
-				f.storage = newStorage(t, f.ctx, f.config, f.db, f.s3, registry)
+				f.storage = newStorage(
+					t,
+					f.ctx,
+					f.config,
+					f.db,
+					f.s3,
+					registry,
+					f.backupEnabled,
+				)
 				chunk := makeChunk(0, "abc")
 				chunkID, err := f.storage.WriteChunk(
 					f.ctx,
@@ -2183,7 +2203,7 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestBackupChunkQueue(t *testing.T) {
-	f := createFixture(t)
+	f := createFixture(t, true /* backupEnabled */)
 	defer f.teardown()
 
 	entries := []BackupChunkQueueEntry{
@@ -2250,7 +2270,7 @@ func TestBackupChunkQueue(t *testing.T) {
 }
 
 func TestBackupChunkInFollowerIsNotEnqueuedForAnotherSnapshot(t *testing.T) {
-	f := createFixture(t)
+	f := createFixture(t, true /* backupEnabled */)
 	defer f.teardown()
 
 	first := BackupChunkQueueEntry{
@@ -2308,7 +2328,7 @@ func TestBackupChunkInFollowerIsNotEnqueuedForAnotherSnapshot(t *testing.T) {
 // A chunk copied to one follower is unknown to the table of another: a backup
 // to the other follower queues the chunk again, and marks it in its own table.
 func TestBackupChunkCopiedToAnotherFollowerIsEnqueuedAgain(t *testing.T) {
-	f := createFixture(t)
+	f := createFixture(t, true /* backupEnabled */)
 	defer f.teardown()
 
 	second := f.storageWithFollowerChunksTable("follower_chunks_second")
@@ -2352,7 +2372,7 @@ func TestBackupChunkCopiedToAnotherFollowerIsEnqueuedAgain(t *testing.T) {
 }
 
 func TestClearBackupChunks(t *testing.T) {
-	f := createFixture(t)
+	f := createFixture(t, true /* backupEnabled */)
 	defer f.teardown()
 
 	entries := []BackupChunkQueueEntry{
@@ -2431,7 +2451,7 @@ func TestClearBackupChunks(t *testing.T) {
 }
 
 func TestBackupChunkQueueKeysChunksByShard(t *testing.T) {
-	f := createFixture(t)
+	f := createFixture(t, true /* backupEnabled */)
 	defer f.teardown()
 
 	var entries []BackupChunkQueueEntry
@@ -2467,7 +2487,7 @@ func TestBackupChunkQueueKeysChunksByShard(t *testing.T) {
 }
 
 func TestReadChunkBlob(t *testing.T) {
-	f := createFixture(t)
+	f := createFixture(t, false /* backupEnabled */)
 	defer f.teardown()
 
 	chunk := makeChunk(0, "abc")
@@ -2504,7 +2524,7 @@ func TestReadChunkBlob(t *testing.T) {
 }
 
 func TestReadChunkBlobStoredInYDB(t *testing.T) {
-	f := createFixture(t)
+	f := createFixture(t, false /* backupEnabled */)
 	defer f.teardown()
 
 	chunk := makeChunk(0, "abc")
@@ -2577,9 +2597,9 @@ func deleteSnapshot(f *fixture, snapshotID string) {
 }
 
 func TestBackupChunkDeleteQueue(t *testing.T) {
-	for _, testCase := range testCases() {
+	for _, testCase := range testCasesWithBackupsEnabled() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			useS3 := testCase.useS3
@@ -2632,9 +2652,9 @@ func TestBackupChunkDeleteQueue(t *testing.T) {
 // The last unref queues for deletion only the chunks known to the follower
 // chunks table of the storage: a chunk of the old follower is left alone.
 func TestBackupChunkDeleteQueueTakesFollowerChunksTableOfConfig(t *testing.T) {
-	for _, testCase := range testCases() {
+	for _, testCase := range testCasesWithBackupsEnabled() {
 		t.Run(testCase.name, func(t *testing.T) {
-			f := createFixture(t)
+			f := createFixture(t, testCase.backupEnabled)
 			defer f.teardown()
 
 			useS3 := testCase.useS3
@@ -2676,7 +2696,7 @@ func TestBackupChunkDeleteQueueTakesFollowerChunksTableOfConfig(t *testing.T) {
 // A worker that copied a chunk after the chunk was deleted does not mark it
 // as copied: the follower object is queued for deletion already.
 func TestBackupChunkCompletedAfterDeletionIsNotMarkedCopied(t *testing.T) {
-	f := createFixture(t)
+	f := createFixture(t, true /* backupEnabled */)
 	defer f.teardown()
 
 	chunkID := createSnapshotWithChunk(f, "snap1", false /* useS3 */)
@@ -2721,7 +2741,7 @@ func TestBackupChunkCompletedAfterDeletionIsNotMarkedCopied(t *testing.T) {
 }
 
 func TestBackupChunkFailed(t *testing.T) {
-	f := createFixture(t)
+	f := createFixture(t, true /* backupEnabled */)
 	defer f.teardown()
 
 	// Snapshots A and B share chunk a.
@@ -2762,7 +2782,7 @@ func TestBackupChunkFailed(t *testing.T) {
 }
 
 func TestGetQueuedChunksToBackupReadsShardRangeAfterCursor(t *testing.T) {
-	f := createFixture(t)
+	f := createFixture(t, true /* backupEnabled */)
 	defer f.teardown()
 
 	var entries []BackupChunkQueueEntry

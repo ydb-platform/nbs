@@ -68,7 +68,7 @@ func initDataplane(
 		snapshotDB,
 		s3,
 		dropUnusedColumns,
-		config.GetSnapshotStorageBackupConfig() != nil,
+		config.GetSnapshotStorageBackupConfig() != nil, // backupEnabled
 	)
 	if err != nil {
 		return err
@@ -109,7 +109,7 @@ func initDataplane(
 		migrationDstDB,
 		migrationDstS3,
 		dropUnusedColumns,
-		config.GetSnapshotStorageBackupConfig() != nil,
+		config.GetSnapshotStorageBackupConfig() != nil, // backupEnabled
 	)
 }
 
