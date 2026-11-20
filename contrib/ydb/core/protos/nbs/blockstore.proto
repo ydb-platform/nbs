@@ -7,8 +7,12 @@ enum EVolumePreemptionType
     PREEMPTION_NONE = 0;
     // Move most resource consuming disk
     PREEMPTION_MOVE_MOST_HEAVY = 1;
-    // Move least resource consumig disk
+    // Move least resource consuming disk
     PREEMPTION_MOVE_LEAST_HEAVY = 2;
+    // Move most IO cost consuming disk
+    PREEMPTION_MOVE_IO_COST_MOST_HEAVY = 3;
+    // Move least IO cost consuming disk
+    PREEMPTION_MOVE_IO_COST_LEAST_HEAVY = 4;
 }
 
 message TBlockstoreConfig {
