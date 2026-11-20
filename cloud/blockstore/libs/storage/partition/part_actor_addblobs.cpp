@@ -1,6 +1,7 @@
 #include "part_actor.h"
 
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/partition_common/blob_compressor.h>
 
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
 
@@ -307,6 +308,7 @@ private:
 
         const size_t skipped = blob.SkipMask.Count();
         Y_ABORT_UNLESS(skipped < blob.BlockRange.Size());
+        const ui32 blockCount = blob.BlockRange.Size() - skipped;
 
         // write blob meta
         NProto::TBlobMeta blobMeta;
@@ -316,6 +318,17 @@ private:
         mergedBlocks.SetEnd(blob.BlockRange.End);
         mergedBlocks.SetSkipped(skipped);
         if (blob.CompressionMetadata) {
+            const auto error = ValidateCompressionMetadata(
+                State.GetBlockSize(),
+                *blob.CompressionMetadata,
+                blob.BlobId.BlobSize(),
+                blockCount);
+            STORAGE_VERIFY_C(
+                !HasError(error),
+                TWellKnownEntityTypes::TABLET,
+                TabletId,
+                "Invalid compression metadata for merged blob "
+                    << blob.BlobId << ": " << FormatError(error));
             mergedBlocks.MutableCompressionMetadata()->CopyFrom(
                 *blob.CompressionMetadata);
         }
@@ -334,9 +347,8 @@ private:
         // write blocks mask
         TBlockMask blockMask;
 
-        for (ui16 blobOffset = blob.BlockRange.Size() - skipped;
-            blobOffset < MaxBlocksInBlob;
-            ++blobOffset)
+        for (ui16 blobOffset = blockCount; blobOffset < MaxBlocksInBlob;
+             ++blobOffset)
         {
             blockMask.Set(blobOffset);
         }
@@ -345,24 +357,17 @@ private:
         db.WriteBlockMask(blob.BlobId, blockMask);
 
         // write blocks
-        const auto error = db.WriteMergedBlocks(
+        db.WriteMergedBlocks(
             blob.BlobId,
             blob.BlockRange,
             blob.SkipMask,
-            State.GetBlockSize(),
-            blob.CompressionMetadata ? &*blob.CompressionMetadata : nullptr);
-        STORAGE_VERIFY_C(
-            !HasError(error),
-            TWellKnownEntityTypes::TABLET,
-            TabletId,
-            "Invalid compression metadata for merged blob "
-                << blob.BlobId << ": " << FormatError(error));
+            blob.CompressionMetadata);
 
         // update counters
         State.UpdateBlobCounters(
             blob.BlobId,
             EChannelDataKind::Merged,
-            blob.BlockRange.Size() - skipped,
+            blockCount,
             true);
 
         State.ConfirmedBlobsAdded(db, Args.CommitId);

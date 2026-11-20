@@ -215,7 +215,8 @@ public:
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
         const TBlockMask& skipMask,
-        const NProto::TCompressionMetadata* compressionMetadata) override
+        const std::optional<NProto::TCompressionMetadata>& compressionMetadata)
+        override
     {
         Y_UNUSED(compressionMetadata);
         auto& ab = Args.AffectedBlobs[blobId];

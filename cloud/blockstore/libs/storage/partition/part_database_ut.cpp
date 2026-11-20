@@ -48,13 +48,12 @@ struct TTestBlockVisitor final
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
         const TBlockMask& skipMask,
-        const NProto::TCompressionMetadata* compressionMetadata) override
+        const std::optional<NProto::TCompressionMetadata>& compressionMetadata)
+        override
     {
         Y_UNUSED(skipMask);
         BlobToRange[blobId] = blockRange;
-        BlobToCompressionMetadata[blobId] =
-            compressionMetadata ? std::make_optional(*compressionMetadata)
-                                : std::nullopt;
+        BlobToCompressionMetadata[blobId] = compressionMetadata;
 
         return !InterruptOnBlob;
     }
@@ -389,41 +388,41 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         executor.WriteTx(
             [&](TPartitionDatabase db)
             {
-                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                db.WriteMergedBlocks(
                     executor.MakeBlobId(),
                     TBlockRange32::WithLength(0, 3),
                     TBlockMask(),
-                    DefaultBlockSize)));
+                    std::nullopt);
             });
 
         executor.WriteTx(
             [&](TPartitionDatabase db)
             {
-                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                db.WriteMergedBlocks(
                     executor.MakeBlobId(),
                     TBlockRange32::MakeClosedInterval(4, 6),
                     TBlockMask(),
-                    DefaultBlockSize)));
+                    std::nullopt);
             });
 
         ui64 maxCommitId = executor.WriteTx(
             [&](TPartitionDatabase db)
             {
-                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                db.WriteMergedBlocks(
                     executor.MakeBlobId(),
                     TBlockRange32::MakeClosedInterval(2, 4),
                     TBlockMask(),
-                    DefaultBlockSize)));
+                    std::nullopt);
             });
 
         executor.WriteTx(
             [&](TPartitionDatabase db)
             {
-                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                db.WriteMergedBlocks(
                     executor.MakeBlobId(),
                     TBlockRange32::WithLength(0, 7),
                     TBlockMask(),
-                    DefaultBlockSize)));
+                    std::nullopt);
             });
 
         executor.ReadTx([&] (TPartitionDatabase db) {
@@ -505,41 +504,41 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         executor.WriteTx(
             [&](TPartitionDatabase db)
             {
-                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                db.WriteMergedBlocks(
                     executor.MakeBlobId(),
                     TBlockRange32::WithLength(0, 3),
                     TBlockMask(),
-                    DefaultBlockSize)));
+                    std::nullopt);
             });
 
         executor.WriteTx(
             [&](TPartitionDatabase db)
             {
-                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                db.WriteMergedBlocks(
                     executor.MakeBlobId(),
                     TBlockRange32::MakeClosedInterval(4, 6),
                     TBlockMask(),
-                    DefaultBlockSize)));
+                    std::nullopt);
             });
 
         ui64 maxCommitId = executor.WriteTx(
             [&](TPartitionDatabase db)
             {
-                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                db.WriteMergedBlocks(
                     executor.MakeBlobId(),
                     TBlockRange32::MakeClosedInterval(2, 4),
                     TBlockMask(),
-                    DefaultBlockSize)));
+                    std::nullopt);
             });
 
         executor.WriteTx(
             [&](TPartitionDatabase db)
             {
-                UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                db.WriteMergedBlocks(
                     executor.MakeBlobId(),
                     TBlockRange32::WithLength(0, 7),
                     TBlockMask(),
-                    DefaultBlockSize)));
+                    std::nullopt);
             });
 
         executor.ReadTx([&] (TPartitionDatabase db) {
@@ -605,47 +604,6 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         });
     }
 
-    Y_UNIT_TEST(ShouldRejectMergedWriteWithInvalidCompressionMetadata)
-    {
-        TTestExecutor executor;
-        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
-
-        NProto::TCompressionMetadata metadata;
-        metadata.SetCodec(NProto::TCompressionMetadata::COMPRESSION_SNAPPY);
-        metadata.SetChunkSize(DefaultBlockSize);
-        metadata.SetLastChunkSize(DefaultBlockSize);
-        metadata.MutablePlainChunks();
-
-        const auto range = TBlockRange32::WithLength(0, 2);
-        executor.WriteTx(
-            [&](TPartitionDatabase db)
-            {
-                const auto error = db.WriteMergedBlocks(
-                    executor.MakeBlobId(1),
-                    range,
-                    TBlockMask(),
-                    DefaultBlockSize,
-                    &metadata);
-                UNIT_ASSERT_VALUES_EQUAL_C(
-                    E_ARGUMENT,
-                    error.GetCode(),
-                    FormatError(error));
-            });
-
-        executor.ReadTx(
-            [&](TPartitionDatabase db)
-            {
-                TTestBlockVisitor visitor;
-                UNIT_ASSERT(db.FindMergedBlocks(
-                    visitor,
-                    visitor,
-                    range,
-                    true,
-                    MaxBlocksCount));
-                UNIT_ASSERT(visitor.BlobToRange.empty());
-            });
-    }
-
     Y_UNIT_TEST(ShouldReadMergedBlobCompressionMetadata)
     {
         TTestExecutor executor;
@@ -656,8 +614,8 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 std::nullopt,
             };
         for (auto codec:
-             {NProto::TCompressionMetadata::COMPRESSION_LZ4_FAST14_SAFE,
-              NProto::TCompressionMetadata::COMPRESSION_ZSTD_3})
+             {NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+              NCloud::NProto::COMPRESSION_CODEC_ZSTD_3})
         {
             NProto::TCompressionMetadata info;
             info.SetCodec(codec);
@@ -680,12 +638,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                     const auto& info = compressionMetadataEntries[i];
                     TBlockMask skipMask;
                     skipMask.Set(1);
-                    UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
-                        blobIds.back(),
-                        range,
-                        skipMask,
-                        DefaultBlockSize,
-                        info ? &*info : nullptr)));
+                    db.WriteMergedBlocks(blobIds.back(), range, skipMask, info);
                 });
         }
 
@@ -1097,11 +1050,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             mb->SetSkipped(5);
             blob1 = executor.MakeBlobId();
             db.WriteBlobMeta(blob1, meta);
-            UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
-                blob1,
-                range1,
-                skipMask1,
-                DefaultBlockSize)));
+            db.WriteMergedBlocks(blob1, range1, skipMask1, std::nullopt);
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
@@ -1116,11 +1065,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             meta.AddBlockChecksums(333);
             blob2 = executor.MakeBlobId();
             db.WriteBlobMeta(blob2, meta);
-            UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
-                blob2,
-                range2,
-                skipMask2,
-                DefaultBlockSize)));
+            db.WriteMergedBlocks(blob2, range2, skipMask2, std::nullopt);
         });
 
         executor.ReadTx([&] (TPartitionDatabase db) {
@@ -1264,11 +1209,11 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 [&](TPartitionDatabase db)
                 {
                     blobIds.push_back(executor.MakeBlobId());
-                    UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                    db.WriteMergedBlocks(
                         blobIds.back(),
                         ranges[i],
                         TBlockMask(),
-                        DefaultBlockSize)));
+                        std::nullopt);
                 });
         }
 

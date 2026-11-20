@@ -11,6 +11,8 @@
 #include <cloud/storage/core/libs/common/sglist.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -24,13 +26,14 @@ struct IBlobsVisitor
         return true;
     }
 
-    // compressionMetadata is null for uncompressed blobs or when the visitor
-    // opts out. The pointer is valid only during this callback.
+    // compressionMetadata is empty for uncompressed blobs or when the visitor
+    // opts out.
     virtual bool Visit(
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
         const TBlockMask& skipMask,
-        const NProto::TCompressionMetadata* compressionMetadata) = 0;
+        const std::optional<NProto::TCompressionMetadata>&
+            compressionMetadata) = 0;
 };
 
 struct TIndexOnlyBlobsVisitor final: IBlobsVisitor
@@ -44,7 +47,8 @@ struct TIndexOnlyBlobsVisitor final: IBlobsVisitor
         TBlockRange32 /*blockRange*/,
         const TPartialBlobId& /*blobId*/,
         const TBlockMask& /*skipMask*/,
-        const NProto::TCompressionMetadata* /*compressionMetadata*/) override
+        const std::optional<
+            NProto::TCompressionMetadata>& /*compressionMetadata*/) override
     {
         return true;
     }

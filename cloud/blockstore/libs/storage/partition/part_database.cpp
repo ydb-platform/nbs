@@ -2,8 +2,6 @@
 
 #include "part_schema.h"
 
-#include <cloud/blockstore/libs/storage/partition_common/blob_compressor.h>
-
 #include <util/generic/algorithm.h>
 
 #include <optional>
@@ -468,31 +466,13 @@ bool TPartitionDatabaseImpl<TCounters>::FindMixedBlocks(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <typename TCounters>
-NProto::TError TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
+void TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
     const TPartialBlobId& blobId,
     const TBlockRange32& blockRange,
     const TBlockMask& skipMask,
-    ui32 blockSize,
-    const NProto::TCompressionMetadata* compressionMetadata)
+    const std::optional<NProto::TCompressionMetadata>& compressionMetadata)
 {
     using TTable = TPartitionSchema::MergedBlocksIndex;
-
-    if (compressionMetadata) {
-        const ui32 rangeSize = blockRange.Size();
-        if (skipMask.ValueBitCount() > rangeSize) {
-            return MakeError(
-                E_ARGUMENT,
-                "Skip mask extends beyond the merged block range");
-        }
-        const auto error = ValidateCompressionMetadata(
-            blockSize,
-            *compressionMetadata,
-            blobId.BlobSize(),
-            rangeSize - skipMask.Count());
-        if (HasError(error)) {
-            return error;
-        }
-    }
 
     auto value =
         Table<TTable>().Key(blockRange.End, ReverseCommitId(blobId.CommitId()));
@@ -510,7 +490,6 @@ NProto::TError TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
         value.Update(
             NIceDb::TUpdate<TTable::CompressionMetadata>(*compressionMetadata));
     }
-    return {};
 }
 
 template <typename TCounters>
@@ -593,11 +572,8 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                         it.template GetValue<TTable::CompressionMetadata>();
                 }
 
-                if (!blobsVisitor.Visit(
-                        range,
-                        blobId,
-                        skipMask,
-                        compressionMetadata ? &*compressionMetadata : nullptr))
+                if (!blobsVisitor
+                         .Visit(range, blobId, skipMask, compressionMetadata))
                 {
                     return true;   // interrupted
                 }
@@ -710,8 +686,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                             range,
                             blobId,
                             skipMask,
-                            compressionMetadata ? &*compressionMetadata
-                                                : nullptr))
+                            compressionMetadata))
                     {
                         return true;   // interrupted
                     }

@@ -155,11 +155,11 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
             db.WriteCleanupQueue(setup.MixedBlobId, deletionCommitId);
 
             setup.MergedBlobId = MoveToDataChannel(executor.MakeBlobId(4));
-            UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+            db.WriteMergedBlocks(
                 setup.MergedBlobId,
                 TBlockRange32::MakeClosedInterval(10, 13),
                 TBlockMask{},
-                DefaultBlockSize)));
+                std::nullopt);
             db.WriteBlobMeta(setup.MergedBlobId, setup.MergedBlobMeta);
             db.WriteCleanupQueue(setup.MergedBlobId, deletionCommitId);
         });
@@ -192,7 +192,8 @@ struct TMergedBlobVisitor final
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
         const TBlockMask& skipMask,
-        const NProto::TCompressionMetadata* compressionMetadata) override
+        const std::optional<NProto::TCompressionMetadata>& compressionMetadata)
+        override
     {
         Y_UNUSED(compressionMetadata);
         Y_UNUSED(blockRange);
@@ -1019,13 +1020,13 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
                 for (size_t i = 0; i < mergedTestCases.size(); ++i) {
                     const auto& tc = mergedTestCases[i];
                     const auto& blobId = mergedBlobIds[i];
-                    UNIT_ASSERT(!HasError(db.WriteMergedBlocks(
+                    db.WriteMergedBlocks(
                         blobId,
                         TBlockRange32::MakeClosedInterval(
                             tc.StartIndex,
                             tc.EndIndex),
                         TBlockMask{},
-                        DefaultBlockSize)));
+                        std::nullopt);
                     db.WriteBlobMeta(
                         blobId,
                         MakeMergedBlobMeta(tc.StartIndex, tc.EndIndex));

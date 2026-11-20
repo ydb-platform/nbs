@@ -21,6 +21,8 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -126,12 +128,11 @@ public:
     // MergedBlocksIndex
     //
 
-    [[nodiscard]] NProto::TError WriteMergedBlocks(
+    void WriteMergedBlocks(
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange,
         const TBlockMask& skipMask,
-        ui32 blockSize,
-        const NProto::TCompressionMetadata* compressionMetadata = nullptr);
+        const std::optional<NProto::TCompressionMetadata>& compressionMetadata);
 
     void DeleteMergedBlocks(
         const TPartialBlobId& blobId,
