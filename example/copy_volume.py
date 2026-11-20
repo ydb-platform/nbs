@@ -1,3 +1,4 @@
+import base64
 import time
 import json
 import subprocess as sp
@@ -14,18 +15,18 @@ MEDIA_KINDS = {
     3: 'hdd',
     4: 'nonreplicated',
     5: 'mirror2',
+    6: 'local',
     7: 'mirror3',
     8: 'hdd_nonrepl',
+    9: 'hdd_local',
 }
 
 MEDIA_KIND_IDS = {
     **{name: kind for kind, name in MEDIA_KINDS.items()},
     'ssd_nonrepl': 4,
     'ssd_mirror2': 5,
-    'local': 6,
     'ssd_local': 6,
     'ssd_mirror3': 7,
-    'hdd_local': 9,
     'ssd_direct_mirror3of5_group': 10,
     'ssd-direct-mirror3of5-group': 10,
 }
@@ -100,6 +101,7 @@ def get_disk_info(described_disk):
     r["blockSize"] = blockSize
     r["blockCount"] = blockCount
     r["storageMediaKind"] = storageMediaKind
+    r["tabletVersion"] = volume_config.get("TabletVersion") or 1
     r["placementGroupId"] = placementGroupId
     r["placementPartitionIndex"] = placementPartitionIndex
     return r
@@ -125,37 +127,61 @@ def make_copy_info(volume, opts):
     return copy
 
 
-def create_aes_xts_disk(dst, tags, apply, source_key_hash):
+def create_disk(dst, tags, apply, source_encryption):
+    mode = source_encryption.get("Mode", NO_ENCRYPTION)
+    if mode not in (NO_ENCRYPTION, ENCRYPTION_AES_XTS):
+        raise ValueError(f'Copying disks with encryption mode {mode} is unsupported')
+
     media_kind = dst["storageMediaKind"]
-    if media_kind not in MEDIA_KIND_IDS:
-        raise ValueError(f'Unknown media kind {media_kind}')
+    if mode == ENCRYPTION_AES_XTS:
+        if media_kind not in MEDIA_KIND_IDS:
+            raise ValueError(f'Unknown media kind {media_kind}')
+        media_kind = MEDIA_KIND_IDS[media_kind]
 
-    fields = {
-        "DiskId": dst["diskId"],
-        "StorageMediaKind": MEDIA_KIND_IDS[media_kind],
-        "BlocksCount": dst["blockCount"],
-        "BlockSize": dst["blockSize"],
-        "FolderId": dst["folderId"],
-        "CloudId": dst["cloudId"],
-        "TabletVersion": 1,
-        "TagsStr": tags,
-    }
+    fields = [
+        ("DiskId", "disk-id", dst["diskId"]),
+        ("StorageMediaKind", "storage-media-kind", media_kind),
+        ("BlocksCount", "blocks-count", dst["blockCount"]),
+        ("BlockSize", "block-size", dst["blockSize"]),
+        ("FolderId", "folder-id", dst["folderId"]),
+        ("CloudId", "cloud-id", dst["cloudId"]),
+        ("TabletVersion", "tablet-version", dst["tabletVersion"]),
+        ("TagsStr", "tags", tags),
+    ]
     if dst["placementGroupId"] != '':
-        fields["PlacementGroupId"] = dst["placementGroupId"]
+        fields.append(("PlacementGroupId", "placement-group-id", dst["placementGroupId"]))
     if dst["placementPartitionIndex"] != '':
-        fields["PlacementPartitionIndex"] = int(dst["placementPartitionIndex"])
+        fields.append((
+            "PlacementPartitionIndex",
+            "placement-partition-index",
+            int(dst["placementPartitionIndex"]),
+        ))
 
-    # The first encrypted mount supplies the key hash. The CLI encryption
-    # options require a key or hash, so send the mode through the proto input.
+    cmd = [BLOCKSTORE_CLIENT, 'CreateVolume']
+    if mode == NO_ENCRYPTION:
+        cmd.extend(f'--{flag}={value}' for _, flag, value in fields)
+        print(cmd)
+        if apply:
+            exec(cmd)
+        return
+
+    cmd.extend(['--proto', '--verbose', 'error'])
     request = ''.join(
         f'{field}: {json.dumps(value, ensure_ascii=False)}\n'
-        for field, value in fields.items()
-    ) + 'EncryptionSpec { Mode: ENCRYPTION_AES_XTS }\n'
+        for field, _, value in fields
+    )
+    source_key_hash = source_encryption.get("KeyHash") or ""
+    request += 'EncryptionSpec { Mode: ENCRYPTION_AES_XTS'
+    if source_key_hash:
+        # DescribeVolume returns bytes as base64. Protobuf text takes raw bytes.
+        digest = base64.b64decode(source_key_hash, validate=True)
+        encoded = ''.join(f'\\{byte:03o}' for byte in digest)
+        request += f' KeyHash: "{encoded}"'
+    request += ' }\n'
 
-    cmd = [BLOCKSTORE_CLIENT, 'CreateVolume', '--proto', '--verbose', 'error']
     print(cmd)
-    print(request, end='')
     if not apply:
+        print(request, end='')
         return
 
     response = exec(cmd, request)
@@ -170,41 +196,13 @@ def create_aes_xts_disk(dst, tags, apply, source_key_hash):
     })["VolumeConfig"].get("EncryptionDesc", {})
     if actual.get("Mode") != ENCRYPTION_AES_XTS:
         raise RuntimeError(f'Destination disk {dst["diskId"]} must use AES-XTS')
-    if actual.get("KeyHash") and actual["KeyHash"] != source_key_hash:
+    if (actual.get("KeyHash") or "") != source_key_hash:
         raise RuntimeError(f'Destination disk {dst["diskId"]} has a different key hash')
-
-
-def create_unencrypted_disk(dst, tags, apply):
-    create_cmd = [
-        BLOCKSTORE_CLIENT,
-        'CreateVolume',
-        '--disk-id={}'.format(dst["diskId"]),
-        '--storage-media-kind={}'.format(dst["storageMediaKind"]),
-        '--blocks-count={}'.format(dst["blockCount"]),
-        '--block-size={}'.format(dst["blockSize"]),
-        '--folder-id={}'.format(dst["folderId"]),
-        '--cloud-id={}'.format(dst["cloudId"]),
-        '--tags={}'.format(tags)
-    ]
-    if dst["placementGroupId"] != '':
-        create_cmd.append('--placement-group-id={}'.format(dst["placementGroupId"]))
-    if dst["placementPartitionIndex"] != '':
-        create_cmd.append('--placement-partition-index={}'.format(dst["placementPartitionIndex"]))
-
-    print(create_cmd)
-    if apply:
-        exec(create_cmd)
 
 
 def copy_disk(src, dst, opts, source_encryption):
     tags = "source-disk-id={}".format(src["diskId"])
-    mode = source_encryption.get("Mode", NO_ENCRYPTION)
-    if mode == ENCRYPTION_AES_XTS:
-        create_aes_xts_disk(dst, tags, opts.apply, source_encryption.get("KeyHash"))
-    elif mode == NO_ENCRYPTION:
-        create_unencrypted_disk(dst, tags, opts.apply)
-    else:
-        raise ValueError(f'Copying disks with encryption mode {mode} is unsupported')
+    create_disk(dst, tags, opts.apply, source_encryption)
 
     link_cmd = [
         BLOCKSTORE_CLIENT,
