@@ -460,7 +460,11 @@ public:
     //
 
 public:
-    void AddFreshBlob(ui64 commitId, ui64 blobSize, TInstant timestamp);
+    void AddFreshBlob(
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui64 blobSize,
+        TInstant timestamp);
 
     //
     // Fresh Blocks
@@ -1222,7 +1226,9 @@ public:
 
     ui32 NextCollectPerGenerationCounter()
     {
-        if (LastCollectPerGenerationCounter == InvalidCollectPerGenerationCounter) {
+        if (LastCollectPerGenerationCounter ==
+            InvalidCollectPerGenerationCounter)
+        {
             return InvalidCollectPerGenerationCounter;
         }
         return ++LastCollectPerGenerationCounter;

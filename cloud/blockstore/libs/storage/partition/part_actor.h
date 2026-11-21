@@ -111,6 +111,11 @@ class TPartitionActor final
         ui32 FreshBlobByteCount = 0;
     };
 
+    // Both kinds send CollectGarbage to the fresh channels. BlobStorage keeps a
+    // soft and a hard barrier per channel, and neither may decrease. A hard
+    // barrier deletes every blob at or below it, and a soft one spares the
+    // blobs with a Keep flag. See
+    // doc/blockstore/storage/selective_fresh_log_trim.md.
     enum class ETrimFreshLogKind
     {
         // Nothing to trim yet.
@@ -119,6 +124,10 @@ class TPartitionActor final
         // highest commit id below every live fresh blob. Every fresh blob at or
         // below it is dead, so the barrier deletes all of them.
         Ordinary,
+        // A soft barrier above TrimFreshLogToCommitId, below every in-flight
+        // fresh write, with Keep flags for the live blobs below it. Deletes
+        // dead blobs that an ordinary trim cannot reach yet.
+        Selective,
     };
 
     static constexpr ui64 BootWakeupEventTag = 1;
@@ -266,8 +275,13 @@ private:
     void EnqueueProcessWriteQueueIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTrimFreshLogIfNeeded(const NActors::TActorContext& ctx);
     [[nodiscard]] bool ShouldStartOrdinaryTrim(ui64 ordinaryTrimToCommitId);
+    [[nodiscard]] bool ShouldStartSelectiveTrim(
+        const NActors::TActorContext& ctx,
+        const TPartitionThreadSafeState::TFreshTrimSnapshot& snapshot);
     [[nodiscard]] bool CheckDeadFreshBlobByteCount() const;
-    [[nodiscard]] ETrimFreshLogKind ChooseTrimFreshLogKind();
+    [[nodiscard]] ETrimFreshLogKind ChooseTrimFreshLogKind(
+        const NActors::TActorContext& ctx,
+        const TPartitionThreadSafeState::TFreshTrimSnapshot& snapshot);
     void EnqueueAddConfirmedBlobsIfNeeded(const NActors::TActorContext& ctx);
 
     void UpdateStats(const NProto::TPartitionStats& update);
@@ -505,6 +519,7 @@ private:
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
     [[nodiscard]] TDuration GetFreshBlobAgeFlushThreshold() const;
     [[nodiscard]] ui32 GetFreshDeadBlobByteCountTrimThreshold() const;
+    [[nodiscard]] bool IsSelectiveTrimEnabled() const;
 
     void CreateFreshBlocksCompanionClient();
 

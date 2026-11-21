@@ -254,7 +254,11 @@ void TPartitionActor::HandleAddFreshBlocks(
         }
     }
 
-    State->AddFreshBlob(msg->CommitId, msg->BlobSize, msg->Timestamp);
+    State->AddFreshBlob(
+        msg->CommitId,
+        msg->BlobId,
+        msg->BlobSize,
+        msg->Timestamp);
     for (ui64 commitId: deadCommitIds) {
         State->MarkFreshBlobDead(commitId);
     }
