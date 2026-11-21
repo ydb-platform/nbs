@@ -23,7 +23,13 @@ void TVolumeActor::HandleUpdateVolatileThrottlingConfig(
         return;
     }
 
-    if (throttlingConfig.GetVersion() <=
+    if (throttlingConfig.GetVersion() ==
+        State->GetThrottlingPolicy().GetVolatileThrottlingVersion())
+    {
+        return;
+    }
+
+    if (throttlingConfig.GetVersion() <
         State->GetThrottlingPolicy().GetVolatileThrottlingVersion())
     {
         LOG_WARN(

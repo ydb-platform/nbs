@@ -13,6 +13,7 @@
 
 #include "sections_update/features.h"
 #include "sections_update/section_updater.h"
+#include "sections_update/volume_throttling.h"
 
 #include <util/generic/algorithm.h>
 #include <util/generic/array_ref.h>
@@ -41,6 +42,7 @@ TArrayRef<const TConfigSectionUpdaterEntry> GetConfigSectionUpdaters()
 {
     static const TConfigSectionUpdaterEntry updaters[] = {
         {"Features", GetFeaturesSectionUpdater()},
+        {"VolumeThrottling", GetVolumeThrottlingSectionUpdater()},
     };
     return updaters;
 }
