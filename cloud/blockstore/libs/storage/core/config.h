@@ -6,6 +6,7 @@
 #include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
 #include <cloud/storage/core/libs/features/features_config.h>
+#include <cloud/storage/core/protos/error.pb.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
 #include <util/datetime/base.h>
@@ -98,6 +99,11 @@ private:
     const TStorageConfigControls::TImpl* ControlsImpl() const;
 
 public:
+    // Verify in tests that every RW parameter has AllowRuntimeUpdate=true.
+    // RO parameters must not have an AllowRuntimeUpdate=true marker.
+    // Return the first inconsistency, or success if all markers match.
+    [[nodiscard]] static NCloud::NProto::TError VerifyParameterMarkers();
+
     TStorageConfig(
         NProto::TStorageServiceConfig storageServiceConfig,
         NFeatures::TFeaturesConfigPtr featuresConfig);
@@ -150,6 +156,10 @@ public:
     };
 
     TValueByName GetValueByName(const TString& name) const;
+
+    // Return the stored proto without ICB overrides; valid while this adapter
+    // lives and suitable for updating control defaults.
+    [[nodiscard]] const NProto::TStorageServiceConfig& GetConfigProto() const;
 
     // Return a proto copy with current ICB overrides applied.
     [[nodiscard]] NProto::TStorageServiceConfig

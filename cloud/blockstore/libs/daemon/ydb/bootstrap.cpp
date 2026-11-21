@@ -8,9 +8,8 @@
 #include <cloud/blockstore/libs/cells/impl/cell_manager.h>
 #include <cloud/blockstore/libs/cells/impl/mon.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
-#include <cloud/blockstore/libs/config/blockstore_config.h>
+#include <cloud/blockstore/libs/config/blockstore_config_management.h>
 #include <cloud/blockstore/libs/config/blockstore_config_provider_private.h>
-#include <cloud/blockstore/libs/config/helpers.h>
 #include <cloud/blockstore/libs/config/opaque_config_parser.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -676,34 +675,33 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("CMS configs initialized");
 
-    auto startupBlockstoreConfigProto = ConfigInitializer->GetCurrentBlockstoreConfig();
+    NProto::TBlockstoreConfig startupBlockstoreConfigProto;
     if (ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled()) {
-        NormalizeDynamicBlockstoreConfig(
-            staticBlockstoreConfig,
-            cmsBlockstoreConfig);
-
         TBlockstoreConfigExtraParameters extraParameters;
         extraParameters.DiskAgent.Rack = ConfigInitializer->DiskAgentConfig->GetRack();
         extraParameters.DiskAgent.NetworkMbitThroughput =
             ConfigInitializer->DiskAgentConfig->GetNetworkMbitThroughput();
 
-        StartupBlockstoreConfig = MakeBlockstoreConfig(
+        auto startupConfig = MakeStartupBlockstoreConfig(
             staticBlockstoreConfig,
             cmsBlockstoreConfig,
             ConfigInitializer->StorageConfigControls,
             std::move(extraParameters));
+        startupBlockstoreConfigProto = std::move(startupConfig.Proto);
+        StartupBlockstoreConfig = std::move(startupConfig.Config);
 
         StartupBlockstoreConfig->GetStorageConfig()->UpdateControlsDefaults();
 
         STORAGE_INFO(
-            (cmsBlockstoreConfig.ByteSizeLong()
+            (startupConfig.HasDynamicOverrides
                  ? "Applied startup PrivateDatabaseConfig"
                  : "No startup PrivateDatabaseConfig applied; "
                    "using configuration after CMS"));
     } else {
+        startupBlockstoreConfigProto =
+            ConfigInitializer->GetCurrentBlockstoreConfig();
         StartupBlockstoreConfig = MakeBlockstoreConfig(
             startupBlockstoreConfigProto,
-            /*dynamicConfig=*/{},
             *ConfigInitializer->StorageConfig,
             *ConfigInitializer->DiskAgentConfig);
     }

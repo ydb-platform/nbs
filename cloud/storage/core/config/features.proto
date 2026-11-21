@@ -4,6 +4,8 @@ package NCloud.NProto;
 
 option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/config";
 
+import "cloud/storage/core/config/markers.proto";
+
 ////////////////////////////////////////////////////////////////////////////////
 
 enum EFilterMatchAlgorithm
@@ -52,5 +54,5 @@ message TFeatureConfig
 
 message TFeaturesConfig
 {
-    repeated TFeatureConfig Features = 1;
+    repeated TFeatureConfig Features = 1 [(NMarkers.AllowRuntimeUpdate) = true];
 }

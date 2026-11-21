@@ -1,6 +1,6 @@
 #include "actorsystem.h"
 
-#include <cloud/blockstore/libs/config/helpers.h>
+#include <cloud/blockstore/libs/config/blockstore_config_management.h>
 #include <cloud/blockstore/libs/config/opaque_config_parser.h>
 #include <cloud/blockstore/libs/configs_manager/configs_manager.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
@@ -158,6 +158,7 @@ public:
                     CreateConfigsManager({
                         .ConfigHolder = Args.ConfigHolder,
                         .StaticConfig = Args.StaticBlockstoreConfigProto,
+                        .StartupConfig = Args.StartupBlockstoreConfigProto,
                         .InitialDynamicConfig = Args.CmsBlockstoreConfig,
                         .StorageConfigControls =
                             storageConfig->GetControls(),
