@@ -374,29 +374,11 @@ void TVolumeBalancerActor::HandleConfigureVolumeBalancerRequest(
     const TActorContext& ctx)
 {
     auto response = std::make_unique<TEvVolumeBalancer::TEvConfigureVolumeBalancerResponse>();
-    if (State->GetEnabled()) {
-        response->Record.SetOpStatus(NPrivateProto::EBalancerOpStatus::ENABLE);
-    } else {
-        response->Record.SetOpStatus(NPrivateProto::EBalancerOpStatus::DISABLE);
-    }
+    response->Record.SetOpStatus(State->GetStatus());
 
     NCloud::Send(ctx, ev->Sender, std::move(response));
 
-    const auto* msg = ev->Get();
-
-    switch (msg->Record.GetOpStatus()) {
-        case NPrivateProto::EBalancerOpStatus::ENABLE: {
-            State->SetEnabled(true);
-            break;
-        }
-        case NPrivateProto::EBalancerOpStatus::DISABLE: {
-            State->SetEnabled(false);
-            break;
-        }
-        default: {
-            // remain the same
-        }
-    }
+    State->SetStatus(ev->Get()->Record.GetOpStatus());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
