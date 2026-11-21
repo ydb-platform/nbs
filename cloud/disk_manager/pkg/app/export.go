@@ -193,6 +193,7 @@ func initSnapshotExport(
 			sourceRegistry,
 			snapshotDB,
 			s3,
+			config.GetSnapshotStorageBackupConfig() != nil, // backupEnabled
 		)
 		if err != nil {
 			cleanup()
