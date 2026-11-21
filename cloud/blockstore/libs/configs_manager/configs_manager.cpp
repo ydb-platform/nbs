@@ -233,7 +233,7 @@ void TConfigsManagerActor::Handle(
     const auto* message = ev->Get();
     NProto::TBlockstoreConfig newDynamicConfig;
     NConfig::TRuntimeConfigDiagnostics diagnostics;
-    IBlockstoreConfigPtr newConfig;
+    IBlockstoreConfigMutablePtr newConfig;
 
     // Prepare the complete update before changing the publication or live
     // controls, so an exception leaves the last accepted state intact.
