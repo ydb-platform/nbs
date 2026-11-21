@@ -94,8 +94,8 @@ public:
     private:
         TPageVersions PV;
         ui64 PageNo = InvalidPageNo;
-        ui32 RefCount = 0;
         bool Accessed = false;
+        bool Locked = false;
 
         friend class TPageCache;
 
@@ -110,10 +110,9 @@ private:
     using TLookupMap = THashMap<ui64, TSlot*>;
     TLookupMap PageNo2Slot;
     TDeque<TSlot> Slots;
-    ui64 ClockHand = 0;
-
     ui64 FirstPinnedPageNo = 0;
     ui64 PinnedPageCount = 0;
+    ui64 ClockHand = 0;
 
 public:
     explicit TPageCache(ui64 maxPages)
@@ -121,7 +120,17 @@ public:
     {}
 
 public:
-    NProto::TError Find(ui64 pageNo, TSlot** slot)
+    TSlot* Find(ui64 pageNo)
+    {
+        auto it = PageNo2Slot.find(pageNo);
+        if (it == PageNo2Slot.end()) {
+            return nullptr;
+        }
+
+        return it->second;
+    }
+
+    NProto::TError Acquire(ui64 pageNo, TSlot** slot)
     {
         TLookupMap::insert_ctx insertCtx{};
         auto it = PageNo2Slot.find(pageNo, insertCtx);
@@ -141,28 +150,15 @@ public:
         return {};
     }
 
-    NProto::TError Access(ui64 pageNo, TSlot** slot)
+    static void Lock(TSlot& slot)
     {
-        auto error = Find(pageNo, slot);
-        if (HasError(error)) {
-            return error;
-        }
-
-        // XXX make sure that on Commit/Rollback we decrement refcount by the
-        // same number as we incremented it
-        //
-        // we can access the same page multiple times during a single op
-        //
-        // or just do not pin accessed slots at all
-
-        ++(*slot)->RefCount;
-        return {};
+        slot.Locked = true;
     }
 
-    static void Release(TSlot& slot)
+    static void Unlock(TSlot& slot)
     {
-        Y_ABORT_UNLESS(slot.RefCount > 0);
-        --slot.RefCount;
+        Y_ABORT_UNLESS(slot.Locked);
+        slot.Locked = false;
     }
 
     NProto::TError PinRange(ui64 firstPageNo, ui64 pageCount)
@@ -180,12 +176,11 @@ public:
     void Clear()
     {
         for (auto& s: Slots) {
-            Y_ABORT_UNLESS(
-                s.RefCount == 0,
-                "acquired slot in Clear: %lu, %lu",
-                s.PageNo,
-                s.RefCount);
+            if (s.Locked) {
+                continue;
+            }
 
+            PageNo2Slot.erase(s.PageNo);
             s = {};
         }
 
@@ -200,12 +195,12 @@ private:
             auto& s = Slots[j];
 
             if (s.PageNo == InvalidPageNo) {
-                Y_ABORT_UNLESS(s.RefCount == 0);
+                Y_ABORT_UNLESS(!s.Locked);
                 *slot = &s;
                 return {};
             }
 
-            if (s.RefCount) {
+            if (s.Locked) {
                 continue;
             }
 
@@ -324,23 +319,14 @@ void TPageStore::CommitPages(ui64 lsn, const TVector<ui64>& pages)
 {
     std::lock_guard g(Mutex);
     for (const ui64 pageNo: pages) {
-        TPageCache::TSlot* cacheSlot;
-        auto error = PageCache.Find(pageNo, &cacheSlot);
+        auto* cacheSlot = PageCache.Find(pageNo);
+        if (!cacheSlot) {
+            //
+            // Already evicted, do nothing.
+            //
 
-        //
-        // If we are trying to commit something, it should be pinned in cache.
-        //
-
-        Y_ABORT_UNLESS(
-            !HasError(error),
-            "failed to access slot: %s",
-            FormatError(error).c_str());
-
-        Y_ABORT_UNLESS(cacheSlot);
-
-        Y_DEFER {
-            PageCache.Release(*cacheSlot);
-        };
+            continue;
+        }
 
         auto& pv = cacheSlot->AccessPV();
 
@@ -388,24 +374,18 @@ void TPageStore::RollbackPages(ui64 lsn, const TVector<ui64>& pages)
 {
     std::lock_guard g(Mutex);
     for (const ui64 pageNo: pages) {
-        TPageCache::TSlot* cacheSlot;
-        auto error = PageCache.Find(pageNo, &cacheSlot);
+        auto* cacheSlot = PageCache.Find(pageNo);
+        if (!cacheSlot) {
+            //
+            // Already evicted, do nothing.
+            //
+
+            continue;
+        }
 
         //
-        // Commit failed. The page should be pinned and no later lsn should be
-        // marked as committed.
+        // Commit failed. No later lsn should be marked as committed.
         //
-
-        Y_ABORT_UNLESS(
-            !HasError(error),
-            "failed to access slot: %s",
-            FormatError(error).c_str());
-
-        Y_ABORT_UNLESS(cacheSlot);
-
-        Y_DEFER {
-            PageCache.Release(*cacheSlot);
-        };
 
         auto& pv = cacheSlot->AccessPV();
 
@@ -435,7 +415,7 @@ NProto::TError TPageStore::WritePage(
 {
     std::lock_guard g(Mutex);
     TPageCache::TSlot* cacheSlot;
-    auto error = PageCache.Access(pageNo, &cacheSlot);
+    auto error = PageCache.Acquire(pageNo, &cacheSlot);
     if (HasError(error)) {
         return error;
     }
@@ -518,7 +498,7 @@ NProto::TError TPageStore::ReadPageForLookup(ui64 pageNo, TBuffer* page) const
     {
         std::lock_guard g(Mutex);
 
-        auto error = PageCache.Access(pageNo, &cacheSlot);
+        auto error = PageCache.Acquire(pageNo, &cacheSlot);
         if (HasError(error)) {
             return error;
         }
@@ -543,6 +523,8 @@ NProto::TError TPageStore::ReadPageForLookup(ui64 pageNo, TBuffer* page) const
                 return {};
             }
         }
+
+        TPageCache::Lock(*cacheSlot);
     }
 
     return DoReadPage(*cacheSlot, LastCommittedLsn, pageNo, page);
@@ -559,7 +541,7 @@ NProto::TError TPageStore::ReadPageForUpdate(
     {
         std::lock_guard g(Mutex);
 
-        auto error = PageCache.Access(pageNo, &cacheSlot);
+        auto error = PageCache.Acquire(pageNo, &cacheSlot);
         if (HasError(error)) {
             return error;
         }
@@ -607,6 +589,8 @@ NProto::TError TPageStore::ReadPageForUpdate(
             *page = pv.LastContent();
             return {};
         }
+
+        TPageCache::Lock(*cacheSlot);
     }
 
     return DoReadPage(*cacheSlot, LastCommittedLsn, pageNo, page);
@@ -642,6 +626,8 @@ NProto::TError TPageStore::DoReadPage(
                 pv.State = EPageState::Loaded;
             }
         }
+
+        TPageCache::Unlock(cacheSlot);
     };
 
     if (!Storage) {
