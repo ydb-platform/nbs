@@ -577,8 +577,10 @@ def test_static_only_fields_are_ignored_at_startup():
         # Publish the startup PrivateDatabaseConfig and complete its first runtime delivery.
         nbs = start_nbs(config)
         wait_config_delivery(nbs)
-        log = Path(nbs.stderr_file_name).read_text()
-        assert "PrivateDatabaseConfig is unchanged; skipping publication" in log
+        wait_config_manager_log(
+            nbs,
+            "PrivateDatabaseConfig is unchanged; skipping publication",
+        )
 
         # Keep static node identity while applying the mutable value to a startup consumer.
         page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
