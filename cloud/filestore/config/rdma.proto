@@ -1,0 +1,29 @@
+syntax = "proto2";
+
+import "cloud/storage/core/protos/rdma.proto";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TRdmaConfig
+{
+    // Makes filestore-server accept index tablet requests over RDMA.
+    optional bool ServerEnabled = 1;
+
+    // RDMA server settings.
+    optional NCloud.NProto.TRdmaServer Server = 2;
+
+    // Address to listen on ("::" by default).
+    optional string ListenAddress = 3;
+
+    // Port to listen on (10021 by default).
+    optional uint32 ListenPort = 4;
+
+    // Time (in milliseconds) given to the tablet to answer a request received
+    // over RDMA, after which the request is failed with E_TIMEOUT (1 minute by
+    // default).
+    optional uint32 TabletRequestTimeout = 5;
+}

@@ -26,6 +26,10 @@ TOptionsCommon::TOptionsCommon()
         .RequiredArgument("FILE")
         .StoreResult(&FeaturesConfig);
 
+    Opts.AddLongOption("rdma-file")
+        .RequiredArgument("FILE")
+        .StoreResult(&RdmaConfig);
+
     Opts.AddLongOption("node-registration-attempts")
         .RequiredArgument("NUM")
         .StoreResult(&NodeRegistrationMaxAttempts);

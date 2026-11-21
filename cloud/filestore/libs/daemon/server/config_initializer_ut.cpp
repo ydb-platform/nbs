@@ -328,6 +328,41 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldLoadRdmaConfigFromFile)
+    {
+        {
+            auto ci = TConfigInitializerServer(CreateOptions());
+            ci.InitRdmaConfig();
+
+            UNIT_ASSERT(!ci.RdmaConfig.GetServerEnabled());
+        }
+
+        TTempDir dir;
+        const auto configPath = dir.Path() / "nfs-rdma.txt";
+        TOFStream(configPath.GetPath()).Write(R"(
+            ServerEnabled: true
+            Server {
+                Backlog: 64
+            }
+            ListenAddress: "::1"
+            ListenPort: 10022
+            TabletRequestTimeout: 30000
+        )");
+
+        auto options = CreateOptions();
+        options->RdmaConfig = configPath.GetPath();
+        auto ci = TConfigInitializerServer(std::move(options));
+        ci.InitRdmaConfig();
+
+        UNIT_ASSERT(ci.RdmaConfig.GetServerEnabled());
+        UNIT_ASSERT_VALUES_EQUAL(64, ci.RdmaConfig.GetServer().GetBacklog());
+        UNIT_ASSERT_VALUES_EQUAL("::1", ci.RdmaConfig.GetListenAddress());
+        UNIT_ASSERT_VALUES_EQUAL(10022, ci.RdmaConfig.GetListenPort());
+        UNIT_ASSERT_VALUES_EQUAL(
+            30000,
+            ci.RdmaConfig.GetTabletRequestTimeout());
+    }
+
     Y_UNIT_TEST(ShouldApplySystemTabletBackupPathFromCms)
     {
         auto ci = TConfigInitializerServer(CreateOptions());

@@ -211,6 +211,7 @@ void TBootstrapCommon::InitCommonConfigs()
     Configs->InitStorageConfig();
     Configs->InitDiagnosticsConfig();
     Configs->InitFeaturesConfig();
+    Configs->InitRdmaConfig();
 }
 
 void TBootstrapCommon::InitDiagnostics()
@@ -331,6 +332,7 @@ void TBootstrapCommon::InitActorSystem()
     args.StatsFetcher = StatsFetcher;
     args.ModuleFactories = ModuleFactories;
     args.FastShardServer = FastShardServer;
+    args.RdmaTabletRegistry = RdmaTabletRegistry;
     args.FileSystemEventHandler = MultiFileSystemEventHandler;
     args.FastShardFactory = NStorage::NFastShard::CreateFileSystemShardFactory(
         Configs->StorageConfig->GetFastShardRuntimeEnabled());

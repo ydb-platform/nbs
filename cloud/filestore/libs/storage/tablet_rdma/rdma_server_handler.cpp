@@ -4,15 +4,16 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/rdma/transport.h>
-#include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
-#include <contrib/ydb/library/actors/core/log.h>
+#include <contrib/ydb/library/actors/core/event.h>
 
 #include <util/string/builder.h>
 
@@ -44,20 +45,22 @@ class TActorSystemRdmaRequestHandler final
     : public IRdmaTabletRequestHandler
 {
 private:
-    TActorSystem* const ActorSystem;
+    const IActorSystemPtr ActorSystem;
     const TActorId ForwarderId;
     const TRdmaTabletRegistryPtr Registry;
+    TLog Log;
 
     std::atomic<ui64> LastCookie = 0;
 
 public:
     TActorSystemRdmaRequestHandler(
-            TActorSystem* actorSystem,
+            IActorSystemPtr actorSystem,
             TActorId forwarderId,
             TRdmaTabletRegistryPtr registry)
-        : ActorSystem(actorSystem)
+        : ActorSystem(std::move(actorSystem))
         , ForwarderId(forwarderId)
         , Registry(std::move(registry))
+        , Log(ActorSystem->CreateLog("NFS_RDMA"))
     {}
 
     TFuture<TTabletTransportResponse> HandleRequest(
@@ -135,8 +138,7 @@ public:
 private:
     TTabletTransportResponse Reject(ui32 code, TString message)
     {
-        LOG_WARN_S(*ActorSystem, TFileStoreComponents::RDMA,
-            "Reject RDMA request: " << message);
+        STORAGE_WARN("Reject RDMA request: " << message);
         return TTabletTransportResponse(MakeError(code, std::move(message)));
     }
 
@@ -149,7 +151,7 @@ private:
         const ui64 cookie = ++LastCookie;
 
         // The forwarder must know the cookie before the tablet can answer.
-        ActorSystem->Send(new IEventHandle(
+        ActorSystem->Send(std::make_unique<IEventHandle>(
             ForwarderId,
             TActorId(),
             new TEvRdmaTabletPrivate::TEvTrackRequest(
@@ -167,7 +169,7 @@ private:
             IEventHandle::FlagTrackDelivery,
             cookie);
         ev->Rewrite(ev->GetTypeRewrite(), tabletActorId);
-        ActorSystem->Send(ev.release());
+        ActorSystem->Send(std::move(ev));
     }
 };
 
@@ -195,12 +197,12 @@ bool IsRdmaTabletMethod(ui32 methodId)
 }
 
 IRdmaTabletRequestHandlerPtr CreateActorSystemRdmaRequestHandler(
-    TActorSystem* actorSystem,
+    IActorSystemPtr actorSystem,
     TActorId forwarderId,
     TRdmaTabletRegistryPtr registry)
 {
     return std::make_shared<TActorSystemRdmaRequestHandler>(
-        actorSystem,
+        std::move(actorSystem),
         forwarderId,
         std::move(registry));
 }
