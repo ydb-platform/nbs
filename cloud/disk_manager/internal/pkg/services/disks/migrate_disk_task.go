@@ -208,6 +208,10 @@ func (t *migrateDiskTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (t *migrateDiskTask) getDiskOperationRequest() diskOperationRequest {
+	return t.request
+}
+
 func (t *migrateDiskTask) getSourceDiskIdTagStr() string {
 	return "source-disk-id=" +
 		t.request.Disk.ZoneId + "_" + t.request.Disk.DiskId
@@ -408,9 +412,15 @@ func (t *migrateDiskTask) incrementFillGeneration(
 
 	t.logInfo(ctx, execCtx, "incrementing fillGeneration")
 
+	lockTaskID := ""
+	if t.request.GetPreventConcurrentDiskModifications() {
+		lockTaskID = execCtx.GetTaskID()
+	}
+
 	fillGeneration, err := t.resourceStorage.IncrementFillGeneration(
 		ctx,
 		t.request.Disk.DiskId,
+		lockTaskID,
 	)
 	if err != nil {
 		return 0, err
@@ -547,10 +557,11 @@ func (t *migrateDiskTask) finishMigration(
 		return err
 	}
 
+	migrationTaskID := execCtx.GetTaskID()
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(
 			ctx,
-			execCtx.GetTaskID()+"_delete_disk_from_incremental",
+			migrationTaskID+"_delete_disk_from_incremental",
 		),
 		"dataplane.DeleteDiskFromIncremental",
 		"",
@@ -567,6 +578,11 @@ func (t *migrateDiskTask) finishMigration(
 		return err
 	}
 
+	lockTaskID := ""
+	if t.request.GetPreventConcurrentDiskModifications() {
+		lockTaskID = migrationTaskID
+	}
+
 	return execCtx.FinishWithPreparation(
 		ctx,
 		func(ctx context.Context, tx *persistence.Transaction) error {
@@ -576,6 +592,7 @@ func (t *migrateDiskTask) finishMigration(
 				t.request.Disk.DiskId,
 				t.request.Disk.ZoneId,
 				t.request.DstZoneId,
+				lockTaskID,
 			)
 		},
 	)

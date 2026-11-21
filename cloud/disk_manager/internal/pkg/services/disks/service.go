@@ -697,11 +697,15 @@ func (s *service) ResizeDisk(
 		return "", err
 	}
 
+	preventConcurrentModifications :=
+		s.config.GetPreventConcurrentDiskModifications()
+
 	return s.taskScheduler.ScheduleTask(
 		ctx,
 		"disks.ResizeDisk",
 		"",
 		&protos.ResizeDiskRequest{
+			PreventConcurrentDiskModifications: preventConcurrentModifications,
 			Disk: &types.Disk{
 				ZoneId: zoneID,
 				DiskId: req.DiskId.DiskId,
@@ -728,11 +732,15 @@ func (s *service) AlterDisk(
 		return "", err
 	}
 
+	preventConcurrentModifications :=
+		s.config.GetPreventConcurrentDiskModifications()
+
 	return s.taskScheduler.ScheduleTask(
 		ctx,
 		"disks.AlterDisk",
 		"",
 		&protos.AlterDiskRequest{
+			PreventConcurrentDiskModifications: preventConcurrentModifications,
 			Disk: &types.Disk{
 				ZoneId: zoneID,
 				DiskId: req.DiskId.DiskId,
@@ -965,11 +973,15 @@ func (s *service) MigrateDisk(
 		)
 	}
 
+	preventConcurrentModifications :=
+		s.config.GetPreventConcurrentDiskModifications()
+
 	return s.taskScheduler.ScheduleTask(
 		ctx,
 		"disks.MigrateDisk",
 		"",
 		&protos.MigrateDiskRequest{
+			PreventConcurrentDiskModifications: preventConcurrentModifications,
 			Disk: &types.Disk{
 				ZoneId: zoneID,
 				DiskId: req.DiskId.DiskId,

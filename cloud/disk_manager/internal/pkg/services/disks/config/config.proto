@@ -32,4 +32,10 @@ message DisksConfig {
     // Same as EnableDiskRegistryBasedDisksCreationFromBaseDisks, but for the
     // listed folders only.
     repeated string DiskRegistryBasedDisksCreationFromBaseDisksFolderIdAllowList = 17;
+    // Enables exclusive disk access for resize, alter, and migration tasks.
+    // Only one guarded operation may run on a disk at a time.
+    // Legacy and guarded tasks may overlap during gradual activation.
+    // Captured in newly scheduled task requests; workers use the saved value
+    // regardless of their local configuration.
+    optional bool PreventConcurrentDiskModifications = 18 [default = false];
 }
