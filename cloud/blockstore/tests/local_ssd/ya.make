@@ -5,6 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 TEST_SRCS(
     test.py
     test_allocation_retry.py
+    test_sync_deallocation.py
 )
 
 DEPENDS(
