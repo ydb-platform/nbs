@@ -872,6 +872,7 @@ public:
     void AddOrUpdateFollower(TFollowerDiskInfo follower);
     void RemoveFollower(const TLeaderFollowerLink& link);
     const TFollowerDisks& GetAllFollowers() const;
+    bool HasActiveFollowerCopy() const;
 
     void StartCreateLeaderRequest(const TLeaderFollowerLink& link);
     void FinishCreateLeaderRequest();
