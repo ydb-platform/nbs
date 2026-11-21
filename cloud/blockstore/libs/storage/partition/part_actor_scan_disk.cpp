@@ -1021,6 +1021,9 @@ void TPartitionActor::HandleScanDiskBatch(
         requestInfo->CallContext->RequestId);
 
     State->UpdateScanDiskProgress();
+    // The scan actor asks for the next batch only after every check of the
+    // previous one has finished.
+    State->ReleaseScanDiskBatchCheckpoints();
 
     auto replyError = [=] (
         const TActorContext& ctx,
@@ -1138,6 +1141,9 @@ bool TPartitionActor::PrepareScanDiskBatch(
 
     if (ready) {
         State->UpdateScanDiskBlobsToBeProcessed(args.VisitCount);
+        if (args.SkipDeadBlobs) {
+            State->HoldScanDiskBatchCheckpoints();
+        }
     }
 
     LOG_DEBUG(

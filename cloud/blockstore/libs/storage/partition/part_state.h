@@ -226,6 +226,10 @@ struct TScanDiskState
 
     ui64 BlobsToBeProcessed = 0;
 
+    // Bounds of the checkpoints the in-flight batch was checked against.
+    ui64 HeldMinCheckpointCommitId = Max<ui64>();
+    ui64 HeldMaxCheckpointCommitId = 0;
+
     bool IsStarted() const
     {
         return Started;
@@ -246,6 +250,7 @@ struct TScanDiskState
             .CheckIntegrity = checkIntegrity,
             .ScanCommitId = scanCommitId};
         BlobsToBeProcessed = 0;
+        ReleaseBatchCheckpoints();
     }
 
     const TScanDiskProgress& GetProgress() const
@@ -264,6 +269,23 @@ struct TScanDiskState
         BlobsToBeProcessed = toBeProcessed;
     }
 
+    void HoldBatchCheckpoints(ui64 minCommitId, ui64 maxCommitId)
+    {
+        // A batch that outlives its scan must not hold checkpoints.
+        if (!Started) {
+            return;
+        }
+
+        HeldMinCheckpointCommitId = minCommitId;
+        HeldMaxCheckpointCommitId = maxCommitId;
+    }
+
+    void ReleaseBatchCheckpoints()
+    {
+        HeldMinCheckpointCommitId = Max<ui64>();
+        HeldMaxCheckpointCommitId = 0;
+    }
+
     void Complete(TScanDiskResults results, NProto::TError error)
     {
         Started = false;
@@ -271,6 +293,7 @@ struct TScanDiskState
         Progress.Cancelled = CancelRequested;
         Progress.Error = std::move(error);
         Progress.Results = std::move(results);
+        ReleaseBatchCheckpoints();
     }
 };
 
@@ -1040,6 +1063,20 @@ public:
     void UpdateScanDiskBlobsToBeProcessed(ui64 toBeProcessed)
     {
         ScanDiskState.UpdateBlobsToBeProcessed(toBeProcessed);
+    }
+
+    // Cleanup keeps honoring the checkpoints an integrity scan batch was
+    // checked against until its checks finish, even if they are deleted.
+    void HoldScanDiskBatchCheckpoints()
+    {
+        ScanDiskState.HoldBatchCheckpoints(
+            GetMinCheckpointCommitId(),
+            GetMaxCheckpointCommitId());
+    }
+
+    void ReleaseScanDiskBatchCheckpoints()
+    {
+        ScanDiskState.ReleaseBatchCheckpoints();
     }
 
     void CompleteScanDisk(TScanDiskResults results, NProto::TError error)

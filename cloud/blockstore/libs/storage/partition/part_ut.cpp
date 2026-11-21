@@ -1269,6 +1269,82 @@ ui64 GetMergedBlobsCount(TPartitionClient& partition)
     return partition.StatPartition()->Record.GetStats().GetMergedBlobsCount();
 }
 
+void DoShouldKeepCheckpointBlobsDuringChecks(bool checkpointAwareCleanup)
+{
+    auto config = DefaultConfig();
+    config.SetWriteBlobThreshold(1);
+    config.SetCheckpointAwareCleanupEnabled(checkpointAwareCleanup);
+    config.SetCleanupThreshold(999999);
+    config.SetCollectGarbageThreshold(999999);
+    auto runtime = PrepareTestActorRuntime(config, 4096);
+
+    TPartitionClient partition(*runtime);
+    partition.WaitReady();
+
+    const auto range = TBlockRange32::WithLength(0, 1024);
+
+    // Compaction leaves the first blob live only for the checkpoint and the
+    // second one dead for every reader.
+    partition.WriteBlocks(range, 1);
+    partition.CreateCheckpoint("checkpoint");
+    partition.WriteBlocks(range, 2);
+    partition.Compaction(range.Start);
+    // A later commit puts the compaction out of reach of the scan barrier.
+    partition.WriteBlocks(TBlockRange32::MakeOneBlock(2048), 3);
+    UNIT_ASSERT_VALUES_EQUAL(4, GetMergedBlobsCount(partition));
+
+    bool holdChecks = true;
+    TVector<TAutoPtr<IEventHandle>> heldChecks;
+    runtime->SetEventFilter(
+        [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            if (holdChecks &&
+                event->GetTypeRewrite() == TEvBlobStorage::EvCheckIntegrity)
+            {
+                heldChecks.push_back(event.Release());
+                return true;
+            }
+            return false;
+        });
+
+    partition.ScanDisk(MakeCheckIntegrityScanDiskRequest(100));
+    {
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return !heldChecks.empty();
+        };
+        runtime->DispatchEvents(options);
+    }
+
+    partition.DeleteCheckpoint("checkpoint");
+    partition.Cleanup();
+
+    // The blob only the checkpoint kept live stays until its check finishes.
+    // Checkpoint-aware cleanup still deletes the dead blob no checkpoint
+    // needs.
+    UNIT_ASSERT_VALUES_EQUAL(
+        checkpointAwareCleanup ? 3 : 4,
+        GetMergedBlobsCount(partition));
+
+    holdChecks = false;
+    for (auto& check: heldChecks) {
+        runtime->Send(check.Release());
+    }
+    WaitForScanDiskCompleted(*runtime, partition);
+
+    {
+        const auto response = partition.GetScanDiskStatus();
+        const auto& progress = response->Record.GetProgress();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(0, progress.BrokenBlobsSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, progress.BlobResultsSize());
+    }
+
+    partition.Cleanup();
+    UNIT_ASSERT_VALUES_EQUAL(2, GetMergedBlobsCount(partition));
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -14509,6 +14585,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         partition.Cleanup();
         UNIT_ASSERT_VALUES_EQUAL(2, GetMergedBlobsCount(partition));
+    }
+
+    Y_UNIT_TEST(ShouldKeepCheckpointBlobsDuringChecks)
+    {
+        DoShouldKeepCheckpointBlobsDuringChecks(false);
+    }
+
+    Y_UNIT_TEST(ShouldKeepCheckpointBlobsDuringChecksWithCheckpointAwareCleanup)
+    {
+        DoShouldKeepCheckpointBlobsDuringChecks(true);
     }
 
     Y_UNIT_TEST(ShouldLimitChecksInFlight)
