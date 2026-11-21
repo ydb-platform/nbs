@@ -1,5 +1,7 @@
 #include "blob_liveness.h"
 
+#include <cloud/blockstore/libs/common/block_range.h>
+
 #include <util/generic/algorithm.h>
 #include <util/generic/utility.h>
 
@@ -23,19 +25,6 @@ void AppendBlobBlocks(const NProto::TBlobMeta& blobMeta, TVector<ui32>& blocks)
             blocks.push_back(blockIndex);
         }
     }
-}
-
-TVector<TBlockRange32> GroupContiguousBlocks(const TVector<ui32>& sortedBlocks)
-{
-    TVector<TBlockRange32> ranges;
-    for (ui32 blockIndex: sortedBlocks) {
-        if (!ranges.empty() && ranges.back().End + 1 == blockIndex) {
-            ++ranges.back().End;
-        } else {
-            ranges.push_back(TBlockRange32::MakeOneBlock(blockIndex));
-        }
-    }
-    return ranges;
 }
 
 TLiveBlobs FindLiveBlobs(

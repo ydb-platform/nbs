@@ -2,7 +2,6 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
@@ -22,8 +21,6 @@ struct TBlockVersion
 };
 
 void AppendBlobBlocks(const NProto::TBlobMeta& blobMeta, TVector<ui32>& blocks);
-
-TVector<TBlockRange32> GroupContiguousBlocks(const TVector<ui32>& sortedBlocks);
 
 using TLiveBlobs = THashSet<TPartialBlobId, TPartialBlobIdHash>;
 

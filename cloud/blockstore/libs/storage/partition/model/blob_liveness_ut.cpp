@@ -156,18 +156,6 @@ Y_UNIT_TEST_SUITE(TBlobLivenessTest)
 
         UNIT_ASSERT_VALUES_EQUAL((TVector<ui32>{7, 3, 7, 4, 5, 6}), blocks);
     }
-
-    Y_UNIT_TEST(ShouldGroupContiguousBlocks)
-    {
-        const auto ranges = GroupContiguousBlocks({1, 2, 3, 5, 7, 8});
-
-        UNIT_ASSERT_VALUES_EQUAL(3, ranges.size());
-        UNIT_ASSERT_VALUES_EQUAL("[1..3]", DescribeRange(ranges[0]));
-        UNIT_ASSERT_VALUES_EQUAL("[5..5]", DescribeRange(ranges[1]));
-        UNIT_ASSERT_VALUES_EQUAL("[7..8]", DescribeRange(ranges[2]));
-
-        UNIT_ASSERT(GroupContiguousBlocks({}).empty());
-    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

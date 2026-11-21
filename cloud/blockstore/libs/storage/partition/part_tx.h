@@ -636,13 +636,8 @@ struct TTxPartition
         using TBlobMark =
             TEvPartitionPrivate::TScanDiskBatchResponse::TBlobMark;
 
-        struct TVisitedBlob
-        {
-            TPartialBlobId BlobId;
-            NProto::TBlobMeta BlobMeta;
-        };
-
-        TVector<TVisitedBlob> VisitedBlobs;
+        TVector<TPartialBlobId> VisitedBlobIds;
+        TVector<ui32> VisitedBlobBlocks;
         TVector<TBlobMark> BlobsToReadInCurrentBatch;
         ui64 DeadBlobCount = 0;
         ui32 VisitCount = 0;
@@ -663,7 +658,8 @@ struct TTxPartition
 
         void Clear()
         {
-            VisitedBlobs.clear();
+            VisitedBlobIds.clear();
+            VisitedBlobBlocks.clear();
             BlobsToReadInCurrentBatch.clear();
             DeadBlobCount = 0;
             VisitCount = 0;

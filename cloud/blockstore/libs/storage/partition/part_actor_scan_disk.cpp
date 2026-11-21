@@ -189,7 +189,8 @@ public:
 
         if (!IsDeletionMarker(Args.LastVisitedBlobId)) {
             if (Args.SkipDeadBlobs) {
-                Args.VisitedBlobs.push_back({Args.LastVisitedBlobId, blobMeta});
+                Args.VisitedBlobIds.push_back(Args.LastVisitedBlobId);
+                AppendBlobBlocks(blobMeta, Args.VisitedBlobBlocks);
             } else {
                 Args.BlobsToReadInCurrentBatch.push_back(
                     MakeBlobMark(TabletInfo, Args.LastVisitedBlobId));
@@ -256,30 +257,34 @@ bool SelectLiveBlobs(
     TPartitionDatabase& db,
     TTxPartition::TScanDiskBatch& args)
 {
-    TVector<ui32> blocks;
-    for (const auto& blob: args.VisitedBlobs) {
-        AppendBlobBlocks(blob.BlobMeta, blocks);
+    Sort(args.VisitedBlobBlocks);
+
+    TVector<TBlockRange32> ranges;
+    TBlockRange32Builder rangeBuilder(ranges);
+    for (ui32 blockIndex: args.VisitedBlobBlocks) {
+        rangeBuilder.OnBlock(blockIndex);
     }
-    SortUnique(blocks);
 
     TVector<TBlockVersion> versions;
-    if (!blocks.empty()) {
-        TBlockVersionsVisitor visitor(versions);
+    TBlockVersionsVisitor visitor(versions);
 
-        for (const auto& range: GroupContiguousBlocks(blocks)) {
-            state.FindFreshBlocks(visitor, range, Max<ui64>());
-        }
-
-        bool ready = db.FindMixedBlocks(visitor, blocks, Max<ui64>());
+    bool ready = true;
+    for (const auto& range: ranges) {
+        state.FindFreshBlocks(visitor, range, Max<ui64>());
+        ready &= db.FindMixedBlocks(
+            visitor,
+            range,
+            true   // precharge
+        );
         ready &= db.FindMergedBlocks(
             visitor,
-            blocks,
-            state.GetMaxBlocksInBlob(),
-            Max<ui64>());
+            range,
+            true,   // precharge
+            state.GetMaxBlocksInBlob());
+    }
 
-        if (!ready) {
-            return false;
-        }
+    if (!ready) {
+        return false;
     }
 
     TVector<ui64> checkpointCommitIds;
@@ -289,10 +294,10 @@ bool SelectLiveBlobs(
     const auto liveBlobs =
         FindLiveBlobs(std::move(versions), std::move(checkpointCommitIds));
 
-    for (const auto& blob: args.VisitedBlobs) {
-        if (liveBlobs.contains(blob.BlobId)) {
+    for (const auto& blobId: args.VisitedBlobIds) {
+        if (liveBlobs.contains(blobId)) {
             args.BlobsToReadInCurrentBatch.push_back(
-                MakeBlobMark(tabletInfo, blob.BlobId));
+                MakeBlobMark(tabletInfo, blobId));
         } else {
             ++args.DeadBlobCount;
         }
