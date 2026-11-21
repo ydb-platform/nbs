@@ -39,7 +39,7 @@ public:
 class TIOCompanion
 {
 private:
-    const TStorageConfigPtr Config;
+    TStorageConfigPtr Config;
     const NProto::TPartitionConfig& PartitionConfig;
     const NKikimr::TTabletStorageInfoPtr TabletStorageInfo;
     const ui64 TabletID;
@@ -86,6 +86,10 @@ public:
         std::shared_ptr<TResourceMetricsQueue> resourceMetricsQueue,
         std::shared_ptr<TGroupDowntimes> groupDowntimes,
         std::shared_ptr<TThreadSafePartCounters> partCounters);
+
+    // Replace the configuration reference while preserving the object's other
+    // state.
+    void UpdateStorageConfig(TStorageConfigPtr config);
 
     void HandleWriteBlobCompleted(
         const TEvPartitionCommonPrivate::TEvWriteBlobCompleted::TPtr& ev,

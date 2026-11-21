@@ -145,6 +145,9 @@ public:
 
     void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
+    // Compare raw storage values, Features and the shared ICB control source.
+    bool IsSame(const TStorageConfig& other) const;
+
     // Apply a patch to the raw proto while retaining the same live ICB
     // controls without changing their defaults.
     static TStorageConfigPtr Merge(

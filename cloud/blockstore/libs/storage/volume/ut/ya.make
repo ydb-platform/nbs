@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
 SRCS(
     volume_database_ut.cpp
+    volume_dynconfig_ut.cpp
     volume_lagging_agent_ut.cpp
     volume_state_ut.cpp
     volume_throttling_ut.cpp
@@ -16,6 +17,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/blockstore/libs/configs_manager/testlib
     cloud/blockstore/libs/rdma_test
     cloud/blockstore/libs/storage/disk_agent/actors
     cloud/blockstore/libs/storage/testlib
