@@ -29,127 +29,151 @@ private:
     NProto::TVolumeThrottlingConfig ThrottlingConfig;
 
 public:
-    explicit TVolumeThrottlingManagerActor(TDuration cycleTime)
-        : CycleTime(cycleTime)
-    {}
+    explicit TVolumeThrottlingManagerActor(TDuration cycleTime);
 
-    void Bootstrap(const TActorContext& ctx)
-    {
-        Y_UNUSED(ctx);
-        Become(&TThis::StateWork);
-    }
+    void Bootstrap(const TActorContext& ctx);
 
 private:
-    NProto::TError UpdateConfig(NProto::TVolumeThrottlingConfig newConfig)
-    {
-        if (ThrottlingConfig.GetVersion() >= newConfig.GetVersion()) {
-            return MakeError(
-                E_FAIL,
-                TStringBuilder()
-                    << "Received throttler config with version "
-                       "older then (or equal to) the known one's: ("
-                    << newConfig.GetVersion() << ") <= ("
-                    << ThrottlingConfig.GetVersion() << ")");
-        }
+    NProto::TError UpdateConfig(NProto::TVolumeThrottlingConfig newConfig);
 
-        auto error = ValidateThrottlingConfig(newConfig);
-        if (HasError(error)) {
-            return error;
-        }
-
-        ThrottlingConfig = std::move(newConfig);
-        return {};
-    }
-
-    void NotifyVolumes(const TActorContext& ctx)
-    {
-        if (ThrottlingConfig.GetVersion() == 0) {
-            return;
-        }
-
-        NCloud::Send(
-            ctx,
-            MakeStorageServiceId(),
-            std::make_unique<
-                TEvServicePrivate::TEvListMountedVolumesRequest>());
-
-        NCloud::Schedule<TEvents::TEvWakeup>(ctx, CycleTime);
-    }
+    void NotifyVolumes(const TActorContext& ctx);
 
 private:
-    STFUNC(StateWork)
-    {
-        switch (ev->GetTypeRewrite()) {
-            HFunc(
-                TEvVolumeThrottlingManager::
-                    TEvUpdateVolumeThrottlingConfigRequest,
-                HandleUpdateConfig);
-            HFunc(
-                TEvServicePrivate::TEvListMountedVolumesResponse,
-                HandleListMountedVolumesResponse);
-            HFunc(TEvents::TEvWakeup, HandleWakeup);
-            default:
-                HandleUnexpectedEvent(
-                    ev,
-                    TBlockStoreComponents::SERVICE,
-                    __PRETTY_FUNCTION__);
-                break;
-        }
-    }
+    STFUNC(StateWork);
 
     void HandleUpdateConfig(
         TEvVolumeThrottlingManager::TEvUpdateVolumeThrottlingConfigRequest::
             TPtr& ev,
-        const NActors::TActorContext& ctx)
-    {
-        auto* event = ev.Get();
-
-        auto response =
-            std::make_unique<TEvVolumeThrottlingManager::
-                                 TEvUpdateVolumeThrottlingConfigResponse>();
-        response->Error = UpdateConfig(event->Get()->ThrottlingConfig);
-
-        if (!HasError(response->Error)) {
-            NotifyVolumes(ctx);
-        }
-
-        NCloud::Reply(ctx, *ev, std::move(response));
-    }
+        const NActors::TActorContext& ctx);
 
     void HandleListMountedVolumesResponse(
         TEvServicePrivate::TEvListMountedVolumesResponse::TPtr& ev,
-        const NActors::TActorContext& ctx)
-    {
-        auto* event = ev->Get();
-
-        for (const auto& [diskId, actorId]: event->MountedVolumes) {
-            Y_UNUSED(diskId);
-
-            if (actorId.NodeId() != SelfId().NodeId()) {
-                // Volume actor is not running on current node
-                continue;
-            }
-
-            auto request =
-                std::make_unique<TEvVolumeThrottlingManager::
-                                     TEvVolumeThrottlingConfigNotification>();
-            request->Config = ThrottlingConfig;
-
-            // VolumeProxy is unnecessary here:
-            // 1. We've already filtered volumes running on the current node
-            // 2. We don't want this message forwarded to other nodes
-            NCloud::Send(ctx, actorId, std::move(request));
-        }
-    }
+        const NActors::TActorContext& ctx);
 
     void HandleWakeup(
         TEvents::TEvWakeup::TPtr& ev,
-        const NActors::TActorContext& ctx)
-    {
-        Y_UNUSED(ev);
+        const NActors::TActorContext& ctx);
+};
+
+TVolumeThrottlingManagerActor::TVolumeThrottlingManagerActor(TDuration cycleTime)
+    : CycleTime(cycleTime)
+{}
+
+void TVolumeThrottlingManagerActor::Bootstrap(const TActorContext& ctx)
+{
+    Y_UNUSED(ctx);
+    Become(&TThis::StateWork);
+}
+
+NProto::TError TVolumeThrottlingManagerActor::UpdateConfig(
+    NProto::TVolumeThrottlingConfig newConfig)
+{
+    if (ThrottlingConfig.GetVersion() >= newConfig.GetVersion()) {
+        return MakeError(
+            E_FAIL,
+            TStringBuilder()
+                << "Received throttler config with version "
+                   "older then (or equal to) the known one's: ("
+                << newConfig.GetVersion() << ") <= ("
+                << ThrottlingConfig.GetVersion() << ")");
+    }
+
+    auto error = ValidateThrottlingConfigRules(newConfig.GetRules());
+    if (HasError(error)) {
+        return error;
+    }
+
+    ThrottlingConfig = std::move(newConfig);
+    return {};
+}
+
+void TVolumeThrottlingManagerActor::NotifyVolumes(const TActorContext& ctx)
+{
+    if (ThrottlingConfig.GetVersion() == 0) {
+        return;
+    }
+
+    NCloud::Send(
+        ctx,
+        MakeStorageServiceId(),
+        std::make_unique<
+            TEvServicePrivate::TEvListMountedVolumesRequest>());
+
+    NCloud::Schedule<TEvents::TEvWakeup>(ctx, CycleTime);
+}
+
+STFUNC(TVolumeThrottlingManagerActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(
+            TEvVolumeThrottlingManager::
+                TEvUpdateVolumeThrottlingConfigRequest,
+            HandleUpdateConfig);
+        HFunc(
+            TEvServicePrivate::TEvListMountedVolumesResponse,
+            HandleListMountedVolumesResponse);
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::SERVICE,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+void TVolumeThrottlingManagerActor::HandleUpdateConfig(
+    TEvVolumeThrottlingManager::TEvUpdateVolumeThrottlingConfigRequest::
+        TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* event = ev.Get();
+
+    auto response =
+        std::make_unique<TEvVolumeThrottlingManager::
+                             TEvUpdateVolumeThrottlingConfigResponse>();
+    response->Error = UpdateConfig(event->Get()->ThrottlingConfig);
+
+    if (!HasError(response->Error)) {
         NotifyVolumes(ctx);
     }
-};
+
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+void TVolumeThrottlingManagerActor::HandleListMountedVolumesResponse(
+    TEvServicePrivate::TEvListMountedVolumesResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    auto* event = ev->Get();
+
+    for (const auto& [diskId, actorId]: event->MountedVolumes) {
+        Y_UNUSED(diskId);
+
+        if (actorId.NodeId() != SelfId().NodeId()) {
+            // Volume actor is not running on current node
+            continue;
+        }
+
+        auto request =
+            std::make_unique<TEvVolumeThrottlingManager::
+                                 TEvVolumeThrottlingConfigNotification>();
+        request->Config = ThrottlingConfig;
+
+        // VolumeProxy is unnecessary here:
+        // 1. We've already filtered volumes running on the current node
+        // 2. We don't want this message forwarded to other nodes
+        NCloud::Send(ctx, actorId, std::move(request));
+    }
+}
+
+void TVolumeThrottlingManagerActor::HandleWakeup(
+    TEvents::TEvWakeup::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    NotifyVolumes(ctx);
+}
 
 }   // namespace
 
