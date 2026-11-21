@@ -308,7 +308,7 @@ void ResetVolumeCriticalEventsCounter()
 
     BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(
         BLOCKSTORE_DEFINE_DISK_AGENT_CRITICAL_EVENT_ROUTINE)
-#undef BLOCKSTORE_DEFINE_CRITICAL_EVENT_ROUTINE
+#undef BLOCKSTORE_DEFINE_DISK_AGENT_CRITICAL_EVENT_ROUTINE
 
 #define BLOCKSTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE(name)                       \
     TString Report##name(const TString& message)                               \
@@ -324,7 +324,10 @@ void ResetVolumeCriticalEventsCounter()
     {                                                                          \
         TString msg =                                                          \
             ComposeMessageWithSuffix(message, PrintParams(keyValues));         \
-        return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
+        return ReportCriticalEvent(                                            \
+            GetCriticalEventFor##name(),                                       \
+            msg,                                                               \
+            true);  /* verifyDebug */                                          \
     }                                                                          \
     TString Report##name(                                                      \
         const TCritEventParams& keyValues)                                     \
@@ -332,7 +335,7 @@ void ResetVolumeCriticalEventsCounter()
         return ReportCriticalEvent(                                            \
             GetCriticalEventFor##name(),                                       \
             PrintParams(keyValues),                                            \
-            true); /* verifyDebug */                                           \
+            true);  /* verifyDebug */                                          \
     }                                                                          \
     const TString GetCriticalEventFor##name()                                  \
     {                                                                          \
