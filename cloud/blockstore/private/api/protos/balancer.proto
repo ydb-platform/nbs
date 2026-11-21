@@ -11,6 +11,7 @@ enum EBalancerOpStatus {
     DONT_CHANGE = 0;
     ENABLE = 1;
     DISABLE = 2;
+    PULL_ONLY = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
