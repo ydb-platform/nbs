@@ -10,6 +10,7 @@
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/context.h>
+#include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -32,6 +33,96 @@ public:
     void Bootstrap()
     {
         PassAway();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TTestActorSystem final
+    : public IActorSystem
+{
+private:
+    TTestActorRuntime& Runtime;
+    const ui32 NodeIdx;
+
+    TProgramShouldContinue ProgramShouldContinue;
+
+public:
+    TTestActorSystem(TTestActorRuntime& runtime, ui32 nodeIdx)
+        : Runtime(runtime)
+        , NodeIdx(nodeIdx)
+    {}
+
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
+    TLog CreateLog(const TString& component) override
+    {
+        Y_UNUSED(component);
+        return {};
+    }
+
+    NMonitoring::IMonPagePtr RegisterIndexPage(
+        const TString& path,
+        const TString& title) override
+    {
+        Y_UNUSED(path);
+        Y_UNUSED(title);
+        return {};
+    }
+
+    void RegisterMonPage(NMonitoring::IMonPagePtr page) override
+    {
+        Y_UNUSED(page);
+    }
+
+    NMonitoring::IMonPagePtr GetMonPage(const TString& path) override
+    {
+        Y_UNUSED(path);
+        return {};
+    }
+
+    NMonitoring::TDynamicCountersPtr GetCounters() override
+    {
+        return {};
+    }
+
+    TActorId Register(IActorPtr actor, TStringBuf executorName) override
+    {
+        Y_UNUSED(executorName);
+        return Runtime.Register(actor.release(), NodeIdx);
+    }
+
+    bool Send(const TActorId& recipient, IEventBasePtr event) override
+    {
+        return Send(std::make_unique<IEventHandle>(
+            recipient,
+            TActorId(),
+            event.release()));
+    }
+
+    bool Send(IEventHandlePtr event) override
+    {
+        return Runtime.GetActorSystem(NodeIdx)->Send(event.release());
+    }
+
+    void Schedule(
+        TDuration delta,
+        IEventHandlePtr event,
+        ISchedulerCookie* cookie) override
+    {
+        Runtime.GetActorSystem(NodeIdx)->Schedule(
+            delta,
+            event.release(),
+            cookie);
+    }
+
+    TProgramShouldContinue& GetProgramShouldContinue() override
+    {
+        return ProgramShouldContinue;
     }
 };
 
@@ -78,7 +169,7 @@ struct TEnv
         Registry->AttachForwarder(ForwarderId);
 
         Handler = CreateActorSystemRdmaRequestHandler(
-            Runtime.GetActorSystem(NodeIdx),
+            MakeIntrusive<TTestActorSystem>(Runtime, NodeIdx),
             ForwarderId,
             Registry);
 
