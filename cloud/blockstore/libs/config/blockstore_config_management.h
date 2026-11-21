@@ -106,6 +106,22 @@ IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
     const NStorage::TStorageConfig& storageConfig,
     const NStorage::TDiskAgentConfig& diskAgentConfig);
 
+// Blockstore configuration built from static and normalized dynamic sources.
+// The result owns the merged proto and independently constructed wrappers.
+struct TBlockstoreConfigBuildResult
+{
+    // Merged proto before ICB overrides; owned by this result.
+    NProto::TBlockstoreConfig Proto;
+
+    // Wrappers built from Proto, sharing the supplied ICB controls; non-null.
+    // Later changes to Proto do not change these wrappers.
+    IBlockstoreConfigMutablePtr Config;
+
+    // Whether the normalized dynamic source contains serialized fields,
+    // including unknown fields.
+    bool HasDynamicOverrides = false;
+};
+
 // Build a startup configuration by merging static and dynamic sources.
 // Accept startup values regardless of runtime-update markers.
 //
@@ -117,8 +133,8 @@ IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
 //      operator overrides are left unchanged.
 // extraParameters - parameters not stored in the configuration proto.
 //
-// Returns - A non-null, independently owned startup configuration.
-IBlockstoreConfigMutablePtr MakeStartupBlockstoreConfig(
+// Returns - The configuration build result.
+TBlockstoreConfigBuildResult MakeStartupBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
     NStorage::TStorageConfigControlsPtr controls,

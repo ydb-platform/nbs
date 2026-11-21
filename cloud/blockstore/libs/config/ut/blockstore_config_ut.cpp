@@ -217,12 +217,25 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
         dynamicConfig.MutableDiskAgent()->SetEnabled(true);
         dynamicConfig.MutableStorageService()->SetSchemeShardDir("/cms");
         const auto dynamicBytes = dynamicConfig.SerializeAsString();
-        const auto config = MakeStartupBlockstoreConfig(
+        const auto startup = MakeStartupBlockstoreConfig(
             staticConfig,
             dynamicConfig,
             std::make_shared<NStorage::TStorageConfigControls>());
+        const auto& config = startup.Config;
+        const auto& proto = startup.Proto;
 
         // Apply the linked port change and retain the static host restrictions.
+        UNIT_ASSERT(config);
+        UNIT_ASSERT(startup.HasDynamicOverrides);
+        UNIT_ASSERT_VALUES_EQUAL(
+            config->GetServerConfig()->GetPort(),
+            proto.GetServer().GetServerConfig().GetPort());
+        UNIT_ASSERT_VALUES_EQUAL(
+            config->GetDiscoveryServiceConfig()->GetConductorInstancePort(),
+            proto.GetDiscoveryService().GetConductorInstancePort());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "/static",
+            proto.GetStorageService().GetSchemeShardDir());
         UNIT_ASSERT_VALUES_EQUAL(200, config->GetServerConfig()->GetPort());
         UNIT_ASSERT_VALUES_EQUAL(
             200,
@@ -237,6 +250,19 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(
             dynamicBytes,
             dynamicConfig.SerializeAsString());
+
+        // Treat a source containing only static-only overrides as empty after
+        // normalization, retaining the complete static proto.
+        NProto::TBlockstoreConfig staticOnlyOverrides;
+        staticOnlyOverrides.MutableStorageService()->SetSchemeShardDir("/cms");
+        const auto staticStartup = MakeStartupBlockstoreConfig(
+            staticConfig,
+            staticOnlyOverrides,
+            std::make_shared<NStorage::TStorageConfigControls>());
+        UNIT_ASSERT(!staticStartup.HasDynamicOverrides);
+        UNIT_ASSERT_VALUES_EQUAL(
+            staticBytes,
+            staticStartup.Proto.SerializeAsString());
     }
 
     // Verify that the runtime factory preserves its sources, filters overrides,
@@ -443,10 +469,14 @@ root_kms: {address: kms}
             auto staticConfig = parse(yamlConfigs[1 - dynamicValue]);
             staticConfig.MutableRdma()->MutableClient()->SetPollerThreads(7);
             for (const bool applyOverride: {false, true}) {
-                const auto config = MakeStartupBlockstoreConfig(
+                const auto startup = MakeStartupBlockstoreConfig(
                     staticConfig,
                     parse(applyOverride ? yamlConfigs[dynamicValue] : "{}"),
                     std::make_shared<NStorage::TStorageConfigControls>());
+                const auto& config = startup.Config;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    applyOverride,
+                    startup.HasDynamicOverrides);
                 const bool enabled =
                     applyOverride ? dynamicValue : 1 - dynamicValue;
 
@@ -571,10 +601,12 @@ root_kms: {address: kms}
         UNIT_ASSERT_VALUES_EQUAL("C", mergedC.GetName());
         UNIT_ASSERT_VALUES_EQUAL("dynamic-C", mergedC.GetValue());
 
-        const auto config = MakeStartupBlockstoreConfig(
-            staticConfig,
-            dynamicConfig,
-            std::make_shared<NStorage::TStorageConfigControls>());
+        const auto config =
+            MakeStartupBlockstoreConfig(
+                staticConfig,
+                dynamicConfig,
+                std::make_shared<NStorage::TStorageConfigControls>())
+                .Config;
         const auto& runtimeFeatures = *config->GetFeaturesConfig();
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -620,9 +652,10 @@ root_kms: {address: kms}
         const auto nativeDefault = control.GetDefault();
 
         auto first = MakeStartupBlockstoreConfig(
-            MakeConfig(100),
-            MakeConfig(200),
-            controls);
+                         MakeConfig(100),
+                         MakeConfig(200),
+                         controls)
+                         .Config;
         TBlockstoreConfigHolder holder(first);
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -647,9 +680,10 @@ root_kms: {address: kms}
         // Build a new config without changing the ICB override or native
         // Default.
         auto second = MakeStartupBlockstoreConfig(
-            MakeConfig(100),
-            MakeConfig(300),
-            controls);
+                          MakeConfig(100),
+                          MakeConfig(300),
+                          controls)
+                          .Config;
 
         UNIT_ASSERT_VALUES_EQUAL(nativeDefault, control.GetDefault());
         UNIT_ASSERT_VALUES_EQUAL(100, static_cast<i64>(control));
@@ -700,10 +734,8 @@ root_kms: {address: kms}
 
         // Build without dynamic overrides and read the static configuration
         // value.
-        auto third = MakeStartupBlockstoreConfig(
-            MakeConfig(100),
-            {},
-            controls);
+        auto third =
+            MakeStartupBlockstoreConfig(MakeConfig(100), {}, controls).Config;
 
         UNIT_ASSERT_VALUES_EQUAL(
             100,
@@ -722,10 +754,12 @@ root_kms: {address: kms}
         dynamicConfig.MutableServer()->MutableServerConfig()->SetDataPort(300);
         dynamicConfig.MutableDiagnostics()->SetUseAsyncLogger(true);
 
-        auto blockstoreConfig = MakeStartupBlockstoreConfig(
-            staticConfig,
-            dynamicConfig,
-            std::make_shared<NStorage::TStorageConfigControls>());
+        auto blockstoreConfig =
+            MakeStartupBlockstoreConfig(
+                staticConfig,
+                dynamicConfig,
+                std::make_shared<NStorage::TStorageConfigControls>())
+                .Config;
 
         UNIT_ASSERT_VALUES_EQUAL(
             100,
@@ -994,9 +1028,10 @@ root_kms: {address: kms}
         // override.
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
         const auto initialConfig = MakeStartupBlockstoreConfig(
-            MakeConfig(100),
-            MakeConfig(200),
-            controls);
+                                       MakeConfig(100),
+                                       MakeConfig(200),
+                                       controls)
+                                       .Config;
         initialConfig->GetStorageConfig()->UpdateControlsDefaults();
         TBlockstoreConfigHolder holder(initialConfig);
         NKikimr::TControlBoard controlBoard;
@@ -1019,9 +1054,10 @@ root_kms: {address: kms}
         // Build a config with a new raw value without changing the ICB
         // controls.
         auto newConfig = MakeStartupBlockstoreConfig(
-            MakeConfig(100),
-            MakeConfig(300),
-            controls);
+                             MakeConfig(100),
+                             MakeConfig(300),
+                             controls)
+                             .Config;
         UNIT_ASSERT_VALUES_EQUAL(200, control.GetDefault());
         UNIT_ASSERT_VALUES_EQUAL(500, static_cast<i64>(control));
         UNIT_ASSERT_VALUES_EQUAL(

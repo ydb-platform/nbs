@@ -1145,7 +1145,8 @@ storage_service:
         auto startupConfig = MakeConfig(200);
         startupConfig.MutableStorageService()->SetSchemeShardDir("/static");
         ConfigHolder = std::make_shared<TBlockstoreConfigHolder>(
-            MakeStartupBlockstoreConfig(staticConfig, dynamicConfig, Controls));
+            MakeStartupBlockstoreConfig(staticConfig, dynamicConfig, Controls)
+                .Config);
         Controls->UpdateDefaults(startupConfig.GetStorageService());
         Manager = Runtime.Register(CreateConfigsManager({
             .ConfigHolder = ConfigHolder,

@@ -477,7 +477,7 @@ IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
         std::move(diskAgentConfigCopy));
 }
 
-IBlockstoreConfigMutablePtr MakeStartupBlockstoreConfig(
+TBlockstoreConfigBuildResult MakeStartupBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
     NStorage::TStorageConfigControlsPtr controls,
@@ -486,10 +486,17 @@ IBlockstoreConfigMutablePtr MakeStartupBlockstoreConfig(
     auto dynamicConfigCopy = dynamicConfig;
     NormalizeDynamicBlockstoreConfig(staticConfig, dynamicConfigCopy);
 
-    return MakeBlockstoreConfig(
-        MergeBlockstoreConfigSources(staticConfig, dynamicConfigCopy),
+    auto proto = MergeBlockstoreConfigSources(staticConfig, dynamicConfigCopy);
+    auto config = MakeBlockstoreConfig(
+        proto,
         std::move(controls),
         std::move(extraParameters));
+
+    return {
+        .Proto = std::move(proto),
+        .Config = std::move(config),
+        .HasDynamicOverrides = dynamicConfigCopy.ByteSizeLong() != 0,
+    };
 }
 
 NConfig::TRuntimeConfigDiagnostics PrepareRuntimeBlockstoreConfig(

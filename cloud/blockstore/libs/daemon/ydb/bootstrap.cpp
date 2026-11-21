@@ -677,28 +677,23 @@ void TBootstrapYdb::InitKikimrService()
 
     auto startupBlockstoreConfigProto = ConfigInitializer->GetCurrentBlockstoreConfig();
     if (ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled()) {
-        auto dynamicConfigCopy = cmsBlockstoreConfig;
-        NormalizeDynamicBlockstoreConfig(
-            staticBlockstoreConfig,
-            dynamicConfigCopy);
-
         TBlockstoreConfigExtraParameters extraParameters;
         extraParameters.DiskAgent.Rack = ConfigInitializer->DiskAgentConfig->GetRack();
         extraParameters.DiskAgent.NetworkMbitThroughput =
             ConfigInitializer->DiskAgentConfig->GetNetworkMbitThroughput();
 
-        startupBlockstoreConfigProto = MergeBlockstoreConfigSources(
+        auto startupConfig = MakeStartupBlockstoreConfig(
             staticBlockstoreConfig,
-            dynamicConfigCopy);
-        StartupBlockstoreConfig = MakeBlockstoreConfig(
-            startupBlockstoreConfigProto,
+            cmsBlockstoreConfig,
             ConfigInitializer->StorageConfigControls,
             std::move(extraParameters));
+        startupBlockstoreConfigProto = std::move(startupConfig.Proto);
+        StartupBlockstoreConfig = std::move(startupConfig.Config);
 
         StartupBlockstoreConfig->GetStorageConfig()->UpdateControlsDefaults();
 
         STORAGE_INFO(
-            (dynamicConfigCopy.ByteSizeLong()
+            (startupConfig.HasDynamicOverrides
                  ? "Applied startup PrivateDatabaseConfig"
                  : "No startup PrivateDatabaseConfig applied; "
                    "using configuration after CMS"));

@@ -6,6 +6,7 @@
 #include <cloud/blockstore/config/storage.pb.h>
 #include <cloud/blockstore/libs/kikimr/public.h>
 #include <cloud/storage/core/libs/features/features_config.h>
+#include <cloud/storage/core/protos/error.pb.h>
 #include <cloud/storage/core/protos/media.pb.h>
 
 #include <util/datetime/base.h>
@@ -100,7 +101,8 @@ private:
 public:
     // Verify in tests that every RW parameter has AllowRuntimeUpdate=true.
     // RO parameters must not have an AllowRuntimeUpdate=true marker.
-    static void VerifyParameterMarkers();
+    // Return the first inconsistency, or success if all markers match.
+    [[nodiscard]] static NCloud::NProto::TError VerifyParameterMarkers();
 
     TStorageConfig(
         NProto::TStorageServiceConfig storageServiceConfig,

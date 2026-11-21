@@ -34,6 +34,7 @@ resumes reading the raw value; it does not clamp the value returned by a getter.
 #include "config.h"
 
 #include <cloud/storage/core/config/markers.pb.h>
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/protos/certificate.pb.h>
@@ -43,6 +44,7 @@ resumes reading the raw value; it does not clamp the value returned by a getter.
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/size_literals.h>
+#include <util/string/builder.h>
 #include <util/system/mutex.h>
 
 #include <google/protobuf/text_format.h>
@@ -1326,39 +1328,53 @@ struct TStorageConfig::TImpl
 
 // Verify in tests that every RW parameter allows runtime updates.
 // Require RO parameters to have no AllowRuntimeUpdate=true marker.
-void TStorageConfig::VerifyParameterMarkers()
+NCloud::NProto::TError TStorageConfig::VerifyParameterMarkers()
 {
     const auto* descriptor = NProto::TStorageServiceConfig::descriptor();
-    const auto check = [descriptor](const char* name, bool runtimeUpdate)
+    const auto check = [descriptor](
+                           const char* name,
+                           bool runtimeUpdate) -> NCloud::NProto::TError
     {
         const auto* field = descriptor->FindFieldByName(name);
-        Y_ABORT_UNLESS(
-            field,
-            "Storage parameter '%s' has no field in protobuf type '%s'",
-            name,
-            descriptor->full_name().c_str());
-        const auto& options = field->options();
-        if (runtimeUpdate) {
-            Y_ABORT_UNLESS(
-                options.GetExtension(NCloud::NMarkers::AllowRuntimeUpdate),
-                "RW storage parameter '%s' requires "
-                "NMarkers.AllowRuntimeUpdate=true",
-                field->full_name().c_str());
-        } else {
-            Y_ABORT_UNLESS(
-                !options.GetExtension(NCloud::NMarkers::AllowRuntimeUpdate),
-                "RO storage parameter '%s' must not have "
-                "NMarkers.AllowRuntimeUpdate=true",
-                field->full_name().c_str());
+        if (!field) {
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder() << "Storage parameter '" << name
+                                 << "' has no field in protobuf type '"
+                                 << descriptor->full_name() << "'");
         }
+
+        const auto& options = field->options();
+        const bool allowed =
+            options.GetExtension(NCloud::NMarkers::AllowRuntimeUpdate);
+        if (allowed != runtimeUpdate) {
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << (runtimeUpdate ? "RW" : "RO") << " storage parameter '"
+                    << field->full_name() << "' "
+                    << (runtimeUpdate ? "requires " : "must not have ")
+                    << "NMarkers.AllowRuntimeUpdate=true");
+        }
+
+        return {};
     };
 
-#define CHECK_RW(name, type, value) check(#name, true);
+#define CHECK_RW(name, type, value)                                            \
+    if (auto error = check(#name, true); HasError(error)) {                    \
+        return error;                                                          \
+    }
     BLOCKSTORE_STORAGE_CONFIG_RW(CHECK_RW)
 #undef CHECK_RW
-#define CHECK_RO(name, type, value) check(#name, false);
+
+#define CHECK_RO(name, type, value)                                            \
+    if (auto error = check(#name, false); HasError(error)) {                   \
+        return error;                                                          \
+    }
     BLOCKSTORE_STORAGE_CONFIG_RO(CHECK_RO)
 #undef CHECK_RO
+
+    return {};
 }
 
 TStorageConfig::TStorageConfig(
