@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/private/api/protos/balancer.pb.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
@@ -64,7 +65,8 @@ private:
     TString VolumeToPush;
     TString VolumeToPull;
 
-    bool IsEnabled = true;
+    NPrivateProto::EBalancerOpStatus Status =
+        NPrivateProto::EBalancerOpStatus::ENABLE;
 
     TDuration PullDelayResetTimespan;
 
@@ -87,14 +89,14 @@ public:
 
     void RenderHtml(TStringStream& out, TInstant now) const;
 
-    void SetEnabled(bool enable)
+    void SetStatus(NPrivateProto::EBalancerOpStatus status)
     {
-        IsEnabled = enable;
+        Status = status;
     }
 
-    bool GetEnabled() const
+    NPrivateProto::EBalancerOpStatus GetStatus() const
     {
-        return IsEnabled;
+        return Status;
     }
 
     void SetVolumeInProgress(TString volume)

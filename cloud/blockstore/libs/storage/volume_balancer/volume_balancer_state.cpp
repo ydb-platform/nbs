@@ -95,7 +95,21 @@ void TVolumeBalancerState::UpdateVolumeStats(
         Volumes.erase(d);
     }
 
-    if (emergencyCpu) {
+    static constexpr ui32 SufferCountThreshold = 12;
+    for (const auto& [diskId, info]: Volumes) {
+        if (info.IsLocal ||
+            info.PreemptionSource != NProto::EPreemptionSource::SOURCE_BALANCER)
+        {
+            continue;
+        }
+
+        if (info.SufferCount >= SufferCountThreshold) {
+            Status = NPrivateProto::EBalancerOpStatus::PULL_ONLY;
+            return;
+        }
+    }
+
+    if (emergencyCpu && Status == NPrivateProto::EBalancerOpStatus::ENABLE) {
         VolumeToPull = {};
         UpdateVolumeToPush();
     } else {
@@ -217,7 +231,9 @@ void TVolumeBalancerState::RenderState(TStringStream& out) const
             TABLEHEAD() {
                 TABLER() {
                     TABLED() { out << "Enabled"; }
-                    TABLED() { out << ToString(IsEnabled); }
+                    TABLED () {
+                        out << EBalancerOpStatus_Name(Status);
+                    }
                 }
                 TABLER() {
                     TABLED() { out << "CPUs needed"; }
@@ -285,6 +301,14 @@ void TVolumeBalancerState::UpdateVolumeToPull(TInstant now)
 {
     VolumeToPull = {};
 
+    const bool isPullEnabled =
+        Status == NPrivateProto::EBalancerOpStatus::ENABLE ||
+        Status == NPrivateProto::EBalancerOpStatus::PULL_ONLY;
+
+    if (!isPullEnabled) {
+        return;
+    }
+
     for (const auto& v: Volumes) {
         if (IsVolumePreemptibleToPull(v.first, v.second, now)) {
             VolumeToPull = v.first;
@@ -306,8 +330,7 @@ bool TVolumeBalancerState::IsPreemptionEnabled(
     const bool configuredOn =
         isFeatureEnabledForFolder || StorageConfig->GetVolumeBalancerEnabled();
 
-    return configuredOn && IsEnabled &&
-           VolumeBalancerSwitch->IsBalancerEnabled();
+    return configuredOn && VolumeBalancerSwitch->IsBalancerEnabled();
 }
 
 bool TVolumeBalancerState::IsVolumePreemptibleToPush(
@@ -322,7 +345,7 @@ bool TVolumeBalancerState::IsVolumePreemptibleToPush(
         !IsDiskRegistryMediaKind(volume.MediaKind);
 
     return IsPreemptionEnabled(diskId, volume) && volume.IsLocal &&
-           isSuitableMediaKind && !VolumesInProgress.count(diskId);
+           isSuitableMediaKind && !VolumesInProgress.contains(diskId);
 }
 
 bool TVolumeBalancerState::IsVolumePreemptibleToPull(
@@ -333,7 +356,7 @@ bool TVolumeBalancerState::IsVolumePreemptibleToPull(
     return IsPreemptionEnabled(diskId, volume) && !volume.IsLocal &&
            volume.PreemptionSource ==
                NProto::EPreemptionSource::SOURCE_BALANCER &&
-           volume.NextPullAttempt <= now && !VolumesInProgress.count(diskId);
+           volume.NextPullAttempt <= now && !VolumesInProgress.contains(diskId);
 }
 
 std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(
