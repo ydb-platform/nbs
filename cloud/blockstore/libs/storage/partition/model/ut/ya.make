@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
     background_ops_throttling_ut.cpp
+    blob_liveness_ut.cpp
     block_mask_ut.cpp
     cleanup_queue_ut.cpp
     compaction_map_load_state_ut.cpp

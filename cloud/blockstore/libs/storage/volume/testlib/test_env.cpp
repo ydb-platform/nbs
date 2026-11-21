@@ -627,6 +627,20 @@ TVolumeClient::CreateGetRebuildMetadataStatusRequest()
     return request;
 }
 
+std::unique_ptr<TEvVolume::TEvScanDiskRequest>
+TVolumeClient::CreateScanDiskRequest(NProto::TScanDiskRequest record)
+{
+    auto request = std::make_unique<TEvVolume::TEvScanDiskRequest>();
+    request->Record = std::move(record);
+    return request;
+}
+
+std::unique_ptr<TEvVolume::TEvGetScanDiskStatusRequest>
+TVolumeClient::CreateGetScanDiskStatusRequest()
+{
+    return std::make_unique<TEvVolume::TEvGetScanDiskStatusRequest>();
+}
+
 std::unique_ptr<NMon::TEvRemoteHttpInfo> TVolumeClient::CreateRemoteHttpInfo(
     const TString& params)
 {

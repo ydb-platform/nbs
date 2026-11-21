@@ -943,7 +943,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                     }
 
                     if (State->IsScanDiskStarted()) {
-                        const auto progress = State->GetScanDiskProgress();
+                        const auto& progress = State->GetScanDiskProgress();
                         DumpScanDiskInfo(
                             out,
                             progress.ProcessedBlobs,

@@ -37,6 +37,7 @@ RECURSE(
     recipes
     registration
     resize-disk
+    scan_disk
     session_cache
     spare_node
     stats_aggregator_perf

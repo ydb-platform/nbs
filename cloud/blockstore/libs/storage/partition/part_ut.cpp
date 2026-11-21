@@ -1310,6 +1310,214 @@ protected:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+using TCheckIntegrityResult = TEvBlobStorage::TEvCheckIntegrityResult;
+
+NProto::TScanDiskRequest MakeCheckIntegrityScanDiskRequest(ui32 batchSize)
+{
+    NProto::TScanDiskRequest request;
+    request.SetBatchSize(batchSize);
+    request.SetCheckIntegrity(true);
+    request.SetRetryTimeoutMs(10);
+    return request;
+}
+
+struct TCheckIntegrityReply
+{
+    NKikimrProto::EReplyStatus Status = NKikimrProto::OK;
+    TCheckIntegrityResult::EPlacementStatus PlacementStatus =
+        TCheckIntegrityResult::PS_OK;
+    TCheckIntegrityResult::EDataStatus DataStatus =
+        TCheckIntegrityResult::DS_OK;
+};
+
+void ReplyToCheckIntegrity(
+    TTestActorRuntimeBase& runtime,
+    IEventHandle& request,
+    const TCheckIntegrityReply& reply,
+    TString dataInfo = "crafted")
+{
+    auto result = std::make_unique<TCheckIntegrityResult>(reply.Status);
+    result->Id = request.Get<TEvBlobStorage::TEvCheckIntegrity>()->Id;
+    result->PlacementStatus = reply.PlacementStatus;
+    result->DataStatus = reply.DataStatus;
+    result->DataInfo = std::move(dataInfo);
+    if (reply.Status != NKikimrProto::OK) {
+        result->ErrorReason = "crafted error";
+    }
+
+    runtime.Send(
+        new IEventHandle(
+            request.Sender,
+            request.Recipient,
+            result.release(),
+            0,   // flags
+            request.Cookie),
+        0);
+}
+
+// The scan may complete before the caller starts waiting, so poll the status
+// instead of waiting for the completion event.
+void WaitForScanDiskCompleted(
+    TTestActorRuntime& runtime,
+    TPartitionClient& partition)
+{
+    for (ui32 attempt = 0; attempt < 1000; ++attempt) {
+        partition.SendGetScanDiskStatusRequest();
+        const auto response = partition.RecvGetScanDiskStatusResponse();
+        if (response->Record.GetProgress().GetIsCompleted()) {
+            return;
+        }
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+    }
+    UNIT_FAIL("scan disk did not complete");
+}
+
+ui64 GetMergedBlobsCount(TPartitionClient& partition)
+{
+    return partition.StatPartition()->Record.GetStats().GetMergedBlobsCount();
+}
+
+void DoShouldKeepCheckpointBlobsDuringChecks(bool checkpointAwareCleanup)
+{
+    auto config = DefaultConfig();
+    config.SetWriteBlobThreshold(1);
+    config.SetCheckpointAwareCleanupEnabled(checkpointAwareCleanup);
+    config.SetCleanupThreshold(999999);
+    config.SetCollectGarbageThreshold(999999);
+    auto runtime = PrepareTestActorRuntime(config, 4096);
+
+    TPartitionClient partition(*runtime);
+    partition.WaitReady();
+
+    const auto range = TBlockRange32::WithLength(0, 1024);
+
+    // Compaction leaves the first blob live only for the checkpoint and the
+    // second one dead for every reader.
+    partition.WriteBlocks(range, 1);
+    partition.CreateCheckpoint("checkpoint");
+    partition.WriteBlocks(range, 2);
+    partition.Compaction(range.Start);
+    // A later commit puts the compaction out of reach of the scan barrier.
+    partition.WriteBlocks(TBlockRange32::MakeOneBlock(2048), 3);
+    UNIT_ASSERT_VALUES_EQUAL(4, GetMergedBlobsCount(partition));
+
+    bool holdChecks = true;
+    TVector<TAutoPtr<IEventHandle>> heldChecks;
+    runtime->SetEventFilter(
+        [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            if (holdChecks &&
+                event->GetTypeRewrite() == TEvBlobStorage::EvCheckIntegrity)
+            {
+                heldChecks.push_back(event.Release());
+                return true;
+            }
+            return false;
+        });
+
+    partition.ScanDisk(MakeCheckIntegrityScanDiskRequest(100));
+    {
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return !heldChecks.empty();
+        };
+        runtime->DispatchEvents(options);
+    }
+
+    partition.DeleteCheckpoint("checkpoint");
+    partition.Cleanup();
+
+    // The blob only the checkpoint kept live stays until its check finishes.
+    // Checkpoint-aware cleanup still deletes the dead blob no checkpoint
+    // needs.
+    UNIT_ASSERT_VALUES_EQUAL(
+        checkpointAwareCleanup ? 3 : 4,
+        GetMergedBlobsCount(partition));
+
+    holdChecks = false;
+    for (auto& check: heldChecks) {
+        runtime->Send(check.Release());
+    }
+    WaitForScanDiskCompleted(*runtime, partition);
+
+    {
+        const auto response = partition.GetScanDiskStatus();
+        const auto& progress = response->Record.GetProgress();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(0, progress.BrokenBlobsSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, progress.BlobResultsSize());
+    }
+
+    partition.Cleanup();
+    UNIT_ASSERT_VALUES_EQUAL(2, GetMergedBlobsCount(partition));
+}
+
+void DoShouldCheckBlobThatDiesBeforeItsBatch(
+    const std::function<void(TPartitionClient&, TBlockRange32)>& killBlob)
+{
+    auto config = DefaultConfig();
+    config.SetWriteBlobThreshold(1);
+    auto runtime = PrepareTestActorRuntime(config, 4096);
+
+    TPartitionClient partition(*runtime);
+    partition.WaitReady();
+
+    const auto firstRange = TBlockRange32::WithLength(0, 1024);
+    const auto secondRange = TBlockRange32::WithLength(1024, 1024);
+    partition.WriteBlocks(firstRange, 1);
+    partition.WriteBlocks(secondRange, 2);
+
+    bool holdChecks = true;
+    TVector<TAutoPtr<IEventHandle>> heldChecks;
+    runtime->SetEventFilter(
+        [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            if (holdChecks &&
+                event->GetTypeRewrite() == TEvBlobStorage::EvCheckIntegrity)
+            {
+                heldChecks.push_back(event.Release());
+                return true;
+            }
+            return false;
+        });
+
+    // One blob per batch, so the second blob dies before the scan visits it.
+    partition.ScanDisk(MakeCheckIntegrityScanDiskRequest(1));
+    {
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return !heldChecks.empty();
+        };
+        runtime->DispatchEvents(options);
+    }
+
+    killBlob(partition, secondRange);
+    UNIT_ASSERT_VALUES_EQUAL(3, GetMergedBlobsCount(partition));
+
+    // The barrier keeps the dead blob for its check.
+    partition.Cleanup();
+    UNIT_ASSERT_VALUES_EQUAL(3, GetMergedBlobsCount(partition));
+
+    holdChecks = false;
+    for (auto& check: heldChecks) {
+        runtime->Send(check.Release());
+    }
+    WaitForScanDiskCompleted(*runtime, partition);
+
+    const auto response = partition.GetScanDiskStatus();
+    const auto& progress = response->Record.GetProgress();
+    UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+    UNIT_ASSERT_VALUES_EQUAL(2, progress.GetProcessed());
+    UNIT_ASSERT_VALUES_EQUAL(0, progress.GetDeadBlobs());
+    UNIT_ASSERT_VALUES_EQUAL(2, progress.GetCheckedBlobs());
+    UNIT_ASSERT_VALUES_EQUAL(0, progress.BrokenBlobsSize());
+    UNIT_ASSERT_VALUES_EQUAL(0, progress.BlobResultsSize());
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -15784,6 +15992,745 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         checkScanDisk(100);
         partition.RebootTablet();
         checkScanDisk(1);
+    }
+
+    Y_UNIT_TEST(ShouldSkipDeadBlobsInCheckIntegrityScan)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        auto runtime = PrepareTestActorRuntime(config, 4096);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto overwrittenRange = TBlockRange32::WithLength(0, 1024);
+        const auto zeroedRange = TBlockRange32::WithLength(2048, 1024);
+        const auto untouchedRange = TBlockRange32::WithLength(3072, 1024);
+
+        partition.WriteBlocks(overwrittenRange, 1);
+        partition.WriteBlocks(overwrittenRange, 2);
+        partition.WriteBlocks(zeroedRange, 3);
+        partition.ZeroBlocks(zeroedRange);
+        partition.WriteBlocks(untouchedRange, 4);
+
+        auto describeLiveBlob = [&](const TBlockRange32& range)
+        {
+            const auto response = partition.DescribeBlocks(range);
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.BlobPiecesSize());
+            return LogoBlobIDFromLogoBlobID(
+                response->Record.GetBlobPieces(0).GetBlobId());
+        };
+        TVector<TLogoBlobID> liveBlobIds = {
+            describeLiveBlob(overwrittenRange),
+            describeLiveBlob(untouchedRange)};
+        Sort(liveBlobIds);
+
+        TVector<TLogoBlobID> checkedBlobIds;
+        ui32 readBlobRequests = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvCheckIntegrity: {
+                        using TEv = TEvBlobStorage::TEvCheckIntegrity;
+                        checkedBlobIds.push_back(event->Get<TEv>()->Id);
+                        break;
+                    }
+                    case TEvPartitionCommonPrivate::EvReadBlobRequest:
+                        ++readBlobRequests;
+                        break;
+                }
+                return false;
+            });
+
+        partition.ScanDisk(MakeCheckIntegrityScanDiskRequest(100));
+        WaitForScanDiskCompleted(*runtime, partition);
+
+        Sort(checkedBlobIds);
+        UNIT_ASSERT_VALUES_EQUAL(liveBlobIds, checkedBlobIds);
+        UNIT_ASSERT_VALUES_EQUAL(0, readBlobRequests);
+
+        const auto response = partition.GetScanDiskStatus();
+        const auto& progress = response->Record.GetProgress();
+        UNIT_ASSERT(progress.GetIsCompleted());
+        UNIT_ASSERT(progress.GetCheckIntegrity());
+        UNIT_ASSERT(!progress.GetCancelled());
+        UNIT_ASSERT_LT(0, progress.GetScanCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(progress.GetTotal(), progress.GetProcessed());
+        UNIT_ASSERT_VALUES_EQUAL(2, progress.GetDeadBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(2, progress.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, progress.GetUncheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, progress.GetDegradedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, progress.BrokenBlobsSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, progress.BlobResultsSize());
+    }
+
+    Y_UNIT_TEST(ShouldCheckBlobsLiveForCheckpointInCheckIntegrityScan)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        auto runtime = PrepareTestActorRuntime(config, 4096);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto range = TBlockRange32::WithLength(0, 1024);
+        partition.WriteBlocks(range, 1);
+        partition.CreateCheckpoint("checkpoint");
+        partition.WriteBlocks(range, 2);
+
+        TVector<TLogoBlobID> checkedBlobIds;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvCheckIntegrity)
+                {
+                    using TEv = TEvBlobStorage::TEvCheckIntegrity;
+                    checkedBlobIds.push_back(event->Get<TEv>()->Id);
+                }
+                return false;
+            });
+
+        partition.ScanDisk(MakeCheckIntegrityScanDiskRequest(100));
+        WaitForScanDiskCompleted(*runtime, partition);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, checkedBlobIds.size());
+
+        const auto response = partition.GetScanDiskStatus();
+        const auto& progress = response->Record.GetProgress();
+        UNIT_ASSERT_VALUES_EQUAL(0, progress.GetDeadBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(2, progress.GetCheckedBlobs());
+    }
+
+    Y_UNIT_TEST(ShouldCheckPartiallyOverwrittenBlobInCheckIntegrityScan)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        auto runtime = PrepareTestActorRuntime(config, 4096);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 512), 2);
+
+        partition.ScanDisk(MakeCheckIntegrityScanDiskRequest(100));
+        WaitForScanDiskCompleted(*runtime, partition);
+
+        const auto response = partition.GetScanDiskStatus();
+        const auto& progress = response->Record.GetProgress();
+        UNIT_ASSERT_VALUES_EQUAL(0, progress.GetDeadBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(2, progress.GetCheckedBlobs());
+    }
+
+    Y_UNIT_TEST(ShouldJudgeFlushedBlobWithSeveralVersionsOfBlock)
+    {
+        // Large flush threshold: block versions stay fresh until Flush().
+        auto runtime = PrepareTestActorRuntime(DefaultConfig(1_MB), 4096);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
+        partition.CreateCheckpoint("checkpoint");
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(0), 2);
+        partition.Flush();
+        // The merged blob hides both flushed versions from current readers,
+        // but the checkpoint still reads the first one.
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 3);
+
+        {
+            const auto stats = partition.StatPartition()->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+        }
+
+        auto scan = [&]
+        {
+            partition.ScanDisk(MakeCheckIntegrityScanDiskRequest(100));
+            WaitForScanDiskCompleted(*runtime, partition);
+            const auto response = partition.GetScanDiskStatus();
+            return response->Record.GetProgress();
+        };
+
+        {
+            const auto progress = scan();
+            UNIT_ASSERT_VALUES_EQUAL(0, progress.GetDeadBlobs());
+            UNIT_ASSERT_VALUES_EQUAL(2, progress.GetCheckedBlobs());
+        }
+
+        partition.DeleteCheckpoint("checkpoint");
+
+        {
+            const auto progress = scan();
+            UNIT_ASSERT_VALUES_EQUAL(1, progress.GetDeadBlobs());
+            UNIT_ASSERT_VALUES_EQUAL(1, progress.GetCheckedBlobs());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSortCheckIntegrityVerdicts)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        auto runtime = PrepareTestActorRuntime(config, 8 * 1024);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        using TResult = TCheckIntegrityResult;
+        const TCheckIntegrityReply healthy;
+        const TCheckIntegrityReply replicating{
+            .PlacementStatus = TResult::PS_REPLICATION_IN_PROGRESS};
+        const TCheckIntegrityReply recoverable{
+            .PlacementStatus = TResult::PS_BLOB_IS_RECOVERABLE};
+        const TCheckIntegrityReply lost{
+            .PlacementStatus = TResult::PS_BLOB_IS_LOST};
+        const TCheckIntegrityReply dataMismatch{
+            .DataStatus = TResult::DS_ERROR};
+        // Error replies keep the default PS_OK and DS_OK.
+        const TCheckIntegrityReply error{.Status = NKikimrProto::ERROR};
+        const TCheckIntegrityReply unknownPlacement{
+            .PlacementStatus = TResult::PS_UNKNOWN};
+        const TCheckIntegrityReply unknownData{
+            .DataStatus = TResult::DS_UNKNOWN};
+
+        // The last reply of a script repeats on further checks.
+        const TVector<TVector<TCheckIntegrityReply>> scripts = {
+            {healthy},
+            {replicating},
+            {recoverable},
+            {lost},
+            {dataMismatch},
+            {error},
+            {unknownPlacement, healthy},
+            {unknownData, recoverable},
+        };
+
+        for (ui32 i = 0; i < scripts.size(); ++i) {
+            partition.WriteBlocks(TBlockRange32::MakeOneBlock(i * 1024), 1);
+        }
+
+        THashMap<TLogoBlobID, ui32> scriptIndexByBlob;
+        THashMap<TLogoBlobID, ui32> checksByBlob;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& testRuntime,
+                TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() != TEvBlobStorage::EvCheckIntegrity)
+                {
+                    return false;
+                }
+
+                using TEv = TEvBlobStorage::TEvCheckIntegrity;
+                const auto blobId = event->Get<TEv>()->Id;
+                const ui32 scriptIndex =
+                    scriptIndexByBlob
+                        .try_emplace(blobId, scriptIndexByBlob.size())
+                        .first->second;
+                const auto& script = scripts[scriptIndex];
+                const ui32 attempt = checksByBlob[blobId]++;
+                ReplyToCheckIntegrity(
+                    testRuntime,
+                    *event,
+                    script[Min<size_t>(attempt, script.size() - 1)]);
+                return true;
+            });
+
+        auto request = MakeCheckIntegrityScanDiskRequest(100);
+        request.SetMaxInFlight(1);
+        request.SetMaxRetries(2);
+        partition.ScanDisk(request);
+        WaitForScanDiskCompleted(*runtime, partition);
+
+        UNIT_ASSERT_VALUES_EQUAL(scripts.size(), scriptIndexByBlob.size());
+
+        THashMap<ui32, TLogoBlobID> blobByScriptIndex;
+        for (const auto& [blobId, scriptIndex]: scriptIndexByBlob) {
+            blobByScriptIndex[scriptIndex] = blobId;
+        }
+        auto checksOf = [&](ui32 scriptIndex)
+        {
+            return checksByBlob[blobByScriptIndex[scriptIndex]];
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(1, checksOf(0));
+        UNIT_ASSERT_VALUES_EQUAL(1, checksOf(4));
+        UNIT_ASSERT_VALUES_EQUAL(3, checksOf(5));
+        UNIT_ASSERT_VALUES_EQUAL(2, checksOf(6));
+        UNIT_ASSERT_VALUES_EQUAL(2, checksOf(7));
+
+        const auto response = partition.GetScanDiskStatus();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        const auto& progress = response->Record.GetProgress();
+        UNIT_ASSERT(progress.GetIsCompleted());
+        UNIT_ASSERT_VALUES_EQUAL(7, progress.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(1, progress.GetReplicatingBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(2, progress.GetDegradedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(1, progress.GetUncheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, progress.GetDroppedBlobResults());
+
+        TVector<TLogoBlobID> brokenBlobIds;
+        for (const auto& blobId: progress.GetBrokenBlobs()) {
+            brokenBlobIds.push_back(LogoBlobIDFromLogoBlobID(blobId));
+        }
+        Sort(brokenBlobIds);
+        TVector<TLogoBlobID> expectedBrokenBlobIds = {
+            blobByScriptIndex[3],
+            blobByScriptIndex[4]};
+        Sort(expectedBrokenBlobIds);
+        UNIT_ASSERT_VALUES_EQUAL(expectedBrokenBlobIds, brokenBlobIds);
+
+        using TBlobResult = NProto::TScanDiskBlobResult;
+
+        struct TExpectedResult
+        {
+            TBlobResult::EVerdict Verdict;
+            TString Status;
+            TString PlacementStatus;
+            TString DataStatus;
+        };
+
+        const THashMap<ui32, TExpectedResult> expectedResults = {
+            {2,
+             {TBlobResult::DEGRADED, "OK", "PS_BLOB_IS_RECOVERABLE", "DS_OK"}},
+            {3, {TBlobResult::BROKEN, "OK", "PS_BLOB_IS_LOST", "DS_OK"}},
+            {4, {TBlobResult::BROKEN, "OK", "PS_OK", "DS_ERROR"}},
+            {5, {TBlobResult::UNCHECKED, "ERROR", "PS_OK", "DS_OK"}},
+            {7,
+             {TBlobResult::DEGRADED, "OK", "PS_BLOB_IS_RECOVERABLE", "DS_OK"}},
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedResults.size(),
+            progress.BlobResultsSize());
+        for (const auto& result: progress.GetBlobResults()) {
+            const auto blobId = LogoBlobIDFromLogoBlobID(result.GetBlobId());
+            const auto* scriptIndex = scriptIndexByBlob.FindPtr(blobId);
+            UNIT_ASSERT(scriptIndex);
+            const auto* expected = expectedResults.FindPtr(*scriptIndex);
+            UNIT_ASSERT_C(
+                expected,
+                "unexpected result for script " << *scriptIndex);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                TBlobResult::EVerdict_Name(expected->Verdict),
+                TBlobResult::EVerdict_Name(result.GetVerdict()));
+            UNIT_ASSERT_VALUES_EQUAL(expected->Status, result.GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected->PlacementStatus,
+                result.GetPlacementStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected->DataStatus,
+                result.GetDataStatus());
+            UNIT_ASSERT_VALUES_EQUAL("crafted", result.GetDataInfo());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReportBlobAsUncheckedWhenCheckRetriesRunOut)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        auto runtime = PrepareTestActorRuntime(config, 4 * 1024);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        constexpr ui32 BlobCount = 3;
+        for (ui32 i = 0; i < BlobCount; ++i) {
+            partition.WriteBlocks(TBlockRange32::MakeOneBlock(i * 1024), 1);
+        }
+
+        ui32 checks = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& testRuntime,
+                TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() != TEvBlobStorage::EvCheckIntegrity)
+                {
+                    return false;
+                }
+
+                ++checks;
+                ReplyToCheckIntegrity(
+                    testRuntime,
+                    *event,
+                    {.PlacementStatus = TCheckIntegrityResult::PS_UNKNOWN,
+                     .DataStatus = TCheckIntegrityResult::DS_UNKNOWN});
+                return true;
+            });
+
+        constexpr ui32 MaxRetries = 3;
+        auto request = MakeCheckIntegrityScanDiskRequest(100);
+        request.SetMaxRetries(MaxRetries);
+        partition.ScanDisk(request);
+        WaitForScanDiskCompleted(*runtime, partition);
+
+        UNIT_ASSERT_VALUES_EQUAL(BlobCount * (MaxRetries + 1), checks);
+
+        const auto response = partition.GetScanDiskStatus();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        const auto& progress = response->Record.GetProgress();
+        UNIT_ASSERT(progress.GetIsCompleted());
+        UNIT_ASSERT_VALUES_EQUAL(0, progress.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(BlobCount, progress.GetUncheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(BlobCount, progress.BlobResultsSize());
+        for (const auto& result: progress.GetBlobResults()) {
+            UNIT_ASSERT_EQUAL(
+                NProto::TScanDiskBlobResult::UNCHECKED,
+                result.GetVerdict());
+            UNIT_ASSERT_VALUES_EQUAL("PS_UNKNOWN", result.GetPlacementStatus());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotRebootTabletOnLostBlobsInCheckIntegrityScan)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        auto runtime = PrepareTestActorRuntime(config, 10 * 1024);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        constexpr ui32 BlobCount = 10;
+        for (ui32 i = 0; i < BlobCount; ++i) {
+            partition.WriteBlocks(TBlockRange32::MakeOneBlock(i * 1024), 1);
+        }
+
+        ui32 readBlobRequests = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& testRuntime,
+                TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvCheckIntegrity:
+                        ReplyToCheckIntegrity(
+                            testRuntime,
+                            *event,
+                            {.PlacementStatus =
+                                 TCheckIntegrityResult::PS_BLOB_IS_LOST},
+                            TString(100, 'x'));
+                        return true;
+                    case TEvPartitionCommonPrivate::EvReadBlobRequest:
+                        ++readBlobRequests;
+                        break;
+                }
+                return false;
+            });
+
+        auto request = MakeCheckIntegrityScanDiskRequest(100);
+        request.SetMaxReportedBlobs(4);
+        request.SetMaxDataInfoSize(10);
+        partition.ScanDisk(request);
+        WaitForScanDiskCompleted(*runtime, partition);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, readBlobRequests);
+
+        const auto response = partition.GetScanDiskStatus();
+        const auto& progress = response->Record.GetProgress();
+        UNIT_ASSERT(progress.GetIsCompleted());
+        UNIT_ASSERT_VALUES_EQUAL(BlobCount, progress.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(BlobCount, progress.BrokenBlobsSize());
+        UNIT_ASSERT_VALUES_EQUAL(4, progress.BlobResultsSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            BlobCount - 4,
+            progress.GetDroppedBlobResults());
+        for (const auto& result: progress.GetBlobResults()) {
+            UNIT_ASSERT_VALUES_EQUAL(TString(10, 'x'), result.GetDataInfo());
+        }
+
+        runtime->SetEventFilter(TTestActorRuntime::DefaultFilterFunc);
+        partition.WriteBlocks(TBlockRange32::MakeOneBlock(1), 2);
+        const auto readResponse =
+            partition.ReadBlocks(TBlockRange32::MakeOneBlock(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetBlockContent(2),
+            GetBlockContent(readResponse));
+    }
+
+    Y_UNIT_TEST(ShouldCleanupDeadBlobsDuringCheckIntegrityScan)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        auto runtime = PrepareTestActorRuntime(config, 4096);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto deadBeforeScanRange = TBlockRange32::WithLength(0, 1024);
+        const auto deadAfterScanRange = TBlockRange32::WithLength(2048, 1024);
+
+        partition.WriteBlocks(deadBeforeScanRange, 1);
+        partition.WriteBlocks(deadBeforeScanRange, 2);
+        partition.Compaction(deadBeforeScanRange.Start);
+        partition.WriteBlocks(deadAfterScanRange, 3);
+
+        // Two blobs dead before the scan, the compacted blob, one live blob.
+        UNIT_ASSERT_VALUES_EQUAL(4, GetMergedBlobsCount(partition));
+
+        bool holdChecks = true;
+        TVector<TAutoPtr<IEventHandle>> heldChecks;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (holdChecks &&
+                    event->GetTypeRewrite() == TEvBlobStorage::EvCheckIntegrity)
+                {
+                    heldChecks.push_back(event.Release());
+                    return true;
+                }
+                return false;
+            });
+
+        partition.ScanDisk(MakeCheckIntegrityScanDiskRequest(100));
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return !heldChecks.empty();
+            };
+            runtime->DispatchEvents(options);
+        }
+
+        partition.WriteBlocks(deadAfterScanRange, 4);
+        partition.Compaction(deadAfterScanRange.Start);
+        UNIT_ASSERT_VALUES_EQUAL(6, GetMergedBlobsCount(partition));
+
+        // The barrier keeps the blobs that died after scan start.
+        partition.Cleanup();
+        UNIT_ASSERT_VALUES_EQUAL(4, GetMergedBlobsCount(partition));
+
+        holdChecks = false;
+        for (auto& check: heldChecks) {
+            runtime->Send(check.Release());
+        }
+        WaitForScanDiskCompleted(*runtime, partition);
+
+        {
+            const auto response = partition.GetScanDiskStatus();
+            const auto& progress = response->Record.GetProgress();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0, progress.BrokenBlobsSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, progress.BlobResultsSize());
+        }
+
+        partition.Cleanup();
+        UNIT_ASSERT_VALUES_EQUAL(2, GetMergedBlobsCount(partition));
+    }
+
+    Y_UNIT_TEST(ShouldKeepCheckpointBlobsDuringChecks)
+    {
+        DoShouldKeepCheckpointBlobsDuringChecks(false);
+    }
+
+    Y_UNIT_TEST(ShouldKeepCheckpointBlobsDuringChecksWithCheckpointAwareCleanup)
+    {
+        DoShouldKeepCheckpointBlobsDuringChecks(true);
+    }
+
+    Y_UNIT_TEST(ShouldCheckBlobCompactedDuringCheckIntegrityScan)
+    {
+        DoShouldCheckBlobThatDiesBeforeItsBatch(
+            [](TPartitionClient& partition, TBlockRange32 range)
+            { partition.Compaction(range.Start); });
+    }
+
+    Y_UNIT_TEST(ShouldCheckBlobOverwrittenDuringCheckIntegrityScan)
+    {
+        DoShouldCheckBlobThatDiesBeforeItsBatch(
+            [](TPartitionClient& partition, TBlockRange32 range)
+            { partition.WriteBlocks(range, 3); });
+    }
+
+    Y_UNIT_TEST(ShouldLimitChecksInFlight)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        constexpr ui32 BlobCount = 100;
+        auto runtime = PrepareTestActorRuntime(config, BlobCount * 1024);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        for (ui32 i = 0; i < BlobCount; ++i) {
+            partition.WriteBlocks(TBlockRange32::MakeOneBlock(i * 1024), 1);
+        }
+
+        ui32 checksInFlight = 0;
+        ui32 maxChecksInFlight = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvCheckIntegrity:
+                        ++checksInFlight;
+                        maxChecksInFlight =
+                            Max(maxChecksInFlight, checksInFlight);
+                        break;
+                    case TEvBlobStorage::EvCheckIntegrityResult:
+                        --checksInFlight;
+                        break;
+                }
+                return false;
+            });
+
+        auto request = MakeCheckIntegrityScanDiskRequest(BlobCount);
+        request.SetMaxInFlight(4);
+        partition.ScanDisk(request);
+        WaitForScanDiskCompleted(*runtime, partition);
+
+        UNIT_ASSERT_VALUES_EQUAL(4, maxChecksInFlight);
+
+        const auto response = partition.GetScanDiskStatus();
+        const auto& progress = response->Record.GetProgress();
+        UNIT_ASSERT_VALUES_EQUAL(BlobCount, progress.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, progress.BlobResultsSize());
+    }
+
+    Y_UNIT_TEST(ShouldUseDefaultCheckIntegritySettings)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        constexpr ui32 BlobCount = 10;
+        auto runtime = PrepareTestActorRuntime(config, BlobCount * 1024);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        for (ui32 i = 0; i < BlobCount; ++i) {
+            partition.WriteBlocks(TBlockRange32::MakeOneBlock(i * 1024), 1);
+        }
+
+        ui32 checksInFlight = 0;
+        ui32 maxChecksInFlight = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& testRuntime,
+                TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvCheckIntegrity: {
+                        using TEv = TEvBlobStorage::TEvCheckIntegrity;
+                        const auto* msg = event->Get<TEv>();
+                        UNIT_ASSERT_EQUAL(
+                            NKikimrBlobStorage::LowRead,
+                            msg->GetHandleClass);
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            TDuration::Seconds(60),
+                            msg->Deadline - testRuntime.GetCurrentTime());
+                        ++checksInFlight;
+                        maxChecksInFlight =
+                            Max(maxChecksInFlight, checksInFlight);
+                        break;
+                    }
+                    case TEvBlobStorage::EvCheckIntegrityResult:
+                        --checksInFlight;
+                        break;
+                }
+                return false;
+            });
+
+        NProto::TScanDiskRequest request;
+        request.SetBatchSize(BlobCount);
+        request.SetCheckIntegrity(true);
+        partition.ScanDisk(request);
+        WaitForScanDiskCompleted(*runtime, partition);
+
+        UNIT_ASSERT_VALUES_EQUAL(4, maxChecksInFlight);
+
+        const auto response = partition.GetScanDiskStatus();
+        const auto& progress = response->Record.GetProgress();
+        UNIT_ASSERT(progress.GetIsCompleted());
+        UNIT_ASSERT_VALUES_EQUAL(BlobCount, progress.GetCheckedBlobs());
+    }
+
+    Y_UNIT_TEST(ShouldCancelCheckIntegrityScan)
+    {
+        auto config = DefaultConfig();
+        config.SetWriteBlobThreshold(1);
+        auto runtime = PrepareTestActorRuntime(config, 4096);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const auto overwrittenRange = TBlockRange32::WithLength(0, 1024);
+        partition.WriteBlocks(overwrittenRange, 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(2048, 1024), 2);
+
+        bool holdChecks = true;
+        TVector<TAutoPtr<IEventHandle>> heldChecks;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (holdChecks &&
+                    event->GetTypeRewrite() == TEvBlobStorage::EvCheckIntegrity)
+                {
+                    heldChecks.push_back(event.Release());
+                    return true;
+                }
+                return false;
+            });
+
+        auto waitForHeldChecks = [&](size_t count)
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return heldChecks.size() >= count;
+            };
+            runtime->DispatchEvents(options);
+        };
+
+        auto request = MakeCheckIntegrityScanDiskRequest(100);
+        request.SetMaxInFlight(1);
+        partition.ScanDisk(request);
+
+        waitForHeldChecks(1);
+        ReplyToCheckIntegrity(*runtime, *heldChecks[0], {});
+        waitForHeldChecks(2);
+
+        // These blobs die after scan start, so the barrier keeps them.
+        partition.WriteBlocks(overwrittenRange, 3);
+        partition.Compaction(overwrittenRange.Start);
+        UNIT_ASSERT_VALUES_EQUAL(4, GetMergedBlobsCount(partition));
+        partition.Cleanup();
+        UNIT_ASSERT_VALUES_EQUAL(4, GetMergedBlobsCount(partition));
+
+        NProto::TScanDiskRequest cancelRequest;
+        cancelRequest.SetCancel(true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.ScanDisk(cancelRequest)->GetStatus());
+        WaitForScanDiskCompleted(*runtime, partition);
+
+        {
+            const auto response = partition.GetScanDiskStatus();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            const auto& progress = response->Record.GetProgress();
+            UNIT_ASSERT(progress.GetIsCompleted());
+            UNIT_ASSERT(progress.GetCancelled());
+            UNIT_ASSERT_VALUES_EQUAL(1, progress.GetCheckedBlobs());
+        }
+
+        partition.Cleanup();
+        UNIT_ASSERT_VALUES_EQUAL(2, GetMergedBlobsCount(partition));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_FALSE,
+            partition.ScanDisk(cancelRequest)->GetStatus());
+
+        holdChecks = false;
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            partition.ScanDisk(MakeCheckIntegrityScanDiskRequest(100))
+                ->GetStatus());
+        WaitForScanDiskCompleted(*runtime, partition);
+
+        {
+            const auto response = partition.GetScanDiskStatus();
+            const auto& progress = response->Record.GetProgress();
+            UNIT_ASSERT(progress.GetIsCompleted());
+            UNIT_ASSERT(!progress.GetCancelled());
+            UNIT_ASSERT_VALUES_EQUAL(2, progress.GetCheckedBlobs());
+        }
     }
 
     Y_UNIT_TEST(ShouldFirstGarbageCollectionFlagReboot)
