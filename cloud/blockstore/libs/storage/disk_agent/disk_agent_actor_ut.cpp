@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_handler.h>
 #include <cloud/blockstore/libs/storage/disk_agent/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/model/composite_id.h>
+#include <cloud/blockstore/libs/storage/testlib/mon_http_request.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
@@ -213,54 +214,6 @@ struct TTestNvmeManager: NNvme::INvmeManager
     {
         Y_UNUSED(ctrlPath, config);
 
-        return {};
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct THttpGetRequest: NMonitoring::IHttpRequest
-{
-    TCgiParameters CgiParameters;
-    THttpHeaders HttpHeaders;
-
-    const char* GetURI() const override
-    {
-        return "";
-    }
-
-    const char* GetPath() const override
-    {
-        return "";
-    }
-
-    const TCgiParameters& GetParams() const override
-    {
-        return CgiParameters;
-    }
-
-    const TCgiParameters& GetPostParams() const override
-    {
-        return CgiParameters;
-    }
-
-    TStringBuf GetPostContent() const override
-    {
-        return {};
-    }
-
-    HTTP_METHOD GetMethod() const override
-    {
-        return HTTP_METHOD_GET;
-    }
-
-    const THttpHeaders& GetHeaders() const override
-    {
-        return HttpHeaders;
-    }
-
-    TString GetRemoteAddr() const override
-    {
         return {};
     }
 };
@@ -5505,17 +5458,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         TDiskAgentClient diskAgent(*Runtime);
         diskAgent.WaitReady();
 
-        THttpGetRequest httpRequest;
-        NMonitoring::TMonService2HttpRequest monService2HttpRequest{
-            nullptr,
-            &httpRequest,
-            nullptr,
-            nullptr,
-            "",
-            nullptr};
-
-        diskAgent.SendRequest(
-            std::make_unique<NMon::TEvHttpInfo>(monService2HttpRequest));
+        TTestMonHttpRequest httpRequest;
+        diskAgent.SendRequest(httpRequest.CreateEvent());
 
         auto response = diskAgent.RecvResponse<NMon::TEvHttpInfoRes>();
         UNIT_ASSERT_STRING_CONTAINS(response->Answer, "Unregistered (Idle)");
