@@ -162,6 +162,10 @@ public:
     [[nodiscard]] ui32 GetWriteMixedBlobThresholdHDD() const;
     ui32 GetFlushThresholdHDD() const;
     [[nodiscard]] ui32 GetFlushThresholdSSD() const;
+    [[nodiscard]] ui32 GetFlushThresholdPerAllocationUnitHDD() const;
+    [[nodiscard]] ui32 GetFlushThresholdPerAllocationUnitSSD() const;
+    [[nodiscard]] ui32 GetMaxFlushThresholdHDD() const;
+    [[nodiscard]] ui32 GetMaxFlushThresholdSSD() const;
     ui32 GetFreshBlobCountFlushThresholdHDD() const;
     [[nodiscard]] ui32 GetFreshBlobCountFlushThresholdSSD() const;
     ui32 GetFreshBlobByteCountFlushThresholdHDD() const;
@@ -1026,6 +1030,12 @@ public:
 ui64 GetAllocationUnit(
     const TStorageConfig& config,
     NCloud::NProto::EStorageMediaKind mediaKind);
+
+// Fresh blocks byte count that triggers flush in partition v1.
+[[nodiscard]] ui32 GetFlushThreshold(
+    const TStorageConfig& config,
+    NCloud::NProto::EStorageMediaKind mediaKind,
+    ui64 partitionByteCount);
 
 void AdaptNodeRegistrationParams(
     const TString& overriddenNodeType,
