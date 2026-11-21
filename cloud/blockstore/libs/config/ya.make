@@ -8,6 +8,8 @@ SRCS(
     blockstore_config_holder.cpp
     blockstore_config_provider.cpp
     opaque_config_parser.cpp
+    sections_update.cpp
+    sections_update/features.cpp
 )
 
 PEERDIR(
