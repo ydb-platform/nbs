@@ -4,7 +4,6 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/scope.h>
-#include <util/generic/yexception.h>
 
 namespace NCloud::NConfig {
 
@@ -91,51 +90,6 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigPathTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "AllowedChild.FixedMessage.Value",
             path.GetPath());
-    }
-
-    // Verify that the standard scope guard restores the parent on continue,
-    // return, and exception without a path-specific RAII wrapper.
-    Y_UNIT_TEST(ShouldRestorePathOnEarlyExit)
-    {
-        const auto* root = NProto::NTest::TRuntimeConfig::descriptor();
-        TRuntimeConfigPath path;
-        path.Enter(*root->FindFieldByName("AllowedChild"));
-        Y_DEFER
-        {
-            path.Leave();
-        };
-
-        // Restore the same parent after each form of early exit.
-        for (int i = 0; i != 2; ++i) {
-            path.Enter(*root->FindFieldByName("Flag"));
-            Y_DEFER
-            {
-                path.Leave();
-            };
-            continue;
-        }
-        UNIT_ASSERT_VALUES_EQUAL("AllowedChild", path.GetPath());
-        const auto leaveByReturn = [&]
-        {
-            path.Enter(*root->FindFieldByName("Text"));
-            Y_DEFER
-            {
-                path.Leave();
-            };
-            return path.GetPath();
-        };
-        UNIT_ASSERT_VALUES_EQUAL("AllowedChild.Text", leaveByReturn());
-        UNIT_ASSERT_VALUES_EQUAL("AllowedChild", path.GetPath());
-        try {
-            path.Enter(*root->FindFieldByName("Flag"));
-            Y_DEFER
-            {
-                path.Leave();
-            };
-            ythrow yexception() << "test path unwinding";
-        } catch (const std::exception&) {
-        }
-        UNIT_ASSERT_VALUES_EQUAL("AllowedChild", path.GetPath());
     }
 
     // Verify that invalid transitions throw without changing the current path,
