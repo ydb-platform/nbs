@@ -94,6 +94,38 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
                         .empty());
     }
 
+    // Verify that an incomplete startup config is rejected without changing
+    // the runtime input, including its unknown fields.
+    Y_UNIT_TEST(ShouldRejectUninitializedStartupConfig)
+    {
+        // Prepare valid static values and omit the required startup-only field
+        // from the startup copy.
+        NProto::NTest::TRequiredParameters staticConfig;
+        staticConfig.SetValue(10);
+        staticConfig.MutableChild()->SetValue(20);
+        staticConfig.MutableEmptyChild();
+        staticConfig.SetFrozen(30);
+        auto startup = staticConfig;
+        startup.ClearFrozen();
+        UNIT_ASSERT(!startup.IsInitialized());
+
+        // Include a known update and unknown data to detect any runtime
+        // changes.
+        auto runtimeConfig = staticConfig;
+        runtimeConfig.SetValue(40);
+        AddUnknownField(runtimeConfig, 50);
+        const auto runtimeBefore = runtimeConfig.SerializeAsStringOrThrow();
+
+        // Report the missing startup field before changing the runtime input.
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            FilterRuntimeConfig(staticConfig, startup, runtimeConfig),
+            std::exception,
+            "Startup config is missing required fields: Frozen");
+        UNIT_ASSERT_VALUES_EQUAL(
+            runtimeBefore,
+            runtimeConfig.SerializeAsStringOrThrow());
+    }
+
     // Verify all four ancestor/leaf permission combinations and restore
     // presence when an unmarked scalar is introduced at runtime.
     Y_UNIT_TEST(ShouldRequireMarkersOnTheWholePath)
@@ -456,6 +488,30 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT(!requested.SerializeAsStringOrThrow().empty());
     }
 
+    // Verify that a new explicit container receives allowed required defaults
+    // without losing presence or reporting rejected changes.
+    Y_UNIT_TEST(ShouldCompleteRequiredFieldsInNewContainer)
+    {
+        // Request a new container without its runtime-mutable required value.
+        const NProto::NTest::TRequiredConfig staticConfig;
+        auto requested = staticConfig;
+        requested.MutableOptionalChild();
+        UNIT_ASSERT(!requested.GetOptionalChild().HasValue());
+        UNIT_ASSERT(!requested.IsInitialized());
+
+        // Filter against a startup configuration where the container was
+        // absent.
+        const auto diagnostics =
+            FilterRuntimeConfig(staticConfig, staticConfig, requested);
+
+        // Preserve the container and explicitly initialize its required value.
+        UNIT_ASSERT(requested.HasOptionalChild());
+        UNIT_ASSERT(requested.GetOptionalChild().HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(17, requested.GetOptionalChild().GetValue());
+        UNIT_ASSERT(requested.IsInitialized());
+        UNIT_ASSERT(diagnostics.IgnoredPaths.empty());
+    }
+
     // Verify that required defaults do not recreate removed optional messages.
     // Reject new containers that need a startup-only required field.
     Y_UNIT_TEST(ShouldCompleteRequiredFieldsInRetainedMessages)
@@ -476,9 +532,11 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
             if (keepFrozen) {
                 UNIT_ASSERT(requested.GetOptionalChild().HasValue());
                 UNIT_ASSERT_VALUES_EQUAL(
-                    17, requested.GetOptionalChild().GetValue());
+                    17,
+                    requested.GetOptionalChild().GetValue());
                 UNIT_ASSERT_VALUES_EQUAL(
-                    30, requested.GetOptionalChild().GetFrozen());
+                    30,
+                    requested.GetOptionalChild().GetFrozen());
             }
             UNIT_ASSERT(requested.IsInitialized());
         }
@@ -517,7 +575,8 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT(requested.HasOptionalNestedContainer());
         UNIT_ASSERT(requested.GetOptionalNestedContainer().HasChild());
         UNIT_ASSERT_VALUES_EQUAL(
-            10, requested.GetOptionalNestedContainer().GetChild().GetValue());
+            10,
+            requested.GetOptionalNestedContainer().GetChild().GetValue());
         UNIT_ASSERT(
             !requested.GetOptionalNestedContainer().HasOptionalEnvelope());
         UNIT_ASSERT(requested.IsInitialized());
@@ -906,7 +965,8 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
             FilterRuntimeConfig(startup, startup, requested);
         UNIT_ASSERT(diagnostics.IgnoredPaths.empty());
         UNIT_ASSERT_VALUES_EQUAL(
-            startupBytes, requested.SerializeAsStringOrThrow());
+            startupBytes,
+            requested.SerializeAsStringOrThrow());
 
         for (const bool remove: {false, true}) {
             // Request either finite replacements or removal of both fields.
@@ -929,7 +989,8 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
                     ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
             }
             UNIT_ASSERT_VALUES_EQUAL(
-                startupBytes, requested.SerializeAsStringOrThrow());
+                startupBytes,
+                requested.SerializeAsStringOrThrow());
         }
     }
 

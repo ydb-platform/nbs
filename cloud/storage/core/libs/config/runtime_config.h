@@ -216,8 +216,9 @@ void ValidateRuntimeConfigSchema(
 //
 // Pass runtimeConfig as a separate message from staticConfig and startupConfig
 // (no aliasing); runtimeConfig is modified by this call.
-// Require identical message descriptors and a marker schema checked in tests
-// with ValidateRuntimeConfigSchema(). Throw on descriptor mismatch before
+// Require identical message descriptors, startupConfig.IsInitialized() == true,
+// and a marker schema checked in tests with ValidateRuntimeConfigSchema().
+// Throw on descriptor mismatch or missing required startup fields before
 // modifying runtimeConfig. Other exceptions may leave it partly modified:
 // discard it on failure. Both source configurations stay unchanged.
 TRuntimeConfigDiagnostics FilterRuntimeConfig(
