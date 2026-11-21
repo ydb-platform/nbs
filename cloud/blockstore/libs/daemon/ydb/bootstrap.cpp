@@ -675,7 +675,7 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("CMS configs initialized");
 
-    auto startupBlockstoreConfigProto = ConfigInitializer->GetCurrentBlockstoreConfig();
+    NProto::TBlockstoreConfig startupBlockstoreConfigProto;
     if (ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled()) {
         TBlockstoreConfigExtraParameters extraParameters;
         extraParameters.DiskAgent.Rack = ConfigInitializer->DiskAgentConfig->GetRack();
@@ -698,6 +698,8 @@ void TBootstrapYdb::InitKikimrService()
                  : "No startup PrivateDatabaseConfig applied; "
                    "using configuration after CMS"));
     } else {
+        startupBlockstoreConfigProto =
+            ConfigInitializer->GetCurrentBlockstoreConfig();
         StartupBlockstoreConfig = MakeBlockstoreConfig(
             startupBlockstoreConfigProto,
             *ConfigInitializer->StorageConfig,
