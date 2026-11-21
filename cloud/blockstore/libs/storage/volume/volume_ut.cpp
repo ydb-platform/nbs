@@ -7731,6 +7731,123 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldMergeCheckIntegrityScanDiskStatusOfPartitions)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetMinChannelCount(4);
+        auto runtime = PrepareTestActorRuntime(config);
+
+        constexpr ui32 PartitionCount = 2;
+        constexpr ui32 BlocksPerPartition = 7 * 1024;
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_HYBRID,
+            BlocksPerPartition,
+            "vol0",
+            "cloud",
+            "folder",
+            PartitionCount,
+            2   // blocks per stripe
+        );
+        volume.WaitReady();
+
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            false);
+        volume.AddClient(clientInfo);
+
+        volume.WriteBlocksLocal(
+            TBlockRange64::WithLength(0, PartitionCount * BlocksPerPartition),
+            clientInfo.GetClientId(),
+            GetBlockContent(1));
+        // Overwrites the first merged blob of each partition.
+        volume.WriteBlocksLocal(
+            TBlockRange64::WithLength(0, PartitionCount * 1024),
+            clientInfo.GetClientId(),
+            GetBlockContent(2));
+
+        THashSet<ui64> checkedTabletIds;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase& testRuntime,
+                TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() != TEvBlobStorage::EvCheckIntegrity)
+                {
+                    return false;
+                }
+
+                using TResult = TEvBlobStorage::TEvCheckIntegrityResult;
+                const auto blobId =
+                    event->Get<TEvBlobStorage::TEvCheckIntegrity>()->Id;
+                checkedTabletIds.insert(blobId.TabletID());
+
+                auto result = std::make_unique<TResult>(NKikimrProto::OK);
+                result->Id = blobId;
+                result->PlacementStatus = TResult::PS_BLOB_IS_RECOVERABLE;
+                testRuntime.Send(
+                    new IEventHandle(
+                        event->Sender,
+                        event->Recipient,
+                        result.release(),
+                        0,   // flags
+                        event->Cookie),
+                    0);
+                return true;
+            });
+
+        NProto::TScanDiskRequest request;
+        request.SetBatchSize(100);
+        request.SetCheckIntegrity(true);
+        volume.ScanDisk(request);
+
+        auto response = volume.GetScanDiskStatus();
+        for (ui32 attempt = 0;
+             attempt < 1000 && !response->Record.GetProgress().GetIsCompleted();
+             ++attempt)
+        {
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+            response = volume.GetScanDiskStatus();
+        }
+
+        const auto& progress = response->Record.GetProgress();
+
+        constexpr ui32 BlobsPerPartition = BlocksPerPartition / 1024 + 1;
+        constexpr ui32 LiveBlobsPerPartition = BlobsPerPartition - 1;
+
+        UNIT_ASSERT_VALUES_EQUAL(PartitionCount, checkedTabletIds.size());
+        UNIT_ASSERT(progress.GetIsCompleted());
+        UNIT_ASSERT(progress.GetCheckIntegrity());
+        UNIT_ASSERT_LT(0, progress.GetScanCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            PartitionCount * BlobsPerPartition,
+            progress.GetTotal());
+        UNIT_ASSERT_VALUES_EQUAL(PartitionCount, progress.GetDeadBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(
+            PartitionCount * LiveBlobsPerPartition,
+            progress.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(
+            PartitionCount * LiveBlobsPerPartition,
+            progress.GetDegradedBlobs());
+
+        THashSet<ui64> reportedTabletIds;
+        for (const auto& result: progress.GetBlobResults()) {
+            reportedTabletIds.insert(
+                LogoBlobIDFromLogoBlobID(result.GetBlobId()).TabletID());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            PartitionCount * LiveBlobsPerPartition,
+            progress.BlobResultsSize());
+        UNIT_ASSERT(checkedTabletIds == reportedTabletIds);
+    }
+
     Y_UNIT_TEST(ShouldSetClientIdWhenAddingNewClient)
     {
         auto runtime = PrepareTestActorRuntime();

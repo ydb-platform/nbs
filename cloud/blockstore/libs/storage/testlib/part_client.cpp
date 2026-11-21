@@ -540,6 +540,14 @@ TPartitionClient::CreateScanDiskRequest(ui32 blobsPerBatch)
     return request;
 }
 
+std::unique_ptr<TEvVolume::TEvScanDiskRequest>
+TPartitionClient::CreateScanDiskRequest(NProto::TScanDiskRequest record)
+{
+    auto request = std::make_unique<TEvVolume::TEvScanDiskRequest>();
+    request->Record = std::move(record);
+    return request;
+}
+
 std::unique_ptr<TEvVolume::TEvGetScanDiskStatusRequest>
 TPartitionClient::CreateGetScanDiskStatusRequest()
 {
