@@ -248,15 +248,16 @@ public:
     }
 };
 
-// Runs the index lookups readers use over every block of the visited blobs.
-// Writes in flight are not in the index yet, so they can only make a dead
-// blob look live.
+// Judges liveness as a read at the scan commit would. The scan barrier keeps a
+// blob live then until the scan ends, even if compaction or a write kills it.
 bool SelectLiveBlobs(
     TPartitionState& state,
     const TTabletStorageInfo& tabletInfo,
     TPartitionDatabase& db,
     TTxPartition::TScanDiskBatch& args)
 {
+    const ui64 scanCommitId = args.FinalBlobId.CommitId();
+
     Sort(args.VisitedBlobBlocks);
 
     TVector<TBlockRange32> ranges;
@@ -270,7 +271,7 @@ bool SelectLiveBlobs(
 
     bool ready = true;
     for (const auto& range: ranges) {
-        state.FindFreshBlocks(visitor, range, Max<ui64>());
+        state.FindFreshBlocks(visitor, range, scanCommitId);
         ready &= db.FindMixedBlocks(
             visitor,
             range,
@@ -291,8 +292,10 @@ bool SelectLiveBlobs(
     state.GetCheckpoints().GetCommitIds(checkpointCommitIds);
     state.GetCheckpointsInFlight()->GetCommitIds(checkpointCommitIds);
 
-    const auto liveBlobs =
-        FindLiveBlobs(std::move(versions), std::move(checkpointCommitIds));
+    const auto liveBlobs = FindLiveBlobs(
+        std::move(versions),
+        scanCommitId,
+        std::move(checkpointCommitIds));
 
     for (const auto& blobId: args.VisitedBlobIds) {
         if (liveBlobs.contains(blobId)) {

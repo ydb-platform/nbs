@@ -24,10 +24,11 @@ void AppendBlobBlocks(const NProto::TBlobMeta& blobMeta, TVector<ui32>& blocks);
 
 using TLiveBlobs = THashSet<TPartialBlobId, TPartialBlobIdHash>;
 
-// A blob is live if it holds the newest version of at least one block at the
-// current commit or at one of the checkpoints.
+// A blob is live if it holds the newest version of at least one block at
+// commitId or at one of the checkpoints.
 TLiveBlobs FindLiveBlobs(
     TVector<TBlockVersion> versions,
+    ui64 commitId,
     TVector<ui64> checkpointCommitIds);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

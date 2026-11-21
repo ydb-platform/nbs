@@ -29,10 +29,11 @@ void AppendBlobBlocks(const NProto::TBlobMeta& blobMeta, TVector<ui32>& blocks)
 
 TLiveBlobs FindLiveBlobs(
     TVector<TBlockVersion> versions,
+    ui64 commitId,
     TVector<ui64> checkpointCommitIds)
 {
     TVector<ui64> readerCommitIds = std::move(checkpointCommitIds);
-    readerCommitIds.push_back(Max<ui64>());
+    readerCommitIds.push_back(commitId);
     SortUnique(readerCommitIds, TGreater<ui64>());
 
     Sort(

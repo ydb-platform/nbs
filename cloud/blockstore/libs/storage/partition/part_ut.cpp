@@ -1345,6 +1345,69 @@ void DoShouldKeepCheckpointBlobsDuringChecks(bool checkpointAwareCleanup)
     UNIT_ASSERT_VALUES_EQUAL(2, GetMergedBlobsCount(partition));
 }
 
+void DoShouldCheckBlobThatDiesBeforeItsBatch(
+    const std::function<void(TPartitionClient&, TBlockRange32)>& killBlob)
+{
+    auto config = DefaultConfig();
+    config.SetWriteBlobThreshold(1);
+    auto runtime = PrepareTestActorRuntime(config, 4096);
+
+    TPartitionClient partition(*runtime);
+    partition.WaitReady();
+
+    const auto firstRange = TBlockRange32::WithLength(0, 1024);
+    const auto secondRange = TBlockRange32::WithLength(1024, 1024);
+    partition.WriteBlocks(firstRange, 1);
+    partition.WriteBlocks(secondRange, 2);
+
+    bool holdChecks = true;
+    TVector<TAutoPtr<IEventHandle>> heldChecks;
+    runtime->SetEventFilter(
+        [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+        {
+            if (holdChecks &&
+                event->GetTypeRewrite() == TEvBlobStorage::EvCheckIntegrity)
+            {
+                heldChecks.push_back(event.Release());
+                return true;
+            }
+            return false;
+        });
+
+    // One blob per batch, so the second blob dies before the scan visits it.
+    partition.ScanDisk(MakeCheckIntegrityScanDiskRequest(1));
+    {
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return !heldChecks.empty();
+        };
+        runtime->DispatchEvents(options);
+    }
+
+    killBlob(partition, secondRange);
+    UNIT_ASSERT_VALUES_EQUAL(3, GetMergedBlobsCount(partition));
+
+    // The barrier keeps the dead blob for its check.
+    partition.Cleanup();
+    UNIT_ASSERT_VALUES_EQUAL(3, GetMergedBlobsCount(partition));
+
+    holdChecks = false;
+    for (auto& check: heldChecks) {
+        runtime->Send(check.Release());
+    }
+    WaitForScanDiskCompleted(*runtime, partition);
+
+    const auto response = partition.GetScanDiskStatus();
+    const auto& progress = response->Record.GetProgress();
+    UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+    UNIT_ASSERT_VALUES_EQUAL(2, progress.GetProcessed());
+    UNIT_ASSERT_VALUES_EQUAL(0, progress.GetDeadBlobs());
+    UNIT_ASSERT_VALUES_EQUAL(2, progress.GetCheckedBlobs());
+    UNIT_ASSERT_VALUES_EQUAL(0, progress.BrokenBlobsSize());
+    UNIT_ASSERT_VALUES_EQUAL(0, progress.BlobResultsSize());
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -14595,6 +14658,20 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     Y_UNIT_TEST(ShouldKeepCheckpointBlobsDuringChecksWithCheckpointAwareCleanup)
     {
         DoShouldKeepCheckpointBlobsDuringChecks(true);
+    }
+
+    Y_UNIT_TEST(ShouldCheckBlobCompactedDuringCheckIntegrityScan)
+    {
+        DoShouldCheckBlobThatDiesBeforeItsBatch(
+            [](TPartitionClient& partition, TBlockRange32 range)
+            { partition.Compaction(range.Start); });
+    }
+
+    Y_UNIT_TEST(ShouldCheckBlobOverwrittenDuringCheckIntegrityScan)
+    {
+        DoShouldCheckBlobThatDiesBeforeItsBatch(
+            [](TPartitionClient& partition, TBlockRange32 range)
+            { partition.WriteBlocks(range, 3); });
     }
 
     Y_UNIT_TEST(ShouldLimitChecksInFlight)

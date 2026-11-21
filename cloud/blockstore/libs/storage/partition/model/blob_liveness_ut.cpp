@@ -17,10 +17,13 @@ TPartialBlobId MakeBlob(ui64 commitId, ui32 cookie)
 
 TVector<TPartialBlobId> SortedLiveBlobs(
     TVector<TBlockVersion> versions,
-    TVector<ui64> checkpointCommitIds = {})
+    TVector<ui64> checkpointCommitIds = {},
+    ui64 commitId = Max<ui64>())
 {
-    const auto liveBlobs =
-        FindLiveBlobs(std::move(versions), std::move(checkpointCommitIds));
+    const auto liveBlobs = FindLiveBlobs(
+        std::move(versions),
+        commitId,
+        std::move(checkpointCommitIds));
     TVector<TPartialBlobId> result(liveBlobs.begin(), liveBlobs.end());
     Sort(result);
     return result;
@@ -83,6 +86,24 @@ Y_UNIT_TEST_SUITE(TBlobLivenessTest)
         UNIT_ASSERT_VALUES_EQUAL(
             TVector<TPartialBlobId>{newBlob},
             SortedLiveBlobs(versions, {5}));
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreVersionsAfterCommit)
+    {
+        const auto oldBlob = MakeBlob(10, 1);
+        const auto newBlob = MakeBlob(20, 1);
+        const TVector<TBlockVersion> versions = {
+            {.BlockIndex = 1, .CommitId = 10, .BlobId = oldBlob},
+            {.BlockIndex = 1, .CommitId = 20, .BlobId = newBlob},
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<TPartialBlobId>{oldBlob},
+            SortedLiveBlobs(versions, {}, 15));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<TPartialBlobId>{newBlob},
+            SortedLiveBlobs(versions, {}, 20));
     }
 
     Y_UNIT_TEST(ShouldCompareVersionsInsideOneBlob)
