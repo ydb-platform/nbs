@@ -1,4 +1,7 @@
 #include <cloud/blockstore/config/storage.pb.h>
+#include <cloud/blockstore/libs/configs_manager/events.h>
+#include <cloud/blockstore/libs/configs_manager/public.h>
+#include <cloud/blockstore/libs/configs_manager/testlib/dynconfig.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/diagnostics/volume_balancer_switch.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
@@ -474,7 +477,8 @@ TString RunState(
     TVolumePerfStatuses perfStats,
     TResultOrError<double> cpuWait,
     TMaybe<EChangeBindingOp> expected,
-    TDuration runFor)
+    TDuration runFor,
+    TMaybe<bool> expectedGentlePreemption = {})
 {
     auto now = testEnv.GetRuntime().GetCurrentTime();
     while (testEnv.GetRuntime().GetCurrentTime() - now < runFor) {
@@ -484,6 +488,7 @@ TString RunState(
         UNIT_ASSERT(!ev);
 
         auto statRequestEvent = testEnv.GrabVolumesStatsRequest();
+        UNIT_ASSERT_C(statRequestEvent, "Expected a volume statistics request");
 
         TVector<NProto::TVolumeBalancerDiskStats> stats;
         for (const auto& v: volumes) {
@@ -500,9 +505,7 @@ TString RunState(
                 : TResultOrError<TDuration>(
                       cpuWait.GetResult() * TDuration::Seconds(15)));
 
-        if (statRequestEvent.Get() != nullptr) {
-            testEnv.SendVolumesStatsResponse(actorId, stats);
-        }
+        testEnv.SendVolumesStatsResponse(actorId, stats);
 
         testEnv.DispatchEvents(TDuration::Seconds(1));
     }
@@ -511,6 +514,11 @@ TString RunState(
     if (expected) {
         UNIT_ASSERT(ev);
         UNIT_ASSERT(ev->Action == expected);
+        if (expectedGentlePreemption.Defined()) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                *expectedGentlePreemption,
+                ev->UseGentlePreemption);
+        }
         return ev->DiskId;
     }
 
@@ -535,6 +543,512 @@ auto SetupCriticalEvents(IMonitoringServicePtr monitoring)
 
 Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 {
+    // Verify that dynamic config updates to VolumeBalancerEnabled stop and
+    // resume RELEASE_TO_HIVE requests without restarting the actor.
+    Y_UNIT_TEST(ShouldToggleBalancerFromDynamicConfig)
+    {
+        // Start with VolumeBalancerEnabled=true and prepare an update setting
+        // it to false; keep the Balancer feature disabled.
+        TVolumeBalancerTestEnv testEnv;
+        TVolumeBalancerConfigBuilder config;
+        config.WithEnabled(true).WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY);
+        const auto actorId = testEnv.Register(CreateVolumeBalancerActor(
+            config,
+            testEnv.VolumeStats,
+            testEnv.Fetcher,
+            testEnv.GetEdgeActor(),
+            CreateFeatureConfig("Balancer", {}, false)));
+        testEnv.DispatchEvents();
+        auto provider =
+            std::make_shared<NTestDynconfig::TTestBlockstoreConfigProvider>();
+        *provider->Config.MutableStorageService() = config.Build();
+        provider->Config.MutableStorageService()->SetVolumeBalancerEnabled(
+            false);
+        provider->Publish();
+        const TVector<TVolumeState> volumes{
+            {"vol0", true, NProto::SOURCE_NONE}};
+
+        // Apply a dynamic config update with VolumeBalancerEnabled=false and
+        // check that no RELEASE_TO_HIVE request is sent.
+        testEnv.Send(
+            actorId,
+            std::make_unique<
+                TEvConfigsManager::TEvConfigChanged>(
+                provider->Get()));
+        RunState(
+            testEnv,
+            actorId,
+            volumes,
+            {{"vol0", 10}},
+            1,
+            {},
+            TDuration::Seconds(15));
+
+        // Set VolumeBalancerEnabled=true and check RELEASE_TO_HIVE for vol0,
+        // then complete that request.
+        provider->Config.MutableStorageService()->SetVolumeBalancerEnabled(
+            true);
+        provider->Publish();
+        NTestDynconfig::SendDynconfigTo(
+            testEnv.GetRuntime(),
+            actorId,
+            provider);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "vol0",
+            RunState(
+                testEnv,
+                actorId,
+                volumes,
+                {{"vol0", 10}},
+                1,
+                EChangeBindingOp::RELEASE_TO_HIVE,
+                TDuration::Seconds(15)));
+        testEnv.SendChangeVolumeBindingResponse(actorId, "vol0", {});
+
+        // Set VolumeBalancerEnabled=false and check that RELEASE_TO_HIVE stops.
+        provider->Config.MutableStorageService()->SetVolumeBalancerEnabled(
+            false);
+        provider->Publish();
+        NTestDynconfig::SendDynconfigTo(
+            testEnv.GetRuntime(),
+            actorId,
+            provider);
+        RunState(
+            testEnv,
+            actorId,
+            volumes,
+            {{"vol0", 10}},
+            1,
+            {},
+            TDuration::Seconds(15));
+
+        // Restore VolumeBalancerEnabled=true and check that RELEASE_TO_HIVE
+        // resumes.
+        provider->Config.MutableStorageService()->SetVolumeBalancerEnabled(
+            true);
+        provider->Publish();
+        NTestDynconfig::SendDynconfigTo(
+            testEnv.GetRuntime(),
+            actorId,
+            provider);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "vol0",
+            RunState(
+                testEnv,
+                actorId,
+                volumes,
+                {{"vol0", 10}},
+                1,
+                EChangeBindingOp::RELEASE_TO_HIVE,
+                TDuration::Seconds(15)));
+    }
+
+    // Verify that dynamic config updates change VolumePreemptionType selection
+    // and VolumeBalancerMaxInProgress limits without losing unfinished
+    // requests.
+    Y_UNIT_TEST(ShouldPreserveInFlightBindingsOnDynamicConfig)
+    {
+        // Use PREEMPTION_MOVE_MOST_HEAVY with VolumeBalancerMaxInProgress=1 and
+        // check RELEASE_TO_HIVE selects vol0 without completing its request.
+        TVolumeBalancerTestEnv testEnv;
+        TVolumeBalancerConfigBuilder config;
+        config.WithEnabled(true)
+            .WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY)
+            .WithMaxInProgress(1);
+        const auto actorId = testEnv.Register(CreateVolumeBalancerActor(
+            config,
+            testEnv.VolumeStats,
+            testEnv.Fetcher,
+            testEnv.GetEdgeActor()));
+        testEnv.DispatchEvents();
+        auto provider =
+            std::make_shared<NTestDynconfig::TTestBlockstoreConfigProvider>();
+        *provider->Config.MutableStorageService() = config.Build();
+        TVector<TVolumeState> volumes{
+            {"vol0", true, NProto::SOURCE_NONE},
+            {"vol1", true, NProto::SOURCE_NONE},
+            {"vol2", true, NProto::SOURCE_NONE}};
+        const TVolumePerfStatuses perfStats{
+            {"vol0", 10},
+            {"vol1", 1},
+            {"vol2", 2}};
+        UNIT_ASSERT_VALUES_EQUAL(
+            "vol0",
+            RunState(
+                testEnv,
+                actorId,
+                volumes,
+                perfStats,
+                1,
+                EChangeBindingOp::RELEASE_TO_HIVE,
+                TDuration::Seconds(15)));
+
+        // Set VolumePreemptionType=PREEMPTION_MOVE_LEAST_HEAVY and check that
+        // the unfinished request blocks a new RELEASE_TO_HIVE at the limit.
+        provider->Config.MutableStorageService()->SetVolumePreemptionType(
+            NProto::PREEMPTION_MOVE_LEAST_HEAVY);
+        provider->Publish();
+        NTestDynconfig::SendDynconfigTo(
+            testEnv.GetRuntime(),
+            actorId,
+            provider);
+        RunState(
+            testEnv,
+            actorId,
+            volumes,
+            perfStats,
+            1,
+            {},
+            TDuration::Seconds(15));
+
+        // Set VolumeBalancerMaxInProgress=2 and check RELEASE_TO_HIVE selects
+        // the volume with the lowest SufferCount.
+        provider->Config.MutableStorageService()
+            ->SetVolumeBalancerMaxInProgress(2);
+        provider->Publish();
+        NTestDynconfig::SendDynconfigTo(
+            testEnv.GetRuntime(),
+            actorId,
+            provider);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "vol1",
+            RunState(
+                testEnv,
+                actorId,
+                volumes,
+                perfStats,
+                1,
+                EChangeBindingOp::RELEASE_TO_HIVE,
+                TDuration::Seconds(15)));
+
+        // Lower VolumeBalancerMaxInProgress to 1 and check that no new
+        // RELEASE_TO_HIVE is sent while two requests are unfinished.
+        provider->Config.MutableStorageService()
+            ->SetVolumeBalancerMaxInProgress(1);
+        provider->Publish();
+        NTestDynconfig::SendDynconfigTo(
+            testEnv.GetRuntime(),
+            actorId,
+            provider);
+        RunState(
+            testEnv,
+            actorId,
+            volumes,
+            perfStats,
+            1,
+            {},
+            TDuration::Seconds(15));
+
+        // Complete "vol0" and check that no new RELEASE_TO_HIVE is sent:
+        // the unfinished request count equals VolumeBalancerMaxInProgress.
+        testEnv.SendChangeVolumeBindingResponse(actorId, "vol0", {});
+        volumes[0] = {"vol0", false, NProto::SOURCE_BALANCER};
+        RunState(
+            testEnv,
+            actorId,
+            volumes,
+            perfStats,
+            1,
+            {},
+            TDuration::Seconds(15));
+
+        // Complete the remaining request and check that RELEASE_TO_HIVE selects
+        // the only volume still on this node.
+        testEnv.SendChangeVolumeBindingResponse(actorId, "vol1", {});
+        volumes[1] = {"vol1", false, NProto::SOURCE_BALANCER};
+        UNIT_ASSERT_VALUES_EQUAL(
+            "vol2",
+            RunState(
+                testEnv,
+                actorId,
+                volumes,
+                perfStats,
+                1,
+                EChangeBindingOp::RELEASE_TO_HIVE,
+                TDuration::Seconds(15)));
+    }
+
+    // Verify that an API DISABLE command survives dynamic config updates to
+    // VolumePreemptionType; an API ENABLE command uses the updated value.
+    Y_UNIT_TEST(ShouldPreserveManualDisableOnDynamicConfig)
+    {
+        // Send an API DISABLE command and check that the response reports
+        // the previous ENABLE state.
+        TVolumeBalancerTestEnv testEnv;
+        TVolumeBalancerConfigBuilder config;
+        config.WithEnabled(true).WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY);
+        const auto actorId = testEnv.Register(CreateVolumeBalancerActor(
+            config,
+            testEnv.VolumeStats,
+            testEnv.Fetcher,
+            testEnv.GetEdgeActor()));
+        testEnv.DispatchEvents();
+        testEnv.SendConfigureVolumeBalancerRequest(
+            actorId,
+            EBalancerStatus::DISABLE);
+        UNIT_ASSERT_VALUES_EQUAL(
+            EBalancerStatus::ENABLE,
+            testEnv.GrabConfigureVolumeBalancerResponse()
+                ->Record.GetOpStatus());
+
+        // Set VolumePreemptionType=PREEMPTION_MOVE_LEAST_HEAVY and check that
+        // the API DISABLE command still prevents RELEASE_TO_HIVE.
+        auto provider =
+            std::make_shared<NTestDynconfig::TTestBlockstoreConfigProvider>();
+        *provider->Config.MutableStorageService() = config.Build();
+        provider->Config.MutableStorageService()->SetVolumePreemptionType(
+            NProto::PREEMPTION_MOVE_LEAST_HEAVY);
+        provider->Publish();
+        NTestDynconfig::SendDynconfigTo(
+            testEnv.GetRuntime(),
+            actorId,
+            provider);
+        const TVector<TVolumeState> volumes{
+            {"vol0", true, NProto::SOURCE_NONE},
+            {"vol1", true, NProto::SOURCE_NONE}};
+        RunState(
+            testEnv,
+            actorId,
+            volumes,
+            {{"vol0", 10}, {"vol1", 1}},
+            1,
+            {},
+            TDuration::Seconds(15));
+
+        // Send an API ENABLE command and check that the response reports
+        // the previous DISABLE state and RELEASE_TO_HIVE selects the volume
+        // with the lowest SufferCount.
+        testEnv.SendConfigureVolumeBalancerRequest(
+            actorId,
+            EBalancerStatus::ENABLE);
+        UNIT_ASSERT_VALUES_EQUAL(
+            EBalancerStatus::DISABLE,
+            testEnv.GrabConfigureVolumeBalancerResponse()
+                ->Record.GetOpStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "vol1",
+            RunState(
+                testEnv,
+                actorId,
+                volumes,
+                {{"vol0", 10}, {"vol1", 1}},
+                1,
+                EChangeBindingOp::RELEASE_TO_HIVE,
+                TDuration::Seconds(15)));
+    }
+
+    // Verify that dynamic config updates change the CpuLackThreshold used for
+    // RELEASE_TO_HIVE and the VolumeBalancerGentlePreemptionEnabled in
+    // requests.
+    Y_UNIT_TEST(ShouldApplyDynamicThresholdAndGentlePreemption)
+    {
+        // Keep CPU wait below CpuLackThreshold and check that
+        // no RELEASE_TO_HIVE request is sent.
+        TVolumeBalancerTestEnv testEnv;
+        TVolumeBalancerConfigBuilder config;
+        config.WithEnabled(true).WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY);
+        const auto actorId = testEnv.Register(CreateVolumeBalancerActor(
+            config,
+            testEnv.VolumeStats,
+            testEnv.Fetcher,
+            testEnv.GetEdgeActor()));
+        testEnv.DispatchEvents();
+        const TVector<TVolumeState> volumes{
+            {"vol0", true, NProto::SOURCE_NONE}};
+        RunState(
+            testEnv,
+            actorId,
+            volumes,
+            {{"vol0", 10}},
+            0.5,
+            {},
+            TDuration::Seconds(15));
+
+        // Enable VolumeBalancerGentlePreemptionEnabled, lower CpuLackThreshold
+        // and check RELEASE_TO_HIVE is sent with UseGentlePreemption=true.
+        auto provider =
+            std::make_shared<NTestDynconfig::TTestBlockstoreConfigProvider>();
+        *provider->Config.MutableStorageService() = config.Build();
+        provider->Config.MutableStorageService()->SetCpuLackThreshold(40);
+        provider->Config.MutableStorageService()
+            ->SetVolumeBalancerGentlePreemptionEnabled(true);
+        provider->Publish();
+        NTestDynconfig::SendDynconfigTo(
+            testEnv.GetRuntime(),
+            actorId,
+            provider);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "vol0",
+            RunState(
+                testEnv,
+                actorId,
+                volumes,
+                {{"vol0", 10}},
+                0.5,
+                EChangeBindingOp::RELEASE_TO_HIVE,
+                TDuration::Seconds(15),
+                true));
+        testEnv.SendChangeVolumeBindingResponse(actorId, "vol0", {});
+
+        // Disable VolumeBalancerGentlePreemptionEnabled, raise CpuLackThreshold
+        // and check that the same CPU wait no longer causes RELEASE_TO_HIVE.
+        provider->Config.MutableStorageService()->SetCpuLackThreshold(70);
+        provider->Config.MutableStorageService()
+            ->SetVolumeBalancerGentlePreemptionEnabled(false);
+        provider->Publish();
+        NTestDynconfig::SendDynconfigTo(
+            testEnv.GetRuntime(),
+            actorId,
+            provider);
+        RunState(
+            testEnv,
+            actorId,
+            volumes,
+            {{"vol0", 10}},
+            0.5,
+            {},
+            TDuration::Seconds(15));
+
+        // Exceed CpuLackThreshold and check RELEASE_TO_HIVE has
+        // UseGentlePreemption=false.
+        UNIT_ASSERT_VALUES_EQUAL(
+            "vol0",
+            RunState(
+                testEnv,
+                actorId,
+                volumes,
+                {{"vol0", 10}},
+                1,
+                EChangeBindingOp::RELEASE_TO_HIVE,
+                TDuration::Seconds(15),
+                false));
+    }
+
+    // Verify that enabling and removing the Balancer feature starts and stops
+    // RELEASE_TO_HIVE while VolumeBalancerEnabled remains false.
+    Y_UNIT_TEST(ShouldUpdateBalancerFeatureFromDynamicConfig)
+    {
+        // Disable the Balancer feature with VolumeBalancerEnabled=false and
+        // check that no RELEASE_TO_HIVE request is sent.
+        TVolumeBalancerTestEnv testEnv;
+        TVolumeBalancerConfigBuilder config;
+        config.WithEnabled(false).WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY);
+        const auto actorId = testEnv.Register(CreateVolumeBalancerActor(
+            config,
+            testEnv.VolumeStats,
+            testEnv.Fetcher,
+            testEnv.GetEdgeActor(),
+            CreateFeatureConfig("Balancer", {}, false)));
+        testEnv.DispatchEvents();
+        const TVector<TVolumeState> volumes{
+            {"vol0", true, NProto::SOURCE_NONE}};
+        RunState(
+            testEnv,
+            actorId,
+            volumes,
+            {{"vol0", 10}},
+            1,
+            {},
+            TDuration::Seconds(15));
+
+        // Enable the Balancer feature while VolumeBalancerEnabled=false and
+        // check that RELEASE_TO_HIVE is sent.
+        auto provider =
+            std::make_shared<NTestDynconfig::TTestBlockstoreConfigProvider>();
+        *provider->Config.MutableStorageService() = config.Build();
+        auto* feature = provider->Config.MutableFeatures()->AddFeatures();
+        feature->SetName("Balancer");
+        feature->SetCloudProbability(1);
+        feature->SetFolderProbability(1);
+        provider->Publish();
+        NTestDynconfig::SendDynconfigTo(
+            testEnv.GetRuntime(),
+            actorId,
+            provider);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "vol0",
+            RunState(
+                testEnv,
+                actorId,
+                volumes,
+                {{"vol0", 10}},
+                1,
+                EChangeBindingOp::RELEASE_TO_HIVE,
+                TDuration::Seconds(15)));
+        testEnv.SendChangeVolumeBindingResponse(actorId, "vol0", {});
+
+        // Remove the Balancer feature and check that RELEASE_TO_HIVE stops.
+        provider->Config.ClearFeatures();
+        provider->Publish();
+        NTestDynconfig::SendDynconfigTo(
+            testEnv.GetRuntime(),
+            actorId,
+            provider);
+        RunState(
+            testEnv,
+            actorId,
+            volumes,
+            {{"vol0", 10}},
+            1,
+            {},
+            TDuration::Seconds(15));
+    }
+
+    // Verify that the real actor sends TEvSetConfigSubscriptionRequest to
+    // ConfigsManager and TEvRemoveConfigSubscriptionRequest on shutdown;
+    // check that CreateVolumeBalancerActorStub sends neither request.
+    Y_UNIT_TEST(ShouldSubscribeOnlyRealBalancer)
+    {
+        // Receive ConfigsManager requests at MakeConfigsManagerServiceId().
+        TVolumeBalancerTestEnv testEnv;
+        auto& runtime = testEnv.GetRuntime();
+        const auto manager = runtime.AllocateEdgeActor();
+        runtime.RegisterService(MakeConfigsManagerServiceId(), manager);
+
+        // Start both actors and check for one TEvSetConfigSubscriptionRequest
+        // from the real actor, with Subscriber empty or identifying that actor.
+        TVolumeBalancerConfigBuilder config;
+        const auto actorId = testEnv.Register(CreateVolumeBalancerActor(
+            config,
+            testEnv.VolumeStats,
+            testEnv.Fetcher,
+            testEnv.GetEdgeActor()));
+        const auto stubId = testEnv.Register(CreateVolumeBalancerActorStub());
+        const auto subscription = runtime.GrabEdgeEvent<
+            TEvConfigsManager::TEvSetConfigSubscriptionRequest>(
+            manager,
+            TDuration::Seconds(1));
+        UNIT_ASSERT(subscription);
+        UNIT_ASSERT_VALUES_EQUAL(actorId, subscription->Sender);
+        UNIT_ASSERT_VALUES_EQUAL(
+            actorId,
+            subscription->Get()->Subscriber ? subscription->Get()->Subscriber
+                                            : subscription->Sender);
+        UNIT_ASSERT(!runtime.GrabEdgeEvent<
+                     TEvConfigsManager::TEvSetConfigSubscriptionRequest>(
+            manager,
+            TDuration::Seconds(1)));
+
+        // Stop both actors and check for one TEvRemoveConfigSubscriptionRequest
+        // from the real actor, with Subscriber empty or identifying that actor.
+        testEnv.Send(actorId, std::make_unique<TEvents::TEvPoisonPill>());
+        testEnv.Send(stubId, std::make_unique<TEvents::TEvPoisonPill>());
+        const auto removal = runtime.GrabEdgeEvent<
+            TEvConfigsManager::TEvRemoveConfigSubscriptionRequest>(
+            manager,
+            TDuration::Seconds(1));
+        UNIT_ASSERT(removal);
+        UNIT_ASSERT_VALUES_EQUAL(actorId, removal->Sender);
+        UNIT_ASSERT_VALUES_EQUAL(
+            actorId,
+            removal->Get()->Subscriber ? removal->Get()->Subscriber
+                                       : removal->Sender);
+        UNIT_ASSERT(!runtime.GrabEdgeEvent<
+                     TEvConfigsManager::TEvRemoveConfigSubscriptionRequest>(
+            manager,
+            TDuration::Seconds(1)));
+    }
+
     Y_UNIT_TEST(ShouldPushMostSufferingVolumeToHiveControl)
     {
         TVolumeBalancerTestEnv testEnv;
