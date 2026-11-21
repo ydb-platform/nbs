@@ -23,20 +23,36 @@ struct IFileSystemEventHandler
     virtual void OnEvent(const NProto::TFileSystemEvent& event) = 0;
 
     /**
-     * Called when the transport that delivers the events gets disconnected.
-     * Events sent before the disconnect may have been lost.
+     * Called when the transport that delivers the events of a source gets
+     * disconnected. Events sent by this source before the disconnect may have
+     * been lost.
      *
-     * @param tabletId - the id of the disconnected tablet (can be used for
-     * diagnostic purposes).
+     * @param sourceId - Identifier of the source, the same as the
+     *  *CacheSourceId values in the responses whose data this source
+     *  invalidates.
      */
-    virtual void OnDisconnect(ui64 tabletId) = 0;
+    virtual void OnDisconnect(ui64 sourceId) = 0;
+
+    /**
+     * Tells whether the events are consumed by anybody. If not, the responses
+     * don't need to be stamped with the source ids.
+     *
+     * A consumer has to be registered before it issues the requests whose
+     * responses it caches - otherwise these responses may be left unstamped.
+     * An unstamped response is still safe to cache: its data is attributed to
+     * UnknownSourceId and is invalidated upon the disconnect of any source.
+     *
+     * @return - True if the events are consumed.
+     */
+    virtual bool HasConsumers() const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 //
 // Handler that forwards OnEvent to the handlers registered for the event's
-// FileSystemId and OnDisconnect - to all the registered handlers.
+// FileSystemId and OnDisconnect - to all the registered handlers. It has
+// consumers while any handler is registered.
 //
 
 struct IMultiFileSystemEventHandler

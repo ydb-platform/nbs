@@ -242,6 +242,7 @@ void TFileSystem::UpdateCachedNodeRef(
         name,
         response.GetNode().GetId(),
         version,
+        response.GetNodeRefCacheSourceId(),
         deadline);
 }
 
@@ -254,7 +255,11 @@ void TFileSystem::UpdateCachedNodeAttrs(
         return;
     }
 
-    NodeAttrsCache.Add(response.GetNode(), version, deadline);
+    NodeAttrsCache.Add(
+        response.GetNode(),
+        version,
+        response.GetNodeCacheSourceId(),
+        deadline);
 }
 
 bool TFileSystem::TryReplyEntryFromCache(
@@ -410,19 +415,20 @@ TMetadataCacheSizes TFileSystem::GetMetadataCacheSizes()
     return sizes;
 }
 
-void TFileSystem::InvalidateAllCachedMetadata()
+void TFileSystem::InvalidateCachedMetadataOfSource(ui64 sourceId)
 {
-    MetadataCacheStats->IncrementInvalidateAllCount();
+    MetadataCacheStats->IncrementInvalidateSourceCount();
 
     const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
 
-    STORAGE_INFO("invalidating all cached metadata, version: " << version);
+    STORAGE_INFO("invalidating cached metadata of source: " << sourceId
+        << ", version: " << version);
 
-    NodeAttrsCache.InvalidateAll(version);
-    NodeRefCache.InvalidateAll(version);
+    NodeAttrsCache.InvalidateSource(sourceId, version);
+    NodeRefCache.InvalidateSource(sourceId, version);
 
     TGuard g{XAttrCacheLock};
-    XAttrCache.InvalidateAll(version);
+    XAttrCache.InvalidateSource(sourceId, version);
 }
 
 void TFileSystem::InvalidateCachedEntry(
@@ -481,17 +487,25 @@ void TFileSystem::UpdateXAttrCache(
     ui64 version,
     const NProto::TError& error,
     ui64 cacheVersion,
+    ui64 sourceId,
     TDuration cacheTTL)
 {
     TGuard g{XAttrCacheLock};
     if (HasError(error)) {
         if (STATUS_FROM_CODE(error.GetCode()) == NProto::E_FS_NOXATTR) {
-            XAttrCache.AddAbsent(ino, name, cacheVersion, cacheTTL);
+            XAttrCache.AddAbsent(ino, name, cacheVersion, sourceId, cacheTTL);
         }
         return;
     }
 
-    XAttrCache.Add(ino, name, value, version, cacheVersion, cacheTTL);
+    XAttrCache.Add(
+        ino,
+        name,
+        value,
+        version,
+        cacheVersion,
+        sourceId,
+        cacheTTL);
 }
 
 void TFileSystem::UpdateXAttrCacheUponSetXAttr(
@@ -501,6 +515,7 @@ void TFileSystem::UpdateXAttrCacheUponSetXAttr(
     ui64 version,
     const NProto::TError& error,
     ui64 cacheVersion,
+    ui64 sourceId,
     TDuration cacheTTL)
 {
     TMaybe<TString> ownValue;
@@ -535,6 +550,7 @@ void TFileSystem::UpdateXAttrCacheUponSetXAttr(
         version,
         cacheVersion,
         invalidationVersion,
+        sourceId,
         cacheTTL);
 }
 

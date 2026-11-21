@@ -58,20 +58,26 @@ public:
         }
     }
 
-    void OnDisconnect(ui64 tabletId) override
+    bool HasConsumers() const override
+    {
+        return true;
+    }
+
+    void OnDisconnect(ui64 sourceId) override
     {
         STORAGE_INFO(
             "[f:%s] FileSystemEvent transport disconnected: %lu",
             FileSystemId.Quote().c_str(),
-            tabletId);
+            sourceId);
 
         //
-        // The tablet drops the subscriptions of a disconnected client - the
-        // invalidations may be lost.
+        // The source drops the subscriptions of a disconnected client - its
+        // invalidations may be lost. The data received from the other
+        // sources stays valid.
         //
 
         if (auto fileSystem = FileSystem.lock()) {
-            fileSystem->InvalidateAllCachedMetadata();
+            fileSystem->InvalidateCachedMetadataOfSource(sourceId);
         }
     }
 

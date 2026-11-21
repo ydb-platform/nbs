@@ -49,6 +49,7 @@ struct TXAttr
     ui64 Version;
     // Cache version at which the request that has fetched the entry started.
     ui64 CacheVersion;
+    ui64 SourceId;
     TInstant Deadline;
 };
 
@@ -103,6 +104,7 @@ public:
      * @param version - Xattr version returned by the backend.
      * @param cacheVersion - Cache version at which the request that has
      *  fetched the value has started.
+     * @param sourceId - Source of the data (XAttrCacheSourceId).
      * @param cacheTTL - XAttrCacheTTL returned by the backend. Zero means
      *  that XAttrCacheTimeout is used.
      */
@@ -112,6 +114,7 @@ public:
         const TString& value,
         ui64 version,
         ui64 cacheVersion,
+        ui64 sourceId,
         TDuration cacheTTL);
 
     /**
@@ -122,6 +125,7 @@ public:
      * @param name - Xattr name.
      * @param cacheVersion - Cache version at which the request that has
      *  found out the absence has started.
+     * @param sourceId - Source of the data (XAttrCacheSourceId).
      * @param cacheTTL - XAttrCacheTTL returned by the backend. Zero means
      *  that XAttrCacheTimeout is used.
      */
@@ -129,6 +133,7 @@ public:
         ui64 ino,
         const TString& name,
         ui64 cacheVersion,
+        ui64 sourceId,
         TDuration cacheTTL);
 
     /**
@@ -149,6 +154,7 @@ public:
      *  started.
      * @param invalidationVersion - Cache version generated upon the response
      *  arrival.
+     * @param sourceId - Source of the data (XAttrCacheSourceId).
      * @param cacheTTL - XAttrCacheTTL returned by the backend. Zero means
      *  that XAttrCacheTimeout is used.
      */
@@ -159,6 +165,7 @@ public:
         ui64 version,
         ui64 cacheVersion,
         ui64 invalidationVersion,
+        ui64 sourceId,
         TDuration cacheTTL);
 
     /**
@@ -191,12 +198,14 @@ public:
     void Invalidate(ui64 ino, const TString& name, ui64 version);
 
     /**
-     * Erases all the cached xattrs and prevents caching by the requests
-     * started before version.
+     * Invalidates all the xattrs received from a source (e.g. upon the loss
+     * of the connection to it): the xattrs fetched from it by the requests
+     * started before version are neither cached nor returned.
      *
+     * @param sourceId - Source of the xattrs.
      * @param version - Cache version of the invalidation.
      */
-    void InvalidateAll(ui64 version);
+    void InvalidateSource(ui64 sourceId, ui64 version);
 
     /**
      * @return - Number of the cached xattrs (values and absences).
@@ -204,7 +213,11 @@ public:
     size_t GetEntryCount() const;
 
 private:
-    bool IsCacheable(ui64 ino, const TString& name, ui64 cacheVersion) const;
+    bool IsCacheable(
+        ui64 ino,
+        const TString& name,
+        ui64 cacheVersion,
+        ui64 sourceId) const;
     void Erase(ui64 ino, const TString& name);
     TInstant GetDeadline(TDuration cacheTTL) const;
 };

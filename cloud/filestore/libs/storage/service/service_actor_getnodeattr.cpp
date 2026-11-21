@@ -235,6 +235,8 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
         //
 
         msg->Record.SetNodeRefCacheTTL(LeaderResponse.GetNodeRefCacheTTL());
+        msg->Record.SetNodeRefCacheSourceId(
+            LeaderResponse.GetNodeRefCacheSourceId());
 
         ReplyAndDie(ctx, std::move(msg->Record));
         return;

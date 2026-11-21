@@ -60,7 +60,7 @@ void TMetadataCacheModuleStats::RegisterCounters(
         "InvalidateNodeXAttrEventCount",
         InvalidateNodeXAttrEventCount,
         derivative);
-    registerCounter("InvalidateAllCount", InvalidateAllCount, derivative);
+    registerCounter("InvalidateSourceCount", InvalidateSourceCount, derivative);
 
     const auto absolute = NMetrics::EMetricType::MT_ABSOLUTE;
     registerCounter("NodeAttrsCacheSize", NodeAttrsCacheSize, absolute);
@@ -125,9 +125,9 @@ void TMetadataCacheModuleStats::IncrementInvalidateNodeXAttrEventCount()
     InvalidateNodeXAttrEventCount.Inc();
 }
 
-void TMetadataCacheModuleStats::IncrementInvalidateAllCount()
+void TMetadataCacheModuleStats::IncrementInvalidateSourceCount()
 {
-    InvalidateAllCount.Inc();
+    InvalidateSourceCount.Inc();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
