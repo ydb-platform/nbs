@@ -272,7 +272,16 @@ void TConfigsManagerActor::Handle(
             ReplyConfigNotificationResponse(ev, ctx);
             return;
         }
+    } catch (...) {
+        ReportConfigUpdateError(
+            TStringBuilder()
+                << "Failed to process PrivateDatabaseConfig notification: "
+                << CurrentExceptionMessage(),
+            /*rollbackShallHelp=*/false);
+        return;
+    }
 
+    try {
         const auto currentConfig = ConfigHolder->Get();
         newConfig = MakeRuntimeBlockstoreConfig(
             StaticConfig,
