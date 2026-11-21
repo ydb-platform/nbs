@@ -447,7 +447,7 @@ def test_dynamic_blockstore_config_lifecycle():
         # https://github.com/ydb-platform/nbs/issues/7166
         # parse_errors = nbs.counters.find({
         #     "component": "server",
-        #     "sensor": "AppCriticalEvents/GetConfigsFromCmsYamlParseError",
+        #     "sensor": "AppCriticalEvents/DynamicConfigError",
         # })
         # assert parse_errors is not None and parse_errors["value"] >= 1
         assert "Fix or roll back the cluster configuration before restarting nodes" in log
