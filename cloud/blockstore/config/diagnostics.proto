@@ -303,4 +303,11 @@ message TDiagnosticsConfig
     // Each size has separate compression_chunk_size counters. Zero means
     // compressing the whole blob.
     repeated uint64 BlobCompressionChunkSizes = 61;
+
+    // Performance measurements coefficients for SSD direct mirror 3 of 5 group.
+    optional TVolumePerfSettings SsdMirror3Of5GroupPerfSettings = 62;
+
+    // Performance measurements coefficients used for YDB-based media types
+    // load calculation in volume balancer.
+    optional TVolumePerfSettings BalancerYDBBasedPerfSettings = 63;
 }

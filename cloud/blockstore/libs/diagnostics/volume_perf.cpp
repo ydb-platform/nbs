@@ -64,8 +64,16 @@ TVolumePerfSettings TVolumePerformanceCalculator::GetConfigSettings(
         case NCloud::NProto::STORAGE_MEDIA_SSD: {
             return diagnosticsConfig->GetSsdPerfSettings();
         }
-        default: {
+        case NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP: {
+            return diagnosticsConfig->GetSsdMirror3Of5GroupPerfSettings();
+        }
+        case NCloud::NProto::STORAGE_MEDIA_HDD:
+        case NCloud::NProto::STORAGE_MEDIA_HYBRID:
+        case NCloud::NProto::STORAGE_MEDIA_DEFAULT: {
             return diagnosticsConfig->GetHddPerfSettings();
+        }
+        default: {
+            return {};
         }
     }
 }

@@ -125,7 +125,11 @@ void TStatsServiceActor::RegisterStatisticsCollectorActor(
 {
     TVector<TActorId> volumeActorIds;
     for (const auto& [_, volumeInfo]: State.GetVolumes()) {
-        volumeActorIds.push_back(volumeInfo.VolumeActorId);
+        // Copies have independent reports even though monitoring aggregates
+        // them under the same logical disk ID.
+        for (const auto& [diskId, stats]: volumeInfo.RealDiskStats) {
+            volumeActorIds.push_back(stats.VolumeActorId);
+        }
     }
     // Shadow disks are registered with the actor id of their source volume,
     // and that volume reports their statistics in its own response. A second
