@@ -54,6 +54,7 @@ enum EConfigSource : size_t
 };
 
 using TMessages = std::array<const Message*, ConfigSourceCount>;
+using TOverrideInfo = NStorage::TStorageConfigControls::TOverrideInfo;
 
 // Rendering inputs borrowed by field helpers for one configuration section.
 // Create a context per section; referenced data must outlive the rendering
@@ -187,7 +188,7 @@ bool IsMessageEmpty(const Message* message)
     return fields.empty();
 }
 
-// Format declared enum values with both their name and number.
+// Format enum names with their numbers and label undeclared values.
 TString FormatEnumValue(
     const google::protobuf::EnumDescriptor& enumType,
     i64 value)
@@ -198,7 +199,7 @@ TString FormatEnumValue(
             : nullptr;
     return enumValue
                ? (TStringBuilder() << enumValue->name() << " (" << value << ')')
-               : ToString(value);
+               : ToString(value) + " (unknown enum value)";
 }
 
 // Format enum overrides by their schema and other ICB values as integers.
@@ -245,6 +246,16 @@ GetValue(const Message* message, const FieldDescriptor* field, int index = -1)
     return value;
 }
 
+// Format the captured ICB value and explain why an invalid enum is ignored.
+TString FormatIcbOverride(
+    const FieldDescriptor& field,
+    const TOverrideInfo& info)
+{
+    return info.IsValid
+               ? FormatIcbValue(field, info.Value)
+               : ToString(info.Value) + " (unknown enum value; ignored)";
+}
+
 void RenderCell(IOutputStream& out, const std::optional<TString>& value)
 {
     HTML (out) {
@@ -288,7 +299,7 @@ void RenderField(
     const FieldDescriptor* field,
     TStringBuf path,
     const TRenderContext& context,
-    std::optional<TAtomicBase> icb = std::nullopt,
+    std::optional<TOverrideInfo> icb = std::nullopt,
     int index = -1)
 {
     HTML (out) {
@@ -312,7 +323,7 @@ void RenderField(
                         icb ? std::optional<TString>(
                                   IsSensitive(*field)
                                       ? TString("[redacted]")
-                                      : FormatIcbValue(*field, *icb))
+                                      : FormatIcbOverride(*field, *icb))
                             : std::nullopt);
                 } else {
                     out << "<td class='config-icb-unavailable'></td>";
@@ -518,11 +529,11 @@ bool RenderScalarField(
 {
     // Read ICB only for direct StorageService fields to avoid nested name
     // clashes.
-    std::optional<TAtomicBase> icb;
+    std::optional<TOverrideInfo> icb;
     if (context.ShowIcb &&
         field->containing_type() == NProto::TStorageServiceConfig::descriptor())
     {
-        icb = context.Controls.GetOverride(field->name());
+        icb = context.Controls.GetOverrideInfo(field->name());
     }
 
     // Omit unset fields unless a live ICB override supplies their value.
