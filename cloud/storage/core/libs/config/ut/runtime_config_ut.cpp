@@ -197,8 +197,10 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(2, requested.ValuesSize());
         UNIT_ASSERT_VALUES_EQUAL(1, requested.GetValues(0));
         UNIT_ASSERT_VALUES_EQUAL(2, requested.GetValues(1));
+        UNIT_ASSERT_VALUES_EQUAL(1, requested.RecordsSize());
         UNIT_ASSERT_VALUES_EQUAL(42, requested.GetRecords(0).GetFrozen());
         UNIT_ASSERT_VALUES_EQUAL(2, requested.GetMutableMap().size());
+        UNIT_ASSERT_VALUES_EQUAL(1, requested.FrozenValuesSize());
         UNIT_ASSERT_VALUES_EQUAL("startup", requested.GetFrozenValues(0));
         UNIT_ASSERT_VALUES_EQUAL(1, requested.GetFrozenMap().size());
         UNIT_ASSERT_VALUES_EQUAL(2, requested.GetFrozenMap().at("private-key"));
@@ -222,6 +224,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         FilterRuntimeConfig(staticConfig, startup, removed);
         UNIT_ASSERT_VALUES_EQUAL(1, removed.ValuesSize());
         UNIT_ASSERT_VALUES_EQUAL(0, removed.RecordsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, removed.FrozenValuesSize());
         UNIT_ASSERT_VALUES_EQUAL("startup", removed.GetFrozenValues(0));
     }
 
@@ -840,7 +843,9 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
             true);
         google::protobuf::DescriptorPool pool(
             google::protobuf::DescriptorPool::generated_pool());
-        const auto* descriptor = pool.BuildFile(file)->message_type(0);
+        const auto* fileDescriptor = pool.BuildFile(file);
+        UNIT_ASSERT_C(fileDescriptor, file.DebugString());
+        const auto* descriptor = fileDescriptor->message_type(0);
         google::protobuf::DynamicMessageFactory factory(&pool);
         const auto* prototype = factory.GetPrototype(descriptor);
         std::unique_ptr<google::protobuf::Message> startup(prototype->New());
@@ -902,7 +907,9 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
             }
             google::protobuf::DescriptorPool pool(
                 google::protobuf::DescriptorPool::generated_pool());
-            const auto* descriptor = pool.BuildFile(file)->message_type(0);
+            const auto* fileDescriptor = pool.BuildFile(file);
+            UNIT_ASSERT_C(fileDescriptor, file.DebugString());
+            const auto* descriptor = fileDescriptor->message_type(0);
 
             // Report the offending member and required marker to the caller.
             UNIT_ASSERT_EXCEPTION_CONTAINS(
@@ -1196,7 +1203,9 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
                 google::protobuf::FieldDescriptorProto::LABEL_OPTIONAL);
         }
         google::protobuf::DescriptorPool pool;
-        const auto* descriptor = pool.BuildFile(file)->message_type(0);
+        const auto* fileDescriptor = pool.BuildFile(file);
+        UNIT_ASSERT_C(fileDescriptor, file.DebugString());
+        const auto* descriptor = fileDescriptor->message_type(0);
         google::protobuf::DynamicMessageFactory factory(&pool);
         const auto* prototype = factory.GetPrototype(descriptor);
         std::unique_ptr<google::protobuf::Message> startup(prototype->New());
