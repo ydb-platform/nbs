@@ -4,6 +4,7 @@
 
 #include "part_counters.h"
 #include "part_database.h"
+#include "part_scan_disk.h"
 #include "part_schema.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
@@ -204,7 +205,13 @@ struct TScanDiskProgress
     ui64 ProcessedBlobs = 0;
     ui64 TotalBlobs = 0;
     bool IsCompleted = false;
-    TVector<NKikimr::TLogoBlobID> BrokenBlobs;
+
+    bool CheckIntegrity = false;
+    ui64 ScanCommitId = 0;
+    bool Cancelled = false;
+    NProto::TError Error;
+
+    TScanDiskResults Results;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -213,10 +220,9 @@ struct TScanDiskState
 {
     bool Started = false;
     bool EverStarted = false;
+    bool CancelRequested = false;
 
-    TVector<NKikimr::TLogoBlobID> BrokenBlobs;
-    ui64 ProcessedBlobs = 0;
-    ui64 TotalBlobs = 0;
+    TScanDiskProgress Progress;
 
     ui64 BlobsToBeProcessed = 0;
 
@@ -230,24 +236,26 @@ struct TScanDiskState
         return EverStarted;
     }
 
-    void Start(ui64 totalBlobs)
+    void Start(ui64 totalBlobs, bool checkIntegrity, ui64 scanCommitId)
     {
         Started = true;
         EverStarted = true;
-        BrokenBlobs.clear();
-        ProcessedBlobs = 0;
-        TotalBlobs = totalBlobs;
+        CancelRequested = false;
+        Progress = {
+            .TotalBlobs = totalBlobs,
+            .CheckIntegrity = checkIntegrity,
+            .ScanCommitId = scanCommitId};
         BlobsToBeProcessed = 0;
     }
 
-    TScanDiskProgress GetProgress() const
+    const TScanDiskProgress& GetProgress() const
     {
-        return {ProcessedBlobs, TotalBlobs, !Started, BrokenBlobs};
+        return Progress;
     }
 
     void UpdateProcessedBlobs()
     {
-        ProcessedBlobs += BlobsToBeProcessed;
+        Progress.ProcessedBlobs += BlobsToBeProcessed;
         BlobsToBeProcessed = 0;
     }
 
@@ -256,14 +264,13 @@ struct TScanDiskState
         BlobsToBeProcessed = toBeProcessed;
     }
 
-    void SetBrokenBlobs(TVector<NKikimr::TLogoBlobID> blobIds)
-    {
-        BrokenBlobs = std::move(blobIds);
-    }
-
-    void Complete()
+    void Complete(TScanDiskResults results, NProto::TError error)
     {
         Started = false;
+        Progress.IsCompleted = true;
+        Progress.Cancelled = CancelRequested;
+        Progress.Error = std::move(error);
+        Progress.Results = std::move(results);
     }
 };
 
@@ -999,14 +1006,30 @@ public:
         return ScanDiskState.HasProgress();
     }
 
-    void StartScanDisk()
+    void StartScanDisk(bool checkIntegrity = false, ui64 scanCommitId = 0)
     {
-        ScanDiskState.Start(GetTotalBlobsCount());
+        ScanDiskState.Start(GetTotalBlobsCount(), checkIntegrity, scanCommitId);
     }
 
-    TScanDiskProgress GetScanDiskProgress() const
+    const TScanDiskProgress& GetScanDiskProgress() const
     {
         return ScanDiskState.GetProgress();
+    }
+
+    bool IsScanDiskBlockingCleanup() const
+    {
+        return ScanDiskState.IsStarted() &&
+               !ScanDiskState.GetProgress().CheckIntegrity;
+    }
+
+    bool IsScanDiskCancelRequested() const
+    {
+        return ScanDiskState.CancelRequested;
+    }
+
+    void RequestScanDiskCancel()
+    {
+        ScanDiskState.CancelRequested = true;
     }
 
     void UpdateScanDiskProgress()
@@ -1019,13 +1042,9 @@ public:
         ScanDiskState.UpdateBlobsToBeProcessed(toBeProcessed);
     }
 
-    void SetBrokenBlobs(TVector<NKikimr::TLogoBlobID> blobIds) {
-        ScanDiskState.SetBrokenBlobs(std::move(blobIds));
-    }
-
-    void CompleteScanDisk()
+    void CompleteScanDisk(TScanDiskResults results, NProto::TError error)
     {
-        ScanDiskState.Complete();
+        ScanDiskState.Complete(std::move(results), std::move(error));
     }
 
     //

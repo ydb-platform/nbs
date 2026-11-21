@@ -270,6 +270,35 @@ private:
                 dstBrokenBlob.SetRawX2(srcBrokenBlobs.at(i).GetRawX2());
                 dstBrokenBlob.SetRawX3(srcBrokenBlobs.at(i).GetRawX3());
             }
+
+            MergeScanDiskCheckIntegrityProgress(
+                *src.MutableProgress(),
+                *dst.MutableProgress());
+        }
+    }
+
+    void MergeScanDiskCheckIntegrityProgress(
+        NProto::TScanDiskProgress& src,
+        NProto::TScanDiskProgress& dst)
+    {
+        dst.SetCheckIntegrity(
+            dst.GetCheckIntegrity() || src.GetCheckIntegrity());
+        dst.SetScanCommitId(
+            Responses ? Min(dst.GetScanCommitId(), src.GetScanCommitId())
+                      : src.GetScanCommitId());
+        dst.SetDeadBlobs(dst.GetDeadBlobs() + src.GetDeadBlobs());
+        dst.SetCheckedBlobs(dst.GetCheckedBlobs() + src.GetCheckedBlobs());
+        dst.SetReplicatingBlobs(
+            dst.GetReplicatingBlobs() + src.GetReplicatingBlobs());
+        dst.SetDegradedBlobs(dst.GetDegradedBlobs() + src.GetDegradedBlobs());
+        dst.SetUncheckedBlobs(
+            dst.GetUncheckedBlobs() + src.GetUncheckedBlobs());
+        dst.SetDroppedBlobResults(
+            dst.GetDroppedBlobResults() + src.GetDroppedBlobResults());
+        dst.SetCancelled(dst.GetCancelled() || src.GetCancelled());
+
+        for (auto& blobResult: *src.MutableBlobResults()) {
+            *dst.AddBlobResults() = std::move(blobResult);
         }
     }
 

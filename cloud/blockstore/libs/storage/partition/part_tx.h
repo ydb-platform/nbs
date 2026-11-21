@@ -631,28 +631,41 @@ struct TTxPartition
         const TPartialBlobId StartBlobId;
         const ui32 BlobCountToVisit = 0;
         const TPartialBlobId FinalBlobId;
+        const bool SkipDeadBlobs = false;
 
         using TBlobMark =
             TEvPartitionPrivate::TScanDiskBatchResponse::TBlobMark;
 
+        struct TVisitedBlob
+        {
+            TPartialBlobId BlobId;
+            NProto::TBlobMeta BlobMeta;
+        };
+
+        TVector<TVisitedBlob> VisitedBlobs;
         TVector<TBlobMark> BlobsToReadInCurrentBatch;
+        ui64 DeadBlobCount = 0;
         ui32 VisitCount = 0;
         TPartialBlobId LastVisitedBlobId;
 
         TScanDiskBatch(
-                TRequestInfoPtr requestInfo,
-                TPartialBlobId startBlobId,
-                ui32 blobCountToRead,
-                TPartialBlobId finalBlobId)
+            TRequestInfoPtr requestInfo,
+            TPartialBlobId startBlobId,
+            ui32 blobCountToRead,
+            TPartialBlobId finalBlobId,
+            bool skipDeadBlobs)
             : RequestInfo(std::move(requestInfo))
             , StartBlobId(startBlobId)
             , BlobCountToVisit(blobCountToRead)
             , FinalBlobId(finalBlobId)
+            , SkipDeadBlobs(skipDeadBlobs)
         {}
 
         void Clear()
         {
+            VisitedBlobs.clear();
             BlobsToReadInCurrentBatch.clear();
+            DeadBlobCount = 0;
             VisitCount = 0;
             LastVisitedBlobId = TPartialBlobId();
         }

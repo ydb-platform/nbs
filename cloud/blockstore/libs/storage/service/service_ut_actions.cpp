@@ -988,6 +988,108 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldScanDiskWithCheckIntegrityForPartitionVersion1)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        const ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+        auto& runtime = env.GetRuntime();
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("vol0");
+
+        const auto sessionId =
+            service.MountVolume("vol0")->Record.GetSessionId();
+
+        service.WriteBlocks(
+            "vol0",
+            TBlockRange64::WithLength(0, 1024),
+            sessionId,
+            char(1));
+
+        NProto::TScanDiskRequest partitionRequest;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvVolume::EvScanDiskRequest) {
+                    partitionRequest =
+                        event->Get<TEvVolume::TEvScanDiskRequest>()->Record;
+                }
+                return false;
+            });
+
+        auto toJson = [](const google::protobuf::Message& message)
+        {
+            TString json;
+            google::protobuf::util::MessageToJsonString(message, &json);
+            return json;
+        };
+
+        NPrivateProto::TScanDiskRequest request;
+        request.SetDiskId("vol0");
+        request.SetBatchSize(10);
+        request.SetCheckIntegrity(true);
+        request.SetMaxInFlight(2);
+        request.SetCheckTimeoutMs(30000);
+        request.SetMaxRetries(3);
+        request.SetRetryTimeoutMs(100);
+        request.SetMaxReportedBlobs(50);
+        request.SetMaxDataInfoSize(64);
+
+        service.ExecuteAction("scandisk", toJson(request));
+
+        UNIT_ASSERT_VALUES_EQUAL("vol0", partitionRequest.GetDiskId());
+        UNIT_ASSERT_VALUES_EQUAL(10, partitionRequest.GetBatchSize());
+        UNIT_ASSERT(partitionRequest.GetCheckIntegrity());
+        UNIT_ASSERT_VALUES_EQUAL(2, partitionRequest.GetMaxInFlight());
+        UNIT_ASSERT_VALUES_EQUAL(30000, partitionRequest.GetCheckTimeoutMs());
+        UNIT_ASSERT_VALUES_EQUAL(3, partitionRequest.GetMaxRetries());
+        UNIT_ASSERT_VALUES_EQUAL(100, partitionRequest.GetRetryTimeoutMs());
+        UNIT_ASSERT_VALUES_EQUAL(50, partitionRequest.GetMaxReportedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(64, partitionRequest.GetMaxDataInfoSize());
+        UNIT_ASSERT(!partitionRequest.GetCancel());
+
+        NPrivateProto::TGetScanDiskStatusRequest statusRequest;
+        statusRequest.SetDiskId("vol0");
+
+        TString statusJson;
+        NPrivateProto::TGetScanDiskStatusResponse status;
+        for (ui32 i = 0; i < 100 && !status.GetProgress().GetIsCompleted(); ++i)
+        {
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+            statusJson =
+                service
+                    .ExecuteAction("getscandiskstatus", toJson(statusRequest))
+                    ->Record.GetOutput();
+            UNIT_ASSERT(
+                google::protobuf::util::JsonStringToMessage(statusJson, &status)
+                    .ok());
+        }
+
+        const auto& progress = status.GetProgress();
+        UNIT_ASSERT_C(progress.GetIsCompleted(), statusJson);
+        UNIT_ASSERT(progress.GetCheckIntegrity());
+        UNIT_ASSERT_LT(0, progress.GetScanCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(1, progress.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, progress.GetDeadBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, progress.BlobResultsSize());
+        UNIT_ASSERT_STRING_CONTAINS(statusJson, "\"CheckIntegrity\":true");
+        UNIT_ASSERT_STRING_CONTAINS(statusJson, "\"CheckedBlobs\":\"1\"");
+
+        {
+            NPrivateProto::TScanDiskRequest cancelRequest;
+            cancelRequest.SetDiskId("vol0");
+            cancelRequest.SetCancel(true);
+
+            const auto response =
+                service.ExecuteAction("scandisk", toJson(cancelRequest));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_FALSE,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+    }
+
     Y_UNIT_TEST(ShouldForceMigrate)
     {
         auto drState = MakeIntrusive<TDiskRegistryState>();

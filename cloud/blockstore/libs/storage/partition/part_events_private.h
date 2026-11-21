@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "part_scan_disk.h"
+
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
@@ -535,16 +537,19 @@ struct TEvPartitionPrivate
         TVector<TBlobMark> BlobsInBatch;
         TPartialBlobId LastVisitedBlobId;
         bool IsScanCompleted = false;
+        ui64 DeadBlobCount = 0;
 
         TScanDiskBatchResponse() = default;
 
         TScanDiskBatchResponse(
-                TVector<TBlobMark> blobs,
-                TPartialBlobId lastVisitedBlobId,
-                bool isScanCompleted)
+            TVector<TBlobMark> blobs,
+            TPartialBlobId lastVisitedBlobId,
+            bool isScanCompleted,
+            ui64 deadBlobCount)
             : BlobsInBatch(std::move(blobs))
             , LastVisitedBlobId(lastVisitedBlobId)
             , IsScanCompleted(isScanCompleted)
+            , DeadBlobCount(deadBlobCount)
         {}
     };
 
@@ -807,10 +812,10 @@ struct TEvPartitionPrivate
     struct TScanDiskCompleted
         : TOperationCompleted
     {
-        TVector<NKikimr::TLogoBlobID> BrokenBlobs;
+        TScanDiskResults Results;
 
-        TScanDiskCompleted(TVector<NKikimr::TLogoBlobID> brokenBlobs)
-            : BrokenBlobs(std::move(brokenBlobs))
+        explicit TScanDiskCompleted(TScanDiskResults results)
+            : Results(std::move(results))
         {}
     };
 

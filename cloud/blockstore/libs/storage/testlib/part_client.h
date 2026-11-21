@@ -258,6 +258,9 @@ public:
     std::unique_ptr<TEvVolume::TEvScanDiskRequest> CreateScanDiskRequest(
         ui32 blobsPerBatch);
 
+    std::unique_ptr<TEvVolume::TEvScanDiskRequest> CreateScanDiskRequest(
+        NProto::TScanDiskRequest record);
+
     std::unique_ptr<TEvVolume::TEvGetScanDiskStatusRequest>
     CreateGetScanDiskStatusRequest();
 
