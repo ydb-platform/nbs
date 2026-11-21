@@ -73,7 +73,7 @@ public:
     }
 };
 
-// Remove unknown data from the message tree using an explicit stack.
+// Remove unknown data from the message tree.
 // Preserve known values and presence, keeping queued child messages valid.
 void DiscardUnknownFields(Message& message)
 {
@@ -245,13 +245,14 @@ void SetFieldDefault(Message& message, const FieldDescriptor* field)
     }
 }
 
-// Fill missing required fields in messages retained by the filter.
-// Set allowed defaults and throw if a missing required field forbids updates.
-// Do not inspect collections or switchable oneof values.
-void CompleteRequiredFields(Message& message)
+// Fill missing required fields with defaults if runtime updates are allowed and
+// return whether the result is initialized.
+// Leave collections and switchable oneof values unchanged.
+bool TryCompleteRequiredFields(Message& message)
 {
     const auto* descriptor = message.GetDescriptor();
     const auto* reflection = message.GetReflection();
+
     for (int i = 0; i < descriptor->field_count(); ++i) {
         const auto* field = descriptor->field(i);
 
@@ -263,23 +264,31 @@ void CompleteRequiredFields(Message& message)
             continue;
         }
 
-        // Restore required presence without adding forbidden startup values.
+        // Fill missing required field if allowed.
+        // Otherwise, return false to preserve the field's StartupConfig state.
         if (field->is_required() && !reflection->HasField(message, field)) {
-            Y_THROW_UNLESS(
-                AllowsUpdate(field),
-                "Cannot restore required runtime config field: "
-                    << field->full_name());
+            if (!AllowsUpdate(field)) {
+                return false;
+            }
             SetFieldDefault(message, field);
         }
 
-        // Visit only present, allowed messages; frozen messages were restored.
+        // Fill required defaults only in present messages that allow runtime
+        // updates.
+        // Preserve StartupConfig state in messages whose runtime updates are
+        // forbidden.
         if (field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE &&
             AllowsUpdate(field) && reflection->HasField(message, field))
         {
-            CompleteRequiredFields(
-                *reflection->MutableMessage(&message, field));
+            if (!TryCompleteRequiredFields(
+                    *reflection->MutableMessage(&message, field)))
+            {
+                return false;
+            }
         }
     }
+
+    return message.IsInitialized();
 }
 
 // References used to filter one message at a time. Create a context on the
@@ -341,21 +350,45 @@ void FilterSingularMessageField(
     };
     FilterMessage(childContext, mode);
 
-    // Reject a new container if filtering removed one of its required fields.
-    if (mode == EUpdateMode::Fields && !initialPresent &&
-        !nested->IsInitialized())
-    {
-        RecordChange(
-            context.Diagnostics,
-            context.Path.GetPath(),
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
-        reflection->ClearField(&runtime, &field);
-        return;
+    // Preserve the existing presence rules before adding required defaults.
+    const bool preserveRequestedPresence =
+        requestedPresent &&
+        (field.is_required() || requestedEmpty || initialPresent);
+
+    const bool fieldCanBeCleared =
+        mode == EUpdateMode::Fields && !field.real_containing_oneof() &&
+        !preserveRequestedPresence && IsMessageEmpty(*nested);
+
+    // Fill missing required fields with defaults if runtime markers allow it
+    // and the filter must keep the new message:
+    // - it is required
+    // - belongs to a oneof
+    // - was explicitly requested empty
+    // - or still has fields after filtering
+    // Otherwise (its required fields cannot be initialized), record the
+    // rejection and remove the message.
+    const bool newContainerNeedsInitialization = mode == EUpdateMode::Fields &&
+                                                 !initialPresent &&
+                                                 !nested->IsInitialized();
+
+    if (newContainerNeedsInitialization) {
+        const bool initialized =
+            !fieldCanBeCleared && TryCompleteRequiredFields(*nested);
+
+        if (!initialized) {
+            RecordChange(
+                context.Diagnostics,
+                context.Path.GetPath(),
+                ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            reflection->ClearField(&runtime, &field);
+            return;
+        }
     }
 
-    // Preserve forbidden presence; remove containers that existed only to
-    // carry rejected fields, but retain explicitly requested required messages
-    // and selected oneof messages even if empty.
+    // Keep the message present or absent as in StartupConfig when runtime
+    // updates are forbidden. For allowed updates, remove empty messages omitted
+    // from the request or introduced only by rejected fields. Keep explicitly
+    // requested required messages and selected oneof members even when empty.
     if (mode == EUpdateMode::Frozen) {
         if (initialPresent != requestedPresent &&
             context.Diagnostics.IgnoredPaths.size() == previousCount)
@@ -368,20 +401,13 @@ void FilterSingularMessageField(
         if (!initialPresent) {
             reflection->ClearField(&runtime, &field);
         }
-    } else {
-        const bool fieldCanBeCleared =
-            !field.real_containing_oneof() &&
-            (!field.is_required() || !requestedPresent) &&
-            IsMessageEmpty(*nested) &&
-            (!requestedPresent || (!requestedEmpty && !initialPresent));
-
-        if (fieldCanBeCleared) {
-            reflection->ClearField(&runtime, &field);
-        }
+    } else if (fieldCanBeCleared) {
+        reflection->ClearField(&runtime, &field);
     }
 }
 
-// Apply a field's effective permission and queue forbidden complete values.
+// Apply a field's effective permission and queue fields to restore from
+// StartupConfig after traversing the current message.
 // Enter the field path for filtering and restore the parent path on return.
 void FilterField(
     TMessageFilterContext& context,
@@ -636,6 +662,12 @@ TRuntimeConfigDiagnostics FilterRuntimeConfig(
             << "', got runtime type '"
             << runtimeConfig.GetDescriptor()->full_name() << "'");
 
+    // Reject missing required startup fields before modifying runtime.
+    Y_THROW_UNLESS(
+        startupConfig.IsInitialized(),
+        "Startup config is missing required fields: "
+            << startupConfig.InitializationErrorString());
+
     // Remove unknown fields before presence checks. RestoreFields also removes
     // them when restoring values from static or startup.
     DiscardUnknownFields(runtimeConfig);
@@ -653,7 +685,12 @@ TRuntimeConfigDiagnostics FilterRuntimeConfig(
 
     // Complete retained messages after optional containers have been removed.
     if (!runtimeConfig.IsInitialized()) {
-        CompleteRequiredFields(runtimeConfig);
+        const bool initialized = TryCompleteRequiredFields(runtimeConfig);
+
+        Y_THROW_UNLESS(
+            initialized,
+            "Cannot restore required runtime config fields: "
+                << runtimeConfig.InitializationErrorString());
     }
     return diagnostics;
 }
