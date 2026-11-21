@@ -875,9 +875,10 @@ storage_service:
                 ->GetDiskRegistryInitialAgentRejectionThreshold());
     }
 
-    // Check that changes to static-only overrides publish once while retaining
-    // the static values, and identical sources do not publish again.
-    Y_UNIT_TEST_F(ShouldIgnoreStaticOnlyOverrides, TFixture)
+    // Check that a changed configuration from ConfigsDispatcher causes a new
+    // publication while static-only fields keep their startup values.
+    // Repeated delivery of the same input must not cause another publication.
+    Y_UNIT_TEST_F(ShouldPublishUpdatesWhilePreservingStaticOnlyFields, TFixture)
     {
         // Observe publications and retain the original dispatcher settings.
         const auto subscriber = Runtime.AllocateEdgeActor();
@@ -943,9 +944,12 @@ storage_service:
         AssertNoConfigChanged(subscriber);
     }
 
-    // Check that changed sources publish even when filtering removes their
-    // empty sections, and removing a dynamic value restores the static value.
-    Y_UNIT_TEST_F(ShouldIgnoreSectionsContainingOnlyStaticFields, TFixture)
+    // Check that a changed configuration from ConfigsDispatcher causes a new
+    // publication even when the effective configuration remains unchanged.
+    // Removing a dynamic override must restore the corresponding static value.
+    Y_UNIT_TEST_F(
+        ShouldPublishUpdatesEvenWhenEffectiveConfigIsUnchanged,
+        TFixture)
     {
         // Observe the snapshot built from the initial private configuration.
         const auto subscriber = Runtime.AllocateEdgeActor();
@@ -1026,9 +1030,13 @@ storage_service:
         }
     }
 
-    // Check that forbidden DiskAgent overrides publish the accepted source
-    // while preserving the static agent role and enabled state.
-    Y_UNIT_TEST_F(ShouldIgnoreDedicatedDiskAgentOverrides, TFixture)
+    // Check that a changed configuration from ConfigsDispatcher causes a new
+    // publication while DiskAgent.Enabled and DiskAgent.DedicatedDiskAgent
+    // keep their startup values. Allowed runtime changes must still take
+    // effect.
+    Y_UNIT_TEST_F(
+        ShouldPublishUpdatesWhilePreservingStartupOnlyDiskAgentSettings,
+        TFixture)
     {
         // Retain the startup snapshot and observe subsequent publications.
         const auto startupConfig = ConfigHolder->Get();
