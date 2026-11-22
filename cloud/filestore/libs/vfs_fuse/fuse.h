@@ -12,12 +12,18 @@ extern "C" {
 
 uint64_t fuse_req_unique(fuse_req_t req);
 
+#if defined(FUSE_VIRTIO)
+// Session state persisted across vhost restarts, virtio only
 struct fuse_session_params {
     uint32_t proto_major;
     uint32_t proto_minor;
     uint32_t capable;
     uint32_t want;
     uint32_t bufsize;
+    // NBS FUSE_INIT vendor extension (FUSE_VENDOR_EXT, virtiofsd fuse.h)
+    struct fuse_nbs_driver_version nbs_driver_version;
+    uint32_t nbs_guest_features;
+    uint32_t nbs_features_ack;
 };
 
 void fuse_session_setparams(
@@ -27,6 +33,7 @@ void fuse_session_setparams(
 void fuse_session_getparams(
     struct fuse_session* se,
     struct fuse_session_params* params);
+#endif
 
 // Raises the session buffer size so a future FUSE_INIT can offer up to the
 // given max_write. Never shrinks: a restored (already negotiated) size must

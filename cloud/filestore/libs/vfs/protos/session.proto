@@ -3,6 +3,21 @@ syntax = "proto3";
 package NCloud.NFileStore.NProto;
 
 ////////////////////////////////////////////////////////////////////////////////
+// Guest driver version BUILD+nbMAJOR.MINOR.PATCH[~mrMR] sent with the NBS
+// FUSE_INIT vendor extension, all zero if unknown
+
+message TVfsGuestDriverVersion
+{
+    uint32 UpstreamMajor = 1;
+    uint32 UpstreamMinor = 2;
+    uint32 UpstreamPatch = 3;
+    uint32 Build = 4;
+
+    // 0 if not a merge request build
+    uint32 Mr = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Fuse internal session state
 
 message TVfsSessionState
@@ -31,4 +46,13 @@ message TVfsSessionState
      * Maximum buffer size for incoming requests
      */
     uint32 BufferSize = 5;
+
+    /**
+     * NBS FUSE_INIT vendor extension: guest driver version, vendor features
+     * the guest supports and the negotiated subset. Persisted because the
+     * guest does not resend FUSE_INIT after a vhost restart
+     */
+    TVfsGuestDriverVersion GuestDriverVersion = 6;
+    uint32 GuestNbsFeatures = 7;
+    uint32 NbsFeaturesAck = 8;
 }

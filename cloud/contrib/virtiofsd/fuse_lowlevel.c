@@ -2004,10 +2004,40 @@ static void do_lseek(fuse_req_t req, fuse_ino_t nodeid,
     }
 }
 
+_Static_assert(sizeof(struct fuse_conn_info) == 128,
+               "take new fuse_conn_info fields from reserved");
+_Static_assert(sizeof(struct fuse_init_in) == 64, "fuse_init_in layout");
+_Static_assert(sizeof(struct fuse_init_out) == 64, "fuse_init_out layout");
+
+static void parse_nbs_init(struct fuse_conn_info *conn,
+                           const struct fuse_init_in *arg)
+{
+    conn->nbs_ext = 0;
+    conn->nbs_guest_features = 0;
+    conn->nbs_want = 0;
+    memset(&conn->nbs_driver_version, 0, sizeof(conn->nbs_driver_version));
+
+    if (!(arg->flags & FUSE_INIT_EXT) ||
+        !(arg->flags2 & (FUSE_VENDOR_EXT >> 32)) ||
+        arg->nbs_magic != NBS_INIT_MAGIC_V1) {
+        return;
+    }
+
+    conn->nbs_ext = 1;
+    conn->nbs_guest_features = arg->nbs_features;
+    conn->nbs_driver_version.upstream_major = arg->nbs_version.upstream_major;
+    conn->nbs_driver_version.upstream_minor = arg->nbs_version.upstream_minor;
+    conn->nbs_driver_version.upstream_patch = arg->nbs_version.upstream_patch;
+    conn->nbs_driver_version.build = arg->nbs_version.build;
+    conn->nbs_driver_version.mr = arg->nbs_version.mr;
+}
+
 static void do_init(fuse_req_t req, fuse_ino_t nodeid,
                     struct fuse_mbuf_iter *iter)
 {
     size_t compat_size = offsetof(struct fuse_init_in, max_readahead);
+    /* fuse_init_in was extended in 7.36, flagged by FUSE_INIT_EXT */
+    size_t compat2_size = offsetof(struct fuse_init_in, flags2);
     struct fuse_init_in *arg;
     struct fuse_init_out outarg;
     struct fuse_session *se = req->se;
@@ -2024,7 +2054,12 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid,
 
     /* ...and now consume the new fields. */
     if (arg->major == 7 && arg->minor >= 6) {
-        if (!fuse_mbuf_iter_advance(iter, sizeof(*arg) - compat_size)) {
+        if (!fuse_mbuf_iter_advance(iter, compat2_size - compat_size)) {
+            fuse_reply_err(req, EINVAL);
+            return;
+        }
+        if ((arg->flags & FUSE_INIT_EXT) &&
+            !fuse_mbuf_iter_advance(iter, sizeof(*arg) - compat2_size)) {
             fuse_reply_err(req, EINVAL);
             return;
         }
@@ -2055,6 +2090,21 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid,
         /* Wait for a second INIT request with a 7.X version */
         send_reply_ok(req, &outarg, sizeof(outarg));
         return;
+    }
+
+    parse_nbs_init(&se->conn, arg);
+    if (se->conn.nbs_ext) {
+        const struct fuse_nbs_driver_version *v = &se->conn.nbs_driver_version;
+        char mr[16] = "";
+
+        if (v->mr) {
+            snprintf(mr, sizeof(mr), "~mr%u", v->mr);
+        }
+        /* Same form as the package version: BUILD+nbMAJOR.MINOR.PATCH[~mrMR] */
+        fuse_log(FUSE_LOG_INFO,
+                 "NBS driver version=%u+nb%u.%u.%u%s features=0x%08x\n",
+                 v->build, v->upstream_major, v->upstream_minor,
+                 v->upstream_patch, mr, se->conn.nbs_guest_features);
     }
 
     if (arg->max_readahead < se->conn.max_readahead) {
@@ -2250,6 +2300,15 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid,
 
     if (se->conn.want & FUSE_CAP_HANDLE_KILLPRIV_V2) {
         outarg.flags |= FUSE_HANDLE_KILLPRIV_V2;
+    }
+
+    if (se->conn.nbs_ext) {
+        uint32_t ack = se->conn.nbs_guest_features & se->conn.nbs_want;
+
+        outarg.flags |= FUSE_INIT_EXT;
+        outarg.flags2 |= FUSE_VENDOR_EXT >> 32;
+        outarg.nbs_features_ack = ack;
+        fuse_log(FUSE_LOG_INFO, "   NBS features_ack=0x%08x\n", ack);
     }
 
     fuse_log(FUSE_LOG_INFO, "   INIT RSP: %u.%u\n", outarg.major, outarg.minor);
