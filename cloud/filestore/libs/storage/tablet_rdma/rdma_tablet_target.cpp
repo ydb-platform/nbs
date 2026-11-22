@@ -4,7 +4,7 @@
 #include "rdma_tablet_forwarder.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
-#include <cloud/filestore/libs/rdma/server.h>
+#include <cloud/filestore/libs/rdma/endpoint.h>
 #include <cloud/filestore/libs/storage/api/components.h>
 
 #include <cloud/storage/core/libs/common/startable.h>
@@ -62,35 +62,23 @@ public:
             CreateRdmaTabletForwarderActor(Config.TabletRequestTimeout));
         Registry->AttachForwarder(forwarderId);
 
-        auto handler = CreateRdmaTabletServerHandler(
-            Logging->CreateLog(GetComponentName(TFileStoreComponents::RDMA)),
-            CreateActorSystemRdmaRequestHandler(
-                ActorSystem,
-                forwarderId,
-                Registry));
-
         Server->Start();
-
-        NCloud::NStorage::NRdma::IServerEndpointPtr endpoint;
-        TString error;
         try {
-            endpoint = Server->StartEndpoint(
+            StartRdmaTabletEndpoint(
+                *Server,
                 Config.ListenAddress,
                 Config.ListenPort,
-                handler);
+                Logging->CreateLog(
+                    GetComponentName(TFileStoreComponents::RDMA)),
+                CreateActorSystemRdmaRequestHandler(
+                    ActorSystem,
+                    forwarderId,
+                    Registry));
         } catch (...) {
-            error = CurrentExceptionMessage();
-        }
-        handler->SetEndpoint(endpoint);
-
-        if (!endpoint) {
-            TStringBuilder message;
-            message << "unable to start RDMA endpoint " << Config.ListenAddress
-                << ":" << Config.ListenPort;
-            if (error) {
-                message << ": " << error;
-            }
-            ReportTabletRdmaCritEvent(message);
+            ReportTabletRdmaCritEvent(
+                TStringBuilder()
+                << "unable to start RDMA target: "
+                << CurrentExceptionMessage());
 
             Server->Stop();
         }

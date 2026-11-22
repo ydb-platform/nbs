@@ -3,8 +3,8 @@ UNITTEST_FOR(cloud/filestore/libs/rdma)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
+    endpoint_ut.cpp
     protocol_ut.cpp
-    server_ut.cpp
 )
 
 PEERDIR(

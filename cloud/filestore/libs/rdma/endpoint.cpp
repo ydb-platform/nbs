@@ -1,4 +1,4 @@
-#include "server.h"
+#include "endpoint.h"
 
 #include "protocol.h"
 #include "transport.h"
@@ -24,7 +24,7 @@ using namespace NCloud::NStorage::NRdma;
 ////////////////////////////////////////////////////////////////////////////////
 
 class TRequestHandler final
-    : public IRdmaTabletServerHandler
+    : public IServerHandler
     , public std::enable_shared_from_this<TRequestHandler>
 {
 private:
@@ -40,7 +40,7 @@ public:
         , Log(std::move(log))
     {}
 
-    void SetEndpoint(std::weak_ptr<IServerEndpoint> endpoint) override
+    void SetEndpoint(std::weak_ptr<IServerEndpoint> endpoint)
     {
         Endpoint.SetValue(std::move(endpoint));
     }
@@ -187,13 +187,32 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IRdmaTabletServerHandlerPtr CreateRdmaTabletServerHandler(
+void StartRdmaTabletEndpoint(
+    IServer& server,
+    const TString& host,
+    ui32 port,
     TLog log,
     IRdmaTabletRequestHandlerPtr requestHandler)
 {
-    return std::make_shared<TRequestHandler>(
+    auto handler = std::make_shared<TRequestHandler>(
         std::move(requestHandler),
         std::move(log));
+
+    IServerEndpointPtr endpoint;
+    try {
+        endpoint = server.StartEndpoint(host, port, handler);
+    } catch (...) {
+        handler->SetEndpoint({});
+        throw;
+    }
+
+    if (!endpoint) {
+        handler->SetEndpoint({});
+        STORAGE_THROW_SERVICE_ERROR(E_FAIL)
+            << "unable to start RDMA endpoint " << host << ":" << port;
+    }
+
+    handler->SetEndpoint(std::move(endpoint));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

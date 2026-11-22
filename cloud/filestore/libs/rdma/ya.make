@@ -1,8 +1,8 @@
 LIBRARY()
 
 SRCS(
+    endpoint.cpp
     protocol.cpp
-    server.cpp
 )
 
 PEERDIR(

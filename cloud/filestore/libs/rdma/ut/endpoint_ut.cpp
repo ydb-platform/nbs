@@ -1,5 +1,5 @@
+#include <cloud/filestore/libs/rdma/endpoint.h>
 #include <cloud/filestore/libs/rdma/protocol.h>
-#include <cloud/filestore/libs/rdma/server.h>
 #include <cloud/filestore/libs/rdma/transport.h>
 #include <cloud/filestore/libs/rdma_test/test_server.h>
 
@@ -118,6 +118,34 @@ struct TEarlyRequestServer final
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TNoEndpointServer final
+    : public IServer
+{
+    IServerEndpointPtr StartEndpoint(
+        TString host,
+        ui32 port,
+        IServerHandlerPtr handler) override
+    {
+        Y_UNUSED(host);
+        Y_UNUSED(port);
+        Y_UNUSED(handler);
+        return nullptr;
+    }
+
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
+    void DumpHtml(IOutputStream& out) const override
+    {
+        Y_UNUSED(out);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TEnv
 {
     const std::shared_ptr<TTestRequestHandler> RequestHandler;
@@ -129,7 +157,6 @@ struct TEnv
     bool Failed = false;
 
     std::shared_ptr<TTestRdmaServer> Server;
-    IRdmaTabletServerHandlerPtr Handler;
 
     TString In;
     TString Out;
@@ -169,10 +196,12 @@ struct TEnv
             server = earlyServer;
         }
 
-        Handler = CreateRdmaTabletServerHandler(
+        StartRdmaTabletEndpoint(
+            *server,
+            "::1",
+            10021,
             CreateLoggingService("console")->CreateLog("NFS_RDMA"),
             RequestHandler);
-        Handler->SetEndpoint(server->StartEndpoint("::1", 10021, Handler));
 
         if (earlyServer) {
             earlyServer->Join();
@@ -258,8 +287,23 @@ NProto::TError ParseRecord(TStringBuf data)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TRdmaTabletServerHandlerTest)
+Y_UNIT_TEST_SUITE(TRdmaTabletEndpointTest)
 {
+    Y_UNIT_TEST(ShouldThrowWhenEndpointIsNotStarted)
+    {
+        TNoEndpointServer server;
+
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            StartRdmaTabletEndpoint(
+                server,
+                "::",
+                10021,
+                CreateLoggingService("console")->CreateLog("NFS_RDMA"),
+                std::make_shared<TTestRequestHandler>()),
+            TServiceError,
+            "unable to start RDMA endpoint :::10021");
+    }
+
     Y_UNIT_TEST(ShouldPassDecodedRequestAndSerializeTypedResponse)
     {
         TEnv env(4_KB);
