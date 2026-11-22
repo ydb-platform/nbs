@@ -147,7 +147,7 @@ IStartablePtr CreateRdmaTabletTarget(
     if (config.GetListenPort()) {
         targetConfig.ListenPort = config.GetListenPort();
     }
-    if (config.GetTabletRequestTimeout()) {
+    if (config.HasTabletRequestTimeout()) {
         targetConfig.TabletRequestTimeout =
             TDuration::MilliSeconds(config.GetTabletRequestTimeout());
     }

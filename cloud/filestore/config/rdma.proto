@@ -23,7 +23,7 @@ message TRdmaConfig
     optional uint32 ListenPort = 4;
 
     // Time (in milliseconds) given to the tablet to answer a request received
-    // over RDMA, after which the request is failed with E_TIMEOUT. Zero means
-    // the default (1 minute).
+    // over RDMA, after which the request is failed with E_TIMEOUT (1 minute by
+    // default).
     optional uint32 TabletRequestTimeout = 5;
 }
