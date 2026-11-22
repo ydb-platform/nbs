@@ -551,6 +551,177 @@ message TDescribeSessionsResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// RecoverShardSessions request/response.
+//
+// Sent by a shard to the main tablet: the shard needs the sessions with these
+// ids to serve the requests of the clients. The main tablet responds with
+// TShardSessionInfo for each of them - it's enough to create (or to recover)
+// the session in the shard.
+
+message TShardSubSessionInfo
+{
+    uint64 SeqNo = 1;
+    bool ReadOnly = 2;
+}
+
+// Describes a session of the main tablet - contains everything that is needed
+// to create (or to recover) this session in a shard.
+//
+// SessionId, ClientId, CheckpointId and OriginFqdn come from the clients and
+// may contain arbitrary bytes, so `bytes` are used instead of `string` here: a
+// message with a non-UTF-8 `string` can be serialized but can't be parsed.
+message TShardSessionInfo
+{
+    bytes SessionId = 1;
+    bytes ClientId = 2;
+    bytes CheckpointId = 3;
+    bytes OriginFqdn = 4;
+    uint64 MaxSeqNo = 5;
+    uint64 MaxRwSeqNo = 6;
+
+    // The subsessions which are allowed to use this session right now. Empty
+    // if the session is not active (i.e. it can't be used by the clients until
+    // it gets recovered via CreateSession).
+    repeated TShardSubSessionInfo SubSessions = 7;
+}
+
+message TRecoverShardSessionsRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier (of the main tablet).
+    string FileSystemId = 2;
+
+    // The shard which requests the sessions.
+    string ShardId = 3;
+
+    // The sessions which the shard needs.
+    repeated bytes SessionIds = 4;
+}
+
+message TRecoverShardSessionsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // The requested sessions. The sessions which are unknown to the main
+    // tablet are skipped.
+    repeated TShardSessionInfo Sessions = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// DescribeShardSessions request/response.
+//
+// Sent by the main tablet to a shard: the main tablet needs to know which
+// sessions the shard has in order to tell it what to do with them (see
+// SyncShardSessions). The shard describes its sessions the same way the main
+// tablet describes its own sessions for the shards, so the two descriptions
+// can be compared directly.
+
+message TDescribeShardSessionsRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier (shard).
+    string FileSystemId = 2;
+}
+
+message TDescribeShardSessionsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // All the sessions of the shard. The sessions which are not active (e.g.
+    // the shard has been restarted and no one has recovered them yet) have
+    // no subsessions.
+    repeated TShardSessionInfo Sessions = 2;
+
+    // True if this tablet is configured to run in adapter mode. Such a tablet
+    // doesn't keep the sessions in its own state - its sessions should be
+    // created via CreateSession requests.
+    bool AdapterModeEnabled = 3;
+
+    // The sessions which the shard is requesting from the main tablet right
+    // now, see RecoverShardSessions. The main tablet might be destroying
+    // some of them: such a session should be destroyed in this shard as well
+    // even though the shard doesn't have it yet.
+    repeated bytes RecoveringSessionIds = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// SyncShardSessions request/response.
+//
+// Sent by the main tablet to a shard. Brings the sessions of the shard in
+// line with the sessions of the main tablet:
+// * creates the sessions which the shard doesn't have and recovers the
+//   sessions which it has (makes them active and replaces their subsessions
+//   with the ones from the request);
+// * after that processes ResetSession and DestroySession requests the same
+//   way a tablet processes them when it gets them directly: a session is
+//   reset or destroyed if SessionSeqNo of the request is both MaxSeqNo and
+//   MaxRwSeqNo of the session, otherwise ResetSession is ignored and
+//   DestroySession removes just the subsession with this SessionSeqNo. Such
+//   a request may carry the session the way the main tablet sees it: the
+//   shard makes the subsessions of its copy of the session the same first,
+//   so it comes to the same decision as the main tablet.
+// Used by the shard sessions sync instead of separate CreateSession,
+// ResetSession and DestroySession requests per session.
+
+// A ResetSession or a DestroySession request of the main tablet.
+message TShardSessionRequest
+{
+    bytes SessionId = 1;
+    uint64 SessionSeqNo = 2;
+
+    // The session the way the main tablet sees it. If set, the shard makes
+    // the subsessions (and thus MaxSeqNo and MaxRwSeqNo) of its copy of the
+    // session exactly the same before processing the request - even if the
+    // session has no subsessions in the main tablet anymore. The session is
+    // not created if the shard doesn't have it.
+    TShardSessionInfo Session = 3;
+}
+
+message TSyncShardSessionsRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier (shard).
+    string FileSystemId = 2;
+
+    // The sessions which should be active in the shard. Processed first.
+    repeated TShardSessionInfo Sessions = 3;
+
+    // ResetSession requests. The sessions which the shard doesn't have are
+    // skipped. The session state which comes with such a request is not sent
+    // to the shards: only the main tablet needs it.
+    repeated TShardSessionRequest SessionsToReset = 4;
+
+    // DestroySession requests. The sessions which the shard doesn't have
+    // are skipped.
+    repeated TShardSessionRequest SessionsToDestroy = 5;
+}
+
+message TSyncShardSessionsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // True if this tablet is configured to run in adapter mode and thus
+    // can't process this request - its sessions should be created via
+    // CreateSession requests.
+    bool AdapterModeEnabled = 2;
+
+    // The number of sessions which didn't exist in the shard and were created.
+    uint32 CreatedSessionCount = 3;
+
+    // The number of sessions which existed in the shard and were recovered.
+    uint32 RecoveredSessionCount = 4;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // GenerateBlobIds request/response.
 
 message TGenerateBlobIdsRequest

@@ -262,6 +262,14 @@ public:
         return result;
     }
 
+    // Drops all subsessions. Used when the subsessions are replaced with the
+    // ones which come from the main tablet (see TShardSessionInfo).
+    void ResetSubSessions(ui64 maxSeqNo, ui64 maxRwSeqNo)
+    {
+        SubSessions = TSubSessions(maxSeqNo, maxRwSeqNo);
+        UpdateSeqNo();
+    }
+
     TVector<NActors::TActorId> GetSubSessions() const
     {
         return SubSessions.GetSubSessions();

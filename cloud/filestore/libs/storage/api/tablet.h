@@ -71,6 +71,10 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(GenerateFileSystemEvent,    __VA_ARGS__)                               \
                                                                                \
+    xxx(RecoverShardSessions,       __VA_ARGS__)                               \
+    xxx(DescribeShardSessions,      __VA_ARGS__)                               \
+    xxx(SyncShardSessions,          __VA_ARGS__)                               \
+                                                                               \
     FILESTORE_UNSAFE_TABLET_REQUESTS(xxx, __VA_ARGS__)                         \
 // FILESTORE_TABLET_REQUESTS
 
@@ -88,6 +92,9 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GetFileSystemTopology,      __VA_ARGS__)                               \
     xxx(RestartTablet,              __VA_ARGS__)                               \
     xxx(FastShardCommand,           __VA_ARGS__)                               \
+    xxx(RecoverShardSessions,       __VA_ARGS__)                               \
+    xxx(DescribeShardSessions,      __VA_ARGS__)                               \
+    xxx(SyncShardSessions,          __VA_ARGS__)                               \
 // FILESTORE_TABLET_ADAPTER_REQUESTS_PLAIN
 
 #define FILESTORE_TABLET_ADAPTER_REQUESTS(xxx, ...)                            \
@@ -258,17 +265,26 @@ struct TEvIndexTablet
         EvGenerateFileSystemEventRequest = EvBegin + 97,
         EvGenerateFileSystemEventResponse,
 
-        // After the TABLET sub-namespace we have TABLET_WORKER sub-namespace
-        // which doesn't have any non-local events so if we run out of event
-        // ids in the TABLET sub-namespace we can extend it by moving
-        // TABLET_WORKER after SS_PROXY. TABLET_PROXY has a non-local event
-        // (FileSystemEvent) and can't be moved
+        EvEnd,
 
-        EvEnd
+        // TABLET's own range (EvBegin..EvBegin+99) is full, so new events
+        // go in TABLET_EXTRA instead.
+
+        EvRecoverShardSessionsRequest = TFileStoreEvents::TABLET_EXTRA_START,
+        EvRecoverShardSessionsResponse,
+        EvDescribeShardSessionsRequest,
+        EvDescribeShardSessionsResponse,
+        EvSyncShardSessionsRequest,
+        EvSyncShardSessionsResponse,
+
+        EvExtraEnd,
     };
 
     static_assert(EvEnd < (int)TFileStoreEvents::TABLET_END,
         "EvEnd expected to be < TFileStoreEvents::TABLET_END");
+
+    static_assert(EvExtraEnd < (int)TFileStoreEvents::TABLET_EXTRA_END,
+        "EvExtraEnd expected to be < TFileStoreEvents::TABLET_EXTRA_END");
 
     FILESTORE_TABLET_REQUESTS(FILESTORE_DECLARE_PROTO_EVENTS, NProtoPrivate)
 };

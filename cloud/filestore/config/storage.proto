@@ -1036,4 +1036,55 @@ message TStorageConfig
 
     // Enables pre-allocated actors for reading data in storage service
     optional bool PermanentReadWriteDataActorsEnabled = 567;
+
+    // If set, a shard which receives a request belonging to a session which
+    // is unknown to this shard (or is known but is not active, e.g. after
+    // the restart of the shard, or doesn't have the required SessionSeqNo)
+    // doesn't respond with E_FS_INVALID_SESSION right away - it requests the
+    // session from the main tablet first and recovers it if the main tablet
+    // confirms that the session is active.
+    optional bool ShardSessionRecoveryOnDemandEnabled = 568;
+
+    // If set, the main tablet doesn't send CreateSession, ResetSession and
+    // DestroySession to each of the shards upon each client request (which
+    // costs one request per shard for each mount). The sessions of the shards
+    // are managed only by the background shard sessions sync instead: each of
+    // its rounds compares the sessions of each shard with the sessions of the
+    // main tablet and sends a single batched request to the shards which
+    // differ, the number of shards which are processed simultaneously is
+    // limited (see MaxShardSessionsSyncInflight).
+    // * CreateSession doesn't wait for the shards. The sessions which haven't
+    //   been created by the sync yet are recovered by the shards on demand,
+    //   so ShardSessionRecoveryOnDemandEnabled should be enabled for the
+    //   shards before this flag gets enabled for the main tablet.
+    // * ResetSession and DestroySession are processed by the shards first:
+    //   the main tablet keeps such a request until the sync delivers it to
+    //   all the shards and processes it itself only after that. So these
+    //   requests take at least one sync round and wait while some of the
+    //   shards are unavailable.
+    // The shards which work in adapter mode (fast shards) are not affected:
+    // their sessions are still managed by the per-session requests.
+    optional bool LazyShardSessionCreationEnabled = 569;
+
+    // Max number of shards which are processed simultaneously by the
+    // background shard sessions sync. Used only if
+    // LazyShardSessionCreationEnabled is set.
+    optional uint32 MaxShardSessionsSyncInflight = 570;
+
+    // The delay (in milliseconds) between a session creation (or recovery) in
+    // the main tablet and the out-of-schedule shard sessions sync which is
+    // triggered by it. All the session changes which happen within this delay
+    // are processed by the same sync. Used only if
+    // LazyShardSessionCreationEnabled is set.
+    optional uint32 ShardSessionsSyncDelay = 571;
+
+    // Makes sense only if LazyShardSessionCreationEnabled is set. If set to
+    // false, the shard sessions sync doesn't create the sessions in the shards
+    // which don't have them: a session appears in a shard only when the shard
+    // requests it on demand, i.e. when the client actually uses this shard.
+    // The sync just keeps the existing shard sessions in line with the
+    // sessions of the main tablet. This way a shard keeps only the sessions
+    // which actually use it, but the first request of a session to a shard
+    // always pays for a roundtrip to the main tablet. Enabled by default.
+    optional bool BackgroundShardSessionCreationEnabled = 572;
 }

@@ -8,6 +8,8 @@
 #include <contrib/ydb/library/actors/core/log.h>
 #include <google/protobuf/messagext.h>
 
+#include <util/generic/algorithm.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/singleton.h>
 #include <util/random/random.h>
 
@@ -30,6 +32,97 @@ void Dump(
         << ", SessionId=" << session->GetSessionId()
         << ", LocksRemovedNumber=" << locksRemovedNumber
         << ", LockRange= " << range;
+}
+
+NProtoPrivate::TShardSessionInfo MakeShardSessionInfo(const TSession& session)
+{
+    NProtoPrivate::TShardSessionInfo info;
+    info.SetSessionId(session.GetSessionId());
+    info.SetClientId(session.GetClientId());
+    info.SetCheckpointId(session.GetCheckpointId());
+    info.SetOriginFqdn(session.GetOriginFqdn());
+    info.SetMaxSeqNo(session.GetMaxSeqNo());
+    info.SetMaxRwSeqNo(session.GetMaxRwSeqNo());
+
+    // an invalid session can't be used by the clients - not listing its
+    // subsessions makes the info describe an inactive session
+    if (session.IsValid()) {
+        for (const auto& subSession: session.SubSessions.GetAllSubSessions()) {
+            auto* s = info.AddSubSessions();
+            s->SetSeqNo(subSession.SeqNo);
+            s->SetReadOnly(subSession.ReadOnly);
+        }
+    }
+
+    return info;
+}
+
+// Replaces the subsessions of the session with the ones from the info.
+// Returns true if MaxSeqNo or MaxRwSeqNo of the session have changed.
+bool ReplaceSubSessions(
+    TSession& session,
+    const NProtoPrivate::TShardSessionInfo& info,
+    ui32 tabletGeneration)
+{
+    const ui64 prevMaxSeqNo = session.GetMaxSeqNo();
+    const ui64 prevMaxRwSeqNo = session.GetMaxRwSeqNo();
+
+    // The subsessions are replaced, not merged: the tablet which built the
+    // info is the source of truth, the local subsessions may be stale.
+    session.ResetSubSessions(info.GetMaxSeqNo(), info.GetMaxRwSeqNo());
+    for (const auto& subSession: info.GetSubSessions()) {
+        // no owner: the clients don't establish sessions in the shards
+        session.UpdateSubSession(
+            subSession.GetSeqNo(),
+            subSession.GetReadOnly(),
+            TActorId(),
+            tabletGeneration);
+    }
+
+    return prevMaxSeqNo != session.GetMaxSeqNo()
+        || prevMaxRwSeqNo != session.GetMaxRwSeqNo();
+}
+
+// Checks whether a shard has what it should have: its copy of the session
+// (shardInfo) is active and has the same subsessions as the session of this
+// tablet.
+bool IsShardSessionSynced(
+    const TSession& session,
+    const NProtoPrivate::TShardSessionInfo& shardInfo)
+{
+    if (shardInfo.GetSubSessions().empty()) {
+        // the session is not active in the shard
+        return false;
+    }
+
+    if (session.GetMaxSeqNo() != shardInfo.GetMaxSeqNo()
+            || session.GetMaxRwSeqNo() != shardInfo.GetMaxRwSeqNo())
+    {
+        return false;
+    }
+
+    const auto subSessions = session.SubSessions.GetAllSubSessions();
+    if (subSessions.size()
+            != static_cast<size_t>(shardInfo.SubSessionsSize()))
+    {
+        return false;
+    }
+
+    // the seqnos are unique and there are just a couple of subsessions per
+    // session
+    for (const auto& subSession: subSessions) {
+        const bool found = AnyOf(
+            shardInfo.GetSubSessions(),
+            [&] (const NProtoPrivate::TShardSubSessionInfo& s) {
+                return s.GetSeqNo() == subSession.SeqNo
+                    && s.GetReadOnly() == subSession.ReadOnly;
+            });
+        if (!found) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 NProto::TSessionLock MakeSessionLock(
@@ -501,6 +594,214 @@ TIndexTabletState::BuildCreateSessionRequests(
         requests.push_back(std::move(request));
     }
     return requests;
+}
+
+TMaybe<NProtoPrivate::TShardSessionInfo>
+TIndexTabletState::BuildShardSessionInfo(const TString& sessionId) const
+{
+    const auto* session = FindSession(sessionId);
+    if (!session) {
+        return Nothing();
+    }
+
+    return MakeShardSessionInfo(*session);
+}
+
+TVector<NProtoPrivate::TShardSessionInfo>
+TIndexTabletState::DescribeShardSessions() const
+{
+    TVector<NProtoPrivate::TShardSessionInfo> infos;
+
+    for (const auto& session: Impl->Sessions) {
+        infos.push_back(MakeShardSessionInfo(session));
+    }
+
+    // the orphan sessions are described as the ones without subsessions
+    for (const auto& session: Impl->OrphanSessions) {
+        infos.push_back(MakeShardSessionInfo(session));
+    }
+
+    return infos;
+}
+
+TIndexTabletState::TShardSessionsDiff TIndexTabletState::BuildShardSessionsDiff(
+    const NProtoPrivate::TDescribeShardSessionsResponse& shardSessions,
+    bool createMissingSessions) const
+{
+    TShardSessionsDiff diff;
+
+    // the sessions of this tablet which exist in the shard
+    THashSet<TString> shardSessionIds;
+    // the sessions of the shard which don't exist in this tablet
+    THashSet<TString> staleSessionIds;
+
+    for (const auto& shardSession: shardSessions.GetSessions()) {
+        const auto& sessionId = shardSession.GetSessionId();
+
+        const auto* session = FindSession(sessionId);
+        if (!session) {
+            //
+            // The shard has a session this tablet doesn't know about at all
+            // (not even as orphan) - it's stale. A session which is orphan
+            // here is not touched: it may still come back before its
+            // InactivityDeadline.
+            //
+            // The shard processes DestroySession the regular way (see
+            // CheckSessionForDestroy), so the request describes the session
+            // the way this tablet sees it: there are neither subsessions
+            // nor seqnos here. The shard makes its copy look the same, and
+            // DestroySession with a zero seqno destroys it.
+            //
+
+            if (staleSessionIds.insert(sessionId).second) {
+                NProtoPrivate::TShardSessionRequest request;
+                request.SetSessionId(sessionId);
+                auto* info = request.MutableSession();
+                info->SetSessionId(sessionId);
+                info->SetClientId(shardSession.GetClientId());
+                diff.SessionsToDestroy.push_back(std::move(request));
+            }
+            continue;
+        }
+
+        if (createMissingSessions) {
+            shardSessionIds.insert(shardSession.GetSessionId());
+        }
+
+        if (!session->IsValid()) {
+            // no one is able to use this session right now (e.g. it's
+            // orphan) - there's nothing to sync it with
+            continue;
+        }
+
+        // the session doesn't need to be sent to the shard if it's active
+        // there and has the same subsessions
+        if (!IsShardSessionSynced(*session, shardSession)) {
+            diff.SessionsToSync.push_back(MakeShardSessionInfo(*session));
+        }
+    }
+
+    for (const auto& sessionId: shardSessions.GetRecoveringSessionIds()) {
+        // The shard is waiting for a session which doesn't exist here. If
+        // the session has been destroyed while the response with it was on
+        // its way to the shard, then the shard is about to create a session
+        // which no one needs - it should be told to drop it.
+        if (!FindSession(sessionId)
+                && staleSessionIds.insert(sessionId).second)
+        {
+            NProtoPrivate::TShardSessionRequest request;
+            request.SetSessionId(sessionId);
+            diff.SessionsToDestroy.push_back(std::move(request));
+        }
+    }
+
+    if (createMissingSessions) {
+        // orphan sessions are not created in the shards: no one is able to
+        // use them right now
+        for (const auto& session: Impl->Sessions) {
+            if (session.IsValid()
+                    && !shardSessionIds.contains(session.GetSessionId()))
+            {
+                diff.SessionsToSync.push_back(MakeShardSessionInfo(session));
+            }
+        }
+    }
+
+    return diff;
+}
+
+TIndexTabletState::ESyncSessionResult TIndexTabletState::SyncSession(
+    IIndexTabletDatabase& db,
+    const NProtoPrivate::TShardSessionInfo& info,
+    const NProto::TSessionOptions& sessionOptions)
+{
+    if (!info.GetSessionId() || info.GetSubSessions().empty()) {
+        // either a broken info or the info about a session which is not
+        // active - there is no one to use such a session
+        return ESyncSessionResult::Skipped;
+    }
+
+    auto* session = FindSession(info.GetSessionId());
+    if (session && session->GetClientId() != info.GetClientId()) {
+        LOG_WARN(*TlsActivationContext, TFileStoreComponents::TABLET,
+            "%s not syncing session s: %s - client id mismatch: %s != %s",
+            LogTag.c_str(),
+            info.GetSessionId().Quote().c_str(),
+            session->GetClientId().Quote().c_str(),
+            info.GetClientId().Quote().c_str());
+
+        return ESyncSessionResult::Skipped;
+    }
+
+    const bool created = !session;
+    if (created) {
+        LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
+            "%s creating shard session c: %s, s: %s",
+            LogTag.c_str(),
+            info.GetClientId().Quote().c_str(),
+            info.GetSessionId().Quote().c_str());
+
+        NProto::TSession proto;
+        proto.SetClientId(info.GetClientId());
+        proto.SetSessionId(info.GetSessionId());
+        proto.SetCheckpointId(info.GetCheckpointId());
+        proto.SetOriginFqdn(info.GetOriginFqdn());
+        proto.SetMaxSeqNo(info.GetMaxSeqNo());
+        proto.SetMaxRwSeqNo(info.GetMaxRwSeqNo());
+
+        AddSessionHistoryEntry(
+            db,
+            TSessionHistoryEntry(
+                proto,
+                ++Impl->MaxSessionHistoryEntryId,
+                TSessionHistoryEntry::CREATE),
+            SessionHistoryEntryCount);
+        IncrementUsedSessionsCount(db);
+
+        // the session is created as an orphan one and gets activated below -
+        // the same way as the existing sessions do
+        session = CreateSession(proto, TInstant::Zero(), sessionOptions);
+        TABLET_VERIFY(session);
+    } else {
+        LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
+            "%s recovering shard session c: %s, s: %s",
+            LogTag.c_str(),
+            info.GetClientId().Quote().c_str(),
+            info.GetSessionId().Quote().c_str());
+
+        session->SetRecoveryTimestampUs(Now().MicroSeconds());
+    }
+
+    const bool seqNoChanged =
+        ReplaceSubSessions(*session, info, GetGeneration());
+    if (created || seqNoChanged) {
+        db.WriteSession(*session);
+    }
+
+    // activating the session
+    session->InactivityDeadline = {};
+    session->Unlink();
+    Impl->Sessions.PushBack(session);
+
+    return created
+        ? ESyncSessionResult::Created
+        : ESyncSessionResult::Recovered;
+}
+
+bool TIndexTabletState::SyncSubSessions(
+    IIndexTabletDatabase& db,
+    const NProtoPrivate::TShardSessionInfo& info)
+{
+    auto* session = FindSession(info.GetSessionId());
+    if (!session || session->GetClientId() != info.GetClientId()) {
+        return false;
+    }
+
+    if (ReplaceSubSessions(*session, info, GetGeneration())) {
+        db.WriteSession(*session);
+    }
+
+    return true;
 }
 
 TVector<TMonSessionInfo> TIndexTabletState::GetActiveSessionInfos() const

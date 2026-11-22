@@ -348,6 +348,49 @@ public:
         return request;
     }
 
+    auto CreateRecoverShardSessionsRequest(const TVector<TString>& sessionIds)
+    {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvRecoverShardSessionsRequest>();
+        for (const auto& sessionId: sessionIds) {
+            request->Record.AddSessionIds(sessionId);
+        }
+        return request;
+    }
+
+    auto CreateDescribeSessionsRequest()
+    {
+        return std::make_unique<TEvIndexTablet::TEvDescribeSessionsRequest>();
+    }
+
+    auto CreateDescribeShardSessionsRequest()
+    {
+        using TRequest = TEvIndexTablet::TEvDescribeShardSessionsRequest;
+        return std::make_unique<TRequest>();
+    }
+
+    using TShardSessionRequests =
+        TVector<NProtoPrivate::TShardSessionRequest>;
+
+    auto CreateSyncShardSessionsRequest(
+        const TVector<NProtoPrivate::TShardSessionInfo>& sessions,
+        const TShardSessionRequests& sessionsToReset = {},
+        const TShardSessionRequests& sessionsToDestroy = {})
+    {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvSyncShardSessionsRequest>();
+        for (const auto& session: sessions) {
+            *request->Record.AddSessions() = session;
+        }
+        for (const auto& session: sessionsToReset) {
+            *request->Record.AddSessionsToReset() = session;
+        }
+        for (const auto& session: sessionsToDestroy) {
+            *request->Record.AddSessionsToDestroy() = session;
+        }
+        return request;
+    }
+
     auto CreateForcedOperationRequest(
         NProtoPrivate::TForcedOperationRequest::EForcedOperationType type)
     {
@@ -672,6 +715,18 @@ public:
     auto CreateCleanupSessionsRequest()
     {
         return std::make_unique<TEvIndexTabletPrivate::TEvCleanupSessionsRequest>();
+    }
+
+    auto CreateBuildShardSessionsDiffRequest(
+        const TString& shardId,
+        const NProtoPrivate::TDescribeShardSessionsResponse& shardSessions)
+    {
+        using TRequest =
+            TEvIndexTabletPrivate::TEvBuildShardSessionsDiffRequest;
+        auto request = std::make_unique<TRequest>();
+        request->ShardId = shardId;
+        request->ShardSessions = shardSessions;
+        return request;
     }
 
     auto CreateUpdateCounters()

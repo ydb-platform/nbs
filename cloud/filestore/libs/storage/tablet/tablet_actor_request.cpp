@@ -20,6 +20,46 @@ TSession* TIndexTabletActor::AcceptRequest(
     const std::function<NProto::TError(
         const typename TMethod::TRequest::ProtoRecordType&)>& validator)
 {
+    if (ShouldRecoverSessionsOnDemand()) {
+        //
+        // Shard sessions are created lazily, so this shard might not have
+        // an active session for this request yet. Such a request is
+        // postponed until the session is requested from the main tablet,
+        // after that it's processed from scratch. That's why this check is
+        // done before anything else is done with the request. NOTE: the
+        // event gets released, the callers shouldn't touch it if nullptr is
+        // returned.
+        //
+
+        const auto& request = ev->Get()->Record;
+        auto clientId = GetClientId(request);
+        auto sessionId = GetSessionId(request);
+        const ui64 sessionSeqNo = GetSessionSeqNo(request);
+
+        if (sessionId && !FindSession(clientId, sessionId, sessionSeqNo)) {
+            PostponeRequestUntilSessionRecovered(
+                ctx,
+                std::move(clientId),
+                std::move(sessionId),
+                sessionSeqNo,
+                NActors::IEventHandlePtr(ev.Release()),
+                [] (
+                    const NActors::TActorContext& actorContext,
+                    const NActors::IEventHandle& postponedRequest,
+                    const NProto::TError& error)
+                {
+                    auto response =
+                        std::make_unique<typename TMethod::TResponse>(error);
+                    NCloud::Reply(
+                        actorContext,
+                        postponedRequest,
+                        std::move(response));
+                });
+
+            return nullptr;
+        }
+    }
+
     if (!AcceptRequestNoSession<TMethod>(ev, ctx, validator)) {
         return nullptr;
     }

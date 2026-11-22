@@ -3,9 +3,13 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
+#include <cloud/filestore/libs/storage/testlib/ut_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/algorithm.h>
+#include <util/generic/map.h>
+#include <util/generic/set.h>
 #include <util/generic/size_literals.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -1967,6 +1971,821 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             auto response = tablet.ListNodes(RootNodeId)->Record;
             UNIT_ASSERT_VALUES_EQUAL(0, response.NamesSize());
             tablet.DestroySession();
+        }
+    }
+
+    Y_UNIT_TEST(ShouldProvideRequestedSessions)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session", {}, 3);
+
+        {
+            auto response = tablet.RecoverShardSessions(
+                TVector<TString>{"session", "unknown"});
+            const auto& record = response->Record;
+            // unknown sessions are skipped
+            UNIT_ASSERT_VALUES_EQUAL(1, record.SessionsSize());
+
+            const auto& info = record.GetSessions(0);
+            UNIT_ASSERT_VALUES_EQUAL("session", info.GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL("client", info.GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(3, info.GetMaxSeqNo());
+            UNIT_ASSERT_VALUES_EQUAL(3, info.GetMaxRwSeqNo());
+            UNIT_ASSERT_VALUES_EQUAL(1, info.SubSessionsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                3,
+                info.GetSubSessions(0).GetSeqNo());
+            UNIT_ASSERT(!info.GetSubSessions(0).GetReadOnly());
+        }
+
+        {
+            auto response = tablet.RecoverShardSessions(
+                TVector<TString>{"unknown"});
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.SessionsSize());
+        }
+
+        // the session becomes orphan after the restart - no one is allowed
+        // to use it until its client recovers it
+        tablet.RebootTablet();
+
+        {
+            auto response = tablet.RecoverShardSessions(
+                TVector<TString>{"session"});
+            const auto& record = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, record.SessionsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                record.GetSessions(0).SubSessionsSize());
+        }
+
+        tablet.InitSession("client", "session", {}, 3);
+
+        {
+            auto response = tablet.RecoverShardSessions(
+                TVector<TString>{"session"});
+            const auto& record = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, record.SessionsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                record.GetSessions(0).SubSessionsSize());
+        }
+
+        tablet.DestroySession();
+    }
+
+    Y_UNIT_TEST(ShardShouldNotProvideSessions)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.ConfigureAsShard(1, "main_fs", "main_fs_s1");
+        tablet.InitSession("client", "session");
+
+        // the sessions are owned by the main tablet
+        auto response = tablet.AssertRecoverShardSessionsFailed(
+            TVector<TString>{"session"});
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldRejectSyncShardSessionsInMainTablet)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        NProtoPrivate::TShardSessionInfo info;
+        info.SetClientId("client");
+        info.SetSessionId("session");
+        info.AddSubSessions()->SetSeqNo(1);
+
+        auto response = tablet.AssertSyncShardSessionsFailed(
+            TVector<NProtoPrivate::TShardSessionInfo>{info});
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            tablet.DescribeSessions()->Record.SessionsSize());
+    }
+
+    Y_UNIT_TEST(ShardShouldCreateAndRecoverSessionsInBatches)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        const ui32 shardNo = 1;
+        const TString mainFsId = "main_fs";
+        const TString shardId = TStringBuilder() << mainFsId << "_s" << shardNo;
+        tablet.ConfigureAsShard(shardNo, mainFsId, shardId);
+
+        // seqno + readonly flag
+        using TSubSessionList = TVector<std::pair<ui64, bool>>;
+        auto makeSessionInfos = [] (const TSubSessionList& subSessions) {
+            NProtoPrivate::TShardSessionInfo info;
+            info.SetClientId("client");
+            info.SetSessionId("session");
+
+            ui64 maxSeqNo = 0;
+            ui64 maxRwSeqNo = 0;
+            for (const auto& [seqNo, readOnly]: subSessions) {
+                auto* subSession = info.AddSubSessions();
+                subSession->SetSeqNo(seqNo);
+                subSession->SetReadOnly(readOnly);
+
+                maxSeqNo = Max(maxSeqNo, seqNo);
+                if (!readOnly) {
+                    maxRwSeqNo = Max(maxRwSeqNo, seqNo);
+                }
+            }
+            info.SetMaxSeqNo(maxSeqNo);
+            info.SetMaxRwSeqNo(maxRwSeqNo);
+
+            return TVector<NProtoPrivate::TShardSessionInfo>{info};
+        };
+
+        auto describeSessions = [&] () {
+            return tablet.DescribeSessions()->Record;
+        };
+
+        auto assertInvalidSession = [&] (ui64 nodeId) {
+            auto response = tablet.AssertCreateHandleFailed(
+                nodeId,
+                TString(),
+                TCreateHandleArgs::RDWR);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_INVALID_SESSION,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(0, describeSessions().SessionsSize());
+
+        // nodes are created in the shards without sessions
+        const ui64 id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "file"));
+
+        tablet.SetHeaders("client", "session", 1);
+        assertInvalidSession(id);
+
+        // an info without subsessions describes an inactive session -
+        // there's no need to create it
+        {
+            auto response = tablet.SyncShardSessions(
+                makeSessionInfos(TSubSessionList{}));
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetCreatedSessionCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetRecoveredSessionCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, describeSessions().SessionsSize());
+        }
+
+        {
+            auto response = tablet.SyncShardSessions(
+                makeSessionInfos(TSubSessionList{{1, false}}));
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                response->Record.GetCreatedSessionCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetRecoveredSessionCount());
+        }
+
+        {
+            const auto sessions = describeSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, sessions.SessionsSize());
+
+            const auto& session = sessions.GetSessions(0);
+            UNIT_ASSERT_VALUES_EQUAL("session", session.GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL("client", session.GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(1, session.GetMaxSeqNo());
+            UNIT_ASSERT_VALUES_EQUAL(1, session.GetMaxRwSeqNo());
+            UNIT_ASSERT(!session.GetIsOrphan());
+        }
+
+        // the session can be used now
+        const ui64 handle = CreateHandle(tablet, id);
+
+        // but only by the subsessions which are listed in the info
+        tablet.SetHeaders("client", "session", 2);
+        assertInvalidSession(id);
+
+        // the session becomes orphan after the restart
+        tablet.RebootTablet();
+
+        {
+            const auto sessions = describeSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, sessions.SessionsSize());
+            UNIT_ASSERT(sessions.GetSessions(0).GetIsOrphan());
+        }
+
+        tablet.SetHeaders("client", "session", 1);
+        assertInvalidSession(id);
+
+        // recovering the session, a new subsession appears at the same time
+        {
+            auto response = tablet.SyncShardSessions(
+                makeSessionInfos(TSubSessionList{{1, false}, {2, true}}));
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetCreatedSessionCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                response->Record.GetRecoveredSessionCount());
+        }
+
+        {
+            const auto sessions = describeSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, sessions.SessionsSize());
+
+            const auto& session = sessions.GetSessions(0);
+            UNIT_ASSERT_VALUES_EQUAL(2, session.GetMaxSeqNo());
+            UNIT_ASSERT_VALUES_EQUAL(1, session.GetMaxRwSeqNo());
+            UNIT_ASSERT(!session.GetIsOrphan());
+        }
+
+        // the handle survived, both subsessions are able to use the session
+        tablet.SetHeaders("client", "session", 1);
+        tablet.WriteData(handle, 0, 4_KB, 'a');
+        tablet.SetHeaders("client", "session", 2);
+        tablet.DestroyHandle(handle);
+
+        // the subsessions are replaced with the ones from the info
+        tablet.SyncShardSessions(
+            makeSessionInfos(TSubSessionList{{2, false}}));
+
+        tablet.SetHeaders("client", "session", 1);
+        assertInvalidSession(id);
+
+        {
+            const auto sessions = describeSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, sessions.SessionsSize());
+
+            const auto& session = sessions.GetSessions(0);
+            UNIT_ASSERT_VALUES_EQUAL(2, session.GetMaxSeqNo());
+            UNIT_ASSERT_VALUES_EQUAL(2, session.GetMaxRwSeqNo());
+        }
+    }
+
+    Y_UNIT_TEST(ShardShouldDescribeItsSessionsForMainTablet)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        // a main tablet is not a shard
+        {
+            auto response = tablet.AssertDescribeShardSessionsFailed();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        const ui32 shardNo = 1;
+        const TString mainFsId = "main_fs";
+        const TString shardId = TStringBuilder() << mainFsId << "_s" << shardNo;
+        tablet.ConfigureAsShard(shardNo, mainFsId, shardId);
+
+        {
+            auto response = tablet.DescribeShardSessions();
+            UNIT_ASSERT(!response->Record.GetAdapterModeEnabled());
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.SessionsSize());
+        }
+
+        // a read-write subsession and a read-only one
+        NProtoPrivate::TShardSessionInfo info;
+        info.SetClientId("client");
+        info.SetSessionId("session");
+        info.SetMaxSeqNo(2);
+        info.SetMaxRwSeqNo(1);
+        info.AddSubSessions()->SetSeqNo(1);
+        {
+            auto* subSession = info.AddSubSessions();
+            subSession->SetSeqNo(2);
+            subSession->SetReadOnly(true);
+        }
+
+        tablet.SyncShardSessions(
+            TVector<NProtoPrivate::TShardSessionInfo>{info});
+
+        // the shard describes the session the way it was described to it
+        {
+            auto response = tablet.DescribeShardSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.SessionsSize());
+
+            const auto& session = response->Record.GetSessions(0);
+            UNIT_ASSERT_VALUES_EQUAL("session", session.GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL("client", session.GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(2, session.GetMaxSeqNo());
+            UNIT_ASSERT_VALUES_EQUAL(1, session.GetMaxRwSeqNo());
+
+            // seqno -> read-only
+            TMap<ui64, bool> subSessions;
+            for (const auto& subSession: session.GetSubSessions()) {
+                subSessions[subSession.GetSeqNo()] = subSession.GetReadOnly();
+            }
+            UNIT_ASSERT_VALUES_EQUAL(2, subSessions.size());
+            UNIT_ASSERT(subSessions.contains(1));
+            UNIT_ASSERT(!subSessions[1]);
+            UNIT_ASSERT(subSessions.contains(2));
+            UNIT_ASSERT(subSessions[2]);
+        }
+
+        // the session is not active after the restart of the shard - it's
+        // described without the subsessions
+        tablet.RebootTablet();
+
+        {
+            auto response = tablet.DescribeShardSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.SessionsSize());
+
+            const auto& session = response->Record.GetSessions(0);
+            UNIT_ASSERT_VALUES_EQUAL("session", session.GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL(2, session.GetMaxSeqNo());
+            UNIT_ASSERT_VALUES_EQUAL(1, session.GetMaxRwSeqNo());
+            UNIT_ASSERT_VALUES_EQUAL(0, session.SubSessionsSize());
+        }
+    }
+
+    Y_UNIT_TEST(ShardShouldResetAndDestroySessionsInBatches)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        const ui32 shardNo = 1;
+        const TString mainFsId = "main_fs";
+        const TString shardId = TStringBuilder() << mainFsId << "_s" << shardNo;
+        tablet.ConfigureAsShard(shardNo, mainFsId, shardId);
+
+        using TSessionInfos = TVector<NProtoPrivate::TShardSessionInfo>;
+        using TRequests = TVector<NProtoPrivate::TShardSessionRequest>;
+
+        // a session with read-write subsessions
+        auto makeSessionInfo = [] (const TString& no, TVector<ui64> seqNos) {
+            NProtoPrivate::TShardSessionInfo info;
+            info.SetClientId("client" + no);
+            info.SetSessionId("session" + no);
+            for (const ui64 seqNo: seqNos) {
+                info.SetMaxSeqNo(Max<ui64>(info.GetMaxSeqNo(), seqNo));
+                info.SetMaxRwSeqNo(Max<ui64>(info.GetMaxRwSeqNo(), seqNo));
+                info.AddSubSessions()->SetSeqNo(seqNo);
+            }
+            return info;
+        };
+
+        // ResetSession or DestroySession of the main tablet
+        auto makeRequest = [] (const TString& sessionId, ui64 seqNo) {
+            NProtoPrivate::TShardSessionRequest request;
+            request.SetSessionId(sessionId);
+            request.SetSessionSeqNo(seqNo);
+            return request;
+        };
+
+        // the sessions of the tablet and their seqnos
+        auto describeSessions = [&] () -> TString {
+            TSet<TString> sessions;
+            const auto response = tablet.DescribeSessions();
+            for (const auto& session: response->Record.GetSessions()) {
+                sessions.insert(TStringBuilder()
+                    << session.GetSessionId() << ":" << session.GetMaxSeqNo());
+            }
+
+            TStringBuilder sb;
+            for (const auto& session: sessions) {
+                if (!sb.empty()) {
+                    sb << ",";
+                }
+                sb << session;
+            }
+            return sb;
+        };
+
+        tablet.SyncShardSessions(TSessionInfos{
+            makeSessionInfo("1", {1}),
+            makeSessionInfo("2", {1}),
+            makeSessionInfo("3", {1})});
+        UNIT_ASSERT_VALUES_EQUAL(
+            "session1:1,session2:1,session3:1",
+            describeSessions());
+
+        const ui64 id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "file"));
+
+        tablet.SetHeaders("client1", "session1", 1);
+        const ui64 handle1 = CreateHandle(tablet, id);
+        tablet.SetHeaders("client2", "session2", 1);
+        CreateHandle(tablet, id);
+        tablet.SetHeaders("client3", "session3", 1);
+        const ui64 handle3 = CreateHandle(tablet, id);
+
+        // the requests are processed the regular way: a seqno which is not
+        // the seqno of the writer changes nothing
+        tablet.SyncShardSessions(
+            TSessionInfos{},
+            TRequests{makeRequest("session1", 7)},
+            TRequests{makeRequest("session2", 7)});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "session1:1,session2:1,session3:1",
+            describeSessions());
+
+        tablet.SetHeaders("client1", "session1", 1);
+        tablet.WriteData(handle1, 0, 4_KB, 'a');
+
+        // session1 is reset, session2 is destroyed, session3 is not touched,
+        // the sessions which the shard doesn't have are skipped
+        {
+            auto response = tablet.SyncShardSessions(
+                TSessionInfos{},
+                TRequests{
+                    makeRequest("session1", 1),
+                    makeRequest("unknown", 1)},
+                TRequests{
+                    makeRequest("session2", 1),
+                    makeRequest("unknown", 1)});
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetCreatedSessionCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetRecoveredSessionCount());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "session1:1,session3:1",
+            describeSessions());
+
+        // session1 is alive but it has lost its handle
+        tablet.SetHeaders("client1", "session1", 1);
+        tablet.AssertWriteDataFailed(handle1, 0, 4_KB, 'a');
+        const ui64 newHandle1 = CreateHandle(tablet, id);
+        tablet.WriteData(newHandle1, 0, 4_KB, 'a');
+
+        tablet.SetHeaders("client3", "session3", 1);
+        tablet.WriteData(handle3, 0, 4_KB, 'a');
+
+        // the shard doesn't know about the subsessions with seqno 2 yet, so
+        // the requests of these subsessions change nothing...
+        tablet.SyncShardSessions(
+            TSessionInfos{},
+            TRequests{makeRequest("session1", 2)},
+            TRequests{makeRequest("session3", 2)});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "session1:1,session3:1",
+            describeSessions());
+
+        tablet.SetHeaders("client3", "session3", 1);
+        tablet.WriteData(handle3, 0, 4_KB, 'a');
+
+        // ...unless a request comes with the session the way the main tablet
+        // sees it: the shard makes the subsessions of its session the same
+        // and comes to the same decision as the main tablet
+        {
+            auto resetRequest = makeRequest("session1", 2);
+            *resetRequest.MutableSession() = makeSessionInfo("1", {1, 2});
+
+            // the subsession might be already gone from the main tablet -
+            // MaxSeqNo and MaxRwSeqNo are enough
+            auto destroyRequest = makeRequest("session3", 2);
+            auto* session = destroyRequest.MutableSession();
+            *session = makeSessionInfo("3", {});
+            session->SetMaxSeqNo(2);
+            session->SetMaxRwSeqNo(2);
+
+            // the sessions which the shard doesn't have are not created
+            auto unknownRequest = makeRequest("session4", 2);
+            *unknownRequest.MutableSession() = makeSessionInfo("4", {1, 2});
+
+            auto response = tablet.SyncShardSessions(
+                TSessionInfos{},
+                TRequests{resetRequest},
+                TRequests{destroyRequest, unknownRequest});
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetCreatedSessionCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetRecoveredSessionCount());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL("session1:2", describeSessions());
+
+        // session1 has been reset once again
+        tablet.SetHeaders("client1", "session1", 2);
+        tablet.AssertWriteDataFailed(newHandle1, 0, 4_KB, 'a');
+        CreateHandle(tablet, id);
+
+        // that's the way the main tablet destroys the sessions which it
+        // doesn't have: such a session has neither subsessions nor seqnos
+        // there
+        {
+            auto destroyRequest = makeRequest("session1", 0);
+            *destroyRequest.MutableSession() = makeSessionInfo("1", {});
+
+            tablet.SyncShardSessions(
+                TSessionInfos{},
+                TRequests{},
+                TRequests{destroyRequest});
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL("", describeSessions());
+    }
+
+    Y_UNIT_TEST(ShardShouldReportAndCancelSessionRecoveries)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetShardSessionRecoveryOnDemandEnabled(true);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        const ui32 shardNo = 1;
+        const TString mainFsId = "main_fs";
+        const TString shardId = TStringBuilder() << mainFsId << "_s" << shardNo;
+        tablet.ConfigureAsShard(shardNo, mainFsId, shardId);
+
+        const ui64 id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "file"));
+
+        // the main tablet doesn't respond to the requests of the shard
+        ui32 sessionRequests = 0;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<NActors::IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                        TEvIndexTablet::EvRecoverShardSessionsRequest)
+                {
+                    ++sessionRequests;
+                    return true;
+                }
+                return false;
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            tablet.DescribeShardSessions()->Record.RecoveringSessionIdsSize());
+
+        // the shard doesn't have the session - the request has to wait for
+        // the main tablet
+        tablet.SetHeaders("client", "session", 1);
+        tablet.SendCreateHandleRequest(id, TString(), TCreateHandleArgs::RDWR);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionRequests);
+
+        {
+            const auto response = tablet.DescribeShardSessions();
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.SessionsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                response->Record.RecoveringSessionIdsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "session",
+                response->Record.GetRecoveringSessionIds(0));
+        }
+
+        // the main tablet tells the shard to destroy the session - the
+        // response which the shard is waiting for is outdated, the request
+        // of the client should be retried
+        NProtoPrivate::TShardSessionRequest destroyRequest;
+        destroyRequest.SetSessionId("session");
+        destroyRequest.SetSessionSeqNo(1);
+        tablet.SendSyncShardSessionsRequest(
+            TVector<NProtoPrivate::TShardSessionInfo>{},
+            TVector<NProtoPrivate::TShardSessionRequest>{},
+            TVector<NProtoPrivate::TShardSessionRequest>{destroyRequest});
+
+        {
+            auto response = tablet.RecvCreateHandleResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+        }
+
+        {
+            auto response = tablet.RecvSyncShardSessionsResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            tablet.DescribeShardSessions()->Record.RecoveringSessionIdsSize());
+    }
+
+    Y_UNIT_TEST(ShouldBuildShardSessionsDiff)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetLazyShardSessionCreationEnabled(true);
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        // two read-write subsessions
+        tablet.CreateSession("client", "session", TString(), 1, false);
+        tablet.CreateSession("client", "session", TString(), 2, false);
+
+        using TSeqNos = TVector<ui64>;
+        using TShardSessions = NProtoPrivate::TDescribeShardSessionsResponse;
+
+        // a session of a shard the way the shard describes it: a session
+        // which is not active has no subsessions
+        auto makeShardSession = [] (
+            const TString& sessionId,
+            ui64 maxSeqNo,
+            ui64 maxRwSeqNo,
+            const TSeqNos& seqNos)
+        {
+            NProtoPrivate::TShardSessionInfo info;
+            info.SetSessionId(sessionId);
+            info.SetClientId("client");
+            info.SetMaxSeqNo(maxSeqNo);
+            info.SetMaxRwSeqNo(maxRwSeqNo);
+            for (const ui64 seqNo: seqNos) {
+                info.AddSubSessions()->SetSeqNo(seqNo);
+            }
+            return info;
+        };
+
+        // the subsessions which should be sent to the shard
+        auto seqNosToSync = [] (const auto& response) {
+            UNIT_ASSERT_VALUES_EQUAL(1, response->SessionsToSync.size());
+            const auto& info = response->SessionsToSync[0];
+            UNIT_ASSERT_VALUES_EQUAL("session", info.GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL("client", info.GetClientId());
+
+            TSeqNos seqNos;
+            for (const auto& subSession: info.GetSubSessions()) {
+                seqNos.push_back(subSession.GetSeqNo());
+            }
+            Sort(seqNos);
+            return seqNos;
+        };
+
+        // the shard doesn't have the session
+        {
+            TShardSessions shardSessions;
+            auto response =
+                tablet.BuildShardSessionsDiff("shard", shardSessions);
+            ASSERT_VECTORS_EQUAL(TSeqNos({1, 2}), seqNosToSync(response));
+            UNIT_ASSERT_VALUES_EQUAL(0, response->SessionsToDestroy.size());
+        }
+
+        // the shard has the same session
+        {
+            TShardSessions shardSessions;
+            *shardSessions.AddSessions() =
+                makeShardSession("session", 2, 2, {1, 2});
+            auto response =
+                tablet.BuildShardSessionsDiff("shard", shardSessions);
+            UNIT_ASSERT_VALUES_EQUAL(0, response->SessionsToSync.size());
+            UNIT_ASSERT_VALUES_EQUAL(0, response->SessionsToDestroy.size());
+        }
+
+        // the session of the shard is not active
+        {
+            TShardSessions shardSessions;
+            *shardSessions.AddSessions() =
+                makeShardSession("session", 2, 2, {});
+            auto response =
+                tablet.BuildShardSessionsDiff("shard", shardSessions);
+            ASSERT_VECTORS_EQUAL(TSeqNos({1, 2}), seqNosToSync(response));
+        }
+
+        // the session of the shard has outdated seqnos
+        {
+            TShardSessions shardSessions;
+            *shardSessions.AddSessions() =
+                makeShardSession("session", 1, 1, {1});
+            auto response =
+                tablet.BuildShardSessionsDiff("shard", shardSessions);
+            ASSERT_VECTORS_EQUAL(TSeqNos({1, 2}), seqNosToSync(response));
+        }
+
+        // one of the subsessions of the shard has a different mode
+        {
+            TShardSessions shardSessions;
+            auto* session = shardSessions.AddSessions();
+            *session = makeShardSession("session", 2, 2, {1, 2});
+            session->MutableSubSessions(0)->SetReadOnly(true);
+            auto response =
+                tablet.BuildShardSessionsDiff("shard", shardSessions);
+            ASSERT_VECTORS_EQUAL(TSeqNos({1, 2}), seqNosToSync(response));
+        }
+
+        // one of the subsessions gets destroyed - MaxSeqNo and MaxRwSeqNo
+        // stay the same
+        tablet.SetHeaders("client", "session", 1);
+        tablet.DestroySession();
+
+        // the shard still has the destroyed subsession
+        {
+            TShardSessions shardSessions;
+            *shardSessions.AddSessions() =
+                makeShardSession("session", 2, 2, {1, 2});
+            auto response =
+                tablet.BuildShardSessionsDiff("shard", shardSessions);
+            ASSERT_VECTORS_EQUAL(TSeqNos({2}), seqNosToSync(response));
+        }
+
+        {
+            TShardSessions shardSessions;
+            *shardSessions.AddSessions() =
+                makeShardSession("session", 2, 2, {2});
+            auto response =
+                tablet.BuildShardSessionsDiff("shard", shardSessions);
+            UNIT_ASSERT_VALUES_EQUAL(0, response->SessionsToSync.size());
+        }
+
+        // the sessions which are unknown to the main tablet should be
+        // destroyed: both the ones which the shard has (they are described
+        // as the sessions without subsessions and seqnos, so DestroySession
+        // with a zero seqno destroys them) and the ones which it is
+        // requesting right now
+        {
+            TShardSessions shardSessions;
+            *shardSessions.AddSessions() =
+                makeShardSession("session", 2, 2, {2});
+            *shardSessions.AddSessions() =
+                makeShardSession("stale_session", 7, 5, {5, 7});
+            shardSessions.AddRecoveringSessionIds("session");
+            shardSessions.AddRecoveringSessionIds("stale_session");
+            shardSessions.AddRecoveringSessionIds("destroyed_session");
+
+            auto response =
+                tablet.BuildShardSessionsDiff("shard", shardSessions);
+            UNIT_ASSERT_VALUES_EQUAL(0, response->SessionsToSync.size());
+            UNIT_ASSERT_VALUES_EQUAL(2, response->SessionsToDestroy.size());
+
+            const auto& staleSession = response->SessionsToDestroy[0];
+            UNIT_ASSERT_VALUES_EQUAL(
+                "stale_session",
+                staleSession.GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL(0, staleSession.GetSessionSeqNo());
+            UNIT_ASSERT(staleSession.HasSession());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "stale_session",
+                staleSession.GetSession().GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "client",
+                staleSession.GetSession().GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                staleSession.GetSession().GetMaxSeqNo());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                staleSession.GetSession().GetMaxRwSeqNo());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                staleSession.GetSession().SubSessionsSize());
+
+            const auto& destroyedSession = response->SessionsToDestroy[1];
+            UNIT_ASSERT_VALUES_EQUAL(
+                "destroyed_session",
+                destroyedSession.GetSessionId());
+            UNIT_ASSERT_VALUES_EQUAL(0, destroyedSession.GetSessionSeqNo());
+            UNIT_ASSERT(!destroyedSession.HasSession());
         }
     }
 }

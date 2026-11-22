@@ -52,7 +52,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(ZeroRange,                              __VA_ARGS__)                   \
     xxx(FilterAliveNodes,                       __VA_ARGS__)                   \
     xxx(GenerateCommitId,                       __VA_ARGS__)                   \
-    xxx(SyncShardSessions,                      __VA_ARGS__)                   \
+    xxx(BuildShardSessionsDiff,                 __VA_ARGS__)                   \
     xxx(LoadCompactionMapChunk,                 __VA_ARGS__)                   \
     xxx(PrepareRenameNodeInSource,              __VA_ARGS__)                   \
     xxx(CommitRenameNodeInSource,               __VA_ARGS__)                   \
@@ -71,7 +71,7 @@ namespace NCloud::NFileStore::NStorage {
 #define FILESTORE_TABLET_ADAPTER_REQUESTS_PRIVATE(xxx, ...)                    \
     xxx(SyncSessions,                           __VA_ARGS__)                   \
     xxx(CleanupSessions,                        __VA_ARGS__)                   \
-    xxx(SyncShardSessions,                      __VA_ARGS__)                   \
+    xxx(BuildShardSessionsDiff,                 __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE
 
 #define FILESTORE_DECLARE_PRIVATE_EVENT_IDS(name, ...)                         \
@@ -212,14 +212,14 @@ struct TEvIndexTabletPrivate
     // SyncSessions
     //
 
-    struct TShardSessionsInfo
-    {
-        TString ShardId;
-        ui32 SessionCount = 0;
-    };
-
     struct TSyncSessionsRequest
     {
+        // Set for the syncs which are triggered by the session changes, not
+        // by the regular schedule.
+        bool OutOfSchedule = false;
+        // Set for the out-of-schedule syncs which are started without a
+        // delay: some requests are waiting for the sync.
+        bool Urgent = false;
     };
 
     struct TSyncSessionsResponse
@@ -228,18 +228,53 @@ struct TEvIndexTabletPrivate
 
     struct TSyncSessionsCompleted
     {
-        TVector<TShardSessionsInfo> ShardSessionsInfos;
+        // The number of shards which have been processed.
+        ui32 ShardCount = 0;
+        // The number of sessions which had to be created (or recovered) in
+        // these shards.
+        ui32 SessionCount = 0;
+        // The shards whose sessions are in line with the sessions of the
+        // tablet now: everything that had to be done there has been done.
+        // Filled only by the sync which works in rounds (see
+        // TBatchedSyncShardSessionsActor).
+        TVector<TString> SyncedShardIds;
     };
 
-    struct TSyncShardSessionsRequest
+    struct TBuildShardSessionsDiffRequest
     {
         TString ShardId;
+        // What the shard has. The shards whose sessions are synced in batches
+        // (see TBatchedSyncShardSessionsActor) are described via
+        // DescribeShardSessions.
+        NProtoPrivate::TDescribeShardSessionsResponse ShardSessions;
+        // The rest of the shards (the ones which work in adapter mode and
+        // all the shards if LazyShardSessionCreationEnabled is not set) are
+        // described via DescribeSessions.
         NProtoPrivate::TDescribeSessionsResponse Sessions;
+        // The shard works in adapter mode.
+        bool AdapterMode = false;
     };
 
-    struct TSyncShardSessionsResponse
+    struct TBuildShardSessionsDiffResponse
     {
-        TShardSessionsInfo Info;
+        TString ShardId;
+        // The number of sessions which have to be created (or recovered) in
+        // the shard.
+        ui32 SessionCount = 0;
+
+        //
+        // The fields below are filled only if LazyShardSessionCreationEnabled
+        // is set and the shard doesn't work in adapter mode. In this case the
+        // tablet doesn't send anything to the shard itself - it's up to the
+        // requester.
+        //
+
+        // The sessions which should be created (or recovered) in the shard.
+        TVector<NProtoPrivate::TShardSessionInfo> SessionsToSync;
+        // ResetSession requests which should be sent to the shard.
+        TVector<NProtoPrivate::TShardSessionRequest> SessionsToReset;
+        // DestroySession requests which should be sent to the shard.
+        TVector<NProtoPrivate::TShardSessionRequest> SessionsToDestroy;
     };
 
     //
