@@ -100,13 +100,13 @@ private:
 public:
     TStorageConfig(
         NProto::TStorageServiceConfig storageServiceConfig,
-        NFeatures::TFeaturesConfigConstPtr featuresConfig);
+        NFeatures::TFeaturesConfigPtr featuresConfig);
 
     // Reuse the supplied controls without changing their defaults. If controls
     // is null, create controls from storageServiceConfig.
     TStorageConfig(
         NProto::TStorageServiceConfig storageServiceConfig,
-        NFeatures::TFeaturesConfigConstPtr featuresConfig,
+        NFeatures::TFeaturesConfigPtr featuresConfig,
         TStorageConfigControlsPtr controls);
 
     // Create a raw-proto copy that shares Features and the live ICB controls.
@@ -122,12 +122,12 @@ public:
     // See TStorageConfigControls::UpdateDefaults().
     void UpdateControlsDefaults() const;
 
-    void SetFeaturesConfig(NFeatures::TFeaturesConfigConstPtr featuresConfig);
+    void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
     // Apply a patch to the raw proto while retaining the same live ICB
     // controls without changing their defaults.
-    static TStorageConfigConstPtr Merge(
-        TStorageConfigConstPtr config,
+    static TStorageConfigPtr Merge(
+        TStorageConfigPtr config,
         const NProto::TStorageServiceConfig& patch);
 
     struct TValueByName
@@ -162,6 +162,10 @@ public:
     [[nodiscard]] ui32 GetWriteMixedBlobThresholdHDD() const;
     ui32 GetFlushThresholdHDD() const;
     [[nodiscard]] ui32 GetFlushThresholdSSD() const;
+    [[nodiscard]] ui32 GetFlushThresholdPerAllocationUnitHDD() const;
+    [[nodiscard]] ui32 GetFlushThresholdPerAllocationUnitSSD() const;
+    [[nodiscard]] ui32 GetMaxFlushThresholdHDD() const;
+    [[nodiscard]] ui32 GetMaxFlushThresholdSSD() const;
     ui32 GetFreshBlobCountFlushThresholdHDD() const;
     [[nodiscard]] ui32 GetFreshBlobCountFlushThresholdSSD() const;
     ui32 GetFreshBlobByteCountFlushThresholdHDD() const;
@@ -1016,6 +1020,8 @@ public:
 
     [[nodiscard]] ui64 GetMixedBlocksCompactionMinStoredBytesHDD() const;
 
+    [[nodiscard]] bool GetMixedBlocksCompactionByteCountersEnabled() const;
+
     [[nodiscard]] bool GetIgnorePartitionCountInMaxBlobsPerRange() const;
 
     [[nodiscard]] bool GetVolumeBalancerEnabled() const;
@@ -1024,6 +1030,12 @@ public:
 ui64 GetAllocationUnit(
     const TStorageConfig& config,
     NCloud::NProto::EStorageMediaKind mediaKind);
+
+// Fresh blocks byte count that triggers flush in partition v1.
+[[nodiscard]] ui32 GetFlushThreshold(
+    const TStorageConfig& config,
+    NCloud::NProto::EStorageMediaKind mediaKind,
+    ui64 partitionByteCount);
 
 void AdaptNodeRegistrationParams(
     const TString& overriddenNodeType,

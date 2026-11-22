@@ -87,7 +87,7 @@ private:
 
 public:
     TVolumeClientActor(
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         ITraceSerializerPtr traceSerializer,
         NServer::IEndpointEventHandlerPtr endpointEventHandler,
         const TActorId& sessionActorId,
@@ -140,7 +140,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeClientActor::TVolumeClientActor(
-    TStorageConfigConstPtr config,
+    TStorageConfigPtr config,
     ITraceSerializerPtr traceSerializer,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     const TActorId& sessionActorId,
@@ -526,7 +526,7 @@ STFUNC(TVolumeClientActor::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 IActorPtr CreateVolumeClient(
-    TStorageConfigConstPtr config,
+    TStorageConfigPtr config,
     ITraceSerializerPtr traceSerializer,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     const TActorId& sessionActorId,

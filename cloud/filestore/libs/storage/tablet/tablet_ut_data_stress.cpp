@@ -38,7 +38,7 @@ enum EStepType : ui32
 struct TEnvironment
     : public NUnitTest::TBaseFixture
 {
-    TTestEnv Env;
+    std::unique_ptr<TTestEnv> Env;
     std::unique_ptr<TIndexTabletClient> Tablet;
 
     TLog Log;
@@ -54,15 +54,14 @@ struct TEnvironment
     char Fill = 'a';
     ui64 MaxSize = 0;
 
-    TEnvironment() : Log(Env.CreateLog())
-    {}
-
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
-        const ui32 nodeIdx = Env.AddDynamicNode();
-        const ui64 tabletId = Env.BootIndexTablet(nodeIdx);
+        Env = std::make_unique<TTestEnv>();
 
-        TLog log = Env.CreateLog();
+        const ui32 nodeIdx = Env->AddDynamicNode();
+        const ui64 tabletId = Env->BootIndexTablet(nodeIdx);
+
+        Log = Env->CreateLog();
         {
             std::random_device rd;
             const auto seedValue = rd();
@@ -73,7 +72,7 @@ struct TEnvironment
         STORAGE_DEBUG("Max blocks: " << MaxBlocks);
 
         Tablet = std::make_unique<TIndexTabletClient>(
-            Env.GetRuntime(),
+            Env->GetRuntime(),
             nodeIdx,
             tabletId,
             TFileSystemConfig{
@@ -83,6 +82,13 @@ struct TEnvironment
 
         Id = CreateNode(*Tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         Handle = CreateHandle(*Tablet, Id);
+    }
+
+    void TearDown(NUnitTest::TTestContext& /*context*/) override
+    {
+        Log = {};
+        Tablet.reset();
+        Env.reset();
     }
 
     char Next(char letter)

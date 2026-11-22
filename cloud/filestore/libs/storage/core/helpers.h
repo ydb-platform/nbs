@@ -15,6 +15,10 @@ namespace NCloud::NFileStore::NProto {
 
 namespace NCloud::NFileStore::NProtoPrivate {
     class TListNodesInternalResponse;
+    class TShardTopology;
+    class TFileSystemShardCreationState;
+    class TUnsafeChangeTabletStateRequest;
+    class TUnsafeChangeTabletStateResponse;
 }   // namespace NCloud::NFileStore::NProtoPrivate
 
 namespace NCloud::NFileStore::NStorage {
@@ -64,10 +68,43 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Adds a shard that stores both files and directories.
+void AddOrdinaryShard(
+    const TString& shardId,
+    NProtoPrivate::TShardTopology& topology);
+
+// Converts shard ids list into default topology representation.
+NProtoPrivate::TShardTopology BuildOrdinaryShardTopology(
+    const google::protobuf::RepeatedPtrField<TString>& shardIds);
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename TProtoRequest>
 ui64 CalculateByteCount(const TProtoRequest& request)
 {
     return request.GetLength();
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Use in diagnostic logs instead of dumping the full shard creation state.
+// Includes the version, target range and config hash, but summarizes the bitmap
+// as bit count, chunk count and total chunk payload bytes, omitting binary data.
+TString DescribeShardCreationState(
+    const NProtoPrivate::TFileSystemShardCreationState& state);
+
+// Use when logging UnsafeChangeTabletState requests that may contain shard
+// creation state. Includes the filesystem ID and optional control flags, with
+// state summarized by DescribeShardCreationState to avoid binary bitmap dumps.
+// Falls back to DebugString when the request has no shard creation state.
+TString DescribeChangeTabletStateRequest(
+    const NProtoPrivate::TUnsafeChangeTabletStateRequest& request);
+
+// Use when logging UnsafeChangeTabletState responses that may contain shard
+// creation state. Includes any error and the summary from
+// DescribeShardCreationState, omitting binary bitmap data.
+// Falls back to ShortUtf8DebugString when the response has no shard creation state.
+TString DescribeChangeTabletStateResponse(
+    const NProtoPrivate::TUnsafeChangeTabletStateResponse& response);
 
 }   // namespace NCloud::NFileStore::NStorage

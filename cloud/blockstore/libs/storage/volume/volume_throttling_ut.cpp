@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_throttling_manager.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 #include <cloud/blockstore/libs/storage/volume/model/volume_throttling_policy.h>
 #include <cloud/blockstore/libs/storage/volume/testlib/test_env.h>
 
@@ -279,6 +280,29 @@ Y_UNIT_TEST_SUITE(TVolumeActorUpdateThrottlingConfigTest)
             version,
             {CreateSpecificDisksRule({diskId}, 0.25)});
         CheckThrottlingState(volume, version, MaxBandwidth * 0.5);
+    }
+
+    // Check that a logical disk rule applies to a disk copy.
+    Y_UNIT_TEST(ShouldApplyLogicalDiskRuleToDiskCopy)
+    {
+        // Create a volume with the physical copy identifier.
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume =
+            CreateVolume(*runtime, GetSecondaryDiskId(diskId));
+
+        // Deliver a rule addressed to the logical disk identifier.
+        const double coef = 0.5;
+        SendThrottlingConfig(
+            volume,
+            1,
+            {CreateSpecificDisksRule({diskId}, coef)});
+
+        // Check that the accepted rule reduces the copy's effective bandwidth.
+        const auto info = GetVolatileThrottlingInfo(volume);
+        UNIT_ASSERT_VALUES_EQUAL(1, info.GetVersion());
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxBandwidth * coef,
+            info.GetActualPerformanceProfile().GetMaxReadBandwidth());
     }
 
     Y_UNIT_TEST(ShouldIgnoreOldConfig)

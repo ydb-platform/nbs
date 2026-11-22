@@ -352,6 +352,13 @@ public:
     void SetFrozen(IIndexTabletDatabase& db, bool frozen);
 
     void SetCompressNodeRef(IIndexTabletDatabase& db, bool compressNodeRef);
+    void SetGuestPosixAclEnabled(
+        IIndexTabletDatabase& db,
+        bool guestPosixAclEnabled);
+
+    void SetShardCreationState(
+        IIndexTabletDatabase& db,
+        const NProtoPrivate::TFileSystemShardCreationState& state);
 
 private:
     //
@@ -468,6 +475,11 @@ public:
     bool GetCompressNodeRef() const
     {
         return CompressNodeRef || FileSystem.GetCompressNodeRef();
+    }
+
+    bool GetGuestPosixAclEnabled() const
+    {
+        return FileSystem.GetGuestPosixAclEnabled();
     }
 
     /**
@@ -923,8 +935,7 @@ public:
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,
-        const NProto::TSessionOptions& sessionOptions,
-        const NProto::TPersistentSessionOptions& persistentSessionOptions);
+        const NProto::TSessionOptions& sessionOptions);
 
     void RemoveSession(
         IIndexTabletDatabase& db,
@@ -947,6 +958,7 @@ public:
 
     TVector<TSession*> GetTimedOutSessions(TInstant now) const;
     TVector<NProtoPrivate::TTabletSessionInfo> DescribeSessions() const;
+    bool HasSessions() const;
 
     const TSessionHistoryList& GetSessionHistoryList() const;
     void AddSessionHistoryEntry(

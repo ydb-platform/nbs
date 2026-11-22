@@ -1243,6 +1243,22 @@ Y_UNIT_TEST_SUITE(TCellHostPoolTest)
         UNIT_ASSERT(seen.contains(hosts.Warm[1]));
         UNIT_ASSERT(!seen.contains("host-z"));
     }
+
+    Y_UNIT_TEST(ShouldNotCountADeadHostAgainWhenItsChannelIsOpened)
+    {
+        auto endpoints = std::make_shared<TTestEndpointBootstrap>();
+        TCellHostPool pool(MakeCellConfig(), MakeBootstrap(endpoints));
+        const auto& counters = pool.GetCounters();
+
+        pool.SetHostAlive("host-a", false);
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.HostsUnavailable->Val());
+
+        pool.AcquireControlChannel("host-a");
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.HostsUnavailable->Val());
+
+        pool.SetHostAlive("host-a", true);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.HostsUnavailable->Val());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NCells

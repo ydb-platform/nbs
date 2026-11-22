@@ -332,6 +332,12 @@ TCommonFilterParams::TCommonFilterParams(
     : ReferenceTime(referenceTime)
 {
     opts.AddLongOption(
+            "no-skip-files",
+            "Read every supplied file instead of skipping by first/last record times. "
+            "Record bounds are still read for sorting; exact request filters still apply")
+        .NoArgument();
+
+    opts.AddLongOption(
             FileSystemIdLabel.data(),
             "FileSystemId, used for filtering")
         .RequiredArgument("STR");

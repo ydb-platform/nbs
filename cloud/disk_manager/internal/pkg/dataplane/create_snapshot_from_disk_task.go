@@ -244,7 +244,7 @@ func (t *createSnapshotFromDiskTask) run(
 
 	selfTaskID := execCtx.GetTaskID()
 
-	// Older task requests and image creation do not carry BlockSize. Resolve it
+	// Older task requests may not carry BlockSize. Resolve it
 	// while the source disk still exists, never at export time.
 	blockSize := t.request.BlockSize
 	if blockSize == 0 {

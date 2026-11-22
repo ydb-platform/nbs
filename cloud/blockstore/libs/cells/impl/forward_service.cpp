@@ -112,7 +112,7 @@ public:
                     Timer->Now());
             }
 
-            STORAGE_DEBUG(
+            STORAGE_TRACE(
                 "[cell " << cellId << "] inter-cell "
                     << GetBlockStoreRequestName(TMethod::BlockStoreRequest)
                     << ", peer=" << peer << " disk=" << diskId);

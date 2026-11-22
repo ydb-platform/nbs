@@ -52,6 +52,11 @@ TVector<TPageRange> MakePageRanges(
     return MakePageRangesImpl(request.GetPageGroups());
 }
 
+TVector<TPageRange> MakePageRanges(const NProto::TWritePagesRequest& request)
+{
+    return MakePageRangesImpl(request.GetPageGroups());
+}
+
 TVector<TPageRange> MakePageRanges(const NProto::TJournalRecord& record)
 {
     return MakePageRangesImpl(record.GetPageGroups());

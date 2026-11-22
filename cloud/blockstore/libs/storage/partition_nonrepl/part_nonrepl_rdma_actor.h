@@ -65,8 +65,8 @@ class TNonreplicatedPartitionRdmaActor final
     using TRequestContext = TStackVec<TRunningRdmaRequestInfo, 2>;
 
 private:
-    const TStorageConfigConstPtr Config;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const NCloud::NStorage::NRdma::IClientPtr RdmaClient;
     const NActors::TActorId VolumeActorId;
@@ -112,8 +112,8 @@ private:
 
 public:
     TNonreplicatedPartitionRdmaActor(
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         NActors::TActorId volumeActorId,

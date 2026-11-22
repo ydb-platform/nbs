@@ -19,7 +19,7 @@ namespace NCloud::NBlockStore {
 // Initialize the provider with a non-null configuration and return its writer
 // handle. Abort if the provider has already been initialized.
 [[nodiscard]] TBlockstoreConfigHolderPtr InitializeBlockstoreConfigProvider(
-    IBlockstoreConfigPtr initialConfig);
+    IBlockstoreConfigMutablePtr initialConfig);
 
 // Reset the provider during test teardown.
 // Do nothing if the provider is not initialized.

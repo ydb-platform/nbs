@@ -64,13 +64,22 @@ message TFileSystem
     bool Frozen = 20;
     bool ForceDirectoryCreationInShards = 21;
 
-    repeated bytes FileShardFileSystemIds = 22;
+    reserved 22;
 
     bool IsFastShard = 23;
     NProtoPrivate.TFastShardConfig FastShardConfig = 24;
 
     // Compress ShardId and ShardNodeName when we write them to NodeRefs table.
     optional bool CompressNodeRef = 25;
+
+    bool GuestPosixAclEnabled = 26;
+
+    NProtoPrivate.TShardTopology ShardTopology = 27;
+
+    // Persisted physical shard creation progress. Intentionally retained after
+    // successful resize: clearing it could erase recovery bits from another
+    // in-flight resize. Bits below current topology size are committed history.
+    NProtoPrivate.TFileSystemShardCreationState ShardCreationState = 28;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -158,7 +167,7 @@ message TSessionOptions
 
 message TPersistentSessionOptions
 {
-    bool GuestPosixAclEnabled = 1;
+    bool GuestPosixAclEnabled = 1 [deprecated = true];
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -175,7 +184,7 @@ message TSession
     bytes OriginFqdn = 8;
     uint64 RecoveryTimestampUs = 9;
 
-    TPersistentSessionOptions PersistentOptions = 10;
+    TPersistentSessionOptions PersistentOptions = 10 [deprecated = true];
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -155,6 +155,22 @@ TTabletStorageInfoPtr GetTabletStorageInfo(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#define PARAMETRIZED_TEST(name)                                              \
+    void TestImpl##name(NProto::TStorageConfig storageConfig);               \
+    Y_UNIT_TEST(name)                                                        \
+    {                                                                        \
+        NProto::TStorageConfig storageConfig;                                \
+        storageConfig.SetPermanentReadWriteDataActorsEnabled(false);                \
+        TestImpl##name(std::move(storageConfig));                            \
+    }                                                                        \
+    Y_UNIT_TEST(name##WithPreallocatedActors)                                \
+    {                                                                        \
+        NProto::TStorageConfig storageConfig;                                \
+        storageConfig.SetPermanentReadWriteDataActorsEnabled(true);                 \
+        TestImpl##name(std::move(storageConfig));                            \
+    }                                                                        \
+    void TestImpl##name(NProto::TStorageConfig storageConfig)
+
 Y_UNIT_TEST_SUITE(TStorageServiceTest)
 {
     Y_UNIT_TEST(ShouldCreateFileStore)
@@ -1787,8 +1803,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             session->Record.GetFileStore().GetFeatures().GetHasXAttrs());
     }
 
-    Y_UNIT_TEST(ShouldRetainGuestPosixAclSettingWhenRecoveringSession)
+    Y_UNIT_TEST(ShouldChangeGuestPosixAclEnabledWhenThereAreNoSessions)
     {
+        // Create a filesystem while GuestPosixAclEnabled is enabled in the
+        // storage config. The value should be copied to the persistent
+        // filesystem state during creation.
         NProto::TStorageConfig config;
         config.SetGuestPosixAclEnabled(true);
         TTestEnv env({}, config);
@@ -1799,87 +1818,136 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         const TString fsId = "test";
         service.CreateFileStore(fsId, 1'000);
 
-        THeaders headers = {
-            .FileSystemId = fsId,
-            .ClientId = "client",
-            .SessionId = "",
-            .SessionSeqNo = 0};
-        const TString checkpointId = "";
-        bool restoreClientSession = false;
-        const bool readOnly = false;
+        // This lambda changes the value stored in the filesystem state through
+        // the unsafe tablet-state action and verifies the expected action
+        // status.
+        auto changeGuestPosixAclEnabled = [&](bool enabled, ui32 status) {
+            NProtoPrivate::TUnsafeChangeTabletStateRequest request;
+            request.SetFileSystemId(fsId);
+            request.SetGuestPosixAclEnabled(enabled);
 
-        const auto session1 = service.CreateSession(
-            headers,
-            checkpointId,
-            restoreClientSession,
-            headers.SessionSeqNo,
-            readOnly);
+            TString input;
+            google::protobuf::util::MessageToJsonString(request, &input);
+            const auto response = service.SendAndRecvExecuteAction(
+                "UnsafeChangeTabletState",
+                input);
 
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                status,
+                response->GetStatus(),
+                response->GetErrorReason());
+        };
+
+        // A session created immediately after the filesystem should observe
+        // the value copied from the initial storage config.
+        THeaders headers;
+        auto session = service.InitSession(headers, fsId, "client-1");
         UNIT_ASSERT(
-            session1->Record.GetFileStore()
+            session->Record.GetFileStore()
                 .GetFeatures()
                 .GetGuestPosixAclEnabled());
+        service.DestroySession(headers);
 
+        // Updating the tablet's storage config must not change the value in
+        // the persistent filesystem state.
         NProto::TStorageConfig newConfig;
         newConfig.SetGuestPosixAclEnabled(false);
-        const auto response =
-            ExecuteChangeStorageConfig(std::move(newConfig), service);
-        UNIT_ASSERT(
-            !response.GetStorageConfig().GetGuestPosixAclEnabled());
-
+        ExecuteChangeStorageConfig(std::move(newConfig), service, true);
         WaitForTabletStart(service);
 
-        // Even though SessionId changes, the old session should be restored.
-        headers.SessionId = "session_id";
-        restoreClientSession = true;
-        const auto session2 = service.CreateSession(
-            headers,
-            checkpointId,
-            restoreClientSession,
-            headers.SessionSeqNo,
-            readOnly);
-
-        // The restored session should preserve the GuestPosixAclEnabled value
-        // from its creation.
+        headers = {};
+        session = service.InitSession(headers, fsId, "client-2");
         UNIT_ASSERT(
-            session2->Record.GetFileStore()
+            session->Record.GetFileStore()
+                .GetFeatures()
+                .GetGuestPosixAclEnabled());
+        service.DestroySession(headers);
+
+        // With no sessions on the tablet, the unsafe action may disable the
+        // setting.
+        changeGuestPosixAclEnabled(false, S_OK);
+
+        // A new session should observe the value written by the unsafe action.
+        headers = {};
+        session = service.InitSession(headers, fsId, "client-3");
+        UNIT_ASSERT(
+            !session->Record.GetFileStore()
                 .GetFeatures()
                 .GetGuestPosixAclEnabled());
 
-        // If SessionSeqNo increases, the GuestPosixAclEnabled value should be
-        // preserved as well.
-        headers.SessionSeqNo = 1;
-        const auto session3 = service.CreateSession(
-            headers,
-            checkpointId,
-            restoreClientSession,
-            headers.SessionSeqNo,
-            readOnly);
+        // Changing the value while a session exists must be rejected.
+        changeGuestPosixAclEnabled(true, E_PRECONDITION_FAILED);
 
+        // Once the last session is destroyed, changing the value is allowed.
+        service.DestroySession(headers);
+        changeGuestPosixAclEnabled(true, S_OK);
+
+        // Finally, verify that subsequent sessions observe the new value.
+        headers = {};
+        session = service.InitSession(headers, fsId, "client-4");
         UNIT_ASSERT(
-            session3->Record.GetFileStore()
+            session->Record.GetFileStore()
                 .GetFeatures()
                 .GetGuestPosixAclEnabled());
+        service.DestroySession(headers);
+    }
 
-        // Recovering a session with a higher sequence number rewrites its DB
-        // record. Restart the tablet to ensure persistent options survived
-        // that rewrite.
-        NProto::TStorageConfig sameConfig;
-        sameConfig.SetGuestPosixAclEnabled(false);
-        ExecuteChangeStorageConfig(std::move(sameConfig), service);
-        WaitForTabletStart(service);
+    Y_UNIT_TEST(ShouldInitializeGuestPosixAclEnabledInCreateRequests)
+    {
+        NProto::TStorageConfig config;
+        config.SetGuestPosixAclEnabled(true);
+        TTestEnv env({}, config);
 
-        const auto session4 = service.CreateSession(
+        const ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TString fsId = "test";
+        service.CreateFileStore(fsId, 1'000);
+        const auto headers = service.InitSession(fsId, "client");
+
+        bool createNodeRequestObserved = false;
+        bool createHandleRequestObserved = false;
+        env.GetRuntime().SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->Recipient != MakeIndexTabletProxyServiceId()) {
+                    return false;
+                }
+
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvCreateNodeRequest)
+                {
+                    const auto* request =
+                        event->Get<TEvService::TEvCreateNodeRequest>();
+                    UNIT_ASSERT(request->Record.GetGuestPosixAclEnabled());
+                    createNodeRequestObserved = true;
+                } else if (event->GetTypeRewrite() ==
+                           TEvService::EvCreateHandleRequest)
+                {
+                    const auto* request =
+                        event->Get<TEvService::TEvCreateHandleRequest>();
+                    UNIT_ASSERT(request->Record.GetGuestPosixAclEnabled());
+                    createHandleRequestObserved = true;
+                }
+
+                return false;
+            });
+
+        const ui64 nodeId = service
+            .CreateNode(
+                headers,
+                TCreateNodeArgs::File(RootNodeId, "file"))
+            ->Record.GetNode().GetId();
+        service.CreateHandle(
             headers,
-            checkpointId,
-            restoreClientSession,
-            headers.SessionSeqNo,
-            readOnly);
+            fsId,
+            nodeId,
+            "",
+            TCreateHandleArgs::RDWR);
 
-        UNIT_ASSERT(
-            session4->Record.GetFileStore()
-                .GetFeatures()
-                .GetGuestPosixAclEnabled());
+        UNIT_ASSERT(createNodeRequestObserved);
+        UNIT_ASSERT(createHandleRequestObserved);
+        service.DestroySession(headers);
     }
 
     Y_UNIT_TEST(ShouldSetHasXAttrs)
@@ -2409,9 +2477,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateSession(headers);
     }
 
-    void CheckTwoStageReads(NProto::EStorageMediaKind mediaKind, bool disableForHdd)
+    void CheckTwoStageReads(
+        NProto::EStorageMediaKind mediaKind,
+        bool disableForHdd,
+        const NProto::TStorageConfig& storageConfig)
     {
-        TTestEnv env;
+        TTestEnv env({}, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -2522,19 +2593,28 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldPerformTwoStageReadsHdd)
+    PARAMETRIZED_TEST(ShouldPerformTwoStageReadsHdd)
     {
-        CheckTwoStageReads(NProto::STORAGE_MEDIA_HDD, false);
+        CheckTwoStageReads(
+            NProto::STORAGE_MEDIA_HDD,
+            false /* disableForHdd */,
+            storageConfig);
     }
 
-    Y_UNIT_TEST(ShouldPerformTwoStageReadsHybrid)
+    PARAMETRIZED_TEST(ShouldPerformTwoStageReadsHybrid)
     {
-        CheckTwoStageReads(NProto::STORAGE_MEDIA_HYBRID, false);
+        CheckTwoStageReads(
+            NProto::STORAGE_MEDIA_HYBRID,
+            false /* disableForHdd */,
+            storageConfig);
     }
 
-    Y_UNIT_TEST(ShouldPerformTwoStageReadsSsd)
+    PARAMETRIZED_TEST(ShouldPerformTwoStageReadsSsd)
     {
-        CheckTwoStageReads(NProto::STORAGE_MEDIA_SSD, false);
+        CheckTwoStageReads(
+            NProto::STORAGE_MEDIA_SSD,
+            false /* disableForHdd */,
+            storageConfig);
     }
 
     void DoTestShouldUseTwoStageReadThreshold(bool setUpForTablet)
@@ -2754,9 +2834,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldReturnDescribeDataError)
+    PARAMETRIZED_TEST(ShouldReturnDescribeDataError)
     {
-        TTestEnv env;
+        TTestEnv env({}, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -2831,9 +2911,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, readDataResponses);
     }
 
-    Y_UNIT_TEST(ShouldFallbackToReadDataIfEvGetFails)
+    PARAMETRIZED_TEST(ShouldFallbackToReadDataIfEvGetFails)
     {
-        TTestEnv env;
+        TTestEnv env({}, storageConfig);
 
         ui32 nodeIdx = env.AddDynamicNode();
 
@@ -4664,7 +4744,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     Y_UNIT_TEST(ShouldNotAffectSsdReadWritesIfMultistageReadWritesAreOffForHdd)
     {
         CheckThreeStageWrites(NProto::STORAGE_MEDIA_SSD, true);
-        CheckTwoStageReads(NProto::STORAGE_MEDIA_SSD, true);
+        CheckTwoStageReads(
+            NProto::STORAGE_MEDIA_SSD,
+            true /* disableForHdd */,
+            NProto::TStorageConfig{});
     }
 
     Y_UNIT_TEST(ShouldUpdateFileSystemAndTabletCountersOnRegisterAndUnregister)
@@ -5347,7 +5430,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
     void testReadDataRequestWithIovecs(
         NProto::TStorageConfig config,
-        size_t iovecSize = 4_KB)
+        size_t iovecSize)
     {
         TTestEnv env({}, std::move(config));
         ui32 nodeIdx = env.AddDynamicNode();
@@ -5388,51 +5471,46 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             data);
     }
 
-    Y_UNIT_TEST(ShouldUseIovecsForReadDataRequest)
+    PARAMETRIZED_TEST(ShouldUseIovecsForReadDataRequest)
     {
-        testReadDataRequestWithIovecs({});
+        testReadDataRequestWithIovecs(std::move(storageConfig), 4_KB);
     }
 
-    Y_UNIT_TEST(ShouldUseIovecsForReadDataRequestWithTwoStageRead)
+    PARAMETRIZED_TEST(ShouldUseIovecsForReadDataRequestWithTwoStageRead)
     {
-        NProto::TStorageConfig config;
-        config.SetTwoStageReadEnabled(true);
-        testReadDataRequestWithIovecs(std::move(config));
+        storageConfig.SetTwoStageReadEnabled(true);
+        testReadDataRequestWithIovecs(std::move(storageConfig), 4_KB);
     }
 
-    Y_UNIT_TEST(
+    PARAMETRIZED_TEST(
         ShouldUseIovecsForReadDataRequestWithTwoStageReadAndZeroCopyRead)
     {
-        NProto::TStorageConfig config;
-        config.SetTwoStageReadEnabled(true);
-        config.SetZeroCopyReadEnabled(true);
-        testReadDataRequestWithIovecs(std::move(config));
+        storageConfig.SetTwoStageReadEnabled(true);
+        storageConfig.SetZeroCopyReadEnabled(true);
+        testReadDataRequestWithIovecs(std::move(storageConfig), 4_KB);
     }
 
-    Y_UNIT_TEST(ShouldUseIovecsForReadDataRequestWithCustomParserEnabled)
+    PARAMETRIZED_TEST(ShouldUseIovecsForReadDataRequestWithCustomParserEnabled)
     {
-        NProto::TStorageConfig config;
-        config.SetUseCustomReadDataResponseParser(true);
-        config.SetTwoStageReadEnabled(false);
-        testReadDataRequestWithIovecs(std::move(config));
+        storageConfig.SetUseCustomReadDataResponseParser(true);
+        storageConfig.SetTwoStageReadEnabled(false);
+        testReadDataRequestWithIovecs(std::move(storageConfig), 4_KB);
     }
 
-    Y_UNIT_TEST(ShouldUseExternalPayloadForReadDataRequest)
+    PARAMETRIZED_TEST(ShouldUseExternalPayloadForReadDataRequest)
     {
-        NProto::TStorageConfig config;
-        config.SetExternalReadDataPayload(true);
+        storageConfig.SetExternalReadDataPayload(true);
         for (auto iovecSize: std::vector<size_t>{124, 4_KB, 256_KB}) {
-            testReadDataRequestWithIovecs(config, iovecSize);
+            testReadDataRequestWithIovecs(storageConfig, iovecSize);
         }
     }
 
-    Y_UNIT_TEST(ShouldUseExternalPayloadWithIovecsForReadDataRequest)
+    PARAMETRIZED_TEST(ShouldUseExternalPayloadWithIovecsForReadDataRequest)
     {
-        NProto::TStorageConfig config;
-        config.SetExternalReadDataPayload(true);
-        config.SetZeroCopyReadEnabled(true);
+        storageConfig.SetExternalReadDataPayload(true);
+        storageConfig.SetZeroCopyReadEnabled(true);
         for (auto iovecSize: std::vector<size_t>{124, 4_KB, 256_KB}) {
-            testReadDataRequestWithIovecs(config, iovecSize);
+            testReadDataRequestWithIovecs(storageConfig, iovecSize);
         }
     }
 
@@ -5519,6 +5597,77 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.ReadData(headers, fs, nodeId, handle, 0, data.size());
 
         UNIT_ASSERT_VALUES_EQUAL(1, fakeBlobWasRead->Val());
+    }
+
+    Y_UNIT_TEST(ShouldNotZeroFillReadBufferWhenReadBlobDisabled)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1000,
+            DefaultBlockSize,
+            NProto::STORAGE_MEDIA_SSD);
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetTwoStageReadEnabled(true);
+            // Zero-copy read makes TReadDataActor work directly with our
+            // buffers, which lets us see whether it touched them
+            newConfig.SetZeroCopyReadEnabled(true);
+            newConfig.SetReadBlobDisabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                true,
+                response.GetStorageConfig().GetReadBlobDisabled());
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+
+        ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto fakeBlobWasRead =
+            counters->GetCounter("AppCriticalEvents/FakeBlobWasRead", true);
+
+        // Large aligned write goes directly to blobs => there will be no fresh
+        // data in the DescribeData response
+        const TString data(1_MB, 'b');
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+
+        const size_t iovecSize = 4_KB;
+        TVector<TString> iovecs;
+        for (size_t i = 0; i < data.size() / iovecSize; ++i) {
+            iovecs.emplace_back(iovecSize, 'x');
+        }
+
+        auto response =
+            service
+                .ReadData(headers, fs, nodeId, handle, 0, data.size(), iovecs);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, fakeBlobWasRead->Val());
+        UNIT_ASSERT_VALUES_EQUAL(data.size(), response->Record.GetLength());
+        // Neither the data nor zeroes should have been written to the buffers
+        const TString expected(data.size(), 'x');
+        UNIT_ASSERT_C(
+            expected == GetBufferFromIovecs(iovecs, data.size()),
+            "read buffers were modified");
     }
 
     Y_UNIT_TEST(ShouldReadFakeDataWhenFakeDescribeDataEnabled)
@@ -5791,6 +5940,281 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto attrs = service.RecvGetNodeAttrResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_FS_NOENT, attrs->GetStatus());
     }
+
+    Y_UNIT_TEST(ShouldGrowAndReuseReadActorPoolForParallelRequests)
+    {
+        NProto::TStorageConfig config;
+        config.SetPermanentReadWriteDataActorsEnabled(true);
+        config.SetTwoStageReadEnabled(true);
+        config.SetTwoStageReadThreshold(1);
+        TTestEnv env({}, config);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+        const auto headers = service.InitSession(fs, "client");
+        const ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        const ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        auto counters = runtime.GetAppData(nodeIdx)
+                            .Counters->FindSubgroup("counters", "filestore")
+                            ->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        auto poolSize = counters->FindCounter("ReadDataActorPoolSize");
+        UNIT_ASSERT(poolSize);
+        UNIT_ASSERT_VALUES_EQUAL(100, poolSize->GetAtomic());
+
+        auto checkPoolSize = [&](ui32 expectedSize)
+        {
+            service.SendRequest(
+                MakeStorageServiceId(),
+                std::make_unique<TEvServicePrivate::TEvUpdateStats>());
+            // Synchronize with the service after it publishes the pool size.
+            service.GetNodeAttr(headers, fs, nodeId, "");
+            UNIT_ASSERT_VALUES_EQUAL(expectedSize, poolSize->GetAtomic());
+        };
+
+        // Hold descriptions so every read in a batch needs its own worker.
+        TVector<TAutoPtr<IEventHandle>> delayedResponses;
+        bool delayResponses = true;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (delayResponses &&
+                    event->GetTypeRewrite() ==
+                        TEvIndexTablet::EvDescribeDataResponse)
+                {
+                    delayedResponses.emplace_back(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        ui32 batch = 0;
+        ui32 expectedPoolSize = 100;
+        for (const ui32 requestCount: {50, 200, 200, 50}) {
+            ++batch;
+            TString data;
+            for (ui32 i = 0; i < requestCount; ++i) {
+                data += TString(DefaultBlockSize, char(batch + i));
+            }
+            service.WriteData(headers, fs, nodeId, handle, 0, data);
+
+            delayResponses = true;
+            for (ui32 i = 0; i < requestCount; ++i) {
+                service.SendRequest(
+                    MakeStorageServiceId(),
+                    service.CreateReadDataRequest(
+                        headers,
+                        fs,
+                        nodeId,
+                        handle,
+                        ui64(i) * DefaultBlockSize,
+                        DefaultBlockSize),
+                    i);
+            }
+
+            runtime.DispatchEvents(
+                TDispatchOptions{
+                    .CustomFinalCondition =
+                        [&]
+                    {
+                        return delayedResponses.size() == requestCount;
+                    }},
+                TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL(requestCount, delayedResponses.size());
+            expectedPoolSize = Max(expectedPoolSize, requestCount);
+            checkPoolSize(expectedPoolSize);
+
+            delayResponses = false;
+            for (auto& response: delayedResponses) {
+                runtime.Send(response.Release(), nodeIdx);
+            }
+            delayedResponses.clear();
+
+            // Use the cookie to check data when replies arrive out of order.
+            for (ui32 i = 0; i < requestCount; ++i) {
+                TAutoPtr<IEventHandle> event;
+                runtime.GrabEdgeEventRethrow<TEvService::TEvReadDataResponse>(
+                    event);
+                UNIT_ASSERT(event->Cookie < requestCount);
+                const auto* response =
+                    event->Get<TEvService::TEvReadDataResponse>();
+                UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, char(batch + event->Cookie)),
+                    response->Record.GetBuffer());
+            }
+
+            // Process worker releases before starting the next batch.
+            checkPoolSize(expectedPoolSize);
+        }
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreLateReadBlobResponses)
+    {
+        NProto::TStorageConfig config;
+        config.SetTwoStageReadEnabled(true);
+        config.SetPermanentReadWriteDataActorsEnabled(true);
+        TTestEnv env({}, config);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+        const auto headers = service.InitSession(fs, "client");
+        const ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        const ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        // Five blob pieces: one fails to trigger fallback, four are delayed.
+        const TString firstData(DefaultBlockSize * BlockGroupSize * 5, 'A');
+        service.WriteData(headers, fs, nodeId, handle, 0, firstData);
+
+        TActorId readActor;
+        ui32 startedReads = 0;
+        ui32 pendingBlobResponses = 0;
+        ui32 secondReadBlobResponses = 0;
+        ui32 fallbackRequests = 0;
+        bool failedBlob = false;
+        TVector<TAutoPtr<IEventHandle>> delayedBlobs;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                const auto type = event->GetTypeRewrite();
+
+                // Track which read we are in
+                if (type == TEvServicePrivate::EvStartReadData) {
+                    if (!readActor) {
+                        readActor = event->Recipient;
+                    }
+                    UNIT_ASSERT_VALUES_EQUAL(readActor, event->Recipient);
+                    ++startedReads;
+                }
+
+                if (type == TEvService::EvReadDataRequest &&
+                    event->Sender == readActor)
+                {
+                    ++fallbackRequests;
+                }
+
+                if (event->Recipient != readActor) {
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                }
+
+                // We are handling the first read request
+                if (startedReads == 1) {
+                    if (type == TEvIndexTablet::EvDescribeDataResponse) {
+                        using TResponse =
+                            TEvIndexTablet::TEvDescribeDataResponse;
+                        // Ensure we will have 5 responses. The first will be
+                        // failed, other four delivered later at different
+                        // points
+                        pendingBlobResponses =
+                            event->Get<TResponse>()->Record.BlobPiecesSize();
+                        UNIT_ASSERT_VALUES_EQUAL(5, pendingBlobResponses);
+                    }
+
+                    if (type == TEvBlobStorage::EvGetResult) {
+                        UNIT_ASSERT(pendingBlobResponses > 0);
+                        --pendingBlobResponses;
+                        if (!failedBlob) {
+                            // The first blob result which we fail to trigger
+                            // fallback
+                            event->Get<TEvBlobStorage::TEvGetResult>()->Status =
+                                NKikimrProto::ERROR;
+                            failedBlob = true;
+                        } else {
+                            delayedBlobs.emplace_back(event.Release());
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                    }
+                }
+
+                if (startedReads == 2) {
+                    if (type == TEvIndexTablet::EvDescribeDataResponse) {
+                        // Deliver an old reply before processing the
+                        // description.
+                        runtime.Send(delayedBlobs[1].Release(), nodeIdx);
+                    }
+
+                    if (type == TEvBlobStorage::EvGetResult) {
+                        ++secondReadBlobResponses;
+                        if (secondReadBlobResponses == 1) {
+                            // Deliver an old reply before the first new blob.
+                            runtime.Send(delayedBlobs[2].Release(), nodeIdx);
+                        } else if (secondReadBlobResponses == 2) {
+                            // Deliver the old error between two new blob
+                            // replies.
+                            runtime.Send(delayedBlobs[3].Release(), nodeIdx);
+                        }
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // Start the first read. Its first readblob response will fail, and
+        // all other responses will be accumulated
+        auto response =
+            service.ReadData(headers, fs, nodeId, handle, 0, firstData.size());
+        UNIT_ASSERT_VALUES_EQUAL(firstData, response->Record.GetBuffer());
+
+        // Wait for all blob replies. The runtime dispatches on the test thread,
+        // so the observer-updated counter needs no locking.
+        if (pendingBlobResponses) {
+            runtime.DispatchEvents(TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                {
+                    return pendingBlobResponses == 0;
+                }});
+        }
+        UNIT_ASSERT_VALUES_EQUAL(0, pendingBlobResponses);
+        UNIT_ASSERT(failedBlob);
+        UNIT_ASSERT_VALUES_EQUAL(4, delayedBlobs.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, fallbackRequests);
+
+        // Both successful and failed old replies must be ignored.
+        // Delayed error response should not trigger another fallback request
+        delayedBlobs.back()->Get<TEvBlobStorage::TEvGetResult>()->Status =
+            NKikimrProto::ERROR;
+
+        // Write second data. This also syncs release of the read actor.
+        const TString secondData(firstData.size(), 'B');
+        service.WriteData(headers, fs, nodeId, handle, 0, secondData);
+
+        // Deliver one old reply while the read actor is idle.
+        runtime.Send(delayedBlobs[0].Release(), nodeIdx);
+
+        // Deliver the remaining old replies at different points in this read.
+        response =
+            service.ReadData(headers, fs, nodeId, handle, 0, secondData.size());
+
+        UNIT_ASSERT_VALUES_EQUAL(2, startedReads);
+        UNIT_ASSERT_VALUES_EQUAL(secondData, response->Record.GetBuffer());
+        UNIT_ASSERT_VALUES_EQUAL(1, fallbackRequests);
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+    }
 }
+
+#undef PARAMETRIZED_TEST
 
 }   // namespace NCloud::NFileStore::NStorage

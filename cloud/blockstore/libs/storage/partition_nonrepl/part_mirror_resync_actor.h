@@ -36,8 +36,8 @@ class TMirrorPartitionResyncActor final
     : public NActors::TActorBootstrapped<TMirrorPartitionResyncActor>
 {
 private:
-    const TStorageConfigConstPtr Config;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     NCloud::NStorage::NRdma::IClientPtr RdmaClient;
@@ -96,8 +96,8 @@ private:
 
 public:
     TMirrorPartitionResyncActor(
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         TString rwClientId,

@@ -18,12 +18,12 @@ namespace NCloud::NBlockStore::NStorage {
 class TPartitionBudgetManager
 {
 private:
-    TStorageConfigConstPtr Config;
+    TStorageConfigPtr Config;
     TAdaptiveLock Lock;
     TLeakyBucket DirectWriteBandwidthQuota{1.0, 1.0, 1.0};
 
 public:
-    explicit TPartitionBudgetManager(TStorageConfigConstPtr config);
+    explicit TPartitionBudgetManager(TStorageConfigPtr config);
     ~TPartitionBudgetManager();
 
     // Checks if there is enough budget for a direct write request for a

@@ -156,18 +156,18 @@ public:
                 filter,
                 std::move(requestTypes)));
 
+        if (!parseResult.Has("no-skip-files")) {
+            ProfileLogFiles = SelectProfileLogFiles(
+                std::move(ProfileLogFiles), timeRange.Since, timeRange.Until);
+        }
+
         return true;
     }
 
     int Execute() override
     {
         TEventProcessor processor(Filters);
-        const char* path[] = {"", PathToProfileLog.c_str()};
-        return IterateEventLog(
-            NEvClass::Factory(),
-            &processor,
-            2,
-            path);
+        return ProcessProfileLogs(processor);
     }
 };
 

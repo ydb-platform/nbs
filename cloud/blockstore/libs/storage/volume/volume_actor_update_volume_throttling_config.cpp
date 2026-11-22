@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 #include <cloud/blockstore/libs/storage/volume_throttling_manager/model/helpers.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
@@ -132,7 +133,7 @@ void TVolumeActor::HandleUpdateVolatileThrottlingConfig(
 
     auto throttlingRule = GetThrottlingRuleForVolume(
         rules,
-        volumeConfig.GetDiskId(),
+        GetLogicalDiskId(volumeConfig.GetDiskId()),
         volumeConfig.GetCloudId(),
         volumeConfig.GetFolderId(),
         State->GetConfig().GetStorageMediaKind());

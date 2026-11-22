@@ -34,6 +34,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/partition_common/model
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/compression
     cloud/storage/core/libs/kikimr
     cloud/storage/core/libs/tablet
     cloud/storage/core/libs/tablet/model

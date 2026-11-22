@@ -30,7 +30,7 @@ void TIndexTabletActor::HandleFastShardCommand(
     // shard instance appears only after CompleteAdapterLoadState.
     //
 
-    if (!GetFileSystem().GetIsFastShard() || !FastShard) {
+    if (!GetFileSystem().GetIsFastShard()) {
         NCloud::Reply(
             ctx,
             *ev,

@@ -41,6 +41,19 @@ TString Describe(const TVector<TPageMapping>& mappings)
     return sb;
 }
 
+// "<device page>+<count>", in the order returned
+TString Describe(const TVector<TPageRangeRef>& ranges)
+{
+    TStringBuilder sb;
+    for (const auto& [firstPageNo, pageCount]: ranges) {
+        if (sb) {
+            sb << ", ";
+        }
+        sb << firstPageNo << "+" << pageCount;
+    }
+    return sb;
+}
+
 // everything the log holds, for asserting on the whole index at once
 TString DescribeAll(const TLogPageIndex& map)
 {
@@ -294,6 +307,72 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
             Describe(map.Lookup({Range(0, 10)}, 20).Mappings));
     }
 
+    Y_UNIT_TEST(ShouldReturnMissingRanges)
+    {
+        TLogPageIndex map;
+        map.InitLastIndexedLsn(10);
+
+        // nothing is indexed yet, so every range is missing
+        UNIT_ASSERT_VALUES_EQUAL(
+            "5+2, 20+1",
+            Describe(map.Lookup({Range(5, 2), Range(20, 1)}, 0).MissingRanges));
+
+        // device [10, 14) and [16, 17)
+        auto first =
+            MakePageRecord(10, 20, {{10, Range(100, 4)}, {16, Range(200, 1)}});
+        UNIT_ASSERT(map.TryApplyNext(*first));
+
+        // fully mapped ranges
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            Describe(
+                map.Lookup({Range(10, 4), Range(16, 1)}, 0)
+                    .MissingRanges));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "",
+            Describe(map.Lookup({Range(11, 2)}, 0).MissingRanges));
+
+        // gaps before, between and after the mapped pages
+        UNIT_ASSERT_VALUES_EQUAL(
+            "8+2, 14+2, 17+3",
+            Describe(map.Lookup({Range(8, 12)}, 0).MissingRanges));
+
+        // every range gets its own gaps, in the order of the request
+        UNIT_ASSERT_VALUES_EQUAL(
+            "17+1, 30+2, 9+1, 14+1",
+            Describe(
+                map.Lookup({Range(16, 2), Range(30, 2), Range(9, 6)}, 0)
+                    .MissingRanges));
+
+        // two ranges share one mapping
+        UNIT_ASSERT_VALUES_EQUAL(
+            "9+1, 14+1",
+            Describe(map.Lookup({Range(9, 3), Range(12, 3)}, 0).MissingRanges));
+
+        // device [11, 13) splits the first mapping into adjacent ones
+        auto second = MakePageRecord(20, 30, {{11, Range(300, 2)}});
+        UNIT_ASSERT(map.TryApplyNext(*second));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10->100x1, 11->300x2, 13->103x1",
+            Describe(map.Lookup({Range(9, 6)}, 0).Mappings));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "9+1, 14+1",
+            Describe(map.Lookup({Range(9, 6)}, 0).MissingRanges));
+
+        // the pages written at or below afterLsn are missing
+        UNIT_ASSERT_VALUES_EQUAL(
+            "9+2, 13+2",
+            Describe(map.Lookup({Range(9, 6)}, 20).MissingRanges));
+
+        // nothing is returned at or beyond the last indexed lsn
+        UNIT_ASSERT_VALUES_EQUAL(
+            "9+6, 16+1",
+            Describe(
+                map.Lookup({Range(9, 6), Range(16, 1)}, 30)
+                    .MissingRanges));
+    }
+
     Y_UNIT_TEST(ShouldReturnNothingWhenAfterLsnIsAtOrBeyondLastIndexedLsn)
     {
         TLogPageIndex map;
@@ -411,6 +490,31 @@ ModelGet(const TModel& model, ui64 from, ui64 to, ui64 afterLsn)
     return out;
 }
 
+// the pages of [from, to) the model has nothing for after |afterLsn|
+TVector<ui64>
+ModelGetMissing(const TModel& model, ui64 from, ui64 to, ui64 afterLsn)
+{
+    TVector<ui64> out;
+    for (ui64 p = from; p < to; ++p) {
+        auto it = model.find(p);
+        if (it == model.end() || it->second.first <= afterLsn) {
+            out.push_back(p);
+        }
+    }
+    return out;
+}
+
+TVector<ui64> ExpandMissing(const TVector<TPageRangeRef>& ranges)
+{
+    TVector<ui64> out;
+    for (const auto& [firstPageNo, pageCount]: ranges) {
+        for (ui64 i = 0; i < pageCount; ++i) {
+            out.push_back(firstPageNo + i);
+        }
+    }
+    return out;
+}
+
 // expand the range-based answer back to one entry per page
 TVector<std::pair<ui64, ui64>> Expand(const TVector<TPageMapping>& mappings)
 {
@@ -503,14 +607,27 @@ Y_UNIT_TEST_SUITE(TLogPageIndexModelTest)
                     const ui64 from = rng.Next(PageSpace + 8);
                     const ui64 afterLsn = rng.Next(lsn + 20);
 
-                    const auto got = Expand(map.Lookup(
-                                                   {TPageRangeRef{
-                                                       .FirstPageNo = from,
-                                                       .PageCount = len}},
-                                                   afterLsn)
-                                                .Mappings);
+                    const auto lookup = map.Lookup(
+                        {TPageRangeRef{.FirstPageNo = from, .PageCount = len}},
+                        afterLsn);
+                    const auto got = Expand(lookup.Mappings);
                     const auto want =
                         ModelGet(model, from, from + len, afterLsn);
+
+                    const auto gotMissing = ExpandMissing(lookup.MissingRanges);
+                    const auto wantMissing =
+                        ModelGetMissing(model, from, from + len, afterLsn);
+
+                    if (gotMissing != wantMissing) {
+                        ++mismatches;
+                        Cerr << "\nMISSING MISMATCH seed=" << seed
+                             << " step=" << step << " query=[" << from << ","
+                             << (from + len) << ") afterLsn=" << afterLsn
+                             << " lastIndexedLsn=" << map.GetLastIndexedLsn()
+                             << "\n"
+                             << "  got : " << Describe(lookup.MissingRanges)
+                             << "\n";
+                    }
 
                     if (Show(got) != Show(want)) {
                         ++mismatches;

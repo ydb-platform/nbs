@@ -62,6 +62,13 @@ void TTestFastShard::DumpLayoutJson(IOutputStream& out) const
     Y_UNUSED(out);
 }
 
+NProto::TError TTestFastShard::ValidateConfigUpdate(
+    const NProtoPrivate::TFastShardConfig&,
+    const NProtoPrivate::TFastShardConfig&) const
+{
+    return ValidateConfigUpdateResult;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 NFastShard::IFileSystemShardPtr TTestFastShards::CreateShard(

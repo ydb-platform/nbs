@@ -709,6 +709,11 @@ private:
         ui64 nodeId,
         const TByteRange& range) const;
     NProto::TError ForceLoadRangeIfNeeded(ui64 nodeId, const TByteRange& range);
+    // Update shard creation state only when the requested version matches;
+    // an unset or stale version leaves the stored state unchanged.
+    NProto::TError TryUpdateShardCreationState(
+        IIndexTabletDatabase& db,
+        const NProtoPrivate::TFileSystemShardCreationState& requested);
     bool IsInUnconfirmedCreateHandleGracePeriod(
         const NActors::TActorContext& ctx) const;
     bool NeedsNodeDestructionDeferral(
@@ -1045,6 +1050,7 @@ private:
     void RegisterFileStore(const NActors::TActorContext& ctx);
     void UnregisterFileStore(const NActors::TActorContext& ctx);
 
+    void RegisterRdmaPipe(const NActors::TActorId& pipeServerId);
     void UnregisterRdmaPipe(const NActors::TActorId& pipeServerId);
     void UnregisterRdmaTablet();
 

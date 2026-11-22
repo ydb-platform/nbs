@@ -104,6 +104,13 @@ class TPartitionActor final
         {}
     };
 
+    struct TFlushThresholds
+    {
+        ui32 FreshBlockByteCount = 0;
+        ui32 FreshBlobCount = 0;
+        ui32 FreshBlobByteCount = 0;
+    };
+
     enum class ETrimFreshLogKind
     {
         // Nothing to trim yet.
@@ -122,11 +129,12 @@ class TPartitionActor final
 
 private:
     const ui64 StartTime = GetCycleCount();
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
     const bool FreshBlocksWriterEnabled;
+    const TFlushThresholds FlushThresholds;
     const TVolumeLabelsConstPtr VolumeLabels;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const EStorageAccessMode StorageAccessMode;
@@ -193,8 +201,8 @@ public:
     TPartitionActor(
         const NActors::TActorId& owner,
         NKikimr::TTabletStorageInfoPtr storage,
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NProto::TPartitionConfig partitionConfig,
@@ -246,6 +254,9 @@ private:
     void ConfirmBlobs(const NActors::TActorContext& ctx);
     void BlobsConfirmed(const NActors::TActorContext& ctx);
 
+    [[nodiscard]] static TFlushThresholds BuildFlushThresholds(
+        const TStorageConfig& config,
+        const NProto::TPartitionConfig& partitionConfig);
     bool ShouldFlush(const NActors::TActorContext& ctx);
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void StartFlush(const NActors::TActorContext& ctx);

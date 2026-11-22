@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
+#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -15,6 +16,7 @@
 
 #include <util/string/builder.h>
 
+#include <functional>
 #include <limits>
 #include <utility>
 
@@ -112,9 +114,34 @@ NProtoPrivate::TFileSystemShardCreationState MakeState(
     return MakeState(version, createdShards, 0, MakeShardConfigs());
 }
 
+NProtoPrivate::TUnsafeChangeTabletStateResponse MakeResponse(
+    const NProtoPrivate::TFileSystemShardCreationState& state)
+{
+    NProtoPrivate::TUnsafeChangeTabletStateResponse response;
+    *response.MutableShardCreationState() = state;
+    return response;
+}
+
+std::unique_ptr<NCloud::TCompressedBitmap> LoadCreatedShardBitmap(
+    const NProtoPrivate::TFileSystemShardCreationState& state)
+{
+    auto result = LoadCompressedBitmap(
+        state.GetCreatedShardBitmap(),
+        state.GetCreatedShardBitmap().GetBitCount(),
+        MaxShardCount);
+    UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+    return result.ExtractResult();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 enum ETestEvents
 {
-    EvScheduleShardCreation = EventSpaceBegin(NKikimr::TEvents::ES_USERSPACE + 42),
+    EvOnShardCreated = EventSpaceBegin(NKikimr::TEvents::ES_USERSPACE + 42),
+    EvMergeShardCreationState,
+    EvMerged,
+    EvCheckInitialResponse,
+    EvScheduleShardCreation,
     EvShardCreationScheduled,
 };
 
@@ -150,6 +177,195 @@ struct TEvShardCreationScheduled final
         "TEvShardCreationScheduled");
 };
 
+struct TEvMerged final: public TEventBase<TEvMerged, EvMerged>
+{
+    DEFINE_SIMPLE_LOCAL_EVENT(TEvMerged, "TEvMerged");
+};
+
+struct TEvCheckInitialResponse final
+    : public TEventBase<TEvCheckInitialResponse, EvCheckInitialResponse>
+{
+    NProtoPrivate::TUnsafeChangeTabletStateResponse Response;
+    TShardCreationStateCompanion::EChangeTabletStateResponseAction Expected;
+
+    TEvCheckInitialResponse(
+        NProtoPrivate::TUnsafeChangeTabletStateResponse response,
+        TShardCreationStateCompanion::EChangeTabletStateResponseAction expected)
+        : Response(std::move(response))
+        , Expected(expected)
+    {}
+
+    DEFINE_SIMPLE_LOCAL_EVENT(
+        TEvCheckInitialResponse,
+        "TEvCheckInitialResponse");
+};
+
+struct TEvOnShardCreated final
+    : public TEventBase<TEvOnShardCreated, EvOnShardCreated>
+{
+    ui32 ShardIndex = 0;
+
+    explicit TEvOnShardCreated(ui32 shardIndex)
+        : ShardIndex(shardIndex)
+    {}
+
+    DEFINE_SIMPLE_LOCAL_EVENT(TEvOnShardCreated, "TEvOnShardCreated");
+};
+
+struct TEvMergeShardCreationState final
+    : public TEventBase<TEvMergeShardCreationState, EvMergeShardCreationState>
+{
+    using TMergeResult = TResultOrError<
+        TShardCreationStateCompanion::EChangeTabletStateResponseAction>;
+    using TVerify = std::function<
+        void(const TMergeResult&, const TShardCreationStateCompanion&)>;
+
+    NProtoPrivate::TFileSystemShardCreationState State;
+    TVerify Verify;
+
+    explicit TEvMergeShardCreationState(
+        NProtoPrivate::TFileSystemShardCreationState state,
+        TVerify verify = {})
+        : State(std::move(state))
+        , Verify(std::move(verify))
+    {}
+
+    DEFINE_SIMPLE_LOCAL_EVENT(
+        TEvMergeShardCreationState,
+        "TEvMergeShardCreationState");
+};
+
+class TActorWithCompanion final
+    : public TActor<TActorWithCompanion>
+    , public IShardCreationOwner
+{
+private:
+    TShardCreationStateCompanion Companion{
+        TString{FileSystemId},
+        TShardCreationStateCompanion::EMode::Create,
+        this};
+
+public:
+    explicit TActorWithCompanion(
+        NProtoPrivate::TFileSystemShardCreationState state)
+        : TActor(&TThis::StateWork)
+    {
+        const auto shardConfigs = MakeShardConfigs();
+        Companion.SetShardCreationState(std::move(state));
+        const auto error = Companion.SetupCreatedShardBitmap(0, shardConfigs);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        const auto initError = Companion.InitializeShardCreation(
+            0,
+            ShardCount,
+            0);
+        UNIT_ASSERT_C(!HasError(initError), FormatError(initError));
+    }
+
+private:
+    void CreateShard(const TActorContext&, ui32) override
+    {}
+
+    STFUNC(StateWork)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(TEvOnShardCreated, HandleOnShardCreated);
+            HFunc(TEvMergeShardCreationState, HandleMergeShardCreationState);
+
+            default:
+                Y_ABORT("Unexpected event");
+        }
+    }
+
+    void HandleOnShardCreated(
+        const TEvOnShardCreated::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        const auto error = Companion.OnShardCreated(
+            ctx,
+            ev->Get()->ShardIndex);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+    }
+
+    void HandleMergeShardCreationState(
+        const TEvMergeShardCreationState::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        const auto& state = ev->Get()->State;
+        const auto mergeResult = Companion.HandleShardCreationStateResponse(
+            MakeResponse(state),
+            ctx);
+        if (ev->Get()->Verify) {
+            ev->Get()->Verify(mergeResult, Companion);
+        } else {
+            UNIT_ASSERT_C(
+                !HasError(mergeResult),
+                FormatError(mergeResult.GetError()));
+        }
+
+        if (!HasError(mergeResult) &&
+            mergeResult.GetResult() ==
+                TShardCreationStateCompanion::
+                    EChangeTabletStateResponseAction::PersistLocalProgress)
+        {
+            Companion.UpdateShardCreationState(ctx);
+        }
+        ctx.Send(ev->Sender, new TEvMerged());
+    }
+};
+
+class TInitialResponseActor final
+    : public TActor<TInitialResponseActor>
+    , public IShardCreationOwner
+{
+private:
+    TShardCreationStateCompanion Companion{
+        TString{FileSystemId},
+        EMode::Create,
+        this};
+
+public:
+    TInitialResponseActor()
+        : TActor(&TThis::StateWork)
+    {}
+
+private:
+    void CreateShard(const TActorContext&, ui32) override
+    {}
+
+    STFUNC(StateWork)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(TEvCheckInitialResponse, HandleResponse);
+
+            default:
+                Y_ABORT("Unexpected event");
+        }
+    }
+
+    void HandleResponse(
+        const TEvCheckInitialResponse::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        const auto result = Companion.HandleShardCreationStateResponse(
+            ev->Get()->Response,
+            ctx);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+        UNIT_ASSERT(result.GetResult() == ev->Get()->Expected);
+        UNIT_ASSERT(Companion.IsPersistentStateLoaded());
+        UNIT_ASSERT_VALUES_EQUAL(
+            ev->Get()->Expected ==
+                TShardCreationStateCompanion::
+                    EChangeTabletStateResponseAction::InitialStateLoaded,
+            Companion.IsPersistentStateSupported());
+        if (Companion.IsPersistentStateSupported()) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                ev->Get()->Response.GetShardCreationState().GetVersion(),
+                Companion.GetShardCreationStateVersion());
+        }
+        ctx.Send(ev->Sender, new TEvMerged());
+    }
+};
+
 class TShardSchedulingActor final
     : public TActor<TShardSchedulingActor>
     , public IShardCreationOwner
@@ -164,9 +380,17 @@ private:
 public:
     TShardSchedulingActor(
         ui32 topologyShardCount,
-        ui32 maxShardManagementRequestsInFlight)
+        ui32 maxShardManagementRequestsInFlight,
+        bool loadCreatedShardBitmap = false)
         : TActor(&TThis::StateWork)
     {
+        if (loadCreatedShardBitmap) {
+            Companion.SetShardCreationState(MakeState(42, {1, 4}));
+            const auto error = Companion.SetupCreatedShardBitmap(
+                topologyShardCount,
+                ShardConfigs);
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        }
         const auto error = Companion.InitializeShardCreation(
             topologyShardCount,
             ShardCount,
@@ -231,6 +455,25 @@ struct TActorSystem: TTestActorRuntimeBase
     }
 };
 
+void CheckMerge(
+    NProtoPrivate::TFileSystemShardCreationState initial,
+    NProtoPrivate::TFileSystemShardCreationState incoming,
+    TEvMergeShardCreationState::TVerify verify)
+{
+    TActorSystem runtime;
+    runtime.Start();
+    const auto sender = runtime.AllocateEdgeActor();
+    const auto actorId =
+        runtime.Register(new TActorWithCompanion(std::move(initial)));
+    runtime.Send(new IEventHandle(
+        actorId,
+        sender,
+        new TEvMergeShardCreationState(
+            std::move(incoming),
+            std::move(verify))));
+    runtime.GrabEdgeEvent<TEvMerged>(sender);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -254,6 +497,33 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
         UNIT_ASSERT(error.GetMessage().Contains(
             "Cannot decrease number of shards: current=7, requested=6"));
         UNIT_ASSERT(!companion.HasShardsToCreate());
+    }
+
+    Y_UNIT_TEST(ShouldClassifyInitialShardCreationStateResponses)
+    {
+        TActorSystem runtime;
+        runtime.Start();
+        const auto sender = runtime.AllocateEdgeActor();
+
+        auto actorId = runtime.Register(new TInitialResponseActor());
+        runtime.Send(new IEventHandle(
+            actorId,
+            sender,
+            new TEvCheckInitialResponse(
+                MakeResponse(MakeState(42, {1})),
+                TShardCreationStateCompanion::
+                    EChangeTabletStateResponseAction::InitialStateLoaded)));
+        runtime.GrabEdgeEvent<TEvMerged>(sender);
+
+        actorId = runtime.Register(new TInitialResponseActor());
+        runtime.Send(new IEventHandle(
+            actorId,
+            sender,
+            new TEvCheckInitialResponse(
+                {},
+                TShardCreationStateCompanion::
+                    EChangeTabletStateResponseAction::StartWithoutPersistentState)));
+        runtime.GrabEdgeEvent<TEvMerged>(sender);
     }
 
     Y_UNIT_TEST(ShouldTrackPersistentShardCreationStateSupport)
@@ -344,6 +614,47 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
         UNIT_ASSERT(!response->Get()->HasShardsToCreate);
     }
 
+    Y_UNIT_TEST(ShouldSkipCreatedShardsWithoutUsingRequestLimit)
+    {
+        TActorSystem runtime;
+        runtime.Start();
+        const auto sender = runtime.AllocateEdgeActor();
+        const auto ssProxy = runtime.AllocateEdgeActor();
+        runtime.RegisterService(MakeSSProxyServiceId(), ssProxy);
+        const ui32 currentShardCount = 0;
+        const ui32 maxShardManagementRequestsInFlight = 2;
+        const bool loadCreatedShardBitmap = true;
+        const auto actorId = runtime.Register(
+            new TShardSchedulingActor(
+                currentShardCount,
+                maxShardManagementRequestsInFlight,
+                loadCreatedShardBitmap));
+
+        auto schedule = [&](bool complete, ui32 shardIndex) {
+            runtime.Send(new IEventHandle(
+                actorId,
+                sender,
+                new TEvScheduleShardCreation(complete, shardIndex)));
+            return runtime.GrabEdgeEvent<TEvShardCreationScheduled>(sender)
+                ->Get()->HasShardsToCreate;
+        };
+        auto assertNextShard = [&](ui32 shardIndex) {
+            const auto request = runtime.GrabEdgeEvent<
+                TEvSSProxy::TEvCreateFileStoreRequest>(ssProxy);
+            UNIT_ASSERT_VALUES_EQUAL(shardIndex, request->Cookie);
+        };
+
+        UNIT_ASSERT(schedule(false, 0));
+        assertNextShard(0);
+        assertNextShard(2);
+        UNIT_ASSERT(schedule(true, 0));
+        assertNextShard(3);
+        UNIT_ASSERT(schedule(true, 2));
+        assertNextShard(5);
+        UNIT_ASSERT(schedule(true, 3));
+        UNIT_ASSERT(!schedule(true, 5));
+    }
+
     Y_UNIT_TEST(ShouldIgnoreVolatileShardConfigFieldsInNewShardConfigsHash)
     {
         const auto shardConfigs = MakeShardConfigs();
@@ -424,6 +735,163 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
         UNIT_ASSERT_C(
             error.GetMessage().Contains("exceeds limit"),
             error.GetMessage());
+    }
+
+    Y_UNIT_TEST(ShouldMergeShardCreationStateAndUpdateVersion)
+    {
+        CheckMerge(
+            MakeState(10, {1}),
+            MakeState(11, {1, 3}),
+            [](const auto& result, const auto& companion) {
+                UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+                UNIT_ASSERT(
+                    result.GetResult() ==
+                    TShardCreationStateCompanion::EChangeTabletStateResponseAction::Continue);
+                UNIT_ASSERT(companion.IsShardCreated(1));
+                UNIT_ASSERT(companion.IsShardCreated(3));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    11,
+                    companion.GetShardCreationStateVersion());
+            });
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreStaleShardCreationState)
+    {
+        CheckMerge(
+            MakeState(11, {1}),
+            MakeState(10, {2}),
+            [](const auto& result, const auto& companion) {
+                UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+                UNIT_ASSERT(
+                    result.GetResult() ==
+                    TShardCreationStateCompanion::
+                        EChangeTabletStateResponseAction::IgnoreStaleResponse);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    11,
+                    companion.GetShardCreationStateVersion());
+                UNIT_ASSERT(companion.IsShardCreated(1));
+                UNIT_ASSERT(!companion.IsShardCreated(2));
+            });
+    }
+
+    Y_UNIT_TEST(ShouldSendUpdatedShardCreationState)
+    {
+        TActorSystem runtime;
+        runtime.Start();
+
+        const auto sender = runtime.AllocateEdgeActor();
+        const auto tabletProxy = runtime.AllocateEdgeActor();
+        runtime.RegisterService(MakeIndexTabletProxyServiceId(), tabletProxy);
+
+        const auto actorId =
+            runtime.Register(new TActorWithCompanion(MakeState(42, {1})));
+
+        runtime.Send(new IEventHandle(
+            actorId,
+            sender,
+            new TEvOnShardCreated(3)));
+
+        auto request = runtime.GrabEdgeEvent<
+            TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>(
+            tabletProxy);
+
+        const auto& record = request->Get()->Record;
+        UNIT_ASSERT_VALUES_EQUAL(FileSystemId, record.GetFileSystemId());
+        UNIT_ASSERT(record.HasShardCreationState());
+
+        const auto& state = record.GetShardCreationState();
+        UNIT_ASSERT_VALUES_EQUAL(42, state.GetVersion());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetTopologyShardCount());
+        UNIT_ASSERT_VALUES_EQUAL(ShardCount, state.GetTargetShardCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            CalculateNewShardConfigsHashForTest(0, MakeShardConfigs()),
+            state.GetTargetShardConfigHash());
+        UNIT_ASSERT_VALUES_EQUAL(
+            ShardCount,
+            state.GetCreatedShardBitmap().GetBitCount());
+
+        const auto bitmap = LoadCreatedShardBitmap(state);
+        UNIT_ASSERT_VALUES_EQUAL(2, bitmap->Count());
+        UNIT_ASSERT(!bitmap->Test(0));
+        UNIT_ASSERT(bitmap->Test(1));
+        UNIT_ASSERT(!bitmap->Test(2));
+        UNIT_ASSERT(bitmap->Test(3));
+    }
+
+    Y_UNIT_TEST(ShouldResendMergedBitmapAfterCasConflict)
+    {
+        TActorSystem runtime;
+        runtime.Start();
+
+        const auto sender = runtime.AllocateEdgeActor();
+        const auto tabletProxy = runtime.AllocateEdgeActor();
+        runtime.RegisterService(MakeIndexTabletProxyServiceId(), tabletProxy);
+
+        const auto actorId =
+            runtime.Register(new TActorWithCompanion(MakeState(42, {})));
+
+        runtime.Send(new IEventHandle(
+            actorId,
+            sender,
+            new TEvOnShardCreated(3)));
+
+        auto request = runtime.GrabEdgeEvent<
+            TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>(
+            tabletProxy);
+
+        {
+            const auto& state = request->Get()->Record.GetShardCreationState();
+            UNIT_ASSERT_VALUES_EQUAL(42, state.GetVersion());
+
+            const auto bitmap = LoadCreatedShardBitmap(state);
+            UNIT_ASSERT_VALUES_EQUAL(1, bitmap->Count());
+            UNIT_ASSERT(!bitmap->Test(1));
+            UNIT_ASSERT(bitmap->Test(3));
+        }
+
+        runtime.Send(new IEventHandle(
+            actorId,
+            sender,
+            new TEvMergeShardCreationState(MakeState(43, {1}))));
+
+        request = runtime.GrabEdgeEvent<
+            TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>(
+            tabletProxy);
+
+        const auto& state = request->Get()->Record.GetShardCreationState();
+        UNIT_ASSERT_VALUES_EQUAL(43, state.GetVersion());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetTopologyShardCount());
+        UNIT_ASSERT_VALUES_EQUAL(ShardCount, state.GetTargetShardCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            CalculateNewShardConfigsHashForTest(0, MakeShardConfigs()),
+            state.GetTargetShardConfigHash());
+
+        const auto bitmap = LoadCreatedShardBitmap(state);
+        UNIT_ASSERT_VALUES_EQUAL(2, bitmap->Count());
+        UNIT_ASSERT(bitmap->Test(1));
+        UNIT_ASSERT(!bitmap->Test(2));
+        UNIT_ASSERT(bitmap->Test(3));
+    }
+
+    Y_UNIT_TEST(ShouldRejectMergingDifferentTarget)
+    {
+        const auto shardConfigs = MakeShardConfigs();
+        auto conflictingShardConfigs = shardConfigs;
+        conflictingShardConfigs[3].SetBlocksCount(
+            conflictingShardConfigs[3].GetBlocksCount() + 1);
+
+        CheckMerge(
+            MakeState(42, {}, 0, shardConfigs),
+            MakeState(43, {1}, 0, conflictingShardConfigs),
+            [](const auto& result, const auto&) {
+                UNIT_ASSERT(HasError(result));
+                const auto& error = result.GetError();
+                UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
+                UNIT_ASSERT(error.GetMessage().Contains(
+                    "Shard creation/resize plan does not match the current request"));
+                UNIT_ASSERT(error.GetMessage().Contains("request topology=0"));
+                UNIT_ASSERT(error.GetMessage().Contains("stored topology=0"));
+            });
     }
 
     Y_UNIT_TEST(ShouldRejectConflictingUncommittedShardCreationState)

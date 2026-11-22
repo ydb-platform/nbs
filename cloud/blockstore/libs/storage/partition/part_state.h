@@ -721,6 +721,9 @@ public:
             .Stat.GarbageIgnoringZeroed();
     }
 
+    // Percentage used by the per-disk trigger, zero below the stored-byte gate.
+    ui32 GetMixedBlocksCompactionPercentage(const TStorageConfig& config) const;
+
     float GetCompactionScore() const
     {
         return CompactionMap.GetTop().Stat.CompactionScore.Score;

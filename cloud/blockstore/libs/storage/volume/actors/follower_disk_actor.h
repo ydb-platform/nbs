@@ -89,8 +89,8 @@ private:
 public:
     TFollowerDiskActor(
         const TLogTitle& parentLogTitle,
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         TFollowerDiskActorParams params);
@@ -145,10 +145,6 @@ private:
 
     bool HandleRWClientIdChanged(
         const TEvVolume::TEvRWClientIdChanged::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleGetChangedBlocks(
-        const TEvService::TEvGetChangedBlocksRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleUpdateFollowerStateResponse(

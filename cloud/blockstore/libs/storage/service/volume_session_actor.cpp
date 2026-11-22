@@ -378,8 +378,8 @@ void TVolumeSessionActor::HandleVolumePipeReset(
 
 IActorPtr CreateVolumeSessionActor(
     TVolumeInfoPtr volumeInfo,
-    TStorageConfigConstPtr config,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
     ITraceSerializerPtr traceSerializer,

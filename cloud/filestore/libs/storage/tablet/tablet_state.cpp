@@ -152,10 +152,11 @@ void TIndexTabletState::InitShardBalancer(const TStorageConfig& config)
                "filesystem without strict file system size enforcement.");
     }
 
+    // TODO(#8034): switch to shard topology
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
     TVector<TString> balancerShardIds;
 
-    const auto& fileShardIds = GetFileSystem().GetFileShardFileSystemIds();
+    const auto fileShardIds = GetFileShardIds(GetFileSystem());
     if (fileShardIds.size()) {
         Impl->FileShardBalancer = CreateShardBalancer(
             config.GetShardBalancerPolicy(),
@@ -235,6 +236,10 @@ void TIndexTabletState::LoadState(
     SizeToNodesRatio = config.GetSizeToNodesRatio();
 
     FileSystem.CopyFrom(fileSystem);
+    // TODO(#8034): remove after all tablets store the shard topology
+    RestoreShardTopology(
+        FileSystem.GetShardFileSystemIds(),
+        *FileSystem.MutableShardTopology());
     FileSystemStats.CopyFrom(fileSystemStats);
     TabletStorageInfo.CopyFrom(tabletStorageInfo);
     // Changing thresholds in the config may result in a massive amount of
@@ -353,6 +358,22 @@ void TIndexTabletState::SetCompressNodeRef(
     bool compressNodeRef)
 {
     FileSystem.SetCompressNodeRef(compressNodeRef);
+    db.WriteFileSystem(FileSystem);
+}
+
+void TIndexTabletState::SetGuestPosixAclEnabled(
+    IIndexTabletDatabase& db,
+    bool guestPosixAclEnabled)
+{
+    FileSystem.SetGuestPosixAclEnabled(guestPosixAclEnabled);
+    db.WriteFileSystem(FileSystem);
+}
+
+void TIndexTabletState::SetShardCreationState(
+    IIndexTabletDatabase& db,
+    const NProtoPrivate::TFileSystemShardCreationState& state)
+{
+    *FileSystem.MutableShardCreationState() = state;
     db.WriteFileSystem(FileSystem);
 }
 

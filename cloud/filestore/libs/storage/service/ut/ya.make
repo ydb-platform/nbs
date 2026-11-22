@@ -22,6 +22,7 @@ SRCS(
     service_ut_writedata_unconfirmed.cpp
     service_actor_actions_ut.cpp
     zero_block_stats_ut.cpp
+    worker_actor_pool_ut.cpp
 )
 
 PEERDIR(

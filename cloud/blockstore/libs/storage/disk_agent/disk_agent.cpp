@@ -9,9 +9,9 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 IActorPtr CreateDiskAgent(
-    TStorageConfigConstPtr config,
-    TDiskAgentConfigConstPtr agentConfig,
-    NRdma::TRdmaConfigConstPtr rdmaConfig,
+    TStorageConfigPtr config,
+    TDiskAgentConfigPtr agentConfig,
+    NRdma::TRdmaConfigPtr rdmaConfig,
     NSpdk::ISpdkEnvPtr spdk,
     ICachingAllocatorPtr allocator,
     IStorageProviderPtr storageProvider,

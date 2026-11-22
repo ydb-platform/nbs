@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/fastshard/libs/journal/iface/device.h>
 #include <cloud/fastshard/public/api/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -17,6 +18,12 @@ namespace NCloud::NJournalled {
 ////////////////////////////////////////////////////////////////////////////////
 
 using TJournalRecords = TVector<NProto::TJournalRecord>;
+
+struct TJournalReadResult
+{
+    TVector<TPageRangeRef> MissingRanges;
+    NThreading::TFuture<NProto::TReadPagesResponse> Future;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -39,8 +46,8 @@ struct IJournal
     [[nodiscard]] virtual auto Write(NProto::TWriteLogRecordRequest request)
         -> NThreading::TFuture<NProto::TWriteLogRecordResponse> = 0;
 
-    [[nodiscard]] virtual auto Read(NProto::TReadPagesRequest request) const
-        -> NThreading::TFuture<NProto::TReadPagesResponse> = 0;
+    [[nodiscard]] virtual TResultOrError<TJournalReadResult> Read(
+        NProto::TReadPagesRequest request) const = 0;
 
     [[nodiscard]] virtual NProto::TReadJournalTailResponse ReadTail(
         NProto::TReadJournalTailRequest request) const = 0;
@@ -69,6 +76,7 @@ IJournalPtr CreateJournal(
     TExecutorPtr executor,
     IKeyBufferStorePtr metaStore,
     IDevicePageStorePtr dataStore,
+    TString deviceUUID,
     ui64 devicePageCount);
 
 }   // namespace NCloud::NJournalled

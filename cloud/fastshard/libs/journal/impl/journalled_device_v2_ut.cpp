@@ -12,6 +12,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/deque.h>
+#include <util/generic/set.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
 #include <util/string/join.h>
@@ -88,6 +89,21 @@ NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(TStringBuf deviceUUID)
     NProto::TAdvanceLsnLowWatermarkRequest request;
     request.SetDeviceUUID(TString{deviceUUID});
     request.SetLsnLowWatermark(1);
+
+    return request;
+}
+
+NProto::TWritePagesRequest MakeWritePagesRequest(
+    TStringBuf deviceUUID,
+    const TVector<std::pair<ui64 /*firstPageNo*/, ui64 /*pageCount*/>>& ranges =
+        {{10, 2}, {20, 1}})
+{
+    NProto::TWritePagesRequest request;
+    request.SetDeviceUUID(TString{deviceUUID});
+
+    for (const auto& [firstPageNo, pageCount]: ranges) {
+        *request.AddPageGroups() = MakeGroup(firstPageNo, pageCount, "P");
+    }
 
     return request;
 }
@@ -205,6 +221,9 @@ struct TTestJournal final: public IJournal
         return NProto::TReadPagesResponse();
     };
 
+    // The future that Read returns is set only when this one is set
+    TFuture<void> ReadBarrier = MakeFuture();
+
     TManualEvent AllRecordsFlushed;
     mutable TManualEvent FlushCycleCompleted;
 
@@ -234,14 +253,58 @@ struct TTestJournal final: public IJournal
         return MakeFuture<NProto::TWriteLogRecordResponse>();
     }
 
-    TFuture<NProto::TReadPagesResponse> Read(
+    // Answers with the response of ReadHandler and takes the pages of the
+    // request that the response does not hold as the missing ones. An error
+    // response of ReadHandler becomes the error of the read itself.
+    TResultOrError<TJournalReadResult> Read(
         NProto::TReadPagesRequest request) const override
     {
         with_lock (Mutex) {
             ReadRequests.push_back(request);
         }
 
-        return MakeFuture(ReadHandler(request));
+        auto response = ReadHandler(request);
+        if (HasError(response)) {
+            return response.GetError();
+        }
+
+        TSet<ui64> journalled;
+        for (const auto& group: response.GetPageGroups()) {
+            for (ui64 i = 0; i < group.ContentSize(); ++i) {
+                journalled.insert(group.GetFirstPageNo() + i);
+            }
+        }
+
+        TJournalReadResult result;
+
+        auto& missing = result.MissingRanges;
+        for (const auto& ref: request.GetPageGroupRefs()) {
+            bool extend = false;
+
+            for (ui64 i = 0; i < ref.GetPageCount(); ++i) {
+                const ui64 pageNo = ref.GetFirstPageNo() + i;
+                if (journalled.contains(pageNo)) {
+                    extend = false;
+                    continue;
+                }
+
+                if (extend) {
+                    ++missing.back().PageCount;
+                } else {
+                    missing.push_back({.FirstPageNo = pageNo, .PageCount = 1});
+                    extend = true;
+                }
+            }
+        }
+
+        result.Future = ReadBarrier.Apply(
+            [response = std::move(response)](const auto& future)
+            {
+                Y_UNUSED(future);
+                return response;
+            });
+
+        return result;
     }
 
     NProto::TReadJournalTailResponse ReadTail(
@@ -376,6 +439,10 @@ struct TTestDevice final: public IDevice
         return NProto::TError();
     };
 
+    // The first write stays in flight until this promise is set.
+    TPromise<NProto::TError> FirstWriteResult;
+    TManualEvent FirstWriteStarted;
+
     mutable TMutex Mutex;
     TVector<TVector<TPageRangeRef>> ReadRequests;
     TVector<TVector<TPageRange>> WriteRequests;
@@ -395,8 +462,15 @@ struct TTestDevice final: public IDevice
 
     TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
     {
+        bool isFirst = false;
         with_lock (Mutex) {
+            isFirst = WriteRequests.empty();
             WriteRequests.push_back(ranges);
+        }
+
+        if (isFirst && FirstWriteResult.Initialized()) {
+            FirstWriteStarted.Signal();
+            return FirstWriteResult.GetFuture();
         }
 
         return MakeFuture(WriteHandler(ranges));
@@ -487,6 +561,25 @@ struct TFixture: public NUnitTest::TBaseFixture
     NProto::TReadPagesResponse ReadPages(NProto::TReadPagesRequest request)
     {
         return Device->ReadPages(std::move(request)).GetValueSync();
+    }
+
+    NProto::TError WritePages(const TVector<std::pair<ui64, ui64>>& ranges)
+    {
+        return Device
+            ->WritePages(MakeWritePagesRequest(DefaultDeviceUUID, ranges))
+            .GetValueSync()
+            .GetError();
+    }
+
+    void HoldFirstDataStoreWrite()
+    {
+        DataStore->FirstWriteResult = NewPromise<NProto::TError>();
+    }
+
+    void WaitForFirstDataStoreWrite()
+    {
+        UNIT_ASSERT(
+            DataStore->FirstWriteStarted.WaitT(TDuration::Seconds(30)));
     }
 
     void WaitForAllRecordsToBeFlushed()
@@ -743,6 +836,52 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             FormatError(response.GetError()));
     }
 
+    Y_UNIT_TEST_F(ShouldReadFromJournalAndDataStoreInParallel, TFixture)
+    {
+        Journal->ReadHandler = [] (const auto& request) {
+            Y_UNUSED(request);
+            return MakeReadResponse({MakeGroup(12, 2, "J")}, 5);
+        };
+
+        // the journal does not answer until the test lets it
+
+        auto journalReadBarrier = NewPromise<void>();
+        Journal->ReadBarrier = journalReadBarrier.GetFuture();
+
+        TManualEvent dataStoreReadStarted;
+        DataStore->ReadHandler = [&] (const auto& rangeRefs) {
+            dataStoreReadStarted.Signal();
+            return ServePagesFromDevice(rangeRefs);
+        };
+
+        auto future = Device->ReadPages(MakeReadRequest({{10, 4}}));
+
+        // the data store is read while the journal read is still running
+
+        UNIT_ASSERT(dataStoreReadStarted.WaitT(TDuration::Seconds(30)));
+        UNIT_ASSERT(!future.HasValue());
+
+        journalReadBarrier.SetValue();
+
+        const auto response = future.GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
+
+        const auto deviceRequests = DataStore->GetReadRequests();
+        UNIT_ASSERT_VALUES_EQUAL(1, deviceRequests.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10+2",
+            DescribeRefs(deviceRequests[0]));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[D10,D11,J12,J13]",
+            DescribeGroups(response));
+        UNIT_ASSERT_VALUES_EQUAL(5, response.GetLastAckedLogSequenceNumber());
+    }
+
     Y_UNIT_TEST_F(ShouldHandleJournalReadError, TFixture)
     {
         Journal->ReadHandler = [] (const auto& request) {
@@ -810,6 +949,13 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
                 .GetError()
                 .GetCode());
 
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            Device->WritePages(MakeWritePagesRequest(otherUUID))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
         // none of them got anywhere near the journal or the device
 
         UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetReadRequests().size());
@@ -843,7 +989,15 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
                 .GetError()
                 .GetCode());
 
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            Device->WritePages(MakeWritePagesRequest(""))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
         UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetReadRequests().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetWriteRequests().size());
     }
 
     Y_UNIT_TEST_F(ShouldServeRequestForThisDevice, TFixture)
@@ -878,6 +1032,158 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
                 .GetValueSync()
                 .GetError()
                 .GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldWritePagesToDataStorePastJournal, TFixture)
+    {
+        const auto response =
+            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID))
+                .GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
+
+        // the pages went to the data store as they are
+
+        const auto writeRequests = DataStore->GetWriteRequests();
+        UNIT_ASSERT_VALUES_EQUAL(1, writeRequests.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[P10,P11] 20:[P20]",
+            DescribeRanges(writeRequests[0]));
+
+        // the journal was not asked for anything
+
+        UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetReadRequests().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetFlushedLsns().size());
+    }
+
+    Y_UNIT_TEST_F(ShouldHandleDataStoreWritePagesError, TFixture)
+    {
+        DataStore->WriteHandler = [] (const auto& ranges) {
+            Y_UNUSED(ranges);
+            return MakeError(E_IO, "device is broken");
+        };
+
+        const auto response =
+            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID))
+                .GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, response.GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectWritePagesOverlappingWritePagesInFlight, TFixture)
+    {
+        HoldFirstDataStoreWrite();
+
+        // pages 10, 11 and 20 stay in flight
+        auto first =
+            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID));
+        WaitForFirstDataStoreWrite();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WritePages({{11, 3}}).GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WritePages({{20, 1}}).GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(1, DataStore->GetWriteRequests().size());
+
+        // the pages between the busy ranges are free
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WritePages({{12, 8}}).GetCode());
+
+        DataStore->FirstWriteResult.SetValue({});
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            first.GetValueSync().GetError().GetCode());
+
+        // the pages are free again
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WritePages({{11, 3}}).GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WritePages({{20, 1}}).GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldReleasePagesAfterDataStoreWritePagesError, TFixture)
+    {
+        HoldFirstDataStoreWrite();
+
+        auto first =
+            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID));
+        WaitForFirstDataStoreWrite();
+
+        DataStore->FirstWriteResult.SetValue(
+            MakeError(E_IO, "device is broken"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_IO,
+            first.GetValueSync().GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WritePages({{10, 2}}).GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldAcceptWritePagesWithOverlappingRanges, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            WritePages({{10, 4}, {12, 4}, {11, 1}}).GetCode());
+
+        // all the ranges have been released
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WritePages({{10, 6}}).GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldPostponeFlushOverlappingWritePagesInFlight, TFixture)
+    {
+        HoldFirstDataStoreWrite();
+
+        // pages 10, 11 and 20 stay in flight
+        auto first =
+            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID));
+        WaitForFirstDataStoreWrite();
+
+        Journal->RestoreResponse = 1;
+        Journal->AddRecordToFlush(MakeRecord(1, 11, 2));
+
+        StartDeviceAndCheck();
+        WaitForFlushCycle();
+
+        // the flush cycle has left the record in the journal
+
+        UNIT_ASSERT_VALUES_EQUAL(1, DataStore->GetWriteRequests().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetFlushedLsns().size());
+
+        DataStore->FirstWriteResult.SetValue({});
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            first.GetValueSync().GetError().GetCode());
+
+        WaitForAllRecordsToBeFlushed();
+        StopDevice();
+
+        const auto writes = DataStore->GetWriteRequests();
+        UNIT_ASSERT_VALUES_EQUAL(2, writes.size());
+        UNIT_ASSERT_VALUES_EQUAL("11:[J11,J12]", DescribeRanges(writes[1]));
+
+        const auto flushedLsns = Journal->GetFlushedLsns();
+        UNIT_ASSERT_VALUES_EQUAL(1, flushedLsns.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, flushedLsns[0]);
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectWritePagesOverlappingFlushInFlight, TFixture)
+    {
+        HoldFirstDataStoreWrite();
+
+        Journal->RestoreResponse = 1;
+        Journal->AddRecordToFlush(MakeRecord(1, 10, 2));
+
+        // the flush of pages 10 and 11 stays in flight
+        StartDeviceAndCheck();
+        WaitForFirstDataStoreWrite();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WritePages({{11, 1}}).GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WritePages({{12, 1}}).GetCode());
+
+        DataStore->FirstWriteResult.SetValue({});
+        WaitForAllRecordsToBeFlushed();
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WritePages({{11, 1}}).GetCode());
     }
 
     Y_UNIT_TEST_F(ShouldFlushJournalRecordsToDataStore, TFixture)
@@ -1028,6 +1334,13 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             E_IO,
             Device
                 ->AdvanceLsnLowWatermark(MakeAdvanceRequest(DefaultDeviceUUID))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_IO,
+            Device->WritePages(MakeWritePagesRequest(DefaultDeviceUUID))
                 .GetValueSync()
                 .GetError()
                 .GetCode());

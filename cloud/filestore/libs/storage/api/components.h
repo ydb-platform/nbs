@@ -39,6 +39,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(USER_STATS)                                                            \
     xxx(TLS_CERTIFICATE_PROVIDER)                                              \
     xxx(TABLET_PROXY_SERVICE)                                                  \
+    xxx(RDMA)                                                                  \
 // FILESTORE_COMPONENTS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -147,7 +148,10 @@ struct TFileStoreEventsPrivate
         DISK_REGISTRY_PROXY_START = SS_PROXY_END + 1,
         DISK_REGISTRY_PROXY_END = DISK_REGISTRY_PROXY_START + 100,
 
-        END = DISK_REGISTRY_PROXY_END + 1
+        RDMA_START = DISK_REGISTRY_PROXY_END + 1,
+        RDMA_END = RDMA_START + 100,
+
+        END = RDMA_END + 1
     };
 
     static_assert(END < EventSpaceEnd(NKikimr::TKikimrEvents::ES_FILESTORE_PRIVATE),

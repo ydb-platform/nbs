@@ -43,16 +43,6 @@ func highestBitPosition(b byte) int {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func setProtoFlag(currentFlags uint32, flag protos.EMountFlag) uint32 {
-	return currentFlags | (1 << (flag - 1))
-}
-
-func protoFlags(flag protos.EMountFlag) uint32 {
-	return setProtoFlag(0, flag)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 func getStorageMediaKind(
 	diskKind types.DiskKind,
 ) (core_protos.EStorageMediaKind, error) {
@@ -774,12 +764,12 @@ func (c *client) getMountFlags(
 
 		for _, throttledMediaKind := range c.enableThrottlingForMediaKinds {
 			if throttledMediaKind == volume.StorageMediaKind {
-				return protoFlags(protos.EMountFlag_MF_NONE), nil
+				return common.ProtoFlag(protos.EMountFlag_MF_NONE), nil
 			}
 		}
 	}
 
-	return protoFlags(protos.EMountFlag_MF_THROTTLING_DISABLED), nil
+	return common.ProtoFlag(protos.EMountFlag_MF_THROTTLING_DISABLED), nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////

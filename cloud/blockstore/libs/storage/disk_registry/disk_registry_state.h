@@ -311,7 +311,7 @@ class TDiskRegistryState
 private:
     TLog Log;
 
-    const TStorageConfigConstPtr StorageConfig;
+    const TStorageConfigPtr StorageConfig;
     const NMonitoring::TDynamicCountersPtr Counters;
     mutable TDiskRegistrySelfCounters SelfCounters;
 
@@ -364,7 +364,7 @@ private:
 public:
     TDiskRegistryState(
         ILoggingServicePtr logging,
-        TStorageConfigConstPtr storageConfig,
+        TStorageConfigPtr storageConfig,
         NMonitoring::TDynamicCountersPtr counters,
         NProto::TDiskRegistryConfig config,
         TVector<NProto::TAgentConfig> agents,

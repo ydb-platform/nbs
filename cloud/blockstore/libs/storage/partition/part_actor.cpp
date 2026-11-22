@@ -54,8 +54,8 @@ const TString PartitionTransactions[] = {
 TPartitionActor::TPartitionActor(
     const TActorId& owner,
     TTabletStorageInfoPtr storage,
-    TStorageConfigConstPtr config,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorPtr blockDigestGenerator,
     NProto::TPartitionConfig partitionConfig,
@@ -74,6 +74,7 @@ TPartitionActor::TPartitionActor(
               PartitionConfig.GetCloudId(),
               PartitionConfig.GetFolderId(),
               PartitionConfig.GetDiskId()))
+    , FlushThresholds(BuildFlushThresholds(*Config, PartitionConfig))
     , VolumeLabels(MakeVolumeLabels(
           PartitionConfig.GetDiskId(),
           PartitionConfig.GetCloudId(),
@@ -99,7 +100,7 @@ TPartitionActor::TPartitionActor(
         PartitionConfig.GetDiskId(),
         TabletID());
     const auto codec =
-        ParseBlobCompressionCodec(Config->GetBlobCompressionCodec());
+        ParseCompressionCodec(Config->GetBlobCompressionCodec());
     // An unsupported codec disables compression estimation.
     if (HasError(codec.GetError())) {
         ReportInvalidBlobCompressionCodec(
@@ -109,7 +110,7 @@ TPartitionActor::TPartitionActor(
 
     BlobCompressor = std::make_shared<TBlobCompressor>(
         HasError(codec.GetError())
-            ? NProto::TCompressionMetadata::COMPRESSION_NONE
+            ? NCloud::NProto::COMPRESSION_CODEC_NONE
             : codec.GetResult(),
         TBlobCompressor::TMetricsConfig{
             .CompressionRate = Config->GetBlobCompressionRate(),

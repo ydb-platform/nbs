@@ -30,6 +30,10 @@ PEERDIR(
 
 END()
 
+RECURSE(
+    bench
+)
+
 RECURSE_FOR_TESTS(
     ut
 )

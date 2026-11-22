@@ -16,8 +16,8 @@ constexpr TDuration PrepareMigrationInterval = TDuration::Seconds(5);
 ////////////////////////////////////////////////////////////////////////////////
 
 TNonreplicatedPartitionMigrationActor::TNonreplicatedPartitionMigrationActor(
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         ui64 initialMigrationIndex,

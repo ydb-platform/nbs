@@ -1,11 +1,14 @@
 #include "service_actor.h"
 
+#include "helpers.h"
 #include "shard_creation_state_companion.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 
@@ -74,9 +77,11 @@ private:
     TMultiShardFileStoreConfig FileStoreConfig;
 
     TVector<TString> ExistingShardIds;
+    NProtoPrivate::TShardTopology ShardTopology;
     ui32 NextShardToConfigure = 0;
     ui32 ShardsToConfigure = 0;
     ui32 EndShardToConfigure = 0;
+    bool ShardConfigurationStarted = false;
 
     enum class EShardConfigPhase {
         NewShards,
@@ -182,6 +187,10 @@ private:
 
     void HandleResizeFileStoreResponse(
         const TEvSSProxy::TEvAlterFileStoreResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleShardCreationStateResponse(
+        const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -395,7 +404,50 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
 
     MainFileStoreOriginalConfig = currentConfig;
 
-    GetStorageStats(ctx);
+    if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
+        ShardCreationState.ReadShardCreationState(ctx);
+    } else {
+        GetStorageStats(ctx);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TAlterFileStoreActor::HandleShardCreationStateResponse(
+    const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto result = ShardCreationState.HandleShardCreationStateResponse(
+        ev->Get()->Record,
+        ctx);
+    if (HasError(result)) {
+        ReplyAndDie(ctx, result.GetError());
+        return;
+    }
+
+    switch (result.GetResult()) {
+        case TShardCreationStateCompanion::
+            EChangeTabletStateResponseAction::StartWithoutPersistentState:
+        case TShardCreationStateCompanion::EChangeTabletStateResponseAction::InitialStateLoaded:
+            GetStorageStats(ctx);
+            return;
+        case TShardCreationStateCompanion::EChangeTabletStateResponseAction::IgnoreStaleResponse:
+            // A newer state is already saved. Discarding this stale response
+            // does not stall the operation.
+            return;
+        case TShardCreationStateCompanion::EChangeTabletStateResponseAction::PersistLocalProgress:
+            // The returned bitmap lacks local progress. The update response
+            // will resume the operation after the merged bits are persisted.
+            ShardCreationState.UpdateShardCreationState(ctx);
+            return;
+        case TShardCreationStateCompanion::EChangeTabletStateResponseAction::Continue:
+            if (!ShardCreationState.HasShardsToCreate() &&
+                !ShardConfigurationStarted)
+            {
+                ConfigureShards(ctx);
+            }
+            return;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -634,8 +686,9 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         msg->Record.GetStrictFileSystemSizeEnforcementEnabled();
     MaxShardCount = msg->Record.GetMaxShardCount();
 
-    for (auto& shardId: *msg->Record.MutableShardFileSystemIds()) {
-        ExistingShardIds.push_back(std::move(shardId));
+    ShardTopology = GetShardTopology(msg->Record);
+    for (const auto& shard: ShardTopology.GetShards()) {
+        ExistingShardIds.push_back(shard.GetShardId());
     }
 
     // Intentionally called after the ExistingShardIds are filled because this
@@ -752,6 +805,16 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
             "[%s] Will resize filesystem to have %u shards",
             FileSystemId.c_str(),
             FileStoreConfig.ShardConfigs.size());
+        if (ShardCreationState.IsPersistentStateSupported()) {
+            auto error = ShardCreationState.SetupCreatedShardBitmap(
+                ExistingShardIds.size(),
+                FileStoreConfig.ShardConfigs);
+            if (HasError(error)) {
+                ReplyAndDie(ctx, error);
+                return;
+            }
+        }
+
         const auto error = ShardCreationState.InitializeShardCreation(
             ExistingShardIds.size(),
             FileStoreConfig.ShardConfigs.size(),
@@ -759,6 +822,11 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
         if (HasError(error)) {
             ReplyAndDie(ctx, error);
             return;
+        }
+
+        const auto& shardConfigs = FileStoreConfig.ShardConfigs;
+        for (ui32 i = ExistingShardIds.size(); i < shardConfigs.size(); ++i) {
+            AddOrdinaryShard(shardConfigs[i].GetFileSystemId(), ShardTopology);
         }
 
         if (ShardCreationState.HasShardsToCreate() ||
@@ -850,6 +918,13 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
         return;
     }
 
+    if (ShardCreationState.HasCreatedShardBitmap()) {
+        // Wait for HandleShardCreationStateResponse to call ConfigureShards
+        // after all shards are created and their bits are persisted in the
+        // Tablet's shard creation bitmap.
+        return;
+    }
+
     if (!ShardCreationState.HasShardsToCreate()) {
         ConfigureShards(ctx);
     }
@@ -859,6 +934,8 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
 
 void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
 {
+    ShardConfigurationStarted = true;
+
     if (ShardsToConfigure == 0) {
         ConfigureMainFileStore(ctx);
         return;
@@ -930,6 +1007,7 @@ void TAlterFileStoreActor::ConfigureShard(
         for (const auto& shard: FileStoreConfig.ShardConfigs) {
             request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
         }
+        *request->Record.MutableShardTopology() = ShardTopology;
     }
 
     LOG_INFO(
@@ -1026,6 +1104,7 @@ void TAlterFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
     for (const auto& shard: FileStoreConfig.ShardConfigs) {
         request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
     }
+    *request->Record.MutableShardTopology() = ShardTopology;
 
     LOG_INFO(
         ctx,
@@ -1210,6 +1289,9 @@ STFUNC(TAlterFileStoreActor::ResizeStateWork)
         HFunc(
             TEvIndexTablet::TEvConfigureShardsResponse,
             HandleConfigureMainFileStoreResponse);
+        HFunc(
+            TEvIndexTablet::TEvUnsafeChangeTabletStateResponse,
+            HandleShardCreationStateResponse);
 
         default:
             HandleUnexpectedEvent(

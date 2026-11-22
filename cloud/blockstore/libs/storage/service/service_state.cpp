@@ -98,7 +98,7 @@ TClientInfo* TVolumeInfo::GetReadWriteAccessClientInfo() const
 TClientInfo* TVolumeInfo::GetLocalMountClientInfo() const
 {
     for (const auto& pair: ClientInfosByClientId) {
-        if (pair.second->VolumeMountMode == NProto::VOLUME_MOUNT_LOCAL) {
+        if (pair.second->KeepsVolumeLocal()) {
             return pair.second;
         }
     }
@@ -160,7 +160,7 @@ bool TVolumeInfo::IsReadWriteMounted() const
 bool TVolumeInfo::IsLocallyMounted() const
 {
     for (const auto& info: ClientInfos) {
-        if (info.VolumeMountMode == NProto::VOLUME_MOUNT_LOCAL) {
+        if (info.KeepsVolumeLocal()) {
             return true;
         }
     }
@@ -236,12 +236,13 @@ NProto::EVolumeBinding TVolumeInfo::OnMountStarted(
     bool applyLocalVolumesLimit,
     bool forceRemoteBinding)
 {
-    auto bindingType = forceRemoteBinding
-        ? NProto::BINDING_REMOTE
-        : CalcVolumeBinding(
-              preemptionSource,
-              explicitBindingType,
-              clientMode);
+    auto bindingType = CalcVolumeBinding(
+        preemptionSource,
+        explicitBindingType,
+        clientMode);
+    if (forceRemoteBinding) {
+        bindingType = IsLocallyMounted() ? BindingType : NProto::BINDING_REMOTE;
+    }
 
     if (applyLocalVolumesLimit &&
         bindingType != BindingType &&

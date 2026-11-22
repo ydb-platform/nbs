@@ -148,7 +148,9 @@ message TFileSystemConfig
     optional uint32 NodeRefCacheLimit = 43;
 
     // Max number of the node attrs cached according to the NodeCacheTTL
-    // values returned by the backend.
+    // values returned by the backend and of the nodes whose invalidations are
+    // remembered. The invalidations are remembered regardless of the TTLs:
+    // they decide whether the guest may cache the node attrs as well.
     optional uint32 NodeAttrsCacheLimit = 44;
 
     // Max FUSE read / write request size in bytes offered in FUSE_INIT.

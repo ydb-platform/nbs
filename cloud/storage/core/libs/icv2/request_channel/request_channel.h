@@ -44,8 +44,7 @@ struct IIncomingRequest
 
     // One attempt, including failures. Use the matching response type.
     // Consumes response; success means accepted for sending, not delivered.
-    // Overload returns E_REJECTED; an unavailable channel returns
-    // E_INVALID_STATE.
+    // Overload or an unavailable channel returns E_REJECTED.
     virtual NProto::TError Reply(
         std::unique_ptr<NActors::IEventBase> response) = 0;
 
@@ -78,8 +77,8 @@ struct IRequestChannel
 
     // Send a serializable event and await its configured response type.
     // After E_TIMEOUT, the request may still be sent or executed remotely.
-    // Refusals: E_REJECTED for overload, E_INVALID_STATE for an inactive/closed
-    // channel. Refused requests are not sent.
+    // Overload or an inactive/closed channel returns E_REJECTED.
+    // Refused requests are not sent.
     // A mismatched response closes the channel: E_BADMSG for that request and
     // WhenClosed(), E_ABORTED for the other pending requests.
     virtual TResponseFuture Request(
