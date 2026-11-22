@@ -270,7 +270,6 @@ private:
     TServerConfigPtr Config;
     TEndpointCountersPtr Counters;
     TLog Log;
-    const int NegotiatedProtocolVersion;
     const ui32 NegotiatedEagerRequestBytes;
     size_t MaxInflightBytes;
 
@@ -329,7 +328,6 @@ public:
         TServerConfigPtr config,
         TEndpointCountersPtr stats,
         TLog log,
-        int protocolVersion,
         ui32 negotiatedEagerRequestBytes);
 
     ~TServerSession() override;
@@ -382,7 +380,6 @@ TServerSession::TServerSession(
         TServerConfigPtr config,
         TEndpointCountersPtr stats,
         TLog log,
-        int protocolVersion,
         ui32 negotiatedEagerRequestBytes)
     : Verbs(std::move(verbs))
     , Connection(std::move(connection))
@@ -391,7 +388,6 @@ TServerSession::TServerSession(
     , Config(std::move(config))
     , Counters(std::move(stats))
     , Log(std::move(log))
-    , NegotiatedProtocolVersion(protocolVersion)
     , NegotiatedEagerRequestBytes(negotiatedEagerRequestBytes)
     , MaxInflightBytes(Config->MaxInflightBytes)
     , SendBuffers(Config->BufferPool)
@@ -858,12 +854,9 @@ void TServerSession::FreeRequest(TRequestPtr req, TSendWr* send) noexcept
 void TServerSession::RecvRequestCompleted(TRecvWr* recv, ui32 byteLen) noexcept
 {
     const auto* msg = recv->Message();
-    const int version = ParseMessageHeader(msg);
 
-    if (version != NegotiatedProtocolVersion) {
-        RDMA_ERROR(
-            recv << " incompatible protocol version " << version
-                 << ", expected " << static_cast<int>(NegotiatedProtocolVersion));
+    if (!IsValidMessageHeader(msg)) {
+        RDMA_ERROR(recv << " invalid message header");
 
         Counters->RecvRequestCompleted();
         Counters->Error();
@@ -1164,7 +1157,7 @@ void TServerSession::SendResponse(TRequestPtr req, TSendWr* send) noexcept
     auto* responseMsg = send->Message();
     Zero(*responseMsg);
 
-    InitMessageHeader(responseMsg, NegotiatedProtocolVersion);
+    InitMessageHeader(responseMsg);
 
     responseMsg->ReqId = req->ReqId;
     responseMsg->Status = req->Status;
@@ -1663,11 +1656,10 @@ private:
     void Accept(
         TServerEndpoint* endpoint,
         rdma_cm_event* event,
-        int protocolVersion,
         ui32 eagerBytes) noexcept;
     void HandleConnected(TServerSession* session) noexcept;
     void HandleDisconnected(TServerSession* session) noexcept;
-    void Reject(rdma_cm_id* id, int status, int protocolVersion) noexcept;
+    void Reject(rdma_cm_id* id, int status) noexcept;
     TCompletionPoller* PickPoller() noexcept;
 };
 
@@ -1952,17 +1944,10 @@ void TServer::HandleConnectRequest(
     RDMA_DEBUG("validate " << Verbs->GetPeer(event->id));
 
     if (connectParams->private_data == nullptr ||
-        connectParams->private_data_len < sizeof(TConnectMessage))
+        connectParams->private_data_len < sizeof(TConnectMessage) ||
+        !IsValidMessageHeader(connectParams->private_data))
     {
-        Reject(event->id, RDMA_PROTO_INVALID_REQUEST, RDMA_PROTO_VERSION);
-        return;
-    }
-
-    const int protocolVersion = ParseMessageHeader(connectParams->private_data);
-    if (protocolVersion < RDMA_PROTO_PREV_VERSION ||
-        protocolVersion > RDMA_PROTO_VERSION)
-    {
-        Reject(event->id, RDMA_PROTO_INVALID_REQUEST, RDMA_PROTO_VERSION);
+        Reject(event->id, RDMA_PROTO_INVALID_REQUEST);
         return;
     }
 
@@ -1976,7 +1961,7 @@ void TServer::HandleConnectRequest(
                 << connectMsg->SendQueueSize
                 << " is greater than server's recv queue size "
                 << Config->RecvQueueSize);
-            Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH, protocolVersion);
+            Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH);
             return;
         }
         if (Config->SendQueueSize > connectMsg->RecvQueueSize) {
@@ -1985,7 +1970,7 @@ void TServer::HandleConnectRequest(
                 << connectMsg->RecvQueueSize
                 << " is less than server's send queue size "
                 << Config->SendQueueSize);
-            Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH, protocolVersion);
+            Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH);
             return;
         }
         if (connectMsg->MaxBufferSize > Config->MaxBufferSize) {
@@ -1994,25 +1979,21 @@ void TServer::HandleConnectRequest(
                 << connectMsg->MaxBufferSize
                 << " is greater than server's max buffer size "
                 << Config->MaxBufferSize);
-            Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH, protocolVersion);
+            Reject(event->id, RDMA_PROTO_CONFIG_MISMATCH);
             return;
         }
     }
 
-    ui32 eagerBytes = 0;
-    if (protocolVersion >= RDMA_PROTO_VERSION_3) {
-        eagerBytes = Min<ui32>(
-            connectMsg->MaxEagerRequestBytes,
-            Config->MaxEagerRequestBytes);
-    }
+    const ui32 eagerBytes = Min<ui32>(
+        connectMsg->MaxEagerRequestBytes,
+        Config->MaxEagerRequestBytes);
 
-    Accept(endpoint, event, protocolVersion, eagerBytes);
+    Accept(endpoint, event, eagerBytes);
 }
 
 void TServer::Accept(
     TServerEndpoint* endpoint,
     rdma_cm_event* event,
-    int protocolVersion,
     ui32 eagerBytes) noexcept
 {
     auto session = std::make_shared<TServerSession>(
@@ -2023,7 +2004,6 @@ void TServer::Accept(
         Config,
         Counters,
         Log,
-        protocolVersion,
         eagerBytes);
 
     try {
@@ -2034,7 +2014,7 @@ void TServer::Accept(
                 SafeCast<ui16>(Config->KeepAliveTimeout.MilliSeconds()),
             .MaxEagerRequestBytes = eagerBytes,
         };
-        InitMessageHeader(&acceptMsg, protocolVersion);
+        InitMessageHeader(&acceptMsg);
 
         rdma_conn_param acceptParams = {
             .private_data = &acceptMsg,
@@ -2051,8 +2031,8 @@ void TServer::Accept(
         }
 
         RDMA_INFO(
-            "accept " << Verbs->GetPeer(event->id) << " (protocol v"
-                      << protocolVersion << ", eager " << eagerBytes << "B)");
+            "accept " << Verbs->GetPeer(event->id) << " (eager " << eagerBytes
+                      << "B)");
         Verbs->Accept(event->id, &acceptParams);
 
         // transfer session ownership to the poller
@@ -2061,7 +2041,7 @@ void TServer::Accept(
     } catch (const TServiceError& e) {
         RDMA_ERROR(e.what())
         Counters->Error();
-        Reject(event->id, RDMA_PROTO_FAIL, protocolVersion);
+        Reject(event->id, RDMA_PROTO_FAIL);
     }
 }
 
@@ -2088,7 +2068,7 @@ void TServer::HandleDisconnected(TServerSession* session) noexcept
     session->Flush();
 }
 
-void TServer::Reject(rdma_cm_id* id, int status, int protocolVersion) noexcept
+void TServer::Reject(rdma_cm_id* id, int status) noexcept
 {
     RDMA_INFO("reject " << Verbs->GetPeer(id) << " with status " << status);
 
@@ -2098,7 +2078,7 @@ void TServer::Reject(rdma_cm_id* id, int status, int protocolVersion) noexcept
         .RecvQueueSize = SafeCast<ui16>(Config->RecvQueueSize),
         .MaxBufferSize = SafeCast<ui32>(Config->MaxBufferSize),
     };
-    InitMessageHeader(&rejectMsg, protocolVersion);
+    InitMessageHeader(&rejectMsg);
 
     try {
         Verbs->Reject(id, &rejectMsg, sizeof(rejectMsg));
@@ -2132,9 +2112,7 @@ inline IOutputStream& operator<<(IOutputStream& out, TRecvWr* recv)
 {
     out << "RECV " << TWorkRequestId(recv->wr.wr_id);
     if (auto msg = recv->Message()) {
-        if (auto ver = ParseMessageHeader(msg);
-            ver == RDMA_PROTO_VERSION || ver == RDMA_PROTO_PREV_VERSION)
-        {
+        if (IsValidMessageHeader(msg)) {
             out << " [request=" << msg->ReqId << "]";
         }
     }
