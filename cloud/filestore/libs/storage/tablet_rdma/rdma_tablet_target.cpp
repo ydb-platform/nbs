@@ -5,8 +5,10 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/rdma/server.h>
+#include <cloud/filestore/libs/storage/api/components.h>
 
 #include <cloud/storage/core/libs/common/startable.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/rdma/iface/server.h>
 
@@ -61,7 +63,7 @@ public:
         Registry->AttachForwarder(forwarderId);
 
         auto handler = CreateRdmaTabletServerHandler(
-            Logging,
+            Logging->CreateLog(GetComponentName(TFileStoreComponents::RDMA)),
             CreateActorSystemRdmaRequestHandler(
                 ActorSystem,
                 forwarderId,

@@ -170,7 +170,7 @@ struct TEnv
         }
 
         Handler = CreateRdmaTabletServerHandler(
-            CreateLoggingService("console"),
+            CreateLoggingService("console")->CreateLog("NFS_RDMA"),
             RequestHandler);
         Handler->SetEndpoint(server->StartEndpoint("::1", 10021, Handler));
 

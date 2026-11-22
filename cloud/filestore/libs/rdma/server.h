@@ -2,8 +2,9 @@
 
 #include "public.h"
 
-#include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/rdma/iface/server.h>
+
+#include <library/cpp/logger/log.h>
 
 #include <memory>
 
@@ -26,7 +27,7 @@ struct IRdmaTabletServerHandler
 using IRdmaTabletServerHandlerPtr = std::shared_ptr<IRdmaTabletServerHandler>;
 
 IRdmaTabletServerHandlerPtr CreateRdmaTabletServerHandler(
-    ILoggingServicePtr logging,
+    TLog log,
     IRdmaTabletRequestHandlerPtr requestHandler);
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -3,7 +3,6 @@
 #include "protocol.h"
 #include "transport.h"
 
-#include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/context.h>
@@ -189,12 +188,12 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 IRdmaTabletServerHandlerPtr CreateRdmaTabletServerHandler(
-    ILoggingServicePtr logging,
+    TLog log,
     IRdmaTabletRequestHandlerPtr requestHandler)
 {
     return std::make_shared<TRequestHandler>(
         std::move(requestHandler),
-        logging->CreateLog(GetComponentName(TFileStoreComponents::RDMA)));
+        std::move(log));
 }
 
 }   // namespace NCloud::NFileStore::NStorage
