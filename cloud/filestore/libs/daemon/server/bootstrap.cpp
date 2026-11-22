@@ -7,7 +7,7 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
-#include <cloud/filestore/libs/rdma/helper.h>
+#include <cloud/filestore/libs/rdma/helper/helper.h>
 #include <cloud/filestore/libs/server/config.h>
 #include <cloud/filestore/libs/server/probes.h>
 #include <cloud/filestore/libs/server/server.h>

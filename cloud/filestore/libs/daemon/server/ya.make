@@ -11,7 +11,7 @@ PEERDIR(
     cloud/filestore/libs/client
     cloud/filestore/libs/daemon/common
     cloud/filestore/libs/diagnostics
-    cloud/filestore/libs/rdma
+    cloud/filestore/libs/rdma/helper
     cloud/filestore/libs/server
     cloud/filestore/libs/service
     cloud/filestore/libs/service_kikimr
