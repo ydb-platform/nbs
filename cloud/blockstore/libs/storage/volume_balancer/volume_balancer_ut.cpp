@@ -551,7 +551,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             "vol0");
     }
 
-    Y_UNIT_TEST(ShouldPushLeastLoadedVolumeToHiveControl)
+    Y_UNIT_TEST(ShouldPushLeastSufferingVolumeToHiveControl)
     {
         TestPushVolumeToHiveControl(
             NProto::PREEMPTION_MOVE_LEAST_HEAVY,

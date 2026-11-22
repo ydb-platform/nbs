@@ -117,8 +117,8 @@ class TVolumeBalancerStateTestEnv
 {
 public:
     TVolumeBalancerStateTestEnv(
-        TStorageConfigConstPtr storageConfig,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr storageConfig,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         const TVector<TVolumeStatsRecipe>& volumes,
         IVolumeBalancerSwitchPtr volumeBalancerSwitch = CreateSwitch(true));
 
@@ -140,8 +140,8 @@ private:
 };
 
 TVolumeBalancerStateTestEnv::TVolumeBalancerStateTestEnv(
-    TStorageConfigConstPtr storageConfig,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    TStorageConfigPtr storageConfig,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     const TVector<TVolumeStatsRecipe>& volumes,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch)
     : State(
