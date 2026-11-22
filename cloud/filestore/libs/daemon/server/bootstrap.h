@@ -8,7 +8,6 @@
 #include <cloud/filestore/libs/storage/fastshard/server/server.h>
 
 #include <cloud/storage/core/libs/common/public.h>
-#include <cloud/storage/core/libs/rdma/iface/public.h>
 
 namespace NCloud::NFileStore::NDaemon {
 
@@ -23,7 +22,6 @@ private:
     NServer::IServerPtr Server;
     IFileStoreServicePtr Service;
     ITaskQueuePtr ThreadPool;
-    NCloud::NStorage::NRdma::IServerPtr RdmaServer;
     IStartablePtr RdmaTarget;
 
 public:
@@ -46,7 +44,6 @@ private:
     void InitConfigs();
     void InitLWTrace();
     void InitKikimrService();
-    void InitRdmaTarget();
     void InitLocalService();
     void InitNullService();
 };

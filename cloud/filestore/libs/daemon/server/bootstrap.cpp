@@ -7,7 +7,6 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
-#include <cloud/filestore/libs/rdma/server.h>
 #include <cloud/filestore/libs/server/config.h>
 #include <cloud/filestore/libs/server/probes.h>
 #include <cloud/filestore/libs/server/server.h>
@@ -22,8 +21,7 @@
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
-#include <cloud/filestore/libs/storage/tablet_rdma/rdma_server_handler.h>
-#include <cloud/filestore/libs/storage/tablet_rdma/rdma_tablet_forwarder.h>
+#include <cloud/filestore/libs/storage/tablet_rdma/rdma_tablet_target.h>
 
 #include <cloud/fastshard/libs/bootstrap/core.h>
 
@@ -37,17 +35,12 @@
 #include <cloud/storage/core/libs/grpc/tls_certificate_watcher.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
-#include <cloud/storage/core/libs/rdma/iface/config.h>
-#include <cloud/storage/core/libs/rdma/impl/server.h>
-#include <cloud/storage/core/libs/rdma/impl/verbs.h>
 #include <cloud/storage/core/libs/user_stats/counter/user_counter.h>
 
 #include <contrib/ydb/core/blobstorage/lwtrace_probes/blobstorage_probes.h>
 #include <contrib/ydb/core/tablet_flat/probes.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
-
-#include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NDaemon {
 
@@ -101,10 +94,6 @@ void TBootstrapServer::StartComponents()
     FILESTORE_LOG_START_COMPONENT(Service);
     FILESTORE_LOG_START_COMPONENT(Server);
 
-    if (RdmaServer) {
-        InitRdmaTarget();
-    }
-    FILESTORE_LOG_START_COMPONENT(RdmaServer);
     FILESTORE_LOG_START_COMPONENT(RdmaTarget);
 }
 
@@ -114,7 +103,6 @@ void TBootstrapServer::Drain()
 void TBootstrapServer::StopComponents()
 {
     FILESTORE_LOG_STOP_COMPONENT(RdmaTarget);
-    FILESTORE_LOG_STOP_COMPONENT(RdmaServer);
     FILESTORE_LOG_STOP_COMPONENT(Server);
     FILESTORE_LOG_STOP_COMPONENT(Service);
     FILESTORE_LOG_STOP_COMPONENT(ThreadPool);
@@ -279,54 +267,19 @@ void TBootstrapServer::InitKikimrService()
         0 /* permanentActorCount */);
 
     if (RdmaTabletRegistry) {
-        try {
-            RdmaServer = NRdma::CreateServer(
-                NRdma::NVerbs::CreateVerbs(),
-                NRdma::TObservabilityProvider(
-                    Logging,
-                    Monitoring,
-                    "NFS_RDMA",
-                    "filestore",
-                    "rdma_server"),
-                NRdma::CreateServerConfigPtr(Configs->RdmaConfig.GetServer()));
-
-            STORAGE_INFO("RDMA server initialized");
-        } catch (const TServiceError& e) {
-            ReportTabletRdmaCritEvent(
-                TStringBuilder()
-                << "RDMA server is not started: " << e.what());
+        auto rdmaServer = NStorage::CreateRdmaServer(
+            Configs->RdmaConfig.GetServer(),
+            Logging,
+            Monitoring);
+        if (rdmaServer) {
+            RdmaTarget = NStorage::CreateRdmaTabletTarget(
+                Configs->RdmaConfig,
+                Logging,
+                ActorSystem,
+                std::move(rdmaServer),
+                RdmaTabletRegistry);
         }
     }
-}
-
-void TBootstrapServer::InitRdmaTarget()
-{
-    const auto& proto = Configs->RdmaConfig;
-
-    auto config = std::make_shared<NStorage::TFileStoreRdmaServerConfig>();
-    if (proto.GetListenAddress()) {
-        config->ListenAddress = proto.GetListenAddress();
-    }
-    if (proto.GetListenPort()) {
-        config->ListenPort = proto.GetListenPort();
-    }
-    if (proto.GetTabletRequestTimeout()) {
-        config->TabletRequestTimeout =
-            TDuration::MilliSeconds(proto.GetTabletRequestTimeout());
-    }
-
-    const auto forwarderId = ActorSystem->Register(
-        NStorage::CreateRdmaTabletForwarderActor(config->TabletRequestTimeout));
-    RdmaTabletRegistry->AttachForwarder(forwarderId);
-
-    RdmaTarget = NStorage::CreateFileStoreRdmaServiceTarget(
-        std::move(config),
-        Logging,
-        RdmaServer,
-        NStorage::CreateActorSystemRdmaRequestHandler(
-            ActorSystem,
-            forwarderId,
-            RdmaTabletRegistry));
 }
 
 void TBootstrapServer::InitLocalService()

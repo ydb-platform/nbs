@@ -4,6 +4,7 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/rdma/transport.h>
+#include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 
@@ -60,7 +61,8 @@ public:
         : ActorSystem(std::move(actorSystem))
         , ForwarderId(forwarderId)
         , Registry(std::move(registry))
-        , Log(ActorSystem->CreateLog("NFS_RDMA"))
+        , Log(ActorSystem->CreateLog(
+              GetComponentName(TFileStoreComponents::RDMA)))
     {}
 
     TFuture<TTabletTransportResponse> HandleRequest(

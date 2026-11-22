@@ -118,6 +118,34 @@ struct TEarlyRequestServer final
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TNoEndpointServer final
+    : public IServer
+{
+    IServerEndpointPtr StartEndpoint(
+        TString host,
+        ui32 port,
+        IServerHandlerPtr handler) override
+    {
+        Y_UNUSED(host);
+        Y_UNUSED(port);
+        Y_UNUSED(handler);
+        return nullptr;
+    }
+
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
+    void DumpHtml(IOutputStream& out) const override
+    {
+        Y_UNUSED(out);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TEnv
 {
     const std::shared_ptr<TTestRequestHandler> RequestHandler;
@@ -297,6 +325,20 @@ Y_UNIT_TEST_SUITE(TFileStoreRdmaServiceTargetTest)
 
         UNIT_ASSERT_VALUES_EQUAL("::", server->GetHost());
         UNIT_ASSERT_VALUES_EQUAL(10021, server->GetPort());
+    }
+
+    Y_UNIT_TEST(ShouldFailToStartWithoutEndpoint)
+    {
+        auto target = CreateFileStoreRdmaServiceTarget(
+            std::make_shared<TFileStoreRdmaServerConfig>(),
+            CreateLoggingService("console"),
+            std::make_shared<TNoEndpointServer>(),
+            std::make_shared<TTestRequestHandler>());
+
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            target->Start(),
+            TServiceError,
+            "unable to start RDMA endpoint :::10021");
     }
 
     Y_UNIT_TEST(ShouldPassDecodedRequestAndSerializeTypedResponse)

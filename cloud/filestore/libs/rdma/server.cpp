@@ -221,13 +221,13 @@ public:
             throw;
         }
 
-        if (!endpoint) {
-            STORAGE_ERROR(
-                "unable to start RDMA endpoint " << Config->ListenAddress << ":"
-                                                 << Config->ListenPort);
-        }
+        handler->SetEndpoint(endpoint);
 
-        handler->SetEndpoint(std::move(endpoint));
+        if (!endpoint) {
+            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
+                << "unable to start RDMA endpoint " << Config->ListenAddress
+                << ":" << Config->ListenPort;
+        }
     }
 
     void Stop() override
