@@ -116,6 +116,13 @@ void TPartitionFreshBlobState::MarkFreshBlobDead(ui64 commitId)
         TWellKnownEntityTypes::TABLET,
         TabletID,
         "Commit id: " << commitId);
+    STORAGE_VERIFY_C(
+        it->second.ByteCount <= Max<ui64>() - TotalDeadFreshBlobByteCount,
+        TWellKnownEntityTypes::TABLET,
+        TabletID,
+        "Commit id: " << commitId << ", byte count: " << it->second.ByteCount
+                      << ", total dead byte count: "
+                      << TotalDeadFreshBlobByteCount);
 
     it->second.Dead = true;
     DeadUntrimmedFreshBlobByteCount += it->second.ByteCount;

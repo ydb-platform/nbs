@@ -97,7 +97,7 @@ TPartitionState::TPartitionState(
           channelCount)
     , TCommitIdsState()
     , TPartitionFreshBlobState(tabletId)
-    , TPartitionTrimFreshLogState()
+    , TPartitionTrimFreshLogState(tabletId)
     , TPartitionFreshBlocksState(*this, *this, threadSafeState)
     , Meta(std::move(meta))
     , CompactionPolicy(compactionPolicy)

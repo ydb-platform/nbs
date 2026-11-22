@@ -10,10 +10,12 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/operation_status.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/set.h>
+#include <util/generic/utility.h>
 #include <util/system/types.h>
 
 #include <optional>
@@ -291,6 +293,8 @@ private:
 class TPartitionTrimFreshLogState
 {
 private:
+    ui64 TabletID = 0;
+
     TOperationState TrimFreshLogState;
     ui64 LastTrimFreshLogToCommitId = 0;
     TBackoffDelayProvider TrimFreshLogBackoffDelayProvider{
@@ -316,6 +320,10 @@ private:
     ui64 NextSelectiveScanTotalDeadByteCount = 0;
 
 public:
+    explicit TPartitionTrimFreshLogState(ui64 tabletID)
+        : TabletID(tabletID)
+    {}
+
     [[nodiscard]] TOperationState& AccessTrimFreshLogState()
     {
         return TrimFreshLogState;
@@ -380,6 +388,12 @@ public:
     // follow each other while dead blobs out of reach keep the trim due.
     void DeferSelectiveScan(ui64 totalDeadByteCount, ui64 threshold)
     {
+        STORAGE_VERIFY_C(
+            threshold <= Max<ui64>() - totalDeadByteCount,
+            TWellKnownEntityTypes::TABLET,
+            TabletID,
+            "Total dead byte count: " << totalDeadByteCount
+                                      << ", threshold: " << threshold);
         NextSelectiveScanTotalDeadByteCount = totalDeadByteCount + threshold;
     }
 

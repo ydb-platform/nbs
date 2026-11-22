@@ -316,7 +316,7 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
 {
     const auto* msg = ev->Get();
 
-    ui64 unflushedByteCount = 0;
+    ui64 unflushedBytesRemoved = 0;
     if (HasError(msg->GetError())) {
         LOG_ERROR(
             ctx,
@@ -342,18 +342,19 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
         State->RegisterTrimFreshLogSuccess();
         if (msg->SelectiveTrim) {
             State->CompleteSelectiveTrim();
-            unflushedByteCount =
+            unflushedBytesRemoved =
                 State->TrimCollectedFreshBlobs(msg->CollectedCommitIds)
                     .UnflushedBytesRemoved;
         } else {
             State->SetLastTrimFreshLogToCommitId(msg->CommitId);
-            unflushedByteCount =
+            unflushedBytesRemoved =
                 State->TrimFreshBlobs(msg->CommitId).UnflushedBytesRemoved;
         }
     }
 
     if (IsFreshBlocksWriterEnabled()) {
-        SharedState->UnflushedFreshBlobByteCount.fetch_sub(unflushedByteCount);
+        SharedState->UnflushedFreshBlobByteCount.fetch_sub(
+            unflushedBytesRemoved);
     }
 
     Y_DEBUG_ABORT_UNLESS(

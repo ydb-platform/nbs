@@ -754,7 +754,7 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
 
     Y_UNIT_TEST(ShouldTrackSelectiveTrimState)
     {
-        TPartitionTrimFreshLogState state;
+        TPartitionTrimFreshLogState state(/*tabletId=*/0);
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetKeptToCommitId());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetLastSentSelectiveTrimToCommitId());
         UNIT_ASSERT(state.IsSelectiveScanAllowed(0));
