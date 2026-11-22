@@ -1728,7 +1728,9 @@ void TServer::Stop()
     }
 
     for (auto& poller: CompletionPollers) {
-        poller->Stop();
+        if (poller) {
+            poller->Stop();
+        }
     }
 
     CompletionPollers.clear();
