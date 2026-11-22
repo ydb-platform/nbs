@@ -845,7 +845,7 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
 
     TFlushBytesBlobBuilder builder(
         GetRangeIdHasher(),
-        CalculateMaxBlocksInBlob(Config->GetMaxBlobSize(), GetBlockSize()));
+        GetMaxBlocksInBlob());
 
     for (auto& block: blocks) {
         builder.Accept(std::move(block));

@@ -317,7 +317,7 @@ void TIndexTabletActor::HandleFlush(
     TMixedBlobBuilder builder(
         GetRangeIdHasher(),
         GetBlockSize(),
-        CalculateMaxBlocksInBlob(Config->GetMaxBlobSize(), GetBlockSize()));
+        GetMaxBlocksInBlob());
 
     FindFreshBlocks(builder);
 
