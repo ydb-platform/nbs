@@ -10,7 +10,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/filestore/config";
 
 message TRdmaConfig
 {
-    // Makes filestore-server accept index tablet requests over RDMA.
+    // Makes filestore-server listen and accept RDMA connections.
     optional bool ServerEnabled = 1;
 
     // RDMA server settings.
