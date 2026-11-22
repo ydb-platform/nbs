@@ -24,6 +24,6 @@ message TRdmaConfig
 
     // Time (in milliseconds) given to the tablet to answer a request received
     // over RDMA, after which the request is failed with E_TIMEOUT (1 minute by
-    // default).
+    // default). Zero means no timeout.
     optional uint32 TabletRequestTimeout = 5;
 }
