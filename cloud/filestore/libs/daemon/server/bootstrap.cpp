@@ -7,6 +7,7 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
+#include <cloud/filestore/libs/rdma/helper.h>
 #include <cloud/filestore/libs/server/config.h>
 #include <cloud/filestore/libs/server/probes.h>
 #include <cloud/filestore/libs/server/server.h>
@@ -41,6 +42,8 @@
 #include <contrib/ydb/core/tablet_flat/probes.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
+
+#include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NDaemon {
 
@@ -267,18 +270,29 @@ void TBootstrapServer::InitKikimrService()
         0 /* permanentActorCount */);
 
     if (RdmaTabletRegistry) {
-        auto rdmaServer = NStorage::CreateRdmaServer(
-            Configs->RdmaConfig.GetServer(),
+        InitRdmaTarget();
+    }
+}
+
+void TBootstrapServer::InitRdmaTarget()
+{
+    try {
+        RdmaTarget = NStorage::CreateRdmaTabletTarget(
+            Configs->RdmaConfig,
             Logging,
-            Monitoring);
-        if (rdmaServer) {
-            RdmaTarget = NStorage::CreateRdmaTabletTarget(
-                Configs->RdmaConfig,
+            ActorSystem,
+            NStorage::CreateRdmaServer(
                 Logging,
-                ActorSystem,
-                std::move(rdmaServer),
-                RdmaTabletRegistry);
-        }
+                Monitoring,
+                Configs->RdmaConfig.GetServer()),
+            RdmaTabletRegistry);
+
+        STORAGE_INFO("RDMA target initialized");
+    } catch (...) {
+        ReportTabletRdmaCritEvent(
+            TStringBuilder()
+            << "unable to initialize RDMA target: "
+            << CurrentExceptionMessage());
     }
 }
 

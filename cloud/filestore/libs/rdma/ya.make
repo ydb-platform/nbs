@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    helper.cpp
     protocol.cpp
     server.cpp
 )
@@ -11,6 +12,8 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/rdma/iface
+    cloud/storage/core/libs/rdma/impl
+    cloud/storage/core/protos
 
     library/cpp/threading/future
 )

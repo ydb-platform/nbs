@@ -14,16 +14,6 @@ namespace NCloud::NFileStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
- * Creates the RDMA server for CreateRdmaTabletTarget. Returns nullptr and
- * reports a critical event if the server cannot be created (e.g. the host has
- * no RDMA device).
- */
-NCloud::NStorage::NRdma::IServerPtr CreateRdmaServer(
-    const NCloud::NProto::TRdmaServer& config,
-    ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring);
-
-/**
  * Creates the component that serves the index tablets of the node over RDMA.
  * Start() registers the forwarder actor, starts the RDMA server and listens;
  * if listening fails, it reports a critical event and stops the RDMA server,

@@ -20,7 +20,6 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/kikimr
     cloud/storage/core/libs/rdma/iface
-    cloud/storage/core/libs/rdma/impl
 
     contrib/ydb/library/actors/core
 

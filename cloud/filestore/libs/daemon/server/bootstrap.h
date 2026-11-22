@@ -44,6 +44,7 @@ private:
     void InitConfigs();
     void InitLWTrace();
     void InitKikimrService();
+    void InitRdmaTarget();
     void InitLocalService();
     void InitNullService();
 };

@@ -5,14 +5,10 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/rdma/server.h>
-#include <cloud/filestore/libs/storage/api/components.h>
 
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
-#include <cloud/storage/core/libs/rdma/iface/config.h>
 #include <cloud/storage/core/libs/rdma/iface/server.h>
-#include <cloud/storage/core/libs/rdma/impl/server.h>
-#include <cloud/storage/core/libs/rdma/impl/verbs.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
@@ -107,31 +103,6 @@ public:
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
-
-NCloud::NStorage::NRdma::IServerPtr CreateRdmaServer(
-    const NCloud::NProto::TRdmaServer& config,
-    ILoggingServicePtr logging,
-    IMonitoringServicePtr monitoring)
-{
-    namespace NRdma = NCloud::NStorage::NRdma;
-
-    try {
-        return NRdma::CreateServer(
-            NRdma::NVerbs::CreateVerbs(),
-            NRdma::TObservabilityProvider(
-                std::move(logging),
-                std::move(monitoring),
-                GetComponentName(TFileStoreComponents::RDMA),
-                "filestore",
-                "rdma_server"),
-            NRdma::CreateServerConfigPtr(config));
-    } catch (...) {
-        ReportTabletRdmaCritEvent(
-            TStringBuilder()
-            << "unable to create RDMA server: " << CurrentExceptionMessage());
-        return nullptr;
-    }
-}
 
 IStartablePtr CreateRdmaTabletTarget(
     const NProto::TRdmaConfig& config,
