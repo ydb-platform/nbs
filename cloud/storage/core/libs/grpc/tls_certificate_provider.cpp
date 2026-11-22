@@ -7,7 +7,6 @@
 #include <src/core/lib/security/credentials/tls/grpc_tls_certificate_distributor.h>
 #include <src/core/lib/security/credentials/tls/grpc_tls_certificate_provider.h>
 
-#include <util/generic/maybe.h>
 #include <util/system/mutex.h>
 
 #include <memory>
@@ -84,28 +83,80 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Shared with gRPC credentials and watcher callbacks, which may outlive the
+// outer certificate provider. It holds no provider reference to avoid a cycle.
+struct TCertificateState
+{
+    TMutex Mutex;
+    TString RootCa;
+    TVector<NTlsUtils::TIdentityContent> Identities;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TGrpcTlsCertificateProvider final
     : public grpc_tls_certificate_provider
 {
 private:
+    const std::shared_ptr<TCertificateState> State;
     RefCountedPtr<grpc_tls_certificate_distributor> Distributor;
 
 public:
-    TGrpcTlsCertificateProvider()
-        : Distributor(
+    explicit TGrpcTlsCertificateProvider(
+            std::shared_ptr<TCertificateState> state)
+        : State(std::move(state))
+        , Distributor(
             grpc_core::MakeRefCounted<grpc_tls_certificate_distributor>())
-    {}
-
-    void PublishCerts(
-        const TMaybe<TString>& rootCertificate,
-        PemKeyCertPairList identityPairs)
     {
-        Distributor->SetKeyMaterials(
-            "",
-            rootCertificate.Defined()
-                ? *rootCertificate
-                : std::optional<TString>{},
-            std::move(identityPairs));
+        // gRPC drops cached material when the last TLS watcher disappears.
+        // A reconnect subscribes again without a filesystem update.
+        Distributor->SetWatchStatusCallback(
+            [this](TString name, bool watchRoot, bool watchIdentity)
+            {
+                if (!watchRoot && !watchIdentity) {
+                    return;
+                }
+                TGuard<TMutex> lock(State->Mutex);
+                PublishCertsLocked(name, watchRoot, watchIdentity);
+            });
+    }
+
+    ~TGrpcTlsCertificateProvider() override
+    {
+        Distributor->SetWatchStatusCallback(nullptr);
+    }
+
+    // State->Mutex must be held through publication so that an older snapshot
+    // cannot overwrite a certificate update.
+    void PublishCertsLocked(
+        const TString& name = {},
+        bool publishRoot = true,
+        bool publishIdentity = true)
+    {
+        std::optional<TString> rootCertificate;
+        if (publishRoot && !State->RootCa.empty()) {
+            rootCertificate = State->RootCa;
+        }
+
+        std::optional<PemKeyCertPairList> identityPairs;
+        if (publishIdentity) {
+            identityPairs.emplace();
+            for (const auto& identity: State->Identities) {
+                if (identity.PrivateKey.empty() || identity.CertChain.empty()) {
+                    continue;
+                }
+                identityPairs->emplace_back(
+                    identity.PrivateKey,
+                    identity.CertChain);
+            }
+        }
+
+        if (rootCertificate || (identityPairs && !identityPairs->empty())) {
+            Distributor->SetKeyMaterials(
+                name,
+                std::move(rootCertificate),
+                std::move(identityPairs));
+        }
     }
 
     RefCountedPtr<grpc_tls_certificate_distributor> distributor() const override
@@ -160,40 +211,10 @@ class TWatchedCertificateProvider final
     : public ICertificateProvider
 {
 private:
-    // Shared with the watcher callbacks, which may outlive the provider.
-    struct TState
-    {
-        const grpc_core::RefCountedPtr<TGrpcTlsCertificateProvider>
-            TlsProvider =
-                grpc_core::MakeRefCounted<TGrpcTlsCertificateProvider>();
-
-        TMutex Mutex;
-        TString RootCa;
-        TVector<NTlsUtils::TIdentityContent> Identities;
-
-        // Under Mutex, so that two publishes cannot reorder.
-        void Publish()
-        {
-            PemKeyCertPairList identityPairs;
-            for (const auto& identity: Identities) {
-                if (identity.PrivateKey.empty() || identity.CertChain.empty()) {
-                    continue;
-                }
-                identityPairs.emplace_back(
-                    identity.PrivateKey,
-                    identity.CertChain);
-            }
-
-            TMaybe<TString> rootCa = RootCa.empty()
-                ? Nothing()
-                : TMaybe<TString>(RootCa);
-            if (rootCa.Defined() || !identityPairs.empty()) {
-                TlsProvider->PublishCerts(rootCa, std::move(identityPairs));
-            }
-        }
-    };
-
-    const std::shared_ptr<TState> State = std::make_shared<TState>();
+    const std::shared_ptr<TCertificateState> State =
+        std::make_shared<TCertificateState>();
+    const grpc_core::RefCountedPtr<TGrpcTlsCertificateProvider> TlsProvider =
+        grpc_core::MakeRefCounted<TGrpcTlsCertificateProvider>(State);
     const std::shared_ptr<grpc::experimental::CertificateProviderInterface>
         GrpcProvider;
     bool HasRootCa = false;
@@ -205,7 +226,7 @@ public:
             const TString& rootCertPath,
             TVector<TCertificateFiles> certificates)
         : GrpcProvider(
-            std::make_shared<TGrpcCertificateProvider>(State->TlsProvider))
+            std::make_shared<TGrpcCertificateProvider>(TlsProvider))
     {
         auto certs =
             NTlsUtils::PrepareCertificateFilePairs(std::move(certificates));
@@ -220,26 +241,27 @@ public:
         for (size_t i = 0; i < certs.size(); ++i) {
             State->Identities[i] = watcher->WatchIdentity(
                 certs[i],
-                [state = State, i](const NTlsUtils::TIdentityContent& content)
+                [state = State, provider = TlsProvider, i](
+                    const NTlsUtils::TIdentityContent& content)
                 {
                     TGuard<TMutex> lock(state->Mutex);
                     state->Identities[i] = content;
-                    state->Publish();
+                    provider->PublishCertsLocked();
                 });
         }
 
         if (HasRootCa) {
             State->RootCa = watcher->WatchRootCa(
                 rootCertPath,
-                [state = State](const TString& rootCa)
+                [state = State, provider = TlsProvider](const TString& rootCa)
                 {
                     TGuard<TMutex> lock(state->Mutex);
                     state->RootCa = rootCa;
-                    state->Publish();
+                    provider->PublishCertsLocked();
                 });
         }
 
-        State->Publish();
+        TlsProvider->PublishCertsLocked();
     }
 
     std::shared_ptr<grpc::ChannelCredentials>

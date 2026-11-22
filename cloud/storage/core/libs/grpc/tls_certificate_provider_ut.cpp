@@ -24,7 +24,9 @@
 #include <util/string/builder.h>
 
 #include <chrono>
+#include <latch>
 #include <memory>
+#include <thread>
 
 namespace NCloud {
 
@@ -176,6 +178,84 @@ bool Connects(
             return false;
         }
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// A real TLS server with a stable port across restarts.
+class TTestTlsServer
+{
+private:
+    std::unique_ptr<grpc::Server> Server;
+    std::unique_ptr<grpc::ServerCompletionQueue> Queue;
+    int Port = 0;
+
+public:
+    ~TTestTlsServer()
+    {
+        Stop();
+    }
+
+    void Start(const std::shared_ptr<grpc::ServerCredentials>& credentials)
+    {
+        grpc::ServerBuilder builder;
+        builder.AddListeningPort(
+            TStringBuilder() << "localhost:" << Port,
+            credentials,
+            &Port);
+        Queue = builder.AddCompletionQueue();
+        Server = builder.BuildAndStart();
+        UNIT_ASSERT(Server);
+    }
+
+    void Stop()
+    {
+        if (!Server) {
+            return;
+        }
+        Server->Shutdown();
+        Queue->Shutdown();
+        void* tag = nullptr;
+        bool ok = false;
+        while (Queue->Next(&tag, &ok)) {
+        }
+        Server.reset();
+        Queue.reset();
+    }
+
+    int GetPort() const
+    {
+        return Port;
+    }
+};
+
+std::shared_ptr<grpc::Channel> CreateTestChannel(
+    int port,
+    const std::shared_ptr<grpc::ChannelCredentials>& credentials,
+    const TString& serverName = "server1.grpc.ut")
+{
+    grpc::ChannelArguments args;
+    args.SetSslTargetNameOverride(serverName);
+    args.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS, 100);
+    args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 100);
+    args.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS, 100);
+    return grpc::CreateCustomChannel(
+        TStringBuilder() << "localhost:" << port,
+        credentials,
+        args);
+}
+
+void WaitForDisconnect(const std::shared_ptr<grpc::Channel>& channel)
+{
+    const auto deadline =
+        std::chrono::system_clock::now() + std::chrono::seconds(5);
+    auto state = channel->GetState(false);
+    while (state == GRPC_CHANNEL_READY) {
+        UNIT_ASSERT(channel->WaitForStateChange(state, deadline));
+        state = channel->GetState(false);
+    }
+    UNIT_ASSERT(!channel->WaitForConnected(
+        std::chrono::system_clock::now() + std::chrono::milliseconds(500)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -420,6 +500,216 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         UNIT_ASSERT(!Connects(
             port, rotatedRootPath, context.ClientPair, "server3"));
         UNIT_ASSERT(Connects(port, rotatedRootPath, rotatedPair, "server3"));
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldReconnectWatchedClientAfterServerRestart,
+        TGrpcShutdownFixture)
+    {
+        TGrpcInitializer grpcInitializer;
+
+        for (const bool withIdentity: {false, true}) {
+            TProviderContext context;
+            TVector<TCertificateFiles> identities;
+            if (withIdentity) {
+                identities.push_back(context.ClientPair);
+            }
+            auto provider = CreateCertificateProvider(
+                context.Watcher,
+                context.RootPath,
+                std::move(identities));
+            auto credentials = provider->CreateSecureClientCredentials();
+            auto serverCredentials = CreateStaticCertificateProvider(
+                context.RootPath,
+                {context.ServerPair})->CreateSecureServerCredentials();
+
+            TTestTlsServer server;
+            server.Start(serverCredentials);
+            auto channel = CreateTestChannel(server.GetPort(), credentials);
+            UNIT_ASSERT(channel->WaitForConnected(
+                std::chrono::system_clock::now() + std::chrono::seconds(5)));
+
+            server.Stop();
+            WaitForDisconnect(channel);
+            server.Start(serverCredentials);
+
+            // No file updates or credential replacement: the same watched
+            // client must reconnect after gRPC drops its last TLS watcher.
+            UNIT_ASSERT_C(
+                channel->WaitForConnected(
+                    std::chrono::system_clock::now() +
+                    std::chrono::seconds(5)),
+                "Watched client did not reconnect; identity=" << withIdentity);
+        }
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldKeepOtherChannelConnectedWhenSharedProviderReconnects,
+        TGrpcShutdownFixture)
+    {
+        TGrpcInitializer grpcInitializer;
+        TProviderContext context;
+        auto provider = CreateCertificateProvider(
+            context.Watcher,
+            context.RootPath,
+            {context.ClientPair});
+        auto credentials = provider->CreateSecureClientCredentials();
+        auto serverCredentials = CreateStaticCertificateProvider(
+            context.RootPath,
+            {context.ServerPair})->CreateSecureServerCredentials();
+
+        // Different ports ensure independent TLS connections sharing one
+        // provider and one set of channel credentials.
+        TTestTlsServer firstServer;
+        TTestTlsServer secondServer;
+        firstServer.Start(serverCredentials);
+        secondServer.Start(serverCredentials);
+        auto first = CreateTestChannel(firstServer.GetPort(), credentials);
+        auto second = CreateTestChannel(secondServer.GetPort(), credentials);
+        for (const auto& channel: {first, second}) {
+            UNIT_ASSERT(channel->WaitForConnected(
+                std::chrono::system_clock::now() + std::chrono::seconds(5)));
+        }
+
+        firstServer.Stop();
+        WaitForDisconnect(first);
+        UNIT_ASSERT(second->GetState(false) == GRPC_CHANNEL_READY);
+
+        firstServer.Start(serverCredentials);
+        UNIT_ASSERT(first->WaitForConnected(
+            std::chrono::system_clock::now() + std::chrono::seconds(5)));
+        UNIT_ASSERT(second->GetState(false) == GRPC_CHANNEL_READY);
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldRetainCertificatesAfterProviderAndWatcherDestruction,
+        TGrpcShutdownFixture)
+    {
+        TGrpcInitializer grpcInitializer;
+
+        for (const bool withIdentity: {false, true}) {
+            TProviderContext context;
+            TVector<TCertificateFiles> identities;
+            if (withIdentity) {
+                identities.push_back(context.ClientPair);
+            }
+            auto provider = CreateCertificateProvider(
+                context.Watcher,
+                context.RootPath,
+                std::move(identities));
+            auto credentials = provider->CreateSecureClientCredentials();
+            auto serverCredentials = CreateStaticCertificateProvider(
+                context.RootPath,
+                {context.ServerPair})->CreateSecureServerCredentials();
+
+            provider.reset();
+            // File callbacks may still run after the outer provider is gone.
+            context.Watcher->RootCas[0].OnChange(ReadCertResource("ca.crt"));
+            if (withIdentity) {
+                context.Watcher->Identities[0].OnChange(TIdentityContent{
+                    .PrivateKey = ReadCertResource("server2.key"),
+                    .CertChain = ReadCertResource("server2.crt"),
+                });
+            }
+            context.Watcher.reset();
+
+            TTestTlsServer server;
+            server.Start(serverCredentials);
+            auto channel = CreateTestChannel(server.GetPort(), credentials);
+            credentials.reset();
+            UNIT_ASSERT(channel->WaitForConnected(
+                std::chrono::system_clock::now() + std::chrono::seconds(5)));
+
+            server.Stop();
+            WaitForDisconnect(channel);
+            server.Start(serverCredentials);
+            UNIT_ASSERT_C(
+                channel->WaitForConnected(
+                    std::chrono::system_clock::now() +
+                    std::chrono::seconds(5)),
+                "Credentials lost certificates; identity=" << withIdentity);
+        }
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldApplyRotatedCertificatesWhileChannelsReconnect,
+        TGrpcShutdownFixture)
+    {
+        TGrpcInitializer grpcInitializer;
+        TProviderContext context;
+        const auto rotatedPair = CreateCertificatePair(
+            context.TempDir.Name(),
+            "rotated",
+            ReadCertResource("server3.key"),
+            ReadCertResource("server3.crt"));
+        const TString rotatedRootPath = TStringBuilder()
+            << context.TempDir.Name() << "/rotated-ca.crt";
+        WriteTextFile(rotatedRootPath, ReadCertResource("server3.crt"));
+
+        auto provider = CreateCertificateProvider(
+            context.Watcher,
+            context.RootPath,
+            {context.ClientPair});
+        auto credentials = provider->CreateSecureClientCredentials();
+        auto initialServerCredentials = CreateStaticCertificateProvider(
+            context.RootPath,
+            {context.ServerPair})->CreateSecureServerCredentials();
+        TTestTlsServer firstServer;
+        firstServer.Start(initialServerCredentials);
+        auto first = CreateTestChannel(firstServer.GetPort(), credentials);
+        UNIT_ASSERT(first->WaitForConnected(
+            std::chrono::system_clock::now() + std::chrono::seconds(5)));
+
+        firstServer.Stop();
+        WaitForDisconnect(first);
+        // The restarted server accepts only the rotated client identity.
+        firstServer.Start(CreateStaticCertificateProvider(
+            rotatedRootPath,
+            {context.ServerPair})->CreateSecureServerCredentials());
+        TTestTlsServer secondServer;
+        secondServer.Start(CreateStaticCertificateProvider(
+            rotatedRootPath,
+            {rotatedPair})->CreateSecureServerCredentials());
+        auto second = CreateTestChannel(
+            secondServer.GetPort(),
+            credentials,
+            "server3");
+
+        bool firstConnected = false;
+        bool secondConnected = false;
+        {
+            std::latch start{3};
+            std::thread reconnectFirst([&]
+            {
+                start.arrive_and_wait();
+                firstConnected = first->WaitForConnected(
+                    std::chrono::system_clock::now() + std::chrono::seconds(10));
+            });
+            std::thread connectSecond([&]
+            {
+                start.arrive_and_wait();
+                secondConnected = second->WaitForConnected(
+                    std::chrono::system_clock::now() + std::chrono::seconds(10));
+            });
+
+            Y_DEFER {
+                reconnectFirst.join();
+                connectSecond.join();
+            };
+
+            start.arrive_and_wait();
+            context.Watcher->RootCas[0].OnChange(
+                ReadCertResource("ca.crt") + "\n" + ReadCertResource("server3.crt"));
+            context.Watcher->Identities[0].OnChange(TIdentityContent{
+                .PrivateKey = ReadCertResource("server3.key"),
+                .CertChain = ReadCertResource("server3.crt"),
+            });
+        }
+
+        // Success of the first channel proves the new identity is in use;
+        // success of the second proves the newly trusted CA is in use too.
+        UNIT_ASSERT_C(firstConnected, "Rotated client identity was not used");
+        UNIT_ASSERT_C(secondConnected, "Rotated root certificates were not used");
     }
 }
 
