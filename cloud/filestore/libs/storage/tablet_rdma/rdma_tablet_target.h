@@ -15,15 +15,21 @@ namespace NCloud::NFileStore::NStorage {
 
 /**
  * Creates the component that serves the index tablets of the node over RDMA.
- * Start() registers the forwarder actor, starts the RDMA server and listens;
- * if listening fails, it reports a critical event and stops the RDMA server,
- * and the node keeps serving over the pipe. Stop() stops the RDMA server.
  *
- * @param config - Contents of the RDMA config file.
- * @param actorSystem - Actor system of the node; started before Start().
- * @param server - RDMA server to listen with; started and stopped here.
- * @param registry - Pipe servers of the node's tablets, the one passed to the
- *  tablets.
+ * Start() registers the forwarder actor, starts the RDMA server and opens the
+ * endpoint for the tablet requests. If the endpoint cannot be opened, it
+ * reports a critical event and stops the RDMA server; the node keeps serving
+ * over the pipe. Stop() stops the RDMA server.
+ *
+ * @param config - RDMA config file; the listen address, the listen port and
+ *  the tablet request timeout are taken from it.
+ * @param logging - Log of the request handling.
+ * @param actorSystem - Actor system of the node; must be started before
+ *  Start().
+ * @param server - RDMA server to listen with (see CreateRdmaServer); the
+ *  component starts and stops it.
+ * @param registry - Pipe servers of the node's tablets; the same registry is
+ *  passed to the tablets.
  */
 IStartablePtr CreateRdmaTabletTarget(
     const NProto::TRdmaConfig& config,

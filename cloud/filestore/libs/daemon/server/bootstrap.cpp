@@ -96,7 +96,6 @@ void TBootstrapServer::StartComponents()
     FILESTORE_LOG_START_COMPONENT(ThreadPool);
     FILESTORE_LOG_START_COMPONENT(Service);
     FILESTORE_LOG_START_COMPONENT(Server);
-
     FILESTORE_LOG_START_COMPONENT(RdmaTarget);
 }
 
