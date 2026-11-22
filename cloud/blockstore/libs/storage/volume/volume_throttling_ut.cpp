@@ -14,6 +14,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -126,6 +128,44 @@ NProto::TVolumeVolatileThrottlingInfo GetVolatileThrottlingInfo(
     return volume.StatVolume()->Record.GetVolatileThrottlingInfo();
 }
 
+// Update ownership and the volume configuration version, preserving the test
+// volume's geometry and base performance profile.
+void UpdateVolumeOwner(
+    TVolumeClient& volume,
+    const TString& cloud,
+    const TString& folder,
+    ui32 version)
+{
+    volume.UpdateVolumeConfig(
+        MaxBandwidth,
+        MaxIops,
+        100,    // burstPercentage
+        100,    // maxPostponedWeight
+        true,   // throttlingEnabled
+        version,
+        NProto::STORAGE_MEDIA_HDD,
+        2048,   // block count per partition
+        diskId,
+        cloud,
+        folder,
+        2,  // partitions count
+        2   // blocksPerStripe
+    );
+}
+
+// Check the accepted throttling version and effective read bandwidth.
+void CheckThrottlingState(
+    TVolumeClient& volume,
+    ui32 version,
+    ui64 readBandwidth)
+{
+    const auto info = GetVolatileThrottlingInfo(volume);
+    UNIT_ASSERT_VALUES_EQUAL(version, info.GetVersion());
+    UNIT_ASSERT_VALUES_EQUAL(
+        readBandwidth,
+        info.GetActualPerformanceProfile().GetMaxReadBandwidth());
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -155,6 +195,91 @@ Y_UNIT_TEST_SUITE(TVolumeActorUpdateThrottlingConfigTest)
             MaxBandwidth * readBwCoef,
             policy.GetMaxReadBandwidth());
         UNIT_ASSERT_VALUES_EQUAL(MaxBandwidth, policy.GetMaxWriteBandwidth());
+    }
+
+    // Check that changing CloudId or FolderId lets a repeated configuration
+    // select a new rule or remove the old one without accepting older versions.
+    Y_UNIT_TEST(ShouldReselectThrottlingRuleAfterOwnerChange)
+    {
+        for (const auto& [changeCloudId, matchNewOwner]: {
+                 std::pair{true, true},
+                 std::pair{false, true},
+                 std::pair{true, false},
+                 std::pair{false, false}})
+        {
+            // Accept rules for the current owner and optionally for the new one.
+            auto runtime = PrepareTestActorRuntime();
+            TVolumeClient volume = CreateVolume(*runtime);
+            const TString newCloudId = changeCloudId ? "other-cloud" : cloudId;
+            const TString newFolderId = changeCloudId ? folderId : "other-folder";
+            const ui32 version = 5;
+            TVector<NProto::TVolumeThrottlingRule> rules = {
+                CreateFilterRule({cloudId}, {folderId}, {}, 0.5)};
+            if (matchNewOwner) {
+                rules.push_back(
+                    CreateFilterRule({newCloudId}, {newFolderId}, {}, 0.25));
+            }
+            SendThrottlingConfig(volume, version, rules);
+            CheckThrottlingState(volume, version, MaxBandwidth * 0.5);
+
+            // Change one owner identifier without publishing a new configuration.
+            UpdateVolumeOwner(volume, newCloudId, newFolderId, 2);
+            const auto stat = volume.StatVolume();
+            UNIT_ASSERT_VALUES_EQUAL(
+                newCloudId,
+                stat->Record.GetVolume().GetCloudId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                newFolderId,
+                stat->Record.GetVolume().GetFolderId());
+
+            // Reject older and invalid updates without losing the pending retry.
+            SendThrottlingConfig(
+                volume,
+                version - 1,
+                {CreateSpecificDisksRule({diskId}, 0.75)});
+            CheckThrottlingState(volume, version, MaxBandwidth * 0.5);
+            SendThrottlingConfig(
+                volume,
+                version + 1,
+                {CreateSpecificDisksRule({diskId}, 2)});
+            CheckThrottlingState(volume, version, MaxBandwidth * 0.5);
+
+            // Re-evaluate the accepted version using the updated owner identifiers.
+            SendThrottlingConfig(volume, version, rules);
+            const ui64 expectedBandwidth =
+                matchNewOwner ? MaxBandwidth * 0.25 : MaxBandwidth;
+            CheckThrottlingState(volume, version, expectedBandwidth);
+
+            // Stop accepting the same version after the rule has been selected.
+            SendThrottlingConfig(
+                volume,
+                version,
+                {CreateSpecificDisksRule({diskId}, 0.75)});
+            CheckThrottlingState(volume, version, expectedBandwidth);
+        }
+    }
+
+    // Check that metadata updates with unchanged owner identifiers do not allow
+    // a repeated configuration to replace the accepted rules.
+    Y_UNIT_TEST(ShouldIgnoreRepeatedThrottlingConfigForUnchangedOwner)
+    {
+        // Apply a rule and update only the volume configuration version.
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume = CreateVolume(*runtime);
+        const ui32 version = 5;
+        SendThrottlingConfig(
+            volume,
+            version,
+            {CreateSpecificDisksRule({diskId}, 0.5)});
+        CheckThrottlingState(volume, version, MaxBandwidth * 0.5);
+        UpdateVolumeOwner(volume, cloudId, folderId, 2);
+
+        // Reject a changed payload with the already accepted version.
+        SendThrottlingConfig(
+            volume,
+            version,
+            {CreateSpecificDisksRule({diskId}, 0.25)});
+        CheckThrottlingState(volume, version, MaxBandwidth * 0.5);
     }
 
     // Check that a logical disk rule applies to a disk copy.

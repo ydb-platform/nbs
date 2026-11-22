@@ -243,6 +243,11 @@ private:
 
     TThrottlerConfig ThrottlerConfig;
     TVolumeThrottlingPolicy ThrottlingPolicy;
+
+    // Rule selection invalidated by a CloudId or FolderId change.
+    // Clear after applying an accepted configuration.
+    bool ThrottlingRuleOutdated = false;
+
     TVolumeShapingThrottler ShapingThrottler;
 
     TCachedVolumeMountHistory MountHistory;
@@ -701,6 +706,11 @@ public:
     const TVolumeThrottlingPolicy& GetThrottlingPolicy() const
     {
         return ThrottlingPolicy;
+    }
+
+    bool IsThrottlingRuleOutdated() const
+    {
+        return ThrottlingRuleOutdated;
     }
 
     TVolumeShapingThrottler& AccessShapingThrottler()
