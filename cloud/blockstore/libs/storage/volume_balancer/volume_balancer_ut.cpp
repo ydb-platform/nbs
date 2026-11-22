@@ -999,7 +999,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                 {.DiskId = "vol1"},
                 {.DiskId = "vol2"},
             },
-            {{"vol0", 1}, {"vol1", 1}, {"vol2", 1}},
+            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
             UpdateCountersInterval);
@@ -1018,7 +1018,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                  .Source = NProto::SOURCE_BALANCER},
                 {.DiskId = "vol2"},
             },
-            {{"vol0", 1}, {"vol1", 1}, {"vol2", 1}},
+            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
             1,
             {},
             UpdateCountersInterval);
@@ -1040,7 +1040,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                  .Source = NProto::SOURCE_BALANCER},
                 {.DiskId = "vol2"},
             },
-            {{"vol0", 1}, {"vol1", 1}, {"vol2", 1}},
+            {{"vol0", 10}, {"vol1", 1}, {"vol2", 2}},
             1,
             EChangeBindingOp::RELEASE_TO_HIVE,
             UpdateCountersInterval);
