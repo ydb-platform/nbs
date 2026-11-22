@@ -75,6 +75,8 @@ struct TIndexTabletState::TImpl
     TCacheReadBypass CacheReadBypass;
     TReadAheadCache ReadAheadCache;
     std::unique_ptr<IInMemoryIndexState> InMemoryIndexState;
+    // nodeId -> number of in-flight size-growing writes
+    THashMap<ui64, ui32> PendingNodeSizeUpdates;
     TSet<ui64> OrphanNodeIds;
     TSet<ui64> DeferredNodeDestructionIds;
     TSet<TString> PendingNodeCreateInShardNames;

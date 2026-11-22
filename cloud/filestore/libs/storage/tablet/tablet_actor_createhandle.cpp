@@ -542,15 +542,6 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
                 keepCache,
                 std::memory_order_relaxed);
         }
-
-        // We can remember the last time that the cache was invalidated by a
-        // user of a given session in order not to invalidate the cache the next
-        // time if the file was not modified
-        if (!args.Response.GetGuestKeepCache()) {
-            session->HandleStatsByNode.OnGuestCacheInvalidated(
-                *node,
-                args.WriteCommitId);
-        }
     } else {
         args.Response.SetShardFileSystemId(args.ShardId);
         args.Response.SetShardNodeName(args.ShardNodeName);
@@ -606,7 +597,17 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         isReadOnly &&
         Config->GetTabletUnsafeAsyncReadOnlyCreateHandleEnabled();
 
-    if (safeAsync) {
+    bool replyAsync = safeAsync || unsafeAsync;
+    if (replyAsync && Config->GetInMemoryIndexCacheEnabled()) {
+        if (HasPendingNodeSizeUpdate(args.TargetNodeId)) {
+            replyAsync = false;
+            Metrics->CreateHandleExtra.AsyncDeferredByPendingWrite.fetch_add(
+                1,
+                std::memory_order_relaxed);
+        }
+    }
+
+    if (replyAsync && safeAsync) {
         args.Response.SetHandleCreatedAsync(true);
     }
 
@@ -617,7 +618,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         args.Response,
         Config->GetDupCacheEntryCount());
 
-    if (safeAsync || unsafeAsync) {
+    if (replyAsync) {
         args.AsyncHandle = args.Response.GetHandle();
         StartCreateHandleCommit(args.AsyncHandle);
 
@@ -686,6 +687,15 @@ void TIndexTabletActor::CompleteCreateHandle(
         std::make_unique<TEvService::TEvCreateHandleResponse>(args.Error);
 
     if (!HasError(args.Error)) {
+        // Record the invalidation when sending the reply. Another open must
+        // not keep a stale page while this invalidating reply is deferred.
+        if (args.Response.GetHandle() && !args.Response.GetGuestKeepCache()) {
+            if (auto* session = FindSession(args.SessionId)) {
+                session->HandleStatsByNode.OnGuestCacheInvalidated(
+                    args.Response.GetNodeAttr(),
+                    args.WriteCommitId);
+            }
+        }
         CommitDupCacheEntry(args.SessionId, args.RequestId);
         response->Record = std::move(args.Response);
     }

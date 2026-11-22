@@ -453,6 +453,12 @@ void TTabletMetrics::Register(
         CreateHandleExtra.GuestKeepCacheSet,
         EAggregationType::AT_SUM,
         EMetricType::MT_DERIVATIVE);
+    AggregatableFsRegistry->Register(
+        {CreateLabel("request", "CreateHandle"),
+         CreateSensor("AsyncDeferredByPendingWrite")},
+        CreateHandleExtra.AsyncDeferredByPendingWrite,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_DERIVATIVE);
 
     AggregatableFsRegistry->Register(
         {CreateLabel("request", "Compaction"), CreateSensor("DudCount")},
