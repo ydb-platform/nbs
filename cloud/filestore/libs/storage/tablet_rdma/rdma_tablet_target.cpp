@@ -62,8 +62,8 @@ public:
             CreateRdmaTabletForwarderActor(Config.TabletRequestTimeout));
         Registry->AttachForwarder(forwarderId);
 
-        Server->Start();
         try {
+            Server->Start();
             StartRdmaTabletEndpoint(
                 *Server,
                 Config.ListenAddress,

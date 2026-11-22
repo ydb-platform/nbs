@@ -17,6 +17,8 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/yexception.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -35,6 +37,7 @@ struct TTestServer final
 
     ui32 Started = 0;
     ui32 Stopped = 0;
+    TString StartError;
 
     explicit TTestServer(IServerPtr server)
         : Server(std::move(server))
@@ -54,6 +57,9 @@ struct TTestServer final
     void Start() override
     {
         ++Started;
+        if (StartError) {
+            ythrow yexception() << StartError;
+        }
     }
 
     void Stop() override
@@ -267,6 +273,27 @@ Y_UNIT_TEST_SUITE(TRdmaTabletTargetTest)
         UNIT_ASSERT_VALUES_EQUAL(1, critEvents->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, server->Started);
         UNIT_ASSERT_VALUES_EQUAL(1, server->Stopped);
+    }
+
+    Y_UNIT_TEST(ShouldReportCritEventAndStopServerWhenServerIsNotStarted)
+    {
+        TEnv env;
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto critEvents = counters->GetCounter(
+            "AppCriticalEvents/TabletRdmaCritEvent",
+            true);
+
+        auto server = std::make_shared<TTestServer>(env.Endpoints);
+        server->StartError = "start failed";
+        auto target = env.CreateTarget(server);
+        target->Start();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, critEvents->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, server->Stopped);
+        UNIT_ASSERT(!env.Endpoints->GetHandler());
     }
 }
 
