@@ -14,6 +14,8 @@
 #include <cloud/storage/core/libs/rdma/impl/server.h>
 #include <cloud/storage/core/libs/rdma/impl/verbs.h>
 
+#include <util/datetime/base.h>
+#include <util/generic/string.h>
 #include <util/generic/yexception.h>
 #include <util/string/builder.h>
 
@@ -23,11 +25,20 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TRdmaTabletTargetConfig
+{
+    TString ListenAddress = "::";
+    ui32 ListenPort = 10021;
+    TDuration TabletRequestTimeout = TDuration::Minutes(1);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TRdmaTabletTarget final
     : public IStartable
 {
 private:
-    const TFileStoreRdmaServerConfigPtr Config;
+    const TRdmaTabletTargetConfig Config;
     const ILoggingServicePtr Logging;
     const IActorSystemPtr ActorSystem;
     const NCloud::NStorage::NRdma::IServerPtr Server;
@@ -35,7 +46,7 @@ private:
 
 public:
     TRdmaTabletTarget(
-            TFileStoreRdmaServerConfigPtr config,
+            TRdmaTabletTargetConfig config,
             ILoggingServicePtr logging,
             IActorSystemPtr actorSystem,
             NCloud::NStorage::NRdma::IServerPtr server,
@@ -50,26 +61,38 @@ public:
     void Start() override
     {
         const auto forwarderId = ActorSystem->Register(
-            CreateRdmaTabletForwarderActor(Config->TabletRequestTimeout));
+            CreateRdmaTabletForwarderActor(Config.TabletRequestTimeout));
         Registry->AttachForwarder(forwarderId);
 
-        auto endpoint = CreateFileStoreRdmaServiceTarget(
-            Config,
+        auto handler = CreateRdmaTabletServerHandler(
             Logging,
-            Server,
             CreateActorSystemRdmaRequestHandler(
                 ActorSystem,
                 forwarderId,
                 Registry));
 
         Server->Start();
+
+        NCloud::NStorage::NRdma::IServerEndpointPtr endpoint;
+        TString error;
         try {
-            endpoint->Start();
+            endpoint = Server->StartEndpoint(
+                Config.ListenAddress,
+                Config.ListenPort,
+                handler);
         } catch (...) {
-            ReportTabletRdmaCritEvent(
-                TStringBuilder()
-                << "unable to start RDMA target: "
-                << CurrentExceptionMessage());
+            error = CurrentExceptionMessage();
+        }
+        handler->SetEndpoint(endpoint);
+
+        if (!endpoint) {
+            TStringBuilder message;
+            message << "unable to start RDMA endpoint " << Config.ListenAddress
+                << ":" << Config.ListenPort;
+            if (error) {
+                message << ": " << error;
+            }
+            ReportTabletRdmaCritEvent(message);
 
             Server->Stop();
         }
@@ -117,15 +140,15 @@ IStartablePtr CreateRdmaTabletTarget(
     NCloud::NStorage::NRdma::IServerPtr server,
     TRdmaTabletRegistryPtr registry)
 {
-    auto targetConfig = std::make_shared<TFileStoreRdmaServerConfig>();
+    TRdmaTabletTargetConfig targetConfig;
     if (config.GetListenAddress()) {
-        targetConfig->ListenAddress = config.GetListenAddress();
+        targetConfig.ListenAddress = config.GetListenAddress();
     }
     if (config.GetListenPort()) {
-        targetConfig->ListenPort = config.GetListenPort();
+        targetConfig.ListenPort = config.GetListenPort();
     }
     if (config.GetTabletRequestTimeout()) {
-        targetConfig->TabletRequestTimeout =
+        targetConfig.TabletRequestTimeout =
             TDuration::MilliSeconds(config.GetTabletRequestTimeout());
     }
 

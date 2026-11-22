@@ -24,7 +24,7 @@ using namespace NCloud::NStorage::NRdma;
 ////////////////////////////////////////////////////////////////////////////////
 
 class TRequestHandler final
-    : public IServerHandler
+    : public IRdmaTabletServerHandler
     , public std::enable_shared_from_this<TRequestHandler>
 {
 private:
@@ -40,7 +40,7 @@ public:
         , Log(std::move(log))
     {}
 
-    void SetEndpoint(std::weak_ptr<IServerEndpoint> endpoint)
+    void SetEndpoint(std::weak_ptr<IServerEndpoint> endpoint) override
     {
         Endpoint.SetValue(std::move(endpoint));
     }
@@ -183,72 +183,17 @@ private:
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-class TFileStoreRdmaServiceTarget final: public IStartable
-{
-private:
-    const TFileStoreRdmaServerConfigPtr Config;
-    const ILoggingServicePtr Logging;
-    const IServerPtr Server;
-    const IRdmaTabletRequestHandlerPtr RequestHandler;
-
-public:
-    TFileStoreRdmaServiceTarget(
-        TFileStoreRdmaServerConfigPtr config,
-        ILoggingServicePtr logging,
-        IServerPtr server,
-        IRdmaTabletRequestHandlerPtr requestHandler)
-        : Config(std::move(config))
-        , Logging(std::move(logging))
-        , Server(std::move(server))
-        , RequestHandler(std::move(requestHandler))
-    {}
-
-    void Start() override
-    {
-        TLog Log = Logging->CreateLog("NFS_RDMA");
-        auto handler = std::make_shared<TRequestHandler>(RequestHandler, Log);
-
-        IServerEndpointPtr endpoint;
-        try {
-            endpoint = Server->StartEndpoint(
-                Config->ListenAddress,
-                Config->ListenPort,
-                handler);
-        } catch (...) {
-            handler->SetEndpoint({});
-            throw;
-        }
-
-        handler->SetEndpoint(endpoint);
-
-        if (!endpoint) {
-            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
-                << "unable to start RDMA endpoint " << Config->ListenAddress
-                << ":" << Config->ListenPort;
-        }
-    }
-
-    void Stop() override
-    {}
-};
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IStartablePtr CreateFileStoreRdmaServiceTarget(
-    TFileStoreRdmaServerConfigPtr config,
+IRdmaTabletServerHandlerPtr CreateRdmaTabletServerHandler(
     ILoggingServicePtr logging,
-    IServerPtr server,
     IRdmaTabletRequestHandlerPtr requestHandler)
 {
-    return std::make_shared<TFileStoreRdmaServiceTarget>(
-        std::move(config),
-        std::move(logging),
-        std::move(server),
-        std::move(requestHandler));
+    return std::make_shared<TRequestHandler>(
+        std::move(requestHandler),
+        logging->CreateLog("NFS_RDMA"));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

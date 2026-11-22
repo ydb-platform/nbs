@@ -2,7 +2,6 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/rdma/protocol.h>
-#include <cloud/filestore/libs/rdma/server.h>
 #include <cloud/filestore/libs/rdma_test/test_server.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_actor_system.h>
@@ -114,8 +113,13 @@ struct TEnv
 
     IStartablePtr CreateTarget(IServerPtr server)
     {
+        return CreateTarget(std::move(server), NProto::TRdmaConfig());
+    }
+
+    IStartablePtr CreateTarget(IServerPtr server, NProto::TRdmaConfig config)
+    {
         return CreateRdmaTabletTarget(
-            NProto::TRdmaConfig(),
+            config,
             CreateLoggingService("console"),
             MakeIntrusive<TTestActorSystem>(Runtime, NodeIdx),
             std::move(server),
@@ -226,6 +230,23 @@ Y_UNIT_TEST_SUITE(TRdmaTabletTargetTest)
 
         target->Stop();
         UNIT_ASSERT_VALUES_EQUAL(1, server->Stopped);
+    }
+
+    Y_UNIT_TEST(ShouldListenOnConfiguredAddress)
+    {
+        TEnv env;
+
+        NProto::TRdmaConfig config;
+        config.SetListenAddress("::1");
+        config.SetListenPort(10022);
+
+        auto target = env.CreateTarget(
+            std::make_shared<TTestServer>(env.Endpoints),
+            std::move(config));
+        target->Start();
+
+        UNIT_ASSERT_VALUES_EQUAL("::1", env.Endpoints->GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(10022, env.Endpoints->GetPort());
     }
 
     Y_UNIT_TEST(ShouldReportCritEventAndStopServerWhenEndpointIsNotStarted)

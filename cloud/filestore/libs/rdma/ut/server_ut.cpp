@@ -118,34 +118,6 @@ struct TEarlyRequestServer final
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNoEndpointServer final
-    : public IServer
-{
-    IServerEndpointPtr StartEndpoint(
-        TString host,
-        ui32 port,
-        IServerHandlerPtr handler) override
-    {
-        Y_UNUSED(host);
-        Y_UNUSED(port);
-        Y_UNUSED(handler);
-        return nullptr;
-    }
-
-    void Start() override
-    {}
-
-    void Stop() override
-    {}
-
-    void DumpHtml(IOutputStream& out) const override
-    {
-        Y_UNUSED(out);
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TEnv
 {
     const std::shared_ptr<TTestRequestHandler> RequestHandler;
@@ -157,7 +129,7 @@ struct TEnv
     bool Failed = false;
 
     std::shared_ptr<TTestRdmaServer> Server;
-    IStartablePtr Target;
+    IRdmaTabletServerHandlerPtr Handler;
 
     TString In;
     TString Out;
@@ -189,9 +161,6 @@ struct TEnv
                 ErrorMessage = TString(message);
             });
 
-        auto config = std::make_shared<TFileStoreRdmaServerConfig>();
-        config->ListenAddress = "::1";
-
         std::shared_ptr<TEarlyRequestServer> earlyServer;
         IServerPtr server = Server;
         if (In) {
@@ -200,12 +169,10 @@ struct TEnv
             server = earlyServer;
         }
 
-        Target = CreateFileStoreRdmaServiceTarget(
-            std::move(config),
+        Handler = CreateRdmaTabletServerHandler(
             CreateLoggingService("console"),
-            std::move(server),
             RequestHandler);
-        Target->Start();
+        Handler->SetEndpoint(server->StartEndpoint("::1", 10021, Handler));
 
         if (earlyServer) {
             earlyServer->Join();
@@ -291,56 +258,8 @@ NProto::TError ParseRecord(TStringBuf data)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TFileStoreRdmaServiceTargetTest)
+Y_UNIT_TEST_SUITE(TRdmaTabletServerHandlerTest)
 {
-    Y_UNIT_TEST(ShouldListenOnConfiguredAddress)
-    {
-        TEnv env(4_KB);
-
-        UNIT_ASSERT_VALUES_EQUAL("::1", env.Server->GetHost());
-        UNIT_ASSERT_VALUES_EQUAL(10021, env.Server->GetPort());
-    }
-
-    Y_UNIT_TEST(ShouldListenOnAllAddressesByDefault)
-    {
-        auto server = std::make_shared<TTestRdmaServer>(
-            [](void* context, size_t responseBytes)
-            {
-                Y_UNUSED(context);
-                Y_UNUSED(responseBytes);
-            },
-            [](void* context, ui32 error, TStringBuf message)
-            {
-                Y_UNUSED(context);
-                Y_UNUSED(error);
-                Y_UNUSED(message);
-            });
-
-        auto target = CreateFileStoreRdmaServiceTarget(
-            std::make_shared<TFileStoreRdmaServerConfig>(),
-            CreateLoggingService("console"),
-            server,
-            std::make_shared<TTestRequestHandler>());
-        target->Start();
-
-        UNIT_ASSERT_VALUES_EQUAL("::", server->GetHost());
-        UNIT_ASSERT_VALUES_EQUAL(10021, server->GetPort());
-    }
-
-    Y_UNIT_TEST(ShouldFailToStartWithoutEndpoint)
-    {
-        auto target = CreateFileStoreRdmaServiceTarget(
-            std::make_shared<TFileStoreRdmaServerConfig>(),
-            CreateLoggingService("console"),
-            std::make_shared<TNoEndpointServer>(),
-            std::make_shared<TTestRequestHandler>());
-
-        UNIT_ASSERT_EXCEPTION_CONTAINS(
-            target->Start(),
-            TServiceError,
-            "unable to start RDMA endpoint :::10021");
-    }
-
     Y_UNIT_TEST(ShouldPassDecodedRequestAndSerializeTypedResponse)
     {
         TEnv env(4_KB);

@@ -2,30 +2,31 @@
 
 #include "public.h"
 
-#include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
-#include <cloud/storage/core/libs/rdma/iface/public.h>
+#include <cloud/storage/core/libs/rdma/iface/server.h>
 
-#include <util/datetime/base.h>
-#include <util/generic/string.h>
+#include <memory>
 
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFileStoreRdmaServerConfig
+// Handler of the RDMA server endpoint that serves tablet requests: decodes the
+// request envelope, passes the request to IRdmaTabletRequestHandler and
+// encodes its response.
+struct IRdmaTabletServerHandler
+    : public NCloud::NStorage::NRdma::IServerHandler
 {
-    TString ListenAddress = "::";
-    ui32 ListenPort = 10021;
-    TDuration TabletRequestTimeout = TDuration::Minutes(1);
+    // The responses wait for the endpoint, so it must be set (empty if the
+    // endpoint was not started) once StartEndpoint() returns or throws.
+    virtual void SetEndpoint(
+        std::weak_ptr<NCloud::NStorage::NRdma::IServerEndpoint> endpoint) = 0;
 };
 
-////////////////////////////////////////////////////////////////////////////////
+using IRdmaTabletServerHandlerPtr = std::shared_ptr<IRdmaTabletServerHandler>;
 
-IStartablePtr CreateFileStoreRdmaServiceTarget(
-    TFileStoreRdmaServerConfigPtr config,
+IRdmaTabletServerHandlerPtr CreateRdmaTabletServerHandler(
     ILoggingServicePtr logging,
-    NCloud::NStorage::NRdma::IServerPtr server,
     IRdmaTabletRequestHandlerPtr requestHandler);
 
 }   // namespace NCloud::NFileStore::NStorage
