@@ -1,5 +1,7 @@
 #include "helper.h"
 
+#include <cloud/filestore/libs/storage/api/components.h>
+
 #include <cloud/storage/core/libs/rdma/iface/config.h>
 #include <cloud/storage/core/libs/rdma/impl/server.h>
 #include <cloud/storage/core/libs/rdma/impl/verbs.h>
@@ -18,7 +20,7 @@ NCloud::NStorage::NRdma::IServerPtr CreateRdmaServer(
         NCloud::NStorage::NRdma::TObservabilityProvider(
             std::move(logging),
             std::move(monitoring),
-            "NFS_RDMA",
+            GetComponentName(TFileStoreComponents::RDMA),
             "filestore",
             "rdma_server"),
         NCloud::NStorage::NRdma::CreateServerConfigPtr(config));
