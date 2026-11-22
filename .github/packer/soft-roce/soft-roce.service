@@ -1,0 +1,33 @@
+[Unit]
+Description=Soft-RoCE Device Service
+Documentation=man:rdma-link(8)
+After=network-online.target
+Before=multi-user.target
+Wants=network-online.target
+ConditionPathExists=/etc/soft-roce/config.json
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/soft-roce-setup.sh
+ExecStop=/usr/local/bin/soft-roce-cleanup.sh
+ExecReload=/usr/local/bin/soft-roce-setup.sh
+TimeoutStartSec=60
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+
+# Restart policy
+Restart=no
+RestartSec=5
+
+# Security settings
+User=root
+Group=root
+
+# Environment
+Environment=SOFT_ROCE_CONFIG_DIR=/etc/soft-roce
+Environment=SOFT_ROCE_LOG_FILE=/var/log/soft-roce.log
+
+[Install]
+WantedBy=multi-user.target
