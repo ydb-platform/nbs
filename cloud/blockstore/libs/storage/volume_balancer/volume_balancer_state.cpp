@@ -147,12 +147,6 @@ void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
                                 out << "-";
                             }
                         }
-                        TABLED() {
-                            out
-                                << (HasError(info.Cost.GetError())
-                                        ? info.Cost.GetError().GetMessage()
-                                        : info.Cost.GetResult().ToString());
-                        }
                     }
                 }
             }
