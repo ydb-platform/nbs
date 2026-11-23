@@ -48,23 +48,28 @@ import (
 func TestExportDiskMetadataSourceDiskLookup(t *testing.T) {
 	lookupErr := errors.New("YDB read failed")
 	for _, tc := range []struct {
-		name      string
-		diskID    string
-		image     *resources.ImageMeta
-		imageErr  error
-		disk      *resources.DiskMeta
-		diskErr   error
-		blockSize uint32
+		name        string
+		diskID      string
+		image       *resources.ImageMeta
+		imageErr    error
+		snapshot    *resources.SnapshotMeta
+		snapshotErr error
+		disk        *resources.DiskMeta
+		diskErr     error
+		blockSize   uint32
 	}{
 		{name: "snapshot disk", diskID: "disk", disk: &resources.DiskMeta{BlockSize: 4096}, blockSize: 4096},
 		{name: "image disk", image: &resources.ImageMeta{SrcDiskID: "disk"}, disk: &resources.DiskMeta{BlockSize: 512}, blockSize: 512},
 		{name: "deleted disk", diskID: "disk"},
 		{name: "unknown block size", diskID: "disk", disk: &resources.DiskMeta{}},
 		{name: "invalid create request preserves block size", diskID: "disk", disk: &resources.DiskMeta{BlockSize: 4096, CreateRequestData: []byte{0xff}}, blockSize: 4096},
-		{name: "unknown image"},
+		{name: "migrated snapshot disk", snapshot: &resources.SnapshotMeta{Disk: &types.Disk{DiskId: "disk"}}, disk: &resources.DiskMeta{BlockSize: 4096}, blockSize: 4096},
+		{name: "unknown image and snapshot"},
 		{name: "image without source disk", image: &resources.ImageMeta{}},
+		{name: "snapshot without source disk", snapshot: &resources.SnapshotMeta{}},
 		{name: "disk read error", diskID: "disk", diskErr: lookupErr},
 		{name: "image read error", imageErr: lookupErr},
+		{name: "snapshot read error", snapshotErr: lookupErr},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			storage := resource_mocks.NewStorageMock()
@@ -73,6 +78,11 @@ func TestExportDiskMetadataSourceDiskLookup(t *testing.T) {
 				storage.On("GetImageMeta", mock.Anything, "snapshot").Return(tc.image, tc.imageErr).Once()
 				if tc.image != nil {
 					diskID = tc.image.SrcDiskID
+				} else if tc.imageErr == nil {
+					storage.On("GetSnapshotMeta", mock.Anything, "snapshot").Return(tc.snapshot, tc.snapshotErr).Once()
+					if tc.snapshot != nil {
+						diskID = tc.snapshot.Disk.GetDiskId()
+					}
 				}
 			}
 			if diskID != "" {
@@ -80,7 +90,7 @@ func TestExportDiskMetadataSourceDiskLookup(t *testing.T) {
 			}
 			ctx := logging.SetLogger(context.Background(), newExportLogger(logging.InfoLevel))
 			metadata, err := readExportDiskMetadata(ctx, storage, "snapshot", tc.diskID)
-			if tc.imageErr != nil || tc.diskErr != nil {
+			if tc.imageErr != nil || tc.snapshotErr != nil || tc.diskErr != nil {
 				require.ErrorIs(t, err, lookupErr)
 			} else {
 				require.NoError(t, err)
