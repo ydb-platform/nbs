@@ -244,7 +244,7 @@ def test_standalone_completed_summary_does_not_remain_running(pr):
     assert texts(row)[0] == texts(row)[-1] == "🟢"
 
 
-def test_retries_share_target_and_keep_each_report(pr):
+def test_retries_share_status_target_and_workflow_but_keep_each_report(pr):
     comment = pr.comments[0]
     comment.body = gs.update_workload_check_block(
         comment.body, "filestore", "running", f"{RUN_URL}/job/1"
@@ -263,25 +263,24 @@ def test_retries_share_target_and_keep_each_report(pr):
     assert len(rows) == 4
     assert comment.body.count("<table>") == 1
     assert texts(rows[0]) == [
-        "🔴",
+        "🟢",
         "filestore",
         "🟢 2m 5s",
         "1",
         "🔴 Tests failed 1h 55m 25s 0 / 1 passed, fail: 1",
-        "—",
+        "🟢",
     ]
-    assert rows[0][1].get("rowspan") == "3"
+    for cell in (rows[0][0], rows[0][1], rows[0][-1]):
+        assert cell.get("rowspan") == "3"
     assert (
         rows[0][4].find('sub[@title="Tests duration"]').text == "1h\u00a055m\u00a025s"
     )
-    assert texts(rows[1])[:4] == [
-        "🔴",
+    assert texts(rows[1]) == [
         "—",
         "2",
         "🔴 Tests failed 4m 1s 0 / 1 passed, fail: 1",
     ]
-    assert texts(rows[2])[:4] == ["🟢", "—", "3", "🟢 Tests passed 1m 27s 1 / 1 passed"]
-    assert texts(rows[2])[-1] == "🟢"
+    assert texts(rows[2]) == ["—", "3", "🟢 Tests passed 1m 27s 1 / 1 passed"]
     assert (
         rows[0][4].findall("sub/a")[-1].get("href")
         == f"{SUMMARY_BASE}/summary/filestore/1/ya-test.html#FAIL"
@@ -308,6 +307,46 @@ def test_summary_keeps_other_components_during_concurrent_edit(pr):
     assert len(plaque.workload("filestore").reports) == 1
     assert len(plaque.workload("blockstore").reports) == 1
     parsed_table(plaque)
+
+
+@pytest.mark.parametrize("execution,expected", [("failure", "🔴"), ("success", "🟢")])
+def test_shared_status_uses_final_execution_after_a_passing_retry(
+    pr, monkeypatch, execution, expected
+):
+    monkeypatch.setenv("BUILD_FAILED_COUNT", "4")
+    publish(pr, component="blockstore", failed=True, exit_code=255)
+    monkeypatch.setenv("BUILD_FAILED_COUNT", "0")
+    publish(pr, component="blockstore", iteration=1)
+    gs.update_pr_comment_workload_check(
+        12, pr, PRESET, "blockstore", False, "completed"
+    )
+    body = gs.complete_workload_checks_block(
+        pr.comments[0].body,
+        workflow_outcome_resolver=lambda *_: WorkflowOutcome(  # noqa: U101
+            execution, execution
+        ),
+    )
+    rows = parsed_table(Plaque.from_comment(body)).findall("tbody/tr")
+    for cell in (rows[1][0], rows[1][1], rows[1][-1]):
+        assert cell.get("rowspan") == "2"
+    assert rows[1][0].find("span").text == expected
+    assert rows[1][-1].find("span").text == expected
+    assert rows[1][4].find("span").text == "🔴"
+    assert len(rows[2]) == 3
+    assert rows[2][2].find("span").text == "🟢"
+    assert "you can merge" not in body
+
+
+def test_shared_status_checks_all_reports_from_latest_attempt():
+    workload = Workload("blockstore", status="completed", execution_status="completed")
+    workload.add_report(
+        Report(1, "Integration", "", "abc123", 1, {"FAIL": 1}, exit_code=1)
+    )
+    workload.add_report(Report(1, "Unit", "", "abc123", 1, {"PASS": 1}, exit_code=0))
+    rows = parsed_table(Plaque(PRESET, [workload])).findall("tbody/tr")
+    assert rows[0][0].get("rowspan") == "2"
+    assert rows[0][0].find("span").text == "🔴"
+    assert rows[1][2].find("span").text == "🟢"
 
 
 def test_workload_completion_keeps_concurrent_summary(pr):
@@ -840,7 +879,7 @@ def test_damaged_workload_does_not_erase_valid_workloads(damage):
     assert row.status == "report_failed"
     assert row.job_id == 123
     assert row.reports == []
-    assert row.overall(None) != "completed"
+    assert row.overall() != "completed"
     assert "stored results were unavailable" in restored.notice
 
 
@@ -1113,8 +1152,7 @@ def test_failed_test_job_never_gets_merge_hint_from_passing_counts(pr, exit_code
     )
     plaque = Plaque.from_comment(body)
     assert "you can merge" not in plaque.render_table()
-    if exit_code is None:
-        assert parsed_table(plaque).find("tbody/tr/td/span").text == "🔴"
+    assert parsed_table(plaque).find("tbody/tr/td/span").text == "🔴"
 
 
 def test_unverified_execution_does_not_get_cleanup_merge_hint(pr):
@@ -1159,9 +1197,10 @@ def test_attempt_build_errors_do_not_override_successful_retry(
     assert row.reports[0].count("FAIL_BUILD") == 2
     assert row.reports[1].count("FAIL_BUILD") == 0
     cells = parsed_table(plaque).findall("tbody/tr")
-    assert cells[0][0].find("span").text == "🔴"
+    assert cells[0][0].find("span").text == "🟢"
     assert cells[0][2].find("span").text == "🔴"
-    assert cells[1][0].find("span").text == cells[1][3].find("span").text == "🟢"
+    assert cells[0][4].find("span").text == "🔴"
+    assert cells[1][2].find("span").text == "🟢"
     assert not row.build_errors
 
 
@@ -1179,8 +1218,9 @@ def test_existing_shared_attempt_failure_is_cleared_by_successful_retry(
     publish(pr, iteration=1)
     plaque = Plaque.from_comment(pr.comments[0].body)
     row = plaque.workload("filestore")
-    assert row.overall(row.reports[0]) == "failed"
-    assert row.overall(row.reports[1]) == "completed"
+    assert row.reports[0].failed
+    assert not row.reports[1].failed
+    assert row.overall() == "completed"
     assert row.build == "completed"
     assert not row.build_errors
 
@@ -1192,7 +1232,7 @@ def test_dedicated_build_failure_is_not_cleared_by_a_test_report(pr):
     publish(pr)
     row = Plaque.from_comment(pr.comments[0].body).workload("filestore")
     assert row.build == "failed_build"
-    assert row.overall(row.reports[0]) == "failed"
+    assert row.overall() == "failed"
 
 
 def test_junit_summary_records_execution_exit_code(
@@ -1217,4 +1257,4 @@ def test_junit_summary_records_execution_exit_code(
     row = Plaque.from_comment(pr.comments[0].body).workload("filestore")
     assert row.reports[0].count("PASS") == 1
     assert row.reports[0].exit_code == 124
-    assert row.overall(row.reports[0]) == "failed"
+    assert row.overall() == "failed"

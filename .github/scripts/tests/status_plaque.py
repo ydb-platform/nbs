@@ -173,23 +173,21 @@ class Workload:
     def workflow_failed(self) -> bool:
         return self.workflow_state in ("failed", "failed_build", "timed_out")
 
-    def can_merge_after_cleanup_failure(self, report: Report | None) -> bool:
+    @property
+    def latest_reports(self) -> list[Report]:
+        latest_iteration = max((report.iteration for report in self.reports), default=0)
+        return [
+            report for report in self.reports if report.iteration == latest_iteration
+        ]
+
+    def can_merge_after_cleanup_failure(self) -> bool:
         if not self.cleanup_only_failure or self.execution_status != "completed":
             return False
-        if self.overall(report) != "completed":
+        if self.overall() != "completed":
             return False
         if not self.reports:
             return self.status == "completed" and self.build == "completed"
-        latest_iteration = max(item.iteration for item in self.reports)
-        return (
-            report is not None
-            and report.exit_code == 0
-            and all(
-                item.exit_code == 0 and not item.failed
-                for item in self.reports
-                if item.iteration == latest_iteration
-            )
-        )
+        return all(report.exit_code == 0 for report in self.latest_reports)
 
     @property
     def target(self) -> str:
@@ -263,22 +261,23 @@ class Workload:
             return "failed_build"
         return self.build if report.iteration == 0 else ""
 
-    def overall(self, report: Report | None) -> str:
+    def overall(self) -> str:
         states = (self.status, self.build, self.workflow_status, self.execution_status)
         if not self.status or any(
             state and (state not in ICONS or state == "unknown") for state in states
         ):
             return "unknown"
-        if self.build == "failed_build" or (report and report.failed):
-            return "failed"
-        if (
-            report is not None
-            and report.exit_code is None
-            and report.iteration == max(item.iteration for item in self.reports)
-            and self.execution_status in ("failed", "timed_out", "cancelled")
+        # A retry can pass its subset while the full build/test job still fails.
+        if self.build == "failed_build" or self.execution_status in (
+            "failed",
+            "failed_build",
+            "timed_out",
+            "cancelled",
         ):
             return "failed"
-        if report or self.status == "completed":
+        if any(report.failed for report in self.latest_reports):
+            return "failed"
+        if self.reports or self.status == "completed":
             return "completed"
         if self.status == "cancelled":
             return "cancelled"
