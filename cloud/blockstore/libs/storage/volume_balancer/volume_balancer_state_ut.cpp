@@ -680,7 +680,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         UNIT_ASSERT(!state.GetVolumeToPull());
     }
 
-Y_UNIT_TEST(ShouldNotPreemptWhenVolumeBalancerSwitchIsDisabled)
+    Y_UNIT_TEST(ShouldNotPreemptWhenVolumeBalancerSwitchIsDisabled)
     {
         auto storageConfig = CreateStorageConfig(
             NProto::PREEMPTION_MOVE_MOST_HEAVY,
