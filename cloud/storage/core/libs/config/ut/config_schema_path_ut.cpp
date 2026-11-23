@@ -1,4 +1,4 @@
-#include <cloud/storage/core/libs/config/runtime_config.h>
+#include <cloud/storage/core/libs/config/config_schema_path.h>
 #include <cloud/storage/core/libs/config/ut/protos/runtime_config.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -7,7 +7,7 @@
 
 namespace NCloud::NConfig {
 
-Y_UNIT_TEST_SUITE(TRuntimeConfigPathTest)
+Y_UNIT_TEST_SUITE(TConfigSchemaPathTest)
 {
     // Verify paths for reused message types, sibling fields, and collections,
     // including the lifetime of a saved path after leaving its scope.
@@ -19,7 +19,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigPathTest)
 
         // Build each branch independently although both use the same type.
         {
-            TRuntimeConfigPath path;
+            TConfigSchemaPath path;
             UNIT_ASSERT_VALUES_EQUAL("", path.GetPath());
             for (const auto* name: {"Allowed", "Frozen"}) {
                 path.Enter(*root->FindFieldByName(name));
@@ -56,7 +56,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigPathTest)
     Y_UNIT_TEST(ShouldSeparateOneofGroupAndMemberPaths)
     {
         const auto* root = NProto::NTest::TRuntimeConfig::descriptor();
-        TRuntimeConfigPath path;
+        TConfigSchemaPath path;
         path.Enter(*root->FindFieldByName("AllowedChild"));
         Y_DEFER
         {
@@ -97,7 +97,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigPathTest)
     Y_UNIT_TEST(ShouldRejectInvalidPathTransitions)
     {
         const auto* root = NProto::NTest::TRuntimeConfig::descriptor();
-        TRuntimeConfigPath path;
+        TConfigSchemaPath path;
         UNIT_ASSERT_EXCEPTION_CONTAINS(
             path.Leave(),
             std::exception,
@@ -116,7 +116,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigPathTest)
             UNIT_ASSERT_EXCEPTION_CONTAINS(
                 path.Enter(*root->FindFieldByName("Flag")),
                 std::exception,
-                "below terminal runtime config path '" + previousPath + "'");
+                "below terminal config schema path '" + previousPath + "'");
             UNIT_ASSERT_VALUES_EQUAL(previousPath, path.GetPath());
             path.Leave();
         }

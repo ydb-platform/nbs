@@ -42,6 +42,7 @@ namespace {
 
 using google::protobuf::FieldDescriptor;
 using google::protobuf::Message;
+using NConfig::EConfigIgnoreReason;
 
 // Source roles used consistently in field rows and current CMS counters.
 enum EConfigSource : size_t
@@ -63,8 +64,12 @@ struct TRenderContext
     // Live ICB controls borrowed from the current configuration.
     const NStorage::TStorageConfigControls& Controls;
 
-    // Rejected runtime paths borrowed from the renderer's accepted publication.
-    const NConfig::TRuntimeConfigDiagnostics& Diagnostics;
+    // Ignored values and rejected changes for the accepted publication.
+    const NConfig::TConfigPreparationDiagnostics& Diagnostics;
+
+    // Static-only paths from the unchanged startup source report.
+    const NConfig::TConfigPreparationDiagnostics&
+        StartupDynamicConfigNormalizationDiagnostics;
 
     // Accepted CMS source whose parameters contribute to section counters.
     EConfigSource CurrentDynamicSource;
@@ -245,12 +250,19 @@ GetValue(const Message* message, const FieldDescriptor* field, int index = -1)
     return value;
 }
 
-void RenderCell(IOutputStream& out, const std::optional<TString>& value)
+void RenderCell(
+    IOutputStream& out,
+    const std::optional<TString>& value,
+    bool ignoredFromDynamic)
 {
     HTML (out) {
         TABLED () {
             if (value) {
                 out << EncodeHtmlPcdata(*value);
+                if (ignoredFromDynamic) {
+                    out << "<br><span class='config-dynamic-ignored'>"
+                           "static-only, ignored</span>";
+                }
             } else {
                 out << "&mdash;";
             }
@@ -258,22 +270,44 @@ void RenderCell(IOutputStream& out, const std::optional<TString>& value)
     }
 }
 
+// Check whether an ignored change can take effect after restart.
+bool IsDeferredReason(EConfigIgnoreReason reason)
+{
+    return reason != EConfigIgnoreReason::StaticOnly;
+}
+
+// Match a schema path to its displayed field, children, or collection elements.
+bool MatchesIgnoredPath(TStringBuf path, TStringBuf ignoredPath)
+{
+    if (ignoredPath.EndsWith("[]")) {
+        return path.StartsWith(ignoredPath.Chop(1));
+    }
+    return path == ignoredPath ||
+           (path.StartsWith(ignoredPath) && path.size() > ignoredPath.size() &&
+            path[ignoredPath.size()] == '.');
+}
+
 // Match deferred schema paths to displayed fields and collection elements.
 bool IsDeferred(
     TStringBuf path,
-    const NConfig::TRuntimeConfigDiagnostics& diagnostics)
+    const NConfig::TConfigPreparationDiagnostics& diagnostics)
 {
     for (const auto& [ignoredPath, reason]: diagnostics.IgnoredPaths) {
-        Y_UNUSED(reason);
-        // Collections are terminal schema paths; mark every displayed element.
-        if (ignoredPath.EndsWith("[]")) {
-            if (path.StartsWith(TStringBuf(ignoredPath).Chop(1))) {
-                return true;
-            }
-        } else if (
-            path == ignoredPath ||
-            (path.StartsWith(ignoredPath) && path.size() > ignoredPath.size() &&
-             path[ignoredPath.size()] == '.'))
+        if (IsDeferredReason(reason) && MatchesIgnoredPath(path, ignoredPath)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Match static-only paths to source fields and their children.
+bool IsStaticOnly(
+    TStringBuf path,
+    const NConfig::TConfigPreparationDiagnostics& diagnostics)
+{
+    for (const auto& [ignoredPath, reason]: diagnostics.IgnoredPaths) {
+        if (reason == EConfigIgnoreReason::StaticOnly &&
+            MatchesIgnoredPath(path, ignoredPath))
         {
             return true;
         }
@@ -298,11 +332,29 @@ void RenderField(
                         ? "<td class='config-dynamic-deferred'>"
                         : "<td>")
                 << EncodeHtmlPcdata(path) << "</td>";
+
             for (const auto source:
                  {StaticSource, StartupDynamicSource, RuntimeDynamicSource})
             {
-                RenderCell(out, GetValue(sources[source], field, index));
+                bool ignoredFromDynamic;
+
+                if (source == StartupDynamicSource) {
+                    ignoredFromDynamic = IsStaticOnly(
+                        path,
+                        context.StartupDynamicConfigNormalizationDiagnostics);
+                } else if (source == RuntimeDynamicSource) {
+                    ignoredFromDynamic =
+                        IsStaticOnly(path, context.Diagnostics);
+                } else {
+                    ignoredFromDynamic = false;
+                }
+
+                RenderCell(
+                    out,
+                    GetValue(sources[source], field, index),
+                    /*ignoredFromDynamic=*/ignoredFromDynamic);
             }
+
             if (context.ShowIcb) {
                 if (field->options().GetExtension(
                         NCloud::NMarkers::AllowRuntimeUpdate))
@@ -313,12 +365,17 @@ void RenderField(
                                   IsSensitive(*field)
                                       ? TString("[redacted]")
                                       : FormatIcbValue(*field, *icb))
-                            : std::nullopt);
+                            : std::nullopt,
+                        /*ignoredFromDynamic=*/false);
                 } else {
                     out << "<td class='config-icb-unavailable'></td>";
                 }
             }
-            RenderCell(out, GetValue(sources[EffectiveSource], field, index));
+
+            RenderCell(
+                out,
+                GetValue(sources[EffectiveSource], field, index),
+                /*ignoredFromDynamic=*/false);
         }
     }
     out << Endl;
@@ -333,22 +390,30 @@ struct TSectionCounts
     // Rejected runtime changes, including deferred removals.
     ui32 PendingRestart = 0;
 
+    // Static-only parameters removed from the current private source.
+    ui32 Ignored = 0;
+
     // Storage fields with a current operator override.
     ui32 Icb = 0;
 };
 
-// Count rejected paths within one section without treating ICB as a rejection.
-ui32 CountPendingRestart(
+// Count deferred and static-only parameters by schema path within one section.
+void CountIgnoredParameters(
     TStringBuf section,
-    const NConfig::TRuntimeConfigDiagnostics& diagnostics)
+    const NConfig::TConfigPreparationDiagnostics& diagnostics,
+    TSectionCounts& counts)
 {
     const TString prefix = TStringBuilder() << section << '.';
-    ui32 count = 0;
     for (const auto& [path, reason]: diagnostics.IgnoredPaths) {
-        Y_UNUSED(reason);
-        count += path == section || path.StartsWith(prefix);
+        if (path != section && !path.StartsWith(prefix)) {
+            continue;
+        }
+        if (reason == EConfigIgnoreReason::StaticOnly) {
+            ++counts.Ignored;
+        } else if (IsDeferredReason(reason)) {
+            ++counts.PendingRestart;
+        }
     }
-    return count;
 }
 
 // Render source fields in schema order and count each collection once.
@@ -563,7 +628,8 @@ bool RenderMessage(
                                       << path << '.' << oneof->name();
             const auto it = context.Diagnostics.IgnoredPaths.find(groupPath);
             fieldContext.DeferredByOneof |=
-                it != context.Diagnostics.IgnoredPaths.end();
+                it != context.Diagnostics.IgnoredPaths.end() &&
+                IsDeferredReason(it->second);
         }
 
         if (field->is_repeated()) {
@@ -635,7 +701,7 @@ TString TBlockstoreConfigRenderer::RenderHtml(
 .config-summary td:first-child { width: 1%; white-space: nowrap; }
 .config-dynamic-deferred { color: #b35a00; }
 .config-deferred-hint { color: #000; }
-.config-icb, .config-update-rejected { color: #c00; }
+.config-dynamic-ignored, .config-icb, .config-update-rejected { color: #c00; }
 .config-icb-unavailable { background-color: #eee; }
 .config-actions { display: flex; align-items: center; justify-content: space-between;
                   flex-wrap: wrap; gap: 1em; margin-bottom: 1em; }
@@ -796,11 +862,35 @@ $(function () {
                 << "<a href='#' id='config-expand-all' role='button' "
                 << "class='btn btn-default btn-sm'>Expand all</a>"
                 << "</div></div>";
-            if (!Data.RuntimeDiagnostics.IgnoredPaths.empty()) {
+            if (AnyOf(
+                    Data.CurrentConfigPreparationDiagnostics.IgnoredPaths,
+                    [](const auto& entry)
+                    { return IsDeferredReason(entry.second); }))
+            {
                 out << "<p class='config-deferred-hint'>"
                     << "<span class='config-dynamic-deferred'>Deferred</span> "
                     << "parameters cannot be updated at runtime and take "
                     << "effect after restart.</p>";
+            }
+
+            // Explain ignored values from either Dynamic source, including
+            // retained startup history.
+            const auto isStaticOnly = [](const auto& entry)
+            {
+                return entry.second == EConfigIgnoreReason::StaticOnly;
+            };
+            if (AnyOf(
+                    Data.CurrentConfigPreparationDiagnostics.IgnoredPaths,
+                    isStaticOnly) ||
+                AnyOf(
+                    Data.StartupDynamicConfigNormalizationDiagnostics
+                        .IgnoredPaths,
+                    isStaticOnly))
+            {
+                out << "<p class='config-dynamic-ignored'>"
+                    << "Static-only parameters detected in the dynamic config "
+                    << "are ignored, even after a restart. Set them in the "
+                    << "static configuration.</p>";
             }
             out << "<p id='config-search-empty' role='status' "
                 << "style='display: none'>No matching parameters.</p>"
@@ -818,12 +908,15 @@ $(function () {
                 TSectionCounts counts;
                 const TRenderContext context{
                     .Controls = controls,
-                    .Diagnostics = Data.RuntimeDiagnostics,
+                    .Diagnostics = Data.CurrentConfigPreparationDiagnostics,
+                    .StartupDynamicConfigNormalizationDiagnostics =
+                        Data.StartupDynamicConfigNormalizationDiagnostics,
                     .CurrentDynamicSource = hasRuntimeUpdate
                                                 ? RuntimeDynamicSource
                                                 : StartupDynamicSource,
                     .ShowIcb = showIcb,
                 };
+
                 if (!RenderNestedMessage(
                         rows,
                         sources,
@@ -837,9 +930,10 @@ $(function () {
 
                 const TString target = TStringBuilder()
                                        << "config-section-" << section->name();
-                counts.PendingRestart = CountPendingRestart(
+                CountIgnoredParameters(
                     section->name(),
-                    Data.RuntimeDiagnostics);
+                    Data.CurrentConfigPreparationDiagnostics,
+                    counts);
 
                 // Keep counters outside the collapsed details for this section.
                 out << "<tr><td><a href='#" << target
@@ -860,6 +954,11 @@ $(function () {
                 if (counts.PendingRestart) {
                     out << " / <span class='config-dynamic-deferred'>deferred: "
                         << counts.PendingRestart << "</span>";
+                }
+                if (counts.Ignored) {
+                    out << " / <span class='config-dynamic-ignored'>ignored"
+                           "</span>: "
+                        << counts.Ignored;
                 }
                 out << "</td><td><span class='"
                     << (counts.Icb ? "config-icb" : "config-zero") << "'>";

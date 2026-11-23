@@ -16,6 +16,8 @@ Created via CreateConfigsManager().
 #include <cloud/blockstore/libs/config/blockstore_config.h>
 #include <cloud/blockstore/libs/config/blockstore_config_holder.h>
 
+#include <cloud/storage/core/libs/config/config_preparation_diagnostics.h>
+
 #include <contrib/ydb/library/actors/core/actor.h>
 
 namespace NCloud::NBlockStore {
@@ -40,6 +42,11 @@ struct TConfigsManagerArgs
     // Original PrivateDatabaseConfig received at startup, before normalization
     // or merging; empty without an accepted source.
     NProto::TBlockstoreConfig InitialDynamicConfig;
+
+    // Static-only fields removed from InitialDynamicConfig when building the
+    // startup configuration; owned by these arguments until actor creation.
+    NConfig::TConfigPreparationDiagnostics
+        StartupDynamicConfigNormalizationDiagnostics;
 
     // The non-null ICB controls reused by every storage adapter.
     NStorage::TStorageConfigControlsPtr StorageConfigControls;

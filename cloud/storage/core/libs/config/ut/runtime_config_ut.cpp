@@ -1,9 +1,11 @@
 #include <cloud/storage/core/config/markers.pb.h>
+#include <cloud/storage/core/libs/config/config_schema_path.h>
 #include <cloud/storage/core/libs/config/runtime_config.h>
 #include <cloud/storage/core/libs/config/ut/protos/runtime_config.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/vector.h>
 #include <util/string/cast.h>
 
 #include <google/protobuf/dynamic_message.h>
@@ -156,16 +158,16 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(4, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("Allowed.Frozen") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("Frozen.Mutable") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("Frozen.Frozen") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("ExplicitFalse.Mutable") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
     }
 
     // Verify that collections are atomic parameters, preserve ordinary merge
@@ -207,10 +209,10 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(2, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("FrozenValues[]") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("FrozenMap[]") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
 
         // Rebuild a replay and removal from static, without accumulating data.
         auto replay = staticConfig;
@@ -251,7 +253,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("FrozenChoice") ==
-            ERuntimeConfigIgnoreReason::OneofSwitchForbidden);
+            EConfigIgnoreReason::OneofSwitchForbidden);
 
         // Clear the allowed choice on removal, but keep the frozen selection.
         requested.Clear();
@@ -291,7 +293,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("FixedChoice") ==
-            ERuntimeConfigIgnoreReason::OneofSwitchForbidden);
+            EConfigIgnoreReason::OneofSwitchForbidden);
     }
 
     // Verify that identical CMS sources allow updates only in the fixed oneof
@@ -330,7 +332,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
                 UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
                 UNIT_ASSERT(
                     diagnostics.IgnoredPaths.at("FixedChoice") ==
-                    ERuntimeConfigIgnoreReason::OneofSwitchForbidden);
+                    EConfigIgnoreReason::OneofSwitchForbidden);
             }
         }
     }
@@ -365,7 +367,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
             if (staticValue != 10) {
                 UNIT_ASSERT(
                     diagnostics.IgnoredPaths.at("Allowed.Frozen") ==
-                    ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+                    EConfigIgnoreReason::RuntimeUpdateForbidden);
             }
         }
     }
@@ -393,7 +395,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("FixedMessage.Frozen") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
 
         // Remove the override while retaining the selected member and its
         // forbidden sibling field.
@@ -591,7 +593,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         {
             UNIT_ASSERT(
                 diagnostics.IgnoredPaths.at(path) ==
-                ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+                EConfigIgnoreReason::RuntimeUpdateForbidden);
         }
     }
 
@@ -761,13 +763,13 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(3, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("AllowedChild.FixedMessage.Frozen") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("FrozenChild.MutableChoice") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("FrozenChild.FixedChoice") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
     }
 
     // Verify that compound permissions discard unknown singular data silently,
@@ -853,7 +855,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         const auto* value = descriptor->field(0);
 
         // Build the ordinary field path without exposing its synthetic group.
-        TRuntimeConfigPath path;
+        TConfigSchemaPath path;
         path.Enter(*value);
         UNIT_ASSERT_VALUES_EQUAL("Value", path.GetPath());
         path.Leave();
@@ -946,13 +948,13 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(3, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("Allowed.Frozen") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("Frozen") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("ExplicitFalse.Mutable") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
     }
 
     // Verify that unchanged frozen NaNs produce no diagnostics, while changes
@@ -993,7 +995,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
             for (const auto* path: {"FrozenDouble", "FrozenDoubles[]"}) {
                 UNIT_ASSERT(
                     rejected.IgnoredPaths.at(path) ==
-                    ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+                    EConfigIgnoreReason::RuntimeUpdateForbidden);
             }
             UNIT_ASSERT_VALUES_EQUAL(
                 startupBytes,
@@ -1103,7 +1105,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("FrozenRecords[]") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(!requested.GetFrozenRecords(0).HasMutable());
         UNIT_ASSERT(
             google::protobuf::util::MessageDifferencer::Equals(
@@ -1148,7 +1150,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
                     .field_count());
             UNIT_ASSERT(
                 diagnostics.IgnoredPaths.at("FixedChoice") ==
-                ERuntimeConfigIgnoreReason::OneofSwitchForbidden);
+                EConfigIgnoreReason::OneofSwitchForbidden);
             UNIT_ASSERT_VALUES_EQUAL(
                 staticBytes,
                 staticConfig.SerializeAsString());
@@ -1173,7 +1175,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("Allowed.Frozen") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
 
         // Retain explicit presence when unknown data is the only payload.
         requested.MutableAllowed();
@@ -1224,7 +1226,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         for (int i = 1; i <= 120; ++i) {
             UNIT_ASSERT_C(
                 diagnostics.IgnoredPaths.at("Parameter" + ToString(i)) ==
-                    ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden,
+                    EConfigIgnoreReason::RuntimeUpdateForbidden,
                 "Incorrect diagnostic reason for Parameter" << i);
         }
         UNIT_ASSERT_VALUES_EQUAL(0, requested->ByteSizeLong());

@@ -12,7 +12,7 @@ Filtering of runtime protobuf configurations.
      selection, including unset. After a rejected switch, use matching static
      values or defaults for allowed fields.
    - Remove unknown fields without diagnostics.
-   - Return an TRuntimeConfigDiagnostics report with rejected fields and
+   - Return a TConfigPreparationDiagnostics report with rejected fields and
      rejection reasons.
 
 2. Default values and required fields
@@ -92,99 +92,11 @@ Filtering of runtime protobuf configurations.
 
 #pragma once
 
-#include <util/generic/hash.h>
-#include <util/generic/string.h>
-#include <util/generic/vector.h>
+#include "config_preparation_diagnostics.h"
 
 #include <google/protobuf/message.h>
 
 namespace NCloud::NConfig {
-
-// A schema path for a caller-controlled protobuf traversal. The helper owns
-// a stack of name segments; it retains neither messages nor descriptors.
-// Create one helper at the root, then pair each successful Enter() with Leave()
-// in the same scope, preferably through Y_DEFER { path.Leave(); }.
-// Pass descriptors from the current message; their containing type is not
-// checked by the helper.
-// Only singular message fields allow further descent. Collections and real
-// oneof groups are terminal nodes; a oneof member uses its own field name.
-class TRuntimeConfigPath
-{
-public:
-    TRuntimeConfigPath() = default;
-    TRuntimeConfigPath(const TRuntimeConfigPath&) = delete;
-    TRuntimeConfigPath& operator=(const TRuntimeConfigPath&) = delete;
-    TRuntimeConfigPath(TRuntimeConfigPath&&) = delete;
-    TRuntimeConfigPath& operator=(TRuntimeConfigPath&&) = delete;
-
-    // Enter a field with [] for collections; throw if the current node is
-    // terminal.
-    void Enter(const google::protobuf::FieldDescriptor& field);
-
-    // Enter a real oneof; throw for synthetic groups or below a terminal node.
-    void Enter(const google::protobuf::OneofDescriptor& oneof);
-
-    // Return to the parent; throw if already at the root.
-    void Leave();
-
-    // Build an owning, dot-separated path; return an empty string at the root.
-    TString GetPath() const;
-
-private:
-    // One entered node, owned by the path stack until the matching Leave().
-    struct TFrame
-    {
-        // Exact proto name, with [] appended for a repeated or map field.
-        TString Segment;
-
-        // Permission to enter children: true only for singular messages.
-        bool CanDescend;
-    };
-
-    // Append a node after checking that the current node permits descent.
-    void Enter(TString segment, bool canDescend);
-
-private:
-    // Entered nodes in root-to-leaf order; an empty stack denotes the root.
-    TVector<TFrame> Frames;
-};
-
-// Reason for a rejected change at a schema path returned by the runtime filter.
-enum class ERuntimeConfigIgnoreReason
-{
-    // Runtime updates are forbidden by the field or an ancestor's marker.
-    RuntimeUpdateForbidden,
-
-    // The oneof selection is fixed at startup, including an unset selection.
-    OneofSwitchForbidden,
-};
-
-// A complete report of rejected changes returned by FilterRuntimeConfig().
-// The report owns its paths and reasons. Paths contain schema names only;
-// parameter values and collection keys are never recorded.
-struct TRuntimeConfigDiagnostics
-{
-    // Rejected changes by schema path, one reason per path without a count
-    // limit. The caller can convert reasons to text for display.
-    //
-    // Build lookup keys with TRuntimeConfigPath during your own traversal:
-    // 1. Call path.Enter(*field), then IgnoredPaths.find(path.GetPath()).
-    // 2. Call path.Leave() after the field and its children; use Y_DEFER.
-    // Include absent fields so rejected removals can also be found.
-    //
-    // Paths are relative to the root and use exact proto names:
-    // - Parent.Field: a scalar value or a change in message presence.
-    // - Parent.Items[]: the complete repeated/map field, without element paths.
-    // - Parent.Choice: a oneof group; member paths use Parent.Member.Field.
-    //
-    // For a non-null field->real_containing_oneof(), enter the group from the
-    // member's parent, look up its path, then leave before entering the member.
-    // A rejected oneof switch (OneofSwitchForbidden) does not forbid allowed
-    // updates within the selected member.
-    //
-    // Use a message's path + "." as a prefix to find its descendant paths.
-    THashMap<TString, ERuntimeConfigIgnoreReason> IgnoredPaths;
-};
 
 // Reject inconsistent oneof markers outside compound parameter values.
 // Reject messages that allow extensions, except inside repeated/map fields
@@ -221,7 +133,7 @@ void ValidateRuntimeConfigSchema(
 // Throw on descriptor mismatch or missing required startup fields before
 // modifying runtimeConfig. Other exceptions may leave it partly modified:
 // discard it on failure. Both source configurations stay unchanged.
-TRuntimeConfigDiagnostics FilterRuntimeConfig(
+TConfigPreparationDiagnostics FilterRuntimeConfig(
     const google::protobuf::Message& staticConfig,
     const google::protobuf::Message& startupConfig,
     google::protobuf::Message& runtimeConfig);

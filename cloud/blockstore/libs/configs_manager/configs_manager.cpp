@@ -18,7 +18,7 @@ section clears dynamic overrides; equivalent inputs do not republish.
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/config/runtime_config.h>
+#include <cloud/storage/core/libs/config/config_preparation_diagnostics.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <contrib/ydb/core/base/appdata.h>
@@ -47,6 +47,23 @@ namespace {
 
 constexpr ui32 PrivateDatabaseConfigKind =
     NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem;
+
+// Log static-only paths from an accepted source without exposing field values.
+void LogIgnoredDynamicFields(
+    const TActorContext& ctx,
+    const NConfig::TConfigPreparationDiagnostics& diagnostics)
+{
+    for (const auto& [path, reason]: diagnostics.IgnoredPaths) {
+        if (reason == NConfig::EConfigIgnoreReason::StaticOnly) {
+            LOG_WARN_S(
+                ctx,
+                TBlockStoreComponents::CONFIGS_MANAGER,
+                "Ignoring static-only field from dynamic "
+                "PrivateDatabaseConfig: "
+                    << path);
+        }
+    }
+}
 
 // Report a rejected runtime update with its reason and the restart risk.
 void ReportConfigUpdateError(
@@ -152,6 +169,10 @@ TConfigsManagerActor::TConfigsManagerActor(TConfigsManagerArgs args)
     ConfigRenderer.Data.StartupDynamicConfig = DynamicConfig;
     ConfigRenderer.Data.DynamicConfigPresent =
         DynamicConfig.ByteSizeLong() != 0;
+    ConfigRenderer.Data.StartupDynamicConfigNormalizationDiagnostics =
+        std::move(args.StartupDynamicConfigNormalizationDiagnostics);
+    ConfigRenderer.Data.CurrentConfigPreparationDiagnostics =
+        ConfigRenderer.Data.StartupDynamicConfigNormalizationDiagnostics;
 }
 
 void TConfigsManagerActor::Bootstrap(const TActorContext& ctx)
@@ -291,7 +312,7 @@ void TConfigsManagerActor::Handle(
         ConfigRenderer.Data.StartupDeliveryCookie = ev->Cookie;
     }
     NProto::TBlockstoreConfig newDynamicConfig;
-    NConfig::TRuntimeConfigDiagnostics diagnostics;
+    NConfig::TConfigPreparationDiagnostics diagnostics;
     IBlockstoreConfigMutablePtr newConfig;
 
     // Prepare the complete update before changing the publication or live
@@ -386,7 +407,11 @@ void TConfigsManagerActor::Handle(
     ConfigRenderer.Data.LastUpdateTime = ctx.Now();
     ConfigRenderer.Data.UpdateStatus = EConfigUpdateStatus::Runtime;
     ConfigRenderer.Data.RejectedUpdateReason.clear();
-    ConfigRenderer.Data.RuntimeDiagnostics = std::move(diagnostics);
+    ConfigRenderer.Data.CurrentConfigPreparationDiagnostics =
+        std::move(diagnostics);
+    LogIgnoredDynamicFields(
+        ctx,
+        ConfigRenderer.Data.CurrentConfigPreparationDiagnostics);
 
     LOG_INFO_S(
         ctx,

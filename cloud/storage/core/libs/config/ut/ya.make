@@ -1,7 +1,7 @@
 UNITTEST_FOR(cloud/storage/core/libs/config)
 
 SRCS(
-    runtime_config_path_ut.cpp
+    config_schema_path_ut.cpp
     runtime_config_ut.cpp
 )
 

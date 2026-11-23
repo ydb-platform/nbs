@@ -162,6 +162,8 @@ public:
                         .StaticConfig = Args.StaticBlockstoreConfigProto,
                         .StartupConfig = Args.StartupBlockstoreConfigProto,
                         .InitialDynamicConfig = Args.CmsBlockstoreConfig,
+                        .StartupDynamicConfigNormalizationDiagnostics =
+                            Args.StartupDynamicConfigNormalizationDiagnostics,
                         .StorageConfigControls =
                             storageConfig->GetControls(),
                     }),

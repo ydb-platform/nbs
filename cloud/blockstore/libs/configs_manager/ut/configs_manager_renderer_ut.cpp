@@ -178,7 +178,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
 {
     // Verify that every top-level field is a singular message: the renderer
     // traverses all configuration sections using singular message accessors.
-    Y_UNIT_TEST(ShouldHaveOnlySingularMessageSections)
+    Y_UNIT_TEST(ShouldHaveOnlySingularMessageTopLevelSections)
     {
         const auto* descriptor = NProto::TBlockstoreConfig::descriptor();
         for (int i = 0; i != descriptor->field_count(); ++i) {
@@ -196,12 +196,297 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         }
     }
 
+    // Verify that ignored static-only values are labeled only in their startup
+    // or runtime Dynamic cells, without labels in Static or Effective cells.
+    Y_UNIT_TEST(ShouldMarkIgnoredStaticOnlyValuesInDynamicCells)
+    {
+        // Build startup sources with ignored scalar and empty-message values.
+        auto staticConfig = MakeConfig(100);
+        staticConfig.MutableStorageService()->SetNodeType("static-node");
+        staticConfig.MutableStorageService()->SetSchemeShardDir("/static");
+        staticConfig.MutableDiskAgent()->SetDedicatedDiskAgent(true);
+        staticConfig.MutableDiskAgent()->SetEnabled(false);
+        auto startupDynamicConfig = MakeConfig(200);
+        startupDynamicConfig.MutableStorageService()->SetNodeType(
+            "startup-node");
+        startupDynamicConfig.MutableStorageService()
+            ->MutableConfigDispatcherSettings();
+        auto controls = std::make_shared<NStorage::TStorageConfigControls>();
+        const auto startup = MakeStartupBlockstoreConfig(
+            staticConfig,
+            startupDynamicConfig,
+            controls,
+            /*extraParameters=*/{});
+        TBlockstoreConfigRenderer renderer{
+            .Data =
+                {
+                    .StartupDynamicConfig = startupDynamicConfig,
+                    .DynamicConfigPresent = true,
+                    .CurrentConfigPreparationDiagnostics =
+                        startup.NormalizationDiagnostics,
+                    .StartupDynamicConfigNormalizationDiagnostics =
+                        startup.NormalizationDiagnostics,
+                },
+        };
+        const TString ignored =
+            "<br><span class='config-dynamic-ignored'>"
+            "static-only, ignored</span>";
+        const TString ignoredNodeRow =
+            "StorageService.NodeType</td><td>&quot;static-node&quot;</td>"
+            "<td>&quot;startup-node&quot;" +
+            ignored +
+            "</td><td>&mdash;</td>"
+            "<td class='config-icb-unavailable'></td>"
+            "<td>&quot;static-node&quot;</td>";
+
+        // Check startup labels while the runtime Dynamic column is absent.
+        auto html = renderer.RenderHtml(
+            *startup.Config,
+            staticConfig,
+            startupDynamicConfig,
+            *controls);
+        UNIT_ASSERT_STRING_CONTAINS(html, ignoredNodeRow);
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "StorageService.ConfigDispatcherSettings</td>"
+            "<td>&mdash;</td><td>{}" +
+                ignored + "</td><td>&mdash;</td>");
+
+        // Replace Dynamic with other ignored fields and a populated message.
+        auto dynamicConfig = MakeConfig(300);
+        dynamicConfig.MutableStorageService()->SetSchemeShardDir("/runtime");
+        dynamicConfig.MutableStorageService()
+            ->MutableConfigDispatcherSettings()
+            ->MutableAllowList()
+            ->AddNames("LogConfigItem");
+        dynamicConfig.MutableDiskAgent()->SetEnabled(true);
+        const auto config = MakeRuntimeBlockstoreConfig(
+            staticConfig,
+            startup.Proto,
+            dynamicConfig,
+            controls,
+            /*extraParameters=*/{},
+            renderer.Data.CurrentConfigPreparationDiagnostics);
+        renderer.Data.UpdateStatus = EConfigUpdateStatus::Runtime;
+        html = renderer
+                   .RenderHtml(*config, staticConfig, dynamicConfig, *controls);
+
+        // Keep each label in its source column, including message children.
+        UNIT_ASSERT_STRING_CONTAINS(html, ignoredNodeRow);
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "StorageService.SchemeShardDir</td><td>&quot;/static&quot;</td>"
+            "<td>&mdash;</td><td>&quot;/runtime&quot;" +
+                ignored +
+                "</td><td class='config-icb-unavailable'></td>"
+                "<td>&quot;/static&quot;</td>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "StorageService.ConfigDispatcherSettings.AllowList.Names[0]</td>"
+            "<td>&mdash;</td><td>&mdash;</td><td>&quot;LogConfigItem&quot;" +
+                ignored + "</td>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "DiskAgent.Enabled</td><td>false</td><td>&mdash;</td><td>true" +
+                ignored + "</td><td>false</td>");
+    }
+
+    // Verify that ignored static-only diagnostics produce a red explanation and
+    // per-section ignored counts, without deferred indicators.
+    Y_UNIT_TEST(ShouldRenderSummaryForIgnoredStaticOnlyValues)
+    {
+        // Supply ignored values in two sections, including an empty message.
+        auto staticConfig = MakeConfig(100);
+        staticConfig.MutableDiskAgent()->SetDedicatedDiskAgent(true);
+        staticConfig.MutableDiskAgent()->SetEnabled(false);
+        auto dynamicConfig = MakeConfig(200);
+        dynamicConfig.MutableStorageService()->SetNodeType("ignored-node");
+        dynamicConfig.MutableStorageService()
+            ->MutableConfigDispatcherSettings();
+        dynamicConfig.MutableDiskAgent()->SetEnabled(true);
+        auto controls = std::make_shared<NStorage::TStorageConfigControls>();
+        const auto startup =
+            MakeStartupBlockstoreConfig(
+                staticConfig,
+                {},
+                controls,
+                /*extraParameters=*/{});
+        TBlockstoreConfigRenderer renderer{
+            .Data =
+                {
+                    .UpdateStatus = EConfigUpdateStatus::Runtime,
+                    .DynamicConfigPresent = true,
+                },
+        };
+
+        // Render a runtime source whose ignored values remain static-only.
+        const auto config = MakeRuntimeBlockstoreConfig(
+            staticConfig,
+            startup.Proto,
+            dynamicConfig,
+            controls,
+            /*extraParameters=*/{},
+            renderer.Data.CurrentConfigPreparationDiagnostics);
+        const auto html = renderer.RenderHtml(
+            *config,
+            staticConfig,
+            dynamicConfig,
+            *controls);
+
+        // Count ignored parameters by section and explain the policy.
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            ">StorageService</a></td><td>"
+            "<span class='config-dynamic-total'>3</span>"
+            " / <span class='config-dynamic-ignored'>ignored</span>: 2");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            ">DiskAgent</a></td><td>"
+            "<span class='config-dynamic-total'>1</span>"
+            " / <span class='config-dynamic-ignored'>ignored</span>: 1");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<p class='config-dynamic-ignored'>"
+            "Static-only parameters detected in the dynamic config are "
+            "ignored, even after a restart. Set them in the static "
+            "configuration.</p>");
+        UNIT_ASSERT(!html.Contains("<td class='config-dynamic-deferred'>"));
+        UNIT_ASSERT(!html.Contains("take effect after restart"));
+    }
+
+    // Verify that removing the startup dynamic configuration at runtime
+    // keeps the general explanation and the ignored static-only value and its
+    // "static-only, ignored" label in the startup Dynamic column. The Effective
+    // value must still match Static. Hide the ignored counter because it counts
+    // only the current dynamic configuration, excluding values preserved in the
+    // startup Dynamic column.
+    Y_UNIT_TEST(
+        ShouldRetainStartupLabelsForIgnoredStaticOnlyValuesAfterDynamicRemoval)
+    {
+        // Accept a startup value whose ignored source must remain visible.
+        auto staticConfig = MakeConfig(100);
+        staticConfig.MutableStorageService()->SetNodeType("static-node");
+        auto startupDynamicConfig = MakeConfig(200);
+        startupDynamicConfig.MutableStorageService()->SetNodeType(
+            "startup-node");
+        auto controls = std::make_shared<NStorage::TStorageConfigControls>();
+        const auto startup = MakeStartupBlockstoreConfig(
+            staticConfig,
+            startupDynamicConfig,
+            controls,
+            /*extraParameters=*/{});
+        TBlockstoreConfigRenderer renderer{
+            .Data =
+                {
+                    .StartupDynamicConfig = startupDynamicConfig,
+                    .DynamicConfigPresent = true,
+                    .CurrentConfigPreparationDiagnostics =
+                        startup.NormalizationDiagnostics,
+                    .StartupDynamicConfigNormalizationDiagnostics =
+                        startup.NormalizationDiagnostics,
+                },
+        };
+        const TString ignoredNodeRow =
+            "StorageService.NodeType</td><td>&quot;static-node&quot;</td>"
+            "<td>&quot;startup-node&quot;<br>"
+            "<span class='config-dynamic-ignored'>static-only, ignored</span>"
+            "</td><td>&mdash;</td>"
+            "<td class='config-icb-unavailable'></td>"
+            "<td>&quot;static-node&quot;</td>";
+        const TString ignoredHint =
+            "<p class='config-dynamic-ignored'>"
+            "Static-only parameters detected in the dynamic config are "
+            "ignored, even after a restart. Set them in the static "
+            "configuration.</p>";
+
+        // Confirm the initial label, explanation and ignored count.
+        auto html = renderer.RenderHtml(
+            *startup.Config,
+            staticConfig,
+            startupDynamicConfig,
+            *controls);
+        UNIT_ASSERT_STRING_CONTAINS(html, ignoredNodeRow);
+        UNIT_ASSERT_STRING_CONTAINS(html, ignoredHint);
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            ">StorageService</a></td><td>"
+            "<span class='config-dynamic-total'>2</span>"
+            " / <span class='config-dynamic-ignored'>ignored</span>: 1");
+
+        // Remove the current source while retaining the saved startup source.
+        const auto config = MakeRuntimeBlockstoreConfig(
+            staticConfig,
+            startup.Proto,
+            {},
+            controls,
+            /*extraParameters=*/{},
+            renderer.Data.CurrentConfigPreparationDiagnostics);
+        renderer.Data.UpdateStatus = EConfigUpdateStatus::Runtime;
+        renderer.Data.DynamicConfigPresent = false;
+        html = renderer.RenderHtml(*config, staticConfig, {}, *controls);
+
+        // Keep the historical labels and hint, but no current ignored counter.
+        UNIT_ASSERT_STRING_CONTAINS(html, ignoredNodeRow);
+        UNIT_ASSERT_STRING_CONTAINS(html, ignoredHint);
+        UNIT_ASSERT(!html.Contains(">ignored</span>:"));
+    }
+
+    // Verify that a configuration delivery error is shown on the page while
+    // the last accepted runtime Dynamic value, its "static-only, ignored"
+    // label and the general static-only explanation remain visible.
+    // Then remove the runtime dynamic configuration and verify that both
+    // the label and explanation disappear, because the startup Dynamic
+    // source has no ignored static-only values.
+    Y_UNIT_TEST_F(
+        ShouldRetainLabelsForIgnoredStaticOnlyValuesAfterRejectedUpdate,
+        TRendererActorFixture)
+    {
+        // Accept a dynamic source whose static-only value is ignored.
+        auto dynamicConfig = MakeConfig(300);
+        dynamicConfig.MutableStorageService()->SetNodeType("ignored-node");
+        SendNotification(
+            std::make_shared<NProto::TBlockstoreConfig>(dynamicConfig),
+            1);
+        WaitForAck(1);
+        const TString ignoredRow =
+            "StorageService.NodeType</td><td>&mdash;</td><td>&mdash;</td>"
+            "<td>&quot;ignored-node&quot;<br>"
+            "<span class='config-dynamic-ignored'>static-only, ignored</span>"
+            "</td>";
+        const auto acceptedHtml = GetMonitoringPage();
+        UNIT_ASSERT_STRING_CONTAINS(acceptedHtml, ignoredRow);
+        UNIT_ASSERT_STRING_CONTAINS(
+            acceptedHtml,
+            "<p class='config-dynamic-ignored'>");
+
+        // Reject another delivery without replacing the accepted source report.
+        SendNotification(
+            std::make_shared<NCloud::NProto::TError>(
+                MakeError(E_ARGUMENT, "invalid replacement")),
+            2);
+        const auto rejectedHtml = GetMonitoringPage();
+        UNIT_ASSERT_STRING_CONTAINS(rejectedHtml, "invalid replacement");
+        UNIT_ASSERT_STRING_CONTAINS(rejectedHtml, ignoredRow);
+        UNIT_ASSERT_STRING_CONTAINS(
+            rejectedHtml,
+            "<p class='config-dynamic-ignored'>");
+
+        // Clear the accepted runtime source and its normalization diagnostics.
+        SendNotification(nullptr, 3);
+        WaitForAck(3);
+        const auto clearedHtml = GetMonitoringPage();
+        UNIT_ASSERT(!clearedHtml.Contains("static-only, ignored"));
+        UNIT_ASSERT(
+            !clearedHtml.Contains("<p class='config-dynamic-ignored'>"));
+    }
+
     // Check that startup delivery is shown separately from absent runtime data.
     Y_UNIT_TEST_F(
         ShouldRenderStartupSourceBeforeRuntimeUpdate,
         TRendererActorFixture)
     {
         const auto html = GetMonitoringPage();
+        UNIT_ASSERT(!html.Contains("<p class='config-dynamic-ignored'>"));
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "<th>Dynamic<br>(startup)</th><th>Dynamic<br>(runtime)</th>");
@@ -312,12 +597,13 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         const auto startupConfig =
             MergeBlockstoreConfigSources(staticConfig, startupDynamicConfig);
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
-        NConfig::TRuntimeConfigDiagnostics diagnostics;
+        NConfig::TConfigPreparationDiagnostics diagnostics;
         const auto config = MakeRuntimeBlockstoreConfig(
             staticConfig,
             startupConfig,
             dynamicConfig,
             controls,
+            /*extraParameters=*/{},
             diagnostics);
         controls->UpdateDefaults(config->GetStorageConfig()->GetConfigProto());
         NKikimr::TControlBoard board;
@@ -382,7 +668,11 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         // Build the startup base before applying an operator override.
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
         auto config =
-            MakeStartupBlockstoreConfig(staticConfig, dynamicConfig, controls)
+            MakeStartupBlockstoreConfig(
+                staticConfig,
+                dynamicConfig,
+                controls,
+                /*extraParameters=*/{})
                 .Config;
         controls->UpdateDefaults(config->GetStorageConfig()->GetConfigProto());
         NKikimr::TControlBoard controlBoard;
@@ -457,7 +747,11 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             "/run/token-agent.sock");
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
         auto config =
-            MakeStartupBlockstoreConfig(staticConfig, {}, controls).Config;
+            MakeStartupBlockstoreConfig(
+                staticConfig,
+                {},
+                controls,
+                /*extraParameters=*/{}).Config;
 
         // Render the initial state without a dynamic source.
         const TBlockstoreConfigRenderer renderer;
@@ -496,7 +790,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             MakeStartupBlockstoreConfig(
                 staticConfig,
                 startupDynamicConfig,
-                controls)
+                controls,
+                /*extraParameters=*/{})
                 .Config;
         TBlockstoreConfigRenderer renderer{
             .Data =
@@ -533,7 +828,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             startupConfig,
             dynamicConfig,
             controls,
-            renderer.Data.RuntimeDiagnostics);
+            /*extraParameters=*/{},
+            renderer.Data.CurrentConfigPreparationDiagnostics);
         renderer.Data.UpdateStatus = EConfigUpdateStatus::Runtime;
         const auto html = renderer.RenderHtml(
             *config,
@@ -586,7 +882,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             startupConfig,
             dynamicConfig,
             controls,
-            renderer.Data.RuntimeDiagnostics);
+            /*extraParameters=*/{},
+            renderer.Data.CurrentConfigPreparationDiagnostics);
         const auto html = renderer.RenderHtml(
             *config,
             staticConfig,
@@ -622,7 +919,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             MakeStartupBlockstoreConfig(
                 staticConfig,
                 startupDynamicConfig,
-                controls)
+                controls,
+                /*extraParameters=*/{})
                 .Config;
         TBlockstoreConfigRenderer renderer{
             .Data =
@@ -634,9 +932,9 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         };
 
         // Supply a fixed-selection diagnostic directly to the renderer.
-        renderer.Data.RuntimeDiagnostics.IgnoredPaths.emplace(
+        renderer.Data.CurrentConfigPreparationDiagnostics.IgnoredPaths.emplace(
             "Logbroker.AuthConfig",
-            NConfig::ERuntimeConfigIgnoreReason::OneofSwitchForbidden);
+            NConfig::EConfigIgnoreReason::OneofSwitchForbidden);
         const auto html = renderer.RenderHtml(
             *config,
             staticConfig,
@@ -660,11 +958,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             " / <span class='config-dynamic-deferred'>deferred: 1</span>");
     }
 
-    // Count explicit parameters, deferred changes and ICB overrides separately.
+    // Count explicit parameters, deferred changes, ignored static-only values
+    // and ICB overrides separately.
     Y_UNIT_TEST(ShouldRenderDynamicDeferredAndIcbCounters)
     {
-        // Fix two startup values and request one scalar and one collection
-        // change.
+        // Request a scalar and a collection change alongside a static-only
+        // value that must not contribute to pending-restart diagnostics.
         auto staticConfig = MakeConfig(100);
         staticConfig.MutableStorageService()->SetListVolumesConcurrency(10);
         staticConfig.MutableStorageService()->SetMaxSSDGroupReadIops(12000);
@@ -674,15 +973,17 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         auto* storage = dynamicConfig.MutableStorageService();
         storage->SetListVolumesConcurrency(30);
         storage->SetMaxSSDGroupReadIops(12000);
+        storage->SetNodeType("ignored-node");
         storage->AddKnownSpareNodes("node-a");
         storage->AddKnownSpareNodes("node-b");
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
-        NConfig::TRuntimeConfigDiagnostics diagnostics;
+        NConfig::TConfigPreparationDiagnostics diagnostics;
         auto config = MakeRuntimeBlockstoreConfig(
             staticConfig,
             startupConfig,
             dynamicConfig,
             controls,
+            /*extraParameters=*/{},
             diagnostics);
 
         // Override a permitted field after publishing its configured default.
@@ -698,7 +999,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
                     .StartupDynamicConfig = MakeConfig(200),
                     .UpdateStatus = EConfigUpdateStatus::Runtime,
                     .DynamicConfigPresent = true,
-                    .RuntimeDiagnostics = std::move(diagnostics),
+                    .CurrentConfigPreparationDiagnostics =
+                        std::move(diagnostics),
                 },
         };
         const auto html = renderer.RenderHtml(
@@ -707,8 +1009,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             dynamicConfig,
             *controls);
 
-        // Count the collection once and exclude both ICB and unchanged RO
-        // values from the two changes that require a restart.
+        // Count the collection once and exclude ICB, unchanged RO values and
+        // static-only values from the two changes that require a restart.
         const auto summaryStart = html.find(">StorageService</a>");
         UNIT_ASSERT(summaryStart != TString::npos);
         const auto summary = html.substr(
@@ -716,8 +1018,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             html.find("</tr>", summaryStart) - summaryStart);
         UNIT_ASSERT_STRING_CONTAINS(
             summary,
-            "class='config-dynamic-total'>4</span>");
+            "class='config-dynamic-total'>5</span>");
         UNIT_ASSERT_STRING_CONTAINS(summary, "deferred: 2</span>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            summary,
+            "deferred: 2</span>"
+            " / <span class='config-dynamic-ignored'>ignored</span>: 1");
         UNIT_ASSERT_STRING_CONTAINS(summary, "class='config-icb'>1</span>");
 
         // Mark deferred scalar and collection rows, retaining ordinary names
@@ -740,6 +1046,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "<td>StorageService.MaxSSDGroupReadIops</td>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<td>StorageService.NodeType</td>"
+            "<td>&mdash;</td><td>&mdash;</td><td>&quot;ignored-node&quot;<br>"
+            "<span class='config-dynamic-ignored'>static-only, ignored</span>"
+            "</td>");
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "<p class='config-deferred-hint'>"
@@ -786,11 +1098,15 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         (*startupThreshold->MutableByRequestType())["startup-only"] = 400;
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
         auto config =
-            MakeStartupBlockstoreConfig(staticConfig, dynamicConfig, controls)
+            MakeStartupBlockstoreConfig(
+                staticConfig,
+                dynamicConfig,
+                controls,
+                /*extraParameters=*/{})
                 .Config;
 
         // Apply collection-level diagnostics to every displayed child row.
-        NConfig::TRuntimeConfigDiagnostics diagnostics;
+        NConfig::TConfigPreparationDiagnostics diagnostics;
         for (const auto path:
              {
                  "StorageService.LinkedDiskFillBandwidth[]",
@@ -799,7 +1115,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         {
             diagnostics.IgnoredPaths.emplace(
                 path,
-                NConfig::ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+                NConfig::EConfigIgnoreReason::RuntimeUpdateForbidden);
         }
 
         // Render every element, including a zero map value and the seventeenth
@@ -810,7 +1126,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
                     .StartupDynamicConfig = std::move(startupDynamicConfig),
                     .UpdateStatus = EConfigUpdateStatus::Runtime,
                     .DynamicConfigPresent = true,
-                    .RuntimeDiagnostics = std::move(diagnostics),
+                    .CurrentConfigPreparationDiagnostics =
+                        std::move(diagnostics),
                 },
         };
         const auto html = renderer.RenderHtml(

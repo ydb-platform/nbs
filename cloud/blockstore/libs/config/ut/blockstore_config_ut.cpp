@@ -106,7 +106,7 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at(
                 "StorageService.ListVolumesConcurrency") ==
-            NConfig::ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            NConfig::EConfigIgnoreReason::RuntimeUpdateForbidden);
 
         // Remove the dynamic source without pinning the startup RW override.
         NProto::TBlockstoreConfig removed;
@@ -182,7 +182,7 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("StorageService.KnownSpareNodes[]") ==
-            NConfig::ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            NConfig::EConfigIgnoreReason::RuntimeUpdateForbidden);
 
         // Remove runtime Features and recover the static keyed record.
         // Reuse the previous output to verify that preparation replaces it.
@@ -268,7 +268,7 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
     }
 
     // Verify that the runtime factory preserves its sources, filters overrides,
-    // returns separate diagnostics, and leaves live ICB defaults unchanged.
+    // returns combined diagnostics, and leaves live ICB defaults unchanged.
     Y_UNIT_TEST(ShouldBuildRuntimeConfigWithoutChangingSourcesOrControls)
     {
         // Keep distinct static, startup, and operator values.
@@ -303,7 +303,7 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
         TBlockstoreConfigExtraParameters extraParameters;
         extraParameters.DiskAgent.Rack = "rack";
         extraParameters.DiskAgent.NetworkMbitThroughput = 1000;
-        NConfig::TRuntimeConfigDiagnostics diagnostics;
+        NConfig::TConfigPreparationDiagnostics diagnostics;
         const auto config = MakeRuntimeBlockstoreConfig(
             staticConfig,
             startupConfig,
@@ -328,11 +328,23 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(
             1000,
             config->GetDiskAgentConfig()->GetNetworkMbitThroughput());
-        UNIT_ASSERT_VALUES_EQUAL(2, diagnostics.IgnoredPaths.size());
+        UNIT_ASSERT_VALUES_EQUAL(5, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at(
                 "StorageService.ListVolumesConcurrency") ==
-            NConfig::ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            NConfig::EConfigIgnoreReason::RuntimeUpdateForbidden);
+
+        // Distinguish ignored static-only values from changes needing restart.
+        for (const auto path:
+             {"StorageService.SchemeShardDir",
+              "DiskAgent.DedicatedDiskAgent",
+              "DiskAgent.Enabled"})
+        {
+            UNIT_ASSERT_C(
+                diagnostics.IgnoredPaths.at(path) ==
+                    NConfig::EConfigIgnoreReason::StaticOnly,
+                path);
+        }
 
         // Leave publication and control updates to the caller.
         UNIT_ASSERT_VALUES_EQUAL(200, control.GetDefault());
@@ -365,6 +377,34 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT_VALUES_EQUAL(200, control.GetDefault());
         UNIT_ASSERT_VALUES_EQUAL(400, static_cast<i64>(control));
+
+        // Make both stages report SchemeShardDir by changing its startup value.
+        auto inconsistentStartup = startupConfig;
+        inconsistentStartup.MutableStorageService()->SetSchemeShardDir("/old");
+
+        // Build the configuration despite the diagnostic overlap.
+        const auto rebuilt = MakeRuntimeBlockstoreConfig(
+            staticConfig,
+            inconsistentStartup,
+            dynamicConfig,
+            controls,
+            /*extraParameters=*/{},
+            diagnostics);
+
+        // Keep filtered values and prefer StaticOnly for the shared path.
+        const auto& rebuiltStorage = *rebuilt->GetStorageConfig();
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            rebuiltStorage.GetConfigProto().GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL("/old", rebuiltStorage.GetSchemeShardDir());
+        UNIT_ASSERT_VALUES_EQUAL(5, diagnostics.IgnoredPaths.size());
+        UNIT_ASSERT(
+            diagnostics.IgnoredPaths.at("StorageService.SchemeShardDir") ==
+            NConfig::EConfigIgnoreReason::StaticOnly);
+        UNIT_ASSERT(
+            diagnostics.IgnoredPaths.at(
+                "StorageService.ListVolumesConcurrency") ==
+            NConfig::EConfigIgnoreReason::RuntimeUpdateForbidden);
     }
 
     // Check that the aggregate proto contains 19 top-level configuration
@@ -1137,6 +1177,102 @@ root_kms: {address: kms}
         UNIT_ASSERT_VALUES_EQUAL(
             600,
             initialConfig->GetStorageConfig()->GetWriteBlobThreshold());
+    }
+
+    // Verify that normalization reports only present fields removed from CMS,
+    // including explicit defaults, and preserves the report in build results.
+    Y_UNIT_TEST(ShouldReportIgnoredDynamicFields)
+    {
+        // Fix the agent role and link Discovery to the static server port.
+        auto staticConfig = MakeConfig(100);
+        staticConfig.MutableDiskAgent()->SetDedicatedDiskAgent(true);
+        staticConfig.MutableDiscoveryService()->SetConductorInstancePort(100);
+        auto controls = std::make_shared<NStorage::TStorageConfigControls>();
+
+        // Supply every static-only field, including an empty message and
+        // explicit scalar defaults that must still appear in the report.
+        auto dynamicConfig = MakeConfig(200);
+        dynamicConfig.MutableServer()
+            ->MutableServerConfig()
+            ->SetDynamicYamlConfigurationEnabled(false);
+        dynamicConfig.MutableStorageService()
+            ->MutableConfigDispatcherSettings();
+        dynamicConfig.MutableStorageService()->SetNodeType("");
+        dynamicConfig.MutableStorageService()->SetSchemeShardDir("");
+        dynamicConfig.MutableDiskAgent()->SetDedicatedDiskAgent(false);
+        dynamicConfig.MutableDiskAgent()->SetEnabled(false);
+        const THashSet<TString> expectedPaths = {
+            "Server.ServerConfig.DynamicYamlConfigurationEnabled",
+            "StorageService.ConfigDispatcherSettings",
+            "StorageService.SchemeShardDir",
+            "StorageService.NodeType",
+            "DiskAgent.DedicatedDiskAgent",
+            "DiskAgent.Enabled",
+        };
+
+        // Retain the same ignored paths at startup and runtime, excluding
+        // allowed fields and the Discovery port synthesized by normalization.
+        const auto startup = MakeStartupBlockstoreConfig(
+            staticConfig,
+            dynamicConfig,
+            controls,
+            /*extraParameters=*/{});
+        NConfig::TConfigPreparationDiagnostics diagnostics;
+        MakeRuntimeBlockstoreConfig(
+            staticConfig,
+            startup.Proto,
+            dynamicConfig,
+            controls,
+            /*extraParameters=*/{},
+            diagnostics);
+        for (const auto& report:
+             {startup.NormalizationDiagnostics, diagnostics})
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedPaths.size(),
+                report.IgnoredPaths.size());
+            for (const auto& [path, reason]: report.IgnoredPaths) {
+                UNIT_ASSERT_C(expectedPaths.contains(path), path);
+                UNIT_ASSERT_C(
+                    reason == NConfig::EConfigIgnoreReason::StaticOnly,
+                    path);
+            }
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            startup.Proto.GetDiscoveryService().GetConductorInstancePort());
+
+        // Drop static-only diagnostics on source removal, but retain deferred
+        // changes from the startup server and derived Discovery port.
+        MakeRuntimeBlockstoreConfig(
+            staticConfig,
+            startup.Proto,
+            {},
+            controls,
+            /*extraParameters=*/{},
+            diagnostics);
+        UNIT_ASSERT_VALUES_EQUAL(2, diagnostics.IgnoredPaths.size());
+        UNIT_ASSERT(
+            diagnostics.IgnoredPaths.at("Server.ServerConfig.Port") ==
+            NConfig::EConfigIgnoreReason::RuntimeUpdateForbidden);
+        UNIT_ASSERT(
+            diagnostics.IgnoredPaths.at(
+                "DiscoveryService.ConductorInstancePort") ==
+            NConfig::EConfigIgnoreReason::RuntimeUpdateForbidden);
+
+        // Keep Enabled configurable when the static agent is not dedicated;
+        // a second normalization must not report already removed fields.
+        NProto::TBlockstoreConfig embeddedAgentConfig;
+        embeddedAgentConfig.MutableDiskAgent()->SetEnabled(false);
+        auto report = NormalizeDynamicBlockstoreConfig({}, embeddedAgentConfig);
+        UNIT_ASSERT(report.IgnoredPaths.empty());
+        UNIT_ASSERT(embeddedAgentConfig.GetDiskAgent().HasEnabled());
+        report = NormalizeDynamicBlockstoreConfig(staticConfig, dynamicConfig);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedPaths.size(),
+            report.IgnoredPaths.size());
+        report = NormalizeDynamicBlockstoreConfig(staticConfig, dynamicConfig);
+        UNIT_ASSERT(report.IgnoredPaths.empty());
     }
 
     // Check that filtering removes static-only fields leaving others untouched.

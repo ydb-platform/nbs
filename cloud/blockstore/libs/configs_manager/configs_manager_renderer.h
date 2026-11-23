@@ -12,7 +12,7 @@ Configuration inputs must remain valid during RenderHtml().
 #include <cloud/blockstore/config/blockstore.pb.h>
 #include <cloud/blockstore/libs/config/blockstore_config.h>
 
-#include <cloud/storage/core/libs/config/runtime_config.h>
+#include <cloud/storage/core/libs/config/config_preparation_diagnostics.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
@@ -57,8 +57,13 @@ struct TBlockstoreConfigRendererData
     // Repeated delivery retains this cookie; a new update receives another one.
     std::optional<ui64> StartupDeliveryCookie;
 
-    // Rejected paths owned for the displayed publication; empty at startup.
-    NConfig::TRuntimeConfigDiagnostics RuntimeDiagnostics;
+    // Ignored dynamic values and rejected changes for the current publication.
+    NConfig::TConfigPreparationDiagnostics CurrentConfigPreparationDiagnostics;
+
+    // Static-only paths removed from StartupDynamicConfig; unchanged after
+    // initialization.
+    NConfig::TConfigPreparationDiagnostics
+        StartupDynamicConfigNormalizationDiagnostics;
 };
 
 // HTML renderer for local config saved before CMS, private YAML, ICB overrides

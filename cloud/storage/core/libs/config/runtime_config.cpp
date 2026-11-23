@@ -9,10 +9,13 @@ path and reason for each rejected change to the runtime configuration.
 
 #include "runtime_config.h"
 
+#include "config_schema_path.h"
+
 #include <cloud/storage/core/config/markers.pb.h>
 
 #include <util/generic/hash_set.h>
 #include <util/generic/scope.h>
+#include <util/generic/vector.h>
 #include <util/generic/yexception.h>
 
 #include <google/protobuf/util/field_comparator.h>
@@ -116,9 +119,9 @@ bool IsMessageEmpty(const Message& message)
 
 // Record the reason for each rejected change for lookup by schema path.
 void RecordChange(
-    TRuntimeConfigDiagnostics& diagnostics,
+    TConfigPreparationDiagnostics& diagnostics,
     TString path,
-    ERuntimeConfigIgnoreReason reason)
+    EConfigIgnoreReason reason)
 {
     diagnostics.IgnoredPaths.emplace(std::move(path), reason);
 }
@@ -306,10 +309,10 @@ struct TMessageFilterContext
     Message& RuntimeConfig;
 
     // Current schema path; each entering scope must restore its parent path.
-    TRuntimeConfigPath& Path;
+    TConfigSchemaPath& Path;
 
     // Rejected changes accumulated across all levels of the traversal.
-    TRuntimeConfigDiagnostics& Diagnostics;
+    TConfigPreparationDiagnostics& Diagnostics;
 };
 
 // Filter one message and restore its queued fields after traversal.
@@ -379,7 +382,7 @@ void FilterSingularMessageField(
             RecordChange(
                 context.Diagnostics,
                 context.Path.GetPath(),
-                ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+                EConfigIgnoreReason::RuntimeUpdateForbidden);
             reflection->ClearField(&runtime, &field);
             return;
         }
@@ -396,7 +399,7 @@ void FilterSingularMessageField(
             RecordChange(
                 context.Diagnostics,
                 context.Path.GetPath(),
-                ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+                EConfigIgnoreReason::RuntimeUpdateForbidden);
         }
         if (!initialPresent) {
             reflection->ClearField(&runtime, &field);
@@ -438,7 +441,7 @@ void FilterField(
         RecordChange(
             context.Diagnostics,
             context.Path.GetPath(),
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         frozenFields.push_back(&field);
     }
 }
@@ -507,7 +510,7 @@ void FilterOneof(
             RecordChange(
                 context.Diagnostics,
                 context.Path.GetPath(),
-                ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+                EConfigIgnoreReason::RuntimeUpdateForbidden);
             frozenFields.push_back(oneof.field(0));
         }
         return;
@@ -530,7 +533,7 @@ void FilterOneof(
         RecordChange(
             context.Diagnostics,
             context.Path.GetPath(),
-            ERuntimeConfigIgnoreReason::OneofSwitchForbidden);
+            EConfigIgnoreReason::OneofSwitchForbidden);
         RestoreFixedOneofMember(context, oneof, initial);
     }
     if (initial) {
@@ -571,68 +574,6 @@ void FilterMessage(TMessageFilterContext& context, EUpdateMode mode)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Enter a field with its collection suffix and singular-message descent rule.
-void TRuntimeConfigPath::Enter(const FieldDescriptor& field)
-{
-    TString segment = field.name();
-    if (field.is_repeated()) {
-        segment += "[]";
-    }
-    Enter(
-        std::move(segment),
-        !field.is_repeated() &&
-            field.cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE);
-}
-
-// Enter a oneof selection path without making it a parent of member paths.
-void TRuntimeConfigPath::Enter(const OneofDescriptor& oneof)
-{
-    Y_THROW_UNLESS(
-        !oneof.is_synthetic(),
-        "Cannot enter synthetic oneof '"
-            << oneof.full_name()
-            << "' in a runtime config path; enter its field instead");
-    Enter(oneof.name(), false);
-}
-
-// Append a complete frame only after validation, preserving the old path if
-// allocating the segment or extending the stack throws.
-void TRuntimeConfigPath::Enter(TString segment, bool canDescend)
-{
-    Y_THROW_UNLESS(
-        Frames.empty() || Frames.back().CanDescend,
-        "Cannot enter '" << segment << "' below terminal runtime config path '"
-                         << GetPath()
-                         << "'; only singular message fields allow descent");
-    Frames.push_back({
-        .Segment = std::move(segment),
-        .CanDescend = canDescend,
-    });
-}
-
-// Restore the parent without allocation; throw if already at the root.
-void TRuntimeConfigPath::Leave()
-{
-    Y_THROW_UNLESS(
-        !Frames.empty(),
-        "Cannot leave the root of a runtime config path; "
-        "each Leave must match a successful Enter");
-    Frames.pop_back();
-}
-
-// Build an independent string without exposing storage inside the path stack.
-TString TRuntimeConfigPath::GetPath() const
-{
-    TString result;
-    for (const auto& frame: Frames) {
-        if (!result.empty()) {
-            result += '.';
-        }
-        result += frame.Segment;
-    }
-    return result;
-}
-
 // Validate a configuration schema in tests, including inactive message types.
 // Skip inner annotations of compound values and visit each message type once.
 void ValidateRuntimeConfigSchema(const Descriptor& descriptor)
@@ -643,7 +584,7 @@ void ValidateRuntimeConfigSchema(const Descriptor& descriptor)
 
 // Restore forbidden runtime values from startup and report rejected changes.
 // Use static or defaults for permitted fields in recovered oneof members.
-TRuntimeConfigDiagnostics FilterRuntimeConfig(
+TConfigPreparationDiagnostics FilterRuntimeConfig(
     const Message& staticConfig,
     const Message& startupConfig,
     Message& runtimeConfig)
@@ -672,8 +613,8 @@ TRuntimeConfigDiagnostics FilterRuntimeConfig(
     // them when restoring values from static or startup.
     DiscardUnknownFields(runtimeConfig);
 
-    TRuntimeConfigDiagnostics diagnostics;
-    TRuntimeConfigPath path;
+    TConfigPreparationDiagnostics diagnostics;
+    TConfigSchemaPath path;
     TMessageFilterContext context{
         .StaticConfig = staticConfig,
         .StartupConfig = startupConfig,

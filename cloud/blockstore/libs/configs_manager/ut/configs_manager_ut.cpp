@@ -201,6 +201,8 @@ void TFixture::StartManager(
         .StaticConfig = std::move(staticConfig),
         .StartupConfig = std::move(startupConfig.Proto),
         .InitialDynamicConfig = std::move(dynamicConfig),
+        .StartupDynamicConfigNormalizationDiagnostics =
+            std::move(startupConfig.NormalizationDiagnostics),
         .StorageConfigControls = Controls,
         .ConfigsDispatcherId = Dispatcher,
     }));
@@ -743,6 +745,52 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
             38);
         WaitForAck(38);
         WaitForConfigChanged(subscriber);
+    }
+
+    // Verify that runtime updates log only ignored static-only paths without
+    // values or deferred changes. Do not repeat startup warnings in this actor.
+    Y_UNIT_TEST_F(ShouldLogStaticOnlyDynamicFields, TFixture)
+    {
+        // Start with an ignored field whose warning belongs to bootstrap.
+        auto staticConfig = MakeConfig(100);
+        staticConfig.MutableStorageService()->SetNodeType("static-node");
+        staticConfig.MutableStorageService()->SetListVolumesConcurrency(10);
+        auto dynamicConfig = MakeConfig(200);
+        dynamicConfig.MutableStorageService()->SetNodeType("startup-secret");
+        dynamicConfig.MutableStorageService()->SetListVolumesConcurrency(20);
+        StartManager(staticConfig, dynamicConfig);
+
+        // Report a different path from an accepted runtime source, retaining
+        // the static value and keeping source values and deferred paths out
+        // of the warnings.
+        dynamicConfig.MutableStorageService()->ClearNodeType();
+        dynamicConfig.MutableStorageService()->SetListVolumesConcurrency(30);
+        dynamicConfig.MutableStorageService()->SetSchemeShardDir(
+            "runtime-secret");
+        SendNotification(
+            std::make_shared<NProto::TBlockstoreConfig>(dynamicConfig),
+            170);
+        WaitForAck(170);
+        WaitForConfigLog(
+            "Ignoring static-only field from dynamic PrivateDatabaseConfig: "
+            "StorageService.SchemeShardDir");
+        UNIT_ASSERT(!ConfigLog.Str().Contains(
+            "Ignoring static-only field from dynamic PrivateDatabaseConfig: "
+            "StorageService.NodeType"));
+        UNIT_ASSERT(!ConfigLog.Str().Contains("startup-secret"));
+        UNIT_ASSERT(!ConfigLog.Str().Contains("runtime-secret"));
+        UNIT_ASSERT(!ConfigLog.Str().Contains(
+            "Ignoring static-only field from dynamic PrivateDatabaseConfig: "
+            "StorageService.ListVolumesConcurrency"));
+        UNIT_ASSERT(CriticalEventsLog.Str().empty());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "static-node",
+            ConfigHolder->Get()->GetStorageConfig()->GetNodeType());
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            ConfigHolder->Get()
+                ->GetStorageConfig()
+                ->GetListVolumesConcurrency());
     }
 
     // Check that an accepted update is published before it is acknowledged.
