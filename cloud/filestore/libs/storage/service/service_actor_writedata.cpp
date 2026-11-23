@@ -428,23 +428,40 @@ private:
         }
     }
 
+    bool ShouldSkipOutdatedResponse(
+        ui64 cookie,
+        TString responseType,
+        const TActorContext& ctx)
+    {
+        auto& state = GetState();
+        if (cookie != RequestGeneration) {
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s unexpected %s cookie: expected=%lu; "
+                "actual=%lu",
+                state.RequestContext.LogTag.c_str(),
+                responseType.c_str(),
+                RequestGeneration,
+                cookie);
+            return true;
+        }
+        return false;
+    }
+
     void HandleGenerateBlobIdsResponse(
         const TEvIndexTablet::TEvGenerateBlobIdsResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto& state = GetState();
-        if (ev->Cookie != RequestGeneration) {
-            LOG_DEBUG(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "%s unexpected GenerateBlobIds response cookie: expected=%lu; "
-                "actual=%lu",
-                state.RequestContext.LogTag.c_str(),
-                RequestGeneration,
-                ev->Cookie);
+        if (ShouldSkipOutdatedResponse(
+                ev->Cookie,
+                "GenerateBlobIdsResponse",
+                ctx))
+        {
             return;
         }
 
+        auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
         auto* msg = ev->Get();
@@ -628,19 +645,11 @@ private:
         const TEvBlobStorage::TEvPutResult::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto& state = GetState();
-        if (ev->Cookie != RequestGeneration) {
-            LOG_DEBUG(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "%s unexpected WriteBlob response cookie: expected=%lu; "
-                "actual=%lu",
-                state.RequestContext.LogTag.c_str(),
-                RequestGeneration,
-                ev->Cookie);
+        if (ShouldSkipOutdatedResponse(ev->Cookie, "WriteBlobResponse", ctx)) {
             return;
         }
 
+        auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
         if (HasError(state.WriteBlobError)) {
@@ -835,19 +844,12 @@ private:
         const TEvIndexTablet::TEvAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto& state = GetState();
-        if (ev->Cookie != RequestGeneration) {
-            LOG_DEBUG(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "%s unexpected AddData response cookie: expected=%lu; "
-                "actual=%lu",
-                state.RequestContext.LogTag.c_str(),
-                RequestGeneration,
-                ev->Cookie);
+        if (ShouldSkipOutdatedResponse(ev->Cookie, "AddDataResponse", ctx))
+        {
             return;
         }
 
+        auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
         auto* msg = ev->Get();
@@ -956,19 +958,15 @@ private:
         const TEvIndexTablet::TEvConfirmAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto& state = GetState();
-        if (ev->Cookie != RequestGeneration) {
-            LOG_DEBUG(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "%s unexpected ConfirmAddData response cookie: expected=%lu; "
-                "actual=%lu",
-                state.RequestContext.LogTag.c_str(),
-                RequestGeneration,
-                ev->Cookie);
+        if (ShouldSkipOutdatedResponse(
+                ev->Cookie,
+                "ConfirmAddDataResponse",
+                ctx))
+        {
             return;
         }
 
+        auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
         auto* msg = ev->Get();
@@ -1003,19 +1001,15 @@ private:
         const TEvIndexTablet::TEvCancelAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto& state = GetState();
-        if (ev->Cookie != RequestGeneration) {
-            LOG_DEBUG(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "%s unexpected CancelAddData response cookie: expected=%lu; "
-                "actual=%lu",
-                state.RequestContext.LogTag.c_str(),
-                RequestGeneration,
-                ev->Cookie);
+        if (ShouldSkipOutdatedResponse(
+                ev->Cookie,
+                "CancelAddDataResponse",
+                ctx))
+        {
             return;
         }
 
+        auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
         auto* msg = ev->Get();
@@ -1047,18 +1041,12 @@ private:
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx)
     {
-        auto& state = GetState();
-        if (ev->Get()->Tag != RequestGeneration) {
-            LOG_DEBUG(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "%s unexpected HandleWakeup cookie: expected=%lu; "
-                "actual=%lu",
-                state.RequestContext.LogTag.c_str(),
-                RequestGeneration,
-                ev->Get()->Tag);
+        if (ShouldSkipOutdatedResponse(ev->Get()->Tag, "HandleWakup", ctx))
+        {
             return;
         }
+
+        auto& state = GetState();
 
         if (state.TabletRetryRequest == ETabletRetryRequest::None) {
             return;
