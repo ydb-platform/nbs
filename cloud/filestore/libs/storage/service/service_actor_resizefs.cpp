@@ -15,6 +15,9 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <util/string/builder.h>
+
+#include <algorithm>
 #include <optional>
 
 namespace NCloud::NFileStore::NStorage {
@@ -26,11 +29,7 @@ using namespace NKikimr;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-// This class actually performs two different actions: alter and resize
-// In order not mix them we have two different state functions: AlterStateWork,
-// ResizeStateWork. Alter mode is quite simple and consits of the following
-// steps: Describe main filestore, Alter main filestore
-// The steps of the resize mode:
+// The steps of the resize:
 // 1. Describe main filestore. Store NKikimrFileStore::TConfig of the main
 // filesystem for later use.
 // 2. Get storage statistics to determine SevenBytesHandlesCount.
@@ -58,16 +57,17 @@ namespace {
 // 10. Configure main filestore if new shards were created.
 // The end!
 
-class TAlterFileStoreActor final
-    : public TActorBootstrapped<TAlterFileStoreActor>
+class TResizeFileStoreActor final
+    : public TActorBootstrapped<TResizeFileStoreActor>
     , public IShardCreationOwner
 {
 private:
+    static const ui64 MainFileStoreCookie = Max<ui64>();
+
     const TStorageConfigPtr StorageConfig;
     const TRequestInfoPtr RequestInfo;
     const TString FileSystemId;
     const NProto::TFileStorePerformanceProfile PerformanceProfile;
-    const bool Alter;
     const bool Force;
     const bool EnableDirectoryCreationInShards;
     const bool ForceDirectoryCreationInShards;
@@ -119,15 +119,8 @@ private:
     bool StrictFileSystemSizeEnforcementEnabled = false;
     bool ShouldConfigureMainFileStore = false;
 
-    const ui64 MainFileStoreCookie = Max<ui64>();
-
 public:
-    TAlterFileStoreActor(
-        TStorageConfigPtr storageConfig,
-        TRequestInfoPtr requestInfo,
-        const NProto::TAlterFileStoreRequest& request);
-
-    TAlterFileStoreActor(
+    TResizeFileStoreActor(
         TStorageConfigPtr storageConfig,
         TRequestInfoPtr requestInfo,
         const NProto::TResizeFileStoreRequest& request);
@@ -136,7 +129,6 @@ public:
 
 private:
     STFUNC(ResizeStateWork);
-    STFUNC(AlterStateWork);
 
     void DescribeMainFileStore(const TActorContext& ctx);
     void DescribeShards(const TActorContext& ctx);
@@ -168,10 +160,6 @@ private:
     NProto::TError FillMultiShardFileStoreConfig(ui32 shardCount);
 
     ui64 CalculateRequiredNewFastShardCount() const;
-
-    void HandleDescribeFileStoreForAlterResponse(
-        const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
-        const TActorContext& ctx);
 
     void HandleDescribeFileStoreResponse(
         const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
@@ -205,10 +193,6 @@ private:
         const TEvSSProxy::TEvAlterFileStoreResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleAlterFileStoreForAlterResponse(
-        const TEvSSProxy::TEvAlterFileStoreResponse::TPtr& ev,
-        const TActorContext& ctx);
-
     void HandleResizeFileStoreResponse(
         const TEvSSProxy::TEvAlterFileStoreResponse::TPtr& ev,
         const TActorContext& ctx);
@@ -226,11 +210,6 @@ private:
         const NProto::TError& error = {});
 
     void ReportInvalidCookieAndDie(const TActorContext& ctx, ui64 cookie);
-
-    const char* GetOperationString() const
-    {
-        return !Alter ? "resize" : "alter";
-    }
 
     bool IsCookieValid(const ui64 cookie) const
     {
@@ -254,36 +233,7 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TAlterFileStoreActor::TAlterFileStoreActor(
-        TStorageConfigPtr storageConfig,
-        TRequestInfoPtr requestInfo,
-        const NProto::TAlterFileStoreRequest& request)
-    // Copying is important: the config is shared by the whole service, and
-    // some functions here change it in place (e.g. PatchStorageConfig()).
-    // Without the copy, a change made for one filesystem would apply to all
-    // the filesystems on this host.
-    : StorageConfig(std::make_shared<TStorageConfig>(*storageConfig))
-    , RequestInfo(std::move(requestInfo))
-    , FileSystemId(request.GetFileSystemId())
-    , Alter(true)
-    , Force(false)
-    , EnableDirectoryCreationInShards(false)
-    , ForceDirectoryCreationInShards(false)
-    , EnableStrictFileSystemSizeEnforcement(false)
-    , ExplicitOrdinaryShardCount(0)
-    , ExplicitFastShardCount(0)
-    , ShardCreationState(
-          FileSystemId,
-          TShardCreationStateCompanion::EMode::Alter,
-          this)
-{
-    TargetConfig.SetCloudId(request.GetCloudId());
-    TargetConfig.SetFolderId(request.GetFolderId());
-    TargetConfig.SetProjectId(request.GetProjectId());
-    TargetConfig.SetVersion(request.GetConfigVersion());
-}
-
-TAlterFileStoreActor::TAlterFileStoreActor(
+TResizeFileStoreActor::TResizeFileStoreActor(
         TStorageConfigPtr storageConfig,
         TRequestInfoPtr requestInfo,
         const NProto::TResizeFileStoreRequest& request)
@@ -295,7 +245,6 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , RequestInfo(std::move(requestInfo))
     , FileSystemId(request.GetFileSystemId())
     , PerformanceProfile(request.GetPerformanceProfile())
-    , Alter(false)
     , Force(request.GetForce())
     , EnableDirectoryCreationInShards(
           request.GetEnableDirectoryCreationInShards())
@@ -314,20 +263,15 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     TargetConfig.SetVersion(request.GetConfigVersion());
 }
 
-void TAlterFileStoreActor::Bootstrap(const TActorContext& ctx)
+void TResizeFileStoreActor::Bootstrap(const TActorContext& ctx)
 {
-    if (Alter) {
-        Become(&TThis::AlterStateWork);
-    } else {
-        Become(&TThis::ResizeStateWork);
-    }
-
+    Become(&TThis::ResizeStateWork);
     DescribeMainFileStore(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TAlterFileStoreActor::DescribeMainFileStore(const TActorContext& ctx)
+void TResizeFileStoreActor::DescribeMainFileStore(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(
         FileSystemId);
@@ -338,7 +282,7 @@ void TAlterFileStoreActor::DescribeMainFileStore(const TActorContext& ctx)
         MainFileStoreCookie);
 }
 
-void TAlterFileStoreActor::DescribeShards(const TActorContext& ctx)
+void TResizeFileStoreActor::DescribeShards(const TActorContext& ctx)
 {
     if (ShardsToDescribe == 0) {
         AlterFileStore(ctx);
@@ -358,7 +302,7 @@ void TAlterFileStoreActor::DescribeShards(const TActorContext& ctx)
     }
 }
 
-void TAlterFileStoreActor::DescribeShard(
+void TResizeFileStoreActor::DescribeShard(
     const TActorContext& ctx,
     const ui32 shardIndex)
 {
@@ -368,7 +312,7 @@ void TAlterFileStoreActor::DescribeShard(
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request), shardIndex);
 }
 
-void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
+void TResizeFileStoreActor::HandleDescribeFileStoreResponse(
     const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -440,7 +384,7 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TAlterFileStoreActor::HandleShardCreationStateResponse(
+void TResizeFileStoreActor::HandleShardCreationStateResponse(
     const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -479,7 +423,7 @@ void TAlterFileStoreActor::HandleShardCreationStateResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TAlterFileStoreActor::GetStorageStats(const TActorContext& ctx)
+void TResizeFileStoreActor::GetStorageStats(const TActorContext& ctx)
 {
     auto request =
         std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
@@ -488,7 +432,7 @@ void TAlterFileStoreActor::GetStorageStats(const TActorContext& ctx)
     NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
 }
 
-void TAlterFileStoreActor::HandleGetStorageStatsResponse(
+void TResizeFileStoreActor::HandleGetStorageStatsResponse(
     const TEvIndexTablet::TEvGetStorageStatsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -512,7 +456,7 @@ void TAlterFileStoreActor::HandleGetStorageStatsResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TAlterFileStoreActor::PatchStorageConfig()
+void TResizeFileStoreActor::PatchStorageConfig()
 {
     NProto::TStorageConfig protoConfig;
     protoConfig.SetStrictFileSystemSizeEnforcementEnabled(
@@ -521,7 +465,7 @@ void TAlterFileStoreActor::PatchStorageConfig()
     StorageConfig->Merge(protoConfig);
 }
 
-NProto::TError TAlterFileStoreActor::CollectFastShardStats()
+NProto::TError TResizeFileStoreActor::CollectFastShardStats()
 {
     for (const auto& shard: ShardTopology.GetShards()) {
         if (shard.GetType() != NProtoPrivate::TShardTopology::E_FASTSHARD) {
@@ -561,7 +505,7 @@ NProto::TError TAlterFileStoreActor::CollectFastShardStats()
     return {};
 }
 
-NProto::TError TAlterFileStoreActor::ValidateOrdinaryShards() const
+NProto::TError TResizeFileStoreActor::ValidateOrdinaryShards() const
 {
     if (ExplicitOrdinaryShardCount &&
         ExplicitOrdinaryShardCount < ExistingOrdinaryShardCount)
@@ -577,7 +521,7 @@ NProto::TError TAlterFileStoreActor::ValidateOrdinaryShards() const
     return {};
 }
 
-NProto::TError TAlterFileStoreActor::ValidateFastShards() const
+NProto::TError TResizeFileStoreActor::ValidateFastShards() const
 {
     if (!ExistingFastShardCount) {
         if (ExplicitFastShardCount) {
@@ -618,7 +562,7 @@ NProto::TError TAlterFileStoreActor::ValidateFastShards() const
     return {};
 }
 
-ui64 TAlterFileStoreActor::CalculateRequiredNewFastShardCount() const
+ui64 TResizeFileStoreActor::CalculateRequiredNewFastShardCount() const
 {
     const ui32 blockSize = MainFileStoreOriginalConfig.GetBlockSize();
     const ui64 blocksCount = TargetConfig.GetBlocksCount();
@@ -631,7 +575,7 @@ ui64 TAlterFileStoreActor::CalculateRequiredNewFastShardCount() const
         blockSize);
 }
 
-NProto::TError TAlterFileStoreActor::ValidateTotalShards(
+NProto::TError TResizeFileStoreActor::ValidateTotalShards(
     ui64 totalShardCount) const
 {
     // Only the shards that the request adds are checked against the limit.
@@ -648,7 +592,7 @@ NProto::TError TAlterFileStoreActor::ValidateTotalShards(
     return {};
 }
 
-NProto::TError TAlterFileStoreActor::FillMultiShardFileStoreConfig(
+NProto::TError TResizeFileStoreActor::FillMultiShardFileStoreConfig(
     ui32 shardCount)
 {
     NKikimrFileStore::TConfig currentConfig = MainFileStoreOriginalConfig;
@@ -702,12 +646,13 @@ NProto::TError TAlterFileStoreActor::FillMultiShardFileStoreConfig(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TAlterFileStoreActor::AlterFileStore(const TActorContext& ctx)
+void TResizeFileStoreActor::AlterFileStore(const TActorContext& ctx)
 {
     FileStoreConfig.MainFileSystemConfig.ClearBlockSize();
     FileStoreConfig.MainFileSystemConfig.SetAlterTs(ctx.Now().MicroSeconds());
     auto request = std::make_unique<TEvSSProxy::TEvAlterFileStoreRequest>(
         FileStoreConfig.MainFileSystemConfig);
+
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
@@ -715,7 +660,7 @@ void TAlterFileStoreActor::AlterFileStore(const TActorContext& ctx)
         MainFileStoreCookie);
 }
 
-void TAlterFileStoreActor::AlterShards(const TActorContext& ctx)
+void TResizeFileStoreActor::AlterShards(const TActorContext& ctx)
 {
     if (ShardsToAlter == 0) {
         CreateShards(ctx);
@@ -734,7 +679,7 @@ void TAlterFileStoreActor::AlterShards(const TActorContext& ctx)
     }
 }
 
-void TAlterFileStoreActor::AlterShard(
+void TResizeFileStoreActor::AlterShard(
     const TActorContext& ctx,
     const ui32 shardIndex)
 {
@@ -746,7 +691,7 @@ void TAlterFileStoreActor::AlterShard(
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request), shardIndex);
 }
 
-void TAlterFileStoreActor::HandleAlterFileStoreResponse(
+void TResizeFileStoreActor::HandleAlterFileStoreResponse(
     const TEvSSProxy::TEvAlterFileStoreResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -790,10 +735,8 @@ void TAlterFileStoreActor::HandleAlterFileStoreResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TAlterFileStoreActor::GetFileSystemTopology(const TActorContext& ctx)
+void TResizeFileStoreActor::GetFileSystemTopology(const TActorContext& ctx)
 {
-    Y_ABORT_UNLESS(!Alter);
-
     auto request =
         std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyRequest>();
     request->Record.SetFileSystemId(FileSystemId);
@@ -804,7 +747,7 @@ void TAlterFileStoreActor::GetFileSystemTopology(const TActorContext& ctx)
         std::move(request));
 }
 
-void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
+void TResizeFileStoreActor::HandleGetFileSystemTopologyResponse(
     const TEvIndexTablet::TEvGetFileSystemTopologyResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -1078,7 +1021,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TAlterFileStoreActor::CreateShards(const TActorContext& ctx)
+void TResizeFileStoreActor::CreateShards(const TActorContext& ctx)
 {
     ShardCreationState.StartShardCreation(ctx);
 
@@ -1087,7 +1030,7 @@ void TAlterFileStoreActor::CreateShards(const TActorContext& ctx)
     }
 }
 
-void TAlterFileStoreActor::CreateShard(
+void TResizeFileStoreActor::CreateShard(
     const TActorContext& ctx,
     const ui32 shardIndex)
 {
@@ -1109,7 +1052,7 @@ void TAlterFileStoreActor::CreateShard(
     );
 }
 
-void TAlterFileStoreActor::HandleCreateFileStoreResponse(
+void TResizeFileStoreActor::HandleCreateFileStoreResponse(
     const TEvSSProxy::TEvCreateFileStoreResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -1159,7 +1102,7 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TAlterFileStoreActor::AllocateFastShards(const TActorContext& ctx)
+void TResizeFileStoreActor::AllocateFastShards(const TActorContext& ctx)
 {
     ShardConfigurationStarted = true;
 
@@ -1180,7 +1123,7 @@ void TAlterFileStoreActor::AllocateFastShards(const TActorContext& ctx)
             *FastShardStorageKind));
 }
 
-void TAlterFileStoreActor::HandleFastShardsAllocated(
+void TResizeFileStoreActor::HandleFastShardsAllocated(
     const TEvServicePrivate::TEvFastShardsAllocated::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -1197,7 +1140,7 @@ void TAlterFileStoreActor::HandleFastShardsAllocated(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
+void TResizeFileStoreActor::ConfigureShards(const TActorContext& ctx)
 {
     if (ShardsToConfigure == 0) {
         ConfigureMainFileStore(ctx);
@@ -1223,7 +1166,7 @@ void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
     }
 }
 
-void TAlterFileStoreActor::ConfigureShardRange(
+void TResizeFileStoreActor::ConfigureShardRange(
     const TActorContext& ctx,
     const ui32 beginShardIndex,
     const ui32 endShardIndex,
@@ -1246,7 +1189,7 @@ void TAlterFileStoreActor::ConfigureShardRange(
     }
 }
 
-void TAlterFileStoreActor::ConfigureShard(
+void TResizeFileStoreActor::ConfigureShard(
     const TActorContext& ctx,
     const ui32 shardIndex)
 {
@@ -1294,7 +1237,7 @@ void TAlterFileStoreActor::ConfigureShard(
     );
 }
 
-void TAlterFileStoreActor::HandleConfigureShardResponse(
+void TResizeFileStoreActor::HandleConfigureShardResponse(
     const TEvIndexTablet::TEvConfigureAsShardResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -1351,7 +1294,7 @@ void TAlterFileStoreActor::HandleConfigureShardResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TAlterFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
+void TResizeFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
 {
     // As a shard is being resized, we can't send ConfigureShardsRequest to it
     if (!ShouldConfigureMainFileStore) {
@@ -1388,7 +1331,7 @@ void TAlterFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
         std::move(request));
 }
 
-void TAlterFileStoreActor::HandleConfigureMainFileStoreResponse(
+void TResizeFileStoreActor::HandleConfigureMainFileStoreResponse(
     const TEvIndexTablet::TEvConfigureShardsResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -1416,68 +1359,7 @@ void TAlterFileStoreActor::HandleConfigureMainFileStoreResponse(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TAlterFileStoreActor::HandleDescribeFileStoreForAlterResponse(
-    const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    if (HasError(msg->GetError())) {
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] Configuring main filesystem failed: %s",
-            FileSystemId.c_str(),
-            FormatError(msg->GetError()).Quote().c_str());
-
-        ReplyAndDie(ctx, msg->GetError());
-        return;
-    }
-
-    const auto& fileStore = msg->PathDescription.GetFileStoreDescription();
-    auto config = fileStore.GetConfig();
-
-    if (const auto& cloud = TargetConfig.GetCloudId()) {
-        config.SetCloudId(cloud);
-    }
-    if (const auto& project = TargetConfig.GetProjectId()) {
-        config.SetProjectId(project);
-    }
-    if (const auto& folder = TargetConfig.GetFolderId()) {
-        config.SetFolderId(folder);
-    }
-    if (auto version = TargetConfig.GetVersion()) {
-        config.SetVersion(version);
-    }
-
-    config.SetAlterTs(ctx.Now().MicroSeconds());
-    config.ClearBlockSize();
-
-    FileStoreConfig.MainFileSystemConfig.Swap(&config);
-
-    AlterFileStore(ctx);
-}
-
-void TAlterFileStoreActor::HandleAlterFileStoreForAlterResponse(
-    const TEvSSProxy::TEvAlterFileStoreResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    NProto::TError error = msg->GetError();
-    if (HasError(error)) {
-        LOG_ERROR(ctx, TFileStoreComponents::SERVICE,
-            "[%s] Altering of main filestore failed: %s",
-            FileSystemId.Quote().c_str(),
-            FormatError(msg->GetError()).Quote().c_str());
-    }
-
-    ReplyAndDie(ctx, error);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TAlterFileStoreActor::HandlePoisonPill(
+void TResizeFileStoreActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -1485,25 +1367,18 @@ void TAlterFileStoreActor::HandlePoisonPill(
     ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"));
 }
 
-void TAlterFileStoreActor::ReplyAndDie(
+void TResizeFileStoreActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    if (Alter) {
-        auto response = std::make_unique<TEvService::TEvAlterFileStoreResponse>(
-            error);
+    auto response = std::make_unique<TEvService::TEvResizeFileStoreResponse>(
+        error);
 
-        NCloud::Reply(ctx, *RequestInfo, std::move(response));
-    } else {
-        auto response =
-            std::make_unique<TEvService::TEvResizeFileStoreResponse>(error);
-        NCloud::Reply(ctx, *RequestInfo, std::move(response));
-    }
-
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
 
-void TAlterFileStoreActor::ReportInvalidCookieAndDie(const TActorContext& ctx, ui64 cookie)
+void TResizeFileStoreActor::ReportInvalidCookieAndDie(const TActorContext& ctx, ui64 cookie)
 {
     ReplyAndDie(
         ctx,
@@ -1512,28 +1387,7 @@ void TAlterFileStoreActor::ReportInvalidCookieAndDie(const TActorContext& ctx, u
             TStringBuilder() << "invalid cookie: " << cookie));
 }
 
-STFUNC(TAlterFileStoreActor::AlterStateWork)
-{
-    switch (ev->GetTypeRewrite()) {
-        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-
-        HFunc(
-            TEvSSProxy::TEvDescribeFileStoreResponse,
-            HandleDescribeFileStoreForAlterResponse);
-        HFunc(
-            TEvSSProxy::TEvAlterFileStoreResponse,
-            HandleAlterFileStoreForAlterResponse);
-
-        default:
-            HandleUnexpectedEvent(
-                ev,
-                TFileStoreComponents::SERVICE_WORKER,
-                __PRETTY_FUNCTION__);
-            break;
-    }
-}
-
-STFUNC(TAlterFileStoreActor::ResizeStateWork)
+STFUNC(TResizeFileStoreActor::ResizeStateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
@@ -1579,33 +1433,6 @@ STFUNC(TAlterFileStoreActor::ResizeStateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TStorageServiceActor::HandleAlterFileStore(
-    const TEvService::TEvAlterFileStoreRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    auto [cookie, inflight] = CreateInFlightRequest(
-        TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-        NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT,
-        StatsRegistry->GetRequestStats(),
-        ctx.Now());
-
-    InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
-
-    auto requestInfo = CreateRequestInfo(
-        SelfId(),
-        cookie,
-        msg->CallContext);
-
-    auto actor = std::make_unique<TAlterFileStoreActor>(
-        StorageConfig,
-        std::move(requestInfo),
-        msg->Record);
-
-    NCloud::Register(ctx, std::move(actor));
-}
-
 void TStorageServiceActor::HandleResizeFileStore(
     const TEvService::TEvResizeFileStoreRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -1624,7 +1451,7 @@ void TStorageServiceActor::HandleResizeFileStore(
         cookie,
         msg->CallContext);
 
-    auto actor = std::make_unique<TAlterFileStoreActor>(
+    auto actor = std::make_unique<TResizeFileStoreActor>(
         StorageConfig,
         std::move(requestInfo),
         msg->Record);
