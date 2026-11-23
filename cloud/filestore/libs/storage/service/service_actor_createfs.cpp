@@ -371,6 +371,8 @@ void TCreateFileStoreActor::CreateShard(
 
 void TCreateFileStoreActor::AllocateFastShards(const TActorContext& ctx)
 {
+    ShardConfigurationStarted = true;
+
     if (!FastShardCount) {
         ConfigureShards(ctx);
         return;
@@ -390,7 +392,6 @@ void TCreateFileStoreActor::AllocateFastShards(const TActorContext& ctx)
 
 void TCreateFileStoreActor::ConfigureShards(const TActorContext& ctx)
 {
-    ShardConfigurationStarted = true;
     NextShardToConfigure = 0;
     const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
     const ui32 endShardIndex = (limit == 0)
@@ -594,7 +595,7 @@ void TCreateFileStoreActor::HandleShardCreationStateResponse(
             if (!ShardCreationState.HasShardsToCreate() &&
                 !ShardConfigurationStarted)
             {
-                ConfigureShards(ctx);
+                AllocateFastShards(ctx);
             }
             return;
     }

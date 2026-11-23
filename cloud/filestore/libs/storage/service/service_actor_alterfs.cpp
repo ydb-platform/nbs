@@ -471,7 +471,7 @@ void TAlterFileStoreActor::HandleShardCreationStateResponse(
             if (!ShardCreationState.HasShardsToCreate() &&
                 !ShardConfigurationStarted)
             {
-                ConfigureShards(ctx);
+                AllocateFastShards(ctx);
             }
             return;
     }
@@ -1161,6 +1161,8 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
 
 void TAlterFileStoreActor::AllocateFastShards(const TActorContext& ctx)
 {
+    ShardConfigurationStarted = true;
+
     if (!NewFastShardCount) {
         ConfigureShards(ctx);
         return;
@@ -1197,8 +1199,6 @@ void TAlterFileStoreActor::HandleFastShardsAllocated(
 
 void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
 {
-    ShardConfigurationStarted = true;
-
     if (ShardsToConfigure == 0) {
         ConfigureMainFileStore(ctx);
         return;
