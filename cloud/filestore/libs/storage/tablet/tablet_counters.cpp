@@ -190,6 +190,9 @@ void TTabletMetrics::Register(
     REGISTER_AGGREGATABLE_SUM(OrphanSessionsCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(SessionTimeouts, EMetricType::MT_DERIVATIVE);
     REGISTER_AGGREGATABLE_SUM(SessionCleanupAttempts, EMetricType::MT_DERIVATIVE);
+    REGISTER_AGGREGATABLE_SUM(
+        SessionRecoveriesOnDemand,
+        EMetricType::MT_DERIVATIVE);
 
     REGISTER_LOCAL(
         StrictFileSystemSizeEnforcementEnabled,

@@ -51,6 +51,45 @@ void TIndexTabletActor::HandleResetSession(
         return;
     }
 
+    if (ShouldSyncShardSessionRequests()) {
+        //
+        // The shards go first, see HandleDestroySession: the request is
+        // kept until the shard sessions sync delivers it to all the shards
+        // whose sessions it manages, this tablet processes it after that.
+        //
+
+        using TResponse = TEvService::TEvResetSessionResponse;
+
+        if (PendingShardSessionRequests.contains(sessionId)) {
+            auto response = std::make_unique<TResponse>(MakeError(
+                E_REJECTED,
+                "another ResetSession or DestroySession request for this"
+                " session is in progress"));
+
+            NCloud::Reply(ctx, *ev, std::move(response));
+            return;
+        }
+
+        TPendingShardSessionRequest request;
+        request.SessionSeqNo = seqNo;
+        request.Reset = true;
+        request.RequestInfo = CreateRequestInfo(
+            ev->Sender,
+            ev->Cookie,
+            msg->CallContext);
+        request.RequestInfo->StartedTs = ctx.Now();
+
+        // sessionId refers to the record which is about to be moved
+        TString pendingSessionId = sessionId;
+        request.ResetRequest = std::move(msg->Record);
+
+        EnqueueShardSessionRequest(
+            ctx,
+            std::move(pendingSessionId),
+            std::move(request));
+        return;
+    }
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
@@ -189,6 +228,10 @@ void TIndexTabletActor::CompleteTx_ResetSession(
 
     RemoveInFlightRequest(*args.RequestInfo);
 
+    // the request might have been waiting for the shards, see
+    // HandleResetSession
+    OnShardSessionRequestCompleted(ctx, args.SessionId, args.RequestInfo);
+
     auto response =
         std::make_unique<TEvService::TEvResetSessionResponse>(args.Error);
 
@@ -208,18 +251,40 @@ void TIndexTabletActor::CompleteTx_ResetSession(
         return;
     }
 
+    TVector<TString> targetShardIds(shardIds.begin(), shardIds.end());
+
+    if (Config->GetLazyShardSessionCreationEnabled()) {
+        //
+        // The shards whose sessions are managed by the shard sessions sync
+        // have already processed this request, see HandleResetSession. The
+        // shards which work in adapter mode are the exception: their
+        // sessions are managed the old way.
+        //
+
+        targetShardIds = GetAdapterModeShardIds();
+
+        if (targetShardIds.empty()) {
+            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+                "%s ResetSession completed",
+                LogTag.c_str());
+
+            NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+            return;
+        }
+    }
+
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s ResetSession completed - local"
         ", resetting shard sessions (%s)",
         LogTag.c_str(),
-        JoinSeq(",", GetFileSystem().GetShardFileSystemIds()).c_str());
+        JoinSeq(",", targetShardIds).c_str());
 
     auto actor = std::make_unique<TResetShardSessionsActor>(
         LogTag,
         SelfId(),
         std::move(args.RequestInfo),
         std::move(args.Request),
-        TVector<TString>(shardIds.begin(), shardIds.end()),
+        std::move(targetShardIds),
         std::move(response));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));

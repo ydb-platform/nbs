@@ -275,6 +275,33 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         size = subsessions.DeleteSubSession(TActorId(1, 1));
         UNIT_ASSERT_VALUES_EQUAL(0, size);
     }
+
+    Y_UNIT_TEST(ShouldNotRequireOwner)
+    {
+        TSubSessions subsessions(0, 0);
+        UNIT_ASSERT(!subsessions.IsValid());
+
+        // that's what the subsessions of a shard's copy of a session look
+        // like
+        auto ans = subsessions.UpdateSubSession(
+            1,
+            false,
+            TActorId(),
+            TabletGeneration);
+        UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
+        UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
+        UNIT_ASSERT(subsessions.IsValid());
+
+        // there is no one to kill when such a subsession gets an owner
+        ans = subsessions.UpdateSubSession(
+            1,
+            false,
+            TActorId(0, 1),
+            TabletGeneration);
+        UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
+        UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
+        UNIT_ASSERT(subsessions.IsValid());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

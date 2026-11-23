@@ -104,7 +104,10 @@ struct TFileStoreEvents
         SERVICE_EXTRA_START = DISK_REGISTRY_PROXY_END + 1,
         SERVICE_EXTRA_END = SERVICE_EXTRA_START + 100,
 
-        END = SERVICE_EXTRA_END + 1
+        TABLET_EXTRA_START = SERVICE_EXTRA_END + 1,
+        TABLET_EXTRA_END = TABLET_EXTRA_START + 100,
+
+        END = TABLET_EXTRA_END + 1
     };
 
     static_assert(END < EventSpaceEnd(NKikimr::TKikimrEvents::ES_FILESTORE),

@@ -382,6 +382,12 @@ void TIndexTabletActor::OnTabletDead(
     Y_UNUSED(ev);
 
     RejectInFlightRequests(ctx);
+    RejectAllPostponedSessionRequests(
+        ctx,
+        MakeError(E_REJECTED, "tablet is shutting down"));
+    RejectPendingShardSessionRequests(
+        ctx,
+        MakeError(E_REJECTED, "tablet is shutting down"));
 
     for (const auto& actor: WorkerActors) {
         ctx.Send(actor, new TEvents::TEvPoisonPill());
@@ -1852,6 +1858,10 @@ STFUNC(TIndexTabletActor::StateWork)
             TEvIndexTabletPrivate::TEvConfirmBlobsCompleted,
             HandleConfirmBlobsCompleted);
 
+        HFunc(
+            TEvIndexTablet::TEvRecoverShardSessionsResponse,
+            HandleRecoverShardSessionsResponse);
+
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -2010,6 +2020,9 @@ STFUNC(TIndexTabletActor::StateZombie)
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvConfirmBlobsCompleted);
 
+        // a response to the request sent by the on-demand session recovery
+        IgnoreFunc(TEvIndexTablet::TEvRecoverShardSessionsResponse);
+
         IgnoreFunc(TEvIndexTabletPrivate::TEvReadDataCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvFastShardInitCompleted);
         IgnoreFunc(TEvIndexTabletPrivate::TEvWriteDataCompleted);
@@ -2090,6 +2103,9 @@ STFUNC(TIndexTabletActor::StateBroken)
         IgnoreFunc(TEvIndexTabletPrivate::TEvAddDataCompleted);
 
         IgnoreFunc(TEvIndexTabletPrivate::TEvConfirmBlobsCompleted);
+
+        // a response to the request sent by the on-demand session recovery
+        IgnoreFunc(TEvIndexTablet::TEvRecoverShardSessionsResponse);
 
         IgnoreFunc(TEvHiveProxy::TEvReassignTabletResponse);
 

@@ -969,6 +969,71 @@ public:
         TVector<NProtoPrivate::TCreateSessionRequest>;
     TCreateSessionRequests BuildCreateSessionRequests(
         const THashSet<TString>& filter) const;
+
+    //
+    // Shard sessions. The sessions are owned by the main tablet. The shards
+    // get them in the form of TShardSessionInfo: either from the background
+    // shard sessions sync or on demand.
+    //
+
+    // Builds the info about the session which is enough to create (or to
+    // recover) the session in a shard. Returns Nothing if there's no such
+    // session.
+    TMaybe<NProtoPrivate::TShardSessionInfo> BuildShardSessionInfo(
+        const TString& sessionId) const;
+
+    // Describes all the sessions of this tablet (a shard) the same way - for
+    // the main tablet which compares them with its own ones.
+    TVector<NProtoPrivate::TShardSessionInfo> DescribeShardSessions() const;
+
+    struct TShardSessionsDiff
+    {
+        // The active sessions of this tablet which are either missing in the
+        // shard or should be recovered there.
+        TVector<NProtoPrivate::TShardSessionInfo> SessionsToSync;
+        // DestroySession requests for the sessions which the shard has (or
+        // is about to get) but this tablet doesn't.
+        TVector<NProtoPrivate::TShardSessionRequest> SessionsToDestroy;
+        // ResetSession requests of the clients. This one and DestroySession
+        // requests of the clients are added by the tablet actor, see
+        // TIndexTabletActor::AddPendingShardSessionRequests.
+        TVector<NProtoPrivate::TShardSessionRequest> SessionsToReset;
+    };
+
+    // Compares the sessions of this (main) tablet with the sessions of a
+    // shard. If createMissingSessions is not set, then the sessions which the
+    // shard doesn't have are not considered as the ones which need a sync:
+    // the shard is supposed to request them on demand.
+    TShardSessionsDiff BuildShardSessionsDiff(
+        const NProtoPrivate::TDescribeShardSessionsResponse& shardSessions,
+        bool createMissingSessions) const;
+
+    enum class ESyncSessionResult
+    {
+        Skipped,
+        Created,
+        Recovered,
+    };
+
+    // Makes the session described by the info active in this (shard)
+    // tablet: creates the session if it doesn't exist and replaces its
+    // subsessions with the ones from the info. These subsessions have no
+    // owners: an owner is a session actor which is connected to the main
+    // tablet.
+    ESyncSessionResult SyncSession(
+        IIndexTabletDatabase& db,
+        const NProtoPrivate::TShardSessionInfo& info,
+        const NProto::TSessionOptions& sessionOptions);
+
+    // Makes the subsessions of the session the same as in the info - even
+    // if the info has none of them. Unlike SyncSession it neither creates
+    // nor activates the session. Used before processing ResetSession and
+    // DestroySession of the main tablet: the result of such a request
+    // depends on the subsessions. Returns false if there's no such session.
+    bool SyncSubSessions(
+        IIndexTabletDatabase& db,
+        const NProtoPrivate::TShardSessionInfo& info);
+
     TVector<TMonSessionInfo> GetActiveSessionInfos() const;
     TVector<TMonSessionInfo> GetOrphanSessionInfos() const;
     TSessionsStats CalculateSessionsStats() const;

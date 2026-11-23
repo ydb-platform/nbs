@@ -1178,6 +1178,50 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
             4_KB,
             shards->Created[1]->Config.GetPersistentConfig().GetPageSize());
     }
+
+    TABLET_TEST_4K_ONLY(ShouldRejectSyncShardSessionsInAdapterMode)
+    {
+        TTestEnv env(testEnvConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            MemConfig(),
+            true /* isFastShard */);
+
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+
+        // that's how the main tablet finds out that the sessions of this
+        // shard should be created one by one via CreateSession requests
+        UNIT_ASSERT(
+            tablet.DescribeShardSessions()->Record.GetAdapterModeEnabled());
+
+        NProtoPrivate::TShardSessionInfo info;
+        info.SetClientId("client");
+        info.SetSessionId("session");
+        info.AddSubSessions()->SetSeqNo(1);
+
+        auto response = tablet.AssertSyncShardSessionsFailed(
+            TVector<NProtoPrivate::TShardSessionInfo>{info});
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_NOT_IMPLEMENTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+        UNIT_ASSERT(response->Record.GetAdapterModeEnabled());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

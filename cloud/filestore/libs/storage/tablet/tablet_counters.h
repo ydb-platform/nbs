@@ -165,6 +165,9 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
     std::atomic<i64> OrphanSessionsCount{0};
     std::atomic<i64> SessionTimeouts{0};
     std::atomic<i64> SessionCleanupAttempts{0};
+    // The number of sessions requested by this (shard) tablet from the main
+    // tablet upon the requests which didn't have an active session.
+    std::atomic<i64> SessionRecoveriesOnDemand{0};
 
     std::atomic<i64> AllocatedCompactionRangesCount{0};
     std::atomic<i64> UsedCompactionRangesCount{0};

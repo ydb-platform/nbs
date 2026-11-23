@@ -17,6 +17,9 @@ struct TSubSession
 {
     ui64 SeqNo;
     bool ReadOnly;
+    // The session actor which uses the subsession. Empty for the subsessions
+    // which a shard gets from the main tablet (see TShardSessionInfo): the
+    // clients don't establish sessions in the shards themselves.
     NActors::TActorId Owner;
     ui64 OwnerGeneration = 0;
 };

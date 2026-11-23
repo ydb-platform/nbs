@@ -42,6 +42,9 @@
 #include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/library/actors/core/mon.h>
 
+#include <util/generic/deque.h>
+#include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/size_literals.h>
 #include <util/generic/string.h>
 #include <util/system/hostname.h>
@@ -185,10 +188,113 @@ private:
     bool UpdateCountersScheduled = false;
     bool UpdateLeakyBucketCountersScheduled = false;
     bool SyncSessionsScheduled = false;
+    // An out-of-schedule sync (see ScheduleOutOfScheduleSyncSessions) is
+    // scheduled.
+    bool OutOfScheduleSyncSessionsScheduled = false;
+    // The background shard sessions sync is running. Tracked only if
+    // LazyShardSessionCreationEnabled is set.
+    bool SyncSessionsInProgress = false;
+    // One more sync should be run after the completion of the current one.
+    bool SyncSessionsRequested = false;
+    // An urgent sync (see ScheduleUrgentSyncSessions) is on its way.
+    bool UrgentSyncSessionsScheduled = false;
     bool CleanupSessionsScheduled = false;
     bool EnqueueBlobIndexOpIfNeededScheduled = false;
 
     TDeque<NActors::IEventHandlePtr> WaitReadyRequests;
+
+    //
+    // Main tablet, LazyShardSessionCreationEnabled.
+    //
+    // This tablet owns the sessions, the shards follow. All the requests
+    // which change the sessions of the shards are sent by the shard sessions
+    // sync: each of its rounds compares the sessions of each shard with the
+    // state of this tablet and makes the shard fix the difference.
+    //
+    // ResetSession and DestroySession are processed by the shards first and
+    // by this tablet last. Such a request is kept here (see
+    // PendingShardSessionRequests) until the sync delivers it to all the
+    // shards, the session is not touched until then. So a request which has
+    // been acknowledged has been completed by all the shards, and the shards
+    // make their decisions against the same subsessions as this tablet does.
+    // The state below is not persistent: the clients retry the requests
+    // which didn't manage to get through.
+    //
+
+    // Grows upon each request which gets to PendingShardSessionRequests.
+    ui64 ShardSessionsVersion = 0;
+    // ShardSessionsVersion at the start of the current sync round.
+    ui64 SyncSessionsStartVersion = 0;
+    // ShardId -> SyncSessionsStartVersion of the last round which managed to
+    // sync the sessions of this shard: the shard has processed all the
+    // requests which are not newer than that.
+    THashMap<TString, ui64> ShardSyncedVersions;
+
+    struct TPendingShardSessionRequest
+    {
+        // ShardSessionsVersion upon the arrival of the request.
+        ui64 Version = 0;
+        ui64 SessionSeqNo = 0;
+        // ResetSession if set, DestroySession otherwise.
+        bool Reset = false;
+        // All the shards have processed the request, the tx of this tablet
+        // is in progress.
+        bool Applying = false;
+        // Identifies the tx of the request as well.
+        TRequestInfoPtr RequestInfo;
+        NProto::TResetSessionRequest ResetRequest;
+        NProtoPrivate::TDestroySessionRequest DestroyRequest;
+    };
+
+    // SessionId -> ResetSession or DestroySession which is being delivered
+    // to the shards. There's at most one such request per session and
+    // nothing else is allowed to change the session until its completion.
+    THashMap<TString, TPendingShardSessionRequest> PendingShardSessionRequests;
+
+    //
+    // Main tablet. The shards which reported that they work in adapter mode
+    // but aren't marked as fast shards in the shard topology.
+    //
+
+    THashSet<TString> AdapterModeShardIds;
+
+    //
+    // Shard, ShardSessionRecoveryOnDemandEnabled.
+    //
+    // A request which belongs to a session which is not active in this shard
+    // is postponed until the session is requested from the main tablet. If
+    // the main tablet confirms that the session is active, the session gets
+    // recovered and the request is processed. Otherwise the request is
+    // rejected.
+    //
+
+    struct TPostponedSessionRequest
+    {
+        using TRejectRoutine = void(
+            const NActors::TActorContext& ctx,
+            const NActors::IEventHandle& request,
+            const NProto::TError& error);
+
+        NActors::IEventHandlePtr Request;
+        TRejectRoutine* Reject = nullptr;
+        TString ClientId;
+        ui64 SessionSeqNo = 0;
+    };
+
+    struct TSessionRecovery
+    {
+        ui64 Id = 0;
+        TDeque<TPostponedSessionRequest> Requests;
+    };
+
+    ui64 LastSessionRecoveryId = 0;
+    // SessionId -> the recovery which is in progress
+    THashMap<TString, TSessionRecovery> SessionRecoveries;
+    // SessionRecoveryId -> SessionId
+    THashMap<ui64, TString> SessionRecoveryIds;
+    // Set while the postponed requests are being processed: such requests
+    // shouldn't trigger session recovery once again.
+    bool ReplayingPostponedSessionRequests = false;
 
     TSet<NActors::TActorId> WorkerActors;
     TIntrusiveList<TRequestInfo> ActiveRequests;
@@ -364,7 +470,99 @@ private:
     void RunRegularTasks(const NActors::TActorContext& ctx);
 
     void ScheduleSyncSessions(const NActors::TActorContext& ctx);
+    // Schedules a shard sessions sync which is not bound to the regular
+    // schedule - it's needed when the sessions of the main tablet change.
+    void ScheduleOutOfScheduleSyncSessions(const NActors::TActorContext& ctx);
+    // Starts a shard sessions sync as soon as possible: right now or right
+    // after the completion of the current one.
+    void ScheduleUrgentSyncSessions(const NActors::TActorContext& ctx);
+
+    // True if there are shards whose sessions are managed by the shard
+    // sessions sync, i.e. the shards which don't work in adapter mode.
+    bool HasShardsWithSyncedSessions(
+        const TVector<TString>& adapterModeShardIds) const;
+
+    // True if ResetSession and DestroySession should be delivered to the
+    // shards by the shard sessions sync before this tablet processes them.
+    bool ShouldSyncShardSessionRequests() const;
+
+    // Keeps a ResetSession or a DestroySession request until the shard
+    // sessions sync delivers it to all the shards.
+    void EnqueueShardSessionRequest(
+        const NActors::TActorContext& ctx,
+        TString sessionId,
+        TPendingShardSessionRequest request);
+
+    // Tells the shard sessions sync which of these requests should be sent
+    // to the shard which has described its sessions.
+    void AddPendingShardSessionRequests(
+        const TString& shardId,
+        const NProtoPrivate::TDescribeShardSessionsResponse& shardSessions,
+        TShardSessionsDiff& diff) const;
+
+    // Lets this tablet process the requests which have been processed by
+    // all the shards.
+    void ProcessPendingShardSessionRequests(
+        const NActors::TActorContext& ctx);
+
+    // Should be called when this tablet completes ResetSession or
+    // DestroySession: the request might be one of the pending ones.
+    void OnShardSessionRequestCompleted(
+        const NActors::TActorContext& ctx,
+        const TString& sessionId,
+        const TRequestInfoPtr& requestInfo);
+
+    // Fails the requests which haven't been processed by all the shards yet.
+    void RejectPendingShardSessionRequests(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error);
+
     void ScheduleCleanupSessions(const NActors::TActorContext& ctx);
+
+    // The shards which work in adapter mode: the ones which are marked as
+    // fast shards in the shard topology and the ones which reported it.
+    TVector<TString> GetAdapterModeShardIds() const;
+
+    //
+    // On-demand session recovery (shards).
+    //
+
+    bool ShouldRecoverSessionsOnDemand() const;
+
+    void PostponeRequestUntilSessionRecovered(
+        const NActors::TActorContext& ctx,
+        TString clientId,
+        TString sessionId,
+        ui64 sessionSeqNo,
+        NActors::IEventHandlePtr request,
+        TPostponedSessionRequest::TRejectRoutine* reject);
+
+    void HandleRecoverShardSessionsResponse(
+        const TEvIndexTablet::TEvRecoverShardSessionsResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    // Extracts the requests which wait for the session recovery.
+    TDeque<TPostponedSessionRequest> FinishSessionRecovery(
+        ui64 sessionRecoveryId,
+        TString* sessionId);
+
+    // Processes the requests which were waiting for the session recovery.
+    void ReplayPostponedSessionRequests(
+        const NActors::TActorContext& ctx,
+        ui64 sessionRecoveryId);
+
+    // Rejects the requests which were waiting for the session recovery. An
+    // empty error means that the session is invalid.
+    void RejectPostponedSessionRequests(
+        const NActors::TActorContext& ctx,
+        ui64 sessionRecoveryId,
+        const NProto::TError& error);
+
+    // Rejects all the requests which wait for the session recovery.
+    void RejectAllPostponedSessionRequests(
+        const NActors::TActorContext& ctx,
+        const NProto::TError& error);
+
     void CreateSessionsInShards(
         const NActors::TActorContext& ctx,
         TRequestInfoPtr requestInfo,

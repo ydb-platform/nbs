@@ -100,6 +100,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CreateSession,                      __VA_ARGS__)                       \
     xxx(ResetSession,                       __VA_ARGS__)                       \
     xxx(DestroySession,                     __VA_ARGS__)                       \
+    xxx(SyncShardSessions,                  __VA_ARGS__)                       \
                                                                                \
     xxx(CreateCheckpoint,                   __VA_ARGS__)                       \
     xxx(DeleteCheckpoint,                   __VA_ARGS__)                       \
@@ -629,6 +630,50 @@ struct TTxIndexTablet
 
             Nodes.clear();
             Completed = false;
+        }
+    };
+
+    //
+    // SyncShardSessions
+    //
+
+    struct TSyncShardSessions: TTxIndexTabletBase, TErrorAware
+    {
+        // Empty if the sessions are recovered on demand.
+        /* const */ TRequestInfoPtr RequestInfo;
+        // Nonzero if the sessions are recovered on demand - identifies the
+        // requests which wait for the completion of this tx.
+        const ui64 SessionRecoveryId;
+        using TSessionRequests = TVector<NProtoPrivate::TShardSessionRequest>;
+
+        const TVector<NProtoPrivate::TShardSessionInfo> Sessions;
+        // ResetSession and DestroySession requests of the main tablet -
+        // they are processed after the sessions get synced.
+        const TSessionRequests SessionsToReset;
+        const TSessionRequests SessionsToDestroy;
+
+        ui32 CreatedSessionCount = 0;
+        ui32 RecoveredSessionCount = 0;
+
+        TSyncShardSessions(
+                TRequestInfoPtr requestInfo,
+                ui64 sessionRecoveryId,
+                TVector<NProtoPrivate::TShardSessionInfo> sessions,
+                TSessionRequests sessionsToReset = {},
+                TSessionRequests sessionsToDestroy = {})
+            : RequestInfo(std::move(requestInfo))
+            , SessionRecoveryId(sessionRecoveryId)
+            , Sessions(std::move(sessions))
+            , SessionsToReset(std::move(sessionsToReset))
+            , SessionsToDestroy(std::move(sessionsToDestroy))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+
+            CreatedSessionCount = 0;
+            RecoveredSessionCount = 0;
         }
     };
 

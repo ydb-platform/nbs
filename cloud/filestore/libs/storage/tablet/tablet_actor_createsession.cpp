@@ -355,6 +355,28 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
 
     auto db = CreateIndexTabletDatabase(tx.DB);
 
+    //
+    // ResetSession or DestroySession for the session is being delivered to
+    // the shards (see PendingShardSessionRequests). The shards make their
+    // decisions against the current subsessions of the session and this
+    // tablet is going to make the same decision after them, so the session
+    // can't get a new subsession until then - the client should retry.
+    //
+
+    auto isBeingChanged = [&] (const TString& id) {
+        if (!PendingShardSessionRequests.contains(id)) {
+            return false;
+        }
+
+        args.Error = MakeError(E_REJECTED, TStringBuilder()
+            << "session " << id.Quote() << " is being reset or destroyed");
+        return true;
+    };
+
+    if (isBeingChanged(sessionId)) {
+        return;
+    }
+
     // check if client reconnecting with known session id
     auto* session = FindSession(sessionId);
     if (session) {
@@ -411,6 +433,10 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
     // check if there is existing session for the client
     if (args.Request.GetRestoreClientSession()) {
         auto* session = FindSessionByClientId(clientId);
+        if (session && isBeingChanged(session->GetSessionId())) {
+            return;
+        }
+
         if (session) {
             LOG_INFO(ctx, TFileStoreComponents::TABLET,
                 "%s CreateSession c:%s, s:%s recovered by client",
@@ -581,6 +607,42 @@ void TIndexTabletActor::CompleteTx_CreateSession(
         return;
     }
 
+    if (Config->GetLazyShardSessionCreationEnabled()) {
+        //
+        // Creating a session in each of the shards upon each CreateSession
+        // request doesn't scale: there may be thousands of shards and
+        // thousands of clients which connect simultaneously. The sessions
+        // are sent to the shards in batches by the shard sessions sync
+        // instead, the sessions which the sync hasn't delivered yet are
+        // requested by the shards on demand.
+        //
+        // The shards which work in adapter mode are the exception: they
+        // can neither process the batches nor request the sessions.
+        //
+
+        if (Config->GetBackgroundShardSessionCreationEnabled()) {
+            // no need to wait for the regular sync
+            ScheduleOutOfScheduleSyncSessions(ctx);
+        }
+
+        shardIds = GetAdapterModeShardIds();
+        if (shardIds.empty()) {
+            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+                "%s CreateSession completed (%s), shard sessions will be"
+                " created lazily",
+                LogTag.c_str(),
+                FormatError(args.Error).c_str());
+
+            NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+            return;
+        }
+
+        if (response->Record.HasFileStore()) {
+            auto* f = response->Record.MutableFileStore()->MutableFeatures();
+            ProcessAdapterModeFeatures(*f);
+        }
+    }
+
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s CreateSession completed - local (%s)",
         LogTag.c_str(),
@@ -594,10 +656,50 @@ void TIndexTabletActor::CompleteTx_CreateSession(
         std::move(shardIds));
 }
 
-void TIndexTabletActor::HandleSyncShardSessions(
-    const TEvIndexTabletPrivate::TEvSyncShardSessionsRequest::TPtr& ev,
+void TIndexTabletActor::HandleBuildShardSessionsDiff(
+    const TEvIndexTabletPrivate::TEvBuildShardSessionsDiffRequest::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
+    auto* msg = ev->Get();
+
+    const bool adapterMode = msg->AdapterMode;
+    if (adapterMode) {
+        // remembering it: the sessions of such a shard should be created
+        // upon each CreateSession request
+        AdapterModeShardIds.insert(msg->ShardId);
+    }
+
+    if (Config->GetLazyShardSessionCreationEnabled() && !adapterMode) {
+        //
+        // Nothing is sent to the shard from here: there may be lots of
+        // shards and the requester knows better how many of them can be
+        // processed simultaneously.
+        //
+
+        auto diff = BuildShardSessionsDiff(
+            msg->ShardSessions,
+            Config->GetBackgroundShardSessionCreationEnabled());
+
+        // ResetSession and DestroySession requests of the clients which
+        // this shard hasn't processed yet
+        AddPendingShardSessionRequests(
+            msg->ShardId,
+            msg->ShardSessions,
+            diff);
+
+        using TResponse =
+            TEvIndexTabletPrivate::TEvBuildShardSessionsDiffResponse;
+        auto response = std::make_unique<TResponse>();
+        response->ShardId = std::move(msg->ShardId);
+        response->SessionCount =
+            static_cast<ui32>(diff.SessionsToSync.size());
+        response->SessionsToSync = std::move(diff.SessionsToSync);
+        response->SessionsToReset = std::move(diff.SessionsToReset);
+        response->SessionsToDestroy = std::move(diff.SessionsToDestroy);
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
+
     THashSet<TString> filter;
     for (auto& s: *ev->Get()->Sessions.MutableSessions()) {
         if (!s.GetIsOrphan()) {
@@ -625,22 +727,20 @@ void TIndexTabletActor::HandleSyncShardSessions(
             WorkerActors.insert(actorId);
         }
     }
-    TEvIndexTabletPrivate::TShardSessionsInfo info;
-    info.ShardId = std::move(ev->Get()->ShardId);
+    using TResponse = TEvIndexTabletPrivate::TEvBuildShardSessionsDiffResponse;
+    auto response = std::make_unique<TResponse>();
+    response->ShardId = std::move(msg->ShardId);
     for (auto& request: BuildCreateSessionRequests(filter)) {
         CreateSessionsInShards(
             ctx,
             nullptr, // requestInfo
             std::move(request),
             nullptr, // response
-            {info.ShardId});
+            {response->ShardId});
 
-        ++info.SessionCount;
+        ++response->SessionCount;
     }
 
-    using TResponse = TEvIndexTabletPrivate::TEvSyncShardSessionsResponse;
-    auto response = std::make_unique<TResponse>();
-    response->Info = std::move(info);
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 

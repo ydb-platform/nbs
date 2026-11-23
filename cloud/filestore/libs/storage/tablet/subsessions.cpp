@@ -186,14 +186,10 @@ bool TSubSessions::HasSeqNo(ui64 seqNo) const
 
 bool TSubSessions::IsValid() const
 {
-    if (SubSessions.empty()) {
-        return false;
-    }
-    return AllOf(
-        SubSessions,
-        [&] (const auto& subsession) {
-            return !!subsession.Owner;
-        });
+    // A subsession is not required to have an owner: the owners are the
+    // session actors which are connected to the main tablet, the copies of
+    // the sessions which are kept by the shards don't have them.
+    return !SubSessions.empty();
 }
 
 std::optional<TSubSession> TSubSessions::GetSubSessionBySeqNo(ui64 seqNo) const

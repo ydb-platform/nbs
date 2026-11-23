@@ -344,6 +344,11 @@ public:
     ui64 GetShardAllocationUnit() const;
     ui64 GetAutomaticallyCreatedShardSize() const;
     bool GetEnforceCorrectFileSystemShardCountUponSessionCreation() const;
+    bool GetLazyShardSessionCreationEnabled() const;
+    bool GetBackgroundShardSessionCreationEnabled() const;
+    bool GetShardSessionRecoveryOnDemandEnabled() const;
+    ui32 GetMaxShardSessionsSyncInflight() const;
+    TDuration GetShardSessionsSyncDelay() const;
 
     ui64 GetShardBalancerDesiredFreeSpaceReserve() const;
     ui64 GetShardBalancerMinFreeSpaceReserve() const;
