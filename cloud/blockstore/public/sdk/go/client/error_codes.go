@@ -133,6 +133,10 @@ var (
 	E_RESOURCE_EXHAUSTED     = makeServiceError(4)
 	E_DISK_ALLOCATION_FAILED = makeServiceError(5)
 	E_MOUNT_CONFLICT         = makeServiceError(6)
+	// A volume operation (e.g. ResizeVolume or AlterVolume) is blocked by
+	// another operation or volume state, such as checkpoint creation,
+	// existing checkpoint data, an active volume link or unfinished filling.
+	E_VOLUME_OPERATION_CONFLICT = makeServiceError(7)
 
 	E_RDMA_UNAVAILABLE = makeRdmaError(1)
 )
@@ -196,6 +200,8 @@ var resultMap = map[uint32]string{
 	E_RESOURCE_EXHAUSTED:     "E_RESOURCE_EXHAUSTED",
 	E_DISK_ALLOCATION_FAILED: "E_DISK_ALLOCATION_FAILED",
 	E_MOUNT_CONFLICT:         "E_MOUNT_CONFLICT",
+
+	E_VOLUME_OPERATION_CONFLICT: "E_VOLUME_OPERATION_CONFLICT",
 
 	E_RDMA_UNAVAILABLE: "E_RDMA_UNAVAILABLE",
 }
