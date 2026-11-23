@@ -276,6 +276,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
             const bool raw = chunk == 4 || chunk == 5;
             UNIT_ASSERT_VALUES_EQUAL_C(raw, layout.IsRawChunk(chunk), chunk);
             if (raw) {
+                UNIT_ASSERT_VALUES_EQUAL(0, blob.Info.GetChunkSizes(chunk));
                 UNIT_ASSERT_VALUES_EQUAL(
                     16_KB,
                     layout.GetStoredChunkLength(chunk));
@@ -285,9 +286,15 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
                         layout.GetStoredChunkOffset(chunk),
                         16_KB));
             } else {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    blob.Info.GetChunkSizes(chunk),
+                    layout.GetStoredChunkLength(chunk));
                 UNIT_ASSERT(layout.GetStoredChunkLength(chunk) < 16_KB);
             }
         }
+        UNIT_ASSERT_VALUES_EQUAL(
+            blob.Content.size(),
+            layout.GetStoredSpanLength(0, 7));
 
         UNIT_ASSERT_VALUES_EQUAL(data, DecompressOrFail(blob, 0, 7));
         UNIT_ASSERT_VALUES_EQUAL(
@@ -547,19 +554,27 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
         info.SetUncompressedChunkSizes(1, 8_KB - 1);
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, ValidationCode(info, blobSize));
 
-        // an empty chunk, the blob size still matches
+        // a raw chunk occupies its uncompressed size
+        const ui64 otherChunks = blobSize - blob.Info.GetChunkSizes(1);
         info = blob.Info;
-        info.SetChunkSizes(2, info.GetChunkSizes(2) + info.GetChunkSizes(1));
         info.SetChunkSizes(1, 0);
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, ValidationCode(info, blobSize));
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            ValidationCode(info, otherChunks + 8_KB));
+
+        // a compressed chunk of the same size as its data is not raw
+        info.SetChunkSizes(1, 8_KB);
+        const auto sameSize =
+            TBlobChunkLayout::Create(info, otherChunks + 8_KB, BlockSize);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, sameSize.GetError().GetCode());
+        UNIT_ASSERT(!sameSize.GetResult().IsRawChunk(1));
 
         // a chunk is stored larger than its data
-        info = blob.Info;
-        const ui32 delta = 8_KB + 1 - info.GetChunkSizes(1);
         info.SetChunkSizes(1, 8_KB + 1);
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
-            ValidationCode(info, blobSize + delta));
+            ValidationCode(info, otherChunks + 8_KB + 1));
 
         // full chunks: only the size of the last chunk is stored
         const auto full = CompressOrFail(

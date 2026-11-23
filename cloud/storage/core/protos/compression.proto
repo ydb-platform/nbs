@@ -36,9 +36,8 @@ message TBlobCompressionInfo
     // Maximum uncompressed chunk size in bytes, a multiple of the block size.
     uint32 ChunkSize = 2;
 
-    // Stored sizes of the chunks in blob order, their sum is the blob size.
-    // A chunk whose stored size is equal to its uncompressed size is stored
-    // raw.
+    // Compressed sizes of the chunks in blob order. Zero means that the chunk
+    // is stored raw and occupies its uncompressed size.
     repeated uint32 ChunkSizes = 3;
 
     // Uncompressed sizes of the chunks in blob order. Each one is a nonzero

@@ -99,18 +99,19 @@ TResultOrError<TCompressedBlob> CompressChunks(
                 storedSize + blockCodec->MaxCompressedLength(chunk));
             char* out = content.begin() + storedSize;
 
-            size_t storedChunkSize = blockCodec->Compress(chunk, out);
-            if (!IsWorthStoringCompressed(
-                    storedChunkSize,
+            const size_t compressedSize = blockCodec->Compress(chunk, out);
+            if (IsWorthStoringCompressed(
+                    compressedSize,
                     size,
                     minSavedPercent))
             {
+                content.resize(storedSize + compressedSize);
+                info.AddChunkSizes(compressedSize);
+            } else {
                 memcpy(out, chunk.data(), size);
-                storedChunkSize = size;
+                content.resize(storedSize + size);
+                info.AddChunkSizes(0);
             }
-
-            content.resize(storedSize + storedChunkSize);
-            info.AddChunkSizes(storedChunkSize);
             offset += size;
         }
     } catch (...) {
@@ -180,23 +181,26 @@ TResultOrError<TBlobChunkLayout> TBlobChunkLayout::Create(
     layout.Codec = codec.GetResult();
     layout.Offsets.reserve(chunkCount + 1);
     layout.StoredOffsets.reserve(chunkCount + 1);
+    layout.RawChunks.reserve(chunkCount);
 
     for (size_t i = 0; i < chunkCount; ++i) {
         const ui32 chunkSize = GetUncompressedChunkSize(info, i);
-        const ui32 storedChunkSize = info.GetChunkSizes(i);
+        const ui32 compressedSize = info.GetChunkSizes(i);
 
         if (!chunkSize || chunkSize % blockSize != 0
                 || chunkSize > maxChunkSize
-                || !storedChunkSize || storedChunkSize > chunkSize)
+                || compressedSize > chunkSize)
         {
             return MakeError(E_ARGUMENT, TStringBuilder()
-                << "chunk " << i << " has invalid sizes: " << storedChunkSize
-                << " stored, " << chunkSize << " uncompressed");
+                << "chunk " << i << " has invalid sizes: " << compressedSize
+                << " compressed, " << chunkSize << " uncompressed");
         }
 
+        const bool raw = !compressedSize;
         layout.Offsets.push_back(layout.Offsets.back() + chunkSize);
         layout.StoredOffsets.push_back(
-            layout.StoredOffsets.back() + storedChunkSize);
+            layout.StoredOffsets.back() + (raw ? chunkSize : compressedSize));
+        layout.RawChunks.push_back(raw);
     }
 
     if (layout.StoredOffsets.back() != blobSize) {
@@ -259,7 +263,7 @@ ui64 TBlobChunkLayout::GetStoredSpanLength(
 
 bool TBlobChunkLayout::IsRawChunk(ui32 chunk) const
 {
-    return GetStoredChunkLength(chunk) == GetChunkLength(chunk);
+    return RawChunks[chunk];
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -51,6 +51,7 @@ private:
     const NBlockCodecs::ICodec* Codec = nullptr;
     TVector<ui64> Offsets = {0};
     TVector<ui64> StoredOffsets = {0};
+    TVector<bool> RawChunks;
 
 public:
     static TResultOrError<TBlobChunkLayout> Create(
