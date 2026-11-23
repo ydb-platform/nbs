@@ -52,8 +52,8 @@ void TVolumeBalancerState::UpdateVolumeStats(
         Status = NPrivateProto::EBalancerOpStatus::WARNING;
     }
 
-    // Push volume, if balancer is in ENABLE state and if there is a
-    // CPU emergency; pull volume otherwise
+    // Push the volume, if balancer is in ENABLE state and if the CPU is in
+    // emergency state. Otherwise, pull the volume
     const bool pushVolume =
         Status == NPrivateProto::EBalancerOpStatus::ENABLE &&
         cpuLack >= StorageConfig->GetCpuLackThreshold();
@@ -62,7 +62,6 @@ void TVolumeBalancerState::UpdateVolumeStats(
     for (const auto& d: Volumes) {
         knownDisks.insert(d.first);
     }
-
 
     for (auto& v: stats) {
         auto it = Volumes.emplace(v.GetDiskId(), TVolumeInfo(StorageConfig->GetInitialPullDelay())).first;
@@ -227,7 +226,7 @@ void TVolumeBalancerState::RenderState(TStringStream& out) const
         TABLE_SORTABLE_CLASS("table table-condensed") {
             TABLEHEAD() {
                 TABLER() {
-                    TABLED() { out << "Enabled"; }
+                    TABLED() { out << "Status"; }
                     TABLED () {
                         out << EBalancerOpStatus_Name(Status);
                     }

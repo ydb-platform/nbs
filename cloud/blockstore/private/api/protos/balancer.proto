@@ -12,7 +12,7 @@ enum EBalancerOpStatus {
     ENABLE = 1;
     DISABLE = 2;
 
-    // Push is disabled, all pushed volumes are pulled
+    // Push is disabled, all pushed volumes are being pulled
     WARNING = 3;
 }
 

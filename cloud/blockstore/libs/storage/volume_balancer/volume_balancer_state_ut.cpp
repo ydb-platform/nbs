@@ -1,4 +1,5 @@
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
+#include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_state.h>
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_ut_helpers.h>
@@ -760,6 +761,111 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 
             UNIT_ASSERT(!state.GetVolumeToPush());
             UNIT_ASSERT(!state.GetVolumeToPull());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldOnlyPullVolumesInWarningState)
+    {
+        auto storageConfig = CreateStorageConfig(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            /*volumeBalancerEnabled=*/true,
+            70,
+            /*featuresConfig=*/nullptr);
+
+        TVolumeBalancerState state(
+            storageConfig,
+            CreateDiagnosticsConfig(),
+            CreateSwitch(true));
+
+        state.SetStatus(NPrivateProto::EBalancerOpStatus::WARNING);
+        TInstant now = TInstant::Seconds(0);
+
+        TVolumeBalancerState::TPerfGuaranteesMap perfMap;
+        perfMap["vol0"] = 15;
+        perfMap["vol1"] = 1;
+
+        {
+            TVector<NProto::TVolumeBalancerDiskStats> vols{
+                CreateVolumeStats("vol0", "", "", true),
+                CreateVolumeStats("vol1", "", "", true)};
+
+            state.UpdateVolumeStats(vols, perfMap, 80, now);
+
+            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT(!state.GetVolumeToPull());
+        }
+
+        {
+            TVector<NProto::TVolumeBalancerDiskStats> vols{
+                CreateVolumeStats("vol0", "", "", false),
+                CreateVolumeStats("vol1", "", "", true)};
+
+            state.UpdateVolumeStats(vols, perfMap, 80, now);
+
+            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT(!state.GetVolumeToPull());
+
+            now += storageConfig->GetInitialPullDelay();
+            state.UpdateVolumeStats(vols, perfMap, 80, now);
+
+            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT_VALUES_EQUAL("vol0", state.GetVolumeToPull());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldTurnIntoWarningStateIfPreemptedVolumeSuffers)
+    {
+        auto storageConfig = CreateStorageConfig(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            /*volumeBalancerEnabled=*/true,
+            70,
+            /*featuresConfig=*/nullptr);
+
+        TVolumeBalancerState state(
+            storageConfig,
+            CreateDiagnosticsConfig(),
+            CreateSwitch(true));
+        TInstant now = TInstant::Seconds(0);
+
+        TVolumeBalancerState::TPerfGuaranteesMap perfMap;
+        perfMap["vol0"] = 15;
+        perfMap["vol1"] = 1;
+
+        {
+            TVector<NProto::TVolumeBalancerDiskStats> vols{
+                CreateVolumeStats("vol0", "", "", true),
+                CreateVolumeStats("vol1", "", "", true)};
+
+            state.UpdateVolumeStats(vols, perfMap, 80, now);
+
+            UNIT_ASSERT_VALUES_EQUAL("vol0", state.GetVolumeToPush());
+            UNIT_ASSERT(!state.GetVolumeToPull());
+            UNIT_ASSERT_VALUES_EQUAL(
+                state.GetStatus(),
+                NPrivateProto::EBalancerOpStatus::ENABLE);
+        }
+
+        {
+            TVector<NProto::TVolumeBalancerDiskStats> vols{
+                CreateVolumeStats("vol0", "", "", false),
+                CreateVolumeStats("vol1", "", "", false)};
+
+            state.UpdateVolumeStats(vols, perfMap, 80, now);
+
+            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT(!state.GetVolumeToPull());
+            UNIT_ASSERT_VALUES_EQUAL(
+                state.GetStatus(),
+                NPrivateProto::EBalancerOpStatus::WARNING);
+
+            now += storageConfig->GetInitialPullDelay();
+            state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
+
+            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT(!state.GetVolumeToPull().empty());
+            UNIT_ASSERT_VALUES_EQUAL(
+                state.GetStatus(),
+                NPrivateProto::EBalancerOpStatus::WARNING);
         }
     }
 }

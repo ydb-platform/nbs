@@ -1047,6 +1047,77 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         UNIT_ASSERT_VALUES_EQUAL("vol2", diskId3);
     }
+
+    Y_UNIT_TEST(ShouldTurnIntoWarningStateIfPreemptedVolumeSuffers)
+    {
+        TVolumeBalancerTestEnv testEnv;
+        TVolumeBalancerConfigBuilder config;
+
+        const auto initialPullDelay = UpdateCountersInterval * 2;
+
+        auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
+            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY)
+                .WithInitialPullDelay(initialPullDelay)
+                .WithEnabled(true),
+            testEnv.VolumeStats,
+            testEnv.Fetcher,
+            testEnv.GetEdgeActor()));
+        testEnv.DispatchEvents();
+
+        auto diskId1 = RunState(
+            testEnv,
+            volumeBindingActorID,
+            {
+                {.DiskId = "vol0", .IsLocal = true},
+                {.DiskId = "vol1", .IsLocal = true},
+            },
+            {{"vol0", 15}, {"vol1", 1}},
+            1,
+            EChangeBindingOp::RELEASE_TO_HIVE,
+            UpdateCountersInterval);
+
+        UNIT_ASSERT_VALUES_EQUAL("vol0", diskId1);
+
+        testEnv.SendChangeVolumeBindingResponse(
+            volumeBindingActorID,
+            "vol0",
+            {});
+        testEnv.DispatchEvents();
+
+        auto diskId2 = RunState(
+            testEnv,
+            volumeBindingActorID,
+            {
+                {.DiskId = "vol0", .IsLocal = false},
+                {.DiskId = "vol1", .IsLocal = true},
+            },
+            {{"vol0", 15}, {"vol1", 1}},
+            1,
+            EChangeBindingOp::ACQUIRE_FROM_HIVE,
+            UpdateCountersInterval + initialPullDelay);
+
+        UNIT_ASSERT_VALUES_EQUAL("vol0", diskId2);
+
+        testEnv.SendChangeVolumeBindingResponse(
+            volumeBindingActorID,
+            "vol0",
+            {});
+        testEnv.DispatchEvents();
+
+        auto diskId3 = RunState(
+            testEnv,
+            volumeBindingActorID,
+            {
+                {.DiskId = "vol0", .IsLocal = true},
+                {.DiskId = "vol1", .IsLocal = true},
+            },
+            {{"vol0", 15}, {"vol1", 1}},
+            1,
+            {},
+            UpdateCountersInterval + initialPullDelay);
+
+        UNIT_ASSERT(diskId3.empty());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
