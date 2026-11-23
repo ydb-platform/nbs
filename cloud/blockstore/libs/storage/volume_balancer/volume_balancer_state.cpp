@@ -17,6 +17,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TDuration MaxPullDelay = TDuration::Hours(24);
+constexpr ui32 SufferCountThreshold = 10;
 
 }   // namespace
 
@@ -45,13 +46,23 @@ void TVolumeBalancerState::UpdateVolumeStats(
 {
     CpuLack = cpuLack;
 
-    bool emergencyCpu =
+    if (Status == NPrivateProto::EBalancerOpStatus::ENABLE &&
+        HasSufferingPreemptedVolume(stats, perfMap))
+    {
+        Status = NPrivateProto::EBalancerOpStatus::WARNING;
+    }
+
+    // Push volume, if balancer is in ENABLE state and if there is a
+    // CPU emergency; pull volume otherwise
+    const bool pushVolume =
+        Status == NPrivateProto::EBalancerOpStatus::ENABLE &&
         cpuLack >= StorageConfig->GetCpuLackThreshold();
 
     THashSet<TString> knownDisks;
     for (const auto& d: Volumes) {
         knownDisks.insert(d.first);
     }
+
 
     for (auto& v: stats) {
         auto it = Volumes.emplace(v.GetDiskId(), TVolumeInfo(StorageConfig->GetInitialPullDelay())).first;
@@ -95,21 +106,7 @@ void TVolumeBalancerState::UpdateVolumeStats(
         Volumes.erase(d);
     }
 
-    static constexpr ui32 SufferCountThreshold = 12;
-    for (const auto& [diskId, info]: Volumes) {
-        if (info.IsLocal ||
-            info.PreemptionSource != NProto::EPreemptionSource::SOURCE_BALANCER)
-        {
-            continue;
-        }
-
-        if (info.SufferCount >= SufferCountThreshold) {
-            Status = NPrivateProto::EBalancerOpStatus::PULL_ONLY;
-            return;
-        }
-    }
-
-    if (emergencyCpu && Status == NPrivateProto::EBalancerOpStatus::ENABLE) {
+    if (pushVolume) {
         VolumeToPull = {};
         UpdateVolumeToPush();
     } else {
@@ -263,6 +260,35 @@ void TVolumeBalancerState::RenderHtml(TStringStream& out, TInstant now) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TVolumeBalancerState::HasSufferingPreemptedVolume(
+    const TVector<NProto::TVolumeBalancerDiskStats>& stats,
+    const TPerfGuaranteesMap& perfMap) const
+{
+    return AnyOf(
+        stats,
+        [&](const auto& stat)
+        {
+            if (stat.GetIsLocal() ||
+                stat.GetPreemptionSource() !=
+                    NProto::EPreemptionSource::SOURCE_BALANCER)
+            {
+                return false;
+            }
+
+            const auto* prevStats = Volumes.FindPtr(stat.GetDiskId());
+            if (!prevStats) {
+                return false;
+            }
+
+            const auto* sufferCount = perfMap.FindPtr(stat.GetDiskId());
+            if (!sufferCount) {
+                return false;
+            }
+            return *sufferCount > SufferCountThreshold &&
+                   prevStats->SufferCount > SufferCountThreshold;
+        });
+}
+
 void TVolumeBalancerState::UpdateVolumeToPush()
 {
     const auto preemptionType = StorageConfig->GetVolumePreemptionType();
@@ -301,14 +327,6 @@ void TVolumeBalancerState::UpdateVolumeToPull(TInstant now)
 {
     VolumeToPull = {};
 
-    const bool isPullEnabled =
-        Status == NPrivateProto::EBalancerOpStatus::ENABLE ||
-        Status == NPrivateProto::EBalancerOpStatus::PULL_ONLY;
-
-    if (!isPullEnabled) {
-        return;
-    }
-
     for (const auto& v: Volumes) {
         if (IsVolumePreemptibleToPull(v.first, v.second, now)) {
             VolumeToPull = v.first;
@@ -344,7 +362,8 @@ bool TVolumeBalancerState::IsVolumePreemptibleToPush(
         (volume.MediaKind != NProto::STORAGE_MEDIA_DEFAULT) &&
         !IsDiskRegistryMediaKind(volume.MediaKind);
 
-    return IsPreemptionEnabled(diskId, volume) && volume.IsLocal &&
+    return Status == NPrivateProto::EBalancerOpStatus::ENABLE &&
+           IsPreemptionEnabled(diskId, volume) && volume.IsLocal &&
            isSuitableMediaKind && !VolumesInProgress.contains(diskId);
 }
 
@@ -353,7 +372,12 @@ bool TVolumeBalancerState::IsVolumePreemptibleToPull(
     const TVolumeInfo& volume,
     TInstant now) const
 {
-    return IsPreemptionEnabled(diskId, volume) && !volume.IsLocal &&
+    const bool isPullEnabled =
+        Status == NPrivateProto::EBalancerOpStatus::ENABLE ||
+        Status == NPrivateProto::EBalancerOpStatus::WARNING;
+
+    return isPullEnabled && IsPreemptionEnabled(diskId, volume) &&
+           !volume.IsLocal &&
            volume.PreemptionSource ==
                NProto::EPreemptionSource::SOURCE_BALANCER &&
            volume.NextPullAttempt <= now && !VolumesInProgress.contains(diskId);

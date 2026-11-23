@@ -120,6 +120,10 @@ private:
     void RenderConfig(TStringStream& out) const;
     void RenderState(TStringStream& out) const;
 
+    bool HasSufferingPreemptedVolume(
+        const TVector<NProto::TVolumeBalancerDiskStats>& stats,
+        const TPerfGuaranteesMap& perfMap) const;
+
     void UpdateVolumeToPush();
     void UpdateVolumeToPull(TInstant now);
 

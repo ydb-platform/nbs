@@ -378,7 +378,18 @@ void TVolumeBalancerActor::HandleConfigureVolumeBalancerRequest(
 
     NCloud::Send(ctx, ev->Sender, std::move(response));
 
-    State->SetStatus(ev->Get()->Record.GetOpStatus());
+    const auto newStatus = ev->Get()->Record.GetOpStatus();
+    switch (newStatus) {
+        case NPrivateProto::EBalancerOpStatus::ENABLE:
+        case NPrivateProto::EBalancerOpStatus::DISABLE:
+        case NPrivateProto::EBalancerOpStatus::WARNING: {
+            State->SetStatus(newStatus);
+            break;
+        }
+        default: {
+            // remain the same
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
