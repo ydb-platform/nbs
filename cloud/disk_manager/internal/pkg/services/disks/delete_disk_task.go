@@ -88,7 +88,11 @@ func (t *deleteDiskTask) deleteDisk(
 			return err
 		}
 		if len(zoneID) == 0 {
-			// Zone is unknown both in meta and in the request.
+			logging.Error(
+				ctx,
+				"Cannot delete disk %v from NBS: zone is unknown both in meta and in the request",
+				diskID,
+			)
 			return t.storage.DiskDeleted(ctx, diskID, time.Now())
 		}
 	} else {
