@@ -259,6 +259,7 @@ func testDeleteDiskTaskWithNonExistentDisk(
 		// even though the disk is missing from the database.
 
 		storage.On("GetDiskMeta", ctx, "disk").Return((*resources.DiskMeta)(nil), nil).Once()
+		execCtx.On("SaveState", ctx).Return(nil).Once()
 		storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 
 		nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil)

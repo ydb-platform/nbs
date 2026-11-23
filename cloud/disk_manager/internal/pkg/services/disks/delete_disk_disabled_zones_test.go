@@ -40,6 +40,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 		name                string
 		diskMeta            *resources.DiskMeta
 		zoneMeta            *resources.DiskMeta
+		stateZone           string
 		requestZone         string
 		disabledZones       *common.DisabledZones
 		sync                bool
@@ -115,16 +116,33 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			deleteIfNonExistent: true, expectedZone: "zone-a", expectNBS: true,
 		},
 		{
-			name: "trash metadata zone preferred over empty request",
+			name:     "trash metadata zone preferred over empty request",
 			zoneMeta: &resources.DiskMeta{ZoneID: "zone-a"}, requestZone: "",
 			disabledZones: disabledZone, deleteIfNonExistent: true,
 			expectedZone: "zone-a", expectNBS: true,
 		},
 		{
-			name: "trash metadata zone preferred over disabled request",
+			name:     "trash metadata zone preferred over disabled request",
 			zoneMeta: &resources.DiskMeta{ZoneID: "zone-a"}, requestZone: "zone-d",
 			disabledZones: disabledZone, deleteIfNonExistent: true,
 			expectedZone: "zone-a", expectNBS: true,
+		},
+		{
+			name:      "persisted cleanup zone preferred on retry",
+			stateZone: "zone-a", requestZone: "zone-d",
+			disabledZones: disabledZone, deleteIfNonExistent: true,
+			expectedZone: "zone-a", expectNBS: true,
+		},
+		{
+			name:        "trash metadata read error",
+			requestZone: "zone-a", disabledZones: disabledZone,
+			deleteIfNonExistent: true, errorAt: "GetZoneMeta",
+		},
+		{
+			name:     "cleanup zone save error",
+			zoneMeta: &resources.DiskMeta{ZoneID: "zone-a"}, requestZone: "zone-d",
+			disabledZones: disabledZone, deleteIfNonExistent: true,
+			expectedZone: "zone-a", errorAt: "SaveState",
 		},
 		{
 			name:        "missing metadata without fallback",
@@ -198,7 +216,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 					Disk: &types.Disk{DiskId: "disk", ZoneId: tc.requestZone},
 					Sync: tc.sync, DeleteIfNonExistent: tc.deleteIfNonExistent,
 				},
-				state: &protos.DeleteDiskTaskState{},
+				state: &protos.DeleteDiskTaskState{CleanupZoneId: tc.stateZone},
 			}
 
 			// Configure the expected steps until the injected failure.
@@ -227,11 +245,17 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 				if tc.errorAt == "DeleteDisk" {
 					return
 				}
-				if tc.diskMeta == nil && tc.deleteIfNonExistent {
+				if tc.diskMeta == nil && tc.deleteIfNonExistent && len(tc.stateZone) == 0 {
 					storage.On("GetDiskMeta", ctx, "disk").
-						Return(tc.zoneMeta, errorFor("GetDiskMeta")).Once()
-					if tc.errorAt == "GetDiskMeta" {
+						Return(tc.zoneMeta, errorFor("GetZoneMeta")).Once()
+					if tc.errorAt == "GetZoneMeta" {
 						return
+					}
+					if len(tc.expectedZone) != 0 {
+						execCtx.On("SaveState", ctx).Return(errorFor("SaveState")).Once()
+						if tc.errorAt == "SaveState" {
+							return
+						}
 					}
 				}
 				if !tc.skipIncremental {
