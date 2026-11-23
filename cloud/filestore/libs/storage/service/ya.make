@@ -6,23 +6,23 @@ ENDIF()
 
 SRCS(
     helpers.cpp
-    rope_utils.cpp
     protobuf_utils.cpp
+    rope_utils.cpp
     service.cpp
     service_actor.cpp
+    service_actor_actions.cpp
     service_actor_actions_change_storage_config.cpp
     service_actor_actions_configure_as_shard.cpp
     service_actor_actions_configure_shards.cpp
     service_actor_actions_describe_sessions.cpp
     service_actor_actions_drain_tablets.cpp
-    service_actor_actions_get_storage_config_fields.cpp
     service_actor_actions_get_storage_config.cpp
+    service_actor_actions_get_storage_config_fields.cpp
+    service_actor_actions_list_local_filestores.cpp
     service_actor_actions_reassign_tablet.cpp
     service_actor_actions_tablet_ops.cpp
-    service_actor_actions_write_compaction_map.cpp
-    service_actor_actions_list_local_filestores.cpp
     service_actor_actions_toggle_service_state.cpp
-    service_actor_actions.cpp
+    service_actor_actions_write_compaction_map.cpp
     service_actor_alterfs.cpp
     service_actor_complete.cpp
     service_actor_control_namespace.cpp
@@ -46,6 +46,7 @@ SRCS(
     service_actor_pingsession.cpp
     service_actor_readdata.cpp
     service_actor_renamenode.cpp
+    service_actor_resizefs.cpp
     service_actor_statfs.cpp
     service_actor_unlinknode.cpp
     service_actor_update_stats.cpp
@@ -54,8 +55,8 @@ SRCS(
     service_state.cpp
     shard_creation_state_companion.cpp
     tablet_action_actor.cpp
-    zero_block_stats.cpp
     worker_actor_pool.cpp
+    zero_block_stats.cpp
 )
 
 PEERDIR(

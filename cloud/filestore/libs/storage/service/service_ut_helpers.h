@@ -130,7 +130,7 @@ private:
                 const auto* msg = ev->Get<TRequest>();
                 // We need to count only DescribeShard operations, so excluding:
                 // 1. Cookie == Max<ui64>(): this is MainFileStoreCookie called
-                // from TAlterFileStoreActor::DescribeMainFileStore.
+                // from TResizeFileStoreActor::DescribeMainFileStore.
                 // 2. ShardIdPrefix we also need to check, as there is a call
                 // TIndexTabletProxyActor::DescribeFileStore with Cookie
                 // set to conn.Id.
