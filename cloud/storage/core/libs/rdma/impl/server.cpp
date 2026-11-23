@@ -1696,13 +1696,11 @@ void TServer::Start()
     auto countersGroup = ObservabilityProvider.CreateCounters();
     Counters->Register(*countersGroup);
 
-    CompletionPollers.resize(Config->PollerThreads);
-    for (size_t i = 0; i < CompletionPollers.size(); ++i) {
-        CompletionPollers[i] = std::make_unique<TCompletionPoller>(
-            Verbs,
-            Config,
-            Log);
-        CompletionPollers[i]->Start();
+    CompletionPollers.reserve(Config->PollerThreads);
+    for (size_t i = 0; i < Config->PollerThreads; ++i) {
+        auto& poller = CompletionPollers.emplace_back(
+            std::make_unique<TCompletionPoller>(Verbs, Config, Log));
+        poller->Start();
     }
 
     Config->Validate(Log);
@@ -1728,9 +1726,7 @@ void TServer::Stop()
     }
 
     for (auto& poller: CompletionPollers) {
-        if (poller) {
-            poller->Stop();
-        }
+        poller->Stop();
     }
 
     CompletionPollers.clear();
