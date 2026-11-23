@@ -117,6 +117,7 @@ func RegisterForExecution(
 			scheduler:         taskScheduler,
 			poolService:       poolService,
 			nbsFactory:        nbsFactory,
+			cellSelector:      cellSelector,
 			disabledZones:     disabledZones,
 		}
 	})

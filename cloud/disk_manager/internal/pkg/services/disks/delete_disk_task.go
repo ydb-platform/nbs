@@ -2,11 +2,13 @@ package disks
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
@@ -31,6 +33,7 @@ type deleteDiskTask struct {
 	scheduler         tasks.Scheduler
 	poolService       pools.Service
 	nbsFactory        nbs.Factory
+	cellSelector      cells.CellSelector
 	disabledZones     *common.DisabledZones
 	request           *protos.DeleteDiskRequest
 	state             *protos.DeleteDiskTaskState
@@ -213,8 +216,10 @@ func (t *deleteDiskTask) GetResponse() proto.Message {
 
 // Resolves the zone for a disk that DeleteDisk did not return metadata for.
 // Prefers the zone from meta (the disk may still be in the trash retention
-// window) and falls back to the request zone. The zone is not persisted and is
-// resolved again on every retry.
+// window) and falls back to the request zone. The zone from meta must match
+// the request zone or one of its cells, otherwise the request is rejected
+// with a non-retriable error. The zone is not persisted and is resolved again
+// on every retry.
 func (t *deleteDiskTask) resolveCleanupZoneID(
 	ctx context.Context,
 	diskID string,
@@ -225,11 +230,31 @@ func (t *deleteDiskTask) resolveCleanupZoneID(
 		return "", err
 	}
 
-	if meta != nil && len(meta.ZoneID) != 0 {
+	requestZoneID := t.request.Disk.ZoneId
+	if meta == nil || len(meta.ZoneID) == 0 {
+		return requestZoneID, nil
+	}
+
+	if len(requestZoneID) == 0 || requestZoneID == meta.ZoneID {
 		return meta.ZoneID, nil
 	}
 
-	return t.request.Disk.ZoneId, nil
+	requestCells, err := t.cellSelector.ResolveCells(requestZoneID)
+	if err != nil {
+		return "", err
+	}
+
+	if !slices.Contains(requestCells, meta.ZoneID) {
+		return "", errors.NewNonRetriableErrorf(
+			"zone %q of disk %v from meta does not match request zone %q (cells %v)",
+			meta.ZoneID,
+			diskID,
+			requestZoneID,
+			requestCells,
+		)
+	}
+
+	return meta.ZoneID, nil
 }
 
 func (t *deleteDiskTask) setEstimate(

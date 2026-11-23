@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	cells_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
@@ -40,6 +41,8 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 		name                string
 		diskMeta            *resources.DiskMeta
 		zoneMeta            *resources.DiskMeta
+		requestCells        []string
+		zoneMismatch        bool
 		requestZone         string
 		disabledZones       *common.DisabledZones
 		sync                bool
@@ -121,10 +124,30 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			expectedZone: "zone-a", expectNBS: true,
 		},
 		{
-			name:     "trash metadata zone preferred over disabled request",
-			zoneMeta: &resources.DiskMeta{ZoneID: "zone-a"}, requestZone: "zone-d",
+			name:     "trash metadata zone preferred over equal request",
+			zoneMeta: &resources.DiskMeta{ZoneID: "zone-a"}, requestZone: "zone-a",
 			disabledZones: disabledZone, deleteIfNonExistent: true,
 			expectedZone: "zone-a", expectNBS: true,
+		},
+		{
+			name:     "trash metadata cell belongs to request zone",
+			zoneMeta: &resources.DiskMeta{ZoneID: "zone-a-cell1"}, requestZone: "zone-a",
+			requestCells:  []string{"zone-a", "zone-a-cell1"},
+			disabledZones: disabledZone, deleteIfNonExistent: true,
+			expectedZone: "zone-a-cell1", expectNBS: true,
+		},
+		{
+			name:     "trash metadata zone conflicts with request zone",
+			zoneMeta: &resources.DiskMeta{ZoneID: "zone-a"}, requestZone: "zone-d",
+			requestCells:  []string{"zone-d", "zone-d-cell1"},
+			disabledZones: disabledZone, deleteIfNonExistent: true,
+			zoneMismatch: true,
+		},
+		{
+			name:     "request zone cells resolve error",
+			zoneMeta: &resources.DiskMeta{ZoneID: "zone-a"}, requestZone: "zone-d",
+			disabledZones: disabledZone, deleteIfNonExistent: true,
+			errorAt: "ResolveCells",
 		},
 		{
 			name:        "trash metadata read error",
@@ -189,6 +212,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			poolService := pools_mocks.NewServiceMock()
 			nbsFactory := nbs_mocks.NewFactoryMock()
 			nbsClient := nbs_mocks.NewClientMock()
+			cellSelector := cells_mocks.NewCellSelectorMock()
 			execCtx := tasks_mocks.NewExecutionContextMock()
 			if tc.errorAt != "GetDiskMeta" {
 				execCtx = newExecutionContextMock()
@@ -198,7 +222,8 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 					SSDLocalDiskDeletingBandwidthMiBs: proto.Uint64(100),
 				},
 				storage: storage, scheduler: scheduler, poolService: poolService,
-				nbsFactory: nbsFactory, disabledZones: tc.disabledZones,
+				nbsFactory: nbsFactory, cellSelector: cellSelector,
+				disabledZones: tc.disabledZones,
 				request: &protos.DeleteDiskRequest{
 					Disk: &types.Disk{DiskId: "disk", ZoneId: tc.requestZone},
 					Sync: tc.sync, DeleteIfNonExistent: tc.deleteIfNonExistent,
@@ -237,6 +262,13 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 						Return(tc.zoneMeta, errorFor("GetZoneMeta")).Once()
 					if tc.errorAt == "GetZoneMeta" {
 						return
+					}
+					if tc.requestCells != nil || tc.errorAt == "ResolveCells" {
+						cellSelector.On("ResolveCells", tc.requestZone).
+							Return(tc.requestCells, errorFor("ResolveCells")).Once()
+						if tc.errorAt == "ResolveCells" || tc.zoneMismatch {
+							return
+						}
 					}
 				}
 				if !tc.skipIncremental {
@@ -302,7 +334,11 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			} else {
 				err = task.Run(ctx, execCtx)
 			}
-			if tc.errorAt != "" {
+			if tc.zoneMismatch {
+				require.Error(t, err)
+				require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+				require.False(t, errors.CanRetry(err))
+			} else if tc.errorAt != "" {
 				require.True(t, errors.Is(err, assert.AnError))
 				if !tc.cancel {
 					retryError, ok := err.(*errors.RetriableError)
@@ -319,7 +355,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 				nbsClient.AssertNotCalled(t, "DeleteSync", mock.Anything, mock.Anything)
 				execCtx.AssertNotCalled(t, "SetEstimatedInflightDuration", mock.Anything)
 			}
-			mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, execCtx)
+			mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, cellSelector, execCtx)
 		})
 	}
 }
