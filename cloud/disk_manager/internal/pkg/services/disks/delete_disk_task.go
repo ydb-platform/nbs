@@ -83,7 +83,7 @@ func (t *deleteDiskTask) deleteDisk(
 			return nil
 		}
 
-		zoneID, err = t.resolveCleanupZoneID(ctx, execCtx, diskID)
+		zoneID, err = t.resolveCleanupZoneID(ctx, diskID)
 		if err != nil {
 			return err
 		}
@@ -213,39 +213,23 @@ func (t *deleteDiskTask) GetResponse() proto.Message {
 
 // Resolves the zone for a disk that DeleteDisk did not return metadata for.
 // Prefers the zone from meta (the disk may still be in the trash retention
-// window) and falls back to the request zone. The result is persisted in the
-// task state, so retries keep targeting the same zone.
+// window) and falls back to the request zone. The zone is not persisted and is
+// resolved again on every retry.
 func (t *deleteDiskTask) resolveCleanupZoneID(
 	ctx context.Context,
-	execCtx tasks.ExecutionContext,
 	diskID string,
 ) (string, error) {
-
-	if len(t.state.CleanupZoneId) != 0 {
-		return t.state.CleanupZoneId, nil
-	}
 
 	meta, err := t.storage.GetDiskMeta(ctx, diskID)
 	if err != nil {
 		return "", err
 	}
 
-	zoneID := t.request.Disk.ZoneId
 	if meta != nil && len(meta.ZoneID) != 0 {
-		zoneID = meta.ZoneID
+		return meta.ZoneID, nil
 	}
 
-	if len(zoneID) == 0 {
-		return "", nil
-	}
-
-	t.state.CleanupZoneId = zoneID
-	err = execCtx.SaveState(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	return zoneID, nil
+	return t.request.Disk.ZoneId, nil
 }
 
 func (t *deleteDiskTask) setEstimate(

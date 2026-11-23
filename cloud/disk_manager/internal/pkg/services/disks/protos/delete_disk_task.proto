@@ -18,9 +18,4 @@ message DeleteDiskRequest {
     bool DeleteIfNonExistent = 4;
 }
 
-message DeleteDiskTaskState {
-    // Zone used to clean up a disk that DeleteDisk did not return metadata
-    // for. Resolved once and persisted so that every retry of the task
-    // targets the same zone, even if the disk row is collected meanwhile.
-    string CleanupZoneId = 1;
-}
+message DeleteDiskTaskState {}
