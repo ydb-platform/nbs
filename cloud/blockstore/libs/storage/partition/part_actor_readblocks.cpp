@@ -244,7 +244,6 @@ public:
         TVector<ui32> Checksums;
         TVector<ui64> Requests; // block indices, ui64 needed for integration
                                 // with sglist-related code
-        std::optional<NProto::TCompressionMetadata> CompressionMetadata;
         ui32 GroupId = 0;
 
         TBatchRequest() = default;
@@ -255,14 +254,12 @@ public:
             TVector<ui16> blobOffsets,
             TVector<ui32> checksums,
             TVector<ui64> requests,
-            std::optional<NProto::TCompressionMetadata> compressionMetadata,
             ui32 groupId)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))
             , Checksums(std::move(checksums))
             , Requests(std::move(requests))
-            , CompressionMetadata(std::move(compressionMetadata))
             , GroupId(groupId)
         {}
     };
@@ -444,16 +441,11 @@ void TReadBlocksActor::ReadBlocks(
                     std::move(current.BlobOffsets),
                     std::move(current.Checksums),
                     std::move(current.Requests),
-                    std::move(current.CompressionMetadata),
                     current.GroupId);
             }
             current.BlobId = r.BlobId;
             current.Proxy = r.BSProxy;
             current.GroupId = r.GroupId;
-            const auto* compressionMetadata =
-                BlobId2CompressionMetadata.FindPtr(r.BlobId);
-            current.CompressionMetadata =
-                compressionMetadata ? *compressionMetadata : std::nullopt;
         }
 
         current.BlobOffsets.push_back(r.BlobOffset);
@@ -468,7 +460,6 @@ void TReadBlocksActor::ReadBlocks(
             std::move(current.BlobOffsets),
             std::move(current.Checksums),
             std::move(current.Requests),
-            std::move(current.CompressionMetadata),
             current.GroupId);
     }
 
@@ -489,7 +480,9 @@ void TReadBlocksActor::ReadBlocks(
                 false,             // async
                 TInstant::Max(),   // deadline
                 ChecksumsEnabled,
-                batch.CompressionMetadata);
+                ExtractCompressionMetadata(
+                    BlobId2CompressionMetadata,
+                    batch.BlobId));
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(

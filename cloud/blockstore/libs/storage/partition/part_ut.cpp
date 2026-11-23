@@ -1324,7 +1324,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             config.SetBlobPatchingEnabled(true);
             config.SetCompactionMergedBlobThresholdHDD(1);
             config.SetSplitCompactionTxEnabled(splitCompactionTx);
-            auto runtime = PrepareTestActorRuntime(config);
+            auto runtime = PrepareTestActorRuntime(config, 2 * MaxBlocksCount);
             TPartitionClient partition(*runtime);
             partition.WaitReady();
 
@@ -1408,6 +1408,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 GetBlocksContent('a', range.Size()),
                 GetBlocksContent(response));
             UNIT_ASSERT_VALUES_EQUAL(1, readsWithCompressionMetadata);
+
+            // Both compaction ranges need the metadata of this single blob.
+            const auto crossingRange =
+                TBlockRange32::WithLength(MaxBlocksCount - 2, 4);
+            partition.WriteBlocks(crossingRange, 'b');
+            readsWithCompressionMetadata = 0;
+            partition.Compaction(
+                TVector<ui32>{crossingRange.Start, crossingRange.End},
+                TCompactionOptions().set(ToBit(ECompactionOption::Full)));
+            UNIT_ASSERT_VALUES_EQUAL(2, readsWithCompressionMetadata);
         }
     }
 

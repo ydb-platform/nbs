@@ -203,10 +203,6 @@ void TScanDiskActor::SendReadBlobRequest(
     const auto& blobMark = RequestsInCurrentBatch[requestIndex];
     TVector<ui16> blobOffsets{0};
 
-    const auto* compressionMetadata =
-        BlobId2CompressionMetadataForCurrentBatch.FindPtr(
-            MakePartialBlobId(blobMark.BlobId));
-
     auto request =
         std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
             blobMark.BlobId,
@@ -217,7 +213,9 @@ void TScanDiskActor::SendReadBlobRequest(
             false,             // async
             TInstant::Max(),   // deadline
             false,             // shouldCalculateChecksums
-            compressionMetadata ? *compressionMetadata : std::nullopt);
+            ExtractCompressionMetadata(
+                BlobId2CompressionMetadataForCurrentBatch,
+                MakePartialBlobId(blobMark.BlobId)));
 
     NCloud::Send(
         ctx,
@@ -273,7 +271,7 @@ void TScanDiskActor::HandleScanDiskBatchResponse(
     const TEvPartitionPrivate::TEvScanDiskBatchResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
+    auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
         if (GetErrorKind(msg->Error) == EErrorKind::ErrorRetriable) {

@@ -23,6 +23,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -34,6 +35,21 @@ using TPartialBlobId2CompressionMetadataMap = THashMap<
     TPartialBlobIdHash>;
 using TBlobId2CompressionMetadataMap =
     THashMap<NKikimr::TLogoBlobID, std::optional<NProto::TCompressionMetadata>>;
+
+template <typename TMap>
+std::optional<NProto::TCompressionMetadata> ExtractCompressionMetadata(
+    TMap& metadata,
+    const typename TMap::key_type& blobId)
+{
+    auto it = metadata.find(blobId);
+    if (it == metadata.end()) {
+        return std::nullopt;
+    }
+
+    auto result = std::move(it->second);
+    metadata.erase(it);
+    return result;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

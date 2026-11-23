@@ -619,8 +619,16 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
 
         const bool shouldCalculateChecksums =
             !batch.RangeCompactionInfo->BlockChecksums.empty();
-        const auto* compressionMetadata =
-            BlobId2CompressionMetadata.FindPtr(batch.BlobId);
+        // Batches for the same blob are adjacent, one per compaction range.
+        const bool lastBatchForBlob =
+            batchIndex + 1 == BatchRequests.size() ||
+            BatchRequests[batchIndex + 1].BlobId != batch.BlobId;
+        auto compressionMetadata =
+            lastBatchForBlob
+                ? ExtractCompressionMetadata(
+                      BlobId2CompressionMetadata,
+                      batch.BlobId)
+                : BlobId2CompressionMetadata.Value(batch.BlobId, std::nullopt);
         auto request =
             std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
                 MakeBlobId(TabletId, batch.BlobId),
@@ -631,7 +639,7 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
                 true,               // async
                 readBlobDeadline,   // deadline
                 shouldCalculateChecksums,
-                compressionMetadata ? *compressionMetadata : std::nullopt);
+                std::move(compressionMetadata));
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
