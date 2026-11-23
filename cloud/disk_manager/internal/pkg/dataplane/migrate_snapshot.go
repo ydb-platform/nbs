@@ -58,13 +58,14 @@ func (t *migrateSnapshotTask) Run(
 
 	t.state.ChunkCount = srcMeta.ChunkCount
 
+	// Incrementality is not preserved: the migrated snapshot is an independent
+	// full snapshot, so it is created without the disk and the checkpoint and
+	// never becomes a base for the next snapshot of the disk.
 	_, err = t.dstStorage.CreateSnapshot(
 		ctx,
 		storage.SnapshotMeta{
 			BlockSize:    srcMeta.BlockSize,
 			ID:           t.request.SrcSnapshotId,
-			Disk:         srcMeta.Disk,
-			CheckpointID: srcMeta.CheckpointID,
 			CreateTaskID: execCtx.GetTaskID(),
 		},
 	)

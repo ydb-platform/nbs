@@ -390,15 +390,20 @@ class _MigrationTestSetup:
 
         result = json.loads(data.decode())
 
+        # A failed query must not look like an empty table.
+        if "error" in result:
+            raise RuntimeError(f"YDB query '{query}' failed: {result}")
+
         if "result" not in result or not result["result"]:
             return []
 
         columns = [col["name"] for col in result["result"][0]["columns"]]
-        rows = result["result"][0]["rows"]
+        # An empty result set comes with null instead of rows.
+        rows = result["result"][0]["rows"] or []
 
         return [dict(zip(columns, row)) for row in rows]
 
-    def get_snapshot_database_entries(self, port: int) -> list[dict]:
+    def get_snapshot_database_entries(self, port: int, table: str = "snapshots") -> list[dict]:
         max_retries = 5
         timeout_sec = 60
         started_at = time.monotonic()
@@ -406,13 +411,14 @@ class _MigrationTestSetup:
             if time.monotonic() - started_at > timeout_sec:
                 raise TimeoutError("Timed out waiting for snapshot database entries")
             try:
-                return self. select_from_ydb(port, "SELECT * FROM `snapshot/snapshots`")
+                return self.select_from_ydb(port, f"SELECT * FROM `snapshot/{table}`")
             except Exception as e:
                 if max_retries == 0:
                     raise e
                 max_retries -= 1
                 _logger.error(
                     "Error querying YDB: %s. Retries left: %d",
+                    e,
                     max_retries,
                     exc_info=e,
                 )
@@ -714,13 +720,11 @@ def test_disk_manager_snapshot_database_migration_with_incremental_snapshot(
             setup.secondary_ydb.mon_port,
         )
         assert len(database_entries) == len(checksums_by_snapshot_id)
-        base_snapshot_ids = {}
+        # Incrementality is not preserved: every migrated snapshot is a full
+        # one and the disk has no base for its next snapshot.
         for record in database_entries:
-            base_snapshot_ids[record['id']] = record['base_snapshot_id']
-
-        # Check that base snapshot ids form a correct chain
-        for i, snapshot_id in enumerate(checksums_by_snapshot_id.keys()):
-            if snapshot_id == base_snapshot_id:
-                assert base_snapshot_ids[snapshot_id] == ""
-            else:
-                assert base_snapshot_ids[snapshot_id] == [*checksums_by_snapshot_id.keys()][i - 1]
+            assert record['base_snapshot_id'] == ""
+        assert setup.get_snapshot_database_entries(
+            setup.secondary_ydb.mon_port,
+            table="incremental",
+        ) == []
