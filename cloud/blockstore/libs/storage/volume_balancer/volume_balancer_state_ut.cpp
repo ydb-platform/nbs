@@ -628,20 +628,29 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 CreateVolumeStats(
                     {.DiskId = "vol0",
                      .IsLocal = false,
-                     .Source = NProto::SOURCE_INITIAL_MOUNT}),
-                CreateVolumeStats(
-                    {.DiskId = "vol1",
-                     .IsLocal = true,
-                     .Source = NProto::SOURCE_INITIAL_MOUNT})};
+                     .Source = NProto::SOURCE_MANUAL}),
+                CreateVolumeStats({.DiskId = "vol1"})};
 
             TVolumeBalancerState::TPerfGuaranteesMap perfMap;
             perfMap["vol0"] = 10;
             perfMap["vol1"] = 1;
 
-            state.UpdateVolumeStats(vols, std::move(perfMap), 30, now);
+            // Register the preempted volume and start its pull delay
+            state.UpdateVolumeStats(vols, perfMap, CpuUnderload, now);
+
+            now += InitialPullDelay;
+            state.UpdateVolumeStats(vols, perfMap, CpuUnderload, now);
 
             UNIT_ASSERT(!state.GetVolumeToPush());
             UNIT_ASSERT(!state.GetVolumeToPull());
+
+            // Changing only the preemption source makes the volume eligible
+            // for pull, since the delay has already elapsed
+            vols[0].SetPreemptionSource(NProto::SOURCE_BALANCER);
+            state.UpdateVolumeStats(vols, perfMap, CpuUnderload, now);
+
+            UNIT_ASSERT_VALUES_EQUAL("", state.GetVolumeToPush());
+            UNIT_ASSERT_VALUES_EQUAL("vol0", state.GetVolumeToPull());
         }
     }
 
