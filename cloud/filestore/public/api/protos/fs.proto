@@ -85,6 +85,11 @@ message TFileStoreFeatures
     // Max FUSE read / write request size in bytes.
     // Zero uses the vhost fallback.
     uint32 MaxRequestSize = 62;
+
+    // The tablet sends FileSystemEvents to its clients and allows them to
+    // cache the data along with nonzero TTLs (false in dry run mode). The
+    // client consumes the events only if this is set.
+    bool FileSystemEventsEnabled = 63;
 }
 
 message TFileStore

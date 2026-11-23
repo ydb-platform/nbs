@@ -215,15 +215,29 @@ void TFileSystem::FillEntryParam(
 
 TInstant TFileSystem::GetCacheDeadline(ui32 cacheTTL) const
 {
-    //
-    // Zero TTL means that the backend doesn't allow caching.
-    //
-
-    if (!cacheTTL) {
+    const auto ttl = GetCacheTTL(cacheTTL);
+    if (!ttl) {
         return TInstant::Zero();
     }
 
-    return Timer->Now() + TDuration::MilliSeconds(cacheTTL);
+    return Timer->Now() + ttl;
+}
+
+TDuration TFileSystem::GetCacheTTL(ui32 cacheTTL) const
+{
+    //
+    // Zero TTL means that the backend doesn't allow caching. The TTLs are
+    // honoured only if the FileSystemEvents are consumed: the backend may
+    // have enabled the events after the session had started (e.g. upon a
+    // tablet restart with a new config), but without the event handler the
+    // invalidations are not received.
+    //
+
+    if (!Config->GetFileSystemEventsEnabled()) {
+        return TDuration::Zero();
+    }
+
+    return TDuration::MilliSeconds(cacheTTL);
 }
 
 void TFileSystem::UpdateCachedNodeRef(

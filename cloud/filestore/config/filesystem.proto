@@ -155,4 +155,8 @@ message TFileSystemConfig
 
     // Max FUSE read / write request size in bytes offered in FUSE_INIT.
     optional uint32 MaxRequestSize = 45;
+
+    // Consume the FileSystemEvents of the filesystem and cache the data
+    // according to the cache TTLs returned by the backend.
+    optional bool FileSystemEventsEnabled = 46;
 }

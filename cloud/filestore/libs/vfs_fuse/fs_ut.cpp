@@ -375,6 +375,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 result.MutableFileStore()->SetBlockSize(4096);
                 result.MutableFileStore()->SetFileSystemId(
                     resolvedFileSystemId);
+                result.MutableFileStore()
+                    ->MutableFeatures()
+                    ->SetFileSystemEventsEnabled(true);
                 return MakeFuture(result);
             };
 
@@ -396,7 +399,31 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(resolvedFileSystemId, unregistered[0]);
     }
 
-    Y_UNIT_TEST(ShouldHandleInitRequest)
+    Y_UNIT_TEST(ShouldNotRegisterFileSystemEventHandlerWithoutEvents)
+    {
+        auto multiHandler =
+            std::make_shared<TTestMultiFileSystemEventHandler>();
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            {} /* featuresConfig */,
+            1000 /* handleOpsQueueStateFileSize */,
+            1000 /* writeBackCacheAutomaticFlushPeriodMs */,
+            0 /* directoryHandlesInitialDataSize */,
+            0 /* directoryHandlesMaxDataAreaStepSize */,
+            CreateFileMapMemoryLimiterStub(),
+            nullptr /* persistentStateManager */,
+            multiHandler);
+        UNIT_ASSERT(!HasError(bootstrap.Start()));
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(0, multiHandler->GetRegistered().size());
+    }
+
+        Y_UNIT_TEST(ShouldHandleInitRequest)
     {
         TBootstrap bootstrap;
         bootstrap.Start(false);

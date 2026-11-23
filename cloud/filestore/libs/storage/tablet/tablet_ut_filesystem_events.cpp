@@ -952,6 +952,35 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_FileSystemEvents)
         UNIT_ASSERT_VALUES_EQUAL(0, env.SentEventCount);
     }
 
+    Y_UNIT_TEST(ShouldReturnFileSystemEventsEnabledFeature)
+    {
+        struct TCase
+        {
+            bool Enabled = false;
+            bool DryRun = false;
+            bool Expected = false;
+        };
+
+        for (const auto& c: TVector<TCase>{
+                 {.Enabled = false, .DryRun = false, .Expected = false},
+                 {.Enabled = true, .DryRun = false, .Expected = true},
+                 {.Enabled = true, .DryRun = true, .Expected = false}})
+        {
+            NProto::TStorageConfig config;
+            config.SetFileSystemEventsEnabled(c.Enabled);
+            config.SetFileSystemEventsDryRunModeEnabled(c.DryRun);
+            TFileSystemEventsEnv env(std::move(config));
+
+            auto tablet = env.CreateClient("client", "session");
+            const auto response = tablet->InitSession("client2", "session2");
+            UNIT_ASSERT_VALUES_EQUAL(
+                c.Expected,
+                response->Record.GetFileStore()
+                    .GetFeatures()
+                    .GetFileSystemEventsEnabled());
+        }
+    }
+
     Y_UNIT_TEST(ShouldReturnFileSystemEventSourceIdWithCacheTTL)
     {
         constexpr ui64 SourceId = 42;

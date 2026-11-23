@@ -141,6 +141,12 @@ Caches:
 | `TNodeRefCache` | ParentNodeId + Name | GetNodeAttr by name (Lookup) | NodeRefCacheTTL |
 | `TXAttrCache` | NodeId + Name | GetNodeXAttr, own SetNodeXAttr | XAttrCacheTTL or `XAttrCacheTimeout` if 0 |
 
+- The client consumes the events (registers its event handler) only if the
+  session features have `FileSystemEventsEnabled` - the tablet's effective
+  value, false in dry run mode. Without the handler the cache TTLs are
+  ignored: the backend may enable the events after the session has started
+  (e.g. upon a tablet restart with a new config), but the invalidations would
+  not be received
 - Lookup and GetAttr are replied from the caches; the guest still caches the
   replies for `EntryTimeout` / `AttrTimeout` independently of the TTLs
 - Versions: every invalidation generates a new cache version
@@ -188,7 +194,7 @@ Caches:
 
 | Field | Meaning |
 |-------|---------|
-| `FileSystemEventsEnabled` | generate, subscribe and send events; nonzero TTLs for GetNodeAttr, GetNodeXAttr and SetNodeXAttr |
+| `FileSystemEventsEnabled` | generate, subscribe and send events; nonzero TTLs for GetNodeAttr, GetNodeXAttr and SetNodeXAttr; published to the client in the session features (false in dry run mode) - the client consumes the events and honours the TTLs only if set |
 | `FileSystemListingEventsEnabled` | also subscribe and return TTLs for ListNodes, ListNodesInternal, GetNodeAttrBatch |
 | `FileSystemEventsDryRunModeEnabled` | subscribe and count, don't send; TTLs are 0 |
 | `FileSystemEventSubscriptionsSealPeriod` | subscription generation period |

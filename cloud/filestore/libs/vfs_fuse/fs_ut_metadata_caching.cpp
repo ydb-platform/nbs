@@ -48,6 +48,16 @@ bool WaitForCondition(TDuration timeout, F&& predicate)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TFileStoreFeatures WithFileSystemEvents(
+    NProto::TFileStoreFeatures features,
+    bool enabled)
+{
+    features.SetFileSystemEventsEnabled(enabled);
+    return features;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TMetadataCachingEnv
 {
     std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
@@ -66,11 +76,15 @@ struct TMetadataCachingEnv
     std::atomic<ui32> XAttrCacheTTL = CacheTTLMs;
     std::atomic<bool> XAttrExists = true;
 
-    explicit TMetadataCachingEnv(NProto::TFileStoreFeatures features = {})
+    explicit TMetadataCachingEnv(
+            NProto::TFileStoreFeatures features = {},
+            bool fileSystemEventsEnabled = true)
         : Bootstrap(
               Timer,
               CreateScheduler(),
-              features,
+              WithFileSystemEvents(
+                  std::move(features),
+                  fileSystemEventsEnabled),
               1000 /* handleOpsQueueStateFileSize */,
               1000 /* writeBackCacheAutomaticFlushPeriodMs */,
               0 /* directoryHandlesInitialDataSize */,
@@ -1198,6 +1212,36 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         promise.SetValue();
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(0, setAttr->Out->Body.attr_valid);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreCacheTTLsWithoutFileSystemEvents)
+    {
+        //
+        // The backend returns nonzero TTLs, but the session has started
+        // without the FileSystemEvents - the invalidations would not be
+        // received.
+        //
+
+        TMetadataCachingEnv env(
+            {} /* features */,
+            false /* fileSystemEventsEnabled */);
+
+        env.Lookup("f");
+        env.Lookup("f");
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("LookupCacheMissCount"));
+
+        env.GetAttr(FileNodeId);
+        env.GetAttr(FileNodeId);
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("GetAttrCacheMissCount"));
+
+        //
+        // The xattrs fall back to XAttrCacheTimeout.
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL("1", env.GetXAttr());
+        UNIT_ASSERT_VALUES_EQUAL("1", env.GetXAttr());
+        env.Timer->AdvanceTime(TDuration::Seconds(15));
+        UNIT_ASSERT_VALUES_EQUAL("2", env.GetXAttr());
     }
 
     Y_UNIT_TEST(ShouldCacheAttrsOfNodesNotLookedUp)

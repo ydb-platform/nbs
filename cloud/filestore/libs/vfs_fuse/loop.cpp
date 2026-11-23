@@ -988,6 +988,16 @@ private:
         }
 
         //
+        // The events are consumed only if the backend sends them. Without
+        // the handler the cache TTLs are ignored (see TFileSystem) - the
+        // invalidations would not be received.
+        //
+
+        if (!FileSystemConfig->GetFileSystemEventsEnabled()) {
+            return;
+        }
+
+        //
         // The handler is registered under the filesystem id returned by
         // CreateSession rather than the requested one: the latter may be an
         // alias. Aliases are resolved by the storage service and the tablet
@@ -1484,6 +1494,8 @@ private:
         if (features.GetNodeAttrsCacheLimit()) {
             config.SetNodeAttrsCacheLimit(features.GetNodeAttrsCacheLimit());
         }
+        config.SetFileSystemEventsEnabled(
+            features.GetFileSystemEventsEnabled());
         config.SetXAttrCacheInvalidateOnCreateEnabled(
             features.GetXAttrCacheInvalidateOnCreateEnabled());
         config.SetAsyncDestroyHandleEnabled(

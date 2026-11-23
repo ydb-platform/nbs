@@ -27,6 +27,7 @@ namespace {
     xxx(XAttrCacheInvalidateOnCreateEnabled,    bool, false                   )\
     xxx(NodeRefCacheLimit,      ui32,           64 * 1024                     )\
     xxx(NodeAttrsCacheLimit,    ui32,           64 * 1024                     )\
+    xxx(FileSystemEventsEnabled,bool,           false                         )\
                                                                                \
     xxx(MaxBufferSize,          ui32,           4_MB                          )\
     xxx(MaxRequestSize,         ui32,           1_MB                          )\

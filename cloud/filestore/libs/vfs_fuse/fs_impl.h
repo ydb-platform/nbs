@@ -466,6 +466,7 @@ private:
         bool cacheable);
 
     TInstant GetCacheDeadline(ui32 cacheTTL) const;
+    TDuration GetCacheTTL(ui32 cacheTTL) const;
     void UpdateCachedNodeRef(
         ui64 parentNodeId,
         const TString& name,
