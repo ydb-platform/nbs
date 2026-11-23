@@ -123,6 +123,89 @@ Y_UNIT_TEST_SUITE(TPartitionThreadSafeStateTest)
             state.GetLastCommitId());
     }
 
+    Y_UNIT_TEST(ShouldTakeFreshTrimSnapshot)
+    {
+        TTimestampTestRuntime runtime;
+        const auto ctx = runtime.GetContext();
+        TPartitionThreadSafeState state;
+        state.Init({}, 1, 0, TInstant::Seconds(100), TMonotonic::Seconds(10));
+
+        auto snapshot = state.GetFreshTrimSnapshot();
+        UNIT_ASSERT_VALUES_EQUAL(
+            MakeCommitId(1, 0),
+            snapshot.OrdinaryTrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            MakeCommitId(1, 0),
+            snapshot.SelectiveTrimToCommitId);
+
+        const ui64 first = state.StartFreshWrite(ctx, 1).CommitId;
+        const ui64 second = state.StartFreshWrite(ctx, 2).CommitId;
+        const ui64 third = state.StartFreshWrite(ctx, 1).CommitId;
+
+        // Finished writes keep their trim barrier references until their
+        // blocks are overwritten or flushed.
+        state.FinishFreshWrite(ctx, first, 1, false);
+        state.FinishFreshWrite(ctx, third, 1, false);
+
+        // SelectiveTrimToCommitId stays below the write in flight.
+        snapshot = state.GetFreshTrimSnapshot();
+        UNIT_ASSERT_VALUES_EQUAL(first - 1, snapshot.OrdinaryTrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(second - 1, snapshot.SelectiveTrimToCommitId);
+
+        state.FinishFreshWrite(ctx, second, 2, false);
+
+        snapshot = state.GetFreshTrimSnapshot();
+        UNIT_ASSERT_VALUES_EQUAL(first - 1, snapshot.OrdinaryTrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(third, snapshot.SelectiveTrimToCommitId);
+
+        state.AccessTrimFreshLogBarriers()->ReleaseBarrier(first);
+        snapshot = state.GetFreshTrimSnapshot();
+        UNIT_ASSERT_VALUES_EQUAL(second - 1, snapshot.OrdinaryTrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            snapshot.OrdinaryTrimToCommitId,
+            state.GetTrimFreshLogToCommitId());
+
+        // A failed write releases its references.
+        const ui64 fourth = state.StartFreshWrite(ctx, 1).CommitId;
+        state.FinishFreshWrite(ctx, fourth, 1, true);
+        snapshot = state.GetFreshTrimSnapshot();
+        UNIT_ASSERT_VALUES_EQUAL(second - 1, snapshot.OrdinaryTrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(fourth, snapshot.SelectiveTrimToCommitId);
+    }
+
+    Y_UNIT_TEST(ShouldLetOrdinaryTrimPassOverwrittenWriteBeforeItCompletes)
+    {
+        TTimestampTestRuntime runtime;
+        const auto ctx = runtime.GetContext();
+        TPartitionThreadSafeState state;
+        state.Init({}, 1, 0, TInstant::Seconds(100), TMonotonic::Seconds(10));
+
+        const ui64 first = state.StartFreshWrite(ctx, 1).CommitId;
+        const ui64 second = state.StartFreshWrite(ctx, 1).CommitId;
+
+        // The partition added the first write, and the second one overwrote
+        // its block before the first one completed.
+        state.AccessTrimFreshLogBarriers()->ReleaseBarrier(first);
+
+        auto snapshot = state.GetFreshTrimSnapshot();
+        UNIT_ASSERT_VALUES_EQUAL(second - 1, snapshot.OrdinaryTrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(first - 1, snapshot.SelectiveTrimToCommitId);
+        UNIT_ASSERT_GT(
+            snapshot.OrdinaryTrimToCommitId,
+            snapshot.SelectiveTrimToCommitId);
+
+        // While the second write is in flight, it holds both of them.
+        state.FinishFreshWrite(ctx, first, 1, false);
+        snapshot = state.GetFreshTrimSnapshot();
+        UNIT_ASSERT_VALUES_EQUAL(second - 1, snapshot.OrdinaryTrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(second - 1, snapshot.SelectiveTrimToCommitId);
+
+        state.FinishFreshWrite(ctx, second, 1, false);
+        snapshot = state.GetFreshTrimSnapshot();
+        UNIT_ASSERT_VALUES_EQUAL(second - 1, snapshot.OrdinaryTrimToCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(second, snapshot.SelectiveTrimToCommitId);
+    }
+
     Y_UNIT_TEST(ShouldReturnInvalidCommitIdWhenItOverflows)
     {
         TPartitionThreadSafeState state;

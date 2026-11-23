@@ -1813,4 +1813,10 @@ message TStorageServiceConfig
     // scaling, so FlushThreshold{HDD,SSD} applies.
     optional uint32 MaxFlushThresholdHDD = 560;
     optional uint32 MaxFlushThresholdSSD = 561;
+
+    // Allow fresh-log trim to move a soft barrier past live fresh blobs and
+    // protect them with Keep flags. Requires a nonzero
+    // FreshDeadBlobByteCountTrimThreshold for the same media kind.
+    optional bool FreshSelectiveTrimEnabledSSD = 562;
+    optional bool FreshSelectiveTrimEnabledHDD = 563;
 }

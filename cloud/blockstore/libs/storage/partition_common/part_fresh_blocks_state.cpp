@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/operation_status.h>
 
 #include <cloud/storage/core/libs/tablet/model/channels.h>
+#include <cloud/storage/core/libs/tablet/model/commit.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/protobuf/json/proto2json.h>
@@ -65,11 +66,22 @@ TInstant TPartitionFreshBlobState::GetFirstUnflushedFreshBlobTimestamp(
 
 void TPartitionFreshBlobState::AddFreshBlob(
     ui64 commitId,
+    const TPartialBlobId& blobId,
     ui64 blobSize,
     TInstant timestamp)
 {
+    // A flag with a wrong blob id would protect a blob that does not exist,
+    // and a nonzero part id in a flag is rejected by every VDisk.
+    STORAGE_VERIFY_C(
+        blobId.CommitId() == commitId && blobId.PartId() == 0,
+        TWellKnownEntityTypes::TABLET,
+        TabletID,
+        "Commit id: " << commitId << ", blob id: " << blobId);
+
     {
-        const TUntrimmedFreshBlob blob{.ByteCount = blobSize};
+        const TUntrimmedFreshBlob blob{
+            .ByteCount = blobSize,
+            .BlobId = blobId};
         const bool inserted =
             UntrimmedFreshBlobsByCommitId.emplace(commitId, blob).second;
         STORAGE_VERIFY_C(
@@ -104,9 +116,17 @@ void TPartitionFreshBlobState::MarkFreshBlobDead(ui64 commitId)
         TWellKnownEntityTypes::TABLET,
         TabletID,
         "Commit id: " << commitId);
+    STORAGE_VERIFY_C(
+        it->second.ByteCount <= Max<ui64>() - TotalDeadFreshBlobByteCount,
+        TWellKnownEntityTypes::TABLET,
+        TabletID,
+        "Commit id: " << commitId << ", byte count: " << it->second.ByteCount
+                      << ", total dead byte count: "
+                      << TotalDeadFreshBlobByteCount);
 
     it->second.Dead = true;
     DeadUntrimmedFreshBlobByteCount += it->second.ByteCount;
+    TotalDeadFreshBlobByteCount += it->second.ByteCount;
 }
 
 ui64 TPartitionFreshBlobState::GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(
@@ -137,18 +157,26 @@ ui64 TPartitionFreshBlobState::GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(
 // were flushed or overwritten. Only dead blobs may be trimmed.
 //
 // Checks the Dead flags against liveCommitIds and the cached byte counts.
+// Selective trim relies on the Dead flags alone, so every live blob that it
+// may pass must have an untrimmed entry.
 bool TPartitionFreshBlobState::CheckDeadFreshBlobByteCount(
-    const TVector<ui64>& liveCommitIds) const
+    const TVector<ui64>& liveCommitIds,
+    ui64 addedToCommitId) const
 {
     ui64 deadByteCount = 0;
     ui64 ordinaryTrimByteCount = 0;
 
     auto live = liveCommitIds.begin();
     for (const auto& [commitId, blob]: UntrimmedFreshBlobsByCommitId) {
-        while (live != liveCommitIds.end() && *live < commitId) {
-            ++live;
+        for (; live != liveCommitIds.end() && *live < commitId; ++live) {
+            if (*live <= addedToCommitId) {
+                return false;
+            }
         }
         const bool isLive = live != liveCommitIds.end() && *live == commitId;
+        if (isLive) {
+            ++live;
+        }
         if (blob.Dead == isLive) {
             return false;
         }
@@ -163,7 +191,8 @@ bool TPartitionFreshBlobState::CheckDeadFreshBlobByteCount(
         }
     }
 
-    return deadByteCount == DeadUntrimmedFreshBlobByteCount &&
+    return (live == liveCommitIds.end() || *live > addedToCommitId) &&
+           deadByteCount == DeadUntrimmedFreshBlobByteCount &&
            ordinaryTrimByteCount == OrdinaryTrimmableFreshBlobByteCount;
 }
 
@@ -174,7 +203,6 @@ TTrimFreshBlobsResult TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
     while (blobs && blobs.begin()->first <= commitId) {
         EraseUntrimmedFreshBlob(blobs.begin());
     }
-    TrimmedToCommitId = Max(TrimmedToCommitId, commitId);
 
     TTrimFreshBlobsResult result;
     auto& unflushed = UnflushedFreshBlobsByCommitId;
@@ -185,17 +213,130 @@ TTrimFreshBlobsResult TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
     return result;
 }
 
+TTrimFreshBlobsResult TPartitionFreshBlobState::TrimCollectedFreshBlobs(
+    const TVector<ui64>& commitIds)
+{
+    TTrimFreshBlobsResult result;
+    for (ui64 commitId: commitIds) {
+        auto it = UntrimmedFreshBlobsByCommitId.find(commitId);
+        STORAGE_VERIFY_C(
+            it != UntrimmedFreshBlobsByCommitId.end(),
+            TWellKnownEntityTypes::TABLET,
+            TabletID,
+            "Commit id: " << commitId);
+        EraseUntrimmedFreshBlob(it);
+
+        // A flush may have removed the unflushed entry already.
+        auto& unflushed = UnflushedFreshBlobsByCommitId;
+        if (auto jt = unflushed.find(commitId); jt != unflushed.end()) {
+            result.UnflushedBytesRemoved += EraseUnflushedFreshBlob(jt);
+        }
+    }
+    return result;
+}
+
+std::optional<TSelectiveTrimPlan>
+TPartitionFreshBlobState::BuildSelectiveTrimPlan(
+    const TSelectiveTrimPlanParams& params) const
+{
+    // The barrier must be above OrdinaryTrimToCommitId and at or below
+    // SelectiveTrimToCommitId. An overwritten fresh write that has not
+    // completed can let OrdinaryTrimToCommitId pass SelectiveTrimToCommitId.
+    if (params.SelectiveTrimToCommitId <= params.OrdinaryTrimToCommitId) {
+        return std::nullopt;
+    }
+
+    const ui64 minTrimToCommitId =
+        Max(params.OrdinaryTrimToCommitId,
+            params.LastSentSelectiveTrimToCommitId);
+
+    TSelectiveTrimPlan plan{.TrimToCommitId = minTrimToCommitId};
+    // The number of Keep flags at or below plan.TrimToCommitId. The flags for
+    // the live blobs after the last dead one are dropped at the end.
+    size_t keepCount = 0;
+
+    for (auto it = UntrimmedFreshBlobsByCommitId.upper_bound(
+             params.OrdinaryTrimToCommitId);
+         it != UntrimmedFreshBlobsByCommitId.end() &&
+         it->first <= params.SelectiveTrimToCommitId;
+         ++it)
+    {
+        const auto& [commitId, blob] = *it;
+
+        if (commitId <= minTrimToCommitId) {
+            if (blob.Dead) {
+                // An earlier soft command may have kept it, and only DoNotKeep
+                // lets a soft barrier collect a kept blob.
+                plan.DoNotKeep.push_back(blob.BlobId);
+                plan.CollectingCommitIds.push_back(commitId);
+            } else if (commitId > params.KeptToCommitId) {
+                // Covered by a soft command that failed. The new barrier is at
+                // least as high, so this Keep is mandatory.
+                plan.Keep.push_back(blob.BlobId);
+                keepCount = plan.Keep.size();
+            }
+            continue;
+        }
+
+        if (!blob.Dead) {
+            plan.Keep.push_back(blob.BlobId);
+            continue;
+        }
+
+        // A dead blob: move the barrier onto it and keep the live blobs below
+        // it.
+        plan.TrimToCommitId = commitId;
+        plan.CollectingCommitIds.push_back(commitId);
+        keepCount = plan.Keep.size();
+    }
+    // Drop Keep for the live blobs after the last dead one: they are above
+    // the barrier, which does not touch them.
+    Y_DEBUG_ABORT_UNLESS(
+        keepCount <= plan.Keep.size(),
+        "keepCount: %lu, Keep size: %lu",
+        keepCount,
+        plan.Keep.size());
+    plan.Keep.resize(keepCount);
+
+    // Without flags, a barrier at minTrimToCommitId collects nothing that the
+    // hard barrier of an ordinary trim does not.
+    if (plan.TrimToCommitId == minTrimToCommitId && !plan.Keep &&
+        !plan.DoNotKeep)
+    {
+        return std::nullopt;
+    }
+
+    // We should add blobs that are definitely unkept and will be deleted
+    // after the selective trim.
+    const ui64 unkeptFromCommitId =
+        Max(params.LastSentSelectiveTrimToCommitId,
+            // Selective trim state is not restored on restart. Hence we do not
+            // need to look below the current generation of commits.
+            MakeCommitId(params.CurrentGeneration, 0));
+    for (auto it =
+             UntrimmedFreshBlobsByCommitId.upper_bound(unkeptFromCommitId);
+         it != UntrimmedFreshBlobsByCommitId.end() &&
+         it->first <= params.OrdinaryTrimToCommitId;
+         ++it)
+    {
+        plan.CollectingCommitIds.push_back(it->first);
+    }
+
+    return plan;
+}
+
 TFlushFreshBlobResult TPartitionFreshBlobState::FlushFreshBlob(ui64 commitId)
 {
     TFlushFreshBlobResult result;
     auto it = UnflushedFreshBlobsByCommitId.find(commitId);
     if (it == UnflushedFreshBlobsByCommitId.end()) {
+        // A trim that completed during the flush removed the blob. Trims
+        // erase both entries of a blob, so it has no untrimmed entry either.
         STORAGE_VERIFY_C(
-            commitId <= TrimmedToCommitId,
+            !UntrimmedFreshBlobsByCommitId.contains(commitId),
             TWellKnownEntityTypes::TABLET,
             TabletID,
-            "Commit id: " << commitId
-                          << ", trimmed to commit id: " << TrimmedToCommitId);
+            "Commit id: " << commitId);
         return result;
     }
     result.UnflushedBytesRemoved = EraseUnflushedFreshBlob(it);
