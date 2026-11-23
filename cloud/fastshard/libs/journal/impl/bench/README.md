@@ -61,6 +61,17 @@ $BENCH --backing file --device-path /path/to/bench.bin \
   `O_DIRECT`. **The benchmark overwrites the file.** It writes the whole file
   through before the run, so that the file system does not allocate blocks
   during the test. `--sparse` skips this step.
+* `--backing file --device-path /dev/...`: the same on a block device. The
+  benchmark writes zeroes over the journal parts (`--log-meta-size` +
+  `--log-data-size`) before every run, also with `--sparse`: the device keeps
+  its old content, and the journal must start empty. The data area is not
+  written through, so it can be as large as the real device. With
+  `--device v1` there is no journal, and nothing is written before the run.
+  Nothing else may use the device during the run.
+* `--device-offset SIZE`: the device starts at this offset of `--device-path`.
+  Use it when several devices share one file or block device. The benchmark
+  does not touch the bytes before the offset. It must be a multiple of
+  `--page-size`.
 
 The device is split like in the server: `--log-meta-size`, `--log-data-size`,
 `--data-size`.

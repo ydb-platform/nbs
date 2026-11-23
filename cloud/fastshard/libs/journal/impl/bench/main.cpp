@@ -36,6 +36,7 @@
 #include <util/system/fstat.h>
 #include <util/system/spinlock.h>
 
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <atomic>
@@ -149,6 +150,7 @@ struct TOptions
     TString BackingName = "memory";
     EBacking Backing = EBacking::Memory;
     TString DevicePath;
+    ui64 DeviceOffset = 0;
     bool Sparse = false;
 
     TString WorkloadName;
@@ -249,9 +251,19 @@ void TOptions::Parse(int argc, char** argv)
 
     opts.AddLongOption(
             "device-path",
-            "file for --backing file; the benchmark overwrites it")
+            "file or block device for --backing file; the benchmark "
+            "overwrites it")
         .RequiredArgument("PATH")
         .StoreResult(&DevicePath);
+
+    TString deviceOffset = ToString(DeviceOffset);
+    opts.AddLongOption(
+            "device-offset",
+            "offset of the device from the start of --device-path; the "
+            "benchmark does not touch the bytes before it")
+        .RequiredArgument("SIZE")
+        .DefaultValue(deviceOffset)
+        .StoreResult(&deviceOffset);
 
     opts.AddLongOption(
             "sparse",
@@ -370,6 +382,7 @@ void TOptions::Parse(int argc, char** argv)
     Y_ENSURE(pageSizeValue <= Max<ui32>(), "--page-size is too large");
     PageSize = static_cast<ui32>(pageSizeValue);
 
+    DeviceOffset = NSize::ParseSize(deviceOffset);
     LogMetaSize = NSize::ParseSize(logMetaSize);
     LogDataSize = NSize::ParseSize(logDataSize);
     DataSize = NSize::ParseSize(dataSize);
@@ -409,6 +422,11 @@ void TOptions::Validate() const
 
     if (Backing == EBacking::File) {
         Y_ENSURE(DevicePath, "--backing file needs --device-path");
+        Y_ENSURE(
+            DeviceOffset % PageSize == 0,
+            "--device-offset must be a multiple of --page-size");
+    } else {
+        Y_ENSURE(!DeviceOffset, "--device-offset needs --backing file");
     }
 
     if (!HasJournal()) {
@@ -592,29 +610,78 @@ void WriteJson(NJsonWriter::TBuf& json, const TActionSummary& s)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Creates the file anew, so that the device starts with an empty journal,
-// and writes it through unless |sparse| is set.
-void PrepareFile(const TString& path, ui64 size, bool sparse)
+// Makes the device start with an empty journal. A regular file is created
+// anew and |size| bytes at |offset| are written through unless |sparse| is
+// set. On a block device only the first |journalSize| bytes are written;
+// zero means that the device has no journal and nothing is written.
+void PrepareFile(
+    const TString& path,
+    ui64 offset,
+    ui64 size,
+    ui64 journalSize,
+    bool sparse)
 {
     TFileStat stat(path);
+    const bool isBlockDevice = !stat.IsNull() && S_ISBLK(stat.Mode);
     Y_ENSURE(
-        stat.IsNull() || stat.IsFile(),
-        path.Quote() << " is not a regular file");
+        stat.IsNull() || stat.IsFile() || isBlockDevice,
+        path.Quote() << " is not a regular file or a block device");
 
-    TFile file(path, CreateAlways | WrOnly);
+    //
+    // Write to a block device with O_DIRECT, like the device itself does.
+    // Buffered writes would go through the page cache of the block device,
+    // and then the run would wait for the kernel to write them back
+    //
 
-    if (sparse) {
+    TFile file(
+        path,
+        isBlockDevice ? OpenExisting | WrOnly | DirectAligned
+                      : CreateAlways | WrOnly);
+
+    //
+    // Write zeroes over the journal of a block device even with --sparse: the
+    // device keeps its old content, and the journalled device would restore
+    // the old journal. Skip the data area: there is no file system that
+    // must allocate blocks, and the area can be very large
+    //
+
+    if (isBlockDevice) {
+        size = journalSize;
+    } else if (sparse) {
         return;
     }
 
-    Cerr << "Writing " << path.Quote() << " through..." << Endl;
-
-    const TVector<char> zeroes(1_MB, 0);
-    for (ui64 offset = 0; offset < size; offset += zeroes.size()) {
-        file.Write(zeroes.data(), Min<ui64>(zeroes.size(), size - offset));
+    if (!size) {
+        return;
     }
 
-    file.Flush();
+    Cerr << "Writing " << (size >> 20) << " MB of zeroes to " << path.Quote()
+         << " at offset " << offset << "..." << Endl;
+
+    file.Seek(static_cast<i64>(offset), sSet);
+
+    constexpr ui64 ChunkSize = 1_MB;
+    constexpr ui64 Alignment = 4_KB;
+
+    std::unique_ptr<char, void (*)(void*)> zeroes(
+        static_cast<char*>(std::aligned_alloc(Alignment, ChunkSize)),
+        std::free);
+    Y_ENSURE(zeroes, "can't allocate the buffer of zeroes");
+    memset(zeroes.get(), 0, ChunkSize);
+
+    for (ui64 done = 0; done < size; done += ChunkSize) {
+        file.Write(zeroes.get(), Min<ui64>(ChunkSize, size - done));
+
+        if (done && done % 1_GB == 0) {
+            Cerr << "  " << (done >> 20) << " of " << (size >> 20) << " MB"
+                 << Endl;
+        }
+    }
+
+    if (!isBlockDevice) {
+        Cerr << "  flushing..." << Endl;
+        file.Flush();
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -684,21 +751,46 @@ void TBench::Start()
     IDevicePtr device;
 
     if (Options.Backing == EBacking::File) {
+        const ui64 offsetPages = Options.DeviceOffset / pageSize;
+
         PrepareFile(
             Options.DevicePath,
+            Options.DeviceOffset,
             Options.GetDevicePages() * pageSize,
+            Options.HasJournal() ? (logMetaPages + logDataPages) * pageSize : 0,
             Options.Sparse);
 
         FileIO = Options.AioThreads == 1
                      ? CreateAIOService()
                      : CreateThreadedAIOService(Options.AioThreads);
-        FileIO->Start();
+
+        Cerr << "Opening " << Options.DevicePath.Quote() << "..." << Endl;
 
         device = CreateFileDevice(
             FileIO,
             Options.DevicePath,
-            Options.GetDevicePages(),
+            offsetPages + Options.GetDevicePages(),
             pageSize);
+
+        //
+        // Start the service only after the file is open. If the open fails
+        // with an exception after the start, the program hangs: the service
+        // is destroyed with a running thread
+        //
+
+        FileIO->Start();
+
+        if (offsetPages) {
+            //
+            // Cut the device out of the file, so that page 0 is the page at
+            // --device-offset
+            //
+
+            device = CreateRegionDevice(
+                std::move(device),
+                {.FirstPageNo = offsetPages,
+                 .PageCount = Options.GetDevicePages()});
+        }
     } else {
         device = CreateInMemoryDevice(pageSize);
     }
@@ -757,6 +849,8 @@ void TBench::Start()
             TString(DeviceUUID));
     }
 
+    Cerr << "Starting the device..." << Endl;
+
     auto error = Device->Start().GetValueSync();
     if (HasError(error)) {
         Fail("Start", error);
@@ -765,6 +859,8 @@ void TBench::Start()
 
 void TBench::Stop()
 {
+    Cerr << "Stopping the device..." << Endl;
+
     Device->Stop().GetValueSync();
     Device.reset();
 

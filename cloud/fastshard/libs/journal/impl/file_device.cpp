@@ -7,6 +7,7 @@
 #include <cloud/storage/core/libs/common/file_io_service.h>
 
 #include <util/generic/array_ref.h>
+#include <util/generic/maybe.h>
 #include <util/generic/size_literals.h>
 #include <util/generic/utility.h>
 #include <util/generic/vector.h>
@@ -22,6 +23,9 @@
 
 #if defined(_linux_)
 #   include <fcntl.h>
+#   include <linux/fs.h>
+#   include <sys/ioctl.h>
+#   include <sys/stat.h>
 #endif
 
 namespace NCloud::NJournalled {
@@ -57,6 +61,32 @@ NProto::TError CheckTransfer(
     }
 
     return {};
+}
+
+// Returns the size of the block device in bytes, or nothing if the file is
+// not a block device. fstat reports a zero size for a block device.
+TMaybe<ui64> GetBlockDeviceSize(TFileHandle& file)
+{
+#if defined(_linux_)
+    struct stat st = {};
+    Y_ENSURE(
+        fstat(file, &st) == 0,
+        "unable to stat the file: " << LastSystemErrorText());
+
+    if (!S_ISBLK(st.st_mode)) {
+        return Nothing();
+    }
+
+    ui64 size = 0;
+    Y_ENSURE(
+        ioctl(file, BLKGETSIZE64, &size) == 0,
+        "unable to get the size of the block device: "
+            << LastSystemErrorText());
+    return size;
+#else
+    Y_UNUSED(file);
+    return Nothing();
+#endif
 }
 
 NProto::TError DiscardRange(TFileHandle& file, i64 offset, i64 length)
@@ -125,7 +155,18 @@ public:
                 << LastSystemErrorText());
 
         const i64 length = static_cast<i64>(PageCount * PageSize);
-        if (File.GetLength() < length) {
+
+        //
+        // Check the size of a block device and do not resize it: it has a
+        // fixed size, and a resize always fails
+        //
+
+        if (auto size = GetBlockDeviceSize(File)) {
+            Y_ENSURE(
+                *size >= static_cast<ui64>(length),
+                "block device " << filePath.Quote() << " has " << *size
+                    << " bytes, need " << length);
+        } else if (File.GetLength() < length) {
             Y_ENSURE(
                 File.Resize(length),
                 "unable to resize " << filePath.Quote() << " to " << length
