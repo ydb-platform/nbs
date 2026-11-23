@@ -873,6 +873,10 @@ message TShardTopology
         uint32 RoleMask = 2;
         string ShardId = 3;
         uint64 TabletId = 4;
+
+        oneof Data {
+            TFastShardConfig FastShardConfig = 100;
+        };
     }
 
     repeated TShardInfo Shards = 1;

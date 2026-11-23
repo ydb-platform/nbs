@@ -304,6 +304,16 @@ void AddOrdinaryShard(
         ProtoFlag(NProtoPrivate::TShardTopology::E_DIRECTORY));
 }
 
+void AddFastShard(
+    const TString& shardId,
+    NProtoPrivate::TShardTopology& topology)
+{
+    auto& shard = *topology.AddShards();
+    shard.SetShardId(shardId);
+    shard.SetType(NProtoPrivate::TShardTopology::E_FASTSHARD);
+    shard.SetRoleMask(ProtoFlag(NProtoPrivate::TShardTopology::E_FILE));
+}
+
 NProtoPrivate::TShardTopology BuildOrdinaryShardTopology(
     const google::protobuf::RepeatedPtrField<TString>& shardIds)
 {
