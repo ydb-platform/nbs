@@ -4657,6 +4657,96 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
+    TABLET_TEST(ShouldForceCompactBlobWithBothStaleAndLiveNodesData)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(4 * block);
+        storageConfig.SetMaxBlocksPerTruncateTx(1);
+
+        TTestEnv env(testEnvConfig, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTabletPrivate::EvTruncateRequest: {
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            }
+        );
+
+        auto id1 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
+        auto id2 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        auto id3 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test3"));
+
+        const ui32 rangeId = GetMixedRangeIndex(id1, 0);
+        UNIT_ASSERT_VALUES_EQUAL(rangeId, GetMixedRangeIndex(id2, 0));
+        UNIT_ASSERT_VALUES_EQUAL(rangeId, GetMixedRangeIndex(id3, 0));
+
+        ui64 handle1 = CreateHandle(tablet, id1);
+        ui64 handle2 = CreateHandle(tablet, id2);
+        ui64 handle3 = CreateHandle(tablet, id3);
+
+        tablet.WriteData(handle1, 0, block, 'a');
+        tablet.WriteData(handle2, 0, 2 * block, 'b');
+        tablet.WriteData(handle3, 0, block, 'c');
+        tablet.Flush();
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 4);
+        }
+
+        tablet.DestroyHandle(handle2);
+        tablet.UnlinkNode(RootNodeId, "test2", false);
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 4);
+        }
+
+        tablet.ForcedRangeOperation(
+            TVector<ui32>{rangeId},
+            TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction);
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlobsCount(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 2);
+        }
+
+        {
+            auto response = tablet.ReadData(handle1, 0, block);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, block, 'a');
+        }
+
+        {
+            auto response = tablet.ReadData(handle3, 0, block);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, block, 'c');
+        }
+    }
+
     TABLET_TEST(ShouldDoForcedDeletionOfZeroCompactionRanges)
     {
         NProto::TStorageConfig storageConfig;
