@@ -956,7 +956,16 @@ def test_disk_manager_snapshot_database_migration_with_base_snapshot_deleted_dur
             setup.secondary_ydb.mon_port,
             base_snapshot_id,
         )
-        setup.pause_task(base_migration_task_id)
+        try:
+            setup.pause_task(base_migration_task_id)
+        except subprocess.CalledProcessError:
+            # A task that has ended can't be paused.
+            output = setup.admin("tasks", "get", "--id", base_migration_task_id)
+            assert json.loads(output)["status"] != "finished", (
+                "The base snapshot was migrated before its migration task was paused,"
+                " the snapshot should be larger"
+            )
+            raise
         setup.delete_snapshot(base_snapshot_id)
         setup.resume_task(base_migration_task_id)
         assert setup.wait_for_task_to_end(base_migration_task_id) == "cancelled"
