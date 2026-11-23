@@ -421,7 +421,7 @@ void TFileSystem::InvalidateCachedMetadataOfSource(ui64 sourceId)
 
     const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
 
-    STORAGE_INFO("invalidating cached metadata of source: " << sourceId
+    STORAGE_DEBUG("invalidating cached metadata of source: " << sourceId
         << ", version: " << version);
 
     NodeAttrsCache.InvalidateSource(sourceId, version);

@@ -65,7 +65,7 @@ public:
 
     void OnDisconnect(ui64 sourceId) override
     {
-        STORAGE_INFO(
+        STORAGE_DEBUG(
             "[f:%s] FileSystemEvent transport disconnected: %lu",
             FileSystemId.Quote().c_str(),
             sourceId);
@@ -74,6 +74,12 @@ public:
         // The source drops the subscriptions of a disconnected client - its
         // invalidations may be lost. The data received from the other
         // sources stays valid.
+        //
+        // The disconnects are delivered to the handlers of all the
+        // filesystems: the source (a tablet) may belong to any of them, e.g.
+        // be a shard added after the session has started, and its data may
+        // be in flight. For an unrelated filesystem the invalidation is a
+        // no-op apart from the bookkeeping (see TInvalidations).
         //
 
         if (auto fileSystem = FileSystem.lock()) {

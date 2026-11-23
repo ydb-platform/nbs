@@ -43,7 +43,13 @@ private:
     TLRUCache<TKey, ui64> Tombstones;
     const ui32 MaxTombstoneCount;
     ui64 Watermark = 0;
-    // Watermarks by source id, see InvalidateSource.
+    // Watermarks by source id, see InvalidateSource. The disconnects of all
+    // the sources are delivered to all the filesystems, so this map gets an
+    // entry for each source disconnected during the lifetime of the
+    // process - even for the sources this cache has no data from. It is
+    // bounded by the number of the sources (tablets) and never pruned: an
+    // entry could be dropped only once no request started before its
+    // watermark is in flight, which is not tracked.
     THashMap<ui64, ui64> SourceWatermarks;
 
 public:

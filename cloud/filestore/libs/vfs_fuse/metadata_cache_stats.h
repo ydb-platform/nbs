@@ -44,6 +44,8 @@ private:
     TRelaxedCounter InvalidateNodeEventCount;
     TRelaxedCounter InvalidateNodeRefEventCount;
     TRelaxedCounter InvalidateNodeXAttrEventCount;
+    // Disconnects observed by the filesystem - including the disconnects of
+    // the sources it has no data from (see OnDisconnect).
     TRelaxedCounter InvalidateSourceCount;
 
     TRelaxedCounter NodeAttrsCacheSize;
