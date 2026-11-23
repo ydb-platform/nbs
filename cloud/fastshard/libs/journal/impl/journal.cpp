@@ -379,9 +379,7 @@ private:
         ui64 headLsn,
         ui64 ackedLsn);
 
-    NProto::TError ValidateRecordPages(const TLogRecord& record, ui64 ackedLsn);
-
-    TResultOrError<ui32> ReadPagesCrc(const TLogRecord& record);
+    NProto::TError RestoreRecordPages(TLogRecord& record, ui64 ackedLsn);
 
     NProto::TError ValidateWriteRequest(
         const NProto::TWriteLogRecordRequest& request) const;
@@ -401,7 +399,7 @@ private:
         const TResultOrError<TVector<TBuffer>>& buffersOrError);
 
     NProto::TError ReadPageGroups(
-        const TVector<TPageMapping>& mappings,
+        const TLogRecord& record,
         TDevicePageGroups* pageGroups) const;
 };
 
@@ -605,7 +603,7 @@ TVector<TLogRecordPtr> TJournal::FilterStrandedRecords(
             break;
         }
 
-        auto error = ValidateRecordPages(*it->second, ackedLsn);
+        auto error = RestoreRecordPages(*it->second, ackedLsn);
         if (HasError(error)) {
             STORAGE_WARN(
                 "dropping the log record with lsn "
@@ -623,9 +621,7 @@ TVector<TLogRecordPtr> TJournal::FilterStrandedRecords(
     return records;
 }
 
-NProto::TError TJournal::ValidateRecordPages(
-    const TLogRecord& record,
-    ui64 ackedLsn)
+NProto::TError TJournal::RestoreRecordPages(TLogRecord& record, ui64 ackedLsn)
 {
     //
     // The pages and the record are written in parallel, so a crash or a
@@ -637,16 +633,19 @@ NProto::TError TJournal::ValidateRecordPages(
         return {};
     }
 
-    auto crcOrError = ReadPagesCrc(record);
-    if (HasError(crcOrError)) {
-        const auto& error = crcOrError.GetError();
+    auto future = DataStore->Read(GetLocations(record.PageMappings));
+    auto response = Executor->ExtractResponse(std::move(future));
+    if (HasError(response)) {
+        const auto& error = response.GetError();
         return MakeError(
             error.GetCode(),
             TStringBuilder()
                 << "unable to read the pages back: " << error.GetMessage());
     }
 
-    const ui32 crc = crcOrError.GetResult();
+    auto pages = response.ExtractResult();
+
+    const ui32 crc = CalculatePagesCrc(pages);
     if (crc != record.PagesCrc) {
         return MakeError(
             E_INVALID_STATE,
@@ -654,21 +653,14 @@ NProto::TError TJournal::ValidateRecordPages(
                              << record.PagesCrc);
     }
 
+    //
+    // Keep the pages that are already read: the flush and the tail read do
+    // not have to read them again
+    //
+
+    record.Pages = std::move(pages);
+
     return {};
-}
-
-TResultOrError<ui32> TJournal::ReadPagesCrc(const TLogRecord& record)
-{
-    auto locations = GetLocations(record.PageMappings);
-
-    auto future = DataStore->Read(locations);
-    const auto& response = Executor->WaitFor(future);
-
-    if (HasError(response)) {
-        return response.GetError();
-    }
-
-    return CalculatePagesCrc(response.GetResult());
 }
 
 TFuture<NProto::TWriteLogRecordResponse> TJournal::Write(
@@ -801,6 +793,13 @@ TFuture<NProto::TError> TJournal::WriteLogRecord(
     //
 
     auto dataFuture = DataStore->Write(locations, pages);
+
+    //
+    // Keep the pages in memory, so that the flush and the tail read do not
+    // read them back from the journal
+    //
+
+    record.Pages = std::move(pages);
 
     return WaitAll(metaFuture.IgnoreResult(), dataFuture.IgnoreResult())
         .Apply(
@@ -1006,9 +1005,8 @@ NProto::TReadJournalTailResponse TJournal::ReadTail(
         journalRecord.SetLogSequenceNumber(record->Lsn);
         journalRecord.SetPrevLogSequenceNumber(record->PrevLsn);
 
-        auto error = ReadPageGroups(
-            record->PageMappings,
-            journalRecord.MutablePageGroups());
+        auto error =
+            ReadPageGroups(*record, journalRecord.MutablePageGroups());
 
         if (HasError(error)) {
             return TErrorResponse(std::move(error));
@@ -1113,8 +1111,14 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
             break;
         }
 
-        for (const auto& mapping: record->PageMappings) {
-            locations.push_back(mapping.Location);
+        //
+        // Collect the locations of the pages that are not kept in memory
+        //
+
+        if (record->Pages.empty()) {
+            for (const auto& mapping: record->PageMappings) {
+                locations.push_back(mapping.Location);
+            }
         }
 
         records.push_back(record);
@@ -1126,17 +1130,20 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
     }
 
     //
-    // Read the pages of the whole batch in one go - one request to the device
-    // for all the records, not one per record
+    // Read the missing pages of the whole batch in one request
     //
 
-    auto future = DataStore->Read(locations);
-    const auto& response = Executor->WaitFor(future);
-    if (HasError(response)) {
-        return response.GetError();
-    }
+    TVector<TBuffer> buffers;
 
-    const auto& buffers = response.GetResult();
+    if (!locations.empty()) {
+        auto future = DataStore->Read(locations);
+        auto response = Executor->ExtractResponse(std::move(future));
+        if (HasError(response)) {
+            return response.GetError();
+        }
+
+        buffers = response.ExtractResult();
+    }
 
     TJournalRecords result;
     result.reserve(records.size());
@@ -1147,11 +1154,13 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
         journalRecord.SetLogSequenceNumber(record->Lsn);
         journalRecord.SetPrevLogSequenceNumber(record->PrevLsn);
 
+        const bool cached = !record->Pages.empty();
+
         size_t bufferCount = 0;
         auto error = FillPageGroups(
             record->PageMappings,
-            buffers,
-            bufferIndex,
+            cached ? record->Pages : buffers,
+            cached ? 0 : bufferIndex,
             &bufferCount,
             journalRecord.MutablePageGroups());
 
@@ -1159,7 +1168,9 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
             return error;
         }
 
-        bufferIndex += bufferCount;
+        if (!cached) {
+            bufferIndex += bufferCount;
+        }
     }
 
     return result;
@@ -1238,16 +1249,27 @@ NProto::TError TJournal::CleanupFlushedRecords()
 }
 
 NProto::TError TJournal::ReadPageGroups(
-    const TVector<TPageMapping>& mappings,
+    const TLogRecord& record,
     TDevicePageGroups* pageGroups) const
 {
+    const auto& mappings = record.PageMappings;
+    size_t bufferCount = 0;
+
+    if (!record.Pages.empty()) {
+        return FillPageGroups(
+            mappings,
+            record.Pages,
+            0, /* firstBufferIndex */
+            &bufferCount,
+            pageGroups);
+    }
+
     auto future = DataStore->Read(GetLocations(mappings));
     const auto& response = Executor->WaitFor(future);
     if (HasError(response)) {
         return response.GetError();
     }
 
-    size_t bufferCount = 0;
     return FillPageGroups(
         mappings,
         response.GetResult(),
