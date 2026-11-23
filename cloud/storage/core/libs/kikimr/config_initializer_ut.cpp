@@ -49,6 +49,37 @@ struct TConfigInitializerYdb
     {}
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+TAffinity TakeFirstAllowedCores(size_t count)
+{
+    const auto current = TAffinity::Current();
+    const auto& allowedCores = current.GetCores();
+    UNIT_ASSERT_GE(allowedCores.size(), count);
+    return TAffinity({allowedCores.begin(), allowedCores.begin() + count});
+}
+
+NKikimrConfig::TActorSystemConfig InitActorSystemConfig(
+    const TString& sysConfigStr,
+    ui32 availableCpuCoresPercentage,
+    size_t availableCores)
+{
+    TTempDir dir;
+    auto sysConfigPath = dir.Path() / "nbs-sys.txt";
+    TOFStream(sysConfigPath.GetPath()).Write(sysConfigStr);
+
+    auto options = CreateOptions();
+    options->SysConfig = sysConfigPath.GetPath();
+    options->ActorSystemAvailableCpuCoresPercentage =
+        availableCpuCoresPercentage;
+
+    TAffinityGuard affinityGuard(TakeFirstAllowedCores(availableCores));
+
+    auto ci = TConfigInitializerYdb(std::move(options));
+    ci.InitKikimrConfig();
+    return ci.KikimrConfig->GetActorSystemConfig();
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -327,6 +358,92 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             36,                // availableCores
             50                 // availableCoresPercentage
         );
+    }
+
+    Y_UNIT_TEST(ShouldAdjustAutoConfigCpuCountAccordingToAvailableCpuCores)
+    {
+        constexpr size_t AvailableCores = 4;
+
+        const TString autoConfigWithCpuCount = R"(
+            UseAutoConfig: true
+            CpuCount: 32
+            NodeType: HYBRID
+            UseSharedThreads: true
+            ActorSystemProfile: LOW_LATENCY
+        )";
+        const TString autoConfigWithoutCpuCount = R"(
+            UseAutoConfig: true
+            NodeType: HYBRID
+        )";
+
+        auto config =
+            InitActorSystemConfig(autoConfigWithCpuCount, 0, AvailableCores);
+        UNIT_ASSERT_VALUES_EQUAL(32, config.GetCpuCount());
+
+        config =
+            InitActorSystemConfig(autoConfigWithoutCpuCount, 0, AvailableCores);
+        UNIT_ASSERT(!config.HasCpuCount());
+
+        config =
+            InitActorSystemConfig(autoConfigWithCpuCount, 100, AvailableCores);
+        UNIT_ASSERT_VALUES_EQUAL(4, config.GetCpuCount());
+        UNIT_ASSERT(config.GetUseAutoConfig());
+        UNIT_ASSERT_EQUAL(
+            NKikimrConfig::TActorSystemConfig::HYBRID,
+            config.GetNodeType());
+        UNIT_ASSERT(config.GetUseSharedThreads());
+        UNIT_ASSERT_EQUAL(
+            NKikimrConfig::TActorSystemConfig::LOW_LATENCY,
+            config.GetActorSystemProfile());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.ExecutorSize());
+
+        config = InitActorSystemConfig(
+            autoConfigWithoutCpuCount,
+            50,
+            AvailableCores);
+        UNIT_ASSERT_VALUES_EQUAL(2, config.GetCpuCount());
+
+        config = InitActorSystemConfig(
+            autoConfigWithoutCpuCount,
+            30,
+            AvailableCores);
+        UNIT_ASSERT_VALUES_EQUAL(2, config.GetCpuCount());
+
+        // should not set cpu count to zero
+        config =
+            InitActorSystemConfig(autoConfigWithoutCpuCount, 1, AvailableCores);
+        UNIT_ASSERT_VALUES_EQUAL(1, config.GetCpuCount());
+    }
+
+    Y_UNIT_TEST(ShouldNotSetCpuCountForManualActorSystemConfig)
+    {
+        const TString manualConfig = R"(
+            Executor {
+                Type: BASIC
+                Threads: 1
+                Name: "System"
+            }
+            Executor {
+                Type: BASIC
+                Threads: 1
+                Name: "User"
+            }
+            Executor {
+                Type: BASIC
+                Threads: 1
+                Name: "IC"
+            }
+        )";
+
+        const auto config = InitActorSystemConfig(manualConfig, 100, 4);
+
+        // YDB switches to auto config whenever CpuCount is present
+        UNIT_ASSERT(!config.HasCpuCount());
+        UNIT_ASSERT(!config.GetUseAutoConfig());
+        UNIT_ASSERT_VALUES_EQUAL(3, config.ExecutorSize());
+        for (const auto& executor: config.GetExecutor()) {
+            UNIT_ASSERT_VALUES_EQUAL(2, executor.GetThreads());
+        }
     }
 
     Y_UNIT_TEST(ShouldApplySystemTabletBackupPathRegardlessOfInitOrder)
