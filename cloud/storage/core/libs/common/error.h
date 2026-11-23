@@ -147,6 +147,8 @@ enum EWellKnownResultCodes: ui32
     E_BS_RESOURCE_EXHAUSTED      = MAKE_BLOCKSTORE_ERROR(4),
     E_BS_DISK_ALLOCATION_FAILED  = MAKE_BLOCKSTORE_ERROR(5),
     E_BS_MOUNT_CONFLICT          = MAKE_BLOCKSTORE_ERROR(6),
+    // Retry the control-plane operation with a bounded waiting policy.
+    E_BS_VOLUME_OPERATION_CONFLICT = MAKE_BLOCKSTORE_ERROR(7),
 
     E_FS_IO                      = MAKE_FILESTORE_ERROR(0),
     E_FS_PERM                    = MAKE_FILESTORE_ERROR(1),
