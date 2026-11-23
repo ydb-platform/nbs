@@ -111,25 +111,6 @@ class TPartitionActor final
         ui32 FreshBlobByteCount = 0;
     };
 
-    // Both kinds send CollectGarbage to the fresh channels. BlobStorage keeps a
-    // soft and a hard barrier per channel, and neither may decrease. A hard
-    // barrier deletes every blob at or below it, and a soft one spares the
-    // blobs with a Keep flag. See
-    // doc/blockstore/storage/selective_fresh_log_trim.md.
-    enum class ETrimFreshLogKind
-    {
-        // Nothing to trim yet.
-        None,
-        // A hard barrier on the fresh channels at TrimFreshLogToCommitId, the
-        // highest commit id below every live fresh blob. Every fresh blob at or
-        // below it is dead, so the barrier deletes all of them.
-        Ordinary,
-        // A soft barrier above TrimFreshLogToCommitId, below every in-flight
-        // fresh write, with Keep flags for the live blobs below it. Deletes
-        // dead blobs that an ordinary trim cannot reach yet.
-        Selective,
-    };
-
     static constexpr ui64 BootWakeupEventTag = 1;
 
     friend TFreshBlocksCompanionClient;

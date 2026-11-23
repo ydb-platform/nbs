@@ -316,9 +316,27 @@ private:
     ui64 EraseUnflushedFreshBlob(TUnflushedFreshBlobsByCommitId::iterator it);
 };
 
+// Both kinds send CollectGarbage to the fresh channels. BlobStorage keeps a
+// soft and a hard barrier per channel, and neither may decrease. A hard barrier
+// deletes every blob at or below it, and a soft one spares the blobs with a
+// Keep flag. See doc/blockstore/storage/selective_fresh_log_trim.md.
+enum class ETrimFreshLogKind
+{
+    // Nothing to trim yet.
+    None,
+    // A hard barrier on the fresh channels at TrimFreshLogToCommitId, the
+    // highest commit id below every live fresh blob. Every fresh blob at or
+    // below it is dead, so the barrier deletes all of them.
+    Ordinary,
+    // A soft barrier above TrimFreshLogToCommitId, below every in-flight fresh
+    // write, with Keep flags for the live blobs below it. Deletes dead blobs
+    // that an ordinary trim cannot reach yet.
+    Selective,
+};
+
 struct TTrimFreshLogStats
 {
-    TOperationState State;
+    TInstant LastCompletionTimestamp;
     ui64 SucceededCount = 0;
     ui64 FailedCount = 0;
     ui64 TrimmedByteCount = 0;
@@ -330,6 +348,9 @@ private:
     ui64 TabletID = 0;
 
     TOperationState TrimFreshLogState;
+    // None unless TrimFreshLogState is Started.
+    ETrimFreshLogKind StartedTrimKind = ETrimFreshLogKind::None;
+    ui64 StartedTrimToCommitId = 0;
     ui64 LastTrimFreshLogToCommitId = 0;
     TBackoffDelayProvider TrimFreshLogBackoffDelayProvider{
         TDuration::Zero(),
@@ -361,39 +382,52 @@ public:
         : TabletID(tabletID)
     {}
 
-    [[nodiscard]] TOperationState& AccessTrimFreshLogState()
-    {
-        return TrimFreshLogState;
-    }
-
     [[nodiscard]] const TOperationState& GetTrimFreshLogState() const
     {
         return TrimFreshLogState;
     }
+
+    // Started while a trim of this kind runs. Otherwise Idle since the last
+    // trim of this kind completed.
+    [[nodiscard]] TOperationState GetTrimFreshLogStateOfKind(
+        ETrimFreshLogKind kind) const;
+
+    [[nodiscard]] ETrimFreshLogKind GetStartedTrimFreshLogKind() const
+    {
+        return StartedTrimKind;
+    }
+
+    [[nodiscard]] const TTrimFreshLogStats& GetTrimFreshLogStats(
+        ETrimFreshLogKind kind) const;
+
+    void EnqueueTrimFreshLog(TInstant now)
+    {
+        Y_ABORT_UNLESS(TrimFreshLogState.Status == EOperationStatus::Idle);
+        TrimFreshLogState.SetStatus(EOperationStatus::Enqueued, now);
+    }
+
+    // For a request that found nothing to trim.
+    void SkipTrimFreshLog(TInstant now)
+    {
+        Y_ABORT_UNLESS(TrimFreshLogState.Status != EOperationStatus::Started);
+        TrimFreshLogState.SetStatus(EOperationStatus::Idle, now);
+    }
+
+    void StartTrimFreshLog(
+        ETrimFreshLogKind kind,
+        ui64 trimToCommitId,
+        TInstant now);
+
+    void CompleteTrimFreshLog(bool failed, ui64 trimmedByteCount, TInstant now);
 
     [[nodiscard]] TDuration GetTrimFreshLogBackoffDelay() const
     {
         return TrimFreshLogBackoffDelayProvider.GetDelay();
     }
 
-    void RegisterTrimFreshLogError()
-    {
-        TrimFreshLogBackoffDelayProvider.IncreaseDelay();
-    }
-
-    void RegisterTrimFreshLogSuccess()
-    {
-        TrimFreshLogBackoffDelayProvider.Reset();
-    }
-
     [[nodiscard]] ui64 GetLastTrimFreshLogToCommitId() const
     {
         return LastTrimFreshLogToCommitId;
-    }
-
-    void SetLastTrimFreshLogToCommitId(ui64 commitId)
-    {
-        LastTrimFreshLogToCommitId = commitId;
     }
 
     [[nodiscard]] bool IsOrdinaryTrimRequested() const
@@ -437,65 +471,6 @@ public:
             "Total dead byte count: " << totalDeadByteCount
                                       << ", threshold: " << threshold);
         NextSelectiveScanTotalDeadByteCount = totalDeadByteCount + threshold;
-    }
-
-    void StartSelectiveTrim(ui64 trimToCommitId)
-    {
-        Y_ABORT_UNLESS(TrimFreshLogState.Status != EOperationStatus::Started);
-        Y_ABORT_UNLESS(trimToCommitId >= LastSentSelectiveTrimToCommitId);
-        // Set before sending: a failed or timed-out command may still apply,
-        // so every later soft barrier must be at or above its value.
-        LastSentSelectiveTrimToCommitId = trimToCommitId;
-    }
-
-    void CompleteSelectiveTrim()
-    {
-        Y_ABORT_UNLESS(TrimFreshLogState.Status == EOperationStatus::Started);
-        KeptToCommitId = LastSentSelectiveTrimToCommitId;
-    }
-
-    void FailSelectiveTrim()
-    {
-        Y_ABORT_UNLESS(TrimFreshLogState.Status == EOperationStatus::Started);
-        // Keep LastSentSelectiveTrimToCommitId. The entries stay dead and
-        // untrimmed, so the next scan is due again. It resends Keep for live
-        // blobs in (KeptToCommitId, LastSentSelectiveTrimToCommitId] and
-        // DoNotKeep for dead ones.
-        NextSelectiveScanTotalDeadByteCount = 0;
-    }
-
-    void StartTrimFreshLog(bool selective, TInstant now)
-    {
-        TrimFreshLogState.SetStatus(EOperationStatus::Started, now);
-        auto& stats = selective ? SelectiveTrimStats : OrdinaryTrimStats;
-        stats.State.SetStatus(EOperationStatus::Started, now);
-    }
-
-    void CompleteTrimFreshLog(
-        bool selective,
-        bool failed,
-        ui64 trimmedByteCount,
-        TInstant now)
-    {
-        TrimFreshLogState.SetStatus(EOperationStatus::Idle, now);
-        auto& stats = selective ? SelectiveTrimStats : OrdinaryTrimStats;
-        stats.State.SetStatus(EOperationStatus::Idle, now);
-        if (failed) {
-            ++stats.FailedCount;
-            return;
-        }
-        ++stats.SucceededCount;
-        stats.TrimmedByteCount += trimmedByteCount;
-    }
-
-    [[nodiscard]] const TTrimFreshLogStats& GetOrdinaryTrimStats() const
-    {
-        return OrdinaryTrimStats;
-    }
-
-    [[nodiscard]] const TTrimFreshLogStats& GetSelectiveTrimStats() const
-    {
-        return SelectiveTrimStats;
     }
 };
 
