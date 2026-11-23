@@ -1090,7 +1090,7 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
             }
             f.Channel->Reply(1, std::move(response));
             UNIT_ASSERT_VALUES_EQUAL(
-                E_BADMSG,
+                E_REJECTED,
                 Wait(future).GetError().GetCode());
             UNIT_ASSERT(!f.Channel->Closing);
             f.Run(1);

@@ -94,8 +94,9 @@ NProto::TError TRequestTracker::CheckRunning() const
     return {};
 }
 
-void TRequestTracker::RequestStop()
+NThreading::TFuture<void> TRequestTracker::RequestStop()
 {
+    auto closed = Closed.GetFuture();
     auto state = State.load();
     while (state.Phase == EState::Running) {
         auto next = state;
@@ -106,15 +107,15 @@ void TRequestTracker::RequestStop()
 
                 Closed.SetValue();
             }
-            return;
+            break;
         }
     }
+    return closed;
 }
 
 void TRequestTracker::Stop()
 {
-    RequestStop();
-    Closed.GetFuture().GetValueSync();
+    RequestStop().GetValueSync();
 }
 
 }   // namespace NCloud::NBlockStore::NIcV2

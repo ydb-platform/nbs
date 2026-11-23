@@ -181,7 +181,7 @@ TResponse DecodeResponse(const TRequest& request, NActors::IEventHandle& handle)
         (!failed && event.GetPayload(0).GetSize() != bytes))
     {
         return TResponse(
-            TErrorResponse(E_BADMSG, "invalid IC V2 read payload"));
+            TErrorResponse(E_REJECTED, "invalid IC V2 read payload"));
     }
     if (!failed) {
         if (auto error =
@@ -215,17 +215,20 @@ public:
     void Start() override
     {}
 
-    void RequestStop() override
+    NThreading::TFuture<void> RequestStop() override
     {
-        Tracker->RequestStop();
-        Channel->Close();
+        const auto tracker = Tracker;
+        const auto channel = Channel;
+        const auto requestsClosed = tracker->RequestStop();
+        channel->Close();
+        return NThreading::WaitAll(
+            requestsClosed,
+            channel->WhenClosed().IgnoreResult());
     }
 
     void Stop() override
     {
-        RequestStop();
-        Tracker->Stop();
-        Channel->WhenClosed().GetValueSync();
+        RequestStop().GetValueSync();
     }
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override

@@ -59,7 +59,9 @@ public:
     explicit TRequestTracker(TDataConfig config);
     TResultOrError<std::shared_ptr<TReservation>> Acquire(ui64 bytes);
     NProto::TError CheckRunning() const;
-    void RequestStop();
+
+    // Release your reservations before waiting on the returned future.
+    NThreading::TFuture<void> RequestStop();
 
     // Waits for all reservations; do not call while holding one.
     void Stop();
