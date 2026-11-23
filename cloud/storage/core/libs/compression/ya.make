@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    blob_compression.cpp
     codec.cpp
 )
 
