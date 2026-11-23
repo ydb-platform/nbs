@@ -548,8 +548,7 @@ std::unique_ptr<TTabletStorageInfo> TTestEnv::BuildIndexTabletStorageInfo(
 
     for (ui32 channel = 0; channel < channelCount; ++channel) {
         x->Channels[channel].Channel = channel;
-        x->Channels[channel].Type =
-            TBlobStorageGroupType(Config.ChannelErasure);
+        x->Channels[channel].Type = TBlobStorageGroupType(BootGroupErasure);
         x->Channels[channel].History.resize(1);
         x->Channels[channel].History[0].FromGeneration = 0;
         x->Channels[channel].History[0].GroupID = 0;

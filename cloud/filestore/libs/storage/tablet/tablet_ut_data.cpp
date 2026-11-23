@@ -1386,6 +1386,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         TFileSystemConfig tabletConfig,
         TTestEnvConfig testEnvConfig,
         bool alignBlobSizeToVDiskSlotSize,
+        ui32 maxBlobSize,
         ui32 expectedBlobsCount)
     {
         const auto block = tabletConfig.BlockSize;
@@ -1396,6 +1397,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetCollectGarbageThreshold(1_GB);
         storageConfig.SetFlushBytesThreshold(1_GB);
         storageConfig.SetFlushThreshold(1_GB);
+        storageConfig.SetMaxBlobSize(maxBlobSize);
         storageConfig.SetAlignBlobSizeToVDiskSlotSize(
             alignBlobSizeToVDiskSlotSize);
 
@@ -1443,40 +1445,43 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
     TABLET_TEST_4K_ONLY(ShouldNotAlignCompactionBlobSizeToVDiskSlotByDefault)
     {
-        // block-4-2: 1024 x 4KiB blocks => 1MiB parts => 11% of the VDisk
-        // slot is wasted but the feature is off => a single 4MiB blob
-        testEnvConfig.ChannelErasure =
-            TBlobStorageGroupType::Erasure4Plus2Block;
+        // 1024 x 4KiB blocks => the parts of the blob in a block-4-2 group
+        // are 1MiB => 11% of the VDisk slot is wasted but the feature is off
+        // => a single 4MiB blob
         DoTestCompactionBlobSizeAlignment(
             tabletConfig,
             testEnvConfig,
             false,  // alignBlobSizeToVDiskSlotSize
+            4_MB,   // maxBlobSize
             1);
     }
 
     TABLET_TEST_4K_ONLY(ShouldAlignCompactionBlobSizeToVDiskSlotSize)
     {
-        // block-4-2: the largest blob whose parts (+5 bytes of header) fit
-        // into the 1023.9KiB slot is 1023 blocks => 1023 + 1 blocks
-        testEnvConfig.ChannelErasure =
-            TBlobStorageGroupType::Erasure4Plus2Block;
+        // The part size is always calculated for block-4-2 groups (the groups
+        // of the test tablet are ErasureNone). The largest blob whose parts
+        // (+5 bytes of header) fit into the 1023.9KiB slot is 1023 blocks =>
+        // 1023 + 1 blocks.
         DoTestCompactionBlobSizeAlignment(
             tabletConfig,
             testEnvConfig,
             true,   // alignBlobSizeToVDiskSlotSize
+            4_MB,   // maxBlobSize
             2);
     }
 
-    TABLET_TEST_4K_ONLY(ShouldKeepCompactionBlobSizeIfVDiskSlotPaddingIsSmall)
+    TABLET_TEST_4K_ONLY(ShouldAlignSmallCompactionBlobSizeToVDiskSlotSize)
     {
-        // ErasureNone (and mirror-3-dc): 4MiB parts waste only 1.4% of the
-        // 4155KiB slot => a single 4MiB blob
-        testEnvConfig.ChannelErasure = TBlobStorageGroupType::ErasureNone;
+        // 1MiB blobs: the parts of a 256-block blob are 256KiB + 5 bytes
+        // which occupy the 277.8KiB slot wasting 7.9% of it, the largest blob
+        // whose parts fit into the 246.1KiB slot is 246 blocks =>
+        // 4 x 246 + 40 blocks
         DoTestCompactionBlobSizeAlignment(
             tabletConfig,
             testEnvConfig,
             true,   // alignBlobSizeToVDiskSlotSize
-            1);
+            1_MB,   // maxBlobSize
+            5);
     }
 
     TABLET_TEST_4K_ONLY(ShouldAlignFlushBlobSizeToVDiskSlotSize)
@@ -1492,8 +1497,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         storageConfig.SetWriteBlobThreshold(1_GB);  // no direct blob writes
         storageConfig.SetAlignBlobSizeToVDiskSlotSize(true);
 
-        testEnvConfig.ChannelErasure =
-            TBlobStorageGroupType::Erasure4Plus2Block;
         TTestEnv env(testEnvConfig, std::move(storageConfig));
 
         ui32 nodeIdx = env.AddDynamicNode();

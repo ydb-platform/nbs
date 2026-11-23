@@ -13,6 +13,7 @@
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
 
+#include <contrib/ydb/core/base/blobstorage_grouptype.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 
@@ -895,24 +896,6 @@ ui32 TIndexTabletActor::ScaleCompactionThreshold(ui32 t) const
     return Min<ui64>(Max<ui32>(), factor * t);
 }
 
-NKikimr::TBlobStorageGroupType
-TIndexTabletActor::GetDataChannelGroupType() const
-{
-    // Hive fills TTabletChannelInfo::Type with the erasure of the group that
-    // is bound to the channel. All data channels of a tablet share the same
-    // storage pool kind (and thus the same erasure) so the first one is as
-    // good as any other. ErasureNone (part == blob) is a safe fallback for
-    // tablets without data channels (they can't write blobs anyway).
-    for (const ui32 channel: GetChannels(EChannelDataKind::Mixed)) {
-        if (const auto* info = Info()->ChannelInfo(channel)) {
-            return info->Type;
-        }
-    }
-
-    return NKikimr::TBlobStorageGroupType(
-        NKikimr::TBlobStorageGroupType::ErasureNone);
-}
-
 ui32 TIndexTabletActor::GetMaxBlocksInBlob() const
 {
     const ui32 maxBlocksInBlob =
@@ -926,11 +909,20 @@ ui32 TIndexTabletActor::GetMaxBlocksInBlob() const
     // depends on the constants only).
     static const TVDiskHugeSlots VDiskHugeSlots;
 
+    // The part size is calculated for block-4-2 groups whatever the erasure
+    // of the groups of the data channels is. The tablet doesn't know the real
+    // one: Hive leaves TTabletChannelInfo::Type at ErasureNone for the
+    // channels which are bound to storage pools. The erasure is used for
+    // nothing but the choice of the blob size, so the groups with another
+    // erasure just don't benefit from it (e.g. 4MiB blobs of 4KiB blocks in a
+    // mirror-3-dc group: 1.4% of the slot is wasted before and 1.5% after).
+    //
     // The tablet writes blobs with CrcModeNone (see MakeBlobId).
-    const auto groupType = GetDataChannelGroupType();
-    const auto calculatePartSize = [&groupType] (ui64 blobSize) {
-        return groupType.MaxPartSize(
-            NKikimr::TErasureType::CrcModeNone,
+    static const TBlobStorageGroupType AssumedGroupType(
+        TBlobStorageGroupType::Erasure4Plus2Block);
+    const auto calculatePartSize = [] (ui64 blobSize) {
+        return AssumedGroupType.MaxPartSize(
+            TErasureType::CrcModeNone,
             static_cast<ui32>(blobSize));
     };
 

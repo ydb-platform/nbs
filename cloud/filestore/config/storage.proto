@@ -1039,7 +1039,9 @@ message TStorageConfig
 
     // If set to true, the number of blocks per blob written by Flush,
     // FlushBytes and Compaction (MaxBlobSize-based) is reduced so that the
-    // parts of the blobs fit their VDisk huge blob slots tightly. E.g. the
+    // parts of the blobs fit their VDisk huge blob slots tightly. The part
+    // size is calculated for block-4-2 groups whatever the erasure of the
+    // groups of the file system is. E.g. the
     // parts of a 4MiB blob in a block-4-2 group are 1MiB + 5 bytes of header
     // which don't fit into the 1023.9KiB slot and occupy the 1150.9KiB one
     // wasting ~11% of space, whereas a 4MiB - 4KiB blob fits perfectly.
