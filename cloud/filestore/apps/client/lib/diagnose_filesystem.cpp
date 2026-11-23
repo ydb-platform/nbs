@@ -3,14 +3,9 @@
 #include "latency_normalization.h"
 
 #include <cloud/filestore/libs/diagnostics/aggregate.h>
-#include <cloud/filestore/libs/diagnostics/latency_normalization.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <library/cpp/json/json_writer.h>
-
-#include <util/generic/hash.h>
-
-#include <google/protobuf/util/json_util.h>
 
 #include <util/generic/hash.h>
 
@@ -70,68 +65,6 @@ private:
     };
 
     struct TLatencyRow
-    {
-        TString NodeId;
-        TString ShardId;
-        TString RequestType;
-        TString NodeType;
-        TLatency Data;
-
-        enum ELabelIndex
-        {
-            NODE_ID_LABEL,
-            SHARD_ID_LABEL,
-            REQUEST_TYPE_LABEL,
-            NODE_TYPE_LABEL,
-            LABEL_COUNT,
-        };
-
-        NAggregation::TRow<TLatency> ToAggregationRow() const
-        {
-            NAggregation::TRow<TLatency> row;
-            row.Labels.resize(LABEL_COUNT);
-            row.Labels[NODE_ID_LABEL] = NodeId;
-            row.Labels[SHARD_ID_LABEL] = ShardId;
-            row.Labels[REQUEST_TYPE_LABEL] = RequestType;
-            row.Labels[NODE_TYPE_LABEL] = NodeType;
-            row.Data = Data;
-            return row;
-        }
-
-        static TLatencyRow FromAggregationResult(
-            NAggregation::TResult<TLatency> result)
-        {
-            Y_ABORT_UNLESS(result.Labels.size() == LABEL_COUNT);
-            TLatencyRow row;
-            row.NodeId = std::move(result.Labels[NODE_ID_LABEL]);
-            row.ShardId = std::move(result.Labels[SHARD_ID_LABEL]);
-            row.RequestType = std::move(result.Labels[REQUEST_TYPE_LABEL]);
-            row.NodeType = std::move(result.Labels[NODE_TYPE_LABEL]);
-            row.Data = result.GroupAggregate;
-            return row;
-        }
-    };
-
-    static TVector<TLatencyRow> AggregateLatencyStats(
-        const TVector<TLatencyRow>& rows)
-    {
-        TVector<NAggregation::TRow<TLatency>> aggregationRows;
-        aggregationRows.reserve(rows.size());
-        for (const auto& row: rows) {
-            aggregationRows.push_back(row.ToAggregationRow());
-        }
-
-        auto aggregates = NAggregation::Aggregate(aggregationRows);
-        TVector<TLatencyRow> result;
-        result.reserve(aggregates.size());
-        for (auto& aggregate: aggregates) {
-            result.push_back(
-                TLatencyRow::FromAggregationResult(std::move(aggregate)));
-        }
-        return result;
-    }
-
-    static TString NodeTypeToString(ui32 type)
     {
         TString NodeId;
         TString ShardId;
