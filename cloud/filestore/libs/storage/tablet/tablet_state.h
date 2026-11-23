@@ -1034,10 +1034,11 @@ public:
         const NProto::TSessionOptions& sessionOptions);
 
     // Makes the subsessions of the session the same as in the info - even
-    // if the info has none of them. Unlike SyncSession it neither creates
-    // nor activates the session. Used before processing ResetSession and
-    // DestroySession of the main tablet: the result of such a request
-    // depends on the subsessions. Returns false if there's no such session.
+    // if the info has none of them. Unlike SyncSession it doesn't create the
+    // session. A session which gets subsessions this way becomes active.
+    // Used before processing ResetSession and DestroySession of the main
+    // tablet: the result of such a request depends on the subsessions.
+    // Returns false if there's no such session.
     bool SyncSubSessions(
         IIndexTabletDatabase& db,
         const NProtoPrivate::TShardSessionInfo& info);

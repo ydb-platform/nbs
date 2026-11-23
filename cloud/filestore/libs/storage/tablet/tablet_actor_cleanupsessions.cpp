@@ -1044,10 +1044,14 @@ void TIndexTabletActor::HandleSyncSessions(
             FullSyncSessionsRequested = true;
         }
 
-        using TResponse = TEvIndexTabletPrivate::TEvSyncSessionsResponse;
-        auto response = std::make_unique<TResponse>(
-            MakeError(S_ALREADY, "sync is in progress"));
-        NCloud::Reply(ctx, *ev, std::move(response));
+        // an urgent sync is requested by the tablet itself (see
+        // ScheduleUrgentSyncSessions) - there is no one to reply to
+        if (ev->Sender != ctx.SelfID) {
+            using TResponse = TEvIndexTabletPrivate::TEvSyncSessionsResponse;
+            auto response = std::make_unique<TResponse>(
+                MakeError(S_ALREADY, "sync is in progress"));
+            NCloud::Reply(ctx, *ev, std::move(response));
+        }
         return;
     }
 

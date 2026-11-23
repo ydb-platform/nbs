@@ -157,15 +157,26 @@ struct TShardSessionsSyncController
     TTestEnv& Env;
     const ui32 NodeIdx;
     const TActorId MainTabletActorId;
+    // the rounds which are run by SyncSessions are requested by this actor
+    const TActorId Sender;
 
     // The shard which the sync is not able to reach: a request which the
     // sync sends to it gets an error instead of being delivered.
     TString UnavailableShardId;
-    // the number of completed rounds
-    ui32 SyncsCompleted = 0;
+    // The rounds are numbered in the order in which they are started (the
+    // first one is 1), whatever starts them: a timer, a request of a client
+    // or SyncSessions. These are the number of the round which has been
+    // started last and the number of the round which has been completed
+    // last.
+    ui32 RoundsStarted = 0;
+    ui32 LastCompletedRound = 0;
     // shard id -> the number of requests sent to the shard by the sync
     THashMap<TString, ui32> DescribeRequests;
     THashMap<TString, ui32> SyncRequests;
+    // Lets a test look at the events as well: it's called for each event
+    // which is sent by any of the actors - before the controller does
+    // anything about the event.
+    std::function<void(IEventHandle&)> OnEvent;
 
     TShardSessionsSyncController(
             TTestEnv& env,
@@ -174,57 +185,124 @@ struct TShardSessionsSyncController
         : Env(env)
         , NodeIdx(nodeIdx)
         , MainTabletActorId(mainTabletActorId)
+        , Sender(env.GetRuntime().AllocateEdgeActor(nodeIdx))
     {
-        Env.GetRuntime().SetEventFilter(
+        PrevFilter = Env.GetRuntime().SetEventFilter(
             [this] (auto& runtime, TAutoPtr<IEventHandle>& event) {
                 Y_UNUSED(runtime);
                 return FilterEvent(event);
             });
     }
 
-    // Returns as soon as the sync actor sends the completion of the round to
-    // the tablet. NOTE: the tablet hasn't handled it by that moment - it does
-    // it when the events get dispatched once again.
-    void WaitForSync(ui32 prevSyncsCompleted)
+    ~TShardSessionsSyncController()
+    {
+        // the events which are sent after that (e.g. while the test
+        // environment is being destroyed) don't get to the controller
+        Env.GetRuntime().SetEventFilter(PrevFilter);
+    }
+
+    // Waits for the completion of a round which has been started after the
+    // moment when RoundsStarted had the given value: a round which was
+    // already running at that moment doesn't count. Returns as soon as the
+    // sync actor sends the completion to the tablet. NOTE: the tablet hasn't
+    // handled it by that moment - it does it when the events get dispatched
+    // once again.
+    void WaitForSync(ui32 roundsStarted)
     {
         TDispatchOptions options;
         options.CustomFinalCondition = [&] {
-            return SyncsCompleted > prevSyncsCompleted;
+            return LastCompletedRound > roundsStarted;
         };
         Env.GetRuntime().DispatchEvents(options);
     }
 
-    // Runs a round of the sync. An out-of-schedule round is what a change of
+    // Runs a round of the sync and returns upon its completion: the tablet
+    // has handled the completion by that moment. A round which was already
+    // running doesn't count. An out-of-schedule round is what a change of
     // the sessions triggers, the other one is the same thing as a round
     // which is run on the regular schedule.
     void SyncSessions(bool outOfSchedule = false)
     {
-        const ui32 prevSyncsCompleted = SyncsCompleted;
-
         using TRequest = TEvIndexTabletPrivate::TEvSyncSessionsRequest;
-        auto request = std::make_unique<TRequest>();
-        request->OutOfSchedule = outOfSchedule;
+        using TResponse = TEvIndexTabletPrivate::TEvSyncSessionsResponse;
 
-        // The request is put into the mailbox of the tablet. Send() would
-        // make the tablet handle it right inside the call - before the
-        // completion of the previous round, which may be still waiting in
-        // that mailbox (see WaitForSync). The tablet would think that the
-        // previous round is still running and wouldn't start a new one.
-        Env.GetRuntime().SendAsync(
-            new IEventHandle(
-                MainTabletActorId, // recipient
-                TActorId(), // sender
-                request.release(),
-                0, // flags
-                0),
-            NodeIdx);
+        const ui32 maxAttempts = 10;
+        for (ui32 attempt = 0; attempt < maxAttempts; ++attempt) {
+            auto request = std::make_unique<TRequest>();
+            request->OutOfSchedule = outOfSchedule;
 
-        WaitForSync(prevSyncsCompleted);
+            // The request is put into the mailbox of the tablet. Send() would
+            // make the tablet handle it right inside the call - before the
+            // completion of the previous round, which may be still waiting
+            // in that mailbox (see WaitForSync). The tablet would think that
+            // the previous round is still running and wouldn't start a new
+            // one.
+            Env.GetRuntime().SendAsync(
+                new IEventHandle(
+                    MainTabletActorId, // recipient
+                    Sender,
+                    request.release(),
+                    0, // flags
+                    0),
+                NodeIdx);
+
+            // The round which is started by the request replies upon its
+            // completion, right after it notifies the tablet. All the events
+            // which can be dispatched are dispatched before the response
+            // gets here, so the tablet has handled the completion.
+            auto response =
+                Env.GetRuntime().GrabEdgeEventRethrow<TResponse>(Sender);
+            if (response->Get()->GetStatus() != S_ALREADY) {
+                return;
+            }
+
+            // The tablet hasn't started a round: another one (started by a
+            // timer or by a request of a client) is running. Its completion
+            // is not what the caller is waiting for: that round might have
+            // been started before the things which the caller wants the
+            // shards to get happened. Trying again after its completion.
+            WaitForRunningRounds();
+        }
+
+        UNIT_FAIL("unable to start a round of the shard sessions sync");
     }
 
 private:
+    TTestActorRuntimeBase::TEventFilter PrevFilter;
+    // the actor which runs a round -> the number of the round
+    THashMap<TActorId, ui32> Rounds;
+
+    // Each round is run by an actor of its own, so the first event which
+    // such an actor sends is the start of a round.
+    ui32 OnRoundEvent(const TActorId& syncActorId)
+    {
+        const auto [it, inserted] =
+            Rounds.emplace(syncActorId, RoundsStarted + 1);
+        if (inserted) {
+            ++RoundsStarted;
+        }
+
+        return it->second;
+    }
+
+    // Waits for the completion of the rounds which have been started by now.
+    void WaitForRunningRounds()
+    {
+        const ui32 roundsStarted = RoundsStarted;
+
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&] {
+            return LastCompletedRound >= roundsStarted;
+        };
+        Env.GetRuntime().DispatchEvents(options);
+    }
+
     bool FilterEvent(TAutoPtr<IEventHandle>& event)
     {
+        if (OnEvent) {
+            OnEvent(*event);
+        }
+
         switch (event->GetTypeRewrite()) {
             case TEvIndexTablet::EvDescribeShardSessionsRequest: {
                 return OnRequestToShard<
@@ -240,8 +318,12 @@ private:
                         event,
                         SyncRequests);
             }
+            case TEvIndexTabletPrivate::EvBuildShardSessionsDiffRequest: {
+                OnRoundEvent(event->Sender);
+                break;
+            }
             case TEvIndexTabletPrivate::EvSyncSessionsCompleted: {
-                ++SyncsCompleted;
+                LastCompletedRound = OnRoundEvent(event->Sender);
                 break;
             }
         }
@@ -261,6 +343,8 @@ private:
             // it has already been seen here - when the sync sent it.
             return false;
         }
+
+        OnRoundEvent(event->Sender);
 
         const auto* msg = event->Get<TRequest>();
         const TString shardId = msg->Record.GetFileSystemId();
@@ -1258,55 +1342,24 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST(ShouldSyncShardSessionsInBatches)
     {
         config.SetLazyShardSessionCreationEnabled(true);
+        // the syncs which are not caused by DestroySession are triggered
+        // manually in this test
+        config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
 
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
-        ui32 syncShardSessionsRequests = 0;
-        ui32 syncsCompleted = 0;
-
-        env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvIndexTablet::EvSyncShardSessionsRequest: {
-                        ++syncShardSessionsRequests;
-                        break;
-                    }
-                    case TEvIndexTabletPrivate::EvSyncSessionsCompleted: {
-                        ++syncsCompleted;
-                        break;
-                    }
-                }
-                return false;
-            });
-
-        auto syncSessions = [&] () {
-            const ui32 prevSyncsCompleted = syncsCompleted;
-
-            using TRequest = TEvIndexTabletPrivate::TEvSyncSessionsRequest;
-            env.GetRuntime().Send(
-                new IEventHandle(
-                    fsInfo.MainTabletActorId, // recipient
-                    TActorId(), // sender
-                    new TRequest(),
-                    0, // flags
-                    0),
-                nodeIdx);
-
-            TDispatchOptions options;
-            options.CustomFinalCondition = [&] {
-                return syncsCompleted > prevSyncsCompleted;
-            };
-            env.GetRuntime().DispatchEvents(options);
-        };
+        TShardSessionsSyncController sync(
+            env,
+            nodeIdx,
+            fsInfo.MainTabletActorId);
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
         auto headers1 = headers;
         headers1.FileSystemId = fsConfig.Shard1Id;
 
         // all the shards should have the session after the sync
-        syncSessions();
+        sync.SyncSessions();
 
         for (const auto& shardId: fsConfig.ShardIds()) {
             const auto response = DescribeSessions(service, shardId);
@@ -1321,10 +1374,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
 
         // there should be nothing to do for the next sync
-        syncShardSessionsRequests = 0;
-        syncSessions();
+        sync.SyncRequests.clear();
+        sync.SyncSessions();
 
-        UNIT_ASSERT_VALUES_EQUAL(0, syncShardSessionsRequests);
+        UNIT_ASSERT_VALUES_EQUAL(0, sync.SyncRequests.size());
 
         // a session which is unknown to the main tablet appears in one of
         // the shards
@@ -1354,12 +1407,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         // the sync should recover the session which belongs to the main
         // tablet and should destroy the stale one
-        syncShardSessionsRequests = 0;
-        syncSessions();
+        sync.SyncSessions();
 
-        UNIT_ASSERT_C(
-            syncShardSessionsRequests > 0,
-            syncShardSessionsRequests);
+        UNIT_ASSERT(sync.SyncRequests.contains(fsConfig.Shard1Id));
 
         for (const auto& shardId: fsConfig.ShardIds()) {
             const auto response = DescribeSessions(service, shardId);
@@ -1417,52 +1467,25 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
+        TShardSessionsSyncController sync(
+            env,
+            nodeIdx,
+            fsInfo.MainTabletActorId);
+
         ui32 createSessionRequestsToShards = 0;
-        ui32 syncShardSessionsRequests = 0;
-        ui32 syncsCompleted = 0;
 
-        env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvIndexTablet::EvCreateSessionRequest: {
-                        const auto* msg = event->Get<
-                            TEvIndexTablet::TEvCreateSessionRequest>();
-                        if (msg->Record.GetFileSystemId() != fsConfig.FsId) {
-                            ++createSessionRequestsToShards;
-                        }
-                        break;
-                    }
-                    case TEvIndexTablet::EvSyncShardSessionsRequest: {
-                        ++syncShardSessionsRequests;
-                        break;
-                    }
-                    case TEvIndexTabletPrivate::EvSyncSessionsCompleted: {
-                        ++syncsCompleted;
-                        break;
-                    }
-                }
-                return false;
-            });
+        sync.OnEvent = [&] (IEventHandle& event) {
+            if (event.GetTypeRewrite()
+                    != TEvIndexTablet::EvCreateSessionRequest)
+            {
+                return;
+            }
 
-        auto syncSessions = [&] () {
-            const ui32 prevSyncsCompleted = syncsCompleted;
-
-            using TRequest = TEvIndexTabletPrivate::TEvSyncSessionsRequest;
-            env.GetRuntime().Send(
-                new IEventHandle(
-                    fsInfo.MainTabletActorId, // recipient
-                    TActorId(), // sender
-                    new TRequest(),
-                    0, // flags
-                    0),
-                nodeIdx);
-
-            TDispatchOptions options;
-            options.CustomFinalCondition = [&] {
-                return syncsCompleted > prevSyncsCompleted;
-            };
-            env.GetRuntime().DispatchEvents(options);
+            const auto* msg =
+                event.Get<TEvIndexTablet::TEvCreateSessionRequest>();
+            if (msg->Record.GetFileSystemId() != fsConfig.FsId) {
+                ++createSessionRequestsToShards;
+            }
         };
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
@@ -1470,7 +1493,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // the session should be created only in the main tablet - the
         // shards are not affected by the CreateSession requests of the clients
         UNIT_ASSERT_VALUES_EQUAL(0, createSessionRequestsToShards);
-        UNIT_ASSERT_VALUES_EQUAL(0, syncShardSessionsRequests);
+        UNIT_ASSERT_VALUES_EQUAL(0, sync.SyncRequests.size());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             DescribeSessions(service, fsConfig.FsId).SessionsSize());
@@ -1481,14 +1504,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
 
         // the sync should send the session to all the shards
-        syncSessions();
+        sync.SyncSessions();
 
         UNIT_ASSERT_VALUES_EQUAL(0, createSessionRequestsToShards);
-        UNIT_ASSERT_C(
-            syncShardSessionsRequests > 0,
-            syncShardSessionsRequests);
 
         for (const auto& shardId: fsConfig.ShardIds()) {
+            UNIT_ASSERT_C(sync.SyncRequests.contains(shardId), shardId);
+
             const auto response = DescribeSessions(service, shardId);
             UNIT_ASSERT_VALUES_EQUAL(1, response.SessionsSize());
 
@@ -1501,11 +1523,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
 
         // there should be nothing to do for the next sync
-        syncShardSessionsRequests = 0;
-        syncSessions();
+        sync.SyncRequests.clear();
+        sync.SyncSessions();
 
         UNIT_ASSERT_VALUES_EQUAL(0, createSessionRequestsToShards);
-        UNIT_ASSERT_VALUES_EQUAL(0, syncShardSessionsRequests);
+        UNIT_ASSERT_VALUES_EQUAL(0, sync.SyncRequests.size());
 
         // the sessions created by the sync should be usable
         auto headers1 = headers;
@@ -1538,11 +1560,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // and should be destroyed together with the session of the main
         // tablet: DestroySession is completed after the sync which destroys
         // the session in the shards
-        syncShardSessionsRequests = 0;
         service.DestroySession(headers);
-        UNIT_ASSERT_C(
-            syncShardSessionsRequests > 0,
-            syncShardSessionsRequests);
+        for (const auto& shardId: fsConfig.ShardIds()) {
+            UNIT_ASSERT_C(sync.SyncRequests.contains(shardId), shardId);
+        }
 
         for (const auto& id: fsConfig.MainAndShardIds()) {
             UNIT_ASSERT_VALUES_EQUAL(
@@ -1835,9 +1856,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         sync.UnavailableShardId = fsConfig.Shard2Id;
 
         {
-            const ui32 prevSyncsCompleted = sync.SyncsCompleted;
+            const ui32 roundsStarted = sync.RoundsStarted;
             service.SendDestroySessionRequest(headers);
-            sync.WaitForSync(prevSyncsCompleted);
+            sync.WaitForSync(roundsStarted);
         }
 
         // The first shard has destroyed the session. The main tablet has
@@ -2006,9 +2027,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         sync.UnavailableShardId = fsConfig.Shard2Id;
 
         {
-            const ui32 prevSyncsCompleted = sync.SyncsCompleted;
+            const ui32 roundsStarted = sync.RoundsStarted;
             service.SendDestroySessionRequest(headers);
-            sync.WaitForSync(prevSyncsCompleted);
+            sync.WaitForSync(roundsStarted);
         }
 
         UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.Shard1Id));
@@ -2084,9 +2105,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         sync.UnavailableShardId = fsConfig.Shard2Id;
 
         {
-            const ui32 prevSyncsCompleted = sync.SyncsCompleted;
+            const ui32 roundsStarted = sync.RoundsStarted;
             service.SendResetSessionRequest(headers, "state");
-            sync.WaitForSync(prevSyncsCompleted);
+            sync.WaitForSync(roundsStarted);
         }
 
         // nothing has happened to the session itself
@@ -2116,6 +2137,98 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         for (const auto& id: fsConfig.MainAndShardIds()) {
             UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(id));
         }
+    }
+
+    SERVICE_TEST(ShouldNotReplyToUrgentSyncSessionsRequestIfSyncIsInProgress)
+    {
+        config.SetLazyShardSessionCreationEnabled(true);
+        config.SetShardSessionRecoveryOnDemandEnabled(true);
+        // the syncs which are not caused by DestroySession are triggered
+        // manually in this test
+        config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        TShardSessionsSyncController sync(
+            env,
+            nodeIdx,
+            fsInfo.MainTabletActorId);
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        // the session gets to both shards
+        sync.SyncSessions();
+
+        using TRequest = TEvIndexTabletPrivate::TEvSyncSessionsRequest;
+        using TResponse = TEvIndexTabletPrivate::TEvSyncSessionsResponse;
+
+        // Stands for a timer of the main tablet: the request which is sent
+        // on its behalf is the one which the tablet schedules upon a change
+        // of the sessions.
+        const auto timer = env.GetRuntime().AllocateEdgeActor(nodeIdx);
+        ui32 urgentRequests = 0;
+        ui32 responsesToTablet = 0;
+
+        sync.OnEvent = [&] (IEventHandle& event) {
+            switch (event.GetTypeRewrite()) {
+                case TEvIndexTabletPrivate::EvSyncSessionsRequest: {
+                    if (!event.Get<TRequest>()->Urgent) {
+                        break;
+                    }
+
+                    // DestroySession can't wait for a timer, so the tablet
+                    // is sending itself a request to start a round right
+                    // away. A request of a round which is started by a timer
+                    // gets ahead of that one: the tablet starts a round upon
+                    // it and can't start one more upon its own request.
+                    if (urgentRequests++ == 0) {
+                        auto request = std::make_unique<TRequest>();
+                        request->OutOfSchedule = true;
+                        env.GetRuntime().SendAsync(
+                            new IEventHandle(
+                                fsInfo.MainTabletActorId, // recipient
+                                timer, // sender
+                                request.release(),
+                                0, // flags
+                                0),
+                            nodeIdx);
+                    }
+                    break;
+                }
+                case TEvIndexTabletPrivate::EvSyncSessionsResponse: {
+                    if (event.Recipient == fsInfo.MainTabletActorId) {
+                        ++responsesToTablet;
+                    }
+                    break;
+                }
+            }
+        };
+
+        service.DestroySession(headers);
+
+        UNIT_ASSERT_C(urgentRequests > 0, urgentRequests);
+
+        // the request which got ahead has started the round, that round has
+        // delivered DestroySession to the shards
+        {
+            auto response =
+                env.GetRuntime().GrabEdgeEventRethrow<TResponse>(timer);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->Get()->GetStatus(),
+                response->Get()->GetErrorReason());
+        }
+
+        for (const auto& id: fsConfig.MainAndShardIds()) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                DescribeSessions(service, id).SessionsSize());
+        }
+
+        // The tablet has turned its own request down without replying to
+        // it: it doesn't expect a response from itself.
+        UNIT_ASSERT_VALUES_EQUAL(0, responsesToTablet);
     }
 
     SERVICE_TEST(ShouldCreateNodeInShardViaLeader)

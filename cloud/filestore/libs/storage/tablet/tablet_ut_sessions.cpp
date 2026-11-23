@@ -2536,6 +2536,81 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         UNIT_ASSERT_VALUES_EQUAL("", describeSessions());
     }
 
+    Y_UNIT_TEST(ShardShouldActivateSessionWhichGetsSubSessionsWithRequest)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        const ui32 shardNo = 1;
+        const TString mainFsId = "main_fs";
+        const TString shardId = TStringBuilder() << mainFsId << "_s" << shardNo;
+        tablet.ConfigureAsShard(shardNo, mainFsId, shardId);
+
+        NProtoPrivate::TShardSessionInfo info;
+        info.SetClientId("client");
+        info.SetSessionId("session");
+        info.SetMaxSeqNo(1);
+        info.SetMaxRwSeqNo(1);
+        info.AddSubSessions()->SetSeqNo(1);
+
+        tablet.SyncShardSessions(
+            TVector<NProtoPrivate::TShardSessionInfo>{info});
+
+        const ui64 id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "file"));
+
+        auto isOrphan = [&] () {
+            const auto response = tablet.DescribeSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.SessionsSize());
+            return response->Record.GetSessions(0).GetIsOrphan();
+        };
+
+        auto subSessionCount = [&] () {
+            const auto response = tablet.DescribeShardSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.SessionsSize());
+            return response->Record.GetSessions(0).SubSessionsSize();
+        };
+
+        UNIT_ASSERT(!isOrphan());
+        UNIT_ASSERT_VALUES_EQUAL(1, subSessionCount());
+
+        // the session becomes orphan after the restart: it will be destroyed
+        // as an idle one unless it gets recovered
+        tablet.RebootTablet();
+
+        UNIT_ASSERT(isOrphan());
+        UNIT_ASSERT_VALUES_EQUAL(0, subSessionCount());
+
+        // ResetSession of the main tablet comes with the session - not via
+        // Sessions, so this request is what brings the subsessions back
+        NProtoPrivate::TShardSessionRequest resetRequest;
+        resetRequest.SetSessionId("session");
+        resetRequest.SetSessionSeqNo(1);
+        *resetRequest.MutableSession() = info;
+
+        tablet.SyncShardSessions(
+            TVector<NProtoPrivate::TShardSessionInfo>{},
+            TVector<NProtoPrivate::TShardSessionRequest>{resetRequest});
+
+        // the session can be used again, so it should be active as well
+        UNIT_ASSERT(!isOrphan());
+        UNIT_ASSERT_VALUES_EQUAL(1, subSessionCount());
+
+        tablet.SetHeaders("client", "session", 1);
+        const ui64 handle = CreateHandle(tablet, id);
+
+        // the session and its handle survive the cleanup of idle sessions
+        tablet.AdvanceTime(TDuration::Hours(2));
+        tablet.CleanupSessions();
+
+        UNIT_ASSERT(!isOrphan());
+        tablet.WriteData(handle, 0, 4_KB, 'a');
+    }
+
     Y_UNIT_TEST(ShardShouldReportAndCancelSessionRecoveries)
     {
         NProto::TStorageConfig storageConfig;

@@ -616,9 +616,14 @@ TIndexTabletState::DescribeShardSessions() const
         infos.push_back(MakeShardSessionInfo(session));
     }
 
-    // the orphan sessions are described as the ones without subsessions
+    // An orphan session is going to be destroyed upon its InactivityDeadline
+    // unless it gets recovered. So it's described as a session which is not
+    // active (the one without subsessions) whatever subsessions it has: the
+    // tablet which compares it with its own session should recover it.
     for (const auto& session: Impl->OrphanSessions) {
-        infos.push_back(MakeShardSessionInfo(session));
+        auto info = MakeShardSessionInfo(session);
+        info.ClearSubSessions();
+        infos.push_back(std::move(info));
     }
 
     return infos;
@@ -820,6 +825,22 @@ bool TIndexTabletState::SyncSubSessions(
 
     if (ReplaceSubSessions(*session, info, GetGeneration())) {
         db.WriteSession(*session);
+    }
+
+    if (session->IsValid()) {
+        //
+        // The session can be used now, so it should be active as well. If it
+        // was orphan (e.g. this tablet has been restarted), it would be
+        // destroyed upon its InactivityDeadline otherwise, and no one would
+        // recover it: its subsessions are the same as in the main tablet.
+        //
+        // A session which has lost its subsessions is left where it is: the
+        // main tablet either destroys it or recovers it later.
+        //
+
+        session->InactivityDeadline = {};
+        session->Unlink();
+        Impl->Sessions.PushBack(session);
     }
 
     return true;
