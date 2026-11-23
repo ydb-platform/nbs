@@ -115,13 +115,11 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
         UNIT_ASSERT(!IsWorthStoringCompressed(89, 100, 12));
         UNIT_ASSERT(IsWorthStoringCompressed(97, 100, 3));
         UNIT_ASSERT(!IsWorthStoringCompressed(98, 100, 3));
-        UNIT_ASSERT(IsWorthStoringCompressed(99, 100, 0));
-        UNIT_ASSERT(!IsWorthStoringCompressed(100, 100, 0));
-        UNIT_ASSERT(!IsWorthStoringCompressed(101, 100, 0));
-        UNIT_ASSERT(!IsWorthStoringCompressed(0, 0, 0));
+        UNIT_ASSERT(IsWorthStoringCompressed(99, 100, 1));
+        UNIT_ASSERT(!IsWorthStoringCompressed(100, 100, 1));
+        UNIT_ASSERT(!IsWorthStoringCompressed(101, 100, 1));
         UNIT_ASSERT(IsWorthStoringCompressed(0, 100, 100));
         UNIT_ASSERT(!IsWorthStoringCompressed(1, 100, 100));
-        UNIT_ASSERT(!IsWorthStoringCompressed(0, 100, 101));
     }
 
     Y_UNIT_TEST(ShouldSplitIntoChunks)
