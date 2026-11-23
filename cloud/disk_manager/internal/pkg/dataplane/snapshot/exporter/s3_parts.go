@@ -344,7 +344,7 @@ func exportS3Parts(
 			// Keep the producer alive while it adds and joins assemblers.
 			// No assembler can send a ready part after jobs is closed.
 			defer readers.Wait()
-			iterator := s3PartIterator{checkpoint: partCheckpoint}
+			iterator := newS3PartIterator(partCheckpoint, options)
 			uploaded, err := iterator.next(groupCtx)
 			if err != nil {
 				return err

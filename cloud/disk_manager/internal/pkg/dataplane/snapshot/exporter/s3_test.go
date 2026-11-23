@@ -244,6 +244,7 @@ func s3TestOptions() S3ExportOptions {
 		PartSize:          2 * chunkSize,
 		ReadWorkerCount:   2,
 		UploadWorkerCount: 1,
+		PartsReadPageSize: 1000,
 	}
 }
 

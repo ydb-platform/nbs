@@ -21,6 +21,7 @@ type durablePartCheckpoint struct {
 	state       []byte
 	interrupt   bool
 	batchSizes  []int
+	readLimits  []uint64
 	rejectParts bool
 	partSaved   chan struct{}
 }
@@ -33,6 +34,7 @@ func (c *durablePartCheckpoint) ReadParts(
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.readLimits = append(c.readLimits, limit)
 	var parts []S3ManifestPart
 	for number, part := range c.parts {
 		if number > after {
@@ -212,7 +214,8 @@ func TestS3ExternalCheckpointFlushesAtConfiguredInterval(t *testing.T) {
 			uploads++
 		}
 		if uploads == 2 {
-			// The export cannot finish the batch until the timer saves part one.
+			// The export cannot finish the batch until the timer saves part
+			// one.
 			select {
 			case <-partSaved:
 			case <-ctx.Done():
@@ -251,4 +254,70 @@ func TestS3ExternalCheckpointUsesConfiguredBatchSize(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, validateS3Manifest(manifest))
 	require.Equal(t, []int{3, 1}, checkpoint.batchSizes)
+}
+
+func TestS3ExternalCheckpointUsesConfiguredReadPageSize(t *testing.T) {
+	source := &s3TestSource{meta: storage.SnapshotMeta{
+		ID:         "snapshot",
+		Ready:      true,
+		Size:       8 * chunkSize,
+		ChunkCount: 8,
+	}}
+	checkpoint := &durablePartCheckpoint{
+		parts: make(map[uint32]S3ManifestPart),
+	}
+	options := s3TestOptions()
+	options.Compression = "none"
+	options.CheckpointPartCount = 16
+	options.PartsReadPageSize = 2
+
+	manifest, err := ExportToS3WithCheckpoint(
+		newContext(),
+		source,
+		"snapshot",
+		newS3TestDestination(),
+		options,
+		&S3ExportState{},
+		checkpoint,
+	)
+	require.NoError(t, err)
+	require.NoError(t, validateS3Manifest(manifest))
+	// The saved parts do not fit in one configured page.
+	require.Len(t, manifest.Parts, 4)
+
+	require.NotEmpty(t, checkpoint.readLimits)
+	for _, limit := range checkpoint.readLimits {
+		require.Equal(t, uint64(2), limit)
+	}
+}
+
+func TestS3ExportRejectsNonPositivePartsReadPageSize(t *testing.T) {
+	for _, pageSize := range []int{0, -1} {
+		source := &s3TestSource{meta: storage.SnapshotMeta{
+			ID:         "snapshot",
+			Ready:      true,
+			Size:       8 * chunkSize,
+			ChunkCount: 8,
+		}}
+		destination := newS3TestDestination()
+		checkpoint := &durablePartCheckpoint{
+			parts: make(map[uint32]S3ManifestPart),
+		}
+		options := s3TestOptions()
+		options.PartsReadPageSize = pageSize
+
+		_, err := ExportToS3WithCheckpoint(
+			newContext(),
+			source,
+			"snapshot",
+			destination,
+			options,
+			&S3ExportState{},
+			checkpoint,
+		)
+		require.ErrorContains(t, err, "parts read page size")
+		// The export must stop before touching the checkpoint or the target.
+		require.Empty(t, checkpoint.readLimits)
+		require.Empty(t, destination.uploads)
+	}
 }

@@ -80,6 +80,12 @@ func initSnapshotExport(
 		)
 	}
 
+	if exportConfig.GetPartsReadPageSize() == 0 {
+		return nil, fmt.Errorf(
+			"export parts read page size must be positive",
+		)
+	}
+
 	sourceRetryTimeout, err := time.ParseDuration(
 		exportConfig.GetSourceRetryTimeout(),
 	)

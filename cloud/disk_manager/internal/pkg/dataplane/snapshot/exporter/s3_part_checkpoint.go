@@ -7,8 +7,6 @@ import (
 	"sync"
 )
 
-const s3PartsPageSize = 1024
-
 // S3ExportCheckpoint stores successful PUTs together with the export state.
 // Durable implementations commit both before returning. Parts are ordered
 // by number; after is exclusive. An empty page ends the saved parts.
@@ -18,7 +16,11 @@ type S3ExportCheckpoint interface {
 		after uint32,
 		limit uint64,
 	) ([]S3ManifestPart, error)
-	Save(ctx context.Context, state *S3ExportState, parts []S3ManifestPart) error
+	Save(
+		ctx context.Context,
+		state *S3ExportState,
+		parts []S3ManifestPart,
+	) error
 }
 
 // Synchronous callers keep confirmations in memory. The legacy callback may
@@ -77,24 +79,38 @@ func (c *memoryS3ExportCheckpoint) Save(
 
 type s3PartIterator struct {
 	checkpoint S3ExportCheckpoint
+	pageSize   int
 	page       []S3ManifestPart
 	after      uint32
 	done       bool
 }
 
+func newS3PartIterator(
+	checkpoint S3ExportCheckpoint,
+	options S3ExportOptions,
+) *s3PartIterator {
+
+	return &s3PartIterator{
+		checkpoint: checkpoint,
+		pageSize:   options.PartsReadPageSize,
+	}
+}
+
 func (i *s3PartIterator) next(ctx context.Context) (*S3ManifestPart, error) {
 	if len(i.page) == 0 && !i.done {
-		page, err := i.checkpoint.ReadParts(ctx, i.after, s3PartsPageSize)
+		page, err := i.checkpoint.ReadParts(ctx, i.after, uint64(i.pageSize))
 		if err != nil {
 			return nil, err
 		}
-		if len(page) > s3PartsPageSize {
+		if len(page) > i.pageSize {
 			return nil, fmt.Errorf("export checkpoint page exceeds limit")
 		}
 		previous := i.after
 		for _, part := range page {
 			if part.Number <= previous {
-				return nil, fmt.Errorf("export checkpoint parts are not ordered")
+				return nil, fmt.Errorf(
+					"export checkpoint parts are not ordered",
+				)
 			}
 			previous = part.Number
 		}
