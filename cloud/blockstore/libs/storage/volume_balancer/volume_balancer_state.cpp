@@ -272,16 +272,11 @@ void TVolumeBalancerState::UpdateVolumeToPush()
         const ui64 currentValue =
             useIoCostOrdering ? info.Cost->GetValue() : info.SufferCount;
 
-        if (moveMostHeavy) {
-            if (bestValue < currentValue) {
-                bestValue = currentValue;
-                VolumeToPush = diskId;
-            }
-        } else {
-            if (bestValue > currentValue) {
-                bestValue = currentValue;
-                VolumeToPush = diskId;
-            }
+        const bool chooseCurrent =
+            moveMostHeavy ? bestValue < currentValue : bestValue > currentValue;
+        if (chooseCurrent) {
+            bestValue = currentValue;
+            VolumeToPush = diskId;
         }
     }
 }

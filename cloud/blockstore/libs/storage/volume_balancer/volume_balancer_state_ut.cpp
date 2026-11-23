@@ -386,7 +386,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
     Y_UNIT_TEST(ShouldNotSelectVolumeFromBlacklistedCloud)
     {
         auto storageConfig = CreateStorageConfig(
-            NProto::PREEMPTION_NONE,
+            NProto::PREEMPTION_MOVE_IO_COST_MOST_HEAVY,
             /*volumeBalancerEnabled=*/false,
             DefaultCpuThreshold,
             CreateFeatureConfig("Balancer", {{"cloudid1", "folderid1"}}, true));
@@ -547,6 +547,9 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 
         testEnv.Pull("vol0");
 
+        // Register the successful pull before starting the cooldown
+        testEnv.Simulate(UpdateCountersInterval, CpuUnderload);
+
         // Idle for InitialPullDelay so pull delay for vol0 is reset
         testEnv.Simulate(WholeCyclesOver(InitialPullDelay), CpuUnderload);
 
@@ -667,8 +670,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         TInstant now = TInstant::Seconds(0);
 
         TVector<NProto::TVolumeBalancerDiskStats> vols{
-            CreateVolumeStats({.DiskId = "vol0", .LoadProfile = LoadHeavy}),
-            CreateVolumeStats({.DiskId = "vol1", .LoadProfile = LoadLight})};
+            CreateVolumeStats({.DiskId = "vol0"}),
+            CreateVolumeStats({.DiskId = "vol1"})};
 
         TVolumeBalancerState::TPerfGuaranteesMap perfMap;
         perfMap["vol0"] = 10;
