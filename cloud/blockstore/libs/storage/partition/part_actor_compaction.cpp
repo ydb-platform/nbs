@@ -798,7 +798,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 blobId,
                 range,
                 skipMask,
-                std::move(ensuredBlockChecksums));
+                std::move(ensuredBlockChecksums),
+                std::nullopt);
             mergedBlobCompactionInfos.push_back(
                 {blobsSkipped,
                  blocksSkipped,

@@ -4,12 +4,14 @@
 
 #include "block_mask.h"
 
-#include <cloud/blockstore/libs/storage/partition_common/model/block.h>
-
 #include <cloud/blockstore/libs/common/block_range.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/block.h>
+#include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/sglist.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
+
+#include <optional>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -19,10 +21,37 @@ struct IBlobsVisitor
 {
     virtual ~IBlobsVisitor() = default;
 
+    virtual bool NeedsCompressionMetadata() const
+    {
+        return true;
+    }
+
+    // compressionMetadata is empty for uncompressed blobs or when the visitor
+    // opts out.
     virtual bool Visit(
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
-        const TBlockMask& skipMask) = 0;
+        const TBlockMask& skipMask,
+        const std::optional<NProto::TCompressionMetadata>&
+            compressionMetadata) = 0;
+};
+
+struct TIndexOnlyBlobsVisitor final: IBlobsVisitor
+{
+    bool NeedsCompressionMetadata() const override
+    {
+        return false;
+    }
+
+    bool Visit(
+        TBlockRange32 /*blockRange*/,
+        const TPartialBlobId& /*blobId*/,
+        const TBlockMask& /*skipMask*/,
+        const std::optional<
+            NProto::TCompressionMetadata>& /*compressionMetadata*/) override
+    {
+        return true;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
