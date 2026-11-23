@@ -8627,6 +8627,92 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldApplyLargeDeletionMarkersUponCompaction)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetMaxFileBlocks(2_TB / block);
+        storageConfig.SetLargeDeletionMarkersEnabled(true);
+        storageConfig.SetLargeDeletionMarkerBlocks(1_GB / block);
+        storageConfig.SetLargeDeletionMarkersThreshold(128_GB / block);
+        // disabling Cleanup
+        storageConfig.SetLargeDeletionMarkersCleanupThreshold(1_PB / block);
+        storageConfig.SetLargeDeletionMarkersThresholdForBackpressure(
+            1_PB / block);
+
+        const auto blobSize = 2 * block;
+        storageConfig.SetWriteBlobThreshold(blobSize);
+
+        TTestEnv env(testEnvConfig, storageConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        tabletConfig.BlockCount = 10_TB / block;
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        TSetNodeAttrArgs args(id);
+        args.SetFlag(NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE);
+        args.SetSize(1_TB);
+        tablet.SetNodeAttr(args);
+
+        const ui64 offset = 1_TB - blobSize;
+        tablet.WriteData(handle, offset, blobSize, '1');
+
+        // downsizing the file to generate LargeDeletionMarkers and increasing
+        // its size back to 1TiB
+        args.SetSize(512_GB);
+        tablet.SetNodeAttr(args);
+        args.SetSize(1_TB);
+        tablet.SetNodeAttr(args);
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                512_GB / block,
+                stats.GetLargeDeletionMarkersCount());
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlocksCount());
+        }
+
+        {
+            auto response = tablet.ReadData(handle, offset, blobSize);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, blobSize, 0);
+        }
+
+        tablet.Compaction(GetMixedRangeIndex(id, offset / block));
+
+        {
+            auto response = tablet.ReadData(handle, offset, blobSize);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(buffer, blobSize, 0);
+        }
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                512_GB / block,
+                stats.GetLargeDeletionMarkersCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlocksCount());
+        }
+
+        tablet.DestroyHandle(handle);
+    }
+
     TABLET_TEST(ShouldRejectLargeFileTruncationIfLargeDeletionMarkerCountIsTooHigh)
     {
         const auto block = tabletConfig.BlockSize;
