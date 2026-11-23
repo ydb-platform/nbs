@@ -137,7 +137,7 @@ TFrameHeader::TFrameHeader(IInputStream& in) {
     try {
         ::Load(&in, Basehdr);
 
-        Y_ENSURE(Basehdr.Length >= sizeof(TCompressedFrameHeader2), "Incomplete frame additional data");
+        ValidateFrameLength();
 
         ::Load(&in, Framehdr);
         // A short read can leave either header only partially initialized.
