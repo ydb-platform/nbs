@@ -738,6 +738,7 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
 
     Y_UNIT_TEST(RejectsEmptyLocalWrite)
     {
+        const TString data(BlockSize, 'w');
         TFixture f;
         auto request = MakeRequest<NProto::TWriteBlocksLocalRequest>();
         request->SetBlockSize(BlockSize);
@@ -750,6 +751,16 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
 
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, Wait(write).GetError().GetCode());
         UNIT_ASSERT(f.Channel->Requests.empty());
+
+        request->BlocksCount = 1;
+        request->Sglist = TGuardedSgList({{data.data(), data.size()}});
+        write = f.Endpoint->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            request);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Channel->Requests.size());
+        f.Run(0);
+        UNIT_ASSERT(!HasError(Wait(write)));
     }
 
     Y_UNIT_TEST(WriteSnapshotOutlivesCallerAndTargetClosesStorageSglist)
