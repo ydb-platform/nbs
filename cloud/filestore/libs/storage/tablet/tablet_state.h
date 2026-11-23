@@ -1008,6 +1008,14 @@ public:
         const NProtoPrivate::TDescribeShardSessionsResponse& shardSessions,
         bool createMissingSessions) const;
 
+    // Describes the active sessions of this (main) tablet which have been
+    // changed after fromVersion but not after toVersion, see
+    // TSession::ShardSyncVersion. That's what a shard which already has the
+    // sessions of fromVersion needs to get.
+    TVector<NProtoPrivate::TShardSessionInfo> BuildShardSessionsDelta(
+        ui64 fromVersion,
+        ui64 toVersion) const;
+
     enum class ESyncSessionResult
     {
         Skipped,

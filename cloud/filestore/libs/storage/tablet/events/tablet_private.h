@@ -233,11 +233,18 @@ struct TEvIndexTabletPrivate
         // The number of sessions which had to be created (or recovered) in
         // these shards.
         ui32 SessionCount = 0;
+        struct TSyncedShard
+        {
+            TString ShardId;
+            // The generation of the shard tablet which has confirmed it.
+            ui32 Generation = 0;
+        };
+
         // The shards whose sessions are in line with the sessions of the
         // tablet now: everything that had to be done there has been done.
         // Filled only by the sync which works in rounds (see
         // TBatchedSyncShardSessionsActor).
-        TVector<TString> SyncedShardIds;
+        TVector<TSyncedShard> SyncedShards;
     };
 
     struct TBuildShardSessionsDiffRequest
@@ -253,6 +260,11 @@ struct TEvIndexTabletPrivate
         NProtoPrivate::TDescribeSessionsResponse Sessions;
         // The shard works in adapter mode.
         bool AdapterMode = false;
+        // The shard hasn't been asked for its sessions: the requester needs
+        // to know what has been changed since the last sync of this shard.
+        // Used by the sync rounds which are triggered by the changes of the
+        // sessions.
+        bool ChangesOnly = false;
     };
 
     struct TBuildShardSessionsDiffResponse
@@ -275,6 +287,20 @@ struct TEvIndexTabletPrivate
         TVector<NProtoPrivate::TShardSessionRequest> SessionsToReset;
         // DestroySession requests which should be sent to the shard.
         TVector<NProtoPrivate::TShardSessionRequest> SessionsToDestroy;
+
+        //
+        // The fields below are filled only in response to a ChangesOnly
+        // request.
+        //
+
+        // The tablet doesn't know what the shard has, so it can't tell what
+        // has been changed: the requester should ask the shard for its
+        // sessions and repeat the request with them.
+        bool NeedShardSessions = false;
+        // The generation of the shard tablet which the changes are meant
+        // for. If the shard has another one, then it has been restarted
+        // since its last sync, and the changes are not enough for it.
+        ui32 ShardGeneration = 0;
     };
 
     //

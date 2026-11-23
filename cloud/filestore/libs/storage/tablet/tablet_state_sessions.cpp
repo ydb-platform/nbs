@@ -710,6 +710,27 @@ TIndexTabletState::TShardSessionsDiff TIndexTabletState::BuildShardSessionsDiff(
     return diff;
 }
 
+TVector<NProtoPrivate::TShardSessionInfo>
+TIndexTabletState::BuildShardSessionsDelta(
+    ui64 fromVersion,
+    ui64 toVersion) const
+{
+    TVector<NProtoPrivate::TShardSessionInfo> infos;
+
+    // Orphan sessions are not sent to the shards: no one is able to use them
+    // right now. Such a session gets a new version when it comes back.
+    for (const auto& session: Impl->Sessions) {
+        if (session.IsValid()
+                && session.ShardSyncVersion > fromVersion
+                && session.ShardSyncVersion <= toVersion)
+        {
+            infos.push_back(MakeShardSessionInfo(session));
+        }
+    }
+
+    return infos;
+}
+
 TIndexTabletState::ESyncSessionResult TIndexTabletState::SyncSession(
     IIndexTabletDatabase& db,
     const NProtoPrivate::TShardSessionInfo& info,

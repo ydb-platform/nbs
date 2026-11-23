@@ -208,8 +208,16 @@ private:
     //
     // This tablet owns the sessions, the shards follow. All the requests
     // which change the sessions of the shards are sent by the shard sessions
-    // sync: each of its rounds compares the sessions of each shard with the
-    // state of this tablet and makes the shard fix the difference.
+    // sync, which works in rounds. Everything that the shards should get has
+    // a version (see ShardSessionsVersion), and this tablet remembers which
+    // version each shard has been synced at:
+    // * a regular round asks each shard for its sessions, compares them with
+    //   the state of this tablet and makes the shard fix the difference;
+    // * a round which is triggered by a change (an out-of-schedule one)
+    //   doesn't ask the shards for anything: a shard gets only what has been
+    //   changed since its last sync. The shards which this tablet knows
+    //   nothing about and the shards which have been restarted are still
+    //   compared in full.
     //
     // ResetSession and DestroySession are processed by the shards first and
     // by this tablet last. Such a request is kept here (see
@@ -217,18 +225,44 @@ private:
     // shards, the session is not touched until then. So a request which has
     // been acknowledged has been completed by all the shards, and the shards
     // make their decisions against the same subsessions as this tablet does.
+    // The only exception is a request which has been waiting for the shards
+    // for too long, see ShardSessionRequestTimeout.
+    //
     // The state below is not persistent: the clients retry the requests
-    // which didn't manage to get through.
+    // which didn't manage to get through, and the first round after a
+    // restart of this tablet compares all the shards in full.
     //
 
-    // Grows upon each request which gets to PendingShardSessionRequests.
+    // Grows upon each change which the shards should get: a change of a
+    // session (see OnShardSessionChanged) and a request which gets to
+    // PendingShardSessionRequests.
     ui64 ShardSessionsVersion = 0;
     // ShardSessionsVersion at the start of the current sync round.
     ui64 SyncSessionsStartVersion = 0;
-    // ShardId -> SyncSessionsStartVersion of the last round which managed to
-    // sync the sessions of this shard: the shard has processed all the
-    // requests which are not newer than that.
-    THashMap<TString, ui64> ShardSyncedVersions;
+    // The next round should compare all the shards in full even if it's an
+    // out-of-schedule one.
+    bool FullSyncSessionsRequested = false;
+
+    struct TShardSyncState
+    {
+        // SyncSessionsStartVersion of the last round which managed to sync
+        // the sessions of the shard: the shard has got all the changes which
+        // are not newer than that.
+        ui64 Version = 0;
+        // The generation of the shard tablet which confirmed it.
+        ui32 Generation = 0;
+    };
+
+    // ShardId -> what this tablet knows about the sessions of the shard.
+    // There's nothing here about a shard whose sessions have to be compared
+    // with the sessions of this tablet first.
+    THashMap<TString, TShardSyncState> ShardSyncStates;
+
+    // What the current round sends to the shards which are not asked for
+    // their sessions, by the version which a shard has been synced at (see
+    // GetShardSessionsDelta). Most of the shards have the same version, so
+    // the changes are collected once per round, not once per shard.
+    THashMap<ui64, TShardSessionsDiff> SyncSessionsDeltas;
 
     struct TPendingShardSessionRequest
     {
@@ -237,9 +271,14 @@ private:
         ui64 SessionSeqNo = 0;
         // ResetSession if set, DestroySession otherwise.
         bool Reset = false;
-        // All the shards have processed the request, the tx of this tablet
-        // is in progress.
+        // The shards are not waited for anymore (all of them have processed
+        // the request or it has been waiting for too long), the tx of this
+        // tablet is in progress.
         bool Applying = false;
+        // The request doesn't wait for the shards after that, see
+        // ShardSessionRequestTimeout. Not set if the requests should wait
+        // for as long as it takes.
+        TInstant Deadline;
         // Identifies the tx of the request as well.
         TRequestInfoPtr RequestInfo;
         NProto::TResetSessionRequest ResetRequest;
@@ -493,6 +532,18 @@ private:
         TString sessionId,
         TPendingShardSessionRequest request);
 
+    // Should be called when a session of this tablet changes in a way which
+    // the shards should know about: the session gets a new version, so the
+    // shard sessions sync sends it to the shards.
+    void OnShardSessionChanged(
+        const NActors::TActorContext& ctx,
+        const TString& sessionId);
+
+    // Describes a pending request for a shard.
+    NProtoPrivate::TShardSessionRequest BuildShardSessionRequest(
+        const TString& sessionId,
+        const TPendingShardSessionRequest& request) const;
+
     // Tells the shard sessions sync which of these requests should be sent
     // to the shard which has described its sessions.
     void AddPendingShardSessionRequests(
@@ -500,8 +551,15 @@ private:
         const NProtoPrivate::TDescribeShardSessionsResponse& shardSessions,
         TShardSessionsDiff& diff) const;
 
+    // What the current sync round should send to a shard which has been
+    // synced at fromVersion and is not asked for its sessions: the sessions
+    // which have been changed since then and the requests which the shard
+    // hasn't got yet.
+    const TShardSessionsDiff& GetShardSessionsDelta(ui64 fromVersion);
+
     // Lets this tablet process the requests which have been processed by
-    // all the shards.
+    // all the shards and the ones which have been waiting for the shards
+    // for too long.
     void ProcessPendingShardSessionRequests(
         const NActors::TActorContext& ctx);
 

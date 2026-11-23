@@ -620,10 +620,8 @@ void TIndexTabletActor::CompleteTx_CreateSession(
         // can neither process the batches nor request the sessions.
         //
 
-        if (Config->GetBackgroundShardSessionCreationEnabled()) {
-            // no need to wait for the regular sync
-            ScheduleOutOfScheduleSyncSessions(ctx);
-        }
+        // the next sync round sends the session to the shards
+        OnShardSessionChanged(ctx, session->GetSessionId());
 
         shardIds = GetAdapterModeShardIds();
         if (shardIds.empty()) {
@@ -675,6 +673,37 @@ void TIndexTabletActor::HandleBuildShardSessionsDiff(
         // shards and the requester knows better how many of them can be
         // processed simultaneously.
         //
+
+        if (msg->ChangesOnly) {
+            //
+            // The requester hasn't asked the shard for its sessions: this
+            // tablet remembers which version of its sessions the shard has
+            // been synced at and tells what has been changed since then.
+            //
+
+            using TResponse =
+                TEvIndexTabletPrivate::TEvBuildShardSessionsDiffResponse;
+            auto response = std::make_unique<TResponse>();
+
+            const auto* syncState = ShardSyncStates.FindPtr(msg->ShardId);
+            if (!syncState || !SyncSessionsInProgress) {
+                // nothing is known about the sessions of this shard - they
+                // have to be compared with the sessions of this tablet
+                response->NeedShardSessions = true;
+            } else {
+                const auto& delta = GetShardSessionsDelta(syncState->Version);
+                response->ShardGeneration = syncState->Generation;
+                response->SessionCount =
+                    static_cast<ui32>(delta.SessionsToSync.size());
+                response->SessionsToSync = delta.SessionsToSync;
+                response->SessionsToReset = delta.SessionsToReset;
+                response->SessionsToDestroy = delta.SessionsToDestroy;
+            }
+
+            response->ShardId = std::move(msg->ShardId);
+            NCloud::Reply(ctx, *ev, std::move(response));
+            return;
+        }
 
         auto diff = BuildShardSessionsDiff(
             msg->ShardSessions,

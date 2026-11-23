@@ -1048,11 +1048,18 @@ message TStorageConfig
     // If set, the main tablet doesn't send CreateSession, ResetSession and
     // DestroySession to each of the shards upon each client request (which
     // costs one request per shard for each mount). The sessions of the shards
-    // are managed only by the background shard sessions sync instead: each of
-    // its rounds compares the sessions of each shard with the sessions of the
-    // main tablet and sends a single batched request to the shards which
-    // differ, the number of shards which are processed simultaneously is
-    // limited (see MaxShardSessionsSyncInflight).
+    // are managed only by the background shard sessions sync instead. It
+    // sends a single batched request per shard and limits the number of
+    // shards which are processed simultaneously (see
+    // MaxShardSessionsSyncInflight). Its rounds are of two kinds:
+    // * a regular round (once in IdleSessionTimeout / 3) asks each shard for
+    //   its sessions and compares them with the sessions of the main tablet;
+    // * a round which is triggered by a change of the sessions doesn't ask
+    //   the shards for anything: each shard gets only what has been changed
+    //   since its previous sync. Only the shards which the main tablet knows
+    //   nothing about (e.g. after its restart) and the shards which have
+    //   been restarted are compared in full by such a round.
+    // What it means for the requests of the clients:
     // * CreateSession doesn't wait for the shards. The sessions which haven't
     //   been created by the sync yet are recovered by the shards on demand,
     //   so ShardSessionRecoveryOnDemandEnabled should be enabled for the
@@ -1061,7 +1068,8 @@ message TStorageConfig
     //   the main tablet keeps such a request until the sync delivers it to
     //   all the shards and processes it itself only after that. So these
     //   requests take at least one sync round and wait while some of the
-    //   shards are unavailable.
+    //   shards are unavailable - but not longer than
+    //   ShardSessionRequestTimeout.
     // The shards which work in adapter mode (fast shards) are not affected:
     // their sessions are still managed by the per-session requests.
     optional bool LazyShardSessionCreationEnabled = 569;
@@ -1087,4 +1095,20 @@ message TStorageConfig
     // which actually use it, but the first request of a session to a shard
     // always pays for a roundtrip to the main tablet. Enabled by default.
     optional bool BackgroundShardSessionCreationEnabled = 572;
+
+    // How long (in milliseconds) ResetSession and DestroySession wait for the
+    // shards which the shard sessions sync fails to deliver them to. Used
+    // only if LazyShardSessionCreationEnabled is set. After that:
+    // * DestroySession is processed by the main tablet and acknowledged. A
+    //   shard which hasn't processed it keeps its copy of the session until
+    //   the sync manages to compare the sessions of this shard with the
+    //   sessions of the main tablet: the sessions which the main tablet
+    //   doesn't have are destroyed.
+    // * ResetSession fails with E_REJECTED: the shards which have processed
+    //   it have reset their copies of the session, the main tablet and the
+    //   rest of the shards haven't. The client is supposed to retry.
+    // The deadline is checked upon the completion of each sync round. Zero
+    // means that the requests wait for as long as it takes. 30 seconds by
+    // default.
+    optional uint32 ShardSessionRequestTimeout = 573;
 }

@@ -240,7 +240,12 @@ STFUNC(TSyncShardSessionsActor::StateWork)
 //   it's this actor who talks to the shard;
 // * everything that has to be done with the sessions of a shard is sent to
 //   it via a single SyncShardSessions request, so there's never more than one
-//   such request per shard in flight.
+//   such request per shard in flight;
+// * a round which is triggered by a change of the sessions (see
+//   ChangesOnlyRound) doesn't ask the shards for their sessions: the tablet
+//   remembers what each shard has and tells what has been changed since
+//   then. A shard is asked for its sessions only if the tablet knows nothing
+//   about it or if the shard turns out to have been restarted.
 //
 // Used if LazyShardSessionCreationEnabled is set.
 //
@@ -258,6 +263,13 @@ private:
         bool Completed = false;
         // the shard has done everything it had to do
         bool Synced = false;
+        // the shard hasn't been asked for its sessions: it gets only what
+        // has been changed since its last sync
+        bool ChangesOnly = false;
+        // The generation which the shard tablet is supposed to have: the one
+        // which has described the sessions of the shard or (ChangesOnly) the
+        // one whose sessions are known to the tablet.
+        ui32 Generation = 0;
     };
 
 private:
@@ -267,6 +279,9 @@ private:
     const THashSet<TString> AdapterModeShardIds;
     const TRequestInfoPtr RequestInfo;
     const ui32 MaxInflight;
+    // The shards are not asked for their sessions unless it's needed, see
+    // RequestShardChanges.
+    const bool ChangesOnlyRound;
 
     TVector<TShardState> ShardStates;
     ui32 NextShardIdx = 0;
@@ -282,7 +297,8 @@ public:
         TVector<TString> shardIds,
         THashSet<TString> adapterModeShardIds,
         TRequestInfoPtr requestInfo,
-        ui32 maxInflight);
+        ui32 maxInflight,
+        bool changesOnlyRound);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -290,6 +306,8 @@ private:
     STFUNC(StateWork);
 
     void ProcessNextShards(const TActorContext& ctx);
+
+    void RequestShardChanges(const TActorContext& ctx, ui32 shardIdx);
 
     void DescribeShard(const TActorContext& ctx, ui32 shardIdx);
     void HandleDescribeShardSessionsResponse(
@@ -325,13 +343,15 @@ TBatchedSyncShardSessionsActor::TBatchedSyncShardSessionsActor(
         TVector<TString> shardIds,
         THashSet<TString> adapterModeShardIds,
         TRequestInfoPtr requestInfo,
-        ui32 maxInflight)
+        ui32 maxInflight,
+        bool changesOnlyRound)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
     , ShardIds(std::move(shardIds))
     , AdapterModeShardIds(std::move(adapterModeShardIds))
     , RequestInfo(std::move(requestInfo))
     , MaxInflight(Max<ui32>(maxInflight, 1))
+    , ChangesOnlyRound(changesOnlyRound)
     , ShardStates(ShardIds.size())
 {}
 
@@ -345,13 +365,28 @@ void TBatchedSyncShardSessionsActor::ProcessNextShards(
     const TActorContext& ctx)
 {
     while (InflightShardCount < MaxInflight && NextShardIdx < ShardIds.size()) {
+        const ui32 shardIdx = NextShardIdx++;
+
+        auto& state = ShardStates[shardIdx];
+        state.AdapterMode = AdapterModeShardIds.contains(ShardIds[shardIdx]);
+
+        if (ChangesOnlyRound && state.AdapterMode) {
+            // The sessions of such a shard are managed via the per-session
+            // requests which the tablet sends upon each change, so there are
+            // no changes which the shard hasn't got. Its sessions are
+            // compared with the sessions of the tablet by the regular rounds.
+            state.Completed = true;
+            ++CompletedShardCount;
+            continue;
+        }
+
         ++InflightShardCount;
 
-        auto& state = ShardStates[NextShardIdx];
-        state.AdapterMode =
-            AdapterModeShardIds.contains(ShardIds[NextShardIdx]);
-
-        DescribeShard(ctx, NextShardIdx++);
+        if (ChangesOnlyRound) {
+            RequestShardChanges(ctx, shardIdx);
+        } else {
+            DescribeShard(ctx, shardIdx);
+        }
     }
 
     if (CompletedShardCount == ShardIds.size()) {
@@ -359,11 +394,39 @@ void TBatchedSyncShardSessionsActor::ProcessNextShards(
     }
 }
 
+void TBatchedSyncShardSessionsActor::RequestShardChanges(
+    const TActorContext& ctx,
+    ui32 shardIdx)
+{
+    //
+    // Asking each shard for all its sessions upon each change of the
+    // sessions is too expensive. The tablet remembers which version of its
+    // sessions each shard has, so it's able to tell what the shard lacks.
+    //
+
+    ShardStates[shardIdx].ChangesOnly = true;
+
+    using TRequest = TEvIndexTabletPrivate::TEvBuildShardSessionsDiffRequest;
+    auto request = std::make_unique<TRequest>();
+    request->ShardId = ShardIds[shardIdx];
+    request->ChangesOnly = true;
+
+    ctx.Send(
+        Tablet,
+        request.release(),
+        {}, // flags
+        shardIdx);
+}
+
 void TBatchedSyncShardSessionsActor::DescribeShard(
     const TActorContext& ctx,
     ui32 shardIdx)
 {
     const auto& shardId = ShardIds[shardIdx];
+
+    // the sessions of the shard are going to be compared with the sessions
+    // of the tablet
+    ShardStates[shardIdx].ChangesOnly = false;
 
     if (ShardStates[shardIdx].AdapterMode) {
         // the sessions of such a shard are managed via the per-session
@@ -433,6 +496,10 @@ void TBatchedSyncShardSessionsActor::HandleDescribeShardSessionsResponse(
         DescribeShard(ctx, shardIdx);
         return;
     }
+
+    // the shard is supposed to process the request which follows without
+    // being restarted in between, see HandleSyncShardSessionsResponse
+    ShardStates[shardIdx].Generation = msg->Record.GetGeneration();
 
     //
     // The tablet compares the sessions of the shard with its own ones.
@@ -518,6 +585,16 @@ void TBatchedSyncShardSessionsActor::HandleBuildShardSessionsDiffResponse(
         return;
     }
 
+    if (msg->NeedShardSessions) {
+        // the tablet doesn't know what this shard has
+        DescribeShard(ctx, shardIdx);
+        return;
+    }
+
+    if (state.ChangesOnly) {
+        state.Generation = msg->ShardGeneration;
+    }
+
     state.SessionCount = msg->SessionCount;
 
     if (msg->SessionsToSync.empty()
@@ -573,11 +650,9 @@ void TBatchedSyncShardSessionsActor::HandleSyncShardSessionsResponse(
     TABLET_VERIFY(ev->Cookie < ShardIds.size());
     const auto shardIdx = static_cast<ui32>(ev->Cookie);
     const auto& shardId = ShardIds[shardIdx];
+    auto& state = ShardStates[shardIdx];
 
     if (HasError(msg->GetError())) {
-        // if the shard turns out to work in adapter mode, then the next
-        // sync will learn it from DescribeShardSessionsResponse and will
-        // let the tablet create its sessions the other way
         LOG_ERROR(ctx, TFileStoreComponents::TABLET_WORKER,
             "%s[%s] failed to sync sessions: %s, adapter mode: %d",
             LogTag.c_str(),
@@ -585,7 +660,47 @@ void TBatchedSyncShardSessionsActor::HandleSyncShardSessionsResponse(
             FormatError(msg->GetError()).c_str(),
             msg->Record.GetAdapterModeEnabled());
 
+        if (state.ChangesOnly && msg->Record.GetAdapterModeEnabled()) {
+            // The shard turns out to work in adapter mode. Asking it for its
+            // sessions is the way to let the tablet know about it, see
+            // HandleDescribeShardSessionsResponse.
+            DescribeShard(ctx, shardIdx);
+            return;
+        }
+
+        // if the shard turns out to work in adapter mode, then the next
+        // sync which asks it for its sessions will learn it from
+        // DescribeShardSessionsResponse and will let the tablet create its
+        // sessions the other way
         Error = msg->GetError();
+    } else if (msg->Record.GetGeneration() != state.Generation) {
+        //
+        // The shard has been restarted. None of its sessions is active after
+        // that: the shard is going to destroy them (see IdleSessionTimeout)
+        // unless they get recovered, and what has just been sent to the
+        // shard recovers only the sessions which were sent.
+        //
+
+        LOG_WARN(ctx, TFileStoreComponents::TABLET_WORKER,
+            "%s[%s] shard generation changed: %u -> %u, changes only: %d",
+            LogTag.c_str(),
+            shardId.c_str(),
+            state.Generation,
+            msg->Record.GetGeneration(),
+            state.ChangesOnly);
+
+        if (state.ChangesOnly) {
+            // so the sessions of the shard have to be compared with the
+            // sessions of the tablet
+            DescribeShard(ctx, shardIdx);
+            return;
+        }
+
+        // The shard has been restarted after it described its sessions, so
+        // the description was outdated. The shard is not reported as a
+        // synced one - the next round deals with it.
+        Error = MakeError(E_REJECTED, TStringBuilder()
+            << "shard " << shardId << " has been restarted");
     } else {
         LOG_DEBUG(ctx, TFileStoreComponents::TABLET_WORKER,
             "%s[%s] sessions created: %u, recovered: %u",
@@ -594,7 +709,7 @@ void TBatchedSyncShardSessionsActor::HandleSyncShardSessionsResponse(
             msg->Record.GetCreatedSessionCount(),
             msg->Record.GetRecoveredSessionCount());
 
-        ShardStates[shardIdx].Synced = true;
+        state.Synced = true;
     }
 
     OnShardCompleted(ctx, shardIdx);
@@ -638,7 +753,8 @@ void TBatchedSyncShardSessionsActor::ReplyAndDie(const TActorContext& ctx)
                 response->SessionCount += state.SessionCount;
             }
             if (state.Synced) {
-                response->SyncedShardIds.push_back(ShardIds[i]);
+                response->SyncedShards.push_back(
+                    {ShardIds[i], state.Generation});
             }
         }
         NCloud::Send(ctx, Tablet, std::move(response));
@@ -922,6 +1038,11 @@ void TIndexTabletActor::HandleSyncSessions(
         // several syncs simultaneously. One more sync will be run after the
         // completion of the current one.
         SyncSessionsRequested = true;
+        if (!msg->OutOfSchedule) {
+            // and it should do what this request is for: compare the
+            // sessions of all the shards with the sessions of this tablet
+            FullSyncSessionsRequested = true;
+        }
 
         using TResponse = TEvIndexTabletPrivate::TEvSyncSessionsResponse;
         auto response = std::make_unique<TResponse>(
@@ -939,10 +1060,30 @@ void TIndexTabletActor::HandleSyncSessions(
     NActors::IActorPtr actor;
     if (lazyShardSessionCreationEnabled) {
         SyncSessionsInProgress = true;
-        // The round sees all the changes which have been made so far: the
-        // sessions of each shard are compared with the current state of
-        // this tablet.
+        // the round delivers all the changes which have been made so far
         SyncSessionsStartVersion = ShardSessionsVersion;
+        SyncSessionsDeltas.clear();
+
+        //
+        // The rounds which are run on the regular schedule (and the ones
+        // which are requested explicitly) ask each shard for its sessions
+        // and compare them with the sessions of this tablet. That's what
+        // fixes any discrepancy, but it's expensive: all the sessions of all
+        // the shards have to be transferred and looked through. The rounds
+        // which are triggered by the changes of the sessions don't do it: a
+        // shard gets only what has been changed since its last sync, see
+        // HandleBuildShardSessionsDiff.
+        //
+
+        const bool changesOnly =
+            msg->OutOfSchedule && !FullSyncSessionsRequested;
+        FullSyncSessionsRequested = false;
+
+        LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+            "%s SyncSessions round started, version: %lu, changes only: %d",
+            LogTag.c_str(),
+            SyncSessionsStartVersion,
+            changesOnly);
 
         auto adapterModeShardIds = GetAdapterModeShardIds();
 
@@ -954,7 +1095,8 @@ void TIndexTabletActor::HandleSyncSessions(
                 adapterModeShardIds.begin(),
                 adapterModeShardIds.end()),
             std::move(requestInfo),
-            Config->GetMaxShardSessionsSyncInflight());
+            Config->GetMaxShardSessionsSyncInflight(),
+            changesOnly);
     } else {
         actor = std::make_unique<TSyncShardSessionsActor>(
             LogTag,
@@ -998,14 +1140,17 @@ void TIndexTabletActor::HandleSyncSessionsCompleted(
     }
 
     SyncSessionsInProgress = false;
+    SyncSessionsDeltas.clear();
 
-    // each of these shards was asked for its sessions after the start of the
-    // round and has done everything this tablet told it to do
-    for (const auto& shardId: msg->SyncedShardIds) {
-        ShardSyncedVersions[shardId] = SyncSessionsStartVersion;
+    // each of these shards has got everything that had been changed by the
+    // start of the round and has done everything this tablet told it to do
+    for (const auto& shard: msg->SyncedShards) {
+        ShardSyncStates[shard.ShardId] =
+            TShardSyncState{SyncSessionsStartVersion, shard.Generation};
     }
 
-    // the requests which have been processed by all the shards can be
+    // the requests which have been processed by all the shards (and the
+    // ones which have been waiting for the shards for too long) can be
     // processed by this tablet now
     ProcessPendingShardSessionRequests(ctx);
 

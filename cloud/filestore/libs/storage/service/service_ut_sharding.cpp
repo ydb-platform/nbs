@@ -147,6 +147,148 @@ auto GetFileSystemCounters(TTestEnv& env, const TString& fsId)
     return subgroup;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+// Lets a test control the shard sessions sync of the main tablet: runs its
+// rounds, watches the requests which it sends to the shards and makes it
+// unable to reach a shard.
+struct TShardSessionsSyncController
+{
+    TTestEnv& Env;
+    const ui32 NodeIdx;
+    const TActorId MainTabletActorId;
+
+    // The shard which the sync is not able to reach: a request which the
+    // sync sends to it gets an error instead of being delivered.
+    TString UnavailableShardId;
+    // the number of completed rounds
+    ui32 SyncsCompleted = 0;
+    // shard id -> the number of requests sent to the shard by the sync
+    THashMap<TString, ui32> DescribeRequests;
+    THashMap<TString, ui32> SyncRequests;
+
+    TShardSessionsSyncController(
+            TTestEnv& env,
+            ui32 nodeIdx,
+            TActorId mainTabletActorId)
+        : Env(env)
+        , NodeIdx(nodeIdx)
+        , MainTabletActorId(mainTabletActorId)
+    {
+        Env.GetRuntime().SetEventFilter(
+            [this] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                return FilterEvent(event);
+            });
+    }
+
+    // Returns as soon as the sync actor sends the completion of the round to
+    // the tablet. NOTE: the tablet hasn't handled it by that moment - it does
+    // it when the events get dispatched once again.
+    void WaitForSync(ui32 prevSyncsCompleted)
+    {
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&] {
+            return SyncsCompleted > prevSyncsCompleted;
+        };
+        Env.GetRuntime().DispatchEvents(options);
+    }
+
+    // Runs a round of the sync. An out-of-schedule round is what a change of
+    // the sessions triggers, the other one is the same thing as a round
+    // which is run on the regular schedule.
+    void SyncSessions(bool outOfSchedule = false)
+    {
+        const ui32 prevSyncsCompleted = SyncsCompleted;
+
+        using TRequest = TEvIndexTabletPrivate::TEvSyncSessionsRequest;
+        auto request = std::make_unique<TRequest>();
+        request->OutOfSchedule = outOfSchedule;
+
+        // The request is put into the mailbox of the tablet. Send() would
+        // make the tablet handle it right inside the call - before the
+        // completion of the previous round, which may be still waiting in
+        // that mailbox (see WaitForSync). The tablet would think that the
+        // previous round is still running and wouldn't start a new one.
+        Env.GetRuntime().SendAsync(
+            new IEventHandle(
+                MainTabletActorId, // recipient
+                TActorId(), // sender
+                request.release(),
+                0, // flags
+                0),
+            NodeIdx);
+
+        WaitForSync(prevSyncsCompleted);
+    }
+
+private:
+    bool FilterEvent(TAutoPtr<IEventHandle>& event)
+    {
+        switch (event->GetTypeRewrite()) {
+            case TEvIndexTablet::EvDescribeShardSessionsRequest: {
+                return OnRequestToShard<
+                    TEvIndexTablet::TEvDescribeShardSessionsRequest,
+                    TEvIndexTablet::TEvDescribeShardSessionsResponse>(
+                        event,
+                        DescribeRequests);
+            }
+            case TEvIndexTablet::EvSyncShardSessionsRequest: {
+                return OnRequestToShard<
+                    TEvIndexTablet::TEvSyncShardSessionsRequest,
+                    TEvIndexTablet::TEvSyncShardSessionsResponse>(
+                        event,
+                        SyncRequests);
+            }
+            case TEvIndexTabletPrivate::EvSyncSessionsCompleted: {
+                ++SyncsCompleted;
+                break;
+            }
+        }
+
+        return false;
+    }
+
+    template <typename TRequest, typename TResponse>
+    bool OnRequestToShard(
+        TAutoPtr<IEventHandle>& event,
+        THashMap<TString, ui32>& requests)
+    {
+        if (event->Recipient != MakeIndexTabletProxyServiceId()
+                || !event->HasEvent())
+        {
+            // The request is on its way from the tablet proxy to the shard:
+            // it has already been seen here - when the sync sent it.
+            return false;
+        }
+
+        const auto* msg = event->Get<TRequest>();
+        const TString shardId = msg->Record.GetFileSystemId();
+        ++requests[shardId];
+
+        if (!UnavailableShardId || shardId != UnavailableShardId) {
+            return false;
+        }
+
+        // The request is dropped (so it doesn't get to the shard) and its
+        // sender gets an error. The sender is in the middle of sending the
+        // request, so the response is put into its mailbox: Send() would
+        // call its handler right here.
+        auto response = std::make_unique<TResponse>(
+            MakeError(E_REJECTED, "shard is unavailable"));
+        Env.GetRuntime().SendAsync(
+            new IEventHandle(
+                event->Sender,
+                event->Recipient,
+                response.release(),
+                0, // flags
+                event->Cookie),
+            NodeIdx);
+
+        return true;
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1671,73 +1813,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
-        bool shard2Unavailable = false;
-        // the tablet actor of the second shard - the sender of its responses
-        TActorId shard2ActorId;
-        ui32 syncsCompleted = 0;
-
-        env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvIndexTablet::EvDescribeShardSessionsRequest: {
-                        using TRequest =
-                            TEvIndexTablet::TEvDescribeShardSessionsRequest;
-                        const auto* msg = event->Get<TRequest>();
-                        if (msg->Record.GetFileSystemId() == fsConfig.Shard2Id)
-                        {
-                            // The request gets to the tablet via the tablet
-                            // proxy and a pipe: its last recipient (after
-                            // the rewrite which is done by the pipe) is the
-                            // tablet itself.
-                            shard2ActorId = event->GetRecipientRewrite();
-                        }
-                        break;
-                    }
-                    case TEvIndexTablet::EvDescribeShardSessionsResponse: {
-                        if (shard2Unavailable
-                                && event->Sender == shard2ActorId)
-                        {
-                            // the sync fails to process this shard
-                            using TResponse = TEvIndexTablet::
-                                TEvDescribeShardSessionsResponse;
-                            auto* msg = event->Get<TResponse>();
-                            *msg->Record.MutableError() =
-                                MakeError(E_REJECTED, "shard is unavailable");
-                        }
-                        break;
-                    }
-                    case TEvIndexTabletPrivate::EvSyncSessionsCompleted: {
-                        ++syncsCompleted;
-                        break;
-                    }
-                }
-                return false;
-            });
-
-        auto waitForSync = [&] (ui32 prevSyncsCompleted) {
-            TDispatchOptions options;
-            options.CustomFinalCondition = [&] {
-                return syncsCompleted > prevSyncsCompleted;
-            };
-            env.GetRuntime().DispatchEvents(options);
-        };
-
-        auto syncSessions = [&] () {
-            const ui32 prevSyncsCompleted = syncsCompleted;
-
-            using TRequest = TEvIndexTabletPrivate::TEvSyncSessionsRequest;
-            env.GetRuntime().Send(
-                new IEventHandle(
-                    fsInfo.MainTabletActorId, // recipient
-                    TActorId(), // sender
-                    new TRequest(),
-                    0, // flags
-                    0),
-                nodeIdx);
-
-            waitForSync(prevSyncsCompleted);
-        };
+        TShardSessionsSyncController sync(
+            env,
+            nodeIdx,
+            fsInfo.MainTabletActorId);
 
         auto sessionCount = [&] (const TString& fsId) {
             return DescribeSessions(service, fsId).SessionsSize();
@@ -1746,19 +1825,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
         // the session gets to both shards
-        syncSessions();
+        sync.SyncSessions();
 
         UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard1Id));
         UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard2Id));
 
         // the sync which is started by DestroySession is not able to deliver
         // the request to the second shard
-        shard2Unavailable = true;
+        sync.UnavailableShardId = fsConfig.Shard2Id;
 
         {
-            const ui32 prevSyncsCompleted = syncsCompleted;
+            const ui32 prevSyncsCompleted = sync.SyncsCompleted;
             service.SendDestroySessionRequest(headers);
-            waitForSync(prevSyncsCompleted);
+            sync.WaitForSync(prevSyncsCompleted);
         }
 
         // The first shard has destroyed the session. The main tablet has
@@ -1789,8 +1868,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         // the next sync delivers the request to the second shard, the main
         // tablet processes it after that
-        shard2Unavailable = false;
-        syncSessions();
+        sync.UnavailableShardId.clear();
+        sync.SyncSessions(true /* outOfSchedule */);
 
         {
             auto response = service.RecvDestroySessionResponse();
@@ -1802,6 +1881,240 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         for (const auto& id: fsConfig.MainAndShardIds()) {
             UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(id));
+        }
+    }
+
+    SERVICE_TEST(ShouldSendOnlyChangesToShardsInOutOfScheduleSyncs)
+    {
+        config.SetLazyShardSessionCreationEnabled(true);
+        config.SetShardSessionRecoveryOnDemandEnabled(true);
+        // the syncs are triggered manually in this test
+        config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        TShardSessionsSyncController sync(
+            env,
+            nodeIdx,
+            fsInfo.MainTabletActorId);
+
+        auto activeSessionCount = [&] (const TString& fsId) {
+            ui32 count = 0;
+            const auto response = DescribeSessions(service, fsId);
+            for (const auto& session: response.GetSessions()) {
+                if (!session.GetIsOrphan()) {
+                    ++count;
+                }
+            }
+            return count;
+        };
+
+        service.InitSession(fsConfig.FsId, "client1");
+
+        // a regular sync asks each shard for its sessions and compares them
+        // with the sessions of the main tablet
+        sync.SyncSessions();
+
+        for (const auto& shardId: fsConfig.ShardIds()) {
+            UNIT_ASSERT_C(sync.DescribeRequests[shardId] > 0, shardId);
+            UNIT_ASSERT_C(sync.SyncRequests[shardId] > 0, shardId);
+            UNIT_ASSERT_VALUES_EQUAL(1, activeSessionCount(shardId));
+        }
+
+        sync.DescribeRequests.clear();
+        sync.SyncRequests.clear();
+
+        // a sync which is triggered by a change of the sessions doesn't do
+        // it: the shards just get what has been changed
+        service.InitSession(fsConfig.FsId, "client2");
+        sync.SyncSessions(true /* outOfSchedule */);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, sync.DescribeRequests.size());
+        for (const auto& shardId: fsConfig.ShardIds()) {
+            UNIT_ASSERT_C(sync.SyncRequests[shardId] > 0, shardId);
+            UNIT_ASSERT_VALUES_EQUAL(2, activeSessionCount(shardId));
+        }
+
+        sync.SyncRequests.clear();
+
+        // nothing has been changed since then - there's nothing to send
+        sync.SyncSessions(true /* outOfSchedule */);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, sync.DescribeRequests.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, sync.SyncRequests.size());
+
+        // A shard which has been restarted is a different story: none of
+        // its sessions is active until the main tablet recovers them. The
+        // sync finds it out when it sends the next change to the shard and
+        // compares the sessions of this shard with the sessions of the main
+        // tablet right away.
+        {
+            TIndexTabletClient shard1(
+                env.GetRuntime(),
+                nodeIdx,
+                fsInfo.Shard1TabletId,
+                {}, // config
+                false // updateConfig
+            );
+            shard1.RebootTablet();
+        }
+
+        service.InitSession(fsConfig.FsId, "client3");
+        sync.SyncSessions(true /* outOfSchedule */);
+
+        UNIT_ASSERT(sync.DescribeRequests.contains(fsConfig.Shard1Id));
+        UNIT_ASSERT(!sync.DescribeRequests.contains(fsConfig.Shard2Id));
+        for (const auto& shardId: fsConfig.ShardIds()) {
+            UNIT_ASSERT_VALUES_EQUAL(3, activeSessionCount(shardId));
+        }
+    }
+
+    SERVICE_TEST(ShouldNotWaitForUnavailableShardForeverUponDestroySession)
+    {
+        const auto requestTimeout = TDuration::Minutes(1);
+
+        config.SetLazyShardSessionCreationEnabled(true);
+        config.SetShardSessionRecoveryOnDemandEnabled(true);
+        config.SetShardSessionRequestTimeout(requestTimeout.MilliSeconds());
+        // the syncs which are not caused by DestroySession are triggered
+        // manually in this test
+        config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        TShardSessionsSyncController sync(
+            env,
+            nodeIdx,
+            fsInfo.MainTabletActorId);
+
+        auto sessionCount = [&] (const TString& fsId) {
+            return DescribeSessions(service, fsId).SessionsSize();
+        };
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        // the session gets to both shards
+        sync.SyncSessions();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard1Id));
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard2Id));
+
+        // the sync is not able to deliver DestroySession to the second
+        // shard, so the main tablet waits
+        sync.UnavailableShardId = fsConfig.Shard2Id;
+
+        {
+            const ui32 prevSyncsCompleted = sync.SyncsCompleted;
+            service.SendDestroySessionRequest(headers);
+            sync.WaitForSync(prevSyncsCompleted);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.Shard1Id));
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard2Id));
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.FsId));
+
+        // but not forever: the request is processed by the main tablet upon
+        // the completion of the first sync after the deadline even though
+        // the shard is still unavailable
+        env.GetRuntime().AdvanceCurrentTime(requestTimeout);
+        sync.SyncSessions();
+
+        {
+            auto response = service.RecvDestroySessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // the shard which hasn't processed the request still has its copy
+        // of the session
+        UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.FsId));
+        UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.Shard1Id));
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard2Id));
+
+        // The copy is destroyed as soon as the sync manages to reach the
+        // shard. There's nothing to send to the shard as a change, so the
+        // sync has to compare its sessions with the sessions of the main
+        // tablet - even an out-of-schedule sync does it for such a shard.
+        sync.UnavailableShardId.clear();
+        sync.DescribeRequests.clear();
+        sync.SyncSessions(true /* outOfSchedule */);
+
+        UNIT_ASSERT(sync.DescribeRequests.contains(fsConfig.Shard2Id));
+        UNIT_ASSERT(!sync.DescribeRequests.contains(fsConfig.Shard1Id));
+
+        for (const auto& id: fsConfig.MainAndShardIds()) {
+            UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(id));
+        }
+    }
+
+    SERVICE_TEST(ShouldNotWaitForUnavailableShardForeverUponResetSession)
+    {
+        const auto requestTimeout = TDuration::Minutes(1);
+
+        config.SetLazyShardSessionCreationEnabled(true);
+        config.SetShardSessionRecoveryOnDemandEnabled(true);
+        config.SetShardSessionRequestTimeout(requestTimeout.MilliSeconds());
+        // the syncs which are not caused by ResetSession are triggered
+        // manually in this test
+        config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        TShardSessionsSyncController sync(
+            env,
+            nodeIdx,
+            fsInfo.MainTabletActorId);
+
+        auto sessionCount = [&] (const TString& fsId) {
+            return DescribeSessions(service, fsId).SessionsSize();
+        };
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        // the session gets to both shards
+        sync.SyncSessions();
+
+        // the sync is not able to deliver ResetSession to the second shard,
+        // so the main tablet waits
+        sync.UnavailableShardId = fsConfig.Shard2Id;
+
+        {
+            const ui32 prevSyncsCompleted = sync.SyncsCompleted;
+            service.SendResetSessionRequest(headers, "state");
+            sync.WaitForSync(prevSyncsCompleted);
+        }
+
+        // nothing has happened to the session itself
+        for (const auto& id: fsConfig.MainAndShardIds()) {
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(id));
+        }
+
+        // But not forever. Unlike DestroySession, ResetSession can't be
+        // completed without the shard, so it fails upon the completion of
+        // the first sync after the deadline.
+        env.GetRuntime().AdvanceCurrentTime(requestTimeout);
+        sync.SyncSessions();
+
+        {
+            auto response = service.RecvResetSessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // the request doesn't hold the session anymore - the next attempt
+        // succeeds as soon as the shard is available
+        sync.UnavailableShardId.clear();
+        service.ResetSession(headers, "state");
+
+        for (const auto& id: fsConfig.MainAndShardIds()) {
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(id));
         }
     }
 

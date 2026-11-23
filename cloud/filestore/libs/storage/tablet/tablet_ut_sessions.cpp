@@ -2271,10 +2271,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         const TString shardId = TStringBuilder() << mainFsId << "_s" << shardNo;
         tablet.ConfigureAsShard(shardNo, mainFsId, shardId);
 
+        // the main tablet learns about the restarts of the shard from this
+        ui32 generation = 0;
+
         {
             auto response = tablet.DescribeShardSessions();
             UNIT_ASSERT(!response->Record.GetAdapterModeEnabled());
             UNIT_ASSERT_VALUES_EQUAL(0, response->Record.SessionsSize());
+            generation = response->Record.GetGeneration();
         }
 
         // a read-write subsession and a read-only one
@@ -2290,12 +2294,20 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             subSession->SetReadOnly(true);
         }
 
-        tablet.SyncShardSessions(
-            TVector<NProtoPrivate::TShardSessionInfo>{info});
+        {
+            auto response = tablet.SyncShardSessions(
+                TVector<NProtoPrivate::TShardSessionInfo>{info});
+            UNIT_ASSERT_VALUES_EQUAL(
+                generation,
+                response->Record.GetGeneration());
+        }
 
         // the shard describes the session the way it was described to it
         {
             auto response = tablet.DescribeShardSessions();
+            UNIT_ASSERT_VALUES_EQUAL(
+                generation,
+                response->Record.GetGeneration());
             UNIT_ASSERT_VALUES_EQUAL(1, response->Record.SessionsSize());
 
             const auto& session = response->Record.GetSessions(0);
@@ -2322,6 +2334,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
         {
             auto response = tablet.DescribeShardSessions();
+            UNIT_ASSERT_C(
+                response->Record.GetGeneration() > generation,
+                response->Record.GetGeneration());
             UNIT_ASSERT_VALUES_EQUAL(1, response->Record.SessionsSize());
 
             const auto& session = response->Record.GetSessions(0);

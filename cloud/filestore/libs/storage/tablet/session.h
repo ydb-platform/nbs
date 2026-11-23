@@ -200,6 +200,11 @@ struct TSession
 
     TInstant InactivityDeadline;
 
+    // Main tablet: the version of the last change of this session which the
+    // shards should get, see TIndexTabletActor::ShardSessionsVersion. Not
+    // persistent.
+    ui64 ShardSyncVersion = 0;
+
     TSubSessions SubSessions;
 
 private:

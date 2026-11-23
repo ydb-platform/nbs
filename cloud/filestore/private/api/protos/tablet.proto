@@ -643,11 +643,16 @@ message TDescribeShardSessionsResponse
     // created via CreateSession requests.
     bool AdapterModeEnabled = 3;
 
+    // The generation of the shard tablet. A new generation means that the
+    // shard has been restarted: none of its sessions is active after that
+    // until the main tablet recovers them.
+    uint32 Generation = 4;
+
     // The sessions which the shard is requesting from the main tablet right
     // now, see RecoverShardSessions. The main tablet might be destroying
     // some of them: such a session should be destroyed in this shard as well
     // even though the shard doesn't have it yet.
-    repeated bytes RecoveringSessionIds = 4;
+    repeated bytes RecoveringSessionIds = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -719,6 +724,10 @@ message TSyncShardSessionsResponse
 
     // The number of sessions which existed in the shard and were recovered.
     uint32 RecoveredSessionCount = 4;
+
+    // The generation of the shard tablet which has processed the request,
+    // see TDescribeShardSessionsResponse.
+    uint32 Generation = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

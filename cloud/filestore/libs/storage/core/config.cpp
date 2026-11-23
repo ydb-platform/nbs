@@ -78,6 +78,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ShardSessionsSyncDelay,                                                \
             TDuration,                                                         \
             TDuration::Seconds(5)                                             )\
+    xxx(ShardSessionRequestTimeout,                                            \
+            TDuration,                                                         \
+            TDuration::Seconds(30)                                            )\
                                                                                \
     xxx(ShardBalancerDesiredFreeSpaceReserve,                   ui64,   1_TB  )\
     xxx(ShardBalancerMinFreeSpaceReserve,                       ui64,   1_MB  )\

@@ -220,6 +220,91 @@ bool TIndexTabletActor::ShouldSyncShardSessionRequests() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// The changes of the sessions which the shards should get.
+
+void TIndexTabletActor::OnShardSessionChanged(
+    const TActorContext& ctx,
+    const TString& sessionId)
+{
+    auto* session = FindSession(sessionId);
+    if (!session) {
+        return;
+    }
+
+    //
+    // The sync rounds which are triggered by the changes don't compare the
+    // sessions of the shards with the sessions of this tablet: a shard which
+    // has been synced at some version gets the sessions whose versions are
+    // newer, see GetShardSessionsDelta.
+    //
+
+    session->ShardSyncVersion = ++ShardSessionsVersion;
+
+    if (Config->GetBackgroundShardSessionCreationEnabled()) {
+        // no need to wait for the regular sync
+        ScheduleOutOfScheduleSyncSessions(ctx);
+    }
+}
+
+const TIndexTabletState::TShardSessionsDiff&
+TIndexTabletActor::GetShardSessionsDelta(ui64 fromVersion)
+{
+    if (const auto* delta = SyncSessionsDeltas.FindPtr(fromVersion)) {
+        return *delta;
+    }
+
+    // The changes which have been made after the start of the round are left
+    // for the next one - the same way as the requests are, see
+    // AddPendingShardSessionRequests.
+    const ui64 toVersion = SyncSessionsStartVersion;
+
+    TShardSessionsDiff delta;
+
+    if (Config->GetBackgroundShardSessionCreationEnabled()) {
+        // Otherwise the sessions get to the shards only on demand: a shard
+        // requests a session (and thus gets its current subsessions) when
+        // it can't process a request of a client.
+        delta.SessionsToSync = BuildShardSessionsDelta(fromVersion, toVersion);
+
+        // A session which is being reset or destroyed is not synced on its
+        // own, see AddPendingShardSessionRequests. It gets a new version
+        // upon the completion of the request.
+        EraseIf(
+            delta.SessionsToSync,
+            [&] (const NProtoPrivate::TShardSessionInfo& info) {
+                const auto& sessionId = info.GetSessionId();
+                return PendingShardSessionRequests.contains(sessionId);
+            });
+    }
+
+    //
+    // The shard hasn't been asked for its sessions, so it's unknown whether
+    // it has the sessions which the requests are for. Each request which the
+    // shard hasn't seen is sent to it: a request for a session which the
+    // shard doesn't have does nothing there.
+    //
+
+    for (const auto& [sessionId, request]: PendingShardSessionRequests) {
+        if (request.Applying
+                || request.Version <= fromVersion
+                || request.Version > toVersion)
+        {
+            continue;
+        }
+
+        auto shardRequest = BuildShardSessionRequest(sessionId, request);
+        if (request.Reset) {
+            delta.SessionsToReset.push_back(std::move(shardRequest));
+        } else {
+            delta.SessionsToDestroy.push_back(std::move(shardRequest));
+        }
+    }
+
+    return SyncSessionsDeltas.emplace(fromVersion, std::move(delta))
+        .first->second;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // ResetSession and DestroySession requests of the clients: the shards
 // process them first, this tablet processes them last.
 
@@ -229,6 +314,10 @@ void TIndexTabletActor::EnqueueShardSessionRequest(
     TPendingShardSessionRequest request)
 {
     request.Version = ++ShardSessionsVersion;
+    const auto timeout = Config->GetShardSessionRequestTimeout();
+    if (timeout != TDuration::Zero()) {
+        request.Deadline = ctx.Now() + timeout;
+    }
 
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s %s s:%s n:%lu waits for the shard sessions sync, version: %lu",
@@ -244,6 +333,29 @@ void TIndexTabletActor::EnqueueShardSessionRequest(
     ScheduleUrgentSyncSessions(ctx);
 }
 
+NProtoPrivate::TShardSessionRequest
+TIndexTabletActor::BuildShardSessionRequest(
+    const TString& sessionId,
+    const TPendingShardSessionRequest& request) const
+{
+    //
+    // The shard should make its decision against the same subsessions as
+    // this tablet does (see CheckSessionForDestroy), so the session always
+    // goes along with the request - the shard makes its copy look the same.
+    // That's needed even if the shard is just waiting for the session: the
+    // response with the session might have been sent to it long ago.
+    //
+
+    NProtoPrivate::TShardSessionRequest shardRequest;
+    shardRequest.SetSessionId(sessionId);
+    shardRequest.SetSessionSeqNo(request.SessionSeqNo);
+    if (auto info = BuildShardSessionInfo(sessionId)) {
+        *shardRequest.MutableSession() = std::move(*info);
+    }
+
+    return shardRequest;
+}
+
 void TIndexTabletActor::AddPendingShardSessionRequests(
     const TString& shardId,
     const NProtoPrivate::TDescribeShardSessionsResponse& shardSessions,
@@ -253,9 +365,9 @@ void TIndexTabletActor::AddPendingShardSessionRequests(
         return;
     }
 
-    // the requests which are not newer than that have already been
-    // processed by this shard
-    const ui64* syncedVersion = ShardSyncedVersions.FindPtr(shardId);
+    // the requests which are not newer than the version of the shard have
+    // already been processed by it
+    const auto* syncState = ShardSyncStates.FindPtr(shardId);
 
     // A sync round delivers the requests which arrived before its start. A
     // newer request can't be completed by this round anyway: the shards
@@ -282,9 +394,7 @@ void TIndexTabletActor::AddPendingShardSessionRequests(
 
     auto addRequest = [&] (const TString& sessionId, bool recovering) {
         const auto* request = PendingShardSessionRequests.FindPtr(sessionId);
-        if (!request || request->Applying) {
-            // all the shards have already processed the request if it's
-            // being processed by this tablet
+        if (!request) {
             return;
         }
 
@@ -292,11 +402,21 @@ void TIndexTabletActor::AddPendingShardSessionRequests(
             return;
         }
 
-        if (syncedVersion && request->Version <= *syncedVersion) {
-            // The request waits for the other shards. The session is not
-            // touched here until then even if the request has left it alive.
+        if (syncState && request->Version <= syncState->Version) {
+            // The shard has already processed the request: the request
+            // either waits for the other shards or is being processed by
+            // this tablet. The session is not touched here until the
+            // completion of the request even if the request has left it
+            // alive.
             return;
         }
+
+        //
+        // The request is sent even if this tablet is already processing it.
+        // That's what happens to DestroySession which didn't wait for this
+        // shard (see ShardSessionRequestTimeout): the shard should still do
+        // the same thing to its copy of the session.
+        //
 
         if (recovering && request->Reset) {
             // the shard is about to get a new copy of the session - there's
@@ -308,22 +428,7 @@ void TIndexTabletActor::AddPendingShardSessionRequests(
             return;
         }
 
-        //
-        // The shard should make its decision against the same subsessions
-        // as this tablet does (see CheckSessionForDestroy), so the session
-        // always goes along with the request - the shard makes its copy
-        // look the same. That's needed even if the shard is just waiting
-        // for the session: the response with the session might have been
-        // sent to it long ago.
-        //
-
-        NProtoPrivate::TShardSessionRequest shardRequest;
-        shardRequest.SetSessionId(sessionId);
-        shardRequest.SetSessionSeqNo(request->SessionSeqNo);
-        if (auto info = BuildShardSessionInfo(sessionId)) {
-            *shardRequest.MutableSession() = std::move(*info);
-        }
-
+        auto shardRequest = BuildShardSessionRequest(sessionId, *request);
         if (request->Reset) {
             diff.SessionsToReset.push_back(std::move(shardRequest));
         } else {
@@ -350,9 +455,9 @@ void TIndexTabletActor::ProcessPendingShardSessionRequests(
     //
     // A shard has processed a request if its sessions have been synced by a
     // round which was started after the arrival of the request: such a round
-    // asks the shard for its sessions when the request is already here. The
-    // shards which work in adapter mode don't take part in it: this tablet
-    // sends the request to them itself after its own tx.
+    // delivers the request to the shard. The shards which work in adapter
+    // mode don't take part in it: this tablet sends the request to them
+    // itself after its own tx.
     //
 
     const auto adapterModeShardIds = GetAdapterModeShardIds();
@@ -366,16 +471,115 @@ void TIndexTabletActor::ProcessPendingShardSessionRequests(
             continue;
         }
 
-        const ui64* version = ShardSyncedVersions.FindPtr(shardId);
-        syncedVersion = Min<ui64>(syncedVersion, version ? *version : 0);
+        const auto* syncState = ShardSyncStates.FindPtr(shardId);
+        syncedVersion =
+            Min<ui64>(syncedVersion, syncState ? syncState->Version : 0);
     }
+
+    const auto now = ctx.Now();
 
     // a tx may complete (and remove its request) right away
     TVector<TString> sessionIds;
+    // the requests which have been waiting for the shards for too long
+    TVector<TString> expiredSessionIds;
     for (const auto& [sessionId, request]: PendingShardSessionRequests) {
-        if (!request.Applying && request.Version <= syncedVersion) {
-            sessionIds.push_back(sessionId);
+        if (request.Applying) {
+            continue;
         }
+
+        if (request.Version <= syncedVersion) {
+            sessionIds.push_back(sessionId);
+        } else if (request.Deadline != TInstant::Zero()
+                && request.Deadline <= now
+                && request.Version <= SyncSessionsStartVersion)
+        {
+            // The round which has just been completed tried to deliver the
+            // request. A request which no round has tried to deliver yet
+            // waits for the next one whatever its deadline is.
+            expiredSessionIds.push_back(sessionId);
+        }
+    }
+
+    //
+    // A shard which is unavailable shouldn't block the requests forever:
+    // nothing else is allowed to change a session while its request is
+    // waiting, and the clients are waiting as well.
+    //
+    // DestroySession is processed by this tablet anyway. The shards which
+    // haven't processed the request keep their copies of the session, but
+    // that's something the sync is able to fix later: a session which this
+    // tablet doesn't have is destroyed in a shard as soon as its sessions
+    // get compared with the sessions of this tablet.
+    //
+    // ResetSession can't be completed this way: the session stays alive, so
+    // there would be nothing to tell a shard which missed the request that
+    // its copy of the session has to be reset. The request fails instead -
+    // the client is supposed to retry it. The shards which have processed
+    // the request have reset their copies of the session by this moment.
+    //
+
+    // the newest of the DestroySession requests which are not going to be
+    // delivered to all the shards
+    ui64 abandonedVersion = 0;
+
+    for (const auto& sessionId: expiredSessionIds) {
+        auto it = PendingShardSessionRequests.find(sessionId);
+        if (it == PendingShardSessionRequests.end()) {
+            continue;
+        }
+
+        auto& request = it->second;
+
+        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+            "%s %s s:%s n:%lu hasn't been processed by all the shards in"
+            " time, version: %lu, synced version: %lu",
+            LogTag.c_str(),
+            request.Reset ? "ResetSession" : "DestroySession",
+            sessionId.Quote().c_str(),
+            request.SessionSeqNo,
+            request.Version,
+            syncedVersion);
+
+        if (!request.Reset) {
+            abandonedVersion = Max(abandonedVersion, request.Version);
+            sessionIds.push_back(sessionId);
+            continue;
+        }
+
+        using TResponse = TEvService::TEvResetSessionResponse;
+        NCloud::Reply(
+            ctx,
+            *request.RequestInfo,
+            std::make_unique<TResponse>(MakeError(
+                E_REJECTED,
+                "the request hasn't been processed by all the shards in"
+                " time")));
+
+        PendingShardSessionRequests.erase(it);
+
+        // the session wasn't synced while the request was in progress
+        OnShardSessionChanged(ctx, sessionId);
+    }
+
+    if (abandonedVersion) {
+        //
+        // The shards which haven't seen these requests are not going to get
+        // them as the changes: there will be nothing left of the sessions
+        // here. So this tablet forgets what it knows about such shards -
+        // the next round compares their sessions with the sessions of this
+        // tablet and destroys the ones which don't exist here.
+        //
+
+        for (const auto& shardId: GetFileSystem().GetShardFileSystemIds()) {
+            const auto* syncState = ShardSyncStates.FindPtr(shardId);
+            if (syncState && syncState->Version < abandonedVersion) {
+                ShardSyncStates.erase(shardId);
+            }
+        }
+
+        // one more attempt to reach these shards, the regular rounds do the
+        // rest
+        ScheduleOutOfScheduleSyncSessions(ctx);
     }
 
     for (const auto& sessionId: sessionIds) {
@@ -385,7 +589,7 @@ void TIndexTabletActor::ProcessPendingShardSessionRequests(
         }
 
         LOG_INFO(ctx, TFileStoreComponents::TABLET,
-            "%s %s s:%s n:%lu has been processed by the shards"
+            "%s %s s:%s n:%lu is not waiting for the shards anymore"
             ", version: %lu",
             LogTag.c_str(),
             request->Reset ? "ResetSession" : "DestroySession",
@@ -444,13 +648,9 @@ void TIndexTabletActor::OnShardSessionRequestCompleted(
 
     PendingShardSessionRequests.erase(it);
 
-    if (Config->GetBackgroundShardSessionCreationEnabled()
-            && FindSession(sessionId))
-    {
-        // the session is alive, but the sync wasn't creating it in the
-        // shards which don't have it while the request was in progress
-        ScheduleOutOfScheduleSyncSessions(ctx);
-    }
+    // The session wasn't synced while the request was in progress. If it's
+    // still alive, then the shards should get it the way it is now.
+    OnShardSessionChanged(ctx, sessionId);
 }
 
 void TIndexTabletActor::RejectPendingShardSessionRequests(
@@ -576,6 +776,7 @@ void TIndexTabletActor::HandleDescribeShardSessions(
     }
 
     auto response = std::make_unique<TResponse>();
+    response->Record.SetGeneration(GetGeneration());
     for (auto& info: DescribeShardSessions()) {
         *response->Record.AddSessions() = std::move(info);
     }
@@ -791,6 +992,7 @@ void TIndexTabletActor::CompleteTx_SyncShardSessions(
 
     using TResponse = TEvIndexTablet::TEvSyncShardSessionsResponse;
     auto response = std::make_unique<TResponse>(args.Error);
+    response->Record.SetGeneration(GetGeneration());
     response->Record.SetCreatedSessionCount(args.CreatedSessionCount);
     response->Record.SetRecoveredSessionCount(args.RecoveredSessionCount);
 
