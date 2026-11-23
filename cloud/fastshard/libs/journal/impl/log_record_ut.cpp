@@ -179,4 +179,96 @@ Y_UNIT_TEST_SUITE(TLogRecordTest)
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+Y_UNIT_TEST_SUITE(TCachedPagesTest)
+{
+    TVector<TBuffer> MakePages(ui64 pageCount)
+    {
+        TVector<TBuffer> pages;
+        for (ui64 i = 0; i < pageCount; ++i) {
+            pages.emplace_back("abcd", 4);
+        }
+
+        return pages;
+    }
+
+    Y_UNIT_TEST(ShouldCountKeptPagesUntilDestroyed)
+    {
+        auto counter = std::make_shared<std::atomic<ui64>>(0);
+
+        {
+            auto pages = TCachedPages::Reserve(MakePages(2), counter, 8);
+            UNIT_ASSERT(!pages.Empty());
+            UNIT_ASSERT_VALUES_EQUAL(2, pages.Get().size());
+            UNIT_ASSERT_VALUES_EQUAL(8, counter->load());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->load());
+    }
+
+    Y_UNIT_TEST(ShouldNotKeepPagesOverLimit)
+    {
+        auto counter = std::make_shared<std::atomic<ui64>>(0);
+
+        auto first = TCachedPages::Reserve(MakePages(2), counter, 11);
+        UNIT_ASSERT(!first.Empty());
+
+        auto second = TCachedPages::Reserve(MakePages(1), counter, 11);
+        UNIT_ASSERT(second.Empty());
+        UNIT_ASSERT_VALUES_EQUAL(8, counter->load());
+
+        // the pages fit again once the first ones are gone
+        first = {};
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->load());
+
+        second = TCachedPages::Reserve(MakePages(1), counter, 11);
+        UNIT_ASSERT(!second.Empty());
+        UNIT_ASSERT_VALUES_EQUAL(4, counter->load());
+    }
+
+    Y_UNIT_TEST(ShouldKeepCopiesOfPages)
+    {
+        auto counter = std::make_shared<std::atomic<ui64>>(0);
+
+        TString content = "abcd";
+        const TVector<TStringBuf> views = {content, content};
+
+        auto pages = TCachedPages::Reserve(views, counter, 8);
+        UNIT_ASSERT_VALUES_EQUAL(8, counter->load());
+
+        // the kept pages do not depend on the source
+        content = "efgh";
+
+        UNIT_ASSERT_VALUES_EQUAL(2, pages.Get().size());
+        for (const auto& page: pages.Get()) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                "abcd",
+                TStringBuf(page.Data(), page.Size()));
+        }
+
+        UNIT_ASSERT(TCachedPages::Reserve(views, counter, 8).Empty());
+        UNIT_ASSERT_VALUES_EQUAL(8, counter->load());
+    }
+
+    Y_UNIT_TEST(ShouldCountMovedPagesOnce)
+    {
+        auto counter = std::make_shared<std::atomic<ui64>>(0);
+
+        {
+            auto pages = TCachedPages::Reserve(MakePages(1), counter, 8);
+            TCachedPages moved(std::move(pages));
+
+            UNIT_ASSERT_VALUES_EQUAL(1, moved.Get().size());
+            UNIT_ASSERT_VALUES_EQUAL(4, counter->load());
+
+            // the new pages replace the old ones in the counter
+            moved = TCachedPages::Reserve(MakePages(1), counter, 8);
+            UNIT_ASSERT_VALUES_EQUAL(4, counter->load());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->load());
+    }
+}
+
 }   // namespace NCloud::NJournalled

@@ -6,6 +6,7 @@
 
 #include <cstring>
 #include <limits>
+#include <utility>
 #include <type_traits>
 
 namespace NCloud::NJournalled {
@@ -38,7 +39,112 @@ static_assert(std::has_unique_object_representations_v<TMetadataHeader>);
 static_assert(std::has_unique_object_representations_v<TRecordHeader>);
 static_assert(std::has_unique_object_representations_v<TPageMapping>);
 
+// Takes |byteCount| from the counter if it stays under |maxBytes|.
+bool TryReserve(std::atomic<ui64>& cachedBytes, ui64 byteCount, ui64 maxBytes)
+{
+    //
+    // Retry until the counter is updated or the limit is reached: several
+    // threads can do this at the same time
+    //
+
+    ui64 cached = cachedBytes.load(std::memory_order_relaxed);
+    do {
+        if (cached > maxBytes || byteCount > maxBytes - cached) {
+            return false;
+        }
+    } while (!cachedBytes.compare_exchange_weak(
+        cached,
+        cached + byteCount,
+        std::memory_order_relaxed));
+
+    return true;
+}
+
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+TCachedPages::TCachedPages(TCachedPages&& other) noexcept
+    : Pages(std::move(other.Pages))
+    , CachedBytes(std::move(other.CachedBytes))
+{
+    other.Pages.clear();
+}
+
+TCachedPages& TCachedPages::operator=(TCachedPages&& other) noexcept
+{
+    //
+    // Move the old pages into a temporary object: its destructor returns
+    // their size to the counter
+    //
+
+    TCachedPages old(std::move(*this));
+
+    Pages = std::move(other.Pages);
+    CachedBytes = std::move(other.CachedBytes);
+    other.Pages.clear();
+
+    return *this;
+}
+
+TCachedPages::~TCachedPages()
+{
+    if (!CachedBytes) {
+        return;
+    }
+
+    ui64 byteCount = 0;
+    for (const auto& page: Pages) {
+        byteCount += page.Size();
+    }
+
+    CachedBytes->fetch_sub(byteCount, std::memory_order_relaxed);
+}
+
+TCachedPages TCachedPages::Reserve(
+    TVector<TBuffer> pages,
+    std::shared_ptr<std::atomic<ui64>> cachedBytes,
+    ui64 maxBytes)
+{
+    ui64 byteCount = 0;
+    for (const auto& page: pages) {
+        byteCount += page.Size();
+    }
+
+    if (!TryReserve(*cachedBytes, byteCount, maxBytes)) {
+        return {};
+    }
+
+    TCachedPages result;
+    result.Pages = std::move(pages);
+    result.CachedBytes = std::move(cachedBytes);
+    return result;
+}
+
+TCachedPages TCachedPages::Reserve(
+    const TVector<TStringBuf>& pages,
+    std::shared_ptr<std::atomic<ui64>> cachedBytes,
+    ui64 maxBytes)
+{
+    ui64 byteCount = 0;
+    for (const auto& page: pages) {
+        byteCount += page.size();
+    }
+
+    if (!TryReserve(*cachedBytes, byteCount, maxBytes)) {
+        return {};
+    }
+
+    TCachedPages result;
+    result.CachedBytes = std::move(cachedBytes);
+
+    result.Pages.reserve(pages.size());
+    for (const auto& page: pages) {
+        result.Pages.emplace_back(page.data(), page.size());
+    }
+
+    return result;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

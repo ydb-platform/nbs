@@ -479,6 +479,10 @@ struct TFixture: public NUnitTest::TBaseFixture
     // the number of journal pages the next journal is given
     ui64 PageCount = DefaultPageCount;
 
+    // the memory the next journal may use to keep the pages of its records,
+    // enough for all of them unless a test says otherwise
+    ui64 MaxCachedPageBytes = Max<ui64>();
+
     IDevicePageStorePtr DataStore;
     IJournalPtr Journal;
 
@@ -523,7 +527,8 @@ struct TFixture: public NUnitTest::TBaseFixture
             MetaStore,
             DataStore,
             "test-device",
-            DevicePageCount);
+            DevicePageCount,
+            MaxCachedPageBytes);
     }
 
     // The number of times the journal has reported the given critical event
@@ -1891,6 +1896,22 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(2, response.GetResult().LsnLowWatermark);
     }
 
+    Y_UNIT_TEST_F(ShouldFailTailReadWhenDeviceFails, TFixture)
+    {
+        // the pages are not kept in memory, so the tail is read from the
+        // device
+        MaxCachedPageBytes = 0;
+        RecreateJournal();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+
+        Device->FailReads.store(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, ReadTail(0).GetError().GetCode());
+    }
+
     // Advancing the lsn low watermark
 
     Y_UNIT_TEST_F(ShouldAdvanceLsnLowWatermark, TFixture)
@@ -2053,15 +2074,13 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldFailToFetchRecordsToFlushWhenDeviceFails, TFixture)
     {
-        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+        // the pages are not kept in memory, so the flush reads them back
+        // from the device
+        MaxCachedPageBytes = 0;
+        RecreateJournal();
 
         WriteThreeRecords();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(1));
-
-        // the pages of an acked record are not in memory after a restart, so
-        // the flush reads them back from the device
-        RecreateJournal();
-        UNIT_ASSERT_VALUES_EQUAL(3, RestoreOrFail());
 
         Device->FailReads.store(true);
 
@@ -2097,6 +2116,74 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "1<-0 10:[A010]; 2<-1 20:[B020]; 3<-2 30:[C030]",
             DescribeRecords(ReadTail(0)));
+    }
+
+    Y_UNIT_TEST_F(ShouldReadBackRecordsThatDoNotFitIntoMemory, TFixture)
+    {
+        // the second record does not fit, the third one does
+        MaxCachedPageBytes = 2 * DefaultPageSize;
+        RecreateJournal();
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 2}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(3, 2, 'C', {{30, 1}}));
+
+        const TString records =
+            "1<-0 10:[A010]; 2<-1 20:[B020,B021]; 3<-2 30:[C030]";
+
+        // the tail holds only the records that are not acked yet
+        UNIT_ASSERT_VALUES_EQUAL(records, DescribeRecords(ReadTail(0)));
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(3));
+        UNIT_ASSERT_VALUES_EQUAL(records, GetRecordsToFlushDescription());
+
+        Device->FailReads.store(true);
+
+        // the first record alone does not need the device
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]",
+            GetRecordsToFlushDescription(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_IO,
+            GetRecordsToFlush().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldReuseMemoryOfCleanedUpRecords, TFixture)
+    {
+        MaxCachedPageBytes = DefaultPageSize;
+        RecreateJournal();
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(1));
+        FlushUpTo(1);
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
+
+        Device->FailReads.store(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "2<-1 20:[B020]",
+            GetRecordsToFlushDescription());
+    }
+
+    Y_UNIT_TEST_F(ShouldReuseMemoryOfFailedWrite, TFixture)
+    {
+        MaxCachedPageBytes = DefaultPageSize;
+        RecreateJournal();
+
+        Device->FailWrites.store(true);
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, WriteRecord(1, 0, 'A', {{10, 1}}));
+        Device->FailWrites.store(false);
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'B', {{20, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(1));
+
+        Device->FailReads.store(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 20:[B020]",
+            GetRecordsToFlushDescription());
     }
 
     Y_UNIT_TEST_F(ShouldKeepPagesOfUnackedRecordsReadOnRestore, TFixture)

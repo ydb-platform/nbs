@@ -342,6 +342,7 @@ private:
     const IDevicePageStorePtr DataStore;
     const TString DeviceUUID;
     const ui64 DevicePageCount;
+    const ui64 MaxCachedPageBytes;
 
     TLog Log;
 
@@ -355,6 +356,11 @@ private:
     std::atomic<bool> AdvancingLsnLowWatermark = false;
     std::atomic<ui64> LsnLowWatermark = 0;
 
+    // The size of the pages the records keep in memory. The records share
+    // the counter, as they can live longer than the journal.
+    const std::shared_ptr<std::atomic<ui64>> CachedPageBytes =
+        std::make_shared<std::atomic<ui64>>(0);
+
 public:
     TJournal(
         ILoggingServicePtr logging,
@@ -362,7 +368,8 @@ public:
         IKeyBufferStorePtr metaStore,
         IDevicePageStorePtr dataStore,
         TString deviceUUID,
-        ui64 devicePageCount);
+        ui64 devicePageCount,
+        ui64 maxCachedPageBytes);
 
     // Restores the journal state and returns lsn of the last indexed record
     [[nodiscard]] TResultOrError<ui64> Restore() override;
@@ -425,13 +432,15 @@ TJournal::TJournal(
     IKeyBufferStorePtr metaStore,
     IDevicePageStorePtr dataStore,
     TString deviceUUID,
-    ui64 devicePageCount)
+    ui64 devicePageCount,
+    ui64 maxCachedPageBytes)
     : Logging(std::move(logging))
     , Executor(std::move(executor))
     , MetaStore(std::move(metaStore))
     , DataStore(std::move(dataStore))
     , DeviceUUID(std::move(deviceUUID))
     , DevicePageCount(devicePageCount)
+    , MaxCachedPageBytes(maxCachedPageBytes)
     , Log(Logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
 {}
 
@@ -674,7 +683,10 @@ NProto::TError TJournal::ValidateRecordPages(
     // not have to read them again
     //
 
-    record.Pages = std::move(pages);
+    record.Pages = TCachedPages::Reserve(
+        std::move(pages),
+        CachedPageBytes,
+        MaxCachedPageBytes);
 
     return {};
 }
@@ -808,14 +820,13 @@ TFuture<NProto::TError> TJournal::WriteLogRecord(
     //
     // Keep the pages in memory, so that the flush and the tail read do not
     // read them back from the journal. The caller keeps its pages only
-    // until the write is done, so copy them. Nobody reads the pages of the
-    // record before it is marked as ready
+    // until the write is done, so copy them if they fit into the memory
+    // limit. Nobody reads the pages of the record before it is marked as
+    // ready
     //
 
-    record.Pages.reserve(pages.size());
-    for (const auto& page: pages) {
-        record.Pages.emplace_back(page.data(), page.size());
-    }
+    record.Pages =
+        TCachedPages::Reserve(pages, CachedPageBytes, MaxCachedPageBytes);
 
     return WaitAll(metaFuture.IgnoreResult(), dataFuture.IgnoreResult())
         .Apply(
@@ -1125,7 +1136,7 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
         // only they are read back from the journal
         //
 
-        if (record->Pages.empty()) {
+        if (record->Pages.Empty()) {
             for (const auto& mapping: record->PageMappings) {
                 locations.push_back(mapping.Location);
             }
@@ -1168,10 +1179,10 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
         // Take the pages from memory if the record keeps them
         //
 
-        if (!record->Pages.empty()) {
+        if (!record->Pages.Empty()) {
             auto error = CopyPageRanges(
                 record->PageMappings,
-                record->Pages,
+                record->Pages.Get(),
                 &journalRecord.Ranges);
 
             if (HasError(error)) {
@@ -1281,8 +1292,8 @@ NProto::TError TJournal::ReadPageRanges(
     // Take the pages from memory if the record keeps them
     //
 
-    if (!record.Pages.empty()) {
-        return CopyPageRanges(mappings, record.Pages, ranges);
+    if (!record.Pages.Empty()) {
+        return CopyPageRanges(mappings, record.Pages.Get(), ranges);
     }
 
     auto response =
@@ -1312,7 +1323,8 @@ IJournalPtr CreateJournal(
     IKeyBufferStorePtr metaStore,
     IDevicePageStorePtr dataStore,
     TString deviceUUID,
-    ui64 devicePageCount)
+    ui64 devicePageCount,
+    ui64 maxCachedPageBytes)
 {
     return std::make_shared<TJournal>(
         std::move(logging),
@@ -1320,7 +1332,8 @@ IJournalPtr CreateJournal(
         std::move(metaStore),
         std::move(dataStore),
         std::move(deviceUUID),
-        devicePageCount);
+        devicePageCount,
+        maxCachedPageBytes);
 }
 
 }   // namespace NCloud::NJournalled

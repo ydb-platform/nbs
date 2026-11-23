@@ -11,6 +11,8 @@
 #include <util/generic/buffer.h>
 #include <util/generic/vector.h>
 
+#include <atomic>
+#include <memory>
 #include <optional>
 
 namespace NCloud::NJournalled {
@@ -29,6 +31,53 @@ struct TPageMapping
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The pages that a record keeps in memory. Their size is counted in a counter
+// shared with the other records. The size is taken from the counter when the
+// pages are kept and is returned when this object is destroyed.
+class TCachedPages
+{
+private:
+    TVector<TBuffer> Pages;
+
+    // Not set when no pages are kept.
+    std::shared_ptr<std::atomic<ui64>> CachedBytes;
+
+public:
+    TCachedPages() = default;
+
+    TCachedPages(TCachedPages&& other) noexcept;
+    TCachedPages& operator=(TCachedPages&& other) noexcept;
+
+    ~TCachedPages();
+
+    // Keeps the pages if their size fits into the counter under |maxBytes|.
+    // Returns an empty object otherwise. Can be called from several threads
+    // with the same counter.
+    static TCachedPages Reserve(
+        TVector<TBuffer> pages,
+        std::shared_ptr<std::atomic<ui64>> cachedBytes,
+        ui64 maxBytes);
+
+    // The same, but keeps copies of the pages. Makes no copy if the pages do
+    // not fit.
+    static TCachedPages Reserve(
+        const TVector<TStringBuf>& pages,
+        std::shared_ptr<std::atomic<ui64>> cachedBytes,
+        ui64 maxBytes);
+
+    bool Empty() const
+    {
+        return Pages.empty();
+    }
+
+    const TVector<TBuffer>& Get() const
+    {
+        return Pages;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TLogRecord
 {
     ui64 Lsn = 0;
@@ -39,7 +88,7 @@ struct TLogRecord
     // The content of the pages, one buffer per page in the order of the
     // mappings. Empty when the journal does not keep the pages of the record
     // in memory. Set before the record becomes ready and never changed after.
-    TVector<TBuffer> Pages;
+    TCachedPages Pages;
 
     NThreading::TPromise<NProto::TError> Promise;
 };

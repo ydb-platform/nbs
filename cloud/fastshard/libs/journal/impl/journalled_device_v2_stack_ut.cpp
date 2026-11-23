@@ -288,7 +288,8 @@ struct TFixture: public NUnitTest::TBaseFixture
             MetaStore,
             PageStore,
             TString{DeviceUUID},
-            DataDevicePageCount);
+            DataDevicePageCount,
+            JournalPageCount * DataPageSize /* maxCachedPageBytes */);
         Device = CreateJournalledDeviceV2(
             Logging,
             Executor,

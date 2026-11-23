@@ -41,6 +41,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <optional>
 #include <thread>
 
 namespace NCloud::NJournalled {
@@ -162,6 +163,10 @@ struct TOptions
     ui64 LogMetaSize = 93_MB;
     ui64 LogDataSize = 930_MB;
     ui64 DataSize = 1_GB;
+
+    // The journal data part size unless given.
+    std::optional<ui64> LogCacheSize;
+
     ui64 WorkingSet = 256_MB;
 
     ui64 AdvanceEvery = 256;
@@ -291,6 +296,14 @@ void TOptions::Parse(int argc, char** argv)
         .DefaultValue(logDataSize)
         .StoreResult(&logDataSize);
 
+    TString logCacheSize;
+    opts.AddLongOption(
+            "log-cache-size",
+            "memory for the journal pages kept until the flush, the journal "
+            "data part size by default")
+        .RequiredArgument("SIZE")
+        .StoreResult(&logCacheSize);
+
     TString dataSize = ToString(DataSize);
     opts.AddLongOption("data-size", "data part size")
         .RequiredArgument("SIZE")
@@ -360,6 +373,9 @@ void TOptions::Parse(int argc, char** argv)
     LogMetaSize = NSize::ParseSize(logMetaSize);
     LogDataSize = NSize::ParseSize(logDataSize);
     DataSize = NSize::ParseSize(dataSize);
+    if (logCacheSize) {
+        LogCacheSize = NSize::ParseSize(logCacheSize);
+    }
     WorkingSet = NSize::ParseSize(workingSet);
 
     auto cores = StringSplitter(executorCores).Split(',').SkipEmpty();
@@ -730,7 +746,8 @@ void TBench::Start()
             std::move(logMetaStore),
             std::move(logDataStore),
             TString(DeviceUUID),
-            dataPages);
+            dataPages,
+            Options.LogCacheSize.value_or(Options.LogDataSize));
 
         Device = CreateJournalledDeviceV2(
             Logging,

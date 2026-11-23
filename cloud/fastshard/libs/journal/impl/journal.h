@@ -79,12 +79,17 @@ struct IJournal
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The journal keeps the pages of the records in memory until the records are
+// cleaned up, up to |maxCachedPageBytes| in total. The flush and the tail
+// read take such pages from memory. The pages of the records that do not fit
+// are read back from the data store.
 IJournalPtr CreateJournal(
     ILoggingServicePtr logging,
     TExecutorPtr executor,
     IKeyBufferStorePtr metaStore,
     IDevicePageStorePtr dataStore,
     TString deviceUUID,
-    ui64 devicePageCount);
+    ui64 devicePageCount,
+    ui64 maxCachedPageBytes);
 
 }   // namespace NCloud::NJournalled
