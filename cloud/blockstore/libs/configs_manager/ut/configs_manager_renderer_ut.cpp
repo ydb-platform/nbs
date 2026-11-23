@@ -27,6 +27,9 @@ ConfigsDispatcher deliveries without subscribers or an HTTP server.
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/stream/str.h>
+#include <util/string/builder.h>
+
+#include <google/protobuf/descriptor.h>
 
 namespace NCloud::NBlockStore {
 
@@ -173,6 +176,26 @@ TString TRendererActorFixture::GetMonitoringPage()
 
 Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
 {
+    // Verify that every top-level field is a singular message: the renderer
+    // traverses all configuration sections using singular message accessors.
+    Y_UNIT_TEST(ShouldHaveOnlySingularMessageSections)
+    {
+        const auto* descriptor = NProto::TBlockstoreConfig::descriptor();
+        for (int i = 0; i != descriptor->field_count(); ++i) {
+            const auto* field = descriptor->field(i);
+            const TString errorMessage = TStringBuilder()
+                << "Renderer invariant violated: " << field->full_name()
+                << " must be a singular message; got "
+                << (field->is_repeated() ? "repeated " : "")
+                << field->cpp_type_name();
+            UNIT_ASSERT_C(!field->is_repeated(), errorMessage);
+            UNIT_ASSERT_C(
+                field->cpp_type() ==
+                    google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE,
+                errorMessage);
+        }
+    }
+
     // Check that startup delivery is shown separately from absent runtime data.
     Y_UNIT_TEST_F(
         ShouldRenderStartupSourceBeforeRuntimeUpdate,
