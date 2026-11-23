@@ -470,7 +470,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         b.State->FlushSucceeded(1, 3);
         b.State->FlushSucceeded(2, 1);
 
-        b.State->SetDrainingMode();
+        b.State->Drain();
         UNIT_ASSERT(b.State->IsDrained());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
@@ -595,7 +595,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(c2.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(error, c2.GetValue());
 
-        b.State->SetDrainingMode();
+        b.State->Drain();
         UNIT_ASSERT(b.State->IsDrained());
         UNIT_ASSERT_VALUES_EQUAL(
             2,
@@ -1637,7 +1637,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
                 if (shutdown) {
                     b.State->ReleaseBarrier(1, future.GetValue().GetResult());
                     b.State->Shutdown();
-                    b.State->SetDrainingMode();
+                    b.State->Drain();
                 }
 
                 const auto retryStatus = b.State->FlushFailed(

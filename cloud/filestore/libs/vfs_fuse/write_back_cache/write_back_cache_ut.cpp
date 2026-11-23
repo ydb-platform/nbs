@@ -1427,7 +1427,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(flushFuture.HasValue());
         UNIT_ASSERT(HasError(flushFuture.GetValue()));
 
-        b.Cache.SetDrainingMode();
+        b.Cache.Drain();
         UNIT_ASSERT_VALUES_EQUAL(
             "hello",
             b.ReadFromCache(1, 12, 5).GetValue().GetBuffer());
@@ -2187,7 +2187,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         TBootstrap b;
 
         b.WriteToCacheSync(1, 0, "abc");
-        b.Cache.SetDrainingMode();
+        b.Cache.Drain();
 
         auto future = b.WriteToCache(1, 1, "def");
         UNIT_ASSERT(future.HasValue());
@@ -2216,7 +2216,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(2, 0, "ghi");
 
         auto flushAll = b.Cache.FlushAllData();
-        b.Cache.SetDrainingMode();
+        b.Cache.Drain();
 
         node1.SetValue(TErrorResponse(E_IO, "Flush failed"));
 
@@ -2289,7 +2289,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         assertOperationalState(1, 0, 0, 0);
 
         b.WriteToCacheSync(1, 0, "abc");
-        b.Cache.SetDrainingMode();
+        b.Cache.Drain();
 
         UNIT_ASSERT(!b.Cache.IsDrained());
         b.ModuleStats->UpdateStats(b.Timer->Now());
@@ -2981,7 +2981,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(!directReadFuture.HasValue());
         UNIT_ASSERT(!setNodeAttrFuture.HasValue());
 
-        b.Cache.SetDrainingMode();
+        b.Cache.Drain();
         UNIT_ASSERT(!b.Cache.Shutdown().IsReady());
         UNIT_ASSERT(!b.Cache.Shutdown().IsReady());
         UNIT_ASSERT(!b.Cache.IsDrained());

@@ -166,9 +166,9 @@ public:
         ThreadPool.Stop();
     }
 
-    void SetDrainingMode()
+    void Drain()
     {
-        Cache.SetDrainingMode();
+        Cache.Drain();
     }
 
     TFuture<void> Shutdown()
@@ -316,9 +316,9 @@ TTestWriteBackCache::TTestWriteBackCache(
 TTestWriteBackCache& TTestWriteBackCache::operator=(
     TTestWriteBackCache&&) noexcept = default;
 
-void TTestWriteBackCache::SetDrainingMode()
+void TTestWriteBackCache::Drain()
 {
-    Impl->SetDrainingMode();
+    Impl->Drain();
 }
 
 TFuture<void> TTestWriteBackCache::Shutdown()

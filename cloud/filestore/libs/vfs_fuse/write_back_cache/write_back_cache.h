@@ -160,12 +160,12 @@ public:
      * Use IsDrained() to check completion. Storage corruption or an internal
      * cache failure suspends draining.
      */
-    void SetDrainingMode();
+    void Drain();
 
     /* Irreversibly stops accepting cached writes and starts asynchronous
-     * flushing similar to SetDrainingMode(). WriteDataDirect remains allowed.
+     * flushing similar to Drain(). WriteDataDirect remains allowed.
      *
-     * Unlike SetDrainingMode(), cached data will be dropped on flush errors,
+     * Unlike Drain(), cached data will be dropped on flush errors,
      * therefore completion does not guarantee persistence. Dropped requests
      * are reported as critical events.
      *

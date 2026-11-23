@@ -65,18 +65,19 @@ NProto::TError TWriteBackCacheState::Init()
     return error;
 }
 
-void TWriteBackCacheState::SetDrainingMode()
+void TWriteBackCacheState::Drain()
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    SetDrainingMode(false);
+    SetDrainRequestedFlag();
 }
 
 TFuture<void> TWriteBackCacheState::Shutdown()
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    SetDrainingMode(true);
+    ShutdownRequested = true;
+    SetDrainRequestedFlag();
     return ShutdownPromise.GetFuture();
 }
 
@@ -92,9 +93,9 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (DrainingMode) {
+    if (DrainRequested) {
         // This may happen due to race condition that is valid scenario:
-        // - TWriteBackCache::SetDrainingMode is called in one thread;
+        // - TWriteBackCache::Drain is called in one thread;
         // - WriteData request is being processed in another thread.
         //
         // But currently, draining is requested only at session creation
@@ -423,7 +424,7 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
     TriggerFlushCompletions(nodeState);
     UpdateFlushStatus(nodeId, nodeState);
     EvictUnpinnedFlushedEntries(nodeId, nodeState);
-    CheckShutdownCompletion();
+    CompleteShutdownIfNeeded();
 }
 
 EFlushRetryStatus TWriteBackCacheState::FlushFailed(
@@ -563,7 +564,7 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
     // of retrying.
     const bool shouldDropCachedData =
         nodeState.Handles.empty() ||
-        (ShutdownMode && !nodeState.Cache.HasPendingRequests());
+        (ShutdownRequested && !nodeState.Cache.HasPendingRequests());
 
     if (shouldDropCachedData) {
         nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
@@ -681,7 +682,7 @@ EOperationalState TWriteBackCacheState::GetOperationalState() const
     if (IsFailed) {
         return EOperationalState::Failed;
     }
-    if (DrainingMode) {
+    if (DrainRequested) {
         return RequestManager.HasPendingOrUnflushedRequests()
                    ? EOperationalState::Stopping
                    : EOperationalState::Inactive;
@@ -817,13 +818,13 @@ void TWriteBackCacheState::TriggerFlushCompletions(TNodeState& nodeState)
     }
 }
 
-void TWriteBackCacheState::CheckShutdownCompletion()
+void TWriteBackCacheState::CompleteShutdownIfNeeded()
 {
-    if (ShutdownMode && !ShutdownCompletionQueued &&
+    if (ShutdownRequested && !ShutdownCompleted &&
         GetOperationalState() == EOperationalState::Inactive)
     {
         QueuedOperations.CompleteShutdownPromise(ShutdownPromise);
-        ShutdownCompletionQueued = true;
+        ShutdownCompleted = true;
 
         if (ShutdownDroppedRequestCount > 0) {
             ReportWriteBackCacheDataLossError(
@@ -1118,7 +1119,7 @@ void TWriteBackCacheState::DropCachedData(
         ++droppedRequestCount;
     }
 
-    if (ShutdownMode) {
+    if (ShutdownRequested) {
         ShutdownDroppedRequestCount += droppedRequestCount;
     }
 
@@ -1153,7 +1154,7 @@ void TWriteBackCacheState::DropCachedData(
     nodeState.HandlesWithReleaseRequests.clear();
 
     EvictUnpinnedFlushedEntries(nodeId, nodeState);
-    CheckShutdownCompletion();
+    CompleteShutdownIfNeeded();
 }
 
 void TWriteBackCacheState::FailUnallocatedPendingRequest(
@@ -1211,14 +1212,13 @@ void TWriteBackCacheState::FailAllUnallocatedPendingRequests(
     }
 }
 
-void TWriteBackCacheState::SetDrainingMode(bool shutdown)
+void TWriteBackCacheState::SetDrainRequestedFlag()
 {
-    ShutdownMode |= shutdown;
-    DrainingMode = true;
+    DrainRequested = true;
     if (!IsFailed) {
         TriggerFlushAll(true);
     }
-    CheckShutdownCompletion();
+    CompleteShutdownIfNeeded();
 }
 
 void TWriteBackCacheState::SetFailedFlag()

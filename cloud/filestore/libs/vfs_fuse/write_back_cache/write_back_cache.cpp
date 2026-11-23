@@ -158,7 +158,7 @@ public:
                 << "allocation " << supported << " is less than " << required
                 << ", increase the state file size or decrease "
                 << "MaxRequestSize, FilePath: " << FilePath.Quote());
-            SetDrainingMode();
+            Drain();
             return;
         }
 
@@ -203,10 +203,10 @@ public:
                            : EWriteBackCacheMode::Draining;
     }
 
-    void SetDrainingMode()
+    void Drain()
     {
         SetDrainRequested();
-        State.SetDrainingMode();
+        State.Drain();
     }
 
     TFuture<void> Shutdown()
@@ -770,9 +770,9 @@ EWriteBackCacheMode TWriteBackCache::GetMode() const
     return Impl->GetMode();
 }
 
-void TWriteBackCache::SetDrainingMode()
+void TWriteBackCache::Drain()
 {
-    Impl->SetDrainingMode();
+    Impl->Drain();
 }
 
 TFuture<void> TWriteBackCache::Shutdown()

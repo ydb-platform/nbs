@@ -90,20 +90,19 @@ private:
     // operations until manual resolution takes place.
     bool IsFailed = false;
 
-    // Set by SetDrainingMode() or Shutdown(): reject new cached writes and
-    // flush existing data.
-    // Without ShutdownMode, flush errors retain data while live handles remain.
-    bool DrainingMode = false;
+    // Set by Drain() or Shutdown() and never cleared: reject new cached writes
+    // and flush existing data.
+    bool DrainRequested = false;
 
-    // Enabled by Shutdown() and never cleared. Permits dropping cached data
-    // on flush errors once the node has no pending writes, even with live handles.
-    bool ShutdownMode = false;
+    // Set by Shutdown() and never cleared: permits dropping cached data on
+    // flush errors even with live handles.
+    bool ShutdownRequested = false;
 
     // Counts all shutdown drops, including those without live handles.
     ui64 ShutdownDroppedRequestCount = 0;
 
     // Prevents queuing shutdown completion more than once
-    bool ShutdownCompletionQueued = false;
+    bool ShutdownCompleted = false;
     NThreading::TPromise<void> ShutdownPromise = NThreading::NewPromise<void>();
 
 public:
@@ -126,9 +125,9 @@ public:
 
     // Irreversibly stops accepting WriteData requests and triggers data flush.
     // WriteData requests will fail with E_REJECTED error.
-    void SetDrainingMode();
+    void Drain();
 
-    // Similar to SetDrainingMode() but drops cached data on flush errors.
+    // Similar to Drain() but drops cached data on flush errors.
     // The future completes once the cache is healthy and no pending or
     // unflushed writes remain.
     NThreading::TFuture<void> Shutdown();
@@ -243,7 +242,7 @@ private:
     bool GetBackpressureStatus(const TNodeState& nodeState) const;
     void UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState);
     void TriggerFlushCompletions(TNodeState& nodeState);
-    void CheckShutdownCompletion();
+    void CompleteShutdownIfNeeded();
 
     void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
     void CheckAndAcquireBarriers(TNodeState& nodeState);
@@ -295,9 +294,7 @@ private:
 
     void FailAllUnallocatedPendingRequests(const NCloud::NProto::TError& error);
 
-    // If shutdown is true, flush errors may drop cached data.
-    void SetDrainingMode(bool shutdown);
-
+    void SetDrainRequestedFlag();
     void SetFailedFlag();
 };
 

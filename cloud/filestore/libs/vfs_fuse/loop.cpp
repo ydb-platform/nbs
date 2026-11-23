@@ -1221,7 +1221,7 @@ private:
                          FileSystemConfig->GetMaxBufferSize()});
 
                 if (!FileSystemConfig->GetServerWriteBackCacheEnabled()) {
-                    WriteBackCache.SetDrainingMode();
+                    WriteBackCache.Drain();
                 }
 
                 ModuleStatsRegistry->Register(
