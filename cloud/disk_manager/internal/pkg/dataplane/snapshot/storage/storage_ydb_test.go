@@ -450,6 +450,54 @@ func checkIncremental(
 	require.Equal(t, expectedCheckpointID, checkpointID)
 }
 
+type incrementalEntry struct {
+	zoneID       string
+	diskID       string
+	snapshotID   string
+	checkpointID string
+}
+
+func readIncremental(f *fixture) []incrementalEntry {
+	var result []incrementalEntry
+
+	err := f.db.Execute(
+		f.ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			result = nil
+
+			res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+
+				select *
+				from incremental
+			`, f.db.AbsolutePath(f.config.GetStorageFolder())))
+			if err != nil {
+				return err
+			}
+			defer res.Close()
+
+			for res.NextResultSet(ctx) {
+				for res.NextRow() {
+					var entry incrementalEntry
+					err = res.ScanNamed(
+						persistence.OptionalWithDefault("zone_id", &entry.zoneID),
+						persistence.OptionalWithDefault("disk_id", &entry.diskID),
+						persistence.OptionalWithDefault("snapshot_id", &entry.snapshotID),
+						persistence.OptionalWithDefault("checkpoint_id", &entry.checkpointID),
+					)
+					require.NoError(f.t, err)
+					result = append(result, entry)
+				}
+			}
+			return nil
+		},
+	)
+	require.NoError(f.t, err)
+
+	return result
+}
+
 func checkBaseSnapshot(
 	t *testing.T,
 	ctx context.Context,
@@ -617,6 +665,47 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestSnapshotWithoutDiskIsNotWrittenToIncremental(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+		ID:           "snapshot_without_disk",
+		CreateTaskID: "create1",
+	})
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(f.ctx, "snapshot_without_disk", 0, 0, 0, nil)
+	require.NoError(t, err)
+	require.Empty(t, readIncremental(f))
+
+	_, err = f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+		ID: "snapshot_with_disk",
+		Disk: &types.Disk{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+		CheckpointID: "checkpoint",
+		CreateTaskID: "create2",
+	})
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(f.ctx, "snapshot_with_disk", 0, 0, 0, nil)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		[]incrementalEntry{
+			{
+				zoneID:       "zone",
+				diskID:       "disk",
+				snapshotID:   "snapshot_with_disk",
+				checkpointID: "checkpoint",
+			},
+		},
+		readIncremental(f),
+	)
 }
 
 func TestSnapshotsLocks(t *testing.T) {

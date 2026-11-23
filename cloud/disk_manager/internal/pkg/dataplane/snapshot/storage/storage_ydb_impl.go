@@ -244,6 +244,12 @@ func (s *storageYDB) updateIncrementalTableAndSnapshotState(
 	state snapshotState,
 ) error {
 
+	if len(state.diskID) == 0 {
+		// A snapshot that has no disk (e.g. a migrated one) can't be a base of
+		// an incremental snapshot.
+		return nil
+	}
+
 	if len(state.baseSnapshotID) == 0 {
 		_, err := tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
