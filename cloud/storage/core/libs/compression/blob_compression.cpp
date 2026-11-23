@@ -33,14 +33,17 @@ bool IsWorthStoringCompressed(
     ui64 size,
     ui32 minSavedPercent)
 {
-    return compressedSize * 100 <= size * (100 - minSavedPercent);
+    return compressedSize < size && minSavedPercent <= 100
+        && compressedSize * 100 <= size * (100 - minSavedPercent);
 }
 
 TVector<ui32> SplitIntoChunks(TConstArrayRef<ui32> runSizes, ui32 chunkSize)
 {
-    Y_ABORT_UNLESS(chunkSize);
-
     TVector<ui32> chunkSizes;
+    if (!chunkSize) {
+        return chunkSizes;
+    }
+
     for (ui32 runSize: runSizes) {
         while (runSize) {
             chunkSizes.push_back(Min(runSize, chunkSize));
@@ -76,10 +79,11 @@ TResultOrError<TCompressedBlob> CompressChunks(
     info.SetChunkSize(chunkSize);
 
     auto& content = result.Content;
-    content.reserve(blockCodec->MaxCompressedLength(data));
 
     size_t offset = 0;
     try {
+        content.reserve(blockCodec->MaxCompressedLength(data));
+
         for (const ui32 size: chunkSizes) {
             if (!size || size % blockSize != 0 || size > chunkSize
                     || size > data.size() - offset)

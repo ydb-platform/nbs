@@ -120,6 +120,13 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
         UNIT_ASSERT(!IsWorthStoringCompressed(101, 100, 1));
         UNIT_ASSERT(IsWorthStoringCompressed(0, 100, 100));
         UNIT_ASSERT(!IsWorthStoringCompressed(1, 100, 100));
+
+        UNIT_ASSERT(IsWorthStoringCompressed(99, 100, 0));
+        UNIT_ASSERT(!IsWorthStoringCompressed(100, 100, 0));
+        UNIT_ASSERT(!IsWorthStoringCompressed(101, 100, 0));
+
+        UNIT_ASSERT(!IsWorthStoringCompressed(0, 100, 101));
+        UNIT_ASSERT(!IsWorthStoringCompressed(0, 100, Max<ui32>()));
     }
 
     Y_UNIT_TEST(ShouldSplitIntoChunks)
@@ -133,6 +140,9 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui32>{12_KB, 16_KB, 16_KB, 4_KB, 16_KB}),
             SplitIntoChunks(TVector<ui32>{12_KB, 32_KB, 0, 4_KB, 16_KB}, 16_KB));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui32>(),
+            SplitIntoChunks(TVector<ui32>{40_KB}, 0));
     }
 
     Y_UNIT_TEST(ShouldCompressAndDecompressFullChunks)
@@ -290,7 +300,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
         const auto data = RandomData(64_KB);
         const auto chunkSizes = SplitIntoChunks(TVector<ui32>{64_KB}, 16_KB);
 
-        for (const ui32 minSavedPercent: {0, 12, 100}) {
+        for (const ui32 minSavedPercent: {0, 12, 100, 101}) {
             const auto blob =
                 CompressOrFail(Lz4, 16_KB, minSavedPercent, data, chunkSizes);
             UNIT_ASSERT_VALUES_EQUAL(data, blob.Content);
@@ -301,6 +311,27 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
             }
             UNIT_ASSERT_VALUES_EQUAL(data, DecompressOrFail(blob, 0, 3));
         }
+    }
+
+    Y_UNIT_TEST(ShouldNotStoreChunkCompressedIfItHasTheSameSize)
+    {
+        const auto* codec = GetCompressionCodec(Lz4).GetResult();
+        const TVector<ui32> chunkSizes = {16_KB};
+
+        // every extra byte of the run makes the compressed chunk smaller, at
+        // some length it has exactly the size of its data
+        bool sameSize = false;
+        for (ui32 run = 0; run < 320; ++run) {
+            const auto data = RandomData(16_KB - run) + TString(run, 'a');
+            const auto blob = CompressOrFail(Lz4, 16_KB, 0, data, chunkSizes);
+            UNIT_ASSERT_VALUES_EQUAL_C(data, DecompressOrFail(blob, 0, 0), run);
+
+            if (codec->Encode(data).size() == data.size()) {
+                sameSize = true;
+                UNIT_ASSERT_VALUES_EQUAL_C(data, blob.Content, run);
+            }
+        }
+        UNIT_ASSERT(sameSize);
     }
 
     Y_UNIT_TEST(ShouldApplyThresholdToSmallSavings)
@@ -427,6 +458,22 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
             CompressionCode(2_KB, 16_KB, data, {16_KB, 6_KB, 10_KB}));
+    }
+
+    Y_UNIT_TEST(ShouldReportCodecFailures)
+    {
+        // lz4 accepts at most 2 GiB and fails before reading the data
+        const auto data = CompressibleData(16_KB);
+        const TStringBuf tooLarge(data.data(), 3_GB);
+
+        const auto result = CompressChunks(
+            Lz4,
+            BlockSize,
+            16_KB,
+            12,
+            tooLarge,
+            TVector<ui32>{16_KB});
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, result.GetError().GetCode());
     }
 
     Y_UNIT_TEST(ShouldValidateCompressionInfo)
