@@ -8,8 +8,6 @@
 
 #include <util/datetime/base.h>
 
-#include <type_traits>
-
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -49,13 +47,6 @@ ui64 GetFileSystemEventSourceId(ui64 tabletId)
 {
     return tabletId;
 }
-
-// The requests whose responses the client may cache.
-template <typename TMethod>
-constexpr bool IsCacheableRequest =
-    std::is_same_v<TMethod, TEvService::TGetNodeAttrMethod> ||
-    std::is_same_v<TMethod, TEvService::TGetNodeXAttrMethod> ||
-    std::is_same_v<TMethod, TEvService::TSetNodeXAttrMethod>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -248,11 +239,13 @@ void TIndexTabletProxyActor::ForwardRequest(
     // TODO: @yegorskii
     // SetRequestGeneration(conn.Generation, *ev->Get());
 
-    if constexpr (IsCacheableRequest<TMethod>) {
+    if constexpr (requires { ev->Get()->Record.MutableHeaders(); }) {
         //
-        // The requests come from the actors of this process, so accessing
-        // them doesn't parse anything - unlike the responses, which come from
-        // the tablets.
+        // Every request carries the source id - the tablet decides which
+        // responses allow caching and returns it along with their TTLs. The
+        // requests come from the actors of this process, so accessing them
+        // doesn't parse anything - unlike the responses, which come from the
+        // tablets.
         //
 
         ev->Get()->Record.MutableHeaders()->SetFileSystemEventSourceId(

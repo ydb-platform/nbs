@@ -115,7 +115,7 @@ sequenceDiagram
 
 - The tablet proxy (one per process, owns the pipes) defines the source id of
   a pipe - currently the tablet id - and uses it in both places:
-  - sets it in the cacheable requests sent via the pipe
+  - sets it in every request sent via the pipe
     (`THeaders.FileSystemEventSourceId`) - the tablet doesn't interpret it
     and returns it as `NodeCacheSourceId`, `NodeRefCacheSourceId` or
     `XAttrCacheSourceId` along with a nonzero TTL. The requests come from the
