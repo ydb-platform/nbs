@@ -468,23 +468,66 @@ void TVolumeActor::RestartPartition(
     const TActorContext& ctx,
     TPoisonCallback onPartitionStopped)
 {
+    const auto reason = GetPartitionsStartedReasonOnRestart();
     StopPartitions(ctx, std::move(onPartitionStopped));
+    StartPartitions(ctx, reason);
+    ResetServicePipes(ctx);
+}
 
-    switch (PartitionsStartedReason) {
-        case EPartitionsStartedReason::STARTED_FOR_GC: {
-            StartPartitionsForGc(ctx);
-            break;
-        }
+// Expects partitions to be stopped or stopping.
+// Afterwards PartitionsStartedReason == reason.
+void TVolumeActor::StartPartitions(
+    const TActorContext& ctx,
+    EPartitionsStartedReason reason)
+{
+    switch (reason) {
         case EPartitionsStartedReason::STARTED_FOR_USE: {
             StartPartitionsForUse(ctx);
             break;
         }
-        case EPartitionsStartedReason::NOT_STARTED: {
+        case EPartitionsStartedReason::STARTED_FOR_GC: {
+            StartPartitionsForGc(ctx);
             break;
         }
-    };
+        case EPartitionsStartedReason::NOT_STARTED: {
+            PartitionsStartedReason = EPartitionsStartedReason::NOT_STARTED;
+            break;
+        }
+    }
+}
 
-    ResetServicePipes(ctx);
+TVolumeActor::EPartitionsStartedReason
+TVolumeActor::GetPartitionsStartedReasonOnLoad(TInstant now) const
+{
+    if (State->IsDiskRegistryMediaKind() || State->IsCopyingToFollower() ||
+        !PendingRequests.empty())
+    {
+        return EPartitionsStartedReason::STARTED_FOR_USE;
+    }
+
+    if (State->ShouldStartPartitionsForGc(now) &&
+        !Config->GetDisableStartPartitionsForGc())
+    {
+        return EPartitionsStartedReason::STARTED_FOR_GC;
+    }
+
+    return EPartitionsStartedReason::NOT_STARTED;
+}
+
+TVolumeActor::EPartitionsStartedReason
+TVolumeActor::GetPartitionsStartedReasonOnRestart() const
+{
+    // A restart keeps the mode chosen on load or by clients. E.g. a mounted
+    // volume whose last link was removed is restarted for use, although
+    // neither IsCopyingToFollower() nor ShouldStartPartitionsForGc() holds.
+    // The only upgrade is for a copy source whose partitions were never
+    // started or were started only for GC: the copier needs them for use.
+    // DiskRegistry-based volumes are always started for use already.
+    if (State && State->IsCopyingToFollower()) {
+        return EPartitionsStartedReason::STARTED_FOR_USE;
+    }
+
+    return PartitionsStartedReason;
 }
 
 void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
@@ -497,6 +540,9 @@ void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
         OnPartitionStateChanged(ctx, oldState);
     };
 
+    // Forget the GC reports counted for the previous partition start. Reports
+    // from it that are still in flight are not filtered here.
+    GCCompletedPartitions.clear();
     StartInitializationTimestamp = ctx.Now();
     State->SetReadWriteError({});
 

@@ -577,10 +577,13 @@ public:
 
     bool GetMuteIOErrors() const;
 
-    bool GetShouldStartPartitionsForGc(TInstant referenceTimestamp) const
+    // Whether the GC-only lifecycle applies: partitions are started only to
+    // finish GC after the last client is gone, and stopped once GC completes.
+    // A copy to a follower keeps the partitions started for use instead.
+    bool ShouldStartPartitionsForGc(TInstant referenceTimestamp) const
     {
-        return StartPartitionsNeeded &&
-            !HasActiveClients(referenceTimestamp);
+        return StartPartitionsNeeded && !HasActiveClients(referenceTimestamp) &&
+               !IsCopyingToFollower();
     }
 
     //
@@ -882,6 +885,10 @@ public:
     void AddOrUpdateFollower(TFollowerDiskInfo follower);
     void RemoveFollower(const TLeaderFollowerLink& link);
     const TFollowerDisks& GetAllFollowers() const;
+    // From link creation until leadership is transferred to a follower.
+    // The copier needs this volume's partitions started for use meanwhile,
+    // whether or not any client is connected.
+    bool IsCopyingToFollower() const;
 
     void StartCreateLeaderRequest(const TLeaderFollowerLink& link);
     void FinishCreateLeaderRequest();

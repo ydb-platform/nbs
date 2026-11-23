@@ -1827,13 +1827,13 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
     {
         auto volumeState = CreateVolumeState();
 
-        UNIT_ASSERT(!volumeState.GetShouldStartPartitionsForGc(TInstant::Now()));
+        UNIT_ASSERT(!volumeState.ShouldStartPartitionsForGc(TInstant::Now()));
 
         volumeState.SetStartPartitionsNeeded(true);
-        UNIT_ASSERT(volumeState.GetShouldStartPartitionsForGc(TInstant::Now()));
+        UNIT_ASSERT(volumeState.ShouldStartPartitionsForGc(TInstant::Now()));
 
         volumeState.Reset();
-        UNIT_ASSERT(volumeState.GetShouldStartPartitionsForGc(TInstant::Now()));
+        UNIT_ASSERT(volumeState.ShouldStartPartitionsForGc(TInstant::Now()));
     }
 
     Y_UNIT_TEST(ShouldFilterFreshDeviceIdsForOldDisks)
@@ -2825,6 +2825,47 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         UNIT_ASSERT(!store.HasCheckpointCreationRequest());
         UNIT_ASSERT(store.GetCheckpointsWithData().empty());
         UNIT_ASSERT(!volumeState.IsVolumeOperationRestricted());
+    }
+
+    Y_UNIT_TEST(ShouldTrackCopyToFollower)
+    {
+        using EState = TFollowerDiskInfo::EState;
+
+        auto volumeState = CreateVolumeState();
+        volumeState.SetStartPartitionsNeeded(true);
+        UNIT_ASSERT(!volumeState.IsCopyingToFollower());
+        UNIT_ASSERT(volumeState.ShouldStartPartitionsForGc(TInstant::Now()));
+
+        const TLeaderFollowerLink link{
+            .LinkUUID = "uuid1",
+            .LeaderDiskId = "vol0",
+            .FollowerDiskId = "vol1"};
+
+        const std::pair<EState, bool> cases[] = {
+            {EState::None, false},
+            {EState::Created, true},
+            {EState::Preparing, true},
+            {EState::DataReady, true},
+            {EState::LeadershipTransferred, false},
+            {EState::Error, false},
+        };
+        for (const auto& [state, copying]: cases) {
+            volumeState.AddOrUpdateFollower(
+                TFollowerDiskInfo{.Link = link, .State = state});
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                copying,
+                volumeState.IsCopyingToFollower(),
+                ToString(state));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                !copying,
+                volumeState.ShouldStartPartitionsForGc(TInstant::Now()),
+                ToString(state));
+        }
+
+        volumeState.RemoveFollower(link);
+        UNIT_ASSERT(!volumeState.IsCopyingToFollower());
+        UNIT_ASSERT(volumeState.ShouldStartPartitionsForGc(TInstant::Now()));
     }
 }
 

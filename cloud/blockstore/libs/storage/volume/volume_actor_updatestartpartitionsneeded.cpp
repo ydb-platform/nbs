@@ -34,7 +34,7 @@ void TVolumeActor::ExecuteResetStartPartitionsNeeded(
 
     STORAGE_VERIFY(State, TWellKnownEntityTypes::TABLET, TabletID());
 
-    if (State->GetShouldStartPartitionsForGc(ctx.Now())) {
+    if (State->ShouldStartPartitionsForGc(ctx.Now())) {
         if (PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC) {
             if (FindPtr(GCCompletedPartitions, args.PartitionTabletId)) {
                 // This partition has already sent GC report
@@ -82,7 +82,7 @@ void TVolumeActor::HandleGarbageCollectorCompleted(
         LogTitle.GetWithTime().c_str(),
         partitionTabletId);
 
-    if (State->GetShouldStartPartitionsForGc(ctx.Now())) {
+    if (State->ShouldStartPartitionsForGc(ctx.Now())) {
         auto requestInfo = CreateRequestInfo(
             ev->Sender,
             ev->Cookie,
