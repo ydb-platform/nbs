@@ -304,13 +304,21 @@ void TPeer::StartConnectionAttempt(ui64 generation)
     GetChannel();
 }
 
-void TPeer::ScheduleRetry(ui64 generation, TInstant deadline)
+void TPeer::ScheduleRetry(
+    ui64 generation,
+    TInstant deadline,
+    std::weak_ptr<TActivity> activity)
 {
     try {
         Dependencies.Scheduler->Schedule(
             deadline,
-            [weak = weak_from_this(), generation]
+            [activity = std::move(activity), weak = weak_from_this(), generation]
             {
+                // Keep shutdown waiting until the peer reference is released.
+                auto running = activity.lock();
+                if (!running) {
+                    return;
+                }
                 if (auto self = weak.lock()) {
                     self->StartConnectionAttempt(generation);
                 }
@@ -566,7 +574,7 @@ void TPeer::FinishAttempt(
     }
     DispatchNotifications(std::move(notifications));
     if (retryAt) {
-        ScheduleRetry(attempt->Generation, retryAt);
+        ScheduleRetry(attempt->Generation, retryAt, activity);
     }
     DeliverAttemptResult(
         std::move(attempt),
@@ -577,6 +585,7 @@ void TPeer::FinishAttempt(
 void TPeer::OnClosed(ui64 generation)
 {
     std::shared_ptr<TActivity> activity;
+    std::weak_ptr<TActivity> retryActivity;
     std::shared_ptr<TConnectionAttempt> attempt;
     IRequestChannelPtr retired;
     TInstant retryAt;
@@ -592,6 +601,7 @@ void TPeer::OnClosed(ui64 generation)
             }
             retryAt = Dependencies.Timer->Now() + ReconnectDelay;
             RetryAt = retryAt;
+            retryActivity = Activity;
             disconnected = QueueNotification(
                 attempt ? EPeerEvent::Unavailable : EPeerEvent::Disconnected);
         }
@@ -606,7 +616,7 @@ void TPeer::OnClosed(ui64 generation)
     }
     DispatchNotifications(std::move(disconnected));
     if (retryAt) {
-        ScheduleRetry(generation, retryAt);
+        ScheduleRetry(generation, retryAt, std::move(retryActivity));
     }
 }
 

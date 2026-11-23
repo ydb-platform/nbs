@@ -87,7 +87,10 @@ private:
     TNotificationContext QueueNotification(EPeerEvent event);
     void DispatchNotifications(TNotificationContext context);
     void StartConnectionAttempt(ui64 generation);
-    void ScheduleRetry(ui64 generation, TInstant deadline);
+    void ScheduleRetry(
+        ui64 generation,
+        TInstant deadline,
+        std::weak_ptr<TActivity> activity);
     template <typename TResult>
     void HandleConnectionResult(
         std::shared_ptr<TConnectionAttempt> attempt,
