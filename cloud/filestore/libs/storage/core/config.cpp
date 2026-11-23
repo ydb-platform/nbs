@@ -40,6 +40,8 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(WriteBlobThreshold,            ui32,      128_KB                      )\
                                                                                \
     xxx(MaxBlobSize,                        ui32,   4_MB                      )\
+    xxx(AlignBlobSizeToVDiskSlotSize,       bool,   false                     )\
+    xxx(MaxVDiskSlotPaddingPercentage,      ui32,   5                         )\
     xxx(FlushThreshold,                     ui32,   4_MB                      )\
     xxx(CleanupThreshold,                   ui32,   512                       )\
     xxx(CleanupThresholdAverage,            ui32,   64                        )\

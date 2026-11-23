@@ -86,6 +86,8 @@ public:
     ui32 GetWriteBlobThreshold() const;
 
     ui32 GetMaxBlobSize() const;
+    bool GetAlignBlobSizeToVDiskSlotSize() const;
+    ui32 GetMaxVDiskSlotPaddingPercentage() const;
 
     ui32 GetFlushThreshold() const;
     ui32 GetCleanupThreshold() const;

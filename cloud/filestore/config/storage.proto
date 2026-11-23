@@ -1036,4 +1036,17 @@ message TStorageConfig
 
     // Enables pre-allocated actors for reading data in storage service
     optional bool PermanentReadWriteDataActorsEnabled = 567;
+
+    // If set to true, the number of blocks per blob written by Flush,
+    // FlushBytes and Compaction (MaxBlobSize-based) is reduced so that the
+    // parts of the blobs fit their VDisk huge blob slots tightly. E.g. the
+    // parts of a 4MiB blob in a block-4-2 group are 1MiB + 5 bytes of header
+    // which don't fit into the 1023.9KiB slot and occupy the 1150.9KiB one
+    // wasting ~11% of space, whereas a 4MiB - 4KiB blob fits perfectly.
+    optional bool AlignBlobSizeToVDiskSlotSize = 568;
+
+    // The share of a VDisk huge blob slot that is allowed to be wasted by a
+    // blob part. The blob size is reduced only if the padding exceeds this
+    // value. Used only if AlignBlobSizeToVDiskSlotSize is set.
+    optional uint32 MaxVDiskSlotPaddingPercentage = 569;
 }

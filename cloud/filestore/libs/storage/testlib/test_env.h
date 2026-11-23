@@ -19,6 +19,7 @@
 #include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
 
+#include <contrib/ydb/core/base/blobstorage_grouptype.h>
 #include <contrib/ydb/core/base/tabletid.h>
 #include <contrib/ydb/core/testlib/basics/appdata.h>
 #include <contrib/ydb/core/testlib/basics/runtime.h>
@@ -78,6 +79,13 @@ struct TTestEnvConfig
 
     ui32 ChannelCount = DefaultChannelCount;
     ui32 Groups = 2;
+
+    // The erasure which is reported to the tablet via TTabletStorageInfo for
+    // all of its channels. The test BlobStorage groups are ErasureNone
+    // regardless of this value, it only affects the decisions the tablet
+    // makes based on the erasure (e.g. blob sizes).
+    NKikimr::TBlobStorageGroupType::EErasureSpecies ChannelErasure =
+        NKikimr::TBlobStorageGroupType::ErasureNone;
 
     NActors::NLog::EPriority LogPriority_NFS = NActors::NLog::PRI_TRACE;
     NActors::NLog::EPriority LogPriority_KiKiMR = NActors::NLog::PRI_WARN;

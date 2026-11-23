@@ -31,6 +31,7 @@
 #include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/throttling/public.h>
 
+#include <contrib/ydb/core/base/blobstorage_grouptype.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/filestore/core/filestore.h>
 #include <contrib/ydb/core/mind/local.h>
@@ -742,6 +743,8 @@ private:
     bool IsTabletConsideredOverloaded() const;
 
     ui32 ScaleCompactionThreshold(ui32 t) const;
+    NKikimr::TBlobStorageGroupType GetDataChannelGroupType() const;
+    ui32 GetMaxBlocksInBlob() const;
     TCompactionInfo GetCompactionInfo() const;
     TCleanupInfo GetCleanupInfo() const;
     bool ShouldThrottleCleanup(

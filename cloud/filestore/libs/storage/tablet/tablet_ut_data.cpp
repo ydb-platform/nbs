@@ -1324,6 +1324,217 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         }
     }
 
+    // Fills a single compaction range with MaxBlocksCount (1024) blocks: 16
+    // consecutive nodes (a node group) x BlockGroupSize (64) blocks each.
+    // Returns the range id.
+    ui32 FillCompactionRange(
+        TIndexTabletClient& tablet,
+        ui32 block,
+        TVector<ui64>& ids)
+    {
+        // nodes are created with consecutive ids starting from RootNodeId + 1
+        // => skip (NodeGroupSize - 2) nodes to align the group to a
+        // NodeGroupSize boundary
+        for (ui32 i = 0; i < NodeGroupSize - 2; ++i) {
+            CreateNode(
+                tablet,
+                TCreateNodeArgs::File(RootNodeId, Sprintf("ignored%u", i)));
+        }
+
+        for (ui32 i = 0; i < NodeGroupSize; ++i) {
+            ids.push_back(CreateNode(
+                tablet,
+                TCreateNodeArgs::File(RootNodeId, Sprintf("test%u", i))));
+            auto handle = CreateHandle(tablet, ids.back());
+            tablet.WriteData(
+                handle,
+                0,
+                BlockGroupSize * block,
+                static_cast<char>('a' + i));
+            tablet.DestroyHandle(handle);
+        }
+
+        const ui32 rangeId = GetMixedRangeIndex(ids[0], 0);
+        for (ui32 i = 1; i < NodeGroupSize; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(rangeId, GetMixedRangeIndex(ids[i], 0));
+            UNIT_ASSERT_VALUES_EQUAL(
+                rangeId,
+                GetMixedRangeIndex(ids[i], BlockGroupSize - 1));
+        }
+
+        return rangeId;
+    }
+
+    void ValidateCompactionRange(
+        TIndexTabletClient& tablet,
+        ui32 block,
+        const TVector<ui64>& ids)
+    {
+        for (ui32 i = 0; i < ids.size(); ++i) {
+            auto handle = CreateHandle(tablet, ids[i]);
+            auto response = tablet.ReadData(handle, 0, BlockGroupSize * block);
+            const auto& buffer = response->Record.GetBuffer();
+            UNIT_ASSERT_BUFFER_CONTENTS_EQUAL(
+                buffer,
+                BlockGroupSize * block,
+                static_cast<char>('a' + i));
+            tablet.DestroyHandle(handle);
+        }
+    }
+
+    void DoTestCompactionBlobSizeAlignment(
+        TFileSystemConfig tabletConfig,
+        TTestEnvConfig testEnvConfig,
+        bool alignBlobSizeToVDiskSlotSize,
+        ui32 expectedBlobsCount)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetCollectGarbageThreshold(1_GB);
+        storageConfig.SetFlushBytesThreshold(1_GB);
+        storageConfig.SetFlushThreshold(1_GB);
+        storageConfig.SetAlignBlobSizeToVDiskSlotSize(
+            alignBlobSizeToVDiskSlotSize);
+
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        TVector<ui64> ids;
+        const ui32 rangeId = FillCompactionRange(tablet, block, ids);
+
+        // 16 directly written blobs, BlockGroupSize blocks each
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(NodeGroupSize, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                MaxBlocksCount,
+                stats.GetMixedBlocksCount());
+        }
+
+        tablet.Compaction(rangeId);
+
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedBlobsCount,
+                stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                MaxBlocksCount,
+                stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetGarbageBlocksCount());
+        }
+
+        ValidateCompactionRange(tablet, block, ids);
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldNotAlignCompactionBlobSizeToVDiskSlotByDefault)
+    {
+        // block-4-2: 1024 x 4KiB blocks => 1MiB parts => 11% of the VDisk
+        // slot is wasted but the feature is off => a single 4MiB blob
+        testEnvConfig.ChannelErasure =
+            TBlobStorageGroupType::Erasure4Plus2Block;
+        DoTestCompactionBlobSizeAlignment(
+            tabletConfig,
+            testEnvConfig,
+            false,  // alignBlobSizeToVDiskSlotSize
+            1);
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldAlignCompactionBlobSizeToVDiskSlotSize)
+    {
+        // block-4-2: the largest blob whose parts (+5 bytes of header) fit
+        // into the 1023.9KiB slot is 1023 blocks => 1023 + 1 blocks
+        testEnvConfig.ChannelErasure =
+            TBlobStorageGroupType::Erasure4Plus2Block;
+        DoTestCompactionBlobSizeAlignment(
+            tabletConfig,
+            testEnvConfig,
+            true,   // alignBlobSizeToVDiskSlotSize
+            2);
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldKeepCompactionBlobSizeIfVDiskSlotPaddingIsSmall)
+    {
+        // ErasureNone (and mirror-3-dc): 4MiB parts waste only 1.4% of the
+        // 4155KiB slot => a single 4MiB blob
+        testEnvConfig.ChannelErasure = TBlobStorageGroupType::ErasureNone;
+        DoTestCompactionBlobSizeAlignment(
+            tabletConfig,
+            testEnvConfig,
+            true,   // alignBlobSizeToVDiskSlotSize
+            1);
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldAlignFlushBlobSizeToVDiskSlotSize)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetCollectGarbageThreshold(1_GB);
+        storageConfig.SetFlushBytesThreshold(1_GB);
+        storageConfig.SetFlushThreshold(1_GB);
+        storageConfig.SetWriteBlobThreshold(1_GB);  // no direct blob writes
+        storageConfig.SetAlignBlobSizeToVDiskSlotSize(true);
+
+        testEnvConfig.ChannelErasure =
+            TBlobStorageGroupType::Erasure4Plus2Block;
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        TVector<ui64> ids;
+        FillCompactionRange(tablet, block, ids);
+
+        // everything is in fresh blocks
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                MaxBlocksCount,
+                stats.GetFreshBlocksCount());
+        }
+
+        tablet.Flush();
+
+        // 1023 + 1 blocks
+        {
+            auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(2, stats.GetMixedBlobsCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                MaxBlocksCount,
+                stats.GetMixedBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
+        }
+
+        ValidateCompactionRange(tablet, block, ids);
+    }
+
     TABLET_TEST(ShouldRewriteBlobsOnCompaction)
     {
         const auto block = tabletConfig.BlockSize;

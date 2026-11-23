@@ -6,6 +6,7 @@ SRCS(
     channels.cpp
     commit.cpp
     partial_blob_id.cpp
+    vdisk_huge_slots.cpp
 )
 
 PEERDIR(

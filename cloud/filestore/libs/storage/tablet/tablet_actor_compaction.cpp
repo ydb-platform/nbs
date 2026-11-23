@@ -775,8 +775,7 @@ void TIndexTabletActor::CompleteTx_Compaction(
 
     Sort(blocks, TBlockCompare());
 
-    TCompactionBlobBuilder builder(
-        CalculateMaxBlocksInBlob(Config->GetMaxBlobSize(), GetBlockSize()));
+    TCompactionBlobBuilder builder(GetMaxBlocksInBlob());
 
     for (const auto& block: blocks) {
         builder.Accept(block);
