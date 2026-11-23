@@ -250,20 +250,28 @@ GetValue(const Message* message, const FieldDescriptor* field, int index = -1)
     return value;
 }
 
+// Render one source value cell and its optional ignored static-only label.
 void RenderCell(
     IOutputStream& out,
     const std::optional<TString>& value,
     bool ignoredFromDynamic)
 {
     HTML (out) {
+        // Value cell in a parameter comparison row.
         TABLED () {
             if (value) {
+                // Source value or the redaction placeholder for a secret.
                 out << EncodeHtmlPcdata(*value);
                 if (ignoredFromDynamic) {
-                    out << "<br><span class='config-dynamic-ignored'>"
+                    // Line break between the value and its ignored label.
+                    out << "<br>";
+
+                    // Ignored static-only label below the Dynamic source value.
+                    out << "<span class='config-dynamic-ignored'>"
                            "static-only, ignored</span>";
                 }
             } else {
+                // Dash for a value absent from this source.
                 out << "&mdash;";
             }
         }
@@ -326,13 +334,16 @@ void RenderField(
     int index = -1)
 {
     HTML (out) {
+        // Parameter row with its name and all applicable source values.
         TABLER () {
+            // Parameter-name cell; highlight changes that require a restart.
             out << (context.DeferredByOneof ||
                             IsDeferred(path, context.Diagnostics)
                         ? "<td class='config-dynamic-deferred'>"
                         : "<td>")
                 << EncodeHtmlPcdata(path) << "</td>";
 
+            // Static, startup Dynamic and runtime Dynamic value cells.
             for (const auto source:
                  {StaticSource, StartupDynamicSource, RuntimeDynamicSource})
             {
@@ -359,6 +370,7 @@ void RenderField(
                 if (field->options().GetExtension(
                         NCloud::NMarkers::AllowRuntimeUpdate))
                 {
+                    // ICB override cell; use a dash when no override is set.
                     RenderCell(
                         out,
                         icb ? std::optional<TString>(
@@ -368,10 +380,12 @@ void RenderField(
                             : std::nullopt,
                         /*ignoredFromDynamic=*/false);
                 } else {
+                    // Unavailable ICB cell for fields without runtime updates.
                     out << "<td class='config-icb-unavailable'></td>";
                 }
             }
 
+            // Effective value cell after source merging and ICB overrides.
             RenderCell(
                 out,
                 GetValue(sources[EffectiveSource], field, index),
@@ -693,7 +707,9 @@ TString TBlockstoreConfigRenderer::RenderHtml(
 
     TStringStream out;
     HTML (out) {
+        // Page head with styles and scripts for the configuration view.
         HEAD () {
+            // Page styles for metadata, controls, counters and value tables.
             out << R"(<style>
 .config-zero { color: #000; }
 .config-dynamic-total, .config-present { color: #008000; }
@@ -703,9 +719,13 @@ TString TBlockstoreConfigRenderer::RenderHtml(
 .config-deferred-hint { color: #000; }
 .config-dynamic-ignored, .config-icb, .config-update-rejected { color: #c00; }
 .config-icb-unavailable { background-color: #eee; }
-.config-actions { display: flex; align-items: center; justify-content: space-between;
-                  flex-wrap: wrap; gap: 1em; margin-bottom: 1em; }
-.config-search { display: flex; align-items: center; margin: 0; font-weight: normal; }
+.config-actions {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 1em; margin-bottom: 1em;
+}
+.config-search {
+    display: flex; align-items: center; margin: 0; font-weight: normal;
+}
 .config-search input { width: 20em; margin-left: .5em; }
 .config-toggle-actions { margin-left: auto; white-space: nowrap; }
 .config-details > td { padding: 0; border-top: 0; }
@@ -714,35 +734,59 @@ TString TBlockstoreConfigRenderer::RenderHtml(
 .config-parameters td:first-child { white-space: nowrap; }
 .config-parameters td { overflow-wrap: anywhere; }
 </style>
-<script>
+)";
+
+            // Section controls, parameter search and source-column widths.
+            out << R"(<script>
 $(function () {
     var sections = $('#config-sections .config-section');
+
+    // Keep the IDs of sections open before searching;
+    // null means no saved state.
     var expandedSections = null;
+
+    // Initialize Bootstrap controls without changing which sections are open.
     sections.collapse({toggle: false});
 
-    // Measure all parameter names, including names in collapsed sections.
+    // Measure all parameter-name cells, including those in collapsed sections,
+    // to give the name columns the same width across all section tables.
     var measurement = $('<table class="table table-condensed table-bordered">' +
                         '<tbody></tbody></table>').css({
         position: 'fixed', visibility: 'hidden', width: 'auto', maxWidth: 'none'
     });
+
+    // Copy the name cells without wrapping so their full text
+    // determines the width.
     sections.find('.config-parameters tr > :first-child').each(function () {
         $('<tr>').append($(this).clone().css('white-space', 'nowrap'))
             .appendTo(measurement.children('tbody'));
     });
+
+    // Attach the hidden table so the browser can measure it, then remove it
+    // after reading the width without affecting the visible page layout.
     measurement.appendTo(document.body);
     var parameterWidth = Math.ceil(measurement.outerWidth());
     measurement.remove();
 
-    // Keep the name width shared; split remaining space equally with fixed layout.
-    sections.find('.config-parameters th:first-child').css('width', parameterWidth);
+    // Apply the measured name-column width to every section table.
+    // Fixed table layout divides the remaining width equally
+    // among source columns.
+    sections.find('.config-parameters th:first-child')
+        .css('width', parameterWidth);
 
-    // Apply the latest request after an active Bootstrap transition finishes.
+    // Apply the latest expand/collapse request after any active animation ends.
     function collapseSection(section, action) {
+        // Cancel handlers for older requests so only the latest action
+        // is applied.
+        // Keep Bootstrap's own event handlers.
         section.off('.configSearch');
         if (section.data('bs.collapse').transitioning) {
             section.one(
-                'shown.bs.collapse.configSearch hidden.bs.collapse.configSearch',
+                'shown.bs.collapse.configSearch ' +
+                    'hidden.bs.collapse.configSearch',
                 function () {
+                    // Remove pending completion handlers before starting
+                    // the requested action.
                     section.off('.configSearch').collapse(action);
                 });
         } else {
@@ -750,6 +794,8 @@ $(function () {
         }
     }
 
+    // Expand or collapse sections visible under the current search filter.
+    // Leave sections hidden by the filter unchanged.
     $('#config-collapse-all, #config-expand-all').on('click', function (event) {
         event.preventDefault();
         var action = this.id === 'config-expand-all' ? 'show' : 'hide';
@@ -762,20 +808,30 @@ $(function () {
     });
 
     $('#config-parameter-search').on('input', function () {
+        // Match names case-insensitively and ignore spaces around the query.
         var query = $.trim(this.value).toLowerCase();
+
+        // Ignore short queries before searching starts. If an active query
+        // becomes shorter than three characters, clear the filter and restore
+        // section states.
         if (query.length < 3) {
             if (expandedSections === null) {
                 return;
             }
             query = '';
         }
+
+        // Save open section IDs once, before filtering first changes
+        // their state.
+        // Restore this original state when the search is cleared.
         if (query && expandedSections === null) {
             expandedSections = sections.filter('.in').map(function () {
                 return this.id;
             }).get();
         }
 
-        // Filter parameter names while retaining source values and counters.
+        // Match parameter names only; keep source values and section totals
+        // unchanged.
         var matches = 0;
         sections.each(function () {
             var section = $(this);
@@ -788,11 +844,16 @@ $(function () {
                 sectionMatches += visible ? 1 : 0;
             });
             matches += sectionMatches;
+
+            // Hide both the section summary and its parameter table when no
+            // rows match.
             var details = section.closest('tr');
             details.toggle(sectionMatches > 0);
             details.prev().toggle(sectionMatches > 0);
 
-            // Reveal matches, then restore section state when search is cleared.
+            // Open sections with matching rows while searching. When the filter
+            // is cleared, restore each section to its saved state from before
+            // the search.
             if (query && sectionMatches) {
                 collapseSection(section, 'show');
             } else if (!query && expandedSections !== null) {
@@ -800,7 +861,13 @@ $(function () {
                     expandedSections.indexOf(this.id) !== -1 ? 'show' : 'hide');
             }
         });
+
+        // Show the no-matches message only for an active query
+        // with no matching rows.
         $('#config-search-empty').toggle(Boolean(query) && matches === 0);
+
+        // Forget the saved section states after clearing the filter so the next
+        // search captures a fresh starting state.
         if (!query) {
             expandedSections = null;
         }
@@ -808,23 +875,38 @@ $(function () {
 });
 </script>)" << Endl;
         }
+        // Shared CMS monitoring styles used by the page tables and controls.
         NKikimr::NConsole::NHttp::OutputStyles(out);
 
+        // Main page content below the shared monitoring styles.
         DIV_CLASS ("container") {
+            // Page title above the configuration metadata.
             TAG (TH3) {
                 out << "Config";
             }
+
+            // Metadata table above the search and section controls.
             TABLE_CLASS ("table table-condensed config-summary") {
+                // Rows for the last update and Dynamic source presence.
                 TABLEBODY () {
+                    // Last-update row, including any rejected delivery reason.
                     TABLER () {
+                        // Label for the last accepted configuration update.
                         TABLED () {
                             out << "Last update";
                         }
+
+                        // Update details beside the Last update label.
                         TABLED () {
-                            out << Data.LastUpdateTime.ToString() << ", "
-                                << EncodeHtmlPcdata(
-                                       GetUpdateStatusName(Data.UpdateStatus));
+                            // Time of the last accepted configuration update.
+                            out << Data.LastUpdateTime.ToString() << ", ";
+
+                            // Origin and status of that accepted update.
+                            out << EncodeHtmlPcdata(
+                                GetUpdateStatusName(Data.UpdateStatus));
+
                             if (Data.RejectedUpdateReason) {
+                                // Highlight the last rejected delivery reason.
                                 out << " <span class='config-update-rejected'>"
                                        "- rejected: "
                                     << EncodeHtmlPcdata(
@@ -833,10 +915,15 @@ $(function () {
                             }
                         }
                     }
+
+                    // Presence of the current Dynamic configuration source.
                     TABLER () {
+                        // Label for the Dynamic source presence indicator.
                         TABLED () {
                             out << "Dynamic config";
                         }
+
+                        // Dynamic source indicator: present or absent.
                         TABLED () {
                             out << "<span class='"
                                 << (Data.DynamicConfigPresent ? "config-present"
@@ -850,27 +937,55 @@ $(function () {
                 }
             }
 
-            out << "<div class='config-actions'>"
-                << "<label class='config-search' for='config-parameter-search'>"
-                << "Search parameter: "
-                << "<input id='config-parameter-search' type='search' "
-                << "class='form-control input-sm' "
-                << "placeholder='At least 3 characters'></label>"
-                << "<div class='config-toggle-actions'>"
-                << "<a href='#' id='config-collapse-all' role='button' "
-                << "class='btn btn-default btn-sm'>Collapse all</a> "
-                << "<a href='#' id='config-expand-all' role='button' "
-                << "class='btn btn-default btn-sm'>Expand all</a>"
-                << "</div></div>";
+            // Toolbar between the metadata and section list.
+            out << "<div class='config-actions'>";
+
+            // Search label wrapping the parameter-name input.
+            out << "<label class='config-search' "
+                   "for='config-parameter-search'>Search parameter: ";
+
+            // Search input; filter parameter names after three characters.
+            out << "<input id='config-parameter-search' type='search' "
+                   "class='form-control input-sm' "
+                   "placeholder='At least 3 characters'>";
+
+            // End the search label after its input.
+            out << "</label>";
+
+            // Right-aligned controls for all visible configuration sections.
+            out << "<div class='config-toggle-actions'>";
+
+            // Collapse all visible section parameter tables.
+            out << "<a href='#' id='config-collapse-all' role='button' "
+                   "class='btn btn-default btn-sm'>Collapse all</a> ";
+
+            // Expand all visible section parameter tables.
+            out << "<a href='#' id='config-expand-all' role='button' "
+                   "class='btn btn-default btn-sm'>Expand all</a>";
+
+            // End the section controls.
+            out << "</div>";
+
+            // End the toolbar.
+            out << "</div>";
+
             if (AnyOf(
                     Data.CurrentConfigPreparationDiagnostics.IgnoredPaths,
                     [](const auto& entry)
                     { return IsDeferredReason(entry.second); }))
             {
-                out << "<p class='config-deferred-hint'>"
-                    << "<span class='config-dynamic-deferred'>Deferred</span> "
-                    << "parameters cannot be updated at runtime and take "
-                    << "effect after restart.</p>";
+                // Restart explanation above the section list.
+                out << "<p class='config-deferred-hint'>";
+
+                // Deferred label at the start of the restart explanation.
+                out << "<span class='config-dynamic-deferred'>Deferred</span> ";
+
+                // Explain when the deferred changes take effect.
+                out << "parameters cannot be updated at runtime and take "
+                       "effect after restart.";
+
+                // End the restart explanation.
+                out << "</p>";
             }
 
             // Explain ignored values from either Dynamic source, including
@@ -887,16 +1002,43 @@ $(function () {
                         .IgnoredPaths,
                     isStaticOnly))
             {
+                // Static-only explanation for either Dynamic source.
                 out << "<p class='config-dynamic-ignored'>"
                     << "Static-only parameters detected in the dynamic config "
                     << "are ignored, even after a restart. Set them in the "
                     << "static configuration.</p>";
             }
+
+            // Search result message, hidden until no parameters match.
             out << "<p id='config-search-empty' role='status' "
-                << "style='display: none'>No matching parameters.</p>"
-                << "<table class='table table-condensed' id='config-sections'>"
-                << "<thead><tr><th></th><th>Dynamic</th><th>ICB</th>"
-                << "</tr></thead><tbody>";
+                   "style='display: none'>No matching parameters.</p>";
+
+            // Section list with Dynamic and ICB counters beside each name.
+            out << "<table class='table table-condensed' id='config-sections'>";
+
+            // Column headings for the section list.
+            out << "<thead>";
+
+            // Header row above the section names and counters.
+            out << "<tr>";
+
+            // Unlabeled heading above section names and expand/collapse links.
+            out << "<th></th>";
+
+            // Heading above current Dynamic parameter counters.
+            out << "<th>Dynamic</th>";
+
+            // Heading above live ICB override counters.
+            out << "<th>ICB</th>";
+
+            // End the section-list header row.
+            out << "</tr>";
+
+            // End the section-list headings.
+            out << "</thead>";
+
+            // Section summary rows and their expandable parameter tables.
+            out << "<tbody>";
 
             const auto* descriptor = NProto::TBlockstoreConfig::descriptor();
 
@@ -904,6 +1046,7 @@ $(function () {
                 const auto* section = descriptor->field(i);
                 const bool showIcb = section->name() == "StorageService";
 
+                // Prepare this section's parameter comparison rows.
                 TStringStream rows;
                 TSectionCounts counts;
                 const TRenderContext context{
@@ -935,14 +1078,28 @@ $(function () {
                     Data.CurrentConfigPreparationDiagnostics,
                     counts);
 
-                // Keep counters outside the collapsed details for this section.
-                out << "<tr><td><a href='#" << target
+                // Section summary row; visible when its details are collapsed.
+                out << "<tr>";
+
+                // Section-name cell to the left of its counters.
+                out << "<td>";
+
+                // Section name linking to its expandable parameter table.
+                out << "<a href='#" << target
                     << "' class='collapse-ref collapsed' "
                     << "data-toggle='collapse' "
                     << "data-target='#" << target
                     << "' aria-expanded='false' aria-controls='" << target
-                    << "'>" << section->name() << "</a></td><td>"
-                    << "<span class='"
+                    << "'>" << section->name() << "</a>";
+
+                // End the section-name cell.
+                out << "</td>";
+
+                // Current Dynamic total, deferred count and ignored count.
+                out << "<td>";
+
+                // Current Dynamic parameter count, or a dash when zero.
+                out << "<span class='"
                     << (counts.Dynamic ? "config-dynamic-total" : "config-zero")
                     << "'>";
                 if (counts.Dynamic) {
@@ -951,32 +1108,68 @@ $(function () {
                     out << "&mdash;";
                 }
                 out << "</span>";
+
                 if (counts.PendingRestart) {
-                    out << " / <span class='config-dynamic-deferred'>deferred: "
+                    // Separator before the deferred counter.
+                    out << " / ";
+
+                    // Count of changes requiring a restart.
+                    out << "<span class='config-dynamic-deferred'>deferred: "
                         << counts.PendingRestart << "</span>";
                 }
+
                 if (counts.Ignored) {
-                    out << " / <span class='config-dynamic-ignored'>ignored"
-                           "</span>: "
-                        << counts.Ignored;
+                    // Separator before the ignored static-only counter.
+                    out << " / ";
+
+                    // Label for the ignored static-only parameter count.
+                    out << "<span class='config-dynamic-ignored'>"
+                           "ignored</span>";
+
+                    // Ignored count in the current Dynamic source only.
+                    out << ": " << counts.Ignored;
                 }
-                out << "</td><td><span class='"
+
+                // End the Dynamic counters cell.
+                out << "</td>";
+
+                // ICB counter cell in the section summary.
+                out << "<td>";
+
+                // Live ICB override count, or a dash when zero.
+                out << "<span class='"
                     << (counts.Icb ? "config-icb" : "config-zero") << "'>";
                 if (counts.Icb) {
                     out << counts.Icb;
                 } else {
                     out << "&mdash;";
                 }
-                out << "</span></td></tr>"
-                    << "<tr class='config-details'><td colspan='3'>"
-                    << "<div id='" << target
+                out << "</span>";
+
+                // End the ICB counter cell.
+                out << "</td>";
+
+                // End the section summary row.
+                out << "</tr>";
+
+                // Details row immediately below the section summary.
+                out << "<tr class='config-details'>";
+
+                // Details cell spanning the section name and both counters.
+                out << "<td colspan='3'>";
+
+                // Collapsible container targeted by the section-name link.
+                out << "<div id='" << target
                     << "' class='collapse config-section'>";
                 {
+                    // Parameter comparison table inside this section's details.
                     TABLE_CLASS (
                         "table table-condensed table-bordered "
                         "config-parameters")
                     {
+                        // Parameter-name and configuration-source headings.
                         TABLEHEAD () {
+                            // Header row; ICB applies only to StorageService.
                             TABLER () {
                                 for (const TStringBuf title:
                                      {
@@ -991,20 +1184,37 @@ $(function () {
                                     if (title == "ICB" && !showIcb) {
                                         continue;
                                     }
+
+                                    // Column caption in the parameter table.
                                     TABLEH () {
                                         out << title;
                                     }
                                 }
                             }
                         }
+
+                        // Parameter rows built above by the field renderers.
                         TABLEBODY () {
                             out << rows.Str();
                         }
                     }
                 }
-                out << "</div></td></tr>" << Endl;
+
+                // End the collapsible parameter-table container.
+                out << "</div>";
+
+                // End the details cell.
+                out << "</td>";
+
+                // End the section details row.
+                out << "</tr>" << Endl;
             }
-            out << "</tbody></table>";
+
+            // End the section summaries and details.
+            out << "</tbody>";
+
+            // End the section list table.
+            out << "</table>";
         }
     }
 
