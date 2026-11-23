@@ -22,14 +22,23 @@ ConfigsDispatcher deliveries without subscribers or an HTTP server.
 #include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 
+#include <library/cpp/html/pcdata/pcdata.h>
 #include <library/cpp/logger/log.h>
 #include <library/cpp/logger/null.h>
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/strbuf.h>
 #include <util/stream/str.h>
 #include <util/string/builder.h>
+#include <util/string/split.h>
+#include <util/string/subst.h>
 
 #include <google/protobuf/descriptor.h>
+
+#include <optional>
+#include <regex>
+#include <string>
+#include <utility>
 
 namespace NCloud::NBlockStore {
 
@@ -48,6 +57,223 @@ NProto::TBlockstoreConfig MakeConfig(ui32 writeBlobThreshold)
     NProto::TBlockstoreConfig config;
     config.MutableStorageService()->SetWriteBlobThreshold(writeBlobThreshold);
     return config;
+}
+
+// Presentation flags extracted by GetParameterRow from cell classes and labels.
+// Default flags describe a row without highlights or ignored-value labels.
+struct TParameterRowStyle
+{
+    // Restart-required highlight on the parameter-name cell.
+    bool Deferred = false;
+
+    // Ignored static-only label after a line break in startup Dynamic.
+    bool StartupDynamicIgnored = false;
+
+    // Ignored static-only label after a line break in runtime Dynamic.
+    bool RuntimeDynamicIgnored = false;
+
+    // Unavailable ICB cell style; false when the table has no ICB column.
+    bool IcbUnavailable = false;
+};
+
+// Configuration values and presentation flags owned by one rendered row.
+struct TParameterRow
+{
+    // Full parameter path extracted from the first cell.
+    TString ParameterName;
+
+    // Value from the static configuration.
+    TString StaticValue;
+
+    // Value from the startup dynamic configuration.
+    TString StartupDynamicValue;
+
+    // Value from the accepted runtime dynamic configuration.
+    TString RuntimeDynamicValue;
+
+    // ICB cell text, or nullopt when the table has no ICB column.
+    std::optional<TString> IcbValue;
+
+    // Effective configuration value.
+    TString EffectiveValue;
+
+    // Presentation flags extracted from this row's cell classes and labels.
+    TParameterRowStyle Style;
+};
+
+// Extract a unique renderer row by trying layouts with and without ICB.
+// Support the renderer's cell attributes, inline labels and escaping entities.
+TParameterRow GetParameterRow(const TString& html, TStringBuf parameterName)
+{
+    // Locate the parameter name and take its enclosing row.
+    const TString marker = TStringBuilder()
+                           << '>' << EncodeHtmlPcdata(parameterName) << "</td>";
+    const auto namePos = html.find(marker);
+    UNIT_ASSERT_C(
+        namePos != TString::npos,
+        "Missing row for " << parameterName);
+    UNIT_ASSERT_C(
+        html.find(marker, namePos + marker.size()) == TString::npos,
+        "Duplicate row for " << parameterName);
+    const auto begin = html.rfind("<tr", namePos);
+    const auto end = html.find("</tr>", namePos);
+    UNIT_ASSERT_C(
+        begin != TString::npos && end != TString::npos,
+        "Unclosed row for " << parameterName);
+    const TStringBuf row(html.data() + begin, end + 5 - begin);
+
+    // Capture three groups per cell: attributes, value and ignored label.
+    const auto makePattern = [](size_t cellCount)
+    {
+        const char* cell =
+            "<td([^>]*)>([^<]*)"
+            "(<br><span class=['\"]config-dynamic-ignored['\"]>"
+            "static-only, ignored</span>)?</td>\\s*";
+        std::string pattern = R"(<tr[^>]*>\s*)";
+        for (size_t i = 0; i != cellCount; ++i) {
+            pattern += cell;
+        }
+        return std::regex(pattern + "</tr>");
+    };
+    std::cmatch cells;
+    const bool hasIcb =
+        std::regex_match(row.begin(), row.end(), cells, makePattern(6));
+
+    // Preserve the captured six-cell row when it matches.
+    const bool hasNoIcb =
+        !hasIcb &&
+        std::regex_match(row.begin(), row.end(), cells, makePattern(5));
+    UNIT_ASSERT_C(
+        hasIcb || hasNoIcb,
+        "Unexpected row layout for " << parameterName);
+
+    // Decode values separately from their ignored-value labels.
+    const auto getText = [&cells](size_t index)
+    {
+        const auto& value = cells[index * 3 - 1];
+        TString text(value.first, value.length());
+        SubstGlobal(text, "&mdash;", "—");
+        return DecodeHtmlPcdata(text);
+    };
+    const auto isIgnored = [&cells](size_t index)
+    {
+        return cells[index * 3].matched;
+    };
+
+    // Read CSS class tokens from the captured cell attributes.
+    const std::regex classAttribute(
+        R"re((?:^|\s)class\s*=\s*['"]([^'"]*)['"])re");
+    const auto hasClass =
+        [&cells, &classAttribute](size_t index, TStringBuf expectedClass)
+    {
+        std::cmatch attribute;
+        const auto& attributes = cells[index * 3 - 2];
+        if (!std::regex_search(
+                attributes.first,
+                attributes.second,
+                attribute,
+                classAttribute))
+        {
+            return false;
+        }
+        const TStringBuf classes(attribute[1].first, attribute[1].second);
+        for (const auto token: StringSplitter(classes).SplitBySet(" \t\r\n\f"))
+        {
+            if (token.Token() == expectedClass) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Keep ignored labels confined to the two Dynamic source cells.
+    UNIT_ASSERT_C(
+        !isIgnored(1) && !isIgnored(2) && !isIgnored(hasIcb ? 6 : 5) &&
+            (!hasIcb || !isIgnored(5)),
+        "Ignored label outside Dynamic cells for " << parameterName);
+    UNIT_ASSERT_VALUES_EQUAL_C(getText(1), parameterName, parameterName);
+    return {
+        .ParameterName = getText(1),
+        .StaticValue = getText(2),
+        .StartupDynamicValue = getText(3),
+        .RuntimeDynamicValue = getText(4),
+        .IcbValue = hasIcb ? std::optional<TString>(getText(5)) : std::nullopt,
+        .EffectiveValue = getText(hasIcb ? 6 : 5),
+        .Style =
+            {
+                .Deferred = hasClass(1, "config-dynamic-deferred"),
+                .StartupDynamicIgnored = isIgnored(3),
+                .RuntimeDynamicIgnored = isIgnored(4),
+                .IcbUnavailable =
+                    hasIcb && hasClass(5, "config-icb-unavailable"),
+            },
+    };
+}
+
+// Compare all source cells of a parameter row with their expected text.
+void AssertParameterRow(
+    const TParameterRow& actual,
+    const TParameterRow& expected)
+{
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        actual.ParameterName,
+        expected.ParameterName,
+        expected.ParameterName);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        actual.StaticValue,
+        expected.StaticValue,
+        expected.ParameterName << ": Static");
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        actual.StartupDynamicValue,
+        expected.StartupDynamicValue,
+        expected.ParameterName << ": Dynamic (startup)");
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        actual.RuntimeDynamicValue,
+        expected.RuntimeDynamicValue,
+        expected.ParameterName << ": Dynamic (runtime)");
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        actual.IcbValue.has_value(),
+        expected.IcbValue.has_value(),
+        expected.ParameterName << ": ICB column presence");
+    if (expected.IcbValue) {
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            *actual.IcbValue,
+            *expected.IcbValue,
+            expected.ParameterName << ": ICB");
+    }
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        actual.EffectiveValue,
+        expected.EffectiveValue,
+        expected.ParameterName << ": Effective");
+}
+
+// Extract a parameter row and compare all source values with the expected text.
+void AssertParameterRow(const TString& html, const TParameterRow& expected)
+{
+    AssertParameterRow(GetParameterRow(html, expected.ParameterName), expected);
+}
+
+// Compare the presentation flags of an already parsed parameter row.
+void AssertParameterRowStyle(
+    const TParameterRow& row,
+    const TParameterRowStyle& expected)
+{
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        row.Style.Deferred,
+        expected.Deferred,
+        row.ParameterName << ": parameter-name deferred style");
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        row.Style.StartupDynamicIgnored,
+        expected.StartupDynamicIgnored,
+        row.ParameterName << ": Dynamic (startup) ignored label");
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        row.Style.RuntimeDynamicIgnored,
+        expected.RuntimeDynamicIgnored,
+        row.ParameterName << ": Dynamic (runtime) ignored label");
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        row.Style.IcbUnavailable,
+        expected.IcbUnavailable,
+        row.ParameterName << ": unavailable ICB style");
 }
 
 // A minimal ConfigsManager runtime for renderer metadata from real deliveries.
@@ -183,7 +409,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         const auto* descriptor = NProto::TBlockstoreConfig::descriptor();
         for (int i = 0; i != descriptor->field_count(); ++i) {
             const auto* field = descriptor->field(i);
-            const TString errorMessage = TStringBuilder()
+            const TString errorMessage =
+                TStringBuilder()
                 << "Renderer invariant violated: " << field->full_name()
                 << " must be a singular message; got "
                 << (field->is_repeated() ? "repeated " : "")
@@ -228,16 +455,6 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
                         startup.NormalizationDiagnostics,
                 },
         };
-        const TString ignored =
-            "<br><span class='config-dynamic-ignored'>"
-            "static-only, ignored</span>";
-        const TString ignoredNodeRow =
-            "StorageService.NodeType</td><td>&quot;static-node&quot;</td>"
-            "<td>&quot;startup-node&quot;" +
-            ignored +
-            "</td><td>&mdash;</td>"
-            "<td class='config-icb-unavailable'></td>"
-            "<td>&quot;static-node&quot;</td>";
 
         // Check startup labels while the runtime Dynamic column is absent.
         auto html = renderer.RenderHtml(
@@ -245,12 +462,38 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             staticConfig,
             startupDynamicConfig,
             *controls);
-        UNIT_ASSERT_STRING_CONTAINS(html, ignoredNodeRow);
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "StorageService.ConfigDispatcherSettings</td>"
-            "<td>&mdash;</td><td>{}" +
-                ignored + "</td><td>&mdash;</td>");
+
+        const auto startupNodeRow =
+            GetParameterRow(html, "StorageService.NodeType");
+        AssertParameterRow(
+            startupNodeRow,
+            {
+                .ParameterName = "StorageService.NodeType",
+                .StaticValue = "\"static-node\"",
+                .StartupDynamicValue = "\"startup-node\"",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = "",
+                .EffectiveValue = "\"static-node\"",
+            });
+        AssertParameterRowStyle(
+            startupNodeRow,
+            {.StartupDynamicIgnored = true, .IcbUnavailable = true});
+
+        const auto dispatcherRow =
+            GetParameterRow(html, "StorageService.ConfigDispatcherSettings");
+        AssertParameterRow(
+            dispatcherRow,
+            {
+                .ParameterName = "StorageService.ConfigDispatcherSettings",
+                .StaticValue = "—",
+                .StartupDynamicValue = "{}",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = "",
+                .EffectiveValue = "—",
+            });
+        AssertParameterRowStyle(
+            dispatcherRow,
+            {.StartupDynamicIgnored = true, .IcbUnavailable = true});
 
         // Replace Dynamic with other ignored fields and a populated message.
         auto dynamicConfig = MakeConfig(300);
@@ -272,23 +515,68 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
                    .RenderHtml(*config, staticConfig, dynamicConfig, *controls);
 
         // Keep each label in its source column, including message children.
-        UNIT_ASSERT_STRING_CONTAINS(html, ignoredNodeRow);
-        UNIT_ASSERT_STRING_CONTAINS(
+        const auto retainedNodeRow =
+            GetParameterRow(html, "StorageService.NodeType");
+        AssertParameterRow(
+            retainedNodeRow,
+            {
+                .ParameterName = "StorageService.NodeType",
+                .StaticValue = "\"static-node\"",
+                .StartupDynamicValue = "\"startup-node\"",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = "",
+                .EffectiveValue = "\"static-node\"",
+            });
+        AssertParameterRowStyle(
+            retainedNodeRow,
+            {.StartupDynamicIgnored = true, .IcbUnavailable = true});
+
+        const auto schemeShardRow =
+            GetParameterRow(html, "StorageService.SchemeShardDir");
+        AssertParameterRow(
+            schemeShardRow,
+            {
+                .ParameterName = "StorageService.SchemeShardDir",
+                .StaticValue = "\"/static\"",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "\"/runtime\"",
+                .IcbValue = "",
+                .EffectiveValue = "\"/static\"",
+            });
+        AssertParameterRowStyle(
+            schemeShardRow,
+            {.RuntimeDynamicIgnored = true, .IcbUnavailable = true});
+
+        const auto nameRow = GetParameterRow(
             html,
-            "StorageService.SchemeShardDir</td><td>&quot;/static&quot;</td>"
-            "<td>&mdash;</td><td>&quot;/runtime&quot;" +
-                ignored +
-                "</td><td class='config-icb-unavailable'></td>"
-                "<td>&quot;/static&quot;</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "StorageService.ConfigDispatcherSettings.AllowList.Names[0]</td>"
-            "<td>&mdash;</td><td>&mdash;</td><td>&quot;LogConfigItem&quot;" +
-                ignored + "</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "DiskAgent.Enabled</td><td>false</td><td>&mdash;</td><td>true" +
-                ignored + "</td><td>false</td>");
+            "StorageService.ConfigDispatcherSettings.AllowList.Names[0]");
+        AssertParameterRow(
+            nameRow,
+            {
+                .ParameterName = "StorageService.ConfigDispatcherSettings."
+                                 "AllowList.Names[0]",
+                .StaticValue = "—",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "\"LogConfigItem\"",
+                .IcbValue = "",
+                .EffectiveValue = "—",
+            });
+        AssertParameterRowStyle(
+            nameRow,
+            {.RuntimeDynamicIgnored = true, .IcbUnavailable = true});
+
+        const auto enabledRow = GetParameterRow(html, "DiskAgent.Enabled");
+        AssertParameterRow(
+            enabledRow,
+            {
+                .ParameterName = "DiskAgent.Enabled",
+                .StaticValue = "false",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "true",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "false",
+            });
+        AssertParameterRowStyle(enabledRow, {.RuntimeDynamicIgnored = true});
     }
 
     // Verify that ignored static-only diagnostics produce a red explanation and
@@ -386,13 +674,6 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
                         startup.NormalizationDiagnostics,
                 },
         };
-        const TString ignoredNodeRow =
-            "StorageService.NodeType</td><td>&quot;static-node&quot;</td>"
-            "<td>&quot;startup-node&quot;<br>"
-            "<span class='config-dynamic-ignored'>static-only, ignored</span>"
-            "</td><td>&mdash;</td>"
-            "<td class='config-icb-unavailable'></td>"
-            "<td>&quot;static-node&quot;</td>";
         const TString ignoredHint =
             "<p class='config-dynamic-ignored'>"
             "Static-only parameters detected in the dynamic config are "
@@ -405,7 +686,22 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             staticConfig,
             startupDynamicConfig,
             *controls);
-        UNIT_ASSERT_STRING_CONTAINS(html, ignoredNodeRow);
+
+        const auto startupNodeRow =
+            GetParameterRow(html, "StorageService.NodeType");
+        AssertParameterRow(
+            startupNodeRow,
+            {
+                .ParameterName = "StorageService.NodeType",
+                .StaticValue = "\"static-node\"",
+                .StartupDynamicValue = "\"startup-node\"",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = "",
+                .EffectiveValue = "\"static-node\"",
+            });
+        AssertParameterRowStyle(
+            startupNodeRow,
+            {.StartupDynamicIgnored = true, .IcbUnavailable = true});
         UNIT_ASSERT_STRING_CONTAINS(html, ignoredHint);
         UNIT_ASSERT_STRING_CONTAINS(
             html,
@@ -426,7 +722,21 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         html = renderer.RenderHtml(*config, staticConfig, {}, *controls);
 
         // Keep the historical labels and hint, but no current ignored counter.
-        UNIT_ASSERT_STRING_CONTAINS(html, ignoredNodeRow);
+        const auto retainedNodeRow =
+            GetParameterRow(html, "StorageService.NodeType");
+        AssertParameterRow(
+            retainedNodeRow,
+            {
+                .ParameterName = "StorageService.NodeType",
+                .StaticValue = "\"static-node\"",
+                .StartupDynamicValue = "\"startup-node\"",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = "",
+                .EffectiveValue = "\"static-node\"",
+            });
+        AssertParameterRowStyle(
+            retainedNodeRow,
+            {.StartupDynamicIgnored = true, .IcbUnavailable = true});
         UNIT_ASSERT_STRING_CONTAINS(html, ignoredHint);
         UNIT_ASSERT(!html.Contains(">ignored</span>:"));
     }
@@ -448,13 +758,23 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             std::make_shared<NProto::TBlockstoreConfig>(dynamicConfig),
             1);
         WaitForAck(1);
-        const TString ignoredRow =
-            "StorageService.NodeType</td><td>&mdash;</td><td>&mdash;</td>"
-            "<td>&quot;ignored-node&quot;<br>"
-            "<span class='config-dynamic-ignored'>static-only, ignored</span>"
-            "</td>";
         const auto acceptedHtml = GetMonitoringPage();
-        UNIT_ASSERT_STRING_CONTAINS(acceptedHtml, ignoredRow);
+
+        const auto acceptedHtmlNodeRow =
+            GetParameterRow(acceptedHtml, "StorageService.NodeType");
+        AssertParameterRow(
+            acceptedHtmlNodeRow,
+            {
+                .ParameterName = "StorageService.NodeType",
+                .StaticValue = "—",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "\"ignored-node\"",
+                .IcbValue = "",
+                .EffectiveValue = "—",
+            });
+        AssertParameterRowStyle(
+            acceptedHtmlNodeRow,
+            {.RuntimeDynamicIgnored = true, .IcbUnavailable = true});
         UNIT_ASSERT_STRING_CONTAINS(
             acceptedHtml,
             "<p class='config-dynamic-ignored'>");
@@ -466,7 +786,22 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             2);
         const auto rejectedHtml = GetMonitoringPage();
         UNIT_ASSERT_STRING_CONTAINS(rejectedHtml, "invalid replacement");
-        UNIT_ASSERT_STRING_CONTAINS(rejectedHtml, ignoredRow);
+
+        const auto rejectedHtmlNodeRow =
+            GetParameterRow(rejectedHtml, "StorageService.NodeType");
+        AssertParameterRow(
+            rejectedHtmlNodeRow,
+            {
+                .ParameterName = "StorageService.NodeType",
+                .StaticValue = "—",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "\"ignored-node\"",
+                .IcbValue = "",
+                .EffectiveValue = "—",
+            });
+        AssertParameterRowStyle(
+            rejectedHtmlNodeRow,
+            {.RuntimeDynamicIgnored = true, .IcbUnavailable = true});
         UNIT_ASSERT_STRING_CONTAINS(
             rejectedHtml,
             "<p class='config-dynamic-ignored'>");
@@ -490,11 +825,17 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "<th>Dynamic<br>(startup)</th><th>Dynamic<br>(runtime)</th>");
-        UNIT_ASSERT_STRING_CONTAINS(
+
+        AssertParameterRow(
             html,
-            "StorageService.WriteBlobThreshold</td>"
-            "<td>100</td><td>200</td><td>&mdash;</td>"
-            "<td>&mdash;</td><td>200</td>");
+            {
+                .ParameterName = "StorageService.WriteBlobThreshold",
+                .StaticValue = "100",
+                .StartupDynamicValue = "200",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = "—",
+                .EffectiveValue = "200",
+            });
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "class='config-dynamic-total'>1</span>");
@@ -515,12 +856,17 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
 
             // Retain startup history without counting it as a second override.
             const auto html = GetMonitoringPage();
-            UNIT_ASSERT_STRING_CONTAINS(
+
+            AssertParameterRow(
                 html,
-                "StorageService.WriteBlobThreshold</td>"
-                "<td>100</td><td>200</td><td>" +
-                    ToString(value) + "</td><td>&mdash;</td><td>" +
-                    ToString(value) + "</td>");
+                {
+                    .ParameterName = "StorageService.WriteBlobThreshold",
+                    .StaticValue = "100",
+                    .StartupDynamicValue = "200",
+                    .RuntimeDynamicValue = ToString(value),
+                    .IcbValue = "—",
+                    .EffectiveValue = ToString(value),
+                });
             UNIT_ASSERT_STRING_CONTAINS(
                 html,
                 "class='config-dynamic-total'>1</span>");
@@ -542,11 +888,17 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
 
         // Preserve startup and show the runtime copy without double counting.
         const auto html = GetMonitoringPage();
-        UNIT_ASSERT_STRING_CONTAINS(
+
+        AssertParameterRow(
             html,
-            "StorageService.WriteBlobThreshold</td>"
-            "<td>100</td><td>200</td><td>200</td>"
-            "<td>&mdash;</td><td>200</td>");
+            {
+                .ParameterName = "StorageService.WriteBlobThreshold",
+                .StaticValue = "100",
+                .StartupDynamicValue = "200",
+                .RuntimeDynamicValue = "200",
+                .IcbValue = "—",
+                .EffectiveValue = "200",
+            });
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "class='config-dynamic-total'>1</span>");
@@ -563,11 +915,17 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
 
         // Clear current overrides while retaining their startup source.
         const auto html = GetMonitoringPage();
-        UNIT_ASSERT_STRING_CONTAINS(
+
+        AssertParameterRow(
             html,
-            "StorageService.WriteBlobThreshold</td>"
-            "<td>100</td><td>200</td><td>&mdash;</td>"
-            "<td>&mdash;</td><td>100</td>");
+            {
+                .ParameterName = "StorageService.WriteBlobThreshold",
+                .StaticValue = "100",
+                .StartupDynamicValue = "200",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = "—",
+                .EffectiveValue = "100",
+            });
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             ">StorageService</a></td><td>"
@@ -628,26 +986,43 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             *controls);
 
         // Use the same format for raw values, ICB and Effective.
-        UNIT_ASSERT_STRING_CONTAINS(
+        AssertParameterRow(
             html,
-            "StorageService.SSDCompactionType</td>"
-            "<td>CT_DEFAULT (0)</td><td>CT_LOAD (1)</td>"
-            "<td>CT_DEFAULT (0)</td><td>CT_LOAD (1)</td><td>CT_LOAD (1)</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
+            {
+                .ParameterName = "StorageService.SSDCompactionType",
+                .StaticValue = "CT_DEFAULT (0)",
+                .StartupDynamicValue = "CT_LOAD (1)",
+                .RuntimeDynamicValue = "CT_DEFAULT (0)",
+                .IcbValue = "CT_LOAD (1)",
+                .EffectiveValue = "CT_LOAD (1)",
+            });
+
+        AssertParameterRow(
             html,
-            "Server.ServerConfig.ChecksumFlags."
-            "MediaKindsToValidateDataIntegrity[0]</td>"
-            "<td>STORAGE_MEDIA_SSD (1)</td><td>&mdash;</td>"
-            "<td>&mdash;</td><td>STORAGE_MEDIA_SSD (1)</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
+            {
+                .ParameterName = "Server.ServerConfig.ChecksumFlags."
+                                 "MediaKindsToValidateDataIntegrity[0]",
+                .StaticValue = "STORAGE_MEDIA_SSD (1)",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "STORAGE_MEDIA_SSD (1)",
+            });
+
+        AssertParameterRow(
             html,
-            "Server.ServerConfig.ChecksumFlags."
-            "MediaKindsToValidateDataIntegrity[1]</td>"
-            "<td>STORAGE_MEDIA_HDD (3)</td><td>&mdash;</td>"
-            "<td>&mdash;</td><td>STORAGE_MEDIA_HDD (3)</td>");
+            {
+                .ParameterName = "Server.ServerConfig.ChecksumFlags."
+                                 "MediaKindsToValidateDataIntegrity[1]",
+                .StaticValue = "STORAGE_MEDIA_HDD (3)",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "STORAGE_MEDIA_HDD (3)",
+            });
     }
 
-    // Check source columns, live ICB values, secret redaction and HTML
+    // Check named source rows, live ICB values, secret redaction and HTML
     // escaping.
     Y_UNIT_TEST(ShouldRenderConfigSourcesWithLiveIcbOverridesAndRedactedSecrets)
     {
@@ -697,7 +1072,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             dynamicConfig,
             *controls);
 
-        // Check the source values and hide credentials and unescaped HTML.
+        // Check both table layouts and the presence of the dynamic source.
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "<th>Parameter</th><th>Static</th>"
@@ -712,15 +1087,44 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             html,
             "<td>Dynamic config</td><td>"
             "<span class='config-present'>present</span></td>");
-        UNIT_ASSERT_STRING_CONTAINS(html, "StorageService.WriteBlobThreshold");
-        UNIT_ASSERT_STRING_CONTAINS(html, "<td>100</td><td>200</td>");
-        UNIT_ASSERT_STRING_CONTAINS(html, "<td>300</td><td>300</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
+
+        // Bind each storage value to its parameter and source column.
+        AssertParameterRow(
             html,
-            "StorageService.FreshBlobByteCountFlushThresholdHDD</td>"
-            "<td>4096</td><td>&mdash;</td><td>&mdash;</td>"
-            "<td>&mdash;</td><td>4096</td>");
-        UNIT_ASSERT_STRING_CONTAINS(html, "[redacted]");
+            {
+                .ParameterName = "StorageService.WriteBlobThreshold",
+                .StaticValue = "100",
+                .StartupDynamicValue = "200",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = "300",
+                .EffectiveValue = "300",
+            });
+
+        AssertParameterRow(
+            html,
+            {
+                .ParameterName =
+                    "StorageService.FreshBlobByteCountFlushThresholdHDD",
+                .StaticValue = "4096",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = "—",
+                .EffectiveValue = "4096",
+            });
+
+        // Keep the token row visible and redact every source containing it.
+        AssertParameterRow(
+            html,
+            {
+                .ParameterName = "Server.ServerConfig.NodeRegistrationToken",
+                .StaticValue = "[redacted]",
+                .StartupDynamicValue = "[redacted]",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "[redacted]",
+            });
+
+        // Reject raw secrets anywhere on the page and verify HTML escaping.
         UNIT_ASSERT(!html.Contains("static-secret-value"));
         UNIT_ASSERT(!html.Contains("dynamic-secret-value"));
         UNIT_ASSERT(!html.Contains("<static&>"));
@@ -758,18 +1162,64 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         const auto html =
             renderer.RenderHtml(*config, staticConfig, {}, *controls);
 
-        // Preserve ordinary values and omit raw secrets.
-        for (const TStringBuf value:
-             {
-                 "AUTHORIZATION_REQUIRE",
-                 "/certs/logbroker.pem",
-                 "/certs/root.pem",
-                 "/keys/root.key",
-                 "root-key-id",
-                 "/run/token-agent.sock",
-             })
-        {
-            UNIT_ASSERT_STRING_CONTAINS(html, value);
+        // Match public settings to their own rows while omitting raw secrets.
+        const TParameterRow publicSettings[] = {
+            {
+                .ParameterName = "StorageService.AuthorizationMode",
+                .StaticValue = "AUTHORIZATION_REQUIRE (2)",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = "—",
+                .EffectiveValue = "AUTHORIZATION_REQUIRE (2)",
+            },
+
+            {
+                .ParameterName = "Logbroker.CaCertFilename",
+                .StaticValue = "\"/certs/logbroker.pem\"",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "\"/certs/logbroker.pem\"",
+            },
+
+            {
+                .ParameterName = "RootKms.RootCertsFile",
+                .StaticValue = "\"/certs/root.pem\"",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "\"/certs/root.pem\"",
+            },
+
+            {
+                .ParameterName = "RootKms.PrivateKeyFile",
+                .StaticValue = "\"/keys/root.key\"",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "\"/keys/root.key\"",
+            },
+
+            {
+                .ParameterName = "RootKms.KeyId",
+                .StaticValue = "\"root-key-id\"",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "\"root-key-id\"",
+            },
+
+            {
+                .ParameterName = "IamClient.TokenAgentUnixSocket",
+                .StaticValue = "\"/run/token-agent.sock\"",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "\"/run/token-agent.sock\"",
+            },
+        };
+        for (const auto& expected: publicSettings) {
+            AssertParameterRow(html, expected);
         }
         UNIT_ASSERT(!html.Contains("storage-token-secret"));
         UNIT_ASSERT(!html.Contains("endpoint-token-secret"));
@@ -786,13 +1236,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
         const auto startupConfig =
             MergeBlockstoreConfigSources(staticConfig, startupDynamicConfig);
-        auto config =
-            MakeStartupBlockstoreConfig(
-                staticConfig,
-                startupDynamicConfig,
-                controls,
-                /*extraParameters=*/{})
-                .Config;
+        auto config = MakeStartupBlockstoreConfig(
+                          staticConfig,
+                          startupDynamicConfig,
+                          controls,
+                          /*extraParameters=*/{})
+                          .Config;
         TBlockstoreConfigRenderer renderer{
             .Data =
                 {
@@ -807,19 +1256,33 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             staticConfig,
             startupDynamicConfig,
             *controls);
-        UNIT_ASSERT_STRING_CONTAINS(
+
+        AssertParameterRow(
             startupHtml,
-            "LocalNVMe.LockdownConfig</td>"
-            "<td>&mdash;</td><td>{}</td><td>&mdash;</td><td>{}</td>");
+            {
+                .ParameterName = "LocalNVMe.LockdownConfig",
+                .StaticValue = "—",
+                .StartupDynamicValue = "{}",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "{}",
+            });
         UNIT_ASSERT_STRING_CONTAINS(
             startupHtml,
             ">LocalNVMe</a></td><td>"
             "<span class='config-dynamic-total'>1</span>");
         UNIT_ASSERT(!startupHtml.Contains(">RootKms</a>"));
-        UNIT_ASSERT_STRING_CONTAINS(
+
+        AssertParameterRow(
             startupHtml,
-            "<td>SpdkEnv</td>"
-            "<td>&mdash;</td><td>{}</td><td>&mdash;</td><td>{}</td>");
+            {
+                .ParameterName = "SpdkEnv",
+                .StaticValue = "—",
+                .StartupDynamicValue = "{}",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "{}",
+            });
 
         // Request removal at runtime while the frozen startup value remains.
         const auto dynamicConfig = MakeConfig(300);
@@ -838,11 +1301,19 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             *controls);
 
         // Preserve the empty effective message and its deferred section count.
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "<td class='config-dynamic-deferred'>"
-            "LocalNVMe.LockdownConfig</td>"
-            "<td>&mdash;</td><td>{}</td><td>&mdash;</td><td>{}</td>");
+        const auto lockdownRow =
+            GetParameterRow(html, "LocalNVMe.LockdownConfig");
+        AssertParameterRow(
+            lockdownRow,
+            {
+                .ParameterName = "LocalNVMe.LockdownConfig",
+                .StaticValue = "—",
+                .StartupDynamicValue = "{}",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "{}",
+            });
+        AssertParameterRowStyle(lockdownRow, {.Deferred = true});
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             ">LocalNVMe</a></td><td><span class='config-zero'>&mdash;</span>"
@@ -891,18 +1362,36 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             *controls);
 
         // Mark only empty messages; populated values remain in child rows.
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "<td class='config-dynamic-deferred'>"
-            "Logbroker.IamMetadataServer</td>"
-            "<td>&mdash;</td><td>{}</td><td>&mdash;</td><td>{}</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "<td class='config-dynamic-deferred'>"
-            "Logbroker.IamMetadataServer.Endpoint</td>"
-            "<td>&mdash;</td><td>&mdash;</td>"
-            "<td>&quot;runtime-endpoint&quot;</td><td>&mdash;</td>");
-        UNIT_ASSERT_STRING_CONTAINS(html, "<td>Logbroker.Address</td>");
+        const auto metadataRow =
+            GetParameterRow(html, "Logbroker.IamMetadataServer");
+        AssertParameterRow(
+            metadataRow,
+            {
+                .ParameterName = "Logbroker.IamMetadataServer",
+                .StaticValue = "—",
+                .StartupDynamicValue = "{}",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "{}",
+            });
+        AssertParameterRowStyle(metadataRow, {.Deferred = true});
+
+        const auto endpointRow =
+            GetParameterRow(html, "Logbroker.IamMetadataServer.Endpoint");
+        AssertParameterRow(
+            endpointRow,
+            {
+                .ParameterName = "Logbroker.IamMetadataServer.Endpoint",
+                .StaticValue = "—",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "\"runtime-endpoint\"",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "—",
+            });
+        AssertParameterRowStyle(endpointRow, {.Deferred = true});
+
+        const auto addressRow = GetParameterRow(html, "Logbroker.Address");
+        AssertParameterRowStyle(addressRow, {});
     }
 
     // Highlight both empty branches for one rejected switch, counting it once.
@@ -915,13 +1404,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         auto dynamicConfig = MakeConfig(300);
         dynamicConfig.MutableLogbroker()->MutableIamJwtFile();
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
-        const auto config =
-            MakeStartupBlockstoreConfig(
-                staticConfig,
-                startupDynamicConfig,
-                controls,
-                /*extraParameters=*/{})
-                .Config;
+        const auto config = MakeStartupBlockstoreConfig(
+                                staticConfig,
+                                startupDynamicConfig,
+                                controls,
+                                /*extraParameters=*/{})
+                                .Config;
         TBlockstoreConfigRenderer renderer{
             .Data =
                 {
@@ -942,15 +1430,32 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             *controls);
 
         // Mark the retained and rejected branches as one deferred group change.
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "<td "
-            "class='config-dynamic-deferred'>Logbroker.IamMetadataServer</td>"
-            "<td>&mdash;</td><td>{}</td><td>&mdash;</td><td>{}</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "<td class='config-dynamic-deferred'>Logbroker.IamJwtFile</td>"
-            "<td>&mdash;</td><td>&mdash;</td><td>{}</td><td>&mdash;</td>");
+        const auto metadataRow =
+            GetParameterRow(html, "Logbroker.IamMetadataServer");
+        AssertParameterRow(
+            metadataRow,
+            {
+                .ParameterName = "Logbroker.IamMetadataServer",
+                .StaticValue = "—",
+                .StartupDynamicValue = "{}",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "{}",
+            });
+        AssertParameterRowStyle(metadataRow, {.Deferred = true});
+
+        const auto jwtRow = GetParameterRow(html, "Logbroker.IamJwtFile");
+        AssertParameterRow(
+            jwtRow,
+            {
+                .ParameterName = "Logbroker.IamJwtFile",
+                .StaticValue = "—",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "{}",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "—",
+            });
+        AssertParameterRowStyle(jwtRow, {.Deferred = true});
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             ">Logbroker</a></td><td>"
@@ -1028,30 +1533,48 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
 
         // Mark deferred scalar and collection rows, retaining ordinary names
         // for an ICB override and an unchanged startup-only value.
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "<td class='config-dynamic-deferred'>"
-            "StorageService.ListVolumesConcurrency</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "<td class='config-dynamic-deferred'>"
-            "StorageService.KnownSpareNodes[0]</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "<td class='config-dynamic-deferred'>"
-            "StorageService.KnownSpareNodes[1]</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "<td>StorageService.WriteBlobThreshold</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "<td>StorageService.MaxSSDGroupReadIops</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "<td>StorageService.NodeType</td>"
-            "<td>&mdash;</td><td>&mdash;</td><td>&quot;ignored-node&quot;<br>"
-            "<span class='config-dynamic-ignored'>static-only, ignored</span>"
-            "</td>");
+        const auto listVolumesConcurrencyRow =
+            GetParameterRow(html, "StorageService.ListVolumesConcurrency");
+        AssertParameterRowStyle(
+            listVolumesConcurrencyRow,
+            {.Deferred = true, .IcbUnavailable = true});
+
+        const auto firstSpareNodeRow =
+            GetParameterRow(html, "StorageService.KnownSpareNodes[0]");
+        AssertParameterRowStyle(
+            firstSpareNodeRow,
+            {.Deferred = true, .IcbUnavailable = true});
+
+        const auto secondSpareNodeRow =
+            GetParameterRow(html, "StorageService.KnownSpareNodes[1]");
+        AssertParameterRowStyle(
+            secondSpareNodeRow,
+            {.Deferred = true, .IcbUnavailable = true});
+
+        const auto writeBlobThresholdRow =
+            GetParameterRow(html, "StorageService.WriteBlobThreshold");
+        AssertParameterRowStyle(writeBlobThresholdRow, {});
+
+        const auto maxSsdGroupReadIopsRow =
+            GetParameterRow(html, "StorageService.MaxSSDGroupReadIops");
+        AssertParameterRowStyle(
+            maxSsdGroupReadIopsRow,
+            {.IcbUnavailable = true});
+
+        const auto nodeRow = GetParameterRow(html, "StorageService.NodeType");
+        AssertParameterRow(
+            nodeRow,
+            {
+                .ParameterName = "StorageService.NodeType",
+                .StaticValue = "—",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "\"ignored-node\"",
+                .IcbValue = "",
+                .EffectiveValue = "—",
+            });
+        AssertParameterRowStyle(
+            nodeRow,
+            {.RuntimeDynamicIgnored = true, .IcbUnavailable = true});
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "<p class='config-deferred-hint'>"
@@ -1138,50 +1661,108 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
 
         // Compare matching indices and keys while retaining missing source
         // cells.
-        UNIT_ASSERT_STRING_CONTAINS(
+        const auto firstBandwidthRow = GetParameterRow(
             html,
-            "StorageService.LinkedDiskFillBandwidth[0].ReadBandwidth</td>"
-            "<td>10</td><td>15</td><td>30</td>"
-            "<td class='config-icb-unavailable'></td><td>10</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "StorageService.LinkedDiskFillBandwidth[1].ReadBandwidth</td>"
-            "<td>20</td><td>&mdash;</td><td>&mdash;</td>"
-            "<td class='config-icb-unavailable'></td><td>20</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "StorageService.KnownSpareNodes[16]</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "Diagnostics.RequestThresholds[0].ByRequestType[&quot;shared&quot;]"
-            "</td>"
-            "<td>100</td><td>150</td><td>300</td><td>100</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "Diagnostics.RequestThresholds[0].ByRequestType[&quot;static-only&"
-            "quot;]</td>"
-            "<td>0</td><td>&mdash;</td><td>&mdash;</td><td>0</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "Diagnostics.RequestThresholds[0].ByRequestType[&quot;dynamic-only&"
-            "quot;]</td>"
-            "<td>&mdash;</td><td>&mdash;</td><td>200</td><td>&mdash;</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
-            html,
-            "Diagnostics.RequestThresholds[0].ByRequestType[&quot;startup-only&"
-            "quot;]</td>"
-            "<td>&mdash;</td><td>400</td><td>&mdash;</td><td>&mdash;</td>");
+            "StorageService.LinkedDiskFillBandwidth[0].ReadBandwidth");
+        AssertParameterRow(
+            firstBandwidthRow,
+            {
+                .ParameterName =
+                    "StorageService.LinkedDiskFillBandwidth[0].ReadBandwidth",
+                .StaticValue = "10",
+                .StartupDynamicValue = "15",
+                .RuntimeDynamicValue = "30",
+                .IcbValue = "",
+                .EffectiveValue = "10",
+            });
 
-        // Highlight nested messages and map values from rejected collections.
-        UNIT_ASSERT_STRING_CONTAINS(
+        AssertParameterRowStyle(
+            firstBandwidthRow,
+            {.Deferred = true, .IcbUnavailable = true});
+
+        const auto secondBandwidthRow = GetParameterRow(
             html,
-            "<td class='config-dynamic-deferred'>"
-            "StorageService.LinkedDiskFillBandwidth[0].ReadBandwidth</td>");
-        UNIT_ASSERT_STRING_CONTAINS(
+            "StorageService.LinkedDiskFillBandwidth[1].ReadBandwidth");
+        AssertParameterRow(
+            secondBandwidthRow,
+            {
+                .ParameterName =
+                    "StorageService.LinkedDiskFillBandwidth[1].ReadBandwidth",
+                .StaticValue = "20",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = "",
+                .EffectiveValue = "20",
+            });
+
+        AssertParameterRowStyle(
+            secondBandwidthRow,
+            {.Deferred = true, .IcbUnavailable = true});
+
+        AssertParameterRow(
             html,
-            "<td class='config-dynamic-deferred'>"
-            "Diagnostics.RequestThresholds[0].ByRequestType[&quot;shared&quot;]"
-            "</td>");
+            {
+                .ParameterName = "StorageService.KnownSpareNodes[16]",
+                .StaticValue = "—",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "\"node-16\"",
+                .IcbValue = "",
+                .EffectiveValue = "\"node-16\"",
+            });
+
+        const auto sharedThresholdRow = GetParameterRow(
+            html,
+            "Diagnostics.RequestThresholds[0].ByRequestType[\"shared\"]");
+        AssertParameterRow(
+            sharedThresholdRow,
+            {
+                .ParameterName = "Diagnostics.RequestThresholds[0]."
+                                 "ByRequestType[\"shared\"]",
+                .StaticValue = "100",
+                .StartupDynamicValue = "150",
+                .RuntimeDynamicValue = "300",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "100",
+            });
+
+        AssertParameterRow(
+            html,
+            {
+                .ParameterName = "Diagnostics.RequestThresholds[0]."
+                                 "ByRequestType[\"static-only\"]",
+                .StaticValue = "0",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "0",
+            });
+
+        AssertParameterRow(
+            html,
+            {
+                .ParameterName = "Diagnostics.RequestThresholds[0]."
+                                 "ByRequestType[\"dynamic-only\"]",
+                .StaticValue = "—",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "200",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "—",
+            });
+
+        AssertParameterRow(
+            html,
+            {
+                .ParameterName = "Diagnostics.RequestThresholds[0]."
+                                 "ByRequestType[\"startup-only\"]",
+                .StaticValue = "—",
+                .StartupDynamicValue = "400",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "—",
+            });
+
+        // Highlight the map value from the rejected collection.
+        AssertParameterRowStyle(sharedThresholdRow, {.Deferred = true});
     }
 
     // Preserve the renderer startup time through identical initial deliveries.
@@ -1204,11 +1785,17 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             WaitForAck(1);
             const auto html = GetMonitoringPage();
             UNIT_ASSERT_STRING_CONTAINS(html, startupTime + ", startup</td>");
-            UNIT_ASSERT_STRING_CONTAINS(
+
+            AssertParameterRow(
                 html,
-                "StorageService.WriteBlobThreshold</td>"
-                "<td>100</td><td>200</td><td>&mdash;</td>"
-                "<td>&mdash;</td><td>200</td>");
+                {
+                    .ParameterName = "StorageService.WriteBlobThreshold",
+                    .StaticValue = "100",
+                    .StartupDynamicValue = "200",
+                    .RuntimeDynamicValue = "—",
+                    .IcbValue = "—",
+                    .EffectiveValue = "200",
+                });
         }
     }
 
@@ -1294,11 +1881,17 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             html,
             "<td>Dynamic config</td><td>"
             "<span class='config-absent'>absent</span></td>");
-        UNIT_ASSERT_STRING_CONTAINS(
+
+        AssertParameterRow(
             html,
-            "StorageService.WriteBlobThreshold</td>"
-            "<td>100</td><td>200</td><td>&mdash;</td>"
-            "<td>&mdash;</td><td>100</td>");
+            {
+                .ParameterName = "StorageService.WriteBlobThreshold",
+                .StaticValue = "100",
+                .StartupDynamicValue = "200",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = "—",
+                .EffectiveValue = "100",
+            });
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             ">StorageService</a></td><td>"
@@ -1326,11 +1919,17 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
                 ", startup <span class='config-update-rejected'>"
                 "- rejected: Failed to parse PrivateDatabaseConfig "
                 "from CMS: E_ARGUMENT invalid startup delivery</span>");
-        UNIT_ASSERT_STRING_CONTAINS(
+
+        AssertParameterRow(
             html,
-            "StorageService.WriteBlobThreshold</td>"
-            "<td>100</td><td>200</td><td>&mdash;</td>"
-            "<td>&mdash;</td><td>200</td>");
+            {
+                .ParameterName = "StorageService.WriteBlobThreshold",
+                .StaticValue = "100",
+                .StartupDynamicValue = "200",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = "—",
+                .EffectiveValue = "200",
+            });
     }
 
     // Render an escaped rejection reason alongside the last accepted runtime
@@ -1360,11 +1959,17 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
                 "- rejected: Failed to parse PrivateDatabaseConfig "
                 "from CMS: E_ARGUMENT invalid private config "
                 "&lt;&amp;&gt;</span>");
-        UNIT_ASSERT_STRING_CONTAINS(
+
+        AssertParameterRow(
             html,
-            "StorageService.WriteBlobThreshold</td>"
-            "<td>100</td><td>200</td><td>300</td>"
-            "<td>&mdash;</td><td>300</td>");
+            {
+                .ParameterName = "StorageService.WriteBlobThreshold",
+                .StaticValue = "100",
+                .StartupDynamicValue = "200",
+                .RuntimeDynamicValue = "300",
+                .IcbValue = "—",
+                .EffectiveValue = "300",
+            });
     }
 
     // Clear the renderer rejection when a changed source is accepted.

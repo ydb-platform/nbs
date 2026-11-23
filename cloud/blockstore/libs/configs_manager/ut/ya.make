@@ -16,6 +16,7 @@ PEERDIR(
     contrib/ydb/core/protos
     contrib/ydb/core/testlib
 
+    library/cpp/html/pcdata
     library/cpp/logger
 )
 
