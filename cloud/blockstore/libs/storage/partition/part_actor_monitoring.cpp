@@ -19,6 +19,7 @@
 
 #include <contrib/ydb/core/base/appdata.h>
 
+#include <cmath>
 #include <ranges>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
@@ -340,8 +341,11 @@ void DumpFreshBlobsBarSegment(
 
     constexpr double MinPercentToShowSize = 10;
     const double percent = 100.0 * stats.ByteCount / totalByteCount;
+    // Rounded down: if the segments add up to more than 100%, the last one
+    // wraps and the bar hides it.
+    const double width = std::floor(percent * 100) / 100;
     out << "<div class='progress-bar " << barClass << "' role='progressbar'"
-        << " style='width: " << Prec(percent, PREC_POINT_DIGITS, 2) << "%'"
+        << " style='width: " << Prec(width, PREC_POINT_DIGITS, 2) << "%'"
         << " title='" << name << ": " << FormatBlobCount(stats.BlobCount)
         << ", " << FormatByteSize(stats.ByteCount) << "'>";
     if (percent >= MinPercentToShowSize) {
@@ -378,14 +382,6 @@ void DumpTrimDue(
         << " style='width: " << percent << "%'></div></div>";
 }
 
-void DumpTrimState(IOutputStream& out, const TOperationState& op, TInstant now)
-{
-    out << ToString(op.Status);
-    if (op.Timestamp != TInstant::Zero()) {
-        out << " for " << FormatDuration(now - op.Timestamp);
-    }
-}
-
 void DumpTrimCounters(IOutputStream& out, const TTrimFreshLogStats& stats)
 {
     out << stats.SucceededCount;
@@ -410,10 +406,10 @@ void DumpFreshLog(
         ordinaryTrimToCommitId,
         lastSentSelectiveTrimToCommitId);
     const ui64 totalBlobCount = blobs.OrdinaryTrimmable.BlobCount +
-                                blobs.DeadBehindLive.BlobCount +
+                                blobs.DeadAboveBoundary.BlobCount +
                                 blobs.Live.BlobCount;
     const ui64 totalByteCount = blobs.OrdinaryTrimmable.ByteCount +
-                                blobs.DeadBehindLive.ByteCount +
+                                blobs.DeadAboveBoundary.ByteCount +
                                 blobs.Live.ByteCount;
 
     // After a scan, the next one waits until this many more bytes die.
@@ -464,8 +460,8 @@ void DumpFreshLog(
             DumpFreshBlobsBarSegment(
                 out,
                 "progress-bar-warning",
-                "Dead behind live",
-                blobs.DeadBehindLive,
+                "Dead above boundary",
+                blobs.DeadAboveBoundary,
                 totalByteCount);
         }
 
@@ -477,26 +473,29 @@ void DumpFreshLog(
                 "Some blocks are neither overwritten nor flushed",
                 blobs.Live);
             if (blobs.KeptBlobCount) {
-                out << ", <span title='Below the soft barrier, protected by "
-                       "Keep flags'>"
-                    << blobs.KeptBlobCount << " kept</span>";
+                out << ", <span title='At or below the last soft barrier sent "
+                       "since the tablet started, so protected by Keep flags. "
+                       "Blobs kept before the tablet restarted are not "
+                       "counted'>"
+                    << blobs.KeptBlobCount << " kept since start</span>";
             }
             out << "&emsp;";
             DumpFreshBlobsLegendItem(
                 out,
                 "label-success",
                 "Ordinary trimmable",
-                "Dead and older than every live blob: the hard barrier of "
-                "an ordinary trim reaches them",
+                "Dead and older than every live blob and in-flight write: "
+                "the hard barrier of an ordinary trim reaches them",
                 blobs.OrdinaryTrimmable);
             out << "&emsp;";
             DumpFreshBlobsLegendItem(
                 out,
                 "label-warning",
-                "Dead behind live",
-                "Dead and newer than a live blob: before a flush, only a "
-                "selective trim reaches them",
-                blobs.DeadBehindLive);
+                "Dead above boundary",
+                "Dead, but newer than a live blob or an in-flight write that "
+                "holds the ordinary trim boundary. Until the boundary moves, "
+                "only a selective trim reaches them",
+                blobs.DeadAboveBoundary);
         }
 
         TABLE_CLASS ("table table-condensed") {
@@ -530,7 +529,7 @@ void DumpFreshLog(
                                "Ordinary</span>";
                     }
                     TABLED () {
-                        DumpTrimState(out, ordinary.State, now);
+                        DumpOperationState(out, ordinary.State, now);
                     }
                     TABLED () {
                         if (deadBlobByteCountTrimThreshold) {
@@ -541,7 +540,7 @@ void DumpFreshLog(
                                 deadBlobByteCountTrimThreshold);
                         } else {
                             out << "<span class='text-muted'>"
-                                   "after every flush</span>";
+                                   "whenever the boundary moves</span>";
                         }
                     }
                     TABLED () {
@@ -564,14 +563,14 @@ void DumpFreshLog(
                                "Selective</span>";
                     }
                     TABLED () {
-                        DumpTrimState(out, selective.State, now);
+                        DumpOperationState(out, selective.State, now);
                     }
                     TABLED () {
                         if (selectiveTrimEnabled) {
                             DumpTrimDue(
                                 out,
                                 "progress-bar-warning",
-                                blobs.DeadBehindLive.ByteCount,
+                                blobs.DeadAboveBoundary.ByteCount,
                                 deadBlobByteCountTrimThreshold);
 
                             if (selectiveScanWaitByteCount) {
@@ -793,7 +792,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                     }
 
                     TAG(TH3) { out << "State"; }
-                    State->DumpHtml(out);
+                    State->DumpHtml(out, ctx.Now());
 
                     TAG (TH3) {
                         out << "Fresh Log";

@@ -213,7 +213,7 @@ TPartitionFreshBlobState::GetUntrimmedFreshBlobsBreakdown(
         if (commitId <= ordinaryTrimToCommitId) {
             add(result.OrdinaryTrimmable, blob);
         } else if (blob.Dead) {
-            add(result.DeadBehindLive, blob);
+            add(result.DeadAboveBoundary, blob);
         } else {
             add(result.Live, blob);
             if (commitId <= lastSentSelectiveTrimToCommitId) {

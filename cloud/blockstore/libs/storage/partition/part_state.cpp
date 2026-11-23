@@ -1039,7 +1039,7 @@ void TPartitionState::WriteUsedBlocksToDB(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionState::DumpHtml(IOutputStream& out) const
+void TPartitionState::DumpHtml(IOutputStream& out, TInstant now) const
 {
     HTML(out) {
         TABLE_CLASS("table table-condensed") {
@@ -1068,7 +1068,8 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                     TABLED () {
                         DumpOperationState(
                             out,
-                            GetFlushState().GetOperationState());
+                            GetFlushState().GetOperationState(),
+                            now);
                     }
                 }
                 TABLER () {
@@ -1076,14 +1077,7 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                         out << "TrimFreshLog";
                     }
                     TABLED () {
-                        const auto& op = GetTrimFreshLogState();
-                        DumpOperationState(out, op);
-                        if (op.Status == EOperationStatus::Started) {
-                            const bool selective =
-                                GetSelectiveTrimStats().State.Status ==
-                                EOperationStatus::Started;
-                            out << (selective ? ", Selective" : ", Ordinary");
-                        }
+                        DumpOperationState(out, GetTrimFreshLogState(), now);
                         if (const auto delay = GetTrimFreshLogBackoffDelay()) {
                             out << ", Backoff: " << FormatDuration(delay);
                         }
@@ -1091,7 +1085,9 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                 }
                 TABLER () {
                     TABLED() { out << "Compaction"; }
-                    TABLED() { DumpOperationState(out, CompactionState); }
+                    TABLED () {
+                        DumpOperationState(out, CompactionState, now);
+                    }
                 }
                 TABLER() {
                     TABLED() { out << "CompactionDelay"; }
@@ -1099,7 +1095,9 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                 }
                 TABLER() {
                     TABLED() { out << "Cleanup"; }
-                    TABLED() { DumpOperationState(out, CleanupState); }
+                    TABLED () {
+                        DumpOperationState(out, CleanupState, now);
+                    }
                 }
                 TABLER() {
                     TABLED() { out << "CleanupDelay"; }
@@ -1107,7 +1105,9 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                 }
                 TABLER() {
                     TABLED() { out << "CollectGarbage"; }
-                    TABLED() { DumpOperationState(out, CollectGarbageState); }
+                    TABLED () {
+                        DumpOperationState(out, CollectGarbageState, now);
+                    }
                 }
             }
         }

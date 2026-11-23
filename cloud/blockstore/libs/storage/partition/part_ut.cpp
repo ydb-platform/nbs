@@ -4161,7 +4161,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_C(html.Contains("Fresh Log"), html);
         // The pin and the last write are live, and the pin is kept.
         UNIT_ASSERT_C(html.Contains("Live</span> 2 blobs"), html);
-        UNIT_ASSERT_C(html.Contains("1 kept"), html);
+        UNIT_ASSERT_C(html.Contains("1 kept since start"), html);
         UNIT_ASSERT_C(!html.Contains("not acknowledged"), html);
         UNIT_ASSERT_C(!html.Contains("failed)"), html);
 
@@ -4176,6 +4176,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             later);
         UNIT_ASSERT_C(
             later.Contains("Selective</span></td><td>Idle for 1m "),
+            later);
+        // The State table reads the same clock.
+        UNIT_ASSERT_C(
+            later.Contains("TrimFreshLog</td><td>Idle for 1m "),
             later);
     }
 

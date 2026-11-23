@@ -1412,7 +1412,7 @@ public:
         update(AccessStats());
     }
 
-    void DumpHtml(IOutputStream& out) const;
+    void DumpHtml(IOutputStream& out, TInstant now) const;
     NJson::TJsonValue AsJson() const;
 
     void UpdateWithThreadSafeStats(TThreadSafePartStats& stats)

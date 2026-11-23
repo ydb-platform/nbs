@@ -819,8 +819,8 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         auto blobs = state.GetUntrimmedFreshBlobsBreakdown(2, 4);
         UNIT_ASSERT_VALUES_EQUAL(2, blobs.OrdinaryTrimmable.BlobCount);
         UNIT_ASSERT_VALUES_EQUAL(2 + 4, blobs.OrdinaryTrimmable.ByteCount);
-        UNIT_ASSERT_VALUES_EQUAL(2, blobs.DeadBehindLive.BlobCount);
-        UNIT_ASSERT_VALUES_EQUAL(16 + 64, blobs.DeadBehindLive.ByteCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, blobs.DeadAboveBoundary.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(16 + 64, blobs.DeadAboveBoundary.ByteCount);
         UNIT_ASSERT_VALUES_EQUAL(2, blobs.Live.BlobCount);
         UNIT_ASSERT_VALUES_EQUAL(8 + 32, blobs.Live.ByteCount);
         UNIT_ASSERT_VALUES_EQUAL(1, blobs.KeptBlobCount);
@@ -833,8 +833,8 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         blobs = state.GetUntrimmedFreshBlobsBreakdown(4, 4);
         UNIT_ASSERT_VALUES_EQUAL(2, blobs.OrdinaryTrimmable.BlobCount);
         UNIT_ASSERT_VALUES_EQUAL(8 + 16, blobs.OrdinaryTrimmable.ByteCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, blobs.DeadBehindLive.BlobCount);
-        UNIT_ASSERT_VALUES_EQUAL(64, blobs.DeadBehindLive.ByteCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, blobs.DeadAboveBoundary.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(64, blobs.DeadAboveBoundary.ByteCount);
         UNIT_ASSERT_VALUES_EQUAL(1, blobs.Live.BlobCount);
         UNIT_ASSERT_VALUES_EQUAL(32, blobs.Live.ByteCount);
         UNIT_ASSERT_VALUES_EQUAL(0, blobs.KeptBlobCount);

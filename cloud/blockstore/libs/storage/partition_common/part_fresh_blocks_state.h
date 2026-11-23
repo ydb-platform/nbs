@@ -177,11 +177,13 @@ struct TUntrimmedFreshBlobsBreakdown
 {
     // At or below OrdinaryTrimToCommitId, so all dead.
     TFreshBlobStats OrdinaryTrimmable;
-    // Dead blobs above OrdinaryTrimToCommitId. Before a flush, only a
-    // selective trim reaches them.
-    TFreshBlobStats DeadBehindLive;
+    // Dead blobs above OrdinaryTrimToCommitId, which an older live blob or
+    // in-flight write holds. Until it moves, only a selective trim reaches
+    // them.
+    TFreshBlobStats DeadAboveBoundary;
     TFreshBlobStats Live;
-    // Live blobs at or below the last soft barrier: they carry Keep flags.
+    // Live blobs at or below the last soft barrier sent in this tablet
+    // lifetime: they carry Keep flags.
     ui64 KeptBlobCount = 0;
 };
 
