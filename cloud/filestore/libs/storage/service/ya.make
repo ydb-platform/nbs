@@ -23,7 +23,7 @@ SRCS(
     service_actor_actions_list_local_filestores.cpp
     service_actor_actions_toggle_service_state.cpp
     service_actor_actions.cpp
-    service_actor_alterfs.cpp
+    service_actor_resizefs.cpp
     service_actor_complete.cpp
     service_actor_control_namespace.cpp
     service_actor_createfs.cpp
