@@ -22,7 +22,6 @@
 #include <cloud/filestore/libs/storage/tablet/model/shard_balancer.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttling_policy.h>
-#include <cloud/filestore/libs/storage/tablet/model/truncate_queue.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
 #include <cloud/storage/core/libs/common/byte_range.h>
@@ -73,7 +72,6 @@ struct TIndexTabletState::TImpl
     TLargeBlocks LargeBlocks;
     TCompactionMap CompactionMap;
     TGarbageQueue GarbageQueue;
-    TTruncateQueue TruncateQueue;
     TCacheReadBypass CacheReadBypass;
     TReadAheadCache ReadAheadCache;
     std::unique_ptr<IInMemoryIndexState> InMemoryIndexState;

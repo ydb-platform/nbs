@@ -574,8 +574,6 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         args.Response,
         Config->GetDupCacheEntryCount());
 
-    EnqueueTruncateIfNeeded(ctx);
-
     if (safeAsync || unsafeAsync) {
         args.AsyncHandle = args.Response.GetHandle();
         StartCreateHandleCommit(args.AsyncHandle);

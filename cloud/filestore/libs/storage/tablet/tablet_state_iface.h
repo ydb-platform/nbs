@@ -358,15 +358,6 @@ public:
     DeleteNodeRefVer(ui64 nodeId, ui64 commitId, const TString& name) = 0;
 
     //
-    // TruncateQueue
-    //
-
-    virtual void WriteTruncateQueueEntry(ui64 nodeId, TByteRange range) = 0;
-    virtual void DeleteTruncateQueueEntry(ui64 id) = 0;
-    virtual bool ReadTruncateQueue(
-        TVector<NProto::TTruncateEntry>& entries) = 0;
-
-    //
     // Sessions
     //
 

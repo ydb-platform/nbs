@@ -478,6 +478,8 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
     TTransactionContext& tx,
     TTxIndexTablet::TPrepareRenameNodeInSource& args)
 {
+    Y_UNUSED(ctx);
+
     FILESTORE_VALIDATE_TX_ERROR(RenameNode, args);
     if (args.Error.GetCode() == S_ALREADY) {
         return; // nothing to do
@@ -531,8 +533,6 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
         args.RequestId,
         NProto::TRenameNodeResponse{},
         Config->GetDupCacheEntryCount());
-
-    EnqueueTruncateIfNeeded(ctx);
 }
 
 void TIndexTabletActor::CompleteTx_PrepareRenameNodeInSource(

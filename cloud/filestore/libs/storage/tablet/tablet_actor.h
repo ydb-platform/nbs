@@ -380,7 +380,6 @@ private:
         const TCompactionInfo& compactionInfo,
         const TCleanupInfo& cleanupInfo);
     void EnqueueCollectGarbageIfNeeded(const NActors::TActorContext& ctx);
-    void EnqueueTruncateIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueForcedOperationIfNeeded(const NActors::TActorContext& ctx);
     void LoadNextCompactionMapChunkIfNeeded(const NActors::TActorContext& ctx);
     void ScheduleEnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);

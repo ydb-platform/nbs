@@ -4663,7 +4663,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
 
         NProto::TStorageConfig storageConfig;
         storageConfig.SetWriteBlobThreshold(4 * block);
-        storageConfig.SetMaxBlocksPerTruncateTx(1);
 
         TTestEnv env(testEnvConfig, storageConfig);
 
@@ -4676,18 +4675,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             tabletId,
             tabletConfig);
         tablet.InitSession("client", "session");
-
-        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event)
-            {
-                switch (event->GetTypeRewrite()) {
-                    case TEvIndexTabletPrivate::EvTruncateRequest: {
-                        return TTestActorRuntime::EEventAction::DROP;
-                    }
-                }
-
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            }
-        );
 
         auto id1 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test1"));
         auto id2 = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
@@ -4713,6 +4700,12 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT_VALUES_EQUAL(stats.GetMixedBlocksCount(), 4);
         }
 
+        //
+        // Zero size makes the node removal skip the truncation - the blocks
+        // of the removed node stay alive in the blob.
+        //
+
+        tablet.UnsafeUpdateNode(id2, 0 /* newSize */);
         tablet.DestroyHandle(handle2);
         tablet.UnlinkNode(RootNodeId, "test2", false);
 
@@ -5917,12 +5910,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.SendDestroySessionRequest(0);
         {
             auto response = tablet.RecvDestroySessionResponse();
-            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
-        }
-
-        tablet.SendTruncateRequest(0, 0);
-        {
-            auto response = tablet.RecvTruncateResponse();
             UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
         }
 

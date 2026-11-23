@@ -195,9 +195,8 @@ message TStorageConfig
     // Enable file system throttling.
     optional bool ThrottlingEnabled = 64;
 
-    // Max blocks count for a single truncate tx.
-    optional uint32 MaxBlocksPerTruncateTx = 65;
-    optional uint32 MaxTruncateTxInflight = 66;
+    optional uint32 MaxBlocksPerTruncateTx = 65 [deprecated = true];
+    optional uint32 MaxTruncateTxInflight = 66 [deprecated = true];
 
     // Maximum number of entries in response.
     optional uint32 MaxResponseEntries = 67;

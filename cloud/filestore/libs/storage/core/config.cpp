@@ -63,8 +63,6 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FlushBytesByItemCountEnabled,       bool,   false                     )\
     xxx(MaxDeleteGarbageBlobsPerTx,         ui32,   16384                     )\
     xxx(LoadedCompactionRangesPerTx,        ui32,   10 * 1024 * 1024          )\
-    xxx(MaxBlocksPerTruncateTx,             ui32,   0 /*TODO: 32GiB/4KiB*/    )\
-    xxx(MaxTruncateTxInflight,              ui32,   10                        )\
     xxx(SystemTabletsPriority,              i32,    0                         )\
                                                                                \
     xxx(AutomaticShardCreationEnabled,                          bool,   false )\
