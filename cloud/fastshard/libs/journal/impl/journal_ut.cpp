@@ -1891,17 +1891,6 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(2, response.GetResult().LsnLowWatermark);
     }
 
-    Y_UNIT_TEST_F(ShouldFailTailReadWhenDeviceFails, TFixture)
-    {
-        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
-
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
-
-        Device->FailReads.store(true);
-
-        UNIT_ASSERT_VALUES_EQUAL(E_IO, ReadTail(0).GetError().GetCode());
-    }
-
     // Advancing the lsn low watermark
 
     Y_UNIT_TEST_F(ShouldAdvanceLsnLowWatermark, TFixture)
@@ -2064,8 +2053,15 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldFailToFetchRecordsToFlushWhenDeviceFails, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         WriteThreeRecords();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(1));
+
+        // the pages of an acked record are not in memory after a restart, so
+        // the flush reads them back from the device
+        RecreateJournal();
+        UNIT_ASSERT_VALUES_EQUAL(3, RestoreOrFail());
 
         Device->FailReads.store(true);
 
@@ -2073,6 +2069,62 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             E_IO,
             GetRecordsToFlush().GetError().GetCode());
     }
+
+    // Keeping the pages in memory
+
+    Y_UNIT_TEST_F(ShouldFlushRecordsWithoutReadingDevice, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 2}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(3, 2, 'C', {}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(3));
+
+        Device->FailReads.store(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010,A011]; 2<-1 20:[B020]; 3<-2",
+            GetRecordsToFlushDescription());
+    }
+
+    Y_UNIT_TEST_F(ShouldReadTailWithoutReadingDevice, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        WriteThreeRecords();
+
+        Device->FailReads.store(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]; 2<-1 20:[B020]; 3<-2 30:[C030]",
+            DescribeRecords(ReadTail(0)));
+    }
+
+    Y_UNIT_TEST_F(ShouldKeepPagesOfUnackedRecordsReadOnRestore, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        WriteThreeRecords();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(1));
+
+        RecreateJournal();
+        UNIT_ASSERT_VALUES_EQUAL(3, RestoreOrFail());
+
+        Device->FailReads.store(true);
+
+        // the restore has checked the pages of the records past the
+        // watermark, so they are in memory
+        UNIT_ASSERT_VALUES_EQUAL(
+            "2<-1 20:[B020]; 3<-2 30:[C030]",
+            DescribeRecords(ReadTail(1)));
+
+        // the acked record is trusted without a read, so its pages are read
+        // back when it is flushed
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_IO,
+            GetRecordsToFlush().GetError().GetCode());
+    }
+
+    // Cleaning up
 
     Y_UNIT_TEST_F(ShouldCleanupFlushedRecords, TFixture)
     {

@@ -36,6 +36,11 @@ struct TLogRecord
     TVector<TPageMapping> PageMappings;
     ui32 PagesCrc = 0;
 
+    // The content of the pages, one buffer per page in the order of the
+    // mappings. Empty when the journal does not keep the pages of the record
+    // in memory. Set before the record becomes ready and never changed after.
+    TVector<TBuffer> Pages;
+
     NThreading::TPromise<NProto::TError> Promise;
 };
 
