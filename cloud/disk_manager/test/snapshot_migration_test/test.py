@@ -171,7 +171,7 @@ class _MigrationTestSetup:
         if self.dst_s3 is not None:
             self.dst_s3.stop_service()
 
-    def admin(self, *args: str):
+    def admin(self, *args: str, input=None):
         return subprocess.check_output(
             [
                 self.disk_manager_admin_binary_path,
@@ -179,6 +179,7 @@ class _MigrationTestSetup:
                 "--server-config", self.server_config_path,
                 *args,
             ],
+            input=input,
         ).decode()
 
     def wait_admin_task(self, *args, timeout_sec=360):
@@ -266,6 +267,14 @@ class _MigrationTestSetup:
             "--folder-id", "folder",
         )
 
+    def delete_snapshot(self, snapshot_id: str):
+        self.admin(
+            "snapshots",
+            "delete",
+            "--id", snapshot_id,
+            input=f"{snapshot_id}\n".encode(),
+        )
+
     def create_image_from_snapshot(
         self,
         src_snapshot_id: str,
@@ -285,6 +294,33 @@ class _MigrationTestSetup:
             "schedule_migrate_snapshot_task",
             "--id", snapshot_id,
         )
+
+    def schedule_snapshot_migration(self, snapshot_id: str) -> str:
+        stdout = self.admin(
+            "snapshots",
+            "schedule_migrate_snapshot_task",
+            "--id", snapshot_id,
+        )
+        task_id = stdout.replace("Task: ", "").replace("\n", "")
+        return task_id
+
+    def pause_task(self, task_id: str):
+        self.admin("tasks", "pause", "--id", task_id)
+
+    def resume_task(self, task_id: str):
+        self.admin("tasks", "resume", "--id", task_id)
+
+    def wait_for_task_to_end(self, task_id: str, timeout_sec=360) -> str:
+        started_at = time.monotonic()
+        while True:
+            if time.monotonic() - started_at > timeout_sec:
+                raise TimeoutError(f"Timed out waiting for task '{task_id}' to end")
+            output = self.admin("tasks", "get", "--id", task_id)
+            status = json.loads(output)["status"]
+            if status in ("finished", "cancelled"):
+                return status
+
+            time.sleep(1)
 
     def start_database_migration(self):
         stdout = self.admin(
@@ -423,6 +459,24 @@ class _MigrationTestSetup:
                     exc_info=e,
                 )
                 time.sleep(0.1)
+
+    def wait_for_snapshot_database_entry(
+        self,
+        port: int,
+        snapshot_id: str,
+        timeout_sec=360,
+    ) -> dict:
+        started_at = time.monotonic()
+        while True:
+            if time.monotonic() - started_at > timeout_sec:
+                raise TimeoutError(
+                    f"Timed out waiting for snapshot '{snapshot_id}' database entry",
+                )
+            for entry in self.get_snapshot_database_entries(port):
+                if entry["id"] == snapshot_id:
+                    return entry
+
+            time.sleep(0.1)
 
 
 @pytest.mark.parametrize(
@@ -728,3 +782,207 @@ def test_disk_manager_snapshot_database_migration_with_incremental_snapshot(
             setup.secondary_ydb.mon_port,
             table="incremental",
         ) == []
+
+
+# The switch restarts only the dataplane: the control plane goes on requesting
+# S3 for new snapshots when the source uses S3. This test takes snapshots after
+# the switch, so a source with S3 needs a destination with S3.
+@pytest.mark.parametrize(
+    ["deleted_snapshot_id", "use_s3_as_src", "use_s3_as_dst"],
+    [
+        # The base snapshot is deleted, its child survives.
+        ("parent_snapshot", False, False),
+        ("parent_snapshot", True, True),
+        # A child snapshot is deleted, its base survives.
+        ("grandchild_snapshot", True, True),
+        # A snapshot in the middle of the chain is deleted.
+        ("child_snapshot", False, True),
+    ],
+)
+def test_disk_manager_snapshot_database_migration_with_snapshot_deleted_before_migration(
+    deleted_snapshot_id,
+    use_s3_as_src,
+    use_s3_as_dst,
+):
+    with _MigrationTestSetup(
+        use_s3_as_src=use_s3_as_src,
+        use_s3_as_dst=use_s3_as_dst,
+        migrating_snapshots_inflight_limit=5,
+    ) as setup:
+        disk_size = 16 * 1024 * 1024
+        disk_id = "disk"
+        parent_snapshot_id = "parent_snapshot"
+        child_snapshot_id = "child_snapshot"
+        grandchild_snapshot_id = "grandchild_snapshot"
+
+        disk = setup.create_new_disk(disk_id, disk_size)
+        setup.fill_disk(disk_id, 0, disk.blocks_count)
+        setup.create_snapshot(disk_id, parent_snapshot_id)
+
+        checksums_by_snapshot_id = {
+            parent_snapshot_id: setup.checksum_disk(disk_id),
+        }
+        for snapshot_id, block_index in [
+            (child_snapshot_id, 0),
+            (grandchild_snapshot_id, disk.blocks_count // 2),
+        ]:
+            # Retain unchanged chunks from the parent as well as new data.
+            setup.fill_disk(disk_id, block_index, 1)
+            setup.create_snapshot(disk_id, snapshot_id)
+            checksums_by_snapshot_id[snapshot_id] = setup.checksum_disk(disk_id)
+
+        source_base_snapshot_ids = {
+            entry["id"]: entry["base_snapshot_id"]
+            for entry in setup.get_snapshot_database_entries(setup.ydb.mon_port)
+        }
+        assert source_base_snapshot_ids == {
+            parent_snapshot_id: "",
+            child_snapshot_id: parent_snapshot_id,
+            grandchild_snapshot_id: child_snapshot_id,
+        }
+
+        setup.delete_snapshot(deleted_snapshot_id)
+        del checksums_by_snapshot_id[deleted_snapshot_id]
+        del source_base_snapshot_ids[deleted_snapshot_id]
+        deadline = time.monotonic() + 360
+        while True:
+            source_entries = {
+                entry["id"]: entry
+                for entry in setup.get_snapshot_database_entries(setup.ydb.mon_port)
+            }
+            if deleted_snapshot_id not in source_entries:
+                break
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Timed out waiting for snapshot data collection")
+            time.sleep(1)
+
+        # The surviving snapshots keep their bases: a child of the deleted
+        # snapshot still refers to it.
+        assert {
+            snapshot_id: entry["base_snapshot_id"]
+            for snapshot_id, entry in source_entries.items()
+        } == source_base_snapshot_ids
+
+        task_id = setup.start_database_migration()
+        setup.wait_for_dpl_metric_equals(0)
+
+        destination_entries = {
+            entry["id"]: entry
+            for entry in setup.get_snapshot_database_entries(setup.secondary_ydb.mon_port)
+        }
+        assert set(destination_entries) == set(checksums_by_snapshot_id)
+        for entry in destination_entries.values():
+            # A zero backlog must correspond to Ready destination snapshots.
+            assert int(entry["status"]) == 1
+            # The copies are independent full snapshots.
+            for column in ["zone_id", "disk_id", "checkpoint_id", "base_snapshot_id", "base_checkpoint_id"]:
+                assert entry[column] == ""
+        assert setup.get_snapshot_database_entries(
+            setup.secondary_ydb.mon_port,
+            table="incremental",
+        ) == []
+
+        setup.finish_database_migration(task_id)
+        setup.switch_dataplane_to_new_db()
+        for snapshot_id, checksum in checksums_by_snapshot_id.items():
+            restored_disk_id = f"restored_{snapshot_id}"
+            setup.create_disk_from_snapshot(snapshot_id, restored_disk_id, disk_size)
+            assert setup.checksum_disk(restored_disk_id) == checksum
+
+        # The disk can be snapshotted again: its first snapshot in the new
+        # database is a full one, the next one is incremental.
+        first_new_snapshot_id = "first_new_snapshot"
+        second_new_snapshot_id = "second_new_snapshot"
+        setup.create_snapshot(disk_id, first_new_snapshot_id)
+        new_checksums_by_snapshot_id = {
+            first_new_snapshot_id: setup.checksum_disk(disk_id),
+        }
+        setup.fill_disk(disk_id, disk.blocks_count // 4, 1)
+        setup.create_snapshot(disk_id, second_new_snapshot_id)
+        new_checksums_by_snapshot_id[second_new_snapshot_id] = setup.checksum_disk(disk_id)
+        for snapshot_id, checksum in new_checksums_by_snapshot_id.items():
+            restored_disk_id = f"restored_{snapshot_id}"
+            setup.create_disk_from_snapshot(snapshot_id, restored_disk_id, disk_size)
+            assert setup.checksum_disk(restored_disk_id) == checksum
+
+        destination_entries = {
+            entry["id"]: entry
+            for entry in setup.get_snapshot_database_entries(setup.secondary_ydb.mon_port)
+        }
+        assert destination_entries[first_new_snapshot_id]["base_snapshot_id"] == ""
+        assert destination_entries[second_new_snapshot_id]["base_snapshot_id"] == first_new_snapshot_id
+        incremental_entries = setup.get_snapshot_database_entries(
+            setup.secondary_ydb.mon_port,
+            table="incremental",
+        )
+        assert [(entry["disk_id"], entry["snapshot_id"]) for entry in incremental_entries] == [
+            (disk_id, second_new_snapshot_id),
+        ]
+
+
+def test_disk_manager_snapshot_database_migration_with_base_snapshot_deleted_during_migration():
+    with _MigrationTestSetup(
+        use_s3_as_src=False,
+        use_s3_as_dst=True,
+        migrating_snapshots_inflight_limit=5,
+    ) as setup:
+        # The base snapshot should be large enough to be still migrating when
+        # its migration task is paused.
+        disk_size = 1024 * 1024 * 1024
+        disk_id = "disk"
+        base_snapshot_id = "base_snapshot"
+        snapshot_id = "snapshot"
+
+        disk = setup.create_new_disk(disk_id, disk_size)
+        setup.fill_disk(disk_id, 0, disk.blocks_count)
+        setup.create_snapshot(disk_id, base_snapshot_id)
+
+        # Retain unchanged chunks from the base as well as new data.
+        setup.fill_disk(disk_id, 0, 1)
+        setup.create_snapshot(disk_id, snapshot_id)
+        checksum = setup.checksum_disk(disk_id)
+
+        source_entries = {
+            entry["id"]: entry
+            for entry in setup.get_snapshot_database_entries(setup.ydb.mon_port)
+        }
+        assert source_entries[snapshot_id]["base_snapshot_id"] == base_snapshot_id
+
+        # Delete the base snapshot while it is being migrated. The deletion
+        # takes longer to take effect than the migration takes to complete, so
+        # the migration is paused in the meantime.
+        base_migration_task_id = setup.schedule_snapshot_migration(base_snapshot_id)
+        setup.wait_for_snapshot_database_entry(
+            setup.secondary_ydb.mon_port,
+            base_snapshot_id,
+        )
+        setup.pause_task(base_migration_task_id)
+        setup.delete_snapshot(base_snapshot_id)
+        setup.resume_task(base_migration_task_id)
+        assert setup.wait_for_task_to_end(base_migration_task_id) == "cancelled"
+
+        destination_entries = {
+            entry["id"]: entry
+            for entry in setup.get_snapshot_database_entries(setup.secondary_ydb.mon_port)
+        }
+        # The cancelled migration leaves the base snapshot in Deleting status,
+        # nothing collects it in the destination database before the cutover.
+        assert set(destination_entries) == {base_snapshot_id}
+        assert int(destination_entries[base_snapshot_id]["status"]) == 2
+
+        task_id = setup.start_database_migration()
+        setup.wait_for_dpl_metric_equals(0)
+
+        destination_entries = {
+            entry["id"]: entry
+            for entry in setup.get_snapshot_database_entries(setup.secondary_ydb.mon_port)
+        }
+        # The snapshot is migrated without its base.
+        assert int(destination_entries[snapshot_id]["status"]) == 1
+        assert destination_entries[snapshot_id]["base_snapshot_id"] == ""
+
+        setup.finish_database_migration(task_id)
+        setup.switch_dataplane_to_new_db()
+        restored_disk_id = f"restored_{snapshot_id}"
+        setup.create_disk_from_snapshot(snapshot_id, restored_disk_id, disk_size)
+        assert setup.checksum_disk(restored_disk_id) == checksum
