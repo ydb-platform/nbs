@@ -514,9 +514,13 @@ ui32 TPartitionState::GetMixedBlocksCompactionPercentage(
         totalBytes -= Min(totalBytes, queueBytes);
     } else {
         mixedBytes =
-            CompactionMap.GetMixedBlocksCountPerDisk() * GetBlockSize();
+            CompactionMap
+                .GetMixedBlocksInRangesEligibleForMixedBlocksCountCompaction() *
+            GetBlockSize();
         totalBytes =
-            CompactionMap.GetStoredBlocksCountPerDisk() * GetBlockSize();
+            CompactionMap
+                .GetStoredBlocksInRangesEligibleForMixedBlocksCountCompaction() *
+            GetBlockSize();
     }
 
     const bool isSSD =

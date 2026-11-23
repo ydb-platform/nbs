@@ -1723,15 +1723,17 @@ message TStorageServiceConfig
     // Track concurrent writes when updating compaction range statistics.
     optional bool CompactionStatsTrackerEnabled = 537;
 
-    // Maximum percentage of mixed bytes relative to all mixed and merged bytes
-    // stored on the disk. Reaching this threshold triggers mixed-block-count
-    // compaction once the minimum stored byte count below is reached.
+    // Percentage of stored mixed and merged bytes that are mixed. In compaction
+    // map mode, count ranges meeting MixedBlocksCompactionMinUsedBytes for the
+    // media kind. MixedBlocksCompactionByteCountersEnabled selects disk-wide bytes.
+    // Reaching this percentage and the minimum stored bytes triggers compaction.
     // Zero disables the per-disk mixed-block-count compaction trigger.
     optional uint64 MixedBlocksCompactionThresholdPercentageSSD = 538;
     optional uint64 MixedBlocksCompactionThresholdPercentageHDD = 539;
 
-    // Minimum total mixed and merged bytes stored on the disk before enabling
-    // the per-disk mixed-block percentage trigger. Zero removes this minimum.
+    // Minimum total mixed and merged bytes before the per-disk percentage
+    // trigger can fire. Uses the same counters as the percentage above.
+    // Zero removes this minimum.
     optional uint64 MixedBlocksCompactionMinStoredBytesSSD = 540;
     optional uint64 MixedBlocksCompactionMinStoredBytesHDD = 541;
 
@@ -1819,4 +1821,9 @@ message TStorageServiceConfig
     // FreshDeadBlobByteCountTrimThreshold for the same media kind.
     optional bool FreshSelectiveTrimEnabledSSD = 562;
     optional bool FreshSelectiveTrimEnabledHDD = 563;
+
+    // Minimum used bytes in a range eligible for mixed-block compaction.
+    // Zero removes the minimum. Hybrid volumes use the HDD value.
+    optional uint64 MixedBlocksCompactionMinUsedBytesHDD = 564;
+    optional uint64 MixedBlocksCompactionMinUsedBytesSSD = 565;
 }

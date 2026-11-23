@@ -1006,6 +1006,10 @@ public:
 
     [[nodiscard]] bool GetMixedBlocksCountCompactionEnabledSSD() const;
 
+    [[nodiscard]] ui64 GetMixedBlocksCompactionMinUsedBytesHDD() const;
+
+    [[nodiscard]] ui64 GetMixedBlocksCompactionMinUsedBytesSSD() const;
+
     [[nodiscard]] ui32 GetMixedBytesCountCompactionThresholdHDD() const;
 
     [[nodiscard]] ui32 GetMixedBytesCountCompactionThresholdSSD() const;
