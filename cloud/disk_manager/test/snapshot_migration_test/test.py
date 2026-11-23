@@ -889,17 +889,22 @@ def test_disk_manager_snapshot_database_migration_with_snapshot_deleted_before_m
             setup.create_disk_from_snapshot(snapshot_id, restored_disk_id, disk_size)
             assert setup.checksum_disk(restored_disk_id) == checksum
 
-        # The disk can be snapshotted again: its first snapshot in the new
-        # database is a full one, the next one is incremental.
+        # The disk is written to and snapshotted again after the switch. Its
+        # first snapshot in the new database is a full one, the next one is
+        # incremental, and each restores to the data the disk had when the
+        # snapshot was taken.
         first_new_snapshot_id = "first_new_snapshot"
         second_new_snapshot_id = "second_new_snapshot"
-        setup.create_snapshot(disk_id, first_new_snapshot_id)
-        new_checksums_by_snapshot_id = {
-            first_new_snapshot_id: setup.checksum_disk(disk_id),
-        }
-        setup.fill_disk(disk_id, disk.blocks_count // 4, 1)
-        setup.create_snapshot(disk_id, second_new_snapshot_id)
-        new_checksums_by_snapshot_id[second_new_snapshot_id] = setup.checksum_disk(disk_id)
+        new_checksums_by_snapshot_id = {}
+        for snapshot_id, block_index in [
+            (first_new_snapshot_id, 3 * disk.blocks_count // 4),
+            (second_new_snapshot_id, disk.blocks_count // 4),
+        ]:
+            # Each write goes to a chunk that the other snapshots of the chain
+            # have not changed.
+            setup.fill_disk(disk_id, block_index, 1)
+            setup.create_snapshot(disk_id, snapshot_id)
+            new_checksums_by_snapshot_id[snapshot_id] = setup.checksum_disk(disk_id)
         for snapshot_id, checksum in new_checksums_by_snapshot_id.items():
             restored_disk_id = f"restored_{snapshot_id}"
             setup.create_disk_from_snapshot(snapshot_id, restored_disk_id, disk_size)
