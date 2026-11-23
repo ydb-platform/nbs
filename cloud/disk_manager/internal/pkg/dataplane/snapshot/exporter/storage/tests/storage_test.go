@@ -184,8 +184,9 @@ func TestExportPartsStorage(t *testing.T) {
 	require.Equal(t, parts[:1], page)
 }
 
-// YDB returns at most 1000 rows from one data query and fails a larger read.
-// An export with more parts must still be readable with the default page size.
+// By default YDB returns at most 1000 rows from one data query, and the client
+// fails on a truncated result. An export with more parts must still be
+// readable with the default page size.
 func TestExportPartsStorageReadsMorePartsThanOnePage(t *testing.T) {
 	ctx := newContext()
 	db := newYDB(t, ctx)
