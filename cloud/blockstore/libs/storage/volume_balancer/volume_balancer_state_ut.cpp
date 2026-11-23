@@ -871,3 +871,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
+
+template <>
+inline void Out<NCloud::NBlockStore::NPrivateProto::EBalancerOpStatus>(
+    IOutputStream& out,
+    const NCloud::NBlockStore::NPrivateProto::EBalancerOpStatus status)
+{
+    out << NCloud::NBlockStore::NPrivateProto::EBalancerOpStatus(status);
+}
