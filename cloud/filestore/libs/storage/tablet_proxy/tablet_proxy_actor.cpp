@@ -39,9 +39,10 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
 //
 // The subscriptions of the client to FileSystemEvents are registered per
 // pipe. The loss of the pipe to a tablet is reported to the FileSystemEvent
-// handler (OnDisconnect) with this id, and the responses received via this
-// pipe are stamped with the same id (see SetCacheSourceIds): the data cached
-// from these responses has to be invalidated upon the loss of the pipe.
+// handler (OnDisconnect) with this id, and the requests sent via this pipe
+// carry the same id (THeaders::FileSystemEventSourceId): the tablet returns
+// it along with the cache TTLs, so the data cached from the responses is
+// invalidated upon the loss of the pipe.
 //
 
 ui64 GetFileSystemEventSourceId(ui64 tabletId)
@@ -49,34 +50,12 @@ ui64 GetFileSystemEventSourceId(ui64 tabletId)
     return tabletId;
 }
 
-void SetCacheSourceIds(NProto::TGetNodeAttrResponse& response, ui64 sourceId)
-{
-    if (response.GetNodeCacheTTL()) {
-        response.SetNodeCacheSourceId(sourceId);
-    }
-    if (response.GetNodeRefCacheTTL()) {
-        response.SetNodeRefCacheSourceId(sourceId);
-    }
-}
-
-void SetCacheSourceIds(NProto::TGetNodeXAttrResponse& response, ui64 sourceId)
-{
-    if (response.GetXAttrCacheTTL()) {
-        response.SetXAttrCacheSourceId(sourceId);
-    }
-}
-
-void SetCacheSourceIds(NProto::TSetNodeXAttrResponse& response, ui64 sourceId)
-{
-    if (response.GetXAttrCacheTTL()) {
-        response.SetXAttrCacheSourceId(sourceId);
-    }
-}
-
-// The responses whose data the client may cache, see SetCacheSourceIds.
-template <typename TRecord>
-concept TCacheableResponse =
-    requires (TRecord& record) { SetCacheSourceIds(record, ui64{}); };
+// The requests whose responses the client may cache.
+template <typename TMethod>
+constexpr bool IsCacheableRequest =
+    std::is_same_v<TMethod, TEvService::TGetNodeAttrMethod> ||
+    std::is_same_v<TMethod, TEvService::TGetNodeXAttrMethod> ||
+    std::is_same_v<TMethod, TEvService::TSetNodeXAttrMethod>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -268,6 +247,24 @@ void TIndexTabletProxyActor::ForwardRequest(
 
     // TODO: @yegorskii
     // SetRequestGeneration(conn.Generation, *ev->Get());
+
+    if constexpr (IsCacheableRequest<TMethod>) {
+        //
+        // The requests come from the actors of this process, so accessing
+        // them doesn't parse anything - unlike the responses, which come from
+        // the tablets. The source is set only if the FileSystemEvents are
+        // consumed in this process - otherwise nobody caches the data. The
+        // consumers register before issuing requests; a response without a
+        // source (e.g. if a consumer is re-registered) is still safe - the
+        // client attributes its data to UnknownSourceId, which is
+        // invalidated upon the disconnect of any source.
+        //
+
+        if (FileSystemEventHandler && FileSystemEventHandler->HasConsumers()) {
+            ev->Get()->Record.MutableHeaders()->SetFileSystemEventSourceId(
+                GetFileSystemEventSourceId(conn.TabletId));
+        }
+    }
 
     auto event = std::make_unique<IEventHandle>(
         ev->Recipient,
@@ -551,28 +548,6 @@ void TIndexTabletProxyActor::HandleResponse(
 
     auto* conn = ConnectionById[it->second.ConnectionId];
     Y_ABORT_UNLESS(conn);
-
-    using TRecord = std::remove_cvref_t<
-        decltype(std::declval<typename TMethod::TResponse>().Record)>;
-    if constexpr (TCacheableResponse<TRecord>) {
-        //
-        // The response is parsed only if the FileSystemEvents are consumed
-        // in this process - otherwise nobody caches the data. This actor is
-        // a bottleneck, so the processes without the consumers (e.g. the
-        // ones without libs/vfs_fuse) don't parse anything. The consumers
-        // register before issuing requests; a response left unstamped (e.g.
-        // while a consumer is re-registered) is still safe - the client
-        // attributes its data to UnknownSourceId, which is invalidated upon
-        // the disconnect of any source.
-        //
-
-        if (FileSystemEventHandler && FileSystemEventHandler->HasConsumers()) {
-            auto* x = reinterpret_cast<TMethod::TResponse::TPtr*>(&event);
-            SetCacheSourceIds(
-                x->Get()->Get()->Record,
-                GetFileSystemEventSourceId(conn->TabletId));
-        }
-    }
 
     ctx.Send(event);
     ActiveRequests.erase(it);

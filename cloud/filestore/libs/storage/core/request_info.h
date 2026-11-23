@@ -42,6 +42,10 @@ struct TRequestInfo
     // handlers that need it, empty otherwise.
     NActors::TActorId PipeServerId;
 
+    // THeaders::FileSystemEventSourceId of the request. Set only by the
+    // handlers that need it, zero otherwise.
+    ui64 FileSystemEventSourceId = 0;
+
     TRequestInfo() = default;
 
     TRequestInfo(

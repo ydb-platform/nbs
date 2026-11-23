@@ -952,6 +952,62 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_FileSystemEvents)
         UNIT_ASSERT_VALUES_EQUAL(0, env.SentEventCount);
     }
 
+    Y_UNIT_TEST(ShouldReturnFileSystemEventSourceIdWithCacheTTL)
+    {
+        constexpr ui64 SourceId = 42;
+
+        for (const bool enabled: {true, false}) {
+            NProto::TStorageConfig config;
+            config.SetFileSystemEventsEnabled(enabled);
+            TFileSystemEventsEnv env(std::move(config));
+
+            auto tablet = env.CreateClient("client", "session");
+            const auto nodeId =
+                tablet->CreateNode(TCreateNodeArgs::File(RootNodeId, "f"))
+                    ->Record.GetNode()
+                    .GetId();
+
+            //
+            // The tablet returns the source id set by the sender (the tablet
+            // proxy) only along with a nonzero TTL.
+            //
+
+            const ui64 expected = enabled ? SourceId : 0;
+
+            auto getNodeAttr =
+                tablet->CreateGetNodeAttrRequest(RootNodeId, "f");
+            getNodeAttr->Record.MutableHeaders()->SetFileSystemEventSourceId(
+                SourceId);
+            tablet->SendRequest(std::move(getNodeAttr));
+            const auto getNodeAttrResponse = tablet->RecvGetNodeAttrResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected,
+                getNodeAttrResponse->Record.GetNodeCacheSourceId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected,
+                getNodeAttrResponse->Record.GetNodeRefCacheSourceId());
+
+            auto setXAttr =
+                tablet->CreateSetNodeXAttrRequest(nodeId, "user.a", "1");
+            setXAttr->Record.MutableHeaders()->SetFileSystemEventSourceId(
+                SourceId);
+            tablet->SendRequest(std::move(setXAttr));
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected,
+                tablet->RecvSetNodeXAttrResponse()
+                    ->Record.GetXAttrCacheSourceId());
+
+            auto getXAttr = tablet->CreateGetNodeXAttrRequest(nodeId, "user.a");
+            getXAttr->Record.MutableHeaders()->SetFileSystemEventSourceId(
+                SourceId);
+            tablet->SendRequest(std::move(getXAttr));
+            UNIT_ASSERT_VALUES_EQUAL(
+                expected,
+                tablet->RecvGetNodeXAttrResponse()
+                    ->Record.GetXAttrCacheSourceId());
+        }
+    }
+
     Y_UNIT_TEST(ShouldReturnXAttrCacheTTL)
     {
         NProto::TStorageConfig config;

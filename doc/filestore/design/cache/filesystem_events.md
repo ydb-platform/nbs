@@ -115,13 +115,16 @@ sequenceDiagram
 
 - The tablet proxy (one per process, owns the pipes) defines the source id of
   a pipe - currently the tablet id - and uses it in both places:
-  - stamps the cacheable responses received via the pipe
-    (`NodeCacheSourceId`, `NodeRefCacheSourceId`, `XAttrCacheSourceId`; set
-    only next to a nonzero TTL and only if the events are consumed in the
-    process - `IFileSystemEventHandler::HasConsumers`, i.e. if libs/vfs_fuse
-    has registered its handlers: stamping requires parsing the response in
-    the tablet proxy, which is a bottleneck)
+  - sets it in the cacheable requests sent via the pipe
+    (`THeaders.FileSystemEventSourceId`) - the tablet doesn't interpret it
+    and returns it as `NodeCacheSourceId`, `NodeRefCacheSourceId` or
+    `XAttrCacheSourceId` along with a nonzero TTL. The requests come from the
+    actors of the same process, so setting the header doesn't require
+    parsing anything; the responses are not parsed by the tablet proxy
   - reports the loss of the pipe via `IFileSystemEventHandler::OnDisconnect`
+- The source id is set only if the events are consumed in the process
+  (`IFileSystemEventHandler::HasConsumers`, i.e. if libs/vfs_fuse has
+  registered its handlers)
 - Upon `OnDisconnect(sourceId)` the client invalidates only the data of this
   source: the data fetched from it by the requests started before the
   disconnect is neither cached nor used. The data of the other sources stays
