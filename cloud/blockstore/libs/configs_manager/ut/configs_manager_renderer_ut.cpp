@@ -1583,7 +1583,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             "after restart.</p>");
     }
 
-    // Align repeated and map values and mark elements of deferred collections.
+    // Check source alignment and deferred styling after rejecting runtime
+    // collection changes.
     Y_UNIT_TEST(ShouldRenderRepeatedAndMapElementsWithDeferredHighlighting)
     {
         // Give lists different lengths and maps overlapping and distinct keys.
@@ -1619,27 +1620,24 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             startupDynamicConfig.MutableDiagnostics()->AddRequestThresholds();
         (*startupThreshold->MutableByRequestType())["shared"] = 150;
         (*startupThreshold->MutableByRequestType())["startup-only"] = 400;
-        auto controls = std::make_shared<NStorage::TStorageConfigControls>();
-        auto config =
-            MakeStartupBlockstoreConfig(
-                staticConfig,
-                dynamicConfig,
-                controls,
-                /*extraParameters=*/{})
-                .Config;
 
-        // Apply collection-level diagnostics to every displayed child row.
+        // Build the initial configuration from Static and startup Dynamic.
+        auto controls = std::make_shared<NStorage::TStorageConfigControls>();
+        const auto startup = MakeStartupBlockstoreConfig(
+            staticConfig,
+            startupDynamicConfig,
+            controls,
+            /*extraParameters=*/{});
+
+        // Obtain Effective and rejection diagnostics from the runtime filter.
         NConfig::TConfigPreparationDiagnostics diagnostics;
-        for (const auto path:
-             {
-                 "StorageService.LinkedDiskFillBandwidth[]",
-                 "Diagnostics.RequestThresholds[]",
-             })
-        {
-            diagnostics.IgnoredPaths.emplace(
-                path,
-                NConfig::EConfigIgnoreReason::RuntimeUpdateForbidden);
-        }
+        const auto config = MakeRuntimeBlockstoreConfig(
+            staticConfig,
+            startup.Proto,
+            dynamicConfig,
+            controls,
+            /*extraParameters=*/{},
+            diagnostics);
 
         // Render every element, including a zero map value and the seventeenth
         // item.
@@ -1699,16 +1697,41 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             secondBandwidthRow,
             {.Deferred = true, .IcbUnavailable = true});
 
-        AssertParameterRow(
+        // Retain the startup Dynamic item appended after the two Static items.
+        const auto thirdBandwidthRow = GetParameterRow(
             html,
+            "StorageService.LinkedDiskFillBandwidth[2].ReadBandwidth");
+        AssertParameterRow(
+            thirdBandwidthRow,
+            {
+                .ParameterName =
+                    "StorageService.LinkedDiskFillBandwidth[2].ReadBandwidth",
+                .StaticValue = "—",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = "",
+                .EffectiveValue = "15",
+            });
+        AssertParameterRowStyle(
+            thirdBandwidthRow,
+            {.Deferred = true, .IcbUnavailable = true});
+
+        // Show the rejected seventeenth runtime item without applying it.
+        const auto lastNodeRow =
+            GetParameterRow(html, "StorageService.KnownSpareNodes[16]");
+        AssertParameterRow(
+            lastNodeRow,
             {
                 .ParameterName = "StorageService.KnownSpareNodes[16]",
                 .StaticValue = "—",
                 .StartupDynamicValue = "—",
                 .RuntimeDynamicValue = "\"node-16\"",
                 .IcbValue = "",
-                .EffectiveValue = "\"node-16\"",
+                .EffectiveValue = "—",
             });
+        AssertParameterRowStyle(
+            lastNodeRow,
+            {.Deferred = true, .IcbUnavailable = true});
 
         const auto sharedThresholdRow = GetParameterRow(
             html,
@@ -1763,6 +1786,23 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
 
         // Highlight the map value from the rejected collection.
         AssertParameterRowStyle(sharedThresholdRow, {.Deferred = true});
+
+        // Retain the startup map appended after the Static threshold entry.
+        const auto startupOnlyThresholdRow = GetParameterRow(
+            html,
+            "Diagnostics.RequestThresholds[1].ByRequestType[\"startup-only\"]");
+        AssertParameterRow(
+            startupOnlyThresholdRow,
+            {
+                .ParameterName = "Diagnostics.RequestThresholds[1]."
+                                 "ByRequestType[\"startup-only\"]",
+                .StaticValue = "—",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "400",
+            });
+        AssertParameterRowStyle(startupOnlyThresholdRow, {.Deferred = true});
     }
 
     // Preserve the renderer startup time through identical initial deliveries.
