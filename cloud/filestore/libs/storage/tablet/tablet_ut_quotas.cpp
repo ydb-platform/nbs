@@ -430,6 +430,82 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Quotas)
         UNIT_ASSERT_VALUES_EQUAL(100u, usagesAfter[0].GetUsedBytes());
     }
 
+    Y_UNIT_TEST(ShouldRejectRenameAcrossQuotaDomains)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.SetQuota(1, 1_GB, 100);
+        tablet.SetQuota(2, 1_GB, 100);
+
+        auto dir1Id =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir1"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(dir1Id).SetQuotaId(1));
+
+        auto dir2Id =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir2"));
+        tablet.SetNodeAttr(TSetNodeAttrArgs(dir2Id).SetQuotaId(2));
+
+        CreateNode(tablet, TCreateNodeArgs::File(dir1Id, "file"));
+        CreateNode(tablet, TCreateNodeArgs::File(dir2Id, "file2"));
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "outside"));
+
+        auto assertRejected = [&] (
+            ui64 parentId,
+            const TString& name,
+            ui64 newParentId,
+            const TString& newName,
+            ui32 flags = 0)
+        {
+            auto response = tablet.AssertRenameNodeFailed(
+                parentId,
+                name,
+                newParentId,
+                newName,
+                flags);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_XDEV,
+                response->GetStatus(),
+                response->GetErrorReason());
+        };
+
+        // quota 1 -> quota 2
+        assertRejected(dir1Id, "file", dir2Id, "file");
+        // quota 1 -> no quota
+        assertRejected(dir1Id, "file", RootNodeId, "file");
+        // no quota -> quota 1
+        assertRejected(RootNodeId, "outside", dir1Id, "outside");
+        // exchange is a move in both directions
+        assertRejected(
+            dir1Id,
+            "file",
+            dir2Id,
+            "file2",
+            NProto::TRenameNodeRequest::F_EXCHANGE);
+
+        // nothing has moved
+        UNIT_ASSERT_VALUES_EQUAL(
+            1u,
+            tablet.GetNodeAttr(dir1Id, "file")->Record.GetNode().GetQuotaId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2u,
+            tablet.GetNodeAttr(dir2Id, "file2")->Record.GetNode().GetQuotaId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            tablet.GetNodeAttr(RootNodeId, "outside")
+                ->Record.GetNode()
+                .GetQuotaId());
+
+        // the attach point belongs to quota 1 while its parent doesn't - it
+        // can still be renamed within the unquota'd space
+        tablet.RenameNode(RootNodeId, "dir1", RootNodeId, "dir1_renamed");
+    }
+
     Y_UNIT_TEST(ShouldRejectMarkingWithDifferentExistingQuotaId)
     {
         TTestEnv env;

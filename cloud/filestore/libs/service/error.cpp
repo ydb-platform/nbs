@@ -150,6 +150,16 @@ NProto::TError ErrorRenameNotSupported(ui64 parentId, ui64 newParentId)
             << newParentId);
 }
 
+NProto::TError ErrorCrossQuotaDomainRenameNotSupported(
+    ui64 parentId,
+    ui64 newParentId)
+{
+    return MakeError(
+        E_FS_XDEV,
+        TStringBuilder() << "cannot move from " << parentId << " to "
+            << newParentId << ": crosses a quota domain boundary");
+}
+
 NProto::TError ErrorCrossQuotaDomainHardLinkNotSupported(
     ui64 parentId,
     ui64 targetId)

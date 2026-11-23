@@ -340,6 +340,131 @@ Y_UNIT_TEST_SUITE(TStorageServiceQuotasTest)
         service.SetNodeAttr(headers, fsId, TSetNodeAttrArgs(fileId).SetSize(1_MB));
     }
 
+    SERVICE_TEST(ShouldRejectRenameAcrossQuotaDomains)
+    {
+        auto& service = *fixture.Service;
+        const auto& fsId = fixture.FsId;
+
+        auto headers = service.InitSession(fsId, "client");
+
+        service.SetQuota(headers, fsId, 1, 1_GB, 100);
+        service.SetQuota(headers, fsId, 2, 1_GB, 100);
+
+        auto createDir = [&] (const TString& name, ui32 quotaId) {
+            const auto dirId =
+                service
+                    .CreateNode(
+                        headers,
+                        TCreateNodeArgs::Directory(RootNodeId, name))
+                    ->Record.GetNode()
+                    .GetId();
+            if (quotaId) {
+                service.SetNodeAttr(
+                    headers,
+                    fsId,
+                    TSetNodeAttrArgs(dirId).SetQuotaId(quotaId));
+            }
+            return dirId;
+        };
+
+        const auto dirAId = createDir("dirA", 1);
+        // same quota as dirA
+        const auto dirCId = createDir("dirC", 1);
+        const auto dirBId = createDir("dirB", 2);
+        const auto plainDirId = createDir("plain", 0);
+
+        if (ExtractShardNo(dirAId)) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                ExtractShardNo(dirAId),
+                ExtractShardNo(dirBId));
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                ExtractShardNo(dirAId),
+                ExtractShardNo(dirCId));
+        }
+
+        service.CreateNode(headers, TCreateNodeArgs::File(dirAId, "file"));
+        service.CreateNode(headers, TCreateNodeArgs::Directory(dirAId, "sub"));
+        service.CreateNode(headers, TCreateNodeArgs::File(dirBId, "bfile"));
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "outside"));
+
+        auto assertRejected = [&] (
+            ui64 parentId,
+            const TString& name,
+            ui64 newParentId)
+        {
+            auto response = service.AssertRenameNodeFailed(
+                headers,
+                parentId,
+                name,
+                newParentId,
+                name,
+                0 /* flags */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_XDEV,
+                response->GetError().GetCode(),
+                response->GetError().GetMessage());
+
+            // the node stays where it was
+            service.GetNodeAttr(headers, fsId, parentId, name);
+            service.AssertGetNodeAttrFailed(headers, fsId, newParentId, name);
+        };
+
+        // quota 1 -> quota 2
+        assertRejected(dirAId, "file", dirBId);
+        // quota 1 -> no quota
+        assertRejected(dirAId, "file", RootNodeId);
+        assertRejected(dirAId, "file", plainDirId);
+        // no quota -> quota 1
+        assertRejected(RootNodeId, "outside", dirAId);
+        // a directory, quota 1 -> quota 2
+        assertRejected(dirAId, "sub", dirBId);
+        // an attach point can't be moved into a quota'd directory, even of
+        // the same quota - no nested quotas
+        assertRejected(RootNodeId, "dirA", dirBId);
+        assertRejected(RootNodeId, "dirA", dirCId);
+
+        {
+            auto response = service.AssertRenameNodeFailed(
+                headers,
+                dirAId,
+                "file",
+                dirBId,
+                "bfile",
+                NProto::TRenameNodeRequest::F_EXCHANGE);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_XDEV,
+                response->GetError().GetCode(),
+                response->GetError().GetMessage());
+
+            service.GetNodeAttr(headers, fsId, dirAId, "file");
+            service.GetNodeAttr(headers, fsId, dirBId, "bfile");
+            service.AssertGetNodeAttrFailed(headers, fsId, dirAId, "bfile");
+            service.AssertGetNodeAttrFailed(headers, fsId, dirBId, "file");
+        }
+
+        // moves that don't cross a quota boundary still work
+        service.RenameNode(headers, dirAId, "file", dirCId, "file", 0);
+        service.RenameNode(
+            headers,
+            RootNodeId,
+            "outside",
+            plainDirId,
+            "outside",
+            0);
+
+        // the attach point belongs to quota 1 while its parent doesn't - it
+        // can still be renamed within the unquota'd space
+        service.RenameNode(headers, RootNodeId, "dirA", RootNodeId, "dirA2", 0);
+        service.RenameNode(headers, RootNodeId, "dirA2", plainDirId, "dirA2", 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1u,
+            service.GetNodeAttr(headers, fsId, plainDirId, "dirA2")
+                ->Record.GetNode()
+                .GetQuotaId());
+    }
+
     SERVICE_TEST(ShouldRejectSetQuotaWithZeroQuotaId)
     {
         auto& service = *fixture.Service;
