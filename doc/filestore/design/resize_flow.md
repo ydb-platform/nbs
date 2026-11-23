@@ -21,7 +21,7 @@ Mermaid labels use `<br/>` to keep nodes readable.
 
 Implementation references:
 
-* [Resize actor](../../../cloud/filestore/libs/storage/service/service_actor_alterfs.cpp)
+* [Resize actor](../../../cloud/filestore/libs/storage/service/service_actor_resizefs.cpp)
 * [Shard creation state companion](../../../cloud/filestore/libs/storage/service/shard_creation_state_companion.cpp)
 * [Tablet state transaction](../../../cloud/filestore/libs/storage/tablet/tablet_actor_unsafe_node_ops.cpp)
 
