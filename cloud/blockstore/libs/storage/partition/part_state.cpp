@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/tablet/model/channels.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -1038,7 +1039,7 @@ void TPartitionState::WriteUsedBlocksToDB(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionState::DumpHtml(IOutputStream& out) const
+void TPartitionState::DumpHtml(IOutputStream& out, TInstant now) const
 {
     HTML(out) {
         TABLE_CLASS("table table-condensed") {
@@ -1067,11 +1068,26 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                     TABLED () {
                         DumpOperationState(
                             out,
-                            GetFlushState().GetOperationState());
+                            GetFlushState().GetOperationState(),
+                            now);
                     }
-                }                TABLER() {
+                }
+                TABLER () {
+                    TABLED () {
+                        out << "TrimFreshLog";
+                    }
+                    TABLED () {
+                        DumpOperationState(out, GetTrimFreshLogState(), now);
+                        if (const auto delay = GetTrimFreshLogBackoffDelay()) {
+                            out << ", Backoff: " << FormatDuration(delay);
+                        }
+                    }
+                }
+                TABLER () {
                     TABLED() { out << "Compaction"; }
-                    TABLED() { DumpOperationState(out, CompactionState); }
+                    TABLED () {
+                        DumpOperationState(out, CompactionState, now);
+                    }
                 }
                 TABLER() {
                     TABLED() { out << "CompactionDelay"; }
@@ -1079,7 +1095,9 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                 }
                 TABLER() {
                     TABLED() { out << "Cleanup"; }
-                    TABLED() { DumpOperationState(out, CleanupState); }
+                    TABLED () {
+                        DumpOperationState(out, CleanupState, now);
+                    }
                 }
                 TABLER() {
                     TABLED() { out << "CleanupDelay"; }
@@ -1087,7 +1105,9 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                 }
                 TABLER() {
                     TABLED() { out << "CollectGarbage"; }
-                    TABLED() { DumpOperationState(out, CollectGarbageState); }
+                    TABLED () {
+                        DumpOperationState(out, CollectGarbageState, now);
+                    }
                 }
             }
         }
