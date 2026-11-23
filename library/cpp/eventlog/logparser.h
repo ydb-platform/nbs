@@ -71,8 +71,8 @@ struct TFrameHeader {
         return Basehdr.Format >> 24;
     }
 
-    void ValidateFrameLength() const {
-        Y_ENSURE(Basehdr.Length >= sizeof(TCompressedFrameHeader2), "Incomplete frame additional data");
+    bool HasValidFrameLength() const noexcept {
+        return Basehdr.Length >= sizeof(TCompressedFrameHeader2);
     }
 
     ui64 FrameLength() const {
