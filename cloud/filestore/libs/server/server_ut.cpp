@@ -469,6 +469,54 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
     }
 
+    Y_UNIT_TEST(ShouldDisableFileSystemEventsForGrpcClients)
+    {
+        TBootstrap<TServerSetup> bootstrap;
+
+        bootstrap.Service->GetNodeAttrHandler =
+            [] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                UNIT_ASSERT(request->GetHeaders()
+                    .GetFileSystemEventSubscriptionDisabled());
+                return MakeFuture<NProto::TGetNodeAttrResponse>();
+            };
+        bootstrap.Service->CreateSessionHandler = [] (auto, auto)
+        {
+            NProto::TCreateSessionResponse response;
+            response.MutableFileStore()
+                ->MutableFeatures()
+                ->SetFileSystemEventsEnabled(true);
+            return MakeFuture(response);
+        };
+
+        bootstrap.CreateClient();
+        bootstrap.Start();
+
+        const auto getNodeAttr =
+            bootstrap.Clients[0]
+                ->GetNodeAttr(
+                    MakeIntrusive<TCallContext>("fs"),
+                    std::make_shared<NProto::TGetNodeAttrRequest>())
+                .GetValue(WaitTimeout);
+        UNIT_ASSERT_C(
+            !HasError(getNodeAttr),
+            FormatError(getNodeAttr.GetError()));
+
+        const auto createSession =
+            bootstrap.Clients[0]
+                ->CreateSession(
+                    MakeIntrusive<TCallContext>("fs"),
+                    std::make_shared<NProto::TCreateSessionRequest>())
+                .GetValue(WaitTimeout);
+        UNIT_ASSERT_C(
+            !HasError(createSession),
+            FormatError(createSession.GetError()));
+        UNIT_ASSERT(!createSession.GetFileStore()
+            .GetFeatures()
+            .GetFileSystemEventsEnabled());
+    }
+
     Y_UNIT_TEST(ShouldLogServerRequestStartTimestamp)
     {
         auto profileLog = std::make_shared<TTestProfileLog>();

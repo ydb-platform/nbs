@@ -122,9 +122,12 @@ sequenceDiagram
     actors of the same process, so setting the header doesn't require
     parsing anything; the responses are not parsed by the tablet proxy
   - reports the loss of the pipe via `IFileSystemEventHandler::OnDisconnect`
-- The source id is set only if the events are consumed in the process
-  (`IFileSystemEventHandler::HasConsumers`, i.e. if libs/vfs_fuse has
-  registered its handlers)
+- The events (and the disconnects) are delivered only to the process which
+  sends the requests to the tablets. The requests received via the gRPC API
+  have `THeaders.FileSystemEventSubscriptionDisabled` set (the tablets don't
+  subscribe the client and return zero TTLs), and the sessions created via
+  the gRPC API don't have `FileSystemEventsEnabled` in their features - the
+  clients of the gRPC API don't cache the data according to the TTLs
 - Upon `OnDisconnect(sourceId)` the client invalidates only the data of this
   source: the data fetched from it by the requests started before the
   disconnect is neither cached nor used. The data of the other sources stays

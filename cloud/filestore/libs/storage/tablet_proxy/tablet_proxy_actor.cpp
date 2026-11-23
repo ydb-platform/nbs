@@ -252,18 +252,11 @@ void TIndexTabletProxyActor::ForwardRequest(
         //
         // The requests come from the actors of this process, so accessing
         // them doesn't parse anything - unlike the responses, which come from
-        // the tablets. The source is set only if the FileSystemEvents are
-        // consumed in this process - otherwise nobody caches the data. The
-        // consumers register before issuing requests; a response without a
-        // source (e.g. if a consumer is re-registered) is still safe - the
-        // client attributes its data to UnknownSourceId, which is
-        // invalidated upon the disconnect of any source.
+        // the tablets.
         //
 
-        if (FileSystemEventHandler && FileSystemEventHandler->HasConsumers()) {
-            ev->Get()->Record.MutableHeaders()->SetFileSystemEventSourceId(
-                GetFileSystemEventSourceId(conn.TabletId));
-        }
+        ev->Get()->Record.MutableHeaders()->SetFileSystemEventSourceId(
+            GetFileSystemEventSourceId(conn.TabletId));
     }
 
     auto event = std::make_unique<IEventHandle>(

@@ -24,11 +24,6 @@ struct TTestHandler final
     {
         DisconnectedSourceIds.push_back(sourceId);
     }
-
-    bool HasConsumers() const override
-    {
-        return true;
-    }
 };
 
 }   // namespace
@@ -37,31 +32,6 @@ struct TTestHandler final
 
 Y_UNIT_TEST_SUITE(TMultiFileSystemEventHandlerTest)
 {
-    Y_UNIT_TEST(ShouldHaveConsumersWhileHandlersAreRegistered)
-    {
-        auto multiHandler = CreateMultiFileSystemEventHandler();
-        UNIT_ASSERT(!multiHandler->HasConsumers());
-
-        auto handler1 = std::make_shared<TTestHandler>();
-        auto handler2 = std::make_shared<TTestHandler>();
-        multiHandler->Register("fs1", handler1);
-        multiHandler->Register("fs2", handler2);
-        UNIT_ASSERT(multiHandler->HasConsumers());
-
-        multiHandler->Unregister("fs1", handler1);
-        UNIT_ASSERT(multiHandler->HasConsumers());
-
-        //
-        // Unregistering an unknown handler doesn't change anything.
-        //
-
-        multiHandler->Unregister("fs2", handler1);
-        UNIT_ASSERT(multiHandler->HasConsumers());
-
-        multiHandler->Unregister("fs2", handler2);
-        UNIT_ASSERT(!multiHandler->HasConsumers());
-    }
-
     Y_UNIT_TEST(ShouldDeliverEventsByFileSystemAndDisconnectsToAll)
     {
         auto multiHandler = CreateMultiFileSystemEventHandler();

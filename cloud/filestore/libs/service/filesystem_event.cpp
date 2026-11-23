@@ -5,7 +5,6 @@
 #include <util/system/mutex.h>
 
 #include <algorithm>
-#include <atomic>
 
 namespace NCloud::NFileStore {
 
@@ -21,8 +20,6 @@ class TMultiFileSystemEventHandler final
 private:
     TMutex Lock;
     THashMap<TString, THandlers> Handlers;
-    // Read without the lock, see HasConsumers.
-    std::atomic<ui64> HandlerCount = 0;
 
 public:
     void Register(
@@ -31,7 +28,6 @@ public:
     {
         with_lock (Lock) {
             Handlers[fileSystemId].push_back(std::move(handler));
-            ++HandlerCount;
         }
     }
 
@@ -46,12 +42,9 @@ public:
             }
 
             auto& handlers = it->second;
-            const auto removed = std::remove(
-                handlers.begin(),
-                handlers.end(),
-                handler);
-            HandlerCount -= std::distance(removed, handlers.end());
-            handlers.erase(removed, handlers.end());
+            handlers.erase(
+                std::remove(handlers.begin(), handlers.end(), handler),
+                handlers.end());
 
             if (handlers.empty()) {
                 Handlers.erase(it);
@@ -76,11 +69,6 @@ public:
         for (const auto& handler: handlers) {
             handler->OnEvent(event);
         }
-    }
-
-    bool HasConsumers() const override
-    {
-        return HandlerCount.load(std::memory_order_relaxed) != 0;
     }
 
     void OnDisconnect(ui64 sourceId) override

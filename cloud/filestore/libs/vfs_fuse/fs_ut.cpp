@@ -246,11 +246,6 @@ struct TTestMultiFileSystemEventHandler final
         Y_UNUSED(event);
     }
 
-    bool HasConsumers() const override
-    {
-        return true;
-    }
-
     void OnDisconnect(ui64 tabletId) override
     {
         Y_UNUSED(tabletId);

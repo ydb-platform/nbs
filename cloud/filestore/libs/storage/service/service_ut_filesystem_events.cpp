@@ -36,11 +36,6 @@ struct TTestFileSystemEventHandler final
         Events.push_back(event);
     }
 
-    bool HasConsumers() const override
-    {
-        return true;
-    }
-
     void OnDisconnect(ui64 sourceId) override
     {
         ++DisconnectCount;
@@ -528,32 +523,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         service.UnlinkNode(headers, RootNodeId, "f");
 
         UNIT_ASSERT_VALUES_EQUAL(0, handler->Events.size());
-    }
-
-    Y_UNIT_TEST(ShouldNotStampSourcesWithoutConsumers)
-    {
-        NProto::TStorageConfig config;
-        config.SetFileSystemEventsEnabled(true);
-        TTestEnv env({}, config);
-        ui32 nodeIdx = env.AddDynamicNode();
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore("test", 1'000);
-        auto headers = service.InitSession("test", "client");
-        service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "f"));
-
-        //
-        // Nobody consumes the events in this process - the responses are
-        // forwarded as is.
-        //
-
-        const auto response =
-            service.GetNodeAttr(headers, "test", RootNodeId, "f");
-        UNIT_ASSERT_VALUES_UNEQUAL(0, response->Record.GetNodeCacheTTL());
-        UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetNodeCacheSourceId());
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            response->Record.GetNodeRefCacheSourceId());
     }
 
     Y_UNIT_TEST(ShouldNotifyHandlerUponPipeDisconnect)
