@@ -14,6 +14,7 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type storageYDB struct {
+	backupEnabled            bool
 	db                       *persistence.YDBClient
 	tablesPath               string
 	metrics                  metrics.Metrics

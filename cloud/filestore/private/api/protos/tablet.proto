@@ -287,6 +287,7 @@ message TNodeStats
     uint64 RequestCount = 3;
     double AccessScore = 4;
     uint64 LastAccessedTimestampUs = 5;
+    uint32 NodeType = 6;
 }
 
 message TNodeLatencyStats
@@ -298,6 +299,14 @@ message TNodeLatencyStats
     uint64 TotalLatencyUs = 5;
     double AverageLatencyDecayedUs = 6;
     uint64 LastAccessedTimestampUs = 7;
+    uint32 NodeType = 8;
+}
+
+message TRequestTypeLatencyStats
+{
+    string RequestType = 1;
+    uint64 RequestCount = 2;
+    uint64 TotalLatencyUs = 3;
 }
 
 message TGetDiagnosticStatsRequest
@@ -319,6 +328,8 @@ message TGetDiagnosticStatsResponse
     repeated TNodeLatencyStats LatencyStats = 2;
 
     repeated TNodeStats NodeStats = 3;
+
+    repeated TRequestTypeLatencyStats RequestTypeStats = 4;
 }
 
 
@@ -862,6 +873,10 @@ message TShardTopology
         uint32 RoleMask = 2;
         string ShardId = 3;
         uint64 TabletId = 4;
+
+        oneof Data {
+            TFastShardConfig FastShardConfig = 100;
+        };
     }
 
     repeated TShardInfo Shards = 1;
@@ -1217,12 +1232,19 @@ message TUnsafeChangeTabletStateRequest
     optional bool CompressNodeRef = 3;
 
     optional bool GuestPosixAclEnabled = 4;
+
+    // Track shard creation progress across retries of throttled create/resize
+    // operations, potentially involving thousands of shards.
+    TFileSystemShardCreationState ShardCreationState = 5;
 }
 
 message TUnsafeChangeTabletStateResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
+
+    // Returns current shard creation state.
+    TFileSystemShardCreationState ShardCreationState = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

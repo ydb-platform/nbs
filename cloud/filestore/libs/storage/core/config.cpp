@@ -401,6 +401,9 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FastShardDiskRegistryOwner,         ui64,       0                     )\
     xxx(FastShardDiskRegistryOwnerIdx,      ui64,       0                     )\
     xxx(FastShardDiskRegistryLookupTimeout, TDuration,  TDuration::Minutes(1) )\
+    xxx(FastShardDevicePoolName,            TString,    ""                    )\
+    xxx(FastShardAllocationSize,            ui64,       93_GB                 )\
+    xxx(FastShardReservedSize,              ui64,       3_GB                  )\
                                                                                \
     xxx(EnableNodeRefCompression,               bool,   false                 )\
                                                                                \
@@ -434,6 +437,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ControlNamespaceDirName,                    TString,   {}             )\
                                                                                \
     xxx(EnableRdmaForWrites,                        bool,      false          )\
+    xxx(PermanentReadWriteDataActorsEnabled,        bool,      false          )\
 // FILESTORE_STORAGE_CONFIG
 
 #define FILESTORE_STORAGE_CONFIG_REF(xxx)                                      \

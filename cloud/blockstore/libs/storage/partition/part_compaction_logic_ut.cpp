@@ -345,7 +345,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                 db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    std::nullopt);
             });
 
         TTxPartition::TRangeCompaction args(
@@ -394,7 +395,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                 db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    std::nullopt);
             });
 
         TTxPartition::TRangeCompaction args(
@@ -444,7 +446,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                 db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(1023, 1024),
-                    TBlockMask{});
+                    TBlockMask{},
+                    std::nullopt);
             });
 
         TTxPartition::TRangeCompaction args(
@@ -493,7 +496,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             [&](TPartitionDatabase db)
             {
                 blobId = executor.MakeBlobId(blobRange.Size());
-                db.WriteMergedBlocks(blobId, blobRange, skipMask);
+                db.WriteMergedBlocks(blobId, blobRange, skipMask, std::nullopt);
             });
 
         TTxPartition::TRangeCompaction args(
@@ -545,7 +548,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                 db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    std::nullopt);
             });
 
         state.GetCleanupQueue().Add({blobId, executor.CommitId(), {}});
@@ -596,7 +600,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                 db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    std::nullopt);
             });
 
         auto config = MakeStorageConfig(1000 * DefaultBlockSize);
@@ -647,7 +652,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                 db.WriteMergedBlocks(
                     blobId,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    std::nullopt);
             });
 
         TTxPartition::TRangeCompaction args(
@@ -699,13 +705,15 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                 db.WriteMergedBlocks(
                     blobId1,
                     TBlockRange32::MakeClosedInterval(0, 3),
-                    TBlockMask{});
+                    TBlockMask{},
+                    std::nullopt);
 
                 blobId2 = executor.MakeBlobId(4);
                 db.WriteMergedBlocks(
                     blobId2,
                     TBlockRange32::MakeClosedInterval(4, 7),
-                    TBlockMask{});
+                    TBlockMask{},
+                    std::nullopt);
             });
 
         TTxPartition::TRangeCompaction args(
@@ -855,7 +863,11 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             [&](TPartitionDatabase db)
             {
                 blobId = executor.MakeBlobId(4);
-                db.WriteMergedBlocks(blobId, blockRange, skipMask);
+                db.WriteMergedBlocks(
+                    blobId,
+                    blockRange,
+                    skipMask,
+                    std::nullopt);
             });
 
         const auto compactionCommitId = MakeCommitId(0, 100);
@@ -1048,17 +1060,20 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                         db.WriteMergedBlocks(
                             skippedBlobId,
                             TBlockRange32::MakeClosedInterval(0, 3),
-                            skipMask);
+                            skipMask,
+                            std::nullopt);
                     }
                     // Overwrite one block of the incrementally skipped blob.
                     db.WriteMergedBlocks(
                         compactedBlobId,
                         TBlockRange32::WithLength(0, 1),
-                        TBlockMask{});
+                        TBlockMask{},
+                        std::nullopt);
                     db.WriteMergedBlocks(
                         newerBlobId,
                         TBlockRange32::WithLength(4, 1),
-                        TBlockMask{});
+                        TBlockMask{},
+                        std::nullopt);
                 });
 
             auto args = MakeArgs();

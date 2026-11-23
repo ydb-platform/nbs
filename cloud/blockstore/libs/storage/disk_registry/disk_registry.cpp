@@ -14,8 +14,8 @@ IActorPtr CreateDiskRegistry(
     const TActorId& owner,
     ILoggingServicePtr logging,
     TTabletStorageInfoPtr storage,
-    TStorageConfigConstPtr config,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     NLogbroker::IServicePtr logbrokerService,
     NNotify::IServicePtr notifyService)
 {

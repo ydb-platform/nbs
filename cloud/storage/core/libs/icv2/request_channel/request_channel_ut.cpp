@@ -18,6 +18,7 @@
 
 #include <util/generic/hash_set.h>
 #include <util/generic/scope.h>
+#include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
 #include <util/system/event.h>
 #include <util/system/mutex.h>
@@ -732,7 +733,7 @@ struct TNetworkFixture
             common->Settings.V2.EnableSQPOLL = false;
             Transports[i] = CreateTransport(
                 NActors::CreateUringEngine(std::move(common)),
-                0,
+                512_MB,
                 {});
             UNIT_ASSERT(Transports[i]);
             Completions[i] = CreateThreadPool("ICV2Network", 1);

@@ -321,12 +321,13 @@ bool TPartitionActor::PrepareMetadataRebuildUsedBlocks(
         args.BlockRange,
         true    // precharge
     );
+    TIndexOnlyBlobsVisitor blobsVisitor;
     ready &= db.FindMergedBlocks(
         visitor,
+        blobsVisitor,
         args.BlockRange,
         true,   // precharge
-        State->GetMaxBlocksInBlob()
-    );
+        State->GetMaxBlocksInBlob());
 
     return ready;
 }

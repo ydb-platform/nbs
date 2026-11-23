@@ -247,6 +247,10 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(WriteMixedBlobThresholdHDD,    ui32,      0                           )\
     xxx(FlushThresholdHDD,             ui32,      4_MB                        )\
     xxx(FlushThresholdSSD,             ui32,      4_MB                        )\
+    xxx(FlushThresholdPerAllocationUnitHDD,    ui32,      0                   )\
+    xxx(FlushThresholdPerAllocationUnitSSD,    ui32,      0                   )\
+    xxx(MaxFlushThresholdHDD,                  ui32,      0                   )\
+    xxx(MaxFlushThresholdSSD,                  ui32,      0                   )\
     xxx(FreshBlobCountFlushThresholdHDD,       ui32,      3200                )\
     xxx(FreshBlobCountFlushThresholdSSD,       ui32,      3200                )\
     xxx(FreshBlobByteCountFlushThresholdHDD,   ui32,      16_MB               )\
@@ -255,6 +259,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(FreshBlobAgeFlushThresholdHDD, TDuration, TDuration::Zero()           )\
     xxx(FreshDeadBlobByteCountTrimThresholdSSD, ui32,   0                     )\
     xxx(FreshDeadBlobByteCountTrimThresholdHDD, ui32,   0                     )\
+    xxx(FreshSelectiveTrimEnabledSSD,  bool,      false                       )\
+    xxx(FreshSelectiveTrimEnabledHDD,  bool,      false                       )\
                                                                                \
     xxx(SSDCompactionType,                                                     \
             NProto::ECompactionType,                                           \
@@ -1278,14 +1284,14 @@ std::optional<i64> TStorageConfigControls::GetOverride(TStringBuf name) const
 struct TStorageConfig::TImpl
 {
     NProto::TStorageServiceConfig StorageServiceConfig;
-    NFeatures::TFeaturesConfigConstPtr FeaturesConfig;
+    NFeatures::TFeaturesConfigPtr FeaturesConfig;
 
     // Non-null ICB controls shared by copies and Merge results.
     TStorageConfigControlsPtr Controls;
 
     TImpl(
         NProto::TStorageServiceConfig storageServiceConfig,
-        NFeatures::TFeaturesConfigConstPtr featuresConfig,
+        NFeatures::TFeaturesConfigPtr featuresConfig,
         TStorageConfigControlsPtr controls)
         : StorageServiceConfig(std::move(storageServiceConfig))
         , FeaturesConfig(std::move(featuresConfig))
@@ -1294,7 +1300,7 @@ struct TStorageConfig::TImpl
         Y_ABORT_UNLESS(Controls);
     }
 
-    void SetFeaturesConfig(NFeatures::TFeaturesConfigConstPtr featuresConfig)
+    void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig)
     {
         FeaturesConfig = std::move(featuresConfig);
     }
@@ -1325,7 +1331,7 @@ struct TStorageConfig::TImpl
 
 TStorageConfig::TStorageConfig(
     NProto::TStorageServiceConfig storageServiceConfig,
-    NFeatures::TFeaturesConfigConstPtr featuresConfig)
+    NFeatures::TFeaturesConfigPtr featuresConfig)
     : TStorageConfig(
           std::move(storageServiceConfig),
           std::move(featuresConfig),
@@ -1334,7 +1340,7 @@ TStorageConfig::TStorageConfig(
 
 TStorageConfig::TStorageConfig(
     NProto::TStorageServiceConfig storageServiceConfig,
-    NFeatures::TFeaturesConfigConstPtr featuresConfig,
+    NFeatures::TFeaturesConfigPtr featuresConfig,
     TStorageConfigControlsPtr controls)
 {
     if (!controls) {
@@ -1373,7 +1379,7 @@ void TStorageConfig::UpdateControlsDefaults() const
 }
 
 void TStorageConfig::SetFeaturesConfig(
-    NFeatures::TFeaturesConfigConstPtr featuresConfig)
+    NFeatures::TFeaturesConfigPtr featuresConfig)
 {
     Impl->SetFeaturesConfig(std::move(featuresConfig));
 }
@@ -1511,8 +1517,8 @@ TString TStorageConfig::Get##name##FeatureValue(                               \
 
 // Apply the patch without materializing ICB overrides into the raw proto.
 // Reuse unchanged configurations and retain live controls when creating a copy.
-TStorageConfigConstPtr TStorageConfig::Merge(
-    TStorageConfigConstPtr config,
+TStorageConfigPtr TStorageConfig::Merge(
+    TStorageConfigPtr config,
     const NProto::TStorageServiceConfig& patch)
 {
     const auto& configProto = config->Impl->StorageServiceConfig;
@@ -1572,6 +1578,31 @@ ui64 GetAllocationUnit(
     Y_ABORT_UNLESS(unit != 0); // TODO: this check should be moved to nbs startup
 
     return unit;
+}
+
+ui32 GetFlushThreshold(
+    const TStorageConfig& config,
+    NCloud::NProto::EStorageMediaKind mediaKind,
+    ui64 partitionByteCount)
+{
+    const bool isSSD = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
+    const ui32 thresholdPerUnit =
+        isSSD ? config.GetFlushThresholdPerAllocationUnitSSD()
+              : config.GetFlushThresholdPerAllocationUnitHDD();
+    const ui32 maxThreshold = isSSD ? config.GetMaxFlushThresholdSSD()
+                                    : config.GetMaxFlushThresholdHDD();
+    if (!thresholdPerUnit || !maxThreshold) {
+        return isSSD ? config.GetFlushThresholdSSD()
+                     : config.GetFlushThresholdHDD();
+    }
+
+    const ui64 unit = GetAllocationUnit(config, mediaKind);
+    const double unitCount =
+        static_cast<double>(Max(partitionByteCount, unit)) / unit;
+    const double scaledThreshold = unitCount * thresholdPerUnit;
+
+    return static_cast<ui32>(
+        Min(scaledThreshold, static_cast<double>(maxThreshold)));
 }
 
 TStorageConfig::TValueByName TStorageConfig::GetValueByName(

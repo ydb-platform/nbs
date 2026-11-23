@@ -117,7 +117,7 @@ class TYdbNativeStorage final
     , public std::enable_shared_from_this<TYdbNativeStorage>
 {
 private:
-    const TYdbStatsConfigConstPtr Config;
+    const TYdbStatsConfigPtr Config;
     const ILoggingServicePtr Logging;
     const ISchedulerPtr Scheduler;
     const IIamTokenClientPtr IamClient;
@@ -132,7 +132,7 @@ private:
 
 public:
     TYdbNativeStorage(
-            TYdbStatsConfigConstPtr config,
+            TYdbStatsConfigPtr config,
             ILoggingServicePtr logging,
             ISchedulerPtr scheduler,
             IIamTokenClientPtr iamClient)
@@ -446,7 +446,7 @@ TString TYdbNativeStorage::GetFullTableName(const TString& table) const
 ////////////////////////////////////////////////////////////////////////////////
 
 IYdbStoragePtr CreateYdbStorage(
-    TYdbStatsConfigConstPtr config,
+    TYdbStatsConfigPtr config,
     ILoggingServicePtr logging,
     ISchedulerPtr scheduler,
     IIamTokenClientPtr tokenProvider)

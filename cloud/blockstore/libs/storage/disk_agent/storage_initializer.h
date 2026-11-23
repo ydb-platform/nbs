@@ -39,15 +39,15 @@ struct TInitializeStorageResult
 
 NThreading::TFuture<TInitializeStorageResult> InitializeStorage(
     TLog log,
-    TStorageConfigConstPtr storageConfig,
-    TDiskAgentConfigConstPtr agentConfig,
+    TStorageConfigPtr storageConfig,
+    TDiskAgentConfigPtr agentConfig,
     IStorageProviderPtr storageProvider,
     NNvme::INvmeManagerPtr nvmeManager);
 
 NThreading::TFuture<TInitializeStorageResult> InitializePaths(
     TLog log,
-    TStorageConfigConstPtr storageConfig,
-    TDiskAgentConfigConstPtr agentConfig,
+    TStorageConfigPtr storageConfig,
+    TDiskAgentConfigPtr agentConfig,
     IStorageProviderPtr storageProvider,
     NNvme::INvmeManagerPtr nvmeManager,
     TVector<TString> allowedPaths);

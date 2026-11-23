@@ -1,6 +1,14 @@
-import pytest
+import asyncio
+import json
 import logging
+from argparse import Namespace
 from dataclasses import dataclass
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+
+from . import nebius_populate_vms
 from .nebius_populate_vms import (
     decide_scaling,
     filter_broken_vms_to_remove,
@@ -237,12 +245,56 @@ class ScalingTestCase:
                 max_vms_to_create=2,
                 maximum_amount_of_vms_to_have=3,
                 extra_vms_if_needed=1,
+                expected_create=0,
+                expected_excess_idle=1,
+                expected_projected=3,
+            ),
+            id="scheduled-removal-brings-pool-to-cap",
+        ),
+        pytest.param(
+            ScalingTestCase(
+                alive=38,
+                idle=37,
+                busy=1,
+                remove=0,
+                max_vms_to_create=20,
+                maximum_amount_of_vms_to_have=20,
+                extra_vms_if_needed=2,
+                expected_create=0,
+                expected_excess_idle=18,
+                expected_projected=20,
+            ),
+            id="over-cap-remove-enough-idle-vms",
+        ),
+        pytest.param(
+            ScalingTestCase(
+                alive=6,
+                idle=2,
+                busy=4,
+                remove=0,
+                max_vms_to_create=3,
+                maximum_amount_of_vms_to_have=3,
+                extra_vms_if_needed=2,
+                expected_create=0,
+                expected_excess_idle=2,
+                expected_projected=4,
+            ),
+            id="busy-vms-alone-exceed-cap",
+        ),
+        pytest.param(
+            ScalingTestCase(
+                alive=2,
+                idle=0,
+                busy=2,
+                remove=0,
+                max_vms_to_create=5,
+                maximum_amount_of_vms_to_have=3,
+                extra_vms_if_needed=4,
                 expected_create=1,
                 expected_excess_idle=0,
-                expected_projected=4,
-                expect_exception=True,
+                expected_projected=3,
             ),
-            id="projected-exceeds-cap-expect-exception",
+            id="creation-is-limited-to-available-capacity",
         ),
         pytest.param(
             ScalingTestCase(
@@ -437,3 +489,48 @@ def test_decide_scaling(case):
         assert (
             projected_vm_count == case.expected_projected
         ), f"Expected expected_projected={case.expected_projected}, got {projected_vm_count}"
+
+
+@pytest.mark.parametrize(
+    "cap,scheduled_removals,expected_removals",
+    [
+        (2, ["idle-3"], ["idle-3", "idle-1"]),
+        (3, ["idle-2", "idle-3"], ["idle-2", "idle-3"]),
+    ],
+)
+def test_run_preserves_scheduled_removals(
+    monkeypatch, tmp_path, cap, scheduled_removals, expected_removals
+):
+    github = Mock()
+    repo = github.get_repo.return_value
+    repo.get_self_hosted_runners.return_value = []
+    repo.get_workflow_runs.return_value = []
+    instance_client = Mock(
+        list=AsyncMock(return_value=SimpleNamespace(items=[], next_page_token=""))
+    )
+    monkeypatch.setattr(
+        nebius_populate_vms, "InstanceServiceClient", Mock(return_value=instance_client)
+    )
+    idle = ["idle-1", "idle-2", "idle-3"]
+    busy = ["busy-1"]
+    monkeypatch.setattr(
+        nebius_populate_vms,
+        "filter_instances",
+        AsyncMock(return_value=(idle + busy, idle, busy, scheduled_removals, [])),
+    )
+    args = Namespace(
+        github_repo_owner="ydb-platform",
+        github_repo="nbs",
+        parent_id="project",
+        flavor="light",
+        max_vms_to_create=2,
+        maximum_amount_of_vms_to_have=cap,
+        extra_vms_if_needed=0,
+    )
+    output = tmp_path / "github-output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+
+    assert asyncio.run(nebius_populate_vms.run(github, Mock(), args))
+    outputs = dict(line.split("=", 1) for line in output.read_text().splitlines())
+    assert json.loads(outputs["VMS_TO_REMOVE"]) == expected_removals
+    assert json.loads(outputs["VMS_TO_CREATE"]) == []

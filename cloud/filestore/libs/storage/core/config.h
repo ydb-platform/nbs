@@ -453,6 +453,9 @@ public:
     [[nodiscard]] ui64 GetFastShardDiskRegistryOwner() const;
     [[nodiscard]] ui64 GetFastShardDiskRegistryOwnerIdx() const;
     [[nodiscard]] TDuration GetFastShardDiskRegistryLookupTimeout() const;
+    [[nodiscard]] TString GetFastShardDevicePoolName() const;
+    [[nodiscard]] ui64 GetFastShardAllocationSize() const;
+    [[nodiscard]] ui64 GetFastShardReservedSize() const;
 
     [[nodiscard]] bool GetEnableNodeRefCompression() const;
 
@@ -488,6 +491,8 @@ public:
     TDuration GetNodeLatencyHalfLife() const;
 
     [[nodiscard]] bool GetEnableRdmaForWrites() const;
+
+    bool GetPermanentReadWriteDataActorsEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

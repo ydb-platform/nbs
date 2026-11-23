@@ -4,6 +4,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
 
 #include <cmath>
@@ -1392,6 +1393,128 @@ Y_UNIT_TEST_SUITE(TConfigTest)
                 EStorageMediaKind::STORAGE_MEDIA_SSD_NONREPLICATED);
             UNIT_ASSERT_VALUES_EQUAL(150, bandwidth.Bandwidth);
             UNIT_ASSERT_VALUES_EQUAL(2, bandwidth.IoDepth);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUseFixedFlushThresholdByDefault)
+    {
+        using namespace NCloud::NProto;
+
+        const TStorageConfig defaults({}, nullptr);
+        for (const auto mediaKind:
+             {STORAGE_MEDIA_SSD, STORAGE_MEDIA_HDD, STORAGE_MEDIA_HYBRID})
+        {
+            for (const ui64 partitionByteCount: {0_GB, 1_GB, 10_TB}) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    4_MB,
+                    GetFlushThreshold(defaults, mediaKind, partitionByteCount));
+            }
+        }
+
+        NProto::TStorageServiceConfig proto;
+        proto.SetFlushThresholdHDD(3_MB);
+        proto.SetFlushThresholdSSD(5_MB);
+        proto.SetMaxFlushThresholdHDD(1_MB);
+        proto.SetMaxFlushThresholdSSD(1_MB);
+        const TStorageConfig config(proto, nullptr);
+        for (const ui64 partitionByteCount: {0_GB, 1_GB, 10_TB}) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                5_MB,
+                GetFlushThreshold(
+                    config,
+                    STORAGE_MEDIA_SSD,
+                    partitionByteCount));
+            UNIT_ASSERT_VALUES_EQUAL(
+                3_MB,
+                GetFlushThreshold(
+                    config,
+                    STORAGE_MEDIA_HDD,
+                    partitionByteCount));
+            UNIT_ASSERT_VALUES_EQUAL(
+                3_MB,
+                GetFlushThreshold(
+                    config,
+                    STORAGE_MEDIA_HYBRID,
+                    partitionByteCount));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldScaleFlushThresholdByAllocationUnits)
+    {
+        using namespace NCloud::NProto;
+
+        NProto::TStorageServiceConfig proto;
+        proto.SetFlushThresholdHDD(100_MB);
+        proto.SetFlushThresholdSSD(100_MB);
+        proto.SetAllocationUnitHDD(256);
+        proto.SetAllocationUnitSSD(32);
+        proto.SetFlushThresholdPerAllocationUnitHDD(2_MB);
+        proto.SetFlushThresholdPerAllocationUnitSSD(1_MB);
+        proto.SetMaxFlushThresholdHDD(7_MB);
+        proto.SetMaxFlushThresholdSSD(3_MB);
+        const TStorageConfig config(proto, nullptr);
+
+        for (const auto mediaKind: {STORAGE_MEDIA_HDD, STORAGE_MEDIA_HYBRID}) {
+            const auto getThreshold = [&](ui64 partitionByteCount)
+            {
+                return GetFlushThreshold(config, mediaKind, partitionByteCount);
+            };
+            UNIT_ASSERT_VALUES_EQUAL(2_MB, getThreshold(0));
+            UNIT_ASSERT_VALUES_EQUAL(2_MB, getThreshold(100_GB));
+            UNIT_ASSERT_VALUES_EQUAL(2_MB, getThreshold(256_GB));
+            UNIT_ASSERT_VALUES_EQUAL(2560_KB, getThreshold(320_GB));
+            UNIT_ASSERT_VALUES_EQUAL(3_MB, getThreshold(384_GB));
+            UNIT_ASSERT_VALUES_EQUAL(6_MB, getThreshold(768_GB));
+            UNIT_ASSERT_VALUES_EQUAL(7_MB, getThreshold(1_TB));
+            UNIT_ASSERT_VALUES_EQUAL(7_MB, getThreshold(1_PB));
+        }
+
+        const auto getSSDThreshold = [&](ui64 partitionByteCount)
+        {
+            return GetFlushThreshold(
+                config,
+                STORAGE_MEDIA_SSD,
+                partitionByteCount);
+        };
+        UNIT_ASSERT_VALUES_EQUAL(1_MB, getSSDThreshold(16_GB));
+        UNIT_ASSERT_VALUES_EQUAL(1_MB, getSSDThreshold(32_GB));
+        UNIT_ASSERT_VALUES_EQUAL(1536_KB, getSSDThreshold(48_GB));
+        UNIT_ASSERT_VALUES_EQUAL(3_MB, getSSDThreshold(96_GB));
+        UNIT_ASSERT_VALUES_EQUAL(3_MB, getSSDThreshold(1_TB));
+    }
+
+    Y_UNIT_TEST(ShouldUseFixedFlushThresholdWithoutMax)
+    {
+        using namespace NCloud::NProto;
+
+        NProto::TStorageServiceConfig proto;
+        proto.SetFlushThresholdHDD(3_MB);
+        proto.SetFlushThresholdSSD(5_MB);
+        proto.SetAllocationUnitHDD(1);
+        proto.SetAllocationUnitSSD(1);
+        proto.SetFlushThresholdPerAllocationUnitHDD(1_MB);
+        proto.SetFlushThresholdPerAllocationUnitSSD(1_MB);
+        const TStorageConfig config(proto, nullptr);
+
+        for (const ui64 partitionByteCount: {0_GB, 1_GB, 1000_GB, 1_PB}) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                5_MB,
+                GetFlushThreshold(
+                    config,
+                    STORAGE_MEDIA_SSD,
+                    partitionByteCount));
+            UNIT_ASSERT_VALUES_EQUAL(
+                3_MB,
+                GetFlushThreshold(
+                    config,
+                    STORAGE_MEDIA_HDD,
+                    partitionByteCount));
+            UNIT_ASSERT_VALUES_EQUAL(
+                3_MB,
+                GetFlushThreshold(
+                    config,
+                    STORAGE_MEDIA_HYBRID,
+                    partitionByteCount));
         }
     }
 }

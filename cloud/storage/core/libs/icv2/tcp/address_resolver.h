@@ -5,7 +5,13 @@
 
 #include <contrib/ydb/library/actors/interconnect/address/interconnect_address.h>
 
+#include <library/cpp/time_provider/monotonic.h>
+
 #include <util/generic/vector.h>
+
+namespace NActors {
+class TActorSystem;
+}   // namespace NActors
 
 namespace NCloud::NIcV2 {
 
@@ -14,17 +20,27 @@ namespace NCloud::NIcV2 {
 using TResolveResult = TResultOrError<TVector<NInterconnect::TAddress>>;
 using TResolveFuture = NThreading::TFuture<TResolveResult>;
 
-// Resolve without waiting for DNS on the calling thread.
+// Resolve through the interconnect DNS service without waiting on the calling
+// thread. Destroying the resolver cancels pending futures.
 struct IAddressResolver
 {
     virtual ~IAddressResolver();
 
-    virtual TResolveFuture Resolve(const TString& host, ui16 port) = 0;
+    // Pass the deadline of the operation that needs these addresses.
+    virtual TResolveFuture
+    Resolve(const TString& host, ui16 port, TMonotonic deadline) = 0;
 };
 
 using IAddressResolverPtr = std::shared_ptr<IAddressResolver>;
 
-// Use a running asynchronous executor and keep it alive until lookups finish.
-IAddressResolverPtr CreateAddressResolver(ITaskQueuePtr executor);
+////////////////////////////////////////////////////////////////////////////////
+
+// Supply a running actor system with its DNS service and an asynchronous
+// completion executor. Keep both running until all results and continuations
+// finish, including after destroying the resolver. Continuations must not
+// throw. Finish concurrent Resolve calls before destroying the resolver.
+IAddressResolverPtr CreateAddressResolver(
+    NActors::TActorSystem* actorSystem,
+    ITaskQueuePtr completions);
 
 }   // namespace NCloud::NIcV2

@@ -191,20 +191,6 @@ func RegisterForExecution(
 		return err
 	}
 
-	backupChunksTaskScheduleInterval, err := time.ParseDuration(
-		config.GetBackupChunksTaskScheduleInterval(),
-	)
-	if err != nil {
-		return err
-	}
-
-	deleteBackupChunksTaskScheduleInterval, err := time.ParseDuration(
-		config.GetDeleteBackupChunksTaskScheduleInterval(),
-	)
-	if err != nil {
-		return err
-	}
-
 	err = taskRegistry.RegisterForExecution(
 		"dataplane.CollectSnapshots",
 		func() tasks.Task {
@@ -296,6 +282,20 @@ func RegisterForExecution(
 	}
 
 	if backupS3 != nil {
+		backupChunksTaskScheduleInterval, err := time.ParseDuration(
+			config.GetBackupChunksTaskScheduleInterval(),
+		)
+		if err != nil {
+			return err
+		}
+
+		deleteBackupChunksTaskScheduleInterval, err := time.ParseDuration(
+			config.GetDeleteBackupChunksTaskScheduleInterval(),
+		)
+		if err != nil {
+			return err
+		}
+
 		err = taskRegistry.RegisterForExecution(
 			"dataplane.BackupSnapshotData",
 			func() tasks.Task {

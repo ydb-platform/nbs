@@ -178,6 +178,60 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldValidateCompressionMetadataWithoutReadingBlob)
+    {
+        auto compression = MakeCompression();
+        constexpr ui32 blockCount = 5 * (ChunkSize / BlockSize);
+        UNIT_ASSERT(!HasError(ValidateCompressionMetadata(
+            BlockSize,
+            compression,
+            1500,
+            blockCount)));
+        // The stored sizes total 1000 bytes, leaving no room for the last
+        // chunk.
+        AssertArgumentError(
+            [&]
+            {
+                return ValidateCompressionMetadata(
+                    BlockSize,
+                    compression,
+                    1000,
+                    blockCount);
+            });
+        compression.SetCodec(NProto::COMPRESSION_CODEC_NONE);
+        AssertArgumentError(
+            [&]
+            {
+                return ValidateCompressionMetadata(
+                    BlockSize,
+                    compression,
+                    1500,
+                    blockCount);
+            });
+    }
+
+    Y_UNIT_TEST(ShouldRequireChunksToCoverExactlyThePayloadBlocks)
+    {
+        auto compression = MakeCompression();
+        compression.SetLastChunkSize(BlockSize);
+        constexpr ui32 blockCount = 4 * (ChunkSize / BlockSize) + 1;
+        auto validate = [&](ui32 expectedBlockCount)
+        {
+            return ValidateCompressionMetadata(
+                BlockSize,
+                compression,
+                1500,
+                expectedBlockCount);
+        };
+        UNIT_ASSERT(!HasError(validate(blockCount)));
+        AssertArgumentError([&] { return validate(blockCount - 1); });
+        AssertArgumentError([&] { return validate(blockCount + 1); });
+
+        compression.MutablePlainChunks()->ClearCompressedChunkSize();
+        UNIT_ASSERT(!HasError(validate(1)));
+        AssertArgumentError([&] { return validate(blockCount); });
+    }
+
     Y_UNIT_TEST(ShouldSkipMetricsWhenNotConfigured)
     {
         const TString payload(BlockSize, 'a');

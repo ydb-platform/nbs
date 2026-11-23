@@ -1066,8 +1066,8 @@ TVector<TMixedBlobMeta> TIndexTabletState::GetBlobsForCompaction(ui32 rangeId) c
 {
     auto blobs = Impl->MixedBlocks.GetBlobsForCompaction(rangeId);
     for (auto& blob: blobs) {
-        RebaseMixedBlocks(blob.Blocks);
         Impl->LargeBlocks.ApplyDeletionMarkers(blob.Blocks);
+        RebaseMixedBlocks(blob.Blocks);
     }
     return blobs;
 }

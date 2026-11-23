@@ -9,7 +9,8 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 IActorPtr CreateVolumeBalancerActor(
-    TStorageConfigConstPtr storageConfig,
+    TStorageConfigPtr storageConfig,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     IVolumeStatsPtr volumeStats,
     NCloud::NStorage::IStatsFetcherPtr statFetcher,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch,
@@ -17,6 +18,7 @@ IActorPtr CreateVolumeBalancerActor(
 {
     return std::make_unique<TVolumeBalancerActor>(
         std::move(storageConfig),
+        std::move(diagnosticsConfig),
         std::move(volumeStats),
         std::move(statFetcher),
         std::move(volumeBalancerSwitch),

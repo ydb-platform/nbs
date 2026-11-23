@@ -48,6 +48,7 @@ namespace NCloud::NFileStore::NFuse {
 
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 constexpr ui64 WriteBackCacheStateFileSize = 1_MB + 4_KB;
+constexpr ui32 WriteBackCacheMaxRequestSize = 1_MB;
 constexpr TStringBuf MetricsComponent = "fs_ut";
 
 inline const TString FileSystemId = "fs1";
@@ -133,6 +134,12 @@ struct TBootstrap
             // The mock server uses a small state file for cache tests.
             features.SetServerWriteBackCacheStateFileSize(
                 WriteBackCacheStateFileSize);
+        }
+        if (features.GetServerWriteBackCacheEnabled() &&
+            !features.GetMaxRequestSize() && !vfsConfig.HasMaxWritePages())
+        {
+            // Keep requests within the small cache even on 64 KiB-page hosts.
+            features.SetMaxRequestSize(WriteBackCacheMaxRequestSize);
         }
 
         Service->CreateSessionHandler =

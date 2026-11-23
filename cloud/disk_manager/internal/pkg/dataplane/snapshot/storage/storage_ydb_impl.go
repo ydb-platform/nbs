@@ -444,7 +444,7 @@ func (s *storageYDB) deletingSnapshot(
 
 	// A backup copy holds the snapshot: deletion waits until it ends. Both
 	// change the same row, so the hold and the deletion serialize.
-	if len(states) != 0 && len(states[0].backupTaskID) != 0 {
+	if s.backupEnabled && len(states) != 0 && len(states[0].backupTaskID) != 0 {
 		return nil, task_errors.NewInterruptExecutionError()
 	}
 

@@ -104,6 +104,18 @@ class TPartitionActor final
         {}
     };
 
+    struct TFlushThresholds
+    {
+        ui32 FreshBlockByteCount = 0;
+        ui32 FreshBlobCount = 0;
+        ui32 FreshBlobByteCount = 0;
+    };
+
+    // Both kinds send CollectGarbage to the fresh channels. BlobStorage keeps a
+    // soft and a hard barrier per channel, and neither may decrease. A hard
+    // barrier deletes every blob at or below it, and a soft one spares the
+    // blobs with a Keep flag. See
+    // doc/blockstore/storage/selective_fresh_log_trim.md.
     enum class ETrimFreshLogKind
     {
         // Nothing to trim yet.
@@ -112,6 +124,10 @@ class TPartitionActor final
         // highest commit id below every live fresh blob. Every fresh blob at or
         // below it is dead, so the barrier deletes all of them.
         Ordinary,
+        // A soft barrier above TrimFreshLogToCommitId, below every in-flight
+        // fresh write, with Keep flags for the live blobs below it. Deletes
+        // dead blobs that an ordinary trim cannot reach yet.
+        Selective,
     };
 
     static constexpr ui64 BootWakeupEventTag = 1;
@@ -122,11 +138,12 @@ class TPartitionActor final
 
 private:
     const ui64 StartTime = GetCycleCount();
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
     const bool FreshBlocksWriterEnabled;
+    const TFlushThresholds FlushThresholds;
     const TVolumeLabelsConstPtr VolumeLabels;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const EStorageAccessMode StorageAccessMode;
@@ -193,8 +210,8 @@ public:
     TPartitionActor(
         const NActors::TActorId& owner,
         NKikimr::TTabletStorageInfoPtr storage,
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NProto::TPartitionConfig partitionConfig,
@@ -246,6 +263,9 @@ private:
     void ConfirmBlobs(const NActors::TActorContext& ctx);
     void BlobsConfirmed(const NActors::TActorContext& ctx);
 
+    [[nodiscard]] static TFlushThresholds BuildFlushThresholds(
+        const TStorageConfig& config,
+        const NProto::TPartitionConfig& partitionConfig);
     bool ShouldFlush(const NActors::TActorContext& ctx);
     void EnqueueFlushIfNeeded(const NActors::TActorContext& ctx);
     void StartFlush(const NActors::TActorContext& ctx);
@@ -255,8 +275,13 @@ private:
     void EnqueueProcessWriteQueueIfNeeded(const NActors::TActorContext& ctx);
     void EnqueueTrimFreshLogIfNeeded(const NActors::TActorContext& ctx);
     [[nodiscard]] bool ShouldStartOrdinaryTrim(ui64 ordinaryTrimToCommitId);
+    [[nodiscard]] bool ShouldStartSelectiveTrim(
+        const NActors::TActorContext& ctx,
+        const TPartitionThreadSafeState::TFreshTrimSnapshot& snapshot);
     [[nodiscard]] bool CheckDeadFreshBlobByteCount() const;
-    [[nodiscard]] ETrimFreshLogKind ChooseTrimFreshLogKind();
+    [[nodiscard]] ETrimFreshLogKind ChooseTrimFreshLogKind(
+        const NActors::TActorContext& ctx,
+        const TPartitionThreadSafeState::TFreshTrimSnapshot& snapshot);
     void EnqueueAddConfirmedBlobsIfNeeded(const NActors::TActorContext& ctx);
 
     void UpdateStats(const NProto::TPartitionStats& update);
@@ -494,6 +519,7 @@ private:
     [[nodiscard]] TDuration GetBlobStorageAsyncRequestTimeout() const;
     [[nodiscard]] TDuration GetFreshBlobAgeFlushThreshold() const;
     [[nodiscard]] ui32 GetFreshDeadBlobByteCountTrimThreshold() const;
+    [[nodiscard]] bool IsSelectiveTrimEnabled() const;
 
     void CreateFreshBlocksCompanionClient();
 

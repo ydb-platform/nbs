@@ -66,7 +66,7 @@ ui32 GetMaxIORequestsInFlight(
 ////////////////////////////////////////////////////////////////////////////////
 
 TFreshBlocksWriterActor::TFreshBlocksWriterActor(
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         NProto::TPartitionConfig partitionConfig,
         EStorageAccessMode storageAccessMode,
         ui64 partitionTabletId,
@@ -74,7 +74,7 @@ TFreshBlocksWriterActor::TFreshBlocksWriterActor(
         ui32 siblingCount,
         NActors::TActorId partitionActorId,
         NActors::TActorId volumeActorId,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         IProfileLogPtr profileLog)
     : Config(std::move(config))

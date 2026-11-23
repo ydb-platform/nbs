@@ -183,12 +183,13 @@ bool TPartitionActor::PrepareCheckIndex(
         args.BlockRange,
         true    // precharge
     );
+    TIndexOnlyBlobsVisitor blobsVisitor;
     ready &= db.FindMergedBlocks(
         visitorIndex,
+        blobsVisitor,
         args.BlockRange,
         true,   // precharge
-        State->GetMaxBlocksInBlob()
-    );
+        State->GetMaxBlocksInBlob());
 
     TCheckIndexVisitor<false> visitorBlobs(args);
     ready &= db.FindBlocksInBlobsIndex(
