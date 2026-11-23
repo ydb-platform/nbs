@@ -11,16 +11,12 @@ namespace NCloud::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPeerManager final
-    : public IPeerManager
-    , public std::enable_shared_from_this<TPeerManager>
-    , private TNonCopyable
+class TPeerRegistry final: private TNonCopyable
 {
-    const TPeerDependencies Dependencies;
+    friend class TPeerManager;
 
     TAdaptiveLock Lock;
     THashMap<ui64, std::weak_ptr<TPeer>> Peers;
-    ui64 NextPeerId = 1;
     enum class EState
     {
         Created,
@@ -31,8 +27,25 @@ class TPeerManager final
     };
 
     EState State = EState::Created;
-    NThreading::TPromise<void> Joined = NThreading::NewPromise<void>();
     NThreading::TPromise<void> Closed = NThreading::NewPromise<void>();
+
+public:
+    void UnregisterPeer(ui64 id);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TPeerManager final
+    : public IPeerManager
+    , private TNonCopyable
+{
+    using EState = TPeerRegistry::EState;
+
+    const TPeerDependencies Dependencies;
+    const std::shared_ptr<TPeerRegistry> Registry;
+
+    ui64 NextPeerId = 1;
+    NThreading::TPromise<void> Joined = NThreading::NewPromise<void>();
 
 public:
     explicit TPeerManager(TPeerDependencies dependencies);
@@ -50,8 +63,6 @@ public:
     void RequestStop() override;
 
     void Stop() override;
-
-    void UnregisterPeer(ui64 id);
 };
 
 }   // namespace NCloud::NIcV2

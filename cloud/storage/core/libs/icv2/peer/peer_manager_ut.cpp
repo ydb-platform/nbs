@@ -16,6 +16,7 @@
 #include <atomic>
 #include <future>
 #include <stdexcept>
+#include <thread>
 
 namespace NCloud::NIcV2 {
 
@@ -1825,6 +1826,57 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         f.Connect(1);
         f.Hello();
         UNIT_ASSERT(!HasError(Wait(next).GetError()));
+    }
+
+    Y_UNIT_TEST(QueuedCompletionDoesNotOwnManager)
+    {
+        auto queue = CreateThreadPool("ICV2PeerTest", 1);
+        queue->Start();
+        Y_DEFER
+        {
+            queue->Stop();
+        };
+
+        const auto ownerThread = std::this_thread::get_id();
+        auto destroyed = NewPromise<std::thread::id>();
+        auto release = NewPromise<void>();
+        long managerOwners = 0;
+        {
+            // Observe the manager's executor reference while keeping the
+            // backing pool alive to make a wrong-thread release safe to test.
+            ITaskQueuePtr completions(
+                queue.get(),
+                [destroyed](ITaskQueue*) mutable
+                { destroyed.SetValue(std::this_thread::get_id()); });
+            TFixture f(MakeConfig(), std::move(completions));
+            Y_DEFER
+            {
+                release.TrySetValue();
+            };
+
+            queue->ExecuteSimple([release]
+                                 { release.GetFuture().GetValueSync(); });
+            f.Peers->Start();
+            auto peer = f.CreatePeer("host", 1111, {});
+            auto result = peer->GetChannel();
+            peer.reset();
+
+            // The pending task still owns the registration. Check ownership
+            // before releasing the worker so the old race fails
+            // deterministically.
+            managerOwners = f.Peers.use_count();
+            f.Peers->RequestStop();
+            release.SetValue();
+            f.Peers->Stop();
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED,
+                Wait(result).GetError().GetCode());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, managerOwners);
+        const auto destructionThread = destroyed.GetFuture();
+        UNIT_ASSERT(destructionThread.Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT(ownerThread == destructionThread.GetValue());
     }
 
     Y_UNIT_TEST(RequestStopFromContinuationAndExternalStopWaitsForItsReturn)

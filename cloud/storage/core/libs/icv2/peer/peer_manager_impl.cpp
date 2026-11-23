@@ -11,8 +11,23 @@ using namespace NThreading;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TPeerRegistry::UnregisterPeer(ui64 id)
+{
+    {
+        TGuard<TAdaptiveLock> guard(Lock);
+        Peers.erase(id);
+        if (State < EState::StopRequested || !Peers.empty()) {
+            return;
+        }
+    }
+    Closed.TrySetValue();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TPeerManager::TPeerManager(TPeerDependencies dependencies)
     : Dependencies(std::move(dependencies))
+    , Registry(std::make_shared<TPeerRegistry>())
 {}
 
 TPeerManager::~TPeerManager()
@@ -22,12 +37,12 @@ TPeerManager::~TPeerManager()
 
 void TPeerManager::Start()
 {
-    TGuard<TAdaptiveLock> guard(Lock);
-    Y_ABORT_UNLESS(State == EState::Created);
+    TGuard<TAdaptiveLock> guard(Registry->Lock);
+    Y_ABORT_UNLESS(Registry->State == EState::Created);
     // No peers can be created before the workers have started.
     Dependencies.Connector->Start();
     Dependencies.Handshake->Start();
-    State = EState::Running;
+    Registry->State = EState::Running;
 }
 
 TResultOrError<IPeerPtr> TPeerManager::CreatePeer(
@@ -37,8 +52,8 @@ TResultOrError<IPeerPtr> TPeerManager::CreatePeer(
 {
     std::shared_ptr<TPeer> peer;
     {
-        TGuard<TAdaptiveLock> guard(Lock);
-        if (State != EState::Running) {
+        TGuard<TAdaptiveLock> guard(Registry->Lock);
+        if (Registry->State != EState::Running) {
             return MakeError(
                 E_REJECTED,
                 "IC V2 peer connections are not running");
@@ -48,13 +63,13 @@ TResultOrError<IPeerPtr> TPeerManager::CreatePeer(
         }
         const auto id = NextPeerId++;
         peer = std::make_shared<TPeer>(
-            shared_from_this(),
+            Registry,
             id,
             Dependencies,
             std::move(host),
             port,
             std::move(handler));
-        Peers.emplace(id, peer);
+        Registry->Peers.emplace(id, peer);
     }
     peer->GetChannel();
     return IPeerPtr(std::move(peer));
@@ -64,12 +79,12 @@ void TPeerManager::RequestStop()
 {
     TVector<std::shared_ptr<TPeer>> peers;
     {
-        TGuard<TAdaptiveLock> guard(Lock);
-        if (State >= EState::StopRequested) {
+        TGuard<TAdaptiveLock> guard(Registry->Lock);
+        if (Registry->State >= EState::StopRequested) {
             return;
         }
-        State = EState::StopRequested;
-        for (auto& [peerId, weakPeer]: Peers) {
+        Registry->State = EState::StopRequested;
+        for (auto& [peerId, weakPeer]: Registry->Peers) {
             if (auto peer = weakPeer.lock()) {
                 peers.push_back(std::move(peer));
             }
@@ -82,49 +97,37 @@ void TPeerManager::RequestStop()
     Dependencies.Connector->RequestStop();
     Dependencies.Handshake->RequestStop();
     {
-        TGuard<TAdaptiveLock> guard(Lock);
-        if (!Peers.empty()) {
+        TGuard<TAdaptiveLock> guard(Registry->Lock);
+        if (!Registry->Peers.empty()) {
             return;
         }
     }
-    Closed.TrySetValue();
+    Registry->Closed.TrySetValue();
 }
 
 void TPeerManager::Stop()
 {
     RequestStop();
     {
-        TGuard<TAdaptiveLock> guard(Lock);
-        if (State == EState::Stopped) {
+        TGuard<TAdaptiveLock> guard(Registry->Lock);
+        if (Registry->State == EState::Stopped) {
             return;
         }
-        if (State == EState::Joining) {
+        if (Registry->State == EState::Joining) {
             guard.Release();
             Joined.GetFuture().GetValueSync();
             return;
         }
-        State = EState::Joining;
+        Registry->State = EState::Joining;
     }
     Dependencies.Connector->Stop();
     Dependencies.Handshake->Stop();
-    Closed.GetFuture().GetValueSync();
+    Registry->Closed.GetFuture().GetValueSync();
     {
-        TGuard<TAdaptiveLock> guard(Lock);
-        State = EState::Stopped;
+        TGuard<TAdaptiveLock> guard(Registry->Lock);
+        Registry->State = EState::Stopped;
     }
     Joined.SetValue();
-}
-
-void TPeerManager::UnregisterPeer(ui64 id)
-{
-    {
-        TGuard<TAdaptiveLock> guard(Lock);
-        Peers.erase(id);
-        if (State < EState::StopRequested || !Peers.empty()) {
-            return;
-        }
-    }
-    Closed.TrySetValue();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

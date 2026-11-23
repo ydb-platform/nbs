@@ -17,7 +17,7 @@ namespace NCloud::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPeerManager;
+class TPeerRegistry;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -65,7 +65,7 @@ class TPeer final
 
 public:
     TPeer(
-        std::shared_ptr<TPeerManager> manager,
+        std::shared_ptr<TPeerRegistry> registry,
         ui64 id,
         TPeerDependencies dependencies,
         TString host,

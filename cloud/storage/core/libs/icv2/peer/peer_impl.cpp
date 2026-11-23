@@ -66,20 +66,21 @@ enum class TPeer::EPeerEvent
 ////////////////////////////////////////////////////////////////////////////////
 
 // Kept by callbacks and completion tasks without retaining the peer itself.
-// The last reference removes the peer from the manager's shutdown wait.
+// The registry can finish unregistering after Stop() wakes the owner.
+// It must not retain the manager or its dependencies.
 struct TPeer::TActivity: TNonCopyable
 {
-    const std::shared_ptr<TPeerManager> Manager;
+    const std::shared_ptr<TPeerRegistry> Registry;
     const ui64 Id;
 
-    TActivity(std::shared_ptr<TPeerManager> manager, ui64 id)
-        : Manager(std::move(manager))
+    TActivity(std::shared_ptr<TPeerRegistry> registry, ui64 id)
+        : Registry(std::move(registry))
         , Id(id)
     {}
 
     ~TActivity()
     {
-        Manager->UnregisterPeer(Id);
+        Registry->UnregisterPeer(Id);
     }
 };
 
@@ -120,7 +121,7 @@ struct TPeer::TReadyChannel: public TAtomicRefCount<TReadyChannel>
 ////////////////////////////////////////////////////////////////////////////////
 
 TPeer::TPeer(
-    std::shared_ptr<TPeerManager> manager,
+    std::shared_ptr<TPeerRegistry> registry,
     ui64 id,
     TPeerDependencies dependencies,
     TString host,
@@ -129,7 +130,7 @@ TPeer::TPeer(
     : Dependencies(std::move(dependencies))
     , Host(std::move(host))
     , Port(port)
-    , Activity(std::make_shared<TActivity>(std::move(manager), id))
+    , Activity(std::make_shared<TActivity>(std::move(registry), id))
     , Handler(std::move(handler))
 {}
 
