@@ -16,6 +16,8 @@
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/common/helpers.h>
 
+#include <contrib/ydb/core/mind/local.h>
+
 #include <util/generic/guid.h>
 #include <util/generic/size_literals.h>
 #include <util/string/escape.h>
@@ -6734,6 +6736,22 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
         service.WaitForVolume(DefaultDiskId);
         service.ReadBlocks(DefaultDiskId, 0, sessionId);
 
+        bool pullProcessed = false;
+        bool pullHadLocalStart = false;
+        env.GetRuntime().SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() ==
+                    TEvServicePrivate::EvMountRequestProcessed)
+                {
+                    pullProcessed = true;
+                    pullHadLocalStart =
+                        ev->Get<TEvServicePrivate::TEvMountRequestProcessed>()
+                            ->HadLocalStart;
+                }
+                return false;
+            });
+
         {
             auto request =
                 std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
@@ -6747,7 +6765,153 @@ Y_UNIT_TEST_SUITE(TServiceMountVolumeTest)
                     .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
         }
 
+        UNIT_ASSERT(pullProcessed);
+        UNIT_ASSERT(pullHadLocalStart);
+
         service.UnmountVolume(DefaultDiskId, sessionId);
+    }
+
+    Y_UNIT_TEST(ShouldNotRebootLocalTabletAfterGentleReleaseToHive)
+    {
+        TTestEnv env;
+
+        NProto::TStorageServiceConfig config;
+        config.SetBalancerActionDelayInterval(0);
+
+        ui32 nodeIdx = SetupTestEnv(env, config);
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume();
+
+        ui64 volumeTabletId = 0;
+        TActorId localVolumeSysActor;
+        bool pushStarted = false;
+        bool sessionUnlockedVolume = false;
+        bool localTabletDead = false;
+        bool holdRemoteBoots = false;
+        TVector<std::unique_ptr<IEventHandle>> heldRemoteBoots;
+        ui32 startVolumeActorStoppedCount = 0;
+
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                switch (ev->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        const auto tabletId =
+                            ev->Get<TEvSSProxy::TEvDescribeVolumeResponse>()
+                                ->PathDescription
+                                .GetBlockStoreVolumeDescription()
+                                .GetVolumeTabletId();
+                        if (tabletId) {
+                            volumeTabletId = tabletId;
+                        }
+                        break;
+                    }
+                    case TEvTablet::EvRestored: {
+                        const auto* msg = ev->Get<TEvTablet::TEvRestored>();
+                        if (!pushStarted && msg->TabletID == volumeTabletId) {
+                            localVolumeSysActor = ev->Sender;
+                        }
+                        break;
+                    }
+                    case TEvHiveProxy::EvUnlockTabletResponse: {
+                        if (pushStarted) {
+                            sessionUnlockedVolume = true;
+                        }
+                        break;
+                    }
+                    case TEvLocal::EvBootTablet: {
+                        const auto* msg = ev->Get<TEvLocal::TEvBootTablet>();
+                        if (holdRemoteBoots &&
+                            msg->Record.GetInfo().GetTabletID() ==
+                                volumeTabletId)
+                        {
+                            heldRemoteBoots.emplace_back(ev.Release());
+                            return true;
+                        }
+                        break;
+                    }
+                    case TEvTablet::EvTabletDead: {
+                        if (ev->Sender == localVolumeSysActor) {
+                            localTabletDead = true;
+                        }
+                        break;
+                    }
+                    case TEvServicePrivate::EvStartVolumeActorStopped: {
+                        ++startVolumeActorStoppedCount;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        auto sessionId = service.MountVolume()->Record.GetSessionId();
+        service.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            sessionId,
+            1);
+        UNIT_ASSERT(localVolumeSysActor);
+
+        pushStarted = true;
+        holdRemoteBoots = true;
+        {
+            auto request =
+                std::make_unique<TEvService::TEvChangeVolumeBindingRequest>(
+                    DefaultDiskId,
+                    EChangeBindingOp::RELEASE_TO_HIVE,
+                    NProto::EPreemptionSource::SOURCE_BALANCER,
+                    true);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+        }
+        runtime.DispatchEvents(
+            {.CustomFinalCondition = [&]
+             {
+                 return sessionUnlockedVolume;
+             }});
+
+        // The lock is released, but the remote tablet isn't up yet: kill the
+        // local one with a reason that doesn't mean demotion.
+        runtime.Send(
+            new IEventHandle(
+                localVolumeSysActor,
+                TActorId(),
+                new TEvents::TEvPoisonPill()),
+            nodeIdx);
+        runtime.DispatchEvents(
+            {.CustomFinalCondition = [&]
+             {
+                 return localTabletDead;
+             }});
+
+        holdRemoteBoots = false;
+        for (auto& boot: heldRemoteBoots) {
+            runtime.Send(boot.release());
+        }
+
+        runtime.DispatchEvents(
+            {.CustomFinalCondition = [&]
+             {
+                 return startVolumeActorStoppedCount > 0;
+             }},
+            TDuration::Seconds(30));
+        UNIT_ASSERT_VALUES_EQUAL(1, startVolumeActorStoppedCount);
+
+        {
+            auto response =
+                service
+                    .RecvResponse<TEvService::TEvChangeVolumeBindingResponse>();
+            UNIT_ASSERT_C(
+                SUCCEEDED(response->GetStatus()),
+                response->GetErrorReason());
+        }
+
+        service.WriteBlocks(
+            DefaultDiskId,
+            TBlockRange64::MakeOneBlock(0),
+            sessionId,
+            1);
     }
 
     Y_UNIT_TEST(ShouldReportTabletHostInMountResponse)

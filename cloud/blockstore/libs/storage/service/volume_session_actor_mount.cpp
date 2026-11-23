@@ -1093,6 +1093,8 @@ void TMountRequestActor::HandleGentlePreemptionRequestProcessed(
     }
 
     if (!ShouldWaitVolumeAfterGentlePreemption) {
+        // Only the pull doesn't wait for the volume, and it starts it locally
+        VolumeStarted = true;
         Error = error;
         NotifyAndDie(ctx);
         return;
