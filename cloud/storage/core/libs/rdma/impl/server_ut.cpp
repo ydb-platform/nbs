@@ -454,7 +454,7 @@ TEST(TRdmaServerTest, ShouldHandleErrors)
             // good id and opcode, success status, good message
             if (wc->wr_id == recv[3]->wr_id) {
                 auto* msg = reinterpret_cast<TRequestMessage*>(recv[3]->sg_list[0].addr);
-                InitMessageHeader(msg, RDMA_PROTO_VERSION);
+                InitMessageHeader(msg);
                 msg->In.Length = 4096;
                 return;
             }
@@ -568,7 +568,7 @@ TEST(TRdmaServerTest, ShouldBoundErrorResponsesByClientBuffer)
             auto* msg =
                 reinterpret_cast<TRequestMessage*>(recv->sg_list[0].addr);
             memset(msg, 0, sizeof(*msg));
-            InitMessageHeader(msg, RDMA_PROTO_VERSION);
+            InitMessageHeader(msg);
             msg->ReqId = reqId;
             msg->In.Length = inLength;
             msg->Out.Length = outLength;
@@ -655,7 +655,7 @@ TEST(TRdmaServerTest, ShouldRejectConnectionOnConfigMismatchInStrictValidation)
         EXPECT_EQ(sizeof(TRejectMessage), size);
 
         const auto* rejectMsg = static_cast<const TRejectMessage*>(data);
-        EXPECT_EQ(RDMA_PROTO_VERSION, ParseMessageHeader(rejectMsg));
+        EXPECT_TRUE(IsValidMessageHeader(rejectMsg));
         EXPECT_EQ(RDMA_PROTO_CONFIG_MISMATCH, rejectMsg->Status);
         EXPECT_EQ(serverConfig->SendQueueSize, rejectMsg->SendQueueSize);
         EXPECT_EQ(serverConfig->RecvQueueSize, rejectMsg->RecvQueueSize);
@@ -828,7 +828,7 @@ TEST(TRdmaServerTest, ShouldExecuteEagerRequestsWithoutRdmaRead)
             auto* msg =
                 reinterpret_cast<TRequestMessage*>(recv->sg_list[0].addr);
             memset(msg, 0, sizeof(*msg));
-            InitMessageHeader(msg, RDMA_PROTO_VERSION);
+            InitMessageHeader(msg);
             msg->ReqId = reqId;
             msg->In.Length = inLength;
             msg->Out.Length = 1_KB;
@@ -1003,7 +1003,7 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletes)
 
         auto* msg = reinterpret_cast<TRequestMessage*>(recv->sg_list[0].addr);
         memset(msg, 0, sizeof(*msg));
-        InitMessageHeader(msg, RDMA_PROTO_VERSION);
+        InitMessageHeader(msg);
         msg->ReqId = 1;
         msg->Out.Length = 4_KB;
 
@@ -1122,7 +1122,7 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
 
         auto* msg = reinterpret_cast<TRequestMessage*>(recv->sg_list[0].addr);
         memset(msg, 0, sizeof(*msg));
-        InitMessageHeader(msg, RDMA_PROTO_VERSION);
+        InitMessageHeader(msg);
         msg->ReqId = 1;
         msg->Out.Length = 4_KB;
 

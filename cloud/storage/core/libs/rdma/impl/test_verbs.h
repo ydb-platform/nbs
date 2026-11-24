@@ -65,8 +65,8 @@ struct TTestContext: TAtomicRefCount<TTestContext>
 
     // If set, overrides the default behavior of TTestVerbs::Connect. The test
     // can use it together with EnqueueAcceptEvent / EnqueueRejectEvent helpers
-    // to simulate custom server-side responses (e.g. specific reject messages
-    // or accept messages with a particular protocol version).
+    // to simulate custom server-side responses (e.g. specific reject or accept
+    // messages).
     std::function<void(rdma_cm_id* id, rdma_conn_param* param)> HandleConnect;
 
     // If set, called when server Accept() is invoked.
