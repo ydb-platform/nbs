@@ -786,8 +786,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 
         {
             TVector<NProto::TVolumeBalancerDiskStats> vols{
-                CreateVolumeStats("vol0", "", "", true),
-                CreateVolumeStats("vol1", "", "", true)};
+                CreateVolumeStats({.DiskId = "vol0"}),
+                CreateVolumeStats({.DiskId = "vol1"})};
 
             state.UpdateVolumeStats(vols, perfMap, 80, now);
 
@@ -797,8 +797,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 
         {
             TVector<NProto::TVolumeBalancerDiskStats> vols{
-                CreateVolumeStats("vol0", "", "", false),
-                CreateVolumeStats("vol1", "", "", true)};
+                CreateVolumeStats({.DiskId = "vol0", .IsLocal = false}),
+                CreateVolumeStats({.DiskId = "vol1"})};
 
             state.UpdateVolumeStats(vols, perfMap, 80, now);
 
@@ -833,8 +833,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 
         {
             TVector<NProto::TVolumeBalancerDiskStats> vols{
-                CreateVolumeStats("vol0", "", "", true),
-                CreateVolumeStats("vol1", "", "", true)};
+                CreateVolumeStats({.DiskId = "vol0"}),
+                CreateVolumeStats({.DiskId = "vol1"})};
 
             state.UpdateVolumeStats(vols, perfMap, 80, now);
 
@@ -847,8 +847,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 
         {
             TVector<NProto::TVolumeBalancerDiskStats> vols{
-                CreateVolumeStats("vol0", "", "", false),
-                CreateVolumeStats("vol1", "", "", false)};
+                CreateVolumeStats({.DiskId = "vol0", .IsLocal = false}),
+                CreateVolumeStats({.DiskId = "vol1", .IsLocal = false})};
 
             state.UpdateVolumeStats(vols, perfMap, 80, now);
 

@@ -36,6 +36,7 @@ private:
 
     NMonitoring::TDynamicCounters::TCounterPtr PushCount;
     NMonitoring::TDynamicCounters::TCounterPtr PullCount;
+    NMonitoring::TDynamicCounters::TCounterPtr VolumeBalancerInWarning;
 
     NMonitoring::TDynamicCounters::TCounterPtr ManuallyPreempted;
     NMonitoring::TDynamicCounters::TCounterPtr BalancerPreempted;

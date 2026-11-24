@@ -185,6 +185,9 @@ void TVolumeBalancerActor::RegisterCounters(const TActorContext& ctx)
     auto serverCounters = rootGroup->GetSubgroup("component", "server");
     PushCount = serviceCounters->GetCounter("PushCount", true);
     PullCount = serviceCounters->GetCounter("PullCount", true);
+    VolumeBalancerInWarning =
+        serviceCounters->GetCounter("VolumeBalancerInWarning", false);
+    *VolumeBalancerInWarning = 0;
 
     ManuallyPreempted = serviceCounters->GetCounter("ManuallyPreempted", false);
     BalancerPreempted = serviceCounters->GetCounter("BalancerPreempted", false);
@@ -412,6 +415,10 @@ STFUNC(TVolumeBalancerActor::StateWork)
                 __PRETTY_FUNCTION__);
             break;
     }
+
+    *VolumeBalancerInWarning =
+        State &&
+        State->GetStatus() == NPrivateProto::EBalancerOpStatus::WARNING;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -1078,25 +1078,58 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId1);
 
+        auto warningCounter = testEnv.GetRuntime()
+                                .GetAppData(0)
+                                .Counters->GetSubgroup("counters", "blockstore")
+                                ->GetSubgroup("component", "service")
+                                ->FindCounter("VolumeBalancerInWarning");
+        UNIT_ASSERT(warningCounter);
+        UNIT_ASSERT_VALUES_EQUAL(0, warningCounter->Val());
+
         testEnv.SendChangeVolumeBindingResponse(
             volumeBindingActorID,
             "vol0",
             {});
         testEnv.DispatchEvents();
 
-        auto diskId2 = RunState(
-            testEnv,
-            volumeBindingActorID,
-            {
-                {.DiskId = "vol0", .IsLocal = false},
-                {.DiskId = "vol1", .IsLocal = true},
-            },
-            {{"vol0", 15}, {"vol1", 1}},
-            1,
-            EChangeBindingOp::ACQUIRE_FROM_HIVE,
-            UpdateCountersInterval + initialPullDelay);
+        auto pollPreemptedVolume = [&](TMaybe<EChangeBindingOp> expected)
+        {
+            return RunState(
+                testEnv,
+                volumeBindingActorID,
+                {
+                    {.DiskId = "vol0",
+                     .IsLocal = false,
+                     .Source = NProto::SOURCE_BALANCER},
+                    {.DiskId = "vol1", .IsLocal = true},
+                },
+                {{"vol0", 15}, {"vol1", 1}},
+                1,
+                expected,
+                UpdateCountersInterval);
+        };
 
+        pollPreemptedVolume({});
+        UNIT_ASSERT_VALUES_EQUAL(1, warningCounter->Val());
+        pollPreemptedVolume({});
+        UNIT_ASSERT_VALUES_EQUAL(1, warningCounter->Val());
+
+        auto setStatus = [&](EBalancerStatus status)
+        {
+            testEnv.SendConfigureVolumeBalancerRequest(
+                volumeBindingActorID,
+                status);
+            return testEnv.GrabConfigureVolumeBalancerResponse();
+        };
+        const auto response = setStatus(EBalancerStatus::ENABLE);
+        UNIT_ASSERT_VALUES_EQUAL(
+            EBalancerStatus::WARNING,
+            response->Record.GetOpStatus());
+        UNIT_ASSERT_VALUES_EQUAL(0, warningCounter->Val());
+
+        auto diskId2 = pollPreemptedVolume(EChangeBindingOp::ACQUIRE_FROM_HIVE);
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId2);
+        UNIT_ASSERT_VALUES_EQUAL(1, warningCounter->Val());
 
         testEnv.SendChangeVolumeBindingResponse(
             volumeBindingActorID,
@@ -1117,6 +1150,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             UpdateCountersInterval + initialPullDelay);
 
         UNIT_ASSERT(diskId3.empty());
+
+        setStatus(EBalancerStatus::DISABLE);
+        UNIT_ASSERT_VALUES_EQUAL(0, warningCounter->Val());
+        setStatus(EBalancerStatus::WARNING);
+        UNIT_ASSERT_VALUES_EQUAL(1, warningCounter->Val());
     }
 }
 
