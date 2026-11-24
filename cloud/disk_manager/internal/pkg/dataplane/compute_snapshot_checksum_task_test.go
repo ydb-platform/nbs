@@ -203,6 +203,7 @@ func newChecksumTestFixture(t *testing.T) *checksumTestFixture {
 		db,
 		s3,
 		false, // dropUnusedColumns
+		false, // backupEnabled
 	)
 	require.NoError(t, err)
 
@@ -211,6 +212,7 @@ func newChecksumTestFixture(t *testing.T) *checksumTestFixture {
 		metrics.NewEmptyRegistry(),
 		db,
 		s3,
+		false, // backupEnabled
 	)
 	require.NoError(t, err)
 
