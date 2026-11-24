@@ -256,7 +256,7 @@ func TestS3ExternalCheckpointUsesConfiguredBatchSize(t *testing.T) {
 	require.Equal(t, []int{3, 1}, checkpoint.batchSizes)
 }
 
-func TestS3ExternalCheckpointUsesConfiguredReadPageSize(t *testing.T) {
+func TestS3ExternalCheckpointUsesConfiguredReadBatchSize(t *testing.T) {
 	source := &s3TestSource{meta: storage.SnapshotMeta{
 		ID:         "snapshot",
 		Ready:      true,
@@ -269,7 +269,7 @@ func TestS3ExternalCheckpointUsesConfiguredReadPageSize(t *testing.T) {
 	options := s3TestOptions()
 	options.Compression = "none"
 	options.CheckpointPartCount = 16
-	options.PartsReadPageSize = 2
+	options.PartsReadBatchSize = 2
 
 	manifest, err := ExportToS3WithCheckpoint(
 		newContext(),
@@ -291,8 +291,8 @@ func TestS3ExternalCheckpointUsesConfiguredReadPageSize(t *testing.T) {
 	}
 }
 
-func TestS3ExportRejectsNonPositivePartsReadPageSize(t *testing.T) {
-	for _, pageSize := range []int{0, -1} {
+func TestS3ExportRejectsNonPositivePartsReadBatchSize(t *testing.T) {
+	for _, batchSize := range []int{0, -1} {
 		source := &s3TestSource{meta: storage.SnapshotMeta{
 			ID:         "snapshot",
 			Ready:      true,
@@ -304,7 +304,7 @@ func TestS3ExportRejectsNonPositivePartsReadPageSize(t *testing.T) {
 			parts: make(map[uint32]S3ManifestPart),
 		}
 		options := s3TestOptions()
-		options.PartsReadPageSize = pageSize
+		options.PartsReadBatchSize = batchSize
 
 		_, err := ExportToS3WithCheckpoint(
 			newContext(),
@@ -315,7 +315,7 @@ func TestS3ExportRejectsNonPositivePartsReadPageSize(t *testing.T) {
 			&S3ExportState{},
 			checkpoint,
 		)
-		require.ErrorContains(t, err, "parts read page size")
+		require.ErrorContains(t, err, "parts read batch size")
 		// The export must stop before touching the checkpoint or the target.
 		require.Empty(t, checkpoint.readLimits)
 		require.Empty(t, destination.uploads)

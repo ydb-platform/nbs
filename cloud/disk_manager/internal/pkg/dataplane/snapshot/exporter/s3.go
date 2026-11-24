@@ -54,7 +54,7 @@ type S3ExportOptions struct {
 	CheckpointInterval time.Duration
 	// Maximum saved parts read from the checkpoint by one call. Must be
 	// positive.
-	PartsReadPageSize int
+	PartsReadBatchSize int
 	// Optional registry for aggregate transfer metrics; never persisted.
 	MetricsRegistry metrics.Registry
 	// MaxRetries limits retries per source/destination operation after its
@@ -451,9 +451,9 @@ func ExportToS3WithCheckpoint(
 		)
 	}
 
-	if options.PartsReadPageSize <= 0 {
+	if options.PartsReadBatchSize <= 0 {
 		return S3Manifest{}, task_errors.NewNonRetriableErrorf(
-			"parts read page size must be positive",
+			"parts read batch size must be positive",
 		)
 	}
 

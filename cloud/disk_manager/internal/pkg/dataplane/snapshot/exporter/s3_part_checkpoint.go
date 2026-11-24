@@ -79,7 +79,7 @@ func (c *memoryS3ExportCheckpoint) Save(
 
 type s3PartIterator struct {
 	checkpoint S3ExportCheckpoint
-	pageSize   int
+	batchSize  int
 	page       []S3ManifestPart
 	after      uint32
 	done       bool
@@ -92,17 +92,17 @@ func newS3PartIterator(
 
 	return &s3PartIterator{
 		checkpoint: checkpoint,
-		pageSize:   options.PartsReadPageSize,
+		batchSize:  options.PartsReadBatchSize,
 	}
 }
 
 func (i *s3PartIterator) next(ctx context.Context) (*S3ManifestPart, error) {
 	if len(i.page) == 0 && !i.done {
-		page, err := i.checkpoint.ReadParts(ctx, i.after, uint64(i.pageSize))
+		page, err := i.checkpoint.ReadParts(ctx, i.after, uint64(i.batchSize))
 		if err != nil {
 			return nil, err
 		}
-		if len(page) > i.pageSize {
+		if len(page) > i.batchSize {
 			return nil, fmt.Errorf("export checkpoint page exceeds limit")
 		}
 		previous := i.after

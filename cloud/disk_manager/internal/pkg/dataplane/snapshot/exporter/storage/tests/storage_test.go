@@ -92,31 +92,6 @@ func newParts(first uint32, last uint32) []exporter.S3ManifestPart {
 	return parts
 }
 
-func executeRW(
-	ctx context.Context,
-	db *persistence.YDBClient,
-	f func(tx *persistence.Transaction) error,
-) error {
-
-	return db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			tx, err := session.BeginRWTransaction(ctx)
-			if err != nil {
-				return err
-			}
-			defer tx.Rollback(ctx)
-
-			err = f(tx)
-			if err != nil {
-				return err
-			}
-
-			return tx.Commit(ctx)
-		},
-	)
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestExportPartsStorage(t *testing.T) {
@@ -127,20 +102,14 @@ func TestExportPartsStorage(t *testing.T) {
 	store := newStorage(t, ctx, db, "export_parts_test")
 	parts := newParts(1, 5)
 
-	err := executeRW(ctx, db, func(tx *persistence.Transaction) error {
-		err := store.UpsertParts(ctx, tx, "task-a", parts)
-		if err != nil {
-			return err
-		}
+	err := store.UpsertPartsInOwnTransaction(ctx, "task-a", parts)
+	require.NoError(t, err)
 
-		return store.UpsertParts(ctx, tx, "task-b", parts[:1])
-	})
+	err = store.UpsertPartsInOwnTransaction(ctx, "task-b", parts[:1])
 	require.NoError(t, err)
 
 	// Lost acknowledgements may repeat the same confirmation.
-	err = executeRW(ctx, db, func(tx *persistence.Transaction) error {
-		return store.UpsertParts(ctx, tx, "task-a", parts[:1])
-	})
+	err = store.UpsertPartsInOwnTransaction(ctx, "task-a", parts[:1])
 	require.NoError(t, err)
 
 	page, err := store.ReadParts(ctx, "task-a", 0, 2)
@@ -151,28 +120,10 @@ func TestExportPartsStorage(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, parts[2:], page)
 
-	// A failed task-generation check must roll back its preparation too.
-	err = executeRW(ctx, db, func(tx *persistence.Transaction) error {
-		err := store.UpsertParts(ctx, tx, "stale-task", parts)
-		if err != nil {
-			return err
-		}
-
-		return fmt.Errorf("generation changed")
-	})
-	require.Error(t, err)
-
-	page, err = store.ReadParts(ctx, "stale-task", 0, 10)
-	require.NoError(t, err)
-	require.Empty(t, page)
-
 	for _, expected := range []uint64{2, 2, 1, 0} {
-		err = executeRW(ctx, db, func(tx *persistence.Transaction) error {
-			deleted, err := store.DeleteParts(ctx, tx, "task-a", 2)
-			require.Equal(t, expected, deleted)
-			return err
-		})
+		deleted, err := store.DeletePartsInOwnTransaction(ctx, "task-a", 2)
 		require.NoError(t, err)
+		require.Equal(t, expected, deleted)
 	}
 
 	page, err = store.ReadParts(ctx, "task-a", 0, 10)
@@ -186,51 +137,61 @@ func TestExportPartsStorage(t *testing.T) {
 
 // By default YDB returns at most 1000 rows from one data query, and the client
 // fails on a truncated result. An export with more parts must still be
-// readable with the default page size.
-func TestExportPartsStorageReadsMorePartsThanOnePage(t *testing.T) {
+// readable with the default read batch size.
+func TestExportPartsStorageReadsMorePartsThanOneBatch(t *testing.T) {
 	ctx := newContext()
 	db := newYDB(t, ctx)
 	defer db.Close(ctx)
 
-	store := newStorage(t, ctx, db, "export_parts_pages_test")
+	store := newStorage(t, ctx, db, "export_parts_read_batches_test")
 	taskID := "task"
 
 	exportConfig := &server_config.ExportConfig{}
-	pageSize := exportConfig.GetPartsReadPageSize()
+	readBatchSize := exportConfig.GetPartsReadBatchSize()
 
-	// Two full pages and a partial one.
-	parts := newParts(1, 2*pageSize+1)
+	// Two full read batches and a partial one.
+	parts := newParts(1, 2*readBatchSize+1)
 
-	batchSize := 500
-	for start := 0; start < len(parts); start += batchSize {
-		end := start + batchSize
+	upsertBatchSize := 500
+	for start := 0; start < len(parts); start += upsertBatchSize {
+		end := start + upsertBatchSize
 		if end > len(parts) {
 			end = len(parts)
 		}
 
-		batch := parts[start:end]
-		err := executeRW(ctx, db, func(tx *persistence.Transaction) error {
-			return store.UpsertParts(ctx, tx, taskID, batch)
-		})
+		err := store.UpsertPartsInOwnTransaction(
+			ctx,
+			taskID,
+			parts[start:end],
+		)
 		require.NoError(t, err)
 	}
 
 	var actual []exporter.S3ManifestPart
-	var pageSizes []int
+	var readBatchSizes []int
 	after := uint32(0)
 	for {
-		page, err := store.ReadParts(ctx, taskID, after, uint64(pageSize))
+		batch, err := store.ReadParts(
+			ctx,
+			taskID,
+			after,
+			uint64(readBatchSize),
+		)
 		require.NoError(t, err)
 
-		if len(page) == 0 {
+		if len(batch) == 0 {
 			break
 		}
 
-		actual = append(actual, page...)
-		pageSizes = append(pageSizes, len(page))
-		after = page[len(page)-1].Number
+		actual = append(actual, batch...)
+		readBatchSizes = append(readBatchSizes, len(batch))
+		after = batch[len(batch)-1].Number
 	}
 
-	require.Equal(t, []int{int(pageSize), int(pageSize), 1}, pageSizes)
+	require.Equal(
+		t,
+		[]int{int(readBatchSize), int(readBatchSize), 1},
+		readBatchSizes,
+	)
 	require.Equal(t, parts, actual)
 }

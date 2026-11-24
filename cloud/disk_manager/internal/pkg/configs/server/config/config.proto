@@ -112,8 +112,8 @@ message ExportConfig {
     // Maximum part rows deleted by one cleanup transaction.
     optional uint32 PartsCleanupBatchSize = 21 [default = 1000];
     // Maximum part rows read by one query. YDB returns at most 1000 rows from
-    // a data query by default; a larger page fails exports with more parts.
-    optional uint32 PartsReadPageSize = 22 [default = 1000];
+    // a data query by default; a larger batch fails exports with more parts.
+    optional uint32 PartsReadBatchSize = 22 [default = 1000];
 }
 
 ////////////////////////////////////////////////////////////////////////////////

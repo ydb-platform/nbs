@@ -34,6 +34,22 @@ type Storage interface {
 		taskID string,
 		limit uint64,
 	) (uint64, error)
+
+	// Used in tests.
+	// Executes UpsertParts in its own transaction.
+	UpsertPartsInOwnTransaction(
+		ctx context.Context,
+		taskID string,
+		parts []exporter.S3ManifestPart,
+	) error
+
+	// Used in tests.
+	// Executes DeleteParts in its own transaction.
+	DeletePartsInOwnTransaction(
+		ctx context.Context,
+		taskID string,
+		limit uint64,
+	) (uint64, error)
 }
 
 type storageYDB struct {
@@ -217,4 +233,65 @@ func (s *storageYDB) DeleteParts(
 		return 0, err
 	}
 	return count, res.Err()
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (s *storageYDB) executeInOwnTransaction(
+	ctx context.Context,
+	f func(ctx context.Context, tx *persistence.Transaction) error,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			tx, err := session.BeginRWTransaction(ctx)
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback(ctx)
+
+			err = f(ctx, tx)
+			if err != nil {
+				return err
+			}
+
+			return tx.Commit(ctx)
+		},
+	)
+}
+
+// Used in tests.
+func (s *storageYDB) UpsertPartsInOwnTransaction(
+	ctx context.Context,
+	taskID string,
+	parts []exporter.S3ManifestPart,
+) error {
+
+	return s.executeInOwnTransaction(
+		ctx,
+		func(ctx context.Context, tx *persistence.Transaction) error {
+			return s.UpsertParts(ctx, tx, taskID, parts)
+		},
+	)
+}
+
+// Used in tests.
+func (s *storageYDB) DeletePartsInOwnTransaction(
+	ctx context.Context,
+	taskID string,
+	limit uint64,
+) (uint64, error) {
+
+	var deleted uint64
+
+	err := s.executeInOwnTransaction(
+		ctx,
+		func(ctx context.Context, tx *persistence.Transaction) error {
+			var err error
+			deleted, err = s.DeleteParts(ctx, tx, taskID, limit)
+			return err
+		},
+	)
+	return deleted, err
 }

@@ -80,6 +80,24 @@ func (s *exportPartsMemoryStorage) DeleteParts(
 	return uint64(len(parts)), err
 }
 
+func (s *exportPartsMemoryStorage) UpsertPartsInOwnTransaction(
+	ctx context.Context,
+	id string,
+	parts []exporter.S3ManifestPart,
+) error {
+
+	return s.UpsertParts(ctx, nil, id, parts)
+}
+
+func (s *exportPartsMemoryStorage) DeletePartsInOwnTransaction(
+	ctx context.Context,
+	id string,
+	limit uint64,
+) (uint64, error) {
+
+	return s.DeleteParts(ctx, nil, id, limit)
+}
+
 type exportCheckpointExecutionContext struct {
 	tasks.ExecutionContext
 	task             *exportSnapshotTask

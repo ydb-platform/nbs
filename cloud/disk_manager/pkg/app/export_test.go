@@ -143,7 +143,7 @@ func TestControlplaneExportDoesNotInitializeExecutor(t *testing.T) {
 		{CheckpointInterval: proto.String("invalid-worker-setting")},
 		{CheckpointPartCount: proto.Uint32(0)},
 		{PartsCleanupBatchSize: proto.Uint32(0)},
-		{PartsReadPageSize: proto.Uint32(0)},
+		{PartsReadBatchSize: proto.Uint32(0)},
 	} {
 		registry := tasks.NewRegistry()
 		cleanup, err := initSnapshotExport(
@@ -236,8 +236,8 @@ func TestExportExecutorRejectsInvalidCheckpointConfig(t *testing.T) {
 			"batch sizes",
 		},
 		{
-			&server_config.ExportConfig{PartsReadPageSize: proto.Uint32(0)},
-			"page size",
+			&server_config.ExportConfig{PartsReadBatchSize: proto.Uint32(0)},
+			"read batch size",
 		},
 	} {
 		_, err := initSnapshotExport(
