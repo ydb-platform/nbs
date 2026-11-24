@@ -16,7 +16,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui64 PageSize = 16;
-constexpr ui64 PinnedPageCount = 0;
+constexpr ui64 PinnedPageCount = 128;
 constexpr ui64 MaxCachedPageCount = 1024;
 constexpr ui64 P = 1;
 constexpr ui64 Q = 2;
@@ -341,4 +341,62 @@ TEST(PageStoreTest, ShouldDropDirtyVersionIncludedInLoadedOne)
     env.Store->Clear();
     ASSERT_PAGE('b', env.Lookup(P));
     ASSERT_EQ(2U, env.Storage->ReadCount);
+}
+
+TEST(PageStoreTest, ShouldPinAndEvict)
+{
+    TEnv env;
+
+    const ui64 pageCount = 2048;
+    for (ui64 pageNo = 0; pageNo < pageCount; ++pageNo) {
+        env.Storage->Pages[pageNo] = 'a' + pageNo % ('z' - 'a' + 1);
+    }
+
+    for (ui64 pageNo = 0; pageNo < MaxCachedPageCount; ++pageNo) {
+        ASSERT_PAGE(env.Storage->Pages[pageNo], env.Lookup(pageNo));
+    }
+
+    ASSERT_EQ(MaxCachedPageCount, env.Storage->ReadCount);
+
+    auto stats = env.Store->CollectStats();
+    ASSERT_EQ(MaxCachedPageCount, stats.CachedPageCount);
+    ASSERT_EQ(PinnedPageCount, stats.PinnedPageCount);
+    ASSERT_EQ(0U, stats.CacheHits);
+    ASSERT_EQ(MaxCachedPageCount, stats.CacheMisses);
+    ASSERT_EQ(0U, stats.Evictions);
+
+    for (ui64 pageNo = 0; pageNo < MaxCachedPageCount; ++pageNo) {
+        ASSERT_PAGE(env.Storage->Pages[pageNo], env.Lookup(pageNo));
+    }
+
+    ASSERT_EQ(MaxCachedPageCount, env.Storage->ReadCount);
+
+    stats = env.Store->CollectStats();
+    ASSERT_EQ(MaxCachedPageCount, stats.CachedPageCount);
+    ASSERT_EQ(PinnedPageCount, stats.PinnedPageCount);
+    ASSERT_EQ(MaxCachedPageCount, stats.CacheHits);
+    ASSERT_EQ(MaxCachedPageCount, stats.CacheMisses);
+    ASSERT_EQ(0U, stats.Evictions);
+
+    for (ui64 pageNo = MaxCachedPageCount; pageNo < pageCount; ++pageNo) {
+        ASSERT_PAGE(env.Storage->Pages[pageNo], env.Lookup(pageNo));
+    }
+
+    stats = env.Store->CollectStats();
+    ASSERT_EQ(MaxCachedPageCount, stats.CachedPageCount);
+    ASSERT_EQ(PinnedPageCount, stats.PinnedPageCount);
+    ASSERT_EQ(MaxCachedPageCount, stats.CacheHits);
+    ASSERT_EQ(2 * MaxCachedPageCount, stats.CacheMisses);
+    ASSERT_EQ(MaxCachedPageCount, stats.Evictions);
+
+    for (ui64 pageNo = 0; pageNo < PinnedPageCount; ++pageNo) {
+        ASSERT_PAGE(env.Storage->Pages[pageNo], env.Lookup(pageNo));
+    }
+
+    stats = env.Store->CollectStats();
+    ASSERT_EQ(MaxCachedPageCount, stats.CachedPageCount);
+    ASSERT_EQ(PinnedPageCount, stats.PinnedPageCount);
+    ASSERT_EQ(MaxCachedPageCount + PinnedPageCount, stats.CacheHits);
+    ASSERT_EQ(2 * MaxCachedPageCount, stats.CacheMisses);
+    ASSERT_EQ(MaxCachedPageCount, stats.Evictions);
 }

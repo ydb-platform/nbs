@@ -114,6 +114,11 @@ private:
     TDeque<TSlot> Slots;
     ui64 ClockHand = 0;
 
+    ui64 Pins = 0;
+    ui64 Hits = 0;
+    ui64 Misses = 0;
+    ui64 Evictions = 0;
+
 public:
     explicit TPageCache(ui64 pinnedPageCount, ui64 maxPages)
         : PinnedPageCount(pinnedPageCount)
@@ -136,6 +141,8 @@ public:
         TLookupMap::insert_ctx insertCtx{};
         auto it = PageNo2Slot.find(pageNo, insertCtx);
         if (it == PageNo2Slot.end()) {
+            ++Misses;
+
             auto error = AcquireSlot(slot);
             if (HasError(error)) {
                 return error;
@@ -144,6 +151,8 @@ public:
             (*slot)->PageNo = pageNo;
             PageNo2Slot.insert_direct(std::make_pair(pageNo, *slot), insertCtx);
         } else {
+            ++Hits;
+
             *slot = it->second;
         }
 
@@ -176,6 +185,17 @@ public:
         PageNo2Slot.clear();
     }
 
+    [[nodiscard]] TPageStoreStats CollectStats() const
+    {
+        TPageStoreStats stats;
+        stats.PinnedPageCount = Pins;
+        stats.CachedPageCount = PageNo2Slot.size();
+        stats.CacheHits = Hits;
+        stats.CacheMisses = Misses;
+        stats.Evictions = Evictions;
+        return stats;
+    }
+
 private:
     NProto::TError AcquireSlot(TSlot** slot)
     {
@@ -183,21 +203,23 @@ private:
             const ui64 j = ClockHand++ % Slots.size();
             auto& s = Slots[j];
 
+            const bool isPinned = s.PageNo < PinnedPageCount;
+
             if (s.PageNo == InvalidPageNo) {
+                Pins += isPinned ? 1 : 0;
+
                 Y_ABORT_UNLESS(!s.Locked);
                 *slot = &s;
                 return {};
             }
 
-            if (s.Locked) {
-                continue;
-            }
-
-            if (s.PageNo < PinnedPageCount) {
+            if (s.Locked || isPinned) {
                 continue;
             }
 
             if (!s.Accessed) {
+                ++Evictions;
+
                 PageNo2Slot.erase(s.PageNo);
                 s.PageNo = InvalidPageNo;
                 s.PV = {};
@@ -257,6 +279,7 @@ public:
     NProto::TError
     ReadPageForUpdate(ui64 lsn, ui64 pageNo, TBuffer* page) const override;
     void Clear() override;
+    TPageStoreStats CollectStats() const override;
 
 private:
     NProto::TError DoReadPage(
@@ -474,6 +497,12 @@ void TPageStore::Clear()
 {
     std::lock_guard g(Mutex);
     PageCache.Clear();
+}
+
+TPageStoreStats TPageStore::CollectStats() const
+{
+    std::lock_guard g(Mutex);
+    return PageCache.CollectStats();
 }
 
 NProto::TError TPageStore::ReadPageForLookup(ui64 pageNo, TBuffer* page) const

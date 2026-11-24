@@ -764,17 +764,17 @@ public:
                 FileSystemId.c_str());
         }
 
-        //
-        // Using only one storage group for now.
-        //
-
-        const ui64 mdPageCount =
+        const ui64 metadataPageCount =
             CalcRequiredMetadataPageCount(Config, PageSize);
+        const ui64 cachedPageCount =
+            metadataPageCount + Config.GetMaxCachedDataPages();
         PageStore = CreatePageStore(Storage, {
             .PageSize = PageSize,
-            .PinnedPageCount = mdPageCount,
-            .MaxCachedPageCount = mdPageCount + Config.GetMaxCachedDataPages(),
+            .PinnedPageCount = metadataPageCount,
+            .MaxCachedPageCount = cachedPageCount,
         });
+        SILK_INFO("pagestore pinned pages=%lu", metadataPageCount);
+        SILK_INFO("pagestore cached pages=%lu", cachedPageCount);
 
         InitDataStructures();
     }

@@ -18,6 +18,17 @@ using NCloud::NFastShard::TPageGroupRef;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TPageStoreStats
+{
+    ui64 PinnedPageCount = 0;
+    ui64 CachedPageCount = 0;
+    ui64 CacheHits = 0;
+    ui64 CacheMisses = 0;
+    ui64 Evictions = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class IPageStore
 {
 public:
@@ -48,6 +59,8 @@ public:
      * moment of the call.
      */
     virtual void Clear() = 0;
+
+    [[nodiscard]] virtual TPageStoreStats CollectStats() const = 0;
 };
 
 using IPageStorePtr = std::shared_ptr<IPageStore>;
