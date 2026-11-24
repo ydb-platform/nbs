@@ -823,7 +823,9 @@ struct TTxIndexTablet
         const ui64 ParentNodeId;
         const ui64 TargetNodeId;
         const TString Name;
+        const NProto::TNode OrigAttrs;
         NProto::TNode Attrs;
+        const bool BehaveAsShard;
         const TString RequestShardId;
         TString ShardId;
         TString ShardNodeName;
@@ -844,14 +846,17 @@ struct TTxIndexTablet
                 NProto::TProfileLogRequestInfo profileLogRequest,
                 ui64 parentNodeId,
                 ui64 targetNodeId,
-                NProto::TNode attrs)
+                NProto::TNode attrs,
+                bool behaveAsShard)
             : TSessionAware(request)
             , TProfileAware(std::move(profileLogRequest))
             , RequestInfo(std::move(requestInfo))
             , ParentNodeId(parentNodeId)
             , TargetNodeId(targetNodeId)
             , Name(request.GetName())
-            , Attrs(std::move(attrs))
+            , OrigAttrs(std::move(attrs))
+            , Attrs(OrigAttrs)
+            , BehaveAsShard(behaveAsShard)
             , RequestShardId(request.GetShardFileSystemId())
             , ShardId(RequestShardId)
             , Request(std::move(request))
@@ -871,6 +876,15 @@ struct TTxIndexTablet
             OpLogEntry.Clear();
 
             Response.Clear();
+
+            // The tablet that owns the parent directory recomputes ACL
+            // inheritance on retry. The receiving shard keeps the forwarded
+            // ACLs.
+            if (!BehaveAsShard) {
+                Attrs = OrigAttrs;
+                Request.ClearParentDefaultAcl();
+                Request.ClearChildAccessAcl();
+            }
 
             // deliberately not calling TProfileAware::Clear()
         }
@@ -2000,7 +2014,7 @@ struct TTxIndexTablet
         const ui64 NodeId;
         const TString Name;
         const ui32 Flags;
-        const ui32 Mode;
+        ui32 Mode;
         const ui32 Uid;
         ui32 Gid;
         ui32 QuotaId = 0;
@@ -2016,6 +2030,8 @@ struct TTxIndexTablet
         const bool IsNodeRefLocked;
         TMaybe<INodeIndexTabletDatabase::TNode> TargetNode;
         TMaybe<INodeIndexTabletDatabase::TNode> ParentNode;
+        TString ParentDefaultAcl;
+        TString ChildAccessAcl;
         TVector<ui64> UpdatedNodes;
 
         NProto::TOpLogEntry OpLogEntry;
@@ -2051,12 +2067,15 @@ struct TTxIndexTablet
 
             ReadCommitId = InvalidCommitId;
             WriteCommitId = InvalidCommitId;
+            Mode = Request.GetMode();
             TargetNodeId = InvalidNodeId;
             ShardId.clear();
             ShardNodeName.clear();
             IsNewShardNode = false;
             TargetNode.Clear();
             ParentNode.Clear();
+            ParentDefaultAcl.clear();
+            ChildAccessAcl.clear();
             UpdatedNodes.clear();
             QuotaId = 0;
 
