@@ -2,6 +2,8 @@
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
 #include <util/string/builder.h>
 #include <util/string/printf.h>
 
@@ -26,11 +28,13 @@ TWriteBackCacheState::TWriteBackCacheState(
     IWriteDataRequestManagerStatsPtr writeDataRequestManagerStats,
     INodeStateHolderStatsPtr nodeStateHolderStats,
     const TFlushBatchLimits& flushBatchLimits,
+    TLog log,
     TString logTag)
     : SequenceIdGenerator(std::make_shared<TSequenceIdGenerator>())
     , Timer(std::move(timer))
     , Stats(std::move(writeBackCacheStateStats))
     , FlushBatchLimits(flushBatchLimits)
+    , Log(std::move(log))
     , LogTag(std::move(logTag))
     , Nodes(Timer, std::move(nodeStateHolderStats))
     , RequestManager(
@@ -61,11 +65,20 @@ NProto::TError TWriteBackCacheState::Init()
     return error;
 }
 
-void TWriteBackCacheState::SetDrainingMode()
+void TWriteBackCacheState::Drain()
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    DrainingMode = true;
+    SetDrainRequestedFlag();
+}
+
+TFuture<void> TWriteBackCacheState::Shutdown()
+{
+    auto guard = LockStateAndPostponeQueuedOperations();
+
+    ShutdownRequested = true;
+    SetDrainRequestedFlag();
+    return ShutdownPromise.GetFuture();
 }
 
 bool TWriteBackCacheState::IsDrained() const
@@ -80,12 +93,12 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    if (DrainingMode) {
+    if (DrainRequested) {
         // This may happen due to race condition that is valid scenario:
         // - TWriteBackCache::Drain is called in one thread;
         // - WriteData request is being processed in another thread.
         //
-        // But currently, Drain is called only at session creation
+        // But currently, draining is requested only at session creation
         // or destruction where WriteData requests are not expected.
         // Therefore, we report an error.
         ReportWriteBackCacheWritingNotAllowedInDrainingMode(
@@ -411,6 +424,7 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
     TriggerFlushCompletions(nodeState);
     UpdateFlushStatus(nodeId, nodeState);
     EvictUnpinnedFlushedEntries(nodeId, nodeState);
+    CompleteShutdownIfNeeded();
 }
 
 EFlushRetryStatus TWriteBackCacheState::FlushFailed(
@@ -546,8 +560,13 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
 
     TryRemoveUnusedHandle(nodeState, flushHandle);
 
-    if (nodeState.Handles.empty()) {
-        // No live handles remaining - drop all unflushed requests
+    // During shutdown, a flush error permits dropping cached data instead
+    // of retrying.
+    const bool shouldDropCachedData =
+        nodeState.Handles.empty() ||
+        (ShutdownRequested && !nodeState.Cache.HasPendingRequests());
+
+    if (shouldDropCachedData) {
         nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
         Stats->FlushCompleted();
         DropCachedData(nodeId, nodeState, error);
@@ -663,7 +682,7 @@ EOperationalState TWriteBackCacheState::GetOperationalState() const
     if (IsFailed) {
         return EOperationalState::Failed;
     }
-    if (DrainingMode) {
+    if (DrainRequested) {
         return RequestManager.HasPendingOrUnflushedRequests()
                    ? EOperationalState::Stopping
                    : EOperationalState::Inactive;
@@ -796,6 +815,24 @@ void TWriteBackCacheState::TriggerFlushCompletions(TNodeState& nodeState)
         QueuedOperations.CompleteFlushOrReleasePromise(
             std::move(front.Promise));
         FlushAllRequestQueue.pop_front();
+    }
+}
+
+void TWriteBackCacheState::CompleteShutdownIfNeeded()
+{
+    if (ShutdownRequested && !ShutdownCompleted &&
+        GetOperationalState() == EOperationalState::Inactive)
+    {
+        QueuedOperations.CompleteShutdownPromise(ShutdownPromise);
+        ShutdownCompleted = true;
+
+        if (ShutdownDroppedRequestCount > 0) {
+            ReportWriteBackCacheDataLossError(
+                TStringBuilder()
+                << LogTag
+                << " Dropped unflushed WriteData requests during shutdown"
+                << " RequestCount=" << ShutdownDroppedRequestCount);
+        }
     }
 }
 
@@ -1070,18 +1107,31 @@ void TWriteBackCacheState::DropCachedData(
         return;
     }
 
-    if (nodeState.Cache.HasUnflushedRequests()) {
-        // TODO(#1751): Implement logging for dropped unflushed requests
-        // similar to STORAGE_WARN macro
-    }
+    ui64 droppedRequestCount = 0;
 
     while (nodeState.Cache.HasUnflushedRequests()) {
         auto* request = nodeState.Cache.MoveFrontUnflushedRequestToFlushed();
         if (!RequestManager.SetFlushed(request)) {
             SetFailedFlag();
-            return;
+            break;
         }
         Stats->WriteDataRequestDropped();
+        ++droppedRequestCount;
+    }
+
+    if (ShutdownRequested) {
+        ShutdownDroppedRequestCount += droppedRequestCount;
+    }
+
+    if (droppedRequestCount > 0) {
+        STORAGE_WARN(
+            LogTag << " Dropped unflushed WriteData requests"
+                   << " NodeId=" << nodeId << " RequestCount="
+                   << droppedRequestCount << " Error=" << FormatError(error));
+    }
+
+    if (IsFailed) {
+        return;
     }
 
     for (auto& it: nodeState.Handles) {
@@ -1098,10 +1148,13 @@ void TWriteBackCacheState::DropCachedData(
         }
     }
 
+    // List destruction detaches the sentinels; surviving cached requests
+    // unlink themselves when destroyed.
     nodeState.Handles.clear();
     nodeState.HandlesWithReleaseRequests.clear();
 
     EvictUnpinnedFlushedEntries(nodeId, nodeState);
+    CompleteShutdownIfNeeded();
 }
 
 void TWriteBackCacheState::FailUnallocatedPendingRequest(
@@ -1157,6 +1210,15 @@ void TWriteBackCacheState::FailAllUnallocatedPendingRequests(
             CheckAndAcquireBarriers(nodeState);
         }
     }
+}
+
+void TWriteBackCacheState::SetDrainRequestedFlag()
+{
+    DrainRequested = true;
+    if (!IsFailed) {
+        TriggerFlushAll(true);
+    }
+    CompleteShutdownIfNeeded();
 }
 
 void TWriteBackCacheState::SetFailedFlag()

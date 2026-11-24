@@ -140,8 +140,8 @@ class TInitializer: public std::enable_shared_from_this<TInitializer>
 {
 private:
     const TLog Log;
-    const TStorageConfigConstPtr StorageConfig;
-    const TDiskAgentConfigConstPtr AgentConfig;
+    const TStorageConfigPtr StorageConfig;
+    const TDiskAgentConfigPtr AgentConfig;
     const IStorageProviderPtr StorageProvider;
     const NNvme::INvmeManagerPtr NvmeManager;
 
@@ -165,8 +165,8 @@ private:
 public:
     TInitializer(
         TLog log,
-        TStorageConfigConstPtr storageConfig,
-        TDiskAgentConfigConstPtr agentConfig,
+        TStorageConfigPtr storageConfig,
+        TDiskAgentConfigPtr agentConfig,
         IStorageProviderPtr storageProvider,
         NNvme::INvmeManagerPtr nvmeManager);
 
@@ -222,8 +222,8 @@ private:
 
 TInitializer::TInitializer(
         TLog log,
-        TStorageConfigConstPtr storageConfig,
-        TDiskAgentConfigConstPtr agentConfig,
+        TStorageConfigPtr storageConfig,
+        TDiskAgentConfigPtr agentConfig,
         IStorageProviderPtr storageProvider,
         NNvme::INvmeManagerPtr nvmeManager)
     : Log{std::move(log)}
@@ -858,8 +858,8 @@ void TInitializer::ReportDiskAgentConfigMismatchEvent(const TString& error) {
 
 TFuture<TInitializeStorageResult> InitializeStorage(
     TLog log,
-    TStorageConfigConstPtr storageConfig,
-    TDiskAgentConfigConstPtr agentConfig,
+    TStorageConfigPtr storageConfig,
+    TDiskAgentConfigPtr agentConfig,
     IStorageProviderPtr storageProvider,
     NNvme::INvmeManagerPtr nvmeManager)
 {
@@ -875,8 +875,8 @@ TFuture<TInitializeStorageResult> InitializeStorage(
 
 NThreading::TFuture<TInitializeStorageResult> InitializePaths(
     TLog log,
-    TStorageConfigConstPtr storageConfig,
-    TDiskAgentConfigConstPtr agentConfig,
+    TStorageConfigPtr storageConfig,
+    TDiskAgentConfigPtr agentConfig,
     IStorageProviderPtr storageProvider,
     NNvme::INvmeManagerPtr nvmeManager,
     TVector<TString> allowedPaths)

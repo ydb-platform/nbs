@@ -90,13 +90,23 @@ void TPartitionThreadSafeState::FinishFreshWrite(
 
 ui64 TPartitionThreadSafeState::GetTrimFreshLogToCommitId() const
 {
+    return GetFreshTrimSnapshot().OrdinaryTrimToCommitId;
+}
+
+TPartitionThreadSafeState::TFreshTrimSnapshot
+TPartitionThreadSafeState::GetFreshTrimSnapshot() const
+{
     TGuard guard(StateLock);
 
-    return Min(
-        GetLastCommitIdImpl(),
+    const ui64 lastCommitId = GetLastCommitIdImpl();
+    return {
         // if there are fresh writes in-flight, trim only up to
         // the smallest in-flight commit id minus one
-        TrimFreshLogBarriers.GetMinCommitId() - 1);
+        .OrdinaryTrimToCommitId =
+            Min(lastCommitId, TrimFreshLogBarriers.GetMinCommitId() - 1),
+        .SelectiveTrimToCommitId =
+            Min(lastCommitId, FreshWritesCommitQueue.GetMinCommitId() - 1),
+    };
 }
 
 void TPartitionThreadSafeState::WaitCommit(

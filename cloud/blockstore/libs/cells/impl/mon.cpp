@@ -597,12 +597,12 @@ class TCellsMonActor final
 {
 private:
     const ICellManagerPtr CellManager;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
 
 public:
     TCellsMonActor(
             ICellManagerPtr cellManager,
-            TDiagnosticsConfigConstPtr diagnosticsConfig)
+            TDiagnosticsConfigPtr diagnosticsConfig)
         : CellManager(std::move(cellManager))
         , DiagnosticsConfig(std::move(diagnosticsConfig))
     {}
@@ -836,7 +836,7 @@ void RenderCellsSearchResult(
 
 IActorPtr CreateCellsMonActor(
     ICellManagerPtr cellManager,
-    TDiagnosticsConfigConstPtr diagnosticsConfig)
+    TDiagnosticsConfigPtr diagnosticsConfig)
 {
     return std::make_unique<TCellsMonActor>(
         std::move(cellManager),

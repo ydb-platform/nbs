@@ -1,6 +1,5 @@
 #include "actorsystem.h"
 
-#include <cloud/blockstore/libs/config/blockstore_config_provider_private.h>
 #include <cloud/blockstore/libs/config/helpers.h>
 #include <cloud/blockstore/libs/config/opaque_config_parser.h>
 #include <cloud/blockstore/libs/configs_manager/configs_manager.h>
@@ -142,8 +141,6 @@ public:
         const auto storageConfig = config->GetStorageConfig();
 
         storageConfig->GetControls()->Register(*appData->Icb);
-        auto ConfigHolder = InitializeBlockstoreConfigProvider(
-            Args.StartupBlockstoreConfig);
 
         //
         // ConfigsManager
@@ -159,7 +156,7 @@ public:
                 MakeConfigsManagerServiceId(),
                 TActorSetupCmd(
                     CreateConfigsManager({
-                        .ConfigHolder = std::move(ConfigHolder),
+                        .ConfigHolder = Args.ConfigHolder,
                         .StaticConfig = Args.StaticBlockstoreConfigProto,
                         .InitialDynamicConfig = Args.CmsBlockstoreConfig,
                         .StorageConfigControls =
@@ -386,6 +383,7 @@ public:
 
         auto volumeBalancerService = CreateVolumeBalancerActor(
             storageConfig,
+            config->GetDiagnosticsConfig(),
             Args.VolumeStats,
             Args.StatsFetcher,
             Args.VolumeBalancerSwitch,
@@ -440,8 +438,8 @@ class TCustomLocalServiceInitializer final
 private:
     const NKikimrConfig::TAppConfig& AppConfig;
     const ILoggingServicePtr Logging;
-    const TStorageConfigConstPtr StorageConfig;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    const TStorageConfigPtr StorageConfig;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -458,8 +456,8 @@ public:
     TCustomLocalServiceInitializer(
             const NKikimrConfig::TAppConfig& appConfig,
             ILoggingServicePtr logging,
-            TStorageConfigConstPtr storageConfig,
-            TDiagnosticsConfigConstPtr diagnosticsConfig,
+            TStorageConfigPtr storageConfig,
+            TDiagnosticsConfigPtr diagnosticsConfig,
             IProfileLogPtr profileLog,
             IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
             IBlockDigestGeneratorPtr blockDigestGenerator,
@@ -616,6 +614,7 @@ public:
 IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
 {
     Y_ABORT_UNLESS(sArgs.StartupBlockstoreConfig);
+    Y_ABORT_UNLESS(sArgs.ConfigHolder);
 
     const TStorageConfig staticStorageConfig(
         sArgs.StaticBlockstoreConfigProto.GetStorageService(),

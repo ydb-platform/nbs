@@ -100,16 +100,22 @@ void TVolumeActor::HandleUpdateVolatileThrottlingConfig(
         return;
     }
 
-    if (throttlingConfig.GetVersion() <=
-        State->GetThrottlingPolicy().GetVolatileThrottlingVersion())
+    const auto incomingVersion = throttlingConfig.GetVersion();
+    const auto currentVersion =
+        State->GetThrottlingPolicy().GetVolatileThrottlingVersion();
+
+    // Re-evaluate the rule for the previously accepted configuration version if
+    // volume parameters used for rule selection have changed (e.g. FolderId).
+    if (incomingVersion < currentVersion ||
+        (incomingVersion == currentVersion &&
+         !State->IsThrottlingRuleOutdated()))
     {
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Got TVolumeThrottlingConfig version less than known: (%u) <= "
-            "(%u): ",
-            throttlingConfig.GetVersion(),
-            State->GetThrottlingPolicy().GetVolatileThrottlingVersion());
+            "Ignore throttling config version %u (current version: %u).",
+            incomingVersion,
+            currentVersion);
         return;
     }
 

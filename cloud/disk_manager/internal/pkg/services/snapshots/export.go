@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/golang/protobuf/proto"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	api "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
@@ -19,9 +21,9 @@ func (s *service) ExportSnapshot(
 ) (string, error) {
 
 	if s.exportConfig == nil {
-		return "", errors.NewNonRetriableErrorf(
-			"snapshot export is not configured",
-		)
+		return "", errors.NewSilentNonRetriableError(status.Error(
+			codes.Unimplemented, "snapshot export is not configured",
+		))
 	}
 
 	if req.GetSnapshotId() == "" || req.GetFolderId() == "" ||

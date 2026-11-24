@@ -75,6 +75,11 @@ message TFileSystem
     bool GuestPosixAclEnabled = 26;
 
     NProtoPrivate.TShardTopology ShardTopology = 27;
+
+    // Persisted physical shard creation progress. Intentionally retained after
+    // successful resize: clearing it could erase recovery bits from another
+    // in-flight resize. Bits below current topology size are committed history.
+    NProtoPrivate.TFileSystemShardCreationState ShardCreationState = 28;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -42,8 +42,8 @@ bool NeedToNotifyAboutDeviceRequestError(const NProto::TError& err)
 }   // namespace
 
 TNonreplicatedPartitionRdmaActor::TNonreplicatedPartitionRdmaActor(
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         TActorId volumeActorId,

@@ -165,9 +165,8 @@ def filter_broken_vms_to_remove(
 
 # rules are:
 # 1. If all alive VMs are busy and there are VMs to remove, raise an exception.
-# 2. If there are no alive VMs, create the maximum number of VMs to create.
-# 3. If there are idle VMs, check if the number of idle VMs exceeds the maximum number
-# of VMs to create if so, remove the excess idle VMs.
+# 2. If there are no alive VMs, create up to the target within the total cap.
+# 3. Trim idle VMs to the idle target and count busy VMs toward the total cap.
 # 4. If there are busy VMs and the number of alive VMs is less than the maximum number
 # of VMs to have, create the extra VMs if needed.
 # 5. If there are no idle VMs and the number of alive VMs is less than the maximum number
@@ -208,14 +207,16 @@ def decide_scaling(
         )
 
     if alive == 0:
-        logger.info(
-            "No alive VMs, creating %d VM(s) to meet minimum target", max_vms_to_create
-        )
-        return max_vms_to_create, 0, max_vms_to_create
+        to_create = min(max_vms_to_create, maximum_amount_of_vms_to_have)
+        logger.info("No alive VMs, creating %d VM(s)", to_create)
+        return to_create, 0, to_create
 
-    excess_idle = max(0, idle - max_vms_to_create)
-    projected_preview = alive - remove - excess_idle
-    idle_remaining = idle - excess_idle
+    idle_target = max(0, min(max_vms_to_create, maximum_amount_of_vms_to_have - busy))
+    excess_idle = max(0, idle - idle_target)
+    total_removals = max(remove, excess_idle)
+    projected_preview = alive - total_removals
+    idle_remaining = idle - total_removals
+    remaining_capacity = max(0, maximum_amount_of_vms_to_have - projected_preview)
 
     to_create = 0
     logger.info(
@@ -274,14 +275,16 @@ def decide_scaling(
         condition_extra_vms,
     )
     if condition_projected_eq0:
-        to_create = max_vms_to_create
+        to_create = min(max_vms_to_create, remaining_capacity)
         logger.info(
             "No VMs projected to remain, creating %d VM(s) to meet minimum target",
             to_create,
         )
     elif condition_not_enough_vms:
         to_create = min(
-            max_vms_to_create - (idle_remaining + busy), extra_vms_if_needed
+            max_vms_to_create - (idle_remaining + busy),
+            extra_vms_if_needed,
+            remaining_capacity,
         )
         logger.info(
             "Not enough total VMs available (idle + busy = %d), creating %d VM(s) to reach the minimum required",
@@ -289,22 +292,10 @@ def decide_scaling(
             to_create,
         )
     elif condition_extra_vms:
-        to_create = min(
-            extra_vms_if_needed, maximum_amount_of_vms_to_have - projected_preview
-        )
+        to_create = min(extra_vms_if_needed, remaining_capacity)
         logger.info("Most VMs are busy, provisioning %d extra VM(s)", to_create)
 
-    total_removals = max(remove, excess_idle)
-    projected = alive - total_removals + to_create
-
-    if projected > maximum_amount_of_vms_to_have:
-        logger.info(
-            "Projected VMs (%d) exceeds maximum allowed (%d), adjusting to maximum",
-            projected,
-            maximum_amount_of_vms_to_have,
-        )
-        return 0, 0, projected
-
+    projected = projected_preview + to_create
     if projected == 0:
         raise ValueError("Projected VMs (%s) is 0, which is not allowed.", projected)
 
@@ -450,16 +441,14 @@ async def run(
     )
 
     to_remove = vms_to_remove
-    if excess_idle > 0:
-        for vm_id in idle_vm_ids:
-            if vm_id not in to_remove:
-                to_remove.append(vm_id)
-        logger.info("Resulting sorted to_remove vm list: %s", to_remove)
-        to_remove = to_remove[:excess_idle]
+    additional_removals = excess_idle - len(to_remove)
+    if additional_removals > 0:
+        selected_ids = set(to_remove)
+        remaining_idle = [vm_id for vm_id in idle_vm_ids if vm_id not in selected_ids]
+        to_remove = to_remove + remaining_idle[:additional_removals]
         logger.info(
-            "Excess idle VMs: %d, marking %d for removal: %s",
-            excess_idle,
-            len(to_remove),
+            "Added %d idle VMs to the removal list: %s",
+            additional_removals,
             to_remove,
         )
 

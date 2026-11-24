@@ -47,7 +47,7 @@ class TDescribeSchemeActor final
 private:
     const TRequestInfoPtr RequestInfo;
 
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     const TString Path;
     const bool AddPathToError;
     TActorId PathDescriptionBackup;
@@ -55,7 +55,7 @@ private:
 public:
     TDescribeSchemeActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TString path,
         bool addPathToError,
         TActorId pathDescriptionBackup);
@@ -91,7 +91,7 @@ private:
 
 TDescribeSchemeActor::TDescribeSchemeActor(
     TRequestInfoPtr requestInfo,
-    TStorageConfigConstPtr config,
+    TStorageConfigPtr config,
     TString path,
     bool addPathToError,
     TActorId pathDescriptionBackup)

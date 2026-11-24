@@ -36,6 +36,8 @@
 #include <util/generic/maybe.h>
 #include <util/generic/vector.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -76,16 +78,19 @@ struct TAddMergedBlob
     const TBlockRange32 BlockRange;
     const TBlockMask SkipMask;
     const TVector<ui32> Checksums;
+    const std::optional<NProto::TCompressionMetadata> CompressionMetadata;
 
     TAddMergedBlob(
-            const TPartialBlobId& blobId,
-            const TBlockRange32& blockRange,
-            const TBlockMask& skipMask,
-            TVector<ui32> checksums)
+        const TPartialBlobId& blobId,
+        const TBlockRange32& blockRange,
+        const TBlockMask& skipMask,
+        TVector<ui32> checksums,
+        std::optional<NProto::TCompressionMetadata> compressionMetadata)
         : BlobId(blobId)
         , BlockRange(blockRange)
         , SkipMask(skipMask)
         , Checksums(std::move(checksums))
+        , CompressionMetadata(std::move(compressionMetadata))
     {}
 };
 

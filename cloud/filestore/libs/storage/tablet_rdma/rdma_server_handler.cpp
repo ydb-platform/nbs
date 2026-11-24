@@ -116,10 +116,7 @@ public:
     }                                                                          \
 // FILESTORE_RDMA_FORWARD_CASE
 
-            FILESTORE_SERVICE_REQUESTS(FILESTORE_RDMA_FORWARD_CASE, TEvService)
-            FILESTORE_TABLET_REQUESTS(
-                FILESTORE_RDMA_FORWARD_CASE,
-                TEvIndexTablet)
+            FILESTORE_RDMA_REQUESTS(FILESTORE_RDMA_FORWARD_CASE)
 
 #undef FILESTORE_RDMA_FORWARD_CASE
 
@@ -180,18 +177,13 @@ private:
 
 bool IsRdmaTabletMethod(ui32 methodId)
 {
-    if (methodId == TEvIndexTablet::EvCreateSessionRequest) {
-        return false;
-    }
-
     switch (methodId) {
 
 #define FILESTORE_RDMA_METHOD_CASE(name, ns)                                   \
     case ns::TEv##name##Request::EventType:                                    \
 // FILESTORE_RDMA_METHOD_CASE
 
-        FILESTORE_SERVICE_REQUESTS(FILESTORE_RDMA_METHOD_CASE, TEvService)
-        FILESTORE_TABLET_REQUESTS(FILESTORE_RDMA_METHOD_CASE, TEvIndexTablet)
+        FILESTORE_RDMA_REQUESTS(FILESTORE_RDMA_METHOD_CASE)
 
 #undef FILESTORE_RDMA_METHOD_CASE
 

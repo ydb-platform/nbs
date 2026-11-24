@@ -175,6 +175,7 @@ void RestoreShardTopology(
 TVector<TString> GetFileShardIds(const NProto::TFileSystem& fileSystem);
 
 NProto::TError ValidateShardTopology(
+    const NProtoPrivate::TShardTopology& currentTopology,
     const NProtoPrivate::TShardTopology& topology);
 
 ////////////////////////////////////////////////////////////////////////////////

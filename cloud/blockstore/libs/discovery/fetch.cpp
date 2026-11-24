@@ -151,7 +151,7 @@ class TConductorInstanceFetcher final
     : public IInstanceFetcher
 {
 private:
-    TDiscoveryConfigConstPtr Config;
+    TDiscoveryConfigPtr Config;
     ILoggingServicePtr Logging;
     IMonitoringServicePtr Monitoring;
     ITimerPtr Timer;
@@ -164,7 +164,7 @@ private:
 
 public:
     TConductorInstanceFetcher(
-            TDiscoveryConfigConstPtr config,
+            TDiscoveryConfigPtr config,
             ILoggingServicePtr logging,
             IMonitoringServicePtr monitoring,
             ITimerPtr timer,
@@ -367,7 +367,7 @@ class TStaticInstanceFetcher final
     : public IInstanceFetcher
 {
 private:
-    TDiscoveryConfigConstPtr Config;
+    TDiscoveryConfigPtr Config;
     ILoggingServicePtr Logging;
     IMonitoringServicePtr Monitoring;
 
@@ -376,7 +376,7 @@ private:
 
 public:
     TStaticInstanceFetcher(
-            TDiscoveryConfigConstPtr config,
+            TDiscoveryConfigPtr config,
             ILoggingServicePtr logging,
             IMonitoringServicePtr monitoring)
         : Config(std::move(config))
@@ -521,7 +521,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IInstanceFetcherPtr CreateConductorInstanceFetcher(
-    TDiscoveryConfigConstPtr config,
+    TDiscoveryConfigPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     ITimerPtr timer,
@@ -537,7 +537,7 @@ IInstanceFetcherPtr CreateConductorInstanceFetcher(
 }
 
 IInstanceFetcherPtr CreateStaticInstanceFetcher(
-    TDiscoveryConfigConstPtr config,
+    TDiscoveryConfigPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring)
 {

@@ -26,7 +26,8 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type createSnapshotDiskZoneTest struct {
+type createSnapshotFromDiskTest struct {
+	t          *testing.T
 	ctx        context.Context
 	storage    *storage_mocks.StorageMock
 	nbsFactory *nbs_mocks.FactoryMock
@@ -35,17 +36,18 @@ type createSnapshotDiskZoneTest struct {
 	task       *createSnapshotFromDiskTask
 }
 
-func newCreateSnapshotDiskZoneTest(
+func newCreateSnapshotFromDiskTest(
 	t *testing.T,
 	zoneID string,
 	useProxy bool,
 	state *protos.CreateSnapshotFromDiskTaskState,
 	disabledZones *internal_common.DisabledZones,
-) *createSnapshotDiskZoneTest {
+) *createSnapshotFromDiskTest {
 
 	t.Helper()
 
-	f := &createSnapshotDiskZoneTest{
+	f := &createSnapshotFromDiskTest{
+		t:          t,
 		ctx:        newContext(),
 		storage:    storage_mocks.NewStorageMock(),
 		nbsFactory: nbs_mocks.NewFactoryMock(),
@@ -88,6 +90,41 @@ func newCreateSnapshotDiskZoneTest(
 	return f
 }
 
+func (f *createSnapshotFromDiskTest) checkSnapshotBlockSize(
+	requestBlockSize uint32,
+) {
+
+	f.t.Helper()
+
+	f.task.request.BlockSize = requestBlockSize
+	f.execCtx.On("GetTaskID").Return("create").Twice()
+
+	if requestBlockSize == 0 {
+		f.storage.On("GetSnapshotMeta", f.ctx, "snapshot").
+			Return((*storage.SnapshotMeta)(nil), nil).Once()
+		f.nbsFactory.On("GetClient", f.ctx, "zone").
+			Return(f.nbsClient, nil).Once()
+		f.nbsClient.On("Describe", f.ctx, "disk").
+			Return(nbs_client.DiskParams{BlockSize: 8192}, nil).Once()
+	}
+
+	f.storage.On(
+		"CreateSnapshot",
+		f.ctx,
+		storage.SnapshotMeta{
+			BlockSize:    8192,
+			ID:           "snapshot",
+			Disk:         f.task.request.SrcDisk,
+			CheckpointID: "checkpoint",
+			CreateTaskID: "create",
+		},
+	).Return((*storage.SnapshotMeta)(nil), assert.AnError).Once()
+
+	// Stop at CreateSnapshot to check the block size passed to storage.
+	err := f.task.run(f.ctx, f.execCtx)
+	require.ErrorIs(f.t, err, assert.AnError)
+}
+
 // Checks that disabled zones reject new and resumed transfers before any calls,
 // preserve state, and expose the abort details through persisted task errors.
 func TestCreateSnapshotFromDiskDisabledZone(t *testing.T) {
@@ -120,7 +157,7 @@ func TestCreateSnapshotFromDiskDisabledZone(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := newCreateSnapshotDiskZoneTest(
+			f := newCreateSnapshotFromDiskTest(
 				t, tc.zoneID, true, tc.state,
 				internal_common.NewDisabledZones([]string{tc.zoneID}),
 			)
@@ -174,7 +211,7 @@ func TestCreateSnapshotFromDiskAllowedZone(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := newCreateSnapshotDiskZoneTest(
+			f := newCreateSnapshotFromDiskTest(
 				t, "zone-a-cell1", false,
 				&protos.CreateSnapshotFromDiskTaskState{},
 				internal_common.NewDisabledZones(tc.disabledZones),
@@ -247,7 +284,7 @@ func TestCreateSnapshotFromDiskCancelDisabled(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := newCreateSnapshotDiskZoneTest(
+			f := newCreateSnapshotFromDiskTest(
 				t, "zone-d", tc.useProxy, tc.state,
 				internal_common.NewDisabledZones([]string{"zone-d"}),
 			)
@@ -303,7 +340,7 @@ func TestCreateSnapshotFromDiskCancelAllowed(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := newCreateSnapshotDiskZoneTest(
+			f := newCreateSnapshotFromDiskTest(
 				t, "zone-a", true,
 				&protos.CreateSnapshotFromDiskTaskState{BaseSnapshotId: "base"},
 				internal_common.NewDisabledZones(tc.disabledZones),
@@ -332,6 +369,32 @@ func TestCreateSnapshotFromDiskCancelAllowed(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestCreateSnapshotFromDiskBlockSize(t *testing.T) {
+	testCases := []struct {
+		name             string
+		requestBlockSize uint32
+	}{
+		{name: "block size from disk"},
+		{name: "block size from request", requestBlockSize: 8192},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			f := newCreateSnapshotFromDiskTest(
+				t,
+				"zone",
+				false, // useProxy
+				&protos.CreateSnapshotFromDiskTaskState{},
+				nil, // disabledZones
+			)
+
+			f.checkSnapshotBlockSize(testCase.requestBlockSize)
 		})
 	}
 }

@@ -47,8 +47,8 @@ class TStatsServiceActor final
     using TBackgroundBandwidth = TMap<TString, TBackgroundBandwidthInfo>;
 
 private:
-    const TStorageConfigConstPtr Config;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const NYdbStats::IYdbVolumesStatsUploaderPtr StatsUploader;
     const IStatsAggregatorPtr ClientStatsAggregator;
     const NCloud::NStorage::NUserStats::IUserCounterSupplierPtr UserCounters;
@@ -80,8 +80,8 @@ private:
 
 public:
     TStatsServiceActor(
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         NYdbStats::IYdbVolumesStatsUploaderPtr statsUploader,
         IStatsAggregatorPtr clientStatsAggregator);
     ~TStatsServiceActor() override = default;

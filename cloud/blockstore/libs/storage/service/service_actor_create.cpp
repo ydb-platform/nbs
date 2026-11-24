@@ -59,7 +59,7 @@ class TCreateVolumeActor final
 private:
     const TRequestInfoPtr RequestInfo;
 
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     const NProto::TCreateVolumeRequest Request;
     const IRootKmsKeyProviderPtr KeyProvider;
 
@@ -68,7 +68,7 @@ private:
 public:
     TCreateVolumeActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         NProto::TCreateVolumeRequest request,
         IRootKmsKeyProviderPtr keyProvider);
 
@@ -113,7 +113,7 @@ private:
 
 TCreateVolumeActor::TCreateVolumeActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         NProto::TCreateVolumeRequest request,
         IRootKmsKeyProviderPtr keyProvider)
     : RequestInfo(std::move(requestInfo))

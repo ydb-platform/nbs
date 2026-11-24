@@ -67,7 +67,6 @@ public:
     }
 };
 
-using TRdmaConfigPtr = std::shared_ptr<TRdmaConfig>;
-using TRdmaConfigConstPtr = std::shared_ptr<const TRdmaConfig>;
+using TRdmaConfigPtr = std::shared_ptr<const TRdmaConfig>;
 
 }   // namespace NCloud::NBlockStore::NRdma

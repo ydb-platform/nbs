@@ -46,8 +46,12 @@ enum EVolumePreemptionType
     PREEMPTION_NONE = 0;
     // Move most resource consuming disk
     PREEMPTION_MOVE_MOST_HEAVY = 1;
-    // Move least resource consumig disk
+    // Move least resource consuming disk
     PREEMPTION_MOVE_LEAST_HEAVY = 2;
+    // Move most IO cost consuming disk
+    PREEMPTION_MOVE_IO_COST_MOST_HEAVY = 3;
+    // Move least IO cost consuming disk
+    PREEMPTION_MOVE_IO_COST_LEAST_HEAVY = 4;
 }
 
 message TLinkedDiskFillBandwidth
@@ -1800,4 +1804,23 @@ message TStorageServiceConfig
     // Paths that consistently use different kinds require extended counters.
     // Exclude blobs awaiting cleanup from these counts. Disabled by default.
     optional bool MixedBlocksCompactionByteCountersEnabled = 557;
+
+    // Partition v1 flush threshold (in bytes) per allocation unit of partition
+    // size. A partition smaller than one allocation unit gets this value, a
+    // larger one gets it scaled proportionally (1.5 units -> 1.5x), up to
+    // MaxFlushThreshold{HDD,SSD}. Zero disables scaling, so
+    // FlushThreshold{HDD,SSD} applies.
+    optional uint32 FlushThresholdPerAllocationUnitHDD = 558;
+    optional uint32 FlushThresholdPerAllocationUnitSSD = 559;
+
+    // Upper bound (in bytes) for the scaled flush threshold. Zero disables
+    // scaling, so FlushThreshold{HDD,SSD} applies.
+    optional uint32 MaxFlushThresholdHDD = 560;
+    optional uint32 MaxFlushThresholdSSD = 561;
+
+    // Allow fresh-log trim to move a soft barrier past live fresh blobs and
+    // protect them with Keep flags. Requires a nonzero
+    // FreshDeadBlobByteCountTrimThreshold for the same media kind.
+    optional bool FreshSelectiveTrimEnabledSSD = 562;
+    optional bool FreshSelectiveTrimEnabledHDD = 563;
 }

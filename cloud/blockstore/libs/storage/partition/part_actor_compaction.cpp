@@ -798,7 +798,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 blobId,
                 range,
                 skipMask,
-                std::move(ensuredBlockChecksums));
+                std::move(ensuredBlockChecksums),
+                std::nullopt);
             mergedBlobCompactionInfos.push_back(
                 {blobsSkipped,
                  blocksSkipped,
@@ -1300,7 +1301,7 @@ TDuration InterpolateCompactionExecTime(
 class TCompactionTriggerer
 {
 private:
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     TPartitionState& State;
 
     TRangeStat TopRangeStat;
@@ -1356,7 +1357,7 @@ public:
 
 public:
     TCompactionTriggerer(
-        const TStorageConfigConstPtr config,
+        const TStorageConfigPtr config,
         TPartitionState& state,
         TInstant now)
         : Config(config)

@@ -185,15 +185,6 @@ struct TEnv
         }
         UNIT_ASSERT(condition());
     }
-
-    TString GetStorageStatsBody()
-    {
-        TString body;
-        Y_ABORT_UNLESS(
-            Tablet.CreateGetStorageStatsRequest()->Record.SerializeToString(
-                &body));
-        return body;
-    }
 };
 
 }   // namespace
@@ -259,23 +250,25 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
     {
         TEnv env(TDuration::Zero());
 
-        CreateNode(env.Tablet, TCreateNodeArgs::File(RootNodeId, "file"));
+        const ui64 nodeId =
+            CreateNode(env.Tablet, TCreateNodeArgs::File(RootNodeId, "file"));
 
-        auto stats = env.Wait(
-            env.Send(env.Tablet.CreateGetStorageStatsRequest()));
+        auto attrs = env.Wait(env.Send(
+            env.Tablet.CreateGetNodeAttrBatchRequest(RootNodeId, {"file"})));
         UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(TEvIndexTablet::EvGetStorageStatsResponse),
-            stats.MethodId);
+            static_cast<ui32>(TEvIndexTablet::EvGetNodeAttrBatchResponse),
+            attrs.MethodId);
+        const auto& record =
+            env.Record<NProtoPrivate::TGetNodeAttrBatchResponse>(attrs);
+        UNIT_ASSERT_VALUES_EQUAL(1, record.ResponsesSize());
         UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            env.Record<NProtoPrivate::TGetStorageStatsResponse>(stats)
-                .GetStats()
-                .GetUsedNodesCount());
+            nodeId,
+            record.GetResponses(0).GetNode().GetId());
     }
 
     Y_UNIT_TEST(ShouldDeliverRequestsOnBehalfOfClientPipe)
     {
-        using TEvRequest = TEvIndexTablet::TEvGetStorageStatsRequest;
+        using TEvRequest = TEvService::TEvGetNodeAttrRequest;
 
         TEnv env(TDuration::Zero());
 
@@ -291,9 +284,9 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
                 target = ev->GetRecipientRewrite();
             });
 
-        auto stats = env.Wait(
-            env.Send(env.Tablet.CreateGetStorageStatsRequest()));
-        env.Record<NProtoPrivate::TGetStorageStatsResponse>(stats);
+        auto attr = env.Wait(
+            env.Send(env.Tablet.CreateGetNodeAttrRequest(RootNodeId)));
+        env.Record<NProto::TGetNodeAttrResponse>(attr);
 
         UNIT_ASSERT_VALUES_EQUAL(env.Pipe.ServerId, recipient);
         UNIT_ASSERT_VALUES_EQUAL(tabletActorId, target);
@@ -304,9 +297,8 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         TEnv env(TDuration::Zero());
 
         auto future = env.Send(
-            TActorId(),
-            TEvIndexTablet::EvGetStorageStatsRequest,
-            env.GetStorageStatsBody());
+            env.Tablet.CreateGetNodeAttrRequest(RootNodeId),
+            TActorId());
         UNIT_ASSERT(future.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_ARGUMENT),
@@ -317,27 +309,27 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
     {
         TEnv env(TDuration::Zero());
 
-        UNIT_ASSERT(!IsRdmaTabletMethod(1));
-        UNIT_ASSERT(
-            !IsRdmaTabletMethod(TEvIndexTablet::EvCreateSessionRequest));
         UNIT_ASSERT(IsRdmaTabletMethod(TEvService::EvCreateNodeRequest));
         UNIT_ASSERT(
-            IsRdmaTabletMethod(TEvIndexTablet::EvGetStorageStatsRequest));
+            IsRdmaTabletMethod(TEvIndexTablet::EvGenerateBlobIdsRequest));
 
-        auto unknown = env.Send(env.Pipe.ServerId, 1, "");
-        UNIT_ASSERT(unknown.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(E_NOT_IMPLEMENTED),
-            unknown.GetValue().Error.GetCode());
-
-        auto createSession = env.Send(
-            env.Pipe.ServerId,
+        const ui32 unsupported[] = {
+            1,
             TEvIndexTablet::EvCreateSessionRequest,
-            "");
-        UNIT_ASSERT(createSession.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(E_NOT_IMPLEMENTED),
-            createSession.GetValue().Error.GetCode());
+            TEvIndexTablet::EvChangeStorageConfigRequest,
+            TEvIndexTablet::EvUnsafeGetNodeRequest,
+            TEvIndexTablet::EvRenameNodeInDestinationRequest,
+        };
+        for (const ui32 methodId: unsupported) {
+            UNIT_ASSERT_C(!IsRdmaTabletMethod(methodId), methodId);
+
+            auto future = env.Send(env.Pipe.ServerId, methodId, "");
+            UNIT_ASSERT_C(future.HasValue(), methodId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                static_cast<ui32>(E_NOT_IMPLEMENTED),
+                future.GetValue().Error.GetCode(),
+                methodId);
+        }
     }
 
     Y_UNIT_TEST(ShouldRejectMalformedBodies)
@@ -359,9 +351,8 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         TEnv env(TDuration::Zero());
 
         auto unknown = env.Send(
-            env.Runtime.AllocateEdgeActor(env.NodeIdx),
-            TEvIndexTablet::EvGetStorageStatsRequest,
-            env.GetStorageStatsBody());
+            env.Tablet.CreateGetNodeAttrRequest(RootNodeId),
+            env.Runtime.AllocateEdgeActor(env.NodeIdx));
         UNIT_ASSERT(unknown.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_REJECTED),
@@ -372,9 +363,8 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
             [&] { return !env.Registry->FindTablet(env.Pipe.ServerId); });
 
         auto disconnected = env.Send(
-            env.Pipe.ServerId,
-            TEvIndexTablet::EvGetStorageStatsRequest,
-            env.GetStorageStatsBody());
+            env.Tablet.CreateGetNodeAttrRequest(RootNodeId),
+            env.Pipe.ServerId);
         UNIT_ASSERT(disconnected.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_REJECTED),
@@ -393,7 +383,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         env.Registry->RegisterPipe(pipeServerId, deadActorId);
 
         auto response = env.Wait(env.Send(
-            env.Tablet.CreateGetStorageStatsRequest(),
+            env.Tablet.CreateGetNodeAttrRequest(RootNodeId),
             pipeServerId));
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_REJECTED),
@@ -406,10 +396,10 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
 
         bool dropped = false;
         env.DropResponsesToForwarder(
-            TEvIndexTablet::EvGetStorageStatsResponse,
+            TEvService::EvGetNodeAttrResponse,
             &dropped);
 
-        auto future = env.Send(env.Tablet.CreateGetStorageStatsRequest());
+        auto future = env.Send(env.Tablet.CreateGetNodeAttrRequest(RootNodeId));
         env.WaitUntil([&] { return dropped; });
         UNIT_ASSERT(!future.HasValue());
 
@@ -424,9 +414,9 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         env.Tablet.WaitReady();
         env.Pipe = env.ConnectPipe();
 
-        auto stats = env.Wait(
-            env.Send(env.Tablet.CreateGetStorageStatsRequest()));
-        env.Record<NProtoPrivate::TGetStorageStatsResponse>(stats);
+        auto attr = env.Wait(
+            env.Send(env.Tablet.CreateGetNodeAttrRequest(RootNodeId)));
+        env.Record<NProto::TGetNodeAttrResponse>(attr);
     }
 
     Y_UNIT_TEST(ShouldTimeOutRequests)
@@ -435,11 +425,11 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
 
         bool dropped = false;
         env.DropResponsesToForwarder(
-            TEvIndexTablet::EvGetStorageStatsResponse,
+            TEvService::EvGetNodeAttrResponse,
             &dropped);
 
         auto response = env.Wait(
-            env.Send(env.Tablet.CreateGetStorageStatsRequest()));
+            env.Send(env.Tablet.CreateGetNodeAttrRequest(RootNodeId)));
         UNIT_ASSERT(dropped);
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_TIMEOUT),
@@ -452,10 +442,11 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
 
         bool dropped = false;
         env.DropResponsesToForwarder(
-            TEvIndexTablet::EvGetStorageStatsResponse,
+            TEvService::EvGetNodeAttrResponse,
             &dropped);
 
-        auto inFlight = env.Send(env.Tablet.CreateGetStorageStatsRequest());
+        auto inFlight =
+            env.Send(env.Tablet.CreateGetNodeAttrRequest(RootNodeId));
         env.WaitUntil([&] { return dropped; });
 
         env.Runtime.Send(
@@ -471,7 +462,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
             response.Error.GetCode());
 
         auto late = env.Wait(
-            env.Send(env.Tablet.CreateGetStorageStatsRequest()));
+            env.Send(env.Tablet.CreateGetNodeAttrRequest(RootNodeId)));
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_REJECTED),
             late.Error.GetCode());
@@ -538,6 +529,72 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
             env.Runtime.GrabEdgeEvent<TEvIndexTabletProxy::TEvFileSystemEvent>(
                 env.Pipe.Sender,
                 TDuration::Seconds(5)));
+    }
+
+    Y_UNIT_TEST(ShouldDeleteUnconfirmedDataOnPipeDisconnection)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TEnv env(TDuration::Zero(), std::move(storageConfig));
+
+        const ui64 nodeId =
+            CreateNode(env.Tablet, TCreateNodeArgs::File(RootNodeId, "file"));
+        const ui64 handle = CreateHandle(env.Tablet, nodeId);
+
+        auto generated = env.Wait(env.Send(
+            env.Tablet.CreateGenerateBlobIdsRequest(nodeId, handle, 0, 4_KB)));
+        UNIT_ASSERT(
+            env.Record<NProtoPrivate::TGenerateBlobIdsResponse>(generated)
+                .GetUnconfirmedFlowEnabled());
+        env.Runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            GetStorageStats(env.Tablet).GetUnconfirmedDataCount());
+
+        // the session's pipe stays connected
+        env.Runtime.ClosePipe(env.Pipe.ClientId, env.Pipe.Sender, env.NodeIdx);
+        env.Runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            GetStorageStats(env.Tablet).GetUnconfirmedDataCount());
+    }
+
+    Y_UNIT_TEST(ShouldDeduplicateRequestsRetriedOverPipe)
+    {
+        TEnv env(TDuration::Zero());
+
+        auto createRequest = [&]
+        {
+            auto request = env.Tablet.CreateCreateNodeRequest(
+                TCreateNodeArgs::File(RootNodeId, "file"));
+            request->Record.MutableHeaders()->SetRequestId(100500);
+            return request;
+        };
+
+        auto created = env.Wait(env.Send(createRequest()));
+        const ui64 nodeId = env.Record<NProto::TCreateNodeResponse>(created)
+            .GetNode()
+            .GetId();
+        UNIT_ASSERT(nodeId != InvalidNodeId);
+
+        env.Tablet.SendRequest(createRequest());
+        auto retried = env.Tablet.RecvCreateNodeResponse();
+        UNIT_ASSERT_C(
+            !HasError(retried->GetError()),
+            FormatError(retried->GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, retried->Record.GetNode().GetId());
+
+        auto retriedOverRdma = env.Wait(env.Send(createRequest()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId,
+            env.Record<NProto::TCreateNodeResponse>(retriedOverRdma)
+                .GetNode()
+                .GetId());
     }
 }
 

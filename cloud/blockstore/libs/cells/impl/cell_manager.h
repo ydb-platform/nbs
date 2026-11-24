@@ -15,7 +15,7 @@ namespace NCloud::NBlockStore::NCells {
 ////////////////////////////////////////////////////////////////////////////////
 
 ICellManagerPtr CreateCellManager(
-    TCellsConfigConstPtr config,
+    TCellsConfigPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,

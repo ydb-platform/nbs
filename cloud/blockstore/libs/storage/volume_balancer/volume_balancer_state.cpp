@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 
 #include <cloud/storage/core/libs/common/media.h>
+#include <cloud/storage/core/libs/throttling/helpers.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
@@ -27,9 +28,11 @@ TVolumeBalancerState::TVolumeInfo::TVolumeInfo(TDuration pullInterval)
 {}
 
 TVolumeBalancerState::TVolumeBalancerState(
-    TStorageConfigConstPtr storageConfig,
+    TStorageConfigPtr storageConfig,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch)
     : StorageConfig(std::move(storageConfig))
+    , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PullDelayResetTimespan(StorageConfig->GetInitialPullDelay())
     , VolumeBalancerSwitch(std::move(volumeBalancerSwitch))
 {}
@@ -78,6 +81,13 @@ void TVolumeBalancerState::UpdateVolumeStats(
         if (auto perfIt = perfMap.find(it->first); perfIt != perfMap.end()) {
             info.SufferCount = perfIt->second;
         }
+
+        if (info.IsLocal) {
+            info.Cost = CalculateCostPerIO(v);
+        } else {
+            info.Cost = std::nullopt;
+        }
+
         knownDisks.erase(v.GetDiskId());
     }
 
@@ -115,19 +125,27 @@ void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
                     TABLEH() { out << "Volume"; }
                     TABLEH() { out << "Preemption allowed"; }
                     TABLEH() { out << "Suffer Count"; }
+                    TABLEH() { out << "IO Cost"; }
                 }
             }
-            for (const auto& v: Volumes) {
-                if (v.second.IsLocal) {
+            for (const auto& [diskId, info]: Volumes) {
+                if (info.IsLocal) {
                     TABLER() {
-                        TABLED() { out << v.first; }
+                        TABLED() { out << diskId; }
                         TABLED() {
                             const bool enabled =
-                                IsVolumePreemptibleToPush(v.first, v.second);
+                                IsVolumePreemptibleToPush(diskId, info);
                             out << (enabled ? "Yes" : "No");
                         }
                         TABLED() {
-                            out << v.second.SufferCount;
+                            out << info.SufferCount;
+                        }
+                        TABLED() {
+                            if (info.Cost.has_value()) {
+                                out << info.Cost.value().GetValue();
+                            } else {
+                                out << "-";
+                            }
                         }
                     }
                 }
@@ -231,27 +249,34 @@ void TVolumeBalancerState::RenderHtml(TStringStream& out, TInstant now) const
 
 void TVolumeBalancerState::UpdateVolumeToPush()
 {
-    const bool moveMostHeavy = StorageConfig->GetVolumePreemptionType() ==
-        NProto::PREEMPTION_MOVE_MOST_HEAVY;
+    const auto preemptionType = StorageConfig->GetVolumePreemptionType();
+    const bool useIoCostOrdering =
+        preemptionType == NProto::PREEMPTION_MOVE_IO_COST_MOST_HEAVY ||
+        preemptionType == NProto::PREEMPTION_MOVE_IO_COST_LEAST_HEAVY;
+
+    const bool moveMostHeavy =
+        preemptionType == NProto::PREEMPTION_MOVE_MOST_HEAVY ||
+        preemptionType == NProto::PREEMPTION_MOVE_IO_COST_MOST_HEAVY;
 
     VolumeToPush = {};
+    ui64 bestValue = moveMostHeavy ? 0 : Max<ui64>();
 
-    ui64 value = moveMostHeavy ? 0 : Max<ui64>();
-    for (auto v = Volumes.begin(); v != Volumes.end(); ++v) {
-        if (!IsVolumePreemptibleToPush(v->first, v->second)) {
+    for (const auto& [diskId, info]: Volumes) {
+        if (!IsVolumePreemptibleToPush(diskId, info)) {
+            continue;
+        }
+        if (useIoCostOrdering && !info.Cost) {
             continue;
         }
 
-        if (moveMostHeavy) {
-            if (value < v->second.SufferCount) {
-                value = v->second.SufferCount;
-                VolumeToPush = v->first;
-            }
-        } else {
-            if (value > v->second.SufferCount) {
-                value = v->second.SufferCount;
-                VolumeToPush = v->first;
-            }
+        const ui64 currentValue =
+            useIoCostOrdering ? info.Cost->GetValue() : info.SufferCount;
+
+        const bool chooseCurrent =
+            moveMostHeavy ? bestValue < currentValue : bestValue > currentValue;
+        if (chooseCurrent) {
+            bestValue = currentValue;
+            VolumeToPush = diskId;
         }
     }
 }
@@ -309,6 +334,35 @@ bool TVolumeBalancerState::IsVolumePreemptibleToPull(
            volume.PreemptionSource ==
                NProto::EPreemptionSource::SOURCE_BALANCER &&
            volume.NextPullAttempt <= now && !VolumesInProgress.count(diskId);
+}
+
+std::optional<TDuration> TVolumeBalancerState::CalculateCostPerIO(
+    const NProto::TVolumeBalancerDiskStats& stats) const
+{
+    const auto perfSettings =
+        DiagnosticsConfig->GetBalancerYDBBasedPerfSettings();
+    if (!perfSettings.Write.Iops || !perfSettings.Read.Iops) {
+        // Unable to calculate cost: CostPerIO is undefined for 0 maxIops
+        return std::nullopt;
+    }
+
+    const ui32 expectedParallelism =
+        DiagnosticsConfig->GetExpectedIoParallelism();
+
+    const TDuration writeCost =
+        expectedParallelism * CostPerIO(
+                                  perfSettings.Write.Iops,
+                                  perfSettings.Write.Bandwidth,
+                                  stats.GetWriteBlobBytes(),
+                                  stats.GetWriteBlobCount());
+
+    const TDuration readCost =
+        expectedParallelism * CostPerIO(
+                                  perfSettings.Read.Iops,
+                                  perfSettings.Read.Bandwidth,
+                                  stats.GetReadBlobBytes(),
+                                  stats.GetReadBlobCount());
+    return writeCost + readCost;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

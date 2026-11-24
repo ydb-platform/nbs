@@ -49,6 +49,7 @@ private:
 
     const bool PassTraceIdToBlobstorage = false;
 
+    std::optional<TValidatedBlobRead> ValidatedCompressedRead;
     TVector<TBlockRange32> QueryBlockRanges;
     TVector<NKikimr::TEvBlobStorage::TEvGet::TQuery> Queries;
     ui32 BytesCount = 0;
@@ -75,7 +76,7 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    TResultOrError<TReadPlan> GetQueries() const;
+    TReadPlan GetQueries() const;
 
     void SendGetRequest(const NActors::TActorContext& ctx);
     void NotifyCompleted(

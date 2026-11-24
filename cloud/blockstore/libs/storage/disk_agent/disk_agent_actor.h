@@ -66,9 +66,9 @@ class TDiskAgentActor final: public NActors::TActorBootstrapped<TDiskAgentActor>
     };
 
 private:
-    const TStorageConfigConstPtr Config;
-    const TDiskAgentConfigConstPtr AgentConfig;
-    const NRdma::TRdmaConfigConstPtr RdmaConfig;
+    const TStorageConfigPtr Config;
+    const TDiskAgentConfigPtr AgentConfig;
+    const NRdma::TRdmaConfigPtr RdmaConfig;
     const NSpdk::ISpdkEnvPtr Spdk;
     const ICachingAllocatorPtr Allocator;
     const IStorageProviderPtr StorageProvider;
@@ -121,9 +121,9 @@ private:
 
 public:
     TDiskAgentActor(
-        TStorageConfigConstPtr config,
-        TDiskAgentConfigConstPtr agentConfig,
-        NRdma::TRdmaConfigConstPtr rdmaConfig,
+        TStorageConfigPtr config,
+        TDiskAgentConfigPtr agentConfig,
+        NRdma::TRdmaConfigPtr rdmaConfig,
         NSpdk::ISpdkEnvPtr spdk,
         ICachingAllocatorPtr allocator,
         IStorageProviderPtr storageProvider,
