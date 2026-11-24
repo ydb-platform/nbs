@@ -367,7 +367,8 @@ public:
                 Args.RdmaServer,
                 Args.NvmeManager,
                 Args.BackgroundThreadPool,
-                Args.LocalNVMeService);
+                Args.LocalNVMeService,
+                nullptr);   // journalledDeviceServerProvider
 
             setup->LocalServices.emplace_back(
                 MakeDiskAgentServiceId(Args.NodeId),

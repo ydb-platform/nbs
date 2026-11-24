@@ -21,7 +21,8 @@ IActorPtr CreateDiskAgent(
     NCloud::NStorage::NRdma::IServerPtr rdmaServer,
     NNvme::INvmeManagerPtr nvmeManager,
     ITaskQueuePtr backgroundThreadPool,
-    ILocalNVMeServicePtr localNVMeService)
+    ILocalNVMeServicePtr localNVMeService,
+    IJournalledDeviceServerProviderPtr journalledDeviceServerProvider)
 {
     return std::make_unique<TDiskAgentActor>(
         std::move(config),
@@ -36,7 +37,8 @@ IActorPtr CreateDiskAgent(
         std::move(rdmaServer),
         std::move(nvmeManager),
         std::move(backgroundThreadPool),
-        std::move(localNVMeService));
+        std::move(localNVMeService),
+        std::move(journalledDeviceServerProvider));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

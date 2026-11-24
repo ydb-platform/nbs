@@ -19,13 +19,13 @@ SRCS(
     disk_agent_actor_waitready.cpp
     disk_agent_actor.cpp
     disk_agent_counters.cpp
-    disk_agent_journalled_device_tcp_server.cpp
     disk_agent_private.cpp
     disk_agent_state.cpp
     disk_agent.cpp
     hash_table_storage.cpp
     journalled_device_adapter.cpp
     journalled_device_manager.cpp
+    journalled_device_server.cpp
     rdma_target.cpp
     recent_blocks_tracker.cpp
     secure_erase_state.cpp

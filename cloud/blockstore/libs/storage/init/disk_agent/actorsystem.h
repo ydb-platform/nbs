@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/spdk/iface/public.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
+#include <cloud/blockstore/libs/storage/disk_agent/public.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/public.h>
 
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
@@ -50,6 +51,7 @@ struct TDiskAgentActorSystemArgs
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     ITaskQueuePtr BackgroundThreadPool;
     ILocalNVMeServicePtr LocalNVMeService;
+    IJournalledDeviceServerProviderPtr JournalledDeviceServerProvider;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
