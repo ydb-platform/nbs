@@ -205,6 +205,15 @@ struct TSession
     // persistent.
     ui64 ShardSyncVersion = 0;
 
+    // Main tablet: Headers.RequestId of the last CreateSession, ResetSession
+    // and DestroySession which have been completed for this session - both
+    // by this tablet and by the shards. A retry of such a request is not
+    // processed once again, see TPendingShardSessionRequest::RequestId in
+    // TIndexTabletActor. Zero - none. Not persistent.
+    ui64 CompletedCreateRequestId = 0;
+    ui64 CompletedResetRequestId = 0;
+    ui64 CompletedDestroyRequestId = 0;
+
     TSubSessions SubSessions;
 
 private:

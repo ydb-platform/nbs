@@ -58,6 +58,13 @@ private:
 
     TActorId Owner;
 
+    // Headers.RequestId of the last CreateSession request of the client. The
+    // tablet gets it with each attempt to process that request, including
+    // the ones which this actor makes itself after reconnecting to the
+    // tablet: that's what lets the tablet tell a retry from a new request.
+    // Zero if the client hasn't provided it.
+    ui64 RequestId = 0;
+
     TProtoMessagePrinter ProtoMessagePrinter;
 
 public:
@@ -73,7 +80,8 @@ public:
         bool readOnly,
         bool restoreClientSession,
         bool fromExternalSource,
-        TActorId owner);
+        TActorId owner,
+        ui64 requestId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -161,7 +169,8 @@ TCreateSessionActor::TCreateSessionActor(
         bool readOnly,
         bool restoreClientSession,
         bool fromExternalSource,
-        TActorId owner)
+        TActorId owner,
+        ui64 requestId)
     : Config(std::move(config))
     , RequestInfo(std::move(requestInfo))
     , ClientId(std::move(clientId))
@@ -174,6 +183,7 @@ TCreateSessionActor::TCreateSessionActor(
     , ReadOnly(readOnly)
     , SessionId(std::move(sessionId))
     , Owner(owner)
+    , RequestId(requestId)
 {}
 
 void TCreateSessionActor::Bootstrap(const TActorContext& ctx)
@@ -320,6 +330,7 @@ void TCreateSessionActor::HandleCreateSession(
     ReadOnly = msg->ReadOnly;
     SeqNo = msg->SessionSeqNo;
     RestoreClientSession = msg->RestoreClientSession;
+    RequestId = msg->RequestId;
     RequestInfo = std::move(msg->RequestInfo);
 
     CreateSession(ctx);
@@ -363,6 +374,8 @@ void TCreateSessionActor::CreateSession(const TActorContext& ctx)
     headers->SetSessionId(SessionId);
     headers->SetSessionSeqNo(SeqNo);
     headers->SetOriginFqdn(OriginFqdn);
+    // the same id for all the attempts, see RequestId
+    headers->SetRequestId(RequestId);
 
     LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
         "%s do creating session: %s",
@@ -657,6 +670,7 @@ void TStorageServiceActor::HandleCreateSession(
         request->ReadOnly =  msg->Record.GetReadOnly();
         request->RestoreClientSession = msg->Record.GetRestoreClientSession();
         request->SessionSeqNo =  msg->Record.GetMountSeqNumber();
+        request->RequestId = msg->Record.GetHeaders().GetRequestId();
         request->RequestInfo = std::move(requestInfo);
 
         NCloud::Send(ctx, std::move(actorId), std::move(request));
@@ -721,7 +735,8 @@ void TStorageServiceActor::HandleCreateSession(
         msg->Record.GetRestoreClientSession(),
         msg->Record.GetHeaders().GetInternal().GetRequestOrigin() ==
             NProto::THeaders::TInternal::REQUEST_ORIGIN_EXTERNAL,
-        SelfId());
+        SelfId(),
+        msg->Record.GetHeaders().GetRequestId());
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
 

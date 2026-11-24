@@ -2389,6 +2389,537 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
+    SERVICE_TEST(ShouldNotStartOverUponRetryOfCreateSession)
+    {
+        config.SetLazyShardSessionCreationEnabled(true);
+        // the syncs which are not started by the requests of the client are
+        // triggered manually in this test
+        config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        TShardSessionsSyncController sync(
+            env,
+            nodeIdx,
+            fsInfo.MainTabletActorId);
+
+        auto sessionCount = [&] (const TString& fsId) {
+            return DescribeSessions(service, fsId).SessionsSize();
+        };
+
+        // shard id -> the sessions which the sync has sent to the shard:
+        // session id + whether the shard has been told that the session has
+        // been recovered
+        using TSyncedSessions = TVector<std::pair<TString, bool>>;
+        THashMap<TString, TSyncedSessions> syncedSessions;
+        // the responses of the main tablet
+        ui32 createSessionResponses = 0;
+
+        sync.OnEvent = [&] (IEventHandle& event) {
+            if (event.GetTypeRewrite()
+                    == TEvIndexTablet::EvCreateSessionResponse)
+            {
+                ++createSessionResponses;
+                return;
+            }
+
+            if (event.GetTypeRewrite()
+                        != TEvIndexTablet::EvSyncShardSessionsRequest
+                    || event.Recipient != MakeIndexTabletProxyServiceId()
+                    || !event.HasEvent())
+            {
+                // only the requests which are being sent by the sync are
+                // needed here, not the ones which the tablet proxy forwards
+                return;
+            }
+
+            const auto* msg =
+                event.Get<TEvIndexTablet::TEvSyncShardSessionsRequest>();
+            auto& sessions = syncedSessions[msg->Record.GetFileSystemId()];
+            for (const auto& session: msg->Record.GetSessions()) {
+                sessions.emplace_back(
+                    session.GetSessionId(),
+                    session.GetInterrupted());
+            }
+        };
+
+        // The requests are sent right to the main tablet - the way the
+        // service does it. All the attempts to process a request have the
+        // same request id.
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            fsInfo.MainTabletId,
+            {}, // config
+            false // updateConfig
+        );
+
+        auto sendCreateSession = [&] (ui64 requestId, ui64 cookie) {
+            auto request =
+                tablet.CreateCreateSessionRequest("client", "session");
+            request->Record.MutableHeaders()->SetRequestId(requestId);
+            tablet.SendRequest(std::move(request), cookie);
+        };
+
+        const ui64 requestId = 100500;
+
+        // the sync is not able to deliver the session to the second shard,
+        // so the request is waiting
+        sync.UnavailableShardId = fsConfig.Shard2Id;
+
+        {
+            const ui32 roundsStarted = sync.RoundsStarted;
+            sendCreateSession(requestId, 0);
+            sync.WaitForSync(roundsStarted);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard1Id));
+        UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.Shard2Id));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            syncedSessions[fsConfig.Shard1Id].size());
+        UNIT_ASSERT(!syncedSessions[fsConfig.Shard1Id][0].second);
+
+        // The client retries the request, e.g. it has reconnected. The
+        // retry takes the place of the request and doesn't start over: the
+        // first shard has got the session, so it's not waited for once
+        // again. A new version (if the retry got it) would get to the first
+        // shard with the second of these rounds at the latest.
+        syncedSessions.clear();
+        sync.SyncRequests.clear();
+
+        sendCreateSession(requestId, 0);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        sync.SyncSessions(true /* outOfSchedule */);
+        sync.SyncSessions(true /* outOfSchedule */);
+
+        UNIT_ASSERT(!sync.SyncRequests.contains(fsConfig.Shard1Id));
+        // The previous attempt is not answered: it's the same requester (the
+        // same sender and the same cookie), so the response would look like
+        // the response to the retry.
+        UNIT_ASSERT_VALUES_EQUAL(0, createSessionResponses);
+
+        // a retry which comes from another requester is the same thing, but
+        // the previous attempt gets its response
+        sendCreateSession(requestId, 1);
+
+        {
+            auto response = tablet.RecvCreateSessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        sync.SyncSessions(true /* outOfSchedule */);
+        sync.SyncSessions(true /* outOfSchedule */);
+
+        UNIT_ASSERT(!sync.SyncRequests.contains(fsConfig.Shard1Id));
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard1Id));
+        UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.Shard2Id));
+
+        // the request is completed as soon as the sync reaches the second
+        // shard
+        sync.UnavailableShardId.clear();
+        sync.SyncSessions(true /* outOfSchedule */);
+
+        {
+            auto response = tablet.RecvCreateSessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "session",
+                response->Record.GetSessionId());
+        }
+
+        UNIT_ASSERT(!sync.SyncRequests.contains(fsConfig.Shard1Id));
+        for (const auto& id: fsConfig.MainAndShardIds()) {
+            UNIT_ASSERT_VALUES_EQUAL_C(1, sessionCount(id), id);
+        }
+
+        // the session exists by the time of the retries, but they are not
+        // taken for a client which has started anew: the shards are not told
+        // to drop anything
+        for (const auto& [shardId, sessions]: syncedSessions) {
+            for (const auto& [sessionId, interrupted]: sessions) {
+                UNIT_ASSERT_C(!interrupted, shardId);
+            }
+        }
+
+        // A retry of a request which has been completed - the client hasn't
+        // got the response - is acknowledged right away: there's nothing to
+        // sync.
+        {
+            const ui32 roundsStarted = sync.RoundsStarted;
+            syncedSessions.clear();
+            sync.SyncRequests.clear();
+
+            sendCreateSession(requestId, 0);
+
+            auto response = tablet.RecvCreateSessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+
+            UNIT_ASSERT_VALUES_EQUAL(roundsStarted, sync.RoundsStarted);
+            UNIT_ASSERT(sync.SyncRequests.empty());
+        }
+
+        // Another request is not a retry: that's what a client which has
+        // started anew sends. All the shards are told that the session has
+        // been recovered.
+        {
+            sendCreateSession(requestId + 1, 0);
+
+            auto response = tablet.RecvCreateSessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+
+            for (const auto& shardId: fsConfig.ShardIds()) {
+                const auto& sessions = syncedSessions[shardId];
+                UNIT_ASSERT_C(!sessions.empty(), shardId);
+                for (const auto& [sessionId, interrupted]: sessions) {
+                    UNIT_ASSERT_C(interrupted, shardId);
+                }
+            }
+        }
+
+        // a request without an id is never taken for a retry
+        {
+            const ui32 roundsStarted = sync.RoundsStarted;
+
+            sendCreateSession(0, 0);
+
+            auto response = tablet.RecvCreateSessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+
+            UNIT_ASSERT(roundsStarted < sync.RoundsStarted);
+        }
+    }
+
+    SERVICE_TEST(ShouldNotStartOverUponRetryOfResetSession)
+    {
+        config.SetLazyShardSessionCreationEnabled(true);
+        // the syncs which are not started by the requests of the client are
+        // triggered manually in this test
+        config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        TShardSessionsSyncController sync(
+            env,
+            nodeIdx,
+            fsInfo.MainTabletActorId);
+
+        // the state of the session in the main tablet: the main tablet
+        // processes ResetSession after all the shards
+        auto sessionState = [&] {
+            const auto response = DescribeSessions(service, fsConfig.FsId);
+            UNIT_ASSERT_VALUES_EQUAL(1, response.SessionsSize());
+            return response.GetSessions(0).GetSessionState();
+        };
+
+        // The requests are sent right to the main tablet - the way the
+        // service does it. All the attempts to process a request have the
+        // same request id.
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            fsInfo.MainTabletId,
+            {}, // config
+            false // updateConfig
+        );
+        tablet.InitSession("client", "session");
+
+        auto sendResetSession = [&] (ui64 requestId, const TString& state) {
+            auto request = tablet.CreateResetSessionRequest(state);
+            request->Record.MutableHeaders()->SetRequestId(requestId);
+            tablet.SendRequest(std::move(request));
+        };
+
+        const ui64 requestId = 100500;
+
+        // the sync is not able to deliver the request to the second shard,
+        // so the request is waiting
+        sync.UnavailableShardId = fsConfig.Shard2Id;
+
+        {
+            const ui32 roundsStarted = sync.RoundsStarted;
+            sendResetSession(requestId, "state");
+            sync.WaitForSync(roundsStarted);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL("", sessionState());
+
+        // The client retries the request. The retry takes the place of the
+        // request and doesn't start over: the first shard has processed the
+        // request, so it's not waited for once again. A new version (if the
+        // retry got it) would get to the first shard with the second of
+        // these rounds at the latest.
+        sync.SyncRequests.clear();
+
+        sendResetSession(requestId, "state");
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        sync.SyncSessions(true /* outOfSchedule */);
+        sync.SyncSessions(true /* outOfSchedule */);
+
+        UNIT_ASSERT(!sync.SyncRequests.contains(fsConfig.Shard1Id));
+        UNIT_ASSERT_VALUES_EQUAL("", sessionState());
+
+        // the request is completed as soon as the sync reaches the second
+        // shard
+        sync.UnavailableShardId.clear();
+        sync.SyncSessions(true /* outOfSchedule */);
+
+        {
+            // It's the only response: the previous attempt came from the
+            // same requester, so it's not answered - neither rejected nor
+            // completed.
+            auto response = tablet.RecvResetSessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        UNIT_ASSERT(!sync.SyncRequests.contains(fsConfig.Shard1Id));
+        UNIT_ASSERT_VALUES_EQUAL("state", sessionState());
+
+        // A retry of a request which has been completed - the client hasn't
+        // got the response - is acknowledged right away: the session is not
+        // reset once again.
+        {
+            const ui32 roundsStarted = sync.RoundsStarted;
+            sync.SyncRequests.clear();
+
+            sendResetSession(requestId, "state");
+
+            auto response = tablet.RecvResetSessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+
+            UNIT_ASSERT_VALUES_EQUAL(roundsStarted, sync.RoundsStarted);
+            UNIT_ASSERT(sync.SyncRequests.empty());
+        }
+
+        // another request is not a retry
+        {
+            const ui32 roundsStarted = sync.RoundsStarted;
+
+            sendResetSession(requestId + 1, "state2");
+
+            auto response = tablet.RecvResetSessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+
+            UNIT_ASSERT(roundsStarted < sync.RoundsStarted);
+            UNIT_ASSERT_VALUES_EQUAL("state2", sessionState());
+        }
+    }
+
+    SERVICE_TEST(ShouldNotStartOverUponRetryOfDestroySession)
+    {
+        config.SetLazyShardSessionCreationEnabled(true);
+        // the syncs which are not started by the requests of the client are
+        // triggered manually in this test
+        config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        TShardSessionsSyncController sync(
+            env,
+            nodeIdx,
+            fsInfo.MainTabletActorId);
+
+        auto sessionCount = [&] (const TString& fsId) {
+            return DescribeSessions(service, fsId).SessionsSize();
+        };
+
+        // The requests are sent right to the main tablet - the way the
+        // service does it. All the attempts to process a request have the
+        // same request id.
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            fsInfo.MainTabletId,
+            {}, // config
+            false // updateConfig
+        );
+        tablet.InitSession("client", "session");
+
+        auto sendDestroySession = [&] (ui64 requestId) {
+            auto request = tablet.CreateDestroySessionRequest();
+            request->Record.MutableHeaders()->SetRequestId(requestId);
+            tablet.SendRequest(std::move(request));
+        };
+
+        const ui64 requestId = 100500;
+
+        // the sync is not able to deliver the request to the second shard,
+        // so the request is waiting
+        sync.UnavailableShardId = fsConfig.Shard2Id;
+
+        {
+            const ui32 roundsStarted = sync.RoundsStarted;
+            sendDestroySession(requestId);
+            sync.WaitForSync(roundsStarted);
+        }
+
+        // the main tablet goes last
+        auto checkRequestIsWaiting = [&] {
+            UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.Shard1Id));
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard2Id));
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.FsId));
+        };
+
+        checkRequestIsWaiting();
+
+        // The client retries the request. The retry takes the place of the
+        // request and doesn't start over: the first shard has processed the
+        // request, so it's not waited for once again. A new version (if the
+        // retry got it) would get to the first shard with the second of
+        // these rounds at the latest.
+        sync.SyncRequests.clear();
+
+        sendDestroySession(requestId);
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+
+        sync.SyncSessions(true /* outOfSchedule */);
+        sync.SyncSessions(true /* outOfSchedule */);
+
+        UNIT_ASSERT(!sync.SyncRequests.contains(fsConfig.Shard1Id));
+        checkRequestIsWaiting();
+
+        // the request is completed as soon as the sync reaches the second
+        // shard
+        sync.UnavailableShardId.clear();
+        sync.SyncSessions(true /* outOfSchedule */);
+
+        {
+            // It's the only response: the previous attempt came from the
+            // same requester, so it's not answered - neither rejected nor
+            // completed.
+            auto response = tablet.RecvDestroySessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        UNIT_ASSERT(!sync.SyncRequests.contains(fsConfig.Shard1Id));
+        for (const auto& id: fsConfig.MainAndShardIds()) {
+            UNIT_ASSERT_VALUES_EQUAL_C(0, sessionCount(id), id);
+        }
+
+        // one more retry finds no session: there's nothing to do
+        {
+            const ui32 roundsStarted = sync.RoundsStarted;
+
+            sendDestroySession(requestId);
+
+            auto response = tablet.RecvDestroySessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+
+            UNIT_ASSERT_VALUES_EQUAL(roundsStarted, sync.RoundsStarted);
+        }
+    }
+
+    SERVICE_TEST(ShouldPassRequestIdOfSessionRequestsToTablet)
+    {
+        config.SetLazyShardSessionCreationEnabled(true);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        TShardSessionsSyncController sync(
+            env,
+            nodeIdx,
+            fsInfo.MainTabletActorId);
+
+        // The ids which the tablet gets with the requests. That's what it
+        // tells a retry from a new request by, so the service should pass
+        // the id of the client's request on.
+        THashSet<ui64> createSessionRequestIds;
+        THashSet<ui64> destroySessionRequestIds;
+
+        sync.OnEvent = [&] (IEventHandle& event) {
+            switch (event.GetTypeRewrite()) {
+                case TEvIndexTablet::EvCreateSessionRequest: {
+                    const auto* msg =
+                        event.Get<TEvIndexTablet::TEvCreateSessionRequest>();
+                    createSessionRequestIds.insert(
+                        msg->Record.GetHeaders().GetRequestId());
+                    break;
+                }
+                case TEvIndexTablet::EvDestroySessionRequest: {
+                    const auto* msg =
+                        event.Get<TEvIndexTablet::TEvDestroySessionRequest>();
+                    destroySessionRequestIds.insert(
+                        msg->Record.GetHeaders().GetRequestId());
+                    break;
+                }
+            }
+        };
+
+        THeaders headers = {
+            .FileSystemId = fsConfig.FsId,
+            .ClientId = "client",
+            .SessionId = "",
+            .SessionSeqNo = 0};
+
+        {
+            auto request = service.CreateCreateSessionRequest(headers);
+            request->Record.MutableHeaders()->SetRequestId(100500);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service.RecvCreateSessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+
+            headers.SessionId = response->Record.GetSession().GetSessionId();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, createSessionRequestIds.size());
+        UNIT_ASSERT(createSessionRequestIds.contains(100500));
+
+        {
+            auto request = service.CreateDestroySessionRequest(headers);
+            request->Record.MutableHeaders()->SetRequestId(100501);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service.RecvDestroySessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, destroySessionRequestIds.size());
+        UNIT_ASSERT(destroySessionRequestIds.contains(100501));
+    }
+
     SERVICE_TEST(ShouldNotReplyToUrgentSyncSessionsRequestIfSyncIsInProgress)
     {
         config.SetLazyShardSessionCreationEnabled(true);

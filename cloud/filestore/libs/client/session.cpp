@@ -250,7 +250,11 @@ public:
         bool readOnly = false,
         ui64 mountSeqNumber = 0) override
     {
-        auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+        // The id is the same for all the attempts to process the request:
+        // that's what lets the server tell a retry from a new request.
+        auto callContext = MakeIntrusive<TCallContext>(
+            Config->GetFileSystemId(),
+            CreateRequestId());
         callContext->RequestType = EFileStoreRequest::CreateSession;
 
         auto state = MakeIntrusive<TRequestState<TCreateSessionMethod>>(
@@ -267,7 +271,11 @@ public:
         bool readOnly,
         ui64 mountSeqNumber) override
     {
-        auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+        // The id is the same for all the attempts to process the request:
+        // that's what lets the server tell a retry from a new request.
+        auto callContext = MakeIntrusive<TCallContext>(
+            Config->GetFileSystemId(),
+            CreateRequestId());
         callContext->RequestType = EFileStoreRequest::CreateSession;
 
         auto state = MakeIntrusive<TRequestState<TCreateSessionMethod>>(
@@ -282,7 +290,11 @@ public:
 
     TFuture<NProto::TDestroySessionResponse> DestroySession() override
     {
-        auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+        // The id is the same for all the attempts to process the request:
+        // that's what lets the server tell a retry from a new request.
+        auto callContext = MakeIntrusive<TCallContext>(
+            Config->GetFileSystemId(),
+            CreateRequestId());
         callContext->RequestType = EFileStoreRequest::DestroySession;
 
         auto state = MakeIntrusive<TRequestState<TDestroySessionMethod>>(
@@ -619,7 +631,11 @@ private:
                 case SessionRequested: {
                     SessionState = SessionEstablishing;
 
-                    auto callContext = MakeIntrusive<TCallContext>(Config->GetFileSystemId());
+                    // it's a new request, not a retry: the id is a new
+                    // one as well
+                    auto callContext = MakeIntrusive<TCallContext>(
+                        Config->GetFileSystemId(),
+                        CreateRequestId());
                     callContext->RequestType = EFileStoreRequest::CreateSession;
 
                     requestState = MakeIntrusive<TRequestState<TCreateSessionMethod>>(

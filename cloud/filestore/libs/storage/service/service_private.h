@@ -28,6 +28,8 @@ struct TEvServicePrivate
         bool ReadOnly = false;
         ui64 SessionSeqNo = 0;
         bool RestoreClientSession = false;
+        // Headers.RequestId of the request of the client
+        ui64 RequestId = 0;
         TRequestInfoPtr RequestInfo;
     };
 

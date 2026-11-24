@@ -238,6 +238,15 @@ private:
     // away - the retry of the client would have to start over with all the
     // shards.
     //
+    // The requests are idempotent, so the clients may retry them at any
+    // moment. A retry is recognized by Headers.RequestId - the same thing
+    // which the tablet relies upon in its DupCache:
+    // * a retry of a request which is still waiting for the shards takes its
+    //   place and keeps its version, so the shards which have processed the
+    //   request are not waited for once again;
+    // * a retry of a request which has been completed is acknowledged right
+    //   away, see TSession::CompletedCreateRequestId and the like.
+    //
     // The state below is not persistent: the clients retry the requests
     // which didn't manage to get through, and the first round after a
     // restart of this tablet compares all the shards in full.
@@ -284,9 +293,16 @@ private:
     struct TPendingShardSessionRequest
     {
         EShardSessionRequestType Type = EShardSessionRequestType::Destroy;
-        // ShardSessionsVersion upon the arrival of the request.
+        // ShardSessionsVersion upon the arrival of the request. A retry
+        // keeps the version of the request which it replaces.
         ui64 Version = 0;
         ui64 SessionSeqNo = 0;
+        // Headers.RequestId of the request. The client sends the same value
+        // with all the attempts of a request and different values with
+        // different requests, so a request with the same value is a retry.
+        // Zero means that the client hasn't provided it: such a request is
+        // never treated as a retry.
+        ui64 RequestId = 0;
         // CreateSession: the session existed and has been recovered by the
         // request, see TShardSessionInfo::Interrupted.
         bool Interrupted = false;
@@ -574,6 +590,20 @@ private:
         const TPendingShardSessionRequest& request,
         const NProto::TError& error);
 
+    // The same thing for a request whose place is being taken by a new one.
+    // Does nothing if the response would get to the requester of the new
+    // request as if it were the response to that new request.
+    void ReplyToReplacedShardSessionRequest(
+        const NActors::TActorContext& ctx,
+        const TPendingShardSessionRequest& request,
+        const TRequestInfo& newRequestInfo,
+        const NProto::TError& error);
+
+    // The newest version which all the shards whose sessions are managed by
+    // the shard sessions sync have been synced at: these shards have
+    // processed the requests which are not newer than that.
+    ui64 GetShardSessionsSyncedVersion() const;
+
     // CreateSession which has been delivered to all the shards whose
     // sessions are managed by the shard sessions sync: the shards which
     // work in adapter mode are the only thing left.
@@ -624,7 +654,8 @@ private:
     void OnShardSessionRequestCompleted(
         const NActors::TActorContext& ctx,
         const TString& sessionId,
-        const TRequestInfoPtr& requestInfo);
+        const TRequestInfoPtr& requestInfo,
+        const NProto::TError& error);
 
     // Fails the requests which haven't been processed by all the shards yet.
     void RejectPendingShardSessionRequests(

@@ -81,24 +81,91 @@ void TIndexTabletActor::HandleDestroySession(
 
         using TResponse = TEvIndexTablet::TEvDestroySessionResponse;
 
-        if (PendingShardSessionRequests.contains(sessionId)) {
-            auto response = std::make_unique<TResponse>(MakeError(
-                E_REJECTED,
-                "another CreateSession, ResetSession or DestroySession"
-                " request for this session is in progress"));
+        // see TPendingShardSessionRequest::RequestId
+        const ui64 requestId = msg->Record.GetHeaders().GetRequestId();
 
-            NCloud::Reply(ctx, *ev, std::move(response));
+        auto requestInfo = CreateRequestInfo(
+            ev->Sender,
+            ev->Cookie,
+            msg->CallContext);
+        requestInfo->StartedTs = ctx.Now();
+
+        if (auto* pending = PendingShardSessionRequests.FindPtr(sessionId)) {
+            const bool retry = requestId
+                && pending->Type == EShardSessionRequestType::Destroy
+                && pending->RequestId == requestId
+                && pending->SessionSeqNo == sessionSeqNo
+                && !pending->Applying;
+
+            if (!retry) {
+                auto response = std::make_unique<TResponse>(MakeError(
+                    E_REJECTED,
+                    "another CreateSession, ResetSession or DestroySession"
+                    " request for this session is in progress"));
+
+                NCloud::Reply(ctx, *ev, std::move(response));
+                return;
+            }
+
+            //
+            // A retry of the request which is waiting for the shards, see
+            // HandleResetSession: it takes the place of its previous
+            // attempt and doesn't start over.
+            //
+
+            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+                "%s DestroySession s:%s n:%lu is a retry of request %lu"
+                ", it keeps waiting for the shard sessions sync"
+                ", version: %lu",
+                LogTag.c_str(),
+                sessionId.Quote().c_str(),
+                sessionSeqNo,
+                requestId,
+                pending->Version);
+
+            ReplyToReplacedShardSessionRequest(
+                ctx,
+                *pending,
+                *requestInfo,
+                MakeError(
+                    E_REJECTED,
+                    "replaced by a retry of the same request"));
+
+            pending->RequestInfo = std::move(requestInfo);
+            // sessionId refers to this record: it's not used below
+            pending->DestroyRequest = std::move(msg->Record);
+            return;
+        }
+
+        if (requestId
+                && session->CompletedDestroyRequestId == requestId
+                && GetAdapterModeShardIds().empty())
+        {
+            //
+            // A retry of a request which this tablet and all the shards
+            // have completed. The session is still here, so the request
+            // has destroyed just a subsession - and the client might have
+            // established it anew since then. A retry which finds no
+            // session at all succeeds above.
+            //
+
+            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+                "%s DestroySession s:%s n:%lu is a retry of request %lu"
+                " which has been completed",
+                LogTag.c_str(),
+                sessionId.Quote().c_str(),
+                sessionSeqNo,
+                requestId);
+
+            NCloud::Reply(ctx, *ev, std::make_unique<TResponse>());
             return;
         }
 
         TPendingShardSessionRequest request;
         request.Type = EShardSessionRequestType::Destroy;
+        request.RequestId = requestId;
         request.SessionSeqNo = sessionSeqNo;
-        request.RequestInfo = CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            msg->CallContext);
-        request.RequestInfo->StartedTs = ctx.Now();
+        request.RequestInfo = std::move(requestInfo);
 
         // sessionId refers to the record which is about to be moved
         TString pendingSessionId = sessionId;
@@ -256,7 +323,11 @@ void TIndexTabletActor::CompleteTx_DestroySession(
 
     // the request might have been waiting for the shards, see
     // HandleDestroySession
-    OnShardSessionRequestCompleted(ctx, args.SessionId, args.RequestInfo);
+    OnShardSessionRequestCompleted(
+        ctx,
+        args.SessionId,
+        args.RequestInfo,
+        args.Error);
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvDestroySessionResponse>(args.Error);

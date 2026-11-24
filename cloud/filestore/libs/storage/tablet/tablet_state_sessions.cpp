@@ -607,6 +607,13 @@ TIndexTabletState::BuildShardSessionInfo(const TString& sessionId) const
     return MakeShardSessionInfo(*session);
 }
 
+bool TIndexTabletState::IsShardSessionInfoActual(
+    const NProtoPrivate::TShardSessionInfo& info) const
+{
+    const auto* session = FindSession(info.GetSessionId());
+    return session && IsShardSessionSynced(*session, info);
+}
+
 TVector<NProtoPrivate::TShardSessionInfo>
 TIndexTabletState::DescribeShardSessions() const
 {

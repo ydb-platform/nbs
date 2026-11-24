@@ -219,6 +219,36 @@ bool TIndexTabletActor::ShouldSyncShardSessionRequests() const
         && HasShardsWithSyncedSessions(GetAdapterModeShardIds());
 }
 
+ui64 TIndexTabletActor::GetShardSessionsSyncedVersion() const
+{
+    //
+    // A shard has processed a request if its sessions have been synced by a
+    // round which was started after the arrival of the request: such a round
+    // delivers the request to the shard. The shards which work in adapter
+    // mode don't take part in it: this tablet sends the request to them
+    // itself - after the rest of the shards (CreateSession) or after its own
+    // tx (ResetSession and DestroySession).
+    //
+
+    const auto adapterModeShardIds = GetAdapterModeShardIds();
+    const THashSet<TString> adapterModeShards(
+        adapterModeShardIds.begin(),
+        adapterModeShardIds.end());
+
+    ui64 syncedVersion = Max<ui64>();
+    for (const auto& shardId: GetFileSystem().GetShardFileSystemIds()) {
+        if (adapterModeShards.contains(shardId)) {
+            continue;
+        }
+
+        const auto* syncState = ShardSyncStates.FindPtr(shardId);
+        syncedVersion =
+            Min<ui64>(syncedVersion, syncState ? syncState->Version : 0);
+    }
+
+    return syncedVersion;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // The changes of the sessions which the shards should get.
 
@@ -420,6 +450,29 @@ void TIndexTabletActor::ReplyToPendingShardSessionRequest(
     }
 }
 
+void TIndexTabletActor::ReplyToReplacedShardSessionRequest(
+    const TActorContext& ctx,
+    const TPendingShardSessionRequest& request,
+    const TRequestInfo& newRequestInfo,
+    const NProto::TError& error)
+{
+    if (request.RequestInfo->Sender == newRequestInfo.Sender
+            && request.RequestInfo->Cookie == newRequestInfo.Cookie)
+    {
+        //
+        // The requester has repeated the request itself: that's what the
+        // session actor of the service does when it reconnects to this
+        // tablet. Such a requester doesn't tell the responses to its
+        // attempts from each other - a response to the previous attempt
+        // would look like the response to the new one. So the previous
+        // attempt is just forgotten.
+        //
+        return;
+    }
+
+    ReplyToPendingShardSessionRequest(ctx, request, error);
+}
+
 void TIndexTabletActor::AddPendingShardSessionRequests(
     const TString& shardId,
     const NProtoPrivate::TDescribeShardSessionsResponse& shardSessions,
@@ -549,30 +602,7 @@ void TIndexTabletActor::ProcessPendingShardSessionRequests(
         return;
     }
 
-    //
-    // A shard has processed a request if its sessions have been synced by a
-    // round which was started after the arrival of the request: such a round
-    // delivers the request to the shard. The shards which work in adapter
-    // mode don't take part in it: this tablet sends the request to them
-    // itself - after the rest of the shards (CreateSession) or after its own
-    // tx (ResetSession and DestroySession).
-    //
-
-    const auto adapterModeShardIds = GetAdapterModeShardIds();
-    const THashSet<TString> adapterModeShards(
-        adapterModeShardIds.begin(),
-        adapterModeShardIds.end());
-
-    ui64 syncedVersion = Max<ui64>();
-    for (const auto& shardId: GetFileSystem().GetShardFileSystemIds()) {
-        if (adapterModeShards.contains(shardId)) {
-            continue;
-        }
-
-        const auto* syncState = ShardSyncStates.FindPtr(shardId);
-        syncedVersion =
-            Min<ui64>(syncedVersion, syncState ? syncState->Version : 0);
-    }
+    const ui64 syncedVersion = GetShardSessionsSyncedVersion();
 
     // a tx may complete (and remove its request) right away
     TVector<TString> sessionIds;
@@ -588,11 +618,14 @@ void TIndexTabletActor::ProcessPendingShardSessionRequests(
     // synced by a round is not waited for anymore, whatever happens to that
     // shard in the next rounds. So a request makes progress even if each
     // round fails for some of the shards. Failing it upon a deadline would
-    // throw this progress away: the retry of the client gets a new version
-    // and starts over with all the shards - and that's something which
-    // might never succeed if there are lots of shards. So a shard which is
-    // unavailable blocks the requests until it's back: the rounds keep
-    // trying to reach it, see HandleSyncSessionsCompleted.
+    // throw this progress away: the retry of the client would have to start
+    // over with all the shards - and that's something which might never
+    // succeed if there are lots of shards. So a shard which is unavailable
+    // blocks the requests until it's back: the rounds keep trying to reach
+    // it, see HandleSyncSessionsCompleted. A client which doesn't want to
+    // wait that long may retry the request at any moment: the retry takes
+    // the place of the request and keeps what has been done for it, see
+    // TPendingShardSessionRequest::RequestId.
     //
 
     for (const auto& sessionId: sessionIds) {
@@ -662,7 +695,8 @@ void TIndexTabletActor::ProcessPendingShardSessionRequests(
 void TIndexTabletActor::OnShardSessionRequestCompleted(
     const TActorContext& ctx,
     const TString& sessionId,
-    const TRequestInfoPtr& requestInfo)
+    const TRequestInfoPtr& requestInfo,
+    const NProto::TError& error)
 {
     auto it = PendingShardSessionRequests.find(sessionId);
     if (it == PendingShardSessionRequests.end()
@@ -670,6 +704,21 @@ void TIndexTabletActor::OnShardSessionRequestCompleted(
     {
         // the request didn't have to wait for the shards
         return;
+    }
+
+    const auto& request = it->second;
+
+    // A retry of this request shouldn't be processed once again, see
+    // HandleResetSession and HandleDestroySession. There's nothing to
+    // remember if the request has destroyed the session: a retry finds no
+    // session and succeeds as well.
+    auto* session = FindSession(sessionId);
+    if (session && !HasError(error)) {
+        if (request.Type == EShardSessionRequestType::Reset) {
+            session->CompletedResetRequestId = request.RequestId;
+        } else {
+            session->CompletedDestroyRequestId = request.RequestId;
+        }
     }
 
     PendingShardSessionRequests.erase(it);

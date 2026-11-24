@@ -982,6 +982,11 @@ public:
     TMaybe<NProtoPrivate::TShardSessionInfo> BuildShardSessionInfo(
         const TString& sessionId) const;
 
+    // Checks whether the info still describes the session of this tablet:
+    // the session is active and has the same subsessions.
+    bool IsShardSessionInfoActual(
+        const NProtoPrivate::TShardSessionInfo& info) const;
+
     // Describes all the sessions of this tablet (a shard) the same way - for
     // the main tablet which compares them with its own ones.
     TVector<NProtoPrivate::TShardSessionInfo> DescribeShardSessions() const;

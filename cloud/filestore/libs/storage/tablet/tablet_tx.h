@@ -526,6 +526,10 @@ struct TTxIndexTablet
         TString SessionId;
         bool SessionInterrupted = false;
         ui64 OwnerGeneration = 0;
+        // The request has changed what the shards should know about the
+        // session (see TShardSessionInfo): the session is a new one, it
+        // wasn't active or it has got other subsessions.
+        bool ShardSessionChanged = true;
 
         TCreateSession(
                 TRequestInfoPtr requestInfo,
@@ -541,6 +545,7 @@ struct TTxIndexTablet
             SessionId.clear();
             SessionInterrupted = false;
             OwnerGeneration = 0;
+            ShardSessionChanged = true;
         }
     };
 

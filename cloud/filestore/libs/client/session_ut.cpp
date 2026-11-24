@@ -15,6 +15,7 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
+#include <util/generic/vector.h>
 
 namespace NCloud::NFileStore::NClient {
 
@@ -610,6 +611,101 @@ Y_UNIT_TEST_SUITE(TSessionTest)
             auto future = bootstrap.Session->DestroySession();
             UNIT_ASSERT(!HasError(future.GetValueSync()));
         }
+    }
+
+    Y_UNIT_TEST(ShouldSetRequestIdOfSessionRequests)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Start();
+
+        // The server tells a retry of CreateSession / DestroySession from a
+        // new request by the request id. So each request should have an id
+        // of its own - the same for all the attempts to process it, that's
+        // why it's the id of the call context.
+        TVector<ui64> createSessionRequestIds;
+        TVector<ui64> destroySessionRequestIds;
+        ui32 createNodeCount = 0;
+
+        bootstrap.FileStore->CreateSessionHandler =
+            [&] (auto callContext, auto request) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    callContext->RequestId,
+                    request->GetHeaders().GetRequestId());
+                createSessionRequestIds.push_back(
+                    request->GetHeaders().GetRequestId());
+
+                NProto::TCreateSessionResponse response;
+                auto* session = response.MutableSession();
+                session->SetSessionId(SessionId);
+
+                return MakeFuture(response);
+            };
+
+        bootstrap.FileStore->CreateNodeHandler =
+            [&] (auto callContext, auto request) {
+                Y_UNUSED(callContext);
+                Y_UNUSED(request);
+
+                if (!createNodeCount++) {
+                    // makes the client establish the session anew
+                    NProto::TCreateNodeResponse response;
+                    *response.MutableError() =
+                        MakeError(E_FS_INVALID_SESSION, "");
+                    return MakeFuture(std::move(response));
+                }
+                return MakeFuture(NProto::TCreateNodeResponse());
+            };
+
+        bootstrap.FileStore->DestroySessionHandler =
+            [&] (auto callContext, auto request) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    callContext->RequestId,
+                    request->GetHeaders().GetRequestId());
+                destroySessionRequestIds.push_back(
+                    request->GetHeaders().GetRequestId());
+
+                return MakeFuture(NProto::TDestroySessionResponse());
+            };
+
+        {
+            auto future = bootstrap.Session->CreateSession();
+            UNIT_ASSERT(!HasError(future.GetValueSync()));
+        }
+
+        {
+            auto future = bootstrap.Session->CreateSession();
+            UNIT_ASSERT(!HasError(future.GetValueSync()));
+        }
+
+        {
+            // the session is established anew - it's one more request
+            auto future = bootstrap.Session->CreateNode(
+                MakeIntrusive<TCallContext>(FileSystemId),
+                std::make_shared<NProto::TCreateNodeRequest>());
+            UNIT_ASSERT(!HasError(future.GetValueSync()));
+        }
+
+        {
+            auto future = bootstrap.Session->DestroySession();
+            UNIT_ASSERT(!HasError(future.GetValueSync()));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(3, createSessionRequestIds.size());
+        for (const ui64 requestId: createSessionRequestIds) {
+            UNIT_ASSERT(requestId);
+        }
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            createSessionRequestIds[0],
+            createSessionRequestIds[1]);
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            createSessionRequestIds[0],
+            createSessionRequestIds[2]);
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            createSessionRequestIds[1],
+            createSessionRequestIds[2]);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, destroySessionRequestIds.size());
+        UNIT_ASSERT(destroySessionRequestIds[0]);
     }
 }
 

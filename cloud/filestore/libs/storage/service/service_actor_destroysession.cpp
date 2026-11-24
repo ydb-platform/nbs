@@ -27,6 +27,10 @@ private:
     const TString FileSystemId;
     const TString SessionId;
     const ui64 SeqNo;
+    // Headers.RequestId of the request of the client: the tablet gets it
+    // with each attempt of this actor and doesn't take a retry for a new
+    // request. Zero if the client hasn't provided it.
+    const ui64 RequestId;
     const TInstant InactivityDeadline;
 
 public:
@@ -36,7 +40,8 @@ public:
         TString clientId,
         TString fileSystemId,
         TString sessionId,
-        ui64 seqNo);
+        ui64 seqNo,
+        ui64 requestId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -73,13 +78,15 @@ TDestroySessionActor::TDestroySessionActor(
         TString clientId,
         TString fileSystemId,
         TString sessionId,
-        ui64 seqNo)
+        ui64 seqNo,
+        ui64 requestId)
     : Config(std::move(config))
     , RequestInfo(std::move(requestInfo))
     , ClientId(std::move(clientId))
     , FileSystemId(std::move(fileSystemId))
     , SessionId(std::move(sessionId))
     , SeqNo(seqNo)
+    , RequestId(requestId)
     , InactivityDeadline(Config->GetIdleSessionTimeout().ToDeadLine())
 {}
 
@@ -98,6 +105,8 @@ void TDestroySessionActor::DestroySession(const TActorContext& ctx)
     headers->SetClientId(ClientId);
     headers->SetSessionId(SessionId);
     headers->SetSessionSeqNo(SeqNo);
+    // the same id for all the attempts, see RequestId
+    headers->SetRequestId(RequestId);
 
     NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
 }
@@ -244,7 +253,8 @@ void TStorageServiceActor::HandleDestroySession(
             clientId,
             fsId,
             sessionId,
-            seqNo);
+            seqNo,
+            msg->Record.GetHeaders().GetRequestId());
 
         NCloud::Register(ctx, std::move(actor));
 
@@ -306,7 +316,8 @@ void TStorageServiceActor::HandleDestroySession(
         session->ClientId,
         session->FileStore.GetFileSystemId(),
         session->SessionId,
-        seqNo);
+        seqNo,
+        msg->Record.GetHeaders().GetRequestId());
 
     NCloud::Register(ctx, std::move(actor));
 }

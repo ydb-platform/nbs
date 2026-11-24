@@ -386,6 +386,10 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
     if (session) {
         if (session->GetClientId() == clientId) {
             args.SessionId = session->GetSessionId();
+            // the session the way the shards know it, see
+            // CompleteTx_CreateSession
+            const auto shardSessionInfo =
+                BuildShardSessionInfo(args.SessionId);
             auto toKill = DoRecoverSession(
                 *db,
                 *this,
@@ -398,6 +402,8 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 owner,
                 ctx);
             args.SessionInterrupted = true;
+            args.ShardSessionChanged = !shardSessionInfo
+                || !IsShardSessionInfoActual(*shardSessionInfo);
             if (toKill != owner) {
                 const auto subSession =
                     session->SubSessions.GetSubSessionBySeqNo(seqNo);
@@ -450,6 +456,11 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
 
             args.SessionId = session->GetSessionId();
 
+            // the session the way the shards know it, see
+            // CompleteTx_CreateSession
+            const auto shardSessionInfo =
+                BuildShardSessionInfo(args.SessionId);
+
             DoRecoverSession(
                 *db,
                 *this,
@@ -461,6 +472,8 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
                 readOnly,
                 owner,
                 ctx);
+            args.ShardSessionChanged = !shardSessionInfo
+                || !IsShardSessionInfoActual(*shardSessionInfo);
             const auto subSession =
                 session->SubSessions.GetSubSessionBySeqNo(seqNo);
             if (subSession) {
@@ -639,8 +652,15 @@ void TIndexTabletActor::CompleteTx_CreateSession(
 
         // the id is about to be moved together with the request
         const TString sessionId = session->GetSessionId();
+        // see TPendingShardSessionRequest::RequestId
+        const ui64 requestId = args.Request.GetHeaders().GetRequestId();
 
         bool interrupted = args.SessionInterrupted;
+        // The version of the request if it shouldn't get a new one: the
+        // shards which have been synced at this version (or later) have the
+        // session the way this request needs it.
+        ui64 version = 0;
+        bool retryOfPendingRequest = false;
 
         auto it = PendingShardSessionRequests.find(sessionId);
         if (it != PendingShardSessionRequests.end()) {
@@ -667,34 +687,113 @@ void TIndexTabletActor::CompleteTx_CreateSession(
 
             //
             // One more CreateSession for this session is waiting for the
-            // shards, e.g. the client has reconnected and repeated the
-            // request. The session is the way this request has made it now,
-            // so this request is the one which the shards should get.
+            // shards. The session is the way this request has made it now,
+            // so this request takes the place of that one.
+            //
+            // It may be a retry of the very same request: the client hasn't
+            // got the response in time or has reconnected to this tablet.
+            // Such a request doesn't start over. It's still the same
+            // incarnation of the client, so it needs just what its previous
+            // attempt needed: if this attempt hasn't changed anything for
+            // the shards, then the version stays the same and the shards
+            // which have got the session are not waited for once again.
             //
 
-            ReplyToPendingShardSessionRequest(
+            const bool retry = requestId && pending.RequestId == requestId;
+
+            ReplyToReplacedShardSessionRequest(
                 ctx,
                 pending,
+                *args.RequestInfo,
                 MakeError(
                     E_REJECTED,
-                    "replaced by another CreateSession request"));
+                    retry
+                        ? "replaced by a retry of the same request"
+                        : "replaced by another CreateSession request"));
 
-            // some of the shards might have not got the request which is
-            // being replaced
-            interrupted = interrupted || pending.Interrupted;
+            if (retry) {
+                retryOfPendingRequest = true;
+                interrupted = pending.Interrupted;
+                if (!args.ShardSessionChanged) {
+                    version = pending.Version;
+                }
+            } else {
+                // some of the shards might have not got the request which is
+                // being replaced
+                interrupted = interrupted || pending.Interrupted;
+            }
 
             PendingShardSessionRequests.erase(it);
+        } else if (requestId
+                && session->CompletedCreateRequestId == requestId)
+        {
+            //
+            // A retry of a request which has been completed: the shards
+            // have got the session and have dropped what the previous
+            // incarnation of the client had left (see
+            // TShardSessionInfo::Interrupted) - it happened after this
+            // incarnation had sent the request for the first time. There's
+            // nothing to do unless something has changed since then.
+            //
+
+            interrupted = false;
+            if (!args.ShardSessionChanged) {
+                version = session->ShardSyncVersion;
+            }
         }
 
         TPendingShardSessionRequest request;
         request.Type = EShardSessionRequestType::Create;
+        request.RequestId = requestId;
         request.SessionSeqNo = args.Request.GetMountSeqNumber();
         request.Interrupted = interrupted;
         request.RequestInfo = std::move(args.RequestInfo);
         request.CreateRequest = std::move(args.Request);
         request.CreateResponse = std::move(response);
 
-        EnqueueShardSessionRequest(ctx, sessionId, std::move(request));
+        if (!version) {
+            EnqueueShardSessionRequest(ctx, sessionId, std::move(request));
+            return;
+        }
+
+        request.Version = version;
+
+        if (version <= GetShardSessionsSyncedVersion()) {
+            LOG_INFO(ctx, TFileStoreComponents::TABLET,
+                "%s CreateSession s:%s n:%lu is a retry of request %lu"
+                ", the shards have been synced at version %lu already",
+                LogTag.c_str(),
+                sessionId.Quote().c_str(),
+                request.SessionSeqNo,
+                requestId,
+                version);
+
+            CompletePendingCreateSession(ctx, sessionId, std::move(request));
+            return;
+        }
+
+        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            "%s CreateSession s:%s n:%lu is a retry of request %lu"
+            ", it keeps waiting for the shard sessions sync, version: %lu",
+            LogTag.c_str(),
+            sessionId.Quote().c_str(),
+            request.SessionSeqNo,
+            requestId,
+            version);
+
+        PendingShardSessionRequests[sessionId] = std::move(request);
+
+        if (retryOfPendingRequest) {
+            // The rounds go on while there are pending requests, see
+            // HandleSyncSessionsCompleted: the retry shouldn't make them
+            // more frequent. That's just to be on the safe side - it does
+            // nothing if a round is in progress or is scheduled.
+            ScheduleOutOfScheduleSyncSessions(ctx);
+        } else {
+            // the shards which are behind might be waiting for a round
+            // which nobody is in a hurry to start
+            ScheduleUrgentSyncSessions(ctx);
+        }
         return;
     }
 
@@ -727,7 +826,8 @@ void TIndexTabletActor::CompletePendingCreateSession(
 {
     using TResponse = TEvIndexTablet::TEvCreateSessionResponse;
 
-    if (!FindSession(sessionId)) {
+    auto* session = FindSession(sessionId);
+    if (!session) {
         auto message = TStringBuilder() << "Session " << sessionId
             << " destroyed during creation";
         LOG_WARN(ctx, TFileStoreComponents::TABLET,
@@ -740,6 +840,10 @@ void TIndexTabletActor::CompletePendingCreateSession(
         NCloud::Reply(ctx, *request.RequestInfo, std::move(response));
         return;
     }
+
+    // a retry of this request doesn't have to wait for these shards once
+    // again, see CompleteTx_CreateSession
+    session->CompletedCreateRequestId = request.RequestId;
 
     auto response = std::move(request.CreateResponse);
 
