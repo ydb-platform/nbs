@@ -3,10 +3,13 @@ import os
 import pytest
 import subprocess
 import time
+from contextlib import contextmanager
+from urllib.request import urlopen
 
 import cloud.blockstore.public.sdk.python.protos as protos
 
 from cloud.blockstore.public.sdk.python.client.error_codes import EResult
+from cloud.blockstore.public.sdk.python.client.grpc_client import GrpcClient
 
 from cloud.blockstore.config.server_pb2 import TServerConfig, TServerAppConfig, \
     TKikimrServiceConfig
@@ -16,10 +19,11 @@ from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
 
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
 from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_nbs_server, \
-    wait_for_secure_erase, get_sensor_by_name, get_nbs_counters
+    wait_for_secure_erase, get_sensor, get_sensor_by_name, get_nbs_counters
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import setup_nonreplicated, \
     create_file_devices, setup_disk_registry_config_simple, enable_writable_state
 
+from contrib.ydb.tests.library.common.wait_for import wait_for
 from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
 from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
@@ -784,7 +788,8 @@ class Nbs(LocalNbs):
         return get_sensor_by_name(sensors, 'disk_registry', name)
 
 
-def __run_test(test_case, always_allocate_local_ssd, attach_detach_paths):
+@contextmanager
+def _cms_cluster(always_allocate_local_ssd, attach_detach_paths, unavailable_agent_timeout_ms=None):
     kikimr_binary_path = yatest_common.binary_path(
         "contrib/ydb/apps/ydbd/ydbd")
 
@@ -833,6 +838,8 @@ def __run_test(test_case, always_allocate_local_ssd, attach_detach_paths):
     storage.AcquireNonReplicatedDevices = True
     storage.ClientRemountPeriod = 1000
     storage.NonReplicatedInfraTimeout = 30000
+    if unavailable_agent_timeout_ms is not None:
+        storage.NonReplicatedInfraUnavailableAgentTimeout = unavailable_agent_timeout_ms
     storage.NonReplicatedAgentMinTimeout = 3000
     storage.NonReplicatedAgentMaxTimeout = 3000
     storage.NonReplicatedDiskRecyclingPeriod = 5000
@@ -890,8 +897,7 @@ def __run_test(test_case, always_allocate_local_ssd, attach_detach_paths):
     wait_for_secure_erase(nbs.mon_port)
 
     try:
-        ret = test_case.run(storage, nbs, disk_agent, CMS(
-            nbs_client), devices, always_allocate_local_ssd, attach_detach_paths)
+        yield storage, nbs, disk_agent, nbs_client, devices
     finally:
         nbs.stop()
         disk_agent.stop()
@@ -901,12 +907,105 @@ def __run_test(test_case, always_allocate_local_ssd, attach_detach_paths):
             d.handle.close()
             os.unlink(d.path)
 
-    return ret
-
 
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
 @pytest.mark.parametrize("always_allocate_local_ssd", [True, False], ids=["locals_in_warning", "locals_in_online"])
 @pytest.mark.parametrize("attach_detach_paths", [True, False], ids=["attach-detach-paths", ""])
 def test_cms(test_case, always_allocate_local_ssd, attach_detach_paths):
-    assert __run_test(test_case, always_allocate_local_ssd,
-                      attach_detach_paths) is True
+    with _cms_cluster(always_allocate_local_ssd, attach_detach_paths) as cluster:
+        storage, nbs, disk_agent, client, devices = cluster
+        assert (
+            test_case.run(
+                storage, nbs, disk_agent, CMS(client), devices, always_allocate_local_ssd, attach_detach_paths
+            )
+            is True
+        )
+
+
+def test_detached_device_reports_hw_problems():
+    disk_id = "detached-device"
+    host = "localhost"
+    client_id = "detached-device-client"
+    with _cms_cluster(
+        always_allocate_local_ssd=True,
+        attach_detach_paths=True,
+        unavailable_agent_timeout_ms=1000,
+    ) as (_, nbs, disk_agent, client, _):
+        cms = CMS(client)
+        nbs.create_volume(disk_id, blocks_count=DEFAULT_BLOCK_COUNT_PER_DEVICE)
+        nbs.read_blocks(disk_id, start_index=0, block_count=1)
+
+        disk_agent.stop()
+        assert wait_for(lambda: nbs.get_stats("AgentsInUnavailableState") == 1, timeout_seconds=60)
+
+        def remove_host():
+            result = cms.remove_agent(host).ActionResults[0].Result
+            assert result.Code in (EResult.S_OK.value, EResult.E_TRY_AGAIN.value), result
+            return result.Code == EResult.S_OK.value
+
+        assert wait_for(remove_host, timeout_seconds=60)
+        disk_agent.start()
+        wait_for_nbs_server(disk_agent.nbs_port)
+
+        def agent_registered():
+            with urlopen(f"http://localhost:{disk_agent.mon_port}/blockstore/disk_agent", timeout=10) as page:
+                return b"Registered" in page.read()
+
+        # The agent finishes detaching paths from its registration response before
+        # reporting Registered on its monitoring page.
+        assert wait_for(agent_registered, timeout_seconds=60)
+
+        def volume_has_updated_devices(state):
+            backup = client.backup_disk_registry_state()
+            disk = next(d for d in backup["Disks"] if d["DiskId"] == disk_id)
+            return disk.get("State", "DISK_STATE_ONLINE") == state and disk_id not in backup.get("DisksToNotify", [])
+
+        # WARNING clears volume-wide error muting. Wait for the volume to acknowledge the update.
+        assert wait_for(lambda: volume_has_updated_devices("DISK_STATE_WARNING"), timeout_seconds=60)
+
+        def hw_problems():
+            return get_sensor(
+                get_nbs_counters(nbs.mon_port)["sensors"],
+                default_value=0,
+                component="server_volume",
+                volume=disk_id,
+                instance=client_id,
+                sensor="HwProblems",
+            )
+
+        # Use single-attempt RPCs to inspect the original error and count each rejection once.
+        with GrpcClient(f"localhost:{nbs.nbs_port}") as grpc:
+            headers = protos.THeaders(ClientId=client_id)
+            mount = grpc.stub.MountVolume(
+                protos.TMountVolumeRequest(Headers=headers, DiskId=disk_id, InstanceId=client_id),
+                timeout=30,
+            )
+            assert mount.Error.Code == EResult.S_OK.value, mount.Error
+            io = dict(Headers=headers, DiskId=disk_id, SessionId=mount.SessionId)
+            read = protos.TReadBlocksRequest(**io, BlocksCount=1)
+            write = protos.TWriteBlocksRequest(**io, Blocks=protos.TIOVector(Buffers=[b"x" * DEFAULT_BLOCK_SIZE]))
+            zero = protos.TZeroBlocksRequest(**io, BlocksCount=1)
+            requests = [
+                (grpc.stub.ReadBlocks, read),
+                (grpc.stub.WriteBlocks, write),
+                (grpc.stub.ZeroBlocks, zero),
+            ]
+
+            baseline = hw_problems()
+            for call, request in requests:
+                error = call(request, timeout=30).Error
+                assert error.Code == EResult.E_REJECTED.value, error
+                assert "device detached" in error.Message, error
+                assert error.Flags & (1 << (protos.EF_HW_PROBLEMS_DETECTED - 1)), error
+            assert wait_for(lambda: hw_problems() == baseline + len(requests), timeout_seconds=60)
+
+            result = cms.add_agent(host).ActionResults[0].Result
+            assert result.Code == EResult.S_OK.value, result
+            cms.wait_for_no_paths_to_attach_detach()
+            assert wait_for(lambda: volume_has_updated_devices("DISK_STATE_ONLINE"), timeout_seconds=60)
+            error = grpc.stub.WriteBlocks(write, timeout=30).Error
+            assert error.Code == EResult.S_OK.value, error
+            response = grpc.stub.ReadBlocks(read, timeout=30)
+            assert response.Error.Code == EResult.S_OK.value, response.Error
+            assert response.Blocks.Buffers == write.Blocks.Buffers
+            assert hw_problems() == baseline + len(requests)

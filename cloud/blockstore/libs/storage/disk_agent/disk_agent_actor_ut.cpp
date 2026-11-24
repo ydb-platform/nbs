@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/storage/testlib/mon_http_request.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 
 #include <contrib/ydb/library/actors/core/mon.h>
@@ -5699,6 +5700,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             auto error = Read(diskAgent, "reader-1", IDs[1]);
             UNIT_ASSERT_EQUAL_C(E_REJECTED, error.GetCode(), error);
             UNIT_ASSERT_C(
+                !HasProtoFlag(
+                    error.GetFlags(),
+                    NProto::EF_HW_PROBLEMS_DETECTED),
+                error);
+            UNIT_ASSERT_C(
                 error.GetMessage().Contains("Device disabled"),
                 error);
         }
@@ -6973,6 +6979,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
                        .With(storageConfig)
                        .Build();
 
+        Runtime->UpdateCurrentTime(Now());
+
         TDiskAgentClient diskAgent(*Runtime);
         diskAgent.WaitReady();
 
@@ -6982,6 +6990,12 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             1,
             FindProcessesWithOpenFile(Devices[0]).size());
 
+        const TString clientId = "writer";
+        diskAgent.AcquireDevices(
+            TVector{IDs[0]},
+            clientId,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+
         diskAgent.DetachPaths(
             TVector<TString>{{PartLabels[0]}},
             1,    // diskRegistryGeneration
@@ -6990,6 +7004,16 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             FindProcessesWithOpenFile(Devices[0]).size());
+
+        for (const auto& error:
+             {Read(diskAgent, clientId, IDs[0]),
+              Write(diskAgent, clientId, IDs[0])})
+        {
+            UNIT_ASSERT_EQUAL_C(E_REJECTED, error.GetCode(), error);
+            UNIT_ASSERT_C(
+                HasProtoFlag(error.GetFlags(), NProto::EF_HW_PROBLEMS_DETECTED),
+                error);
+        }
     }
 
     Y_UNIT_TEST_F(ShouldAttachPaths, TFixture)

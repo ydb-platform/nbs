@@ -397,37 +397,14 @@ TDiskAgentState::TDiskAgentState(
 {
 }
 
-TStorageAdapterPtr TDiskAgentState::GetDeviceStorageAdapter(
+TResultOrError<TStorageAdapterPtr> TDiskAgentState::GetDeviceStorageAdapter(
     const TString& uuid,
     const TString& clientId,
     const NProto::EVolumeAccessMode accessMode) const
 {
     return AgentConfig->GetAcquireRequired()
-        ? GetDeviceStorageAdapterImpl(uuid, clientId, accessMode)
-        : GetDeviceStorageAdapterImpl(uuid);
-}
-
-TStorageAdapterPtr TDiskAgentState::GetDeviceStorageAdapterImpl(
-    const TString& uuid,
-    const TString& clientId,
-    const NProto::EVolumeAccessMode accessMode) const
-{
-    auto [result, error] =
-        DeviceClient->AccessDevice(uuid, clientId, accessMode);
-
-    CheckError(error);
-
-    return result;
-}
-
-TStorageAdapterPtr TDiskAgentState::GetDeviceStorageAdapterImpl(
-    const TString& uuid) const
-{
-    auto [result, error] = DeviceClient->AccessDevice(uuid);
-
-    CheckError(error);
-
-    return result;
+               ? DeviceClient->AccessDevice(uuid, clientId, accessMode)
+               : DeviceClient->AccessDevice(uuid);
 }
 
 const TString& TDiskAgentState::GetDeviceName(const TString& uuid) const
@@ -763,10 +740,14 @@ TFuture<NProto::TReadDeviceBlocksResponse> TDiskAgentState::Read(
         request.GetDeviceUUID(),
         request.GetHeaders().GetClientId());
 
-    const auto& device = GetDeviceStorageAdapter(
+    auto [device, error] = GetDeviceStorageAdapter(
         request.GetDeviceUUID(),
         request.GetHeaders().GetClientId(),
         NProto::VOLUME_ACCESS_READ_ONLY);
+    if (HasError(error)) {
+        return MakeFuture<NProto::TReadDeviceBlocksResponse>(
+            TErrorResponse(std::move(error)));
+    }
 
     auto readRequest = std::make_shared<NProto::TReadBlocksRequest>();
     readRequest->MutableHeaders()->CopyFrom(request.GetHeaders());
@@ -902,10 +883,14 @@ TFuture<NProto::TWriteDeviceBlocksResponse> TDiskAgentState::WriteBlocks(
         deviceUUID,
         request->GetHeaders().GetClientId());
 
-    const auto& device = GetDeviceStorageAdapter(
+    auto [device, error] = GetDeviceStorageAdapter(
         deviceUUID,
         request->GetHeaders().GetClientId(),
         NProto::VOLUME_ACCESS_READ_WRITE);
+    if (HasError(error)) {
+        return MakeFuture<NProto::TWriteDeviceBlocksResponse>(
+            TErrorResponse(std::move(error)));
+    }
 
     WriteProfileLog(
         now,
@@ -939,10 +924,14 @@ TFuture<NProto::TZeroDeviceBlocksResponse> TDiskAgentState::WriteZeroes(
         request.GetDeviceUUID(),
         request.GetHeaders().GetClientId());
 
-    const auto& device = GetDeviceStorageAdapter(
+    auto [device, error] = GetDeviceStorageAdapter(
         request.GetDeviceUUID(),
         request.GetHeaders().GetClientId(),
         NProto::VOLUME_ACCESS_READ_WRITE);
+    if (HasError(error)) {
+        return MakeFuture<NProto::TZeroDeviceBlocksResponse>(
+            TErrorResponse(std::move(error)));
+    }
 
     auto zeroRequest = std::make_shared<NProto::TZeroBlocksRequest>();
     zeroRequest->SetStartIndex(request.GetStartIndex());
@@ -974,7 +963,9 @@ TFuture<NProto::TError> TDiskAgentState::SecureErase(
     const TString& uuid,
     TInstant now)
 {
-    const auto& device = GetDeviceStorageAdapterImpl(uuid);
+    auto [device, accessError] = DeviceClient->AccessDevice(uuid);
+    CheckError(accessError);
+
     const auto& sessionInfo = DeviceClient->GetWriterSession(uuid);
     if (sessionInfo.Id
             && sessionInfo.LastActivityTs
@@ -1019,10 +1010,14 @@ TFuture<NProto::TChecksumDeviceBlocksResponse> TDiskAgentState::Checksum(
 {
     Y_UNUSED(now);
 
-    const auto& device = GetDeviceStorageAdapter(
+    auto [device, error] = GetDeviceStorageAdapter(
         request.GetDeviceUUID(),
         request.GetHeaders().GetClientId(),
         NProto::VOLUME_ACCESS_READ_ONLY);
+    if (HasError(error)) {
+        return MakeFuture<NProto::TChecksumDeviceBlocksResponse>(
+            TErrorResponse(std::move(error)));
+    }
 
     // TODO: Pass checksum request down to the device to avoid data copying
     auto readRequest = std::make_shared<NProto::TReadBlocksRequest>();

@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/service/request_helpers.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <util/string/builder.h>
 
@@ -22,6 +23,18 @@ TString DescribeDeviceOwner(
     return TStringBuilder()
            << "[clientId=" << clientId.Quote() << ", diskId=" << diskId.Quote()
            << ", volumeGeneration=" << volumeGeneration << "]";
+}
+
+TResultOrError<TStorageAdapterPtr> GetAttachedStorageAdapter(
+    const TStorageAdapterPtr& adapter)
+{
+    if (adapter) {
+        return adapter;
+    }
+
+    auto error = MakeError(E_REJECTED, "device detached");
+    SetErrorProtoFlag(error, NCloud::NProto::EF_HW_PROBLEMS_DETECTED);
+    return error;
 }
 
 }   // namespace
@@ -357,11 +370,7 @@ TResultOrError<TStorageAdapterPtr> TDeviceClient::AccessDevice(
                 << ", current readers: [" << allReaders << "]");
     }
 
-    if (!deviceState->StorageAdapter) {
-        return MakeError(E_REJECTED, "device detached");
-    }
-
-    return deviceState->StorageAdapter;
+    return GetAttachedStorageAdapter(deviceState->StorageAdapter);
 }
 
 TResultOrError<TStorageAdapterPtr> TDeviceClient::AccessDevice(
@@ -376,11 +385,7 @@ TResultOrError<TStorageAdapterPtr> TDeviceClient::AccessDevice(
 
     TReadGuard g(deviceState->Lock);
 
-    if (!deviceState->StorageAdapter) {
-        return MakeError(E_REJECTED, "device detached");
-    }
-
-    return deviceState->StorageAdapter;
+    return GetAttachedStorageAdapter(deviceState->StorageAdapter);
 }
 
 TStorageAdapterPtr TDeviceClient::DetachDevice(const TString& uuid) const
