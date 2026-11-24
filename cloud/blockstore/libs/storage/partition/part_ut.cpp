@@ -5920,21 +5920,15 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldAutomaticallyRunCompactionForManyMixedBlocks)
     {
-        static constexpr ui32 mixedBlockCountThreshold = 4;
-
         auto config = DefaultConfig(1_MB);
         config.SetMixedBlocksCountCompactionEnabledHDD(true);
-        config.SetMixedBytesCountCompactionThresholdHDD(
-            mixedBlockCountThreshold * DefaultBlockSize);
-        config.SetWriteBlobThreshold(
-            mixedBlockCountThreshold * DefaultBlockSize);
-        config.SetMixedBytesCountCompactionThresholdSSD(
-            (mixedBlockCountThreshold + 1) * DefaultBlockSize);
-        config.SetWriteBlobThresholdSSD(
-            (mixedBlockCountThreshold + 1) * DefaultBlockSize);
+        config.SetMixedBlocksCompactionMinUsedBytesHDD(
+            3 * DefaultBlockSize + 1);
+        config.SetMixedBytesCountCompactionThresholdHDD(2 * DefaultBlockSize);
+        config.SetWriteBlobThreshold(1_MB);
         config.SetSSDMaxBlobsPerRange(100);
         config.SetHDDMaxBlobsPerRange(100);
-        config.SetCompactionMergedBlobThresholdHDD(1);
+        config.SetCompactionMergedBlobThresholdHDD(1_MB);
 
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -5972,11 +5966,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 return false;
             });
 
-        partition.WriteBlocks(TBlockRange32::WithLength(0, 2), 1);
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 3), 1);
         partition.Flush();
         UNIT_ASSERT(!compactionRequestObserved);
 
-        partition.WriteBlocks(TBlockRange32::WithLength(2, 2), 2);
+        partition.WriteBlocks(3, 2);
         partition.Flush();
 
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
@@ -6018,6 +6012,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                     config.SetMixedBlocksCompactionThresholdPercentageHDD(
                         perDisk ? 50 : 0);
                     config.SetMixedBlocksCompactionMinStoredBytesHDD(0);
+                    config.SetMixedBlocksCompactionMinUsedBytesHDD(
+                        4 * DefaultBlockSize);
                     config.SetWriteBlobThreshold(4 * DefaultBlockSize);
                     config.SetHDDMaxBlobsPerRange(100);
                     config.SetCompactionMergedBlobThresholdHDD(1);
@@ -6086,6 +6082,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 config.SetMixedBytesCountCompactionThresholdHDD(1_MB);
                 config.SetMixedBlocksCompactionThresholdPercentageHDD(50);
                 config.SetMixedBlocksCompactionMinStoredBytesHDD(0);
+                config.SetMixedBlocksCompactionMinUsedBytesHDD(
+                    4 * DefaultBlockSize);
                 config.SetWriteBlobThreshold(4 * DefaultBlockSize);
                 config.SetHDDMaxBlobsPerRange(100);
                 config.SetCompactionMergedBlobThresholdHDD(1);
@@ -6190,6 +6188,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 config.SetCompactionRangeGarbageThreshold(100);
                 config.SetMixedBlocksCountCompactionEnabledHDD(mixedCompaction);
                 config.SetMixedBytesCountCompactionThresholdHDD(
+                    8 * DefaultBlockSize);
+                config.SetMixedBlocksCompactionMinUsedBytesHDD(
                     8 * DefaultBlockSize);
                 config.SetWriteBlobThreshold(8 * DefaultBlockSize);
                 config.SetCompactionMergedBlobThresholdHDD(1);
@@ -6408,6 +6408,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 1);
             runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         }
+        if (diskBlockCount > 2 * MaxBlocksCount) {
+            // This sparse range stays below the used-byte minimum.
+            partition.WriteBlocks(
+                TBlockRange32::WithLength(2 * MaxBlocksCount, 10),
+                1);
+            partition.Flush();
+        }
 
         partition.SendToPipe(
             std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
@@ -6522,7 +6529,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 mediaKind, 1, 0, 20, true, false, 2 * MaxBlocksCount, 990);
             CheckMixedBlocksPercentageCompactionPerDisk(
                 mediaKind, 1, 0, 21, true, true);
-            // The same stored bytes on a larger disk yield the same trigger.
+            // Mixed blocks in a third, ineligible range do not advance the
+            // trigger.
             CheckMixedBlocksPercentageCompactionPerDisk(
                 mediaKind, 1, 0, 21, true, false, 4 * MaxBlocksCount);
             CheckMixedBlocksPercentageCompactionPerDisk(mediaKind, 2, 0, 0);
@@ -6565,8 +6573,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 thresholdHDD * DefaultBlockSize);
             config.SetMixedBytesCountCompactionThresholdSSD(
                 thresholdSSD * DefaultBlockSize);
-            config.SetWriteBlobThresholdSSD(thresholdSSD * DefaultBlockSize);
-            config.SetWriteBlobThreshold(thresholdHDD * DefaultBlockSize);
+            config.SetMixedBlocksCompactionMinUsedBytesHDD(
+                4 * DefaultBlockSize);
+            config.SetMixedBlocksCompactionMinUsedBytesSSD(0);
             config.SetSSDMaxBlobsPerRange(100);
             config.SetHDDMaxBlobsPerRange(100);
 
