@@ -822,7 +822,7 @@ namespace NActors {
                             // allocate buffer and push it into the payload
                             auto buffer = AllocateRcBuf(size, headroom, tailroom, alignment, isRdma);
                             if (!buffer) {
-                                LOG_CRIT_IC_SESSION("ICRDMA", "Unable to allocate rcbuf for section, sz: %d, use_rdma: %d", size, isRdma);
+                                LOG_CRIT_IC_SESSION("ICRDMA", "Unable to allocate rcbuf for section, sz: %lu, use_rdma: %d", size, isRdma);
                                 throw TExDestroySession{TDisconnectReason::FormatError()};
                             }
                             if (isRdma) {
