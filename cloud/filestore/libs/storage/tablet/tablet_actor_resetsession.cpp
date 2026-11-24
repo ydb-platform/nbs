@@ -161,8 +161,6 @@ void TIndexTabletActor::ExecuteTx_ResetSession(
         ResetSession(*db, session, args.Request.GetSessionState());
         args.Completed = true;
     }
-
-    EnqueueTruncateIfNeeded(ctx);
 }
 
 void TIndexTabletActor::CompleteTx_ResetSession(

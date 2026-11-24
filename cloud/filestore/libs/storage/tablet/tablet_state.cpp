@@ -210,7 +210,6 @@ void TIndexTabletState::LoadState(
     LastStep = 1;
     LastCollectPerGenerationCounter = 0;
 
-    TruncateBlocksThreshold = config.GetMaxBlocksPerTruncateTx();
     SessionHistoryEntryCount = config.GetSessionHistoryEntryCount();
 
     ChannelMinFreeSpace = config.GetChannelMinFreeSpace() / 100.;

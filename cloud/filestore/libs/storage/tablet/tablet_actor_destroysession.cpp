@@ -182,8 +182,6 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
         RemoveSession(*db, args.SessionId);
         args.Completed = true;
     }
-
-    EnqueueTruncateIfNeeded(ctx);
 }
 
 void TIndexTabletActor::CompleteTx_DestroySession(

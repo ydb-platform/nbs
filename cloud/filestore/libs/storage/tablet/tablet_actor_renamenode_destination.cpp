@@ -755,8 +755,6 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
     *args.ResponseLogEntry.MutableRenameNodeInDestinationResponse() =
         args.Response;
     WriteResponseLogEntry(*db, args.ResponseLogEntry);
-
-    EnqueueTruncateIfNeeded(ctx);
 }
 
 void TIndexTabletActor::CompleteTx_RenameNodeInDestination(

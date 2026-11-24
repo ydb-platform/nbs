@@ -133,8 +133,6 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
                              << ", Handle: " << args.Request.GetHandle());
     }
 
-    EnqueueTruncateIfNeeded(ctx);
-
     if (Config->GetTabletUnsafeAsyncDestroyHandleEnabled()) {
         LOG_DEBUG(
             ctx,

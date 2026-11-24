@@ -579,8 +579,6 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
             NProto::TUnlinkNodeResponse{},
             Config->GetDupCacheEntryCount());
     }
-
-    EnqueueTruncateIfNeeded(ctx);
 }
 
 void TIndexTabletActor::CompleteTx_UnlinkNode(

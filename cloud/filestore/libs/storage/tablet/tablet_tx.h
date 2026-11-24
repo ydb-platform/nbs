@@ -150,8 +150,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(DumpCompactionRange,                __VA_ARGS__)                       \
     xxx(FlushBytes,                         __VA_ARGS__)                       \
     xxx(TrimBytes,                          __VA_ARGS__)                       \
-    xxx(TruncateCompleted,                  __VA_ARGS__)                       \
-    xxx(TruncateRange,                      __VA_ARGS__)                       \
     xxx(ZeroRange,                          __VA_ARGS__)                       \
                                                                                \
     xxx(FilterAliveNodes,                   __VA_ARGS__)                       \
@@ -370,7 +368,6 @@ struct TTxIndexTablet
         TVector<NProto::TQuota> Quotas;
         TVector<TQuotaUsage> QuotaUsages;
         TVector<NProto::TDupCacheEntry> DupCache;
-        TVector<NProto::TTruncateEntry> TruncateQueue;
         TMaybe<NProto::TStorageConfig> StorageConfig;
         TVector<NProto::TSessionHistoryEntry> SessionHistory;
         TVector<NProto::TOpLogEntry> OpLog;
@@ -399,7 +396,6 @@ struct TTxIndexTablet
             Quotas.clear();
             QuotaUsages.clear();
             DupCache.clear();
-            TruncateQueue.clear();
             StorageConfig.Clear();
             SessionHistory.clear();
             OpLog.clear();
@@ -2815,60 +2811,6 @@ struct TTxIndexTablet
         void Clear() override
         {
             TProfileAware::Clear();
-        }
-    };
-
-    //
-    // TruncateRange
-    //
-
-    struct TTruncateRange
-        : TTxIndexTabletBase
-        , TErrorAware
-        , TProfileAware
-        , TIndexStateNodeUpdates
-    {
-        const TRequestInfoPtr RequestInfo;
-        const ui64 NodeId;
-        const TByteRange Range;
-
-        TTruncateRange(
-                TRequestInfoPtr requestInfo,
-                ui64 nodeId,
-                TByteRange range)
-            : TProfileAware(EFileStoreSystemRequest::TruncateRange)
-            , RequestInfo(std::move(requestInfo))
-            , NodeId(nodeId)
-            , Range(range)
-        {}
-
-        void Clear() override
-        {
-            TErrorAware::Clear();
-            TProfileAware::Clear();
-            TIndexStateNodeUpdates::Clear();
-        }
-    };
-
-    //
-    // TruncateCompleted
-    //
-
-    struct TTruncateCompleted: TTxIndexTabletBase
-    {
-        const TRequestInfoPtr RequestInfo;
-        const ui64 NodeId;
-
-        TTruncateCompleted(
-                TRequestInfoPtr requestInfo,
-                ui64 nodeId)
-            : RequestInfo(std::move(requestInfo))
-            , NodeId(nodeId)
-        {}
-
-        void Clear() override
-        {
-            // nothing to do
         }
     };
 

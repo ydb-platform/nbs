@@ -679,8 +679,6 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
         args.RequestId,
         NProto::TRenameNodeResponse{},
         Config->GetDupCacheEntryCount());
-
-    EnqueueTruncateIfNeeded(ctx);
 }
 
 void TIndexTabletActor::CompleteTx_RenameNode(

@@ -178,6 +178,8 @@ void TIndexTabletActor::ExecuteTx_SetNodeAttr(
     TTransactionContext& tx,
     TTxIndexTablet::TSetNodeAttr& args)
 {
+    Y_UNUSED(ctx);
+
     FILESTORE_VALIDATE_TX_ERROR(SetNodeAttr, args);
 
     auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
@@ -248,8 +250,6 @@ void TIndexTabletActor::ExecuteTx_SetNodeAttr(
         args.Node->Attrs);
 
     args.Node->Attrs = std::move(attrs);
-
-    EnqueueTruncateIfNeeded(ctx);
 }
 
 void TIndexTabletActor::CompleteTx_SetNodeAttr(

@@ -85,7 +85,6 @@ SRCS(
     tablet_actor_setnodexattr.cpp
     tablet_actor_testlock.cpp
     tablet_actor_throttling.cpp
-    tablet_actor_truncate.cpp
     tablet_actor_unlinknode.cpp
     tablet_actor_unlinknode_abort.cpp
     tablet_actor_unlinknode_prepare.cpp
