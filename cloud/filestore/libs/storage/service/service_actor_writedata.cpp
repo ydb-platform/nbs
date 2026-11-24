@@ -1041,7 +1041,7 @@ private:
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx)
     {
-        if (ShouldSkipOutdatedResponse(ev->Get()->Tag, "HandleWakup", ctx))
+        if (ShouldSkipOutdatedResponse(ev->Get()->Tag, "HandleWakeup", ctx))
         {
             return;
         }
