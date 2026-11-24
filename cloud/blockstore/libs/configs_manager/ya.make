@@ -21,6 +21,7 @@ PEERDIR(
     contrib/ydb/library/actors/core
 
     library/cpp/html/pcdata
+    library/cpp/monlib/service/pages
 )
 
 END()

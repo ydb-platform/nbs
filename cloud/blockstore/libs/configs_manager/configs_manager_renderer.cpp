@@ -13,9 +13,8 @@ Repeated values are aligned by index and map values by key across sources.
 
 #include <cloud/storage/core/config/markers.pb.h>
 
-#include <contrib/ydb/core/cms/console/http.h>
-
 #include <library/cpp/html/pcdata/pcdata.h>
+#include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/map.h>
@@ -710,6 +709,7 @@ TString TBlockstoreConfigRenderer::RenderHtml(
     HTML (out) {
         // Page styles for metadata, controls, counters and value tables.
         out << R"(<style>
+.collapse-ref { cursor: pointer; }
 .config-zero { color: #000; }
 .config-dynamic-total, .config-present { color: #008000; }
 .config-absent { color: #666; }
@@ -874,10 +874,7 @@ $(function () {
 });
 </script>)" << Endl;
 
-        // Shared CMS monitoring styles used by the page tables and controls.
-        NKikimr::NConsole::NHttp::OutputStyles(out);
-
-        // Main page content below the shared monitoring styles.
+        // Main page content below the styles and scripts.
         DIV_CLASS ("container") {
             // Page title above the configuration metadata.
             TAG (TH3) {
