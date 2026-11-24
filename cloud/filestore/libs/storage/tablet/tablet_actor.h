@@ -231,8 +231,12 @@ private:
     //   and by this tablet last, the session is not touched until then. So
     //   the shards make their decisions against the same subsessions as this
     //   tablet does.
-    // The only exception is a request which has been waiting for the shards
-    // for too long, see ShardSessionRequestTimeout.
+    // There's no timeout for it: a request waits for as long as some of the
+    // shards are unavailable. Each shard has to process a request only once
+    // (see ShardSyncStates), so a request makes progress even if each round
+    // fails for some of the shards. A deadline would throw this progress
+    // away - the retry of the client would have to start over with all the
+    // shards.
     //
     // The state below is not persistent: the clients retry the requests
     // which didn't manage to get through, and the first round after a
@@ -286,14 +290,9 @@ private:
         // CreateSession: the session existed and has been recovered by the
         // request, see TShardSessionInfo::Interrupted.
         bool Interrupted = false;
-        // ResetSession and DestroySession: the shards are not waited for
-        // anymore (all of them have processed the request or it has been
-        // waiting for too long), the tx of this tablet is in progress.
+        // ResetSession and DestroySession: all the shards have processed
+        // the request, the tx of this tablet is in progress.
         bool Applying = false;
-        // The request doesn't wait for the shards after that, see
-        // ShardSessionRequestTimeout. Not set if the requests should wait
-        // for as long as it takes.
-        TInstant Deadline;
         // Identifies the tx of the request as well.
         TRequestInfoPtr RequestInfo;
         NProtoPrivate::TCreateSessionRequest CreateRequest;
@@ -614,10 +613,9 @@ private:
     // hasn't got yet.
     const TShardSessionsDiff& GetShardSessionsDelta(ui64 fromVersion);
 
-    // Deals with the requests which have been delivered to all the shards
-    // (CreateSession gets its response, ResetSession and DestroySession get
-    // processed by this tablet) and with the ones which have been waiting
-    // for the shards for too long.
+    // Deals with the requests which have been delivered to all the shards:
+    // CreateSession gets its response, ResetSession and DestroySession get
+    // processed by this tablet. The rest of the requests keep waiting.
     void ProcessPendingShardSessionRequests(
         const NActors::TActorContext& ctx);
 

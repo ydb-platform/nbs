@@ -2097,13 +2097,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
-    SERVICE_TEST(ShouldNotWaitForUnavailableShardForeverUponDestroySession)
+    SERVICE_TEST(ShouldWaitForUnavailableShardUponDestroySession)
     {
-        const auto requestTimeout = TDuration::Minutes(1);
-
         config.SetLazyShardSessionCreationEnabled(true);
         config.SetShardSessionRecoveryOnDemandEnabled(true);
-        config.SetShardSessionRequestTimeout(requestTimeout.MilliSeconds());
         // the syncs which are not started by the requests of the client are
         // triggered manually in this test
         config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
@@ -2118,6 +2115,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto sessionCount = [&] (const TString& fsId) {
             return DescribeSessions(service, fsId).SessionsSize();
+        };
+
+        // The responses which the client has got. The responses of the
+        // tablets don't tell anything: a shard processes the request by the
+        // same tx as the main tablet does.
+        ui32 destroySessionResponses = 0;
+
+        sync.OnEvent = [&] (IEventHandle& event) {
+            if (event.GetTypeRewrite() == TEvService::EvDestroySessionResponse
+                    && event.Recipient == service.GetSender())
+            {
+                ++destroySessionResponses;
+            }
         };
 
         // the session gets to both shards before the client gets its
@@ -2137,15 +2147,35 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             sync.WaitForSync(roundsStarted);
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.Shard1Id));
-        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard2Id));
-        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.FsId));
+        // the first shard has destroyed the session, the main tablet has
+        // neither destroyed it nor completed the request
+        auto checkRequestIsWaiting = [&] {
+            UNIT_ASSERT_VALUES_EQUAL(0, destroySessionResponses);
+            UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.Shard1Id));
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard2Id));
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.FsId));
+        };
 
-        // but not forever: the request is processed by the main tablet upon
-        // the completion of the first sync after the deadline even though
-        // the shard is still unavailable
-        env.GetRuntime().AdvanceCurrentTime(requestTimeout);
+        checkRequestIsWaiting();
+
+        // And it waits for as long as the shard is unavailable: there's no
+        // timeout. The syncs keep trying to reach the second shard. The
+        // first one has already processed the request - it doesn't get it
+        // again.
+        sync.SyncRequests.clear();
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Minutes(1));
         sync.SyncSessions();
+        checkRequestIsWaiting();
+
+        sync.SyncSessions(true /* outOfSchedule */);
+        checkRequestIsWaiting();
+
+        UNIT_ASSERT(!sync.SyncRequests.contains(fsConfig.Shard1Id));
+
+        // the request is completed as soon as the sync reaches the shard
+        sync.UnavailableShardId.clear();
+        sync.SyncSessions(true /* outOfSchedule */);
 
         {
             auto response = service.RecvDestroySessionResponse();
@@ -2155,35 +2185,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 response->GetErrorReason());
         }
 
-        // the shard which hasn't processed the request still has its copy
-        // of the session
-        UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.FsId));
-        UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.Shard1Id));
-        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard2Id));
-
-        // The copy is destroyed as soon as the sync manages to reach the
-        // shard. There's nothing to send to the shard as a change, so the
-        // sync has to compare its sessions with the sessions of the main
-        // tablet - even an out-of-schedule sync does it for such a shard.
-        sync.UnavailableShardId.clear();
-        sync.DescribeRequests.clear();
-        sync.SyncSessions(true /* outOfSchedule */);
-
-        UNIT_ASSERT(sync.DescribeRequests.contains(fsConfig.Shard2Id));
-        UNIT_ASSERT(!sync.DescribeRequests.contains(fsConfig.Shard1Id));
-
         for (const auto& id: fsConfig.MainAndShardIds()) {
             UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(id));
         }
     }
 
-    SERVICE_TEST(ShouldNotWaitForUnavailableShardForeverUponResetSession)
+    SERVICE_TEST(ShouldWaitForUnavailableShardUponResetSession)
     {
-        const auto requestTimeout = TDuration::Minutes(1);
-
         config.SetLazyShardSessionCreationEnabled(true);
         config.SetShardSessionRecoveryOnDemandEnabled(true);
-        config.SetShardSessionRequestTimeout(requestTimeout.MilliSeconds());
         // the syncs which are not started by the requests of the client are
         // triggered manually in this test
         config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
@@ -2200,6 +2210,19 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             return DescribeSessions(service, fsId).SessionsSize();
         };
 
+        // The responses which the client has got. The responses of the
+        // tablets don't tell anything: a shard processes the request by the
+        // same tx as the main tablet does.
+        ui32 resetSessionResponses = 0;
+
+        sync.OnEvent = [&] (IEventHandle& event) {
+            if (event.GetTypeRewrite() == TEvService::EvResetSessionResponse
+                    && event.Recipient == service.GetSender())
+            {
+                ++resetSessionResponses;
+            }
+        };
+
         // the session gets to both shards before the client gets its
         // response
         auto headers = service.InitSession(fsConfig.FsId, "client");
@@ -2214,41 +2237,59 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             sync.WaitForSync(roundsStarted);
         }
 
-        // nothing has happened to the session itself
-        for (const auto& id: fsConfig.MainAndShardIds()) {
-            UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(id));
-        }
+        // the request is not completed, nothing has happened to the session
+        // itself
+        auto checkRequestIsWaiting = [&] {
+            UNIT_ASSERT_VALUES_EQUAL(0, resetSessionResponses);
+            for (const auto& id: fsConfig.MainAndShardIds()) {
+                UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(id));
+            }
+        };
 
-        // But not forever. Unlike DestroySession, ResetSession can't be
-        // completed without the shard, so it fails upon the completion of
-        // the first sync after the deadline.
-        env.GetRuntime().AdvanceCurrentTime(requestTimeout);
+        checkRequestIsWaiting();
+
+        // And it waits for as long as the shard is unavailable: there's no
+        // timeout. The syncs keep trying to reach the second shard. The
+        // first one has already processed the request - it doesn't get it
+        // again.
+        sync.SyncRequests.clear();
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Minutes(1));
         sync.SyncSessions();
+        checkRequestIsWaiting();
+
+        sync.SyncSessions(true /* outOfSchedule */);
+        checkRequestIsWaiting();
+
+        UNIT_ASSERT(!sync.SyncRequests.contains(fsConfig.Shard1Id));
+
+        // the request is completed as soon as the sync reaches the shard
+        sync.UnavailableShardId.clear();
+        sync.SyncSessions(true /* outOfSchedule */);
 
         {
             auto response = service.RecvResetSessionResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_REJECTED,
+                S_OK,
                 response->GetStatus(),
                 response->GetErrorReason());
         }
 
-        // the request doesn't hold the session anymore - the next attempt
-        // succeeds as soon as the shard is available
-        sync.UnavailableShardId.clear();
-        service.ResetSession(headers, "state");
-
         for (const auto& id: fsConfig.MainAndShardIds()) {
             UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(id));
         }
+
+        // the request doesn't hold the session anymore
+        service.DestroySession(headers);
+
+        for (const auto& id: fsConfig.MainAndShardIds()) {
+            UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(id));
+        }
     }
 
-    SERVICE_TEST(ShouldNotWaitForUnavailableShardForeverUponCreateSession)
+    SERVICE_TEST(ShouldWaitForUnavailableShardUponCreateSession)
     {
-        const auto requestTimeout = TDuration::Minutes(1);
-
         config.SetLazyShardSessionCreationEnabled(true);
-        config.SetShardSessionRequestTimeout(requestTimeout.MilliSeconds());
         // the syncs which are not started by the requests of the client are
         // triggered manually in this test
         config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
@@ -2263,6 +2304,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto sessionCount = [&] (const TString& fsId) {
             return DescribeSessions(service, fsId).SessionsSize();
+        };
+
+        // the responses which the client has got
+        ui32 createSessionResponses = 0;
+
+        sync.OnEvent = [&] (IEventHandle& event) {
+            if (event.GetTypeRewrite() == TEvService::EvCreateSessionResponse
+                    && event.Recipient == service.GetSender())
+            {
+                ++createSessionResponses;
+            }
         };
 
         // the sync is not able to deliver the session to the second shard,
@@ -2281,38 +2333,45 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             sync.WaitForSync(roundsStarted);
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.FsId));
-        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard1Id));
-        UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.Shard2Id));
+        // the main tablet has created the session and the first shard has
+        // got it
+        auto checkRequestIsWaiting = [&] {
+            UNIT_ASSERT_VALUES_EQUAL(0, createSessionResponses);
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.FsId));
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard1Id));
+            UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.Shard2Id));
+        };
 
-        // But not forever. A session which is not in all the shards can't
-        // be given to the client, so the request fails upon the completion
-        // of the first sync after the deadline.
-        env.GetRuntime().AdvanceCurrentTime(requestTimeout);
+        checkRequestIsWaiting();
+
+        // And the request waits for as long as the shard is unavailable:
+        // there's no timeout. The syncs keep trying to reach the second
+        // shard. The first one has already got the session - it doesn't get
+        // it again.
+        sync.SyncRequests.clear();
+
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Minutes(1));
         sync.SyncSessions();
+        checkRequestIsWaiting();
+
+        sync.SyncSessions(true /* outOfSchedule */);
+        checkRequestIsWaiting();
+
+        UNIT_ASSERT(!sync.SyncRequests.contains(fsConfig.Shard1Id));
+
+        // the request is completed as soon as the sync reaches the shard
+        sync.UnavailableShardId.clear();
+        sync.SyncSessions(true /* outOfSchedule */);
 
         {
             auto response = service.RecvCreateSessionResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_REJECTED,
+                S_OK,
                 response->GetStatus(),
                 response->GetErrorReason());
+
+            headers.SessionId = response->Record.GetSession().GetSessionId();
         }
-
-        // the session stays where it has been created
-        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.FsId));
-        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard1Id));
-        UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.Shard2Id));
-
-        // the next attempt of the client recovers it and succeeds as soon
-        // as the shard is available
-        sync.UnavailableShardId.clear();
-        headers = service.InitSession(
-            fsConfig.FsId,
-            "client",
-            {},     // checkpointId
-            true    // restoreClientSession
-        );
 
         for (const auto& id: fsConfig.MainAndShardIds()) {
             const auto response = DescribeSessions(service, id);

@@ -348,7 +348,6 @@ public:
     bool GetShardSessionRecoveryOnDemandEnabled() const;
     ui32 GetMaxShardSessionsSyncInflight() const;
     TDuration GetShardSessionsSyncDelay() const;
-    TDuration GetShardSessionRequestTimeout() const;
 
     ui64 GetShardBalancerDesiredFreeSpaceReserve() const;
     ui64 GetShardBalancerMinFreeSpaceReserve() const;

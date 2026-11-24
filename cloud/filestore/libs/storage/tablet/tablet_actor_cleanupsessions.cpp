@@ -1153,8 +1153,7 @@ void TIndexTabletActor::HandleSyncSessionsCompleted(
             TShardSyncState{SyncSessionsStartVersion, shard.Generation};
     }
 
-    // the requests which have been processed by all the shards (and the
-    // ones which have been waiting for the shards for too long) don't have
+    // the requests which have been processed by all the shards don't have
     // to wait anymore
     ProcessPendingShardSessionRequests(ctx);
 

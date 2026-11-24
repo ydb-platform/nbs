@@ -321,10 +321,6 @@ void TIndexTabletActor::EnqueueShardSessionRequest(
     TPendingShardSessionRequest request)
 {
     request.Version = ++ShardSessionsVersion;
-    const auto timeout = Config->GetShardSessionRequestTimeout();
-    if (timeout != TDuration::Zero()) {
-        request.Deadline = ctx.Now() + timeout;
-    }
 
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s %s s:%s n:%lu waits for the shard sessions sync, version: %lu",
@@ -517,13 +513,6 @@ void TIndexTabletActor::AddPendingShardSessionRequests(
             return;
         }
 
-        //
-        // The request is sent even if this tablet is already processing it.
-        // That's what happens to DestroySession which didn't wait for this
-        // shard (see ShardSessionRequestTimeout): the shard should still do
-        // the same thing to its copy of the session.
-        //
-
         const bool reset = request->Type == EShardSessionRequestType::Reset;
 
         if (recovering && reset) {
@@ -585,118 +574,26 @@ void TIndexTabletActor::ProcessPendingShardSessionRequests(
             Min<ui64>(syncedVersion, syncState ? syncState->Version : 0);
     }
 
-    const auto now = ctx.Now();
-
     // a tx may complete (and remove its request) right away
     TVector<TString> sessionIds;
-    // the requests which have been waiting for the shards for too long
-    TVector<TString> expiredSessionIds;
     for (const auto& [sessionId, request]: PendingShardSessionRequests) {
-        if (request.Applying) {
-            continue;
-        }
-
-        if (request.Version <= syncedVersion) {
+        if (!request.Applying && request.Version <= syncedVersion) {
             sessionIds.push_back(sessionId);
-        } else if (request.Deadline != TInstant::Zero()
-                && request.Deadline <= now
-                && request.Version <= SyncSessionsStartVersion)
-        {
-            // The round which has just been completed tried to deliver the
-            // request. A request which no round has tried to deliver yet
-            // waits for the next one whatever its deadline is.
-            expiredSessionIds.push_back(sessionId);
         }
     }
 
     //
-    // A shard which is unavailable shouldn't block the requests forever:
-    // nothing else is allowed to change a session while its request is
-    // waiting, and the clients are waiting as well.
+    // The rest of the requests keep waiting, there's no deadline for them.
+    // A request has to reach each shard only once: a shard which has been
+    // synced by a round is not waited for anymore, whatever happens to that
+    // shard in the next rounds. So a request makes progress even if each
+    // round fails for some of the shards. Failing it upon a deadline would
+    // throw this progress away: the retry of the client gets a new version
+    // and starts over with all the shards - and that's something which
+    // might never succeed if there are lots of shards. So a shard which is
+    // unavailable blocks the requests until it's back: the rounds keep
+    // trying to reach it, see HandleSyncSessionsCompleted.
     //
-    // DestroySession is processed by this tablet anyway. The shards which
-    // haven't processed the request keep their copies of the session, but
-    // that's something the sync is able to fix later: a session which this
-    // tablet doesn't have is destroyed in a shard as soon as its sessions
-    // get compared with the sessions of this tablet.
-    //
-    // ResetSession can't be completed this way: the session stays alive, so
-    // there would be nothing to tell a shard which missed the request that
-    // its copy of the session has to be reset. The request fails instead -
-    // the client is supposed to retry it. The shards which have processed
-    // the request have reset their copies of the session by this moment.
-    //
-    // CreateSession fails as well. The client would get a session which it
-    // can't use in the shard which missed the request, and if the session
-    // has been recovered, then that shard might still keep something of its
-    // previous incarnation. The session itself stays in this tablet and in
-    // the shards which have got it: the next attempt of the client recovers
-    // it and delivers it to the shards once again.
-    //
-
-    // the newest of the DestroySession requests which are not going to be
-    // delivered to all the shards
-    ui64 abandonedVersion = 0;
-
-    for (const auto& sessionId: expiredSessionIds) {
-        auto it = PendingShardSessionRequests.find(sessionId);
-        if (it == PendingShardSessionRequests.end()) {
-            continue;
-        }
-
-        auto& request = it->second;
-
-        LOG_WARN(ctx, TFileStoreComponents::TABLET,
-            "%s %s s:%s n:%lu hasn't been processed by all the shards in"
-            " time, version: %lu, synced version: %lu",
-            LogTag.c_str(),
-            request.GetName(),
-            sessionId.Quote().c_str(),
-            request.SessionSeqNo,
-            request.Version,
-            syncedVersion);
-
-        if (request.Type == EShardSessionRequestType::Destroy) {
-            abandonedVersion = Max(abandonedVersion, request.Version);
-            sessionIds.push_back(sessionId);
-            continue;
-        }
-
-        ReplyToPendingShardSessionRequest(
-            ctx,
-            request,
-            MakeError(
-                E_REJECTED,
-                "the request hasn't been processed by all the shards in"
-                " time"));
-
-        PendingShardSessionRequests.erase(it);
-
-        // The session wasn't synced on its own while the request was in
-        // progress. The shards which haven't got it get it the regular way.
-        OnShardSessionChanged(ctx, sessionId);
-    }
-
-    if (abandonedVersion) {
-        //
-        // The shards which haven't seen these requests are not going to get
-        // them as the changes: there will be nothing left of the sessions
-        // here. So this tablet forgets what it knows about such shards -
-        // the next round compares their sessions with the sessions of this
-        // tablet and destroys the ones which don't exist here.
-        //
-
-        for (const auto& shardId: GetFileSystem().GetShardFileSystemIds()) {
-            const auto* syncState = ShardSyncStates.FindPtr(shardId);
-            if (syncState && syncState->Version < abandonedVersion) {
-                ShardSyncStates.erase(shardId);
-            }
-        }
-
-        // one more attempt to reach these shards, the regular rounds do the
-        // rest
-        ScheduleOutOfScheduleSyncSessions(ctx);
-    }
 
     for (const auto& sessionId: sessionIds) {
         auto* request = PendingShardSessionRequests.FindPtr(sessionId);

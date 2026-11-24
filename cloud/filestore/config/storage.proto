@@ -1064,8 +1064,9 @@ message TStorageConfig
     // The requests of the clients are still acknowledged only after all the
     // shards have processed them: the main tablet keeps such a request until
     // the sync delivers it to all the shards. So each of these requests takes
-    // at least one sync round and waits while some of the shards are
-    // unavailable - but not longer than ShardSessionRequestTimeout:
+    // at least one sync round and waits for as long as some of the shards
+    // are unavailable - there's no timeout, the sync keeps trying to reach
+    // them:
     // * CreateSession is processed by the main tablet first, its response
     //   waits for the shards. A session which has been recovered by the
     //   request (i.e. the client has started anew) is marked for the shards:
@@ -1094,25 +1095,4 @@ message TStorageConfig
     // the clients are started without a delay. Used only if
     // LazyShardSessionCreationEnabled is set.
     optional uint32 ShardSessionsSyncDelay = 571;
-
-    // How long (in milliseconds) CreateSession, ResetSession and
-    // DestroySession wait for the shards which the shard sessions sync fails
-    // to deliver them to. Used only if LazyShardSessionCreationEnabled is
-    // set. After that:
-    // * CreateSession fails with E_REJECTED: the session stays in the main
-    //   tablet and in the shards which have got it, the client is supposed
-    //   to retry - the next attempt recovers the session and delivers it to
-    //   the shards once again.
-    // * ResetSession fails with E_REJECTED: the shards which have processed
-    //   it have reset their copies of the session, the main tablet and the
-    //   rest of the shards haven't. The client is supposed to retry.
-    // * DestroySession is processed by the main tablet and acknowledged. A
-    //   shard which hasn't processed it keeps its copy of the session until
-    //   the sync manages to compare the sessions of this shard with the
-    //   sessions of the main tablet: the sessions which the main tablet
-    //   doesn't have are destroyed.
-    // The deadline is checked upon the completion of each sync round. Zero
-    // means that the requests wait for as long as it takes. 30 seconds by
-    // default.
-    optional uint32 ShardSessionRequestTimeout = 572;
 }
