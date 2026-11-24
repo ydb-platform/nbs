@@ -420,7 +420,7 @@ namespace NInterconnect::NRdma {
         if (hp) {
 #if defined(_linux_)
             if (madvise(buf, size, MADV_HUGEPAGE) < 0) {
-                fprintf(stderr, "Unable to madvice to use THP, %d (%d)",
+                fprintf(stderr, "Unable to madvice to use THP, %s (%d)",
                     strerror(errno), errno);
             }
 #endif

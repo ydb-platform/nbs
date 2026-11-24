@@ -19,7 +19,7 @@ using namespace NYql::NNodes;
 NUdf::TUnboxedValue MakeDefaultValueByType(NKikimr::NMiniKQL::TType* type) {
     bool isOptional;
     type = UnpackOptional(type, isOptional);
-    Y_ABORT_UNLESS(type->IsData(), "%s", type->GetKindAsStr());
+    Y_ABORT_UNLESS(type->IsData(), "%s", type->GetKindAsStr().data());
 
     auto dataType = static_cast<const NKikimr::NMiniKQL::TDataType*>(type);
     switch (dataType->GetSchemeType()) {

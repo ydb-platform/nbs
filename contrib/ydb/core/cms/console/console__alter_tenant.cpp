@@ -256,14 +256,14 @@ public:
 
             if (key.size() > NSchemeShard::TUserAttributesLimits::MaxNameLen) {
                 return Error(Ydb::StatusIds::BAD_REQUEST,
-                    Sprintf("Key '%s' is too long, max: " PRIu32 ", actual: %zu",
+                    Sprintf("Key '%s' is too long, max: %" PRIu32 ", actual: %zu",
                         key.data(), NSchemeShard::TUserAttributesLimits::MaxNameLen, key.size()),
                     ctx);
             }
 
             if (value.size() > NSchemeShard::TUserAttributesLimits::MaxValueLen) {
                 return Error(Ydb::StatusIds::BAD_REQUEST,
-                    Sprintf("Value for key '%s' is too long, max: " PRIu32 ", actual: %zu",
+                    Sprintf("Value for key '%s' is too long, max: %" PRIu32 ", actual: %zu",
                         key.data(), NSchemeShard::TUserAttributesLimits::MaxValueLen, value.size()),
                     ctx);
             }
