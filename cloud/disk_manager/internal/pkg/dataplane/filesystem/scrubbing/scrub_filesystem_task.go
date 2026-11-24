@@ -31,6 +31,8 @@ type scrubFilesystemTask struct {
 	request  *scrubbing_protos.ScrubFilesystemRequest
 	state    *scrubbing_protos.ScrubFilesystemTaskState
 	callback OnScrubbedCallback
+
+	histogramMutex sync.Mutex
 }
 
 func (t *scrubFilesystemTask) getSnapshotID(
@@ -80,17 +82,13 @@ func (t *scrubFilesystemTask) Run(
 	// missing or duplicate counts. Keep this flag sticky.
 	t.state.FileSizeHistogramUnreliable =
 		t.state.FileSizeHistogramUnreliable || rootNodeAlreadyScheduled
-	var histogramMutex sync.Mutex
 	onListedNodes := func(
 		ctx context.Context,
 		nodes []nfs.Node,
 		_ listers.FilesystemLister,
 	) error {
 
-		histogramMutex.Lock()
-		addToFileSizeHistogram(t.state, nodes)
-		histogramMutex.Unlock()
-
+		t.addToFileSizeHistogram(nodes)
 		t.callback(nodes)
 		for _, node := range nodes {
 			logging.Debug(ctx, "scrubbing returned inode %v", node)
@@ -99,16 +97,20 @@ func (t *scrubFilesystemTask) Run(
 		return nil
 	}
 
+	// Called by the traverser once the root node is added to the listing
+	// queue, so that a restarted task does not schedule it again.
+	onRootNodeScheduled := func(ctx context.Context) error {
+		t.state.RootNodeScheduled = true
+		return execCtx.SaveState(ctx)
+	}
+
 	traverser, err := traversal.NewFilesystemTraverser(
 		t.getSnapshotID(execCtx),
 		filesystem.GetFilesystemId(),
 		t.request.GetFilesystemCheckpointId(),
 		filesystemListerFactory,
 		t.storage,
-		func(ctx context.Context) error {
-			t.state.RootNodeScheduled = true
-			return execCtx.SaveState(ctx)
-		},
+		onRootNodeScheduled,
 		onListedNodes,
 		nil,
 		t.config.GetTraversalConfig(),
@@ -120,33 +122,6 @@ func (t *scrubFilesystemTask) Run(
 	}
 
 	return traverser.Traverse(ctx)
-}
-
-func addToFileSizeHistogram(
-	state *scrubbing_protos.ScrubFilesystemTaskState,
-	nodes []nfs.Node,
-) {
-
-	for _, node := range nodes {
-		if node.Type != nfs.NODE_KIND_FILE {
-			continue
-		}
-
-		// Hard links are weighted 1/Links instead of deduplicating NodeIDs.
-		weight := 1.0
-		if node.Links > 1 {
-			weight /= float64(node.Links)
-		}
-
-		bucket := bits.Len64(node.Size)
-		for len(state.FileCountBySizeLog2) <= bucket {
-			state.FileCountBySizeLog2 = append(state.FileCountBySizeLog2, 0)
-			state.FileBytesBySizeLog2 = append(state.FileBytesBySizeLog2, 0)
-		}
-
-		state.FileCountBySizeLog2[bucket] += weight
-		state.FileBytesBySizeLog2[bucket] += weight * float64(node.Size)
-	}
 }
 
 func (t *scrubFilesystemTask) Cancel(
@@ -169,4 +144,32 @@ func (t *scrubFilesystemTask) GetMetadata(
 
 func (t *scrubFilesystemTask) GetResponse() proto.Message {
 	return &empty.Empty{}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *scrubFilesystemTask) addToFileSizeHistogram(nodes []nfs.Node) {
+	t.histogramMutex.Lock()
+	defer t.histogramMutex.Unlock()
+
+	for _, node := range nodes {
+		if node.Type != nfs.NODE_KIND_FILE {
+			continue
+		}
+
+		// Hard links are weighted 1/Links instead of deduplicating NodeIDs.
+		weight := 1.0
+		if node.Links > 1 {
+			weight /= float64(node.Links)
+		}
+
+		bucket := bits.Len64(node.Size)
+		for len(t.state.FileCountBySizeLog2) <= bucket {
+			t.state.FileCountBySizeLog2 = append(t.state.FileCountBySizeLog2, 0)
+			t.state.FileBytesBySizeLog2 = append(t.state.FileBytesBySizeLog2, 0)
+		}
+
+		t.state.FileCountBySizeLog2[bucket] += weight
+		t.state.FileBytesBySizeLog2[bucket] += weight * float64(node.Size)
+	}
 }

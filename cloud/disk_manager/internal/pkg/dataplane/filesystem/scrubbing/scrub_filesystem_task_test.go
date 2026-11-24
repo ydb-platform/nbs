@@ -475,8 +475,10 @@ func TestScrubFilesystemTaskNodeDeletedDuringScrubbing(t *testing.T) {
 }
 
 func TestAddToFileSizeHistogram(t *testing.T) {
-	state := &scrubbing_protos.ScrubFilesystemTaskState{}
-	addToFileSizeHistogram(state, []nfs.Node{
+	task := &scrubFilesystemTask{
+		state: &scrubbing_protos.ScrubFilesystemTaskState{},
+	}
+	task.addToFileSizeHistogram([]nfs.Node{
 		{NodeID: 2, Type: nfs.NODE_KIND_FILE, Size: 0, Links: 1},
 		{NodeID: 3, Type: nfs.NODE_KIND_FILE, Size: 3, Links: 1},
 		// Hard link listed twice.
@@ -488,8 +490,8 @@ func TestAddToFileSizeHistogram(t *testing.T) {
 		{NodeID: nfs.InvalidNodeID},
 	})
 
-	require.Equal(t, []float64{1, 0, 1, 1}, state.FileCountBySizeLog2)
-	require.Equal(t, []float64{0, 0, 3, 4}, state.FileBytesBySizeLog2)
+	require.Equal(t, []float64{1, 0, 1, 1}, task.state.FileCountBySizeLog2)
+	require.Equal(t, []float64{0, 0, 3, 4}, task.state.FileBytesBySizeLog2)
 }
 
 type interruptionMode int
