@@ -498,22 +498,17 @@ void RenderCollectionElement(
 {
     if (field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE) {
         TSectionCounts elementCounts;
-        if (RenderNestedMessage(
-                out,
-                sources,
-                field,
-                path,
-                context,
-                elementCounts,
-                index))
-        {
-            return;
-        }
+        RenderNestedMessage(
+            out,
+            sources,
+            field,
+            path,
+            context,
+            elementCounts,
+            index);
+    } else {
+        RenderField(out, sources, field, path, context, std::nullopt, index);
     }
-
-    // Retain scalar values and explicitly present empty messages as source
-    // rows.
-    RenderField(out, sources, field, path, context, std::nullopt, index);
 }
 
 // Align map entries by key independently of each source's iteration order.
