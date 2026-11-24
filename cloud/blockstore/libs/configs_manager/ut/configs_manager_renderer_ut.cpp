@@ -11,6 +11,7 @@ ConfigsDispatcher deliveries without subscribers or an HTTP server.
 #include <cloud/blockstore/libs/config/blockstore_config_management.h>
 #include <cloud/blockstore/libs/configs_manager/configs_manager.h>
 #include <cloud/blockstore/libs/configs_manager/configs_manager_renderer.h>
+#include <cloud/blockstore/libs/configs_manager/configs_manager_renderer_impl.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -420,6 +421,31 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
                 field->cpp_type() ==
                     google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE,
                 errorMessage);
+        }
+    }
+
+    // Verify that Effective contains every top-level section, so adding a
+    // section to the schema cannot silently omit its effective values.
+    Y_UNIT_TEST(ShouldBuildEffectiveConfigWithAllTopLevelSections)
+    {
+        // Build a current configuration with default values for every section.
+        const auto controls =
+            std::make_shared<NStorage::TStorageConfigControls>();
+        const auto config =
+            MakeStartupBlockstoreConfig({}, {}, controls).Config;
+
+        // Require every schema section to be present, including empty messages.
+        const auto effective = NPrivate::BuildEffectiveConfig(*config);
+        const auto* descriptor = effective.GetDescriptor();
+        const auto* reflection = effective.GetReflection();
+        for (int i = 0; i != descriptor->field_count(); ++i) {
+            const auto* section = descriptor->field(i);
+            UNIT_ASSERT_C(
+                reflection->HasField(effective, section),
+                "Effective configuration is missing section "
+                    << section->full_name() << ". "
+                    << "NCloud::NBlockStore::NPrivate::BuildEffectiveConfig() "
+                    << "implementation must be updated.");
         }
     }
 

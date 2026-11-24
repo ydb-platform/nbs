@@ -9,6 +9,8 @@ Repeated values are aligned by index and map values by key across sources.
 
 #include "configs_manager_renderer.h"
 
+#include "configs_manager_renderer_impl.h"
+
 #include <cloud/storage/core/config/markers.pb.h>
 
 #include <contrib/ydb/core/cms/console/http.h>
@@ -35,6 +37,55 @@ Repeated values are aligned by index and map values by key across sources.
 #include <vector>
 
 namespace NCloud::NBlockStore {
+
+namespace NPrivate {
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TBlockstoreConfig BuildEffectiveConfig(
+    const IBlockstoreConfig& currentConfig)
+{
+    NProto::TBlockstoreConfig config;
+    config.MutableServer()->CopyFrom(
+        currentConfig.GetServerConfig()->GetAppConfig());
+    config.MutableStorageService()->CopyFrom(
+        currentConfig.GetStorageConfig()->GetEffectiveStorageConfigProto());
+    config.MutableFeatures()->CopyFrom(
+        currentConfig.GetFeaturesConfig()->GetConfigProto());
+    config.MutableDiagnostics()->CopyFrom(
+        currentConfig.GetDiagnosticsConfig()->GetConfigProto());
+    config.MutableDiscoveryService()->CopyFrom(
+        *currentConfig.GetDiscoveryServiceConfig()->GetConfig());
+    config.MutableEndpoint()->CopyFrom(
+        currentConfig.GetEndpointConfig()->GetConfigProto());
+    config.MutableDiskAgent()->CopyFrom(
+        currentConfig.GetDiskAgentConfig()->GetConfigProto());
+    config.MutableDiskRegistryProxy()->CopyFrom(
+        currentConfig.GetDiskRegistryProxyConfig()->GetConfigProto());
+    config.MutableSpdkEnv()->CopyFrom(
+        currentConfig.GetSpdkEnvConfig()->GetConfigProto());
+    config.MutableRdma()->CopyFrom(
+        currentConfig.GetRdmaConfig()->GetConfigProto());
+    config.MutableYdbStats()->CopyFrom(
+        currentConfig.GetYdbStatsConfig()->GetConfigProto());
+    config.MutableLogbroker()->CopyFrom(
+        *currentConfig.GetLogbrokerConfig()->GetConfig());
+    config.MutableNotify()->CopyFrom(
+        *currentConfig.GetNotifyConfig()->GetConfig());
+    config.MutableIamClient()->CopyFrom(
+        currentConfig.GetIamClientConfig()->GetIamServiceConfig());
+    config.MutableKmsClient()->CopyFrom(*currentConfig.GetKmsClientConfig());
+    config.MutableComputeClient()->CopyFrom(
+        *currentConfig.GetComputeClientConfig());
+    config.MutableRootKms()->CopyFrom(*currentConfig.GetRootKmsConfig());
+    config.MutableCells()->CopyFrom(
+        currentConfig.GetCellsConfig()->GetCellsConfig());
+    config.MutableLocalNVMe()->CopyFrom(
+        currentConfig.GetLocalNVMeConfig()->GetConfigProto());
+    return config;
+}
+
+}   // namespace NPrivate
 
 namespace {
 
@@ -99,51 +150,6 @@ TStringBuf GetUpdateStatusName(EConfigUpdateStatus status)
             return "runtime (unchanged)";
     }
     return "<error>";
-}
-
-// Build the Effective column from the current configuration sections.
-// Include live ICB overrides from the StorageConfig effective proto.
-NProto::TBlockstoreConfig BuildEffectiveConfig(
-    const IBlockstoreConfig& currentConfig)
-{
-    NProto::TBlockstoreConfig config;
-    config.MutableServer()->CopyFrom(
-        currentConfig.GetServerConfig()->GetAppConfig());
-    config.MutableStorageService()->CopyFrom(
-        currentConfig.GetStorageConfig()->GetEffectiveStorageConfigProto());
-    config.MutableFeatures()->CopyFrom(
-        currentConfig.GetFeaturesConfig()->GetConfigProto());
-    config.MutableDiagnostics()->CopyFrom(
-        currentConfig.GetDiagnosticsConfig()->GetConfigProto());
-    config.MutableDiscoveryService()->CopyFrom(
-        *currentConfig.GetDiscoveryServiceConfig()->GetConfig());
-    config.MutableEndpoint()->CopyFrom(
-        currentConfig.GetEndpointConfig()->GetConfigProto());
-    config.MutableDiskAgent()->CopyFrom(
-        currentConfig.GetDiskAgentConfig()->GetConfigProto());
-    config.MutableDiskRegistryProxy()->CopyFrom(
-        currentConfig.GetDiskRegistryProxyConfig()->GetConfigProto());
-    config.MutableSpdkEnv()->CopyFrom(
-        currentConfig.GetSpdkEnvConfig()->GetConfigProto());
-    config.MutableRdma()->CopyFrom(
-        currentConfig.GetRdmaConfig()->GetConfigProto());
-    config.MutableYdbStats()->CopyFrom(
-        currentConfig.GetYdbStatsConfig()->GetConfigProto());
-    config.MutableLogbroker()->CopyFrom(
-        *currentConfig.GetLogbrokerConfig()->GetConfig());
-    config.MutableNotify()->CopyFrom(
-        *currentConfig.GetNotifyConfig()->GetConfig());
-    config.MutableIamClient()->CopyFrom(
-        currentConfig.GetIamClientConfig()->GetIamServiceConfig());
-    config.MutableKmsClient()->CopyFrom(*currentConfig.GetKmsClientConfig());
-    config.MutableComputeClient()->CopyFrom(
-        *currentConfig.GetComputeClientConfig());
-    config.MutableRootKms()->CopyFrom(*currentConfig.GetRootKmsConfig());
-    config.MutableCells()->CopyFrom(
-        currentConfig.GetCellsConfig()->GetCellsConfig());
-    config.MutableLocalNVMe()->CopyFrom(
-        currentConfig.GetLocalNVMeConfig()->GetConfigProto());
-    return config;
 }
 
 bool IsSensitive(const FieldDescriptor& field)
@@ -695,7 +701,7 @@ TString TBlockstoreConfigRenderer::RenderHtml(
     const NProto::TBlockstoreConfig& dynamicConfig,
     const NStorage::TStorageConfigControls& controls) const
 {
-    const auto effectiveConfig = BuildEffectiveConfig(config);
+    const auto effectiveConfig = NPrivate::BuildEffectiveConfig(config);
     const bool hasRuntimeUpdate =
         Data.UpdateStatus != EConfigUpdateStatus::Startup;
     const TMessages sources = {
