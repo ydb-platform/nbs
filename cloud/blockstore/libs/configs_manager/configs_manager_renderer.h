@@ -17,8 +17,6 @@ Configuration inputs must remain valid during RenderHtml().
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
-#include <optional>
-
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -52,10 +50,6 @@ struct TBlockstoreConfigRendererData
 
     // Presence of private_database_config, including an empty section.
     bool DynamicConfigPresent = false;
-
-    // Initial dispatcher delivery identifier; empty before the first request.
-    // Repeated delivery retains this cookie; a new update receives another one.
-    std::optional<ui64> StartupDeliveryCookie;
 
     // Ignored dynamic values and rejected changes for the current publication.
     NConfig::TConfigPreparationDiagnostics CurrentConfigPreparationDiagnostics;

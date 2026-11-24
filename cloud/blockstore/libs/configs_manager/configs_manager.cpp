@@ -36,6 +36,8 @@ section clears dynamic overrides; equivalent inputs do not republish.
 
 #include <google/protobuf/util/message_differencer.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore {
 
 using namespace NActors;
@@ -118,6 +120,11 @@ private:
 
     // ConfigsDispatcher actor; zero selects the node-local service.
     const TActorId ConfigsDispatcherId;
+
+    // Cookie of the first dispatcher notification, even if it is rejected.
+    // Empty until the first notification. Use it to preserve the startup label
+    // and time when that notification is repeated.
+    std::optional<ui64> StartupDeliveryCookie;
 
     // Local recipients of publication notices; consumers remove their own
     // subscriptions before stopping.
@@ -308,8 +315,8 @@ void TConfigsManagerActor::Handle(
         "Received YAML configuration from ConfigsDispatcher");
 
     const auto* message = ev->Get();
-    if (!ConfigRenderer.Data.StartupDeliveryCookie) {
-        ConfigRenderer.Data.StartupDeliveryCookie = ev->Cookie;
+    if (!StartupDeliveryCookie) {
+        StartupDeliveryCookie = ev->Cookie;
     }
     NProto::TBlockstoreConfig newDynamicConfig;
     NConfig::TConfigPreparationDiagnostics diagnostics;
@@ -358,7 +365,7 @@ void TConfigsManagerActor::Handle(
             // the configuration values applied at startup.
             if (ConfigRenderer.Data.UpdateStatus !=
                     EConfigUpdateStatus::Startup ||
-                ev->Cookie != *ConfigRenderer.Data.StartupDeliveryCookie)
+                ev->Cookie != *StartupDeliveryCookie)
             {
                 ConfigRenderer.Data.LastUpdateTime = ctx.Now();
                 ConfigRenderer.Data.UpdateStatus =
