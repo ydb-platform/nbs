@@ -75,6 +75,15 @@ struct TTestServer final
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TStorageConfig RdmaEnabledConfig()
+{
+    NProto::TStorageConfig config;
+    config.SetTabletDirectRdmaEnabled(true);
+    return config;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TEnv
 {
     TTestEnv Env;
@@ -94,7 +103,8 @@ struct TEnv
     const std::shared_ptr<TTestRdmaServer> Endpoints;
 
     TEnv()
-        : Runtime(Env.GetRuntime())
+        : Env({}, RdmaEnabledConfig())
+        , Runtime(Env.GetRuntime())
         , NodeIdx(Env.AddDynamicNode())
         , TabletId(Env.BootIndexTablet(NodeIdx))
         , Tablet(Runtime, NodeIdx, TabletId)

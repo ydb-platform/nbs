@@ -18,9 +18,9 @@ NCloud::NStorage::NRdma::IServerPtr CreateRdmaServer(
         NCloud::NStorage::NRdma::TObservabilityProvider(
             std::move(logging),
             std::move(monitoring),
-            "NFS_RDMA",
-            "filestore",
-            "rdma_server"),
+            "NFS_RDMA" /* logComponent */,
+            "filestore" /* countersGroupName */,
+            "rdma_server" /* countersComponentName */),
         NCloud::NStorage::NRdma::CreateServerConfigPtr(config));
 }
 
