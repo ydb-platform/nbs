@@ -241,6 +241,8 @@ func (t *deleteDiskTask) resolveCleanupZoneID(
 		return "", err
 	}
 
+	// Meta has no zone for the disk: the row is already gone or has no zone
+	// recorded, so the request zone is the only zone known for the disk.
 	if meta == nil || len(meta.ZoneID) == 0 {
 		return requestZoneID, nil
 	}
@@ -249,18 +251,18 @@ func (t *deleteDiskTask) resolveCleanupZoneID(
 		return meta.ZoneID, nil
 	}
 
-	requestCells, err := t.cellSelector.ResolveCells(requestZoneID)
+	cellsFromRequestZoneID, err := t.cellSelector.ResolveCells(requestZoneID)
 	if err != nil {
 		return "", err
 	}
 
-	if !slices.Contains(requestCells, meta.ZoneID) {
+	if !slices.Contains(cellsFromRequestZoneID, meta.ZoneID) {
 		return "", errors.NewNonCancellableErrorf(
 			"zone %q of disk %v from meta does not match request zone %q (cells %v)",
 			meta.ZoneID,
 			diskID,
 			requestZoneID,
-			requestCells,
+			cellsFromRequestZoneID,
 		)
 	}
 
