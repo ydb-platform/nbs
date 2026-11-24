@@ -176,6 +176,14 @@ public:
         Log = std::move(log);
     }
 
+    TResultOrError<NCloud::NStorage::NRdma::IServerHandlerPtr> HandleConnect(
+        NCloud::NStorage::NRdma::TExternalConnectionId externalConnectionId)
+        override
+    {
+        Y_UNUSED(externalConnectionId);
+        return NCloud::NStorage::NRdma::IServerHandlerPtr();
+    }
+
     TCallContextBasePtr CreateCallContext() override
     {
         return NCloud::NBlockStore::CreateCallContext();

@@ -584,6 +584,7 @@ private:
     NVerbs::TConnectionPtr Connection;
     TString Host;
     ui32 Port;
+    const TExternalConnectionId ExternalConnectionId;
     IClientRequestHandlerPtr Handler;
     TEndpointCountersPtr Counters;
     TLog Log;
@@ -662,6 +663,7 @@ public:
         NVerbs::TConnectionPtr connection,
         TString host,
         ui32 port,
+        TExternalConnectionId externalConnectionId,
         TClientConfigPtr config,
         TEndpointCountersPtr stats,
         TLog log,
@@ -754,6 +756,7 @@ TClientEndpoint::TClientEndpoint(
         NVerbs::TConnectionPtr connection,
         TString host,
         ui32 port,
+        TExternalConnectionId externalConnectionId,
         TClientConfigPtr config,
         TEndpointCountersPtr stats,
         TLog log,
@@ -762,6 +765,7 @@ TClientEndpoint::TClientEndpoint(
     , Connection(std::move(connection))
     , Host(std::move(host))
     , Port(port)
+    , ExternalConnectionId(externalConnectionId)
     , Counters(std::move(stats))
     , Log(log)
     , Reconnect(config->MaxReconnectDelay)
@@ -2557,11 +2561,13 @@ public:
     void Stop() noexcept override;
     TFuture<IClientEndpointPtr> StartEndpoint(
         TString host,
-        ui32 port) noexcept override;
+        ui32 port,
+        TExternalConnectionId externalConnectionId) noexcept override;
     TResultOrError<IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
-        IClientEndpointHandlerPtr handler) noexcept override;
+        IClientEndpointHandlerPtr handler,
+        TExternalConnectionId externalConnectionId) noexcept override;
     void DumpHtml(IOutputStream& out) const override;
     bool IsAlignedDataEnabled() const override;
 
@@ -2652,7 +2658,8 @@ void TClient::Stop() noexcept
 TResultOrError<IClientEndpointPtr> TClient::StartEndpoint(
     TString host,
     ui32 port,
-    IClientEndpointHandlerPtr handler) noexcept
+    IClientEndpointHandlerPtr handler,
+    TExternalConnectionId externalConnectionId) noexcept
 {
     if (ConnectionPoller == nullptr) {
         return MakeError(E_RDMA_UNAVAILABLE, "rdma client is down");
@@ -2664,6 +2671,7 @@ TResultOrError<IClientEndpointPtr> TClient::StartEndpoint(
             ConnectionPoller->CreateConnection(Config->IpTypeOfService),
             std::move(host),
             port,
+            externalConnectionId,
             Config,
             Counters,
             Log,
@@ -2682,7 +2690,8 @@ TResultOrError<IClientEndpointPtr> TClient::StartEndpoint(
 
 TFuture<IClientEndpointPtr> TClient::StartEndpoint(
     TString host,
-    ui32 port) noexcept
+    ui32 port,
+    TExternalConnectionId externalConnectionId) noexcept
 {
     auto unavailable = [&](TString message) {
         return MakeErrorFuture<IClientEndpointPtr>(
@@ -2700,6 +2709,7 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
             ConnectionPoller->CreateConnection(Config->IpTypeOfService),
             std::move(host),
             port,
+            externalConnectionId,
             Config,
             Counters,
             Log,
@@ -3003,9 +3013,14 @@ void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
         };
         InitMessageHeader(&message);
 
+        TExtendedConnectMessage extendedMessage = {
+            .Base = message,
+            .ExternalConnectionId = endpoint->ExternalConnectionId,
+        };
+
         rdma_conn_param param = {
-            .private_data = &message,
-            .private_data_len = sizeof(TConnectMessage),
+            .private_data = &extendedMessage,
+            .private_data_len = sizeof(TExtendedConnectMessage),
             .responder_resources = RDMA_MAX_RESP_RES,
             .initiator_depth = RDMA_MAX_INIT_DEPTH,
             .flow_control = 1,

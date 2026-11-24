@@ -2,6 +2,8 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 
+#include <util/system/types.h>
+
 #include <memory>
 
 namespace google::protobuf {
@@ -17,6 +19,16 @@ enum class EWaitMode
     Poll,
     BusyWait,
     AdaptiveWait,
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Application's id of a connection. The client passes it upon connect, the
+// server hands it to IServerHandler::HandleConnect.
+struct TExternalConnectionId
+{
+    ui64 High = 0;
+    ui64 Low = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

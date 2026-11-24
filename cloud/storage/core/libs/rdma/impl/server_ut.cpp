@@ -68,6 +68,13 @@ struct TClientHandler
 struct TServerHandler
     : IServerHandler
 {
+    TResultOrError<IServerHandlerPtr> HandleConnect(
+        TExternalConnectionId externalConnectionId) override
+    {
+        Y_UNUSED(externalConnectionId);
+        return IServerHandlerPtr();
+    }
+
     TCallContextBasePtr CreateCallContext() override
     {
         return MakeIntrusive<TCallContextBase>(ui64{0});
@@ -95,6 +102,13 @@ struct TDelayedServerHandler final
     void* Context = nullptr;
     TStringBuf Out;
 
+    TResultOrError<IServerHandlerPtr> HandleConnect(
+        TExternalConnectionId externalConnectionId) override
+    {
+        Y_UNUSED(externalConnectionId);
+        return IServerHandlerPtr();
+    }
+
     TCallContextBasePtr CreateCallContext() override
     {
         return MakeIntrusive<TCallContextBase>(ui64{0});
@@ -114,6 +128,55 @@ struct TDelayedServerHandler final
         RequestReceived.SetValue();
     }
 };
+
+struct TConnectHandler final: IServerHandler
+{
+    using TConnect =
+        std::function<TResultOrError<IServerHandlerPtr>(TExternalConnectionId)>;
+
+    const TConnect Connect;
+    NThreading::TPromise<void*> Request = NThreading::NewPromise<void*>();
+
+    explicit TConnectHandler(TConnect connect)
+        : Connect(std::move(connect))
+    {}
+
+    TResultOrError<IServerHandlerPtr> HandleConnect(
+        TExternalConnectionId externalConnectionId) override
+    {
+        return Connect(externalConnectionId);
+    }
+
+    TCallContextBasePtr CreateCallContext() override
+    {
+        return MakeIntrusive<TCallContextBase>(ui64{0});
+    }
+
+    void HandleRequest(
+        void* context,
+        TCallContextBasePtr callContext,
+        TStringBuf in,
+        TStringBuf out) override
+    {
+        Y_UNUSED(callContext);
+        Y_UNUSED(in);
+        Y_UNUSED(out);
+
+        Request.SetValue(context);
+    }
+};
+
+TExtendedConnectMessage MakeConnectMessage(
+    TExternalConnectionId externalConnectionId)
+{
+    TExtendedConnectMessage message = {};
+    InitMessageHeader(&message.Base);
+    message.Base.SendQueueSize = 10;
+    message.Base.RecvQueueSize = 10;
+    message.Base.MaxBufferSize = 4_MB + 4_KB;
+    message.ExternalConnectionId = externalConnectionId;
+    return message;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -486,6 +549,13 @@ TEST(TRdmaServerTest, ShouldBoundErrorResponsesByClientBuffer)
     {
         std::atomic<void*> Context{nullptr};
 
+        TResultOrError<IServerHandlerPtr> HandleConnect(
+            TExternalConnectionId externalConnectionId) override
+        {
+            Y_UNUSED(externalConnectionId);
+            return IServerHandlerPtr();
+        }
+
         TCallContextBasePtr CreateCallContext() override
         {
             return MakeIntrusive<TCallContextBase>(ui64{0});
@@ -719,6 +789,13 @@ TEST(TRdmaServerTest, ShouldExecuteEagerRequestsWithoutRdmaRead)
         std::atomic<int> Calls{0};
         TStringBuf In;
         void* Context = nullptr;
+
+        TResultOrError<IServerHandlerPtr> HandleConnect(
+            TExternalConnectionId externalConnectionId) override
+        {
+            Y_UNUSED(externalConnectionId);
+            return IServerHandlerPtr();
+        }
 
         TCallContextBasePtr CreateCallContext() override
         {
@@ -1147,6 +1224,216 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
     endpoint->SendResponse(handler->Context, 0);
 
     sessionDestroyed.GetFuture().GetValueSync();
+}
+
+TEST(TRdmaServerTest, ShouldServeConnectionWithHandlerReturnedFromHandleConnect)
+{
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    // flush posted WRs when the session enters the error state on Stop()
+    context->ModifyQP = [&](ibv_qp* qp, ibv_qp_attr* attr, int mask)
+    {
+        Y_UNUSED(qp);
+        if ((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR) {
+            NVerbs::Flush(context);
+        }
+    };
+
+    std::atomic<int> sends = 0;
+    context->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
+    {
+        PostSend<TResponseMessage>(context, qp, wr);
+        ++sends;
+    };
+
+    auto connectionId = NThreading::NewPromise<TExternalConnectionId>();
+    auto connectionHandler = std::make_shared<TConnectHandler>(nullptr);
+    auto handler = std::make_shared<TConnectHandler>(
+        [&](TExternalConnectionId externalConnectionId)
+        {
+            connectionId.SetValue(externalConnectionId);
+            return IServerHandlerPtr(connectionHandler);
+        });
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+    serverConfig->QueueSize = 1;
+    serverConfig->SendQueueSize = 1;
+    serverConfig->RecvQueueSize = 1;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
+    server->Start();
+    Y_DEFER
+    {
+        server->Stop();
+    };
+
+    auto endpoint = server->StartEndpoint("::", 10020, handler);
+
+    const auto message = MakeConnectMessage({.High = 1, .Low = 2});
+    NVerbs::CreateConnection(context, &message, sizeof(message));
+
+    const auto receivedId = connectionId.GetFuture().GetValueSync();
+    ASSERT_EQ(1u, receivedId.High);
+    ASSERT_EQ(2u, receivedId.Low);
+
+    auto activeRecv = GetServerCounters(monitoring)->GetCounter("ActiveRecv");
+
+    // wait for session to initialize
+    while (activeRecv->Val() != serverConfig->RecvQueueSize) {
+        SpinLockPause();
+    }
+
+    with_lock (context->CompletionLock) {
+        ASSERT_FALSE(context->RecvEvents.empty());
+
+        auto* recv = context->RecvEvents.back();
+        context->RecvEvents.pop_back();
+
+        auto* msg = reinterpret_cast<TRequestMessage*>(recv->sg_list[0].addr);
+        memset(msg, 0, sizeof(*msg));
+        InitMessageHeader(msg);
+        msg->ReqId = 1;
+        msg->Out.Length = 4_KB;
+
+        context->ProcessedRecvEvents.push_back(recv);
+        context->CompletionHandle.Set();
+    }
+
+    void* request = connectionHandler->Request.GetFuture().GetValueSync();
+    ASSERT_FALSE(handler->Request.HasValue());
+
+    endpoint->SendResponse(request, 0);
+
+    while (sends.load() != 1) {
+        SpinLockPause();
+    }
+}
+
+TEST(TRdmaServerTest, ShouldPassZeroExternalConnectionIdForPlainConnectMessage)
+{
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    // flush posted WRs when the session enters the error state on Stop()
+    context->ModifyQP = [&](ibv_qp* qp, ibv_qp_attr* attr, int mask)
+    {
+        Y_UNUSED(qp);
+        if ((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR) {
+            NVerbs::Flush(context);
+        }
+    };
+
+    NThreading::TPromise<void> accepted = NThreading::NewPromise<void>();
+    context->HandleAccept = [&](rdma_cm_id* id, rdma_conn_param* param)
+    {
+        Y_UNUSED(id);
+        Y_UNUSED(param);
+        accepted.SetValue();
+    };
+
+    auto connectionId = NThreading::NewPromise<TExternalConnectionId>();
+    auto handler = std::make_shared<TConnectHandler>(
+        [&](TExternalConnectionId externalConnectionId)
+        {
+            connectionId.SetValue(externalConnectionId);
+            return IServerHandlerPtr();
+        });
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
+    server->Start();
+    Y_DEFER
+    {
+        server->Stop();
+    };
+
+    auto endpoint = server->StartEndpoint("::", 10020, handler);
+
+    NVerbs::CreateConnection(context);
+
+    const auto receivedId = connectionId.GetFuture().GetValueSync();
+    ASSERT_EQ(0u, receivedId.High);
+    ASSERT_EQ(0u, receivedId.Low);
+
+    accepted.GetFuture().GetValueSync();
+}
+
+TEST(TRdmaServerTest, ShouldRejectConnectionWhenHandleConnectFails)
+{
+    NThreading::TPromise<void> done = NThreading::NewPromise<void>();
+    std::atomic<int> rejectCount = 0;
+    std::atomic<bool> createQpCalled = false;
+
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    context->CreateQP = [&](rdma_cm_id* id, ibv_qp_init_attr* attr)
+    {
+        Y_UNUSED(id);
+        Y_UNUSED(attr);
+        createQpCalled.store(true);
+    };
+
+    context->Reject = [&](rdma_cm_id* id, const void* data, ui8 size)
+    {
+        Y_UNUSED(id);
+
+        EXPECT_EQ(sizeof(TRejectMessage), size);
+
+        const auto* rejectMsg = static_cast<const TRejectMessage*>(data);
+        EXPECT_TRUE(IsValidMessageHeader(rejectMsg));
+        EXPECT_EQ(RDMA_PROTO_REJECTED, rejectMsg->Status);
+
+        if (++rejectCount == 2) {
+            done.TrySetValue();
+        }
+    };
+
+    const ui64 throwingId = 2;
+
+    auto handler = std::make_shared<TConnectHandler>(
+        [=](TExternalConnectionId externalConnectionId)
+            -> TResultOrError<IServerHandlerPtr>
+        {
+            if (externalConnectionId.Low == throwingId) {
+                ythrow yexception() << "unknown connection";
+            }
+            return MakeError(E_ARGUMENT, "unknown connection");
+        });
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
+    server->Start();
+    Y_DEFER
+    {
+        server->Stop();
+    };
+
+    auto endpoint = server->StartEndpoint("::", 10020, handler);
+
+    for (ui64 id: {ui64{1}, throwingId}) {
+        const auto message = MakeConnectMessage({.High = 0, .Low = id});
+        NVerbs::CreateConnection(context, &message, sizeof(message));
+    }
+
+    done.GetFuture().Wait();
+    EXPECT_EQ(2, rejectCount.load());
+    EXPECT_FALSE(createQpCalled.load());
 }
 
 int NVerbs::DestroyId(rdma_cm_id* id)

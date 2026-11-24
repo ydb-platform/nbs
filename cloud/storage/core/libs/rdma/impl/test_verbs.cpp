@@ -661,9 +661,17 @@ void CreateConnection(
     message.MaxBufferSize = maxBufferSize;
     message.MaxEagerRequestBytes = maxEagerRequestBytes;
 
+    CreateConnection(std::move(context), &message, sizeof(message));
+}
+
+void CreateConnection(
+    TTestContextPtr context,
+    const void* privateData,
+    size_t privateDataLen)
+{
     rdma_conn_param param = {
-        .private_data = &message,
-        .private_data_len = sizeof(TConnectMessage),
+        .private_data = privateData,
+        .private_data_len = SafeCast<ui8>(privateDataLen),
     };
 
     auto id = std::make_unique<rdma_cm_id>();

@@ -66,8 +66,12 @@ public:
 public:
     TFuture<NCloud::NStorage::NRdma::IClientEndpointPtr> StartEndpoint(
         TString host,
-        ui32 port) noexcept override
+        ui32 port,
+        NCloud::NStorage::NRdma::TExternalConnectionId
+            externalConnectionId) noexcept override
     {
+        Y_UNUSED(externalConnectionId);
+
         StartedEndpoints.emplace_back(host, port);
 
         return MakeFuture<NCloud::NStorage::NRdma::IClientEndpointPtr>(
@@ -77,9 +81,12 @@ public:
     TResultOrError<NCloud::NStorage::NRdma::IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
-        NCloud::IClientEndpointHandlerPtr handler) noexcept override
+        NCloud::IClientEndpointHandlerPtr handler,
+        NCloud::NStorage::NRdma::TExternalConnectionId
+            externalConnectionId) noexcept override
     {
         Y_UNUSED(handler);
+        Y_UNUSED(externalConnectionId);
 
         StartedEndpoints.emplace_back(host, port);
 

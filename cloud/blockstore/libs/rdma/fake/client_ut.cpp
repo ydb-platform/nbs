@@ -334,7 +334,10 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
             return true;
         };
 
-        auto future = RdmaClient->StartEndpoint("node-0001.nbs-dev.net", 10022);
+        auto future = RdmaClient->StartEndpoint(
+            "node-0001.nbs-dev.net",
+            10022,
+            {} /* externalConnectionId */);
         Runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT(future.Wait(15s));
@@ -444,7 +447,10 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
             return true;
         };
 
-        auto future = RdmaClient->StartEndpoint("node-0001.nbs-dev.net", 10022);
+        auto future = RdmaClient->StartEndpoint(
+            "node-0001.nbs-dev.net",
+            10022,
+            {} /* externalConnectionId */);
         Runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT(future.Wait(15s));
@@ -540,7 +546,10 @@ Y_UNIT_TEST_SUITE(TFakeRdmaClientTest)
             return true;
         };
 
-        auto future = RdmaClient->StartEndpoint("node-0001.nbs-dev.net", 10022);
+        auto future = RdmaClient->StartEndpoint(
+            "node-0001.nbs-dev.net",
+            10022,
+            {} /* externalConnectionId */);
         Runtime->DispatchEvents({}, 10ms);
 
         UNIT_ASSERT(future.Wait(15s));

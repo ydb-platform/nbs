@@ -349,7 +349,8 @@ IStoragePtr CreateRdmaStorage(
 {
     auto storage = TRdmaStorage::Create(std::move(taskQueue));
 
-    auto startEndpoint = client->StartEndpoint(address, port);
+    auto startEndpoint =
+        client->StartEndpoint(address, port, {} /* externalConnectionId */);
     storage->Init(startEndpoint.GetValue(timeout));
 
     return storage;

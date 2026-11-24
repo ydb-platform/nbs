@@ -4,6 +4,7 @@
 
 #include "buffer.h"
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -52,6 +53,9 @@ struct TServerConfig
 struct IServerHandler
 {
     virtual ~IServerHandler() = default;
+
+    virtual TResultOrError<IServerHandlerPtr> HandleConnect(
+        TExternalConnectionId externalConnectionId) = 0;
 
     virtual TCallContextBasePtr CreateCallContext() = 0;
 

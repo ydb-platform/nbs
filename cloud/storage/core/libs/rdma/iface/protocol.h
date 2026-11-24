@@ -11,6 +11,8 @@ namespace NCloud::NStorage::NRdma {
 
 // usage of fixed-size structures greatly simplifies message passing
 constexpr size_t RDMA_PRIVATE_SIZE = 16;
+// private data of the connect request of an RC connection
+constexpr size_t RDMA_CONNECT_PRIVATE_SIZE = 56;
 constexpr size_t RDMA_REQUEST_SIZE = 64;
 constexpr size_t RDMA_RESPONSE_SIZE = 16;
 constexpr size_t RDMA_PROTO_HEADER_SIZE = 8;
@@ -30,6 +32,7 @@ enum {
     RDMA_PROTO_CONFIG_MISMATCH  = 2,
     RDMA_PROTO_THROTTLED        = 3,
     RDMA_PROTO_FAIL             = 4,
+    RDMA_PROTO_REJECTED         = 5,
 };
 
 enum {
@@ -97,6 +100,20 @@ struct Y_PACKED TConnectMessage
 };
 
 static_assert(sizeof(TConnectMessage) == RDMA_PRIVATE_SIZE);
+
+// Sent by the client instead of TConnectMessage. A server that knows only
+// TConnectMessage reads its first RDMA_PRIVATE_SIZE bytes.
+struct Y_PACKED TExtendedConnectMessage
+{
+    TConnectMessage Base;
+    // for new fields of the connect message, zeros for now
+    ui8 Reserved[
+        RDMA_CONNECT_PRIVATE_SIZE - sizeof(TConnectMessage) -
+        sizeof(TExternalConnectionId)];
+    TExternalConnectionId ExternalConnectionId;
+};
+
+static_assert(sizeof(TExtendedConnectMessage) == RDMA_CONNECT_PRIVATE_SIZE);
 
 ////////////////////////////////////////////////////////////////////////////////
 

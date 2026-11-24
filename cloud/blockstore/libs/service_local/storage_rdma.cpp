@@ -577,7 +577,10 @@ public:
                         volume.GetBlockSize(),
                         TaskQueue);
 
-                    auto endpoint = Client->StartEndpoint(ep.Host, ep.Port)
+                    auto endpoint = Client->StartEndpoint(
+                        ep.Host,
+                        ep.Port,
+                        {} /* externalConnectionId */)
                         .Subscribe([=, this] (const auto& future) {
                             storage->Init(future.GetValue(), Client->IsAlignedDataEnabled());
                         });

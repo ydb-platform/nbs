@@ -885,7 +885,10 @@ IBlockStorePtr CreateRdmaEndpointClient(
         std::move(taskQueue),
         client->IsAlignedDataEnabled());
 
-    auto startEndpoint = client->StartEndpoint(config.Address, config.Port);
+    auto startEndpoint = client->StartEndpoint(
+        config.Address,
+        config.Port,
+        {} /* externalConnectionId */);
 
     endpoint->Init(startEndpoint.GetValue(WAIT_TIMEOUT));
     return endpoint;
@@ -907,7 +910,10 @@ CreateRdmaEndpointClientAsync(
         std::move(taskQueue),
         client->IsAlignedDataEnabled());
 
-    auto future = client->StartEndpoint(config.Address, config.Port);
+    auto future = client->StartEndpoint(
+        config.Address,
+        config.Port,
+        {} /* externalConnectionId */);
     return future.Apply([endpoint = std::move(endpoint)] (const auto& future) mutable {
         auto result = SafeExecute<TResultOrError<IBlockStorePtr>>(
             [&] {
@@ -935,7 +941,8 @@ TResultOrError<IBlockStorePtr> CreateRdmaDataEndpoint(
     auto [clientEndpoint, error] = client->StartEndpoint(
         config.Address,
         config.Port,
-        std::move(handler));
+        std::move(handler),
+        {} /* externalConnectionId */);
 
     if (HasError(error)) {
         return error;

@@ -70,6 +70,13 @@ public:
         Endpoint = std::move(endpoint);
     }
 
+    TResultOrError<NRdma::IServerHandlerPtr> HandleConnect(
+        NRdma::TExternalConnectionId externalConnectionId) override
+    {
+        Y_UNUSED(externalConnectionId);
+        return NRdma::IServerHandlerPtr();
+    }
+
     TCallContextBasePtr CreateCallContext() override
     {
         return NCloud::NBlockStore::CreateCallContext();

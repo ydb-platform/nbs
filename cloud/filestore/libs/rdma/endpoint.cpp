@@ -45,6 +45,13 @@ public:
         Endpoint.SetValue(std::move(endpoint));
     }
 
+    TResultOrError<IServerHandlerPtr> HandleConnect(
+        TExternalConnectionId externalConnectionId) override
+    {
+        Y_UNUSED(externalConnectionId);
+        return IServerHandlerPtr();
+    }
+
     TCallContextBasePtr CreateCallContext() override
     {
         return MakeIntrusive<TCallContextBase>(ui64{0});

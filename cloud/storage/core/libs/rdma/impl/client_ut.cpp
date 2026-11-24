@@ -140,7 +140,7 @@ TEST(TRdmaClientTest, ShouldStartEndpoint)
         client->Stop();
     };
 
-    client->StartEndpoint("::", 10020);
+    client->StartEndpoint("::", 10020, {} /* externalConnectionId */);
 }
 
 TEST(TRdmaClientTest, ShouldStartEndpointWithToS)
@@ -162,7 +162,7 @@ TEST(TRdmaClientTest, ShouldStartEndpointWithToS)
         client->Stop();
     };
 
-    client->StartEndpoint("::", 10020);
+    client->StartEndpoint("::", 10020, {} /* externalConnectionId */);
     ASSERT_EQ(42, testContext->ToS);
 }
 
@@ -306,7 +306,8 @@ TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
         client->Stop();
     };
 
-    auto ep = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto ep = client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+                  .ExtractValueSync();
     ASSERT_TRUE(ep);
 
     ASSERT_TRUE(resolveAddressCalled.load());
@@ -345,7 +346,9 @@ TEST(TRdmaClientTest, ShouldDetachFromPoller)
         client->Stop();
     };
 
-    auto shared = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto shared =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
     ASSERT_EQ(2u, shared.use_count());
 
     shared->Stop().Wait();
@@ -380,7 +383,9 @@ TEST(TRdmaClientTest, ShouldNotTriggerCompletionAfterFlushTimeout)
         client->Stop();
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
 
     struct TClientHandler: IClientRequestHandler
     {
@@ -457,7 +462,8 @@ TEST(TRdmaClientTest, ShouldReturnErrorUponStartEndpointTimeout)
     };
 
     try {
-        client->StartEndpoint("::", 10020).ExtractValueSync();
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
         FAIL() << "expected exception";
     } catch (const TServiceError& e) {
         ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();
@@ -494,7 +500,8 @@ TEST(TRdmaClientTest, ShouldHandleGetAddressInfoError)
     };
 
     try {
-        client->StartEndpoint("::", 10020).ExtractValueSync();
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
         FAIL() << "expected exception";
     } catch (const TServiceError& e) {
         ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();
@@ -529,7 +536,9 @@ TEST(TRdmaClientTest, ShouldProcessRequests)
         client->Stop();
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
 
     testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
     {
@@ -665,7 +674,9 @@ TEST(TRdmaClientTest, ShouldReuseChunks)
         registered++;
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
 
     TVector<TClientRequestPtr> requests;
     int maxRequestsInOneChunk = clientConfig->BufferPool.ChunkSize /
@@ -712,7 +723,9 @@ TEST(TRdmaClientTest, ShouldAdjustMaxChunkAlloc)
         registered++;
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
 
     TVector<TClientRequestPtr> requests;
     int maxRequestsInOneChunk = clientConfig->BufferPool.ChunkSize /
@@ -760,7 +773,9 @@ TEST(TRdmaClientTest, ShouldAbortRequests)
         sent.Signal();
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
 
     struct TClientHandler: IClientRequestHandler
     {
@@ -817,7 +832,9 @@ TEST(TRdmaClientTest, ShouldCancelRequests)
         client->Stop();
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
 
     struct TResponse
     {
@@ -932,7 +949,9 @@ TEST(TRdmaClientTest, ShouldReconnect)
         };
     }
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
 
     testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
     {
@@ -1032,7 +1051,9 @@ TEST(TRdmaClientTest, ShouldForceReconnect)
         client->Stop();
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
 
     // Increase reconnect timer delay up to "MaxReconnectDelay".
     for (int i = 0; i < 10; i++) {
@@ -1072,7 +1093,9 @@ TEST(TRdmaClientTest, ShouldHandleErrors)
         client->Stop();
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
 
     auto counters = GetClientCounters(monitoring);
     auto active = counters->GetCounter("ActiveRecv");
@@ -1169,7 +1192,8 @@ TEST(TRdmaClientTest, ShouldDisconnectOnInvalidHeaderInAcceptMessage)
     };
 
     try {
-        client->StartEndpoint("::", 10020).ExtractValueSync();
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
         FAIL() << "expected exception";
     } catch (const TServiceError& e) {
         ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();
@@ -1199,7 +1223,9 @@ TEST(TRdmaClientTest, ShouldSendEagerRequestsUpToNegotiatedLimit)
         client->Stop();
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
 
     struct TSentRequest
     {
@@ -1339,7 +1365,9 @@ TEST(TRdmaClientTest, ShouldNotSendEagerRequestsAboveServerLimit)
             sizeof(acceptMsg));
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
 
     std::atomic<int> sentSges = 0;
     testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
@@ -1449,7 +1477,9 @@ TEST(TRdmaClientTest, ShouldHoldEagerBufferUntilSendCompletes)
         }
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
     // request and response message rings
     ASSERT_EQ(2u, registered.load());
 
@@ -1575,7 +1605,9 @@ TEST(TRdmaClientTest, ShouldBindOnlyResponseBufferForEagerRequests)
         destroyed++;
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
 
     struct TResponse: IClientRequestHandler
     {
@@ -1771,7 +1803,9 @@ TEST(TRdmaClientTest, ShouldAdjustQueueSizeOnConfigMismatchInRejection)
             sizeof(acceptMsg));
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
     ASSERT_TRUE(endpoint);
 
     // initial attempt uses configured queue sizes
@@ -1823,7 +1857,8 @@ TEST(TRdmaClientTest, ShouldDisconnectOnInvalidHeaderInRejectMessage)
     };
 
     try {
-        client->StartEndpoint("::", 10020).ExtractValueSync();
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
         FAIL() << "expected exception";
     } catch (const TServiceError& e) {
         ASSERT_EQ(E_RDMA_UNAVAILABLE, e.GetCode()) << e.GetMessage();
@@ -1896,7 +1931,9 @@ TEST(TRdmaClientTest, ShouldBindAndInvalidateBuffers)
         client->Stop();
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
 
     auto handleRequest = [&]()
     {
@@ -2083,7 +2120,9 @@ TEST(TRdmaClientTest, ShouldRejectRequestFromStaleBufferPoolGeneration)
         client->Stop();
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
 
     testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
     {
@@ -2195,7 +2234,9 @@ TEST(TRdmaClientTest, ShouldEagerlyDestroyBothMemoryWindowsOnAbortRequest)
         destroyed++;
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
 
     struct THoldingHandler: IClientRequestHandler
     {
@@ -2265,7 +2306,9 @@ TEST(TRdmaClientTest, ShouldNotReleaseBuffersFromStaleBufferPoolGeneration)
         client->Stop();
     };
 
-    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    auto endpoint =
+        client->StartEndpoint("::", 10020, {} /* externalConnectionId */)
+            .ExtractValueSync();
 
     auto request = endpoint->AllocateRequest(
         std::make_shared<TClientHandler>(),
@@ -2307,7 +2350,11 @@ TEST(TRdmaClientTest, ShouldReportEndpointStateToHandler)
 
     auto handler = std::make_shared<TTestEndpointHandler>();
 
-    auto result = client->StartEndpoint("::", 10020, handler);
+    auto result = client->StartEndpoint(
+        "::",
+        10020,
+        handler,
+        {} /* externalConnectionId */);
     ASSERT_FALSE(HasError(result));
 
     // the endpoint is handed back before it has connected, so wait for the
@@ -2351,7 +2398,11 @@ TEST(TRdmaClientTest, ShouldKeepRetryingAnEndpointCreatedSynchronously)
 
     auto handler = std::make_shared<TTestEndpointHandler>();
 
-    auto result = client->StartEndpoint("::", 10020, handler);
+    auto result = client->StartEndpoint(
+        "::",
+        10020,
+        handler,
+        {} /* externalConnectionId */);
     ASSERT_FALSE(HasError(result));
 
     // StartEndpoint would have given up by now and torn the endpoint down;
@@ -2362,6 +2413,76 @@ TEST(TRdmaClientTest, ShouldKeepRetryingAnEndpointCreatedSynchronously)
 
     ASSERT_EQ("unavailable", handler->GetEvents()[0]);
     ASSERT_TRUE(result.GetResult());
+}
+
+TEST(TRdmaClientTest, ShouldSendExternalConnectionIdOnEveryConnect)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+
+    TMutex lock;
+    TVector<TString> connectMessages;
+
+    auto getConnectMessages = [&]
+    {
+        with_lock (lock) {
+            return connectMessages;
+        }
+    };
+
+    testContext->HandleConnect = [&](auto* id, auto* param)
+    {
+        with_lock (lock) {
+            connectMessages.emplace_back(
+                static_cast<const char*>(param->private_data),
+                param->private_data_len);
+        }
+
+        TAcceptMessage acceptMsg{};
+        InitMessageHeader(&acceptMsg);
+        NVerbs::EnqueueAcceptEvent(
+            testContext,
+            id,
+            &acceptMsg,
+            sizeof(acceptMsg));
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+    client->Start();
+    Y_DEFER
+    {
+        client->Stop();
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020, {.High = 1, .Low = 2})
+                        .ExtractValueSync();
+
+    Disconnect(testContext);
+
+    while (getConnectMessages().size() < 2) {
+        SpinLockPause();
+    }
+
+    for (const auto& connectMessage: getConnectMessages()) {
+        ASSERT_EQ(sizeof(TExtendedConnectMessage), connectMessage.size());
+
+        TExtendedConnectMessage message;
+        memcpy(&message, connectMessage.data(), sizeof(message));
+
+        EXPECT_TRUE(IsValidMessageHeader(&message.Base));
+        EXPECT_EQ(clientConfig->MaxBufferSize, message.Base.MaxBufferSize);
+        for (ui8 reserved: message.Reserved) {
+            EXPECT_EQ(0, reserved);
+        }
+        EXPECT_EQ(1u, message.ExternalConnectionId.High);
+        EXPECT_EQ(2u, message.ExternalConnectionId.Low);
+    }
 }
 
 }   // namespace NCloud::NStorage::NRdma
