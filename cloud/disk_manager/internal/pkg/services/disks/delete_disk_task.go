@@ -90,6 +90,14 @@ func (t *deleteDiskTask) deleteDisk(
 		if err != nil {
 			return err
 		}
+		if len(zoneID) == 0 {
+			logging.Error(
+				ctx,
+				"Cannot delete disk %v from NBS: zone is not specified in the request",
+				diskID,
+			)
+			return t.storage.DiskDeleted(ctx, diskID, time.Now())
+		}
 	} else {
 		zoneID = diskMeta.ZoneID
 	}
@@ -210,7 +218,8 @@ func (t *deleteDiskTask) GetResponse() proto.Message {
 // Prefers the zone from meta (the disk may still be in the trash retention
 // window) and falls back to the request zone.
 //
-// An empty request zone finishes the task with a NonCancellableError.
+// An empty request zone is returned as is: the caller only marks the disk as
+// deleted.
 //
 // A disabled zone from meta is returned as is: NBS deletion is skipped for
 // disabled zones anyway.
@@ -226,10 +235,7 @@ func (t *deleteDiskTask) resolveCleanupZoneID(
 
 	requestZoneID := t.request.Disk.ZoneId
 	if len(requestZoneID) == 0 {
-		return "", errors.NewNonCancellableErrorf(
-			"request zone is empty for disk %v",
-			diskID,
-		)
+		return "", nil
 	}
 
 	meta, err := t.storage.GetDiskMeta(ctx, diskID)
