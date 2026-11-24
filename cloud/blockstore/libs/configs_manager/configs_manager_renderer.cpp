@@ -708,10 +708,8 @@ TString TBlockstoreConfigRenderer::RenderHtml(
 
     TStringStream out;
     HTML (out) {
-        // Page head with styles and scripts for the configuration view.
-        HEAD () {
-            // Page styles for metadata, controls, counters and value tables.
-            out << R"(<style>
+        // Page styles for metadata, controls, counters and value tables.
+        out << R"(<style>
 .config-zero { color: #000; }
 .config-dynamic-total, .config-present { color: #008000; }
 .config-absent { color: #666; }
@@ -737,8 +735,8 @@ TString TBlockstoreConfigRenderer::RenderHtml(
 </style>
 )";
 
-            // Section controls, parameter search and source-column widths.
-            out << R"(<script>
+        // Section controls, parameter search and source-column widths.
+        out << R"(<script>
 $(function () {
     var sections = $('#config-sections .config-section');
 
@@ -875,7 +873,7 @@ $(function () {
     });
 });
 </script>)" << Endl;
-        }
+
         // Shared CMS monitoring styles used by the page tables and controls.
         NKikimr::NConsole::NHttp::OutputStyles(out);
 
