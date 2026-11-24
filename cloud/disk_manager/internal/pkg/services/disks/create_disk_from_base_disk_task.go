@@ -179,7 +179,7 @@ func (t *createDiskFromBaseDiskTask) Cancel(
 		params.Disk.DiskId,
 		execCtx.GetTaskID(),
 		time.Now(),
-		"", // missingDiskZoneID
+		"", // tombstoneZoneID
 	)
 	if err != nil {
 		return err

@@ -180,19 +180,20 @@ type Storage interface {
 
 	// Returns disk if action has been accepted by storage and nil otherwise.
 	//
-	// If the disk is missing and |missingDiskZoneID| is not empty, creates a
-	// tombstone disk entry in deleting status in |missingDiskZoneID| and
-	// returns it. The tombstone has no create task ID; it reserves the disk ID
-	// until DiskDeleted is called, after that it is collected as a regular
-	// deleted disk.
-	// If the disk is missing and |missingDiskZoneID| is empty, creates a
-	// tombstone disk entry in deleted status and returns nil.
+	// If the disk is missing, creates a tombstone disk entry (without create
+	// task ID) that prevents new disk creation with the same ID:
+	// * if |tombstoneZoneID| is not empty, the tombstone is created in
+	//   deleting status in this zone and returned. It is handled as a regular
+	//   deleting disk: DiskDeleted moves it to deleted status, after that it is
+	//   collected as a regular deleted disk;
+	// * otherwise the tombstone is created in deleted status and nil is
+	//   returned.
 	DeleteDisk(
 		ctx context.Context,
 		diskID string,
 		taskID string,
 		deletingAt time.Time,
-		missingDiskZoneID string,
+		tombstoneZoneID string,
 	) (*DiskMeta, error)
 
 	DiskDeleted(ctx context.Context, diskID string, deletedAt time.Time) error

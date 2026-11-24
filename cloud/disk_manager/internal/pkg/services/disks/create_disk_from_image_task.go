@@ -204,7 +204,7 @@ func (t *createDiskFromImageTask) Cancel(
 		params.Disk.DiskId,
 		selfTaskID,
 		time.Now(),
-		"", // missingDiskZoneID
+		"", // tombstoneZoneID
 	)
 	if err != nil {
 		return err

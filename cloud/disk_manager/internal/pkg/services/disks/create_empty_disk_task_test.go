@@ -176,7 +176,7 @@ func TestCancelCreateEmptyDiskTask(t *testing.T) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-		"", // missingDiskZoneID
+		"", // tombstoneZoneID
 	).Return(&resources.DiskMeta{
 		ID:           "disk",
 		ZoneID:       "zone",
@@ -223,7 +223,7 @@ func TestCancelCreateEmptyDiskTaskFailure(t *testing.T) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-		"", // missingDiskZoneID
+		"", // tombstoneZoneID
 	).Return(&resources.DiskMeta{
 		ID:           "disk",
 		ZoneID:       "zone",
@@ -269,7 +269,7 @@ func TestCancelCreateEmptyDiskTaskBeforeRunIsCalled(t *testing.T) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-		"", // missingDiskZoneID
+		"", // tombstoneZoneID
 	).Return((*resources.DiskMeta)(nil), nil)
 
 	err := task.Cancel(ctx, execCtx)
