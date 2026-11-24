@@ -51,10 +51,15 @@ public:
         return MaxBits;
     }
 
+    [[nodiscard]] static ui64 GetPageCount(ui32 pageSize, ui64 maxBits)
+    {
+        const ui64 bitsPerPage = CalcBitsPerPage(pageSize);
+        return RoundUp(maxBits, bitsPerPage) / bitsPerPage;
+    }
+
     [[nodiscard]] ui64 GetPageCount() const
     {
-        const ui64 bitsPerPage = CalcBitsPerPage(PageSize);
-        return RoundUp(MaxBits, bitsPerPage) / bitsPerPage;
+        return GetPageCount(PageSize, MaxBits);
     }
 
 private:

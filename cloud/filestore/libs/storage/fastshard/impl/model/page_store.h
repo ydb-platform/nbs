@@ -44,17 +44,6 @@ public:
     ReadPageForUpdate(ui64 lsn, ui64 pageNo, TBuffer* page) const = 0;
 
     /**
-     * Forbids eviction of the pages in the supplied range. Intended to be used
-     * for metadata pages.
-     *
-     * @param firstPageNo - the start of the range.
-     * @param pageCount - the size of the range.
-     */
-    [[nodiscard]] virtual NProto::TError SetPinnedRange(
-        ui64 firstPageNo,
-        ui64 pageCount) = 0;
-
-    /**
      * Drops all cached pages. Only committed pages may be cached at the
      * moment of the call.
      */
@@ -147,7 +136,8 @@ public:
 struct TPageStoreConfig
 {
     ui64 PageSize;
-    ui64 MaxCachedPages;
+    ui64 PinnedPageCount;
+    ui64 MaxCachedPageCount;
 };
 
 IPageStorePtr CreatePageStore(

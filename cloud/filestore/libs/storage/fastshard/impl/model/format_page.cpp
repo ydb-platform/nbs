@@ -6,11 +6,10 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui64 TFormatPage::Init(ui64 pageNo, IPageStorePtr pageStore)
+void TFormatPage::Init(ui64 pageNo, IPageStorePtr pageStore)
 {
     Slot.PageNo = pageNo;
     PageStore = std::move(pageStore);
-    return 1;
 }
 
 NProto::TError TFormatPage::RegisterStart(

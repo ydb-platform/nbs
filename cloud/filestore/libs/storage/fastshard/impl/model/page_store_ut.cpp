@@ -16,7 +16,8 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui64 PageSize = 16;
-constexpr ui64 MaxCachedPages = 1024;
+constexpr ui64 PinnedPageCount = 0;
+constexpr ui64 MaxCachedPageCount = 1024;
 constexpr ui64 P = 1;
 constexpr ui64 Q = 2;
 
@@ -95,7 +96,11 @@ struct TEnv
         std::make_shared<TTestStorageGroup>();
     IPageStorePtr Store = CreatePageStore(
         Storage,
-        {.PageSize = PageSize, .MaxCachedPages = MaxCachedPages});
+        {
+            .PageSize = PageSize,
+            .PinnedPageCount = PinnedPageCount,
+            .MaxCachedPageCount = MaxCachedPageCount,
+        });
     TVector<TPageGroup> LogRecord;
 
     void Write(ui64 lsn, ui64 pageNo, char c)
@@ -237,8 +242,6 @@ TEST(PageStoreTest, ShouldRollbackDirtyVersion)
     env.Store->RollbackPages(1, {P});
     ASSERT_PAGE('a', env.Update(3, P));
     ASSERT_PAGE('a', env.Lookup(P));
-
-    env.Store->RollbackPages(3, {P});
     env.Store->Clear();
 }
 

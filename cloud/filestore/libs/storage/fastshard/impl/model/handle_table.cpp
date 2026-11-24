@@ -8,6 +8,44 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/* static */ ui32 THandleTable::CalcRequiredPageCount(
+    ui64 nodesPerGroup,
+    ui64 handlesPerGroup,
+    ui32 pageSize)
+{
+    ui64 totalPageCount = 0;
+
+    //
+    // FormatPage.
+    //
+
+    totalPageCount += 1;
+
+    //
+    // Handles.
+    //
+
+    {
+        const ui64 slotsPerPage = pageSize / HandleSlotSize;
+        const ui64 pageCount =
+            RoundUp(handlesPerGroup, slotsPerPage) / slotsPerPage;
+        totalPageCount += pageCount;
+    }
+
+    //
+    // NodeId2HandleCount.
+    //
+
+    {
+        const ui64 slotsPerPage = pageSize / NodeHandlesSlotSize;
+        const ui64 pageCount =
+            RoundUp(nodesPerGroup, slotsPerPage) / slotsPerPage;
+        totalPageCount += pageCount;
+    }
+
+    return totalPageCount;
+}
+
 ui64 THandleTable::Init(
     ui64 nodesPerGroup,
     ui64 handlesPerGroup,
@@ -18,12 +56,11 @@ ui64 THandleTable::Init(
 
     const ui64 pageSize = pageStore->GetPageSize();
     ui64 totalPageCount = 0;
-    {
-        const ui64 pageCount = FormatPage.Init(firstPageNo, pageStore);
 
-        totalPageCount += pageCount;
-        firstPageNo += pageCount;
-    }
+    FormatPage.Init(firstPageNo, pageStore);
+
+    totalPageCount += 1;
+    firstPageNo += 1;
 
     {
         debuilder.RegisterOffset("Handles", firstPageNo);

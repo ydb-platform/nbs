@@ -37,6 +37,8 @@ private:
     IPageStorePtr PageStore;
 
 public:
+    [[nodiscard]] static ui32 CalcRequiredPageCount();
+
     ui64 Init(ui64 firstPageNo, IPageStorePtr pageStore);
 
     [[nodiscard]] ui64 GetSlotCount() const

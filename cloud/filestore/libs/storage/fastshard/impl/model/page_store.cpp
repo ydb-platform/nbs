@@ -107,16 +107,17 @@ public:
     };
 
 private:
+    const ui64 PinnedPageCount;
+
     using TLookupMap = THashMap<ui64, TSlot*>;
     TLookupMap PageNo2Slot;
     TDeque<TSlot> Slots;
-    ui64 FirstPinnedPageNo = 0;
-    ui64 PinnedPageCount = 0;
     ui64 ClockHand = 0;
 
 public:
-    explicit TPageCache(ui64 maxPages)
-        : Slots(maxPages)
+    explicit TPageCache(ui64 pinnedPageCount, ui64 maxPages)
+        : PinnedPageCount(pinnedPageCount)
+        , Slots(maxPages)
     {}
 
 public:
@@ -161,18 +162,6 @@ public:
         slot.Locked = false;
     }
 
-    NProto::TError PinRange(ui64 firstPageNo, ui64 pageCount)
-    {
-        if (pageCount >= Slots.size()) {
-            return MakeError(E_ARGUMENT, TStringBuilder() << "pageCount ("
-                << pageCount << ") >= Slots.size() (" << Slots.size() << ")");
-        }
-
-        FirstPinnedPageNo = firstPageNo;
-        PinnedPageCount = pageCount;
-        return {};
-    }
-
     void Clear()
     {
         for (auto& s: Slots) {
@@ -204,9 +193,7 @@ private:
                 continue;
             }
 
-            if (FirstPinnedPageNo <= s.PageNo
-                    && s.PageNo < FirstPinnedPageNo + PinnedPageCount)
-            {
+            if (s.PageNo < PinnedPageCount) {
                 continue;
             }
 
@@ -247,7 +234,7 @@ public:
     TPageStore(IStorageGroupPtr storage, const TPageStoreConfig& config)
         : Storage(std::move(storage))
         , Config(config)
-        , PageCache(Config.MaxCachedPages)
+        , PageCache(Config.PinnedPageCount, Config.MaxCachedPageCount)
     {}
 
 public:
@@ -269,7 +256,6 @@ public:
     NProto::TError ReadPageForLookup(ui64 pageNo, TBuffer* page) const override;
     NProto::TError
     ReadPageForUpdate(ui64 lsn, ui64 pageNo, TBuffer* page) const override;
-    NProto::TError SetPinnedRange(ui64 firstPageNo, ui64 pageCount) override;
     void Clear() override;
 
 private:
@@ -594,11 +580,6 @@ NProto::TError TPageStore::ReadPageForUpdate(
     }
 
     return DoReadPage(*cacheSlot, LastCommittedLsn, pageNo, page);
-}
-
-NProto::TError TPageStore::SetPinnedRange(ui64 firstPageNo, ui64 pageCount)
-{
-    return PageCache.PinRange(firstPageNo, pageCount);
 }
 
 NProto::TError TPageStore::DoReadPage(

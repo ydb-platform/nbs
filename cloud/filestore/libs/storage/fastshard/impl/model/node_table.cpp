@@ -43,6 +43,34 @@ TNodeTableSlot Convert(const NProto::TNodeAttr& attr)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/* static */ ui32 TNodeTable::CalcRequiredPageCount(
+    ui64 nodesPerGroup,
+    ui32 pageSize)
+{
+    ui64 totalPageCount = 0;
+
+    //
+    // FormatPage.
+    //
+
+    totalPageCount += 1;
+
+    //
+    // Slots.
+    //
+
+    {
+        const ui64 slotsPerPage = pageSize / NodeSlotSize;
+        const ui64 pageCount =
+            Min(RoundUp(nodesPerGroup, slotsPerPage),
+                (NodeTableSize / pageSize) * slotsPerPage) /
+            slotsPerPage;
+        totalPageCount += pageCount;
+    }
+
+    return totalPageCount;
+}
+
 ui64 TNodeTable::Init(
     ui64 nodesPerGroup,
     ui64 firstPageNo,
@@ -52,12 +80,11 @@ ui64 TNodeTable::Init(
 
     PageSize = pageStore->GetPageSize();
     ui64 totalPageCount = 0;
-    {
-        const ui64 pageCount = FormatPage.Init(firstPageNo, pageStore);
 
-        totalPageCount += pageCount;
-        firstPageNo += pageCount;
-    }
+    FormatPage.Init(firstPageNo, pageStore);
+
+    totalPageCount += 1;
+    firstPageNo += 1;
 
     {
         debuilder.RegisterOffset("Slots", firstPageNo);

@@ -8,6 +8,34 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/* static */ ui32 TNameTable::CalcRequiredPageCount(
+    ui64 nodesPerGroup,
+    ui32 pageSize)
+{
+    ui64 totalPageCount = 0;
+
+    //
+    // FormatPage.
+    //
+
+    totalPageCount += 1;
+
+    //
+    // Slots.
+    //
+
+    {
+        const ui64 slotsPerPage = pageSize / NameSlotSize;
+        const ui64 pageCount =
+            Min(RoundUp(nodesPerGroup, slotsPerPage),
+                (NameTableSize / pageSize) * slotsPerPage) /
+            slotsPerPage;
+        totalPageCount += pageCount;
+    }
+
+    return totalPageCount;
+}
+
 ui64 TNameTable::Init(
     ui64 nodesPerGroup,
     ui64 firstPageNo,
@@ -17,12 +45,11 @@ ui64 TNameTable::Init(
 
     const ui64 pageSize = pageStore->GetPageSize();
     ui64 totalPageCount = 0;
-    {
-        const ui64 pageCount = FormatPage.Init(firstPageNo, pageStore);
 
-        totalPageCount += pageCount;
-        firstPageNo += pageCount;
-    }
+    FormatPage.Init(firstPageNo, pageStore);
+
+    totalPageCount += 1;
+    firstPageNo += 1;
 
     {
         debuilder.RegisterOffset("Slots", firstPageNo);

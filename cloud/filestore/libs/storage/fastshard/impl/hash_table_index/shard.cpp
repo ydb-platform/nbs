@@ -101,6 +101,36 @@ private:
     std::unique_ptr<THt> Slots;
 
 public:
+    static ui32 CalcRequiredPageCount(
+        const NProtoPrivate::TPersistentFastShardConfig& config,
+        ui32 pageSize)
+    {
+        ui64 totalPageCount = 0;
+
+        //
+        // FormatPage.
+        //
+
+        totalPageCount += 1;
+
+        //
+        // Slots.
+        //
+
+        {
+            const ui64 slotsPerPage = pageSize / NodePageClusterSlotSize;
+            const ui64 pageClusterCount =
+                CalcPageClusterCount(config, pageSize);
+            const ui64 slotCount = pageClusterCount
+                + pageClusterCount / PageIndexSpareSlotShare;
+            const ui64 indexPageCount =
+                RoundUp(slotCount, slotsPerPage) / slotsPerPage;
+            totalPageCount += indexPageCount;
+        }
+
+        return totalPageCount;
+    }
+
     ui64 Init(
         const NProtoPrivate::TPersistentFastShardConfig& config,
         ui64 firstPageNo,
@@ -110,12 +140,11 @@ public:
 
         const ui64 pageSize = pageStore->GetPageSize();
         ui64 totalPageCount = 0;
-        {
-            const ui64 pageCount = FormatPage.Init(firstPageNo, pageStore);
 
-            totalPageCount += pageCount;
-            firstPageNo += pageCount;
-        }
+        FormatPage.Init(firstPageNo, pageStore);
+
+        totalPageCount += 1;
+        firstPageNo += 1;
 
         {
             debuilder.RegisterOffset("Slots", firstPageNo);
@@ -306,6 +335,33 @@ private:
     ui64 MetadataSize = 0;
 
 public:
+    static ui32 CalcRequiredPageCount(
+        const NProtoPrivate::TPersistentFastShardConfig& config,
+        ui32 pageSize)
+    {
+        ui64 totalPageCount = 0;
+
+        //
+        // FormatPage.
+        //
+
+        totalPageCount += 1;
+
+        //
+        // Bitmap. Data area not taken into account - unlike in Init().
+        //
+
+        {
+            const ui64 pageClusterCount =
+                CalcPageClusterCount(config, pageSize);
+            const ui64 pageCount =
+                TPersistentBitmap::GetPageCount(pageSize, pageClusterCount);
+            totalPageCount += pageCount;
+        }
+
+        return totalPageCount;
+    }
+
     ui64 Init(
         const NProtoPrivate::TPersistentFastShardConfig& config,
         ui64 firstPageNo,
@@ -317,13 +373,12 @@ public:
 
         const ui64 pageSize = pageStore->GetPageSize();
         ui64 totalPageCount = 0;
-        {
-            const ui64 pageCount = FormatPage.Init(firstPageNo, pageStore);
 
-            totalPageCount += pageCount;
-            firstPageNo += pageCount;
-            MetadataSize += pageCount * pageSize;
-        }
+        FormatPage.Init(firstPageNo, pageStore);
+
+        totalPageCount += 1;
+        firstPageNo += 1;
+        MetadataSize += pageSize;
 
         {
             debuilder.RegisterOffset("Bitmap", firstPageNo);
@@ -338,9 +393,9 @@ public:
                 pageSize,
                 std::move(pageStore));
             MetadataSize += Bitmap->GetPageCount() * pageSize;
-            firstPageNo += Bitmap->GetPageCount();
+            const ui64 bitmapEndPageNo = firstPageNo + Bitmap->GetPageCount();
             FirstStoragePageClusterId =
-                RoundUp(firstPageNo, PageClusterPageCount)
+                RoundUp(bitmapEndPageNo, PageClusterPageCount)
                 / PageClusterPageCount;
 
             const ui64 pageCount = Bitmap->GetPageCount()
@@ -352,7 +407,7 @@ public:
             firstPageNo += pageCount;
         }
 
-        debuilder.RegisterOffset("Data", GetDataOffset());
+        debuilder.RegisterOffset("Data", GetDataOffset() / pageSize);
         Description = debuilder.Build();
 
         return totalPageCount;
@@ -709,12 +764,68 @@ public:
                 FileSystemId.c_str());
         }
 
-        PageStore = CreatePageStore(Storage, PageSize);
+        //
+        // Using only one storage group for now.
+        //
+
+        const ui64 mdPageCount =
+            CalcRequiredMetadataPageCount(Config, PageSize);
+        PageStore = CreatePageStore(Storage, {
+            .PageSize = PageSize,
+            .PinnedPageCount = mdPageCount,
+            .MaxCachedPageCount = mdPageCount + Config.GetMaxCachedDataPages(),
+        });
 
         InitDataStructures();
     }
 
 private:
+    static ui64 CalcRequiredMetadataPageCount(
+        const NProtoPrivate::TPersistentFastShardConfig& config,
+        ui32 pageSize)
+    {
+        ui64 totalPageCount = 0;
+
+        const ui64 superBlockPageCount = TSuperBlock::CalcRequiredPageCount();
+        SILK_INFO("superblock metadata pages=%lu", superBlockPageCount);
+        totalPageCount += superBlockPageCount;
+
+        const ui64 nodeTablePageCount = TNodeTable::CalcRequiredPageCount(
+            config.GetNodesPerGroup(),
+            pageSize);
+        SILK_INFO("node table metadata pages=%lu", nodeTablePageCount);
+        totalPageCount += nodeTablePageCount;
+
+        const ui64 nameTablePageCount = TNameTable::CalcRequiredPageCount(
+            config.GetNodesPerGroup(),
+            pageSize);
+        SILK_INFO("name table metadata pages=%lu", nameTablePageCount);
+        totalPageCount += nameTablePageCount;
+
+        const ui64 handlesPerFile = 10;
+        const ui64 handlesPerGroup = handlesPerFile * config.GetNodesPerGroup();
+        const ui64 handleTablePageCount = THandleTable::CalcRequiredPageCount(
+            config.GetNodesPerGroup(),
+            handlesPerGroup,
+            pageSize);
+        SILK_INFO("handle table metadata pages=%lu", handleTablePageCount);
+        totalPageCount += handleTablePageCount;
+
+        const ui64 pageIndexPageCount = TPageIndex::CalcRequiredPageCount(
+            config,
+            pageSize);
+        SILK_INFO("page index metadata pages=%lu", pageIndexPageCount);
+        totalPageCount += pageIndexPageCount;
+
+        const ui64 pageAllocatorPageCount = TPageAllocator::CalcRequiredPageCount(
+            config,
+            pageSize);
+        SILK_INFO("page allocator metadata pages=%lu", pageAllocatorPageCount);
+        totalPageCount += pageAllocatorPageCount;
+
+        return totalPageCount;
+    }
+
     //
     // (Re)creates the in-memory wrappers over the persistent structures,
     // dropping all their cached state (free-bit stacks, slot pointers).

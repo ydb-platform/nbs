@@ -17,7 +17,8 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr size_t PageSize = 4_KB;
-constexpr ui64 MaxCachedPages = 1024;
+constexpr ui64 PinnedPageCount = 0;
+constexpr ui64 MaxCachedPageCount = 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -55,7 +56,9 @@ TEST(FormatPageTest, ChecksVersions)
 {
     auto pageStore = CreateMemPageStore({
         .PageSize = PageSize,
-        .MaxCachedPages = MaxCachedPages});
+        .PinnedPageCount = PinnedPageCount,
+        .MaxCachedPageCount = MaxCachedPageCount,
+    });
 
     const ui64 pageNo = 11;
     TFormatPage formatPage;
@@ -127,7 +130,9 @@ TEST(FormatPageTest, ErrorsOnGarbage)
 {
     auto pageStore = CreateMemPageStore({
         .PageSize = PageSize,
-        .MaxCachedPages = MaxCachedPages});
+        .PinnedPageCount = PinnedPageCount,
+        .MaxCachedPageCount = MaxCachedPageCount,
+    });
 
     const ui64 pageNo = 11;
     TFormatPage formatPage;
@@ -173,7 +178,9 @@ TEST(FormatPageTest, ErrorsOnWrongPageNo)
 {
     auto pageStore = CreateMemPageStore({
         .PageSize = PageSize,
-        .MaxCachedPages = MaxCachedPages});
+        .PinnedPageCount = PinnedPageCount,
+        .MaxCachedPageCount = MaxCachedPageCount,
+    });
 
     const ui64 pageNo = 11;
     TFormatPage formatPage;
