@@ -1357,10 +1357,7 @@ const IBlockLocation2RangeIndex& TIndexTabletState::GetRangeIdHasher() const
 
 ui32 TIndexTabletState::GetBlockGroupSize() const
 {
-    // The hasher is not created before LoadState (e.g. in STATE_BROKEN).
-    return Impl->RangeIdHasher
-        ? Impl->RangeIdHasher->GetBlockGroupSize()
-        : BlockGroupSize;
+    return GetRangeIdHasher().GetBlockGroupSize();
 }
 
 ui32 TIndexTabletState::CalculateMixedIndexRangeGarbageBlockCount(

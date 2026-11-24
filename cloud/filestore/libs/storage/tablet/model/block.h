@@ -20,6 +20,8 @@ namespace NCloud::NFileStore::NStorage {
 constexpr ui32 MaxBlocksCount = 1024;
 
 constexpr ui32 NodeGroupSize = 16;
+// Blocks per range for RangeIdHasherType 0 / 1. The actual value is per
+// tablet: use GetBlockGroupSize().
 constexpr ui32 BlockGroupSize = 64;
 
 ////////////////////////////////////////////////////////////////////////////////
