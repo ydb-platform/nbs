@@ -642,7 +642,7 @@ func TestCreateSchemaWithoutBackups(t *testing.T) {
         `, db.AbsolutePath(config.GetStorageFolder()), table)
 		res, err := db.ExecuteRO(ctx, query)
 		if err == nil {
-			res.Close()
+			require.NoError(t, res.Close())
 		}
 		require.True(
 			t,

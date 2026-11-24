@@ -161,7 +161,7 @@ func TestCreateAndDropResourceSchemaWithoutBackups(t *testing.T) {
 			`, db.AbsolutePath(folder))
 			res, err := db.ExecuteRO(ctx, query)
 			if err == nil {
-				res.Close()
+				require.NoError(t, res.Close())
 			}
 			require.True(
 				t,
@@ -181,7 +181,7 @@ func TestCreateAndDropResourceSchemaWithoutBackups(t *testing.T) {
 			`, db.AbsolutePath(folder), idColumn)
 			res, err = db.ExecuteRO(ctx, query)
 			require.NoError(t, err)
-			res.Close()
+			require.NoError(t, res.Close())
 		})
 	}
 }
