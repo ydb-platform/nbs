@@ -15,6 +15,7 @@
 
 #include <functional>
 #include <mutex>
+#include <utility>
 
 namespace NCloud::NJournalled {
 
@@ -24,17 +25,19 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The requests read the device in the threads of the connections, so it is
-// kept under a lock.
 class TJournalledDeviceSpec
 {
-private:
+public:
     const TJournalledDeviceConfig Config;
 
     // Set while a format of the device is in flight: a parallel format of
     // the same device is rejected.
     bool Formatting = false;
 
+private:
+    // Protects only |Device|: the executor changes it while the threads of
+    // the connections read it. |Config| never changes, and |Formatting| is
+    // used only in the executor, so they need no lock.
     mutable std::mutex DeviceLock;
 
     // Null while the device is not started: it failed to start or to be
@@ -46,31 +49,17 @@ public:
         : Config(std::move(config))
     {}
 
-    const TJournalledDeviceConfig& GetConfig() const
-    {
-        return Config;
-    }
-
     IJournalledDevicePtr GetDevice() const
     {
         std::lock_guard lock(DeviceLock);
         return Device;
     }
 
-    void SetDevice(IJournalledDevicePtr device)
+    IJournalledDevicePtr ExchangeDevice(IJournalledDevicePtr device)
     {
         std::lock_guard lock(DeviceLock);
         Device.swap(device);
-    }
-
-    bool IsFormatting() const
-    {
-        return Formatting;
-    }
-
-    void SetFormatting(bool formatting)
-    {
-        Formatting = formatting;
+        return device;
     }
 };
 
@@ -105,7 +94,7 @@ TVector<const TJournalledDeviceSpec*> SortDevices(
     }
 
     Sort(sorted, [](const auto* lhs, const auto* rhs) {
-        return lhs->GetConfig().DeviceUUID < rhs->GetConfig().DeviceUUID;
+        return lhs->Config.DeviceUUID < rhs->Config.DeviceUUID;
     });
 
     return sorted;
@@ -176,7 +165,7 @@ public:
                 }
 
                 return self->StartJournalledDevice(spec).Apply(
-                    [uuid = spec.GetConfig().DeviceUUID](const auto& future)
+                    [uuid = spec.Config.DeviceUUID](const auto& future)
                     {
                         auto error = ExtractResponse(future);
                         if (HasError(error)) {
@@ -225,7 +214,7 @@ public:
         NProto::TListDevicesResponse response;
 
         for (const auto& device: SortedDevices) {
-            const auto& config = device->GetConfig();
+            const auto& config = device->Config;
             const ui64 deviceSize = config.BlocksCount * config.BlockSize;
 
             auto& info = *response.AddDevices();
@@ -394,7 +383,7 @@ private:
     NProto::TError DoStartJournalledDevice(TJournalledDeviceSpec& spec)
     {
         auto [device, error] =
-            JournalledDeviceFactory->Create(spec.GetConfig());
+            JournalledDeviceFactory->Create(spec.Config);
         if (HasError(error)) {
             return error;
         }
@@ -404,7 +393,8 @@ private:
             return error;
         }
 
-        spec.SetDevice(std::move(device));
+        auto old = spec.ExchangeDevice(std::move(device));
+        Y_ABORT_UNLESS(old == nullptr);
         return {};
     }
 
@@ -412,13 +402,12 @@ private:
     // not started has nothing to stop.
     void DoStopJournalledDevice(TJournalledDeviceSpec& spec)
     {
-        auto device = spec.GetDevice();
+        auto device = spec.ExchangeDevice(nullptr);
         if (!device) {
             return;
         }
 
         Executor->WaitFor(device->Stop());
-        spec.SetDevice(nullptr);
     }
 
     NProto::TFormatDeviceResponse DoFormatDevice(
@@ -517,7 +506,7 @@ NProto::TFormatDeviceResponse TJournalledDeviceHandler::DoFormatDevice(
     // Figure out the region to wipe
     //
 
-    const auto& config = spec->GetConfig();
+    const auto& config = spec->Config;
 
     //
     // Wipe only the journal metadata unless the whole device is requested:
@@ -545,7 +534,7 @@ NProto::TFormatDeviceResponse TJournalledDeviceHandler::DoFormatDevice(
     // completes
     //
 
-    if (spec->IsFormatting()) {
+    if (std::exchange(spec->Formatting, true) == true) {
         return TErrorResponse(
             E_INVALID_STATE,
             TStringBuilder() << "Device " << config.DeviceUUID.Quote()
@@ -557,12 +546,11 @@ NProto::TFormatDeviceResponse TJournalledDeviceHandler::DoFormatDevice(
     // the format completes
     //
 
-    spec->SetFormatting(true);
     ++FormatsInFlight;
 
     Y_DEFER
     {
-        spec->SetFormatting(false);
+        spec->Formatting = false;
         --FormatsInFlight;
         FormatsDone.BroadCast();
     };
