@@ -45,42 +45,39 @@ NProto::TBlockstoreConfig BuildEffectiveConfig(
     const IBlockstoreConfig& currentConfig)
 {
     NProto::TBlockstoreConfig config;
-    config.MutableServer()->CopyFrom(
-        currentConfig.GetServerConfig()->GetAppConfig());
-    config.MutableStorageService()->CopyFrom(
-        currentConfig.GetStorageConfig()->GetEffectiveStorageConfigProto());
-    config.MutableFeatures()->CopyFrom(
-        currentConfig.GetFeaturesConfig()->GetConfigProto());
-    config.MutableDiagnostics()->CopyFrom(
-        currentConfig.GetDiagnosticsConfig()->GetConfigProto());
-    config.MutableDiscoveryService()->CopyFrom(
-        *currentConfig.GetDiscoveryServiceConfig()->GetConfig());
-    config.MutableEndpoint()->CopyFrom(
-        currentConfig.GetEndpointConfig()->GetConfigProto());
-    config.MutableDiskAgent()->CopyFrom(
-        currentConfig.GetDiskAgentConfig()->GetConfigProto());
-    config.MutableDiskRegistryProxy()->CopyFrom(
-        currentConfig.GetDiskRegistryProxyConfig()->GetConfigProto());
-    config.MutableSpdkEnv()->CopyFrom(
-        currentConfig.GetSpdkEnvConfig()->GetConfigProto());
-    config.MutableRdma()->CopyFrom(
-        currentConfig.GetRdmaConfig()->GetConfigProto());
-    config.MutableYdbStats()->CopyFrom(
-        currentConfig.GetYdbStatsConfig()->GetConfigProto());
-    config.MutableLogbroker()->CopyFrom(
-        *currentConfig.GetLogbrokerConfig()->GetConfig());
-    config.MutableNotify()->CopyFrom(
-        *currentConfig.GetNotifyConfig()->GetConfig());
-    config.MutableIamClient()->CopyFrom(
-        currentConfig.GetIamClientConfig()->GetIamServiceConfig());
-    config.MutableKmsClient()->CopyFrom(*currentConfig.GetKmsClientConfig());
-    config.MutableComputeClient()->CopyFrom(
-        *currentConfig.GetComputeClientConfig());
-    config.MutableRootKms()->CopyFrom(*currentConfig.GetRootKmsConfig());
-    config.MutableCells()->CopyFrom(
-        currentConfig.GetCellsConfig()->GetCellsConfig());
-    config.MutableLocalNVMe()->CopyFrom(
-        currentConfig.GetLocalNVMeConfig()->GetConfigProto());
+
+    *config.MutableServer() = currentConfig.GetServerConfig()->GetAppConfig();
+    *config.MutableStorageService() =
+        currentConfig.GetStorageConfig()->GetEffectiveStorageConfigProto();
+    *config.MutableFeatures() =
+        currentConfig.GetFeaturesConfig()->GetConfigProto();
+    *config.MutableDiagnostics() =
+        currentConfig.GetDiagnosticsConfig()->GetConfigProto();
+    *config.MutableDiscoveryService() =
+        *currentConfig.GetDiscoveryServiceConfig()->GetConfig();
+    *config.MutableEndpoint() =
+        currentConfig.GetEndpointConfig()->GetConfigProto();
+    *config.MutableDiskAgent() =
+        currentConfig.GetDiskAgentConfig()->GetConfigProto();
+    *config.MutableDiskRegistryProxy() =
+        currentConfig.GetDiskRegistryProxyConfig()->GetConfigProto();
+    *config.MutableSpdkEnv() =
+        currentConfig.GetSpdkEnvConfig()->GetConfigProto();
+    *config.MutableRdma() = currentConfig.GetRdmaConfig()->GetConfigProto();
+    *config.MutableYdbStats() =
+        currentConfig.GetYdbStatsConfig()->GetConfigProto();
+    *config.MutableLogbroker() =
+        *currentConfig.GetLogbrokerConfig()->GetConfig();
+    *config.MutableNotify() = *currentConfig.GetNotifyConfig()->GetConfig();
+    *config.MutableIamClient() =
+        currentConfig.GetIamClientConfig()->GetIamServiceConfig();
+    *config.MutableKmsClient() = *currentConfig.GetKmsClientConfig();
+    *config.MutableComputeClient() = *currentConfig.GetComputeClientConfig();
+    *config.MutableRootKms() = *currentConfig.GetRootKmsConfig();
+    *config.MutableCells() = currentConfig.GetCellsConfig()->GetCellsConfig();
+    *config.MutableLocalNVMe() =
+        currentConfig.GetLocalNVMeConfig()->GetConfigProto();
+
     return config;
 }
 
