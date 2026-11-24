@@ -23,9 +23,8 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, \
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import setup_nonreplicated, \
     create_devices, setup_disk_registry_config, \
     update_cms_config, enable_writable_state, make_agent_id, AgentInfo, DeviceInfo
+from cloud.storage.core.tests.ydb import Ydb
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 from contrib.ydb.tests.library.harness.kikimr_runner import ensure_path_exists, \
     get_unique_path_for_current_test
 
@@ -196,10 +195,8 @@ def __prepare_test_config(test_case):
 def __run_test(test_case, backend, use_rdma):
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
-    configurator = KikimrConfigGenerator(
-        erasure=None,
-        binary_paths=[kikimr_binary_path],
-        use_in_memory_pdisks=True,
+    ydb = Ydb.start(
+        binary_path=kikimr_binary_path,
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),
             dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0)
@@ -210,10 +207,8 @@ def __run_test(test_case, backend, use_rdma):
     nbs_binary_path = "cloud/blockstore/apps/server/nbsd"
     disk_agent_binary_path = "cloud/blockstore/apps/disk_agent/diskagentd"
 
-    kikimr_cluster = kikimr_cluster_factory(configurator=configurator)
-    kikimr_cluster.start()
 
-    kikimr_port = list(kikimr_cluster.nodes.values())[0].port
+    kikimr_port = ydb.port
 
     devices = create_devices(
         test_case.use_memory_devices,
@@ -228,7 +223,7 @@ def __run_test(test_case, backend, use_rdma):
 
         # TODO: allocate devices for all agents to support agent_count > 1
         setup_nonreplicated(
-            kikimr_cluster.client,
+            ydb.client,
             [devices],
             disk_agent_config_patch=TDiskAgentConfig(
                 DeviceEraseMethod=test_case.device_erase_method,
@@ -237,7 +232,7 @@ def __run_test(test_case, backend, use_rdma):
             ))
 
         if test_case.lwtrace_query_path:
-            enable_lwtrace(kikimr_cluster.client, test_case.lwtrace_query_path)
+            enable_lwtrace(ydb.client, test_case.lwtrace_query_path)
 
         nbd_socket_suffix = "_nbd"
 
@@ -281,7 +276,7 @@ def __run_test(test_case, backend, use_rdma):
 
         nbs = LocalNbs(
             kikimr_port,
-            configurator.domains_txt,
+            ydb.domains_txt,
             server_app_config=server_app_config,
             storage_config_patches=[storage],
             enable_tls=True,
@@ -310,7 +305,7 @@ def __run_test(test_case, backend, use_rdma):
             if dedicated_disk_agent:
                 disk_agent = LocalDiskAgent(
                     kikimr_port,
-                    configurator.domains_txt,
+                    ydb.domains_txt,
                     server_app_config=server_app_config,
                     storage_config_patches=[storage],
                     config_sub_folder="disk_agent_configs_%s" % i,
@@ -327,7 +322,7 @@ def __run_test(test_case, backend, use_rdma):
                 storage.NodeType = "disk-agent"
                 disk_agent = LocalNbs(
                     kikimr_port,
-                    configurator.domains_txt,
+                    ydb.domains_txt,
                     server_app_config=server_app_config,
                     storage_config_patches=[storage],
                     enable_tls=True,
@@ -370,7 +365,7 @@ def __run_test(test_case, backend, use_rdma):
                 disk_agent.stop()
 
             nbs.stop()
-            kikimr_cluster.stop()
+            ydb.stop()
     finally:
         if not test_case.use_memory_devices:
             cleanup_file_devices(devices)

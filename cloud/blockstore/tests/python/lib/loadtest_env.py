@@ -1,5 +1,3 @@
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test
 from contrib.ydb.tests.library.harness.util import LogLevels
 
@@ -9,6 +7,7 @@ from cloud.blockstore.tests.python.lib.nonreplicated_setup import create_file_de
     setup_disk_registry_proxy_config, setup_disk_agent_config
 
 from cloud.blockstore.tests.python.lib.test_base import wait_for_nbs_server
+from cloud.storage.core.tests.ydb import Ydb
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
 
 from .nbs_runner import LocalNbs
@@ -28,7 +27,6 @@ class LocalLoadTest:
     def __init__(
             self,
             endpoint,
-            run_kikimr=True,
             server_app_config=None,
             contract_validation=False,
             storage_config_patches=None,
@@ -61,32 +59,18 @@ class LocalLoadTest:
         if kikimr_binary_path is None:
             kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
-        self.configurator = KikimrConfigGenerator(
-            erasure=None,
-            binary_paths=[kikimr_binary_path],
+        self.ydb = Ydb.start(
+            binary_path=kikimr_binary_path,
             use_in_memory_pdisks=use_in_memory_pdisks,
             dynamic_pdisks=dynamic_pdisks,
             dynamic_storage_pools=dynamic_storage_pools,
             additional_log_configs={"HIVE": LogLevels.TRACE},
             bs_cache_file_path=bs_cache_file_path,
         )
-        self.kikimr_cluster = kikimr_cluster_factory(
-            configurator=self.configurator)
-
-        kikimr_port = 0
-
-        if run_kikimr:
-            self.kikimr_cluster.start()
-            kikimr_port = list(self.kikimr_cluster.nodes.values())[0].port
-        else:
-            # makes sense only when Kikimr is running
-            load_configs_from_cms = False
 
         self.__devices = []
 
         if with_nrd:
-            assert run_kikimr
-
             storage = TStorageServiceConfig()
             storage.AllocationUnitNonReplicatedSSD = 1
             storage.AcquireNonReplicatedDevices = True
@@ -101,8 +85,8 @@ class LocalLoadTest:
                 storage_config_patches = [storage]
 
         self.nbs = LocalNbs(
-            kikimr_port,
-            self.configurator.domains_txt,
+            self.ydb.port,
+            self.ydb.domains_txt,
             server_app_config=server_app_config,
             contract_validation=contract_validation,
             storage_config_patches=storage_config_patches,
@@ -121,8 +105,7 @@ class LocalLoadTest:
             bs_failure_probability=bs_failure_probability,
         )
 
-        if run_kikimr:
-            self.nbs.setup_cms(self.kikimr_cluster.client)
+        self.nbs.setup_cms(self.ydb.client)
 
         if with_nrd:
             self.__devices = create_file_devices(
@@ -131,9 +114,9 @@ class LocalLoadTest:
                 4096,
                 262144)
 
-            setup_disk_registry_proxy_config(self.kikimr_cluster.client)
+            setup_disk_registry_proxy_config(self.ydb.client)
             setup_disk_agent_config(
-                self.kikimr_cluster.client,
+                self.ydb.client,
                 self.__devices,
                 node_type=None)
 
@@ -143,7 +126,7 @@ class LocalLoadTest:
     def tear_down(self):
         try:
             self.nbs.stop()
-            self.kikimr_cluster.stop()
+            self.ydb.stop()
 
             for d in self.__devices:
                 d.handle.close()
@@ -213,4 +196,4 @@ class LocalLoadTest:
 
     @property
     def pdisks_info(self):
-        return self.configurator.pdisks_info
+        return self.ydb.pdisks_info

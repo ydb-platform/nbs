@@ -6,6 +6,7 @@ import time
 
 from .config import NbsConfigurator
 
+from cloud.storage.core.tests.ydb import Ydb
 from cloud.storage.core.tools.common.python.core_pattern import core_pattern
 from cloud.storage.core.tools.common.python.daemon import Daemon
 
@@ -16,8 +17,6 @@ from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 from contrib.ydb.core.protos import console_config_pb2 as console
 from contrib.ydb.core.protos import msgbus_pb2 as msgbus
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, \
     ensure_path_exists
 
@@ -204,7 +203,13 @@ def start_disk_agent(config: NbsConfigurator, name='disk-agent'):
     return agent
 
 
-def __modify_scheme(ydb):
+YDB_DYNAMIC_STORAGE_POOLS = [
+    dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),
+    dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0),
+]
+
+
+def create_nbs_tenant(ydb: Ydb):
     request = """
         ModifyScheme {
             WorkingDir: "/Root"
@@ -216,7 +221,7 @@ def __modify_scheme(ydb):
                 PlanResolution: 50
                 TimeCastBucketsPerMediator: 2
         """
-    for pool in ydb.config.dynamic_storage_pools:
+    for pool in ydb.dynamic_storage_pools:
         request += f"""
     StoragePools {{
         Name: "{pool['name']}"
@@ -226,14 +231,14 @@ def __modify_scheme(ydb):
     request += "}}"
 
     subprocess.check_call([
-        ydb.config.get_binary_path(0),
-        "--server", f"grpc://localhost:{list(ydb.nodes.values())[0].port}",
+        ydb.binary_path,
+        "--server", f"grpc://localhost:{ydb.port}",
         "db", "schema", "exec",
         request,
     ])
 
 
-def __enable_custom_cms_configs(ydb):
+def enable_custom_cms_configs(ydb):
     req = msgbus.TConsoleRequest()
     configs_config = req.SetConfigRequest.Config.ConfigsConfig
 
@@ -249,22 +254,14 @@ def __enable_custom_cms_configs(ydb):
 
 
 def start_ydb(grpc_ssl_enable=False, extra_feature_flags=()):
-    configurator = KikimrConfigGenerator(
-        erasure=None,
-        binary_paths=[yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")],
-        use_in_memory_pdisks=True,
+    ydb = Ydb.start(
+        binary_path=yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd"),
+        dynamic_storage_pools=YDB_DYNAMIC_STORAGE_POOLS,
         grpc_ssl_enable=grpc_ssl_enable,
-        extra_feature_flags=extra_feature_flags,
-        dynamic_storage_pools=[
-            {"name": "dynamic_storage_pool:1", "kind": "hdd", "pdisk_user_kind": 0},
-            {"name": "dynamic_storage_pool:2", "kind": "ssd", "pdisk_user_kind": 0}
-        ])
+        extra_feature_flags=extra_feature_flags)
 
-    ydb = kikimr_cluster_factory(configurator=configurator)
-    ydb.start()
-
-    __modify_scheme(ydb)
-    __enable_custom_cms_configs(ydb)
+    create_nbs_tenant(ydb)
+    enable_custom_cms_configs(ydb)
 
     return ydb
 

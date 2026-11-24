@@ -19,9 +19,8 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, wait_for_n
     wait_for_secure_erase, get_sensor_by_name, get_nbs_counters
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import setup_nonreplicated, \
     create_file_devices, setup_disk_registry_config_simple, enable_writable_state
+from cloud.storage.core.tests.ydb import Ydb
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 from google.protobuf.json_format import MessageToDict
 
@@ -788,10 +787,8 @@ def __run_test(test_case, always_allocate_local_ssd, attach_detach_paths):
     kikimr_binary_path = yatest_common.binary_path(
         "contrib/ydb/apps/ydbd/ydbd")
 
-    configurator = KikimrConfigGenerator(
-        erasure=None,
-        binary_paths=[kikimr_binary_path],
-        use_in_memory_pdisks=True,
+    ydb = Ydb.start(
+        binary_path=kikimr_binary_path,
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),
             dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0)
@@ -800,10 +797,8 @@ def __run_test(test_case, always_allocate_local_ssd, attach_detach_paths):
     nbs_binary_path = yatest_common.binary_path(
         "cloud/blockstore/apps/server/nbsd")
 
-    kikimr_cluster = kikimr_cluster_factory(configurator=configurator)
-    kikimr_cluster.start()
 
-    kikimr_port = list(kikimr_cluster.nodes.values())[0].port
+    kikimr_port = ydb.port
 
     devices = create_file_devices(
         None,   # dir
@@ -812,7 +807,7 @@ def __run_test(test_case, always_allocate_local_ssd, attach_detach_paths):
         DEFAULT_BLOCK_COUNT_PER_DEVICE)
     devices[DEFAULT_DEVICE_COUNT - 1].storage_pool_name = "local-ssd"
 
-    setup_nonreplicated(kikimr_cluster.client, [devices])
+    setup_nonreplicated(ydb.client, [devices])
 
     server_app_config = TServerAppConfig()
     server_app_config.ServerConfig.CopyFrom(TServerConfig())
@@ -845,7 +840,7 @@ def __run_test(test_case, always_allocate_local_ssd, attach_detach_paths):
 
     nbs = Nbs(
         kikimr_port,
-        configurator.domains_txt,
+        ydb.domains_txt,
         server_app_config=server_app_config,
         storage_config_patches=[storage],
         enable_tls=True,
@@ -876,7 +871,7 @@ def __run_test(test_case, always_allocate_local_ssd, attach_detach_paths):
 
     disk_agent = LocalNbs(
         kikimr_port,
-        configurator.domains_txt,
+        ydb.domains_txt,
         server_app_config=server_app_config,
         storage_config_patches=[storage],
         enable_tls=True,
@@ -895,7 +890,7 @@ def __run_test(test_case, always_allocate_local_ssd, attach_detach_paths):
     finally:
         nbs.stop()
         disk_agent.stop()
-        kikimr_cluster.stop()
+        ydb.stop()
         logging.info("Remove temporary device files")
         for d in devices:
             d.handle.close()

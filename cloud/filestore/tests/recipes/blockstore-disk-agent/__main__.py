@@ -20,17 +20,18 @@ from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
 
 from cloud.filestore.tests.python.lib.common import shutdown
 
+from cloud.storage.core.tests.ydb import Ydb
+
 logger = logging.getLogger(__name__)
 
 #
-# The recipe brings up an isolated blockstore stack (its own ydb, nbsd,
-# diskagentd) that exists only to serve the fastshard's TWriteLogRecord /
+# The recipe brings up a blockstore stack (nbsd, diskagentd) on the ydb of
+# the ydb recipe that exists only to serve the fastshard's TWriteLogRecord /
 # TReadPages protocol via the disk-agent's journalled_device_tcp_server.
 # The filestore side stays untouched -- its own kikimr recipe still owns
 # NFS_SERVER_PORT etc.
 #
 
-YDB_PID_FILE = "blockstore_disk_agent_recipe.ydb_pid"
 NBS_PID_FILE = "blockstore_disk_agent_recipe.nbs_pid"
 DA_PID_FILE = "blockstore_disk_agent_recipe.disk_agent_pid"
 
@@ -66,12 +67,12 @@ def start(argv):
     args = parser.parse_args(argv)
 
     #
-    # 1. Isolated YDB + NBS.
+    # 1. NBS in its own tenant.
     #
 
-    ydb = bs_daemon.start_ydb()
-    with open(YDB_PID_FILE, "w") as f:
-        f.write(str(list(ydb.nodes.values())[0].pid))
+    ydb = Ydb.load(os.environ["YDB_FILE"])
+    bs_daemon.create_nbs_tenant(ydb)
+    bs_daemon.enable_custom_cms_configs(ydb)
 
     nbs_cfg = NbsConfigurator(ydb)
     nbs_cfg.generate_default_nbs_configs()
@@ -192,7 +193,6 @@ def start(argv):
 def stop(argv):
     _shutdown(DA_PID_FILE)
     _shutdown(NBS_PID_FILE)
-    _shutdown(YDB_PID_FILE)
 
 
 if __name__ == "__main__":

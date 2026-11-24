@@ -16,10 +16,9 @@ from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.tests.python.lib.nbs_runner import LocalNbs
 from cloud.blockstore.tests.python.lib.test_base import \
     thread_count, wait_for_nbs_server
+from cloud.storage.core.tests.ydb import Ydb
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 
 class MountContext:
@@ -212,21 +211,17 @@ class Nbs(LocalNbs):
 
 
 def setup_kikimr(paths):
-    configurator = KikimrConfigGenerator(
-        erasure=None,
-        binary_paths=[paths.kikimr_binary_path],
-        use_in_memory_pdisks=True,
+    ydb = Ydb.start(
+        binary_path=paths.kikimr_binary_path,
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),
             dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0)
         ])
 
-    kikimr_cluster = kikimr_cluster_factory(configurator=configurator)
-    kikimr_cluster.start()
-    return kikimr_cluster, configurator
+    return ydb
 
 
-def setup_nbs_control(paths, kikimr_cluster, configurator, use_scheme_cache):
+def setup_nbs_control(paths, ydb, use_scheme_cache):
     server_app_config = TServerAppConfig()
     server_app_config.ServerConfig.CopyFrom(TServerConfig())
     server_app_config.ServerConfig.ThreadsCount = thread_count()
@@ -239,7 +234,7 @@ def setup_nbs_control(paths, kikimr_cluster, configurator, use_scheme_cache):
     cert.CertFile = os.path.join(paths.certs_dir, 'server.crt')
     cert.CertPrivateKeyFile = os.path.join(paths.certs_dir, 'server.key')
 
-    kikimr_port = list(kikimr_cluster.nodes.values())[0].port
+    kikimr_port = ydb.port
 
     storage = TStorageServiceConfig()
     storage.DisableLocalService = False
@@ -249,7 +244,7 @@ def setup_nbs_control(paths, kikimr_cluster, configurator, use_scheme_cache):
 
     nbs = Nbs(
         kikimr_port,
-        configurator.domains_txt,
+        ydb.domains_txt,
         server_app_config=server_app_config,
         storage_config_patches=[storage],
         enable_tls=True,
@@ -262,7 +257,7 @@ def setup_nbs_control(paths, kikimr_cluster, configurator, use_scheme_cache):
     return nbs
 
 
-def setup_nbs_hw(paths, kikimr_cluster, configurator, use_scheme_cache):
+def setup_nbs_hw(paths, ydb, use_scheme_cache):
     server_app_config = TServerAppConfig()
     server_app_config.ServerConfig.CopyFrom(TServerConfig())
     server_app_config.ServerConfig.ThreadsCount = thread_count()
@@ -275,7 +270,7 @@ def setup_nbs_hw(paths, kikimr_cluster, configurator, use_scheme_cache):
     cert.CertFile = os.path.join(paths.certs_dir, 'server.crt')
     cert.CertPrivateKeyFile = os.path.join(paths.certs_dir, 'server.key')
 
-    kikimr_port = list(kikimr_cluster.nodes.values())[0].port
+    kikimr_port = ydb.port
 
     storage = TStorageServiceConfig()
     storage.DisableLocalService = True
@@ -286,7 +281,7 @@ def setup_nbs_hw(paths, kikimr_cluster, configurator, use_scheme_cache):
 
     nbs = Nbs(
         kikimr_port,
-        configurator.domains_txt,
+        ydb.domains_txt,
         server_app_config=server_app_config,
         storage_config_patches=[storage],
         enable_tls=True,
@@ -302,16 +297,16 @@ def setup_nbs_hw(paths, kikimr_cluster, configurator, use_scheme_cache):
 def __run_test(test_case, use_scheme_cache):
     common_paths = CommonPaths()
 
-    kikimr_cluster, configurator = setup_kikimr(common_paths)
-    nbs_control = setup_nbs_control(common_paths, kikimr_cluster, configurator, use_scheme_cache)
-    nbs_hw = setup_nbs_hw(common_paths, kikimr_cluster, configurator, use_scheme_cache)
+    ydb = setup_kikimr(common_paths)
+    nbs_control = setup_nbs_control(common_paths, ydb, use_scheme_cache)
+    nbs_hw = setup_nbs_hw(common_paths, ydb, use_scheme_cache)
 
     try:
         ret = test_case.run(nbs_hw, nbs_hw.mon_port, nbs_control.mon_port)
     finally:
         nbs_hw.stop()
         nbs_control.stop()
-        kikimr_cluster.stop()
+        ydb.stop()
     return ret
 
 

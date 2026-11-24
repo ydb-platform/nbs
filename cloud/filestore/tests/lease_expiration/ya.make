@@ -15,6 +15,8 @@ PEERDIR(
     cloud/storage/core/tools/testing/qemu/lib
 
     contrib/ydb/core/protos
+    cloud/storage/core/tests/ydb
+
     contrib/ydb/tests/library
     contrib/python/requests/py3
 

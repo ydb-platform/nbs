@@ -10,6 +10,8 @@ PEERDIR(
 
     library/python/testing/yatest_common
 
+    cloud/storage/core/tests/ydb
+
     contrib/ydb/tests/library
 
     contrib/python/requests/py3

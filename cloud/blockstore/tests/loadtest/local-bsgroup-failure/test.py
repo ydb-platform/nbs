@@ -12,22 +12,22 @@ from cloud.blockstore.tests.python.lib.test_base import run_test
 
 class FailAndHealBSGroupInBackground(threading.Thread):
 
-    def __init__(self, pdisk_path, kikimr):
+    def __init__(self, pdisk_path, ydb):
         super().__init__()
         self.__pdisk_path = pdisk_path
-        self.__kikimr = kikimr
+        self.__ydb = ydb
 
     def run(self, *args, **kwargs):
         # let the test write some data
         time.sleep(30)
         # temporarily break BS group
         os.rename(self.__pdisk_path, self.__pdisk_path + ".bkp")
-        self.__kikimr.restart_nodes()
+        self.__ydb.restart()
         # wait some time to provoke potentially non-recoverable side-effects
         time.sleep(60)
         # heal the BS group
         os.rename(self.__pdisk_path + ".bkp", self.__pdisk_path)
-        self.__kikimr.restart_nodes()
+        self.__ydb.restart()
 
 
 def default_storage_config():
@@ -75,7 +75,7 @@ def __run_test(test_case):
 
     failAndHealTask = FailAndHealBSGroupInBackground(
         pdisk_path,
-        env.kikimr_cluster,
+        env.ydb,
     )
     failAndHealTask.start()
 

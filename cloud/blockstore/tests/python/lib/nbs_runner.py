@@ -70,7 +70,7 @@ class LocalNbs(Daemon):
     ):
 
         if dynamic_storage_pools is not None:
-            assert len(dynamic_storage_pools) >= 2
+            assert len(dynamic_storage_pools) > 0
             self.__dynamic_storage_pools = dynamic_storage_pools
         else:
             self.__dynamic_storage_pools = [

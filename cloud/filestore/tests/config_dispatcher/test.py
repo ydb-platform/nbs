@@ -7,12 +7,11 @@ from cloud.filestore.tests.python.lib.server import FilestoreServer, wait_for_fi
 from cloud.filestore.tests.python.lib.server import wait_for_filestore_vhost
 from cloud.filestore.tests.python.lib.daemon_config import FilestoreServerConfigGenerator
 from cloud.filestore.tests.python.lib.daemon_config import FilestoreVhostConfigGenerator
+from cloud.storage.core.tests.ydb import Ydb
 
 from contrib.ydb.core.protos import config_pb2
 from contrib.ydb.core.protos.config_pb2 import TLogConfig
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 import yatest.common as yatest_common
 
@@ -21,39 +20,28 @@ kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
 
 def setup_kikimr():
-    configurator = KikimrConfigGenerator(
-        erasure=None,
-        binary_paths=[kikimr_binary_path],
-        use_in_memory_pdisks=True,
-        dynamic_storage_pools=[
-            dict(name="dynamic_storage_pool:1", kind="rot", pdisk_user_kind=0),
-            dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0)
-        ])
-
-    return configurator
+    return Ydb.start(binary_path=kikimr_binary_path)
 
 
-def setup_filestore(configurator, kikimr_cluster, binary_path, configurator_type):
-    kikimr_port = list(kikimr_cluster.nodes.values())[0].port
-
+def setup_filestore(ydb, binary_path, configurator_type):
     storage_config = TStorageConfig()
     storage_config.ConfigsDispatcherServiceEnabled = True
     storage_config.ConfigDispatcherSettings.AllowList.Names.append('NameserviceConfigItem')
 
-    domain = configurator.domains_txt.Domain[0].Name
+    domain = ydb.domains_txt.Domain[0].Name
 
     return configurator_type(
         binary_path=binary_path,
         app_config=TServerAppConfig(),
         service_type="kikimr",
         verbose=True,
-        kikimr_port=kikimr_port,
+        kikimr_port=ydb.port,
         domain=domain,
         storage_config=storage_config,
     )
 
 
-def check_configs(mon_port, kikimr_configurator, kikimr_cluster):
+def check_configs(mon_port, ydb):
     def query_monitoring(url, text):
         r = requests.get(url, timeout=10)
         r.raise_for_status()
@@ -73,11 +61,11 @@ def check_configs(mon_port, kikimr_configurator, kikimr_cluster):
     entry.Component = component_to_test
     entry.SamplingRate = 1000
     app_config.LogConfig.MergeFrom(log_config)
-    kikimr_cluster.client.add_config_item(app_config)
+    ydb.client.add_config_item(app_config)
 
     # add new static node
     app_config = config_pb2.TAppConfig()
-    naming_config = kikimr_configurator.names_txt
+    naming_config = ydb.names_txt
     node = naming_config.Node.add(
         NodeId=2,
         Address='::1',
@@ -87,7 +75,7 @@ def check_configs(mon_port, kikimr_configurator, kikimr_cluster):
     node.Location.DataCenter = 'xyz'
     node.Location.Rack = 'somewhere'
     app_config.NameserviceConfig.MergeFrom(naming_config)
-    kikimr_cluster.client.add_config_item(app_config)
+    ydb.client.add_config_item(app_config)
 
     # wait for nameservice config update
     while True:
@@ -105,24 +93,20 @@ def check_configs(mon_port, kikimr_configurator, kikimr_cluster):
 
 
 def setup_and_run_test(filestore_binary_path, filestore_config_generator, wait_filestore_process):
-    kikimr_configurator = setup_kikimr()
-
-    kikimr_cluster = kikimr_cluster_factory(configurator=kikimr_configurator)
-    kikimr_cluster.start()
+    ydb = setup_kikimr()
 
     filestore_configurator = setup_filestore(
-        kikimr_configurator,
-        kikimr_cluster,
+        ydb,
         filestore_binary_path,
         filestore_config_generator)
     filestore_configurator.generate_configs(
-        kikimr_configurator.domains_txt,
-        kikimr_configurator.names_txt)
+        ydb.domains_txt,
+        ydb.names_txt)
 
     filestore_process = FilestoreServer(
         configurator=filestore_configurator,
         kikimr_binary_path=kikimr_binary_path,
-        dynamic_storage_pools=kikimr_configurator.dynamic_storage_pools,
+        dynamic_storage_pools=ydb.dynamic_storage_pools,
     )
     filestore_process.start()
 
@@ -131,10 +115,10 @@ def setup_and_run_test(filestore_binary_path, filestore_config_generator, wait_f
     except RuntimeError:
         return False
 
-    result = check_configs(filestore_configurator.mon_port, kikimr_configurator, kikimr_cluster)
+    result = check_configs(filestore_configurator.mon_port, ydb)
 
     filestore_process.stop()
-    kikimr_cluster.stop()
+    ydb.stop()
 
     return result
 

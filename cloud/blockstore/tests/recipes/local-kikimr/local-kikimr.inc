@@ -1,8 +1,6 @@
 DEPENDS(
     cloud/blockstore/apps/server
     cloud/blockstore/tests/recipes/local-kikimr
-
-    contrib/ydb/apps/ydbd
 )
 
 DATA(
@@ -10,7 +8,9 @@ DATA(
     arcadia/cloud/blockstore/tests/certs/server.key
 )
 
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/ydb.inc)
+
 USE_RECIPE(
-    cloud/blockstore/tests/recipes/local-kikimr/local-kikimr-recipe --use-log-files
+    cloud/blockstore/tests/recipes/local-kikimr/local-kikimr-recipe
 )
 
