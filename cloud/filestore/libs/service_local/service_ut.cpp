@@ -854,7 +854,7 @@ struct TTestBootstrap
         return response;
     }
 
-    NProto::TWriteDataResponse AssertWriteDataAlignedFailed(
+    NProto::TWriteDataResponse NoAssertWriteDataAligned(
         ui64 handle,
         ui64 offset,
         const TString& buffer,
@@ -869,13 +869,8 @@ struct TTestBootstrap
         request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
         request->SetBuffer(alignedBuffer.TakeBuffer());
 
-        auto dbg = request->ShortDebugString();
         auto response =
             Store->WriteData(Ctx, std::move(request)).GetValueSync();
-
-        UNIT_ASSERT_C(
-            FAILED(response.GetError().GetCode()),
-            "WriteDataAligned has not failed as expected " + dbg);
 
         return response;
     }
@@ -2552,15 +2547,19 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(data.size(), 0);
 
         data = "aaaabbbbcccccdddddeeee";
-        const auto response = bootstrap.AssertWriteDataAlignedFailed(
+        // Depending on the filesystem and kernel, an unaligned O_DIRECT
+        // write may fail with EINVAL or fall back to buffered I/O.
+        const auto response = bootstrap.NoAssertWriteDataAligned(
             handle,
             0,
             data,
             directIoAlign);
         const auto& error = response.GetError();
-        UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(NProto::E_FS_INVAL),
-            STATUS_FROM_CODE(error.GetCode()));
+        if (FAILED(error.GetCode())) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<ui32>(NProto::E_FS_INVAL),
+                STATUS_FROM_CODE(error.GetCode()));
+        }
 
         data.append(directIoAlign-data.size(), 'x');
         data.append(directIoAlign, 'y');
