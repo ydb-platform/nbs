@@ -19,10 +19,9 @@ from cloud.blockstore.tests.python.lib.nonreplicated_setup import \
     setup_disk_registry_config_simple, enable_writable_state
 from cloud.blockstore.tests.python.lib.test_base import \
     thread_count, wait_for_nbs_server, wait_for_secure_erase
+from cloud.storage.core.tests.ydb import Ydb, ydb_binary_path
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 DEFAULT_BLOCK_SIZE = 4096
 DEFAULT_DEVICE_COUNT = 4
@@ -810,12 +809,10 @@ class Nbs(LocalNbs):
 
 
 def __run_test(test_case):
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = ydb_binary_path()
 
-    configurator = KikimrConfigGenerator(
-        erasure=None,
-        binary_paths=[kikimr_binary_path],
-        use_in_memory_pdisks=True,
+    ydb = Ydb.start(
+        binary_path=kikimr_binary_path,
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),
             dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0)
@@ -824,9 +821,6 @@ def __run_test(test_case):
     nbs_binary_path = yatest_common.binary_path(
         "cloud/blockstore/apps/server/nbsd")
 
-    kikimr_cluster = kikimr_cluster_factory(configurator=configurator)
-    kikimr_cluster.start()
-
     if test_case.use_nrd:
         devices = create_file_devices(
             None,  # dir
@@ -834,7 +828,7 @@ def __run_test(test_case):
             DEFAULT_BLOCK_SIZE,
             DEFAULT_BLOCK_COUNT_PER_DEVICE)
 
-        setup_nonreplicated(kikimr_cluster.client, [devices])
+        setup_nonreplicated(ydb.client, [devices])
 
     server_app_config = TServerAppConfig()
     server_app_config.ServerConfig.CopyFrom(TServerConfig())
@@ -851,7 +845,7 @@ def __run_test(test_case):
     cert.CertFile = os.path.join(certs_dir, 'server.crt')
     cert.CertPrivateKeyFile = os.path.join(certs_dir, 'server.key')
 
-    kikimr_port = list(kikimr_cluster.nodes.values())[0].port
+    kikimr_port = ydb.port
 
     storage = TStorageServiceConfig()
     storage.DisableLocalService = False
@@ -870,7 +864,7 @@ def __run_test(test_case):
 
     nbs = Nbs(
         kikimr_port,
-        configurator.domains_txt,
+        ydb.domains_txt,
         server_app_config=server_app_config,
         storage_config_patches=[storage],
         enable_tls=True,
@@ -897,7 +891,7 @@ def __run_test(test_case):
 
         disk_agent = Nbs(
             kikimr_port,
-            configurator.domains_txt,
+            ydb.domains_txt,
             server_app_config=server_app_config,
             storage_config_patches=[storage],
             enable_tls=True,
@@ -914,7 +908,7 @@ def __run_test(test_case):
         ret = test_case.run(nbs, nbs.mon_port)
     finally:
         nbs.stop()
-        kikimr_cluster.stop()
+        ydb.stop()
         if test_case.use_nrd:
             disk_agent.stop()
     return ret

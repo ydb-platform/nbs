@@ -1,7 +1,6 @@
 import copy
 import os
 import logging
-import subprocess
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from contrib.ydb.tests.library.harness.daemon import Daemon
@@ -14,11 +13,15 @@ from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 from cloud.storage.core.tools.common.python.core_pattern import core_pattern
 from cloud.storage.core.tools.common.python.port_reservation import PortManager
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
+from cloud.storage.core.tests.ydb import (
+    create_tenant,
+    enable_custom_cms_configs,
+    ydb_binary_path,
+)
 from contrib.ydb.core.protos.auth_pb2 import TAuthConfig
 from contrib.ydb.core.protos.config_pb2 import TActorSystemConfig
 from contrib.ydb.core.protos.config_pb2 import TDynamicNameserviceConfig
 from contrib.ydb.core.protos.config_pb2 import TLogConfig
-from contrib.ydb.core.protos import console_config_pb2 as console
 from contrib.ydb.core.protos import msgbus_pb2 as msgbus
 from google.protobuf.text_format import MessageToBytes, MessageToString
 from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
@@ -76,7 +79,7 @@ class LocalDiskAgent(Daemon):
         if kikimr_binary_path is not None:
             self.__kikimr_binary_path = kikimr_binary_path
         else:
-            self.__kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+            self.__kikimr_binary_path = ydb_binary_path()
 
         self.__unstable_process_args = None
         self.__allow_restart_flag = None
@@ -195,40 +198,11 @@ class LocalDiskAgent(Daemon):
         return 'null'
 
     def init_scheme(self):
-        scheme_op = """
-ModifyScheme {
-    WorkingDir: "/Root"
-    OperationType: ESchemeOpCreateSubDomain
-    SubDomain {
-        Name: "nbs"
-        Coordinators: 0
-        Mediators: 0
-        PlanResolution: 50
-        TimeCastBucketsPerMediator: 2
-"""
-
-        for pool in self.__dynamic_storage_pools:
-            scheme_op += """
-        StoragePools {
-            Name: "%s"
-            Kind: "%s"
-        }
-""" % (pool['name'], pool['kind'])
-
-        scheme_op += """
-    }
-}
-"""
-
-        command = [
+        create_tenant(
             self.__kikimr_binary_path,
-            "--server",
-            "grpc://localhost:" + str(self.__grpc_port),
-            "db", "schema", "exec", scheme_op
-        ]
-
-        logger.info("Init scheme {}".format(command))
-        subprocess.check_call(command)
+            self.__grpc_port,
+            "nbs",
+            self.__dynamic_storage_pools)
 
     @property
     def mon_port(self):
@@ -448,14 +422,7 @@ ModifyScheme {
 
         # setup DiskAgent config
 
-        req = msgbus.TConsoleRequest()
-        configs_config = req.SetConfigRequest.Config.ConfigsConfig
-        restrictions = configs_config.UsageScopeRestrictions
-        restrictions.AllowedTenantUsageScopeKinds.append(
-            console.TConfigItem.NamedConfigsItem)
-
-        response = kikimr.invoke(req, 'ConsoleRequest')
-        assert response.Status.Code == StatusIds.SUCCESS
+        enable_custom_cms_configs(kikimr)
 
         req = msgbus.TConsoleRequest()
         action = req.ConfigureRequest.Actions.add()

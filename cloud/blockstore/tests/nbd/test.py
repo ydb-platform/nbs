@@ -156,9 +156,8 @@ def test_ydb_outage(ydb, volume):
         assert rbuf[:] == expected
 
         # Suspend YDB; subsequent requests are expected to block.
-        for node_id, node in ydb.nodes.items():
-            logging.info("Suspending YDB node #%s: %s", node_id, node)
-            os.kill(node.pid, signal.SIGSTOP)
+        logging.info("Suspending YDB: %s", ydb.pid)
+        os.kill(ydb.pid, signal.SIGSTOP)
         try:
             logging.info("Submitting a write request while YDB is suspended")
             # Submit a write that should remain blocked while YDB is suspended.
@@ -176,9 +175,8 @@ def test_ydb_outage(ydb, volume):
                 )
         finally:
             # Resume YDB even if a check fails.
-            for node_id, node in ydb.nodes.items():
-                logging.info("Resuming YDB node #%s: %s", node_id, node)
-                os.kill(node.pid, signal.SIGCONT)
+            logging.info("Resuming YDB: %s", ydb.pid)
+            os.kill(ydb.pid, signal.SIGCONT)
 
         logging.info("Waiting for the pending write to complete after YDB resumes")
         # The pending write should now complete.

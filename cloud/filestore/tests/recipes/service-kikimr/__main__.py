@@ -9,9 +9,6 @@ import google.protobuf.text_format as text_format
 
 from library.python.testing.recipe import declare_recipe, set_env
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
-
 from cloud.filestore.config.server_pb2 import TServerAppConfig, TKikimrServiceConfig
 from cloud.filestore.config.storage_pb2 import TStorageConfig
 from cloud.filestore.config.diagnostics_pb2 import TDiagnosticsConfig
@@ -26,67 +23,30 @@ from cloud.storage.core.tests.common import (
     expand_placeholders,
     process_recipe_err_files,
 )
+from cloud.storage.core.tests.ydb import Ydb
 
 logger = logging.getLogger(__name__)
 
 PID_FILE_NAME = "local_kikimr_nfs_server_recipe.pid"
-KIKIMR_PID_FILE_NAME = "local_kikimr_nfs_server_recipe.kikimr_pid"
 ERR_LOG_FILE_NAMES_FILE = "local_kikimr_nfs_server_recipe.err_log_files"
-PDISK_SIZE = 32 * 1024 * 1024 * 1024
 
 
 def start(argv):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--kikimr-package-path", action="store", default=None)
     parser.add_argument("--nfs-package-path", action="store", default=None)
-    parser.add_argument("--use-log-files", action="store_true", default=False)
     parser.add_argument("--verbose", action="store_true", default=False)
-    parser.add_argument("--in-memory-pdisks", action="store_true", default=False)
     parser.add_argument("--enable-external-data-channel", action="store_true", default=False)
     parser.add_argument("--restart-interval", action="store", default=None)
     parser.add_argument("--storage-config-patch", nargs="+", default=[])
     parser.add_argument("--diag-config-patch", action="store", default=None)
     parser.add_argument("--server-config-patch", action="store", default=None)
-    parser.add_argument("--bs-cache-file-path", action="store", default=None)
     parser.add_argument("--use-unix-socket", action="store_true", default=False)
     parser.add_argument("--trace-sampling-rate", action="store", default=None, type=int)
     parser.add_argument("--use-fast-shard-port", action="store_true", default=False)
     parser.add_argument("--bs-failure-probability", action="store", default=None, type=float)
     args = parser.parse_args(argv)
 
-    kikimr_binary_path = common.binary_path("cloud/storage/core/tools/testing/ydb/bin/ydbd")
-    if args.kikimr_package_path is not None:
-        kikimr_binary_path = common.build_path("{}/ydbd".format(args.kikimr_package_path))
-
-    kikimr_configurator = KikimrConfigGenerator(
-        erasure=None,
-        output_path=common.output_path("kikimr_working_dir"),
-        use_in_memory_pdisks=args.in_memory_pdisks,
-        binary_paths=[kikimr_binary_path],
-        static_pdisk_size=PDISK_SIZE,
-        use_log_files=args.use_log_files,
-        bs_cache_file_path=args.bs_cache_file_path,
-        dynamic_storage_pools=[
-            dict(name="dynamic_storage_pool:1", kind="rot", pdisk_user_kind=0),
-            dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0),
-        ],
-    )
-
-    if args.enable_external_data_channel:
-        kikimr_configurator.yaml_config.setdefault("interconnect_config", {})[
-            "enable_external_data_channel"
-        ] = True
-
-    kikimr_cluster = kikimr_cluster_factory(configurator=kikimr_configurator)
-    kikimr_cluster.start()
-
-    with open(KIKIMR_PID_FILE_NAME, "w") as f:
-        f.write(str(list(kikimr_cluster.nodes.values())[0].pid))
-
-    kikimr_port = list(kikimr_cluster.nodes.values())[0].port
-
-    set_env("KIKIMR_ROOT", kikimr_configurator.domain_name)
-    set_env("KIKIMR_SERVER_PORT", str(kikimr_port))
+    ydb = Ydb.load(os.environ["YDB_FILE"])
 
     filestore_binary_path = common.binary_path("cloud/filestore/apps/server/filestore-server")
 
@@ -143,7 +103,7 @@ def start(argv):
         storage_config.FolderId = folder_id
         set_env("TEST_FOLDER_ID", folder_id)
 
-    domain = kikimr_configurator.domains_txt.Domain[0].Name
+    domain = ydb.domains_txt.Domain[0].Name
 
     access_service_type = AccessService
     if os.getenv("ACCESS_SERVICE_TYPE") == "new":
@@ -154,7 +114,7 @@ def start(argv):
         app_config=server_config,
         service_type="kikimr",
         verbose=args.verbose,
-        kikimr_port=kikimr_port,
+        kikimr_port=ydb.port,
         domain=domain,
         restart_interval=restart_interval,
         access_service_port=access_service_port,
@@ -167,12 +127,12 @@ def start(argv):
         use_fast_shard_port=args.use_fast_shard_port,
         enable_external_data_channel=args.enable_external_data_channel,
     )
-    filestore_configurator.generate_configs(kikimr_configurator.domains_txt, kikimr_configurator.names_txt)
+    filestore_configurator.generate_configs(ydb.domains_txt, ydb.names_txt)
 
     filestore_server = FilestoreServer(
         configurator=filestore_configurator,
-        kikimr_binary_path=kikimr_binary_path,
-        dynamic_storage_pools=kikimr_configurator.dynamic_storage_pools,
+        kikimr_binary_path=ydb.binary_path,
+        dynamic_storage_pools=ydb.dynamic_storage_pools,
     )
     filestore_server.start()
 
@@ -202,11 +162,6 @@ def stop(argv):
 
     if os.path.exists(PID_FILE_NAME):
         with open(PID_FILE_NAME) as f:
-            pid = int(f.read())
-            shutdown(pid)
-
-    if os.path.exists(KIKIMR_PID_FILE_NAME):
-        with open(KIKIMR_PID_FILE_NAME) as f:
             pid = int(f.read())
             shutdown(pid)
 

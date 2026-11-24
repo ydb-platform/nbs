@@ -6,7 +6,7 @@ TEST_SRCS(test.py)
 
 DEPENDS(
     cloud/blockstore/apps/server
-    contrib/ydb/apps/ydbd
+    cloud/storage/core/tools/testing/ydb/bin
 )
 
 PEERDIR(

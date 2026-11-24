@@ -32,11 +32,8 @@ from cloud.blockstore.tests.python.lib.nonreplicated_setup import (
     AgentInfo,
     DeviceInfo
 )
+from cloud.storage.core.tests.ydb import Ydb, ydb_binary_path
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import \
-    kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import \
-    KikimrConfigGenerator
 from contrib.ydb.tests.library.harness.kikimr_runner import \
     get_unique_path_for_current_test, ensure_path_exists
 
@@ -79,8 +76,7 @@ class TestWithMultipleAgents(object):
         self.agent_count = agent_count
         self.__disk_agents = []
 
-        self.kikimr_binary_path = yatest_common.binary_path(
-            "contrib/ydb/apps/ydbd/ydbd")
+        self.kikimr_binary_path = ydb_binary_path()
         self.nbs_binary_path = yatest_common.binary_path(
             "cloud/blockstore/apps/server/nbsd")
         self.disk_agent_binary_path = yatest_common.binary_path(
@@ -120,8 +116,8 @@ class TestWithMultipleAgents(object):
         storage.DisableLocalService = True
 
         disk_agent = LocalDiskAgent(
-            self.__kikimr_port,
-            self.__configurator.domains_txt,
+            self.__ydb.port,
+            self.__ydb.domains_txt,
             server_app_config=self.server_app_config,
             storage_config_patches=[storage],
             config_sub_folder="disk_agent_configs_%s" % index,
@@ -138,10 +134,8 @@ class TestWithMultipleAgents(object):
         return disk_agent
 
     def setup(self):
-        self.__configurator = KikimrConfigGenerator(
-            erasure=None,
-            binary_paths=[self.kikimr_binary_path],
-            use_in_memory_pdisks=True,
+        self.__ydb = Ydb.start(
+            binary_path=self.kikimr_binary_path,
             dynamic_storage_pools=[
                 dict(name="dynamic_storage_pool:1",
                      kind="hdd",
@@ -150,11 +144,6 @@ class TestWithMultipleAgents(object):
                      kind="ssd",
                      pdisk_user_kind=0)
             ])
-
-        self.__kikimr_cluster = kikimr_cluster_factory(
-            configurator=self.__configurator)
-        self.__kikimr_cluster.start()
-        self.__kikimr_port = list(self.__kikimr_cluster.nodes.values())[0].port
 
         self.__devices = create_devices(
             False,  # use_memory_devices
@@ -177,7 +166,7 @@ class TestWithMultipleAgents(object):
             devices_per_agent.append(agent_devices)
 
         setup_nonreplicated(
-            self.__kikimr_cluster.client,
+            self.__ydb.client,
             devices_per_agent,
             disk_agent_config_patch=TDiskAgentConfig(DedicatedDiskAgent=True),
             agent_count=self.agent_count,
@@ -185,8 +174,8 @@ class TestWithMultipleAgents(object):
         )
 
         self.nbs = LocalNbs(
-            self.__kikimr_port,
-            self.__configurator.domains_txt,
+            self.__ydb.port,
+            self.__ydb.domains_txt,
             server_app_config=self.server_app_config,
             storage_config_patches=[self.storage_config],
             kikimr_binary_path=self.kikimr_binary_path,

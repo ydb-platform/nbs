@@ -12,14 +12,11 @@ from cloud.blockstore.tests.python.lib.test_base import \
 
 from cloud.blockstore.tests.python.lib.disk_agent_runner import LocalDiskAgent
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import \
-    kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import \
-    KikimrConfigGenerator
 
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import \
     setup_nonreplicated, create_devices, setup_disk_registry_config, \
     enable_writable_state, make_agent_id, AgentInfo, DeviceInfo
+from cloud.storage.core.tests.ydb import Ydb, ydb_binary_path
 
 import yatest.common as yatest_common
 
@@ -37,31 +34,25 @@ DEFAULT_BLOCK_COUNT_PER_DEVICE = 262144
 
 
 def kikimr_start():
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = ydb_binary_path()
 
-    configurator = KikimrConfigGenerator(
-        erasure=None,
-        binary_paths=[kikimr_binary_path],
-        use_in_memory_pdisks=True,
+    ydb = Ydb.start(
+        binary_path=kikimr_binary_path,
         static_pdisk_size=PDISK_SIZE,
         dynamic_pdisk_size=PDISK_SIZE,
-        dynamic_pdisks=[],
         dynamic_storage_pools=STORAGE_POOL)
 
-    kikimr_cluster = kikimr_cluster_factory(configurator=configurator)
-    kikimr_cluster.start()
-
-    return kikimr_cluster, configurator
+    return ydb
 
 
-def nbs_server_start(kikimr_cluster, configurator):
+def nbs_server_start(ydb):
     server_app_config = TServerAppConfig()
     server_app_config.ServerConfig.CopyFrom(TServerConfig())
     server_app_config.ServerConfig.ThreadsCount = thread_count()
     server_app_config.ServerConfig.StrictContractValidation = False
     server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
-    kikimr_port = list(kikimr_cluster.nodes.values())[0].port
+    kikimr_port = ydb.port
 
     storage = TStorageServiceConfig()
     storage.SchemeShardDir = "/Root/nbs"
@@ -77,7 +68,7 @@ def nbs_server_start(kikimr_cluster, configurator):
 
     nbs = LocalNbs(
         kikimr_port,
-        configurator.domains_txt,
+        ydb.domains_txt,
         server_app_config=server_app_config,
         contract_validation=False,
         storage_config_patches=[storage],
@@ -101,11 +92,10 @@ def test_change_device():
         yatest_common.binary_path(
             "cloud/blockstore/apps/disk_agent/diskagentd")
 
-    kikimr_cluster, configurator = \
-        kikimr_start()
+    ydb = kikimr_start()
 
     nbs, server_app_config, storage = \
-        nbs_server_start(kikimr_cluster, configurator)
+        nbs_server_start(ydb)
 
     devices = create_devices(
         True,
@@ -115,7 +105,7 @@ def test_change_device():
         yatest_common.ram_drive_path())
 
     setup_nonreplicated(
-        kikimr_cluster.client,
+        ydb.client,
         [devices],
         disk_agent_config_patch=TDiskAgentConfig(
             DedicatedDiskAgent=True,
@@ -128,15 +118,15 @@ def test_change_device():
         nbs.nbs_port,
         nbs_client_binary_path)
 
-    kikimr_port = list(kikimr_cluster.nodes.values())[0].port
+    kikimr_port = ydb.port
 
     disk_agent = LocalDiskAgent(
         kikimr_port,
-        configurator.domains_txt,
+        ydb.domains_txt,
         server_app_config=server_app_config,
         storage_config_patches=[storage],
         enable_tls=True,
-        kikimr_binary_path=yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd"),
+        kikimr_binary_path=ydb_binary_path(),
         disk_agent_binary_path=yatest_common.binary_path(
             disk_agent_binary_path))
 

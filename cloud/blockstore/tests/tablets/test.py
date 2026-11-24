@@ -11,15 +11,14 @@ from cloud.blockstore.tests.python.lib.test_base import \
     thread_count, wait_for_nbs_server, get_utils_counters, get_sensor
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import \
     setup_nonreplicated, enable_writable_state
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from cloud.storage.core.tests.ydb import Ydb, ydb_binary_path
 
 
 class CommonPaths:
 
     def __init__(self):
         self.kikimr_binary_path = \
-            yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+            ydb_binary_path()
         self.nbs_binary_path = \
             yatest_common.binary_path(
                 "cloud/blockstore/apps/server/nbsd")
@@ -50,21 +49,17 @@ def wait_for_dr_metrics(nbs_mon_port):
 
 
 def setup_kikimr(paths):
-    configurator = KikimrConfigGenerator(
-        erasure=None,
-        binary_paths=[paths.kikimr_binary_path],
-        use_in_memory_pdisks=True,
+    ydb = Ydb.start(
+        binary_path=paths.kikimr_binary_path,
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),
             dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0)
         ])
 
-    kikimr_cluster = kikimr_cluster_factory(configurator=configurator)
-    kikimr_cluster.start()
-    return kikimr_cluster, configurator
+    return ydb
 
 
-def setup_nbs(paths, kikimr_cluster, configurator, system_tablets_priority):
+def setup_nbs(paths, ydb, system_tablets_priority):
     server_app_config = TServerAppConfig()
     server_app_config.ServerConfig.CopyFrom(TServerConfig())
     server_app_config.ServerConfig.ThreadsCount = thread_count()
@@ -76,7 +71,7 @@ def setup_nbs(paths, kikimr_cluster, configurator, system_tablets_priority):
     cert.CertFile = os.path.join(paths.certs_dir, 'server.crt')
     cert.CertPrivateKeyFile = os.path.join(paths.certs_dir, 'server.key')
 
-    kikimr_port = list(kikimr_cluster.nodes.values())[0].port
+    kikimr_port = ydb.port
 
     storage = TStorageServiceConfig()
     storage.DisableLocalService = False
@@ -86,7 +81,7 @@ def setup_nbs(paths, kikimr_cluster, configurator, system_tablets_priority):
 
     nbs = LocalNbs(
         kikimr_port,
-        configurator.domains_txt,
+        ydb.domains_txt,
         server_app_config=server_app_config,
         storage_config_patches=[storage],
         enable_tls=True,
@@ -102,22 +97,22 @@ def setup_nbs(paths, kikimr_cluster, configurator, system_tablets_priority):
 def test_system_tablets_priority():
     common_paths = CommonPaths()
 
-    kikimr_cluster, configurator = setup_kikimr(common_paths)
+    ydb = setup_kikimr(common_paths)
 
     # Initialize DR tablet configs.
-    setup_nonreplicated(kikimr_cluster.client, [], agent_count=0)
+    setup_nonreplicated(ydb.client, [], agent_count=0)
 
     nbs_low_priority1 = setup_nbs(
-        common_paths, kikimr_cluster, configurator, system_tablets_priority=-1)
+        common_paths, ydb, system_tablets_priority=-1)
 
     enable_writable_state(nbs_low_priority1.nbs_port,
                           common_paths.nbs_client_path)
     wait_for_dr_metrics(nbs_low_priority1.mon_port)
 
     nbs_low_priority2 = setup_nbs(
-        common_paths, kikimr_cluster, configurator, system_tablets_priority=-2)
+        common_paths, ydb, system_tablets_priority=-2)
     nbs_high_priority = setup_nbs(
-        common_paths, kikimr_cluster, configurator, system_tablets_priority=1)
+        common_paths, ydb, system_tablets_priority=1)
 
     # DR shouldn't have been moved.
     wait_for_dr_metrics(nbs_low_priority1.mon_port)
@@ -132,4 +127,4 @@ def test_system_tablets_priority():
     wait_for_dr_metrics(nbs_low_priority2.mon_port)
     nbs_low_priority2.stop()
 
-    kikimr_cluster.stop()
+    ydb.stop()

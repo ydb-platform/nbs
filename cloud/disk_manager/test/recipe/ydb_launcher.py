@@ -1,8 +1,7 @@
 import os
 
 from cloud.tasks.test.common.processes import register_process, kill_processes
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
+from cloud.storage.core.tests.ydb import Ydb
 
 SERVICE_NAME = "ydb"
 
@@ -16,47 +15,42 @@ class YDBLauncher:
             dict(name="dynamic_storage_pool:3", kind="rotencrypted", pdisk_user_kind=0),
             dict(name="dynamic_storage_pool:4", kind="ssdencrypted", pdisk_user_kind=0),
         ]
-        self.__configurator = KikimrConfigGenerator(
-            binary_paths=[ydb_binary_path],
-            erasure=None,
-            static_pdisk_size=64 * 2**30,
-            dynamic_storage_pools=dynamic_storage_pools,
-            use_in_memory_pdisks=True,
-            enable_public_api_external_blobs=True)
-
-        self.__cluster = kikimr_cluster_factory(configurator=self.__configurator)
+        self.__binary_path = ydb_binary_path
         self.__dynamic_storage_pools = dynamic_storage_pools
 
     def start(self):
         # Make ydbd use the harness-allocated PGWire port; otherwise its default
         # port 5432 may collide with a dynamically allocated monitoring port.
         os.environ["YDB_ALLOCATE_PGWIRE_PORT"] = "true"
-        self.__cluster.start()
-        for kimimr_node in list(self.__cluster.nodes.values()):
-            register_process(SERVICE_NAME, kimimr_node.pid)
+        self.__ydb = Ydb.start(
+            binary_path=self.__binary_path,
+            static_pdisk_size=64 * 2**30,
+            dynamic_storage_pools=self.__dynamic_storage_pools,
+            enable_public_api_external_blobs=True)
+        register_process(SERVICE_NAME, self.__ydb.pid)
 
     @staticmethod
     def stop():
         kill_processes(SERVICE_NAME)
 
     def stop_service(self):
-        self.__cluster.stop()
+        self.__ydb.stop()
 
     @property
     def port(self):
-        return list(self.__cluster.nodes.values())[0].port
+        return self.__ydb.port
 
     @property
     def mon_port(self):
-        return list(self.__cluster.nodes.values())[0].mon_port
+        return self.__ydb.mon_port
 
     @property
     def domains_txt(self):
-        return self.__cluster.config.domains_txt
+        return self.__ydb.domains_txt
 
     @property
     def names_txt(self):
-        return self.__cluster.config.names_txt
+        return self.__ydb.names_txt
 
     @property
     def dynamic_storage_pools(self):
@@ -64,8 +58,8 @@ class YDBLauncher:
 
     @property
     def client(self):
-        return self.__cluster.client
+        return self.__ydb.client
 
     @property
     def domain(self):
-        return self.__configurator.domains_txt.Domain[0].Name
+        return self.__ydb.domains_txt.Domain[0].Name

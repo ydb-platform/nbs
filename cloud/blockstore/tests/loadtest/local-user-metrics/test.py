@@ -12,11 +12,8 @@ from cloud.blockstore.tests.python.lib.nbs_runner import \
     LocalNbs
 from cloud.blockstore.tests.python.lib.test_base import \
     thread_count, wait_for_nbs_server
+from cloud.storage.core.tests.ydb import Ydb, ydb_binary_path
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import \
-    kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import \
-    KikimrConfigGenerator
 
 from subprocess import call
 from threading import Thread
@@ -28,29 +25,23 @@ STORAGE_POOL = [
 
 
 def kikimr_start():
-    kikimr_binary_path = common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = ydb_binary_path()
 
-    configurator = KikimrConfigGenerator(
-        erasure=None,
-        binary_paths=[kikimr_binary_path],
-        use_in_memory_pdisks=True,
-        dynamic_pdisks=[],
+    ydb = Ydb.start(
+        binary_path=kikimr_binary_path,
         dynamic_storage_pools=STORAGE_POOL)
 
-    kikimr_cluster = kikimr_cluster_factory(configurator=configurator)
-    kikimr_cluster.start()
-
-    return kikimr_cluster, configurator
+    return ydb
 
 
-def nbs_server_start(kikimr_cluster, configurator):
+def nbs_server_start(ydb):
     server_app_config = TServerAppConfig()
     server_app_config.ServerConfig.CopyFrom(TServerConfig())
     server_app_config.ServerConfig.ThreadsCount = thread_count()
     server_app_config.ServerConfig.StrictContractValidation = False
     server_app_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
-    kikimr_port = list(kikimr_cluster.nodes.values())[0].port
+    kikimr_port = ydb.port
 
     storage = TStorageServiceConfig()
     storage.SchemeShardDir = "/Root/nbs"
@@ -58,7 +49,7 @@ def nbs_server_start(kikimr_cluster, configurator):
 
     nbs = LocalNbs(
         kikimr_port,
-        configurator.domains_txt,
+        ydb.domains_txt,
         server_app_config=server_app_config,
         contract_validation=False,
         storage_config_patches=[storage],
@@ -113,8 +104,8 @@ def check_metrics(port):
 
 
 def test_user_metrics():
-    kikimr_cluster, configurator = kikimr_start()
-    nbs = nbs_server_start(kikimr_cluster, configurator)
+    ydb = kikimr_start()
+    nbs = nbs_server_start(ydb)
 
     wait_for_nbs_server(nbs.nbs_port)
 

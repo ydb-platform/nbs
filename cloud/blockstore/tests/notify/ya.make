@@ -8,7 +8,7 @@ DEPENDS(
     cloud/blockstore/apps/disk_agent
     cloud/blockstore/apps/server
     cloud/blockstore/tools/testing/notify-mock
-    contrib/ydb/apps/ydbd
+    cloud/storage/core/tools/testing/ydb/bin
 )
 
 DATA(

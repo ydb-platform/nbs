@@ -37,7 +37,7 @@ func newContext() context.Context {
 func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 	endpoint := fmt.Sprintf(
 		"localhost:%v",
-		os.Getenv("KIKIMR_SERVER_PORT"),
+		os.Getenv("YDB_SERVER_PORT"),
 	)
 	database := "/Root"
 	rootPath := "disk_manager"
