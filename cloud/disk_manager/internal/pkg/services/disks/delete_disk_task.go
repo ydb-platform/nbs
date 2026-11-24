@@ -90,14 +90,6 @@ func (t *deleteDiskTask) deleteDisk(
 		if err != nil {
 			return err
 		}
-		if len(zoneID) == 0 {
-			logging.Error(
-				ctx,
-				"Cannot delete disk %v from NBS: zone is unknown both in meta and in the request",
-				diskID,
-			)
-			return t.storage.DiskDeleted(ctx, diskID, time.Now())
-		}
 	} else {
 		zoneID = diskMeta.ZoneID
 	}
@@ -218,14 +210,13 @@ func (t *deleteDiskTask) GetResponse() proto.Message {
 // Prefers the zone from meta (the disk may still be in the trash retention
 // window) and falls back to the request zone.
 //
-// If meta has a zone that is not disabled:
-//   - an empty request zone finishes the task with a NonCancellableError;
-//   - the request zone must match the zone from meta or contain it as one of
-//     its cells. On mismatch the task finishes with a NonCancellableError if
-//     the request zone is disabled, otherwise it is retried.
+// An empty request zone finishes the task with a NonCancellableError.
 //
 // A disabled zone from meta is returned as is: NBS deletion is skipped for
 // disabled zones anyway.
+//
+// An enabled zone from meta must match the request zone or be one of its
+// cells, otherwise the task finishes with a NonCancellableError.
 //
 // The zone is not persisted and is resolved again on every retry.
 func (t *deleteDiskTask) resolveCleanupZoneID(
@@ -233,12 +224,19 @@ func (t *deleteDiskTask) resolveCleanupZoneID(
 	diskID string,
 ) (string, error) {
 
+	requestZoneID := t.request.Disk.ZoneId
+	if len(requestZoneID) == 0 {
+		return "", errors.NewNonCancellableErrorf(
+			"request zone is empty for disk %v",
+			diskID,
+		)
+	}
+
 	meta, err := t.storage.GetDiskMeta(ctx, diskID)
 	if err != nil {
 		return "", err
 	}
 
-	requestZoneID := t.request.Disk.ZoneId
 	if meta == nil || len(meta.ZoneID) == 0 {
 		return requestZoneID, nil
 	}
@@ -246,14 +244,6 @@ func (t *deleteDiskTask) resolveCleanupZoneID(
 	if t.disabledZones.IsDisabled(meta.ZoneID) {
 		// NBS deletion is skipped for disabled zones anyway.
 		return meta.ZoneID, nil
-	}
-
-	if len(requestZoneID) == 0 {
-		return "", errors.NewNonCancellableErrorf(
-			"request zone is empty for disk %v with zone %q in meta",
-			diskID,
-			meta.ZoneID,
-		)
 	}
 
 	if requestZoneID == meta.ZoneID {
@@ -266,17 +256,7 @@ func (t *deleteDiskTask) resolveCleanupZoneID(
 	}
 
 	if !slices.Contains(requestCells, meta.ZoneID) {
-		if t.disabledZones.IsDisabled(requestZoneID) {
-			return "", errors.NewNonCancellableErrorf(
-				"zone %q of disk %v from meta does not match disabled request zone %q (cells %v)",
-				meta.ZoneID,
-				diskID,
-				requestZoneID,
-				requestCells,
-			)
-		}
-
-		return "", errors.NewRetriableErrorf(
+		return "", errors.NewNonCancellableErrorf(
 			"zone %q of disk %v from meta does not match request zone %q (cells %v)",
 			meta.ZoneID,
 			diskID,

@@ -43,7 +43,6 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 		zoneMeta            *resources.DiskMeta
 		requestCells        []string
 		nonCancellable      bool
-		zoneMismatch        bool
 		requestZone         string
 		disabledZones       *common.DisabledZones
 		sync                bool
@@ -128,7 +127,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			name:     "disabled trash metadata zone with empty request zone",
 			zoneMeta: &resources.DiskMeta{ZoneID: "zone-d"}, requestZone: "",
 			disabledZones: disabledZone, deleteIfNonExistent: true,
-			expectedZone: "zone-d",
+			nonCancellable: true,
 		},
 		{
 			name:     "disabled trash metadata zone conflicts with request zone",
@@ -161,7 +160,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			zoneMeta: &resources.DiskMeta{ZoneID: "zone-a"}, requestZone: "zone-b",
 			requestCells:  []string{"zone-b", "zone-b-cell1"},
 			disabledZones: disabledZone, deleteIfNonExistent: true,
-			zoneMismatch: true,
+			nonCancellable: true,
 		},
 		{
 			name:     "request zone cells resolve error",
@@ -181,7 +180,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 		},
 		{
 			name:          "missing metadata and request zone",
-			disabledZones: disabledZone, deleteIfNonExistent: true, skipIncremental: true,
+			disabledZones: disabledZone, deleteIfNonExistent: true, nonCancellable: true,
 		},
 		{
 			name: "metadata read error in disabled zone", diskMeta: disabledDisk,
@@ -278,10 +277,12 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 					return
 				}
 				if tc.diskMeta == nil && tc.deleteIfNonExistent {
-					storage.On("GetDiskMeta", ctx, "disk").
-						Return(tc.zoneMeta, errorFor("GetZoneMeta")).Once()
-					if tc.errorAt == "GetZoneMeta" {
-						return
+					if len(tc.requestZone) != 0 {
+						storage.On("GetDiskMeta", ctx, "disk").
+							Return(tc.zoneMeta, errorFor("GetZoneMeta")).Once()
+						if tc.errorAt == "GetZoneMeta" {
+							return
+						}
 					}
 					if tc.requestCells != nil || tc.errorAt == "ResolveCells" {
 						cellSelector.On("ResolveCells", tc.requestZone).
@@ -290,7 +291,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 							return
 						}
 					}
-					if tc.nonCancellable || tc.zoneMismatch {
+					if tc.nonCancellable {
 						return
 					}
 				}
@@ -361,11 +362,6 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 				require.Error(t, err)
 				require.True(t, errors.Is(err, errors.NewEmptyNonCancellableError()))
 				require.False(t, errors.CanRetry(err))
-			} else if tc.zoneMismatch {
-				require.Error(t, err)
-				require.False(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
-				require.False(t, errors.Is(err, errors.NewEmptyNonCancellableError()))
-				require.True(t, errors.CanRetry(err))
 			} else if tc.errorAt != "" {
 				require.True(t, errors.Is(err, assert.AnError))
 				if !tc.cancel {
