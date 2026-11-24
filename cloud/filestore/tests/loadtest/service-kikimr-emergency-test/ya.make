@@ -23,7 +23,7 @@ SET(
     cloud/filestore/tests/loadtest/service-kikimr-emergency-test/nfs-storage.txt
 )
 
-SET(NFS_BS_CACHE_FILE_PATH "bs_cache.txt")
+SET(YDB_BS_CACHE_FILE_PATH "bs_cache.txt")
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
 
