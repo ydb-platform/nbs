@@ -33,11 +33,10 @@ from github.SelfHostedActionsRunnerToken import SelfHostedActionsRunnerToken
 from nebius.sdk import SDK
 from nebius.aio.cli_config import Config
 from nebius.aio.service_error import RequestError
-from nebius.api.nebius.common.v1 import ResourceMetadata, GetByNameRequest
+from nebius.api.nebius.common.v1 import ResourceMetadata
 from nebius.api.nebius.compute.v1 import (
     DiskServiceClient,
     DiskSpec,
-    CreateDiskRequest,
     InstanceServiceClient,
     InstanceSpec,
     CreateInstanceRequest,
@@ -50,12 +49,11 @@ from nebius.api.nebius.compute.v1 import (
     ListInstancesRequest,
     DeleteInstanceRequest,
     DeleteDiskRequest,
-    ExistingDisk,
+    ManagedDisk,
 )
 
 logger = setup_logger()
 
-DISK_NAME_PREFIX = "disk-"
 CLOUD_INIT_SCRIPT_TEMPLATE = (
     Path(__file__).parent / "templates" / "nebius_runner_cloud_init.sh"
 )
@@ -287,63 +285,6 @@ def wait_runner_by_name(
     return find_runner_by_name(github, github_repo_owner, github_repo, vm_id)
 
 
-def build_disk_request(
-    parent_id: str,
-    name: str,
-    disk_size: int,
-    image_id: str,
-) -> CreateDiskRequest:
-    return CreateDiskRequest(
-        metadata=ResourceMetadata(
-            parent_id=parent_id,
-            name=DISK_NAME_PREFIX + name,
-        ),
-        spec=DiskSpec(
-            type=DiskSpec.DiskType.NETWORK_SSD_NON_REPLICATED,
-            size_gibibytes=disk_size,
-            source_image_id=image_id,
-        ),
-    )
-
-
-async def create_disk(sdk: SDK, args: argparse.Namespace) -> str:
-    service = DiskServiceClient(sdk)
-    disk_request = build_disk_request(
-        parent_id=args.parent_id,
-        name=args.name,
-        disk_size=args.disk_size,
-        image_id=args.image_id,
-    )
-    if not args.apply:
-        logger.info("Would create disk with request %s", disk_request)
-        return "0"
-    else:
-        logger.info("Creating disk with request %s", disk_request)
-
-    request = None
-    try:
-        request = await service.create(disk_request)
-        await request.wait()
-    except TypeError:
-        logger.error("Failed to create disk request", exc_info=True)
-        raise
-    except RequestError as e:
-        logger.error("Failed to create disk with request: %s", disk_request)
-        logger.error("Response: %s", str(e.status), exc_info=True)
-        if request is not None:
-            logger.error("Removing created disk with ID %s", request.resource_id)
-            await remove_disk_by_id(sdk, request.resource_id)
-        raise
-
-    logger.info(
-        "Created disk with ID %s status:%s",
-        request.resource_id,
-        request.status(),
-    )
-
-    return request.resource_id
-
-
 def report_create_vm_final_failure(
     exception: BaseException, call_args: inspect.BoundArguments
 ) -> None:
@@ -423,7 +364,8 @@ def build_instance_request(
     preset: str,
     subnet_id: str,
     no_public_ip: bool,
-    disk_id: str,
+    disk_size: int,
+    image_id: str,
     user_data: str,
     labels: dict,
 ) -> CreateInstanceRequest:
@@ -439,7 +381,14 @@ def build_instance_request(
             resources=ResourcesSpec(platform=platform_id, preset=preset),
             boot_disk=AttachedDiskSpec(
                 attach_mode=AttachedDiskSpec.AttachMode.READ_WRITE,
-                existing_disk=ExistingDisk(id=disk_id),
+                managed_disk=ManagedDisk(
+                    name=f"disk-{name}",
+                    spec=DiskSpec(
+                        type=DiskSpec.DiskType.NETWORK_SSD_NON_REPLICATED,
+                        size_gibibytes=disk_size,
+                        source_image_id=image_id,
+                    ),
+                ),
                 device_id="boot",
             ),
             network_interfaces=[
@@ -533,8 +482,6 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
 
     labels = build_vm_labels(args.labels, runner_github_label, args.runner_flavor)
 
-    disk_id = await create_disk(sdk, args)
-    service = InstanceServiceClient(sdk)
     instance_request = build_instance_request(
         parent_id=args.parent_id,
         name=args.name,
@@ -542,54 +489,34 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         preset=args.preset,
         subnet_id=args.subnet_id,
         no_public_ip=args.no_public_ip,
-        disk_id=disk_id,
+        disk_size=args.disk_size,
+        image_id=args.image_id,
         user_data=user_data,
         labels=labels,
     )
-    # Create the VM
     if not args.apply:
         logger.info("Would create VM with request: %s", instance_request)
         return
-    else:
-        logger.info("Creating VM with request: %s", instance_request)
+    logger.info("Creating VM with request: %s", instance_request)
 
+    service = InstanceServiceClient(sdk)
     request = None
     try:
         request = await service.create(instance_request)
         await request.wait()
-    except TypeError as e:
-        logger.error("Failed to create VM, removing created disk", exc_info=True)
-        await remove_disk_by_id(sdk, disk_id)
-        raise e
+        status = request.status()
+        logger.info("Operation status: %s", status)
+        if status.code != grpc.StatusCode.OK:
+            raise RequestError(status)
 
-    except RequestError as e:
-        logger.error("Failed to create VM with request: %s", instance_request)
-        logger.error("Response: %s", str(e), exc_info=True)
-        if request is not None:
-            logger.error("Removing created instance with ID %s", request.resource_id)
-            await remove_vm_by_id(sdk, request.resource_id)
-            await remove_disk_by_id(sdk, disk_id)
-        else:
-            await remove_disk_by_id(sdk, disk_id)
-        raise e
+        instance_id = request.resource_id
+        instance = await service.get(GetInstanceRequest(id=instance_id))
+        logger.info("Created VM %s", instance)
 
-    instance_id = request.resource_id
-    logger.info("Operation status: %s", str(request.status()))
-    if request.status().code != grpc.StatusCode.OK:
-        logger.error("Failed to create VM with request: %s", instance_request)
-        await remove_vm_by_id(sdk, instance_id)
-        await remove_disk_by_id(sdk, disk_id)
-        raise RequestError("Failed to create VM")
-
-    instance = await service.get(GetInstanceRequest(id=instance_id))
-    name = instance.metadata.name
-    logger.info("Created VM %s", instance)
-
-    local_ipv4, external_ipv4 = extract_instance_ips(instance, args.no_public_ip)
-    if instance_id:
+        local_ipv4, external_ipv4 = extract_instance_ips(instance, args.no_public_ip)
         logger.info(
             "Created VM %s with ID %s and label %s",
-            name,
+            instance.metadata.name,
             instance_id,
             runner_github_label,
         )
@@ -602,34 +529,17 @@ async def create_vm(sdk: SDK, args: argparse.Namespace, attempt: int = 0):
         else:
             github_output(logger, "external-ipv4", "N/A")
 
-        # Here we will wait until the VM registers as a GitHub Runner,
-        # if it fails to do so within the timeout, we will delete the
-        # VM to avoid orphaned resources
-        try:
-            runner_id = wait_runner_by_name(
-                github, args.github_repo_owner, args.github_repo, instance_id
-            )
-        except Exception:
-            logger.error(
-                "Failed to check runner registration; removing VM %s and disk %s",
-                instance_id,
-                disk_id,
-                exc_info=True,
-            )
-            await remove_vm_by_id(sdk, instance_id)
-            await remove_disk_by_id(sdk, disk_id)
-            raise
-
-        if runner_id is not None:
-            logger.info("VM registered as Github Runner %s", runner_id)
-        else:
-            logger.error("Failed to register VM as Github Runner")
-            await remove_vm_by_id(sdk, instance_id)
-            await remove_disk_by_id(sdk, disk_id)
+        runner_id = wait_runner_by_name(
+            github, args.github_repo_owner, args.github_repo, instance_id
+        )
+        if runner_id is None:
             raise ValueError("Failed to register VM as Github Runner")
-    else:
-        logger.error("Failed to create VM with request: %s", instance_request)
-        logger.error("Response: %s", request.status, exc_info=True)
+        logger.info("VM registered as Github Runner %s", runner_id)
+    except Exception:
+        logger.exception("Failed to provision runner VM %s", args.name)
+        if request is not None and request.resource_id:
+            await remove_vm_by_id(sdk, request.resource_id)
+        raise
 
 
 @retry(
@@ -722,64 +632,6 @@ def remove_runner_from_github(
         return "would_remove"
 
 
-async def remove_disk_by_name(sdk: SDK, args: argparse.Namespace, instance_name: str):
-    if not args.apply:
-        logger.info("Would delete disk with name %s", DISK_NAME_PREFIX + instance_name)
-        return
-
-    disk_id = None
-    service = DiskServiceClient(sdk)
-    try:
-        request = GetByNameRequest(
-            parent_id=args.parent_id, name=DISK_NAME_PREFIX + instance_name
-        )
-        response = await service.get_by_name(request)
-        disk_id = response.metadata.id
-        if disk_id is None:
-            logger.info("ListDisksRequest result: %s", response)
-            logger.error(
-                "Failed to find disk with name %s", DISK_NAME_PREFIX + instance_name
-            )
-            return
-
-    except Exception as e:
-        logger.exception(
-            "Failed to get Disk with name %s, response: %s",
-            instance_name,
-            response,
-            exc_info=True,
-        )
-        raise e
-
-    await remove_disk_by_id(sdk, disk_id)
-
-
-async def find_disk_by_instance_name(
-    sdk: SDK, args: argparse.Namespace, instance_name: str
-):
-    service = DiskServiceClient(sdk)
-    disk_name = DISK_NAME_PREFIX + instance_name
-    try:
-        request = GetByNameRequest(parent_id=args.parent_id, name=disk_name)
-        response = await service.get_by_name(request)
-    except Exception as e:
-        logger.exception(
-            "Failed to get Disk with name %s while searching fallback cleanup candidates",
-            disk_name,
-            exc_info=True,
-        )
-        logger.error("Disk lookup error: %s", e)
-        return None
-
-    disk_id = response.metadata.id
-    if disk_id is None:
-        logger.info("Disk with name %s was not found", disk_name)
-        return None
-
-    logger.info("Disk with name %s found: id=%s", disk_name, disk_id)
-    return response
-
-
 async def remove_disk_by_id(sdk: SDK, disk_id: str):
     service = DiskServiceClient(sdk)
     request = None
@@ -794,19 +646,28 @@ async def remove_disk_by_id(sdk: SDK, disk_id: str):
         raise e
 
 
-async def remove_vm_by_id(sdk: SDK, instance_id: str = None):
+async def remove_vm_by_id(sdk: SDK, instance_id: str):
+    if not instance_id.startswith("computeinstance-"):
+        raise ValueError(f"Invalid instance ID: {instance_id}")
+
     service = InstanceServiceClient(sdk)
     request = None
     try:
         request = await service.delete(DeleteInstanceRequest(id=instance_id))
         await request.wait()
+        status = request.status()
+        if status.code != grpc.StatusCode.OK:
+            raise RequestError(status)
         logger.info("Deleted VM with ID %s", instance_id)
 
-    except Exception as e:
+    except Exception as error:
+        if isinstance(error, RequestError) and is_not_found_request_error(error):
+            logger.info("VM with ID %s has already been deleted", instance_id)
+            return
         logger.exception("Failed to delete VM with ID %s", instance_id, exc_info=True)
         if request is not None:
             logger.error("Response: %s", request.status())
-        raise e
+        raise
 
 
 def is_not_found_request_error(error: RequestError) -> bool:
@@ -818,8 +679,6 @@ async def remove_vm_and_disk_by_ids(
     instance_id: str,
     disk_id: str,
 ):
-    if instance_id and not instance_id.startswith("computeinstance-"):
-        raise ValueError(f"Invalid instance ID: {instance_id}")
     if disk_id and not disk_id.startswith("computedisk-"):
         raise ValueError(f"Invalid disk ID: {disk_id}")
 
@@ -844,18 +703,6 @@ async def remove_vm_and_disk_by_ids(
         logger.info("Removing instance with ID %s", instance_id)
         try:
             await remove_vm_by_id(sdk, instance_id)
-        except RequestError as error:
-            if is_not_found_request_error(error):
-                logger.info(
-                    "Instance with ID %s has already been deleted",
-                    instance_id,
-                )
-            else:
-                logger.error(
-                    "Failed to remove instance with ID %s; cleanup stopped",
-                    instance_id,
-                )
-                raise
         except Exception:
             logger.error(
                 "Failed to remove instance with ID %s; cleanup stopped",
@@ -958,22 +805,6 @@ async def search_vm_cleanup_candidates_by_labels(sdk: SDK, args: argparse.Namesp
                 metadata.id,
                 metadata.name,
             )
-            disk = await find_disk_by_instance_name(sdk, args, metadata.name)
-            if disk is not None:
-                logger.warning(
-                    "Would remove disk id=%s name=%s for VM id=%s",
-                    disk.metadata.id,
-                    disk.metadata.name,
-                    metadata.id,
-                )
-            else:
-                logger.warning(
-                    "Would try to remove disk named %s%s for VM id=%s, but lookup did not find it",
-                    DISK_NAME_PREFIX,
-                    metadata.name,
-                    metadata.id,
-                )
-
             candidates.append(instance)
 
         if not response.next_page_token:
@@ -1023,24 +854,11 @@ async def remove_vm(sdk: SDK, args: argparse.Namespace):
     elif result == "removed" or result == "would_remove":
         logger.info("Runner with name %s removed from github", args.id)
 
-    instance_service = InstanceServiceClient(sdk)
-    instance = await instance_service.get(GetInstanceRequest(id=args.id))
-    instance_name = instance.metadata.name
-    disk = await find_disk_by_instance_name(sdk, args, instance_name)
-    if disk is None:
-        logger.error(
-            "Failed to find disk for instance ID %s; removing the instance only",
-            args.id,
-        )
-
-    disk_id = disk.metadata.id if disk is not None else ""
     if not args.apply:
         logger.info("Would delete instance with ID %s", args.id)
-        if disk_id:
-            logger.info("Would delete disk with ID %s", disk_id)
         return
 
-    await remove_vm_and_disk_by_ids(sdk, args.id, disk_id)
+    await remove_vm_by_id(sdk, args.id)
 
 
 async def main() -> None:
