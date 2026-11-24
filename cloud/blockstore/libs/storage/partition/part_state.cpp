@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/core/config.h>
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/tablet/model/channels.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -97,7 +98,7 @@ TPartitionState::TPartitionState(
           channelCount)
     , TCommitIdsState()
     , TPartitionFreshBlobState(tabletId)
-    , TPartitionTrimFreshLogState()
+    , TPartitionTrimFreshLogState(tabletId)
     , TPartitionFreshBlocksState(*this, *this, threadSafeState)
     , Meta(std::move(meta))
     , CompactionPolicy(compactionPolicy)
@@ -514,9 +515,13 @@ ui32 TPartitionState::GetMixedBlocksCompactionPercentage(
         totalBytes -= Min(totalBytes, queueBytes);
     } else {
         mixedBytes =
-            CompactionMap.GetMixedBlocksCountPerDisk() * GetBlockSize();
+            CompactionMap
+                .GetMixedBlocksInRangesEligibleForMixedBlocksCountCompaction() *
+            GetBlockSize();
         totalBytes =
-            CompactionMap.GetStoredBlocksCountPerDisk() * GetBlockSize();
+            CompactionMap
+                .GetStoredBlocksInRangesEligibleForMixedBlocksCountCompaction() *
+            GetBlockSize();
     }
 
     const bool isSSD =
@@ -663,11 +668,27 @@ BLOCKSTORE_PARTITION_PROTO_COUNTERS(BLOCKSTORE_PARTITION_IMPLEMENT_COUNTER)
 
 void TPartitionState::AddFreshBlob(
     ui64 commitId,
+    const TPartialBlobId& blobId,
     ui64 blobSize,
     TInstant timestamp)
 {
-    Y_ABORT_UNLESS(commitId > GetLastTrimFreshLogToCommitId());
-    TPartitionFreshBlobState::AddFreshBlob(commitId, blobSize, timestamp);
+    // Every installed fresh blob is above every barrier sent.
+    STORAGE_VERIFY_C(
+        commitId > Max(GetLastTrimFreshLogToCommitId(),
+                       GetLastSentSelectiveTrimToCommitId()),
+        TWellKnownEntityTypes::DISK,
+        Config.GetDiskId(),
+        "fresh blob commitId " << commitId
+                               << " is not above trim barriers: "
+                                  "LastTrimFreshLogToCommitId "
+                               << GetLastTrimFreshLogToCommitId()
+                               << ", LastSentSelectiveTrimToCommitId "
+                               << GetLastSentSelectiveTrimToCommitId());
+    TPartitionFreshBlobState::AddFreshBlob(
+        commitId,
+        blobId,
+        blobSize,
+        timestamp);
 }
 
 ui32 TPartitionState::IncrementUnflushedFreshBlocksFromDbCount(size_t value)
@@ -1022,7 +1043,7 @@ void TPartitionState::WriteUsedBlocksToDB(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TPartitionState::DumpHtml(IOutputStream& out) const
+void TPartitionState::DumpHtml(IOutputStream& out, TInstant now) const
 {
     HTML(out) {
         TABLE_CLASS("table table-condensed") {
@@ -1051,11 +1072,26 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                     TABLED () {
                         DumpOperationState(
                             out,
-                            GetFlushState().GetOperationState());
+                            GetFlushState().GetOperationState(),
+                            now);
                     }
-                }                TABLER() {
+                }
+                TABLER () {
+                    TABLED () {
+                        out << "TrimFreshLog";
+                    }
+                    TABLED () {
+                        DumpOperationState(out, GetTrimFreshLogState(), now);
+                        if (const auto delay = GetTrimFreshLogBackoffDelay()) {
+                            out << ", Backoff: " << FormatDuration(delay);
+                        }
+                    }
+                }
+                TABLER () {
                     TABLED() { out << "Compaction"; }
-                    TABLED() { DumpOperationState(out, CompactionState); }
+                    TABLED () {
+                        DumpOperationState(out, CompactionState, now);
+                    }
                 }
                 TABLER() {
                     TABLED() { out << "CompactionDelay"; }
@@ -1063,7 +1099,9 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                 }
                 TABLER() {
                     TABLED() { out << "Cleanup"; }
-                    TABLED() { DumpOperationState(out, CleanupState); }
+                    TABLED () {
+                        DumpOperationState(out, CleanupState, now);
+                    }
                 }
                 TABLER() {
                     TABLED() { out << "CleanupDelay"; }
@@ -1071,7 +1109,9 @@ void TPartitionState::DumpHtml(IOutputStream& out) const
                 }
                 TABLER() {
                     TABLED() { out << "CollectGarbage"; }
-                    TABLED() { DumpOperationState(out, CollectGarbageState); }
+                    TABLED () {
+                        DumpOperationState(out, CollectGarbageState, now);
+                    }
                 }
             }
         }

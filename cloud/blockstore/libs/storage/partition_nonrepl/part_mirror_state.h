@@ -24,7 +24,7 @@ class TMirrorPartitionState
     };
 
 private:
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     TString RWClientId;
 
@@ -39,7 +39,7 @@ private:
 
 public:
     TMirrorPartitionState(
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TString rwClientId,
         TNonreplicatedPartitionConfigPtr partConfig,
         TMigrations migrations,

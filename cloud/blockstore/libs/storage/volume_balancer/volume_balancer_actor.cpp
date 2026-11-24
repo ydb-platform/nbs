@@ -140,7 +140,8 @@ STFUNC(TRemoteVolumeStatActor::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeBalancerActor::TVolumeBalancerActor(
-    TStorageConfigConstPtr storageConfig,
+    TStorageConfigPtr storageConfig,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     IVolumeStatsPtr volumeStats,
     NCloud::NStorage::IStatsFetcherPtr statsFetcher,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch,
@@ -152,6 +153,7 @@ TVolumeBalancerActor::TVolumeBalancerActor(
     , State(
           std::make_unique<TVolumeBalancerState>(
               StorageConfig,
+              std::move(diagnosticsConfig),
               std::move(volumeBalancerSwitch)))
 {}
 

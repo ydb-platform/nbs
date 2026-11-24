@@ -38,7 +38,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(FlushBytes,                             __VA_ARGS__)                   \
     xxx(ForcedRangeOperation,                   __VA_ARGS__)                   \
     xxx(ForcedTabletOperation,                  __VA_ARGS__)                   \
-    xxx(Truncate,                               __VA_ARGS__)                   \
     xxx(ReadBlob,                               __VA_ARGS__)                   \
     xxx(WriteBlob,                              __VA_ARGS__)                   \
 // FILESTORE_TABLET_REQUESTS_PRIVATE_ASYNC
@@ -48,7 +47,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(Cleanup,                                __VA_ARGS__)                   \
     xxx(DeleteZeroCompactionRanges,             __VA_ARGS__)                   \
     xxx(DeleteGarbage,                          __VA_ARGS__)                   \
-    xxx(TruncateRange,                          __VA_ARGS__)                   \
     xxx(ZeroRange,                              __VA_ARGS__)                   \
     xxx(FilterAliveNodes,                       __VA_ARGS__)                   \
     xxx(GenerateCommitId,                       __VA_ARGS__)                   \
@@ -1101,49 +1099,6 @@ struct TEvIndexTabletPrivate
     };
 
     using TDeleteCheckpointCompleted = TEmpty;
-
-    //
-    //  Truncate node
-    //
-
-    struct TTruncateRangeRequest
-    {
-        ui64 NodeId = 0;
-        TByteRange Range;
-
-        TTruncateRangeRequest(ui64 nodeId, TByteRange range)
-            : NodeId(nodeId)
-            , Range(range)
-        {}
-    };
-
-    struct TTruncateRangeResponse
-    {};
-
-    //
-    //  Truncate node
-    //
-
-    struct TTruncateRequest
-    {
-        ui64 NodeId = 0;
-        TByteRange Range;
-
-        TTruncateRequest(ui64 nodeId, TByteRange range)
-            : NodeId(nodeId)
-            , Range(range)
-        {}
-    };
-
-    struct TTruncateResponse
-    {
-        ui64 NodeId = 0;
-    };
-
-    struct TTruncateCompleted
-    {
-        ui64 NodeId = 0;
-    };
 
     //
     // Zero range

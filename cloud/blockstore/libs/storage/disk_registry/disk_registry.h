@@ -18,8 +18,8 @@ NActors::IActorPtr CreateDiskRegistry(
     const NActors::TActorId& owner,
     ILoggingServicePtr logging,
     NKikimr::TTabletStorageInfoPtr storage,
-    TStorageConfigConstPtr config,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     NLogbroker::IServicePtr logbrokerService,
     NNotify::IServicePtr notifyService);
 

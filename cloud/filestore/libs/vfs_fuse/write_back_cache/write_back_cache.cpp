@@ -125,6 +125,7 @@ public:
               args.Stats->GetWriteDataRequestManagerStats(),
               args.Stats->GetNodeStateHolderStats(),
               BuildFlushBatchLimits(args),
+              Log,
               LogTag)
     {}
 
@@ -157,7 +158,7 @@ public:
                 << "allocation " << supported << " is less than " << required
                 << ", increase the state file size or decrease "
                 << "MaxRequestSize, FilePath: " << FilePath.Quote());
-            Y_UNUSED(Drain());
+            Drain();
             return;
         }
 
@@ -202,14 +203,16 @@ public:
                            : EWriteBackCacheMode::Draining;
     }
 
-    NThreading::TFuture<NCloud::NProto::TError> Drain()
+    void Drain()
     {
-        if (!DrainRequested.exchange(true)) {
-            STORAGE_INFO(LogTag << " Start WriteBackCache draining");
-        }
+        SetDrainRequested();
+        State.Drain();
+    }
 
-        State.SetDrainingMode();
-        return State.AddFlushAllRequest();
+    TFuture<void> Shutdown()
+    {
+        SetDrainRequested();
+        return State.Shutdown();
     }
 
     bool IsDrained()
@@ -511,6 +514,15 @@ public:
     }
 
 private:
+    void SetDrainRequested()
+    {
+        // Setting DrainRequested flag is irreversible
+        if (!DrainRequested.exchange(true)) {
+            // Report entering draining mode once one
+            STORAGE_INFO(LogTag << " Request WriteBackCache draining");
+        }
+    }
+
     // Implementation of IQueuedOperationsProcessor
     void ScheduleFlushNode(ui64 nodeId) override
     {
@@ -758,9 +770,14 @@ EWriteBackCacheMode TWriteBackCache::GetMode() const
     return Impl->GetMode();
 }
 
-NThreading::TFuture<NCloud::NProto::TError> TWriteBackCache::Drain()
+void TWriteBackCache::Drain()
 {
-    return Impl->Drain();
+    Impl->Drain();
+}
+
+TFuture<void> TWriteBackCache::Shutdown()
+{
+    return Impl->Shutdown();
 }
 
 bool TWriteBackCache::IsDrained() const

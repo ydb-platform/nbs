@@ -7,6 +7,7 @@ ELSE()
 ENDIF()
 
 SRCS(
+    rdma_tablet_forwarder_ut.cpp
     rdma_tablet_registry_ut.cpp
 )
 

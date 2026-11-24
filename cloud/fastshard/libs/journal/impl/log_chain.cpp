@@ -95,9 +95,9 @@ bool TLogRecordChain::Remove(ui64 prevLsn)
     return true;
 }
 
-TResultOrError<TVector<TLogRecordPtr>> TLogRecordChain::EraseBelow(ui64 lsn)
+auto TLogRecordChain::EraseBelow(ui64 lsn) -> TResultOrError<TErasedRecords>
 {
-    TVector<TLogRecordPtr> records;
+    TErasedRecords erased;
 
     {
         std::lock_guard lock(Lock);
@@ -116,15 +116,15 @@ TResultOrError<TVector<TLogRecordPtr>> TLogRecordChain::EraseBelow(ui64 lsn)
                 break;
             }
 
-            records.push_back(std::move(it->second.Record));
+            erased.Chained.push_back(std::move(it->second.Record));
             Records.erase(it);
-            LastErasedLsn = records.back()->Lsn;
+            LastErasedLsn = erased.Chained.back()->Lsn;
         }
 
         // ready records chaining from below the watermark can never join
         for (auto it = Records.begin(); it != Records.end();) {
             if (it->first < LastErasedLsn && it->second.Ready) {
-                records.push_back(std::move(it->second.Record));
+                erased.Stranded.push_back(std::move(it->second.Record));
                 Records.erase(it++);
             } else {
                 ++it;
@@ -132,7 +132,7 @@ TResultOrError<TVector<TLogRecordPtr>> TLogRecordChain::EraseBelow(ui64 lsn)
         }
     }
 
-    return records;
+    return erased;
 }
 
 TLogRecordPtr TLogRecordChain::GetOldest() const
@@ -160,6 +160,7 @@ TLogRecordPtr TLogRecordChain::GetNextImpl(ui64 lsn) const
 
 TVector<TLogRecordPtr> TLogRecordChain::GetReadyRun(
     ui64 afterLsn,
+    ui64 maxLsn,
     ui64 maxRecordCount) const
 {
     TVector<TLogRecordPtr> records;
@@ -177,6 +178,10 @@ TVector<TLogRecordPtr> TLogRecordChain::GetReadyRun(
         while (records.size() < recordCount) {
             auto it = Records.find(tailLsn);
             if (it == Records.end() || !it->second.Ready) {
+                break;
+            }
+
+            if (it->second.Record->Lsn > maxLsn) {
                 break;
             }
 

@@ -27,6 +27,33 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Checks that chunkSize is a positive multiple of a nonzero blockSize.
+[[nodiscard]] NProto::TError ValidateCompressionSettings(
+    ui32 blockSize,
+    ui32 chunkSize);
+
+// Checks the codec and chunk layout against the compressed blob size in bytes
+// and the exact number of blocks in the original payload.
+[[nodiscard]] NProto::TError ValidateCompressionMetadata(
+    ui32 blockSize,
+    const NProto::TCompressionMetadata& compression,
+    ui32 blobSize,
+    ui32 expectedBlockCount);
+
+struct TValidatedBlobRead
+{
+    ui32 BlockSize;
+    ui32 LastCompressedChunkSize;
+    const NBlockCodecs::ICodec* Codec;
+};
+
+// Validates the codec, chunk layout and bounds of strictly increasing offsets.
+[[nodiscard]] TResultOrError<TValidatedBlobRead> ValidateReadBlobInput(
+    ui32 blockSize,
+    const NProto::TCompressionMetadata& compression,
+    ui32 blobSize,
+    std::span<const ui16> blockOffsets);
+
 struct TCompressedBlob
 {
     // Compressed chunks concatenated in their original order.
@@ -131,6 +158,22 @@ struct TReadPlan
     const NKikimr::TLogoBlobID& blobId,
     const NProto::TCompressionMetadata& compression,
     std::span<const ui16> blockOffsets);
+
+// These overloads reuse the result of ValidateReadBlobInput for the same blob
+// and metadata. The offsets may be a sorted subset of the validated offsets.
+[[nodiscard]] TReadPlan PlanReadBlob(
+    const TValidatedBlobRead& read,
+    const NKikimr::TLogoBlobID& blobId,
+    const NProto::TCompressionMetadata& compression,
+    std::span<const ui16> blockOffsets);
+
+[[nodiscard]] NProto::TError DecompressBlob(
+    const TValidatedBlobRead& read,
+    const TRope& compressedData,
+    const NProto::TCompressionMetadata& compression,
+    std::span<const ui16> blockOffsets,
+    std::span<const TBlockDataRef> outputBuffers,
+    TVector<ui32>* blockChecksums);
 
 ////////////////////////////////////////////////////////////////////////////////
 

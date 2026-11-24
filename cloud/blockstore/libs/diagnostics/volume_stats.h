@@ -165,7 +165,7 @@ struct IVolumeStats
 
 IVolumeStatsPtr CreateVolumeStats(
     IMonitoringServicePtr monitoring,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     TDuration inactiveClientsTimeout,
     EVolumeStatsType type,
     ITimerPtr timer);

@@ -25,6 +25,14 @@ void AdjustActorSystemThreadsAccordingToAvailableCpus(
         return;
     }
 
+    const size_t availableCores = TAffinity::Current().GetCores().size();
+    if (config.GetUseAutoConfig()) {
+        // Auto config ignores Executor and derives every pool from CpuCount.
+        config.SetCpuCount(static_cast<ui32>(
+            std::ceil(availableCores * availableCpuCoresPercentage / 100.0)));
+        return;
+    }
+
     using TExecutor = NKikimrConfig::TActorSystemConfig::TExecutor;
 
     const auto findPool = [&] (const auto& poolName) -> TExecutor* {
@@ -57,7 +65,6 @@ void AdjustActorSystemThreadsAccordingToAvailableCpus(
         }
     }
 
-    const auto availableCores = TAffinity::Current().GetCores().size();
     const double scalingFactor =
         (1.0 * availableCpuCoresPercentage) / (100 * executors.size());
     const auto newThreadCount = std::ceil(availableCores * scalingFactor);

@@ -110,9 +110,10 @@ enum class EWriteBackCacheMode
     // WriteDataDirect instead of WriteData
     Draining,
 
-    // WriteBackCache was requested to drain and all the data is flushed
+    // WriteBackCache was requested to drain and no pending or unflushed writes
+    // remain
     // New cached WriteData requests are not accepted and will return E_REJECTED
-    // Since WriteBackCache contains no data, clients may safely stop using it
+    // New operations may bypass the cache
     Drained
 };
 
@@ -153,18 +154,26 @@ public:
      * all pending and unflushed are flushed - then it will become
      * EWriteBackCacheMode::Drained.
      *
-     * The returned future is completed successfully when WriteBackCache become
-     * drained. An error is returned if flush is failed. The returned future
-     * never completes if WriteBackCache is in failed state due to underlying
-     * storage corrption or logic failure.
+     * Does not drop cached data on flush errors except the scenario described
+     * in ReleaseHandle().
      *
-     * The call has no effect if WriteBackCache is already drained and will
-     * return a completed future immediately.
-     *
-     * Note: the call is not reversible (WriteBackCache cannot be returned to
-     * EWriteBackCacheMode::Normal mode without restart).
+     * Use IsDrained() to check completion. Storage corruption or an internal
+     * cache failure suspends draining.
      */
-    [[nodiscard]] NThreading::TFuture<NCloud::NProto::TError> Drain();
+    void Drain();
+
+    /* Irreversibly stops accepting cached writes and starts asynchronous
+     * flushing similar to Drain(). WriteDataDirect remains allowed.
+     *
+     * Unlike Drain(), cached data will be dropped on flush errors,
+     * therefore completion does not guarantee persistence. Dropped requests
+     * are reported as critical events.
+     *
+     * The future completes once the cache is healthy and no pending or
+     * unflushed writes remain, otherwise it will hang indefinitely and wait
+     * for manual resolution.
+     */
+    [[nodiscard]] NThreading::TFuture<void> Shutdown();
 
     // A reliable way to check that WriteBackCache has been drained
     bool IsDrained() const;

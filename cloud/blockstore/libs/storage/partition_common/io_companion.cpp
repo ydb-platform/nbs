@@ -11,13 +11,13 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 TIOCompanion::TIOCompanion(
-    TStorageConfigConstPtr config,
+    TStorageConfigPtr config,
     const NProto::TPartitionConfig& partitionConfig,
     NKikimr::TTabletStorageInfoPtr tabletStorageInfo,
     ui64 tabletID,
     TBlobCompressorPtr blobCompressor,
     const NActors::TActorId& volumeActorId,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     EStorageAccessMode storageAccessMode,
     TBSGroupOperationTimeTracker& bsGroupOperationTimeTracker,
     ui64& bsGroupOperationId,

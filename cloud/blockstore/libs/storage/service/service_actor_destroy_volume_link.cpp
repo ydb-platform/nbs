@@ -25,7 +25,7 @@ class TDestroyVolumeLinkActor final
 {
 private:
     const TRequestInfoPtr RequestInfo;
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     const TString LeaderDiskId;
     const TString LeaderCellId;
     const TString FollowerDiskId;
@@ -36,7 +36,7 @@ private:
 public:
     TDestroyVolumeLinkActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TString leaderDiskId,
         TString leaderCellId,
         TString followerDiskId,
@@ -68,7 +68,7 @@ private:
 
 TDestroyVolumeLinkActor::TDestroyVolumeLinkActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TString leaderDiskId,
         TString leaderCellId,
         TString followerDiskId,

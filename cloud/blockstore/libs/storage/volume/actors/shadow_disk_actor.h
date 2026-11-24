@@ -117,8 +117,8 @@ private:
 public:
     TShadowDiskActor(
         TChildLogTitle logTitle,
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticConfig,
         NCloud::NStorage::NRdma::IClientPtr rdmaClient,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,

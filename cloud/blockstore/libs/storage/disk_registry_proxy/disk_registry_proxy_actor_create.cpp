@@ -54,15 +54,15 @@ class TCreateDiskRegistryActor final
     : public TActorBootstrapped<TCreateDiskRegistryActor>
 {
 private:
-    const TStorageConfigConstPtr StorageConfig;
-    const TDiskRegistryProxyConfigConstPtr Config;
+    const TStorageConfigPtr StorageConfig;
+    const TDiskRegistryProxyConfigPtr Config;
     const TActorId Sender;
     const TDiskRegistryChannelKinds Kinds;
 
 public:
     TCreateDiskRegistryActor(
-        TStorageConfigConstPtr config,
-        TDiskRegistryProxyConfigConstPtr diskRegistryProxyConfig,
+        TStorageConfigPtr config,
+        TDiskRegistryProxyConfigPtr diskRegistryProxyConfig,
         TActorId requester,
         TDiskRegistryChannelKinds kinds);
 
@@ -87,8 +87,8 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCreateDiskRegistryActor::TCreateDiskRegistryActor(
-        TStorageConfigConstPtr config,
-        TDiskRegistryProxyConfigConstPtr diskRegistryProxyConfig,
+        TStorageConfigPtr config,
+        TDiskRegistryProxyConfigPtr diskRegistryProxyConfig,
         TActorId sender,
         TDiskRegistryChannelKinds kinds)
     : StorageConfig(std::move(config))

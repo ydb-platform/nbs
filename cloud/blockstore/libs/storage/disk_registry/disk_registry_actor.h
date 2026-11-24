@@ -70,8 +70,8 @@ class TDiskRegistryActor final
     };
 
 private:
-    const TStorageConfigConstPtr Config;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     TLogTitle LogTitle;
 
     static const TStateInfo States[];
@@ -140,8 +140,8 @@ public:
     TDiskRegistryActor(
         const NActors::TActorId& owner,
         NKikimr::TTabletStorageInfoPtr storage,
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TLogbrokerServicePtr logbrokerService,
         NNotify::IServicePtr notifyService,
         ILoggingServicePtr logging);

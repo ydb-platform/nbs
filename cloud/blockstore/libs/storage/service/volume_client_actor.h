@@ -13,7 +13,7 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 NActors::IActorPtr CreateVolumeClient(
-    TStorageConfigConstPtr config,
+    TStorageConfigPtr config,
     ITraceSerializerPtr traceSerializer,
     NServer::IEndpointEventHandlerPtr endpointEventHandler,
     const NActors::TActorId& sessionActorId,

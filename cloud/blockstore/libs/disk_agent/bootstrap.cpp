@@ -212,7 +212,7 @@ public:
 };
 
 NCloud::NStorage::NRdma::TServerConfigPtr CreateRdmaServerConfig(
-    NRdma::TRdmaConfig& config)
+    const NRdma::TRdmaConfig& config)
 {
     return NCloud::NStorage::NRdma::CreateServerConfigPtr(config.GetServer());
 }
@@ -355,7 +355,7 @@ void TBootstrap::InitProfileLog()
     }
 }
 
-void TBootstrap::InitRdmaServer(NRdma::TRdmaConfig& config)
+void TBootstrap::InitRdmaServer(const NRdma::TRdmaConfig& config)
 {
     try {
         if (config.GetServerEnabled()) {

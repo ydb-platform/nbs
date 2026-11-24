@@ -11,8 +11,8 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 NActors::IActorPtr CreateStorageStatsService(
-    TStorageConfigConstPtr config,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     NYdbStats::IYdbVolumesStatsUploaderPtr statsUploader,
     IStatsAggregatorPtr clientStatsAggregator);
 

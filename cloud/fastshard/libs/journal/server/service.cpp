@@ -14,6 +14,8 @@
 #include <util/string/builder.h>
 
 #include <functional>
+#include <mutex>
+#include <utility>
 
 namespace NCloud::NJournalled {
 
@@ -23,19 +25,42 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Touched only in the executor, so no locking is needed: the requests, the
-// formats and the stop all run there.
-struct TJournalledDeviceSpec
+class TJournalledDeviceSpec
 {
-    TJournalledDeviceConfig Config;
+public:
+    const TJournalledDeviceConfig Config;
 
     // Set while a format of the device is in flight: a parallel format of
     // the same device is rejected.
     bool Formatting = false;
 
+private:
+    // Protects only |Device|: the executor changes it while the threads of
+    // the connections read it. |Config| never changes, and |Formatting| is
+    // used only in the executor, so they need no lock.
+    mutable std::mutex DeviceLock;
+
     // Null while the device is not started: it failed to start or to be
     // recreated, and stays so until the next format succeeds.
     IJournalledDevicePtr Device;
+
+public:
+    explicit TJournalledDeviceSpec(TJournalledDeviceConfig config)
+        : Config(std::move(config))
+    {}
+
+    IJournalledDevicePtr GetDevice() const
+    {
+        std::lock_guard lock(DeviceLock);
+        return Device;
+    }
+
+    IJournalledDevicePtr ExchangeDevice(IJournalledDevicePtr device)
+    {
+        std::lock_guard lock(DeviceLock);
+        Device.swap(device);
+        return device;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,8 +76,8 @@ THashMap<TString, TJournalledDeviceSpec> MakeDeviceSpecs(
     THashMap<TString, TJournalledDeviceSpec> specs;
 
     for (auto& config: configs) {
-        auto& spec = specs[config.DeviceUUID];
-        spec.Config = std::move(config);
+        auto uuid = config.DeviceUUID;
+        specs.try_emplace(std::move(uuid), std::move(config));
     }
 
     return specs;
@@ -339,11 +364,12 @@ private:
             static_cast<ui32>(DeviceSpecs.size()),
             [](TJournalledDeviceSpec& spec) -> TFuture<void>
             {
-                if (!spec.Device) {
+                auto device = spec.GetDevice();
+                if (!device) {
                     return MakeFuture();
                 }
 
-                return spec.Device->Stop();
+                return device->Stop();
             }));
     }
 
@@ -356,7 +382,8 @@ private:
     // Runs in the executor: waits for the device to start.
     NProto::TError DoStartJournalledDevice(TJournalledDeviceSpec& spec)
     {
-        auto [device, error] = JournalledDeviceFactory->Create(spec.Config);
+        auto [device, error] =
+            JournalledDeviceFactory->Create(spec.Config);
         if (HasError(error)) {
             return error;
         }
@@ -366,7 +393,8 @@ private:
             return error;
         }
 
-        spec.Device = std::move(device);
+        auto old = spec.ExchangeDevice(std::move(device));
+        Y_ABORT_UNLESS(old == nullptr);
         return {};
     }
 
@@ -374,12 +402,12 @@ private:
     // not started has nothing to stop.
     void DoStopJournalledDevice(TJournalledDeviceSpec& spec)
     {
-        if (!spec.Device) {
+        auto device = spec.ExchangeDevice(nullptr);
+        if (!device) {
             return;
         }
 
-        Executor->WaitFor(spec.Device->Stop());
-        spec.Device = nullptr;
+        Executor->WaitFor(device->Stop());
     }
 
     NProto::TFormatDeviceResponse DoFormatDevice(
@@ -395,14 +423,15 @@ private:
             return error;
         }
 
-        if (!spec->Device) {
+        auto device = spec->GetDevice();
+        if (!device) {
             return MakeError(
                 E_INVALID_STATE,
                 TStringBuilder()
                     << "Device " << deviceUUID.Quote() << " is not started");
         }
 
-        return spec->Device;
+        return device;
     }
 
     TResultOrError<TJournalledDeviceSpec*> GetDeviceSpec(
@@ -446,7 +475,7 @@ private:
                 auto self = weakSelf.lock();
                 if (!self) {
                     return MakeErrorResponse<T>(
-                        E_FAIL,
+                        E_CANCELLED,
                         "TJournalledDeviceHandler is destroyed");
                 }
 
@@ -505,7 +534,7 @@ NProto::TFormatDeviceResponse TJournalledDeviceHandler::DoFormatDevice(
     // completes
     //
 
-    if (spec->Formatting) {
+    if (std::exchange(spec->Formatting, true) == true) {
         return TErrorResponse(
             E_INVALID_STATE,
             TStringBuilder() << "Device " << config.DeviceUUID.Quote()
@@ -517,13 +546,11 @@ NProto::TFormatDeviceResponse TJournalledDeviceHandler::DoFormatDevice(
     // the format completes
     //
 
-    auto& formatting = spec->Formatting;
-    formatting = true;
     ++FormatsInFlight;
 
     Y_DEFER
     {
-        formatting = false;
+        spec->Formatting = false;
         --FormatsInFlight;
         FormatsDone.BroadCast();
     };

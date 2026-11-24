@@ -19,6 +19,7 @@ SRCS(
     find_garbage.cpp
     forced_compaction.cpp
     get_node_xattr.cpp
+    helpers.cpp
     kick_endpoint.cpp
     list_cluster_nodes.cpp
     list_endpoints.cpp

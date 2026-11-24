@@ -179,8 +179,8 @@ struct TCompactionMap::TImpl
         CompareByMixedBlockCount};
 
     ui32 NonEmptyRangeCount = 0;
-    ui64 MixedBlocksCountPerDisk = 0;
-    ui64 StoredBlocksCountPerDisk = 0;
+    ui64 MixedBlocksInRangesEligibleForMixedBlocksCountCompaction = 0;
+    ui64 StoredBlocksInRangesEligibleForMixedBlocksCountCompaction = 0;
 
     TImpl(ui32 rangeSize, ICompactionPolicyPtr policy)
         : RangeSize(rangeSize)
@@ -485,10 +485,22 @@ struct TCompactionMap::TImpl
                 RecalculateGroupMaxMixedBlockCount(group);
             }
 
-            MixedBlocksCountPerDisk -= prev.MixedBlockCount;
-            MixedBlocksCountPerDisk += group->Stats[index].MixedBlockCount;
-            StoredBlocksCountPerDisk -= prev.BlockCount;
-            StoredBlocksCountPerDisk += group->Stats[index].BlockCount;
+            if (prev.MeetsUsedBlocksThreshold(
+                    UsedBlocksThresholdForMixedBlocksCompaction))
+            {
+                MixedBlocksInRangesEligibleForMixedBlocksCountCompaction -=
+                    prev.MixedBlockCount;
+                StoredBlocksInRangesEligibleForMixedBlocksCountCompaction -=
+                    prev.BlockCount;
+            }
+            if (newStat.MeetsUsedBlocksThreshold(
+                    UsedBlocksThresholdForMixedBlocksCompaction))
+            {
+                MixedBlocksInRangesEligibleForMixedBlocksCountCompaction +=
+                    newStat.MixedBlockCount;
+                StoredBlocksInRangesEligibleForMixedBlocksCountCompaction +=
+                    newStat.BlockCount;
+            }
         }
 
         return group;
@@ -579,16 +591,6 @@ struct TCompactionMap::TImpl
     ui32 GetNonEmptyRangeCount() const
     {
         return NonEmptyRangeCount;
-    }
-
-    ui64 GetMixedBlocksCountPerDisk() const
-    {
-        return MixedBlocksCountPerDisk;
-    }
-
-    ui64 GetStoredBlocksCountPerDisk() const
-    {
-        return StoredBlocksCountPerDisk;
     }
 };
 
@@ -698,8 +700,8 @@ void TCompactionMap::Clear()
     Impl->GroupByGarbageBlockCount.Clear();
     Impl->GroupByGarbageIgnoringZeroed.Clear();
     Impl->GroupByMixedBlockCount.Clear();
-    Impl->MixedBlocksCountPerDisk = 0;
-    Impl->StoredBlocksCountPerDisk = 0;
+    Impl->MixedBlocksInRangesEligibleForMixedBlocksCountCompaction = 0;
+    Impl->StoredBlocksInRangesEligibleForMixedBlocksCountCompaction = 0;
     Impl->Groups.Clear();
 }
 
@@ -850,17 +852,15 @@ TCompactionCounter TCompactionMap::GetTopByMixedBlockCount() const
         return {0, {}};
     }
 
-    const bool hasMixedBlocksInTopRange =
-        group->Stats[group->RangeWithMaxMixedBlockCount].MixedBlockCount > 0;
-    const bool hasEnoughUsedBlocksInTopRange =
-        group->Stats[group->RangeWithMaxMixedBlockCount].UsedBlockCount >=
-        Impl->Policy->GetUsedBlocksThresholdForMixedBlocksCompaction();
-
-    if (hasMixedBlocksInTopRange && hasEnoughUsedBlocksInTopRange) {
+    const auto& stat = group->Stats[group->RangeWithMaxMixedBlockCount];
+    if (stat.MixedBlockCount &&
+        stat.MeetsUsedBlocksThreshold(
+            Impl->UsedBlocksThresholdForMixedBlocksCompaction))
+    {
         return {
             group->BlockIndex +
                 group->RangeWithMaxMixedBlockCount * Impl->RangeSize,
-            group->Stats[group->RangeWithMaxMixedBlockCount]};
+            stat};
     }
     return {0, {}};
 }
@@ -956,7 +956,7 @@ TVector<TCompactionCounter> TCompactionMap::GetTopByMixedBlockCount(
     for (const auto& group: Impl->Groups) {
         for (ui32 i = 0; i < group.Stats.size(); ++i) {
             if (group.Stats[i].BlobCount > 0 &&
-                group.Stats[i].UsedBlockCount >= usedBlocksThreshold &&
+                group.Stats[i].MeetsUsedBlocksThreshold(usedBlocksThreshold) &&
                 group.Stats[i].MixedBlockCount > 0)
             {
                 result.emplace_back(
@@ -999,14 +999,16 @@ ui32 TCompactionMap::GetNonEmptyRangeCount() const
     return Impl->GetNonEmptyRangeCount();
 }
 
-ui64 TCompactionMap::GetMixedBlocksCountPerDisk() const
+ui64 TCompactionMap::
+    GetMixedBlocksInRangesEligibleForMixedBlocksCountCompaction() const
 {
-    return Impl->GetMixedBlocksCountPerDisk();
+    return Impl->MixedBlocksInRangesEligibleForMixedBlocksCountCompaction;
 }
 
-ui64 TCompactionMap::GetStoredBlocksCountPerDisk() const
+ui64 TCompactionMap::
+    GetStoredBlocksInRangesEligibleForMixedBlocksCountCompaction() const
 {
-    return Impl->GetStoredBlocksCountPerDisk();
+    return Impl->StoredBlocksInRangesEligibleForMixedBlocksCountCompaction;
 }
 
 ui32 TCompactionMap::GetRangeStart(ui32 blockIndex) const

@@ -118,6 +118,7 @@ func (t *createImageFromDiskTask) run(
 		"",
 		disk.ZoneId,
 		&dataplane_protos.CreateSnapshotFromDiskRequest{
+			BlockSize:           diskParams.BlockSize,
 			SrcDisk:             disk,
 			SrcDiskCheckpointId: checkpointID,
 			DstSnapshotId:       t.request.DstImageId,

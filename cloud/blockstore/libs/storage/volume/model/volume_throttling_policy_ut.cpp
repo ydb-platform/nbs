@@ -1,4 +1,5 @@
 #include "volume_throttling_policy.h"
+
 #include "cloud/storage/core/libs/throttling/helpers.h"
 
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
@@ -6,6 +7,11 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/size_literals.h>
+#include <util/string/builder.h>
+#include <util/string/cast.h>
+
+#include <initializer_list>
+#include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -742,6 +748,519 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
     }
 
 #undef DO_TEST
+
+    void DoShouldPreserveBandwidthLimitsWhenApplyingCoefficients(
+        EOpType opType,
+        TMaybe<double> coefficient,
+        std::initializer_list<std::pair<ui64, ui64>> bandwidthLimits)
+    {
+        // Keep IOPS fixed and disable boost to check bandwidth limits.
+        const bool isRead = (opType == EOpType::Read);
+        auto config = MakeConfig(10_KB, 0, 1000, 1000, 1, 0, 0, 0, 8_MB);
+        const TThrottlerConfig
+            throttlerConfig(TDuration::Max(), 1, 1, TDuration::Zero(), false);
+        TVolumeThrottlingPolicy policy(config, throttlerConfig);
+
+        // Apply only the selected coefficient, or leave it absent.
+        NProto::TVolumeThrottlingRule rule;
+        if (coefficient) {
+            if (isRead) {
+                rule.MutableCoefficients()->SetMaxReadBandwidth(*coefficient);
+            } else {
+                rule.MutableCoefficients()->SetMaxWriteBandwidth(*coefficient);
+            }
+        }
+        policy.Reset(rule, 1);
+
+        for (const auto& [originalBandwidth, expectedBandwidth]:
+             bandwidthLimits)
+        {
+            const TString context =
+                TStringBuilder()
+                << "operation: " << static_cast<ui32>(opType)
+                << ", bandwidth: " << originalBandwidth << ", coefficient: "
+                << (coefficient ? ToString(*coefficient) : "unset");
+
+            // Change the original profile and check the saved coefficient.
+            if (isRead) {
+                config.SetMaxReadBandwidth(originalBandwidth);
+            } else {
+                config.SetMaxWriteBandwidth(originalBandwidth);
+            }
+            policy.Reset(config, throttlerConfig);
+            const auto expectedReadBandwidth =
+                isRead ? expectedBandwidth : config.GetMaxReadBandwidth();
+            const auto expectedWriteBandwidth =
+                isRead ? config.GetMaxWriteBandwidth() : expectedBandwidth;
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedReadBandwidth,
+                policy.GetConfig().GetMaxReadBandwidth(),
+                context);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedWriteBandwidth,
+                policy.GetConfig().GetMaxWriteBandwidth(),
+                context);
+
+            // Check read/write fallback and the limits used for DescribeBlocks.
+            for (const auto requestOpType:
+                 {EOpType::Read, EOpType::Write, EOpType::Describe})
+            {
+                auto effectiveBandwidth =
+                    requestOpType == EOpType::Write && expectedWriteBandwidth
+                        ? expectedWriteBandwidth
+                        : expectedReadBandwidth;
+                // Keep DescribeBlocks independent of bandwidth limits.
+                if (requestOpType == EOpType::Describe) {
+                    effectiveBandwidth = 0;
+                }
+                const auto expectedC1 =
+                    CalculateThrottlerC1(1000, effectiveBandwidth);
+                const auto expectedC2 =
+                    CalculateThrottlerC2(1000, effectiveBandwidth);
+                const TString requestContext =
+                    TStringBuilder() << context << ", request operation: "
+                                     << static_cast<ui32>(requestOpType);
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    expectedC1,
+                    policy.C1(requestOpType),
+                    requestContext);
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    expectedC2,
+                    policy.C2(requestOpType),
+                    requestContext);
+
+                // Reset the budget for each request. Use the current version
+                // so the request reaches the cost calculation.
+                const auto getDelay = [&](ui64 byteCount)
+                {
+                    policy.Reset(rule, 1);
+                    const auto delay = policy.SuggestDelay(
+                        TInstant::Seconds(1),
+                        TDuration::Zero(),
+                        {byteCount,
+                         static_cast<ui32>(requestOpType),
+                         policy.GetVersion()});
+                    UNIT_ASSERT_C(delay.Defined(), requestContext);
+
+                    // Account for the 10 ms budget from BurstPercentage == 1
+                    // and microsecond rounding of the resulting delay.
+                    const auto expectedCost =
+                        CostPerIO(expectedC1, expectedC2, byteCount);
+                    const auto burstBudget = TDuration::MilliSeconds(10);
+                    const auto expectedDelay = expectedCost > burstBudget
+                                                   ? expectedCost - burstBudget
+                                                   : TDuration::Zero();
+                    UNIT_ASSERT_DOUBLES_EQUAL_C(
+                        expectedDelay.SecondsFloat(),
+                        delay->SecondsFloat(),
+                        TDuration::MicroSeconds(2).SecondsFloat(),
+                        requestContext);
+                    return *delay;
+                };
+                const auto smallRequestDelay = getDelay(4_KB);
+                const auto largeRequestDelay = getDelay(4_MB);
+
+                // Check that only an active bandwidth limit makes larger
+                // requests wait longer; otherwise their delays must be equal.
+                if (expectedC2) {
+                    UNIT_ASSERT_C(
+                        largeRequestDelay > smallRequestDelay,
+                        requestContext);
+                } else {
+                    UNIT_ASSERT_VALUES_EQUAL_C(
+                        smallRequestDelay,
+                        largeRequestDelay,
+                        requestContext);
+                }
+            }
+
+            // Reapply the rule and check that it still scales the original
+            // profile rather than the previously calculated limit.
+            policy.Reset(rule, 1);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedBandwidth,
+                isRead ? policy.GetConfig().GetMaxReadBandwidth()
+                       : policy.GetConfig().GetMaxWriteBandwidth(),
+                context);
+        }
+    }
+
+    // Verify that coefficients keep positive read/write bandwidth limits
+    // active, preserve intentional zeros and use updated original profiles.
+    Y_UNIT_TEST(ShouldPreserveBandwidthLimitsWhenApplyingCoefficients)
+    {
+        for (const auto opType: {EOpType::Read, EOpType::Write}) {
+            // Change the original profile and check that a small positive
+            // coefficient keeps the limit at least 1 byte/s after each update.
+            DoShouldPreserveBandwidthLimitsWhenApplyingCoefficients(
+                opType,
+                0.000001,
+                {{100, 1}, {5'000'000, 5}, {100, 1}});
+
+            // Check values below, at and above 1 byte/s, and preserve
+            // truncation of larger fractions and an original zero value.
+            DoShouldPreserveBandwidthLimitsWhenApplyingCoefficients(
+                opType,
+                0.5,
+                {{1, 1}, {2, 1}, {3, 1}, {5, 2}, {0, 0}});
+
+            // Preserve explicit zeros and unchanged limits when the coefficient
+            // is absent or one; keep the read fallback for zero write limits.
+            DoShouldPreserveBandwidthLimitsWhenApplyingCoefficients(
+                opType,
+                0.0,
+                {{100, 0}});
+            DoShouldPreserveBandwidthLimitsWhenApplyingCoefficients(
+                opType,
+                1.0,
+                {{100, 100}});
+            DoShouldPreserveBandwidthLimitsWhenApplyingCoefficients(
+                opType,
+                Nothing(),
+                {{100, 100}, {0, 0}});
+        }
+    }
+
+    void DoShouldPreserveIopsLimitsWhenApplyingCoefficients(
+        EOpType opType,
+        TMaybe<double> coefficient,
+        std::initializer_list<std::pair<ui32, ui32>> iopsLimits)
+    {
+        // Disable bandwidth and boost to check IOPS limits.
+        const bool isRead = (opType == EOpType::Read);
+        auto config = MakeConfig(0, 0, 1000, 0, 1, 0, 0, 0, 8_MB);
+        const TThrottlerConfig
+            throttlerConfig(TDuration::Max(), 1, 1, TDuration::Zero(), false);
+        TVolumeThrottlingPolicy policy(config, throttlerConfig);
+
+        // Apply only the selected coefficient, or leave it absent.
+        NProto::TVolumeThrottlingRule rule;
+        if (coefficient) {
+            if (isRead) {
+                rule.MutableCoefficients()->SetMaxReadIops(*coefficient);
+            } else {
+                rule.MutableCoefficients()->SetMaxWriteIops(*coefficient);
+            }
+        }
+        policy.Reset(rule, 1);
+
+        for (const auto& [originalIops, expectedIops]: iopsLimits) {
+            const TString context =
+                TStringBuilder()
+                << "operation: " << static_cast<ui32>(opType)
+                << ", IOPS: " << originalIops << ", coefficient: "
+                << (coefficient ? ToString(*coefficient) : "unset");
+
+            // Change the original profile and check the saved coefficient.
+            if (isRead) {
+                config.SetMaxReadIops(originalIops);
+            } else {
+                config.SetMaxWriteIops(originalIops);
+            }
+            policy.Reset(config, throttlerConfig);
+            const auto expectedReadIops =
+                isRead ? expectedIops : config.GetMaxReadIops();
+            const auto expectedWriteIops =
+                isRead ? config.GetMaxWriteIops() : expectedIops;
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedReadIops,
+                policy.GetConfig().GetMaxReadIops(),
+                context);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedWriteIops,
+                policy.GetConfig().GetMaxWriteIops(),
+                context);
+
+            // Check read/write fallback and the limits used for DescribeBlocks.
+            for (const auto requestOpType:
+                 {EOpType::Read, EOpType::Write, EOpType::Describe})
+            {
+                const auto effectiveIops =
+                    requestOpType == EOpType::Write && expectedWriteIops
+                        ? expectedWriteIops
+                        : expectedReadIops;
+                const auto expectedC1 = effectiveIops;
+                const ui64 expectedC2 = 0;
+                const TString requestContext =
+                    TStringBuilder() << context << ", request operation: "
+                                     << static_cast<ui32>(requestOpType);
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    expectedC1,
+                    policy.C1(requestOpType),
+                    requestContext);
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    expectedC2,
+                    policy.C2(requestOpType),
+                    requestContext);
+
+                // Check intentional zeros above without passing zero IOPS to
+                // the request-cost calculation, which requires positive IOPS.
+                if (!effectiveIops) {
+                    continue;
+                }
+
+                // Reset the budget for each request. Use the current version
+                // so the request reaches the cost calculation.
+                const auto getDelay = [&](ui64 byteCount)
+                {
+                    policy.Reset(rule, 1);
+                    const auto delay = policy.SuggestDelay(
+                        TInstant::Seconds(1),
+                        TDuration::Zero(),
+                        {byteCount,
+                         static_cast<ui32>(requestOpType),
+                         policy.GetVersion()});
+                    UNIT_ASSERT_C(delay.Defined(), requestContext);
+
+                    // Account for the 10 ms budget from BurstPercentage == 1
+                    // and microsecond rounding of the resulting delay.
+                    const auto expectedCost =
+                        CostPerIO(expectedC1, expectedC2, byteCount);
+                    const auto burstBudget = TDuration::MilliSeconds(10);
+                    const auto expectedDelay = expectedCost > burstBudget
+                                                   ? expectedCost - burstBudget
+                                                   : TDuration::Zero();
+                    UNIT_ASSERT_DOUBLES_EQUAL_C(
+                        expectedDelay.SecondsFloat(),
+                        delay->SecondsFloat(),
+                        TDuration::MicroSeconds(2).SecondsFloat(),
+                        requestContext);
+                    return *delay;
+                };
+                const auto smallRequestDelay = getDelay(4_KB);
+                const auto largeRequestDelay = getDelay(4_MB);
+
+                // Check that only an active bandwidth limit makes larger
+                // requests wait longer; otherwise their delays must be equal.
+                if (expectedC2) {
+                    UNIT_ASSERT_C(
+                        largeRequestDelay > smallRequestDelay,
+                        requestContext);
+                } else {
+                    UNIT_ASSERT_VALUES_EQUAL_C(
+                        smallRequestDelay,
+                        largeRequestDelay,
+                        requestContext);
+                }
+            }
+
+            // Reapply the rule and check that it still scales the original
+            // profile rather than the previously calculated limit.
+            policy.Reset(rule, 1);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedIops,
+                isRead ? policy.GetConfig().GetMaxReadIops()
+                       : policy.GetConfig().GetMaxWriteIops(),
+                context);
+        }
+    }
+
+    // Verify that coefficients keep positive read/write IOPS limits active,
+    // preserve intentional zeros and use updated original profiles.
+    Y_UNIT_TEST(ShouldPreserveIopsLimitsWhenApplyingCoefficients)
+    {
+        for (const auto opType: {EOpType::Read, EOpType::Write}) {
+            // Change the original profile and check that a small positive
+            // coefficient keeps the limit at least 1 IOPS after each update.
+            DoShouldPreserveIopsLimitsWhenApplyingCoefficients(
+                opType,
+                0.000001,
+                {{100, 1}, {5'000'000, 5}, {100, 1}});
+
+            // Check values below, at and above 1 IOPS, and preserve
+            // truncation of larger fractions and an original zero value.
+            DoShouldPreserveIopsLimitsWhenApplyingCoefficients(
+                opType,
+                0.5,
+                {{1, 1}, {2, 1}, {3, 1}, {5, 2}, {0, 0}});
+
+            // Preserve explicit zeros and unchanged limits when the coefficient
+            // is absent or one; keep the read fallback for zero write limits.
+            DoShouldPreserveIopsLimitsWhenApplyingCoefficients(
+                opType,
+                0.0,
+                {{100, 0}});
+            DoShouldPreserveIopsLimitsWhenApplyingCoefficients(
+                opType,
+                1.0,
+                {{100, 100}});
+            DoShouldPreserveIopsLimitsWhenApplyingCoefficients(
+                opType,
+                Nothing(),
+                {{100, 100}, {0, 0}});
+        }
+    }
+
+    void DoShouldPreserveBoostRefillWhenApplyingCoefficients(
+        TMaybe<double> coefficient,
+        std::initializer_list<std::pair<ui32, ui32>> refillTimes)
+    {
+        // Use 1 IOPS, BurstPercentage == 1 and a 1 ms boost capacity at 200%.
+        // Start with no boost budget to check only its refill rate.
+        auto config = MakeSimpleConfig(0, 1, 1, 1, 100, 200, 8_MB);
+        const TThrottlerConfig
+            throttlerConfig(TDuration::Max(), 1, 1, TDuration::Zero(), false);
+        TVolumeThrottlingPolicy policy(config, throttlerConfig);
+
+        // Apply only BoostRefillTime's coefficient, or leave it absent.
+        NProto::TVolumeThrottlingRule rule;
+        if (coefficient) {
+            rule.MutableCoefficients()->SetBoostRefillTime(*coefficient);
+        }
+        policy.Reset(rule, 1);
+
+        for (const auto& [originalRefillTime, expectedRefillTime]: refillTimes)
+        {
+            const TString context =
+                TStringBuilder()
+                << "BoostRefillTime: " << originalRefillTime
+                << ", coefficient: "
+                << (coefficient ? ToString(*coefficient) : "unset");
+
+            // Change the original profile and check the saved coefficient.
+            config.SetBoostRefillTime(originalRefillTime);
+            policy.Reset(config, throttlerConfig);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedRefillTime,
+                policy.GetConfig().GetBoostRefillTime(),
+                context);
+
+            // Check that refill reduces the delay after the initial 10 ms
+            // burst; an intentional zero must keep the ordinary IOPS rate.
+            const auto delay = policy.SuggestDelay(
+                TInstant::Seconds(1),
+                TDuration::Zero(),
+                {4_KB, static_cast<ui32>(EOpType::Read), policy.GetVersion()});
+            UNIT_ASSERT_C(delay.Defined(), context);
+            const auto requestCost = TDuration::Seconds(1);
+            const auto burstBudget = TDuration::MilliSeconds(10);
+            const auto refillRate =
+                expectedRefillTime ? 1. / expectedRefillTime : 0.;
+            const auto expectedDelay =
+                (requestCost - burstBudget).SecondsFloat() / (1. + refillRate);
+            UNIT_ASSERT_DOUBLES_EQUAL_C(
+                expectedDelay,
+                delay->SecondsFloat(),
+                TDuration::MicroSeconds(2).SecondsFloat(),
+                context);
+
+            // Reapply the rule and check that it still scales the original
+            // profile rather than the previously calculated refill time.
+            policy.Reset(rule, 1);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedRefillTime,
+                policy.GetConfig().GetBoostRefillTime(),
+                context);
+        }
+    }
+
+    // Verify that coefficients keep positive BoostRefillTime at least 1 ms
+    // and preserve refill, intentional zeros and updated original profiles.
+    Y_UNIT_TEST(ShouldPreserveBoostRefillWhenApplyingCoefficients)
+    {
+        // Change the original profile and check that a small positive
+        // coefficient keeps the refill time at least 1 ms after each update.
+        DoShouldPreserveBoostRefillWhenApplyingCoefficients(
+            0.000001,
+            {{100, 1}, {5'000'000, 5}, {100, 1}});
+
+        // Check values below, at and above 1 ms, and preserve
+        // truncation of larger fractions and an original zero value.
+        DoShouldPreserveBoostRefillWhenApplyingCoefficients(
+            0.5,
+            {{1, 1}, {2, 1}, {3, 1}, {5, 2}, {0, 0}});
+
+        // Preserve explicit zeros and unchanged times when the coefficient
+        // is absent or one.
+        DoShouldPreserveBoostRefillWhenApplyingCoefficients(0.0, {{100, 0}});
+        DoShouldPreserveBoostRefillWhenApplyingCoefficients(1.0, {{100, 100}});
+        DoShouldPreserveBoostRefillWhenApplyingCoefficients(
+            Nothing(),
+            {{100, 100}, {0, 0}});
+    }
+
+    void DoShouldPreserveBurstWhenApplyingCoefficients(
+        TMaybe<double> coefficient,
+        std::initializer_list<std::pair<ui32, ui32>> burstPercentages)
+    {
+        // Use 1 IOPS and disable boost to check the burst allowance alone.
+        auto config = MakeSimpleConfig(0, 1, 100, 0, 0, 0, 8_MB);
+        const TThrottlerConfig
+            throttlerConfig(TDuration::Max(), 1, 1, TDuration::Zero(), false);
+        TVolumeThrottlingPolicy policy(config, throttlerConfig);
+
+        // Apply only BurstPercentage's coefficient, or leave it absent.
+        NProto::TVolumeThrottlingRule rule;
+        if (coefficient) {
+            rule.MutableCoefficients()->SetBurstPercentage(*coefficient);
+        }
+        policy.Reset(rule, 1);
+
+        for (const auto& [originalBurst, expectedBurst]: burstPercentages) {
+            const TString context =
+                TStringBuilder()
+                << "BurstPercentage: " << originalBurst << ", coefficient: "
+                << (coefficient ? ToString(*coefficient) : "unset");
+
+            // Change the original profile and check the saved coefficient.
+            config.SetBurstPercentage(originalBurst);
+            policy.Reset(config, throttlerConfig);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedBurst,
+                policy.GetConfig().GetBurstPercentage(),
+                context);
+
+            // Check that the burst allowance determines the request delay.
+            // Only an intentional zero may select the default 10% burst.
+            const auto delay = policy.SuggestDelay(
+                TInstant::Seconds(1),
+                TDuration::Zero(),
+                {4_KB, static_cast<ui32>(EOpType::Read), policy.GetVersion()});
+            UNIT_ASSERT_C(delay.Defined(), context);
+            const auto burstBudget = TDuration::MilliSeconds(
+                (expectedBurst ? expectedBurst : 10) * 10);
+            const auto expectedDelay = TDuration::Seconds(1) - burstBudget;
+            UNIT_ASSERT_DOUBLES_EQUAL_C(
+                expectedDelay.SecondsFloat(),
+                delay->SecondsFloat(),
+                TDuration::MicroSeconds(2).SecondsFloat(),
+                context);
+
+            // Reapply the rule and check that it still scales the original
+            // profile rather than the previously calculated burst percentage.
+            policy.Reset(rule, 1);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedBurst,
+                policy.GetConfig().GetBurstPercentage(),
+                context);
+        }
+    }
+
+    // Verify that coefficients keep positive BurstPercentage at least 1%
+    // without selecting the default 10% burst, and preserve intentional zeros.
+    Y_UNIT_TEST(ShouldPreserveBurstWhenApplyingCoefficients)
+    {
+        // Change the original profile and check that a small positive
+        // coefficient keeps the burst at least 1% after each update.
+        DoShouldPreserveBurstWhenApplyingCoefficients(
+            0.000001,
+            {{100, 1}, {5'000'000, 5}, {100, 1}});
+
+        // Check values below, at and above 1%, and preserve
+        // truncation of larger fractions and an original zero value.
+        DoShouldPreserveBurstWhenApplyingCoefficients(
+            0.5,
+            {{1, 1}, {2, 1}, {3, 1}, {5, 2}, {0, 0}});
+
+        // Preserve explicit zeros and unchanged percentages when the
+        // coefficient is absent or one; keep the default burst for intentional
+        // zeros.
+        DoShouldPreserveBurstWhenApplyingCoefficients(0.0, {{100, 0}});
+        DoShouldPreserveBurstWhenApplyingCoefficients(1.0, {{100, 100}});
+        DoShouldPreserveBurstWhenApplyingCoefficients(
+            Nothing(),
+            {{100, 100}, {0, 0}});
+    }
 
     Y_UNIT_TEST(MergeBackpressureReports)
     {

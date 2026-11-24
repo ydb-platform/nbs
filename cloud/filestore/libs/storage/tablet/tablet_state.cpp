@@ -210,7 +210,6 @@ void TIndexTabletState::LoadState(
     LastStep = 1;
     LastCollectPerGenerationCounter = 0;
 
-    TruncateBlocksThreshold = config.GetMaxBlocksPerTruncateTx();
     SessionHistoryEntryCount = config.GetSessionHistoryEntryCount();
 
     ChannelMinFreeSpace = config.GetChannelMinFreeSpace() / 100.;
@@ -366,6 +365,14 @@ void TIndexTabletState::SetGuestPosixAclEnabled(
     bool guestPosixAclEnabled)
 {
     FileSystem.SetGuestPosixAclEnabled(guestPosixAclEnabled);
+    db.WriteFileSystem(FileSystem);
+}
+
+void TIndexTabletState::SetShardCreationState(
+    IIndexTabletDatabase& db,
+    const NProtoPrivate::TFileSystemShardCreationState& state)
+{
+    *FileSystem.MutableShardCreationState() = state;
     db.WriteFileSystem(FileSystem);
 }
 

@@ -148,12 +148,13 @@ bool TPartitionActor::PrepareDescribeRange(
         );
     }
     if (!args.BlockFilter || args.BlockFilter.find('M') != TString::npos) {
+        TIndexOnlyBlobsVisitor blobsVisitor;
         ready &= db.FindMergedBlocks(
             visitor,
+            blobsVisitor,
             args.BlockRange,
             true,   // precharge
-            State->GetMaxBlocksInBlob()
-        );
+            State->GetMaxBlocksInBlob());
     }
 
     return ready;

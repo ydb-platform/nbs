@@ -19,7 +19,9 @@ Y_UNIT_TEST_SUITE(TCellsIcV2ConfigTest)
         UNIT_ASSERT_VALUES_EQUAL("::", config.GetListenAddress());
         UNIT_ASSERT_VALUES_EQUAL(0, config.GetPort());
         UNIT_ASSERT_VALUES_EQUAL(1, config.GetThreads());
-        UNIT_ASSERT_VALUES_EQUAL(5000, config.GetHandshakeTimeoutMs());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Seconds(5),
+            config.GetHandshakeTimeout());
         UNIT_ASSERT(!config.GetChecksumEvents());
         UNIT_ASSERT_VALUES_EQUAL(128, config.GetMaxConnections());
         UNIT_ASSERT_VALUES_EQUAL(1024, config.GetMaxPendingRequests());
@@ -42,7 +44,7 @@ Y_UNIT_TEST_SUITE(TCellsIcV2ConfigTest)
         icV2.SetListenAddress("");
         icV2.SetPort(0);
         icV2.SetThreads(0);
-        icV2.SetHandshakeTimeoutMs(0);
+        icV2.SetHandshakeTimeout(0);
         icV2.SetMaxConnections(0);
         icV2.SetMaxPendingRequests(0);
         icV2.SetMaxOutputQueueBytes(0);
@@ -57,7 +59,9 @@ Y_UNIT_TEST_SUITE(TCellsIcV2ConfigTest)
         UNIT_ASSERT_VALUES_EQUAL("", config.GetListenAddress());
         UNIT_ASSERT_VALUES_EQUAL(0, config.GetPort());
         UNIT_ASSERT_VALUES_EQUAL(0, config.GetThreads());
-        UNIT_ASSERT_VALUES_EQUAL(0, config.GetHandshakeTimeoutMs());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Zero(),
+            config.GetHandshakeTimeout());
         UNIT_ASSERT_VALUES_EQUAL(0, config.GetMaxConnections());
         UNIT_ASSERT_VALUES_EQUAL(0, config.GetMaxPendingRequests());
         UNIT_ASSERT_VALUES_EQUAL(0, config.GetMaxOutputQueueBytes());
@@ -77,6 +81,7 @@ Y_UNIT_TEST_SUITE(TCellsIcV2ConfigTest)
         icV2.SetListenAddress("127.0.0.1");
         icV2.SetPort(1234);
         icV2.SetThreads(3);
+        icV2.SetHandshakeTimeout(1500);
         icV2.SetChecksumEvents(true);
         icV2.SetEnableXdc(true);
 
@@ -88,7 +93,9 @@ Y_UNIT_TEST_SUITE(TCellsIcV2ConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(3, config.GetThreads());
         UNIT_ASSERT(config.GetChecksumEvents());
         UNIT_ASSERT(config.GetEnableXdc());
-        UNIT_ASSERT_VALUES_EQUAL(5000, config.GetHandshakeTimeoutMs());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(1500),
+            config.GetHandshakeTimeout());
         UNIT_ASSERT_VALUES_EQUAL(4_MB, config.GetMaxDataRequestBytes());
     }
 }

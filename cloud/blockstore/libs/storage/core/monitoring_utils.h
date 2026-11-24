@@ -45,6 +45,12 @@ void BuildTabletNotifyPageWithRedirect(
     ui64 tabletId,
     EAlertLevel alertLevel = EAlertLevel::SUCCESS);
 
+// Creates an immediate HTTP redirect (302 Found) response. Prefer a relative
+// location: monitoring pages are often served behind reverse proxies that add
+// a path prefix.
+std::unique_ptr<NActors::NMon::TEvHttpInfoRes> CreateHttpRedirectResponse(
+    TStringBuf location);
+
 void GenerateBlobviewJS(IOutputStream& out);
 void GenerateActionsJS(IOutputStream& out);
 void GeneratePartitionTabsJs(IOutputStream& out);

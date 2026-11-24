@@ -195,9 +195,8 @@ message TStorageConfig
     // Enable file system throttling.
     optional bool ThrottlingEnabled = 64;
 
-    // Max blocks count for a single truncate tx.
-    optional uint32 MaxBlocksPerTruncateTx = 65;
-    optional uint32 MaxTruncateTxInflight = 66;
+    optional uint32 MaxBlocksPerTruncateTx = 65 [deprecated = true];
+    optional uint32 MaxTruncateTxInflight = 66 [deprecated = true];
 
     // Maximum number of entries in response.
     optional uint32 MaxResponseEntries = 67;
@@ -1033,4 +1032,17 @@ message TStorageConfig
     // Max FUSE read / write request size in bytes
     // Zero uses TVFSConfig.MaxWritePages (default 256) * host page size.
     optional uint32 MaxRequestSize = 566;
+
+    // Enables pre-allocated actors for reading data in storage service
+    optional bool PermanentReadWriteDataActorsEnabled = 567;
+
+    // Disk registry device pool the fast shard devices are allocated from.
+    optional string FastShardDevicePoolName = 568;
+
+    // Disk registry pool device size a fast shard storage group copy takes.
+    // 93 GiB by default, the default disk registry allocation unit.
+    optional uint64 FastShardAllocationSize = 569;
+
+    // Device space kept for the journal, the storage group and shard metadata.
+    optional uint64 FastShardReservedSize = 570;
 }

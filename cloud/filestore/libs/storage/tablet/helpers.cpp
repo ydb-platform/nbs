@@ -1,5 +1,7 @@
 #include "helpers.h"
 
+#include "model/xattr_acl_helpers.h"
+
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/helpers.h>
 
@@ -106,6 +108,34 @@ NProto::TNode CreateBlockDeviceAttrs(ui32 mode, ui32 uid, ui32 gid, ui64 dev)
     auto attrs = CreateAttrs(NProto::E_BLOCKDEV_NODE, mode, 0, uid, gid);
     attrs.SetDevId(dev);
     return attrs;
+}
+
+TResultOrError<TNodeCreationPermissions> GetNodeCreationPermissions(
+    const TMaybe<INodeIndexTabletDatabase::TNodeAttr>& parentDefaultAcl,
+    const ui32 srcMode,
+    const ui32 umask)
+{
+    if (parentDefaultAcl) {
+        auto [childAcl, error] =
+            GetChildXattrAcl(parentDefaultAcl->Value, srcMode);
+        if (HasError(error)) {
+            return std::move(error);
+        }
+
+        if (childAcl.Type != EXattrAclType::HeaderOnly) {
+            return TNodeCreationPermissions{
+                .Mode = childAcl.Mode,
+                .ParentDefaultAcl = parentDefaultAcl->Value,
+                .ChildAccessAcl = std::move(childAcl.Acl),
+            };
+        }
+    }
+
+    return TNodeCreationPermissions{
+        .Mode = srcMode & ~umask,
+        .ParentDefaultAcl = {},
+        .ChildAccessAcl = {},
+    };
 }
 
 NProto::TNode CopyAttrs(const NProto::TNode& src, ui32 mode)
@@ -518,9 +548,10 @@ TVector<TString> GetFileShardIds(const NProto::TFileSystem& fileSystem)
 }
 
 NProto::TError ValidateShardTopology(
+    const NProtoPrivate::TShardTopology& currentTopology,
     const NProtoPrivate::TShardTopology& topology)
 {
-    THashSet<TString> shardIds;
+    THashMap<TString, const NProtoPrivate::TShardTopology::TShardInfo*> shards;
     bool hasNonFileShards = false;
     for (const auto& shard: topology.GetShards()) {
         if (!shard.GetRoleMask()) {
@@ -528,7 +559,7 @@ NProto::TError ValidateShardTopology(
                 E_ARGUMENT,
                 TStringBuilder() << "no role of shard " << shard.GetShardId());
         }
-        if (!shardIds.insert(shard.GetShardId()).second) {
+        if (!shards.emplace(shard.GetShardId(), &shard).second) {
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder() << "duplicate shard " << shard.GetShardId());
@@ -540,6 +571,25 @@ NProto::TError ValidateShardTopology(
 
     if (!topology.GetShards().empty() && !hasNonFileShards) {
         return MakeError(E_ARGUMENT, "non-file shard set is empty");
+    }
+
+    // The devices of a fast shard are deallocated by its tablet id.
+    for (const auto& shard: currentTopology.GetShards()) {
+        if (shard.GetType() != NProtoPrivate::TShardTopology::E_FASTSHARD) {
+            continue;
+        }
+
+        auto it = shards.find(shard.GetShardId());
+        if (it == shards.end() ||
+            it->second->GetType() != shard.GetType() ||
+            it->second->GetTabletId() != shard.GetTabletId())
+        {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "fast shard " << shard.GetShardId()
+                    << " change not allowed");
+        }
     }
 
     return {};

@@ -214,8 +214,11 @@ public:
     bool Visit(
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
-        const TBlockMask& skipMask) override
+        const TBlockMask& skipMask,
+        const std::optional<NProto::TCompressionMetadata>& compressionMetadata)
+        override
     {
+        Y_UNUSED(compressionMetadata);
         auto& ab = Args.AffectedBlobs[blobId];
         ab.MaxCommitIdInCompactionRange = blobId.CommitId();
         ab.MinCommitIdInCompactionRange = blobId.CommitId();

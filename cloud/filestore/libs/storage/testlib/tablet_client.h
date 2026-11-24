@@ -620,20 +620,6 @@ public:
         return std::make_unique<TEvIndexTabletPrivate::TEvCollectGarbageRequest>();
     }
 
-    auto CreateTruncateRequest(ui64 node, ui64 length)
-    {
-        return std::make_unique<TEvIndexTabletPrivate::TEvTruncateRequest>(
-            node,
-            TByteRange(0, length, DefaultBlockSize));
-    }
-
-    auto CreateTruncateRangeRequest(ui64 node, ui64 offset, ui64 length)
-    {
-        return std::make_unique<TEvIndexTabletPrivate::TEvTruncateRangeRequest>(
-            node,
-            TByteRange(offset, length, DefaultBlockSize));
-    }
-
     auto CreateZeroRangeRequest(ui64 node, ui64 offset, ui64 length)
     {
         return std::make_unique<TEvIndexTabletPrivate::TEvZeroRangeRequest>(

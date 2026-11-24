@@ -154,7 +154,7 @@ void TServiceActor::ForwardRequest(
     msg->CallContext->SetSilenceRetriableErrors(volume->RebindingIsInflight);
 
     if (volume->BindingType != NProto::BINDING_REMOTE &&
-        clientInfo->VolumeMountMode == NProto::VOLUME_MOUNT_LOCAL)
+        clientInfo->KeepsVolumeLocal())
     {
         if (volume->State == TVolumeInfo::INITIAL) {
             // Volume tablet is neither started nor starting: remount is

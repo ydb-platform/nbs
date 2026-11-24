@@ -219,6 +219,19 @@ void BuildTabletNotifyPageWithRedirect(
         alertLevel);
 }
 
+std::unique_ptr<NActors::NMon::TEvHttpInfoRes> CreateHttpRedirectResponse(
+    TStringBuf location)
+{
+    return std::make_unique<NActors::NMon::TEvHttpInfoRes>(
+        TStringBuilder() << "HTTP/1.1 302 Found\r\n"
+                         << "Location: " << location << "\r\n"
+                         << "Content-Length: 0\r\n"
+                         << "Connection: close\r\n"
+                         << "\r\n",
+        0,   // subReqId
+        NActors::NMon::IEvHttpInfoRes::EContentType::Custom);
+}
+
 void GenerateBlobviewJS(IOutputStream& out)
 {
     AddScript(out, "monitoring_utils/blobview.js");

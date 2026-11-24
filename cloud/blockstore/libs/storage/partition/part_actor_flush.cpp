@@ -440,6 +440,26 @@ TFlushedCommitIds BuildFlushedCommitIdsFromChannel(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TPartitionActor::TFlushThresholds TPartitionActor::BuildFlushThresholds(
+    const TStorageConfig& config,
+    const NProto::TPartitionConfig& partitionConfig)
+{
+    const auto mediaKind = partitionConfig.GetStorageMediaKind();
+    const bool isSSD = mediaKind == NProto::STORAGE_MEDIA_SSD;
+
+    return {
+        .FreshBlockByteCount = GetFlushThreshold(
+            config,
+            mediaKind,
+            partitionConfig.GetBlocksCount() * partitionConfig.GetBlockSize()),
+        .FreshBlobCount = isSSD ? config.GetFreshBlobCountFlushThresholdSSD()
+                                : config.GetFreshBlobCountFlushThresholdHDD(),
+        .FreshBlobByteCount =
+            isSSD ? config.GetFreshBlobByteCountFlushThresholdSSD()
+                  : config.GetFreshBlobByteCountFlushThresholdHDD(),
+    };
+}
+
 bool TPartitionActor::ShouldFlush(const TActorContext& ctx)
 {
     const ui32 freshBlockByteCount =
@@ -447,21 +467,10 @@ bool TPartitionActor::ShouldFlush(const TActorContext& ctx)
     const ui64 freshBlobCount = State->GetUnflushedFreshBlobCount();
     const ui64 freshBlobByteCount = State->GetUnflushedFreshBlobByteCount();
 
-    const bool isSSD =
-        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD;
-    const ui32 flushThreshold =
-        isSSD ? Config->GetFlushThresholdSSD() : Config->GetFlushThresholdHDD();
-    const ui32 freshBlobCountFlushThreshold =
-        isSSD ? Config->GetFreshBlobCountFlushThresholdSSD()
-              : Config->GetFreshBlobCountFlushThresholdHDD();
-    const ui32 freshBlobByteCountFlushThreshold =
-        isSSD ? Config->GetFreshBlobByteCountFlushThresholdSSD()
-              : Config->GetFreshBlobByteCountFlushThresholdHDD();
-
     if (!State->IsLoadStateFinished() ||
-        freshBlockByteCount >= flushThreshold ||
-        freshBlobCount >= freshBlobCountFlushThreshold ||
-        freshBlobByteCount >= freshBlobByteCountFlushThreshold)
+        freshBlockByteCount >= FlushThresholds.FreshBlockByteCount ||
+        freshBlobCount >= FlushThresholds.FreshBlobCount ||
+        freshBlobByteCount >= FlushThresholds.FreshBlobByteCount)
     {
         return true;
     }
@@ -562,6 +571,11 @@ void TPartitionActor::HandleFlush(
         UpdateCPUUsageStat(ctx.Now(), requestInfo->GetExecCycles());
 
         NCloud::Reply(ctx, *requestInfo, std::move(response));
+
+        if (IsSelectiveTrimEnabled()) {
+            EnqueueTrimFreshLogIfNeeded(ctx);
+        }
+
         return;
     }
 
@@ -680,6 +694,10 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
             ProcessCommitQueue(ctx);
         }
 
+        if (IsSelectiveTrimEnabled()) {
+            EnqueueTrimFreshLogIfNeeded(ctx);
+        }
+
         return;
     }
 
@@ -785,6 +803,10 @@ void TPartitionActor::CompleteFlushToDevNull(
     Y_UNUSED(args);
 
     State->AccessFlushState().SetIdle(ctx.Now());
+
+    if (IsSelectiveTrimEnabled()) {
+        EnqueueTrimFreshLogIfNeeded(ctx);
+    }
 }
 
 void TPartitionActor::HandleFlushCompleted(

@@ -77,12 +77,6 @@ NProto::TError TIndexTabletState::Truncate(
     }
 
     TByteRange range(targetSize, currentSize - targetSize, GetBlockSize());
-
-    if (TruncateBlocksThreshold && range.BlockCount() > TruncateBlocksThreshold) {
-        EnqueueTruncateOp(nodeId, range);
-        return {};
-    }
-
     return TruncateRange(db, nodeId, commitId, range);
 }
 
@@ -231,43 +225,6 @@ NProto::TError TIndexTabletState::DeleteRange(
         range.Length);
 
     return {};
-}
-
-void TIndexTabletState::EnqueueTruncateOp(ui64 nodeId, TByteRange range)
-{
-    Impl->TruncateQueue.EnqueueOperation(nodeId, range);
-}
-
-TTruncateQueue::TEntry TIndexTabletState::DequeueTruncateOp()
-{
-    TABLET_VERIFY(Impl->TruncateQueue.HasPendingOperations());
-    return Impl->TruncateQueue.DequeueOperation();
-}
-
-bool TIndexTabletState::HasPendingTruncateOps() const
-{
-    return Impl->TruncateQueue.HasPendingOperations();
-}
-
-void TIndexTabletState::CompleteTruncateOp(ui64 nodeId)
-{
-    Impl->TruncateQueue.CompleteOperation(nodeId);
-}
-
-void TIndexTabletState::AddTruncate(IIndexTabletDatabase& db, ui64 nodeId, TByteRange range)
-{
-    EnqueueTruncateOp(nodeId, range);
-    db.WriteTruncateQueueEntry(nodeId, range);
-}
-
-void TIndexTabletState::DeleteTruncate(IIndexTabletDatabase& db, ui64 nodeId)
-{
-    db.DeleteTruncateQueueEntry(nodeId);
-}
-
-bool TIndexTabletState::HasActiveTruncateOp(ui64 nodeId) const
-{
-    return Impl->TruncateQueue.HasActiveOperation(nodeId);
 }
 
 bool TIndexTabletState::IsWriteAllowed(
@@ -1066,8 +1023,8 @@ TVector<TMixedBlobMeta> TIndexTabletState::GetBlobsForCompaction(ui32 rangeId) c
 {
     auto blobs = Impl->MixedBlocks.GetBlobsForCompaction(rangeId);
     for (auto& blob: blobs) {
-        RebaseMixedBlocks(blob.Blocks);
         Impl->LargeBlocks.ApplyDeletionMarkers(blob.Blocks);
+        RebaseMixedBlocks(blob.Blocks);
     }
     return blobs;
 }

@@ -7,8 +7,8 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 NActors::IActorPtr CreateDiskRegistryProxy(
-    TStorageConfigConstPtr storageConfig,
-    TDiskRegistryProxyConfigConstPtr proxyConfig)
+    TStorageConfigPtr storageConfig,
+    TDiskRegistryProxyConfigPtr proxyConfig)
 {
     return std::make_unique<TDiskRegistryProxyActor>(
         std::move(storageConfig),

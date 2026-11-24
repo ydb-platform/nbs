@@ -213,6 +213,15 @@ message TCreateNodeRequest
     uint32 QuotaId = 20;
 
     bool GuestPosixAclEnabled = 21;
+
+    // POSIX ACLs inherited from the parent. These fields are resolved by the
+    // tablet that owns the parent directory and carried to the shard that
+    // creates the actual node.
+    bytes ParentDefaultAcl = 22;
+
+    // Access ACL derived from the parent directory’s default POSIX ACL
+    // and limited by the requested mode.
+    bytes ChildAccessAcl = 23;
 }
 
 message TCreateNodeResponse

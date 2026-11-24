@@ -20,8 +20,7 @@ namespace NDiscovery {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TDiscoveryConfig;
-using TDiscoveryConfigPtr = std::shared_ptr<TDiscoveryConfig>;
-using TDiscoveryConfigConstPtr = std::shared_ptr<const TDiscoveryConfig>;
+using TDiscoveryConfigPtr = std::shared_ptr<const TDiscoveryConfig>;
 
 struct IDiscoveryService;
 using IDiscoveryServicePtr = std::shared_ptr<IDiscoveryService>;

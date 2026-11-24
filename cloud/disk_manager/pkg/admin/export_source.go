@@ -320,6 +320,7 @@ func (c *exportResource) newSnapshotStorageSource(
 		metrics.NewEmptyRegistry(),
 		db,
 		s3,
+		c.serverConfig.GetSnapshotStorageBackupConfig() != nil, // backupEnabled
 	)
 	if err != nil {
 		closeSource()

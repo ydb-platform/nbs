@@ -105,10 +105,12 @@ protected:
     void WaitForConfigLog(const TString& message);
 
     // Register the chosen subscriber and check the response to the requester.
-    void Subscribe(TActorId requester, TActorId subscriber = {});
+    void Subscribe(
+        TActorId requester,
+        TActorId subscriber = {});
 
     // Verify that the manager sends a change notification to one subscriber.
-    void WaitForConfigChanged(TActorId subscriber);
+    IBlockstoreConfigPtr WaitForConfigChanged(TActorId subscriber);
 
     // Check that a subscriber receives no change notification.
     void AssertNoConfigChanged(TActorId subscriber);
@@ -218,7 +220,9 @@ void TFixture::WaitForConfigLog(const TString& message)
 }
 
 // Register the chosen subscriber and check the response to the requester.
-void TFixture::Subscribe(TActorId requester, TActorId subscriber)
+void TFixture::Subscribe(
+    TActorId requester,
+    TActorId subscriber)
 {
     Runtime.Send(new IEventHandle(
         Manager,
@@ -235,7 +239,7 @@ void TFixture::Subscribe(TActorId requester, TActorId subscriber)
 }
 
 // Verify that the manager sends a change notification to one subscriber.
-void TFixture::WaitForConfigChanged(TActorId subscriber)
+IBlockstoreConfigPtr TFixture::WaitForConfigChanged(TActorId subscriber)
 {
     auto event =
         Runtime.GrabEdgeEventRethrow<TEvConfigsManager::TEvConfigChanged>(
@@ -243,6 +247,9 @@ void TFixture::WaitForConfigChanged(TActorId subscriber)
             TDuration::Seconds(1));
     UNIT_ASSERT(event);
     UNIT_ASSERT_VALUES_EQUAL(Manager, event->Sender);
+    const auto& config = event->Get()->Config;
+    UNIT_ASSERT(config);
+    return config;
 }
 
 // Check that a subscriber receives no change notification.
@@ -357,7 +364,9 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         UNIT_ASSERT(!board.RegisterSharedControl(
             control,
             "BlockStore_WriteBlobThreshold"));
-        const auto initialConfig = ConfigHolder->Get();
+        const auto subscriber = Runtime.AllocateEdgeActor();
+        Subscribe(subscriber);
+        const auto initialConfig = WaitForConfigChanged(subscriber);
         TAtomic previousValue = {};
         board.SetValue("BlockStore_WriteBlobThreshold", 400, previousValue);
 
@@ -367,11 +376,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
             std::make_shared<NProto::TBlockstoreConfig>(dynamicConfig),
             70);
         WaitForAck(70);
+        const auto updatedConfig = WaitForConfigChanged(subscriber);
         UNIT_ASSERT_VALUES_EQUAL(300, control.GetDefault());
         UNIT_ASSERT_VALUES_EQUAL(300, static_cast<i64>(control));
         UNIT_ASSERT_VALUES_EQUAL(
             300,
-            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+            updatedConfig->GetStorageConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(
             200,
             initialConfig->GetStorageConfig()->GetWriteBlobThreshold());
@@ -379,22 +389,32 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         // Publish another field without overwriting the unchanged field's ICB.
         board.SetValue("BlockStore_WriteBlobThreshold", 500, previousValue);
         dynamicConfig.MutableStorageService()->SetMaxMigrationIoDepth(7);
-        const auto beforeUnrelatedUpdate = ConfigHolder->Get();
         SendNotification(
             std::make_shared<NProto::TBlockstoreConfig>(dynamicConfig),
             71);
         WaitForAck(71);
-        UNIT_ASSERT_UNEQUAL(
-            beforeUnrelatedUpdate.Get(),
-            ConfigHolder->Get().Get());
+        const auto publishedConfig = WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_UNEQUAL(updatedConfig.Get(), publishedConfig.Get());
         UNIT_ASSERT_VALUES_EQUAL(300, control.GetDefault());
         UNIT_ASSERT_VALUES_EQUAL(500, static_cast<i64>(control));
         UNIT_ASSERT_VALUES_EQUAL(
             500,
-            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+            publishedConfig->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            500,
+            initialConfig->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "200",
+            initialConfig->GetStorageConfig()
+                ->GetValueByName("WriteBlobThreshold")
+                .Value);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "300",
+            publishedConfig->GetStorageConfig()
+                ->GetValueByName("WriteBlobThreshold")
+                .Value);
 
         // Preserve the override and snapshot for duplicate and rejected input.
-        const auto publishedConfig = ConfigHolder->Get();
         SendNotification(
             std::make_shared<NProto::TBlockstoreConfig>(dynamicConfig),
             72);
@@ -413,11 +433,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         // Remove the dynamic source and reset only the changed baselines.
         SendNotification({}, 74);
         WaitForAck(74);
+        const auto resetConfig = WaitForConfigChanged(subscriber);
         UNIT_ASSERT_VALUES_EQUAL(100, control.GetDefault());
         UNIT_ASSERT_VALUES_EQUAL(100, static_cast<i64>(control));
         UNIT_ASSERT_VALUES_EQUAL(
             100,
-            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+            resetConfig->GetStorageConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(
             300,
             publishedConfig->GetStorageConfig()->GetWriteBlobThreshold());
@@ -428,34 +449,50 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         ShouldNotifySubscribersAfterPublicationWithoutWaitingForAck,
         TFixture)
     {
-        // Register two consumers and consume only their initial notifications.
+        // Register two consumers and leave the second initial notification
+        // queued.
         const auto first = Runtime.AllocateEdgeActor();
         const auto second = Runtime.AllocateEdgeActor();
         Subscribe(first);
         Subscribe(second);
-        WaitForConfigChanged(first);
-        WaitForConfigChanged(second);
+        const auto initial = WaitForConfigChanged(first);
+        UNIT_ASSERT_EQUAL(initial.Get(), ConfigHolder->Get().Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            initial->GetStorageConfig()->GetWriteBlobThreshold());
 
         // Publish and observe the new snapshot as soon as the notice arrives.
         SendNotification(
             std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300)),
             31);
-        WaitForConfigChanged(first);
+        const auto updated = WaitForConfigChanged(first);
+        UNIT_ASSERT_EQUAL(updated.Get(), ConfigHolder->Get().Get());
         UNIT_ASSERT_VALUES_EQUAL(
             300,
-            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+            updated->GetStorageConfig()->GetWriteBlobThreshold());
         WaitForAck(31);
 
         // Let the second consumer lag; it must not block removal or upstream
         // ACK.
         SendNotification({}, 32);
         WaitForAck(32);
-        WaitForConfigChanged(first);
+        const auto reset = WaitForConfigChanged(first);
         UNIT_ASSERT_VALUES_EQUAL(
             100,
-            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
-        WaitForConfigChanged(second);
-        WaitForConfigChanged(second);
+            reset->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_EQUAL(reset.Get(), ConfigHolder->Get().Get());
+        const auto delayedInitial = WaitForConfigChanged(second);
+        UNIT_ASSERT_EQUAL(initial.Get(), delayedInitial.Get());
+        const auto delayedUpdate = WaitForConfigChanged(second);
+        UNIT_ASSERT_EQUAL(updated.Get(), delayedUpdate.Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            delayedUpdate->GetStorageConfig()->GetWriteBlobThreshold());
+        const auto delayedReset = WaitForConfigChanged(second);
+        UNIT_ASSERT_EQUAL(reset.Get(), delayedReset.Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            initial->GetStorageConfig()->GetWriteBlobThreshold());
     }
 
     // Check delegated registration, refresh, and removal without duplicate
@@ -467,12 +504,14 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         const auto requester = Runtime.AllocateEdgeActor();
         const auto subscriber = Runtime.AllocateEdgeActor();
         Subscribe(requester, subscriber);
-        WaitForConfigChanged(subscriber);
+        const auto initial = WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_EQUAL(ConfigHolder->Get().Get(), initial.Get());
         AssertNoConfigChanged(requester);
 
         // Refresh the subscription without adding a second recipient entry.
         Subscribe(requester, subscriber);
-        WaitForConfigChanged(subscriber);
+        const auto refreshed = WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_EQUAL(ConfigHolder->Get().Get(), refreshed.Get());
         SendNotification(
             std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300)),
             33);
@@ -583,7 +622,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         // field.
         const auto subscriber = Runtime.AllocateEdgeActor();
         Subscribe(subscriber);
-        WaitForConfigChanged(subscriber);
+        const auto initial = WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_EQUAL(ConfigHolder->Get().Get(), initial.Get());
         Unsubscribe(subscriber);
 
         // Publish while unsubscribed, then notify the consumer on registration.
@@ -593,7 +633,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         WaitForAck(35);
         AssertNoConfigChanged(subscriber);
         Subscribe(subscriber);
-        WaitForConfigChanged(subscriber);
+        const auto resubscribed = WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_EQUAL(ConfigHolder->Get().Get(), resubscribed.Get());
     }
 
     // Check that duplicate and rejected sources do not create publications or

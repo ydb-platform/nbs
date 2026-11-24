@@ -9,6 +9,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/scope.h>
+#include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
 #include <util/network/pair.h>
 #include <util/network/socket.h>
@@ -619,7 +620,7 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         auto destructor = std::make_shared<TTestEventDestructor>();
         const std::weak_ptr<IEventDestructor> weak = destructor;
         auto transport =
-            CreateTransport(TUringEnginePtr(engine), 0, destructor);
+            CreateTransport(TUringEnginePtr(engine), 512_MB, destructor);
         destructor.reset();
         UNIT_ASSERT(!weak.expired());
         engine->Client->DestroyEvent(std::make_unique<TEvTest>(), {});
@@ -630,32 +631,10 @@ Y_UNIT_TEST_SUITE(TIcV2TransportTest)
         UNIT_ASSERT(weak.expired());
     }
 
-    Y_UNIT_TEST(UsesDefaultTransportQueueLimit)
+    Y_UNIT_TEST(RejectsZeroTransportQueueLimit)
     {
-        TFixture f(0);
-        UNIT_ASSERT(f.Connection->Activate());
-        f.Engine->HoldEvents = true;
-        const TRope chunk(TString(1_MB, 'x'));
-        TRope payload;
-        for (ui64 size = 0; size < DefaultMaxOutputQueueBytes;
-             size += chunk.GetSize())
-        {
-            payload.Insert(payload.End(), TRope(chunk));
-        }
-        UNIT_ASSERT(
-            f.Connection->Send(
-                std::make_unique<IEventHandle>(
-                    TEvTest::EventType,
-                    0,
-                    ActorId,
-                    ActorId,
-                    MakeIntrusive<TEventSerializedData>(
-                        std::move(payload),
-                        TEventSerializationInfo{}),
-                    0)) == ESendResult::Accepted);
-        UNIT_ASSERT(f.Connection->Send(MakeEvent(1)) == ESendResult::QueueFull);
-        f.Engine->TakePendingEvent(0).reset();
-        UNIT_ASSERT(f.Connection->Send(MakeEvent(1)) == ESendResult::Accepted);
+        auto engine = MakeIntrusive<TTestEngine>();
+        UNIT_ASSERT(!CreateTransport(TUringEnginePtr(engine), 0, {}));
     }
 
     Y_UNIT_TEST(EngineDropReleasesOutputQueueReservation)
