@@ -54,6 +54,9 @@ class FilestoreCliClient:
         blk_count=100 * 1024 * 1024 * 1024,
         return_stdout=True,
         verbose=False,
+        shard_count=None,
+        fast_shard_count=None,
+        fast_shard_storage_kind=None,
     ):
         cmd = [
             self.__binary_path, "create",
@@ -63,6 +66,15 @@ class FilestoreCliClient:
             "--block-size", str(blk_size),
             "--blocks-count", str(blk_count),
         ] + self.__cmd_opts()
+
+        if shard_count is not None:
+            cmd += ["--shard-count", str(shard_count)]
+
+        if fast_shard_count is not None:
+            cmd += ["--fast-shard-count", str(fast_shard_count)]
+
+        if fast_shard_storage_kind is not None:
+            cmd += ["--fast-shard-storage-kind", fast_shard_storage_kind]
 
         if verbose:
             cmd += ["--verbose", "trace"]
