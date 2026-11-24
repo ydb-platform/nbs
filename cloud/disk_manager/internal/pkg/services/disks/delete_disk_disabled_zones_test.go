@@ -42,7 +42,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 		diskMeta            *resources.DiskMeta
 		zoneMeta            *resources.DiskMeta
 		requestCells        []string
-		zoneMismatch        bool
+		nonRetriable        bool
 		requestZone         string
 		disabledZones       *common.DisabledZones
 		sync                bool
@@ -118,10 +118,10 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			deleteIfNonExistent: true, expectedZone: "zone-a", expectNBS: true,
 		},
 		{
-			name:     "trash metadata zone preferred over empty request",
+			name:     "trash metadata zone with empty request zone",
 			zoneMeta: &resources.DiskMeta{ZoneID: "zone-a"}, requestZone: "",
 			disabledZones: disabledZone, deleteIfNonExistent: true,
-			expectedZone: "zone-a", expectNBS: true,
+			nonRetriable: true,
 		},
 		{
 			name:     "trash metadata zone preferred over equal request",
@@ -141,7 +141,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			zoneMeta: &resources.DiskMeta{ZoneID: "zone-a"}, requestZone: "zone-d",
 			requestCells:  []string{"zone-d", "zone-d-cell1"},
 			disabledZones: disabledZone, deleteIfNonExistent: true,
-			zoneMismatch: true,
+			nonRetriable: true,
 		},
 		{
 			name:     "request zone cells resolve error",
@@ -266,9 +266,12 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 					if tc.requestCells != nil || tc.errorAt == "ResolveCells" {
 						cellSelector.On("ResolveCells", tc.requestZone).
 							Return(tc.requestCells, errorFor("ResolveCells")).Once()
-						if tc.errorAt == "ResolveCells" || tc.zoneMismatch {
+						if tc.errorAt == "ResolveCells" {
 							return
 						}
+					}
+					if tc.nonRetriable {
+						return
 					}
 				}
 				if !tc.skipIncremental {
@@ -334,7 +337,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			} else {
 				err = task.Run(ctx, execCtx)
 			}
-			if tc.zoneMismatch {
+			if tc.nonRetriable {
 				require.Error(t, err)
 				require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 				require.False(t, errors.CanRetry(err))
