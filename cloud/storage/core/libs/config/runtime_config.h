@@ -8,10 +8,11 @@ Filtering of runtime protobuf configurations.
      forbidden values and presence from startup.
    - Treat repeated/map fields and oneofs with AllowRuntimeSwitch=true as
      whole values; ignore their inner markers.
-   - For other oneofs (except proto3 optional fields), keep the startup
-     selection, including unset. After a rejected switch, use matching static
-     values or defaults for allowed fields.
-   - Remove unknown fields without diagnostics.
+   - For other oneofs (with AllowRuntimeSwitch!=true, except proto3 optional
+     fields), keep the startup selection, including unset. On a rejected
+     switch, restore the whole oneof from startup. Allow permitted field
+     updates when the selection is unchanged.
+   - Remove unknown fields recursively without diagnostics.
    - Return a TConfigPreparationDiagnostics report with rejected fields and
      rejection reasons.
 
@@ -118,18 +119,14 @@ void ValidateRuntimeConfigSchema(
 //
 // Outputs:
 // - runtimeConfig retains permitted changes and restores forbidden state from
-//   startupConfig. Fixed oneofs keep the startup selection; permitted fields
-//   in a recovered member use its matching static value or protobuf defaults.
-//   Unknown fields are removed recursively, without diagnostics. Unknown data
-//   in staticConfig and startupConfig is ignored; both sources stay unchanged.
-//   Missing required fields in retained messages get defaults if updates are
-//   allowed. Reject new messages if filtering removes a required field.
+//   startupConfig.
 // - The return value maps rejected paths to reasons in IgnoredPaths.
 //
 // Pass runtimeConfig as a separate message from staticConfig and startupConfig
 // (no aliasing); runtimeConfig is modified by this call.
 // Require identical message descriptors, startupConfig.IsInitialized() == true,
 // and a marker schema checked in tests with ValidateRuntimeConfigSchema().
+// Unknown data in staticConfig and startupConfig is ignored.
 // Throw on descriptor mismatch or missing required startup fields before
 // modifying runtimeConfig. Other exceptions may leave it partly modified:
 // discard it on failure. Both source configurations stay unchanged.

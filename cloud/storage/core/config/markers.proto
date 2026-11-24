@@ -61,11 +61,9 @@ extend google.protobuf.FieldOptions
           - Apply ordinary AllowRuntimeUpdate field-marker rules to the selected
             member and its contents. Different members may have different
             permissions.
-          - Use static and dynamic values only for the startup member.
-            If the dynamic source omits the oneof or selects another member,
-            allowed fields fall back to the matching StaticConfig member,
-            or defaults if StaticConfig does not select the startup member.
-            Retain forbidden fields from StartupConfig.
+          - If the selection after merging differs from startup, restore the
+            entire oneof from StartupConfig, including its selection, field
+            presence and values. Apply no updates within that group.
         - AllowRuntimeSwitch=true:
           - Require AllowRuntimeUpdate=true on every direct member.
             Missing or false member markers are schema errors.

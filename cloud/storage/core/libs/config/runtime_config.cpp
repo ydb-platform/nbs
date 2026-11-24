@@ -2,7 +2,7 @@
 
 Runtime filtering restores forbidden fields from the startup configuration.
 Traversal carries the permission of all ancestors; collections and oneof
-selection are restored as complete values. Diagnostics record the schema
+groups are restored as complete values. Diagnostics record the schema
 path and reason for each rejected change to the runtime configuration.
 
 *******************************************************************************/
@@ -183,7 +183,7 @@ void ValidateMessageSchema(
     }
 }
 
-// Restore complete fields from static or startup, including oneof selection.
+// Restore complete fields from startup, including oneof selection.
 // Remove unknown data from the temporary copy before swapping, so restoration
 // cannot return unknown fields to the runtime configuration.
 void RestoreFields(
@@ -299,9 +299,6 @@ bool TryCompleteRequiredFields(Message& message)
 // The context owns no data and shares the traversal's path and diagnostics.
 struct TMessageFilterContext
 {
-    // Static values for the message at the current traversal level.
-    const Message& StaticConfig;
-
     // Startup values for the same message, unchanged across runtime updates.
     const Message& StartupConfig;
 
@@ -343,9 +340,6 @@ void FilterSingularMessageField(
 
     // Recurse with the matching messages and the same path and diagnostics.
     TMessageFilterContext childContext{
-        .StaticConfig = context.StaticConfig.GetReflection()->GetMessage(
-            context.StaticConfig,
-            &field),
         .StartupConfig = startup.GetReflection()->GetMessage(startup, &field),
         .RuntimeConfig = *nested,
         .Path = context.Path,
@@ -446,43 +440,9 @@ void FilterField(
     }
 }
 
-// Restore the startup selection after a forbidden switch. A null initial
-// member means unset; permitted members use static values or defaults, and
-// forbidden members use startup. Leave field filtering to the caller.
-void RestoreFixedOneofMember(
-    TMessageFilterContext& context,
-    const OneofDescriptor& oneof,
-    const FieldDescriptor* initial)
-{
-    auto& runtime = context.RuntimeConfig;
-
-    // Preserve an unset startup selection instead of choosing a runtime member.
-    if (!initial) {
-        runtime.GetReflection()->ClearOneof(&runtime, &oneof);
-        return;
-    }
-
-    // Restore a forbidden member completely, ignoring descendant permissions.
-    if (!AllowsUpdate(initial)) {
-        RestoreFields(context.StartupConfig, runtime, {initial});
-        return;
-    }
-
-    // Recover permitted values from the matching static member or defaults.
-    const auto& staticConfig = context.StaticConfig;
-    if (staticConfig.GetReflection()->GetOneofFieldDescriptor(
-            staticConfig,
-            &oneof) == initial)
-    {
-        RestoreFields(staticConfig, runtime, {initial});
-    } else {
-        SetFieldDefault(runtime, initial);
-    }
-}
-
 // Filter oneof selection and contents according to the ancestor's mode.
-// Restore a fixed selection before filtering its member; keep group and member
-// paths separate and queue completely forbidden choices for later restoration.
+// Queue rejected groups for complete restoration from startup after traversal.
+// Filter member fields only when a fixed oneof keeps its startup selection.
 void FilterOneof(
     TMessageFilterContext& context,
     const OneofDescriptor& oneof,
@@ -522,8 +482,7 @@ void FilterOneof(
         return;
     }
 
-    // Recover the fixed branch before visiting its fields. Leave the group
-    // path before entering the member, so both paths use the same parent.
+    // Reject the whole group when its selected member changes.
     if (initial != current) {
         context.Path.Enter(oneof);
         Y_DEFER
@@ -534,8 +493,11 @@ void FilterOneof(
             context.Diagnostics,
             context.Path.GetPath(),
             EConfigIgnoreReason::OneofSwitchForbidden);
-        RestoreFixedOneofMember(context, oneof, initial);
+        frozenFields.push_back(oneof.field(0));
+        return;
     }
+
+    // Apply field permissions within the unchanged startup member.
     if (initial) {
         FilterField(context, *initial, EUpdateMode::Fields, frozenFields);
     }
@@ -583,7 +545,6 @@ void ValidateRuntimeConfigSchema(const Descriptor& descriptor)
 }
 
 // Restore forbidden runtime values from startup and report rejected changes.
-// Use static or defaults for permitted fields in recovered oneof members.
 TConfigPreparationDiagnostics FilterRuntimeConfig(
     const Message& staticConfig,
     const Message& startupConfig,
@@ -610,13 +571,12 @@ TConfigPreparationDiagnostics FilterRuntimeConfig(
             << startupConfig.InitializationErrorString());
 
     // Remove unknown fields before presence checks. RestoreFields also removes
-    // them when restoring values from static or startup.
+    // them when restoring values from startup.
     DiscardUnknownFields(runtimeConfig);
 
     TConfigPreparationDiagnostics diagnostics;
     TConfigSchemaPath path;
     TMessageFilterContext context{
-        .StaticConfig = staticConfig,
         .StartupConfig = startupConfig,
         .RuntimeConfig = runtimeConfig,
         .Path = path,

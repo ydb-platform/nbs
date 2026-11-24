@@ -48,8 +48,8 @@ struct TConfigPreparationDiagnostics
     //
     // For a non-null field->real_containing_oneof(), enter the group from the
     // member's parent, look up its path, then leave before entering the member.
-    // A rejected oneof switch (OneofSwitchForbidden) does not forbid allowed
-    // updates within the selected member.
+    // A rejected oneof switch (OneofSwitchForbidden) restores the whole group
+    // from startup. Allow field updates when the selection is unchanged.
     //
     // Use a message's path + "." as a prefix to find its descendant paths.
     THashMap<TString, EConfigIgnoreReason> IgnoredPaths;
