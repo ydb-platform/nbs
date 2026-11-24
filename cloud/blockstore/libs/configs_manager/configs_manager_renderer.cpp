@@ -698,9 +698,9 @@ bool RenderMessage(
 TString TBlockstoreConfigRenderer::RenderHtml(
     const IBlockstoreConfig& config,
     const NProto::TBlockstoreConfig& staticConfig,
-    const NProto::TBlockstoreConfig& dynamicConfig,
-    const NStorage::TStorageConfigControls& controls) const
+    const NProto::TBlockstoreConfig& dynamicConfig) const
 {
+    const auto& controls = *config.GetStorageConfig()->GetControls();
     const auto effectiveConfig = NPrivate::BuildEffectiveConfig(config);
     const bool hasRuntimeUpdate =
         Data.UpdateStatus != EConfigUpdateStatus::Startup;

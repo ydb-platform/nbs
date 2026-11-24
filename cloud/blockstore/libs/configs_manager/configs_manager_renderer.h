@@ -75,8 +75,7 @@ public:
     TString RenderHtml(
         const IBlockstoreConfig& config,
         const NProto::TBlockstoreConfig& staticConfig,
-        const NProto::TBlockstoreConfig& dynamicConfig,
-        const NStorage::TStorageConfigControls& controls) const;
+        const NProto::TBlockstoreConfig& dynamicConfig) const;
 };
 
 }   // namespace NCloud::NBlockStore

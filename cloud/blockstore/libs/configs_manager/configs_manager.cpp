@@ -242,8 +242,7 @@ void TConfigsManagerActor::Handle(
     auto html = ConfigRenderer.RenderHtml(
         *ConfigHolder->Get(),
         StaticConfig,
-        DynamicConfig,
-        *StorageConfigControls);
+        DynamicConfig);
 
     ctx.Send(
         ev->Sender,

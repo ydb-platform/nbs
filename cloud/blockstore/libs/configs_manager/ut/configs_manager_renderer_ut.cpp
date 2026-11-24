@@ -486,8 +486,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         auto html = renderer.RenderHtml(
             *startup.Config,
             staticConfig,
-            startupDynamicConfig,
-            *controls);
+            startupDynamicConfig);
 
         const auto startupNodeRow =
             GetParameterRow(html, "StorageService.NodeType");
@@ -537,8 +536,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             /*extraParameters=*/{},
             renderer.Data.CurrentConfigPreparationDiagnostics);
         renderer.Data.UpdateStatus = EConfigUpdateStatus::Runtime;
-        html = renderer
-                   .RenderHtml(*config, staticConfig, dynamicConfig, *controls);
+        html = renderer.RenderHtml(*config, staticConfig, dynamicConfig);
 
         // Keep each label in its source column, including message children.
         const auto retainedNodeRow =
@@ -644,8 +642,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         const auto html = renderer.RenderHtml(
             *config,
             staticConfig,
-            dynamicConfig,
-            *controls);
+            dynamicConfig);
 
         // Count ignored parameters by section and explain the policy.
         UNIT_ASSERT_STRING_CONTAINS(
@@ -710,8 +707,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         auto html = renderer.RenderHtml(
             *startup.Config,
             staticConfig,
-            startupDynamicConfig,
-            *controls);
+            startupDynamicConfig);
 
         const auto startupNodeRow =
             GetParameterRow(html, "StorageService.NodeType");
@@ -745,7 +741,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             renderer.Data.CurrentConfigPreparationDiagnostics);
         renderer.Data.UpdateStatus = EConfigUpdateStatus::Runtime;
         renderer.Data.DynamicConfigPresent = false;
-        html = renderer.RenderHtml(*config, staticConfig, {}, *controls);
+        html = renderer.RenderHtml(*config, staticConfig, {});
 
         // Keep the historical labels and hint, but no current ignored counter.
         const auto retainedNodeRow =
@@ -1008,8 +1004,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         const auto html = renderer.RenderHtml(
             *config,
             staticConfig,
-            dynamicConfig,
-            *controls);
+            dynamicConfig);
 
         // Use the same format for raw values, ICB and Effective.
         AssertParameterRow(
@@ -1095,8 +1090,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         const TString html = renderer.RenderHtml(
             *config,
             staticConfig,
-            dynamicConfig,
-            *controls);
+            dynamicConfig);
 
         // Check both table layouts and the presence of the dynamic source.
         UNIT_ASSERT_STRING_CONTAINS(
@@ -1185,8 +1179,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
 
         // Render the initial state without a dynamic source.
         const TBlockstoreConfigRenderer renderer;
-        const auto html =
-            renderer.RenderHtml(*config, staticConfig, {}, *controls);
+        const auto html = renderer.RenderHtml(*config, staticConfig, {});
 
         // Match public settings to their own rows while omitting raw secrets.
         const TParameterRow publicSettings[] = {
@@ -1280,8 +1273,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         const auto startupHtml = renderer.RenderHtml(
             *config,
             staticConfig,
-            startupDynamicConfig,
-            *controls);
+            startupDynamicConfig);
 
         AssertParameterRow(
             startupHtml,
@@ -1323,8 +1315,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         const auto html = renderer.RenderHtml(
             *config,
             staticConfig,
-            dynamicConfig,
-            *controls);
+            dynamicConfig);
 
         // Preserve the empty effective message and its deferred section count.
         const auto lockdownRow =
@@ -1384,8 +1375,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         const auto html = renderer.RenderHtml(
             *config,
             staticConfig,
-            dynamicConfig,
-            *controls);
+            dynamicConfig);
 
         // Mark only empty messages; populated values remain in child rows.
         const auto metadataRow =
@@ -1452,8 +1442,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         const auto html = renderer.RenderHtml(
             *config,
             staticConfig,
-            dynamicConfig,
-            *controls);
+            dynamicConfig);
 
         // Mark the retained and rejected branches as one deferred group change.
         const auto metadataRow =
@@ -1537,8 +1526,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         const auto html = renderer.RenderHtml(
             *config,
             staticConfig,
-            dynamicConfig,
-            *controls);
+            dynamicConfig);
 
         // Count the collection once and exclude ICB, unchanged RO values and
         // static-only values from the two changes that require a restart.
@@ -1680,8 +1668,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         const auto html = renderer.RenderHtml(
             *config,
             staticConfig,
-            dynamicConfig,
-            *controls);
+            dynamicConfig);
 
         // Compare matching indices and keys while retaining missing source
         // cells.
