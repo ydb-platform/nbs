@@ -133,7 +133,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			name:     "zone-less tombstone with empty request zone",
 			zoneMeta: &resources.DiskMeta{}, requestZone: "",
 			disabledZones: disabledZone, deleteIfNonExistent: true,
-			skipIncremental: true,
+			nonCancellable: true,
 		},
 		{
 			name:     "disabled trash metadata zone conflicts with request zone",
@@ -186,7 +186,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 		},
 		{
 			name:          "missing metadata and request zone",
-			disabledZones: disabledZone, deleteIfNonExistent: true, skipIncremental: true,
+			disabledZones: disabledZone, deleteIfNonExistent: true, nonCancellable: true,
 		},
 		{
 			name: "metadata read error in disabled zone", diskMeta: disabledDisk,
@@ -283,10 +283,12 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 					return
 				}
 				if tc.diskMeta == nil && tc.deleteIfNonExistent {
-					storage.On("GetDiskMeta", ctx, "disk").
-						Return(tc.zoneMeta, errorFor("GetZoneMeta")).Once()
-					if tc.errorAt == "GetZoneMeta" {
-						return
+					if len(tc.requestZone) != 0 {
+						storage.On("GetDiskMeta", ctx, "disk").
+							Return(tc.zoneMeta, errorFor("GetZoneMeta")).Once()
+						if tc.errorAt == "GetZoneMeta" {
+							return
+						}
 					}
 					if tc.requestCells != nil || tc.errorAt == "ResolveCells" {
 						cellSelector.On("ResolveCells", tc.requestZone).
