@@ -41,15 +41,20 @@ public:
     TNodeAttrsCache(ui32 maxEntryCount, ui32 shardCount);
 
     /**
-     * Caches node attrs until deadline unless the node has been invalidated
-     * after version.
+     * Caches node attrs until deadline unless the node or the source has been
+     * invalidated after version.
      *
      * @param attrs - Node attrs.
      * @param version - Cache version at which the request that has fetched
      *  the attrs has started.
+     * @param sourceId - Source of the attrs (NodeCacheSourceId).
      * @param deadline - Deadline after which the attrs are not used.
      */
-    void Add(const NProto::TNodeAttr& attrs, ui64 version, TInstant deadline);
+    void Add(
+        const NProto::TNodeAttr& attrs,
+        ui64 version,
+        ui64 sourceId,
+        TInstant deadline);
 
     /**
      * Checks whether the node attrs fetched by a request may be cached - by
@@ -95,12 +100,14 @@ public:
         ui64 invalidationVersion);
 
     /**
-     * Erases all the node attrs and prevents caching by the requests started
-     * before version.
+     * Invalidates all the node attrs received from a source (e.g. upon the
+     * loss of the connection to it): the attrs fetched from it by the
+     * requests started before version are neither cached nor returned.
      *
+     * @param sourceId - Source of the attrs.
      * @param version - Cache version of the invalidation.
      */
-    void InvalidateAll(ui64 version);
+    void InvalidateSource(ui64 sourceId, ui64 version);
 
     /**
      * @return - Number of the cached node attrs.

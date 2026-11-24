@@ -97,6 +97,13 @@ message THeaders
     // to FileSystemEvents and returns zero NodeCacheTTL, NodeRefCacheTTL and
     // XAttrCacheTTL.
     bool FileSystemEventSubscriptionDisabled = 14;
+
+    // Source of the invalidations of the data the response allows to cache
+    // (see FileSystemEvents). Set by the tablet proxy, which reports the loss
+    // of the connection to the tablet with the same id. The tablet doesn't
+    // interpret it and returns it as NodeCacheSourceId, NodeRefCacheSourceId
+    // or XAttrCacheSourceId along with a nonzero TTL.
+    uint64 FileSystemEventSourceId = 15;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

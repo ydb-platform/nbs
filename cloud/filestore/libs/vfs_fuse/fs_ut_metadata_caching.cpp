@@ -28,6 +28,7 @@ namespace {
 constexpr ui64 FileNodeId = 100;
 constexpr ui32 CacheTTLMs = 60'000;
 constexpr TDuration CacheTTL = TDuration::MilliSeconds(CacheTTLMs);
+constexpr ui64 SourceId = 1;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -47,6 +48,16 @@ bool WaitForCondition(TDuration timeout, F&& predicate)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TFileStoreFeatures WithFileSystemEvents(
+    NProto::TFileStoreFeatures features,
+    bool enabled)
+{
+    features.SetFileSystemEventsEnabled(enabled);
+    return features;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TMetadataCachingEnv
 {
     std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
@@ -56,17 +67,24 @@ struct TMetadataCachingEnv
 
     std::atomic<ui32> NodeCacheTTL = CacheTTLMs;
     std::atomic<ui32> NodeRefCacheTTL = CacheTTLMs;
+    std::atomic<ui64> NodeCacheSourceId = UnknownSourceId;
+    std::atomic<ui64> NodeRefCacheSourceId = UnknownSourceId;
+    std::atomic<ui64> XAttrCacheSourceId = UnknownSourceId;
     // Each GetNodeXAttr response carries a new value.
     std::atomic<ui32> LastXAttrValue = 0;
     std::atomic<ui32> SetXAttrCount = 0;
     std::atomic<ui32> XAttrCacheTTL = CacheTTLMs;
     std::atomic<bool> XAttrExists = true;
 
-    explicit TMetadataCachingEnv(NProto::TFileStoreFeatures features = {})
+    explicit TMetadataCachingEnv(
+            NProto::TFileStoreFeatures features = {},
+            bool fileSystemEventsEnabled = true)
         : Bootstrap(
               Timer,
               CreateScheduler(),
-              features,
+              WithFileSystemEvents(
+                  std::move(features),
+                  fileSystemEventsEnabled),
               1000 /* handleOpsQueueStateFileSize */,
               1000 /* writeBackCacheAutomaticFlushPeriodMs */,
               0 /* directoryHandlesInitialDataSize */,
@@ -96,6 +114,7 @@ struct TMetadataCachingEnv
                 NProto::TSetNodeXAttrResponse response;
                 response.SetVersion(++SetXAttrCount);
                 response.SetXAttrCacheTTL(XAttrCacheTTL);
+                response.SetXAttrCacheSourceId(XAttrCacheSourceId);
                 return MakeFuture(response);
             });
 
@@ -116,6 +135,7 @@ struct TMetadataCachingEnv
             node->SetId(FileNodeId);
             node->SetType(NProto::E_REGULAR_NODE);
             response.SetNodeRefCacheTTL(NodeRefCacheTTL);
+            response.SetNodeRefCacheSourceId(NodeRefCacheSourceId);
         } else {
             node->SetId(request.GetNodeId());
             node->SetType(
@@ -125,6 +145,7 @@ struct TMetadataCachingEnv
         }
         node->SetMode(0644);
         response.SetNodeCacheTTL(NodeCacheTTL);
+        response.SetNodeCacheSourceId(NodeCacheSourceId);
         return response;
     }
 
@@ -133,6 +154,7 @@ struct TMetadataCachingEnv
         const ui32 value = ++LastXAttrValue;
         NProto::TGetNodeXAttrResponse response;
         response.SetXAttrCacheTTL(XAttrCacheTTL);
+        response.SetXAttrCacheSourceId(XAttrCacheSourceId);
         if (!XAttrExists) {
             *response.MutableError() = ErrorAttributeDoesNotExist("user.a");
             return response;
@@ -258,7 +280,7 @@ void CheckReadAfterSetXAttrRacingWithDelayedGetXAttr(bool xattrExists)
     // before SetXAttr, but its response arrives after the SetXAttr response.
     //
 
-    env.EventHandler->OnDisconnect(1 /* tabletId */);
+    env.EventHandler->OnDisconnect(1 /* sourceId */);
     auto getXAttr = env.Bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(
         "user.a",
         FileNodeId);
@@ -458,7 +480,7 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             env.GetCounter("InvalidateNodeXAttrEventCount"));
-        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("InvalidateAllCount"));
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("InvalidateSourceCount"));
     }
 
     Y_UNIT_TEST(ShouldInvalidateCachesUponDisconnect)
@@ -466,15 +488,130 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         TMetadataCachingEnv env;
 
         env.Lookup("f");
-        env.EventHandler->OnDisconnect(1 /* tabletId */);
+        env.EventHandler->OnDisconnect(1 /* sourceId */);
 
         env.Lookup("f");
         UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("LookupCacheMissCount"));
 
-        env.EventHandler->OnDisconnect(1 /* tabletId */);
+        env.EventHandler->OnDisconnect(1 /* sourceId */);
         env.GetAttr(FileNodeId);
         UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetAttrCacheMissCount"));
-        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("InvalidateAllCount"));
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("InvalidateSourceCount"));
+    }
+
+    Y_UNIT_TEST(ShouldInvalidateCachesOfDisconnectedSourceOnly)
+    {
+        TMetadataCachingEnv env;
+        env.NodeRefCacheSourceId = 1;
+        env.NodeCacheSourceId = 2;
+        env.XAttrCacheSourceId = 2;
+
+        env.Lookup("f");
+        UNIT_ASSERT_VALUES_EQUAL("1", env.GetXAttr());
+
+        //
+        // The data of the other sources is kept.
+        //
+
+        env.EventHandler->OnDisconnect(3 /* sourceId */);
+        env.Lookup("f");
+        env.GetAttr(FileNodeId);
+        UNIT_ASSERT_VALUES_EQUAL("1", env.GetXAttr());
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("LookupCacheMissCount"));
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("GetAttrCacheMissCount"));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetXAttrCacheMissCount"));
+
+        //
+        // The node attrs and the xattr are dropped, the NodeRef is kept.
+        //
+
+        env.EventHandler->OnDisconnect(2 /* sourceId */);
+        env.GetAttr(FileNodeId);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetAttrCacheMissCount"));
+        UNIT_ASSERT_VALUES_EQUAL("2", env.GetXAttr());
+        env.Lookup("f");
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("LookupCacheMissCount"));
+
+        //
+        // The NodeRef is dropped, the node attrs are kept.
+        //
+
+        env.EventHandler->OnDisconnect(1 /* sourceId */);
+        env.Lookup("f");
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("LookupCacheMissCount"));
+        env.GetAttr(FileNodeId);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetAttrCacheMissCount"));
+        UNIT_ASSERT_VALUES_EQUAL(3, env.GetCounter("InvalidateSourceCount"));
+    }
+
+    Y_UNIT_TEST(ShouldNotCacheResponsesRacingWithDisconnectOfTheirSource)
+    {
+        TMetadataCachingEnv env;
+        env.NodeCacheSourceId = 2;
+
+        auto promise = NewPromise();
+        std::atomic<bool> requested = false;
+        env.Bootstrap.Service->SetHandlerGetNodeAttr(
+            [&] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                auto response = env.HandleGetNodeAttr(*request);
+                if (!requested.exchange(true)) {
+                    return promise.GetFuture().Apply(
+                        [response] (const auto&) { return response; });
+                }
+                return MakeFuture(response);
+            });
+
+        //
+        // The source of the response is disconnected while the request is
+        // in flight - its subscription may have been lost.
+        //
+
+        auto getAttr = env.Bootstrap.Fuse->SendRequest<TGetAttrRequest>(
+            FileNodeId);
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&] { return requested.load(); }));
+        env.EventHandler->OnDisconnect(2 /* sourceId */);
+        promise.SetValue();
+        UNIT_ASSERT_NO_EXCEPTION(getAttr.GetValue(WaitTimeout));
+
+        env.GetAttr(FileNodeId);
+        env.GetAttr(FileNodeId);
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("GetAttrCacheMissCount"));
+    }
+
+    Y_UNIT_TEST(ShouldCacheResponsesRacingWithDisconnectOfOtherSources)
+    {
+        TMetadataCachingEnv env;
+        env.NodeCacheSourceId = 2;
+
+        auto promise = NewPromise();
+        std::atomic<bool> requested = false;
+        env.Bootstrap.Service->SetHandlerGetNodeAttr(
+            [&] (auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+                auto response = env.HandleGetNodeAttr(*request);
+                if (!requested.exchange(true)) {
+                    return promise.GetFuture().Apply(
+                        [response] (const auto&) { return response; });
+                }
+                return MakeFuture(response);
+            });
+
+        auto getAttr = env.Bootstrap.Fuse->SendRequest<TGetAttrRequest>(
+            FileNodeId);
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&] { return requested.load(); }));
+        env.EventHandler->OnDisconnect(3 /* sourceId */);
+        promise.SetValue();
+        UNIT_ASSERT_NO_EXCEPTION(getAttr.GetValue(WaitTimeout));
+
+        env.GetAttr(FileNodeId);
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetAttrCacheMissCount"));
     }
 
     Y_UNIT_TEST(ShouldInvalidateXAttrCacheUponEvents)
@@ -507,14 +644,14 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         // A disconnect invalidates everything.
         //
 
-        env.EventHandler->OnDisconnect(1 /* tabletId */);
+        env.EventHandler->OnDisconnect(1 /* sourceId */);
         UNIT_ASSERT_VALUES_EQUAL("5", env.GetXAttr());
         UNIT_ASSERT_VALUES_EQUAL(5, env.GetCounter("GetXAttrCacheMissCount"));
         UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("GetXAttrCacheHitCount"));
         UNIT_ASSERT_VALUES_EQUAL(
             3,
             env.GetCounter("InvalidateNodeXAttrEventCount"));
-        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("InvalidateAllCount"));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("InvalidateSourceCount"));
     }
 
     Y_UNIT_TEST(ShouldInvalidateXAttrsCachedUponSetXAttr)
@@ -633,7 +770,7 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
             WaitTimeout,
             [&] { return requested.load(); }));
 
-        env.EventHandler->OnDisconnect(1 /* tabletId */);
+        env.EventHandler->OnDisconnect(1 /* sourceId */);
         UNIT_ASSERT_VALUES_EQUAL("1", env.GetXAttr());
         UNIT_ASSERT_VALUES_EQUAL("1", env.GetXAttr());
         UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetXAttrCacheMissCount"));
@@ -1035,7 +1172,7 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         // The invalidations of everything raise the watermark.
         //
 
-        env.EventHandler->OnDisconnect(1 /* tabletId */);
+        env.EventHandler->OnDisconnect(1 /* sourceId */);
         check();
     }
 
@@ -1075,6 +1212,36 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         promise.SetValue();
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
         UNIT_ASSERT_VALUES_EQUAL(0, setAttr->Out->Body.attr_valid);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreCacheTTLsWithoutFileSystemEvents)
+    {
+        //
+        // The backend returns nonzero TTLs, but the session has started
+        // without the FileSystemEvents - the invalidations would not be
+        // received.
+        //
+
+        TMetadataCachingEnv env(
+            {} /* features */,
+            false /* fileSystemEventsEnabled */);
+
+        env.Lookup("f");
+        env.Lookup("f");
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("LookupCacheMissCount"));
+
+        env.GetAttr(FileNodeId);
+        env.GetAttr(FileNodeId);
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("GetAttrCacheMissCount"));
+
+        //
+        // The xattrs fall back to XAttrCacheTimeout.
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL("1", env.GetXAttr());
+        UNIT_ASSERT_VALUES_EQUAL("1", env.GetXAttr());
+        env.Timer->AdvanceTime(TDuration::Seconds(15));
+        UNIT_ASSERT_VALUES_EQUAL("2", env.GetXAttr());
     }
 
     Y_UNIT_TEST(ShouldCacheAttrsOfNodesNotLookedUp)
@@ -1185,10 +1352,18 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("NodeRefCacheSize"));
         UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("XAttrCacheSize"));
 
-        env.EventHandler->OnDisconnect(1 /* tabletId */);
-        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("NodeAttrsCacheSize"));
-        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("NodeRefCacheSize"));
-        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("XAttrCacheSize"));
+        //
+        // The disconnect invalidates the entries lazily - they are dropped
+        // upon access or eviction.
+        //
+
+        env.EventHandler->OnDisconnect(1 /* sourceId */);
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("NodeAttrsCacheSize"));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("NodeRefCacheSize"));
+        UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("XAttrCacheSize"));
+
+        env.Lookup("f");
+        UNIT_ASSERT_VALUES_EQUAL(2, env.GetCounter("LookupCacheMissCount"));
     }
 }
 
@@ -1261,24 +1436,27 @@ Y_UNIT_TEST_SUITE(TInvalidationsTest)
         UNIT_ASSERT(invalidations.IsCacheable(2, 5 /* version */));
     }
 
-    Y_UNIT_TEST(ShouldKeepTombstoneVersionsUponInvalidateAll)
+    Y_UNIT_TEST(ShouldInvalidateSources)
     {
         TInvalidations<ui64> invalidations(2 /* maxTombstoneCount */);
 
+        invalidations.InvalidateSource(1 /* sourceId */, 5 /* version */);
+        UNIT_ASSERT(!invalidations.IsSourceValid(1, 4 /* version */));
+        UNIT_ASSERT(invalidations.IsSourceValid(1, 5 /* version */));
+        UNIT_ASSERT(invalidations.IsSourceValid(2, 4 /* version */));
+
         //
-        // The tombstone versions may exceed the version of InvalidateAll -
-        // they are kept in the watermark.
+        // The unknown source is invalidated along with any source.
         //
 
-        invalidations.Invalidate(1, 7 /* version */);
-        invalidations.InvalidateAll(5 /* version */);
-        UNIT_ASSERT(!invalidations.IsCacheable(2, 6 /* version */));
-        UNIT_ASSERT(invalidations.IsCacheable(2, 7 /* version */));
-        UNIT_ASSERT(invalidations.IsCacheable(1, 7 /* version */));
+        UNIT_ASSERT(!invalidations.IsSourceValid(UnknownSourceId, 4));
+        UNIT_ASSERT(invalidations.IsSourceValid(UnknownSourceId, 5));
 
-        invalidations.InvalidateAll(9 /* version */);
-        UNIT_ASSERT(!invalidations.IsCacheable(1, 8 /* version */));
-        UNIT_ASSERT(invalidations.IsCacheable(1, 9 /* version */));
+        //
+        // The source invalidations don't affect the keys.
+        //
+
+        UNIT_ASSERT(invalidations.IsCacheable(1, 0 /* version */));
     }
 
     Y_UNIT_TEST(ShouldNotOverflowCapacity)
@@ -1296,12 +1474,37 @@ Y_UNIT_TEST_SUITE(TInvalidationsTest)
 
 Y_UNIT_TEST_SUITE(TNodeAttrsCacheTest)
 {
+    Y_UNIT_TEST(ShouldInvalidateNodeAttrsOfSource)
+    {
+        TNodeAttrsCache cache(10 /* maxEntryCount */, 1 /* shardCount */);
+        const auto t0 = TInstant::Seconds(100);
+
+        cache.Add(MakeFileAttr(1), 1 /* version */, 1 /* sourceId */, t0);
+        cache.Add(MakeFileAttr(2), 1 /* version */, 2 /* sourceId */, t0);
+
+        //
+        // The attrs received from the source are dropped, the attrs fetched
+        // from it by the requests started before the invalidation are not
+        // cached.
+        //
+
+        cache.InvalidateSource(1 /* sourceId */, 5 /* version */);
+        UNIT_ASSERT(!cache.Get(1, t0 - CacheTTL));
+        UNIT_ASSERT(cache.Get(2, t0 - CacheTTL));
+        UNIT_ASSERT_VALUES_EQUAL(1, cache.GetEntryCount());
+
+        cache.Add(MakeFileAttr(1), 4 /* version */, 1 /* sourceId */, t0);
+        UNIT_ASSERT(!cache.Get(1, t0 - CacheTTL));
+        cache.Add(MakeFileAttr(1), 5 /* version */, 1 /* sourceId */, t0);
+        UNIT_ASSERT(cache.Get(1, t0 - CacheTTL));
+    }
+
     Y_UNIT_TEST(ShouldCacheNodeAttrsUntilDeadline)
     {
         TNodeAttrsCache cache(10 /* maxEntryCount */, 1 /* shardCount */);
         const auto t0 = TInstant::Seconds(100);
 
-        cache.Add(MakeFileAttr(1), 1 /* version */, t0 + CacheTTL);
+        cache.Add(MakeFileAttr(1), 1 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT_VALUES_EQUAL(1, cache.Get(1, t0)->GetId());
         UNIT_ASSERT(!cache.Get(2, t0));
 
@@ -1319,10 +1522,10 @@ Y_UNIT_TEST_SUITE(TNodeAttrsCacheTest)
         //
 
         cache.Invalidate(1, 5 /* version */);
-        cache.Add(MakeFileAttr(1), 4 /* version */, t0 + CacheTTL);
+        cache.Add(MakeFileAttr(1), 4 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT(!cache.Get(1, t0));
 
-        cache.Add(MakeFileAttr(1), 6 /* version */, t0 + CacheTTL);
+        cache.Add(MakeFileAttr(1), 6 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT(cache.Get(1, t0));
 
         //
@@ -1331,18 +1534,18 @@ Y_UNIT_TEST_SUITE(TNodeAttrsCacheTest)
 
         cache.Invalidate(1, 8 /* version */);
         UNIT_ASSERT(!cache.Get(1, t0));
-        cache.Add(MakeFileAttr(1), 7 /* version */, t0 + CacheTTL);
+        cache.Add(MakeFileAttr(1), 7 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT(!cache.Get(1, t0));
 
         //
-        // All the nodes are invalidated.
+        // All the nodes of the source are invalidated.
         //
 
-        cache.Add(MakeFileAttr(1), 9 /* version */, t0 + CacheTTL);
+        cache.Add(MakeFileAttr(1), 9 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT(cache.Get(1, t0));
-        cache.InvalidateAll(10 /* version */);
+        cache.InvalidateSource(SourceId, 10 /* version */);
         UNIT_ASSERT(!cache.Get(1, t0));
-        cache.Add(MakeFileAttr(2), 9 /* version */, t0 + CacheTTL);
+        cache.Add(MakeFileAttr(2), 9 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT(!cache.Get(2, t0));
     }
 
@@ -1355,14 +1558,14 @@ Y_UNIT_TEST_SUITE(TNodeAttrsCacheTest)
         cache.Invalidate(2, 6 /* version */);
         cache.Invalidate(3, 7 /* version */);
 
-        cache.Add(MakeFileAttr(1), 4 /* version */, t0 + CacheTTL);
+        cache.Add(MakeFileAttr(1), 4 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT(!cache.Get(1, t0));
-        cache.Add(MakeFileAttr(4), 4 /* version */, t0 + CacheTTL);
+        cache.Add(MakeFileAttr(4), 4 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT(!cache.Get(4, t0));
 
-        cache.Add(MakeFileAttr(4), 5 /* version */, t0 + CacheTTL);
+        cache.Add(MakeFileAttr(4), 5 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT(cache.Get(4, t0));
-        cache.Add(MakeFileAttr(2), 5 /* version */, t0 + CacheTTL);
+        cache.Add(MakeFileAttr(2), 5 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT(!cache.Get(2, t0));
     }
 }
@@ -1371,6 +1574,43 @@ Y_UNIT_TEST_SUITE(TNodeAttrsCacheTest)
 
 Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
 {
+    Y_UNIT_TEST(ShouldInvalidateXAttrsOfSource)
+    {
+        TXAttrCache cache(
+            std::make_shared<TTestTimer>(),
+            10 /* maxSize */,
+            TDuration::Seconds(15));
+
+        cache.Add(
+            1,
+            "a",
+            "v1",
+            1 /* version */,
+            1 /* cacheVersion */,
+            1 /* sourceId */,
+            {} /* cacheTTL */);
+        cache.AddAbsent(
+            1,
+            "b",
+            1 /* cacheVersion */,
+            2 /* sourceId */,
+            {} /* cacheTTL */);
+
+        cache.InvalidateSource(1 /* sourceId */, 5 /* version */);
+        UNIT_ASSERT(!cache.Get(1, "a"));
+        UNIT_ASSERT(cache.Get(1, "b"));
+
+        cache.Add(
+            1,
+            "a",
+            "v2",
+            2 /* version */,
+            4 /* cacheVersion */,
+            1 /* sourceId */,
+            {} /* cacheTTL */);
+        UNIT_ASSERT(!cache.Get(1, "a"));
+    }
+
     Y_UNIT_TEST(ShouldExpireXAttrsUponCacheTTLOrTimeout)
     {
         auto timer = std::make_shared<TTestTimer>();
@@ -1382,6 +1622,7 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             "v1",
             1 /* version */,
             1 /* cacheVersion */,
+            SourceId,
             TDuration::Minutes(1) /* cacheTTL */);
         cache.Add(
             1,
@@ -1389,6 +1630,7 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             "v2",
             1 /* version */,
             1 /* cacheVersion */,
+            SourceId,
             {} /* cacheTTL */);
 
         timer->AdvanceTime(TDuration::Seconds(15));
@@ -1413,6 +1655,7 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             2 /* version */,
             1 /* cacheVersion */,
             5 /* invalidationVersion */,
+            SourceId,
             {} /* cacheTTL */);
         UNIT_ASSERT_VALUES_EQUAL("v2", *cache.Get(1, "a")->Value);
 
@@ -1421,17 +1664,28 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
         // been cached are not cached, the own value is kept.
         //
 
-        cache.AddAbsent(1, "a", 4 /* cacheVersion */, {} /* cacheTTL */);
+        cache.AddAbsent(
+            1,
+            "a",
+            4 /* cacheVersion */,
+            SourceId,
+            {} /* cacheTTL */);
         cache.Add(
             1,
             "a",
             "v3",
             3 /* version */,
             4 /* cacheVersion */,
+            SourceId,
             {} /* cacheTTL */);
         UNIT_ASSERT_VALUES_EQUAL("v2", *cache.Get(1, "a")->Value);
 
-        cache.AddAbsent(1, "a", 5 /* cacheVersion */, {} /* cacheTTL */);
+        cache.AddAbsent(
+            1,
+            "a",
+            5 /* cacheVersion */,
+            SourceId,
+            {} /* cacheTTL */);
         const auto* xattr = cache.Get(1, "a");
         UNIT_ASSERT(xattr && !xattr->Value);
 
@@ -1439,8 +1693,13 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
         // An own value which may not be cached erases the cached entry.
         //
 
-        cache.InvalidateAll(10 /* version */);
-        cache.AddAbsent(1, "a", 10 /* cacheVersion */, {} /* cacheTTL */);
+        cache.InvalidateSource(SourceId, 10 /* version */);
+        cache.AddAbsent(
+            1,
+            "a",
+            10 /* cacheVersion */,
+            SourceId,
+            {} /* cacheTTL */);
         UNIT_ASSERT(cache.Get(1, "a"));
         cache.AddOwn(
             1,
@@ -1449,9 +1708,15 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             4 /* version */,
             9 /* cacheVersion */,
             11 /* invalidationVersion */,
+            SourceId,
             {} /* cacheTTL */);
         UNIT_ASSERT(!cache.Get(1, "a"));
-        cache.AddAbsent(1, "a", 10 /* cacheVersion */, {} /* cacheTTL */);
+        cache.AddAbsent(
+            1,
+            "a",
+            10 /* cacheVersion */,
+            SourceId,
+            {} /* cacheTTL */);
         UNIT_ASSERT(!cache.Get(1, "a"));
 
         //
@@ -1465,6 +1730,7 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             0 /* version */,
             11 /* cacheVersion */,
             12 /* invalidationVersion */,
+            SourceId,
             {} /* cacheTTL */);
         cache.Add(
             1,
@@ -1472,6 +1738,7 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             "v5",
             5 /* version */,
             11 /* cacheVersion */,
+            SourceId,
             {} /* cacheTTL */);
         xattr = cache.Get(1, "b");
         UNIT_ASSERT(xattr && !xattr->Value);
@@ -1490,14 +1757,21 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             "v1",
             1 /* version */,
             1 /* cacheVersion */,
+            SourceId,
             {} /* cacheTTL */);
-        cache.AddAbsent(1, "b", 1 /* cacheVersion */, {} /* cacheTTL */);
+        cache.AddAbsent(
+            1,
+            "b",
+            1 /* cacheVersion */,
+            SourceId,
+            {} /* cacheTTL */);
         cache.Add(
             2,
             "a",
             "v2",
             1 /* version */,
             1 /* cacheVersion */,
+            SourceId,
             {} /* cacheTTL */);
 
         //
@@ -1521,9 +1795,15 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             "v3",
             2 /* version */,
             4 /* cacheVersion */,
+            SourceId,
             {} /* cacheTTL */);
         UNIT_ASSERT(!cache.Get(1, "a"));
-        cache.AddAbsent(1, "b", 4 /* cacheVersion */, {} /* cacheTTL */);
+        cache.AddAbsent(
+            1,
+            "b",
+            4 /* cacheVersion */,
+            SourceId,
+            {} /* cacheTTL */);
         UNIT_ASSERT(!cache.Get(1, "b"));
 
         cache.Add(
@@ -1532,6 +1812,7 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             "v4",
             3 /* version */,
             5 /* cacheVersion */,
+            SourceId,
             {} /* cacheTTL */);
         UNIT_ASSERT_VALUES_EQUAL("v4", *cache.Get(1, "a")->Value);
     }
@@ -1549,6 +1830,7 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             "v1",
             1 /* version */,
             1 /* cacheVersion */,
+            SourceId,
             {} /* cacheTTL */);
         UNIT_ASSERT(cache.Get(1, "a"));
 
@@ -1565,12 +1847,23 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             "v2",
             2 /* version */,
             4 /* cacheVersion */,
+            SourceId,
             {} /* cacheTTL */);
         UNIT_ASSERT(!cache.Get(1, "a"));
-        cache.AddAbsent(1, "a", 4 /* cacheVersion */, {} /* cacheTTL */);
+        cache.AddAbsent(
+            1,
+            "a",
+            4 /* cacheVersion */,
+            SourceId,
+            {} /* cacheTTL */);
         UNIT_ASSERT(!cache.Get(1, "a"));
 
-        cache.AddAbsent(1, "a", 6 /* cacheVersion */, {} /* cacheTTL */);
+        cache.AddAbsent(
+            1,
+            "a",
+            6 /* cacheVersion */,
+            SourceId,
+            {} /* cacheTTL */);
         const auto* xattr = cache.Get(1, "a");
         UNIT_ASSERT(xattr && !xattr->Value);
 
@@ -1584,10 +1877,11 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             "v3",
             3 /* version */,
             4 /* cacheVersion */,
+            SourceId,
             {} /* cacheTTL */);
         UNIT_ASSERT(cache.Get(1, "b"));
 
-        cache.InvalidateAll(10 /* version */);
+        cache.InvalidateSource(SourceId, 10 /* version */);
         UNIT_ASSERT(!cache.Get(1, "a"));
         UNIT_ASSERT(!cache.Get(1, "b"));
         cache.Add(
@@ -1596,6 +1890,7 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             "v4",
             4 /* version */,
             9 /* cacheVersion */,
+            SourceId,
             {} /* cacheTTL */);
         UNIT_ASSERT(!cache.Get(1, "b"));
         cache.Add(
@@ -1604,6 +1899,7 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             "v5",
             5 /* version */,
             10 /* cacheVersion */,
+            SourceId,
             {} /* cacheTTL */);
         UNIT_ASSERT_VALUES_EQUAL("v5", *cache.Get(1, "b")->Value);
     }
@@ -1618,7 +1914,7 @@ Y_UNIT_TEST_SUITE(TNodeRefCacheTest)
         TNodeRefCache cache(10 /* maxEntryCount */, 1 /* shardCount */);
         const auto t0 = TInstant::Seconds(100);
 
-        cache.Add(1, "a", 10, 1 /* version */, t0 + CacheTTL);
+        cache.Add(1, "a", 10, 1 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT_VALUES_EQUAL(10, cache.Get(1, "a", t0));
         UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "b", t0));
         UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(2, "a", t0));
@@ -1634,19 +1930,19 @@ Y_UNIT_TEST_SUITE(TNodeRefCacheTest)
         TNodeRefCache cache(10 /* maxEntryCount */, 1 /* shardCount */);
         const auto t0 = TInstant::Seconds(100);
 
-        cache.Add(1, "a", 10, 1 /* version */, t0 + CacheTTL);
+        cache.Add(1, "a", 10, 1 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT_VALUES_EQUAL(10, cache.Invalidate(1, "a", 5 /* version */));
         UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "a", t0));
 
-        cache.Add(1, "a", 10, 4 /* version */, t0 + CacheTTL);
+        cache.Add(1, "a", 10, 4 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "a", t0));
 
-        cache.Add(1, "a", 11, 6 /* version */, t0 + CacheTTL);
+        cache.Add(1, "a", 11, 6 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT_VALUES_EQUAL(11, cache.Get(1, "a", t0));
 
-        cache.InvalidateAll(7 /* version */);
+        cache.InvalidateSource(SourceId, 7 /* version */);
         UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "a", t0));
-        cache.Add(1, "b", 12, 6 /* version */, t0 + CacheTTL);
+        cache.Add(1, "b", 12, 6 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "b", t0));
     }
 
@@ -1670,37 +1966,15 @@ Y_UNIT_TEST_SUITE(TNodeRefCacheTest)
             InvalidNodeId,
             cache.Invalidate(1, "c", 7 /* version */));
 
-        cache.Add(1, "a", 10, 4 /* version */, t0 + CacheTTL);
+        cache.Add(1, "a", 10, 4 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "a", t0));
-        cache.Add(1, "d", 11, 4 /* version */, t0 + CacheTTL);
+        cache.Add(1, "d", 11, 4 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "d", t0));
 
-        cache.Add(1, "d", 11, 5 /* version */, t0 + CacheTTL);
+        cache.Add(1, "d", 11, 5 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT_VALUES_EQUAL(11, cache.Get(1, "d", t0));
-        cache.Add(1, "b", 12, 5 /* version */, t0 + CacheTTL);
+        cache.Add(1, "b", 12, 5 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "b", t0));
-    }
-
-    Y_UNIT_TEST(ShouldKeepNewerTombstonesUponInvalidateAll)
-    {
-        TNodeRefCache cache(10 /* maxEntryCount */, 1 /* shardCount */);
-        const auto t0 = TInstant::Seconds(100);
-
-        //
-        // An invalidation with version 6 is applied before InvalidateAll with
-        // version 5 - the requests started at version 5 must not cache
-        // anything for the invalidated NodeRef.
-        //
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            InvalidNodeId,
-            cache.Invalidate(1, "a", 6 /* version */));
-        cache.InvalidateAll(5 /* version */);
-
-        cache.Add(1, "a", 10, 5 /* version */, t0 + CacheTTL);
-        UNIT_ASSERT_VALUES_EQUAL(InvalidNodeId, cache.Get(1, "a", t0));
-        cache.Add(1, "a", 10, 6 /* version */, t0 + CacheTTL);
-        UNIT_ASSERT_VALUES_EQUAL(10, cache.Get(1, "a", t0));
     }
 
     Y_UNIT_TEST(ShouldEvictLeastRecentlyUsedNodeRefs)
@@ -1708,10 +1982,10 @@ Y_UNIT_TEST_SUITE(TNodeRefCacheTest)
         TNodeRefCache cache(2 /* maxEntryCount */, 1 /* shardCount */);
         const auto t0 = TInstant::Seconds(100);
 
-        cache.Add(1, "a", 10, 1 /* version */, t0 + CacheTTL);
-        cache.Add(1, "b", 11, 1 /* version */, t0 + CacheTTL);
+        cache.Add(1, "a", 10, 1 /* version */, SourceId, t0 + CacheTTL);
+        cache.Add(1, "b", 11, 1 /* version */, SourceId, t0 + CacheTTL);
         UNIT_ASSERT_VALUES_UNEQUAL(InvalidNodeId, cache.Get(1, "a", t0));
-        cache.Add(1, "c", 12, 1 /* version */, t0 + CacheTTL);
+        cache.Add(1, "c", 12, 1 /* version */, SourceId, t0 + CacheTTL);
 
         UNIT_ASSERT_VALUES_EQUAL(2, cache.GetEntryCount());
         UNIT_ASSERT_VALUES_UNEQUAL(InvalidNodeId, cache.Get(1, "a", t0));

@@ -37,6 +37,7 @@ public:
 
     ui32 GetNodeRefCacheLimit() const;
     ui32 GetNodeAttrsCacheLimit() const;
+    bool GetFileSystemEventsEnabled() const;
 
     ui32 GetMaxBufferSize() const;
     ui32 GetMaxRequestSize() const;

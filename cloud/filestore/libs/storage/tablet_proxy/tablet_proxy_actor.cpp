@@ -34,6 +34,22 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
         NTabletPipe::CreateUnboundedClientCache(clientConfig));
 }
 
+//
+// The subscriptions of the client to FileSystemEvents are registered per
+// pipe. The loss of the pipe to a tablet is reported to the FileSystemEvent
+// handler (OnDisconnect) with this id, and the requests sent via this pipe
+// carry the same id (THeaders::FileSystemEventSourceId): the tablet returns
+// it along with the cache TTLs, so the data cached from the responses is
+// invalidated upon the loss of the pipe.
+//
+
+ui64 GetFileSystemEventSourceId(ui64 tabletId)
+{
+    return tabletId;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename TArgs, ui32 EventId>
 TString GetFileSystemId(const TRequestEvent<TArgs, EventId>& request)
 {
@@ -223,6 +239,19 @@ void TIndexTabletProxyActor::ForwardRequest(
     // TODO: @yegorskii
     // SetRequestGeneration(conn.Generation, *ev->Get());
 
+    if constexpr (requires { ev->Get()->Record.MutableHeaders(); }) {
+        //
+        // Every request carries the source id - the tablet decides which
+        // responses allow caching and returns it along with their TTLs. The
+        // requests come from the actors of this process, so accessing them
+        // doesn't parse anything - unlike the responses, which come from the
+        // tablets.
+        //
+
+        ev->Get()->Record.MutableHeaders()->SetFileSystemEventSourceId(
+            GetFileSystemEventSourceId(conn.TabletId));
+    }
+
     auto event = std::make_unique<IEventHandle>(
         ev->Recipient,
         SelfId(),
@@ -268,7 +297,7 @@ void TIndexTabletProxyActor::NotifyFileSystemEventHandlerDisconnected(
         "Pipe to tablet %lu disconnected, notifying FileSystemEvent handler",
         tabletId);
 
-    FileSystemEventHandler->OnDisconnect(tabletId);
+    FileSystemEventHandler->OnDisconnect(GetFileSystemEventSourceId(tabletId));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

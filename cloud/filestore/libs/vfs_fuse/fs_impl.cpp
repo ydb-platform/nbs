@@ -215,15 +215,29 @@ void TFileSystem::FillEntryParam(
 
 TInstant TFileSystem::GetCacheDeadline(ui32 cacheTTL) const
 {
-    //
-    // Zero TTL means that the backend doesn't allow caching.
-    //
-
-    if (!cacheTTL) {
+    const auto ttl = GetCacheTTL(cacheTTL);
+    if (!ttl) {
         return TInstant::Zero();
     }
 
-    return Timer->Now() + TDuration::MilliSeconds(cacheTTL);
+    return Timer->Now() + ttl;
+}
+
+TDuration TFileSystem::GetCacheTTL(ui32 cacheTTL) const
+{
+    //
+    // Zero TTL means that the backend doesn't allow caching. The TTLs are
+    // honoured only if the FileSystemEvents are consumed: the backend may
+    // have enabled the events after the session had started (e.g. upon a
+    // tablet restart with a new config), but without the event handler the
+    // invalidations are not received.
+    //
+
+    if (!Config->GetFileSystemEventsEnabled()) {
+        return TDuration::Zero();
+    }
+
+    return TDuration::MilliSeconds(cacheTTL);
 }
 
 void TFileSystem::UpdateCachedNodeRef(
@@ -242,6 +256,7 @@ void TFileSystem::UpdateCachedNodeRef(
         name,
         response.GetNode().GetId(),
         version,
+        response.GetNodeRefCacheSourceId(),
         deadline);
 }
 
@@ -254,7 +269,11 @@ void TFileSystem::UpdateCachedNodeAttrs(
         return;
     }
 
-    NodeAttrsCache.Add(response.GetNode(), version, deadline);
+    NodeAttrsCache.Add(
+        response.GetNode(),
+        version,
+        response.GetNodeCacheSourceId(),
+        deadline);
 }
 
 bool TFileSystem::TryReplyEntryFromCache(
@@ -410,19 +429,20 @@ TMetadataCacheSizes TFileSystem::GetMetadataCacheSizes()
     return sizes;
 }
 
-void TFileSystem::InvalidateAllCachedMetadata()
+void TFileSystem::InvalidateCachedMetadataOfSource(ui64 sourceId)
 {
-    MetadataCacheStats->IncrementInvalidateAllCount();
+    MetadataCacheStats->IncrementInvalidateSourceCount();
 
     const ui64 version = GenerateCacheVersion(GlobalCacheVersion);
 
-    STORAGE_INFO("invalidating all cached metadata, version: " << version);
+    STORAGE_DEBUG("invalidating cached metadata of source: " << sourceId
+        << ", version: " << version);
 
-    NodeAttrsCache.InvalidateAll(version);
-    NodeRefCache.InvalidateAll(version);
+    NodeAttrsCache.InvalidateSource(sourceId, version);
+    NodeRefCache.InvalidateSource(sourceId, version);
 
     TGuard g{XAttrCacheLock};
-    XAttrCache.InvalidateAll(version);
+    XAttrCache.InvalidateSource(sourceId, version);
 }
 
 void TFileSystem::InvalidateCachedEntry(
@@ -481,17 +501,25 @@ void TFileSystem::UpdateXAttrCache(
     ui64 version,
     const NProto::TError& error,
     ui64 cacheVersion,
+    ui64 sourceId,
     TDuration cacheTTL)
 {
     TGuard g{XAttrCacheLock};
     if (HasError(error)) {
         if (STATUS_FROM_CODE(error.GetCode()) == NProto::E_FS_NOXATTR) {
-            XAttrCache.AddAbsent(ino, name, cacheVersion, cacheTTL);
+            XAttrCache.AddAbsent(ino, name, cacheVersion, sourceId, cacheTTL);
         }
         return;
     }
 
-    XAttrCache.Add(ino, name, value, version, cacheVersion, cacheTTL);
+    XAttrCache.Add(
+        ino,
+        name,
+        value,
+        version,
+        cacheVersion,
+        sourceId,
+        cacheTTL);
 }
 
 void TFileSystem::UpdateXAttrCacheUponSetXAttr(
@@ -501,6 +529,7 @@ void TFileSystem::UpdateXAttrCacheUponSetXAttr(
     ui64 version,
     const NProto::TError& error,
     ui64 cacheVersion,
+    ui64 sourceId,
     TDuration cacheTTL)
 {
     TMaybe<TString> ownValue;
@@ -535,6 +564,7 @@ void TFileSystem::UpdateXAttrCacheUponSetXAttr(
         version,
         cacheVersion,
         invalidationVersion,
+        sourceId,
         cacheTTL);
 }
 
