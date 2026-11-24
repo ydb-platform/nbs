@@ -217,9 +217,10 @@ func (t *deleteDiskTask) GetResponse() proto.Message {
 // Resolves the zone for a disk that DeleteDisk did not return metadata for.
 // Prefers the zone from meta (the disk may still be in the trash retention
 // window) and falls back to the request zone. If meta has a zone, the request
-// zone must be non-empty and must match the zone from meta or contain it as
-// one of its cells, otherwise the request is rejected with a non-retriable
-// error. The zone is not persisted and is resolved again on every retry.
+// zone must be non-empty (otherwise a non-retriable error is returned) and
+// must match the zone from meta or contain it as one of its cells (otherwise
+// a retriable error is returned). The zone is not persisted and is resolved
+// again on every retry.
 func (t *deleteDiskTask) resolveCleanupZoneID(
 	ctx context.Context,
 	diskID string,
@@ -253,7 +254,7 @@ func (t *deleteDiskTask) resolveCleanupZoneID(
 	}
 
 	if !slices.Contains(requestCells, meta.ZoneID) {
-		return "", errors.NewNonRetriableErrorf(
+		return "", errors.NewRetriableErrorf(
 			"zone %q of disk %v from meta does not match request zone %q (cells %v)",
 			meta.ZoneID,
 			diskID,
