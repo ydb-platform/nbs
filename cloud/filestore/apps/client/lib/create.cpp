@@ -4,6 +4,7 @@
 
 #include "library/cpp/json/json_writer.h"
 
+#include <cloud/filestore/libs/service/mediakind.h>
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
 #include <util/generic/size_literals.h>
@@ -26,8 +27,12 @@ private:
     ui64 BlocksCount = 0;
     NCloud::NProto::EStorageMediaKind StorageMediaKind =
         NCloud::NProto::STORAGE_MEDIA_HDD;
+
     TString StorageMediaKindArg;
     ui32 ShardCount = 0;
+
+    TString FastShardStorageKindArg;
+    ui32 FastShardCount = 0;
 
 public:
     TCreateCommand()
@@ -60,6 +65,16 @@ public:
             .RequiredArgument("NUM")
             .Help("explicitly specifies the required shard count")
             .StoreResult(&ShardCount);
+
+        Opts.AddLongOption("fast-shard-storage-kind")
+            .RequiredArgument("STR")
+            .Help("'mirror' or 'quorum_mirror', enables fast shards")
+            .StoreResult(&FastShardStorageKindArg);
+
+        Opts.AddLongOption("fast-shard-count")
+            .RequiredArgument("NUM")
+            .Help("explicitly specifies the required fast shard count")
+            .StoreResult(&FastShardCount);
     }
 
     bool Execute() override
@@ -73,20 +88,28 @@ public:
         request->SetBlockSize(BlockSize);
         request->SetBlocksCount(BlocksCount);
 
-        if (StorageMediaKindArg == "ssd") {
-            StorageMediaKind = NCloud::NProto::STORAGE_MEDIA_SSD;
-        } else if (StorageMediaKindArg == "hdd") {
-            StorageMediaKind = NCloud::NProto::STORAGE_MEDIA_HDD;
-        } else if (StorageMediaKindArg == "hybrid") {
-            StorageMediaKind = NCloud::NProto::STORAGE_MEDIA_HYBRID;
-        } else if (StorageMediaKindArg) {
-            ythrow yexception() << "invalid storage media kind: "
-                << StorageMediaKindArg
-                << ", should be one of 'ssd', 'hdd', 'hybrid'";
+        if (StorageMediaKindArg) {
+            const auto mediaKind = ParseFileStoreMediaKind(StorageMediaKindArg);
+            if (HasError(mediaKind)) {
+                STORAGE_THROW_SERVICE_ERROR(mediaKind.GetError());
+            }
+
+            StorageMediaKind = mediaKind.GetResult();
         }
 
         request->SetStorageMediaKind(StorageMediaKind);
         request->SetShardCount(ShardCount);
+        request->SetFastShardCount(FastShardCount);
+
+        if (FastShardStorageKindArg) {
+            const auto storageKind =
+                ParseFastShardStorageKind(FastShardStorageKindArg);
+            if (HasError(storageKind)) {
+                STORAGE_THROW_SERVICE_ERROR(storageKind.GetError());
+            }
+
+            request->SetFastShardStorageKind(storageKind.GetResult());
+        }
 
         PerformanceProfileParams.FillRequest(*request);
 
