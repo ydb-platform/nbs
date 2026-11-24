@@ -1,10 +1,9 @@
 #pragma once
 
 #include "config.h"
+#include "request_channel.h"
 
 #include <cloud/blockstore/libs/service/service.h>
-
-#include <cloud/storage/core/libs/icv2/request_channel/request_channel.h>
 
 namespace NCloud::NBlockStore::NIcV2 {
 
@@ -17,17 +16,15 @@ namespace NCloud::NBlockStore::NIcV2 {
 // non-throwing. Requests already sent may still run after timeout or shutdown.
 struct IDataEndpoint: public IBlockStore
 {
-    // Start shutdown without waiting. Safe from result callbacks.
-    // Wait on the returned future outside callbacks.
+    // Safe to call from result callbacks. Wait on the future outside callbacks.
     virtual NThreading::TFuture<void> RequestStop() = 0;
 };
 
 using IDataEndpointPtr = std::shared_ptr<IDataEndpoint>;
 
-// Activate the channel before sending I/O. Keep its dependencies running until
-// shutdown finishes.
-TResultOrError<IDataEndpointPtr> CreateDataEndpoint(
-    NCloud::NIcV2::IRequestChannelPtr channel,
+// Keep the channel's dependencies running until shutdown finishes.
+IDataEndpointPtr CreateDataEndpoint(
+    IDataRequestChannelPtr channel,
     TDataConfig config);
 
 }   // namespace NCloud::NBlockStore::NIcV2

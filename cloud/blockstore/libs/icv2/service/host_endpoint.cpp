@@ -5,6 +5,27 @@
 namespace NCloud::NBlockStore::NIcV2 {
 
 using NCloud::NIcV2::IPeerManagerPtr;
+using NCloud::NIcV2::IPeerPtr;
+using NCloud::NIcV2::TPeerStatus;
+
+////////////////////////////////////////////////////////////////////////////////
+
+THostDataEndpoint::THostDataEndpoint(IPeerPtr peer, IDataEndpointPtr endpoint)
+    : Peer(std::move(peer))
+    , Endpoint(std::move(endpoint))
+{}
+
+IDataEndpointPtr THostDataEndpoint::GetEndpoint() const
+{
+    return Endpoint;
+}
+
+TPeerStatus THostDataEndpoint::GetStatus() const
+{
+    Y_DEBUG_ABORT_UNLESS(Peer);
+
+    return Peer->GetStatus();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -35,18 +56,8 @@ TResultOrError<THostDataEndpoint> CreateHostDataEndpoint(
         std::move(timer),
         std::move(scheduler),
         std::move(completions));
-    const bool activated = channel->Activate();
-    Y_DEBUG_ABORT_UNLESS(activated);
-
-    auto [endpoint, endpointError] =
-        CreateDataEndpoint(std::move(channel), dataConfig);
-    if (HasError(endpointError)) {
-        return endpointError;
-    }
-    return THostDataEndpoint{
-        .Peer = std::move(peer),
-        .Endpoint = std::move(endpoint),
-    };
+    auto endpoint = CreateDataEndpoint(std::move(channel), dataConfig);
+    return THostDataEndpoint(std::move(peer), std::move(endpoint));
 }
 
 }   // namespace NCloud::NBlockStore::NIcV2

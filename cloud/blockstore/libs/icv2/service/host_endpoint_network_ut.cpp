@@ -40,6 +40,7 @@ using NCloud::NIcV2::CreateHandshakeProvider;
 using NCloud::NIcV2::CreatePeerManager;
 using NCloud::NIcV2::CreateRequestChannel;
 using NCloud::NIcV2::CreateTransport;
+using NCloud::NIcV2::EPeerState;
 using NCloud::NIcV2::IAddressResolver;
 using NCloud::NIcV2::IChannelFactory;
 using NCloud::NIcV2::IHandshakeProviderPtr;
@@ -86,8 +87,6 @@ ITransportPtr CreateTestTransport()
 class TLoopbackResolver final: public IAddressResolver
 {
 public:
-    // IAddressResolver implementation
-
     TResolveFuture
     Resolve(const TString& host, ui16 port, TMonotonic deadline) override
     {
@@ -110,8 +109,6 @@ public:
         std::function<void(IIncomingRequestPtr)> handler)
         : Handler(std::move(handler))
     {}
-
-    // IRequestChannelHandler implementation
 
     void HandleRequest(IIncomingRequestPtr request) override
     {
@@ -139,8 +136,6 @@ public:
         , Scheduler(std::move(scheduler))
         , Completions(std::move(completions))
     {}
-
-    // IChannelFactory implementation
 
     TChannelResult CreateChannel(const THandshakeReady& connection) override
     {
@@ -259,8 +254,12 @@ struct TNetworkFixture
 
     ~TNetworkFixture()
     {
-        if (Host.Endpoint) {
-            Host.Endpoint->Stop();
+        if (auto endpoint = Host.GetEndpoint()) {
+            const auto stopped = endpoint->RequestStop();
+            Y_ABORT_UNLESS(
+                stopped.Wait(WaitTimeout),
+                "IC V2 test endpoint did not stop");
+            stopped.GetValue();
         }
         for (const auto& channel: ServerChannels) {
             channel->Close();
@@ -269,7 +268,11 @@ struct TNetworkFixture
         ServerHandshake->Stop();
         Transport->Stop();
         for (const auto& channel: ServerChannels) {
-            channel->WhenClosed().GetValueSync();
+            const auto closed = channel->WhenClosed();
+            Y_ABORT_UNLESS(
+                closed.Wait(WaitTimeout),
+                "IC V2 test server channel did not close");
+            closed.GetValue();
         }
         Target->Stop();
         Scheduler->Stop();
@@ -354,19 +357,21 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointNetworkTest)
             TNetworkFixture f(enableXdc);
             f.ConnectHost();
             f.AcceptChannel();
+            auto endpoint = f.Host.GetEndpoint();
 
             const TString payload(BlockSize, 'w');
             auto write = MakeRequest<NProto::TWriteBlocksRequest>();
             write->MutableBlocks()->AddBuffers(payload);
-            auto written = Wait(f.Host.Endpoint->WriteBlocks(
+            auto written = Wait(endpoint->WriteBlocks(
                 MakeIntrusive<TCallContext>(),
                 std::move(write)));
             UNIT_ASSERT_C(!HasError(written), FormatError(written.GetError()));
+            UNIT_ASSERT(f.Host.GetStatus().State == EPeerState::Connected);
 
             auto config = std::make_shared<NClient::TClientAppConfig>();
             auto durable = NClient::CreateDurableClient(
                 config,
-                f.Host.Endpoint,
+                std::move(endpoint),
                 NClient::CreateRetryPolicy(config, NProto::STORAGE_MEDIA_SSD),
                 CreateLoggingService("console"),
                 f.Timer,
@@ -390,7 +395,6 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointNetworkTest)
                 payload,
                 response.GetBlocks().GetBuffers(0));
             UNIT_ASSERT_GT(Wait(f.ReadRetryNumber.GetFuture()), 0);
-            durable->Stop();
         }
     }
 }

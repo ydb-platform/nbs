@@ -18,6 +18,13 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/scope.h>
+
+#include <array>
+#include <future>
+#include <optional>
+#include <utility>
+
 namespace NCloud::NBlockStore::NIcV2 {
 
 using NCloud::NIcV2::IPeer;
@@ -56,6 +63,7 @@ struct TTestChannel final: IRequestChannel
 
     TVector<TRequest> Requests;
     TCallback BeforeRequestReturns;
+    std::optional<TDuration> LastRequestTimeout;
     bool Closing = false;
 
     bool Activate() override
@@ -67,6 +75,7 @@ struct TTestChannel final: IRequestChannel
         std::unique_ptr<NActors::IEventBase> event,
         TDuration timeout) override
     {
+        LastRequestTimeout = timeout;
         if (!timeout) {
             return NThreading::MakeFuture<TResponseResult>(
                 MakeError(E_TIMEOUT, "test request timed out"));
@@ -88,7 +97,9 @@ struct TTestChannel final: IRequestChannel
         Closing = true;
         const auto error = MakeError(E_REJECTED, "test channel is closed");
         for (auto& request: Requests) {
-            request.Promise.TrySetValue(error);
+            if (request.Promise.Initialized()) {
+                request.Promise.TrySetValue(error);
+            }
         }
     }
 
@@ -97,8 +108,11 @@ struct TTestChannel final: IRequestChannel
         return NThreading::MakeFuture(NProto::TError{});
     }
 
-    void
-    Respond(size_t index, const NProto::TError& error = {}, char readData = 'r')
+    auto PrepareResponse(
+        size_t index,
+        const NProto::TError& error = {},
+        char readData = 'r',
+        size_t readBytes = BlockSize)
     {
         std::unique_ptr<NActors::IEventBase> event;
         switch (Requests.at(index).Event->Type()) {
@@ -107,7 +121,7 @@ struct TTestChannel final: IRequestChannel
                     std::make_unique<TEvService::TEvReadBlocksResponse>();
                 *response->Record.MutableError() = error;
                 if (!HasError(error)) {
-                    response->AddPayload(TRope(TString(BlockSize, readData)));
+                    response->AddPayload(TRope(TString(readBytes, readData)));
                 }
                 event = std::move(response);
                 break;
@@ -128,8 +142,17 @@ struct TTestChannel final: IRequestChannel
             NActors::TActorId(),
             event.release());
         NCloud::NIcV2::NTests::PreserializeEvent(handle);
-        auto promise = Requests.at(index).Promise;
-        promise.SetValue(std::move(handle));
+        return [promise = std::move(Requests.at(index).Promise),
+                handle = std::move(handle)]() mutable
+        {
+            promise.SetValue(std::move(handle));
+        };
+    }
+
+    void
+    Respond(size_t index, const NProto::TError& error = {}, char readData = 'r')
+    {
+        PrepareResponse(index, error, readData)();
     }
 
     void Fail(size_t index, const NProto::TError& error)
@@ -212,8 +235,6 @@ struct TTestCompletionQueue final: ITaskQueue
     TVector<ITaskPtr> Tasks;
     TCallback BeforeEnqueueReturns;
 
-    // ITaskQueue implementation
-
     void Start() override
     {}
 
@@ -255,7 +276,7 @@ struct TFixture
         std::make_shared<TTestScheduler>(Timer->Now());
     // Drive retry backoff independently of the per-attempt deadline timer.
     const std::shared_ptr<TTestScheduler> Retries =
-        std::make_shared<TTestScheduler>();
+        std::make_shared<TTestScheduler>(Timer->Now());
     const std::shared_ptr<TTestCompletionQueue> Completions =
         std::make_shared<TTestCompletionQueue>();
     IDataEndpointPtr Endpoint;
@@ -274,7 +295,7 @@ struct TFixture
             Completions,
             dataConfig);
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
-        Endpoint = std::move(host.Endpoint);
+        Endpoint = host.GetEndpoint();
         Durable = MakeDurable(Endpoint);
     }
 
@@ -282,7 +303,12 @@ struct TFixture
     {
         Completions->Resume();
         if (Endpoint) {
-            Endpoint->Stop();
+            const auto stopped = Endpoint->RequestStop();
+            Y_ABORT_UNLESS(
+                stopped.Wait(TDuration::Seconds(5)),
+                "IC V2 test endpoint did not stop");
+
+            stopped.GetValue();
         }
     }
 
@@ -333,52 +359,105 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
 {
     Y_UNIT_TEST(RejectsInvalidConfigurationBeforeCreatingPeer)
     {
-        const auto peers = std::make_shared<TTestPeers>();
-        const auto timer = std::make_shared<TTestTimer>();
-        const auto scheduler = std::make_shared<TTestScheduler>();
-        const auto completions = CreateTaskQueueStub();
-        auto create = [&](IPeerManagerPtr manager,
-                          ISchedulerPtr taskScheduler,
-                          TDataConfig config)
+        auto assertRejected = [](IPeerManagerPtr peers,
+                                 ITimerPtr timer,
+                                 ISchedulerPtr scheduler,
+                                 ITaskQueuePtr completions,
+                                 TDataConfig config = {})
         {
             auto [endpoint, error] = CreateHostDataEndpoint(
                 "host",
                 1234,
                 {},
-                std::move(manager),
-                timer,
-                std::move(taskScheduler),
-                completions,
+                std::move(peers),
+                std::move(timer),
+                std::move(scheduler),
+                std::move(completions),
                 config);
-            UNIT_ASSERT(!endpoint.Endpoint);
-            return error.GetCode();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+            UNIT_ASSERT(!endpoint.GetEndpoint());
         };
 
+        const auto peers = std::make_shared<TTestPeers>();
+        const auto timer = std::make_shared<TTestTimer>();
+        const auto scheduler = std::make_shared<TTestScheduler>();
+        const auto completions = CreateTaskQueueStub();
         TDataConfig config;
         config.MaxInflightRequests = 0;
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, create(peers, scheduler, config));
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, create(peers, {}, {}));
+
+        assertRejected(peers, timer, scheduler, completions, config);
+        assertRejected({}, timer, scheduler, completions);
+        assertRejected(peers, {}, scheduler, completions);
+        assertRejected(peers, timer, {}, completions);
+        assertRejected(peers, timer, scheduler, {});
+
         UNIT_ASSERT_VALUES_EQUAL(0, peers->CreatePeerCalls);
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, create({}, scheduler, {}));
+    }
+
+    Y_UNIT_TEST(SharesHostChannelAcrossDisks)
+    {
+        TFixture f;
+        f.Peers->WaitForConnect = true;
+        auto sendZero = [&](const TString& diskId)
+        {
+            auto request = TFixture::MakeZero();
+            request->SetDiskId(diskId);
+            return f.Endpoint->ZeroBlocks(
+                MakeIntrusive<TCallContext>(),
+                std::move(request));
+        };
+        auto first = sendZero("disk-a");
+        auto second = sendZero("disk-b");
+        const auto channel = f.Peers->Channel;
+        UNIT_ASSERT(channel->Requests.empty());
+
+        f.Peers->Connected.SetValue(IRequestChannelPtr(channel));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Peers->CreatePeerCalls);
+        UNIT_ASSERT_VALUES_EQUAL(2, channel->Requests.size());
+        auto getDiskId = [&](size_t index) -> const auto&
+        {
+            return static_cast<const TEvService::TEvZeroBlocksRequest&>(
+                       *channel->Requests.at(index).Event)
+                .Record.GetDiskId();
+        };
+        const size_t firstIndex = getDiskId(0) == "disk-a" ? 0 : 1;
+        const size_t secondIndex = 1 - firstIndex;
+        UNIT_ASSERT_VALUES_EQUAL("disk-a", getDiskId(firstIndex));
+        UNIT_ASSERT_VALUES_EQUAL("disk-b", getDiskId(secondIndex));
+
+        channel->Respond(secondIndex);
+        UNIT_ASSERT(!first.IsReady());
+        UNIT_ASSERT(!HasError(Wait(second)));
+        channel->Respond(firstIndex);
+        UNIT_ASSERT(!HasError(Wait(first)));
     }
 
     Y_UNIT_TEST(ClassifiesConnectionAndChannelErrorsWithoutResending)
     {
+        struct TErrorCase
+        {
+            ui32 Code;
+            ui32 ConnectionCode;
+            ui32 ChannelCode;
+        };
+
+        const TErrorCase cases[] = {
+            {E_TRANSPORT_ERROR, E_REJECTED, E_REJECTED},
+            {E_UNAVAILABLE, E_UNAVAILABLE, E_REJECTED},
+            {E_GRPC_UNAVAILABLE, E_GRPC_UNAVAILABLE, E_REJECTED},
+            {E_IO, E_REJECTED, E_REJECTED},
+            {E_ABORTED, E_REJECTED, E_REJECTED},
+            {E_FAIL, E_REJECTED, E_REJECTED},
+            {MAKE_SYSTEM_ERROR(ECONNRESET), E_REJECTED, E_REJECTED},
+            {E_BADMSG, E_REJECTED, E_REJECTED},
+            {E_REJECTED, E_REJECTED, E_REJECTED},
+            {E_ARGUMENT, E_REJECTED, E_ARGUMENT},
+            {E_TIMEOUT, E_REJECTED, E_TIMEOUT},
+            {E_CANCELLED, E_REJECTED, E_REJECTED},
+        };
         for (bool connect: {false, true}) {
-            for (auto [code, channelCode]:
-                 TVector<std::pair<ui32, ui32>>{
-                     {E_TRANSPORT_ERROR, E_REJECTED},
-                     {E_UNAVAILABLE, E_REJECTED},
-                     {E_IO, E_REJECTED},
-                     {E_ABORTED, E_REJECTED},
-                     {E_FAIL, E_REJECTED},
-                     {MAKE_SYSTEM_ERROR(ECONNRESET), E_REJECTED},
-                     {E_BADMSG, E_REJECTED},
-                     {E_REJECTED, E_REJECTED},
-                     {E_ARGUMENT, E_ARGUMENT},
-                     {E_TIMEOUT, E_TIMEOUT},
-                     {E_CANCELLED, E_REJECTED}})
-            {
+            for (const auto& [code, connectionCode, channelCode]: cases) {
                 TFixture f;
                 auto error = MakeError(code, "original reason");
                 error.SetFlags(17);
@@ -391,16 +470,16 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
                 }
                 const auto response = Wait(future);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    connect ? E_REJECTED : channelCode,
+                    connect ? connectionCode : channelCode,
                     response.GetError().GetCode());
                 UNIT_ASSERT_VALUES_EQUAL(
-                    response.GetError().GetMessage(),
-                    error.GetMessage());
-                UNIT_ASSERT_VALUES_EQUAL(response.GetError().GetFlags(), 17);
-                UNIT_ASSERT_VALUES_EQUAL(f.Peers->Calls, 1);
+                    error.GetMessage(),
+                    response.GetError().GetMessage());
+                UNIT_ASSERT_VALUES_EQUAL(17, response.GetError().GetFlags());
+                UNIT_ASSERT_VALUES_EQUAL(1, f.Peers->Calls);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    f.Peers->Channel->Requests.size(),
-                    connect ? 0 : 1);
+                    connect ? 0 : 1,
+                    f.Peers->Channel->Requests.size());
             }
         }
     }
@@ -479,6 +558,35 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
         }
     }
 
+    Y_UNIT_TEST(DurableClientUsesShortBackoffWhilePeerReconnects)
+    {
+        TFixture f;
+        f.Peers->ConnectError =
+            MakeError(E_UNAVAILABLE, "IC V2 peer is waiting to reconnect");
+        auto future = f.Zero(true);
+        UNIT_ASSERT(!future.IsReady());
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Peers->Calls);
+
+        auto advanceRetries = [&](TDuration duration)
+        {
+            f.Timer->AdvanceTime(duration);
+            f.Retries->AdvanceTime(duration);
+            f.Retries->RunAllScheduledTasksUntilNow();
+        };
+        advanceRetries(TDuration::MilliSeconds(99));
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Peers->Calls);
+        advanceRetries(TDuration::MilliSeconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(2, f.Peers->Calls);
+        UNIT_ASSERT(f.Peers->Channel->Requests.empty());
+
+        f.Peers->ConnectError.Clear();
+        advanceRetries(TDuration::MilliSeconds(100));
+        UNIT_ASSERT_VALUES_EQUAL(3, f.Peers->Calls);
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Peers->Channel->Requests.size());
+        f.Peers->Channel->Respond(0);
+        UNIT_ASSERT(!HasError(Wait(future)));
+    }
+
     Y_UNIT_TEST(ReportsPeerClosureAsRejected)
     {
         enum class EClose
@@ -554,7 +662,7 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
         UNIT_ASSERT(!HasError(Wait(interrupted)));
     }
 
-    Y_UNIT_TEST(ReportsInvalidReadPayloadAsRejected)
+    Y_UNIT_TEST(DurableClientRetriesInvalidReadPayloadOnReplacementChannel)
     {
         TFixture f;
         auto request = std::make_shared<NProto::TReadBlocksRequest>();
@@ -563,16 +671,24 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
         request->SetBlocksCount(2);
         request->MutableHeaders()->SetRequestTimeout(100);
 
-        auto future = f.Endpoint->ReadBlocks(
+        auto retryScheduled = f.Retries->WaitForTaskSchedule();
+        auto future = f.Durable->ReadBlocks(
             MakeIntrusive<TCallContext>(),
             std::move(request));
-        f.Peers->Channel->Respond(0);
+        const auto badChannel = f.Peers->Channel;
+        const auto replacement = std::make_shared<TTestChannel>();
+        f.Peers->Channel = replacement;
+        badChannel->Respond(0);
 
-        const auto response = Wait(future);
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response.GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            "invalid IC V2 read payload",
-            response.GetError().GetMessage());
+        UNIT_ASSERT(badChannel->Closing);
+        UNIT_ASSERT(!replacement->Closing);
+        UNIT_ASSERT(retryScheduled.IsReady());
+        UNIT_ASSERT(!future.IsReady());
+        f.Retries->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1, badChannel->Requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, replacement->Requests.size());
+        replacement->PrepareResponse(0, {}, 'r', 2 * size_t{BlockSize})();
+        UNIT_ASSERT(!HasError(Wait(future)));
     }
 
     Y_UNIT_TEST(DurableClientCanExecuteWriteAgainAfterLostResponse)
@@ -623,21 +739,20 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
     {
         TFixture f;
         f.Completions->Paused = true;
+        auto retryScheduled = f.Retries->WaitForTaskSchedule();
         auto future = f.Durable->WriteBlocks(
             MakeIntrusive<TCallContext>(),
             f.MakeWrite());
         f.Timer->AdvanceTime(TDuration::MilliSeconds(90));
-        f.Completions->ExecuteSimple([channel = f.Peers->Channel]
-                                     { channel->Respond(0); });
+        f.Completions->ExecuteSimple(f.Peers->Channel->PrepareResponse(0));
         UNIT_ASSERT(!future.HasValue());
 
         f.Timer->AdvanceTime(TDuration::MilliSeconds(20));
-        f.Scheduler->RunAllScheduledTasks();
         f.Completions->Resume();
 
         UNIT_ASSERT(future.HasValue());
         UNIT_ASSERT(!HasError(Wait(future)));
-        f.Retries->RunAllScheduledTasks();
+        UNIT_ASSERT(!retryScheduled.IsReady());
         UNIT_ASSERT_VALUES_EQUAL(1, f.Peers->Channel->Requests.size());
     }
 
@@ -682,7 +797,7 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
         UNIT_ASSERT(!HasError(Wait(future)));
     }
 
-    Y_UNIT_TEST(DoesNotSendExpiredRequestWhenChannelBecomesReady)
+    Y_UNIT_TEST(PassesZeroTimeoutWhenChannelBecomesReadyAfterDeadline)
     {
         TFixture f;
         f.Peers->WaitForConnect = true;
@@ -692,8 +807,35 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
 
         f.Peers->Connected.SetValue(IRequestChannelPtr(f.Peers->Channel));
 
+        UNIT_ASSERT(f.Peers->Channel->LastRequestTimeout.has_value());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Zero(),
+            *f.Peers->Channel->LastRequestTimeout);
         UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, Wait(future).GetError().GetCode());
-        UNIT_ASSERT(f.Peers->Channel->Requests.empty());
+    }
+
+    Y_UNIT_TEST(DoesNotDispatchWhenTimeoutCompletionIsPending)
+    {
+        TFixture f;
+        f.Peers->WaitForConnect = true;
+        auto request = TFixture::MakeZero();
+        const auto timeout =
+            TDuration::MilliSeconds(request->GetHeaders().GetRequestTimeout());
+        auto future = f.Endpoint->ZeroBlocks(
+            MakeIntrusive<TCallContext>(),
+            std::move(request));
+
+        f.Completions->Paused = true;
+        f.Timer->AdvanceTime(timeout);
+        f.Scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Completions->Tasks.size());
+        UNIT_ASSERT(!future.IsReady());
+
+        f.Peers->Connected.SetValue(IRequestChannelPtr(f.Peers->Channel));
+        UNIT_ASSERT(!f.Peers->Channel->LastRequestTimeout.has_value());
+
+        f.Completions->Resume();
+        UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, Wait(future).GetError().GetCode());
     }
 
     Y_UNIT_TEST(UsesReadyChannelWhilePreviousAttemptResultIsPending)
@@ -732,8 +874,34 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
         UNIT_ASSERT(!first.IsReady());
 
         firstAttempt.SetValue(MakeError(E_UNAVAILABLE, "first attempt failed"));
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, Wait(first).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_UNAVAILABLE,
+            Wait(first).GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(1, f.Peers->Channel->Requests.size());
+    }
+
+    Y_UNIT_TEST(KeepsConnectionFutureAliveWhileSubscribed)
+    {
+        TFixture f;
+        f.Peers->WaitForConnect = true;
+        auto probe = std::make_shared<int>();
+        const std::weak_ptr<int> connectionStateLifetime = probe;
+        f.Peers->Connected.GetFuture().Subscribe(
+            [probe = std::move(probe)](const TChannelFuture& future)
+            {
+                Y_UNUSED(probe);
+                Y_UNUSED(future);
+            });
+        auto response = f.Zero();
+
+        f.Peers->Connected = NThreading::NewPromise<TChannelResult>();
+        UNIT_ASSERT(!connectionStateLifetime.expired());
+
+        f.Endpoint->Stop();
+        UNIT_ASSERT(connectionStateLifetime.expired());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            Wait(response).GetError().GetCode());
     }
 
     Y_UNIT_TEST(ReusesEarlierConnectionTimerAcrossAttempts)
@@ -812,7 +980,7 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
         request->SetBlocksCount(1);
         request->SetBlockSize(BlockSize);
         request->Sglist =
-            TGuardedSgList({TBlockDataRef(f.Data.data(), f.Data.size())});
+            TGuardedSgList({TBlockDataRef(f.Data.Detach(), f.Data.size())});
         request->MutableHeaders()->SetRequestId(789);
         request->MutableHeaders()->SetRequestTimeout(100);
         auto future =
@@ -862,34 +1030,42 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
         }
     }
 
-    Y_UNIT_TEST(LastOwnerRejectsPendingPeerRequests)
+    Y_UNIT_TEST(DeliversAcceptedWriteResponseDuringShutdown)
+    {
+        TFixture f;
+        auto response = f.Endpoint->WriteBlocks(
+            MakeIntrusive<TCallContext>(),
+            f.MakeWrite());
+        f.Completions->Paused = true;
+        f.Completions->ExecuteSimple(f.Peers->Channel->PrepareResponse(0));
+
+        const auto closed = f.Endpoint->RequestStop();
+        UNIT_ASSERT(!response.IsReady());
+        UNIT_ASSERT(!closed.IsReady());
+        f.Completions->Resume();
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, Wait(response).GetError().GetCode());
+        UNIT_ASSERT(closed.IsReady());
+    }
+
+    Y_UNIT_TEST(DestroyingEndpointRejectsPendingRequests)
     {
         for (bool connecting: {false, true}) {
-            const auto peer = std::make_shared<TTestPeers>();
-            peer->WaitForConnect = connecting;
-            const auto timer = std::make_shared<TTestTimer>();
-            const auto scheduler = std::make_shared<TTestScheduler>();
-            const auto completions = std::make_shared<TTestCompletionQueue>();
-            completions->Paused = true;
-            auto channel =
-                CreatePeerRequestChannel(peer, timer, scheduler, completions);
-            UNIT_ASSERT(channel->Activate());
-            auto closed = channel->WhenClosed();
-            auto response = channel->Request(
-                std::make_unique<TEvService::TEvZeroBlocksRequest>(),
-                TDuration::Seconds(1));
+            TFixture f;
+            f.Durable.reset();
+            f.Peers->WaitForConnect = connecting;
+            f.Completions->Paused = true;
+            auto response = f.Zero();
 
-            channel.reset();
-            UNIT_ASSERT_VALUES_EQUAL(1, peer->Unregistered);
+            f.Endpoint.reset();
+            UNIT_ASSERT_VALUES_EQUAL(1, f.Peers->Unregistered);
             UNIT_ASSERT_VALUES_EQUAL(!connecting, response.IsReady());
-            UNIT_ASSERT_VALUES_EQUAL(!connecting, closed.IsReady());
 
-            completions->Resume();
+            f.Completions->Resume();
             UNIT_ASSERT(response.IsReady());
             UNIT_ASSERT_VALUES_EQUAL(
                 E_REJECTED,
-                response.ExtractValue().GetError().GetCode());
-            UNIT_ASSERT(closed.IsReady());
+                response.GetValue().GetError().GetCode());
         }
     }
 
@@ -906,23 +1082,32 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
             timer,
             scheduler,
             completions);
-        UNIT_ASSERT(channel->Activate());
-        const auto closed = channel->WhenClosed();
         auto response = channel->Request(
             std::make_unique<TEvService::TEvZeroBlocksRequest>(),
             TDuration::Seconds(1));
-        response.Subscribe([&](const auto&) { channel.reset(); });
+        NThreading::TFuture<void> closedInsideCallback;
+        bool closedBeforeCallbackReturned = true;
+        response.Subscribe(
+            [&](const TDataResponseFuture& future)
+            {
+                Y_UNUSED(future);
+                closedInsideCallback = channel->Close();
+                closedBeforeCallbackReturned = closedInsideCallback.IsReady();
+                channel.reset();
+            });
 
         bool peerHeldThroughEnqueue = false;
         completions->BeforeEnqueueReturns = [&]
         {
             peerHeldThroughEnqueue = !weakPeer.expired();
         };
-        channel->Close();
+        const auto closed = channel->Close();
 
         UNIT_ASSERT(!channel);
         UNIT_ASSERT(peerHeldThroughEnqueue);
         UNIT_ASSERT(weakPeer.expired());
+        UNIT_ASSERT(!closedBeforeCallbackReturned);
+        UNIT_ASSERT(closed.StateId() == closedInsideCallback.StateId());
         UNIT_ASSERT(closed.IsReady());
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
@@ -960,67 +1145,6 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
         }
     }
 
-    Y_UNIT_TEST(ClosedWaitsForWriteBeforeChannelAdmission)
-    {
-        class TCallbackTimer final: public ITimer
-        {
-            TTestTimer Timer;
-
-        public:
-            TCallback BeforeNow;
-
-            TInstant Now() override
-            {
-                if (auto callback = std::exchange(BeforeNow, {})) {
-                    callback();
-                }
-                return Timer.Now();
-            }
-
-            void Sleep(TDuration duration) override
-            {
-                Timer.Sleep(duration);
-            }
-        };
-
-        const auto peers = std::make_shared<TTestPeers>();
-        const auto timer = std::make_shared<TCallbackTimer>();
-        const auto scheduler = std::make_shared<TTestScheduler>(timer->Now());
-        auto [host, error] = CreateHostDataEndpoint(
-            "host",
-            1234,
-            {},
-            peers,
-            timer,
-            scheduler,
-            CreateTaskQueueStub(),
-            {});
-        UNIT_ASSERT_C(!HasError(error), FormatError(error));
-        NThreading::TFuture<void> closed;
-        bool closedWhileSubmitting = true;
-        timer->BeforeNow = [&]
-        {
-            closed = host.Endpoint->RequestStop();
-            closedWhileSubmitting = closed.IsReady();
-        };
-
-        auto request = std::make_shared<NProto::TWriteBlocksRequest>();
-        request->SetDiskId("disk");
-        request->SetBlockSize(BlockSize);
-        request->MutableHeaders()->SetRequestTimeout(100);
-        request->MutableBlocks()->AddBuffers(TString(BlockSize, 'w'));
-        auto response = host.Endpoint->WriteBlocks(
-            MakeIntrusive<TCallContext>(),
-            std::move(request));
-
-        UNIT_ASSERT(!closedWhileSubmitting);
-        UNIT_ASSERT(peers->Channel->Requests.empty());
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
-            Wait(response).GetError().GetCode());
-        UNIT_ASSERT(closed.IsReady());
-    }
-
     Y_UNIT_TEST(ClosedWaitsForReadyChannelRequestToReturn)
     {
         NThreading::TFuture<void> closed;
@@ -1040,6 +1164,43 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
             Wait(response).GetError().GetCode());
+    }
+
+    Y_UNIT_TEST(ClosedWaitsForConcurrentConnectionCallback)
+    {
+        TFixture f;
+        f.Peers->WaitForConnect = true;
+        auto response = f.Zero();
+        auto entered = NThreading::NewPromise<void>();
+        auto release = NThreading::NewPromise<void>();
+        f.Peers->Channel->BeforeRequestReturns = [&]
+        {
+            entered.SetValue();
+            release.GetFuture().GetValueSync();
+        };
+        auto connecting = std::async(
+            std::launch::async,
+            [&]
+            {
+                f.Peers->Connected.SetValue(
+                    IRequestChannelPtr(f.Peers->Channel));
+            });
+        Y_DEFER
+        {
+            release.TrySetValue();
+        };
+
+        UNIT_ASSERT(entered.GetFuture().Wait(TDuration::Seconds(5)));
+        const auto closed = f.Endpoint->RequestStop();
+        UNIT_ASSERT(!response.IsReady());
+        UNIT_ASSERT(!closed.IsReady());
+
+        release.SetValue();
+        connecting.get();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            Wait(response).GetError().GetCode());
+        UNIT_ASSERT(closed.IsReady());
     }
 
     Y_UNIT_TEST(ClosedWaitsForEnqueueToReturn)
@@ -1142,7 +1303,7 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
         request->SetBlocksCount(1);
         request->SetBlockSize(BlockSize);
         request->Sglist =
-            TGuardedSgList({TBlockDataRef(f.Data.data(), f.Data.size())});
+            TGuardedSgList({TBlockDataRef(f.Data.Detach(), f.Data.size())});
         request->Sglist.Close();
         auto response = f.Durable->ReadBlocksLocal(
             MakeIntrusive<TCallContext>(),
@@ -1158,27 +1319,29 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
 
     Y_UNIT_TEST(DurableClientDoesNotRetryFatalArgumentOrStorageErrors)
     {
-        for (bool storage: {false, true}) {
-            for (ui32 code: {E_ARGUMENT, E_IO, E_TRANSPORT_ERROR}) {
-                if (!storage && (code == E_IO || code == E_TRANSPORT_ERROR)) {
-                    continue;   // These transport-origin errors are retriable.
-                }
-                TFixture f;
-                auto future = f.Zero(true);
-                const auto error = MakeError(code, "fatal reason");
-                if (storage) {
-                    f.Peers->Channel->Respond(0, error);
-                } else {
-                    f.Peers->Channel->Fail(0, error);
-                }
-                const auto response = Wait(future);
-                UNIT_ASSERT_VALUES_EQUAL(response.GetError().GetCode(), code);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    response.GetError().GetMessage(),
-                    error.GetMessage());
-                f.Retries->RunAllScheduledTasks();
-                UNIT_ASSERT_VALUES_EQUAL(f.Peers->Calls, 1);
+        const auto cases = std::to_array<std::pair<ui32, bool>>({
+            {E_ARGUMENT, false},
+            {E_ARGUMENT, true},
+            {E_IO, true},
+            {E_TRANSPORT_ERROR, true},
+        });
+        for (const auto& [code, fromStorage]: cases) {
+            TFixture f;
+            auto retryScheduled = f.Retries->WaitForTaskSchedule();
+            auto future = f.Zero(true);
+            const auto error = MakeError(code, "fatal reason");
+            if (fromStorage) {
+                f.Peers->Channel->Respond(0, error);
+            } else {
+                f.Peers->Channel->Fail(0, error);
             }
+            UNIT_ASSERT(!retryScheduled.IsReady());
+            const auto response = Wait(future);
+            UNIT_ASSERT_VALUES_EQUAL(code, response.GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(
+                error.GetMessage(),
+                response.GetError().GetMessage());
+            UNIT_ASSERT_VALUES_EQUAL(1, f.Peers->Calls);
         }
     }
 
@@ -1193,21 +1356,27 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
         UNIT_ASSERT(f.Peers->Channel->Requests.empty());
     }
 
-    Y_UNIT_TEST(AdmissionOverloadRemainsRetriable)
+    Y_UNIT_TEST(DurableClientRetriesAfterAdmissionOverload)
     {
         TDataConfig config;
         config.MaxInflightRequests = 1;
         TFixture f(config);
         auto first = f.Zero();
         UNIT_ASSERT_VALUES_EQUAL(
-            Wait(f.Zero()).GetError().GetCode(),
-            E_REJECTED);
-        f.Peers->Channel->Respond(0);
-        UNIT_ASSERT(!HasError(Wait(first)));
-        f.Endpoint->Stop();
-        UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
             Wait(f.Zero()).GetError().GetCode());
+
+        auto second = f.Zero(true);
+        UNIT_ASSERT(!second.IsReady());
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Peers->Channel->Requests.size());
+
+        f.Peers->Channel->Respond(0);
+        UNIT_ASSERT(!HasError(Wait(first)));
+
+        f.Retries->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, f.Peers->Channel->Requests.size());
+        f.Peers->Channel->Respond(1);
+        UNIT_ASSERT(!HasError(Wait(second)));
     }
 
     Y_UNIT_TEST(WriteAtPayloadLimitIsAdmitted)

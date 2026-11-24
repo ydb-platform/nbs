@@ -20,7 +20,6 @@ using namespace NThreading;
 
 using NCloud::NIcV2::IPeerPtr;
 using NCloud::NIcV2::IRequestChannel;
-using NCloud::NIcV2::IRequestChannelPtr;
 using NCloud::NIcV2::TChannelFuture;
 using NCloud::NIcV2::TChannelResult;
 using NCloud::NIcV2::TResponseFuture;
@@ -30,27 +29,28 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError MakeTimeoutError()
-{
-    return MakeError(E_TIMEOUT, "IC V2 request timed out");
-}
-
 NProto::TError RejectTransportError(NProto::TError error)
 {
     error.SetCode(E_REJECTED);
     return error;
 }
 
-TResponseResult ClassifyChannelResult(TResponseResult result)
+TDataResponseResult ClassifyChannelResult(
+    TResponseResult result,
+    std::weak_ptr<IRequestChannel> source)
 {
     const auto& error = result.GetError();
-    const auto code = error.GetCode();
-    if (HasError(error) && code != E_REJECTED && code != E_ARGUMENT &&
-        code != E_TIMEOUT)
-    {
+    if (HasError(error)) {
+        const auto code = error.GetCode();
+        if (code == E_REJECTED || code == E_ARGUMENT || code == E_TIMEOUT) {
+            return error;
+        }
         return RejectTransportError(error);
     }
-    return result;
+    return TDataResponse{
+        .Event = result.ExtractResult(),
+        .SourceChannel = std::move(source),
+    };
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -59,7 +59,7 @@ struct TClientRequest
 {
     std::unique_ptr<NActors::IEventBase> Event;
     TInstant Deadline;
-    TPromise<TResponseResult> Promise;
+    TPromise<TDataResponseResult> Promise;
 };
 
 struct TWaitingRequest
@@ -73,12 +73,11 @@ using TWaitingRequests = TMultiMap<TInstant, TWaitingRequest>;
 ////////////////////////////////////////////////////////////////////////////////
 
 class TPeerRequestChannel final
-    : public IRequestChannel
+    : public IDataRequestChannel
     , public std::enable_shared_from_this<TPeerRequestChannel>
 {
     enum class EPhase : ui32
     {
-        Created,
         Running,
         Stopping,
         Stopped,
@@ -87,7 +86,7 @@ class TPeerRequestChannel final
     struct TState
     {
         ui32 Operations = 0;
-        EPhase Phase = EPhase::Created;
+        EPhase Phase = EPhase::Running;
     };
 
     static_assert(std::atomic<TState>::is_always_lock_free);
@@ -97,11 +96,11 @@ class TPeerRequestChannel final
     const ITaskQueuePtr Completions;
 
     std::atomic<TState> State{TState{}};
-    TPromise<NProto::TError> Closed = NewPromise<NProto::TError>();
+    TPromise<void> Closed = NewPromise<void>();
 
     TAdaptiveLock WaitingLock;
     TWaitingRequests WaitingRequests;
-    TVector<TFutureStateId> SubscribedChannels;
+    TVector<TChannelFuture> SubscribedChannels;
     std::optional<TInstant> ScheduledDeadline;
     ui64 TimerGeneration = 0;
 
@@ -117,17 +116,7 @@ public:
         , Completions(std::move(completions))
     {}
 
-    // IRequestChannel implementation
-
-    bool Activate() override
-    {
-        TState expected;
-        return State.compare_exchange_strong(
-            expected,
-            TState{.Operations = 0, .Phase = EPhase::Running});
-    }
-
-    TResponseFuture Request(
+    TDataResponseFuture Request(
         std::unique_ptr<NActors::IEventBase> event,
         TDuration timeout) override
     {
@@ -137,7 +126,7 @@ public:
         const auto deadline = Timer->Now() + timeout;
         // One operation for this call and one until result delivery finishes.
         if (!TryReserveOperations(2)) {
-            return MakeFuture<TResponseResult>(MakeClosedError());
+            return MakeFuture<TDataResponseResult>(MakeClosedError());
         }
         Y_DEFER
         {
@@ -147,7 +136,7 @@ public:
         TClientRequest request{
             .Event = std::move(event),
             .Deadline = deadline,
-            .Promise = NewPromise<TResponseResult>(),
+            .Promise = NewPromise<TDataResponseResult>(),
         };
         auto future = request.Promise.GetFuture();
         const auto channel = Peer->GetChannel();
@@ -159,25 +148,23 @@ public:
         return future;
     }
 
-    [[nodiscard]] TFuture<NProto::TError> WhenClosed() const override
+    TFuture<void> Close() override
     {
-        return Closed.GetFuture();
-    }
-
-    void Close() override
-    {
+        auto closed = Closed.GetFuture();
         if (!TryBeginStop()) {
-            return;
+            return closed;
         }
 
         const auto keepAlive = shared_from_this();
         TWaitingRequests waiting;
+        TVector<TChannelFuture> subscribed;
         {
             TGuard<TAdaptiveLock> guard(WaitingLock);
             waiting.swap(WaitingRequests);
-            SubscribedChannels.clear();
+            subscribed.swap(SubscribedChannels);
             ScheduledDeadline.reset();
         }
+        subscribed.clear();
         if (!waiting.empty()) {
             Completions->ExecuteSimple(
                 [self = shared_from_this(),
@@ -194,6 +181,7 @@ public:
         }
         Peer->Close();
         ReleaseOperations(1);
+        return closed;
     }
 
 private:
@@ -206,27 +194,27 @@ private:
         TClientRequest request,
         const TChannelFuture& channel)
     {
-        const auto channelId = *channel.StateId();
+        const auto channelId = channel.StateId();
         bool subscribe = false;
         {
             TGuard<TAdaptiveLock> guard(WaitingLock);
             if (!IsRunning()) {
                 guard.Release();
-                EnqueueCompletion(
-                    std::move(request.Promise),
-                    MakeClosedError());
+                EnqueueError(std::move(request.Promise), MakeClosedError());
                 return;
             }
             WaitingRequests.emplace(
                 request.Deadline,
                 TWaitingRequest{
-                    .Channel = channelId,
+                    .Channel = *channelId,
                     .Request = std::move(request),
                 });
-            if (std::ranges::find(SubscribedChannels, channelId) ==
-                SubscribedChannels.end())
+            if (std::ranges::find(
+                    SubscribedChannels,
+                    channelId,
+                    &TChannelFuture::StateId) == SubscribedChannels.end())
             {
-                SubscribedChannels.push_back(channelId);
+                SubscribedChannels.push_back(channel);
                 subscribe = true;
             }
         }
@@ -248,15 +236,18 @@ private:
             return;
         }
 
-        const auto channelId = *future.StateId();
+        const auto channelId = future.StateId();
         TVector<TClientRequest> waiting;
         {
             TGuard<TAdaptiveLock> guard(WaitingLock);
-            std::erase(SubscribedChannels, channelId);
+            std::erase_if(
+                SubscribedChannels,
+                [channelId](const TChannelFuture& channel)
+                { return channel.StateId() == channelId; });
             for (auto it = WaitingRequests.begin();
                  it != WaitingRequests.end();)
             {
-                if (it->second.Channel == channelId) {
+                if (it->second.Channel == *channelId) {
                     waiting.push_back(std::move(it->second.Request));
                     it = WaitingRequests.erase(it);
                 } else {
@@ -274,47 +265,48 @@ private:
     void DispatchRequest(TClientRequest request, const TChannelResult& result)
     {
         if (!IsRunning()) {
-            EnqueueCompletion(std::move(request.Promise), MakeClosedError());
+            EnqueueError(std::move(request.Promise), MakeClosedError());
             return;
         }
-        if (HasError(result.GetError())) {
-            EnqueueCompletion(
+        if (const auto& error = result.GetError(); HasError(error)) {
+            EnqueueError(
                 std::move(request.Promise),
-                RejectTransportError(result.GetError()));
+                IsConnectionError(error) ? error : RejectTransportError(error));
             return;
         }
 
-        result.GetResult()
+        const auto& channel = result.GetResult();
+        channel
             ->Request(std::move(request.Event), request.Deadline - Timer->Now())
             .Subscribe(
                 [self = shared_from_this(),
-                 promise = std::move(request.Promise)]   //
+                 promise = std::move(request.Promise),
+                 source = std::weak_ptr<IRequestChannel>(channel)]   //
                 (TResponseFuture future) mutable
                 {
                     self->CompleteRequest(
                         std::move(promise),
-                        ClassifyChannelResult(future.ExtractValue()));
+                        ClassifyChannelResult(
+                            future.ExtractValue(),
+                            std::move(source)));
                 });
     }
 
-    void EnqueueCompletion(
-        TPromise<TResponseResult> promise,
-        TResponseResult result)
+    void EnqueueError(
+        TPromise<TDataResponseResult> promise,
+        NProto::TError error)
     {
         Completions->ExecuteSimple(
             [self = shared_from_this(),
              promise = std::move(promise),
-             result = std::move(result)]() mutable
-            { self->CompleteRequest(std::move(promise), std::move(result)); });
+             error = std::move(error)]() mutable
+            { self->CompleteRequest(std::move(promise), std::move(error)); });
     }
 
     void CompleteRequest(
-        TPromise<TResponseResult> promise,
-        TResponseResult result)
+        TPromise<TDataResponseResult> promise,
+        TDataResponseResult result)
     {
-        if (!IsRunning()) {
-            result = MakeClosedError();
-        }
         promise.SetValue(std::move(result));
         ReleaseOperations(1);
     }
@@ -376,7 +368,9 @@ private:
             }
         }
         for (auto& request: expired) {
-            EnqueueCompletion(std::move(request.Promise), MakeTimeoutError());
+            EnqueueError(
+                std::move(request.Promise),
+                MakeError(E_TIMEOUT, "IC V2 request timed out"));
         }
         ArmTimer();
     }
@@ -397,8 +391,7 @@ private:
     bool TryBeginStop()
     {
         auto state = State.load();
-        while (state.Phase == EPhase::Created || state.Phase == EPhase::Running)
-        {
+        while (state.Phase == EPhase::Running) {
             auto next = state;
             next.Phase = EPhase::Stopping;
             ++next.Operations;
@@ -427,7 +420,7 @@ private:
             }
             if (State.compare_exchange_weak(state, next)) {
                 if (next.Phase == EPhase::Stopped) {
-                    Closed.SetValue(NProto::TError{});
+                    Closed.SetValue();
                 }
                 return;
             }
@@ -435,23 +428,11 @@ private:
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-struct TPeerRequestChannelOwner
-{
-    const std::shared_ptr<TPeerRequestChannel> Channel;
-
-    ~TPeerRequestChannelOwner()
-    {
-        Channel->Close();
-    }
-};
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IRequestChannelPtr CreatePeerRequestChannel(
+IDataRequestChannelPtr CreatePeerRequestChannel(
     IPeerPtr peer,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
@@ -459,16 +440,11 @@ IRequestChannelPtr CreatePeerRequestChannel(
 {
     Y_DEBUG_ABORT_UNLESS(peer && timer && scheduler && completions);
 
-    auto channel = std::make_shared<TPeerRequestChannel>(
+    return std::make_shared<TPeerRequestChannel>(
         std::move(peer),
         std::move(timer),
         std::move(scheduler),
         std::move(completions));
-    // The last caller starts shutdown even while callbacks keep the channel
-    // alive.
-    auto* channelPtr = channel.get();
-    auto owner = std::make_shared<TPeerRequestChannelOwner>(std::move(channel));
-    return {std::move(owner), channelPtr};
 }
 
 }   // namespace NCloud::NBlockStore::NIcV2
