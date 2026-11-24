@@ -488,7 +488,7 @@ func (s *storageYDB) deleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
-	tombstoneZoneID string,
+	missingDiskZoneID string,
 ) (*DiskMeta, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -540,14 +540,14 @@ func (s *storageYDB) deleteDisk(
 		}
 
 		state.status = diskStatusDeleting
-	} else if len(tombstoneZoneID) != 0 {
+	} else if len(missingDiskZoneID) != 0 {
 		// The disk is missing in the database, but it still has to be deleted
 		// from external storages. Create a tombstone disk entry in deleting
 		// status in the given zone: it prevents new disk creation with the same
 		// ID and is handled as a regular deleting disk, so binaries unaware of
 		// such tombstones process it correctly as well.
 		state.status = diskStatusDeleting
-		state.zoneID = tombstoneZoneID
+		state.zoneID = missingDiskZoneID
 		state.tombstone = true
 	} else {
 		// Create a tombstone disk entry to avoid race conditions between
@@ -997,7 +997,7 @@ func (s *storageYDB) DeleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
-	tombstoneZoneID string,
+	missingDiskZoneID string,
 ) (*DiskMeta, error) {
 
 	var disk *DiskMeta
@@ -1012,7 +1012,7 @@ func (s *storageYDB) DeleteDisk(
 				diskID,
 				taskID,
 				deletingAt,
-				tombstoneZoneID,
+				missingDiskZoneID,
 			)
 			return err
 		},

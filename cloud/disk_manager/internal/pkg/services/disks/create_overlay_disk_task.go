@@ -165,7 +165,7 @@ func (t *createOverlayDiskTask) Cancel(
 		params.Disk.DiskId,
 		selfTaskID,
 		time.Now(),
-		"", // tombstoneZoneID
+		"", // missingDiskZoneID
 	)
 	if err != nil {
 		return err

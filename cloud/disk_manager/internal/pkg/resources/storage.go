@@ -185,7 +185,7 @@ type Storage interface {
 	//
 	// If the disk is missing, creates a tombstone disk entry (see
 	// DiskMeta.Tombstone) that prevents new disk creation with the same ID:
-	// * if |tombstoneZoneID| is not empty, the tombstone is created in
+	// * if |missingDiskZoneID| is not empty, the tombstone is created in
 	//   deleting status in this zone and returned. It is handled as a regular
 	//   deleting disk: DiskDeleted moves it to deleted status, after that it is
 	//   collected as a regular deleted disk;
@@ -196,7 +196,7 @@ type Storage interface {
 		diskID string,
 		taskID string,
 		deletingAt time.Time,
-		tombstoneZoneID string,
+		missingDiskZoneID string,
 	) (*DiskMeta, error)
 
 	DiskDeleted(ctx context.Context, diskID string, deletedAt time.Time) error
