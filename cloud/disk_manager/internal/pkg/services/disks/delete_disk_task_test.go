@@ -331,6 +331,7 @@ func TestDeleteDiskTaskNonExistentDiskWithTombstone(t *testing.T) {
 		ID:           "disk",
 		ZoneID:       "zone",
 		DeleteTaskID: "toplevel_task_id",
+		Tombstone:    true,
 	}, nil).Once()
 
 	scheduler.On(

@@ -48,6 +48,7 @@ func requireDisksAreEqual(t *testing.T, expected DiskMeta, actual DiskMeta) {
 	}
 	require.Equal(t, expected.CreatedBy, actual.CreatedBy)
 	require.Equal(t, expected.DeleteTaskID, actual.DeleteTaskID)
+	require.Equal(t, expected.Tombstone, actual.Tombstone)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -203,6 +204,11 @@ func TestDisksDeleteNonexistentDisk(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, actual)
 
+	actual, err = storage.GetDiskMeta(ctx, disk.ID)
+	require.NoError(t, err)
+	require.NotNil(t, actual)
+	require.True(t, actual.Tombstone)
+
 	_, err = storage.CreateDisk(ctx, disk)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -216,6 +222,7 @@ func TestDisksDeleteNonexistentDiskCreatesTombstone(t *testing.T) {
 		ID:           "disk",
 		ZoneID:       "zone",
 		DeleteTaskID: "delete",
+		Tombstone:    true,
 	}
 
 	deletingAt := time.Now()
