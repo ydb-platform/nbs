@@ -55,6 +55,11 @@ public:
         auto* concreteResponse =
             static_cast<TRequestResponse*>(parsedResponse.Proto.get());
 
+        if (HasError(*concreteResponse)) {
+            Promise.SetValue(*concreteResponse);
+            return;
+        }
+
         constexpr bool hasOutputBuffers =
             requires { concreteResponse->MutableBlocks(); };
         if constexpr (hasOutputBuffers) {

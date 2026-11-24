@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/rdma_test/server_test_async.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -79,6 +81,46 @@ Y_UNIT_TEST_SUITE(TRdmaTargetTest)
                 TRdmaTestEnvironment::CalcChecksum(blockRange.Size() * 4_KB, 0);
             UNIT_ASSERT_EQUAL(expected, response.GetChecksum());
         }
+    }
+
+    Y_UNIT_TEST(ShouldReturnHardwareProblemForDetachedDevice)
+    {
+        TRdmaTestEnvironment env;
+        const auto range = TBlockRange64::WithLength(0, 1);
+        UNIT_ASSERT(env.DeviceClient->DetachDevice(env.Device_1));
+
+        auto check = [&](auto request)
+        {
+            auto response = env.Run(std::move(request)).GetValueSync();
+            const auto& error = response.GetError();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
+            UNIT_ASSERT_C(
+                HasProtoFlag(error.GetFlags(), NProto::EF_HW_PROBLEMS_DETECTED),
+                FormatError(error));
+        };
+
+        check(env.MakeReadRequest(range));
+        check(env.MakeWriteRequest(range, 'A'));
+        check(env.MakeZeroRequest(range));
+        check(env.MakeChecksumRequest(range));
+    }
+
+    Y_UNIT_TEST(ShouldPreserveInvalidSessionForOversizedAccessError)
+    {
+        TRdmaTestEnvironment env;
+        const auto range = TBlockRange64::WithLength(0, 1);
+
+        auto check = [&](auto request)
+        {
+            request.MutableHeaders()->SetClientId(TString(4_KB, 'x'));
+            auto response = env.Run(std::move(request)).GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_BS_INVALID_SESSION,
+                response.GetError().GetCode());
+        };
+
+        check(env.MakeWriteRequest(range, 'A'));
+        check(env.MakeZeroRequest(range));
     }
 
     Y_UNIT_TEST(ShouldDelayOverlappedRequest)

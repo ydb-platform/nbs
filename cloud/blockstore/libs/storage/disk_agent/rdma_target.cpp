@@ -344,21 +344,38 @@ private:
         STORAGE_THROW_SERVICE_ERROR(*ec) << "Device disabled";
     }
 
-    TStorageAdapterPtr GetDevice(
+    TResultOrError<TStorageAdapterPtr> GetDevice(
         const TString& uuid,
         const TString& clientId,
         NProto::EVolumeAccessMode accessMode) const
     {
         CheckIfDeviceIsDisabled(uuid, clientId);
 
-        auto [device, error] =
-            DeviceClient->AccessDevice(uuid, clientId, accessMode);
+        return DeviceClient->AccessDevice(uuid, clientId, accessMode);
+    }
 
-        if (HasError(error)) {
-            STORAGE_THROW_SERVICE_ERROR(error.GetCode()) << error.GetMessage();
+    template <typename TResponse>
+    NProto::TError ReplyDeviceAccessError(
+        void* context,
+        TStringBuf out,
+        TBlockStoreProtocol::EMessageType responseType,
+        const NProto::TError& error) const
+    {
+        if (auto ep = Endpoint.lock()) {
+            TResponse response = TErrorResponse(error);
+            const size_t protoSize = response.ByteSizeLong();
+            if (protoSize >= NCloud::NStorage::NRdma::RDMA_MAX_PROTO_LEN ||
+                protoSize + NCloud::NStorage::NRdma::RDMA_PROTO_HEADER_SIZE >
+                    out.size())
+            {
+                return error;
+            }
+
+            const size_t bytes =
+                Serializer->Serialize(out, responseType, 0, response);
+            ep->SendResponse(context, bytes);
         }
-
-        return device;
+        return {};
     }
 
     TThreadSafeData::TAccess GetAccessToken(const TString& uuid) const
@@ -546,10 +563,17 @@ private:
             return MakeError(E_ARGUMENT);
         }
 
-        auto device = GetDevice(
+        auto [device, error] = GetDevice(
             request.GetDeviceUUID(),
             request.GetHeaders().GetClientId(),
             NProto::VOLUME_ACCESS_READ_ONLY);
+        if (HasError(error)) {
+            return ReplyDeviceAccessError<NProto::TReadDeviceBlocksResponse>(
+                context,
+                out,
+                TBlockStoreProtocol::ReadDeviceBlocksResponse,
+                error);
+        }
 
         auto token = GetAccessToken(request.GetDeviceUUID());
         if (token->SecureEraseInProgress) {
@@ -674,10 +698,17 @@ private:
                 out);
         }
 
-        auto device = GetDevice(
+        auto [device, error] = GetDevice(
             request.GetDeviceUUID(),
             request.GetHeaders().GetClientId(),
             NProto::VOLUME_ACCESS_READ_WRITE);
+        if (HasError(error)) {
+            return ReplyDeviceAccessError<NProto::TWriteDeviceBlocksResponse>(
+                context,
+                out,
+                TBlockStoreProtocol::WriteDeviceBlocksResponse,
+                error);
+        }
 
         auto req = std::make_shared<NProto::TWriteBlocksRequest>();
         TStringBuf dataBuffer;
@@ -935,10 +966,17 @@ private:
             return MakeError(E_ARGUMENT);
         }
 
-        auto device = GetDevice(
+        auto [device, error] = GetDevice(
             request.GetDeviceUUID(),
             request.GetHeaders().GetClientId(),
             NProto::VOLUME_ACCESS_READ_WRITE);
+        if (HasError(error)) {
+            return ReplyDeviceAccessError<NProto::TZeroDeviceBlocksResponse>(
+                context,
+                out,
+                TBlockStoreProtocol::ZeroDeviceBlocksResponse,
+                error);
+        }
 
         auto req = std::make_shared<NProto::TZeroBlocksRequest>();
         req->SetStartIndex(request.GetStartIndex());
@@ -1055,10 +1093,18 @@ private:
             return MakeError(E_ARGUMENT);
         }
 
-        auto device = GetDevice(
+        auto [device, error] = GetDevice(
             request.GetDeviceUUID(),
             request.GetHeaders().GetClientId(),
             NProto::VOLUME_ACCESS_READ_ONLY);
+        if (HasError(error)) {
+            return ReplyDeviceAccessError<
+                NProto::TChecksumDeviceBlocksResponse>(
+                context,
+                out,
+                TBlockStoreProtocol::ChecksumDeviceBlocksResponse,
+                error);
+        }
 
         auto req = std::make_shared<NProto::TReadBlocksRequest>();
 

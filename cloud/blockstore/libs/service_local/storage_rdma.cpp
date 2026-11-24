@@ -114,11 +114,13 @@ public:
         const auto& response = resultOrError.GetResult();
         Y_ENSURE(response.MsgId == TBlockStoreProtocol::ReadDeviceBlocksResponse);
 
-        CopyData(Request->Sglist, response.Data);
-
-        auto orig = static_cast<NProto::TReadDeviceBlocksResponse&>(*response.Proto);
+        auto& orig =
+            static_cast<NProto::TReadDeviceBlocksResponse&>(*response.Proto);
         TResponse proto;
         proto.MutableError()->Swap(orig.MutableError());
+        if (!HasError(proto)) {
+            CopyData(Request->Sglist, response.Data);
+        }
         Response.SetValue(std::move(proto));
     }
 
