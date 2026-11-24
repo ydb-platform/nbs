@@ -136,10 +136,24 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			skipIncremental: true,
 		},
 		{
-			name:     "disabled trash metadata zone conflicts with request zone",
-			zoneMeta: &resources.DiskMeta{ZoneID: "zone-d"}, requestZone: "zone-a",
+			name:     "disabled trash metadata zone matches request zone",
+			zoneMeta: &resources.DiskMeta{ZoneID: "zone-d"}, requestZone: "zone-d",
 			disabledZones: disabledZone, deleteIfNonExistent: true,
 			expectedZone: "zone-d",
+		},
+		{
+			name:     "disabled trash metadata cell belongs to request zone",
+			zoneMeta: &resources.DiskMeta{ZoneID: "zone-d-shard1"}, requestZone: "zone-d",
+			requestCells:  []string{"zone-d", "zone-d-shard1"},
+			disabledZones: disabledShard, deleteIfNonExistent: true,
+			expectedZone: "zone-d-shard1",
+		},
+		{
+			name:     "disabled trash metadata zone conflicts with request zone",
+			zoneMeta: &resources.DiskMeta{ZoneID: "zone-d"}, requestZone: "zone-a",
+			requestCells:  []string{"zone-a", "zone-a-cell1"},
+			disabledZones: disabledZone, deleteIfNonExistent: true,
+			nonCancellable: true,
 		},
 		{
 			name:     "trash metadata zone conflicts with disabled request zone",

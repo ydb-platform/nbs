@@ -221,11 +221,9 @@ func (t *deleteDiskTask) GetResponse() proto.Message {
 // An empty request zone is returned as is: the caller only marks the disk as
 // deleted.
 //
-// A disabled zone from meta is returned as is: NBS deletion is skipped for
-// disabled zones anyway.
-//
-// An enabled zone from meta must match the request zone or be one of its
-// cells, otherwise the task finishes with a NonCancellableError.
+// A zone from meta (enabled or disabled) must match the request zone or be one
+// of its cells, otherwise the task finishes with a NonCancellableError. For a
+// disabled zone NBS deletion is skipped later by the caller.
 //
 // The zone is not persisted and is resolved again on every retry.
 func (t *deleteDiskTask) resolveCleanupZoneID(
@@ -245,11 +243,6 @@ func (t *deleteDiskTask) resolveCleanupZoneID(
 
 	if meta == nil || len(meta.ZoneID) == 0 {
 		return requestZoneID, nil
-	}
-
-	if t.disabledZones.IsDisabled(meta.ZoneID) {
-		// NBS deletion is skipped for disabled zones anyway.
-		return meta.ZoneID, nil
 	}
 
 	if requestZoneID == meta.ZoneID {
