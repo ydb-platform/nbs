@@ -39,9 +39,13 @@ processed it.
    is newer, so a round which is started by a request asks the shards for
    nothing. A regular round (the existing schedule, `IdleSessionTimeout / 3`)
    asks each shard for its sessions and fixes any discrepancy.
-5. A request doesn't wait for an unavailable shard longer than
-   `ShardSessionRequestTimeout`.
-6. An independent improvement: a shard which has no active session for a
+5. A request has no timeout: it waits for as long as some of the shards are
+   unavailable. A shard has to process a request only once, so the request
+   is completed as soon as each shard has been reached once.
+6. The requests are idempotent: a client may retry a request at any moment.
+   A retry is recognized by the request id, it doesn't start over and is not
+   taken for a client which has started anew.
+7. An independent improvement: a shard which has no active session for a
    request of a client (e.g. after its restart) requests the session from
    the main tablet instead of failing the request.
 
@@ -98,7 +102,7 @@ sequenceDiagram
     M->>M: Tx_ResetSession / Tx_DestroySession
     M-->>C: response
 
-    Note over M,S: A round has failed for some of the shards: the request stays pending,<br/>the next round delivers it to them.<br/>After ShardSessionRequestTimeout: CreateSession and ResetSession fail with E_REJECTED,<br/>DestroySession is processed by the main tablet anyway
+    Note over M,S: A round has failed for some of the shards: the request stays pending,<br/>the next round delivers it to them. There is no timeout:<br/>the request waits for as long as a shard is unavailable.<br/>A retry (the same RequestId) takes the place of the request and keeps what has been done
 ```
 
 * **Pending requests.** Such a request is kept in the main tablet
@@ -113,12 +117,12 @@ sequenceDiagram
   the session, the response waits until the round delivers the session to
   all the shards: a shard creates the session or makes its copy active with
   the same subsessions. If the transaction has recovered an existing session
-  (the client has started anew: vhost has been restarted, the pipe has been
-  re-established, a VM is being migrated), the session is marked as
+  and the request is not a retry (the client has started anew: vhost has
+  been restarted, a VM is being migrated), the session is marked as
   `Interrupted` and the shard drops its unconfirmed writes before it
   responds - the same thing a tablet does when it recovers a session upon
-  `CreateSession` itself. One more `CreateSession` for the same session
-  replaces the pending one.
+  `CreateSession` itself. One more `CreateSession` for the same session takes
+  the place of the pending one.
 * **Why CreateSession is not lazy.** Replying before the shards have got the
   session would save a round per mount. But a client which recovers its
   session repeats the requests which its previous incarnation hasn't
@@ -140,14 +144,38 @@ sequenceDiagram
   ignored and `DestroySession` removes just the subsession. Nothing is
   forced. When all the shards are done, the main tablet runs the same
   transaction. Until then the session is frozen: the other session requests
-  for it are rejected with `E_REJECTED` and the sync doesn't send it on its
-  own.
-* **Deadline.** After `ShardSessionRequestTimeout` (30 seconds by default)
-  `CreateSession` and `ResetSession` fail with `E_REJECTED`, the client
-  retries. `DestroySession` is processed by the main tablet and
-  acknowledged. The main tablet forgets what it knows about the shards which
-  have missed it, so the next round compares them in full and destroys their
-  copies of the session as stale ones.
+  for it (except the retries of this one) are rejected with `E_REJECTED` and
+  the sync doesn't send it on its own.
+* **No timeout.** A pending request waits for as long as some of the shards
+  are unavailable: the main tablet neither fails it nor completes it without
+  a shard. A shard has to process a request only once - the main tablet
+  remembers the version which each shard has been synced at - so a request
+  is completed as soon as each shard has been reached once, even if each
+  round fails for some of the shards. A deadline would throw this progress
+  away, and a client which doesn't want to wait may retry on its own.
+* **Retries.** A session request carries `Headers.RequestId` - the id which
+  the tablet already uses to deduplicate the requests for the nodes. The
+  client library generates it once per request and sends it with each
+  attempt. The service passes it on and uses it when it repeats the request
+  itself: the session actor does it each time it reconnects to the tablet.
+  The main tablet compares it with the id of the pending request of the
+  session and with the ids of the last requests which have been completed
+  for the session (kept in memory):
+  * a retry of a pending request takes its place and keeps its version: the
+    response goes to the new attempt, the shards which have processed the
+    request are not waited for once again;
+  * a retry of a completed request is acknowledged right away, without a
+    round. `CreateSession` makes sure that the shards still have what the
+    request has left: if the session has changed since then, it's delivered
+    once again. `ResetSession` and `DestroySession` are not repeated - that
+    would also drop what the client has done since then;
+  * a retry of `CreateSession` comes from the same incarnation of the client,
+    so it doesn't mark the session as `Interrupted`: the shards have dropped
+    the unconfirmed writes of the previous incarnation (or are being told to
+    do it) because of the first attempt.
+
+  A request with another id is another request, a request without an id (an
+  old client) is never a retry.
 * **Adapter mode.** Such shards get the per-session requests from the main
   tablet: `CreateSession` - after the rest of the shards, `ResetSession` and
   `DestroySession` - after the transaction of the main tablet.
@@ -195,12 +223,11 @@ sequenceDiagram
   to get is not contacted at all.
 * **When a shard is compared in full.** By each regular round. By any round
   if the main tablet knows nothing about the shard (the main tablet has been
-  restarted, the shard has missed a `DestroySession`) or if the shard has
-  been restarted - the generation in its response is not the remembered one,
-  and none of its sessions is active until the main tablet recovers them. The
-  comparison sends the sessions which are missing, not active or have other
-  subsessions, and destroys the sessions which are unknown to the main
-  tablet.
+  restarted) or if the shard has been restarted - the generation in its
+  response is not the remembered one, and none of its sessions is active
+  until the main tablet recovers them. The comparison sends the sessions
+  which are missing, not active or have other subsessions, and destroys the
+  sessions which are unknown to the main tablet.
 * **State.** The versions and the generations of the shards
   (`ShardSyncStates`) and the pending requests are kept in memory. After a
   restart of the main tablet the clients retry their requests and the first
