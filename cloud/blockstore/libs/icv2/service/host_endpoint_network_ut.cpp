@@ -286,9 +286,6 @@ struct TNetworkFixture
             Listener.Listener->GetAddress().GetPort(),
             {},
             Peers,
-            Timer,
-            Scheduler,
-            Completions,
             {});
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
         Host = std::move(host);
@@ -357,27 +354,26 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointNetworkTest)
             TNetworkFixture f(enableXdc);
             f.ConnectHost();
             f.AcceptChannel();
-            auto endpoint = f.Host.GetEndpoint();
-
-            const TString payload(BlockSize, 'w');
-            auto write = MakeRequest<NProto::TWriteBlocksRequest>();
-            write->MutableBlocks()->AddBuffers(payload);
-            auto written = Wait(endpoint->WriteBlocks(
-                MakeIntrusive<TCallContext>(),
-                std::move(write)));
-            UNIT_ASSERT_C(!HasError(written), FormatError(written.GetError()));
-            UNIT_ASSERT(f.Host.GetStatus().State == EPeerState::Connected);
-
             auto config = std::make_shared<NClient::TClientAppConfig>();
             auto durable = NClient::CreateDurableClient(
                 config,
-                std::move(endpoint),
+                f.Host.GetEndpoint(),
                 NClient::CreateRetryPolicy(config, NProto::STORAGE_MEDIA_SSD),
                 CreateLoggingService("console"),
                 f.Timer,
                 f.Scheduler,
                 CreateRequestStatsStub(),
                 CreateVolumeStatsStub());
+
+            const TString payload(BlockSize, 'w');
+            auto write = MakeRequest<NProto::TWriteBlocksRequest>();
+            write->MutableBlocks()->AddBuffers(payload);
+            auto written = Wait(durable->WriteBlocks(
+                MakeIntrusive<TCallContext>(),
+                std::move(write)));
+            UNIT_ASSERT_C(!HasError(written), FormatError(written.GetError()));
+            UNIT_ASSERT(f.Host.GetStatus().State == EPeerState::Connected);
+
             auto read = MakeRequest<NProto::TReadBlocksRequest>();
             read->SetBlocksCount(1);
             auto pending = durable->ReadBlocks(

@@ -11,10 +11,6 @@ namespace NCloud::NBlockStore::NIcV2 {
 // Pass a dedicated peer. Give the channel to a data endpoint or call Close()
 // yourself. Await shutdown before stopping the peer manager, then stop the
 // scheduler and completion queue.
-IDataRequestChannelPtr CreatePeerRequestChannel(
-    NCloud::NIcV2::IPeerPtr peer,
-    ITimerPtr timer,
-    ISchedulerPtr scheduler,
-    ITaskQueuePtr completions);
+IDataRequestChannelPtr CreatePeerRequestChannel(NCloud::NIcV2::IPeerPtr peer);
 
 }   // namespace NCloud::NBlockStore::NIcV2

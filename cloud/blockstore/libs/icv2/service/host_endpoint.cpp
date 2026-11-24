@@ -34,13 +34,9 @@ TResultOrError<THostDataEndpoint> CreateHostDataEndpoint(
     ui16 port,
     IClientEndpointHandlerPtr handler,
     IPeerManagerPtr peers,
-    ITimerPtr timer,
-    ISchedulerPtr scheduler,
-    ITaskQueuePtr completions,
     TDataConfig dataConfig)
 {
-    if (!peers || !timer || !scheduler || !completions || !dataConfig.IsValid())
-    {
+    if (!peers || !dataConfig.IsValid()) {
         return MakeError(
             E_ARGUMENT,
             "invalid IC V2 host endpoint configuration");
@@ -51,11 +47,7 @@ TResultOrError<THostDataEndpoint> CreateHostDataEndpoint(
     if (HasError(error)) {
         return error;
     }
-    auto channel = CreatePeerRequestChannel(
-        peer,
-        std::move(timer),
-        std::move(scheduler),
-        std::move(completions));
+    auto channel = CreatePeerRequestChannel(peer);
     auto endpoint = CreateDataEndpoint(std::move(channel), dataConfig);
     return THostDataEndpoint(std::move(peer), std::move(endpoint));
 }

@@ -21,14 +21,12 @@ public:
     [[nodiscard]] NCloud::NIcV2::TPeerStatus GetStatus() const;
 };
 
-// Start the peer manager, scheduler and completion queue first. Use the
-// manager's clock for timer and scheduler. Pass {} to omit notifications.
+// Start the peer manager first. Pass {} to omit notifications.
 // The handler may run before this call returns.
 //
-// Reuse the data endpoint for this host's disks. Wrap it in a durable client
-// for retries. Transport failures return E_REJECTED. E_UNAVAILABLE during
-// connection setup uses the durable client's connection backoff. A retry may
-// apply a write or zero twice.
+// Reuse the data endpoint for this host's disks. While connecting, requests
+// return E_UNAVAILABLE. Wrap the endpoint in a durable client for retries.
+// A retry may apply a write or zero twice.
 //
 // Call Stop() on the data endpoint, then on the peer manager. Stop the
 // scheduler and completion queue after those calls return.
@@ -37,9 +35,6 @@ TResultOrError<THostDataEndpoint> CreateHostDataEndpoint(
     ui16 port,
     IClientEndpointHandlerPtr handler,
     NCloud::NIcV2::IPeerManagerPtr peers,
-    ITimerPtr timer,
-    ISchedulerPtr scheduler,
-    ITaskQueuePtr completions,
     TDataConfig dataConfig);
 
 }   // namespace NCloud::NBlockStore::NIcV2
