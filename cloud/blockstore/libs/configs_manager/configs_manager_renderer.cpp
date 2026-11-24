@@ -208,9 +208,14 @@ TString FormatEnumValue(
                : ToString(value);
 }
 
-// Format enum overrides by their schema and other ICB values as integers.
+// Show bool and enum names with numbers; keep other ICB values numeric.
 TString FormatIcbValue(const FieldDescriptor& field, i64 value)
 {
+    if (field.cpp_type() == FieldDescriptor::CPPTYPE_BOOL) {
+        return TStringBuilder()
+               << (value ? "true" : "false") << " (" << value << ')';
+    }
+
     return field.cpp_type() == FieldDescriptor::CPPTYPE_ENUM
                ? FormatEnumValue(*field.enum_type(), value)
                : ToString(value);

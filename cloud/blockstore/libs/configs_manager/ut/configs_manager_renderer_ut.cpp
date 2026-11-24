@@ -954,7 +954,73 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             "<span class='config-zero'>&mdash;</span></td>");
     }
 
-    // Show enum names and numbers in every source and ICB column.
+    // Verify that bool values use true/false in Static and Effective, while ICB
+    // also shows the original numeric override.
+    Y_UNIT_TEST(ShouldRenderBoolNamesAndNumbers)
+    {
+        // Inputs and expected cell values for one boolean ICB override.
+        struct TTestCase
+        {
+            // Boolean value in the static configuration.
+            bool StaticValue;
+
+            // Numeric override stored in ICB.
+            i64 Override;
+
+            // Expected ICB cell text, including the original number.
+            TString ExpectedIcbValue;
+
+            // Expected boolean text in the Effective cell.
+            TString ExpectedEffectiveValue;
+        };
+
+        const TTestCase testCases[] = {
+            {true, 0, "false (0)", "false"},
+            {false, 1, "true (1)", "true"},
+            {false, 2, "true (2)", "true"},
+        };
+
+        for (const auto& testCase: testCases) {
+            // Use a different baseline so each number is an active override.
+            NProto::TBlockstoreConfig staticConfig;
+            staticConfig.MutableStorageService()->SetThrottlingEnabled(
+                testCase.StaticValue);
+            const auto controls =
+                std::make_shared<NStorage::TStorageConfigControls>();
+            const auto config =
+                MakeStartupBlockstoreConfig(staticConfig, {}, controls).Config;
+            controls->UpdateDefaults(
+                config->GetStorageConfig()->GetConfigProto());
+            NKikimr::TControlBoard board;
+            controls->Register(board);
+
+            // Store the numeric input without converting it to bool first.
+            TAtomic previous = 0;
+            UNIT_ASSERT(!board.SetValue(
+                "BlockStore_ThrottlingEnabled",
+                testCase.Override,
+                previous));
+
+            // Render the override alongside the unchanged static source.
+            const TBlockstoreConfigRenderer renderer;
+            const auto html = renderer.RenderHtml(*config, staticConfig, {});
+
+            // Keep the original number in ICB and show only bool in Effective.
+            AssertParameterRow(
+                html,
+                {
+                    .ParameterName = "StorageService.ThrottlingEnabled",
+                    .StaticValue = testCase.StaticValue ? "true" : "false",
+                    .StartupDynamicValue = "—",
+                    .RuntimeDynamicValue = "—",
+                    .IcbValue = testCase.ExpectedIcbValue,
+                    .EffectiveValue = testCase.ExpectedEffectiveValue,
+                });
+        }
+    }
+
+    // Verify that enum names and numbers are shown in every source and ICB
+    // column.
     Y_UNIT_TEST(ShouldRenderEnumNamesAndNumbers)
     {
         // Give each source an explicit enum value and apply an ICB override.
