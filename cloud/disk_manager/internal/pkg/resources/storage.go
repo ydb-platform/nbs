@@ -179,11 +179,20 @@ type Storage interface {
 	GetDiskMeta(ctx context.Context, diskID string) (*DiskMeta, error)
 
 	// Returns disk if action has been accepted by storage and nil otherwise.
+	//
+	// If the disk is missing and |missingDiskZoneID| is not empty, creates a
+	// tombstone disk entry in deleting status in |missingDiskZoneID| and
+	// returns it. The tombstone has no create task ID; it reserves the disk ID
+	// until DiskDeleted is called, after that it is collected as a regular
+	// deleted disk.
+	// If the disk is missing and |missingDiskZoneID| is empty, creates a
+	// tombstone disk entry in deleted status and returns nil.
 	DeleteDisk(
 		ctx context.Context,
 		diskID string,
 		taskID string,
 		deletingAt time.Time,
+		missingDiskZoneID string,
 	) (*DiskMeta, error)
 
 	DiskDeleted(ctx context.Context, diskID string, deletedAt time.Time) error

@@ -65,11 +65,20 @@ func (t *deleteDiskTask) deleteDisk(
 	diskID := t.request.Disk.DiskId
 	sync := t.request.Sync
 
+	// If the disk is missing in the database but has to be deleted from
+	// external storages, a tombstone in deleting status is created in the
+	// request zone. It reserves the disk ID until DiskDeleted is called.
+	missingDiskZoneID := ""
+	if t.request.DeleteIfNonExistent {
+		missingDiskZoneID = t.request.Disk.ZoneId
+	}
+
 	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
 		diskID,
 		selfTaskID,
 		time.Now(),
+		missingDiskZoneID,
 	)
 	if err != nil {
 		return err
