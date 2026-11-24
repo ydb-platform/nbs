@@ -196,7 +196,7 @@ struct TVolumeInfoBase
             volumeGroup->GetCounter("HasStorageConfigPatch"))
     {
         BusyIdleCalc.Register(volumeGroup);
-        PerfCalc.Register(*volumeGroup, Volume);
+        PerfCalc.Register(Volume);
     }
 };
 
@@ -263,6 +263,7 @@ private:
 
     TRequestCounters RequestCounters;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
+    TVolumeSufferCounters VolumeSufferCounters;
 
     struct TServingCellHost
     {
@@ -1069,6 +1070,7 @@ public:
                     if (instance->HasDowntimeCounter) {
                         *instance->HasDowntimeCounter = hasDowntime;
                     }
+                    instance->VolumeSufferCounters.Publish(volumeBase.PerfCalc);
                 }
 
                 // Advance the cumulative availability counters by the real time
@@ -1290,6 +1292,9 @@ private:
                         volumeConfig.GetStorageMediaKind()));
         info->RequestCounters.Register(*countersGroup);
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
+        info->VolumeSufferCounters.Register(
+            *countersGroup,
+            volumeBase->PerfCalc);
         info->CountersGroup = countersGroup;
 
         // Register the cumulative counters in the narrow component=sli_volume
