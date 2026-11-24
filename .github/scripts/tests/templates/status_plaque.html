@@ -17,11 +17,11 @@
 </thead>
 <tbody>
 {% for workload in workloads %}
+{% set status = workload.overall() %}
 {% for report in workload.reports or [none] %}
-{% set status = workload.overall(report) %}
 <tr>
-<td align="center">{{ icon(status) }}{% if workload.workflow_failed %}<sup title="{{ 'Part of workflow failed but you can merge changes' if workload.can_merge_after_cleanup_failure(report) else 'Part of workflow failed' }}">❗</sup>{% endif %}</td>
 {% if loop.first %}
+<td rowspan="{{ workload.reports|length or 1 }}" align="center">{{ icon(status) }}{% if workload.workflow_failed %}<sup title="{{ 'Part of workflow failed but you can merge changes' if workload.can_merge_after_cleanup_failure() else 'Part of workflow failed' }}">❗</sup>{% endif %}</td>
 <td rowspan="{{ workload.reports|length or 1 }}">{% for target in workload.target.split(',') %}{{ link(target, run.job_url(workload.job_id)) }}{% if not loop.last %},<br />{% endif %}{% endfor %}</td>
 {% endif %}
 {% if report %}
@@ -51,7 +51,9 @@
 <td colspan="3">{{ icon(workload.status) }} {{ messages.get(workload.status, 'Unknown status; check the workflow') }}{% if workload.build_errors %} — {{ link('log', run.build_error_url(workload.component, workload.run_attempt)) }}{% endif %}{{ duration(workload.build_duration_seconds, 'Build') }}</td>
 {% endif %}
 {% endif %}
-<td align="center">{% if loop.last %}{{ icon(workload.workflow_state) }}{% if report and workload.workflow_state not in ('pending', 'running', 'built', 'completed') %} {{ labels.get(workload.workflow_state, 'Unknown status') }}{% endif %}{% else %}—{% endif %}</td>
+{% if loop.first %}
+<td rowspan="{{ workload.reports|length or 1 }}" align="center">{{ icon(workload.workflow_state) }}{% if report and workload.workflow_state not in ('pending', 'running', 'built', 'completed') %} {{ labels.get(workload.workflow_state, 'Unknown status') }}{% endif %}</td>
+{% endif %}
 </tr>
 {% endfor %}
 {% endfor %}
