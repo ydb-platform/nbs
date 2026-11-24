@@ -216,11 +216,18 @@ func (t *deleteDiskTask) GetResponse() proto.Message {
 
 // Resolves the zone for a disk that DeleteDisk did not return metadata for.
 // Prefers the zone from meta (the disk may still be in the trash retention
-// window) and falls back to the request zone. If meta has a zone, the request
-// zone must be non-empty (otherwise a non-retriable error is returned) and
-// must match the zone from meta or contain it as one of its cells (otherwise
-// a retriable error is returned). The zone is not persisted and is resolved
-// again on every retry.
+// window) and falls back to the request zone.
+//
+// If meta has a zone that is not disabled:
+//   - an empty request zone finishes the task with a NonCancellableError;
+//   - the request zone must match the zone from meta or contain it as one of
+//     its cells. On mismatch the task finishes with a NonCancellableError if
+//     the request zone is disabled, otherwise it is retried.
+//
+// A disabled zone from meta is returned as is: NBS deletion is skipped for
+// disabled zones anyway.
+//
+// The zone is not persisted and is resolved again on every retry.
 func (t *deleteDiskTask) resolveCleanupZoneID(
 	ctx context.Context,
 	diskID string,
@@ -236,8 +243,13 @@ func (t *deleteDiskTask) resolveCleanupZoneID(
 		return requestZoneID, nil
 	}
 
+	if t.disabledZones.IsDisabled(meta.ZoneID) {
+		// NBS deletion is skipped for disabled zones anyway.
+		return meta.ZoneID, nil
+	}
+
 	if len(requestZoneID) == 0 {
-		return "", errors.NewNonRetriableErrorf(
+		return "", errors.NewNonCancellableErrorf(
 			"request zone is empty for disk %v with zone %q in meta",
 			diskID,
 			meta.ZoneID,
@@ -254,6 +266,16 @@ func (t *deleteDiskTask) resolveCleanupZoneID(
 	}
 
 	if !slices.Contains(requestCells, meta.ZoneID) {
+		if t.disabledZones.IsDisabled(requestZoneID) {
+			return "", errors.NewNonCancellableErrorf(
+				"zone %q of disk %v from meta does not match disabled request zone %q (cells %v)",
+				meta.ZoneID,
+				diskID,
+				requestZoneID,
+				requestCells,
+			)
+		}
+
 		return "", errors.NewRetriableErrorf(
 			"zone %q of disk %v from meta does not match request zone %q (cells %v)",
 			meta.ZoneID,
