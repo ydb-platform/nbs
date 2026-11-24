@@ -2190,7 +2190,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(4, requestNumber.GetDiskRegistryGeneration());
     }
 
-    Y_UNIT_TEST_F(ShouldCompleteRemoveDeviceWhenAgentIsUnavailable, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldRemoveHostAndDeviceWithDetachedDiskAfterAgentReturns,
+        TFixture)
     {
         NMonitoring::TDynamicCountersPtr counters =
             new NMonitoring::TDynamicCounters();
@@ -2199,15 +2201,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             "AppImpossibleEvents/DiskRegistryDetachPathWithDependentDisk",
             true);
 
-        const TVector agents {
-            CreateAgentConfig("agent-1", {
-                Device("dev-1", "uuid-1", "rack-1", 10_GB),
-                Device("dev-2", "uuid-2", "rack-1", 10_GB),
-            }),
-            CreateAgentConfig("agent-2", {
-                Device("dev-1", "uuid-3", "rack-2", 10_GB),
-                Device("dev-2", "uuid-4", "rack-2", 10_GB),
-            }),
+        const TVector agents{
+            CreateAgentConfig(
+                "agent-1",
+                {
+                    Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                    Device("dev-1", "uuid-1b", "rack-1", 10_GB),
+                    Device("dev-2", "uuid-2", "rack-1", 10_GB),
+                }),
+            CreateAgentConfig(
+                "agent-2",
+                {
+                    Device("dev-1", "uuid-3", "rack-2", 10_GB),
+                    Device("dev-2", "uuid-4", "rack-2", 10_GB),
+                }),
         };
 
         auto config = CreateDefaultStorageConfig();
@@ -2223,15 +2230,20 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
         DiskRegistry->SetWritableState(true);
         DiskRegistry->UpdateConfig(CreateRegistryConfig(0, agents));
-        RegisterAndWaitForAgents(*Runtime, agents);
+        RegisterAndWaitForAgent(*Runtime, 0, agents[0].DevicesSize());
 
-        AddDevice("agent-1", "dev-1");
-        AddDevice("agent-1", "dev-2");
+        DiskRegistry->AllocateDisk("vol1", 30_GB);
+        RegisterAndWaitForAgent(*Runtime, 1, agents[1].DevicesSize());
 
-        DiskRegistry->AllocateDisk("vol1", 20_GB);
         DiskRegistry->ChangeAgentState(
             "agent-1",
             NProto::EAgentState::AGENT_STATE_UNAVAILABLE);
+
+        {
+            auto [error, timeout] = RemoveDevice("agent-1", "dev-1");
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+            UNIT_ASSERT_GT(timeout, 0);
+        }
 
         UNIT_ASSERT_VALUES_EQUAL(0, detachPathWithDependentDisk->Val());
 
@@ -2253,7 +2265,58 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             UNIT_ASSERT_VALUES_EQUAL(0, timeout);
         }
 
+        auto agent = agents[0];
+        agent.SetNodeId(Runtime->GetNodeId(0));
+        auto registration = DiskRegistry->RegisterAgent(std::move(agent));
+        UNIT_ASSERT(registration->Record.GetPathsToAttach().empty());
+
+        Runtime->AdvanceCurrentTime(20s);
+        Runtime->DispatchEvents({}, 10ms);
+        auto disk = DiskRegistry->DescribeDisk("vol1");
+        UNIT_ASSERT_VALUES_EQUAL(3, disk->Record.DevicesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, disk->Record.MigrationsSize());
+
+        {
+            auto [error, timeout] = RemoveDevice("agent-1", "dev-1");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, timeout);
+        }
+        {
+            auto [error, timeout] = RemoveHost("agent-1");
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, timeout);
+        }
         UNIT_ASSERT_VALUES_EQUAL(0, detachPathWithDependentDisk->Val());
+
+        // Reattaching only dev-2 makes it the sole migration source.
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            AddDevice("agent-1", "dev-2").first.GetCode());
+        Runtime->AdvanceCurrentTime(20s);
+        Runtime->DispatchEvents({}, 10ms);
+        disk = DiskRegistry->DescribeDisk("vol1");
+        UNIT_ASSERT_VALUES_EQUAL(1, disk->Record.MigrationsSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-2",
+            disk->Record.GetMigrations(0).GetSourceDeviceId());
+        const auto targetId =
+            disk->Record.GetMigrations(0).GetTargetDevice().GetDeviceUUID();
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            AddDevice("agent-1", "dev-2").first.GetCode());
+        disk = DiskRegistry->DescribeDisk("vol1");
+        UNIT_ASSERT_VALUES_EQUAL(1, disk->Record.MigrationsSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-2",
+            disk->Record.GetMigrations(0).GetSourceDeviceId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            targetId,
+            disk->Record.GetMigrations(0).GetTargetDevice().GetDeviceUUID());
+        {
+            auto [error, timeout] = RemoveHost("agent-1");
+            UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, error.GetCode());
+            UNIT_ASSERT_GT(timeout, 0);
+        }
     }
 
     Y_UNIT_TEST_F(ShouldRetryCmsRequestsWhenInFlightLimitExceeded, TFixture)

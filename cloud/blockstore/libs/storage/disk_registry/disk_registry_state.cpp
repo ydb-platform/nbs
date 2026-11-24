@@ -186,13 +186,24 @@ TString MakeMirroredDiskDeviceReplacementMessage(
 
 /////////////////////////////////////////////////////////////////////////////////
 
+bool HasPathAttachState(
+    const NProto::TAgentConfig& agent,
+    const TString& path,
+    NProto::EPathAttachState state)
+{
+    const auto& states = agent.GetPathAttachStates();
+    const auto it = states.find(path);
+    return it != states.end() && it->second == state;
+}
+
 bool IsDeviceDetached(
     const NProto::TAgentConfig& agent,
     const NProto::TDeviceConfig& device)
 {
-    const auto it = agent.GetPathAttachStates().find(device.GetDeviceName());
-    return it == agent.GetPathAttachStates().end() ||
-           it->second != NProto::PATH_ATTACH_STATE_ATTACHED;
+    return !HasPathAttachState(
+        agent,
+        device.GetDeviceName(),
+        NProto::PATH_ATTACH_STATE_ATTACHED);
 }
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -5716,6 +5727,10 @@ bool TDiskRegistryState::HasDependentSsdDisks(
             return true;
         }
 
+        if (IsPathDetached(agent, d.GetDeviceName())) {
+            continue;
+        }
+
         const auto diskId = FindDisk(d.GetDeviceUUID());
 
         if (!diskId) {
@@ -6635,8 +6650,9 @@ NProto::TError TDiskRegistryState::CmsRemoveDevice(
 
     const auto& deviceId = device.GetDeviceUUID();
     const auto diskId = FindDisk(deviceId);
-    const bool hasDependentDisk = diskId
-        && device.GetState() < NProto::DEVICE_STATE_ERROR;
+    const bool hasDependentDisk =
+        diskId && device.GetState() < NProto::DEVICE_STATE_ERROR &&
+        !IsPathDetached(agent, device.GetDeviceName());
 
     if (hasDependentDisk) {
         error = MakeError(
@@ -6911,7 +6927,11 @@ void TDiskRegistryState::ApplyDeviceStateChange(
         affectedDisk = diskId;
     }
 
-    if (device.GetState() != NProto::DEVICE_STATE_WARNING) {
+    const bool needsMigration =
+        device.GetState() == NProto::DEVICE_STATE_WARNING ||
+        (device.GetState() == NProto::DEVICE_STATE_ONLINE &&
+         agent.GetState() == NProto::AGENT_STATE_WARNING);
+    if (!needsMigration) {
         CancelDeviceMigration(now, db, diskId, *disk, uuid);
         return;
     }
@@ -7425,6 +7445,42 @@ auto TDiskRegistryState::FindReplicaByMigration(
     return {};
 }
 
+const NProto::TDeviceConfig* TDiskRegistryState::FindMigrationSource(
+    const TDeviceId& sourceDeviceId) const
+{
+    const auto* device = DeviceList.FindDevice(sourceDeviceId);
+    if (!device || device->GetState() > NProto::DEVICE_STATE_WARNING) {
+        return nullptr;
+    }
+
+    const auto* agent = AgentList.FindAgent(device->GetAgentId());
+    if (!agent || agent->GetState() > NProto::AGENT_STATE_WARNING) {
+        return nullptr;
+    }
+
+    if (StorageConfig->GetAttachDetachPathsEnabled() &&
+        NStorage::IsDeviceDetached(*agent, *device))
+    {
+        return nullptr;
+    }
+
+    return device;
+}
+
+bool TDiskRegistryState::HasMigrationsToStart() const
+{
+    if (!StorageConfig->GetAttachDetachPathsEnabled()) {
+        return !Migrations.empty();
+    }
+
+    // Recheck pending migrations when a path is attached. Avoid scheduling
+    // empty transactions while all sources are unavailable.
+    return AnyOf(
+        Migrations,
+        [&](const auto& migration)
+        { return FindMigrationSource(migration.SourceDeviceId) != nullptr; });
+}
+
 TVector<TDeviceMigration> TDiskRegistryState::BuildMigrationList() const
 {
     const ui32 minBudget =
@@ -7442,18 +7498,8 @@ TVector<TDeviceMigration> TDiskRegistryState::BuildMigrationList() const
             break;
         }
 
-        auto [agentPtr, devicePtr] = FindDeviceLocation(m.SourceDeviceId);
-        if (!agentPtr || !devicePtr) {
-            continue;
-        }
-
-        if (agentPtr->GetState() > NProto::AGENT_STATE_WARNING) {
-            // skip migration from unavailable agents
-            continue;
-        }
-
-        if (devicePtr->GetState() > NProto::DEVICE_STATE_WARNING) {
-            // skip migration from broken devices
+        const auto* devicePtr = FindMigrationSource(m.SourceDeviceId);
+        if (!devicePtr) {
             continue;
         }
 
@@ -9397,7 +9443,9 @@ bool TDiskRegistryState::HasDependentDisks(
     const NProto::TAgentConfig& agent,
     const TString& path)
 {
-    if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE) {
+    if (agent.GetState() == NProto::AGENT_STATE_UNAVAILABLE ||
+        IsPathDetached(agent, path))
+    {
         return false;
     }
 
@@ -9597,6 +9645,14 @@ TVector<TString> TDiskRegistryState::GetPathsToAttachOnRegistration(
     }
 
     return pathsToAttach;
+}
+
+bool TDiskRegistryState::IsPathDetached(
+    const NProto::TAgentConfig& agent,
+    const TString& path) const
+{
+    return StorageConfig->GetAttachDetachPathsEnabled() &&
+           HasPathAttachState(agent, path, NProto::PATH_ATTACH_STATE_DETACHED);
 }
 
 bool TDiskRegistryState::IsDeviceDetached(
