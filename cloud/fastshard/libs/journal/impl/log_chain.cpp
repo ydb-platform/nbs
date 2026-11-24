@@ -135,22 +135,10 @@ auto TLogRecordChain::EraseBelow(ui64 lsn) -> TResultOrError<TErasedRecords>
     return erased;
 }
 
-TLogRecordPtr TLogRecordChain::GetOldest() const
-{
-    std::lock_guard lock(Lock);
-
-    return GetNextImpl(LastErasedLsn);
-}
-
 TLogRecordPtr TLogRecordChain::GetNext(ui64 lsn) const
 {
     std::lock_guard lock(Lock);
 
-    return GetNextImpl(lsn);
-}
-
-TLogRecordPtr TLogRecordChain::GetNextImpl(ui64 lsn) const
-{
     auto it = Records.find(lsn);
     if (it == Records.end() || !it->second.Ready) {
         return nullptr;
