@@ -121,19 +121,19 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			name:     "trash metadata zone with empty request zone",
 			zoneMeta: &resources.DiskMeta{ZoneID: "zone-a"}, requestZone: "",
 			disabledZones: disabledZone, deleteIfNonExistent: true,
-			nonCancellable: true,
+			skipIncremental: true,
 		},
 		{
 			name:     "disabled trash metadata zone with empty request zone",
 			zoneMeta: &resources.DiskMeta{ZoneID: "zone-d"}, requestZone: "",
 			disabledZones: disabledZone, deleteIfNonExistent: true,
-			nonCancellable: true,
+			skipIncremental: true,
 		},
 		{
 			name:     "zone-less tombstone with empty request zone",
 			zoneMeta: &resources.DiskMeta{}, requestZone: "",
 			disabledZones: disabledZone, deleteIfNonExistent: true,
-			nonCancellable: true,
+			skipIncremental: true,
 		},
 		{
 			name:     "disabled trash metadata zone conflicts with request zone",
@@ -186,7 +186,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 		},
 		{
 			name:          "missing metadata and request zone",
-			disabledZones: disabledZone, deleteIfNonExistent: true, nonCancellable: true,
+			disabledZones: disabledZone, deleteIfNonExistent: true, skipIncremental: true,
 		},
 		{
 			name: "metadata read error in disabled zone", diskMeta: disabledDisk,
