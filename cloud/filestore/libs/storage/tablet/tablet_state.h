@@ -994,19 +994,18 @@ public:
         // DestroySession requests for the sessions which the shard has (or
         // is about to get) but this tablet doesn't.
         TVector<NProtoPrivate::TShardSessionRequest> SessionsToDestroy;
-        // ResetSession requests of the clients. This one and DestroySession
-        // requests of the clients are added by the tablet actor, see
+        // ResetSession requests of the clients. The requests of the clients
+        // (the sessions of CreateSession requests, ResetSession and
+        // DestroySession requests) are added by the tablet actor, see
         // TIndexTabletActor::AddPendingShardSessionRequests.
         TVector<NProtoPrivate::TShardSessionRequest> SessionsToReset;
     };
 
     // Compares the sessions of this (main) tablet with the sessions of a
-    // shard. If createMissingSessions is not set, then the sessions which the
-    // shard doesn't have are not considered as the ones which need a sync:
-    // the shard is supposed to request them on demand.
+    // shard.
     TShardSessionsDiff BuildShardSessionsDiff(
-        const NProtoPrivate::TDescribeShardSessionsResponse& shardSessions,
-        bool createMissingSessions) const;
+        const NProtoPrivate::TDescribeShardSessionsResponse& shardSessions)
+        const;
 
     // Describes the active sessions of this (main) tablet which have been
     // changed after fromVersion but not after toVersion, see

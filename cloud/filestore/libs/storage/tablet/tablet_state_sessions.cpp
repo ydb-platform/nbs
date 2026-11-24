@@ -630,8 +630,7 @@ TIndexTabletState::DescribeShardSessions() const
 }
 
 TIndexTabletState::TShardSessionsDiff TIndexTabletState::BuildShardSessionsDiff(
-    const NProtoPrivate::TDescribeShardSessionsResponse& shardSessions,
-    bool createMissingSessions) const
+    const NProtoPrivate::TDescribeShardSessionsResponse& shardSessions) const
 {
     TShardSessionsDiff diff;
 
@@ -669,9 +668,7 @@ TIndexTabletState::TShardSessionsDiff TIndexTabletState::BuildShardSessionsDiff(
             continue;
         }
 
-        if (createMissingSessions) {
-            shardSessionIds.insert(shardSession.GetSessionId());
-        }
+        shardSessionIds.insert(shardSession.GetSessionId());
 
         if (!session->IsValid()) {
             // no one is able to use this session right now (e.g. it's
@@ -700,15 +697,13 @@ TIndexTabletState::TShardSessionsDiff TIndexTabletState::BuildShardSessionsDiff(
         }
     }
 
-    if (createMissingSessions) {
-        // orphan sessions are not created in the shards: no one is able to
-        // use them right now
-        for (const auto& session: Impl->Sessions) {
-            if (session.IsValid()
-                    && !shardSessionIds.contains(session.GetSessionId()))
-            {
-                diff.SessionsToSync.push_back(MakeShardSessionInfo(session));
-            }
+    // The sessions which the shard doesn't have. Orphan sessions are not
+    // created in the shards: no one is able to use them right now.
+    for (const auto& session: Impl->Sessions) {
+        if (session.IsValid()
+                && !shardSessionIds.contains(session.GetSessionId()))
+        {
+            diff.SessionsToSync.push_back(MakeShardSessionInfo(session));
         }
     }
 

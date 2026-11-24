@@ -583,6 +583,15 @@ message TShardSessionInfo
     // if the session is not active (i.e. it can't be used by the clients until
     // it gets recovered via CreateSession).
     repeated TShardSubSessionInfo SubSessions = 7;
+
+    // Set by the main tablet if the session has been recovered by a
+    // CreateSession request, i.e. the client has established it anew. The
+    // previous incarnation of the session might have left some unfinished
+    // operations in the shard (e.g. unconfirmed writes): the new one knows
+    // nothing about them and may repeat them, so the shard should drop them
+    // before it replies - the same way a tablet does it when it recovers a
+    // session upon a CreateSession request.
+    bool Interrupted = 8;
 }
 
 message TRecoverShardSessionsRequest
@@ -662,7 +671,10 @@ message TDescribeShardSessionsResponse
 // line with the sessions of the main tablet:
 // * creates the sessions which the shard doesn't have and recovers the
 //   sessions which it has (makes them active and replaces their subsessions
-//   with the ones from the request);
+//   with the ones from the request). For a session which has been recovered
+//   by its client in the main tablet (see TShardSessionInfo.Interrupted) the
+//   shard also drops what the previous incarnation of the session hasn't
+//   finished;
 // * after that processes ResetSession and DestroySession requests the same
 //   way a tablet processes them when it gets them directly: a session is
 //   reset or destroyed if SessionSeqNo of the request is both MaxSeqNo and
@@ -696,7 +708,9 @@ message TSyncShardSessionsRequest
     // FileSystem identifier (shard).
     string FileSystemId = 2;
 
-    // The sessions which should be active in the shard. Processed first.
+    // The sessions which should be active in the shard: the ones which the
+    // shard lacks (or has in another state) and the ones which CreateSession
+    // requests of the clients are waiting for. Processed first.
     repeated TShardSessionInfo Sessions = 3;
 
     // ResetSession requests. The sessions which the shard doesn't have are

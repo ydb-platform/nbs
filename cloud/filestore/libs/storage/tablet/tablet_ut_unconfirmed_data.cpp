@@ -2492,6 +2492,90 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_UnconfirmedData)
         AssertStorageStats(newClient, 0, 0);
     }
 
+    Y_UNIT_TEST(ShardShouldRejectStaleConfirmAddDataAfterSyncOfRecoveredSession)
+    {
+        constexpr ui32 block = 4_KB;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1);
+        storageConfig.SetAddingUnconfirmedDataEnabled(true);
+        storageConfig.SetUnconfirmedDataCountHardLimit(10);
+
+        TTestEnv env({}, std::move(storageConfig));
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        const ui32 shardNo = 1;
+        const TString mainFsId = "main_fs";
+        const TString shardId = TStringBuilder() << mainFsId << "_s" << shardNo;
+        tablet.ConfigureAsShard(shardNo, mainFsId, shardId);
+
+        // the session the way the main tablet describes it for the shards
+        auto makeSessionInfos = [] (bool interrupted) {
+            NProtoPrivate::TShardSessionInfo info;
+            info.SetClientId("client");
+            info.SetSessionId("session");
+            info.SetMaxSeqNo(1);
+            info.SetMaxRwSeqNo(1);
+            auto* subSession = info.AddSubSessions();
+            subSession->SetSeqNo(1);
+            subSession->SetReadOnly(false);
+            info.SetInterrupted(interrupted);
+
+            return TVector<NProtoPrivate::TShardSessionInfo>{info};
+        };
+
+        // the main tablet creates the session in the shard
+        tablet.SyncShardSessions(makeSessionInfos(false));
+        tablet.SetHeaders("client", "session", 1);
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 oldHandle = CreateHandle(tablet, id);
+
+        // The client gets as far as PutBlob but never confirms.
+        const ui64 staleCommitId = GenerateBlobIdsAndPutBlob(
+            env,
+            tablet,
+            id,
+            oldHandle,
+            0,
+            block,
+            'a');
+        WaitForTabletCommit(env);
+        AssertStorageStats(tablet, 1, 0);
+
+        // A sync which doesn't say that the session has been recovered
+        // leaves the write alone: its client is still there and is going to
+        // confirm it.
+        tablet.SyncShardSessions(makeSessionInfos(false));
+        AssertStorageStats(tablet, 1, 0);
+
+        // The client starts anew and recovers the session in the main
+        // tablet. The shard is told about it before the client gets the
+        // session back, and the write of the previous incarnation of the
+        // session must not be superseding the writes of the new one.
+        tablet.SyncShardSessions(makeSessionInfos(true));
+        AssertStorageStats(tablet, 0, 0);
+
+        ui64 newHandle = CreateHandle(tablet, id);
+        tablet.WriteData(newHandle, 0, block, 'b');
+
+        tablet.SendConfirmAddDataRequest(staleCommitId);
+        auto confirmResponse =
+            tablet.AssertConfirmAddDataResponse(E_REJECTED);
+        UNIT_ASSERT_C(
+            confirmResponse->GetErrorReason().find(
+                "unconfirmed data not found") != TString::npos,
+            confirmResponse->GetErrorReason());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(block, 'b'),
+            ReadData(tablet, newHandle, block, 0));
+        AssertStorageStats(tablet, 0, 0);
+    }
+
     Y_UNIT_TEST(ShouldDeleteUnconfirmedDataOnDestroySession)
     {
         constexpr ui32 block = 4_KB;

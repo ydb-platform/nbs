@@ -362,9 +362,13 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
     // tablet is going to make the same decision after them, so the session
     // can't get a new subsession until then - the client should retry.
     //
+    // CreateSession which is waiting for the shards is not an obstacle: this
+    // request takes its place, see CompleteTx_CreateSession.
+    //
 
     auto isBeingChanged = [&] (const TString& id) {
-        if (!PendingShardSessionRequests.contains(id)) {
+        const auto* request = PendingShardSessionRequests.FindPtr(id);
+        if (!request || request->Type == EShardSessionRequestType::Create) {
             return false;
         }
 
@@ -607,38 +611,100 @@ void TIndexTabletActor::CompleteTx_CreateSession(
         return;
     }
 
-    if (Config->GetLazyShardSessionCreationEnabled()) {
+    if (ShouldSyncShardSessionRequests()) {
         //
-        // Creating a session in each of the shards upon each CreateSession
+        // Sending a request to each of the shards upon each CreateSession
         // request doesn't scale: there may be thousands of shards and
-        // thousands of clients which connect simultaneously. The sessions
-        // are sent to the shards in batches by the shard sessions sync
-        // instead, the sessions which the sync hasn't delivered yet are
-        // requested by the shards on demand.
+        // thousands of clients which connect simultaneously. The session is
+        // delivered to the shards by the shard sessions sync instead: a
+        // round sends a single request per shard with the sessions of all
+        // the clients which are waiting.
+        //
+        // The client still gets the response only after all the shards have
+        // got the session - the same way as if this tablet sent the request
+        // to each of them. That's what the client relies upon:
+        // * the session can be used in any shard right away;
+        // * if the session has been recovered, i.e. the client has started
+        //   anew, then no shard keeps anything of its previous incarnation,
+        //   see TShardSessionInfo::Interrupted. Otherwise an unconfirmed
+        //   write of the previous incarnation might be applied (upon a
+        //   restart of a shard) over the data which the new one writes
+        //   later.
         //
         // The shards which work in adapter mode are the exception: they
-        // can neither process the batches nor request the sessions.
+        // can't process the requests of the sync. They get the request from
+        // this tablet after the rest of the shards, see
+        // CompletePendingCreateSession.
         //
 
-        // the next sync round sends the session to the shards
-        OnShardSessionChanged(ctx, session->GetSessionId());
+        // the id is about to be moved together with the request
+        const TString sessionId = session->GetSessionId();
 
-        shardIds = GetAdapterModeShardIds();
-        if (shardIds.empty()) {
-            LOG_INFO(ctx, TFileStoreComponents::TABLET,
-                "%s CreateSession completed (%s), shard sessions will be"
-                " created lazily",
-                LogTag.c_str(),
-                FormatError(args.Error).c_str());
+        bool interrupted = args.SessionInterrupted;
 
-            NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-            return;
+        auto it = PendingShardSessionRequests.find(sessionId);
+        if (it != PendingShardSessionRequests.end()) {
+            auto& pending = it->second;
+
+            if (pending.Type != EShardSessionRequestType::Create) {
+                // ResetSession or DestroySession managed to get here while
+                // the tx of this request was in progress
+                auto error = MakeError(E_REJECTED, TStringBuilder()
+                    << "session " << sessionId.Quote()
+                    << " is being reset or destroyed");
+
+                LOG_WARN(ctx, TFileStoreComponents::TABLET,
+                    "%s CreateSession failed (%s)",
+                    LogTag.c_str(),
+                    FormatError(error).c_str());
+
+                NCloud::Reply(
+                    ctx,
+                    *args.RequestInfo,
+                    std::make_unique<TResponse>(std::move(error)));
+                return;
+            }
+
+            //
+            // One more CreateSession for this session is waiting for the
+            // shards, e.g. the client has reconnected and repeated the
+            // request. The session is the way this request has made it now,
+            // so this request is the one which the shards should get.
+            //
+
+            ReplyToPendingShardSessionRequest(
+                ctx,
+                pending,
+                MakeError(
+                    E_REJECTED,
+                    "replaced by another CreateSession request"));
+
+            // some of the shards might have not got the request which is
+            // being replaced
+            interrupted = interrupted || pending.Interrupted;
+
+            PendingShardSessionRequests.erase(it);
         }
 
-        if (response->Record.HasFileStore()) {
-            auto* f = response->Record.MutableFileStore()->MutableFeatures();
-            ProcessAdapterModeFeatures(*f);
-        }
+        TPendingShardSessionRequest request;
+        request.Type = EShardSessionRequestType::Create;
+        request.SessionSeqNo = args.Request.GetMountSeqNumber();
+        request.Interrupted = interrupted;
+        request.RequestInfo = std::move(args.RequestInfo);
+        request.CreateRequest = std::move(args.Request);
+        request.CreateResponse = std::move(response);
+
+        EnqueueShardSessionRequest(ctx, sessionId, std::move(request));
+        return;
+    }
+
+    if (Config->GetLazyShardSessionCreationEnabled()
+            && response->Record.HasFileStore())
+    {
+        // All the shards work in adapter mode: their sessions are managed
+        // by the per-session requests.
+        auto* f = response->Record.MutableFileStore()->MutableFeatures();
+        ProcessAdapterModeFeatures(*f);
     }
 
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
@@ -650,6 +716,64 @@ void TIndexTabletActor::CompleteTx_CreateSession(
         ctx,
         std::move(args.RequestInfo),
         std::move(args.Request),
+        std::move(response),
+        std::move(shardIds));
+}
+
+void TIndexTabletActor::CompletePendingCreateSession(
+    const TActorContext& ctx,
+    const TString& sessionId,
+    TPendingShardSessionRequest request)
+{
+    using TResponse = TEvIndexTablet::TEvCreateSessionResponse;
+
+    if (!FindSession(sessionId)) {
+        auto message = TStringBuilder() << "Session " << sessionId
+            << " destroyed during creation";
+        LOG_WARN(ctx, TFileStoreComponents::TABLET,
+            "%s %s",
+            LogTag.c_str(),
+            message.c_str());
+
+        auto response =
+            std::make_unique<TResponse>(MakeError(E_REJECTED, message));
+        NCloud::Reply(ctx, *request.RequestInfo, std::move(response));
+        return;
+    }
+
+    auto response = std::move(request.CreateResponse);
+
+    // The sync might have found out that some of the shards work in adapter
+    // mode (see HandleBuildShardSessionsDiff) while the request was waiting.
+    auto shardIds = GetAdapterModeShardIds();
+    if (shardIds.empty()) {
+        LOG_INFO(ctx, TFileStoreComponents::TABLET,
+            "%s CreateSession completed, the shards have got session s:%s"
+            ", version: %lu",
+            LogTag.c_str(),
+            sessionId.Quote().c_str(),
+            request.Version);
+
+        NCloud::Reply(ctx, *request.RequestInfo, std::move(response));
+        return;
+    }
+
+    if (response->Record.HasFileStore()) {
+        auto* f = response->Record.MutableFileStore()->MutableFeatures();
+        ProcessAdapterModeFeatures(*f);
+    }
+
+    LOG_INFO(ctx, TFileStoreComponents::TABLET,
+        "%s CreateSession: the shards have got session s:%s, version: %lu"
+        ", the shards which work in adapter mode are left",
+        LogTag.c_str(),
+        sessionId.Quote().c_str(),
+        request.Version);
+
+    CreateSessionsInShards(
+        ctx,
+        std::move(request.RequestInfo),
+        std::move(request.CreateRequest),
         std::move(response),
         std::move(shardIds));
 }
@@ -705,12 +829,10 @@ void TIndexTabletActor::HandleBuildShardSessionsDiff(
             return;
         }
 
-        auto diff = BuildShardSessionsDiff(
-            msg->ShardSessions,
-            Config->GetBackgroundShardSessionCreationEnabled());
+        auto diff = BuildShardSessionsDiff(msg->ShardSessions);
 
-        // ResetSession and DestroySession requests of the clients which
-        // this shard hasn't processed yet
+        // CreateSession, ResetSession and DestroySession requests of the
+        // clients which this shard hasn't processed yet
         AddPendingShardSessionRequests(
             msg->ShardId,
             msg->ShardSessions,

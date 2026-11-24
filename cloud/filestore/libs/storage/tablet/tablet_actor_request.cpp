@@ -22,13 +22,13 @@ TSession* TIndexTabletActor::AcceptRequest(
 {
     if (ShouldRecoverSessionsOnDemand()) {
         //
-        // Shard sessions are created lazily, so this shard might not have
-        // an active session for this request yet. Such a request is
-        // postponed until the session is requested from the main tablet,
-        // after that it's processed from scratch. That's why this check is
-        // done before anything else is done with the request. NOTE: the
-        // event gets released, the callers shouldn't touch it if nullptr is
-        // returned.
+        // This shard might not have an active session for this request:
+        // e.g. it has been restarted and the main tablet hasn't recovered
+        // its sessions yet. Such a request is postponed until the session
+        // is requested from the main tablet, after that it's processed from
+        // scratch. That's why this check is done before anything else is
+        // done with the request. NOTE: the event gets released, the callers
+        // shouldn't touch it if nullptr is returned.
         //
 
         const auto& request = ev->Get()->Record;

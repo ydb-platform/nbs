@@ -63,16 +63,16 @@ void TIndexTabletActor::HandleResetSession(
         if (PendingShardSessionRequests.contains(sessionId)) {
             auto response = std::make_unique<TResponse>(MakeError(
                 E_REJECTED,
-                "another ResetSession or DestroySession request for this"
-                " session is in progress"));
+                "another CreateSession, ResetSession or DestroySession"
+                " request for this session is in progress"));
 
             NCloud::Reply(ctx, *ev, std::move(response));
             return;
         }
 
         TPendingShardSessionRequest request;
+        request.Type = EShardSessionRequestType::Reset;
         request.SessionSeqNo = seqNo;
-        request.Reset = true;
         request.RequestInfo = CreateRequestInfo(
             ev->Sender,
             ev->Cookie,

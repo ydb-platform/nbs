@@ -240,10 +240,8 @@ void TIndexTabletActor::OnShardSessionChanged(
 
     session->ShardSyncVersion = ++ShardSessionsVersion;
 
-    if (Config->GetBackgroundShardSessionCreationEnabled()) {
-        // no need to wait for the regular sync
-        ScheduleOutOfScheduleSyncSessions(ctx);
-    }
+    // no need to wait for the regular sync
+    ScheduleOutOfScheduleSyncSessions(ctx);
 }
 
 const TIndexTabletState::TShardSessionsDiff&
@@ -259,29 +257,24 @@ TIndexTabletActor::GetShardSessionsDelta(ui64 fromVersion)
     const ui64 toVersion = SyncSessionsStartVersion;
 
     TShardSessionsDiff delta;
+    delta.SessionsToSync = BuildShardSessionsDelta(fromVersion, toVersion);
 
-    if (Config->GetBackgroundShardSessionCreationEnabled()) {
-        // Otherwise the sessions get to the shards only on demand: a shard
-        // requests a session (and thus gets its current subsessions) when
-        // it can't process a request of a client.
-        delta.SessionsToSync = BuildShardSessionsDelta(fromVersion, toVersion);
-
-        // A session which is being reset or destroyed is not synced on its
-        // own, see AddPendingShardSessionRequests. It gets a new version
-        // upon the completion of the request.
-        EraseIf(
-            delta.SessionsToSync,
-            [&] (const NProtoPrivate::TShardSessionInfo& info) {
-                const auto& sessionId = info.GetSessionId();
-                return PendingShardSessionRequests.contains(sessionId);
-            });
-    }
+    // A session which has a pending request is not synced on its own, see
+    // AddPendingShardSessionRequests: it gets to the shards together with
+    // the request.
+    EraseIf(
+        delta.SessionsToSync,
+        [&] (const NProtoPrivate::TShardSessionInfo& info) {
+            const auto& sessionId = info.GetSessionId();
+            return PendingShardSessionRequests.contains(sessionId);
+        });
 
     //
     // The shard hasn't been asked for its sessions, so it's unknown whether
     // it has the sessions which the requests are for. Each request which the
-    // shard hasn't seen is sent to it: a request for a session which the
-    // shard doesn't have does nothing there.
+    // shard hasn't seen is sent to it: CreateSession makes the shard create
+    // or recover the session, ResetSession and DestroySession for a session
+    // which the shard doesn't have do nothing there.
     //
 
     for (const auto& [sessionId, request]: PendingShardSessionRequests) {
@@ -292,11 +285,24 @@ TIndexTabletActor::GetShardSessionsDelta(ui64 fromVersion)
             continue;
         }
 
-        auto shardRequest = BuildShardSessionRequest(sessionId, request);
-        if (request.Reset) {
-            delta.SessionsToReset.push_back(std::move(shardRequest));
-        } else {
-            delta.SessionsToDestroy.push_back(std::move(shardRequest));
+        switch (request.Type) {
+            case EShardSessionRequestType::Create: {
+                auto info = BuildCreatedShardSessionInfo(sessionId, request);
+                if (info) {
+                    delta.SessionsToSync.push_back(std::move(*info));
+                }
+                break;
+            }
+            case EShardSessionRequestType::Reset: {
+                delta.SessionsToReset.push_back(
+                    BuildShardSessionRequest(sessionId, request));
+                break;
+            }
+            case EShardSessionRequestType::Destroy: {
+                delta.SessionsToDestroy.push_back(
+                    BuildShardSessionRequest(sessionId, request));
+                break;
+            }
         }
     }
 
@@ -305,8 +311,9 @@ TIndexTabletActor::GetShardSessionsDelta(ui64 fromVersion)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// ResetSession and DestroySession requests of the clients: the shards
-// process them first, this tablet processes them last.
+// CreateSession, ResetSession and DestroySession requests of the clients:
+// none of them is acknowledged until the shards process it. CreateSession is
+// processed by this tablet first, ResetSession and DestroySession - last.
 
 void TIndexTabletActor::EnqueueShardSessionRequest(
     const TActorContext& ctx,
@@ -322,10 +329,17 @@ void TIndexTabletActor::EnqueueShardSessionRequest(
     LOG_INFO(ctx, TFileStoreComponents::TABLET,
         "%s %s s:%s n:%lu waits for the shard sessions sync, version: %lu",
         LogTag.c_str(),
-        request.Reset ? "ResetSession" : "DestroySession",
+        request.GetName(),
         sessionId.Quote().c_str(),
         request.SessionSeqNo,
         request.Version);
+
+    if (request.Type == EShardSessionRequestType::Create) {
+        // the request is what delivers the session to the shards
+        if (auto* session = FindSession(sessionId)) {
+            session->ShardSyncVersion = request.Version;
+        }
+    }
 
     PendingShardSessionRequests[std::move(sessionId)] = std::move(request);
 
@@ -356,6 +370,60 @@ TIndexTabletActor::BuildShardSessionRequest(
     return shardRequest;
 }
 
+TMaybe<NProtoPrivate::TShardSessionInfo>
+TIndexTabletActor::BuildCreatedShardSessionInfo(
+    const TString& sessionId,
+    const TPendingShardSessionRequest& request) const
+{
+    //
+    // The shard creates the session if it doesn't have it and makes its copy
+    // active with the same subsessions otherwise. A session which has been
+    // recovered by the request is a special case: the shard might keep
+    // something that its previous incarnation hasn't finished, and the
+    // client shouldn't get the session until that's dropped.
+    //
+
+    auto info = BuildShardSessionInfo(sessionId);
+    if (info && request.Interrupted) {
+        info->SetInterrupted(true);
+    }
+
+    return info;
+}
+
+void TIndexTabletActor::ReplyToPendingShardSessionRequest(
+    const TActorContext& ctx,
+    const TPendingShardSessionRequest& request,
+    const NProto::TError& error)
+{
+    switch (request.Type) {
+        case EShardSessionRequestType::Create: {
+            using TResponse = TEvIndexTablet::TEvCreateSessionResponse;
+            NCloud::Reply(
+                ctx,
+                *request.RequestInfo,
+                std::make_unique<TResponse>(error));
+            break;
+        }
+        case EShardSessionRequestType::Reset: {
+            using TResponse = TEvService::TEvResetSessionResponse;
+            NCloud::Reply(
+                ctx,
+                *request.RequestInfo,
+                std::make_unique<TResponse>(error));
+            break;
+        }
+        case EShardSessionRequestType::Destroy: {
+            using TResponse = TEvIndexTablet::TEvDestroySessionResponse;
+            NCloud::Reply(
+                ctx,
+                *request.RequestInfo,
+                std::make_unique<TResponse>(error));
+            break;
+        }
+    }
+}
+
 void TIndexTabletActor::AddPendingShardSessionRequests(
     const TString& shardId,
     const NProtoPrivate::TDescribeShardSessionsResponse& shardSessions,
@@ -378,6 +446,24 @@ void TIndexTabletActor::AddPendingShardSessionRequests(
         : ShardSessionsVersion;
 
     //
+    // CreateSession requests which this shard hasn't got yet. The session
+    // is sent whatever the shard has: the comparison of the sessions doesn't
+    // tell everything - a session which has been recovered here may look
+    // exactly the same in the shard, but the shard still has to know about
+    // it, see BuildCreatedShardSessionInfo.
+    //
+
+    THashSet<TString> createdSessionIds;
+    for (const auto& [sessionId, request]: PendingShardSessionRequests) {
+        if (request.Type == EShardSessionRequestType::Create
+                && request.Version <= syncVersion
+                && !(syncState && request.Version <= syncState->Version))
+        {
+            createdSessionIds.insert(sessionId);
+        }
+    }
+
+    //
     // A session which is being reset or destroyed is not synced on its own.
     // The shards which don't have it don't get it: there's nothing to reset
     // or to destroy there. The shards which have it get its subsessions
@@ -387,14 +473,34 @@ void TIndexTabletActor::AddPendingShardSessionRequests(
     EraseIf(
         diff.SessionsToSync,
         [&] (const NProtoPrivate::TShardSessionInfo& info) {
-            return PendingShardSessionRequests.contains(info.GetSessionId());
+            const auto& sessionId = info.GetSessionId();
+            if (createdSessionIds.contains(sessionId)) {
+                // it's added below - the way the request describes it
+                return true;
+            }
+
+            const auto* request =
+                PendingShardSessionRequests.FindPtr(sessionId);
+            return request
+                && request->Type != EShardSessionRequestType::Create;
         });
+
+    for (const auto& sessionId: createdSessionIds) {
+        const auto* request = PendingShardSessionRequests.FindPtr(sessionId);
+        if (!request) {
+            continue;
+        }
+
+        if (auto info = BuildCreatedShardSessionInfo(sessionId, *request)) {
+            diff.SessionsToSync.push_back(std::move(*info));
+        }
+    }
 
     THashSet<TString> processedSessionIds;
 
     auto addRequest = [&] (const TString& sessionId, bool recovering) {
         const auto* request = PendingShardSessionRequests.FindPtr(sessionId);
-        if (!request) {
+        if (!request || request->Type == EShardSessionRequestType::Create) {
             return;
         }
 
@@ -418,7 +524,9 @@ void TIndexTabletActor::AddPendingShardSessionRequests(
         // the same thing to its copy of the session.
         //
 
-        if (recovering && request->Reset) {
+        const bool reset = request->Type == EShardSessionRequestType::Reset;
+
+        if (recovering && reset) {
             // the shard is about to get a new copy of the session - there's
             // nothing to reset there
             return;
@@ -429,7 +537,7 @@ void TIndexTabletActor::AddPendingShardSessionRequests(
         }
 
         auto shardRequest = BuildShardSessionRequest(sessionId, *request);
-        if (request->Reset) {
+        if (reset) {
             diff.SessionsToReset.push_back(std::move(shardRequest));
         } else {
             diff.SessionsToDestroy.push_back(std::move(shardRequest));
@@ -457,7 +565,8 @@ void TIndexTabletActor::ProcessPendingShardSessionRequests(
     // round which was started after the arrival of the request: such a round
     // delivers the request to the shard. The shards which work in adapter
     // mode don't take part in it: this tablet sends the request to them
-    // itself after its own tx.
+    // itself - after the rest of the shards (CreateSession) or after its own
+    // tx (ResetSession and DestroySession).
     //
 
     const auto adapterModeShardIds = GetAdapterModeShardIds();
@@ -517,6 +626,13 @@ void TIndexTabletActor::ProcessPendingShardSessionRequests(
     // the client is supposed to retry it. The shards which have processed
     // the request have reset their copies of the session by this moment.
     //
+    // CreateSession fails as well. The client would get a session which it
+    // can't use in the shard which missed the request, and if the session
+    // has been recovered, then that shard might still keep something of its
+    // previous incarnation. The session itself stays in this tablet and in
+    // the shards which have got it: the next attempt of the client recovers
+    // it and delivers it to the shards once again.
+    //
 
     // the newest of the DestroySession requests which are not going to be
     // delivered to all the shards
@@ -534,30 +650,30 @@ void TIndexTabletActor::ProcessPendingShardSessionRequests(
             "%s %s s:%s n:%lu hasn't been processed by all the shards in"
             " time, version: %lu, synced version: %lu",
             LogTag.c_str(),
-            request.Reset ? "ResetSession" : "DestroySession",
+            request.GetName(),
             sessionId.Quote().c_str(),
             request.SessionSeqNo,
             request.Version,
             syncedVersion);
 
-        if (!request.Reset) {
+        if (request.Type == EShardSessionRequestType::Destroy) {
             abandonedVersion = Max(abandonedVersion, request.Version);
             sessionIds.push_back(sessionId);
             continue;
         }
 
-        using TResponse = TEvService::TEvResetSessionResponse;
-        NCloud::Reply(
+        ReplyToPendingShardSessionRequest(
             ctx,
-            *request.RequestInfo,
-            std::make_unique<TResponse>(MakeError(
+            request,
+            MakeError(
                 E_REJECTED,
                 "the request hasn't been processed by all the shards in"
-                " time")));
+                " time"));
 
         PendingShardSessionRequests.erase(it);
 
-        // the session wasn't synced while the request was in progress
+        // The session wasn't synced on its own while the request was in
+        // progress. The shards which haven't got it get it the regular way.
         OnShardSessionChanged(ctx, sessionId);
     }
 
@@ -592,17 +708,30 @@ void TIndexTabletActor::ProcessPendingShardSessionRequests(
             "%s %s s:%s n:%lu is not waiting for the shards anymore"
             ", version: %lu",
             LogTag.c_str(),
-            request->Reset ? "ResetSession" : "DestroySession",
+            request->GetName(),
             sessionId.Quote().c_str(),
             request->SessionSeqNo,
             request->Version);
+
+        if (request->Type == EShardSessionRequestType::Create) {
+            // this tablet has already processed the request - the response
+            // was waiting for the shards
+            auto completedRequest = std::move(*request);
+            PendingShardSessionRequests.erase(sessionId);
+
+            CompletePendingCreateSession(
+                ctx,
+                sessionId,
+                std::move(completedRequest));
+            continue;
+        }
 
         request->Applying = true;
 
         auto requestInfo = request->RequestInfo;
         const ui64 sessionSeqNo = request->SessionSeqNo;
 
-        if (request->Reset) {
+        if (request->Type == EShardSessionRequestType::Reset) {
             auto record = std::move(request->ResetRequest);
 
             AddInFlightRequest<TEvService::TResetSessionMethod>(*requestInfo);
@@ -667,19 +796,7 @@ void TIndexTabletActor::RejectPendingShardSessionRequests(
             continue;
         }
 
-        if (request.Reset) {
-            using TResponse = TEvService::TEvResetSessionResponse;
-            NCloud::Reply(
-                ctx,
-                *request.RequestInfo,
-                std::make_unique<TResponse>(error));
-        } else {
-            using TResponse = TEvIndexTablet::TEvDestroySessionResponse;
-            NCloud::Reply(
-                ctx,
-                *request.RequestInfo,
-                std::make_unique<TResponse>(error));
-        }
+        ReplyToPendingShardSessionRequest(ctx, request, error);
 
         PendingShardSessionRequests.erase(it++);
     }
@@ -708,7 +825,7 @@ void TIndexTabletActor::HandleRecoverShardSessions(
 
     for (const auto& sessionId: msg->Record.GetSessionIds()) {
         const auto* request = PendingShardSessionRequests.FindPtr(sessionId);
-        if (request && !request->Reset) {
+        if (request && request->Type == EShardSessionRequestType::Destroy) {
             //
             // DestroySession for this session is being delivered to the
             // shards: a shard which doesn't have the session shouldn't get
@@ -980,6 +1097,25 @@ void TIndexTabletActor::CompleteTx_SyncShardSessions(
         args.CreatedSessionCount,
         args.RecoveredSessionCount,
         args.SessionRecoveryId != 0);
+
+    //
+    // The main tablet has recovered these sessions upon CreateSession
+    // requests, so their clients have started anew. This tablet does what
+    // it does when it recovers a session upon a CreateSession request
+    // itself (see CompleteTx_CreateSession): an unconfirmed write of the
+    // previous incarnation of a session shouldn't be applied after this
+    // moment - the new incarnation may be already overwriting that range.
+    // The cleanup is started before the response is sent, so no later write
+    // gets ahead of it, and the main tablet lets the client use the session
+    // only after the response. It doesn't depend on what the tx has done to
+    // the session: the data is found by the session id.
+    //
+
+    for (const auto& info: args.Sessions) {
+        if (info.GetInterrupted()) {
+            DeleteUnconfirmedDataForSession(info.GetSessionId(), ctx);
+        }
+    }
 
     if (args.SessionRecoveryId) {
         // the session has been requested by this tablet itself, see

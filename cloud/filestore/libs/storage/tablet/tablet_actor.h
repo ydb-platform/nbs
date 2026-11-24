@@ -219,12 +219,18 @@ private:
     //   nothing about and the shards which have been restarted are still
     //   compared in full.
     //
-    // ResetSession and DestroySession are processed by the shards first and
-    // by this tablet last. Such a request is kept here (see
-    // PendingShardSessionRequests) until the sync delivers it to all the
-    // shards, the session is not touched until then. So a request which has
-    // been acknowledged has been completed by all the shards, and the shards
-    // make their decisions against the same subsessions as this tablet does.
+    // CreateSession, ResetSession and DestroySession are not acknowledged
+    // until the sync delivers them to all the shards. Such a request is kept
+    // here (see PendingShardSessionRequests) until then:
+    // * CreateSession is processed by this tablet first - that's what tells
+    //   which session the shards should get - and its response waits for the
+    //   shards. So a client which has got the response is able to use the
+    //   session in any shard, and no shard keeps anything of the previous
+    //   incarnation of a session which has been recovered.
+    // * ResetSession and DestroySession are processed by the shards first
+    //   and by this tablet last, the session is not touched until then. So
+    //   the shards make their decisions against the same subsessions as this
+    //   tablet does.
     // The only exception is a request which has been waiting for the shards
     // for too long, see ShardSessionRequestTimeout.
     //
@@ -264,16 +270,25 @@ private:
     // the changes are collected once per round, not once per shard.
     THashMap<ui64, TShardSessionsDiff> SyncSessionsDeltas;
 
+    enum class EShardSessionRequestType
+    {
+        Create,
+        Reset,
+        Destroy,
+    };
+
     struct TPendingShardSessionRequest
     {
+        EShardSessionRequestType Type = EShardSessionRequestType::Destroy;
         // ShardSessionsVersion upon the arrival of the request.
         ui64 Version = 0;
         ui64 SessionSeqNo = 0;
-        // ResetSession if set, DestroySession otherwise.
-        bool Reset = false;
-        // The shards are not waited for anymore (all of them have processed
-        // the request or it has been waiting for too long), the tx of this
-        // tablet is in progress.
+        // CreateSession: the session existed and has been recovered by the
+        // request, see TShardSessionInfo::Interrupted.
+        bool Interrupted = false;
+        // ResetSession and DestroySession: the shards are not waited for
+        // anymore (all of them have processed the request or it has been
+        // waiting for too long), the tx of this tablet is in progress.
         bool Applying = false;
         // The request doesn't wait for the shards after that, see
         // ShardSessionRequestTimeout. Not set if the requests should wait
@@ -281,13 +296,34 @@ private:
         TInstant Deadline;
         // Identifies the tx of the request as well.
         TRequestInfoPtr RequestInfo;
+        NProtoPrivate::TCreateSessionRequest CreateRequest;
+        // CreateSession: this tablet has already processed the request,
+        // that's what the client gets when the shards are done.
+        std::unique_ptr<TEvIndexTablet::TEvCreateSessionResponse>
+            CreateResponse;
         NProto::TResetSessionRequest ResetRequest;
         NProtoPrivate::TDestroySessionRequest DestroyRequest;
+
+        const char* GetName() const
+        {
+            switch (Type) {
+                case EShardSessionRequestType::Create:
+                    return "CreateSession";
+                case EShardSessionRequestType::Reset:
+                    return "ResetSession";
+                case EShardSessionRequestType::Destroy:
+                    return "DestroySession";
+            }
+
+            return "unknown request";
+        }
     };
 
-    // SessionId -> ResetSession or DestroySession which is being delivered
-    // to the shards. There's at most one such request per session and
-    // nothing else is allowed to change the session until its completion.
+    // SessionId -> CreateSession, ResetSession or DestroySession which is
+    // being delivered to the shards. There's at most one such request per
+    // session. Nothing else is allowed to change the session until its
+    // completion - except for one more CreateSession, which replaces a
+    // CreateSession which is waiting here.
     THashMap<TString, TPendingShardSessionRequest> PendingShardSessionRequests;
 
     //
@@ -521,15 +557,30 @@ private:
     bool HasShardsWithSyncedSessions(
         const TVector<TString>& adapterModeShardIds) const;
 
-    // True if ResetSession and DestroySession should be delivered to the
-    // shards by the shard sessions sync before this tablet processes them.
+    // True if CreateSession, ResetSession and DestroySession should be
+    // delivered to the shards by the shard sessions sync: such a request is
+    // not acknowledged until then.
     bool ShouldSyncShardSessionRequests() const;
 
-    // Keeps a ResetSession or a DestroySession request until the shard
-    // sessions sync delivers it to all the shards.
+    // Keeps a request until the shard sessions sync delivers it to all the
+    // shards.
     void EnqueueShardSessionRequest(
         const NActors::TActorContext& ctx,
         TString sessionId,
+        TPendingShardSessionRequest request);
+
+    // Replies to the client whose request is not going to be completed.
+    void ReplyToPendingShardSessionRequest(
+        const NActors::TActorContext& ctx,
+        const TPendingShardSessionRequest& request,
+        const NProto::TError& error);
+
+    // CreateSession which has been delivered to all the shards whose
+    // sessions are managed by the shard sessions sync: the shards which
+    // work in adapter mode are the only thing left.
+    void CompletePendingCreateSession(
+        const NActors::TActorContext& ctx,
+        const TString& sessionId,
         TPendingShardSessionRequest request);
 
     // Should be called when a session of this tablet changes in a way which
@@ -539,8 +590,14 @@ private:
         const NActors::TActorContext& ctx,
         const TString& sessionId);
 
-    // Describes a pending request for a shard.
+    // Describes a pending ResetSession or DestroySession request for a
+    // shard.
     NProtoPrivate::TShardSessionRequest BuildShardSessionRequest(
+        const TString& sessionId,
+        const TPendingShardSessionRequest& request) const;
+
+    // Describes the session of a pending CreateSession request for a shard.
+    TMaybe<NProtoPrivate::TShardSessionInfo> BuildCreatedShardSessionInfo(
         const TString& sessionId,
         const TPendingShardSessionRequest& request) const;
 
@@ -557,9 +614,10 @@ private:
     // hasn't got yet.
     const TShardSessionsDiff& GetShardSessionsDelta(ui64 fromVersion);
 
-    // Lets this tablet process the requests which have been processed by
-    // all the shards and the ones which have been waiting for the shards
-    // for too long.
+    // Deals with the requests which have been delivered to all the shards
+    // (CreateSession gets its response, ResetSession and DestroySession get
+    // processed by this tablet) and with the ones which have been waiting
+    // for the shards for too long.
     void ProcessPendingShardSessionRequests(
         const NActors::TActorContext& ctx);
 

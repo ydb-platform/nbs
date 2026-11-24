@@ -1342,8 +1342,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST(ShouldSyncShardSessionsInBatches)
     {
         config.SetLazyShardSessionCreationEnabled(true);
-        // the syncs which are not caused by DestroySession are triggered
-        // manually in this test
+        // the syncs which are not started by the requests of the client are
+        // triggered manually in this test
         config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
 
         TShardedFileSystemConfig fsConfig;
@@ -1358,9 +1358,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         auto headers1 = headers;
         headers1.FileSystemId = fsConfig.Shard1Id;
 
-        // all the shards should have the session after the sync
-        sync.SyncSessions();
-
+        // the sync has delivered the session to all the shards before the
+        // client got its response
         for (const auto& shardId: fsConfig.ShardIds()) {
             const auto response = DescribeSessions(service, shardId);
             UNIT_ASSERT_VALUES_EQUAL(1, response.SessionsSize());
@@ -1457,11 +1456,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
-    SERVICE_TEST(ShouldCreateShardSessionsInBackground)
+    SERVICE_TEST(ShouldCreateShardSessionsViaSyncUponCreateSession)
     {
         config.SetLazyShardSessionCreationEnabled(true);
-        config.SetShardSessionRecoveryOnDemandEnabled(true);
-        // the sync is triggered manually in this test
+        // the syncs which are not started by the requests of the client are
+        // triggered manually in this test
         config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
 
         TShardedFileSystemConfig fsConfig;
@@ -1490,23 +1489,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         auto headers = service.InitSession(fsConfig.FsId, "client");
 
-        // the session should be created only in the main tablet - the
-        // shards are not affected by the CreateSession requests of the clients
+        // The main tablet shouldn't send CreateSession to the shards: the
+        // session is delivered to them by the sync. But the client shouldn't
+        // get its response before that, so the session should be in all the
+        // shards by now.
         UNIT_ASSERT_VALUES_EQUAL(0, createSessionRequestsToShards);
-        UNIT_ASSERT_VALUES_EQUAL(0, sync.SyncRequests.size());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             DescribeSessions(service, fsConfig.FsId).SessionsSize());
-        for (const auto& shardId: fsConfig.ShardIds()) {
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                DescribeSessions(service, shardId).SessionsSize());
-        }
-
-        // the sync should send the session to all the shards
-        sync.SyncSessions();
-
-        UNIT_ASSERT_VALUES_EQUAL(0, createSessionRequestsToShards);
 
         for (const auto& shardId: fsConfig.ShardIds()) {
             UNIT_ASSERT_C(sync.SyncRequests.contains(shardId), shardId);
@@ -1560,6 +1550,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // and should be destroyed together with the session of the main
         // tablet: DestroySession is completed after the sync which destroys
         // the session in the shards
+        sync.SyncRequests.clear();
         service.DestroySession(headers);
         for (const auto& shardId: fsConfig.ShardIds()) {
             UNIT_ASSERT_C(sync.SyncRequests.contains(shardId), shardId);
@@ -1572,104 +1563,204 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
-    SERVICE_TEST(ShouldCreateShardSessionsOnDemand)
+    SERVICE_TEST(ShouldNotCompleteCreateSessionUntilAllShardsGetSession)
     {
         config.SetLazyShardSessionCreationEnabled(true);
-        config.SetShardSessionRecoveryOnDemandEnabled(true);
-        // the sync shouldn't interfere
+        // the syncs which are not started by the requests of the client are
+        // triggered manually in this test
         config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
 
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
-        // the number of sessions requested from the main tablet by the shards
-        ui32 sessionRequests = 0;
+        TShardSessionsSyncController sync(
+            env,
+            nodeIdx,
+            fsInfo.MainTabletActorId);
+
+        auto sessionCount = [&] (const TString& fsId) {
+            return DescribeSessions(service, fsId).SessionsSize();
+        };
+
         ui32 createSessionRequestsToShards = 0;
+        // the responses of the tablets
+        ui32 createSessionResponses = 0;
 
-        env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                Y_UNUSED(runtime);
-                switch (event->GetTypeRewrite()) {
-                    case TEvIndexTablet::EvCreateSessionRequest: {
-                        const auto* msg = event->Get<
-                            TEvIndexTablet::TEvCreateSessionRequest>();
-                        if (msg->Record.GetFileSystemId() != fsConfig.FsId) {
-                            ++createSessionRequestsToShards;
-                        }
-                        break;
+        sync.OnEvent = [&] (IEventHandle& event) {
+            switch (event.GetTypeRewrite()) {
+                case TEvIndexTablet::EvCreateSessionRequest: {
+                    const auto* msg =
+                        event.Get<TEvIndexTablet::TEvCreateSessionRequest>();
+                    if (msg->Record.GetFileSystemId() != fsConfig.FsId) {
+                        ++createSessionRequestsToShards;
                     }
-                    case TEvIndexTablet::EvRecoverShardSessionsRequest: {
-                        ++sessionRequests;
-                        break;
-                    }
+                    break;
                 }
-                return false;
-            });
+                case TEvIndexTablet::EvCreateSessionResponse: {
+                    ++createSessionResponses;
+                    break;
+                }
+            }
+        };
 
-        auto headers = service.InitSession(fsConfig.FsId, "client");
-        auto headers1 = headers;
-        headers1.FileSystemId = fsConfig.Shard1Id;
+        // the sync which is started by CreateSession is not able to deliver
+        // the session to the second shard
+        sync.UnavailableShardId = fsConfig.Shard2Id;
 
-        // nodes are created in the shards without sessions
-        const ui64 nodeId1 =
+        THeaders headers = {
+            .FileSystemId = fsConfig.FsId,
+            .ClientId = "client",
+            .SessionId = "",
+            .SessionSeqNo = 0};
+
+        {
+            const ui32 roundsStarted = sync.RoundsStarted;
+            service.SendCreateSessionRequest(headers);
+            sync.WaitForSync(roundsStarted);
+        }
+
+        // The main tablet has created the session and the first shard has
+        // got it. But the request is not completed: the client can't use
+        // the session in the second shard yet.
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.FsId));
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard1Id));
+        UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.Shard2Id));
+        UNIT_ASSERT_VALUES_EQUAL(0, createSessionResponses);
+
+        // the next sync delivers the session to the second shard, the main
+        // tablet completes the request after that
+        sync.UnavailableShardId.clear();
+        sync.SyncSessions(true /* outOfSchedule */);
+
+        {
+            auto response = service.RecvCreateSessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+
+            headers.SessionId = response->Record.GetSession().GetSessionId();
+        }
+
+        UNIT_ASSERT_C(createSessionResponses > 0, createSessionResponses);
+        UNIT_ASSERT_VALUES_EQUAL(0, createSessionRequestsToShards);
+
+        for (const auto& id: fsConfig.MainAndShardIds()) {
+            UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(id));
+        }
+
+        // the session should be usable in the shard which got it last
+        auto headers2 = headers;
+        headers2.FileSystemId = fsConfig.Shard2Id;
+
+        const ui64 nodeId2 =
             service
-                .CreateNode(headers1, TCreateNodeArgs::File(RootNodeId, "file"))
+                .CreateNode(headers2, TCreateNodeArgs::File(RootNodeId, "file"))
                 ->Record.GetNode()
                 .GetId();
 
-        UNIT_ASSERT_VALUES_EQUAL(0, sessionRequests);
-        for (const auto& shardId: fsConfig.ShardIds()) {
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                DescribeSessions(service, shardId).SessionsSize());
-        }
-
-        // the shard doesn't have the session which is needed to process this
-        // request - it should get the session from the main tablet
-        const ui64 handle1 =
+        const ui64 handle2 =
             service
                 .CreateHandle(
-                    headers1,
-                    headers1.FileSystemId,
-                    nodeId1,
+                    headers2,
+                    headers2.FileSystemId,
+                    nodeId2,
                     "",
                     TCreateHandleArgs::RDWR)
                 ->Record.GetHandle();
 
-        UNIT_ASSERT_C(sessionRequests > 0, sessionRequests);
-        UNIT_ASSERT_VALUES_EQUAL(0, createSessionRequestsToShards);
-
-        // the session should be in place now
-        sessionRequests = 0;
-
         service.WriteData(
-            headers1,
-            headers1.FileSystemId,
-            nodeId1,
-            handle1,
+            headers2,
+            headers2.FileSystemId,
+            nodeId2,
+            handle2,
             0,
             TString(4_KB, 'a'));
 
-        UNIT_ASSERT_VALUES_EQUAL(0, sessionRequests);
+        service.DestroySession(headers);
 
-        {
-            const auto response = DescribeSessions(service, fsConfig.Shard1Id);
-            UNIT_ASSERT_VALUES_EQUAL(1, response.SessionsSize());
+        for (const auto& id: fsConfig.MainAndShardIds()) {
+            UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(id));
+        }
+    }
 
-            const auto& session = response.GetSessions(0);
-            UNIT_ASSERT_VALUES_EQUAL(
-                headers.SessionId,
-                session.GetSessionId());
-            UNIT_ASSERT_VALUES_EQUAL(headers.ClientId, session.GetClientId());
-            UNIT_ASSERT(!session.GetIsOrphan());
+    SERVICE_TEST(ShouldTellShardsAboutRecoveredSessions)
+    {
+        config.SetLazyShardSessionCreationEnabled(true);
+        // the syncs which are not started by the requests of the client are
+        // triggered manually in this test
+        config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        TShardSessionsSyncController sync(
+            env,
+            nodeIdx,
+            fsInfo.MainTabletActorId);
+
+        // shard id -> the sessions which the sync has sent to the shard:
+        // session id + whether the shard has been told that the session has
+        // been recovered
+        using TSyncedSessions = TVector<std::pair<TString, bool>>;
+        THashMap<TString, TSyncedSessions> syncedSessions;
+
+        sync.OnEvent = [&] (IEventHandle& event) {
+            if (event.GetTypeRewrite()
+                        != TEvIndexTablet::EvSyncShardSessionsRequest
+                    || event.Recipient != MakeIndexTabletProxyServiceId()
+                    || !event.HasEvent())
+            {
+                // only the requests which are being sent by the sync are
+                // needed here, not the ones which the tablet proxy forwards
+                return;
+            }
+
+            const auto* msg =
+                event.Get<TEvIndexTablet::TEvSyncShardSessionsRequest>();
+            auto& sessions = syncedSessions[msg->Record.GetFileSystemId()];
+            for (const auto& session: msg->Record.GetSessions()) {
+                sessions.emplace_back(
+                    session.GetSessionId(),
+                    session.GetInterrupted());
+            }
+        };
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        // it's a new session: there's nothing to drop in the shards
+        for (const auto& shardId: fsConfig.ShardIds()) {
+            const auto& sessions = syncedSessions[shardId];
+            UNIT_ASSERT_VALUES_EQUAL_C(1, sessions.size(), shardId);
+            UNIT_ASSERT_VALUES_EQUAL(headers.SessionId, sessions[0].first);
+            UNIT_ASSERT_C(!sessions[0].second, shardId);
         }
 
-        // the other shard hasn't been used by the client
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            DescribeSessions(service, fsConfig.Shard2Id).SessionsSize());
+        syncedSessions.clear();
 
-        service.DestroySession(headers);
+        // The client starts anew (that's what a restart of vhost looks like)
+        // and gets its session back. Its previous incarnation might have
+        // left something unfinished in the shards, e.g. unconfirmed writes:
+        // each shard should be told to drop it, and the client shouldn't get
+        // the session before that.
+        auto restoredHeaders = service.InitSession(
+            fsConfig.FsId,
+            "client",
+            {},     // checkpointId
+            true    // restoreClientSession
+        );
+        UNIT_ASSERT_VALUES_EQUAL(headers.SessionId, restoredHeaders.SessionId);
+
+        for (const auto& shardId: fsConfig.ShardIds()) {
+            const auto& sessions = syncedSessions[shardId];
+            UNIT_ASSERT_C(!sessions.empty(), shardId);
+            for (const auto& [sessionId, interrupted]: sessions) {
+                UNIT_ASSERT_VALUES_EQUAL(headers.SessionId, sessionId);
+                UNIT_ASSERT_C(interrupted, shardId);
+            }
+        }
+
+        service.DestroySession(restoredHeaders);
 
         for (const auto& id: fsConfig.MainAndShardIds()) {
             UNIT_ASSERT_VALUES_EQUAL(
@@ -1681,16 +1772,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST(ShouldSyncResetAndDestroyOfShardSessions)
     {
         config.SetLazyShardSessionCreationEnabled(true);
-        config.SetShardSessionRecoveryOnDemandEnabled(true);
-        // the sessions get to the shards only on demand in this test
-        config.SetBackgroundShardSessionCreationEnabled(false);
         config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
 
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
 
-        // ResetSession and DestroySession requests sent to the shards - the
-        // main tablet shouldn't send them anymore
+        // CreateSession, ResetSession and DestroySession requests sent to
+        // the shards - the main tablet shouldn't send them anymore
         ui32 sessionRequestsToShards = 0;
         ui32 syncShardSessionsRequests = 0;
 
@@ -1702,6 +1790,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
                 Y_UNUSED(runtime);
                 switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvCreateSessionRequest: {
+                        const auto* msg = event->Get<
+                            TEvIndexTablet::TEvCreateSessionRequest>();
+                        if (isShardId(msg->Record.GetFileSystemId())) {
+                            ++sessionRequestsToShards;
+                        }
+                        break;
+                    }
                     case TEvService::EvResetSessionRequest: {
                         const auto* msg =
                             event->Get<TEvService::TEvResetSessionRequest>();
@@ -1730,10 +1826,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         auto headers1 = headers;
         headers1.FileSystemId = fsConfig.Shard1Id;
 
-        // none of the shards has the session yet - the sync round which
-        // completes the request has nothing to send
-        service.ResetSession(headers, "state1");
-        UNIT_ASSERT_VALUES_EQUAL(0, syncShardSessionsRequests);
+        // the session has been delivered to the shards by the shard
+        // sessions sync
+        UNIT_ASSERT_C(
+            syncShardSessionsRequests > 0,
+            syncShardSessionsRequests);
+        for (const auto& shardId: fsConfig.ShardIds()) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                DescribeSessions(service, shardId).SessionsSize());
+        }
 
         const ui64 nodeId1 =
             service
@@ -1741,7 +1843,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 ->Record.GetNode()
                 .GetId();
 
-        // the session gets created in the first shard
         const ui64 handle1 =
             service
                 .CreateHandle(
@@ -1760,11 +1861,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             0,
             TString(4_KB, 'a'));
 
-        UNIT_ASSERT_VALUES_EQUAL(0, syncShardSessionsRequests);
-
-        // now the reset has to be delivered to the shard: the request is
-        // completed after the shard sessions sync which does it
-        service.ResetSession(headers, "state2");
+        // the reset has to be delivered to the shards as well: the request
+        // is completed after the shard sessions sync which does it
+        syncShardSessionsRequests = 0;
+        service.ResetSession(headers, "state");
         UNIT_ASSERT_C(
             syncShardSessionsRequests > 0,
             syncShardSessionsRequests);
@@ -1778,14 +1878,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             0,
             TString(4_KB, 'b'));
 
-        // the session itself stays in the shard which had it and doesn't
-        // appear in the other one
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            DescribeSessions(service, fsConfig.Shard1Id).SessionsSize());
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            DescribeSessions(service, fsConfig.Shard2Id).SessionsSize());
+        // the session itself stays in the shards
+        for (const auto& shardId: fsConfig.ShardIds()) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                DescribeSessions(service, shardId).SessionsSize());
+        }
 
         // and can still be used
         const ui64 handle2 =
@@ -1827,8 +1925,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     {
         config.SetLazyShardSessionCreationEnabled(true);
         config.SetShardSessionRecoveryOnDemandEnabled(true);
-        // the syncs which are not caused by DestroySession are triggered
-        // manually in this test
+        // the syncs which are not started by the requests of the client are
+        // triggered manually in this test
         config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
 
         TShardedFileSystemConfig fsConfig;
@@ -1843,10 +1941,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             return DescribeSessions(service, fsId).SessionsSize();
         };
 
+        // the session gets to both shards before the client gets its
+        // response
         auto headers = service.InitSession(fsConfig.FsId, "client");
-
-        // the session gets to both shards
-        sync.SyncSessions();
 
         UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard1Id));
         UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard2Id));
@@ -1908,8 +2005,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
     SERVICE_TEST(ShouldSendOnlyChangesToShardsInOutOfScheduleSyncs)
     {
         config.SetLazyShardSessionCreationEnabled(true);
-        config.SetShardSessionRecoveryOnDemandEnabled(true);
-        // the syncs are triggered manually in this test
+        // the syncs which are not started by the requests of the clients are
+        // triggered manually in this test
         config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
 
         TShardedFileSystemConfig fsConfig;
@@ -1931,11 +2028,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             return count;
         };
 
+        // The main tablet knows nothing about the shards yet. So the sync
+        // which delivers the first session has to do what a regular one
+        // does: to ask each shard for its sessions and to compare them with
+        // the sessions of the main tablet.
         service.InitSession(fsConfig.FsId, "client1");
-
-        // a regular sync asks each shard for its sessions and compares them
-        // with the sessions of the main tablet
-        sync.SyncSessions();
 
         for (const auto& shardId: fsConfig.ShardIds()) {
             UNIT_ASSERT_C(sync.DescribeRequests[shardId] > 0, shardId);
@@ -1946,10 +2043,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         sync.DescribeRequests.clear();
         sync.SyncRequests.clear();
 
-        // a sync which is triggered by a change of the sessions doesn't do
-        // it: the shards just get what has been changed
+        // the next syncs which are started by the requests of the clients
+        // don't do it: the shards just get what has been changed
         service.InitSession(fsConfig.FsId, "client2");
-        sync.SyncSessions(true /* outOfSchedule */);
 
         UNIT_ASSERT_VALUES_EQUAL(0, sync.DescribeRequests.size());
         for (const auto& shardId: fsConfig.ShardIds()) {
@@ -1964,6 +2060,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, sync.DescribeRequests.size());
         UNIT_ASSERT_VALUES_EQUAL(0, sync.SyncRequests.size());
+
+        // a regular sync still asks each shard for its sessions, but there's
+        // nothing to fix
+        sync.SyncSessions();
+
+        for (const auto& shardId: fsConfig.ShardIds()) {
+            UNIT_ASSERT_C(sync.DescribeRequests[shardId] > 0, shardId);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(0, sync.SyncRequests.size());
+
+        sync.DescribeRequests.clear();
 
         // A shard which has been restarted is a different story: none of
         // its sessions is active until the main tablet recovers them. The
@@ -1982,7 +2089,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
 
         service.InitSession(fsConfig.FsId, "client3");
-        sync.SyncSessions(true /* outOfSchedule */);
 
         UNIT_ASSERT(sync.DescribeRequests.contains(fsConfig.Shard1Id));
         UNIT_ASSERT(!sync.DescribeRequests.contains(fsConfig.Shard2Id));
@@ -1998,8 +2104,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetLazyShardSessionCreationEnabled(true);
         config.SetShardSessionRecoveryOnDemandEnabled(true);
         config.SetShardSessionRequestTimeout(requestTimeout.MilliSeconds());
-        // the syncs which are not caused by DestroySession are triggered
-        // manually in this test
+        // the syncs which are not started by the requests of the client are
+        // triggered manually in this test
         config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
 
         TShardedFileSystemConfig fsConfig;
@@ -2014,10 +2120,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             return DescribeSessions(service, fsId).SessionsSize();
         };
 
+        // the session gets to both shards before the client gets its
+        // response
         auto headers = service.InitSession(fsConfig.FsId, "client");
-
-        // the session gets to both shards
-        sync.SyncSessions();
 
         UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard1Id));
         UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard2Id));
@@ -2079,8 +2184,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetLazyShardSessionCreationEnabled(true);
         config.SetShardSessionRecoveryOnDemandEnabled(true);
         config.SetShardSessionRequestTimeout(requestTimeout.MilliSeconds());
-        // the syncs which are not caused by ResetSession are triggered
-        // manually in this test
+        // the syncs which are not started by the requests of the client are
+        // triggered manually in this test
         config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
 
         TShardedFileSystemConfig fsConfig;
@@ -2095,10 +2200,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             return DescribeSessions(service, fsId).SessionsSize();
         };
 
+        // the session gets to both shards before the client gets its
+        // response
         auto headers = service.InitSession(fsConfig.FsId, "client");
-
-        // the session gets to both shards
-        sync.SyncSessions();
 
         // the sync is not able to deliver ResetSession to the second shard,
         // so the main tablet waits
@@ -2139,12 +2243,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
-    SERVICE_TEST(ShouldNotReplyToUrgentSyncSessionsRequestIfSyncIsInProgress)
+    SERVICE_TEST(ShouldNotWaitForUnavailableShardForeverUponCreateSession)
     {
+        const auto requestTimeout = TDuration::Minutes(1);
+
         config.SetLazyShardSessionCreationEnabled(true);
-        config.SetShardSessionRecoveryOnDemandEnabled(true);
-        // the syncs which are not caused by DestroySession are triggered
-        // manually in this test
+        config.SetShardSessionRequestTimeout(requestTimeout.MilliSeconds());
+        // the syncs which are not started by the requests of the client are
+        // triggered manually in this test
         config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
 
         TShardedFileSystemConfig fsConfig;
@@ -2155,10 +2261,94 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             nodeIdx,
             fsInfo.MainTabletActorId);
 
-        auto headers = service.InitSession(fsConfig.FsId, "client");
+        auto sessionCount = [&] (const TString& fsId) {
+            return DescribeSessions(service, fsId).SessionsSize();
+        };
 
-        // the session gets to both shards
+        // the sync is not able to deliver the session to the second shard,
+        // so the main tablet doesn't complete the request
+        sync.UnavailableShardId = fsConfig.Shard2Id;
+
+        THeaders headers = {
+            .FileSystemId = fsConfig.FsId,
+            .ClientId = "client",
+            .SessionId = "",
+            .SessionSeqNo = 0};
+
+        {
+            const ui32 roundsStarted = sync.RoundsStarted;
+            service.SendCreateSessionRequest(headers);
+            sync.WaitForSync(roundsStarted);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.FsId));
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard1Id));
+        UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.Shard2Id));
+
+        // But not forever. A session which is not in all the shards can't
+        // be given to the client, so the request fails upon the completion
+        // of the first sync after the deadline.
+        env.GetRuntime().AdvanceCurrentTime(requestTimeout);
         sync.SyncSessions();
+
+        {
+            auto response = service.RecvCreateSessionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // the session stays where it has been created
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.FsId));
+        UNIT_ASSERT_VALUES_EQUAL(1, sessionCount(fsConfig.Shard1Id));
+        UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(fsConfig.Shard2Id));
+
+        // the next attempt of the client recovers it and succeeds as soon
+        // as the shard is available
+        sync.UnavailableShardId.clear();
+        headers = service.InitSession(
+            fsConfig.FsId,
+            "client",
+            {},     // checkpointId
+            true    // restoreClientSession
+        );
+
+        for (const auto& id: fsConfig.MainAndShardIds()) {
+            const auto response = DescribeSessions(service, id);
+            UNIT_ASSERT_VALUES_EQUAL_C(1, response.SessionsSize(), id);
+            UNIT_ASSERT_VALUES_EQUAL(
+                headers.SessionId,
+                response.GetSessions(0).GetSessionId());
+            UNIT_ASSERT_C(!response.GetSessions(0).GetIsOrphan(), id);
+        }
+
+        service.DestroySession(headers);
+
+        for (const auto& id: fsConfig.MainAndShardIds()) {
+            UNIT_ASSERT_VALUES_EQUAL(0, sessionCount(id));
+        }
+    }
+
+    SERVICE_TEST(ShouldNotReplyToUrgentSyncSessionsRequestIfSyncIsInProgress)
+    {
+        config.SetLazyShardSessionCreationEnabled(true);
+        config.SetShardSessionRecoveryOnDemandEnabled(true);
+        // the syncs which are not started by the requests of the client are
+        // triggered manually in this test
+        config.SetShardSessionsSyncDelay(TDuration::Hours(1).MilliSeconds());
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        TShardSessionsSyncController sync(
+            env,
+            nodeIdx,
+            fsInfo.MainTabletActorId);
+
+        // the session gets to both shards before the client gets its
+        // response
+        auto headers = service.InitSession(fsConfig.FsId, "client");
 
         using TRequest = TEvIndexTabletPrivate::TEvSyncSessionsRequest;
         using TResponse = TEvIndexTabletPrivate::TEvSyncSessionsResponse;

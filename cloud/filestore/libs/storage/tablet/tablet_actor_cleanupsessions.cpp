@@ -1136,7 +1136,7 @@ void TIndexTabletActor::HandleSyncSessionsCompleted(
     if (!SyncSessionsInProgress) {
         // It was the sync which doesn't work in rounds (it's used if
         // LazyShardSessionCreationEnabled is not set) - it doesn't deliver
-        // ResetSession and DestroySession requests to the shards.
+        // the requests of the clients to the shards.
         RejectPendingShardSessionRequests(
             ctx,
             MakeError(E_REJECTED, "shard sessions sync has been disabled"));
@@ -1154,8 +1154,8 @@ void TIndexTabletActor::HandleSyncSessionsCompleted(
     }
 
     // the requests which have been processed by all the shards (and the
-    // ones which have been waiting for the shards for too long) can be
-    // processed by this tablet now
+    // ones which have been waiting for the shards for too long) don't have
+    // to wait anymore
     ProcessPendingShardSessionRequests(ctx);
 
     const bool syncRequested = SyncSessionsRequested;
