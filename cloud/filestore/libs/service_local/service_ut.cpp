@@ -2531,9 +2531,10 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         data.append(directIoAlign, 'y');
         bootstrap.WriteDataAligned(handle, 0, data, directIoAlign);
 
-        // Check after writing: reads at EOF can bypass alignment validation.
-        // Unlike writes, reads are unaffected by the ext4 buffered-I/O fallback
-        // restored by Ubuntu's LP #2137698 revert.
+        // Check unaligned O_DIRECT rejection via read: some ext4 kernels                  
+        // silently fall back to buffered I/O for unaligned direct writes.                 
+        // Read after write, since reads at EOF skip alignment checks.
+
         const auto response =
             bootstrap.AssertReadDataFailed(handle, 0, unalignedReadLength);
         UNIT_ASSERT_VALUES_EQUAL(
