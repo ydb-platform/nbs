@@ -62,7 +62,6 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-		"", // missingDiskZoneID
 	).Return(diskMeta, nil).Once()
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 
@@ -124,7 +123,6 @@ func TestDeleteDiskTaskRunWithDiskCreatedFromImage(t *testing.T) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-		"", // missingDiskZoneID
 	).Return(&resources.DiskMeta{
 		ZoneID:       "zone",
 		SrcImageID:   "image",
@@ -186,7 +184,6 @@ func TestDeleteDiskTaskCancel(t *testing.T) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-		"", // missingDiskZoneID
 	).Return(&resources.DiskMeta{
 		ZoneID:       "zone",
 		Kind:         "ssd",
@@ -249,9 +246,17 @@ func testDeleteDiskTaskWithNonExistentDisk(
 		state:       &protos.DeleteDiskTaskState{},
 	}
 
-	missingDiskZoneID := ""
 	if deleteIfNonExistent {
-		missingDiskZoneID = "zone"
+		// The disk entry already exists in deleted status, so the tombstone
+		// is not created.
+		storage.On(
+			"CreateDiskTombstone",
+			ctx,
+			"disk",
+			"toplevel_task_id",
+			"zone",
+			mock.Anything,
+		).Return(nil).Once()
 	}
 
 	// The disk is already deleted from the database, return nil.
@@ -261,7 +266,6 @@ func testDeleteDiskTaskWithNonExistentDisk(
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-		missingDiskZoneID,
 	).Return((*resources.DiskMeta)(nil), nil)
 
 	if deleteIfNonExistent {
@@ -318,15 +322,22 @@ func TestDeleteDiskTaskNonExistentDiskWithTombstone(t *testing.T) {
 		state: &protos.DeleteDiskTaskState{},
 	}
 
-	// The disk is missing in the database: storage creates a tombstone in the
-	// request zone and returns it.
+	// The disk is missing in the database: a tombstone is created in the
+	// request zone and then deleted as a regular disk.
+	storage.On(
+		"CreateDiskTombstone",
+		ctx,
+		"disk",
+		"toplevel_task_id",
+		"zone",
+		mock.Anything,
+	).Return(nil).Once()
 	storage.On(
 		"DeleteDisk",
 		ctx,
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-		"zone",
 	).Return(&resources.DiskMeta{
 		ID:           "disk",
 		ZoneID:       "zone",
@@ -413,7 +424,6 @@ func testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-		"", // missingDiskZoneID
 	).Return(diskMeta, nil).Once()
 	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil)
 

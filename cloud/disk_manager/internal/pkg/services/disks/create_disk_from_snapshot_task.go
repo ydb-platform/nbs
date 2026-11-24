@@ -204,7 +204,6 @@ func (t *createDiskFromSnapshotTask) Cancel(
 		params.Disk.DiskId,
 		selfTaskID,
 		time.Now(),
-		"", // missingDiskZoneID
 	)
 	if err != nil {
 		return err

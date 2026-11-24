@@ -488,7 +488,6 @@ func (s *storageYDB) deleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
-	missingDiskZoneID string,
 ) (*DiskMeta, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -540,15 +539,6 @@ func (s *storageYDB) deleteDisk(
 		}
 
 		state.status = diskStatusDeleting
-	} else if len(missingDiskZoneID) != 0 {
-		// The disk is missing in the database, but it still has to be deleted
-		// from external storages. Create a tombstone disk entry in deleting
-		// status in the given zone: it prevents new disk creation with the same
-		// ID and is handled as a regular deleting disk, so binaries unaware of
-		// such tombstones process it correctly as well.
-		state.status = diskStatusDeleting
-		state.zoneID = missingDiskZoneID
-		state.tombstone = true
 	} else {
 		// Create a tombstone disk entry to avoid race conditions between
 		// concurrent disk deletion and disk creation operations. The tombstone
@@ -578,6 +568,66 @@ func (s *storageYDB) deleteDisk(
 	}
 
 	return state.toDiskMeta(), nil
+}
+
+func (s *storageYDB) createDiskTombstone(
+	ctx context.Context,
+	session *persistence.Session,
+	diskID string,
+	taskID string,
+	zoneID string,
+	deletingAt time.Time,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+
+		select *
+		from disks
+		where id = $id
+	`, s.disksPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(diskID)),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Close()
+
+	states, err := scanDiskStates(ctx, res)
+	if err != nil {
+		return err
+	}
+
+	if len(states) != 0 {
+		// Disk entry already exists, it is handled by DeleteDisk.
+		return tx.Commit(ctx)
+	}
+
+	// The tombstone has a zone, so it is handled as a regular deleting disk
+	// in this zone, including by binaries unaware of tombstones.
+	state := diskState{
+		id:           diskID,
+		zoneID:       zoneID,
+		deleteTaskID: taskID,
+		deletingAt:   deletingAt,
+		status:       diskStatusDeleting,
+		tombstone:    true,
+	}
+
+	err = s.updateDiskState(ctx, tx, state)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (s *storageYDB) diskDeleted(
@@ -997,7 +1047,6 @@ func (s *storageYDB) DeleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
-	missingDiskZoneID string,
 ) (*DiskMeta, error) {
 
 	var disk *DiskMeta
@@ -1006,18 +1055,34 @@ func (s *storageYDB) DeleteDisk(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			disk, err = s.deleteDisk(
-				ctx,
-				session,
-				diskID,
-				taskID,
-				deletingAt,
-				missingDiskZoneID,
-			)
+			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt)
 			return err
 		},
 	)
 	return disk, err
+}
+
+func (s *storageYDB) CreateDiskTombstone(
+	ctx context.Context,
+	diskID string,
+	taskID string,
+	zoneID string,
+	deletingAt time.Time,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.createDiskTombstone(
+				ctx,
+				session,
+				diskID,
+				taskID,
+				zoneID,
+				deletingAt,
+			)
+		},
+	)
 }
 
 func (s *storageYDB) DiskDeleted(
