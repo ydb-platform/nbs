@@ -2878,6 +2878,110 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             UNIT_ASSERT(!destroyedSession.HasSession());
         }
     }
+
+    Y_UNIT_TEST(ShouldNotStopCleanupOfIdleSessionsIfShardsAreUnavailable)
+    {
+        const auto idleSessionTimeout = TDuration::Hours(1);
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetLazyShardSessionCreationEnabled(true);
+        storageConfig.SetIdleSessionTimeout(idleSessionTimeout.MilliSeconds());
+
+        TTestEnv env({}, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        // there are no shards yet, so the session is created right away
+        tablet.InitSession("client", "session");
+
+        // the tablet becomes the main one, its shards are unavailable (see
+        // below)
+        tablet.ConfigureShards(true, TVector<TString>{"shard1", "shard2"});
+
+        // the cleanups of idle sessions which the tablet has started and
+        // DestroySession requests which they have sent
+        ui32 cleanups = 0;
+        ui32 destroySessionRequests = 0;
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<NActors::IEventHandle>& event) {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTabletPrivate::EvCleanupSessionsRequest: {
+                        ++cleanups;
+                        break;
+                    }
+                    case TEvIndexTablet::EvDestroySessionRequest: {
+                        ++destroySessionRequests;
+                        break;
+                    }
+                    case TEvIndexTablet::EvDescribeShardSessionsRequest:
+                    case TEvIndexTablet::EvSyncShardSessionsRequest: {
+                        // The requests of the shard sessions sync don't get
+                        // to the shards and no one replies to them: nothing
+                        // can be delivered to the shards.
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        auto describeSessions = [&] () {
+            return tablet.DescribeSessions()->Record;
+        };
+
+        // the session becomes orphan after the restart: no one recovers it,
+        // so it should be destroyed as an idle one
+        tablet.RebootTablet();
+
+        {
+            const auto sessions = describeSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, sessions.SessionsSize());
+            UNIT_ASSERT(sessions.GetSessions(0).GetIsOrphan());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, destroySessionRequests);
+
+        // The cleanup which the tablet runs on its own schedule finds the
+        // session and sends DestroySession. The shards go first, and
+        // nothing can be delivered to them, so the request waits for them,
+        // and the cleanup waits for the request.
+        tablet.AdvanceTime(idleSessionTimeout + TDuration::Minutes(1));
+        {
+            NActors::TDispatchOptions options;
+            options.CustomFinalCondition = [&] {
+                return destroySessionRequests > 0;
+            };
+            env.GetRuntime().DispatchEvents(options);
+        }
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_C(cleanups > 0, cleanups);
+        UNIT_ASSERT_VALUES_EQUAL(1, destroySessionRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, describeSessions().SessionsSize());
+
+        // But that shouldn't stop the cleanups: the sessions which time out
+        // later should get their DestroySession as well. The next cleanup
+        // is run on schedule and skips the session which is already being
+        // destroyed.
+        const ui32 prevCleanups = cleanups;
+
+        tablet.AdvanceTime(idleSessionTimeout + TDuration::Minutes(1));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        UNIT_ASSERT_C(cleanups > prevCleanups, cleanups);
+        UNIT_ASSERT_VALUES_EQUAL(1, destroySessionRequests);
+
+        // the session is still there: its DestroySession is still waiting
+        // for the shards
+        {
+            const auto sessions = describeSessions();
+            UNIT_ASSERT_VALUES_EQUAL(1, sessions.SessionsSize());
+            UNIT_ASSERT(sessions.GetSessions(0).GetIsOrphan());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

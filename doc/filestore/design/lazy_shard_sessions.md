@@ -152,7 +152,10 @@ sequenceDiagram
   remembers the version which each shard has been synced at - so a request
   is completed as soon as each shard has been reached once, even if each
   round fails for some of the shards. A deadline would throw this progress
-  away, and a client which doesn't want to wait may retry on its own.
+  away, and a client which doesn't want to wait may retry on its own. The
+  cleanup of idle sessions sends `DestroySession` as well, but it doesn't
+  wait for these requests: the next cleanup is run on schedule and skips the
+  sessions which are still being destroyed.
 * **Retries.** A session request carries `Headers.RequestId` - the id which
   the tablet already uses to deduplicate the requests for the nodes. The
   client library generates it once per request and sends it with each

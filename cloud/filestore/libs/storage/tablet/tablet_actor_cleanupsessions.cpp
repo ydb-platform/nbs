@@ -1207,6 +1207,19 @@ void TIndexTabletActor::HandleCleanupSessions(
         std::memory_order_relaxed);
 
     auto sessions = GetTimedOutSessions(ctx.Now());
+
+    // DestroySession for some of these sessions may still be waiting for the
+    // shards since one of the previous cleanups (see
+    // PendingShardSessionRequests): such a session is still here, but there
+    // is nothing else to do about it. The same goes for a session with any
+    // other request which is being delivered to the shards.
+    EraseIf(
+        sessions,
+        [&] (const TSession* session) {
+            return PendingShardSessionRequests.contains(
+                session->GetSessionId());
+        });
+
     if (sessions.empty()) {
         // nothing to do
         using TResponse = TEvIndexTabletPrivate::TEvCleanupSessionsResponse;
@@ -1240,6 +1253,20 @@ void TIndexTabletActor::HandleCleanupSessions(
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);
+
+    if (ShouldSyncShardSessionRequests()) {
+        //
+        // DestroySession waits for the shards for as long as some of them
+        // are unavailable, and the cleanup which has sent it waits for its
+        // response. The sessions which time out in the meantime shouldn't
+        // wait for all that: their DestroySession should get at least to
+        // the shards which are available. So the next cleanup doesn't wait
+        // for the completion of this one - it skips the sessions which are
+        // still being destroyed, see above.
+        //
+
+        ScheduleCleanupSessions(ctx);
+    }
 }
 
 void TIndexTabletActor::HandleCleanupSessionsCompleted(
