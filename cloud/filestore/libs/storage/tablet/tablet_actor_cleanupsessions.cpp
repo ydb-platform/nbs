@@ -1177,7 +1177,7 @@ void TIndexTabletActor::HandleSyncSessionsCompleted(
             ScheduleUrgentSyncSessions(ctx);
         }
     } else if (syncRequested) {
-        // the sessions changed while the sync was running
+        // one more round was asked for while this one was running
         ScheduleOutOfScheduleSyncSessions(ctx);
     }
 }

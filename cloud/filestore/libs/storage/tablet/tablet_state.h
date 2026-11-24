@@ -971,9 +971,8 @@ public:
         const THashSet<TString>& filter) const;
 
     //
-    // Shard sessions. The sessions are owned by the main tablet. The shards
-    // get them in the form of TShardSessionInfo: either from the background
-    // shard sessions sync or on demand.
+    // Shard sessions. The sessions are owned by the main tablet, the shards
+    // get them in the form of TShardSessionInfo.
     //
 
     // Builds the info about the session which is enough to create (or to
@@ -987,8 +986,9 @@ public:
     bool IsShardSessionInfoActual(
         const NProtoPrivate::TShardSessionInfo& info) const;
 
-    // Describes all the sessions of this tablet (a shard) the same way - for
-    // the main tablet which compares them with its own ones.
+    // Describes all the sessions of this tablet (a shard) as
+    // TShardSessionInfo - for the main tablet which compares them with its
+    // own ones.
     TVector<NProtoPrivate::TShardSessionInfo> DescribeShardSessions() const;
 
     struct TShardSessionsDiff

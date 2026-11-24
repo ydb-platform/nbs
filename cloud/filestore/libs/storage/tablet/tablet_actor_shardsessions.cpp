@@ -205,18 +205,17 @@ TVector<TString> TIndexTabletActor::GetAdapterModeShardIds() const
     return shardIds;
 }
 
-bool TIndexTabletActor::HasShardsWithSyncedSessions(
-    const TVector<TString>& adapterModeShardIds) const
-{
-    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
-    return adapterModeShardIds.size() < static_cast<size_t>(shardIds.size());
-}
-
 bool TIndexTabletActor::ShouldSyncShardSessionRequests() const
 {
-    return IsMainTablet()
-        && Config->GetLazyShardSessionCreationEnabled()
-        && HasShardsWithSyncedSessions(GetAdapterModeShardIds());
+    if (!IsMainTablet() || !Config->GetLazyShardSessionCreationEnabled()) {
+        return false;
+    }
+
+    // the sessions of the shards which work in adapter mode are not managed
+    // by the shard sessions sync
+    const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
+    return GetAdapterModeShardIds().size()
+        < static_cast<size_t>(shardIds.size());
 }
 
 ui64 TIndexTabletActor::GetShardSessionsSyncedVersion() const

@@ -71,9 +71,9 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(GenerateFileSystemEvent,    __VA_ARGS__)                               \
                                                                                \
-    xxx(RecoverShardSessions,       __VA_ARGS__)                               \
     xxx(DescribeShardSessions,      __VA_ARGS__)                               \
     xxx(SyncShardSessions,          __VA_ARGS__)                               \
+    xxx(RecoverShardSessions,       __VA_ARGS__)                               \
                                                                                \
     FILESTORE_UNSAFE_TABLET_REQUESTS(xxx, __VA_ARGS__)                         \
 // FILESTORE_TABLET_REQUESTS
@@ -92,9 +92,9 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GetFileSystemTopology,      __VA_ARGS__)                               \
     xxx(RestartTablet,              __VA_ARGS__)                               \
     xxx(FastShardCommand,           __VA_ARGS__)                               \
-    xxx(RecoverShardSessions,       __VA_ARGS__)                               \
     xxx(DescribeShardSessions,      __VA_ARGS__)                               \
     xxx(SyncShardSessions,          __VA_ARGS__)                               \
+    xxx(RecoverShardSessions,       __VA_ARGS__)                               \
 // FILESTORE_TABLET_ADAPTER_REQUESTS_PLAIN
 
 #define FILESTORE_TABLET_ADAPTER_REQUESTS(xxx, ...)                            \
@@ -270,12 +270,12 @@ struct TEvIndexTablet
         // TABLET's own range (EvBegin..EvBegin+99) is full, so new events
         // go in TABLET_EXTRA instead.
 
-        EvRecoverShardSessionsRequest = TFileStoreEvents::TABLET_EXTRA_START,
-        EvRecoverShardSessionsResponse,
-        EvDescribeShardSessionsRequest,
+        EvDescribeShardSessionsRequest = TFileStoreEvents::TABLET_EXTRA_START,
         EvDescribeShardSessionsResponse,
         EvSyncShardSessionsRequest,
         EvSyncShardSessionsResponse,
+        EvRecoverShardSessionsRequest,
+        EvRecoverShardSessionsResponse,
 
         EvExtraEnd,
     };

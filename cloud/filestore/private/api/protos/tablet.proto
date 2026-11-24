@@ -551,12 +551,10 @@ message TDescribeSessionsResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// RecoverShardSessions request/response.
+// Shard sessions.
 //
-// Sent by a shard to the main tablet: the shard needs the sessions with these
-// ids to serve the requests of the clients. The main tablet responds with
-// TShardSessionInfo for each of them - it's enough to create (or to recover)
-// the session in the shard.
+// The sessions are owned by the main tablet. The shards get them from the
+// main tablet in the form of TShardSessionInfo.
 
 message TShardSubSessionInfo
 {
@@ -592,31 +590,6 @@ message TShardSessionInfo
     // before it replies - the same way a tablet does it when it recovers a
     // session upon a CreateSession request.
     bool Interrupted = 8;
-}
-
-message TRecoverShardSessionsRequest
-{
-    // Optional request headers.
-    NProto.THeaders Headers = 1;
-
-    // FileSystem identifier (of the main tablet).
-    string FileSystemId = 2;
-
-    // The shard which requests the sessions.
-    string ShardId = 3;
-
-    // The sessions which the shard needs.
-    repeated bytes SessionIds = 4;
-}
-
-message TRecoverShardSessionsResponse
-{
-    // Optional error, set only if error happened.
-    NCloud.NProto.TError Error = 1;
-
-    // The requested sessions. The sessions which are unknown to the main
-    // tablet are skipped.
-    repeated TShardSessionInfo Sessions = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -742,6 +715,39 @@ message TSyncShardSessionsResponse
     // The generation of the shard tablet which has processed the request,
     // see TDescribeShardSessionsResponse.
     uint32 Generation = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// RecoverShardSessions request/response.
+//
+// Sent by a shard to the main tablet: the shard needs the sessions with these
+// ids to serve the requests of the clients. The main tablet responds with
+// TShardSessionInfo for each of them - it's enough to create (or to recover)
+// the session in the shard.
+
+message TRecoverShardSessionsRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier (of the main tablet).
+    string FileSystemId = 2;
+
+    // The shard which requests the sessions.
+    string ShardId = 3;
+
+    // The sessions which the shard needs.
+    repeated bytes SessionIds = 4;
+}
+
+message TRecoverShardSessionsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // The requested sessions. The sessions which are unknown to the main
+    // tablet are skipped.
+    repeated TShardSessionInfo Sessions = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

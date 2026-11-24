@@ -1055,18 +1055,16 @@ message TStorageConfig
     // two kinds:
     // * a regular round (once in IdleSessionTimeout / 3) asks each shard for
     //   its sessions and compares them with the sessions of the main tablet;
-    // * a round which is triggered by a request of a client or by a change
-    //   of the sessions doesn't ask the shards for anything: each shard gets
-    //   only what has been changed since its previous sync. Only the shards
-    //   which the main tablet knows nothing about (e.g. after its restart)
-    //   and the shards which have been restarted are compared in full by
-    //   such a round.
-    // The requests of the clients are still acknowledged only after all the
-    // shards have processed them: the main tablet keeps such a request until
-    // the sync delivers it to all the shards. So each of these requests takes
-    // at least one sync round and waits for as long as some of the shards
-    // are unavailable - there's no timeout, the sync keeps trying to reach
-    // them:
+    // * a round which is triggered by a request of a client doesn't ask the
+    //   shards for anything: each shard gets only what has been changed
+    //   since its previous sync. Only the shards which the main tablet knows
+    //   nothing about (e.g. after its restart) and the shards which have
+    //   been restarted are compared in full by such a round.
+    // A request of a client is still acknowledged only after all the shards
+    // have processed it: the main tablet keeps the request until the sync
+    // delivers it to all the shards. So such a request takes at least one
+    // sync round and waits for as long as some of the shards are unavailable
+    // - there's no timeout, the sync keeps trying to reach them:
     // * CreateSession is processed by the main tablet first, its response
     //   waits for the shards. A session which has been recovered by the
     //   request (i.e. the client has started anew) is marked for the shards:
@@ -1085,14 +1083,14 @@ message TStorageConfig
     // LazyShardSessionCreationEnabled is set.
     optional uint32 MaxShardSessionsSyncInflight = 570;
 
-    // The delay (in milliseconds) before a shard sessions sync round which no
-    // client is waiting for: a round which retries what the previous one
-    // failed to deliver to some of the shards, and a round which sends the
-    // sessions which have been changed not by the request which is being
-    // delivered (e.g. a session which has been left alive by ResetSession
-    // or DestroySession). Everything that happens within this delay is
-    // processed by the same round. The rounds which deliver the requests of
-    // the clients are started without a delay. Used only if
+    // The delay (in milliseconds) before a shard sessions sync round which
+    // doesn't deliver a new request of a client: a round which retries what
+    // the previous one failed to deliver to some of the shards, a round
+    // which was asked for while another one was running and a round which
+    // sends a session which has been left alive by ResetSession or
+    // DestroySession. Everything that happens within this delay is processed
+    // by the same round. The rounds which deliver new requests of the
+    // clients are started without a delay. Used only if
     // LazyShardSessionCreationEnabled is set.
     optional uint32 ShardSessionsSyncDelay = 571;
 }

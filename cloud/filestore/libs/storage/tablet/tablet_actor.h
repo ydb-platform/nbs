@@ -561,16 +561,11 @@ private:
 
     void ScheduleSyncSessions(const NActors::TActorContext& ctx);
     // Schedules a shard sessions sync which is not bound to the regular
-    // schedule - it's needed when the sessions of the main tablet change.
+    // schedule: the shards should get something sooner than that.
     void ScheduleOutOfScheduleSyncSessions(const NActors::TActorContext& ctx);
     // Starts a shard sessions sync as soon as possible: right now or right
     // after the completion of the current one.
     void ScheduleUrgentSyncSessions(const NActors::TActorContext& ctx);
-
-    // True if there are shards whose sessions are managed by the shard
-    // sessions sync, i.e. the shards which don't work in adapter mode.
-    bool HasShardsWithSyncedSessions(
-        const TVector<TString>& adapterModeShardIds) const;
 
     // True if CreateSession, ResetSession and DestroySession should be
     // delivered to the shards by the shard sessions sync: such a request is
