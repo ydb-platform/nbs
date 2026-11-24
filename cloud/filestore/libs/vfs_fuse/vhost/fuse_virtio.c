@@ -382,7 +382,7 @@ void fuse_session_setparams(
     se->conn.capable = params->capable;
     se->conn.want = params->want;
     se->bufsize = params->bufsize;
-    se->conn.nbs_driver_version = params->nbs_driver_version;
+    se->conn.nbs_driver_build = params->nbs_driver_build;
     se->conn.nbs_guest_features = params->nbs_guest_features;
     // guest_features & want == ack
     se->conn.nbs_want = params->nbs_features_ack;
@@ -400,7 +400,7 @@ void fuse_session_getparams(
     params->capable = se->conn.capable;
     params->want = se->conn.want;
     params->bufsize = se->bufsize;
-    params->nbs_driver_version = se->conn.nbs_driver_version;
+    params->nbs_driver_build = se->conn.nbs_driver_build;
     params->nbs_guest_features = se->conn.nbs_guest_features;
     params->nbs_features_ack =
         se->conn.nbs_guest_features & se->conn.nbs_want;

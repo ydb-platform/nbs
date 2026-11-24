@@ -36,7 +36,6 @@
 #include <util/generic/string.h>
 #include <util/generic/utility.h>
 #include <util/generic/yexception.h>
-#include <util/string/builder.h>
 #include <util/system/align.h>
 #include <util/system/event.h>
 #include <util/system/info.h>
@@ -391,20 +390,13 @@ public:
         Y_ABORT_UNLESS(proto.GetProtoMajor());
         Y_ABORT_UNLESS(proto.GetBufferSize());
 
-        const auto& driver = proto.GetGuestDriverVersion();
         fuse_session_params params = {
             proto.GetProtoMajor(),
             proto.GetProtoMinor(),
             proto.GetCapable(),
             proto.GetWant(),
             proto.GetBufferSize(),
-            {
-                driver.GetUpstreamMajor(),
-                driver.GetUpstreamMinor(),
-                driver.GetUpstreamPatch(),
-                driver.GetBuild(),
-                driver.GetMr(),
-            },
+            proto.GetGuestDriverBuild(),
             proto.GetGuestNbsFeatures(),
             proto.GetNbsFeaturesAck(),
         };
@@ -462,12 +454,7 @@ public:
         session.SetWant(params.want);
         session.SetBufferSize(
             fuse_negotiated_bufsize(params.bufsize, maxWrite));
-        auto* driver = session.MutableGuestDriverVersion();
-        driver->SetUpstreamMajor(params.nbs_driver_version.upstream_major);
-        driver->SetUpstreamMinor(params.nbs_driver_version.upstream_minor);
-        driver->SetUpstreamPatch(params.nbs_driver_version.upstream_patch);
-        driver->SetBuild(params.nbs_driver_version.build);
-        driver->SetMr(params.nbs_driver_version.mr);
+        session.SetGuestDriverBuild(params.nbs_driver_build);
         session.SetGuestNbsFeatures(params.nbs_guest_features);
         session.SetNbsFeaturesAck(params.nbs_features_ack);
 
@@ -1603,19 +1590,10 @@ private:
 
 #if defined(FUSE_VIRTIO)
         if (conn->nbs_ext) {
-            // Same form as the package version: BUILD+nbMAJOR.MINOR.PATCH[~mrMR]
-            const auto& v = conn->nbs_driver_version;
-            TStringBuilder version;
-            version << v.build << "+nb" << v.upstream_major << "."
-                    << v.upstream_minor << "." << v.upstream_patch;
-            if (v.mr) {
-                version << "~mr" << v.mr;
-            }
-
-            STORAGE_INFO("[f:%s][c:%s] guest driver version %s, features 0x%x",
+            STORAGE_INFO("[f:%s][c:%s] guest driver build %u, features 0x%x",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str(),
-                version.c_str(),
+                conn->nbs_driver_build,
                 conn->nbs_guest_features);
         }
 #endif

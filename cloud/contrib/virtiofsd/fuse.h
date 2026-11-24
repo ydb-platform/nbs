@@ -690,15 +690,6 @@ struct fuse_access_in {
     uint32_t    padding;
 };
 
-/* NBS driver version BUILD+nbMAJOR.MINOR.PATCH[~mrMR], all zero if unknown */
-struct fuse_nbs_version {
-    uint32_t    upstream_major;
-    uint32_t    upstream_minor;
-    uint32_t    upstream_patch;
-    uint32_t    build;
-    uint32_t    mr;    /* 0 if not a merge request build */
-};
-
 struct fuse_init_in {
     uint32_t    major;
     uint32_t    minor;
@@ -706,9 +697,9 @@ struct fuse_init_in {
     uint32_t    flags;
     /* 7.36: sent if FUSE_INIT_EXT */
     uint32_t    flags2;
-    uint32_t    unused[4];
-    /* NBS vendor extension (FUSE_VENDOR_EXT), upstream unused[4..10] */
-    struct fuse_nbs_version    nbs_version;
+    uint32_t    unused[8];
+    /* NBS vendor extension (FUSE_VENDOR_EXT), upstream unused[8..10] */
+    uint32_t    nbs_build;    /* driver package BUILD, 0 if unknown */
     uint32_t    nbs_features;
     uint32_t    nbs_magic;
 };

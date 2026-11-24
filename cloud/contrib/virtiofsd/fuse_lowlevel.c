@@ -2015,7 +2015,7 @@ static void parse_nbs_init(struct fuse_conn_info *conn,
     conn->nbs_ext = 0;
     conn->nbs_guest_features = 0;
     conn->nbs_want = 0;
-    memset(&conn->nbs_driver_version, 0, sizeof(conn->nbs_driver_version));
+    conn->nbs_driver_build = 0;
 
     if (!(arg->flags & FUSE_INIT_EXT) ||
         !(arg->flags2 & (FUSE_VENDOR_EXT >> 32)) ||
@@ -2025,11 +2025,7 @@ static void parse_nbs_init(struct fuse_conn_info *conn,
 
     conn->nbs_ext = 1;
     conn->nbs_guest_features = arg->nbs_features;
-    conn->nbs_driver_version.upstream_major = arg->nbs_version.upstream_major;
-    conn->nbs_driver_version.upstream_minor = arg->nbs_version.upstream_minor;
-    conn->nbs_driver_version.upstream_patch = arg->nbs_version.upstream_patch;
-    conn->nbs_driver_version.build = arg->nbs_version.build;
-    conn->nbs_driver_version.mr = arg->nbs_version.mr;
+    conn->nbs_driver_build = arg->nbs_build;
 }
 
 static void do_init(fuse_req_t req, fuse_ino_t nodeid,
@@ -2094,17 +2090,8 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid,
 
     parse_nbs_init(&se->conn, arg);
     if (se->conn.nbs_ext) {
-        const struct fuse_nbs_driver_version *v = &se->conn.nbs_driver_version;
-        char mr[16] = "";
-
-        if (v->mr) {
-            snprintf(mr, sizeof(mr), "~mr%u", v->mr);
-        }
-        /* Same form as the package version: BUILD+nbMAJOR.MINOR.PATCH[~mrMR] */
-        fuse_log(FUSE_LOG_INFO,
-                 "NBS driver version=%u+nb%u.%u.%u%s features=0x%08x\n",
-                 v->build, v->upstream_major, v->upstream_minor,
-                 v->upstream_patch, mr, se->conn.nbs_guest_features);
+        fuse_log(FUSE_LOG_INFO, "NBS driver build=%u features=0x%08x\n",
+                 se->conn.nbs_driver_build, se->conn.nbs_guest_features);
     }
 
     if (arg->max_readahead < se->conn.max_readahead) {

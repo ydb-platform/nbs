@@ -2335,12 +2335,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto init = std::make_shared<TInitRequest>(flags);
             auto& in = init->In->Body;
             in.flags2 = flags2;
-            // Driver version 246+nb2607.0.100~mr25
-            in.unused[4] = 2607;    // nbs_version.upstream_major
-            in.unused[5] = 0;       // nbs_version.upstream_minor
-            in.unused[6] = 100;     // nbs_version.upstream_patch
-            in.unused[7] = 246;     // nbs_version.build
-            in.unused[8] = 25;      // nbs_version.mr
+            in.unused[8] = 246;     // nbs_build
             in.unused[9] = 0x5;     // nbs_features
             in.unused[10] = magic;  // nbs_magic
 
@@ -2362,12 +2357,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             auto [out, proto] = sendInit(extFlags, vendorFlag, nbsMagic);
             UNIT_ASSERT(out.flags & FUSE_INIT_EXT);
             UNIT_ASSERT(out.flags2 & vendorFlag);
-            const auto& driver = proto.GetGuestDriverVersion();
-            UNIT_ASSERT_VALUES_EQUAL(2607, driver.GetUpstreamMajor());
-            UNIT_ASSERT_VALUES_EQUAL(0, driver.GetUpstreamMinor());
-            UNIT_ASSERT_VALUES_EQUAL(100, driver.GetUpstreamPatch());
-            UNIT_ASSERT_VALUES_EQUAL(246, driver.GetBuild());
-            UNIT_ASSERT_VALUES_EQUAL(25, driver.GetMr());
+            UNIT_ASSERT_VALUES_EQUAL(246, proto.GetGuestDriverBuild());
             UNIT_ASSERT_VALUES_EQUAL(0x5, proto.GetGuestNbsFeatures());
             UNIT_ASSERT_VALUES_EQUAL(0, proto.GetNbsFeaturesAck());
         }
@@ -2383,10 +2373,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         {
             auto [out, proto] = sendInit(flags, flags2, magic);
             UNIT_ASSERT(!(out.flags2 & vendorFlag));
-            UNIT_ASSERT_VALUES_EQUAL(0, proto.GetGuestDriverVersion().GetBuild());
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                proto.GetGuestDriverVersion().GetUpstreamMajor());
+            UNIT_ASSERT_VALUES_EQUAL(0, proto.GetGuestDriverBuild());
             UNIT_ASSERT_VALUES_EQUAL(0, proto.GetGuestNbsFeatures());
         }
     }

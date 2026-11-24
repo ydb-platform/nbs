@@ -21,7 +21,7 @@ struct fuse_session_params {
     uint32_t want;
     uint32_t bufsize;
     // NBS FUSE_INIT vendor extension (FUSE_VENDOR_EXT, virtiofsd fuse.h)
-    struct fuse_nbs_driver_version nbs_driver_version;
+    uint32_t nbs_driver_build;
     uint32_t nbs_guest_features;
     uint32_t nbs_features_ack;
 };

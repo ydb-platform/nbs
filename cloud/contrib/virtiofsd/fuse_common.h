@@ -385,19 +385,6 @@ struct fuse_file_info {
 #define FUSE_IOCTL_MAX_IOV 256
 
 /**
- * Guest driver version BUILD+nbMAJOR.MINOR.PATCH[~mrMR] sent with the NBS
- * FUSE_INIT vendor extension, all zero if unknown. build only grows, but is
- * ordered only for mr == 0: merge request builds interleave with main.
- */
-struct fuse_nbs_driver_version {
-    uint32_t upstream_major;
-    uint32_t upstream_minor;
-    uint32_t upstream_patch;
-    uint32_t build;
-    uint32_t mr;
-};
-
-/**
  * Connection information, passed to the ->init() method
  *
  * Some of the elements are read-write, these can be changed to
@@ -518,12 +505,16 @@ struct fuse_conn_info {
     unsigned nbs_ext;
     uint32_t nbs_guest_features;
     uint32_t nbs_want;
-    struct fuse_nbs_driver_version nbs_driver_version;
+    /**
+     * Guest driver package BUILD, 0 if unknown. Identifies the package,
+     * but does not order features
+     */
+    uint32_t nbs_driver_build;
 
     /**
      * For future use. Take new fields from here, sizeof must stay 128.
      */
-    unsigned reserved[14];
+    unsigned reserved[18];
 };
 
 struct fuse_session;
