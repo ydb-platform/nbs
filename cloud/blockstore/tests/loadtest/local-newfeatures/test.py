@@ -413,7 +413,7 @@ TESTS = [
         "version1-with-new-features",
         "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-multiple-ranges.txt",
         [
-            storage_config_with_new_features_enabled(),
+            storage_config_with_new_features_and_new_trims(),
         ],
         None,
     ),
