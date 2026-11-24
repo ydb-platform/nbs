@@ -84,7 +84,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
             E_ARGUMENT,
             chain.Insert(MakeRecord(20, 20)).GetError().GetCode());
 
-        UNIT_ASSERT(!chain.GetOldest());
+        UNIT_ASSERT(!chain.GetNext(10));
     }
 
     Y_UNIT_TEST(ShouldInsertChainedRecords)
@@ -125,15 +125,13 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
 
         // a record that is not ready is held but invisible to the walk
         UNIT_ASSERT(!chain.GetNext(10));
-        UNIT_ASSERT(!chain.GetOldest());
 
         UNIT_ASSERT(chain.MarkAsReady(10));
         UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetOldest()->Lsn);
 
         // marking twice is harmless
         UNIT_ASSERT(chain.MarkAsReady(10));
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetOldest()->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
     }
 
     Y_UNIT_TEST(ShouldExtendRunOnlyOverReadyRecords)
@@ -147,14 +145,14 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         // the second record is durable before the first one, so the run
         // cannot move past the first yet
         UNIT_ASSERT(chain.MarkAsReady(20));
-        UNIT_ASSERT(!chain.GetOldest());
+        UNIT_ASSERT(!chain.GetNext(10));
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
             chain.Insert(MakeRecord(15, 25)).GetError().GetCode());
 
         // marking the first one carries the run over both
         UNIT_ASSERT(chain.MarkAsReady(10));
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetOldest()->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
             chain.Insert(MakeRecord(25, 35)).GetError().GetCode());
@@ -198,7 +196,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
             chain.Insert(MakeRecord(5, 20)).GetError().GetCode());
 
         // the original record is still the one held by the chain
-        UNIT_ASSERT_VALUES_EQUAL(10, chain.GetOldest()->PrevLsn);
+        UNIT_ASSERT_VALUES_EQUAL(10, chain.GetNext(10)->PrevLsn);
     }
 
     Y_UNIT_TEST(ShouldRejectForkFromSameLsn)
@@ -274,25 +272,14 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
             GetLsns(chain.GetReadyRun(0, Max<ui64>(), 10)));
     }
 
-    Y_UNIT_TEST(ShouldReturnNullptrFromGetOldestAndGetNextWhenEmpty)
+    Y_UNIT_TEST(ShouldReturnNullptrFromGetNextWhenEmpty)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
 
-        UNIT_ASSERT(!chain.GetOldest());
+        UNIT_ASSERT(!chain.GetNext(10));
         UNIT_ASSERT(!chain.GetNext(0));
         UNIT_ASSERT(!chain.GetNext(100));
-    }
-
-    Y_UNIT_TEST(ShouldReturnLowestRecordAsOldest)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
-
-        InsertReady(chain, 20, 30);
-        InsertReady(chain, 10, 20);
-
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetOldest()->Lsn);
     }
 
     Y_UNIT_TEST(ShouldRemoveRecordByPrevLsn)
@@ -353,12 +340,12 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         InsertReady(chain, 20, 30);
 
         // nothing chains from the watermark yet
-        UNIT_ASSERT(!chain.GetOldest());
+        UNIT_ASSERT(!chain.GetNext(10));
 
         // filling the gap joins everything behind it, so the run now covers
         // (10, 40] and guards against records starting inside it
         InsertReady(chain, 10, 20);
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetOldest()->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
             chain.Insert(MakeRecord(35, 45)).GetError().GetCode());
@@ -577,14 +564,13 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
 
         UNIT_ASSERT(chain.GetReadyRun(10, Max<ui64>(), 10).empty());
 
-        // a record that is not ready is invisible to GetOldest and GetNext as
-        // well, but the ready ones behind it can still be reached
-        UNIT_ASSERT(!chain.GetOldest());
+        // a record that is not ready is invisible to GetNext as well,
+        // but the ready ones behind it can still be reached
         UNIT_ASSERT(!chain.GetNext(10));
         UNIT_ASSERT_VALUES_EQUAL(30, chain.GetNext(20)->Lsn);
 
         UNIT_ASSERT(chain.MarkAsReady(10));
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetOldest()->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30}),
             GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
@@ -606,7 +592,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT_VALUES_EQUAL(record.get(), result.GetResult().get());
 
         UNIT_ASSERT(chain.MarkAsReady(10));
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetOldest()->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
     }
 
     Y_UNIT_TEST(ShouldEraseRecordsBelowLsn)
@@ -622,7 +608,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30}),
             GetSortedLsns(EraseBelow(chain, 31)));
-        UNIT_ASSERT_VALUES_EQUAL(40, chain.GetOldest()->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(40, chain.GetNext(30)->Lsn);
     }
 
     Y_UNIT_TEST(ShouldEraseNothingBelowOldestLsn)
@@ -633,12 +619,12 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         InsertReady(chain, 10, 20);
 
         UNIT_ASSERT(EraseBelow(chain, 20).empty());
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetOldest()->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
 
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20}),
             GetLsns(EraseBelow(chain, 21)));
-        UNIT_ASSERT(!chain.GetOldest());
+        UNIT_ASSERT(!chain.GetNext(20));
     }
 
     Y_UNIT_TEST(ShouldDropReadyRecordsStrandedBelowWatermark)
@@ -664,13 +650,13 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT(!ready->Promise.Initialized());
 
         // the one that is not ready is left alone until its write finishes
-        UNIT_ASSERT_VALUES_EQUAL(30, chain.GetOldest()->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(30, chain.GetNext(20)->Lsn);
         UNIT_ASSERT(chain.MarkAsReady(18));
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{28}),
             GetLsns(EraseBelow(chain, 21)));
         UNIT_ASSERT(!chain.MarkAsReady(18));
-        UNIT_ASSERT_VALUES_EQUAL(30, chain.GetOldest()->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(30, chain.GetNext(20)->Lsn);
     }
 
     Y_UNIT_TEST(ShouldRejectRecordAtOrBelowLastErasedLsn)
@@ -693,7 +679,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
 
         // nothing was inserted - the chain still starts where it did
         UNIT_ASSERT(!chain.MarkAsReady(10));
-        UNIT_ASSERT_VALUES_EQUAL(40, chain.GetOldest()->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(40, chain.GetNext(30)->Lsn);
     }
 
     Y_UNIT_TEST(ShouldTreatLsnsBelowInitLastErasedLsnAsErased)
@@ -704,11 +690,11 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
             chain.Insert(MakeRecord(20, 30)).GetError().GetCode());
-        UNIT_ASSERT(!chain.GetOldest());
+        UNIT_ASSERT(!chain.GetNext(30));
 
         // the first record above the watermark is inserted as usual
         InsertReady(chain, 30, 40);
-        UNIT_ASSERT_VALUES_EQUAL(40, chain.GetOldest()->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(40, chain.GetNext(30)->Lsn);
     }
 
     Y_UNIT_TEST(ShouldRejectEraseBelowPastChainedRun)
@@ -726,14 +712,14 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
         UNIT_ASSERT(result.GetResult().Chained.empty());
         UNIT_ASSERT(result.GetResult().Stranded.empty());
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetOldest()->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
 
         // once the gap is filled the same watermark goes through
         UNIT_ASSERT(chain.MarkAsReady(20));
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30}),
             GetSortedLsns(EraseBelow(chain, 31)));
-        UNIT_ASSERT_VALUES_EQUAL(40, chain.GetOldest()->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(40, chain.GetNext(30)->Lsn);
     }
 
     Y_UNIT_TEST(ShouldNotRewindLastErasedLsnOnEraseBelow)
@@ -750,7 +736,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
             chain.Insert(MakeRecord(10, 20)).GetError().GetCode());
-        UNIT_ASSERT(!chain.GetOldest());
+        UNIT_ASSERT(!chain.GetNext(30));
     }
 }
 
