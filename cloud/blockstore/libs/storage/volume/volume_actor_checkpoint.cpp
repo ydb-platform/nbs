@@ -1872,7 +1872,8 @@ void TVolumeActor::ExecuteUpdateShadowDiskState(
     db.UpdateShadowDiskState(
         args.RequestId,
         args.ProcessedBlockCount,
-        args.ShadowDiskState);
+        args.ShadowDiskState,
+        args.ErrorMessage);
 }
 
 void TVolumeActor::CompleteUpdateShadowDiskState(
@@ -1897,6 +1898,11 @@ void TVolumeActor::CompleteUpdateShadowDiskState(
         request.CheckpointId,
         args.ShadowDiskState,
         args.ProcessedBlockCount);
+
+    if (args.ShadowDiskState == EShadowDiskState::Error) {
+        State->GetCheckpointStore().SetCheckpointError(
+            args.RequestId, args.ErrorMessage);
+    }
 
     NCloud::Reply(
         ctx,
@@ -1954,6 +1960,13 @@ void TVolumeActor::HandleUpdateShadowDiskState(
             newShadowDiskState = EShadowDiskState::Ready;
         } break;
         case EReason::FillError: {
+            LOG_ERROR(
+                ctx,
+                TBlockStoreComponents::VOLUME,
+                "%s Shadow disk for checkpoint %s failed: %s",
+                LogTitle.GetWithTime().c_str(),
+                msg->CheckpointId.c_str(),
+                msg->ErrorMessage.c_str());
             newShadowDiskState = EShadowDiskState::Error;
         } break;
     }
@@ -1964,7 +1977,8 @@ void TVolumeActor::HandleUpdateShadowDiskState(
         std::move(requestInfo),
         checkpointInfo->RequestId,
         newShadowDiskState,
-        msg->ProcessedBlockCount);
+        msg->ProcessedBlockCount,
+        msg->ErrorMessage);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

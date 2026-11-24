@@ -475,7 +475,8 @@ void TVolumeDatabase::UpdateCheckpointRequest(
 void TVolumeDatabase::UpdateShadowDiskState(
     ui64 requestId,
     ui64 processedBlockCount,
-    EShadowDiskState shadowDiskState)
+    EShadowDiskState shadowDiskState,
+    const TString& errorMessage)
 {
     using TTable = TVolumeSchema::CheckpointRequests;
 
@@ -483,7 +484,8 @@ void TVolumeDatabase::UpdateShadowDiskState(
         NIceDb::TUpdate<TTable::ShadowDiskProcessedBlockCount>(
             processedBlockCount),
         NIceDb::TUpdate<TTable::ShadowDiskState>(
-            static_cast<ui32>(shadowDiskState)));
+            static_cast<ui32>(shadowDiskState)),
+        NIceDb::TUpdate<TTable::CheckpointError>(errorMessage));
 }
 
 bool TVolumeDatabase::CollectCheckpointsToDelete(

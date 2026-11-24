@@ -3866,7 +3866,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
                 "c1",
                 EReason::FillProgressUpdate,
-                128);
+                128,
+                TString());
 
             volume.SendToPipe(std::move(request));
             runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
@@ -3977,7 +3978,8 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                 TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
                 "c1",
                 EReason::FillProgressUpdate,
-                128);
+                128,
+                TString());
 
             volume.SendToPipe(std::move(request));
             runtime->DispatchEvents({}, TDuration::MilliSeconds(100));
@@ -4765,6 +4767,121 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             TBlockRange64::MakeOneBlock(3),
             clientInfo.GetClientId(),
             GetBlockContent(1));
+    }
+
+    Y_UNIT_TEST(ShouldReadOnlyAfterLastUnacquiredShadowDevice)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetClientRemountPeriod(1000);
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+        auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
+        for (ui32 i = 0; i < 6; ++i) {
+            const auto suffix = ToString(i);
+            auto device = MakeDevice(
+                "uuid" + suffix, "dev" + suffix, "transport" + suffix);
+            device.SetBlockSize(4096);
+            device.SetBlocksCount(32768);
+            diskRegistryState->Devices.push_back(std::move(device));
+        }
+        auto runtime = PrepareTestActorRuntime(config, diskRegistryState);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0, 0, 0, 0, false, 1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            32768 * 3);
+        volume.WaitReady();
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+        volume.CreateCheckpoint("c1");
+        volume.ReconnectPipe();
+        while (volume.GetCheckpointStatus("c1")->Record.GetCheckpointStatus() !=
+               NProto::ECheckpointStatus::READY)
+        {
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(250));
+        }
+
+        TString unavailableDevice;
+        bool failAcquire = true;
+        runtime->SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvDescribeDiskResponse)
+            {
+                const auto& devices = event->Get<
+                    TEvDiskRegistry::TEvDescribeDiskResponse>()->Record.GetDevices();
+                if (devices.size() == 3) {
+                    unavailableDevice = devices[1].GetDeviceUUID();
+                }
+            }
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvAcquireDiskResponse)
+            {
+                auto* devices = event->Get<
+                    TEvDiskRegistry::TEvAcquireDiskResponse>()->Record.MutableDevices();
+                for (int i = 0; i < devices->size(); ++i) {
+                    if (failAcquire &&
+                        devices->Get(i).GetDeviceUUID() == unavailableDevice) {
+                        devices->DeleteSubrange(i, 1);
+                        break;
+                    }
+                }
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+        volume.RebootTablet();
+        volume.WaitReady();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(!unavailableDevice.empty());
+        volume.ReadBlocks(
+            TBlockRange64::WithLength(65536, 1),
+            clientInfo.GetClientId(),
+            "c1");
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::ECheckpointStatus::READY),
+            static_cast<ui32>(volume.GetCheckpointStatus("c1")->Record.GetCheckpointStatus()));
+        volume.SendToPipe(volume.CreateReadBlocksRequest(
+            TBlockRange64::WithLength(0, 1),
+            clientInfo.GetClientId(),
+            "c1"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            volume.RecvReadBlocksResponse()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::ECheckpointStatus::READY),
+            static_cast<ui32>(volume.GetCheckpointStatus("c1")->Record.GetCheckpointStatus()));
+        runtime->AdvanceCurrentTime(TDuration::Minutes(11));
+        volume.SendToPipe(volume.CreateReadBlocksRequest(
+            TBlockRange64::WithLength(0, 1),
+            clientInfo.GetClientId(),
+            "c1"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_IO,
+            volume.RecvReadBlocksResponse()->GetStatus());
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::ECheckpointStatus::ERROR),
+            static_cast<ui32>(volume.GetCheckpointStatus("c1")->Record.GetCheckpointStatus()));
+        for (ui32 attempt = 0; attempt < 2; ++attempt) {
+            for (ui64 start: {0ULL, 32768ULL, 65536ULL}) {
+                volume.SendToPipe(volume.CreateReadBlocksRequest(
+                    TBlockRange64::WithLength(start, 1),
+                    clientInfo.GetClientId(),
+                    "c1"));
+                auto response = volume.RecvReadBlocksResponse();
+                UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
+                UNIT_ASSERT_C(
+                    response->GetErrorReason().Contains(
+                        "Devices [" + unavailableDevice + "] are unavailable"),
+                    response->GetErrorReason());
+            }
+            volume.RebootTablet();
+            volume.WaitReady();
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::ECheckpointStatus::ERROR),
+            static_cast<ui32>(volume.GetCheckpointStatus("c1")->Record.GetCheckpointStatus()));
     }
 
     Y_UNIT_TEST(ShouldUseShadowDiskDevicesWithRightOrder)

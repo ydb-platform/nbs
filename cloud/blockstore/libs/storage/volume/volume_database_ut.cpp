@@ -417,7 +417,8 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 db.UpdateShadowDiskState(
                     1,
                     512,
-                    EShadowDiskState::Preparing);
+                    EShadowDiskState::Preparing,
+                    TString());
             });
 
         executor.ReadTx(
@@ -452,7 +453,8 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 db.UpdateShadowDiskState(
                     1,
                     1024,
-                    EShadowDiskState::Ready);
+                    EShadowDiskState::Ready,
+                    TString());
             });
 
         executor.ReadTx(

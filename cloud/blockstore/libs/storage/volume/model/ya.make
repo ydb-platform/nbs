@@ -14,9 +14,10 @@ SRCS(
     helpers.cpp
     merge.cpp
     meta.cpp
-    requests_time_tracker.cpp
     requests_inflight.cpp
+    requests_time_tracker.cpp
     retry_policy.cpp
+    shadow_disk_read_availability.cpp
     stripe.cpp
     tracing.cpp
     volume_params.cpp

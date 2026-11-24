@@ -33,19 +33,6 @@ TString MakeShadowDiskClientId(
     return sourceDiskClientId;
 }
 
-TString GetDeviceUUIDs(const TDevices& devices)
-{
-    TString result;
-    for (const auto& device: devices) {
-        if (result.empty()) {
-            result += device.GetDeviceUUID();
-        } else {
-            result += ", " + device.GetDeviceUUID();
-        }
-    }
-    return result;
-}
-
 bool CheckDeviceUUIDsIdentical(
     const TDevices& described,
     const TDevices& acquired)
@@ -105,7 +92,9 @@ private:
     // This is necessary to check that all disk devices have been acquired.
     TDevices ShadowDiskDevices;
     TDevices AcquiredShadowDiskDevices;
+    bool AcquireResponseReceived = false;
     bool WaitingForDiskToBeReleased = false;
+    TString LastRegistryError;
 
     // Delay provider when retrying describe and acquire requests to disk
     // registry.
@@ -336,6 +325,8 @@ void TAcquireShadowDiskActor::HandleDiskRegistryError(
     std::unique_ptr<IEventHandle> retryEvent,
     const TString& actionName)
 {
+    LastRegistryError = error.GetMessage();
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
@@ -393,6 +384,7 @@ void TAcquireShadowDiskActor::ReplyAndDie(
         std::make_unique<TEvVolumePrivate::TEvShadowDiskAcquired>(error);
     if (!HasError(error)) {
         response->Devices.Swap(&ShadowDiskDevices);
+        response->AcquiredDevices.Swap(&AcquiredShadowDiskDevices);
         response->ClientId = RwClientId;
     }
 
@@ -470,6 +462,7 @@ void TAcquireShadowDiskActor::HandleAcquireDiskResponse(
         return;
     }
 
+    AcquireResponseReceived = true;
     AcquiredShadowDiskDevices.Swap(record.MutableDevices());
     MaybeReady(ctx);
 }
@@ -506,7 +499,11 @@ void TAcquireShadowDiskActor::HandleWakeup(
         "%s Acquire timeout",
         LogTitle.GetWithTime().c_str());
 
-    ReplyAndDie(ctx, MakeError(E_TIMEOUT));
+    ReplyAndDie(
+        ctx,
+        MakeError(
+            E_TIMEOUT,
+            TStringBuilder() << "Acquire timeout. " << LastRegistryError));
 }
 
 void TAcquireShadowDiskActor::HandlePoisonPill(
@@ -520,25 +517,24 @@ void TAcquireShadowDiskActor::HandlePoisonPill(
 void TAcquireShadowDiskActor::MaybeReady(const NActors::TActorContext& ctx)
 {
     bool gotDescribeAndAcquireResponses =
-        !ShadowDiskDevices.empty() && !AcquiredShadowDiskDevices.empty();
+        !ShadowDiskDevices.empty() && AcquireResponseReceived;
     if (!gotDescribeAndAcquireResponses) {
         return;
     }
 
     // Check all shadow disk devices have been acquired.
-    if (!CheckDeviceUUIDsIdentical(
+    if (!ReadOnlyMount && !CheckDeviceUUIDsIdentical(
             ShadowDiskDevices,
             AcquiredShadowDiskDevices))
     {
+        TShadowDiskReadAvailability availability;
+        availability.UpdateDevices(
+            ShadowDiskDevices,
+            AcquiredShadowDiskDevices,
+            1);
         HandleDiskRegistryError(
             ctx,
-            MakeError(
-                E_REJECTED,
-                TStringBuilder()
-                    << "The acquired devices are not identical to described. "
-                       "Described ["
-                    << GetDeviceUUIDs(ShadowDiskDevices) << "] acquired ["
-                    << GetDeviceUUIDs(AcquiredShadowDiskDevices) << "]"),
+            MakeError(E_REJECTED, availability.GetErrorMessage()),
             std::make_unique<IEventHandle>(
                 MakeDiskRegistryProxyServiceId(),
                 ctx.SelfID,
@@ -548,6 +544,7 @@ void TAcquireShadowDiskActor::MaybeReady(const NActors::TActorContext& ctx)
                     TShadowDiskActor::EAcquireReason::FirstAcquire)),
             "acquire");
         AcquiredShadowDiskDevices.Clear();
+        AcquireResponseReceived = false;
         return;
     };
 
@@ -735,7 +732,8 @@ void TShadowDiskActor::OnMigrationProgress(
         std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
             CheckpointId,
             EReason::FillProgressUpdate,
-            migrationIndex);
+            migrationIndex,
+            TString());
 
     NCloud::Send(ctx, VolumeActorId, std::move(request));
 }
@@ -750,22 +748,15 @@ void TShadowDiskActor::OnMigrationFinished(const NActors::TActorContext& ctx)
         std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
             CheckpointId,
             EReason::FillCompleted,
-            ProcessedBlockCount);
+            ProcessedBlockCount,
+            TString());
 
     NCloud::Send(ctx, VolumeActorId, std::move(request));
 }
 
 void TShadowDiskActor::OnMigrationError(const NActors::TActorContext& ctx)
 {
-    using EReason = TEvVolumePrivate::TUpdateShadowDiskStateRequest::EReason;
-
-    auto request =
-        std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
-            CheckpointId,
-            EReason::FillError,
-            ProcessedBlockCount);
-
-    NCloud::Send(ctx, VolumeActorId, std::move(request));
+    SetErrorState(ctx, "Failed to fill shadow disk");
 }
 
 void TShadowDiskActor::AcquireShadowDisk(
@@ -780,7 +771,10 @@ void TShadowDiskActor::AcquireShadowDisk(
         case EAcquireReason::FirstAcquire: {
             STORAGE_CHECK_PRECONDITION(WaitingForAcquire());
             STORAGE_CHECK_PRECONDITION(DstActorId == TActorId());
-            STORAGE_CHECK_PRECONDITION(AcquireActorId == TActorId());
+
+            if (AcquireActorId != TActorId()) {
+                return;
+            }
         } break;
         case EAcquireReason::PeriodicalReAcquire: {
             STORAGE_CHECK_PRECONDITION(!WaitingForAcquire());
@@ -837,13 +831,24 @@ void TShadowDiskActor::HandleShadowDiskAcquired(
     }
 
     if (HasError(msg->Error)) {
+        if (ReadOnlyMount()) {
+            if (acquireReason == EAcquireReason::FirstAcquire) {
+                SchedulePeriodicalReAcquire(ctx);
+            }
+            return;
+        }
         if (msg->Error.GetCode() == E_NOT_FOUND ||
             acquireReason != EAcquireReason::PeriodicalReAcquire)
         {
-            SetErrorState(ctx);
+            SetErrorState(ctx, FormatError(msg->Error));
         }
         return;
     }
+
+    ReadAvailability.UpdateDevices(
+        msg->Devices,
+        msg->AcquiredDevices,
+        SrcConfig->GetBlockSize());
 
     if (acquireReason == EAcquireReason::FirstAcquire) {
         CreateShadowDiskPartitionActor(ctx, msg->Devices);
@@ -935,7 +940,8 @@ void TShadowDiskActor::CreateShadowDiskPartitionActor(
             std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
                 CheckpointId,
                 EReason::FillProgressUpdate,
-                ProcessedBlockCount));
+                ProcessedBlockCount,
+                TString()));
     }
 
     STORAGE_CHECK_PRECONDITION(Acquired());
@@ -949,7 +955,9 @@ void TShadowDiskActor::SchedulePeriodicalReAcquire(const TActorContext& ctx)
         new TEvents::TEvWakeup(EShadowDiskWakeupReason::SDWR_REACQUIRE));
 }
 
-void TShadowDiskActor::SetErrorState(const NActors::TActorContext& ctx)
+void TShadowDiskActor::SetErrorState(
+    const NActors::TActorContext& ctx,
+    TString errorMessage)
 {
     using EReason = TEvVolumePrivate::TUpdateShadowDiskStateRequest::EReason;
 
@@ -962,7 +970,8 @@ void TShadowDiskActor::SetErrorState(const NActors::TActorContext& ctx)
         std::make_unique<TEvVolumePrivate::TEvUpdateShadowDiskStateRequest>(
             CheckpointId,
             EReason::FillError,
-            ProcessedBlockCount));
+            ProcessedBlockCount,
+            std::move(errorMessage)));
 }
 
 bool TShadowDiskActor::CanJustForwardWritesToSrcDisk() const
@@ -999,8 +1008,6 @@ bool TShadowDiskActor::Acquired() const
 
 bool TShadowDiskActor::ReadOnlyMount() const
 {
-    STORAGE_CHECK_PRECONDITION(State != EActorState::Error);
-
     return State == EActorState::WaitAcquireForRead ||
            State == EActorState::CheckpointReady;
 }
@@ -1021,14 +1028,41 @@ void TShadowDiskActor::HandleReadBlocks(
     }
 
     if (State != EActorState::CheckpointReady) {
+        const bool broken = State == EActorState::Error;
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<typename TMethod::TResponse>(MakeError(
+                broken ? E_IO : E_REJECTED,
+                TStringBuilder()
+                    << "Can't read from checkpoint " << CheckpointId.Quote()
+                    << (broken ? " because the shadow disk is broken."
+                               : " while the data is being filled in."))));
+        return;
+    }
+
+    const auto readStatus = ReadAvailability.CheckRead(
+        record.GetStartIndex(),
+        ctx.Now(),
+        GetConfig()->GetMaxAcquireShadowDiskTotalTimeoutWhenNonBlocked());
+    if (readStatus == TShadowDiskReadAvailability::EReadStatus::Retry) {
         NCloud::Reply(
             ctx,
             *ev,
             std::make_unique<typename TMethod::TResponse>(MakeError(
                 E_REJECTED,
-                TStringBuilder()
-                    << "Can't read from checkpoint " << CheckpointId.Quote()
-                    << " while the data is being filled in.")));
+                "Checkpoint device is unavailable, retry read")));
+        return;
+    }
+    if (readStatus == TShadowDiskReadAvailability::EReadStatus::Error) {
+        SetErrorState(ctx, ReadAvailability.GetErrorMessage());
+
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<typename TMethod::TResponse>(MakeError(
+                E_IO,
+                "Checkpoint has an unavailable device at or after read range")));
         return;
     }
 
@@ -1167,10 +1201,14 @@ bool TShadowDiskActor::HandleWakeup(
     const NActors::TActorContext& ctx)
 {
     switch (ev->Get()->Tag) {
-        case EShadowDiskWakeupReason::SDWR_REACQUIRE:
-            AcquireShadowDisk(ctx, EAcquireReason::PeriodicalReAcquire);
+        case EShadowDiskWakeupReason::SDWR_REACQUIRE: {
+            const auto acquireReason = WaitingForAcquire()
+                                           ? EAcquireReason::FirstAcquire
+                                           : EAcquireReason::PeriodicalReAcquire;
+            AcquireShadowDisk(ctx, acquireReason);
             SchedulePeriodicalReAcquire(ctx);
             return true;
+        }
     }
 
     return false;

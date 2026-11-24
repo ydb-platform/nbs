@@ -173,6 +173,15 @@ void TCheckpointStore::SetShadowDiskState(
     }
 }
 
+void TCheckpointStore::SetCheckpointError(
+    ui64 requestId,
+    const TString& errorMessage)
+{
+    if (auto* request = CheckpointRequests.FindPtr(requestId)) {
+        request->CheckpointError = errorMessage;
+    }
+}
+
 void TCheckpointStore::ShadowActorCreated(const TString& checkpointId)
 {
     if (auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId)) {

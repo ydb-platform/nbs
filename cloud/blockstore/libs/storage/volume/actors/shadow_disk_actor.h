@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/part_nonrepl_migration_common_actor.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
+#include <cloud/blockstore/libs/storage/volume/model/shadow_disk_read_availability.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/rdma/iface/public.h>
@@ -109,6 +110,7 @@ private:
     NActors::TActorId AcquireActorId;
     // The list of devices received on first acquire.
     TDevices ShadowDiskDevices;
+    TShadowDiskReadAvailability ReadAvailability;
 
     bool ForcedReAcquireInProgress = false;
 
@@ -161,7 +163,9 @@ private:
     void CreateShadowDiskPartitionActor(
         const NActors::TActorContext& ctx,
         const TDevices& acquiredShadowDiskDevices);
-    void SetErrorState(const NActors::TActorContext& ctx);
+    void SetErrorState(
+        const NActors::TActorContext& ctx,
+        TString errorMessage);
     void SchedulePeriodicalReAcquire(const NActors::TActorContext& ctx);
 
     // If we haven't started migrating to the shadow disk yet, we can send

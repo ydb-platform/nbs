@@ -383,6 +383,17 @@ NProto::TError TVolumeActor::ProcessAndValidateReadFromCheckpoint(
         } break;
     }
 
+    if (checkpointInfo->ShadowDiskState == EShadowDiskState::Error) {
+        const auto& request = State->GetCheckpointStore().GetRequestById(
+            checkpointInfo->RequestId);
+        return MakeError(
+            E_IO,
+            TStringBuilder() << "Can't read from checkpoint "
+                             << checkpointId.Quote()
+                             << " because the shadow disk is broken. "
+                             << request.CheckpointError);
+    }
+
     // Will read checkpoint data from shadow disk.
     return {};
 }
