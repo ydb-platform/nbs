@@ -2,6 +2,7 @@ UNITTEST_FOR(cloud/blockstore/libs/configs_manager)
 
 SRCS(
     configs_manager_renderer_ut.cpp
+    configs_manager_test_helpers.cpp
     configs_manager_ut.cpp
 )
 

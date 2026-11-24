@@ -1,20 +1,111 @@
 /*******************************************************************************
 
-Inject one configuration preparation failure while retaining the underlying
-configuration. Share the same failure wrapper between manager and renderer
-tests so both exercise the actual adapter preparation path.
+Shared ConfigsManager test infrastructure for update and monitoring tests.
+Start one manager explicitly per fixture and use the same startup preparation,
+delivery protocol, and logging setup in both test modules. The failure wrapper
+injects an adapter preparation error without changing the actor API.
 
 *******************************************************************************/
 
 #pragma once
 
+#include <cloud/blockstore/config/blockstore.pb.h>
 #include <cloud/blockstore/libs/config/blockstore_config.h>
+#include <cloud/blockstore/libs/config/blockstore_config_holder.h>
+
+#include <contrib/ydb/core/testlib/actors/test_runtime.h>
+
+#include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/yexception.h>
+#include <util/stream/str.h>
 
 #include <utility>
 
 namespace NCloud::NBlockStore {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Create a minimal storage configuration with the requested blob threshold.
+NProto::TBlockstoreConfig MakeConfig(ui32 writeBlobThreshold);
+
+// A per-test ConfigsManager environment owning its runtime, captured logs,
+// configuration holder, and ICB controls. Start one manager after SetUp;
+// subscription and monitoring helpers send events only when called.
+class TConfigsManagerFixture: public NUnitTest::TBaseFixture
+{
+protected:
+    // Critical-event messages captured until TearDown resets the global logger.
+    TStringStream CriticalEventsLog;
+
+    // Actor log messages captured while Runtime owns the logging backend.
+    TStringStream ConfigLog;
+
+    // The actor runtime under test.
+    NActors::TTestActorRuntime Runtime;
+
+    // The edge actor receiving subscription requests and acknowledgements.
+    NActors::TActorId Dispatcher;
+
+    // The ConfigsManager actor address registered for the current test.
+    NActors::TActorId Manager;
+
+    // The shared holder inspected after each delivered update.
+    TBlockstoreConfigHolderPtr ConfigHolder;
+
+    // The shared controls required when rebuilding storage adapters.
+    NStorage::TStorageConfigControlsPtr Controls;
+
+    // Initialize logging, runtime, dispatcher, and controls without a manager.
+    void SetUp(NUnitTest::TTestContext&) override;
+
+    // Release the global logger before the captured output is destroyed.
+    void TearDown(NUnitTest::TTestContext&) override;
+
+    // Start one manager with empty static and dynamic configuration sources.
+    void StartManager();
+
+    // Start one manager with predefined storage and DiskAgent test settings.
+    void StartManagerDefault();
+
+    // Build startup state, initialize ICB defaults, and start one manager.
+    // Call once per test; preserve the original dynamic source for comparison.
+    void StartManager(
+        NProto::TBlockstoreConfig staticConfig,
+        NProto::TBlockstoreConfig dynamicConfig);
+
+    // Send a dispatcher update; omit the section for a null payload.
+    void SendNotification(
+        std::shared_ptr<const google::protobuf::Message> config,
+        ui64 cookie);
+
+    // Wait for the dispatcher response and verify its cookie.
+    void WaitForAck(ui64 cookie);
+
+    // Read the manager's monitoring page without creating an HTTP server.
+    TString GetMonitoringPage();
+
+    // Wait for the actor logger to process the expected configuration message.
+    void WaitForConfigLog(const TString& message);
+
+    // Register the chosen subscriber and check the response to the requester.
+    void Subscribe(
+        NActors::TActorId requester,
+        NActors::TActorId subscriber = {});
+
+    // Verify that the manager sends a change notification to one subscriber.
+    IBlockstoreConfigPtr WaitForConfigChanged(NActors::TActorId subscriber);
+
+    // Check that a subscriber receives no change notification.
+    void AssertNoConfigChanged(NActors::TActorId subscriber);
+
+    // Remove the chosen subscriber and check the response to the requester.
+    void Unsubscribe(
+        NActors::TActorId requester,
+        NActors::TActorId subscriber = {});
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 #define FORWARDED_CONFIG_GETTERS(xxx)                                          \
     xxx(GetServerConfig)                                                       \

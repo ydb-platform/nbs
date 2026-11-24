@@ -1,31 +1,23 @@
 /*******************************************************************************
 
 Renderer output and monitoring metadata tests. Direct rendering checks source
-columns and field presentation. A minimal actor fixture checks metadata from
-ConfigsDispatcher deliveries without subscribers or an HTTP server.
+columns and field presentation. The shared ConfigsManager fixture checks
+metadata from deliveries without subscribers or an HTTP server.
 
 *******************************************************************************/
 
 #include "configs_manager_test_helpers.h"
 
 #include <cloud/blockstore/libs/config/blockstore_config_management.h>
-#include <cloud/blockstore/libs/configs_manager/configs_manager.h>
 #include <cloud/blockstore/libs/configs_manager/configs_manager_renderer.h>
 #include <cloud/blockstore/libs/configs_manager/configs_manager_renderer_impl.h>
-#include <cloud/blockstore/libs/kikimr/components.h>
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
-#include <contrib/ydb/core/cms/console/configs_dispatcher.h>
 #include <contrib/ydb/core/cms/console/console.h>
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
-#include <contrib/ydb/core/mon/mon.h>
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/html/pcdata/pcdata.h>
-#include <library/cpp/logger/log.h>
-#include <library/cpp/logger/null.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/strbuf.h>
@@ -52,13 +44,6 @@ namespace {
 
 constexpr ui32 PrivateDatabaseConfigKind =
     NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem;
-
-NProto::TBlockstoreConfig MakeConfig(ui32 writeBlobThreshold)
-{
-    NProto::TBlockstoreConfig config;
-    config.MutableStorageService()->SetWriteBlobThreshold(writeBlobThreshold);
-    return config;
-}
 
 // Presentation flags extracted by GetParameterRow from cell classes and labels.
 // Default flags describe a row without highlights or ignored-value labels.
@@ -277,126 +262,6 @@ void AssertParameterRowStyle(
         row.ParameterName << ": unavailable ICB style");
 }
 
-// A minimal ConfigsManager runtime for renderer metadata from real deliveries.
-// Each test starts with one static and one dynamic storage value. The runtime
-// owns the manager; the fixture retains its holder only for failure injection.
-class TRendererActorFixture: public NUnitTest::TBaseFixture
-{
-protected:
-    // Actor runtime owning the manager and edge actors for this test.
-    TTestActorRuntime Runtime;
-
-    // Dispatcher edge actor supplying private configuration updates.
-    TActorId Dispatcher;
-
-    // Manager actor serving the rendered monitoring page.
-    TActorId Manager;
-
-    // Published startup configuration retained for preparation-failure tests.
-    TBlockstoreConfigHolderPtr ConfigHolder;
-
-    // Start a manager with the minimal sources and isolated critical logging.
-    void SetUp(NUnitTest::TTestContext&) override;
-
-    // Reset the critical logger installed for this test.
-    void TearDown(NUnitTest::TTestContext&) override;
-
-    // Deliver a payload, or remove the private source when the pointer is null.
-    void SendNotification(
-        std::shared_ptr<const google::protobuf::Message> config,
-        ui64 cookie);
-
-    // Synchronize with an accepted update before checking its rendering.
-    void WaitForAck(ui64 cookie);
-
-    // Read the renderer output after the manager processes queued deliveries.
-    TString GetMonitoringPage();
-};
-
-// Start the manager with one overridden value, without consumer subscriptions.
-void TRendererActorFixture::SetUp(NUnitTest::TTestContext&)
-{
-    // Isolate rejected-delivery logging from tests that inspect critical logs.
-    SetCriticalEventsLog(TLog(MakeHolder<TNullLogBackend>()));
-    Runtime.AppendToLogSettings(
-        TBlockStoreComponents::START,
-        TBlockStoreComponents::END,
-        GetComponentName);
-    NKikimr::SetupTabletServices(Runtime);
-    Dispatcher = Runtime.AllocateEdgeActor();
-
-    // Build only the sources and controls required by the manager and renderer.
-    auto controls = std::make_shared<NStorage::TStorageConfigControls>();
-    auto staticConfig = MakeConfig(100);
-    auto dynamicConfig = MakeConfig(200);
-    auto startupConfig =
-        MergeBlockstoreConfigSources(staticConfig, dynamicConfig);
-    ConfigHolder = std::make_shared<TBlockstoreConfigHolder>(
-        MakeBlockstoreConfig(startupConfig, controls));
-    controls->UpdateDefaults(startupConfig.GetStorageService());
-    Manager = Runtime.Register(CreateConfigsManager({
-        .ConfigHolder = ConfigHolder,
-        .StaticConfig = std::move(staticConfig),
-        .StartupConfig = std::move(startupConfig),
-        .InitialDynamicConfig = std::move(dynamicConfig),
-        .StorageConfigControls = std::move(controls),
-        .ConfigsDispatcherId = Dispatcher,
-    }));
-
-    // Complete bootstrap before tests deliver a configuration or request HTML.
-    TAutoPtr<IEventHandle> handle;
-    UNIT_ASSERT(Runtime.GrabEdgeEventRethrow<
-                TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest>(handle));
-}
-
-// Reset the critical logger so its state cannot affect subsequent fixtures.
-void TRendererActorFixture::TearDown(NUnitTest::TTestContext&)
-{
-    SetCriticalEventsLog(TLog());
-}
-
-// Deliver the private section or its removal through the dispatcher protocol.
-void TRendererActorFixture::SendNotification(
-    std::shared_ptr<const google::protobuf::Message> config,
-    ui64 cookie)
-{
-    auto event = std::make_unique<TEvConsole::TEvConfigNotificationRequest>();
-    if (config) {
-        event->OpaqueConfigs.emplace(
-            PrivateDatabaseConfigKind,
-            std::move(config));
-    }
-    Runtime.Send(
-        new IEventHandle(Manager, Dispatcher, event.release(), 0, cookie));
-}
-
-// Wait until an accepted configuration delivery has been processed.
-void TRendererActorFixture::WaitForAck(ui64 cookie)
-{
-    TAutoPtr<IEventHandle> handle;
-    UNIT_ASSERT(
-        Runtime.GrabEdgeEventRethrow<TEvConsole::TEvConfigNotificationResponse>(
-            handle));
-    UNIT_ASSERT_VALUES_EQUAL(cookie, handle->Cookie);
-}
-
-// Read the page through the actor without creating an HTTP server.
-TString TRendererActorFixture::GetMonitoringPage()
-{
-    TStringStream output;
-    NMonitoring::TMonService2HttpRequest
-        request(&output, nullptr, nullptr, nullptr, {}, nullptr);
-    const auto edge = Runtime.AllocateEdgeActor();
-    Runtime.Send(
-        new IEventHandle(Manager, edge, new NMon::TEvHttpInfo(request)));
-    const auto response = Runtime.GrabEdgeEventRethrow<NMon::TEvHttpInfoRes>(
-        edge,
-        TDuration::Seconds(1));
-    UNIT_ASSERT(response);
-    response->Get()->Output(output);
-    return output.Str();
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -432,7 +297,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         const auto controls =
             std::make_shared<NStorage::TStorageConfigControls>();
         const auto config =
-            MakeStartupBlockstoreConfig({}, {}, controls).Config;
+            MakeStartupBlockstoreConfig(
+                {},
+                {},
+                controls,
+                /*extraParameters=*/{})
+                .Config;
 
         // Require every schema section to be present, including empty messages.
         const auto effective = NPrivate::BuildEffectiveConfig(*config);
@@ -771,10 +641,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // source has no ignored static-only values.
     Y_UNIT_TEST_F(
         ShouldRetainLabelsForIgnoredStaticOnlyValuesAfterRejectedUpdate,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager();
+
         // Accept a dynamic source whose static-only value is ignored.
-        auto dynamicConfig = MakeConfig(300);
+        NProto::TBlockstoreConfig dynamicConfig;
         dynamicConfig.MutableStorageService()->SetNodeType("ignored-node");
         SendNotification(
             std::make_shared<NProto::TBlockstoreConfig>(dynamicConfig),
@@ -840,8 +712,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // Check that startup delivery is shown separately from absent runtime data.
     Y_UNIT_TEST_F(
         ShouldRenderStartupSourceBeforeRuntimeUpdate,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
+
         const auto html = GetMonitoringPage();
         UNIT_ASSERT(!html.Contains("<p class='config-dynamic-ignored'>"));
         UNIT_ASSERT_STRING_CONTAINS(
@@ -866,8 +742,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // Keep startup values and count only the latest accepted runtime source.
     Y_UNIT_TEST_F(
         ShouldRenderStartupAndLatestRuntimeSources,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
+
         ui64 cookie = 1;
         for (const ui32 value: {300, 400, 200}) {
             // Replace the whole runtime source, including a return to startup.
@@ -898,8 +778,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // Show identical values in runtime after a new accepted delivery cookie.
     Y_UNIT_TEST_F(
         ShouldRenderUnchangedStartupValuesInRuntimeSource,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
+
         // Establish the initial delivery, then accept its values as an update.
         auto config =
             std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(200));
@@ -929,8 +813,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // Retain startup history when an accepted runtime source is empty.
     Y_UNIT_TEST_F(
         ShouldRenderStartupSourceAfterEmptyRuntimeConfig,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
+
         // Accept an explicitly present empty private configuration.
         SendNotification(std::make_shared<NProto::TBlockstoreConfig>(), 1);
         WaitForAck(1);
@@ -988,7 +876,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             const auto controls =
                 std::make_shared<NStorage::TStorageConfigControls>();
             const auto config =
-                MakeStartupBlockstoreConfig(staticConfig, {}, controls).Config;
+                MakeStartupBlockstoreConfig(
+                    staticConfig,
+                    {},
+                    controls,
+                    /*extraParameters=*/{})
+                    .Config;
             controls->UpdateDefaults(
                 config->GetStorageConfig()->GetConfigProto());
             NKikimr::TControlBoard board;
@@ -1887,8 +1780,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // Preserve the renderer startup time through identical initial deliveries.
     Y_UNIT_TEST_F(
         ShouldKeepRendererStartupTimeForIdenticalStartupDeliveries,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
+
         // Observe the startup page before receiving dispatcher updates.
         const auto startupTime = Runtime.GetCurrentTime().ToString();
         UNIT_ASSERT_STRING_CONTAINS(
@@ -1921,8 +1818,10 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // Render a changed first dispatcher delivery with its runtime receipt time.
     Y_UNIT_TEST_F(
         ShouldRenderReceiptTimeForFirstChangedDispatcherUpdate,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager();
+
         // Deliver a new source immediately after startup.
         Runtime.AdvanceCurrentTime(TDuration::Seconds(1));
         const auto receiptTime = Runtime.GetCurrentTime().ToString();
@@ -1941,8 +1840,10 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // source.
     Y_UNIT_TEST_F(
         ShouldRenderReceiptTimeForUnchangedRuntimeDelivery,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager();
+
         // Establish a runtime source, then deliver it again with a new cookie.
         auto config =
             std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300));
@@ -1962,8 +1863,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // Render a return to the original startup values as a runtime replacement.
     Y_UNIT_TEST_F(
         ShouldRenderRuntimeForReturnToStartupValues,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager(
+            /*staticConfig=*/{},
+            /*dynamicConfig=*/MakeConfig(200));
+
         // Replace the startup source and then restore its original values.
         SendNotification(
             std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300)),
@@ -1985,8 +1890,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // Render source removal as a runtime update with an absent dynamic source.
     Y_UNIT_TEST_F(
         ShouldRenderAbsentDynamicSourceAfterRemoval,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
+
         // Remove the startup dynamic source after advancing the receipt clock.
         Runtime.AdvanceCurrentTime(TDuration::Seconds(1));
         const auto receiptTime = Runtime.GetCurrentTime().ToString();
@@ -2020,8 +1929,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // Render startup rejection without replacing the accepted startup metadata.
     Y_UNIT_TEST_F(
         ShouldRenderStartupRejectionWithAcceptedTime,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
+
         // Reject a delivery after startup without accepting another source.
         const auto startupTime = Runtime.GetCurrentTime().ToString();
         Runtime.AdvanceCurrentTime(TDuration::Seconds(1));
@@ -2055,8 +1968,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // metadata.
     Y_UNIT_TEST_F(
         ShouldRenderEscapedRuntimeRejectionWithAcceptedTime,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
+
         // Accept one source before receiving an HTML-sensitive error reason.
         SendNotification(
             std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300)),
@@ -2094,8 +2011,10 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // Clear the renderer rejection when a changed source is accepted.
     Y_UNIT_TEST_F(
         ShouldClearRendererRejectionOnAcceptedChangedConfig,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager();
+
         // Display a rejection before receiving a valid changed source.
         SendNotification(
             std::make_shared<NCloud::NProto::TError>(
@@ -2121,8 +2040,10 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // source.
     Y_UNIT_TEST_F(
         ShouldClearRendererRejectionOnAcceptedUnchangedConfig,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager();
+
         // Establish a runtime source and observe a subsequent rejected
         // delivery.
         auto config =
@@ -2151,8 +2072,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // Clear the renderer rejection when a new delivery matches startup values.
     Y_UNIT_TEST_F(
         ShouldClearRendererRejectionOnAcceptedStartupConfig,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager(
+            /*staticConfig=*/{},
+            /*dynamicConfig=*/MakeConfig(200));
+
         // Reject the initial delivery while retaining the startup
         // configuration.
         SendNotification(
@@ -2180,8 +2105,10 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // state.
     Y_UNIT_TEST_F(
         ShouldRenderPreparationFailureAlongsideStartupConfig,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager();
+
         // Fail one adapter read during preparation without subscribing
         // consumers.
         ConfigHolder->Set(
@@ -2205,8 +2132,10 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // retry.
     Y_UNIT_TEST_F(
         ShouldClearRendererPreparationFailureAfterSuccessfulRetry,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager();
+
         // Display the failure before retrying the source with another cookie.
         ConfigHolder->Set(
             MakeIntrusive<TFailingBlockstoreConfig>(ConfigHolder->Get()));
@@ -2226,8 +2155,10 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     // Render the unexpected payload type without exposing payload values.
     Y_UNIT_TEST_F(
         ShouldRenderUnexpectedPayloadErrorWithoutPayloadValues,
-        TRendererActorFixture)
+        TConfigsManagerFixture)
     {
+        StartManager();
+
         // Supply only the unexpected type and one value that must remain
         // private.
         auto payload = std::make_shared<NProto::TStorageServiceConfig>();
@@ -2246,8 +2177,10 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
 
     // Render an explicit null payload as a rejection rather than source
     // removal.
-    Y_UNIT_TEST_F(ShouldRenderNullPayloadError, TRendererActorFixture)
+    Y_UNIT_TEST_F(ShouldRenderNullPayloadError, TConfigsManagerFixture)
     {
+        StartManager();
+
         // Deliver a present private section whose message pointer is null.
         auto event =
             std::make_unique<TEvConsole::TEvConfigNotificationRequest>();
