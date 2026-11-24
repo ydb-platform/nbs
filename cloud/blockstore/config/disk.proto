@@ -414,6 +414,10 @@ message TDiskAgentConfig
     // TCP server starts. A restore holds the whole journal metadata of its
     // device in memory until it is parsed. Zero is taken as one.
     optional uint32 JournalRestoreConcurrency = 51;
+
+    // Executor threads that serve the connections of the Journalled Device
+    // TCP server. Zero means the device executor serves them. Default: 4.
+    optional uint32 JournalConnectionExecutors = 52;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -258,11 +258,13 @@ TServerBuilder::TServerBuilder(
     ILoggingServicePtr logging,
     TExecutorPtr executor,
     IDeviceManagerPtr deviceManager,
+    TVector<TExecutorPtr> connectionExecutors,
     TServerConfig serverConfig,
     TVector<TJournalledDeviceConfig> deviceConfigs)
     : Logging(std::move(logging))
     , Executor(std::move(executor))
     , DeviceManager(std::move(deviceManager))
+    , ConnectionExecutors(std::move(connectionExecutors))
     , ServerConfig(std::move(serverConfig))
     , DeviceConfigs(std::move(deviceConfigs))
 {}
@@ -293,7 +295,8 @@ IStartablePtr TServerBuilder::Build()
         ServerConfig.ListenAddress,
         std::move(Logging),
         std::move(Executor),
-        std::move(service));
+        std::move(service),
+        std::move(ConnectionExecutors));
 }
 
 }   // namespace NCloud::NJournalled

@@ -71,6 +71,7 @@ namespace {
     xxx(JournalledDeviceTcpServerListenAddress,      TString,          ""     )\
     xxx(JournalEnabled,                     bool,       false                 )\
     xxx(JournalRestoreConcurrency,          ui32,       4                     )\
+    xxx(JournalConnectionExecutors,         ui32,       4                     )\
 // BLOCKSTORE_AGENT_CONFIG
 
 // clang-format on

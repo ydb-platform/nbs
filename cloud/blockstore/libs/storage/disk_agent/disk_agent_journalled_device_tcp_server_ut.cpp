@@ -43,6 +43,8 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     std::array<NProto::TFileDeviceArgs, 4> FileDevices;
 
+    ui32 JournalConnectionExecutors = 0;
+
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
         InitFileDevices();
@@ -94,6 +96,7 @@ struct TFixture: public NUnitTest::TBaseFixture
         config.SetAcquireRequired(true);
         config.SetJournalledDeviceTcpServerListenAddress(
             "localhost:" + ToString(Port));
+        config.SetJournalConnectionExecutors(JournalConnectionExecutors);
 
         config.MutableFileDevices()->Assign(
             FileDevices.begin(),
@@ -150,6 +153,147 @@ public:
         Y_ENSURE(response.ParseFromString(payload));
 
         return response;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+void CheckServesOnlyClientsThatAcquiredDevice(TFixture& fixture)
+{
+    const TString clientId = "client-id";
+    const TString uuid = fixture.FileDevices[0].GetDeviceId();
+
+    auto env = TTestEnvBuilder(*fixture.Runtime)
+                   .With(fixture.CreateDiskAgentConfig())
+                   .Build();
+
+    TDiskAgentClient diskAgent(*fixture.Runtime);
+    diskAgent.WaitReady();
+
+    TTestClient client{fixture.Port};
+
+    ui64 requestId = 0;
+
+    const auto exchange =
+        [&](NCloud::NProto::TDeviceProtocolRequest request)
+    {
+        request.SetRequestId(++requestId);
+        client.Send(request);
+
+        fixture.Runtime->DispatchEvents(TDispatchOptions(), 10ms);
+
+        auto response = client.Receive();
+        UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
+        return response;
+    };
+
+    const auto writeLogRecord = [&](const TString& requestClientId)
+    {
+        NCloud::NProto::TDeviceProtocolRequest request;
+        auto& proto = *request.MutableWriteLogRecord();
+        proto.MutableHeaders()->SetClientId(requestClientId);
+        proto.SetDeviceUUID(uuid);
+        proto.SetLogSequenceNumber(1);
+
+        auto& group = *proto.MutablePageGroups()->Add();
+        group.SetFirstPageNo(0x10);
+        group.MutableContent()->Add()->resize(DefaultBlockSize, 'A');
+
+        auto response = exchange(std::move(request));
+        UNIT_ASSERT_EQUAL(
+            NProto::TDeviceProtocolResponse::ResponseCase::kWriteLogRecord,
+            response.GetResponseCase());
+
+        return response.GetWriteLogRecord().GetError();
+    };
+
+    const auto readPages = [&](const TString& requestClientId)
+    {
+        NCloud::NProto::TDeviceProtocolRequest request;
+        auto& proto = *request.MutableReadPages();
+        proto.MutableHeaders()->SetClientId(requestClientId);
+        proto.SetDeviceUUID(uuid);
+
+        auto& group = *proto.MutablePageGroupRefs()->Add();
+        group.SetFirstPageNo(0x10);
+        group.SetPageSize(DefaultBlockSize);
+        group.SetPageCount(1);
+
+        auto response = exchange(std::move(request));
+        UNIT_ASSERT_EQUAL(
+            NProto::TDeviceProtocolResponse::ResponseCase::kReadPages,
+            response.GetResponseCase());
+
+        return response.GetReadPages().GetError();
+    };
+
+    //
+    // Expect an error: the device is not acquired yet
+    //
+
+    for (const auto& error: {writeLogRecord(clientId), readPages(clientId)})
+    {
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_BS_INVALID_SESSION,
+            error.GetCode(),
+            FormatError(error));
+    }
+
+    //
+    // Acquire the device through the disk agent
+    //
+
+    {
+        NCloud::NProto::TDeviceProtocolRequest request;
+        auto& proto = *request.MutableAcquireDevices();
+        proto.MutableHeaders()->SetClientId(clientId);
+        *proto.MutableDeviceUUIDs()->Add() = uuid;
+
+        auto response = exchange(std::move(request));
+        UNIT_ASSERT_EQUAL(
+            NProto::TDeviceProtocolResponse::ResponseCase::kAcquireDevices,
+            response.GetResponseCase());
+
+        const auto& error = response.GetAcquireDevices().GetError();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            error.GetCode(),
+            FormatError(error));
+    }
+
+    //
+    // Expect the client that acquired the device to be served
+    //
+
+    for (const auto& error: {writeLogRecord(clientId), readPages(clientId)})
+    {
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            error.GetCode(),
+            FormatError(error));
+    }
+
+    //
+    // Expect the other clients to be rejected
+    //
+
+    for (const auto& error:
+         {writeLogRecord("other-client-id"), readPages("other-client-id")})
+    {
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_BS_INVALID_SESSION,
+            error.GetCode(),
+            FormatError(error));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TConnectionExecutorsFixture: public TFixture
+{
+    TConnectionExecutorsFixture()
+    {
+        JournalConnectionExecutors = 2;
     }
 };
 
@@ -281,120 +425,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTcpServerTest)
 
     Y_UNIT_TEST_F(ShouldServeOnlyClientsThatAcquiredDevice, TFixture)
     {
-        const TString clientId = "client-id";
-        const TString uuid = FileDevices[0].GetDeviceId();
+        CheckServesOnlyClientsThatAcquiredDevice(*this);
+    }
 
-        auto env =
-            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
-
-        TDiskAgentClient diskAgent(*Runtime);
-        diskAgent.WaitReady();
-
-        TTestClient client{Port};
-
-        ui64 requestId = 0;
-
-        const auto exchange =
-            [&](NCloud::NProto::TDeviceProtocolRequest request)
-        {
-            request.SetRequestId(++requestId);
-            client.Send(request);
-
-            Runtime->DispatchEvents(TDispatchOptions(), 10ms);
-
-            auto response = client.Receive();
-            UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
-            return response;
-        };
-
-        const auto writeLogRecord = [&](const TString& requestClientId)
-        {
-            NCloud::NProto::TDeviceProtocolRequest request;
-            auto& proto = *request.MutableWriteLogRecord();
-            proto.MutableHeaders()->SetClientId(requestClientId);
-            proto.SetDeviceUUID(uuid);
-            proto.SetLogSequenceNumber(1);
-
-            auto& group = *proto.MutablePageGroups()->Add();
-            group.SetFirstPageNo(0x10);
-            group.MutableContent()->Add()->resize(DefaultBlockSize, 'A');
-
-            auto response = exchange(std::move(request));
-            UNIT_ASSERT_EQUAL(
-                NProto::TDeviceProtocolResponse::ResponseCase::kWriteLogRecord,
-                response.GetResponseCase());
-
-            return response.GetWriteLogRecord().GetError();
-        };
-
-        const auto readPages = [&](const TString& requestClientId)
-        {
-            NCloud::NProto::TDeviceProtocolRequest request;
-            auto& proto = *request.MutableReadPages();
-            proto.MutableHeaders()->SetClientId(requestClientId);
-            proto.SetDeviceUUID(uuid);
-
-            auto& group = *proto.MutablePageGroupRefs()->Add();
-            group.SetFirstPageNo(0x10);
-            group.SetPageSize(DefaultBlockSize);
-            group.SetPageCount(1);
-
-            auto response = exchange(std::move(request));
-            UNIT_ASSERT_EQUAL(
-                NProto::TDeviceProtocolResponse::ResponseCase::kReadPages,
-                response.GetResponseCase());
-
-            return response.GetReadPages().GetError();
-        };
-
-        // The device is not acquired yet
-
-        for (const auto& error: {writeLogRecord(clientId), readPages(clientId)})
-        {
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_BS_INVALID_SESSION,
-                error.GetCode(),
-                FormatError(error));
-        }
-
-        // Acquire the device through the disk agent
-
-        {
-            NCloud::NProto::TDeviceProtocolRequest request;
-            auto& proto = *request.MutableAcquireDevices();
-            proto.MutableHeaders()->SetClientId(clientId);
-            *proto.MutableDeviceUUIDs()->Add() = uuid;
-
-            auto response = exchange(std::move(request));
-            UNIT_ASSERT_EQUAL(
-                NProto::TDeviceProtocolResponse::ResponseCase::kAcquireDevices,
-                response.GetResponseCase());
-
-            const auto& error = response.GetAcquireDevices().GetError();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                error.GetCode(),
-                FormatError(error));
-        }
-
-        for (const auto& error: {writeLogRecord(clientId), readPages(clientId)})
-        {
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                error.GetCode(),
-                FormatError(error));
-        }
-
-        // but not to the other clients
-
-        for (const auto& error:
-             {writeLogRecord("other-client-id"), readPages("other-client-id")})
-        {
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_BS_INVALID_SESSION,
-                error.GetCode(),
-                FormatError(error));
-        }
+    Y_UNIT_TEST_F(
+        ShouldServeClientsInConnectionExecutors,
+        TConnectionExecutorsFixture)
+    {
+        CheckServesOnlyClientsThatAcquiredDevice(*this);
     }
 }
 

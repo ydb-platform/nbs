@@ -266,6 +266,11 @@ void TDiskAgentActor::HandlePoisonPill(
         JournalledDeviceTcpServer->Stop();
     }
 
+    for (const auto& executor: ConnectionExecutors) {
+        executor->Stop();
+    }
+    ConnectionExecutors.clear();
+
     if (Executor) {
         Executor->Stop();
     }
