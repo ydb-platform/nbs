@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/filestore/config/rdma.pb.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/public.h>
@@ -38,10 +39,12 @@ public:
     TDiagnosticsConfigPtr DiagnosticsConfig;
     NStorage::TStorageConfigPtr StorageConfig;
     NFeatures::TFeaturesConfigPtr FeaturesConfig;
+    NProto::TRdmaConfig RdmaConfig;
 
     void InitDiagnosticsConfig();
     void InitStorageConfig();
     void InitFeaturesConfig();
+    void InitRdmaConfig();
 
     void ApplyCustomCMSConfigs(
         const NKikimrConfig::TAppConfig& config) override;

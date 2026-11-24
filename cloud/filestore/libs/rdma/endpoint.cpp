@@ -1,4 +1,4 @@
-#include "server.h"
+#include "endpoint.h"
 
 #include "protocol.h"
 #include "transport.h"
@@ -183,72 +183,36 @@ private:
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-class TFileStoreRdmaServiceTarget final: public IStartable
-{
-private:
-    const TFileStoreRdmaServerConfigPtr Config;
-    const ILoggingServicePtr Logging;
-    const IServerPtr Server;
-    const IRdmaTabletRequestHandlerPtr RequestHandler;
-
-public:
-    TFileStoreRdmaServiceTarget(
-        TFileStoreRdmaServerConfigPtr config,
-        ILoggingServicePtr logging,
-        IServerPtr server,
-        IRdmaTabletRequestHandlerPtr requestHandler)
-        : Config(std::move(config))
-        , Logging(std::move(logging))
-        , Server(std::move(server))
-        , RequestHandler(std::move(requestHandler))
-    {}
-
-    void Start() override
-    {
-        TLog Log = Logging->CreateLog("NFS_RDMA");
-        auto handler = std::make_shared<TRequestHandler>(RequestHandler, Log);
-
-        IServerEndpointPtr endpoint;
-        try {
-            endpoint = Server->StartEndpoint(
-                Config->ListenAddress,
-                Config->ListenPort,
-                handler);
-        } catch (...) {
-            handler->SetEndpoint({});
-            throw;
-        }
-
-        if (!endpoint) {
-            STORAGE_ERROR(
-                "unable to start RDMA endpoint " << Config->ListenAddress << ":"
-                                                 << Config->ListenPort);
-        }
-
-        handler->SetEndpoint(std::move(endpoint));
-    }
-
-    void Stop() override
-    {}
-};
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IStartablePtr CreateFileStoreRdmaServiceTarget(
-    TFileStoreRdmaServerConfigPtr config,
-    ILoggingServicePtr logging,
-    IServerPtr server,
+void StartRdmaTabletEndpoint(
+    IServer& server,
+    const TString& host,
+    ui32 port,
+    TLog log,
     IRdmaTabletRequestHandlerPtr requestHandler)
 {
-    return std::make_shared<TFileStoreRdmaServiceTarget>(
-        std::move(config),
-        std::move(logging),
-        std::move(server),
-        std::move(requestHandler));
+    auto handler = std::make_shared<TRequestHandler>(
+        std::move(requestHandler),
+        std::move(log));
+
+    IServerEndpointPtr endpoint;
+    try {
+        endpoint = server.StartEndpoint(host, port, handler);
+    } catch (...) {
+        handler->SetEndpoint({});
+        throw;
+    }
+
+    if (!endpoint) {
+        handler->SetEndpoint({});
+        STORAGE_THROW_SERVICE_ERROR(E_FAIL)
+            << "unable to start RDMA endpoint " << host << ":" << port;
+    }
+
+    handler->SetEndpoint(std::move(endpoint));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

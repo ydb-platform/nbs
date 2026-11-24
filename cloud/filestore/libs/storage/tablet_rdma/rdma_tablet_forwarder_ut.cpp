@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/rdma/transport.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
+#include <cloud/filestore/libs/storage/testlib/test_actor_system.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
@@ -78,7 +79,7 @@ struct TEnv
         Registry->AttachForwarder(ForwarderId);
 
         Handler = CreateActorSystemRdmaRequestHandler(
-            Runtime.GetActorSystem(NodeIdx),
+            MakeIntrusive<TTestActorSystem>(Runtime, NodeIdx),
             ForwarderId,
             Registry);
 

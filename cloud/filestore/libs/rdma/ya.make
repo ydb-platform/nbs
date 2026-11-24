@@ -1,8 +1,8 @@
 LIBRARY()
 
 SRCS(
+    endpoint.cpp
     protocol.cpp
-    server.cpp
 )
 
 PEERDIR(
@@ -16,5 +16,9 @@ PEERDIR(
 )
 
 END()
+
+RECURSE(
+    helper
+)
 
 RECURSE_FOR_TESTS(ut)

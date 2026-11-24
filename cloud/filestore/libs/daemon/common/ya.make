@@ -9,6 +9,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/filestore/config
     cloud/filestore/libs/diagnostics
     cloud/filestore/libs/diagnostics/metrics
     cloud/filestore/libs/server
@@ -17,6 +18,7 @@ PEERDIR(
     cloud/filestore/libs/storage/fastshard/impl/factory
     cloud/filestore/libs/storage/fastshard/server
     cloud/filestore/libs/storage/init
+    cloud/filestore/libs/storage/tablet_rdma
 
     cloud/storage/core/libs/aio
     cloud/storage/core/libs/common
