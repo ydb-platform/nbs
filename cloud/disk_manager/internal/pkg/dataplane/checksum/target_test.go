@@ -350,10 +350,10 @@ func TestChecksumTarget(t *testing.T) {
 			},
 		},
 		{
-			name: "chunk index is too big",
+			name: "chunk index is not less than chunk count",
 			ops: []testOp{
-				failToWrite(newDataChunk(math.MaxUint32, a), "too big"),
-				failToWrite(newZeroChunk(math.MaxUint32), "too big"),
+				failToWrite(newDataChunk(math.MaxUint32, a), "out of range"),
+				failToWrite(newZeroChunk(math.MaxUint32), "out of range"),
 				getState(0, 0, 0, 0),
 				write(math.MaxUint32-1, a), finish(math.MaxUint32, sLast),
 			},
@@ -371,7 +371,7 @@ func TestChecksumTarget(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			target := NewTarget(testCase.state)
+			target := NewTarget(testCase.state, math.MaxUint32)
 			defer target.Close(ctx)
 
 			for i, op := range testCase.ops {
@@ -379,6 +379,55 @@ func TestChecksumTarget(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A snapshot does not have chunks after its chunk count unless its chunk map
+// is damaged, so such chunks are not accepted. Zero chunks are not accepted
+// either, although they are not counted.
+func TestChecksumTargetRejectsChunksAfterChunkCount(t *testing.T) {
+	ctx := context.Background()
+
+	const chunkCount = 6
+
+	target := NewTarget(State{}, chunkCount)
+	defer target.Close(ctx)
+
+	err := target.Write(ctx, newDataChunk(chunkCount-1, 0x01))
+	require.NoError(t, err)
+	err = target.Write(ctx, newZeroChunk(chunkCount-1))
+	require.NoError(t, err)
+
+	rejectedChunks := []dataplane_common.Chunk{
+		newDataChunk(chunkCount, 0x02),
+		newZeroChunk(chunkCount),
+		newDataChunk(chunkCount+1, 0x02),
+		newDataChunk(math.MaxUint32, 0x02),
+	}
+
+	for _, chunk := range rejectedChunks {
+		err = target.Write(ctx, chunk)
+		require.Error(t, err)
+		require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+		require.ErrorContains(t, err, "out of range")
+	}
+
+	// Rejected chunks leave no trace.
+	require.Equal(
+		t,
+		State{
+			NextChunkIndex: chunkCount,
+			Checksum: computeExpectedChecksum(
+				newDataChunk(chunkCount-1, 0x01),
+			),
+		},
+		target.Finish(),
+	)
+
+	// Nothing is accepted if the snapshot has no chunks.
+	target = NewTarget(State{}, 0)
+	err = target.Write(ctx, newDataChunk(0, 0x01))
+	require.ErrorContains(t, err, "out of range")
+	require.Equal(t, State{}, target.Finish())
 }
 
 // Checksums are stored persistently, so the values that are hardcoded here
@@ -422,7 +471,7 @@ func TestChecksumTargetChecksumFormat(t *testing.T) {
 		),
 	)
 
-	target := NewTarget(State{})
+	target := NewTarget(State{}, math.MaxUint32)
 	require.Equal(t, State{}, target.GetState(0))
 
 	err := target.Write(ctx, newChunk(0, 0x01))
@@ -460,7 +509,10 @@ func TestChecksumTargetChecksumFormat(t *testing.T) {
 
 	// The state that was saved by the previous version should be continued
 	// in the same way.
-	target = NewTarget(State{NextChunkIndex: 2, Checksum: 0x7a35e775})
+	target = NewTarget(
+		State{NextChunkIndex: 2, Checksum: 0x7a35e775},
+		math.MaxUint32,
+	)
 	err = target.Write(ctx, newChunk(5, 0x03))
 	require.NoError(t, err)
 	require.Equal(
@@ -473,7 +525,7 @@ func TestChecksumTargetChecksumFormat(t *testing.T) {
 	record := []byte{0x04, 0x03, 0x02, 0x01, 0xb7, 0x28, 0xa0, 0x52}
 	require.Equal(t, uint32(0x3db1aeff), crc32.ChecksumIEEE(record))
 
-	target = NewTarget(State{})
+	target = NewTarget(State{}, math.MaxUint32)
 	err = target.Write(ctx, newChunk(0x01020304, 0x01))
 	require.NoError(t, err)
 	require.Equal(
@@ -492,7 +544,7 @@ func TestChecksumTargetChecksumDependsOnContents(t *testing.T) {
 		chunks ...dataplane_common.Chunk,
 	) uint32 {
 
-		target := NewTarget(State{})
+		target := NewTarget(State{}, math.MaxUint32)
 		defer target.Close(ctx)
 
 		for _, chunk := range chunks {
@@ -536,8 +588,33 @@ func TestChecksumTargetChecksumDependsOnContents(t *testing.T) {
 			chunks: chunks{},
 		},
 		{
+			name:   "first chunk is lost",
+			chunks: chunks{data(1, 2), zero(2), data(4, 3)},
+		},
+		{
+			name:   "first chunk is replaced with zero chunk",
+			chunks: chunks{zero(0), data(1, 2), zero(2), data(4, 3)},
+		},
+		{
+			name:   "last chunk is replaced with zero chunk",
+			chunks: chunks{data(0, 1), data(1, 2), zero(2), zero(4)},
+		},
+		{
+			name:   "only the first chunk is left",
+			chunks: chunks{data(0, 1)},
+		},
+		{
+			name:   "only the last chunk is left",
+			chunks: chunks{data(4, 3)},
+		},
+		{
 			name:   "chunk is moved",
 			chunks: chunks{data(0, 1), data(1, 2), zero(2), data(3, 3)},
+		},
+		{
+			// The same data in the same order, but in other positions.
+			name:   "all chunks are shifted",
+			chunks: chunks{data(1, 1), data(2, 2), zero(3), data(5, 3)},
 		},
 		{
 			name:   "chunks are swapped",
@@ -711,7 +788,7 @@ func (s *testSnapshot) transfer(
 ) []State {
 
 	ctx := context.Background()
-	target := NewTarget(state)
+	target := NewTarget(state, math.MaxUint32)
 	defer target.Close(ctx)
 
 	written := make(map[uint32]bool)
@@ -873,7 +950,7 @@ func (s *testSnapshot) transferConcurrently(t *testing.T) State {
 	const inflightLimit = 32
 
 	ctx := context.Background()
-	target := NewTarget(State{})
+	target := NewTarget(State{}, math.MaxUint32)
 	defer target.Close(ctx)
 
 	chunksToWrite := make(chan dataplane_common.Chunk, inflightLimit)

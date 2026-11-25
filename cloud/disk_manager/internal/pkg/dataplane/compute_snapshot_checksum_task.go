@@ -49,13 +49,31 @@ func (t *computeSnapshotChecksumTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	err := t.run(ctx, execCtx)
+
+	// The task reads the whole snapshot, so it may work for hours, and
+	// transient errors of the storage add up past the retry limit: the task
+	// would fail while the snapshot is fine. The progress is saved, so a retry
+	// costs little, and retriable errors are retried without a limit.
+	var retriableError *errors.RetriableError
+	if errors.As(err, &retriableError) && !retriableError.IgnoreRetryLimit {
+		return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
+	}
+
+	return err
+}
+
+func (t *computeSnapshotChecksumTask) run(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
 	snapshotMeta, err := t.checkSnapshotReady(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Is used only to show the progress. It is not saved: a ready snapshot
-	// does not change.
+	// It is not saved: a ready snapshot does not change.
 	chunkCount := snapshotMeta.ChunkCount
 
 	source := snapshot.NewSnapshotSource(t.request.SnapshotId, t.storage)
@@ -68,10 +86,17 @@ func (t *computeSnapshotChecksumTask) Run(
 
 	// The target does not outlive the attempt, so it is restored from the
 	// saved state.
-	target := checksum.NewTarget(checksum.State{
-		NextChunkIndex: t.state.NextChunkIndex,
-		Checksum:       t.state.Checksum,
-	})
+	// The storage returns all the chunks of the chunk map, the ones after the
+	// chunk count of the snapshot as well. A restore and a migration would
+	// read them too, but a snapshot should not have them: its chunk map is
+	// damaged, so the target fails on such a chunk and the task with it.
+	target := checksum.NewTarget(
+		checksum.State{
+			NextChunkIndex: t.state.NextChunkIndex,
+			Checksum:       t.state.Checksum,
+		},
+		chunkCount,
+	)
 	defer target.Close(ctx)
 
 	transferer := common.Transferer{
@@ -113,8 +138,6 @@ func (t *computeSnapshotChecksumTask) Run(
 	// It rarely is, so the tests of this task hardly notice if the rest is
 	// not folded: that is checked by the tests of the target, see "finish"
 	// cases of TestChecksumTarget.
-	// ChunkCount is not used as a bound, the snapshot might have chunks after
-	// it.
 	targetState := target.Finish()
 	t.state.NextChunkIndex = targetState.NextChunkIndex
 	t.state.Checksum = targetState.Checksum
@@ -201,8 +224,9 @@ func (t *computeSnapshotChecksumTask) saveProgress(
 ) error {
 
 	if chunkCount != 0 {
-		// NextChunkIndex is greater than the chunk count if the snapshot has
-		// chunks after it.
+		// The milestone might be after the chunk count for a moment if the
+		// snapshot has a chunk after it: the task is about to fail on this
+		// chunk.
 		t.state.Progress = min(
 			float64(t.state.NextChunkIndex)/float64(chunkCount),
 			1,

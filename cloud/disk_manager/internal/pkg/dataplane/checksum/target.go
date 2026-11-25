@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"hash/crc32"
-	"math"
 	"slices"
 	"sort"
 	"sync"
@@ -46,6 +45,10 @@ type targetEntry struct {
 // resumed from its NextChunkIndex.
 // Methods can be called concurrently.
 type Target struct {
+	// Chunks of the snapshot have indices less than this, other chunks are not
+	// accepted.
+	chunkCount uint32
+
 	mutex sync.Mutex
 	state State
 	// Written non-zero chunks that are not folded into the state yet, ordered
@@ -56,11 +59,15 @@ type Target struct {
 var _ common.Target = (*Target)(nil)
 
 func (t *Target) Write(ctx context.Context, chunk common.Chunk) error {
-	if chunk.Index == math.MaxUint32 {
-		// NextChunkIndex is not able to get past this chunk.
+	// A snapshot has such a chunk only if its chunk map is damaged. Zero
+	// chunks are checked as well.
+	// The check also guarantees that NextChunkIndex is able to get past any
+	// accepted chunk.
+	if chunk.Index >= t.chunkCount {
 		return errors.NewNonRetriableErrorf(
-			"chunk index %v is too big",
+			"chunk index %v is out of range %v",
 			chunk.Index,
+			t.chunkCount,
 		)
 	}
 
@@ -172,8 +179,11 @@ func (t *Target) foldBefore(chunkIndex uint32) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func NewTarget(state State) *Target {
+// |chunkCount| is the chunk count of the snapshot: writing a chunk with an
+// index that is not less than it fails.
+func NewTarget(state State, chunkCount uint32) *Target {
 	return &Target{
-		state: state,
+		chunkCount: chunkCount,
+		state:      state,
 	}
 }

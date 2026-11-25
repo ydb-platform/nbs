@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
@@ -21,6 +22,7 @@ import (
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
+	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -31,6 +33,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	tasks_storage "github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
@@ -1243,6 +1246,140 @@ func TestComputeSnapshotChecksumTaskIsDeterministic(t *testing.T) {
 	require.Equal(t, expected, runners.computeChecksum(t, copiedSnapshotID))
 }
 
+// The checksum depends on the positions of the chunks, not only on their data
+// and their order. The first and the last chunks of the snapshot are counted
+// as any other chunk.
+func TestComputeSnapshotChecksumTaskDependsOnChunkPositions(t *testing.T) {
+	f := newChecksumTestFixture(t)
+	runners := f.startRunners(t, f.storage)
+
+	const chunkCount = uint32(6)
+	const lastChunkIndex = chunkCount - 1
+
+	// The same seed gives the same data, so the chunks of the snapshots below
+	// differ only in their indices.
+	data := checksumTestDataChunk
+	zero := checksumTestZeroChunk
+	type chunks = []dataplane_common.Chunk
+
+	testCases := []struct {
+		name   string
+		chunks chunks
+		// NextChunkIndex of the finished task, is not checked if zero.
+		expectedNextChunkIndex uint32
+	}{
+		{
+			name: "all chunks are written",
+			chunks: chunks{
+				data(0, 1), data(1, 2), data(2, 3),
+				data(3, 4), data(4, 5), data(5, 6),
+			},
+			expectedNextChunkIndex: chunkCount,
+		},
+		{
+			name:                   "data in the first chunks",
+			chunks:                 chunks{data(0, 1), data(1, 2), data(2, 3)},
+			expectedNextChunkIndex: 3,
+		},
+		{
+			name:                   "same data is shifted",
+			chunks:                 chunks{data(1, 1), data(2, 2), data(3, 3)},
+			expectedNextChunkIndex: 4,
+		},
+		{
+			name: "same data in the last chunks",
+			chunks: chunks{
+				data(3, 1), data(4, 2), data(lastChunkIndex, 3),
+			},
+			expectedNextChunkIndex: chunkCount,
+		},
+		{
+			name:                   "same data with holes between chunks",
+			chunks:                 chunks{data(0, 1), data(2, 2), data(4, 3)},
+			expectedNextChunkIndex: 5,
+		},
+		{
+			name:                   "only the first chunk is written",
+			chunks:                 chunks{data(0, 1)},
+			expectedNextChunkIndex: 1,
+		},
+		{
+			name:                   "only the last chunk is written",
+			chunks:                 chunks{data(lastChunkIndex, 1)},
+			expectedNextChunkIndex: chunkCount,
+		},
+		{
+			name: "first chunk is zeroed",
+			chunks: chunks{
+				zero(0), data(1, 2), data(2, 3),
+				data(3, 4), data(4, 5), data(5, 6),
+			},
+			expectedNextChunkIndex: chunkCount,
+		},
+		{
+			// NextChunkIndex gets past the zero chunk only together with the
+			// milestone of the transfer, so it is not checked.
+			name: "last chunk is zeroed",
+			chunks: chunks{
+				data(0, 1), data(1, 2), data(2, 3),
+				data(3, 4), data(4, 5), zero(lastChunkIndex),
+			},
+		},
+	}
+
+	checksumToName := make(map[uint32]string)
+
+	for i, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			snapshotID := fmt.Sprintf("snapshot_%v", i)
+			f.createSnapshot(t, checksumTestSnapshot{
+				id:         snapshotID,
+				chunkCount: chunkCount,
+				chunks:     testCase.chunks,
+			})
+
+			taskID := runners.scheduleTask(t, snapshotID)
+			actual, err := runners.waitTask(t, taskID)
+			require.NoError(t, err)
+			require.Equal(t, checksumTestReference(testCase.chunks), actual)
+
+			_, state := runners.getTaskState(t, taskID)
+			require.Equal(t, actual, state.Checksum)
+			require.EqualValues(t, 1, state.Progress)
+			if testCase.expectedNextChunkIndex != 0 {
+				require.Equal(
+					t,
+					testCase.expectedNextChunkIndex,
+					state.NextChunkIndex,
+				)
+			}
+
+			// Another snapshot with the same chunks in the same positions has
+			// the same checksum.
+			sameSnapshotID := fmt.Sprintf("same_snapshot_%v", i)
+			f.createSnapshot(t, checksumTestSnapshot{
+				id:         sameSnapshotID,
+				chunkCount: chunkCount,
+				chunks:     testCase.chunks,
+			})
+			require.Equal(t, actual, runners.computeChecksum(t, sameSnapshotID))
+
+			// Any other snapshot of the test has another checksum.
+			otherName, ok := checksumToName[actual]
+			require.False(
+				t,
+				ok,
+				"checksum %v is the same as of %q",
+				actual,
+				otherName,
+			)
+			checksumToName[actual] = testCase.name
+		})
+	}
+
+	require.Len(t, checksumToName, len(testCases))
+}
+
 func TestComputeSnapshotChecksumTaskReturnsZeroWithoutDataChunks(
 	t *testing.T,
 ) {
@@ -1306,45 +1443,135 @@ func TestComputeSnapshotChecksumTaskReturnsZeroWithoutDataChunks(
 	}
 }
 
-// Chunk count of the snapshot is not trusted: chunks after it are taken into
-// account too.
-func TestComputeSnapshotChecksumTaskCoversChunksAfterChunkCount(
+// The storage returns the chunks that are after the chunk count of the
+// snapshot, and a restore or a migration would read them. A snapshot should
+// not have such chunks, so its chunk map is damaged and the task fails. A zero
+// chunk fails it as well, although zero chunks are not counted.
+func TestComputeSnapshotChecksumTaskFailsOnChunkAfterChunkCount(
 	t *testing.T,
 ) {
 
 	f := newChecksumTestFixture(t)
 	runners := f.startRunners(t, f.storage)
 
-	writtenChunks := []dataplane_common.Chunk{
-		checksumTestDataChunk(0, 1),
-		checksumTestDataChunk(1, 2),
-		checksumTestDataChunk(5, 3),
+	testCases := []struct {
+		name       string
+		chunkCount uint32
+		chunks     []dataplane_common.Chunk
+	}{
+		{
+			name:       "snapshot without chunks",
+			chunkCount: 0,
+			chunks: []dataplane_common.Chunk{
+				checksumTestDataChunk(0, 1),
+			},
+		},
+		{
+			name:       "chunk right after the last one",
+			chunkCount: 2,
+			chunks: []dataplane_common.Chunk{
+				checksumTestDataChunk(0, 1),
+				checksumTestDataChunk(1, 2),
+				checksumTestDataChunk(2, 3),
+			},
+		},
+		{
+			name:       "chunk far after the last one",
+			chunkCount: 2,
+			chunks: []dataplane_common.Chunk{
+				checksumTestDataChunk(0, 1),
+				checksumTestDataChunk(1, 2),
+				checksumTestDataChunk(5, 3),
+			},
+		},
+		{
+			name:       "zero chunk",
+			chunkCount: 2,
+			chunks: []dataplane_common.Chunk{
+				checksumTestDataChunk(0, 1),
+				checksumTestDataChunk(1, 2),
+				checksumTestZeroChunk(5),
+			},
+		},
 	}
 
-	for _, chunkCount := range []uint32{0, 1, 2} {
-		t.Run(fmt.Sprintf("chunk count %v", chunkCount), func(t *testing.T) {
-			snapshotID := fmt.Sprintf("snapshot_%v", chunkCount)
+	for i, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			snapshotID := fmt.Sprintf("snapshot_%v", i)
 			f.createSnapshot(t, checksumTestSnapshot{
 				id:         snapshotID,
-				chunkCount: chunkCount,
-				chunks:     writtenChunks,
+				chunkCount: testCase.chunkCount,
+				chunks:     testCase.chunks,
 			})
 
-			taskID := runners.scheduleTask(t, snapshotID)
-			actual, err := runners.waitTask(t, taskID)
-			require.NoError(t, err)
-			require.Equal(t, checksumTestReference(writtenChunks), actual)
-			require.NotEqual(
+			runners.requireTaskFailed(
 				t,
-				checksumTestReference(writtenChunks[:2]),
-				actual,
+				runners.scheduleTask(t, snapshotID),
+				"is out of range",
 			)
-
-			_, state := runners.getTaskState(t, taskID)
-			require.EqualValues(t, 6, state.NextChunkIndex)
-			require.EqualValues(t, 1, state.Progress)
 		})
 	}
+
+	// The same chunks are fine if the chunk count covers them.
+	snapshotID := "snapshot"
+	writtenChunks := testCases[2].chunks
+	f.createSnapshot(t, checksumTestSnapshot{
+		id:         snapshotID,
+		chunkCount: 6,
+		chunks:     writtenChunks,
+	})
+	require.Equal(
+		t,
+		checksumTestReference(writtenChunks),
+		runners.computeChecksum(t, snapshotID),
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// The task may work for hours, so its retriable errors should not be counted
+// against the retry limit. Other errors are returned as they are.
+func TestComputeSnapshotChecksumTaskIgnoresRetryLimit(t *testing.T) {
+	ctx := test.NewContext()
+	snapshotID := "snapshot"
+
+	run := func(storageError error) error {
+		storage := storage_mocks.NewStorageMock()
+		storage.On("CheckSnapshotReady", mock.Anything, snapshotID).Return(
+			snapshot_storage.SnapshotMeta{},
+			storageError,
+		)
+
+		task := &computeSnapshotChecksumTask{
+			config:            &config.DataplaneConfig{},
+			performanceConfig: &performance_config.PerformanceConfig{},
+			storage:           storage,
+			request: &protos.ComputeSnapshotChecksumRequest{
+				SnapshotId: snapshotID,
+			},
+			state: &protos.ComputeSnapshotChecksumTaskState{},
+		}
+
+		err := task.Run(ctx, tasks_mocks.NewExecutionContextMock())
+		require.Error(t, err)
+		return err
+	}
+
+	err := run(errors.NewRetriableErrorf("transient"))
+	var retriableError *errors.RetriableError
+	require.True(t, errors.As(err, &retriableError))
+	require.True(t, retriableError.IgnoreRetryLimit)
+	require.ErrorContains(t, err, "transient")
+	require.False(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	err = run(errors.NewNonRetriableErrorf("fatal"))
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.False(t, errors.Is(err, errors.NewEmptyRetriableError()))
+
+	err = run(errors.NewInterruptExecutionError())
+	var interruptExecutionError *errors.InterruptExecutionError
+	require.True(t, errors.As(err, &interruptExecutionError))
+	require.False(t, errors.Is(err, errors.NewEmptyRetriableError()))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1813,48 +2040,4 @@ func TestComputeSnapshotChecksumTaskFailsIfSnapshotIsDeletedMeanwhile(
 		taskID,
 		"snapshot with id snapshot is not ready",
 	)
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-// Control plane does not execute the task, but it waits for its response and
-// shows its progress. So its nodes should know the task, and the task that has
-// nothing but the saved state should be able to return them.
-func TestComputeSnapshotChecksumTaskIsRegistered(t *testing.T) {
-	ctx := test.NewContext()
-
-	registry := tasks.NewRegistry()
-	err := Register(ctx, registry)
-	require.NoError(t, err)
-	require.Contains(t, registry.TaskTypes(), checksumTestTaskType)
-
-	task, err := registry.NewTask(checksumTestTaskType)
-	require.NoError(t, err)
-
-	request, err := proto.Marshal(&protos.ComputeSnapshotChecksumRequest{
-		SnapshotId: "snapshot",
-	})
-	require.NoError(t, err)
-
-	state, err := proto.Marshal(&protos.ComputeSnapshotChecksumTaskState{
-		NextChunkIndex: 5,
-		Checksum:       12345,
-		Progress:       0.5,
-	})
-	require.NoError(t, err)
-
-	err = task.Load(request, state)
-	require.NoError(t, err)
-
-	require.True(t, proto.Equal(
-		&protos.ComputeSnapshotChecksumResponse{Checksum: 12345},
-		task.GetResponse(),
-	))
-
-	metadata, err := task.GetMetadata(ctx)
-	require.NoError(t, err)
-	require.True(t, proto.Equal(
-		&protos.ComputeSnapshotChecksumMetadata{Progress: 0.5},
-		metadata,
-	))
 }

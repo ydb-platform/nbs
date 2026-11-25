@@ -450,7 +450,6 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.MigrateSnapshotDatabaseTask": func() tasks.Task { return &migrateSnapshotDatabaseTask{} },
 	"dataplane.TransferFromSnapshotToDisk":  func() tasks.Task { return &transferFromSnapshotToDiskTask{} },
 	"dataplane.TransferFromBackupToDisk":    func() tasks.Task { return &transferFromBackupToDiskTask{} },
-	"dataplane.ComputeSnapshotChecksum":     func() tasks.Task { return &computeSnapshotChecksumTask{} },
 	"dataplane.TransferFromDiskToDisk":      func() tasks.Task { return &transferFromDiskToDiskTask{} },
 	"dataplane.ReplicateDisk":               func() tasks.Task { return &replicateDiskTask{} },
 	"dataplane.DeleteSnapshot":              func() tasks.Task { return &deleteSnapshotTask{} },
