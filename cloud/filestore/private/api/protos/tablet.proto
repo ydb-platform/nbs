@@ -1343,6 +1343,10 @@ message TRenameNodeInDestinationRequest
     // Passing the whole original request might be an overkill but it actually
     // may help with debugging.
     NProto.TRenameNodeRequest OriginalRequest = 8;
+
+    // QuotaId of the old parent. The destination rejects the move if it
+    // differs from the QuotaId of the new parent.
+    uint32 SourceParentQuotaId = 9;
 }
 
 message TRenameNodeInDestinationResponse

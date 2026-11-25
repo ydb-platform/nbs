@@ -529,6 +529,17 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
         return true;
     }
 
+    // same check as in RenameNode - the old parent lives in the source
+    // tablet, so its QuotaId comes with the request
+    if (args.Request.GetSourceParentQuotaId()
+            != args.NewParentNode->Attrs.GetQuotaId())
+    {
+        args.Error = ErrorCrossQuotaDomainRenameNotSupported(
+            args.Request.GetOriginalRequest().GetNodeId(),
+            args.NewParentNodeId);
+        return true;
+    }
+
     // TODO: AccessCheck
 
     // check if new ref exists
