@@ -73,6 +73,7 @@ TString DecompressOrFail(
     const auto layout = LayoutOrFail(blob);
 
     TString out;
+    out.ReserveAndResize(layout.GetSpanLength(firstChunk, lastChunk));
     const auto error = DecompressChunks(
         layout,
         TStringBuf(blob.Content).SubStr(
@@ -80,7 +81,7 @@ TString DecompressOrFail(
             layout.GetStoredSpanLength(firstChunk, lastChunk)),
         firstChunk,
         lastChunk,
-        out);
+        TArrayRef<char>(out.begin(), out.size()));
     UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
     return out;
 }
@@ -154,11 +155,15 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
 
         UNIT_ASSERT(IsCompressed(blob.Info));
         UNIT_ASSERT(Lz4 == blob.Info.GetCodec());
-        UNIT_ASSERT_VALUES_EQUAL(64_KB, blob.Info.GetChunkSize());
-        UNIT_ASSERT_VALUES_EQUAL(17, blob.Info.ChunkSizesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            64_KB,
+            blob.Info.GetMaxUncompressedChunkSize());
+        UNIT_ASSERT_VALUES_EQUAL(17, blob.Info.CompressedChunkSizesSize());
         // every chunk except the last one is full: the sizes are not stored
         UNIT_ASSERT_VALUES_EQUAL(0, blob.Info.UncompressedChunkSizesSize());
-        UNIT_ASSERT_VALUES_EQUAL(24_KB, blob.Info.GetLastChunkSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            24_KB,
+            blob.Info.GetLastUncompressedChunkSize());
         UNIT_ASSERT(blob.Content.size() < data.size() / 2);
 
         const auto layout = LayoutOrFail(blob);
@@ -194,7 +199,9 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
             data.substr(0, 8_KB),
             TVector<ui32>{8_KB});
         UNIT_ASSERT_VALUES_EQUAL(0, small.Info.UncompressedChunkSizesSize());
-        UNIT_ASSERT_VALUES_EQUAL(8_KB, small.Info.GetLastChunkSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            8_KB,
+            small.Info.GetLastUncompressedChunkSize());
         UNIT_ASSERT_VALUES_EQUAL(
             data.substr(0, 8_KB),
             DecompressOrFail(small, 0, 0));
@@ -215,7 +222,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
 
         const auto blob = CompressOrFail(Lz4, 16_KB, 12, data, chunkSizes);
         UNIT_ASSERT_VALUES_EQUAL(9, blob.Info.UncompressedChunkSizesSize());
-        UNIT_ASSERT(!blob.Info.HasLastChunkSize());
+        UNIT_ASSERT(!blob.Info.HasLastUncompressedChunkSize());
 
         const auto layout = LayoutOrFail(blob);
         UNIT_ASSERT_VALUES_EQUAL(9, layout.GetChunkCount());
@@ -232,7 +239,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
                 storedOffset,
                 layout.GetStoredChunkOffset(chunk));
             UNIT_ASSERT_VALUES_EQUAL(
-                blob.Info.GetChunkSizes(chunk),
+                blob.Info.GetCompressedChunkSizes(chunk),
                 layout.GetStoredChunkLength(chunk));
 
             UNIT_ASSERT_VALUES_EQUAL(chunk, layout.GetChunkIndex(offset));
@@ -245,15 +252,19 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
                 DecompressOrFail(blob, chunk, chunk));
 
             offset += chunkSizes[chunk];
-            storedOffset += blob.Info.GetChunkSizes(chunk);
+            storedOffset += blob.Info.GetCompressedChunkSizes(chunk);
         }
 
         UNIT_ASSERT_VALUES_EQUAL(
             blob.Content.size(),
             layout.GetStoredSpanLength(0, 8));
         UNIT_ASSERT_VALUES_EQUAL(
-            blob.Info.GetChunkSizes(3) + blob.Info.GetChunkSizes(4),
+            blob.Info.GetCompressedChunkSizes(3)
+                + blob.Info.GetCompressedChunkSizes(4),
             layout.GetStoredSpanLength(3, 4));
+
+        UNIT_ASSERT_VALUES_EQUAL(108_KB, layout.GetSpanLength(0, 8));
+        UNIT_ASSERT_VALUES_EQUAL(12_KB, layout.GetSpanLength(3, 4));
 
         UNIT_ASSERT_VALUES_EQUAL(data, DecompressOrFail(blob, 0, 8));
         UNIT_ASSERT_VALUES_EQUAL(
@@ -276,7 +287,9 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
             const bool raw = chunk == 4 || chunk == 5;
             UNIT_ASSERT_VALUES_EQUAL_C(raw, layout.IsRawChunk(chunk), chunk);
             if (raw) {
-                UNIT_ASSERT_VALUES_EQUAL(0, blob.Info.GetChunkSizes(chunk));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    blob.Info.GetCompressedChunkSizes(chunk));
                 UNIT_ASSERT_VALUES_EQUAL(
                     16_KB,
                     layout.GetStoredChunkLength(chunk));
@@ -287,7 +300,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
                         16_KB));
             } else {
                 UNIT_ASSERT_VALUES_EQUAL(
-                    blob.Info.GetChunkSizes(chunk),
+                    blob.Info.GetCompressedChunkSizes(chunk),
                     layout.GetStoredChunkLength(chunk));
                 UNIT_ASSERT(layout.GetStoredChunkLength(chunk) < 16_KB);
             }
@@ -526,16 +539,16 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, ValidationCode(info, blobSize));
 
         info = blob.Info;
-        info.SetChunkSize(0);
+        info.SetMaxUncompressedChunkSize(0);
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, ValidationCode(info, blobSize));
 
         info = blob.Info;
-        info.SetChunkSize(16_KB + 1);
+        info.SetMaxUncompressedChunkSize(16_KB + 1);
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, ValidationCode(info, blobSize));
 
-        // a chunk is larger than ChunkSize
+        // a chunk is larger than MaxUncompressedChunkSize
         info = blob.Info;
-        info.SetChunkSize(8_KB);
+        info.SetMaxUncompressedChunkSize(8_KB);
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, ValidationCode(info, blobSize));
 
         info = blob.Info;
@@ -543,7 +556,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, ValidationCode(info, blobSize));
 
         info = blob.Info;
-        info.SetLastChunkSize(16_KB);
+        info.SetLastUncompressedChunkSize(16_KB);
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, ValidationCode(info, blobSize));
 
         info = blob.Info;
@@ -555,23 +568,24 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, ValidationCode(info, blobSize));
 
         // a raw chunk occupies its uncompressed size
-        const ui64 otherChunks = blobSize - blob.Info.GetChunkSizes(1);
+        const ui64 otherChunks =
+            blobSize - blob.Info.GetCompressedChunkSizes(1);
         info = blob.Info;
-        info.SetChunkSizes(1, 0);
+        info.SetCompressedChunkSizes(1, 0);
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, ValidationCode(info, blobSize));
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
             ValidationCode(info, otherChunks + 8_KB));
 
         // a compressed chunk of the same size as its data is not raw
-        info.SetChunkSizes(1, 8_KB);
+        info.SetCompressedChunkSizes(1, 8_KB);
         const auto sameSize =
             TBlobChunkLayout::Create(info, otherChunks + 8_KB, BlockSize);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, sameSize.GetError().GetCode());
         UNIT_ASSERT(!sameSize.GetResult().IsRawChunk(1));
 
         // a chunk is stored larger than its data
-        info.SetChunkSizes(1, 8_KB + 1);
+        info.SetCompressedChunkSizes(1, 8_KB + 1);
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             ValidationCode(info, otherChunks + 8_KB + 1));
@@ -585,34 +599,36 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
             SplitIntoChunks(TVector<ui32>{40_KB}, 16_KB));
         const ui64 fullSize = full.Content.size();
         UNIT_ASSERT_VALUES_EQUAL(0, full.Info.UncompressedChunkSizesSize());
-        UNIT_ASSERT_VALUES_EQUAL(8_KB, full.Info.GetLastChunkSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            8_KB,
+            full.Info.GetLastUncompressedChunkSize());
         UNIT_ASSERT_VALUES_EQUAL(S_OK, ValidationCode(full.Info, fullSize));
 
         info = full.Info;
-        info.ClearLastChunkSize();
+        info.ClearLastUncompressedChunkSize();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, ValidationCode(info, fullSize));
 
         info = full.Info;
-        info.SetLastChunkSize(0);
+        info.SetLastUncompressedChunkSize(0);
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, ValidationCode(info, fullSize));
 
         info = full.Info;
-        info.SetLastChunkSize(8_KB + 1);
+        info.SetLastUncompressedChunkSize(8_KB + 1);
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, ValidationCode(info, fullSize));
 
         info = full.Info;
-        info.SetLastChunkSize(32_KB);
+        info.SetLastUncompressedChunkSize(32_KB);
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, ValidationCode(info, fullSize));
 
-        // the last chunk is stored larger than LastChunkSize
+        // the last chunk is stored larger than LastUncompressedChunkSize
         info = full.Info;
-        info.SetLastChunkSize(4_KB);
-        info.SetChunkSizes(2, 4_KB + 1);
+        info.SetLastUncompressedChunkSize(4_KB);
+        info.SetCompressedChunkSizes(2, 4_KB + 1);
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             ValidationCode(
                 info,
-                fullSize + 4_KB + 1 - full.Info.GetChunkSizes(2)));
+                fullSize + 4_KB + 1 - full.Info.GetCompressedChunkSizes(2)));
     }
 
     Y_UNIT_TEST(ShouldReportDecompressionErrors)
@@ -628,7 +644,10 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
         UNIT_ASSERT_VALUES_EQUAL(4, layout.GetChunkCount());
         UNIT_ASSERT(layout.IsRawChunk(3));
 
-        TString out;
+        TString buffer;
+        buffer.ReserveAndResize(layout.GetSpanLength(0, 3));
+        const TArrayRef<char> out(buffer.begin(), buffer.size());
+
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             DecompressChunks(layout, blob.Content, 2, 1, out).GetCode());
@@ -637,7 +656,20 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
             DecompressChunks(layout, blob.Content, 0, 4, out).GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
-            DecompressChunks(layout, blob.Content, 0, 2, out).GetCode());
+            DecompressChunks(
+                layout,
+                blob.Content,
+                0,
+                2,
+                out.first(layout.GetSpanLength(0, 2))).GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            DecompressChunks(
+                layout,
+                blob.Content,
+                0,
+                3,
+                out.first(out.size() - 1)).GetCode());
 
         auto corrupted = blob.Content;
         for (size_t i = 16; i < layout.GetStoredChunkOffset(3); i += 7) {
@@ -650,7 +682,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
             DecompressChunks(layout, blob.Content, 0, 3, out).GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(data, out);
+        UNIT_ASSERT_VALUES_EQUAL(data, buffer);
 
         const auto chunk = [&] (ui32 i) {
             return TStringBuf(blob.Content).SubStr(
@@ -658,30 +690,39 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
                 layout.GetStoredChunkLength(i));
         };
 
-        out.ReserveAndResize(16_KB);
+        const auto chunkOut = out.first(16_KB);
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
-            DecompressChunk(layout, 4, chunk(1), out.begin()).GetCode());
+            DecompressChunk(layout, 4, chunk(1), chunkOut).GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             DecompressChunk(
                 layout,
                 1,
                 chunk(1).Head(chunk(1).size() - 1),
-                out.begin()).GetCode());
+                chunkOut).GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            DecompressChunk(layout, 1, chunk(1), out.first(16_KB - 1))
+                .GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
-            DecompressChunk(layout, 1, chunk(1), out.begin()).GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(data.substr(16_KB, 16_KB), out);
+            DecompressChunk(layout, 1, chunk(1), chunkOut).GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            data.substr(16_KB, 16_KB),
+            TStringBuf(chunkOut.data(), chunkOut.size()));
 
         // chunk 2 is 8_KB: a frame which declares another length is rejected
         auto wrong = blob;
-        wrong.Info.SetChunkSizes(2, blob.Info.GetChunkSizes(1));
+        wrong.Info.SetCompressedChunkSizes(
+            2,
+            blob.Info.GetCompressedChunkSizes(1));
         wrong.Content = TString::Join(chunk(0), chunk(1), chunk(1), chunk(3));
         const auto wrongLayout = LayoutOrFail(wrong);
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
-            DecompressChunk(wrongLayout, 2, chunk(1), out.begin()).GetCode());
+            DecompressChunk(wrongLayout, 2, chunk(1), out.first(8_KB))
+                .GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             DecompressChunks(wrongLayout, wrong.Content, 0, 3, out).GetCode());
@@ -696,7 +737,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, failed.GetResult().GetUncompressedSize());
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
-            DecompressChunk(failed.GetResult(), 0, chunk(0), out.begin())
+            DecompressChunk(failed.GetResult(), 0, chunk(0), chunkOut)
                 .GetCode());
     }
 }

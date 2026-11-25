@@ -48,9 +48,15 @@ bool IsCompressed(const NProto::TBlobCompressionInfo& info);
 class TBlobChunkLayout
 {
 private:
+    // Codec of the chunks which are not raw.
     const NBlockCodecs::ICodec* Codec = nullptr;
+    // Offsets[i] is the offset of chunk i in the uncompressed blob,
+    // Offsets.back() is the uncompressed blob size.
     TVector<ui64> Offsets = {0};
+    // StoredOffsets[i] is the offset of chunk i in the stored blob,
+    // StoredOffsets.back() is the stored blob size.
     TVector<ui64> StoredOffsets = {0};
+    // RawChunks[i] is set if chunk i is stored uncompressed.
     TVector<bool> RawChunks;
 
 public:
@@ -68,6 +74,7 @@ public:
 
     ui64 GetChunkOffset(ui32 chunk) const;
     ui64 GetChunkLength(ui32 chunk) const;
+    ui64 GetSpanLength(ui32 firstChunk, ui32 lastChunk) const;
     ui64 GetStoredChunkOffset(ui32 chunk) const;
     ui64 GetStoredChunkLength(ui32 chunk) const;
     ui64 GetStoredSpanLength(ui32 firstChunk, ui32 lastChunk) const;
@@ -76,18 +83,19 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// out must have room for layout.GetChunkLength(chunk) bytes.
+// out.size() is layout.GetChunkLength(chunk).
 NProto::TError DecompressChunk(
     const TBlobChunkLayout& layout,
     ui32 chunk,
     TStringBuf stored,
-    char* out);
+    TArrayRef<char> out);
 
+// out.size() is layout.GetSpanLength(firstChunk, lastChunk).
 NProto::TError DecompressChunks(
     const TBlobChunkLayout& layout,
     TStringBuf stored,
     ui32 firstChunk,
     ui32 lastChunk,
-    TString& out);
+    TArrayRef<char> out);
 
 }   // namespace NCloud

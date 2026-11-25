@@ -5,6 +5,7 @@
 #include <util/string/builder.h>
 
 #include <cstring>
+#include <iterator>
 
 namespace NCloud {
 
@@ -19,9 +20,9 @@ ui32 GetUncompressedChunkSize(
     if (info.UncompressedChunkSizesSize()) {
         return info.GetUncompressedChunkSizes(chunk);
     }
-    return chunk + 1 == info.ChunkSizesSize()
-        ? info.GetLastChunkSize()
-        : info.GetChunkSize();
+    return chunk + 1 == info.CompressedChunkSizesSize()
+        ? info.GetLastUncompressedChunkSize()
+        : info.GetMaxUncompressedChunkSize();
 }
 
 }   // namespace
@@ -76,7 +77,7 @@ TResultOrError<TCompressedBlob> CompressChunks(
     TCompressedBlob result;
     auto& info = result.Info;
     info.SetCodec(codec);
-    info.SetChunkSize(chunkSize);
+    info.SetMaxUncompressedChunkSize(chunkSize);
 
     auto& content = result.Content;
 
@@ -106,11 +107,11 @@ TResultOrError<TCompressedBlob> CompressChunks(
                     minSavedPercent))
             {
                 content.resize(storedSize + compressedSize);
-                info.AddChunkSizes(compressedSize);
+                info.AddCompressedChunkSizes(compressedSize);
             } else {
                 memcpy(out, chunk.data(), size);
                 content.resize(storedSize + size);
-                info.AddChunkSizes(0);
+                info.AddCompressedChunkSizes(0);
             }
             offset += size;
         }
@@ -129,7 +130,7 @@ TResultOrError<TCompressedBlob> CompressChunks(
         chunkSizes.first(chunkSizes.size() - 1),
         [=] (ui32 size) { return size == chunkSize; });
     if (fullChunks) {
-        info.SetLastChunkSize(chunkSizes.back());
+        info.SetLastUncompressedChunkSize(chunkSizes.back());
     } else {
         info.MutableUncompressedChunkSizes()->Assign(
             chunkSizes.begin(),
@@ -143,7 +144,7 @@ TResultOrError<TCompressedBlob> CompressChunks(
 
 bool IsCompressed(const NProto::TBlobCompressionInfo& info)
 {
-    return info.ChunkSizesSize() != 0;
+    return info.CompressedChunkSizesSize() != 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -158,7 +159,7 @@ TResultOrError<TBlobChunkLayout> TBlobChunkLayout::Create(
         return codec.GetError();
     }
 
-    const ui32 maxChunkSize = info.GetChunkSize();
+    const ui32 maxChunkSize = info.GetMaxUncompressedChunkSize();
     if (!blockSize || !maxChunkSize || maxChunkSize % blockSize != 0) {
         return MakeError(E_ARGUMENT, TStringBuilder()
             << "invalid chunk size " << maxChunkSize << " for block size "
@@ -166,11 +167,11 @@ TResultOrError<TBlobChunkLayout> TBlobChunkLayout::Create(
     }
 
     // either the size of every chunk or only the size of the last one
-    const size_t chunkCount = info.ChunkSizesSize();
+    const size_t chunkCount = info.CompressedChunkSizesSize();
     const bool validSizes = info.UncompressedChunkSizesSize()
         ? info.UncompressedChunkSizesSize() == chunkCount
-            && !info.HasLastChunkSize()
-        : info.HasLastChunkSize();
+            && !info.HasLastUncompressedChunkSize()
+        : info.HasLastUncompressedChunkSize();
     if (!chunkCount || !validSizes) {
         return MakeError(E_ARGUMENT, TStringBuilder()
             << "invalid chunk sizes: " << chunkCount << " stored, "
@@ -185,7 +186,7 @@ TResultOrError<TBlobChunkLayout> TBlobChunkLayout::Create(
 
     for (size_t i = 0; i < chunkCount; ++i) {
         const ui32 chunkSize = GetUncompressedChunkSize(info, i);
-        const ui32 compressedSize = info.GetChunkSizes(i);
+        const ui32 compressedSize = info.GetCompressedChunkSizes(i);
 
         if (!chunkSize || chunkSize % blockSize != 0
                 || chunkSize > maxChunkSize
@@ -230,8 +231,8 @@ ui64 TBlobChunkLayout::GetUncompressedSize() const
 ui32 TBlobChunkLayout::GetChunkIndex(ui64 offset) const
 {
     Y_ABORT_UNLESS(offset < GetUncompressedSize());
-    return UpperBound(Offsets.begin(), Offsets.end(), offset)
-        - Offsets.begin() - 1;
+    const auto next = UpperBound(Offsets.begin(), Offsets.end(), offset);
+    return std::distance(Offsets.begin(), next) - 1;
 }
 
 ui64 TBlobChunkLayout::GetChunkOffset(ui32 chunk) const
@@ -242,6 +243,11 @@ ui64 TBlobChunkLayout::GetChunkOffset(ui32 chunk) const
 ui64 TBlobChunkLayout::GetChunkLength(ui32 chunk) const
 {
     return Offsets[chunk + 1] - Offsets[chunk];
+}
+
+ui64 TBlobChunkLayout::GetSpanLength(ui32 firstChunk, ui32 lastChunk) const
+{
+    return Offsets[lastChunk + 1] - Offsets[firstChunk];
 }
 
 ui64 TBlobChunkLayout::GetStoredChunkOffset(ui32 chunk) const
@@ -272,20 +278,22 @@ NProto::TError DecompressChunk(
     const TBlobChunkLayout& layout,
     ui32 chunk,
     TStringBuf stored,
-    char* out)
+    TArrayRef<char> out)
 {
     if (chunk >= layout.GetChunkCount()
-            || stored.size() != layout.GetStoredChunkLength(chunk))
+            || stored.size() != layout.GetStoredChunkLength(chunk)
+            || out.size() != layout.GetChunkLength(chunk))
     {
         return MakeError(E_ARGUMENT, TStringBuilder()
             << "invalid chunk " << chunk << " of " << layout.GetChunkCount()
-            << ", stored size " << stored.size());
+            << ", stored size " << stored.size() << ", output size "
+            << out.size());
     }
 
-    const ui64 expected = layout.GetChunkLength(chunk);
+    const ui64 expected = out.size();
 
     if (layout.IsRawChunk(chunk)) {
-        memcpy(out, stored.data(), expected);
+        memcpy(out.data(), stored.data(), expected);
         return {};
     }
 
@@ -293,11 +301,17 @@ NProto::TError DecompressChunk(
 
     try {
         const ui64 declared = codec->DecompressedLength(stored);
-        if (declared != expected || codec->Decompress(stored, out) != expected)
-        {
+        if (declared != expected) {
             return MakeError(E_ARGUMENT, TStringBuilder()
                 << "chunk " << chunk << " declares " << declared
                 << " uncompressed bytes, expected " << expected);
+        }
+
+        const ui64 decompressed = codec->Decompress(stored, out.data());
+        if (decompressed != expected) {
+            return MakeError(E_ARGUMENT, TStringBuilder()
+                << "chunk " << chunk << " decompressed to " << decompressed
+                << " bytes, expected " << expected);
         }
     } catch (...) {
         return MakeError(E_ARGUMENT, TStringBuilder()
@@ -313,23 +327,21 @@ NProto::TError DecompressChunks(
     TStringBuf stored,
     ui32 firstChunk,
     ui32 lastChunk,
-    TString& out)
+    TArrayRef<char> out)
 {
     if (firstChunk > lastChunk || lastChunk >= layout.GetChunkCount()
             || stored.size()
-                != layout.GetStoredSpanLength(firstChunk, lastChunk))
+                != layout.GetStoredSpanLength(firstChunk, lastChunk)
+            || out.size() != layout.GetSpanLength(firstChunk, lastChunk))
     {
         return MakeError(E_ARGUMENT, TStringBuilder()
             << "invalid chunk range [" << firstChunk << ", " << lastChunk
             << "] of " << layout.GetChunkCount() << " chunks, stored size "
-            << stored.size());
+            << stored.size() << ", output size " << out.size());
     }
 
     const ui64 outOffset = layout.GetChunkOffset(firstChunk);
     const ui64 storedOffset = layout.GetStoredChunkOffset(firstChunk);
-    out.ReserveAndResize(
-        layout.GetChunkOffset(lastChunk) + layout.GetChunkLength(lastChunk)
-            - outOffset);
 
     for (ui32 chunk = firstChunk; chunk <= lastChunk; ++chunk) {
         auto error = DecompressChunk(
@@ -338,7 +350,9 @@ NProto::TError DecompressChunks(
             stored.SubStr(
                 layout.GetStoredChunkOffset(chunk) - storedOffset,
                 layout.GetStoredChunkLength(chunk)),
-            out.begin() + (layout.GetChunkOffset(chunk) - outOffset));
+            out.subspan(
+                layout.GetChunkOffset(chunk) - outOffset,
+                layout.GetChunkLength(chunk)));
         if (HasError(error)) {
             return error;
         }

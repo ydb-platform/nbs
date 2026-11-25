@@ -34,18 +34,20 @@ message TBlobCompressionInfo
     ECompressionCodec Codec = 1;
 
     // Maximum uncompressed chunk size in bytes, a multiple of the block size.
-    uint32 ChunkSize = 2;
+    uint32 MaxUncompressedChunkSize = 2;
 
     // Compressed sizes of the chunks in blob order. Zero means that the chunk
     // is stored raw and occupies its uncompressed size.
-    repeated uint32 ChunkSizes = 3;
+    repeated uint32 CompressedChunkSizes = 3;
 
     // Uncompressed sizes of the chunks in blob order. Each one is a nonzero
-    // multiple of the block size and is at most ChunkSize. Empty if every
-    // chunk except the last one is ChunkSize bytes, see LastChunkSize.
+    // multiple of the block size and is at most MaxUncompressedChunkSize.
+    // Empty if every chunk except the last one is MaxUncompressedChunkSize
+    // bytes, see LastUncompressedChunkSize.
     repeated uint32 UncompressedChunkSizes = 4;
 
     // Uncompressed size of the last chunk: a nonzero multiple of the block
-    // size, at most ChunkSize. Set only if UncompressedChunkSizes is empty.
-    optional uint32 LastChunkSize = 5;
+    // size, at most MaxUncompressedChunkSize. Set only if
+    // UncompressedChunkSizes is empty.
+    optional uint32 LastUncompressedChunkSize = 5;
 }
