@@ -1,5 +1,5 @@
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group.h>
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_quorum.h>
+#include <cloud/fastshard/libs/storage_group/storage_group.h>
+#include <cloud/fastshard/libs/storage_group/storage_group_quorum.h>
 
 #include <cloud/fastshard/libs/bootstrap/core.h>
 #include <cloud/fastshard/libs/sn/iface/storage_node.h>
@@ -28,9 +28,7 @@
 
 #include <sched.h>
 
-namespace NCloud::NFileStore::NStorage::NFastShard {
-
-using namespace NCloud::NFastShard;
+namespace NCloud::NFastShard {
 
 using silk::FiberFuture;
 using silk::FiberScheduler;
@@ -329,13 +327,13 @@ void Bench(benchmark::State& state, const TOptions& options, bool write)
 }
 
 }   // namespace
-}   // namespace NCloud::NFileStore::NStorage::NFastShard
+}   // namespace NCloud::NFastShard
 
 ////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char** argv)
 {
-    using namespace NCloud::NFileStore::NStorage::NFastShard;
+    using namespace NCloud::NFastShard;
 
     // benchmark requires capturless lambda
     static TOptions Options;

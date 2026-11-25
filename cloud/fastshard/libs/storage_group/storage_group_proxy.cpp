@@ -4,9 +4,7 @@
 
 #include <util/string/builder.h>
 
-namespace NCloud::NFileStore::NStorage::NFastShard {
-
-using NCloud::NFastShard::TFastShardContext;
+namespace NCloud::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -176,4 +174,4 @@ NProto::TError TDeviceProxy::MakeProxyError(
         error.GetFlags());
 }
 
-}   // namespace NCloud::NFileStore::NStorage::NFastShard
+}   // namespace NCloud::NFastShard

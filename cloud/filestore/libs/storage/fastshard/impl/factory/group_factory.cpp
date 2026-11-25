@@ -1,12 +1,16 @@
 #include "group_factory.h"
 
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_quorum.h>
-
 #include <cloud/fastshard/libs/sn/client/client.h>
+#include <cloud/fastshard/libs/storage_group/storage_group_quorum.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
+using NCloud::NFastShard::CreateFiberTimer;
+using NCloud::NFastShard::CreateNaiveMirroredStorageGroup;
+using NCloud::NFastShard::CreateQuorumMirroredStorageGroup;
 using NCloud::NFastShard::CreateStorageNodeClient;
+using NCloud::NFastShard::TStorageDevice;
+using NCloud::NFastShard::TStorageGroupConfig;
 
 namespace {
 

@@ -17,7 +17,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using NCloud::NFileStore::NStorage::NFastShard::TStorageGroupHeader;
+using NCloud::NFastShard::TStorageGroupHeader;
 
 template <>
 void Out<TStorageGroupHeader>(
@@ -31,10 +31,7 @@ void Out<TStorageGroupHeader>(
         << ", DeviceUUIDHash: " << Hex(header.DeviceUUIDHash) << "}";
 }
 
-namespace NCloud::NFileStore::NStorage::NFastShard {
-
-using NCloud::NFastShard::TFastShardContext;
-using NCloud::NFastShard::WaitFor;
+namespace NCloud::NFastShard {
 
 namespace {
 
@@ -346,4 +343,4 @@ void RenewSession(
     SILK_WARN("sg session not renewed: %s", FormatError(error).c_str());
 }
 
-}   // namespace NCloud::NFileStore::NStorage::NFastShard
+}   // namespace NCloud::NFastShard

@@ -2,7 +2,7 @@
 
 #include <mutex>
 
-namespace NCloud::NFileStore::NStorage::NFastShard {
+namespace NCloud::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -46,4 +46,4 @@ void TInflightTracker::Stop()
     Empty.wait();
 }
 
-}   // namespace NCloud::NFileStore::NStorage::NFastShard
+}   // namespace NCloud::NFastShard

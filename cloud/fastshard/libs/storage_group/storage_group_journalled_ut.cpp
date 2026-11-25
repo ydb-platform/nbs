@@ -1,5 +1,5 @@
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group.h>
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_quorum.h>
+#include <cloud/fastshard/libs/storage_group/storage_group.h>
+#include <cloud/fastshard/libs/storage_group/storage_group_quorum.h>
 
 #include <cloud/fastshard/libs/journal/iface/journalled_device.h>
 #include <cloud/fastshard/libs/sn/testlib/fiber_test.h>
@@ -18,7 +18,6 @@
 #include <initializer_list>
 
 using namespace NCloud;
-using namespace NFileStore::NStorage::NFastShard;
 using namespace NCloud::NFastShard;
 
 namespace {

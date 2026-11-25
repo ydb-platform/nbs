@@ -7,8 +7,6 @@
 
 #include <cloud/fastshard/libs/common/context.h>
 
-#include <cloud/filestore/private/api/protos/tablet.pb.h>
-
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <silk/fibers/fiber.h>
@@ -25,15 +23,15 @@
 #include <memory>
 #include <utility>
 
-namespace NCloud::NFileStore::NStorage::NFastShard {
-
-using NCloud::NFastShard::TFastShardContext;
+namespace NCloud::NFastShard {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 QuorumMirrorGroupType = NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR;
+// Stored in TStorageGroupHeader::GroupType, i.e. it is a part of the on-disk
+// format.
+constexpr ui32 QuorumMirrorGroupType = 1;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -666,4 +664,4 @@ IStorageGroupPtr CreateQuorumMirroredStorageGroup(
         std::move(timer));
 }
 
-}   // namespace NCloud::NFileStore::NStorage::NFastShard
+}   // namespace NCloud::NFastShard

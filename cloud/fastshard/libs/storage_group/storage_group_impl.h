@@ -21,7 +21,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace NCloud::NFileStore::NStorage::NFastShard {
+namespace NCloud::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -55,7 +55,7 @@ NProto::TError ShiftToClient(TVector<TPageGroup>* pageGroups);
 // Checks the device's header, writing one to a blank device, and seeds the
 // proxy with the lsn the device has acked.
 NProto::TError ValidateDevice(
-    NCloud::NFastShard::TFastShardContext& ctx,
+    TFastShardContext& ctx,
     const TStorageGroupConfig& config,
     ui32 groupType,
     TDeviceProxy& proxy);
@@ -155,14 +155,14 @@ TResultOrError<TLoopPtr> RunLoop(
 // One device's part of the loops: an error the proxy could not retry away
 // breaks the group, a retriable one waits for the next round.
 void PushLowWatermark(
-    NCloud::NFastShard::TFastShardContext& ctx,
+    TFastShardContext& ctx,
     TGroupHealth& health,
     TDeviceProxy& proxy,
     ui64 lsn);
 
 void RenewSession(
-    NCloud::NFastShard::TFastShardContext& ctx,
+    TFastShardContext& ctx,
     TGroupHealth& health,
     TDeviceProxy& proxy);
 
-}   // namespace NCloud::NFileStore::NStorage::NFastShard
+}   // namespace NCloud::NFastShard

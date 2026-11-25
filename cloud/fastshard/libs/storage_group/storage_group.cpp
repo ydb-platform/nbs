@@ -11,9 +11,7 @@
 
 #include <atomic>
 
-namespace NCloud::NFileStore::NStorage::NFastShard {
-
-using NCloud::NFastShard::TFastShardContext;
+namespace NCloud::NFastShard {
 
 namespace {
 
@@ -253,4 +251,4 @@ ITimerPtr CreateFiberTimer()
     return std::make_shared<TFiberTimer>();
 }
 
-}   // namespace NCloud::NFileStore::NStorage::NFastShard
+}   // namespace NCloud::NFastShard

@@ -12,13 +12,13 @@
 
 #include <atomic>
 
-namespace NCloud::NFileStore::NStorage::NFastShard {
+namespace NCloud::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TInflightRequest: public TIntrusiveListItem<TInflightRequest>
 {
-    NCloud::NFastShard::TFastShardContext Ctx;
+    TFastShardContext Ctx;
 
     explicit TInflightRequest(ui64 requestId)
         : Ctx(requestId)
@@ -50,4 +50,4 @@ public:
     void Stop();
 };
 
-}   // namespace NCloud::NFileStore::NStorage::NFastShard
+}   // namespace NCloud::NFastShard
