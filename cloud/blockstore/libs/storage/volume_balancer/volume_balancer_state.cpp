@@ -42,7 +42,7 @@ void TVolumeBalancerState::TSufferStatistics::Reset()
 
 ui32 TVolumeBalancerState::TSufferStatistics::GetMeanValue() const
 {
-    return NumSamples == 0 ? SufferCountSum : SufferCountSum / NumSamples;
+    return NumSamples == 0 ? 0 : SufferCountSum / NumSamples;
 }
 
 TVolumeBalancerState::TVolumeBalancerState(
@@ -254,13 +254,34 @@ void TVolumeBalancerState::RenderConfig(TStringStream& out) const
 
 void TVolumeBalancerState::RenderState(TStringStream& out) const
 {
+    using EStatus = NPrivateProto::EBalancerOpStatus;
+    constexpr std::array<EStatus, 3> statuses = {
+        EStatus::ENABLE,
+        EStatus::DISABLE,
+        EStatus::WARNING};
+
     HTML(out) {
         TABLE_SORTABLE_CLASS("table table-condensed") {
             TABLEHEAD() {
                 TABLER() {
                     TABLED() { out << "Status"; }
                     TABLED () {
-                        out << EBalancerOpStatus_Name(Status);
+                        out << "<form method='POST' class='form-inline'>"
+                               "<input type='hidden' name='fromStatus' value='"
+                            << EBalancerOpStatus_Name(Status)
+                            << "'><select name='status' aria-label='Balancer "
+                               "status' "
+                               "class='form-control input-sm'>";
+                        for (const auto status: statuses) {
+                            out << "<option"
+                                << (status == Status ? " selected" : "") << ">"
+                                << EBalancerOpStatus_Name(status)
+                                << "</option>";
+                        }
+                        out << "</select> <button type='submit' name='action' "
+                               "value='setStatus' class='btn btn-primary "
+                               "btn-sm'>"
+                               "Apply</button></form>";
                     }
                 }
                 TABLER() {
