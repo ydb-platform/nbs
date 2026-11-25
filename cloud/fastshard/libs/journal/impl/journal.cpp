@@ -359,7 +359,9 @@ public:
         ui64 maxAllowedLsn,
         ui64 maxPageCount) const override;
 
-    void MarkRecordAsFlushed(ui64 lsn) override;
+    void MarkRecordAsFlushed(
+        ui64 lsn,
+        const TVector<TPageRangeRef>& ranges) override;
 
     [[nodiscard]] NProto::TError CleanupFlushedRecords() override;
 
@@ -1138,9 +1140,21 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
     return result;
 }
 
-void TJournal::MarkRecordAsFlushed(ui64 lsn)
+void TJournal::MarkRecordAsFlushed(
+    ui64 lsn,
+    const TVector<TPageRangeRef>& ranges)
 {
     FlushedLsnBarrier->Advance(lsn);
+
+    //
+    // Erase the flushed records from the page index right away, without
+    // waiting for the readers: a lookup skips the flushed records anyway,
+    // and the reader takes their pages from the device. The pages in the
+    // journal stay until CleanupFlushedRecords, for the readers that have
+    // looked them up already
+    //
+
+    LogPageIndex.EraseBelow(lsn + 1, ranges);
 }
 
 NProto::TError TJournal::CleanupFlushedRecords()
@@ -1160,7 +1174,7 @@ NProto::TError TJournal::CleanupFlushedRecords()
     }
 
     //
-    // Erase them from the chain and the page index, then release their pages
+    // Erase them from the chain, then release their pages.
     //
 
     // The chain holds the records by their lsn
@@ -1176,9 +1190,6 @@ NProto::TError TJournal::CleanupFlushedRecords()
                 << FormatError(recordsOrError.GetError()));
 
     auto erased = recordsOrError.ExtractResult();
-
-    // The index holds the records by their lsn
-    LogPageIndex.EraseBelow(eraseUpToLsn + 1);
 
     //
     // Fail the writers of the stranded records: nobody else answers them.
