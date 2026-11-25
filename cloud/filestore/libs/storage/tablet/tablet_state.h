@@ -1370,6 +1370,10 @@ public:
     ui32 GetMixedRangeIndex(ui64 nodeId, ui32 blockIndex, ui32 blocksCount) const;
     ui32 GetMixedRangeIndex(const TVector<TBlock>& blocks) const;
     const IBlockLocation2RangeIndex& GetRangeIdHasher() const;
+    // Blocks per range and per blob split, fixed by RangeIdHasherType.
+    ui32 GetBlockGroupSize() const;
+    // The caller guarantees that the tablet has no data.
+    void SetRangeIdHasherType(IIndexTabletDatabase& db, ui32 type);
 
     ui32 CalculateMixedIndexRangeGarbageBlockCount(ui32 rangeId) const;
 

@@ -20,6 +20,8 @@ namespace NCloud::NFileStore::NStorage {
 constexpr ui32 MaxBlocksCount = 1024;
 
 constexpr ui32 NodeGroupSize = 16;
+// Blocks per range for RangeIdHasherType 0 / 1. The actual value is per
+// tablet: use GetBlockGroupSize().
 constexpr ui32 BlockGroupSize = 64;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -263,8 +265,15 @@ struct IBlockLocation2RangeIndex
     virtual ~IBlockLocation2RangeIndex() = default;
 
     [[nodiscard]] virtual ui32 Calc(ui64 nodeId, ui32 blockIndex) const = 0;
+
+    // Number of consecutive blocks of a node that map to the same range.
+    [[nodiscard]] virtual ui32 GetBlockGroupSize() const = 0;
 };
 
+// RangeIdHasherType values are persisted, never change their meaning:
+// 0 - legacy, 1 - block locality, BlockGroupSize blocks per range;
+// 2 / 3 - block locality, 128 / 256 blocks per range.
+// Returns nullptr for an unknown type.
 IBlockLocation2RangeIndexPtr CreateRangeIdHasher(ui32 type);
 
 ////////////////////////////////////////////////////////////////////////////////
