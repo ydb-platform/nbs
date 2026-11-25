@@ -805,6 +805,61 @@ func (c *S3Client) DeleteObject(
 	return nil
 }
 
+// DeleteObjects returns the keys confirmed by S3, including on partial failure.
+func (c *S3Client) DeleteObjects(
+	ctx context.Context,
+	bucket string,
+	keys []string,
+) (deleted map[string]bool, err error) {
+
+	ctx = withComponentLoggingField(ctx)
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
+	defer cancel()
+
+	defer c.metrics.StatCall(ctx, "DeleteObjects", bucket, "")(&err)
+
+	objects := make([]*aws_s3.ObjectIdentifier, len(keys))
+	for i, key := range keys {
+		objects[i] = &aws_s3.ObjectIdentifier{Key: aws.String(key)}
+	}
+	result, err := c.s3.DeleteObjectsWithContext(ctx, &aws_s3.DeleteObjectsInput{
+		Bucket: aws.String(bucket),
+		Delete: &aws_s3.Delete{Objects: objects},
+	})
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == aws_s3.ErrCodeNoSuchBucket {
+			return nil, errors.NewNonRetriableError(err)
+		}
+		return nil, errors.NewRetriableError(err)
+	}
+
+	deleted = make(map[string]bool, len(result.Deleted))
+	for _, object := range result.Deleted {
+		deleted[aws.StringValue(object.Key)] = true
+	}
+	for _, failure := range result.Errors {
+		key := aws.StringValue(failure.Key)
+		delete(deleted, key)
+		if err == nil {
+			err = errors.NewRetriableErrorf(
+				"delete %q: %s: %s",
+				key,
+				aws.StringValue(failure.Code),
+				aws.StringValue(failure.Message),
+			)
+		}
+	}
+	if err != nil {
+		return deleted, err
+	}
+	for _, key := range keys {
+		if !deleted[key] {
+			return deleted, errors.NewRetriableErrorf("S3 did not confirm deletion of %q", key)
+		}
+	}
+	return deleted, nil
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type S3Object struct {

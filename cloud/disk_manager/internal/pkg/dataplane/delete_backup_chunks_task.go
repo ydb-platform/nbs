@@ -15,6 +15,8 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const backupChunkDeleteRequestSize = 100
+
 // Deletes the follower objects of chunks deleted from chunk_blobs. A chunk is
 // queued by its last unref; chunk IDs are never reused, so deleting the object
 // later cannot hit a live chunk.
@@ -49,14 +51,16 @@ func (t *deleteBackupChunksTask) Run(
 			return errors.NewInterruptExecutionError()
 		}
 
-		err = t.deleteChunks(ctx, chunkIDs)
-		if err != nil {
-			return err
+		deleted, deleteErr := t.deleteChunks(ctx, chunkIDs)
+		if len(deleted) != 0 {
+			err = t.storage.BackupChunksDeleted(ctx, deleted)
+			if err != nil {
+				return err
+			}
+			t.registry.Counter("backup/dequeuedChunks").Add(int64(len(deleted)))
 		}
-
-		err = t.storage.BackupChunksDeleted(ctx, chunkIDs)
-		if err != nil {
-			return err
+		if deleteErr != nil {
+			return deleteErr
 		}
 	}
 }
@@ -86,23 +90,34 @@ func (t *deleteBackupChunksTask) GetResponse() proto.Message {
 func (t *deleteBackupChunksTask) deleteChunks(
 	ctx context.Context,
 	chunkIDs []string,
-) error {
+) ([]string, error) {
 
-	group, groupCtx := errgroup.WithContext(ctx)
+	if t.inflightLimit < 1 {
+		return nil, errors.NewNonRetriableErrorf("DeleteBackupChunksInflightLimit must be positive")
+	}
+
+	// An S3 error in one request must not cancel other requests in this batch.
+	var group errgroup.Group
 	group.SetLimit(t.inflightLimit)
-
-	for _, chunkID := range chunkIDs {
-		chunkID := chunkID
+	requestCount := (len(chunkIDs) + backupChunkDeleteRequestSize - 1) / backupChunkDeleteRequestSize
+	results := make([][]string, requestCount)
+	for i := range results {
+		i := i
+		first := i * backupChunkDeleteRequestSize
+		end := min(first+backupChunkDeleteRequestSize, len(chunkIDs))
+		requestIDs := chunkIDs[first:end]
 		group.Go(func() error {
-			err := t.backupS3.DeleteChunk(groupCtx, chunkID)
-			if err != nil {
-				return err
-			}
-
-			t.registry.Counter("backup/deletedChunks").Inc()
-			return nil
+			deleted, err := t.backupS3.DeleteChunks(ctx, requestIDs)
+			t.registry.Counter("backup/deletedChunks").Add(int64(len(deleted)))
+			results[i] = deleted
+			return err
 		})
 	}
 
-	return group.Wait()
+	err := group.Wait()
+	deleted := make([]string, 0, len(chunkIDs))
+	for _, ids := range results {
+		deleted = append(deleted, ids...)
+	}
+	return deleted, err
 }
