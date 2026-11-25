@@ -398,7 +398,7 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
         UNIT_ASSERT(map.TryApplyNext(*second));
         UNIT_ASSERT(map.TryApplyNext(*third));
 
-        map.EraseBelow(31);
+        map.EraseBelow(31, {Range(0, 1000)});
 
         // everything below lsn 31 is gone, lsn 40 stays
         UNIT_ASSERT_VALUES_EQUAL("9->300x2", DescribeAll(map));
@@ -416,7 +416,7 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
         UNIT_ASSERT(map.TryApplyNext(*record));
 
         // trimming beyond the applied position drops everything applied so far
-        map.EraseBelow(31);
+        map.EraseBelow(31, {Range(0, 1000)});
         UNIT_ASSERT_VALUES_EQUAL("", DescribeAll(map));
 
         // and it does not rewind the applied position
@@ -431,11 +431,80 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
         auto record = MakePageRecord(10, 20, {{1, Range(100, 2)}});
         UNIT_ASSERT(map.TryApplyNext(*record));
 
-        map.EraseBelow(20);
+        map.EraseBelow(20, {Range(0, 1000)});
         UNIT_ASSERT_VALUES_EQUAL("1->100x2", DescribeAll(map));
 
-        map.EraseBelow(21);
+        map.EraseBelow(21, {Range(0, 1000)});
         UNIT_ASSERT_VALUES_EQUAL("", DescribeAll(map));
+    }
+
+    Y_UNIT_TEST(ShouldRemoveOnlyInsideGivenRanges)
+    {
+        TLogPageIndex map;
+        map.InitLastIndexedLsn(10);
+
+        auto first = MakePageRecord(
+            10,
+            20,
+            {{1, Range(100, 2)}, {5, Range(200, 2)}, {9, Range(300, 2)}});
+        UNIT_ASSERT(map.TryApplyNext(*first));
+
+        map.EraseBelow(21, {Range(0, 1), Range(5, 2), Range(11, 5)});
+        UNIT_ASSERT_VALUES_EQUAL("1->100x2, 9->300x2", DescribeAll(map));
+
+        // nothing to do without ranges
+        map.EraseBelow(21, {});
+        UNIT_ASSERT_VALUES_EQUAL("1->100x2, 9->300x2", DescribeAll(map));
+    }
+
+    Y_UNIT_TEST(ShouldRemoveWholeMappingThatOverlapsRange)
+    {
+        TLogPageIndex map;
+        map.InitLastIndexedLsn(10);
+
+        auto first = MakePageRecord(
+            10,
+            20,
+            {{1, Range(100, 4)}, {10, Range(200, 4)}});
+        UNIT_ASSERT(map.TryApplyNext(*first));
+
+        // the range covers the last page of one mapping and the first page
+        // of the other
+        map.EraseBelow(21, {Range(4, 7)});
+        UNIT_ASSERT_VALUES_EQUAL("", DescribeAll(map));
+    }
+
+    Y_UNIT_TEST(ShouldKeepNewerMappingsInsideErasedRange)
+    {
+        TLogPageIndex map;
+        map.InitLastIndexedLsn(10);
+
+        auto first = MakePageRecord(10, 20, {{1, Range(100, 6)}});
+        auto second = MakePageRecord(20, 30, {{3, Range(200, 2)}});
+        UNIT_ASSERT(map.TryApplyNext(*first));
+        UNIT_ASSERT(map.TryApplyNext(*second));
+
+        map.EraseBelow(21, {Range(1, 6)});
+        UNIT_ASSERT_VALUES_EQUAL("3->200x2", DescribeAll(map));
+    }
+
+    Y_UNIT_TEST(ShouldRemoveMoreMappingsThanOneLockTakes)
+    {
+        constexpr ui64 RecordCount = 200;
+
+        TLogPageIndex map;
+
+        // every second page, so that the mappings can not be merged
+        for (ui64 i = 0; i < RecordCount; ++i) {
+            auto record =
+                MakePageRecord(i, i + 1, {{2 * i, Range(1000 + i, 1)}});
+            UNIT_ASSERT(map.TryApplyNext(*record));
+        }
+
+        map.EraseBelow(RecordCount, {Range(0, 2 * RecordCount)});
+
+        // only the last record is left
+        UNIT_ASSERT_VALUES_EQUAL("398->1199x1", DescribeAll(map));
     }
 
     Y_UNIT_TEST(ShouldBeReadableThroughConstReference)
@@ -470,10 +539,28 @@ void ModelApply(TModel& model, ui64 lsn, const TVector<TPageMapping>& mappings)
     }
 }
 
-void ModelEraseBelow(TModel& model, ui64 lsn)
+// The index erases a mapping as a whole. In the model a mapping is a run of
+// pages next to each other, with the same lsn and with store pages next to
+// each other.
+void ModelEraseBelow(TModel& model, ui64 lsn, ui64 from, ui64 to)
 {
     for (auto it = model.begin(); it != model.end();) {
-        it = it->second.first < lsn ? model.erase(it) : std::next(it);
+        auto runEnd = std::next(it);
+        auto last = it;
+        while (runEnd != model.end() &&
+               runEnd->first == last->first + 1 &&
+               runEnd->second.first == last->second.first &&
+               runEnd->second.second == last->second.second + 1)
+        {
+            last = runEnd++;
+        }
+
+        const bool overlaps = it->first < to && last->first >= from;
+        if (overlaps && it->second.first < lsn) {
+            it = model.erase(it, runEnd);
+        } else {
+            it = runEnd;
+        }
     }
 }
 
@@ -584,7 +671,9 @@ Y_UNIT_TEST_SUITE(TLogPageIndexModelTest)
                             .Location = TPageRangeRef{
                                 .FirstPageNo = storeNext,
                                 .PageCount = len}});
-                    storeNext += len;
+                    // leave a gap, so that two mappings never look like
+                    // one run in the model
+                    storeNext += len + 1;
                 }
 
                 auto record = std::make_shared<TLogRecord>();
@@ -597,8 +686,10 @@ Y_UNIT_TEST_SUITE(TLogPageIndexModelTest)
 
                 if (rng.Next(6) == 0) {
                     const ui64 below = rng.Next(lsn + 20);
-                    map.EraseBelow(below);
-                    ModelEraseBelow(model, below);
+                    const ui64 len = 1 + rng.Next(PageSpace);
+                    const ui64 from = rng.Next(PageSpace);
+                    map.EraseBelow(below, {Range(from, len)});
+                    ModelEraseBelow(model, below, from, from + len);
                 }
 
                 // query random windows with random afterLsn

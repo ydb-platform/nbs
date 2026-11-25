@@ -171,6 +171,7 @@ struct TTestJournal final: public IJournal
     mutable TVector<TVector<TPageRangeRef>> ReadRequests;
     mutable TDeque<TJournalRecord> RecordsToFlush;
     TVector<ui64> FlushedLsns;
+    TVector<TVector<TPageRangeRef>> FlushedRanges;
     ui32 RestoreCount = 0;
     ui32 CleanupCount = 0;
 
@@ -301,7 +302,9 @@ struct TTestJournal final: public IJournal
         return records;
     }
 
-    void MarkRecordAsFlushed(ui64 lsn) override
+    void MarkRecordAsFlushed(
+        ui64 lsn,
+        const TVector<TPageRangeRef>& ranges) override
     {
         with_lock (Mutex) {
             while (!RecordsToFlush.empty() && RecordsToFlush.front().Lsn <= lsn)
@@ -310,6 +313,7 @@ struct TTestJournal final: public IJournal
             }
 
             FlushedLsns.push_back(lsn);
+            FlushedRanges.push_back(ranges);
         }
     }
 
@@ -343,6 +347,27 @@ struct TTestJournal final: public IJournal
         with_lock (Mutex) {
             return FlushedLsns;
         }
+    }
+
+    // "<first page>+<count>" of every range, one string per flushed batch
+    TVector<TString> GetFlushedRanges() const
+    {
+        TVector<TString> result;
+
+        with_lock (Mutex) {
+            for (const auto& ranges: FlushedRanges) {
+                TStringBuilder sb;
+                for (const auto& [firstPageNo, pageCount]: ranges) {
+                    if (sb) {
+                        sb << " ";
+                    }
+                    sb << firstPageNo << "+" << pageCount;
+                }
+                result.push_back(sb);
+            }
+        }
+
+        return result;
     }
 
     ui32 GetCleanupCount() const
@@ -1026,6 +1051,12 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(1, flushedLsns.size());
         UNIT_ASSERT_VALUES_EQUAL(3, flushedLsns[0]);
 
+        // together with the pages that went to the data store
+
+        const auto flushedRanges = Journal->GetFlushedRanges();
+        UNIT_ASSERT_VALUES_EQUAL(1, flushedRanges.size());
+        UNIT_ASSERT_VALUES_EQUAL("10+2 20+1 30+3", flushedRanges[0]);
+
         UNIT_ASSERT_GE(Journal->GetCleanupCount(), 1);
     }
 
@@ -1049,6 +1080,12 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[J10,K11,J12,L13]",
             DescribeRanges(writes[0]));
+
+        // the journal is told about the merged range
+
+        const auto flushedRanges = Journal->GetFlushedRanges();
+        UNIT_ASSERT_VALUES_EQUAL(1, flushedRanges.size());
+        UNIT_ASSERT_VALUES_EQUAL("10+4", flushedRanges[0]);
     }
 
     Y_UNIT_TEST_F(ShouldRetryFlushAfterDataStoreWriteError, TFixture)

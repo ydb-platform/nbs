@@ -6,6 +6,15 @@
 
 namespace NCloud::NJournalled {
 
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// How many entries EraseBelow removes before it lets go of the lock.
+constexpr size_t MaxErasedEntriesPerLock = 32;
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TLogPageIndex::InitLastIndexedLsn(ui64 lastIndexedLsn)
@@ -41,17 +50,58 @@ bool TLogPageIndex::TryApplyNext(const TLogRecord& record)
     return true;
 }
 
-void TLogPageIndex::EraseBelow(ui64 lsn)
+void TLogPageIndex::EraseBelow(
+    ui64 lsn,
+    const TVector<TPageRangeRef>& ranges)
+{
+    for (const auto& range: ranges) {
+        const ui64 to = range.FirstPageNo + range.PageCount;
+
+        ui64 pageNo = range.FirstPageNo;
+        while (pageNo < to) {
+            pageNo = EraseSlice(lsn, pageNo, to);
+        }
+    }
+}
+
+ui64 TLogPageIndex::EraseSlice(ui64 lsn, ui64 from, ui64 to)
 {
     std::lock_guard lock(Lock);
 
-    for (auto it = Entries.begin(); it != Entries.end();) {
-        if (it->second.Lsn < lsn) {
-            it = Entries.erase(it);
-        } else {
-            ++it;
-        }
+    //
+    // Start one entry earlier: it can begin before the range and still
+    // cover its first pages
+    //
+
+    auto it = Entries.lower_bound(from);
+    if (it != Entries.begin()) {
+        --it;
     }
+
+    size_t erasedCount = 0;
+
+    while (it != Entries.end() && it->first < to) {
+        const ui64 entryTo = it->first + it->second.Location.PageCount;
+
+        if (entryTo <= from || it->second.Lsn >= lsn) {
+            ++it;
+            continue;
+        }
+
+        //
+        // Stop here and let the caller take the lock again: the threads
+        // that wait for the lock get their turn in between
+        //
+
+        if (erasedCount == MaxErasedEntriesPerLock) {
+            return Max(from, it->first);
+        }
+
+        it = Entries.erase(it);
+        ++erasedCount;
+    }
+
+    return to;
 }
 
 ui64 TLogPageIndex::GetLastIndexedLsn() const

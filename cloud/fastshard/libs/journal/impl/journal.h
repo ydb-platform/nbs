@@ -72,7 +72,9 @@ struct IJournal
         ui64 maxAllowedLsn,
         ui64 maxPageCount) const = 0;
 
-    virtual void MarkRecordAsFlushed(ui64 lsn) = 0;
+    virtual void MarkRecordAsFlushed(
+        ui64 lsn,
+        const TVector<TPageRangeRef>& ranges) = 0;
 
     [[nodiscard]] virtual NProto::TError CleanupFlushedRecords() = 0;
 };
