@@ -18,11 +18,11 @@ from github.WorkflowRun import WorkflowRun as GithubWorkflowRun
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from .helpers import (
+    RunMetadata,
     find_current_job_url,
     get_build_preset_from_workflow_name,
     get_s3_report_uri,
     get_s3_report_url,
-    get_s3_workflow_reports_path,
     github_client_from_env,
     load_github_event,
     parse_s3_path,
@@ -279,12 +279,11 @@ def list_summary_json_uris(
     workflow_file: str,
     workflow_run: GithubWorkflowRun,
 ) -> list[str]:
-    prefix = get_s3_workflow_reports_path(
+    prefix = RunMetadata(
         repository=repo.full_name,
         workflow_file=workflow_file,
         run_id=workflow_run.id,
-        run_attempt=get_run_attempt(workflow_run),
-    )
+    ).workflow_reports_path(get_run_attempt(workflow_run))
     reports_bucket = get_reports_bucket()
     prefix_uri = get_s3_report_uri(prefix, bucket=reports_bucket)
     if not prefix_uri:
@@ -460,12 +459,11 @@ def fetch_run_summaries(
         run.id,
         get_run_attempt(run),
         get_s3_report_uri(
-            get_s3_workflow_reports_path(
+            RunMetadata(
                 repository=repo.full_name,
                 workflow_file=workflow_file,
                 run_id=run.id,
-                run_attempt=get_run_attempt(run),
-            ),
+            ).workflow_reports_path(get_run_attempt(run)),
             bucket=get_reports_bucket(),
         ),
     )

@@ -1,5 +1,6 @@
 #include "part_state.h"
 
+#include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/partition/part_schema.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
@@ -151,6 +152,150 @@ TPartitionState MakeState(
 
 Y_UNIT_TEST_SUITE(TPartitionStateTest)
 {
+    Y_UNIT_TEST(ShouldCalculateMixedCompactionPercentageFromSelectedCounters)
+    {
+        for (const auto mediaKind:
+             {NCloud::NProto::STORAGE_MEDIA_HDD,
+              NCloud::NProto::STORAGE_MEDIA_SSD})
+        {
+            for (bool extendedCounters: {false, true}) {
+                for (bool useByteCounters: {false, true}) {
+                    auto meta = DefaultConfig(1, DefaultBlockCount);
+                    meta.MutableConfig()->SetStorageMediaKind(mediaKind);
+                    auto state = MakeState(
+                        meta,
+                        {.ExtendedBlobCountersEnabled = extendedCounters,
+                         .CompactionPolicy =
+                             BuildDefaultCompactionPolicy(5, 0, true)});
+                    NProto::TStorageServiceConfig proto;
+                    proto.SetMixedBlocksCompactionByteCountersEnabled(
+                        useByteCounters);
+                    proto.SetMixedBlocksCompactionMinStoredBytesHDD(0);
+                    proto.SetMixedBlocksCompactionMinStoredBytesSSD(0);
+                    const auto percentage = [&]
+                    {
+                        return state.GetMixedBlocksCompactionPercentage(
+                            TStorageConfig(proto, {}));
+                    };
+                    UNIT_ASSERT_VALUES_EQUAL(0, percentage());
+
+                    // Deliberately disagree: map 25%, index blocks 10%,
+                    // channel blocks 30%, stored blob bytes 60%.
+                    state.GetCompactionMap().Update(
+                        0, 2, 100, 100, 0, 25, false, false);
+                    auto& stats = state.AccessStats();
+                    stats.SetMixedBlocksCount(10);
+                    stats.SetMergedBlocksCount(90);
+                    stats.SetMixedChannelBlocksCount(30);
+                    stats.SetMergedChannelBlocksCount(70);
+                    stats.MutableBlobByteCounters()->SetMixedBytesCount(60);
+                    stats.MutableBlobByteCounters()->SetMergedBytesCount(40);
+                    const ui32 expected =
+                        useByteCounters ? (extendedCounters ? 60 : 10) : 25;
+                    UNIT_ASSERT_VALUES_EQUAL(expected, percentage());
+
+                    const ui64 totalBytes = useByteCounters && extendedCounters
+                                                ? 100
+                                                : 100 * DefaultBlockSize;
+                    const auto setMinimum = [&](ui64 value)
+                    {
+                        if (mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD) {
+                            proto.SetMixedBlocksCompactionMinStoredBytesSSD(
+                                value);
+                            proto.SetMixedBlocksCompactionMinStoredBytesHDD(
+                                Max<ui64>());
+                        } else {
+                            proto.SetMixedBlocksCompactionMinStoredBytesHDD(
+                                value);
+                            proto.SetMixedBlocksCompactionMinStoredBytesSSD(
+                                Max<ui64>());
+                        }
+                    };
+                    setMinimum(totalBytes + 1);
+                    UNIT_ASSERT_VALUES_EQUAL(0, percentage());
+                    setMinimum(totalBytes);
+                    UNIT_ASSERT_VALUES_EQUAL(expected, percentage());
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldExcludeCleanupQueueFromMixedCompactionPercentage)
+    {
+        for (bool extendedCounters: {false, true}) {
+            for (bool useByteCounters: {false, true}) {
+                auto meta = DefaultConfig(1, DefaultBlockCount);
+                meta.MutableConfig()->AddExplicitChannelProfiles()->SetDataKind(
+                    static_cast<ui32>(EChannelDataKind::Mixed));
+                auto state = MakeState(
+                    meta,
+                    {.ExtendedBlobCountersEnabled = extendedCounters,
+                     .CompactionPolicy =
+                         BuildDefaultCompactionPolicy(5, 0, true)});
+                state.GetCompactionMap()
+                    .Update(0, 2, 100, 100, 0, 25, false, false);
+                auto& stats = state.AccessStats();
+                stats.SetMixedBlocksCount(60);
+                stats.SetMergedBlocksCount(40);
+                stats.SetMixedChannelBlocksCount(60);
+                stats.SetMergedChannelBlocksCount(40);
+                stats.MutableBlobByteCounters()->SetMixedBytesCount(
+                    60 * DefaultBlockSize);
+                stats.MutableBlobByteCounters()->SetMergedBytesCount(
+                    40 * DefaultBlockSize);
+
+                NProto::TStorageServiceConfig proto;
+                proto.SetMixedBlocksCompactionByteCountersEnabled(
+                    useByteCounters);
+                proto.SetMixedBlocksCompactionMinStoredBytesHDD(0);
+                const auto percentage = [&]
+                {
+                    return state.GetMixedBlocksCompactionPercentage(
+                        TStorageConfig(proto, {}));
+                };
+                auto& queue = state.GetCleanupQueue();
+                const TCleanupQueueItem mixed{
+                    {1, 1, 5, 40 * DefaultBlockSize, 0, 0},
+                    11,
+                    {}};
+                const TCleanupQueueItem merged{
+                    {1, 2, 3, 20 * DefaultBlockSize, 0, 0},
+                    12,
+                    {}};
+                UNIT_ASSERT(queue.Add(mixed));
+                UNIT_ASSERT(queue.Add(merged));
+                // Active mixed/total = (60 - 40) / (100 - 60) = 50%.
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useByteCounters ? 50 : 25,
+                    percentage());
+                proto.SetMixedBlocksCompactionMinStoredBytesHDD(
+                    40 * DefaultBlockSize + 1);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useByteCounters ? 0 : 25,
+                    percentage());
+                proto.SetMixedBlocksCompactionMinStoredBytesHDD(0);
+
+                UNIT_ASSERT(queue.Remove(mixed));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useByteCounters ? 75 : 25,
+                    percentage());
+                UNIT_ASSERT(queue.Remove(merged));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useByteCounters ? 60 : 25,
+                    percentage());
+
+                // Fully queued data must not cause division by zero.
+                UNIT_ASSERT(queue.Add(
+                    {{1, 3, 5, 60 * DefaultBlockSize, 0, 0}, 13, {}}));
+                UNIT_ASSERT(queue.Add(
+                    {{1, 4, 3, 40 * DefaultBlockSize, 0, 0}, 14, {}}));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    useByteCounters ? 0 : 25,
+                    percentage());
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldAccountForBlobCountersByChannelAndIndex)
     {
         auto meta = DefaultConfig(1, DefaultBlockCount);
@@ -584,7 +729,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.DiskSpaceScore);
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.CleanupScore);
 
-        state.AddFreshBlob(1, 400_KB, TInstant::Zero());
+        state.AddFreshBlob(1, TPartialBlobId(1, 0), 400_KB, TInstant::Zero());
         state.GetCompactionMap().Update(0, 10, 10, 10, 0, 0, false, false);
         state.GetCleanupQueue().Add({{1, 1, 4, 4_MB, 0, 0}, 111, {}});
 
@@ -601,13 +746,21 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
         // Backpressure caused by increased FreshBlobByteCount
         {
-            state.AddFreshBlob(2, 50 * 4096, TInstant::Zero());
+            state.AddFreshBlob(
+                2,
+                TPartialBlobId(2, 0),
+                50 * 4096,
+                TInstant::Zero());
 
             const auto bp = state.CalculateCurrentBackpressure();
             UNIT_ASSERT_DOUBLES_EQUAL(2.5, bp.FreshIndexScore, 1e-5);
         }
 
-        state.AddFreshBlob(3, 300 * 4_KB, TInstant::Zero());
+        state.AddFreshBlob(
+            3,
+            TPartialBlobId(3, 0),
+            300 * 4_KB,
+            TInstant::Zero());
         state.GetCompactionMap().Update(0, 30, 30, 30, 0, 0, false, false);
         state.GetCleanupQueue().Add({{1, 2, 4, 4_MB, 0, 0}, 111, {}});
 

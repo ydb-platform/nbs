@@ -136,6 +136,18 @@ struct TBlockStorePrivateEvents
         END
     };
 
+    // CELLS subrange ends are exclusive. Keep the existing event IDs.
+    enum
+    {
+        CELLS_MONITORING_START = CELLS_START,
+        CELLS_MONITORING_END = CELLS_START + 10,
+        CELLS_PROXY_START = CELLS_MONITORING_END,
+        CELLS_PROXY_END = CELLS_END
+    };
+
+    static_assert(
+        CELLS_MONITORING_END < static_cast<int>(CELLS_END));
+
     static_assert(END < EventSpaceEnd(NKikimr::TKikimrEvents::ES_BLOCKSTORE_PRIVATE),
         "END expected to be < EventSpaceEnd(NKikimr::TKikimrEvents::BLOCKSTORE)");
 };

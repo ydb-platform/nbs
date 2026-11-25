@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass
 import datetime
 from typing import Any, Callable, List, Tuple
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, urlparse, urlsplit
 
 from github import Auth as GithubAuth, Github
 from github.GithubException import GithubException
@@ -102,29 +102,125 @@ def get_s3_report_url(
     path: str,
     bucket: str | None = None,
     website_suffix: str | None = None,
+    *,
+    origin: str | None = None,
 ) -> str:
-    origin = get_s3_website_origin(bucket=bucket, website_suffix=website_suffix)
+    origin = origin or get_s3_website_origin(
+        bucket=bucket, website_suffix=website_suffix
+    )
     if not origin or not path:
         return ""
     return f"{origin}/{quote(path, safe='/')}"
 
 
-def get_s3_workflow_reports_path(
-    *,
-    repository: str,
-    workflow_file: str,
-    run_id: int | str,
-    run_attempt: int | str,
-    relative_path: str = "",
-) -> str:
-    return (
-        f"reports/{repository}/{workflow_file}/{run_id}/{run_attempt}/"
-        f"{relative_path.lstrip('/')}"
-    )
+@dataclass
+class RunMetadata:
+    repository: str = ""
+    run_id: int = 0
+    server: str = "https://github.com"
+    workflow_name: str = ""
+    workflow_file: str = ""
+    artifact_origin: str = ""
+    summary_variant: str = ""
+    trace_variant: str = ""
+
+    @classmethod
+    def from_env(cls) -> "RunMetadata":
+        summary = urlsplit(os.environ.get("S3_WEBSITE_PREFIX", ""))
+        traces = urlsplit(os.environ.get("S3_REPORTS_WEBSITE_PREFIX", ""))
+        workflow_name = os.environ.get("GITHUB_WORKFLOW", "").replace(" ", "-")
+        workflow_file = (
+            os.environ.get("GITHUB_WORKFLOW_REF", "")
+            .split("@", 1)[0]
+            .rsplit("/", 1)[-1]
+        )
+        return cls(
+            repository=os.environ.get("GITHUB_REPOSITORY", ""),
+            run_id=int(os.environ.get("GITHUB_RUN_ID", "0")),
+            server=os.environ.get("GITHUB_SERVER_URL", "https://github.com"),
+            workflow_name=workflow_name,
+            workflow_file=workflow_file or workflow_name,
+            artifact_origin=(
+                f"{summary.scheme}://{summary.netloc}" if summary.netloc else ""
+            ),
+            summary_variant=summary.path.rstrip("/").rsplit("/", 1)[-1],
+            trace_variant=traces.path.rstrip("/").rsplit("/", 1)[-1],
+        )
+
+    @property
+    def url(self) -> str:
+        if not self.repository or not self.run_id:
+            return ""
+        return f"{self.server.rstrip('/')}/{self.repository}/actions/runs/{self.run_id}"
+
+    def workflow_reports_path(self, attempt: int | str, relative_path: str = "") -> str:
+        return (
+            f"reports/{self.repository}/{self.workflow_file}/{self.run_id}/{attempt}/"
+            f"{relative_path.lstrip('/')}"
+        )
+
+    def artifact_url(self, attempt: int, path: str, *, trace: bool = False) -> str:
+        if not self.artifact_origin or not self.run_id or not self.repository:
+            return ""
+        if trace and self.trace_variant:
+            path = self.workflow_reports_path(
+                attempt, f"variants/{self.trace_variant}/{path}"
+            )
+        else:
+            path = (
+                f"{self.repository}/{self.workflow_name}/{self.run_id}/{attempt}/"
+                f"{self.summary_variant}/{path}"
+            )
+        return get_s3_report_url(path, origin=self.artifact_origin)
+
+    def update_from_env(self) -> None:
+        # Initialization happens before S3 setup. Keep its configured paths when
+        # workers publish results so finalization can reuse them without S3 setup.
+        for name, value in vars(self.from_env()).items():
+            if value:
+                setattr(self, name, value)
+
+    def job_url(self, job_id: int | None) -> str:
+        if job_id is None or not self.url:
+            return ""
+        return f"{self.url}/job/{job_id}" if job_id else self.url
+
+    def build_error_url(self, component: str, attempt: int) -> str:
+        component = f"{component}/" if component != "all" else ""
+        return self.artifact_url(attempt, f"build_logs/{component}build_errors.html")
+
+    def report_url(
+        self,
+        component: str,
+        attempt: int,
+        iteration: int,
+        filename: str,
+        *,
+        trace: bool = False,
+    ) -> str:
+        if not filename:
+            return ""
+        component = f"{component}/" if component != "all" else ""
+        path = f"{component}{iteration + 1}/{filename}"
+        if not trace or not self.trace_variant:
+            path = f"summary/{path}"
+        return self.artifact_url(attempt, path, trace=trace)
 
 
-def get_run_url() -> str:
-    return f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+def format_duration(seconds: int | str | None) -> str:
+    try:
+        seconds = int(seconds)
+    except (TypeError, ValueError):
+        return "—"
+    if seconds < 0:
+        return "—"
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    if hours:
+        return f"{hours}h {minutes}m {seconds}s"
+    if minutes:
+        return f"{minutes}m {seconds}s"
+    return f"{seconds}s"
 
 
 def job_name_matches(expected_name: str, actual_name: str) -> bool:
@@ -148,7 +244,7 @@ def find_current_job_url(
             int(os.environ["GITHUB_RUN_ID"]),
         )
     except PYGITHUB_RETRY_EXCEPTIONS:
-        return get_run_url()
+        return RunMetadata.from_env().url
 
     matching_jobs = [
         job
@@ -170,7 +266,7 @@ def find_current_job_url(
         if html_url:
             return html_url
 
-    return get_run_url()
+    return RunMetadata.from_env().url
 
 
 DEFAULT_BUILD_TARGET = (

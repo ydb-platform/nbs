@@ -2,8 +2,62 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import Mock
+
+import pytest
 
 from scripts.tests import generate_summary as gs
+
+
+@pytest.mark.parametrize(
+    "failure_point",
+    ["github_client_from_env", "pull_request_from_event", "update_pr_comment"],
+)
+def test_publication_failure_keeps_local_reports(
+    tmp_path, monkeypatch, capsys, mk_testcase, write_junit_xml, failure_point
+):
+    xml_path = tmp_path / "junit.xml"
+    write_junit_xml(xml_path, mk_testcase(failure="Test failed"))
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    monkeypatch.setenv("BUILD_FAILED_COUNT", "0")
+    for name in (
+        "github_client_from_env",
+        "load_github_event",
+        "pull_request_from_event",
+        "update_pr_comment",
+    ):
+        monkeypatch.setattr(gs, name, Mock())
+    monkeypatch.setattr(
+        gs, failure_point, Mock(side_effect=RuntimeError("unavailable"))
+    )
+
+    gs.generate_and_publish_summary(
+        [("Tests", "tests.html", str(xml_path))],
+        summary_out_path=str(tmp_path),
+        summary_out_env_path=str(tmp_path / "summary.md"),
+        summary_url_prefix="https://reports/",
+        test_exit_code=124,
+    )
+
+    assert (tmp_path / "tests.html").is_file()
+    assert (tmp_path / "summary.md").is_file()
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    assert summary["reports"][0]["counts"]["FAIL"] == 1
+    assert "::warning::PR status publication failed" in capsys.readouterr().out
+    if failure_point == "update_pr_comment":
+        assert gs.update_pr_comment.call_args.kwargs["test_exit_code"] == 124
+
+
+def test_local_report_failure_is_not_suppressed(tmp_path, mk_testcase, write_junit_xml):
+    xml_path = tmp_path / "junit.xml"
+    write_junit_xml(xml_path, mk_testcase())
+    with pytest.raises(IsADirectoryError):
+        gs.generate_and_publish_summary(
+            [("Tests", "tests.html", str(xml_path))],
+            summary_out_path=str(tmp_path),
+            summary_out_env_path=str(tmp_path),
+            summary_url_prefix="https://reports/",
+        )
 
 
 def test_from_junit_marks_fail_build_timeout_and_logs_directory(mk_testcase) -> None:
@@ -299,6 +353,12 @@ def test_configure_failure_links_build_report_with_passing_tests(
 
 def test_update_pr_comment_creates_new_comment(monkeypatch) -> None:
     monkeypatch.setenv("BUILD_FAILED_COUNT", "0")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    monkeypatch.setenv("GITHUB_WORKFLOW", "Check")
+    monkeypatch.setenv(
+        "S3_WEBSITE_PREFIX", "https://summary/org/repo/Check/123/1/x86-64"
+    )
 
     class FakeHead:
         sha = "deadbeef"
@@ -342,8 +402,13 @@ def test_update_pr_comment_creates_new_comment(monkeypatch) -> None:
     ) in body
     assert "This is a simulation, not a real result" in body
     assert "<!-- workload-status -->" in body
-    assert "Workload for **linux** is not finished yet" in body
-    assert "all tests PASSED for commit deadbeef." in body
+    assert "<!-- linux: in_progress -->" in body
+    assert "<table>" in body
+    assert "commit deadbeef" in body
+    assert (
+        'href="https://summary/org/repo/Check/123/1/x86-64/summary/1/ya-test.html#PASS"'
+        in body
+    )
 
 
 def test_update_pr_comment_updates_existing_comment() -> None:
@@ -418,7 +483,7 @@ def test_update_pr_comment_updates_existing_comment() -> None:
     assert len(pr.created) == 0
     assert len(existing.edits) == 1
     assert "All workloads for **linux** have completed." not in existing.body
-    assert "Workload for **linux** is not finished yet" in existing.body
+    assert "<!-- linux: in_progress -->" in existing.body
     assert "old text" in existing.body
     assert "some tests FAILED for commit abc123." in existing.body
     assert gs.get_comment_revision(existing.body) == 4
@@ -568,7 +633,7 @@ def test_update_pr_comment_workload_status_only_preserves_existing_body() -> Non
 
     assert len(existing.edits) == 1
     assert "Workload for **linux** is not finished yet" not in existing.body
-    assert "All workloads for **linux** have completed." in existing.body
+    assert "<!-- linux: completed -->" in existing.body
     assert gs.get_comment_revision(existing.body) == 8
     assert (
         ":green_circle: **linux**: all tests PASSED for commit abc123." in existing.body
@@ -660,16 +725,19 @@ def test_initialize_pr_comment_creates_workload_checks_block() -> None:
 
     assert len(pr.created) == 1
     body = pr.created[0]
-    assert gs.WORKLOAD_CHECKS_START in body
-    assert "Planned checks for **linux**." in body
+    assert gs.Plaque.from_comment(body) is not None
+    assert "<th>Status</th>" in body
     assert "blockstore" in body
-    assert "tasks + storage" in body
+    assert "tasks,<br />storage" in body
 
 
 def test_update_pr_comment_workload_check_creates_minimal_comment_when_missing(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(gs, "WORKLOAD_COMMENT_EDIT_VERIFY_DELAY_SECONDS", 0)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
+    monkeypatch.setenv("GITHUB_RUN_ID", "1")
+    monkeypatch.setenv("GITHUB_SERVER_URL", "https://github.example")
 
     class FakeHead:
         sha = "abc123"
@@ -706,15 +774,15 @@ def test_update_pr_comment_workload_check_creates_minimal_comment_when_missing(
         component="blockstore",
         is_dry_run=False,
         workload_check_status="completed",
-        job_url="https://github.example/job/123",
+        job_url="https://github.example/org/repo/actions/runs/1/job/123",
     )
 
     assert len(pr.comments) == 1
     body = pr.comments[0].body
-    assert gs.WORKLOAD_CHECKS_START in body
-    assert "Planned checks for **linux**." in body
+    assert gs.Plaque.from_comment(body) is not None
+    assert "<th>Status</th>" in body
     assert gs.get_workload_check_status(body, "blockstore") == "completed"
-    assert "https://github.example/job/123" in body
+    assert "https://github.example/org/repo/actions/runs/1/job/123" in body
     assert gs.get_comment_revision(body) == 1
 
 
@@ -841,7 +909,7 @@ def test_update_pr_comment_workload_check_does_not_downgrade_workload_status(
         workload_check_status="completed",
     )
 
-    assert "All workloads for **linux** have completed." in existing.body
+    assert "<!-- linux: completed -->" in existing.body
     assert "is not finished yet" not in existing.body
     assert gs.get_workload_check_status(existing.body, "blockstore") == "completed"
 

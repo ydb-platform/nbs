@@ -84,6 +84,20 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TKeepCacheWatcher final
+    : grpc_tls_certificate_distributor::TlsCertificatesWatcherInterface
+{
+    void OnCertificatesChanged(
+        y_absl::optional<y_absl::string_view>,
+        y_absl::optional<PemKeyCertPairList>) override
+    {}
+
+    void OnError(grpc_error_handle, grpc_error_handle) override
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TGrpcTlsCertificateProvider final
     : public grpc_tls_certificate_provider
 {
@@ -94,7 +108,14 @@ public:
     TGrpcTlsCertificateProvider()
         : Distributor(
             grpc_core::MakeRefCounted<grpc_tls_certificate_distributor>())
-    {}
+    {
+        // Keep root and identity material cached across connection teardown.
+        // gRPC drops the cache when the last TLS watcher disappears.
+        Distributor->WatchTlsCertificates(
+            std::make_unique<TKeepCacheWatcher>(),
+            "",
+            "");
+    }
 
     void PublishCerts(
         const TMaybe<TString>& rootCertificate,

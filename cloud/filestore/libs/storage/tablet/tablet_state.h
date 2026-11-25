@@ -26,7 +26,6 @@
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/model/read_ahead.h>
 #include <cloud/filestore/libs/storage/tablet/model/throttler_logger.h>
-#include <cloud/filestore/libs/storage/tablet/model/truncate_queue.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
@@ -236,7 +235,6 @@ private:
     NCloud::NProto::TTabletStorageInfo TabletStorageInfo;
     ui64 MinDeletionMarkersCountSinceTabletStart = 0;
 
-    /*const*/ ui32 TruncateBlocksThreshold = 0;
     /*const*/ ui32 SessionHistoryEntryCount = 0;
     /*const*/ double ChannelMinFreeSpace = 0;
     /*const*/ double ChannelFreeSpaceThreshold = 1;
@@ -352,6 +350,13 @@ public:
     void SetFrozen(IIndexTabletDatabase& db, bool frozen);
 
     void SetCompressNodeRef(IIndexTabletDatabase& db, bool compressNodeRef);
+    void SetGuestPosixAclEnabled(
+        IIndexTabletDatabase& db,
+        bool guestPosixAclEnabled);
+
+    void SetShardCreationState(
+        IIndexTabletDatabase& db,
+        const NProtoPrivate::TFileSystemShardCreationState& state);
 
 private:
     //
@@ -468,6 +473,11 @@ public:
     bool GetCompressNodeRef() const
     {
         return CompressNodeRef || FileSystem.GetCompressNodeRef();
+    }
+
+    bool GetGuestPosixAclEnabled() const
+    {
+        return FileSystem.GetGuestPosixAclEnabled();
     }
 
     /**
@@ -923,8 +933,7 @@ public:
         ui64 seqNo,
         bool readOnly,
         const NActors::TActorId& owner,
-        const NProto::TSessionOptions& sessionOptions,
-        const NProto::TPersistentSessionOptions& persistentSessionOptions);
+        const NProto::TSessionOptions& sessionOptions);
 
     void RemoveSession(
         IIndexTabletDatabase& db,
@@ -947,6 +956,7 @@ public:
 
     TVector<TSession*> GetTimedOutSessions(TInstant now) const;
     TVector<NProtoPrivate::TTabletSessionInfo> DescribeSessions() const;
+    bool HasSessions() const;
 
     const TSessionHistoryList& GetSessionHistoryList() const;
     void AddSessionHistoryEntry(
@@ -1760,16 +1770,6 @@ public:
     //
 
 public:
-    void EnqueueTruncateOp(ui64 nodeId, TByteRange range);
-    TTruncateQueue::TEntry DequeueTruncateOp();
-    bool HasPendingTruncateOps() const;
-
-    void CompleteTruncateOp(ui64 nodeId);
-    bool HasActiveTruncateOp(ui64 nodeId) const;
-
-    void AddTruncate(IIndexTabletDatabase& db, ui64 nodeId, TByteRange range);
-    void DeleteTruncate(IIndexTabletDatabase& db, ui64 nodeId);
-
     [[nodiscard]] NProto::TError Truncate(
         IIndexTabletDatabase& db,
         ui64 nodeId,

@@ -13,6 +13,7 @@ import (
 	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	client_metrics_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/protos"
 	protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
@@ -300,9 +301,23 @@ func TestClientGetFileSystemTopologySuccess(t *testing.T) {
 				StrictFileSystemSizeEnforcementEnabled: true,
 				MaxShardCount:                          10,
 				ForceDirectoryCreationInShards:         true,
-				FileShardFileSystemIds:                 []string{"fs-1_file_s1"},
-				CompressNodeRef:                        true,
-				MainFileSystemId:                       "fs-1",
+				ShardTopology: &private_protos.TShardTopology{
+					Shards: []*private_protos.TShardTopology_TShardInfo{
+						{
+							Type:     private_protos.TShardTopology_E_FASTSHARD,
+							RoleMask: common.ProtoFlag(private_protos.TShardTopology_E_FILE),
+							ShardId:  "fs-1_s1",
+							TabletId: 1,
+						},
+						{
+							Type:     private_protos.TShardTopology_E_ORDINARY,
+							RoleMask: common.ProtoFlag(private_protos.TShardTopology_E_DIRECTORY),
+							ShardId:  "fs-1_s2",
+						},
+					},
+				},
+				CompressNodeRef:  true,
+				MainFileSystemId: "fs-1",
 			},
 		),
 		nil,
@@ -312,13 +327,25 @@ func TestClientGetFileSystemTopologySuccess(t *testing.T) {
 	topology, err := c.GetFileSystemTopology(ctx, "fs-1")
 	require.NoError(t, err)
 	require.Equal(t, nfs.FilesystemTopology{
-		ShardFileSystemIDs:                     []string{"fs-1_s1", "fs-1_s2"},
+		ShardFileSystemIDs: []string{"fs-1_s1", "fs-1_s2"},
+		ShardTopology: []nfs.ShardInfo{
+			{
+				Type:     uint32(private_protos.TShardTopology_E_FASTSHARD),
+				RoleMask: common.ProtoFlag(private_protos.TShardTopology_E_FILE),
+				ShardID:  "fs-1_s1",
+				TabletID: 1,
+			},
+			{
+				Type:     uint32(private_protos.TShardTopology_E_ORDINARY),
+				RoleMask: common.ProtoFlag(private_protos.TShardTopology_E_DIRECTORY),
+				ShardID:  "fs-1_s2",
+			},
+		},
 		ShardNo:                                1,
 		DirectoryCreationInShardsEnabled:       true,
 		StrictFileSystemSizeEnforcementEnabled: true,
 		MaxShardCount:                          10,
 		ForceDirectoryCreationInShards:         true,
-		FileShardFileSystemIDs:                 []string{"fs-1_file_s1"},
 		CompressNodeRef:                        true,
 		MainFileSystemID:                       "fs-1",
 	}, topology)

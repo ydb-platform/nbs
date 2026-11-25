@@ -175,7 +175,7 @@ class Qemu:
         cmd += [
             "-device",
             "vhost-user-fs-pci,chardev=vhost0,id=vhost-user-fs0,tag=fs0,"
-            f"num-request-queues={self.num_request_queues},queue-size=512{self.virtiofs_migration_option}",
+            f"num-request-queues={self.num_request_queues},queue-size=1024{self.virtiofs_migration_option}",
         ]
         return cmd
 
@@ -314,7 +314,7 @@ class Qemu:
                 cmd += [
                     "-device",
                     f"vhost-user-fs-pci,chardev={tag},id=vhost-user-{tag},tag={tag},"
-                    f"queue-size=512{self.virtiofs_migration_option}",
+                    f"queue-size=1024{self.virtiofs_migration_option}",
                 ]
             else:
                 cmd += ["-virtfs",

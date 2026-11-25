@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/cells/impl/mon.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/config/blockstore_config.h>
+#include <cloud/blockstore/libs/config/blockstore_config_provider_private.h>
 #include <cloud/blockstore/libs/config/helpers.h>
 #include <cloud/blockstore/libs/config/opaque_config_parser.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
@@ -50,6 +51,7 @@
 #include <cloud/blockstore/libs/service_local/storage_null.h>
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/blockstore/libs/spdk/iface/env_stub.h>
+#include <cloud/blockstore/libs/storage/api/cell_proxy.h>
 #include <cloud/blockstore/libs/storage/core/block_digest_factory.h>
 #include <cloud/blockstore/libs/storage/core/manually_preempted_volumes.h>
 #include <cloud/blockstore/libs/storage/core/partition_budget_manager.h>
@@ -692,6 +694,8 @@ void TBootstrapYdb::InitKikimrService()
             ConfigInitializer->StorageConfigControls,
             std::move(extraParameters));
 
+        StartupBlockstoreConfig->GetStorageConfig()->UpdateControlsDefaults();
+
         STORAGE_INFO(
             (cmsBlockstoreConfig.ByteSizeLong()
                  ? "Applied startup PrivateDatabaseConfig"
@@ -700,10 +704,14 @@ void TBootstrapYdb::InitKikimrService()
     } else {
         StartupBlockstoreConfig = MakeBlockstoreConfig(
             startupBlockstoreConfigProto,
-            {},
+            /*dynamicConfig=*/{},
             *ConfigInitializer->StorageConfig,
             *ConfigInitializer->DiskAgentConfig);
     }
+
+    auto configHolder =
+        InitializeBlockstoreConfigProvider(StartupBlockstoreConfig);
+    BlockstoreConfigGetter = configHolder;
 
     // Bind common consumers to the same snapshot as YDB services and actors.
     SetBootstrapConfig({
@@ -996,6 +1004,7 @@ void TBootstrapYdb::InitKikimrService()
     args.CmsBlockstoreConfig = std::move(cmsBlockstoreConfig);
     args.StartupBlockstoreConfigProto = std::move(startupBlockstoreConfigProto);
     args.StartupBlockstoreConfig = StartupBlockstoreConfig;
+    args.ConfigHolder = std::move(configHolder);
     args.AsyncLogger = AsyncLogger;
     args.StatsAggregator = StatsAggregator;
     args.StatsUploader = StatsUploader;
@@ -1183,6 +1192,23 @@ void TBootstrapYdb::SetupCellManager()
     } else {
         CellManager = NCells::CreateCellManagerStub(Service);
     }
+}
+
+void TBootstrapYdb::SetupCellProxy()
+{
+    if (!ActorSystem) {
+        STORAGE_INFO(
+            "CellProxy initialization skipped: ActorSystem is not available");
+        return;
+    }
+
+    auto clientConfig = std::make_shared<NClient::TClientAppConfig>(
+        BootstrapConfig->CellsConfig->GetGrpcClientConfig());
+    ActorSystem->Send(
+        NStorage::MakeCellProxyServiceId(),
+        std::make_unique<NStorage::TEvCellProxy::TEvInitializeRequest>(
+            CellManager,
+            std::move(clientConfig)));
 }
 
 void TBootstrapYdb::SetupCellMonitoringActor()

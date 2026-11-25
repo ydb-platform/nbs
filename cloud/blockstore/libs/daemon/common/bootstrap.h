@@ -45,14 +45,14 @@ namespace NCloud::NBlockStore::NServer {
 // Prepare all inputs before installing the bundle.
 struct TBootstrapConfig
 {
-    TServerAppConfigConstPtr ServerConfig;
-    NClient::TClientAppConfigConstPtr EndpointConfig;
-    TDiagnosticsConfigConstPtr DiagnosticsConfig;
-    NStorage::TDiskAgentConfigConstPtr DiskAgentConfig;
-    NRdma::TRdmaConfigConstPtr RdmaConfig;
-    NCells::TCellsConfigConstPtr CellsConfig;
-    NSpdk::TSpdkEnvConfigConstPtr SpdkEnvConfig;
-    NDiscovery::TDiscoveryConfigConstPtr DiscoveryConfig;
+    TServerAppConfigPtr ServerConfig;
+    NClient::TClientAppConfigPtr EndpointConfig;
+    TDiagnosticsConfigPtr DiagnosticsConfig;
+    NStorage::TDiskAgentConfigPtr DiskAgentConfig;
+    NRdma::TRdmaConfigPtr RdmaConfig;
+    NCells::TCellsConfigPtr CellsConfig;
+    NSpdk::TSpdkEnvConfigPtr SpdkEnvConfig;
+    NDiscovery::TDiscoveryConfigPtr DiscoveryConfig;
 
     // RDMA actor selection for service initialization.
     bool UseNonreplicatedRdmaActor = false;
@@ -180,6 +180,7 @@ protected:
     void InitLWTrace(const TString& serviceNameForExporter);
 
     virtual void SetupCellManager() = 0;
+    virtual void SetupCellProxy() = 0;
     virtual void SetupCellMonitoringActor() = 0;
     virtual IBlockStorePtr WrapServiceForInterCellForward(
         IBlockStorePtr authorized,

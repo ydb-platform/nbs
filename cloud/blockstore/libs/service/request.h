@@ -117,6 +117,11 @@ using TWriteBlocksLocalResponse = TWriteBlocksResponse;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Copies protobuf fields except Blocks.
+void CopyWriteRequestMetadata(
+    const TWriteBlocksRequest& source,
+    TWriteBlocksRequest& destination);
+
 TWriteBlocksLocalRequest CopyRequest(const TWriteBlocksLocalRequest& request);
 
 TWriteBlocksRequest CopyRequest(const TWriteBlocksRequest& request);

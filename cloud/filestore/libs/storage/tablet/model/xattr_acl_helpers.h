@@ -17,13 +17,13 @@ enum class EXattrAclType {
     HeaderOnly
 };
 
-struct TChildXattrAcl {
+struct TNodeXattrAcl {
     TString Acl;
     ui32 Mode = 0;
     EXattrAclType Type = EXattrAclType::Undefined;
 };
 
-TResultOrError<TChildXattrAcl> GetChildXattrAcl(
+TResultOrError<TNodeXattrAcl> GetChildXattrAcl(
     const TString& xattrAcl,
     const ui32 mode);
 

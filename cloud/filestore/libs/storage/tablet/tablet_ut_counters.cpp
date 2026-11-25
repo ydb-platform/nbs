@@ -85,34 +85,34 @@ struct TEnv
     : public NUnitTest::TBaseFixture
 {
     NKikimr::NSharedCache::TSharedCacheConfig SharedCacheConfig;
-    TTestEnv Env;
+    std::unique_ptr<TTestEnv> Env;
     std::unique_ptr<TIndexTabletClient> Tablet;
 
     TTestRegistryVisitor Visitor;
 
-    TEnv()
-        : Env(
+    void SetUp(NUnitTest::TTestContext& /*context*/) override
+    {
+        Env = std::make_unique<TTestEnv>(
             TTestEnvConfig{},
             NProto::TStorageConfig{},
             &SharedCacheConfig,
             CreateProfileLogStub(),
-            MakeDiagConfig())
-    {}
+            MakeDiagConfig());
 
-    void SetUp(NUnitTest::TTestContext& /*context*/) override
-    {
-
-        const ui32 nodeIdx = Env.AddDynamicNode();
-        const ui64 tabletId = Env.BootIndexTablet(nodeIdx);
+        const ui32 nodeIdx = Env->AddDynamicNode();
+        const ui64 tabletId = Env->BootIndexTablet(nodeIdx);
 
         Tablet = std::make_unique<TIndexTabletClient>(
-            Env.GetRuntime(),
+            Env->GetRuntime(),
             nodeIdx,
             tabletId);
     }
 
     void TearDown(NUnitTest::TTestContext& /*context*/) override
-    {}
+    {
+        Tablet.reset();
+        Env.reset();
+    }
 
 };
 
@@ -124,7 +124,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 {
     Y_UNIT_TEST_F(ShouldRegisterCounters, TEnv)
     {
-        auto registry = Env.GetRegistry();
+        auto registry = Env->GetRegistry();
 
         registry->Visit(TInstant::Zero(), Visitor);
 
@@ -173,10 +173,10 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
     Y_UNIT_TEST_F(ShouldCorrectlyWriteThrottlerMaxParams, TEnv)
     {
-        auto registry = Env.GetRegistry();
+        auto registry = Env->GetRegistry();
 
         Tablet->AdvanceTime(TDuration::Seconds(15));
-        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+        Env->GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
 
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedCounters({
@@ -204,7 +204,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         Tablet->UpdateConfig(config);
 
         Tablet->AdvanceTime(TDuration::Seconds(15));
-        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+        Env->GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
 
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedCounters({
@@ -217,7 +217,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         config.PerformanceProfile.MaxWriteBandwidth = 3_GB;
         config.PerformanceProfile.MaxReadBandwidth = 5_GB;
         Tablet->UpdateConfig(config);
-        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+        Env->GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedCounters({
             {{{"sensor", "MaxWriteBandwidth"}}, 3_GB},
@@ -227,7 +227,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
     Y_UNIT_TEST_F(ShouldIncrementAndDecrementSessionCount, TEnv)
     {
-        auto registry = Env.GetRegistry();
+        auto registry = Env->GetRegistry();
 
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedCounters({
@@ -240,7 +240,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         Tablet->InitSession("client", "session");
 
         Tablet->AdvanceTime(TDuration::Seconds(15));
-        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+        Env->GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
 
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedCounters({
@@ -255,7 +255,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         Tablet->ResetSession("client", "session", 0, "state");
 
         Tablet->AdvanceTime(TDuration::Seconds(15));
-        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+        Env->GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
 
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedCounters({
@@ -271,7 +271,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         Tablet->CleanupSessions();
 
         Tablet->AdvanceTime(TDuration::Seconds(15));
-        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+        Env->GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
 
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedCounters({
@@ -378,7 +378,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
     Y_UNIT_TEST_F(ShouldCalculateReadWriteMetrics, TEnv)
     {
-        auto registry = Env.GetRegistry();
+        auto registry = Env->GetRegistry();
 
         Tablet->InitSession("client", "session");
 
@@ -494,7 +494,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         });
 
         Tablet->AdvanceTime(TDuration::Seconds(15));
-        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+        Env->GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedCounters({
             {{
@@ -510,7 +510,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
     Y_UNIT_TEST_F(ShouldCalculateLoadAndSuffer, TEnv)
     {
-        auto registry = Env.GetRegistry();
+        auto registry = Env->GetRegistry();
 
         Tablet->InitSession("client", "session");
 
@@ -542,7 +542,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         Tablet->DestroyHandle(handle);
 
         Tablet->AdvanceTime(TDuration::Seconds(15));
-        Env.GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
+        Env->GetRuntime().DispatchEvents({}, TDuration::Seconds(5));
         registry->Visit(TInstant::Zero(), Visitor);
         Visitor.ValidateExpectedCounters({
             {{
@@ -1285,7 +1285,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
     Y_UNIT_TEST_F(ShouldReportCollectCommitId, TEnv)
     {
-        auto registry = Env.GetRegistry();
+        auto registry = Env->GetRegistry();
 
         auto advanceTime = [&]()
         {
@@ -1293,7 +1293,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             NActors::TDispatchOptions options;
             options.FinalEvents.emplace_back(
                 TEvIndexTabletPrivate::EvUpdateCounters);
-            Env.GetRuntime().DispatchEvents(options);
+            Env->GetRuntime().DispatchEvents(options);
         };
 
         Tablet->InitSession("client", "session");

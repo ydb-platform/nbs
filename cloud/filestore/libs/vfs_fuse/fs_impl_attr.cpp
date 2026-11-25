@@ -77,6 +77,17 @@ void TFileSystem::SetAttr(
 
     const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
 
+    //
+    // A SetAttr which doesn't change the size doesn't flush WriteBackCache -
+    // the size in the response doesn't include the cached data. The data
+    // cached after this point invalidates the node (see GetAttr).
+    //
+
+    const ui64 maxWrittenOffset =
+        WriteBackCache && !(to_set & FUSE_SET_ATTR_SIZE)
+            ? WriteBackCache.GetMaxWrittenOffset(ino)
+            : 0;
+
     auto callback = [=, ptr = weak_from_this()](const auto& future)
     {
         auto self = ptr.lock();
@@ -89,14 +100,17 @@ void TFileSystem::SetAttr(
         self->FSyncQueue->Dequeue(reqId, error, TNodeId{ino});
 
         if (self->CheckNodeError(*callContext, req, error)) {
-            InvalidateNodeInCache(ino);
+            const bool cacheable =
+                self->InvalidateCachedNodeAttrsUponOwnChange(ino, version);
 
+            auto attrs = response.GetNode();
+            attrs.SetSize(Max(attrs.GetSize(), maxWrittenOffset));
             self->ReplyAttrWithCache(
                 *callContext,
                 error,
                 req,
-                response.GetNode(),
-                version);
+                attrs,
+                cacheable);
         }
     };
 
@@ -167,12 +181,18 @@ void TFileSystem::GetAttr(
 
                     auto* attr = response.MutableNode();
                     attr->SetSize(Max(attr->GetSize(), maxWrittenOffset));
+
+                    //
+                    // The guest must not cache the attrs if the node has been
+                    // invalidated after the request had started.
+                    //
+
                     self->ReplyAttrWithCache(
                         *callContext,
                         response.GetError(),
                         req,
                         response.GetNode(),
-                        version);
+                        self->NodeAttrsCache.IsCacheable(ino, version));
                 }
             });
 }
@@ -238,7 +258,8 @@ void TFileSystem::SetXAttr(
                 response.GetVersion(),
                 error,
                 cacheVersion,
-                TDuration::MilliSeconds(response.GetXAttrCacheTTL()));
+                response.GetXAttrCacheSourceId(),
+                self->GetCacheTTL(response.GetXAttrCacheTTL()));
             if (self->CheckNodeError(*callContext, req, error)) {
                 self->ReplyError(*callContext, error, req, 0);
             }
@@ -302,7 +323,8 @@ void TFileSystem::GetXAttr(
                 response.GetVersion(),
                 error,
                 cacheVersion,
-                TDuration::MilliSeconds(response.GetXAttrCacheTTL()));
+                response.GetXAttrCacheSourceId(),
+                self->GetCacheTTL(response.GetXAttrCacheTTL()));
             if (self->CheckNodeError(*callContext, req, error)) {
                 self->ReplyXAttrInt(
                     *callContext,

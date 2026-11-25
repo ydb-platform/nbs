@@ -1,10 +1,10 @@
 #include "actorsystem.h"
 
-#include <cloud/blockstore/libs/config/blockstore_config_provider_private.h>
 #include <cloud/blockstore/libs/config/helpers.h>
 #include <cloud/blockstore/libs/config/opaque_config_parser.h>
 #include <cloud/blockstore/libs/configs_manager/configs_manager.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
+#include <cloud/blockstore/libs/storage/api/cell_proxy.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
@@ -15,6 +15,7 @@
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/api/volume_balancer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/cell_proxy/cell_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/disk_agent.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -141,9 +142,7 @@ public:
         const auto config = Args.StartupBlockstoreConfig;
         const auto storageConfig = config->GetStorageConfig();
 
-        storageConfig->Register(*appData->Icb);
-        auto ConfigHolder = InitializeBlockstoreConfigProvider(
-            Args.StartupBlockstoreConfig);
+        storageConfig->GetControls()->Register(*appData->Icb);
 
         //
         // ConfigsManager
@@ -159,11 +158,11 @@ public:
                 MakeConfigsManagerServiceId(),
                 TActorSetupCmd(
                     CreateConfigsManager({
-                        .ConfigHolder = std::move(ConfigHolder),
+                        .ConfigHolder = Args.ConfigHolder,
                         .StaticConfig = Args.StaticBlockstoreConfigProto,
                         .InitialDynamicConfig = Args.CmsBlockstoreConfig,
                         .StorageConfigControls =
-                            storageConfig->GetStorageConfigControls(),
+                            storageConfig->GetControls(),
                     }),
                     TMailboxType::Revolving,
                     appData->UserPoolId));
@@ -179,6 +178,18 @@ public:
             MakeSSProxyServiceId(),
             TActorSetupCmd(
                 ssProxy.release(),
+                TMailboxType::Revolving,
+                appData->UserPoolId));
+
+        //
+        // CellProxy is initialized once the cell manager has started.
+        //
+
+        auto cellProxy = CreateCellProxy();
+        setup->LocalServices.emplace_back(
+            MakeCellProxyServiceId(),
+            TActorSetupCmd(
+                cellProxy.release(),
                 TMailboxType::Revolving,
                 appData->UserPoolId));
 
@@ -386,6 +397,7 @@ public:
 
         auto volumeBalancerService = CreateVolumeBalancerActor(
             storageConfig,
+            config->GetDiagnosticsConfig(),
             Args.VolumeStats,
             Args.StatsFetcher,
             Args.VolumeBalancerSwitch,
@@ -440,8 +452,8 @@ class TCustomLocalServiceInitializer final
 private:
     const NKikimrConfig::TAppConfig& AppConfig;
     const ILoggingServicePtr Logging;
-    const TStorageConfigConstPtr StorageConfig;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    const TStorageConfigPtr StorageConfig;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -458,8 +470,8 @@ public:
     TCustomLocalServiceInitializer(
             const NKikimrConfig::TAppConfig& appConfig,
             ILoggingServicePtr logging,
-            TStorageConfigConstPtr storageConfig,
-            TDiagnosticsConfigConstPtr diagnosticsConfig,
+            TStorageConfigPtr storageConfig,
+            TDiagnosticsConfigPtr diagnosticsConfig,
             IProfileLogPtr profileLog,
             IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
             IBlockDigestGeneratorPtr blockDigestGenerator,
@@ -616,6 +628,7 @@ public:
 IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
 {
     Y_ABORT_UNLESS(sArgs.StartupBlockstoreConfig);
+    Y_ABORT_UNLESS(sArgs.ConfigHolder);
 
     const TStorageConfig staticStorageConfig(
         sArgs.StaticBlockstoreConfigProto.GetStorageService(),
@@ -626,10 +639,6 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
 
     const NServer::TServerAppConfig staticServerConfig(
         sArgs.StaticBlockstoreConfigProto.GetServer());
-    Y_ABORT_UNLESS(
-        !staticServerConfig.GetDynamicYamlConfigurationEnabled() ||
-        startupStorageConfig->GetStorageConfigControls());
-
     const bool enableConfigsDispatcher = ShouldEnableConfigsDispatcher(
         staticServerConfig,
         *startupStorageConfig);

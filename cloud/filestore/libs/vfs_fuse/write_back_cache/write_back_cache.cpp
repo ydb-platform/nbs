@@ -81,6 +81,7 @@ private:
     const TString FileSystemId;
     const TString FilePath;
     const IPersistentStoragePtr PersistentStorage;
+    const ui64 MaxGuestWriteRequestSize;
 
     TWriteBackCacheState State;
 
@@ -114,6 +115,7 @@ public:
               {.FilePath = args.FilePath, .StateFileSize = args.StateFileSize},
               Log,
               LogTag))
+        , MaxGuestWriteRequestSize(args.MaxGuestWriteRequestSize)
         , State(
               *this,
               CreateWriteBackCacheLock(args.LockMethod),
@@ -123,6 +125,7 @@ public:
               args.Stats->GetWriteDataRequestManagerStats(),
               args.Stats->GetNodeStateHolderStats(),
               BuildFlushBatchLimits(args),
+              Log,
               LogTag)
     {}
 
@@ -137,9 +140,29 @@ public:
                 TStringBuilder()
                 << LogTag << " WriteBackCache initialization failure: "
                 << FormatError(error) << ", FilePath: " << FilePath.Quote());
-        } else {
-            ScheduleAutomaticFlushIfNeeded();
+            return;
         }
+
+        // The ring buffer must fit any WriteData request: one that doesn't fit
+        // stays pending forever and blocks the following ones. Plus some room
+        // for the headers (assume 1 KiB is enough).
+        const ui64 required = MaxGuestWriteRequestSize + 1016;
+        const ui64 supported =
+            PersistentStorage->GetMaxSupportedAllocationByteCount();
+
+        if (supported < required) {
+            // Flush the restored data and serve new requests directly
+            ReportWriteBackCacheInitializationError(
+                TStringBuilder()
+                << LogTag << " WriteBackCache is drained: max supported "
+                << "allocation " << supported << " is less than " << required
+                << ", increase the state file size or decrease "
+                << "MaxRequestSize, FilePath: " << FilePath.Quote());
+            Drain();
+            return;
+        }
+
+        ScheduleAutomaticFlushIfNeeded();
     }
 
     void ScheduleAutomaticFlushIfNeeded()
@@ -180,14 +203,16 @@ public:
                            : EWriteBackCacheMode::Draining;
     }
 
-    NThreading::TFuture<NCloud::NProto::TError> Drain()
+    void Drain()
     {
-        if (!DrainRequested.exchange(true)) {
-            STORAGE_INFO(LogTag << " Start WriteBackCache draining");
-        }
+        SetDrainRequested();
+        State.Drain();
+    }
 
-        State.SetDrainingMode();
-        return State.AddFlushAllRequest();
+    TFuture<void> Shutdown()
+    {
+        SetDrainRequested();
+        return State.Shutdown();
     }
 
     bool IsDrained()
@@ -489,6 +514,15 @@ public:
     }
 
 private:
+    void SetDrainRequested()
+    {
+        // Setting DrainRequested flag is irreversible
+        if (!DrainRequested.exchange(true)) {
+            // Report entering draining mode once one
+            STORAGE_INFO(LogTag << " Request WriteBackCache draining");
+        }
+    }
+
     // Implementation of IQueuedOperationsProcessor
     void ScheduleFlushNode(ui64 nodeId) override
     {
@@ -736,9 +770,14 @@ EWriteBackCacheMode TWriteBackCache::GetMode() const
     return Impl->GetMode();
 }
 
-NThreading::TFuture<NCloud::NProto::TError> TWriteBackCache::Drain()
+void TWriteBackCache::Drain()
 {
-    return Impl->Drain();
+    Impl->Drain();
+}
+
+TFuture<void> TWriteBackCache::Shutdown()
+{
+    return Impl->Shutdown();
 }
 
 bool TWriteBackCache::IsDrained() const

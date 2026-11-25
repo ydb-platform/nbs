@@ -3,6 +3,7 @@
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/size_literals.h>
+#include <util/generic/utility.h>
 #include <util/system/compiler.h>
 
 namespace NCloud::NFileStore::NFuse {
@@ -26,8 +27,10 @@ namespace {
     xxx(XAttrCacheInvalidateOnCreateEnabled,    bool, false                   )\
     xxx(NodeRefCacheLimit,      ui32,           64 * 1024                     )\
     xxx(NodeAttrsCacheLimit,    ui32,           64 * 1024                     )\
+    xxx(FileSystemEventsEnabled,bool,           false                         )\
                                                                                \
     xxx(MaxBufferSize,          ui32,           4_MB                          )\
+    xxx(MaxRequestSize,         ui32,           1_MB                          )\
                                                                                \
     xxx(PreferredBlockSize,     ui32,           0                             )\
                                                                                \
@@ -118,6 +121,13 @@ FILESTORE_FILESYSTEM_CONFIG(FILESTORE_FS_GETTER)
 
 #undef FILESTORE_CONFIG_GETTER
 #undef FILESTORE_FS_GETTER
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui32 TFileSystemConfig::GetMaxMetadataBufferSize() const
+{
+    return Min<ui32>(GetMaxBufferSize(), 1_MB);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 

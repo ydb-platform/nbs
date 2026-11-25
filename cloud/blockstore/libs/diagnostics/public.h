@@ -32,8 +32,7 @@ constexpr TDuration UpdateLeakyBucketCountersInterval = TDuration::Seconds(1);
 ////////////////////////////////////////////////////////////////////////////////
 
 class TDiagnosticsConfig;
-using TDiagnosticsConfigPtr = std::shared_ptr<TDiagnosticsConfig>;
-using TDiagnosticsConfigConstPtr = std::shared_ptr<const TDiagnosticsConfig>;
+using TDiagnosticsConfigPtr = std::shared_ptr<const TDiagnosticsConfig>;
 
 struct IVolumeInfo;
 using IVolumeInfoPtr = std::shared_ptr<IVolumeInfo>;
@@ -45,8 +44,7 @@ struct IRequestStats;
 using IRequestStatsPtr = std::shared_ptr<IRequestStats>;
 
 struct IDumpable;
-using IDumpablePtr = std::shared_ptr<IDumpable>;
-using IDumpableConstPtr = std::shared_ptr<const IDumpable>;
+using IDumpablePtr = std::shared_ptr<const IDumpable>;
 
 struct IServerStats;
 using IServerStatsPtr = std::shared_ptr<IServerStats>;

@@ -9,6 +9,7 @@ SRCS(
     filesystem.proto
     http_proxy.proto
     nfs_gateway.proto
+    rdma.proto
     server.proto
     storage.proto
     vfs.proto

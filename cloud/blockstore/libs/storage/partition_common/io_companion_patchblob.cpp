@@ -184,8 +184,19 @@ void TPatchBlobActor::ReplyAndDie(
     const TActorContext& ctx,
     std::unique_ptr<TResponse> response)
 {
-    if (HasError(response->GetError()) && !response->ErrorSource) {
-        response->ErrorSource = EErrorSource::Local;
+    if (HasError(response->GetError())) {
+        if (!response->ErrorSource) {
+            response->ErrorSource = EErrorSource::Regular;
+        }
+        if (response->ErrorSource == EErrorSource::ContractViolation) {
+            ReportContractViolationPatchBlobError(
+                FormatError(response->GetError()),
+                {{"tabletId", TabletId},
+                 {"originalBlobId",
+                  MakeBlobId(TabletId, Request->OriginalBlobId).ToString()},
+                 {"patchedBlobId",
+                  MakeBlobId(TabletId, Request->PatchedBlobId).ToString()}});
+        }
     }
 
     NotifyCompleted(ctx, *response);
@@ -238,7 +249,11 @@ void TPatchBlobActor::HandlePatchResult(
 
     auto blobId = MakeBlobId(TabletId, Request->PatchedBlobId);
     if (msg->Id != blobId) {
-        ReplyError(ctx, *msg, "invalid response received", EErrorSource::Local);
+        ReplyError(
+            ctx,
+            *msg,
+            "invalid response received",
+            EErrorSource::ContractViolation);
         return;
     }
 

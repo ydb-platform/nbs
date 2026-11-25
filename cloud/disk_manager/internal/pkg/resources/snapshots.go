@@ -1654,6 +1654,7 @@ func createSnapshotsYDBTables(
 	folder string,
 	db *persistence.YDBClient,
 	dropUnusedColumns bool,
+	backupEnabled bool,
 ) error {
 
 	logging.Info(ctx, "Creating tables for snapshots in %v", db.AbsolutePath(folder))
@@ -1704,7 +1705,69 @@ func createSnapshotsYDBTables(
 	}
 	logging.Info(ctx, "Created deleted table")
 
-	err = db.CreateOrAlterTable(
+	if backupEnabled {
+		err = createSnapshotsBackupTables(ctx, folder, db, dropUnusedColumns)
+		if err != nil {
+			return err
+		}
+	}
+
+	logging.Info(ctx, "Created tables for snapshots")
+
+	return nil
+}
+
+func dropSnapshotsYDBTables(
+	ctx context.Context,
+	folder string,
+	db *persistence.YDBClient,
+	backupEnabled bool,
+) error {
+
+	logging.Info(
+		ctx,
+		"Dropping tables for snapshots in %v",
+		db.AbsolutePath(folder),
+	)
+
+	err := db.DropTable(ctx, folder, "snapshots")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped snapshots table")
+
+	err = db.DropTable(ctx, folder, "incremental")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped incremental table")
+
+	err = db.DropTable(ctx, folder, "deleted")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped deleted table")
+
+	if backupEnabled {
+		err = dropSnapshotsBackupTables(ctx, folder, db)
+		if err != nil {
+			return err
+		}
+	}
+
+	logging.Info(ctx, "Dropped tables for snapshots")
+
+	return nil
+}
+
+func createSnapshotsBackupTables(
+	ctx context.Context,
+	folder string,
+	db *persistence.YDBClient,
+	dropUnusedColumns bool,
+) error {
+
+	err := db.CreateOrAlterTable(
 		ctx,
 		folder,
 		"backup_queue",
@@ -1755,38 +1818,16 @@ func createSnapshotsYDBTables(
 	}
 	logging.Info(ctx, "Created backup_delete_queue table")
 
-	logging.Info(ctx, "Created tables for snapshots")
-
 	return nil
 }
 
-func dropSnapshotsYDBTables(
+func dropSnapshotsBackupTables(
 	ctx context.Context,
 	folder string,
 	db *persistence.YDBClient,
 ) error {
 
-	logging.Info(ctx, "Dropping tables for snapshots in %v", db.AbsolutePath(folder))
-
-	err := db.DropTable(ctx, folder, "snapshots")
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Dropped snapshots table")
-
-	err = db.DropTable(ctx, folder, "incremental")
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Dropped incremental table")
-
-	err = db.DropTable(ctx, folder, "deleted")
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Dropped deleted table")
-
-	err = db.DropTable(ctx, folder, "backup_queue")
+	err := db.DropTable(ctx, folder, "backup_queue")
 	if err != nil {
 		return err
 	}
@@ -1797,8 +1838,6 @@ func dropSnapshotsYDBTables(
 		return err
 	}
 	logging.Info(ctx, "Dropped backup_delete_queue table")
-
-	logging.Info(ctx, "Dropped tables for snapshots")
 
 	return nil
 }

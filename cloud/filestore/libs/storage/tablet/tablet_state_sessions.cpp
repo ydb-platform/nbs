@@ -132,8 +132,7 @@ TSession* TIndexTabletState::CreateSession(
     ui64 seqNo,
     bool readOnly,
     const TActorId& owner,
-    const NProto::TSessionOptions& sessionOptions,
-    const NProto::TPersistentSessionOptions& persistentSessionOptions)
+    const NProto::TSessionOptions& sessionOptions)
 {
     LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
         "%s creating session c: %s, s: %s",
@@ -147,7 +146,6 @@ TSession* TIndexTabletState::CreateSession(
     proto.SetCheckpointId(checkpointId);
     proto.SetOriginFqdn(originFqdn);
     proto.SetMaxSeqNo(seqNo);
-    *proto.MutablePersistentOptions() = persistentSessionOptions;
     if (!readOnly) {
         proto.SetMaxRwSeqNo(seqNo);
     }
@@ -531,6 +529,11 @@ TVector<TMonSessionInfo> TIndexTabletState::GetOrphanSessionInfos() const
         info.InactivityDeadline = session.InactivityDeadline;
     }
     return sessionInfos;
+}
+
+bool TIndexTabletState::HasSessions() const
+{
+    return !Impl->SessionById.empty();
 }
 
 TSessionsStats TIndexTabletState::CalculateSessionsStats() const

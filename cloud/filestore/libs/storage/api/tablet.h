@@ -67,10 +67,6 @@ namespace NCloud::NFileStore::NStorage {
     xxx(SetHasXAttrs,               __VA_ARGS__)                               \
     xxx(MarkNodeRefsExhaustive,     __VA_ARGS__)                               \
                                                                                \
-    xxx(SetQuota,                   __VA_ARGS__)                               \
-    xxx(DeleteQuota,                __VA_ARGS__)                               \
-    xxx(ListQuotas,                 __VA_ARGS__)                               \
-                                                                               \
     xxx(FastShardCommand,           __VA_ARGS__)                               \
                                                                                \
     xxx(GenerateFileSystemEvent,    __VA_ARGS__)                               \
@@ -238,14 +234,17 @@ struct TEvIndexTablet
         EvListNodesInternalRequest = EvBegin + 83,
         EvListNodesInternalResponse,
 
-        EvSetQuotaRequest = EvBegin + 85,
-        EvSetQuotaResponse,
+        // formerly EvSetQuotaRequest/Response
+        EvReserved1 = EvBegin + 85,
+        EvReserved2,
 
-        EvDeleteQuotaRequest = EvBegin + 87,
-        EvDeleteQuotaResponse,
+        // formerly EvDeleteQuotaRequest/Response
+        EvReserved3 = EvBegin + 87,
+        EvReserved4,
 
-        EvListQuotasRequest = EvBegin + 89,
-        EvListQuotasResponse,
+        // formerly EvListQuotasRequest/Response
+        EvReserved5 = EvBegin + 89,
+        EvReserved6,
 
         EvGetDiagnosticStatsRequest = EvBegin + 91,
         EvGetDiagnosticStatsResponse,

@@ -81,6 +81,15 @@ message TFileStoreFeatures
     uint32 NodeAttrsCacheLimit = 60;
 
     bool WriteDataZeroBlockStatsEnabled = 61;
+
+    // Max FUSE read / write request size in bytes.
+    // Zero uses the vhost fallback.
+    uint32 MaxRequestSize = 62;
+
+    // The tablet sends FileSystemEvents to its clients and allows them to
+    // cache the data along with nonzero TTLs (false in dry run mode). The
+    // client consumes the events only if this is set.
+    bool FileSystemEventsEnabled = 63;
 }
 
 message TFileStore
@@ -224,6 +233,12 @@ message TCreateFileStoreRequest
 
     // Explicitly specified shard count.
     uint32 ShardCount = 10;
+
+    // Explicitly specified fast shard count.
+    uint32 FastShardCount = 11;
+
+    // Storage kind of the fast shards.
+    optional EFastShardStorageKind FastShardStorageKind = 12;
 }
 
 message TCreateFileStoreResponse
@@ -321,6 +336,9 @@ message TResizeFileStoreRequest
     // Force directory creation in shards for the whole filesystem. Overrides
     // the LastNodeId check in the main tablet.
     bool ForceDirectoryCreationInShards = 10;
+
+    // New number of fast shards.
+    uint32 FastShardCount = 11;
 }
 
 message TResizeFileStoreResponse

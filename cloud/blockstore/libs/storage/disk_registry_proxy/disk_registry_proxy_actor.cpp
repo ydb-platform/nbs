@@ -20,6 +20,8 @@
 
 #include <library/cpp/monlib/service/pages/templates.h>
 
+#include <util/string/builder.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -31,8 +33,8 @@ using namespace NCloud::NStorage;
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskRegistryProxyActor::TDiskRegistryProxyActor(
-        TStorageConfigConstPtr config,
-        TDiskRegistryProxyConfigConstPtr diskRegistryProxyConfig)
+        TStorageConfigPtr config,
+        TDiskRegistryProxyConfigPtr diskRegistryProxyConfig)
     : StorageConfig(std::move(config))
     , Config(std::move(diskRegistryProxyConfig))
 {}
@@ -431,7 +433,11 @@ void TDiskRegistryProxyActor::RenderHtmlInfo(IOutputStream& out) const
         if (DiskRegistryTabletId) {
             out << "<a href='../tablets?TabletID="
                 << DiskRegistryTabletId << "'>"
-                << DiskRegistryTabletId << "</a>";
+                << DiskRegistryTabletId << "</a>"
+                << " (<a href='../tablets/app?TabletID="
+                << DiskRegistryTabletId << "'>app</a>)";
+        } else {
+            out << "not resolved yet";
         }
 
         TAG(TH3) { out << "Config"; }
@@ -445,6 +451,20 @@ void TDiskRegistryProxyActor::HandleHttpInfo(
 {
     LOG_DEBUG_S(ctx, TBlockStoreComponents::DISK_REGISTRY_PROXY,
         "HTTP request: " << ev->Get()->Request.GetUri());
+
+    // ?action=appRedirect redirects to the Disk Registry tablet app page.
+    // The location must be relative to keep working behind reverse proxies
+    // that add a path prefix.
+    const auto& params = ev->Get()->Request.GetParams();
+    if (params.Get("action") == "appRedirect" && DiskRegistryTabletId) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            NMonitoringUtils::CreateHttpRedirectResponse(
+                TStringBuilder() << "../tablets/app?TabletID="
+                                 << DiskRegistryTabletId));
+        return;
+    }
 
     TStringStream out;
     RenderHtmlInfo(out);

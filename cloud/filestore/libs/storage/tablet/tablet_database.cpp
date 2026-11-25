@@ -880,51 +880,6 @@ bool TIndexTabletDatabase::ReadNodeRefVers(
     return true;
 }
 
-void TIndexTabletDatabase::WriteTruncateQueueEntry(ui64 nodeId, TByteRange range)
-{
-    using TTable = TIndexTabletSchema::TruncateQueue;
-
-    NProto::TTruncateEntry entry;
-    entry.SetNodeId(nodeId);
-    entry.SetOffset(range.Offset);
-    entry.SetLength(range.Length);
-
-    Table<TTable>()
-        .Key(nodeId)
-        .Update(NIceDb::TUpdate<TTable::Proto>(entry));
-}
-
-void TIndexTabletDatabase::DeleteTruncateQueueEntry(ui64 nodeId)
-{
-    using TTable = TIndexTabletSchema::TruncateQueue;
-
-    Table<TTable>()
-        .Key(nodeId)
-        .Delete();
-}
-
-bool TIndexTabletDatabase::ReadTruncateQueue(TVector<NProto::TTruncateEntry>& entries)
-{
-    using TTable = TIndexTabletSchema::TruncateQueue;
-
-    auto it = Table<TTable>()
-        .Select();
-
-    if (!it.IsReady()) {
-        return false;   // not ready
-    }
-
-    while (it.IsValid()) {
-        entries.emplace_back(it.GetValue<TTable::Proto>());
-
-        if (!it.Next()) {
-            return false; // not ready
-        }
-    }
-
-    return true;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // Sessions
 

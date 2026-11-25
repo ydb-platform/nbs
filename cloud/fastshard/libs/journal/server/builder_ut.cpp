@@ -134,6 +134,7 @@ struct TFixture: public NUnitTest::TBaseFixture
                 Logging,
                 Executor,
                 DeviceManager,
+                TVector<TExecutorPtr>{},
                 TServerConfig{
                     .ListenAddress = TNetworkAddress{PortManager.GetTcpPort()},
                     .JournalEnabled = journalEnabled,

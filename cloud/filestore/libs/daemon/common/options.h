@@ -28,6 +28,7 @@ struct TOptionsCommon
     TString AppConfig;
     TString StorageConfig;
     TString FeaturesConfig;
+    TString RdmaConfig;
 
     ui32 NodeRegistrationMaxAttempts = 0;
     TDuration NodeRegistrationTimeout;

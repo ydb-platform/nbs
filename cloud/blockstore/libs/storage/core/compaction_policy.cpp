@@ -1,12 +1,12 @@
 #include "compaction_policy.h"
 
 #include "config.h"
-#include "proto_helpers.h"
 
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <util/generic/cast.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/ymath.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -298,26 +298,19 @@ ICompactionPolicyPtr BuildCompactionPolicy(
         storageConfig,
         siblingCount);
 
-    ui64 usedBlocksThresholdForMixedBlocksCompaction =
-        GetWriteBlobThreshold(
-            storageConfig,
-            partitionConfig.GetStorageMediaKind()) /
-        partitionConfig.GetBlockSize();
-    if (partitionConfig.GetStorageMediaKind() !=
-        NCloud::NProto::STORAGE_MEDIA_SSD)
-    {
-        usedBlocksThresholdForMixedBlocksCompaction = Max<ui64>(
-            usedBlocksThresholdForMixedBlocksCompaction,
-            storageConfig.GetCompactionMergedBlobThresholdHDD() /
-                partitionConfig.GetBlockSize());
-    }
+    const bool isSSD = partitionConfig.GetStorageMediaKind() ==
+                       NCloud::NProto::STORAGE_MEDIA_SSD;
+    const ui64 minUsedBytes =
+        isSSD ? storageConfig.GetMixedBlocksCompactionMinUsedBytesSSD()
+              : storageConfig.GetMixedBlocksCompactionMinUsedBytesHDD();
+    const ui64 usedBlocksThresholdForMixedBlocksCompaction =
+        CeilDiv<ui64>(minUsedBytes, partitionConfig.GetBlockSize());
 
     const bool mixedBlocksCountCompactionEnabled =
         IsMixedBlocksCountCompactionEnabled(storageConfig, partitionConfig);
     const NProto::ECompactionType ct =
-        partitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
-            ? storageConfig.GetSSDCompactionType()
-            : storageConfig.GetHDDCompactionType();
+        isSSD ? storageConfig.GetSSDCompactionType()
+              : storageConfig.GetHDDCompactionType();
 
     switch (ct) {
         case NProto::ECompactionType::CT_DEFAULT: {

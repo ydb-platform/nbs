@@ -7,6 +7,7 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
+#include <cloud/filestore/libs/rdma/helper/helper.h>
 #include <cloud/filestore/libs/server/config.h>
 #include <cloud/filestore/libs/server/probes.h>
 #include <cloud/filestore/libs/server/server.h>
@@ -21,6 +22,7 @@
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
+#include <cloud/filestore/libs/storage/tablet_rdma/rdma_tablet_target.h>
 
 #include <cloud/fastshard/libs/bootstrap/core.h>
 
@@ -40,6 +42,8 @@
 #include <contrib/ydb/core/tablet_flat/probes.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
+
+#include <util/string/builder.h>
 
 namespace NCloud::NFileStore::NDaemon {
 
@@ -92,6 +96,7 @@ void TBootstrapServer::StartComponents()
     FILESTORE_LOG_START_COMPONENT(ThreadPool);
     FILESTORE_LOG_START_COMPONENT(Service);
     FILESTORE_LOG_START_COMPONENT(Server);
+    FILESTORE_LOG_START_COMPONENT(RdmaTarget);
 }
 
 void TBootstrapServer::Drain()
@@ -99,6 +104,7 @@ void TBootstrapServer::Drain()
 
 void TBootstrapServer::StopComponents()
 {
+    FILESTORE_LOG_STOP_COMPONENT(RdmaTarget);
     FILESTORE_LOG_STOP_COMPONENT(Server);
     FILESTORE_LOG_STOP_COMPONENT(Service);
     FILESTORE_LOG_STOP_COMPONENT(ThreadPool);
@@ -139,6 +145,10 @@ void TBootstrapServer::InitActorSystemPrerequisites()
     if (port) {
         FastShardServer =
             NStorage::NFastShard::CreateServer(port);
+    }
+
+    if (Configs->RdmaConfig.GetServerEnabled()) {
+        RdmaTabletRegistry = std::make_shared<NStorage::TRdmaTabletRegistry>();
     }
 }
 
@@ -257,6 +267,32 @@ void TBootstrapServer::InitKikimrService()
         ActorSystem,
         nullptr /* sideChannel */,
         0 /* permanentActorCount */);
+
+    if (RdmaTabletRegistry) {
+        InitRdmaTarget();
+    }
+}
+
+void TBootstrapServer::InitRdmaTarget()
+{
+    try {
+        RdmaTarget = NStorage::CreateRdmaTabletTarget(
+            Configs->RdmaConfig,
+            Logging,
+            ActorSystem,
+            NStorage::CreateRdmaServer(
+                Logging,
+                Monitoring,
+                Configs->RdmaConfig.GetServer()),
+            RdmaTabletRegistry);
+
+        STORAGE_INFO("RDMA target initialized");
+    } catch (...) {
+        ReportTabletRdmaCritEvent(
+            TStringBuilder()
+            << "unable to initialize RDMA target: "
+            << CurrentExceptionMessage());
+    }
 }
 
 void TBootstrapServer::InitLocalService()

@@ -764,6 +764,7 @@ void TIndexTabletActor::CompleteTx_Compaction(
         for (const auto& block: blob.Blocks) {
             if (block.MinCommitId < block.MaxCommitId) {
                 if (args.FilterNodes && !args.Nodes.count(block.NodeId)) {
+                    ++blockOffset;
                     continue;
                 }
 

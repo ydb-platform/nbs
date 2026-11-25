@@ -88,7 +88,8 @@ message TReadBlocksResponse
 ////////////////////////////////////////////////////////////////////////////////
 // Blocks write request/response.
 
-// Update WriteBlockLocal CreateDependentRequest method after adding a new field.
+// When adding a field, update CopyWriteRequestMetadata in
+// cloud/blockstore/libs/service/request.cpp and its metadata-copy test.
 message TWriteBlocksRequest
 {
     // Optional request headers.

@@ -68,6 +68,11 @@ void TBootstrap::Init()
 
     Executor = TExecutor::Create("JD");
 
+    for (ui32 i = 0; i != options.ConnectionExecutors; ++i) {
+        ConnectionExecutors.push_back(
+            TExecutor::Create(TStringBuilder() << "JD.Conn" << i));
+    }
+
     auto device = CreateFileDevice(
         FileIO,
         options.DevicePath,
@@ -81,6 +86,7 @@ void TBootstrap::Init()
         Logging,
         Executor,
         std::move(deviceManager),
+        ConnectionExecutors,
         TServerConfig{
             .ListenAddress = MakeListenAddress(options),
             .JournalEnabled = !options.NoJournal,
@@ -100,6 +106,9 @@ void TBootstrap::Start()
     StartComponent(Logging);
     StartComponent(FileIO);
     StartComponent(Executor);
+    for (const auto& executor: ConnectionExecutors) {
+        StartComponent(executor);
+    }
     StartComponent(Server);
 }
 

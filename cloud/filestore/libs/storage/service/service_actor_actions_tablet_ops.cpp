@@ -358,8 +358,8 @@ IActorPtr TStorageServiceActor::CreateSetQuotaActionActor(
     TString input)
 {
     using TSetQuotaActor = TTabletActionActor<
-        TEvIndexTablet::TEvSetQuotaRequest,
-        TEvIndexTablet::TEvSetQuotaResponse>;
+        TEvService::TEvSetQuotaRequest,
+        TEvService::TEvSetQuotaResponse>;
     return std::make_unique<TSetQuotaActor>(
         std::move(requestInfo),
         std::move(input));
@@ -370,8 +370,8 @@ IActorPtr TStorageServiceActor::CreateDeleteQuotaActionActor(
     TString input)
 {
     using TDeleteQuotaActor = TTabletActionActor<
-        TEvIndexTablet::TEvDeleteQuotaRequest,
-        TEvIndexTablet::TEvDeleteQuotaResponse>;
+        TEvService::TEvDeleteQuotaRequest,
+        TEvService::TEvDeleteQuotaResponse>;
     return std::make_unique<TDeleteQuotaActor>(
         std::move(requestInfo),
         std::move(input));
@@ -382,8 +382,8 @@ IActorPtr TStorageServiceActor::CreateListQuotasActionActor(
     TString input)
 {
     using TListQuotasActor = TTabletActionActor<
-        TEvIndexTablet::TEvListQuotasRequest,
-        TEvIndexTablet::TEvListQuotasResponse>;
+        TEvService::TEvListQuotasRequest,
+        TEvService::TEvListQuotasResponse>;
     return std::make_unique<TListQuotasActor>(
         std::move(requestInfo),
         std::move(input));

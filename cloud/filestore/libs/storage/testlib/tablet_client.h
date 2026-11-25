@@ -309,7 +309,7 @@ public:
     auto CreateSetQuotaRequest(ui32 quotaId, ui64 maxBytes, ui64 maxNodes = 0)
     {
         auto request =
-            std::make_unique<TEvIndexTablet::TEvSetQuotaRequest>();
+            std::make_unique<TEvService::TEvSetQuotaRequest>();
         request->Record.SetQuotaId(quotaId);
         request->Record.SetMaxBytes(maxBytes);
         request->Record.SetMaxNodes(maxNodes);
@@ -319,14 +319,14 @@ public:
     auto CreateDeleteQuotaRequest(ui32 quotaId)
     {
         auto request =
-            std::make_unique<TEvIndexTablet::TEvDeleteQuotaRequest>();
+            std::make_unique<TEvService::TEvDeleteQuotaRequest>();
         request->Record.SetQuotaId(quotaId);
         return request;
     }
 
     auto CreateListQuotasRequest()
     {
-        return std::make_unique<TEvIndexTablet::TEvListQuotasRequest>();
+        return std::make_unique<TEvService::TEvListQuotasRequest>();
     }
 
     auto CreateGenerateFileSystemEventRequest(
@@ -618,20 +618,6 @@ public:
     auto CreateCollectGarbageRequest()
     {
         return std::make_unique<TEvIndexTabletPrivate::TEvCollectGarbageRequest>();
-    }
-
-    auto CreateTruncateRequest(ui64 node, ui64 length)
-    {
-        return std::make_unique<TEvIndexTabletPrivate::TEvTruncateRequest>(
-            node,
-            TByteRange(0, length, DefaultBlockSize));
-    }
-
-    auto CreateTruncateRangeRequest(ui64 node, ui64 offset, ui64 length)
-    {
-        return std::make_unique<TEvIndexTabletPrivate::TEvTruncateRangeRequest>(
-            node,
-            TByteRange(offset, length, DefaultBlockSize));
     }
 
     auto CreateZeroRangeRequest(ui64 node, ui64 offset, ui64 length)

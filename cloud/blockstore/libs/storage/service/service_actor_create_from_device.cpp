@@ -40,7 +40,7 @@ class TCreateVolumeFromDeviceActor final
 private:
     const TRequestInfoPtr RequestInfo;
 
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     const NProto::TCreateVolumeFromDeviceRequest Request;
 
     NProto::TError Error;
@@ -48,7 +48,7 @@ private:
 public:
     TCreateVolumeFromDeviceActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         NProto::TCreateVolumeFromDeviceRequest request);
 
     void Bootstrap(const TActorContext& ctx);
@@ -80,7 +80,7 @@ private:
 
 TCreateVolumeFromDeviceActor::TCreateVolumeFromDeviceActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         NProto::TCreateVolumeFromDeviceRequest request)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))

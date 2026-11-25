@@ -46,7 +46,7 @@ void PrepareRequestHeaders(
 ////////////////////////////////////////////////////////////////////////////////
 
 IServerPtr CreateServer(
-    TServerAppConfigConstPtr config,
+    TServerAppConfigPtr config,
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     IBlockStorePtr service,

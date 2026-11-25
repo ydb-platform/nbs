@@ -6,6 +6,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/libs/storage/p
 
 import "cloud/blockstore/public/api/protos/volume.proto";
 
+import "cloud/storage/core/protos/compression.proto";
 import "cloud/storage/core/protos/media.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -209,16 +210,7 @@ message TPartitionMeta
 
 message TCompressionMetadata
 {
-    // Each value identifies a specific library/cpp/blockcodecs configuration.
-    // Keep in sync with CompressionCodecs in partition_common/blob_compressor.cpp.
-    enum ECompressionType
-    {
-        COMPRESSION_NONE = 0;
-        COMPRESSION_LZ4_FAST14_SAFE = 1;
-        COMPRESSION_SNAPPY = 2;
-        COMPRESSION_ZSTD_3 = 3;
-    }
-    ECompressionType Codec = 1;
+    NCloud.NProto.ECompressionCodec Codec = 1;
 
     // Uncompressed chunk size in bytes used when writing this blob.
     uint32 ChunkSize = 2;
@@ -235,6 +227,10 @@ message TCompressionMetadata
     {
         TPlainChunks PlainChunks = 3;
     }
+
+    // Uncompressed size in bytes of the last chunk.
+    // A nonzero multiple of the block size, at most ChunkSize.
+    uint32 LastChunkSize = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -252,6 +248,7 @@ message TBlobMeta
         uint32 Start = 1;
         uint32 End = 2;
         uint32 Skipped = 3;
+        optional TCompressionMetadata CompressionMetadata = 4;
     }
 
     oneof Blocks

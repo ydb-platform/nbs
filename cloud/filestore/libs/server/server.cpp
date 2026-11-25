@@ -461,6 +461,30 @@ void TAppContext::ValidateRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+//
+// The FileSystemEvents are delivered only to the processes which send the
+// requests to the tablets themselves - the clients of the gRPC API don't get
+// them, so they must not cache the data according to the cache TTLs: the
+// tablets don't subscribe them (and return zero TTLs), and their session
+// features don't enable the events.
+//
+
+void DisableFileSystemEvents(NProto::THeaders& headers)
+{
+    headers.SetFileSystemEventSubscriptionDisabled(true);
+}
+
+void DisableFileSystemEvents(NProto::TCreateSessionResponse& response)
+{
+    if (response.HasFileStore()) {
+        response.MutableFileStore()
+            ->MutableFeatures()
+            ->SetFileSystemEventsEnabled(false);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 using TRequestsInFlight = NStorage::NGrpc::TRequestsInFlight<
     TServerRequestHandlerBase,
     TWellKnownEntityTypes::SERVER>;
@@ -631,6 +655,9 @@ private:
         auto& headers = *Request->MutableHeaders();
 
         auto now = TInstant::Now();
+        // Record when the request arrived at the server.
+        ProfileLogRecord.Request.SetTimestampMcs(now.MicroSeconds());
+
         auto timestamp = TInstant::MicroSeconds(headers.GetTimestamp());
         if (!timestamp || timestamp > now || now - timestamp > TDuration::Seconds(1)) {
             // fix request timestamp
@@ -699,10 +726,29 @@ private:
             try {
                 AppCtx.ValidateRequest(*Context, *Request->MutableHeaders());
 
+                constexpr bool isFileStoreRequest =
+                    std::is_same_v<TAppContext, TFileStoreContext>;
+                if constexpr (isFileStoreRequest) {
+                    DisableFileSystemEvents(*Request->MutableHeaders());
+                }
+
                 Response = TMethod::Execute(
                     *AppCtx.ServiceImpl,
                     CallContext,
                     Request);
+
+                if constexpr (
+                    isFileStoreRequest &&
+                    std::is_same_v<TResponse, NProto::TCreateSessionResponse>)
+                {
+                    Response = Response.Apply(
+                        [] (auto future)
+                        {
+                            auto response = future.ExtractValue();
+                            DisableFileSystemEvents(response);
+                            return response;
+                        });
+                }
             } catch (const TServiceError& e) {
                 STORAGE_WARN(
                     TMethod::RequestName << " #" << RequestId
@@ -807,49 +853,47 @@ private:
 
     void CompleteRequest()
     {
+        if (!Started) {
+            // Shutdown can cancel a request before PrepareRequestContext() and
+            // ExecuteRequest(). Completing it would unbalance request counters
+            // and write a profile record with no start timestamp.
+            return;
+        }
+
         auto& Log = AppCtx.Log;
 
         STORAGE_TRACE(TMethod::RequestName
             << " #" << RequestId
             << " request completed");
 
-        if (CallContext) {
-            const ui64 now = GetCycleCount();
-            const auto ts = CallContext->CalcRequestTime(now);
+        const ui64 now = GetCycleCount();
+        const auto ts = CallContext->CalcRequestTime(now);
 
-            FILESTORE_TRACK(
-                RequestCompleted,
-                CallContext,
-                TString(TMethod::RequestName),
-                ts.TotalTime.MicroSeconds(),
-                ts.ExecutionTime.MicroSeconds());
+        FILESTORE_TRACK(
+            RequestCompleted,
+            CallContext,
+            TString(TMethod::RequestName),
+            ts.TotalTime.MicroSeconds(),
+            ts.ExecutionTime.MicroSeconds());
 
-            // Ids in public API requests come from the client, so E_NOT_FOUND
-            // is an expected outcome here (e.g. filesystem was never created
-            // or already destroyed) - report it as silent so it isn't counted
-            // as a fatal error. Internal lookups of entities that must exist
-            // don't go through this handler and stay loud.
-            if (Error.GetCode() == E_NOT_FOUND) {
-                SetErrorProtoFlag(Error, NCloud::NProto::EF_SILENT);
-            }
-
-            AppCtx.Stats->RequestCompleted(Log, *CallContext, Error);
-
-            const auto startTs = TInstant::MilliSeconds(
-                CallContext->GetRequestStartedCycles() /
-                GetCyclesPerMillisecond());
-
-            ProfileLogRecord.FileSystemId = CallContext->FileSystemId;
-
-            auto request = &ProfileLogRecord.Request;
-            request->SetTimestampMcs(startTs.MicroSeconds());
-            request->SetDurationMcs(ts.TotalTime.MicroSeconds());
-            request->SetRequestType(static_cast<ui32>(CallContext->RequestType));
-
-            AppCtx.ProfileLog->Write(std::move(ProfileLogRecord));
-        } else {
-            // request processing was aborted
+        // Ids in public API requests come from the client, so E_NOT_FOUND
+        // is an expected outcome here (e.g. filesystem was never created
+        // or already destroyed) - report it as silent so it isn't counted
+        // as a fatal error. Internal lookups of entities that must exist
+        // don't go through this handler and stay loud.
+        if (Error.GetCode() == E_NOT_FOUND) {
+            SetErrorProtoFlag(Error, NCloud::NProto::EF_SILENT);
         }
+
+        AppCtx.Stats->RequestCompleted(Log, *CallContext, Error);
+
+        ProfileLogRecord.FileSystemId = CallContext->FileSystemId;
+
+        auto request = &ProfileLogRecord.Request;
+        request->SetDurationMcs(ts.TotalTime.MicroSeconds());
+        request->SetRequestType(static_cast<ui32>(CallContext->RequestType));
+
+        AppCtx.ProfileLog->Write(std::move(ProfileLogRecord));
     }
 };
 

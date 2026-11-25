@@ -373,6 +373,11 @@ void TStorageServiceActor::HandleCreateNode(
         return;
     }
 
+    msg->Record.SetGuestPosixAclEnabled(
+        session->FileStore.GetFeatures().GetGuestPosixAclEnabled());
+    msg->Record.ClearParentDefaultAcl();
+    msg->Record.ClearChildAccessAcl();
+
     if (TryHandleControlNamespaceCreateNode(ctx, ev, session)) {
         return;
     }

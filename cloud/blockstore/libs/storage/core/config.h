@@ -39,55 +39,52 @@ using TPoolKindToMediaKindMapping =
 ////////////////////////////////////////////////////////////////////////////////
 
 // Immediate Control Board controls for read-write storage settings.
-// TStorageConfig reads an explicitly set ICB value before the corresponding
-// protobuf value without modifying the proto. A control set has one of these
-// modes:
-//  - config-independent: register one set per board and share it between
-//    TStorageConfig instances; its defaults mean "no ICB override"
-//  - config-bound: create it for one TStorageConfig; copy construction may
-//    share it while copying that config's raw proto. Its defaults match the
-//    original proto values
-// Default construction creates a config-independent set. The two-argument
-// TStorageConfig constructor creates a private config-bound set.
+// Each set owns live controls shared by TStorageConfig instances and keeps a
+// non-owning reference to its registered board. Create one set per board from
+// raw configuration values or compiled defaults. TStorageConfig copies and
+// Merge results retain the same controls without changing their defaults.
 class TStorageConfigControls
 {
 public:
-    // Create a config-independent control set with no active overrides.
-    TStorageConfigControls();
+    // Initialize controls from raw values with compiled fallbacks and no ICB
+    // overrides.
+    explicit TStorageConfigControls(
+        const NProto::TStorageServiceConfig& storageServiceConfig = {});
     ~TStorageConfigControls();
 
     TStorageConfigControls(const TStorageConfigControls&) = delete;
     TStorageConfigControls& operator=(const TStorageConfigControls&) = delete;
 
     // Register every read-write field control. Repeated registration on the
-    // same board is a no-op; a different board must not be used.
+    // same board is a no-op; a different board or another set under the same
+    // names must not be used.
+    // The first registration must not overlap reads or UpdateDefaults().
     void Register(NKikimr::TControlBoard& controlBoard);
+
+    // Update defaults from raw configuration values, resetting overrides only
+    // for changed defaults. Concurrent ICB value updates are allowed.
+    // Calls for the same control set must not overlap each other or the first
+    // Register() call.
+    //
+    // Resetting an override makes each TStorageConfig use its own raw fallback.
+    // Raw values of existing configuration objects remain unchanged.
+    // Readers retaining an older configuration may therefore return its old
+    // value even when ICB already shows the new default.
+    void UpdateDefaults(const NProto::TStorageServiceConfig& config);
 
     // Return an explicit ICB override for a known read-write field. An empty
     // result means "no override" - the caller must use its configuration proto
     // value.
     std::optional<i64> GetOverride(TStringBuf name) const;
 
-    // Restore a registered field's ICB control to its initial value. For a
-    // config-independent instance, the initial value means "no override". For a
-    // config-bound instance, it equals the field value from the configuration
-    // proto. Return false for an unknown or unregistered field.
-    bool RestoreDefault(TStringBuf name);
-
 private:
     friend class TStorageConfig;
 
     struct TImpl;
 
-    // Non-null implementation containing all read-write field controls, their
-    // configuration-binding policy, and the registered board address.
+    // Non-null implementation owning all read-write field controls and keeping
+    // the non-owning registered board address.
     std::unique_ptr<TImpl> Impl;
-
-    // Create the private per-config control set used by the two-argument
-    // TStorageConfig constructor. ICB defaults are read from the supplied
-    // proto.
-    explicit TStorageConfigControls(
-        const NProto::TStorageServiceConfig& storageServiceConfig);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -103,14 +100,13 @@ private:
 public:
     TStorageConfig(
         NProto::TStorageServiceConfig storageServiceConfig,
-        NFeatures::TFeaturesConfigConstPtr featuresConfig);
+        NFeatures::TFeaturesConfigPtr featuresConfig);
 
-    // Use the supplied config-independent controls for ICB overrides. If
-    // controls is null, create config-bound controls from storageServiceConfig,
-    // as the two-argument constructor does.
+    // Reuse the supplied controls without changing their defaults. If controls
+    // is null, create controls from storageServiceConfig.
     TStorageConfig(
         NProto::TStorageServiceConfig storageServiceConfig,
-        NFeatures::TFeaturesConfigConstPtr featuresConfig,
+        NFeatures::TFeaturesConfigPtr featuresConfig,
         TStorageConfigControlsPtr controls);
 
     // Create a raw-proto copy that shares Features and the live ICB controls.
@@ -119,17 +115,19 @@ public:
 
     ~TStorageConfig();
 
-    // Return reusable config-independent controls. Return null for
-    // config-bound controls, including controls shared internally by copy
-    // construction.
-    TStorageConfigControlsPtr GetStorageConfigControls() const;
+    // Return the non-null controls shared by this configuration and its copies.
+    TStorageConfigControlsPtr GetControls() const;
 
-    void SetFeaturesConfig(NFeatures::TFeaturesConfigConstPtr featuresConfig);
+    // Update shared ICB defaults from this configuration's raw values.
+    // See TStorageConfigControls::UpdateDefaults().
+    void UpdateControlsDefaults() const;
 
-    void Register(NKikimr::TControlBoard& controlBoard) const;
+    void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
 
-    static TStorageConfigConstPtr Merge(
-        TStorageConfigConstPtr config,
+    // Apply a patch to the raw proto while retaining the same live ICB
+    // controls without changing their defaults.
+    static TStorageConfigPtr Merge(
+        TStorageConfigPtr config,
         const NProto::TStorageServiceConfig& patch);
 
     struct TValueByName
@@ -164,6 +162,10 @@ public:
     [[nodiscard]] ui32 GetWriteMixedBlobThresholdHDD() const;
     ui32 GetFlushThresholdHDD() const;
     [[nodiscard]] ui32 GetFlushThresholdSSD() const;
+    [[nodiscard]] ui32 GetFlushThresholdPerAllocationUnitHDD() const;
+    [[nodiscard]] ui32 GetFlushThresholdPerAllocationUnitSSD() const;
+    [[nodiscard]] ui32 GetMaxFlushThresholdHDD() const;
+    [[nodiscard]] ui32 GetMaxFlushThresholdSSD() const;
     ui32 GetFreshBlobCountFlushThresholdHDD() const;
     [[nodiscard]] ui32 GetFreshBlobCountFlushThresholdSSD() const;
     ui32 GetFreshBlobByteCountFlushThresholdHDD() const;
@@ -172,6 +174,8 @@ public:
     [[nodiscard]] ui32 GetFreshBlobByteCountFlushThresholdSSD() const;
     [[nodiscard]] ui32 GetFreshDeadBlobByteCountTrimThresholdSSD() const;
     [[nodiscard]] ui32 GetFreshDeadBlobByteCountTrimThresholdHDD() const;
+    [[nodiscard]] bool GetFreshSelectiveTrimEnabledSSD() const;
+    [[nodiscard]] bool GetFreshSelectiveTrimEnabledHDD() const;
     ui32 GetFlushBlobSizeThreshold() const;
     bool GetFlushToDevNull() const;
 
@@ -1002,6 +1006,10 @@ public:
 
     [[nodiscard]] bool GetMixedBlocksCountCompactionEnabledSSD() const;
 
+    [[nodiscard]] ui64 GetMixedBlocksCompactionMinUsedBytesHDD() const;
+
+    [[nodiscard]] ui64 GetMixedBlocksCompactionMinUsedBytesSSD() const;
+
     [[nodiscard]] ui32 GetMixedBytesCountCompactionThresholdHDD() const;
 
     [[nodiscard]] ui32 GetMixedBytesCountCompactionThresholdSSD() const;
@@ -1018,6 +1026,8 @@ public:
 
     [[nodiscard]] ui64 GetMixedBlocksCompactionMinStoredBytesHDD() const;
 
+    [[nodiscard]] bool GetMixedBlocksCompactionByteCountersEnabled() const;
+
     [[nodiscard]] bool GetIgnorePartitionCountInMaxBlobsPerRange() const;
 
     [[nodiscard]] bool GetVolumeBalancerEnabled() const;
@@ -1026,6 +1036,12 @@ public:
 ui64 GetAllocationUnit(
     const TStorageConfig& config,
     NCloud::NProto::EStorageMediaKind mediaKind);
+
+// Fresh blocks byte count that triggers flush in partition v1.
+[[nodiscard]] ui32 GetFlushThreshold(
+    const TStorageConfig& config,
+    NCloud::NProto::EStorageMediaKind mediaKind,
+    ui64 partitionByteCount);
 
 void AdaptNodeRegistrationParams(
     const TString& overriddenNodeType,

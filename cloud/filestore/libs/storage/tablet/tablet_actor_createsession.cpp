@@ -20,7 +20,6 @@ void FillFeatures(
     const NProto::TFileSystem& fileSystem,
     const NProto::TFileSystemStats& fileSystemStats,
     const TStorageConfig& config,
-    const TSession& session,
     NProto::TFileStore& fileStore)
 {
     auto* features = fileStore.MutableFeatures();
@@ -105,6 +104,7 @@ void FillFeatures(
 
     features->SetMaxBackground(config.GetMaxBackground());
     features->SetMaxFuseLoopThreads(config.GetMaxFuseLoopThreads());
+    features->SetMaxRequestSize(config.GetMaxRequestSize());
 
     features->SetZeroCopyWriteEnabled(config.GetZeroCopyWriteEnabled());
 
@@ -115,8 +115,7 @@ void FillFeatures(
 
     features->SetTabletDirectRdmaEnabled(config.GetTabletDirectRdmaEnabled());
 
-    features->SetGuestPosixAclEnabled(
-        session.GetPersistentOptions().GetGuestPosixAclEnabled());
+    features->SetGuestPosixAclEnabled(fileSystem.GetGuestPosixAclEnabled());
 
     features->SetZeroCopyReadEnabled(config.GetZeroCopyReadEnabled());
 
@@ -194,7 +193,6 @@ TActorId DoRecoverSession(
         proto.SetSessionState(session->GetSessionState());
         proto.SetMaxSeqNo(session->GetSessionSeqNo());
         proto.SetMaxRwSeqNo(session->GetSessionRwSeqNo());
-        *proto.MutablePersistentOptions() = session->GetPersistentOptions();
         db.WriteSession(proto);
     }
 
@@ -215,6 +213,7 @@ void Convert(
     // TODO need set ConfigVersion?
     fileStore.SetNodesCount(nodesCount);
     fileStore.SetStorageMediaKind(fileSystem.GetStorageMediaKind());
+    // TODO(#8034): switch to shard topology
     fileStore.MutableShardFileSystemIds()->CopyFrom(
         fileSystem.GetShardFileSystemIds());
     fileStore.SetShardNo(fileSystem.GetShardNo());
@@ -470,8 +469,6 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
         seqNo);
 
     const auto sessionOptions = TSession::CreateSessionOptions(Config);
-    const auto persistentSessionOptions =
-        TSession::CreatePersistentSessionOptions(*Config);
 
     auto* newSession = CreateSession(
         *db,
@@ -482,8 +479,7 @@ void TIndexTabletActor::ExecuteTx_CreateSession(
         seqNo,
         readOnly,
         owner,
-        sessionOptions,
-        persistentSessionOptions);
+        sessionOptions);
     const auto subSession =
         newSession->SubSessions.GetSubSessionBySeqNo(seqNo);
     if (subSession) {
@@ -548,8 +544,16 @@ void TIndexTabletActor::CompleteTx_CreateSession(
             GetFileSystem(),
             GetFileSystemStats(),
             *Config,
-            *session,
             fileStore);
+
+        //
+        // The effective value: the tablet reads the config only upon start
+        // and doesn't send any events in dry run mode.
+        //
+
+        fileStore.MutableFeatures()->SetFileSystemEventsEnabled(
+            IsFileSystemEventsEnabled() &&
+            !IsFileSystemEventsDryRunModeEnabled());
 
         LOG_DEBUG(
             ctx,
@@ -559,7 +563,7 @@ void TIndexTabletActor::CompleteTx_CreateSession(
             fileStore.GetFeatures().ShortDebugString().c_str());
     }
 
-    if (FastShard) {
+    if (GetFileSystem().GetIsFastShard()) {
         response->Record.SetAdapterModeEnabled(true);
         if (!args.Request.GetNoFileStoreInfo()) {
             auto* f = response->Record.MutableFileStore()->MutableFeatures();

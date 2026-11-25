@@ -80,7 +80,11 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
             return;
         }
 
-        FreshBlobState.AddFreshBlob(blob.CommitId, blob.Data.size(), timestamp);
+        FreshBlobState.AddFreshBlob(
+            blob.CommitId,
+            blob.BlobId,
+            blob.Data.size(),
+            timestamp);
     }
 
     for (const auto& block: blocks) {

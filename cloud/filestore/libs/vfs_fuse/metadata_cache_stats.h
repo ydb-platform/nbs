@@ -44,7 +44,9 @@ private:
     TRelaxedCounter InvalidateNodeEventCount;
     TRelaxedCounter InvalidateNodeRefEventCount;
     TRelaxedCounter InvalidateNodeXAttrEventCount;
-    TRelaxedCounter InvalidateAllCount;
+    // Disconnects observed by the filesystem - including the disconnects of
+    // the sources it has no data from (see OnDisconnect).
+    TRelaxedCounter InvalidateSourceCount;
 
     TRelaxedCounter NodeAttrsCacheSize;
     TRelaxedCounter NodeRefCacheSize;
@@ -94,7 +96,7 @@ public:
     void IncrementInvalidateNodeEventCount();
     void IncrementInvalidateNodeRefEventCount();
     void IncrementInvalidateNodeXAttrEventCount();
-    void IncrementInvalidateAllCount();
+    void IncrementInvalidateSourceCount();
 };
 
 using TMetadataCacheModuleStatsPtr =

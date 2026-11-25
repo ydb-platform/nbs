@@ -71,7 +71,7 @@ public:
         }
     }
 
-    void OnDisconnect(ui64 tabletId) override
+    void OnDisconnect(ui64 sourceId) override
     {
         THandlers handlers;
         with_lock (Lock) {
@@ -81,7 +81,7 @@ public:
         }
 
         for (const auto& handler: handlers) {
-            handler->OnDisconnect(tabletId);
+            handler->OnDisconnect(sourceId);
         }
     }
 };

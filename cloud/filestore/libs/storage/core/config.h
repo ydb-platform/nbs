@@ -204,9 +204,6 @@ public:
     bool GetHiveProxyFallbackMode() const;
     TString GetSystemTabletBackupDirPath() const;
 
-    ui32 GetMaxBlocksPerTruncateTx() const;
-    ui32 GetMaxTruncateTxInflight() const;
-
     [[nodiscard]] i32 GetSystemTabletsPriority() const;
 
     TDuration GetCompactionRetryTimeout() const;
@@ -390,6 +387,7 @@ public:
 
     ui32 GetMaxBackground() const;
     ui32 GetMaxFuseLoopThreads() const;
+    ui32 GetMaxRequestSize() const;
 
     bool GetStrictFileSystemSizeEnforcementEnabled() const;
 
@@ -452,6 +450,9 @@ public:
     [[nodiscard]] ui64 GetFastShardDiskRegistryOwner() const;
     [[nodiscard]] ui64 GetFastShardDiskRegistryOwnerIdx() const;
     [[nodiscard]] TDuration GetFastShardDiskRegistryLookupTimeout() const;
+    [[nodiscard]] TString GetFastShardDevicePoolName() const;
+    [[nodiscard]] ui64 GetFastShardAllocationSize() const;
+    [[nodiscard]] ui64 GetFastShardReservedSize() const;
 
     [[nodiscard]] bool GetEnableNodeRefCompression() const;
 
@@ -487,6 +488,8 @@ public:
     TDuration GetNodeLatencyHalfLife() const;
 
     [[nodiscard]] bool GetEnableRdmaForWrites() const;
+
+    bool GetPermanentReadWriteDataActorsEnabled() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

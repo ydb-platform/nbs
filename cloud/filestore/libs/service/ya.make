@@ -11,6 +11,7 @@ SRCS(
     filestore_test.cpp
     filesystem_event.cpp
     mask.cpp
+    mediakind.cpp
     request.cpp
     service_actions.cpp
     service_auth.cpp

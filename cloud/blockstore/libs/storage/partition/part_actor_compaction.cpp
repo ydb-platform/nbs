@@ -798,7 +798,8 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 blobId,
                 range,
                 skipMask,
-                std::move(ensuredBlockChecksums));
+                std::move(ensuredBlockChecksums),
+                std::nullopt);
             mergedBlobCompactionInfos.push_back(
                 {blobsSkipped,
                  blocksSkipped,
@@ -1300,7 +1301,7 @@ TDuration InterpolateCompactionExecTime(
 class TCompactionTriggerer
 {
 private:
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     TPartitionState& State;
 
     TRangeStat TopRangeStat;
@@ -1356,7 +1357,7 @@ public:
 
 public:
     TCompactionTriggerer(
-        const TStorageConfigConstPtr config,
+        const TStorageConfigPtr config,
         TPartitionState& state,
         TInstant now)
         : Config(config)
@@ -1397,17 +1398,17 @@ public:
             return info;
         }
 
+        info = TriggerMixedBlocksCountCompactionIfNeeded();
+        if (info) {
+            return info;
+        }
+
         info = TriggerIgnoringZeroedCompactionIfNeeded();
         if (info) {
             return info;
         }
 
-        info = TriggerGarbageCompactionIfNeeded();
-        if (info) {
-            return info;
-        }
-
-        return TriggerMixedBlocksCountCompactionIfNeeded();
+        return TriggerGarbageCompactionIfNeeded();
     }
 
 private:
@@ -1628,23 +1629,8 @@ private:
         const bool rangeMixedBlockCountOverThreshold =
             rangeMixedBytesCount >= threshold;
 
-        const ui64 diskMixedBlockCount =
-            State.GetCompactionMap().GetMixedBlocksCountPerDisk();
-        const ui64 diskTotalBlockCount =
-            State.GetCompactionMap().GetStoredBlocksCountPerDisk();
-        const ui64 minStoredBytes =
-            isSSD ? Config->GetMixedBlocksCompactionMinStoredBytesSSD()
-                  : Config->GetMixedBlocksCompactionMinStoredBytesHDD();
-        const ui64 totalBytesStored =
-            diskTotalBlockCount * State.GetBlockSize();
-        const bool enoughBytesStored = totalBytesStored >= minStoredBytes;
-
-        // All stored blocks have the same size, so this is also the mixed
-        // bytes percentage, including overwritten blocks still stored in blobs.
         const ui32 mixedBlocksPercentage =
-            enoughBytesStored
-                ? GetPercentage(diskMixedBlockCount, diskTotalBlockCount)
-                : 0;
+            State.GetMixedBlocksCompactionPercentage(*Config);
 
         const ui64 mixedBlocksPercentageThreshold =
             isSSD ? Config->GetMixedBlocksCompactionThresholdPercentageSSD()

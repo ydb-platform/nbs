@@ -48,8 +48,8 @@ TVector<TDeviceStat> CreateDeviceStats(
 ////////////////////////////////////////////////////////////////////////////////
 
 TNonreplicatedPartitionActor::TNonreplicatedPartitionActor(
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         TActorId volumeActorId,
         TActorId statActorId)

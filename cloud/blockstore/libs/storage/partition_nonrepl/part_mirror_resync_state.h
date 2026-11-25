@@ -22,7 +22,7 @@ namespace NCloud::NBlockStore::NStorage {
 class TMirrorPartitionResyncState
 {
 private:
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
     TString RWClientId;
     TVector<TReplicaInfo> ReplicaInfos;
 
@@ -33,7 +33,7 @@ private:
 
 public:
     TMirrorPartitionResyncState(
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TString rwClientId,
         TNonreplicatedPartitionConfigPtr partConfig,
         TVector<TDevices> replicaDevices,

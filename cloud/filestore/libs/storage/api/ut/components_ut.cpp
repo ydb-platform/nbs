@@ -45,7 +45,10 @@ Y_UNIT_TEST_SUITE(TFileStoreComponentsTest)
             E::START + 909,
             (int)E::DISK_REGISTRY_PROXY_END);
 
-        UNIT_ASSERT_VALUES_EQUAL(E::START + 910, (int)E::END);
+        UNIT_ASSERT_VALUES_EQUAL(E::START + 910, (int)E::RDMA_START);
+        UNIT_ASSERT_VALUES_EQUAL(E::START + 1010, (int)E::RDMA_END);
+
+        UNIT_ASSERT_VALUES_EQUAL(E::START + 1011, (int)E::END);
     }
 
     // A failure here could mean that the wiring of events could have been

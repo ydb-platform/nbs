@@ -18,9 +18,12 @@ namespace NCloud::NFileStore::NFuse {
 
 /*
  * Caches the node attrs returned by the backend along with a TTL
- * (NodeCacheTTL in the GetNodeAttr responses), see TTTLCacheShard. Unlike
- * TNodeCache, doesn't depend on the guest's lookup count: the entries live
- * until their deadline, invalidation or eviction.
+ * (NodeCacheTTL in the GetNodeAttr responses), see TTTLCacheShard. The
+ * entries live until their deadline, invalidation or eviction.
+ *
+ * The invalidations of the node attrs are also used to decide whether the
+ * guest may cache the node attrs returned to it, see IsCacheable. They are
+ * tracked regardless of the TTLs, i.e. also when no node attrs are cached.
  */
 class TNodeAttrsCache
 {
@@ -38,15 +41,30 @@ public:
     TNodeAttrsCache(ui32 maxEntryCount, ui32 shardCount);
 
     /**
-     * Caches node attrs until deadline unless the node has been invalidated
-     * after version.
+     * Caches node attrs until deadline unless the node or the source has been
+     * invalidated after version.
      *
      * @param attrs - Node attrs.
      * @param version - Cache version at which the request that has fetched
      *  the attrs has started.
+     * @param sourceId - Source of the attrs (NodeCacheSourceId).
      * @param deadline - Deadline after which the attrs are not used.
      */
-    void Add(const NProto::TNodeAttr& attrs, ui64 version, TInstant deadline);
+    void Add(
+        const NProto::TNodeAttr& attrs,
+        ui64 version,
+        ui64 sourceId,
+        TInstant deadline);
+
+    /**
+     * Checks whether the node attrs fetched by a request may be cached - by
+     * this cache or by the guest.
+     *
+     * @param nodeId - Node id.
+     * @param version - Cache version at which the request has started.
+     * @return - False if the node has been invalidated after version.
+     */
+    bool IsCacheable(ui64 nodeId, ui64 version);
 
     /**
      * Returns the cached node attrs. The attrs are erased if their deadline
@@ -68,12 +86,28 @@ public:
     void Invalidate(ui64 nodeId, ui64 version);
 
     /**
-     * Erases all the node attrs and prevents caching by the requests started
-     * before version.
+     * Checks whether the node attrs fetched by a request may be cached (see
+     * IsCacheable) and then invalidates them (see Invalidate), atomically.
      *
+     * @param nodeId - Node id.
+     * @param version - Cache version at which the request has started.
+     * @param invalidationVersion - Cache version of the invalidation.
+     * @return - False if the node has been invalidated after version.
+     */
+    bool CheckAndInvalidate(
+        ui64 nodeId,
+        ui64 version,
+        ui64 invalidationVersion);
+
+    /**
+     * Invalidates all the node attrs received from a source (e.g. upon the
+     * loss of the connection to it): the attrs fetched from it by the
+     * requests started before version are neither cached nor returned.
+     *
+     * @param sourceId - Source of the attrs.
      * @param version - Cache version of the invalidation.
      */
-    void InvalidateAll(ui64 version);
+    void InvalidateSource(ui64 sourceId, ui64 version);
 
     /**
      * @return - Number of the cached node attrs.

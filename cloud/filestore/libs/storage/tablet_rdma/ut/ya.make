@@ -7,10 +7,13 @@ ELSE()
 ENDIF()
 
 SRCS(
+    rdma_tablet_forwarder_ut.cpp
     rdma_tablet_registry_ut.cpp
+    rdma_tablet_target_ut.cpp
 )
 
 PEERDIR(
+    cloud/filestore/libs/rdma_test
     cloud/filestore/libs/storage/testlib
     contrib/ydb/core/testlib
 )

@@ -91,7 +91,6 @@ private:
 
     std::unique_ptr<NVFS::IFSyncQueue> FSyncQueue;
 
-    TNodeCache NodeCache;
     TMetadataCacheModuleStatsPtr MetadataCacheStats;
     TNodeAttrsCache NodeAttrsCache;
     TNodeRefCache NodeRefCache;
@@ -364,7 +363,7 @@ public:
     void InvalidateCachedNodeXAttr(
         ui64 nodeId,
         const TString& name) override;
-    void InvalidateAllCachedMetadata() override;
+    void InvalidateCachedMetadataOfSource(ui64 sourceId) override;
 
     TMetadataCacheSizes GetMetadataCacheSizes();
 
@@ -461,12 +460,13 @@ private:
 
     void AdjustNodeSize(NProto::TNodeAttr& attrs);
 
-    bool UpdateNodeAttrsInCache(
+    void FillEntryParam(
         const NProto::TNodeAttr& attrs,
         fuse_entry_param& entry,
-        ui64 version);
+        bool cacheable);
 
     TInstant GetCacheDeadline(ui32 cacheTTL) const;
+    TDuration GetCacheTTL(ui32 cacheTTL) const;
     void UpdateCachedNodeRef(
         ui64 parentNodeId,
         const TString& name,
@@ -485,9 +485,9 @@ private:
         fuse_req_t req,
         ui64 nodeId);
 
-    void InvalidateNodeInCache(ui64 nodeId);
     void InvalidateCachedEntry(ui64 parentNodeId, const TString& name);
     void InvalidateCachedNodeAttrs(ui64 nodeId);
+    bool InvalidateCachedNodeAttrsUponOwnChange(ui64 nodeId, ui64 version);
     void InvalidateCachedXAttr(ui64 nodeId, const TString& name);
     void InvalidateDirectoryEntryInCache(
         fuse_ino_t parent,
@@ -501,6 +501,7 @@ private:
         ui64 version,
         const NProto::TError& error,
         ui64 cacheVersion,
+        ui64 sourceId,
         TDuration cacheTTL);
     void UpdateXAttrCacheUponSetXAttr(
         ui64 ino,
@@ -509,6 +510,7 @@ private:
         ui64 version,
         const NProto::TError& error,
         ui64 cacheVersion,
+        ui64 sourceId,
         TDuration cacheTTL);
 
     void ReplyCreateWithCache(
@@ -517,14 +519,14 @@ private:
         fuse_req_t req,
         ui64 handle,
         const NProto::TNodeAttr& attrs,
-        ui64 version,
+        bool cacheable,
         bool newNodeCreated);
     void ReplyEntryWithCache(
         TCallContext& callContext,
         const NCloud::NProto::TError& error,
         fuse_req_t req,
         const NProto::TNodeAttr& attrs,
-        ui64 version,
+        bool cacheable,
         bool newNodeCreated);
     void ReplyXAttrInt(
         TCallContext& callContext,
@@ -537,7 +539,7 @@ private:
         const NCloud::NProto::TError& error,
         fuse_req_t req,
         const NProto::TNodeAttr& attrs,
-        ui64 version);
+        bool cacheable);
 
     void ProcessAsyncCreateHandleResponse(
         TCallContextPtr callContext,

@@ -48,6 +48,7 @@ namespace NCloud::NFileStore::NFuse {
 
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 constexpr ui64 WriteBackCacheStateFileSize = 1_MB + 4_KB;
+constexpr ui32 WriteBackCacheMaxRequestSize = 1_MB;
 constexpr TStringBuf MetricsComponent = "fs_ut";
 
 inline const TString FileSystemId = "fs1";
@@ -91,7 +92,8 @@ struct TBootstrap
         IFileMapMemoryLimiterPtr fileMapMemoryLimiter =
             CreateFileMapMemoryLimiterStub(),
         IPersistentStateManagerPtr persistentStateManager = nullptr,
-        IMultiFileSystemEventHandlerPtr multiFileSystemEventHandler = nullptr)
+        IMultiFileSystemEventHandlerPtr multiFileSystemEventHandler = nullptr,
+        const NProto::TVFSConfig& vfsConfig = {})
         : Logging(CreateLoggingService("console", {TLOG_RESOURCES}))
         , Scheduler{std::move(scheduler)}
         , Timer{std::move(timer)}
@@ -133,6 +135,12 @@ struct TBootstrap
             features.SetServerWriteBackCacheStateFileSize(
                 WriteBackCacheStateFileSize);
         }
+        if (features.GetServerWriteBackCacheEnabled() &&
+            !features.GetMaxRequestSize() && !vfsConfig.HasMaxWritePages())
+        {
+            // Keep requests within the small cache even on 64 KiB-page hosts.
+            features.SetMaxRequestSize(WriteBackCacheMaxRequestSize);
+        }
 
         Service->CreateSessionHandler =
             [features](auto callContext, auto request)
@@ -172,7 +180,7 @@ struct TBootstrap
             Service,
             std::move(sessionConfig));
 
-        NProto::TVFSConfig proto;
+        NProto::TVFSConfig proto = vfsConfig;
         proto.SetDebug(true);
         proto.SetSocketPath(SocketPath);
         proto.SetFileSystemId(FileSystemId);

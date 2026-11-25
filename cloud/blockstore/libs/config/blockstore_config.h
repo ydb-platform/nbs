@@ -36,9 +36,14 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TGrpcClientConfigConstPtr =
-    std::shared_ptr<const NProto::TGrpcClientConfig>;
-using TRootKmsConfigConstPtr = std::shared_ptr<const NProto::TRootKmsConfig>;
+// Configuration pointer aliases provide read-only access by default:
+// ...ConfigPtr points to a const configuration. Consumers must always accept
+// and retain ...ConfigPtr. Only configuration builders may retain
+// ...ConfigMutablePtr to prepare and publish configurations. Define a mutable
+// alias only when needed.
+
+using TGrpcClientConfigPtr = std::shared_ptr<const NProto::TGrpcClientConfig>;
+using TRootKmsConfigPtr = std::shared_ptr<const NProto::TRootKmsConfig>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -77,53 +82,53 @@ public:
 
     virtual ~IBlockstoreConfig() = default;
 
-    [[nodiscard]] virtual const NServer::TServerAppConfigConstPtr&
+    [[nodiscard]] virtual const NServer::TServerAppConfigPtr&
     GetServerConfig() const = 0;
 
     // Return the top-level Features section for configuration inspection and
     // serialization. Storage decisions must use the typed feature accessors
     // provided by TStorageConfig instead of reading this section directly.
-    [[nodiscard]] virtual const NFeatures::TFeaturesConfigConstPtr&
+    [[nodiscard]] virtual const NFeatures::TFeaturesConfigPtr&
     GetFeaturesConfig() const = 0;
 
-    [[nodiscard]] virtual const NStorage::TStorageConfigConstPtr&
+    [[nodiscard]] virtual const NStorage::TStorageConfigPtr&
     GetStorageConfig() const = 0;
-    [[nodiscard]] virtual const TDiagnosticsConfigConstPtr&
+    [[nodiscard]] virtual const TDiagnosticsConfigPtr&
     GetDiagnosticsConfig() const = 0;
-    [[nodiscard]] virtual const NDiscovery::TDiscoveryConfigConstPtr&
+    [[nodiscard]] virtual const NDiscovery::TDiscoveryConfigPtr&
     GetDiscoveryServiceConfig() const = 0;
-    [[nodiscard]] virtual const NClient::TClientAppConfigConstPtr&
+    [[nodiscard]] virtual const NClient::TClientAppConfigPtr&
     GetEndpointConfig() const = 0;
-    [[nodiscard]] virtual const NStorage::TDiskAgentConfigConstPtr&
+    [[nodiscard]] virtual const NStorage::TDiskAgentConfigPtr&
     GetDiskAgentConfig() const = 0;
-    [[nodiscard]] virtual const NStorage::TDiskRegistryProxyConfigConstPtr&
+    [[nodiscard]] virtual const NStorage::TDiskRegistryProxyConfigPtr&
     GetDiskRegistryProxyConfig() const = 0;
-    [[nodiscard]] virtual const NSpdk::TSpdkEnvConfigConstPtr&
+    [[nodiscard]] virtual const NSpdk::TSpdkEnvConfigPtr&
     GetSpdkEnvConfig() const = 0;
-    [[nodiscard]] virtual const NRdma::TRdmaConfigConstPtr&
+    [[nodiscard]] virtual const NRdma::TRdmaConfigPtr&
     GetRdmaConfig() const = 0;
-    [[nodiscard]] virtual const NYdbStats::TYdbStatsConfigConstPtr&
+    [[nodiscard]] virtual const NYdbStats::TYdbStatsConfigPtr&
     GetYdbStatsConfig() const = 0;
-    [[nodiscard]] virtual const NLogbroker::TLogbrokerConfigConstPtr&
+    [[nodiscard]] virtual const NLogbroker::TLogbrokerConfigPtr&
     GetLogbrokerConfig() const = 0;
-    [[nodiscard]] virtual const NNotify::TNotifyConfigConstPtr&
+    [[nodiscard]] virtual const NNotify::TNotifyConfigPtr&
     GetNotifyConfig() const = 0;
-    [[nodiscard]] virtual const NIamClient::TIamClientConfigConstPtr&
+    [[nodiscard]] virtual const NIamClient::TIamClientConfigPtr&
     GetIamClientConfig() const = 0;
-    [[nodiscard]] virtual const TGrpcClientConfigConstPtr&
+    [[nodiscard]] virtual const TGrpcClientConfigPtr&
     GetKmsClientConfig() const = 0;
-    [[nodiscard]] virtual const TGrpcClientConfigConstPtr&
+    [[nodiscard]] virtual const TGrpcClientConfigPtr&
     GetComputeClientConfig() const = 0;
-    [[nodiscard]] virtual const TRootKmsConfigConstPtr&
+    [[nodiscard]] virtual const TRootKmsConfigPtr&
     GetRootKmsConfig() const = 0;
-    [[nodiscard]] virtual const NCells::TCellsConfigConstPtr&
+    [[nodiscard]] virtual const NCells::TCellsConfigPtr&
     GetCellsConfig() const = 0;
-    [[nodiscard]] virtual const TLocalNVMeConfigConstPtr&
+    [[nodiscard]] virtual const TLocalNVMeConfigPtr&
     GetLocalNVMeConfig() const = 0;
 };
 
-using IBlockstoreConfigPtr = TIntrusivePtr<IBlockstoreConfig>;
-using IBlockstoreConfigConstPtr = TIntrusiveConstPtr<IBlockstoreConfig>;
+using IBlockstoreConfigPtr = TIntrusiveConstPtr<IBlockstoreConfig>;
+using IBlockstoreConfigMutablePtr = TIntrusivePtr<IBlockstoreConfig>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -142,7 +147,7 @@ TBlockstoreConfigExtraParameters GetBlockstoreConfigExtraParameters(
 // Merge the source protos and create independently owned runtime adapters. The
 // controls pointer must be non-null and becomes the live ICB overlay of the
 // Storage wrapper. Extra parameters supply host-specific DiskAgent values.
-IBlockstoreConfigPtr MakeBlockstoreConfig(
+IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
     NStorage::TStorageConfigControlsPtr controls,
@@ -152,7 +157,7 @@ IBlockstoreConfigPtr MakeBlockstoreConfig(
 // initialized Storage and DiskAgent adapters. The Storage copy shares its
 // live ICB controls in either mode and uses Features from the merged sources.
 // Build every other section from the merged sources.
-IBlockstoreConfigPtr MakeBlockstoreConfig(
+IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
     const NStorage::TStorageConfig& storageConfig,

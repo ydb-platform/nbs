@@ -384,28 +384,6 @@ bool TIndexTabletDatabaseWithFailureInjection::ReadNodeRefVers(
     return Real->ReadNodeRefVers(nodeId, commitId, refs);
 }
 
-void TIndexTabletDatabaseWithFailureInjection::WriteTruncateQueueEntry(
-    ui64 nodeId,
-    TByteRange range)
-{
-    Real->WriteTruncateQueueEntry(nodeId, range);
-}
-
-void TIndexTabletDatabaseWithFailureInjection::DeleteTruncateQueueEntry(ui64 id)
-{
-    Real->DeleteTruncateQueueEntry(id);
-}
-
-bool TIndexTabletDatabaseWithFailureInjection::ReadTruncateQueue(
-    TVector<NProto::TTruncateEntry>& entries)
-{
-    if (Y_UNLIKELY(ShouldFailReadInTest())) {
-        return false;
-    }
-
-    return Real->ReadTruncateQueue(entries);
-}
-
 void TIndexTabletDatabaseWithFailureInjection::WriteSession(
     const NProto::TSession& session)
 {

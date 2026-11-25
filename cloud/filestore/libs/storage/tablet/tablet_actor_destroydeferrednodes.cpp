@@ -56,6 +56,8 @@ void TIndexTabletActor::ExecuteTx_DestroyDeferredNodes(
     TTransactionContext& tx,
     TTxIndexTablet::TDestroyDeferredNodes& args)
 {
+    Y_UNUSED(ctx);
+
     auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     const ui64 commitId = GenerateCommitId();
@@ -97,8 +99,6 @@ void TIndexTabletActor::ExecuteTx_DestroyDeferredNodes(
 
         ++args.DestroyedNodeCount;
     }
-
-    EnqueueTruncateIfNeeded(ctx);
 }
 
 void TIndexTabletActor::CompleteTx_DestroyDeferredNodes(

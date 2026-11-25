@@ -312,21 +312,30 @@ root_kms: {address: kms}
                  .IsFeatureEnabled("duplicate-dynamic-C-cloud", {}, {}, "C"));
     }
 
-    // Set the ICB value to 100 and rebuild the config with default 300. Check
-    // that the override stays 100 and RestoreDefault switches the value to 300.
-    Y_UNIT_TEST(ShouldKeepExplicitIcbOverrideAcrossConfigs)
+    // Verify that building and publishing configs preserve shared ICB controls.
+    // Check that RestoreDefault() makes getters return their own raw values.
+    Y_UNIT_TEST(ShouldPreserveIcbControlsWhenBuildingAndPublishingConfigs)
     {
+        // Initialize shared controls from compiled defaults and build the first
+        // config.
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
         NKikimr::TControlBoard controlBoard;
         controls->Register(controlBoard);
+        NKikimr::TControlWrapper control;
+        UNIT_ASSERT(!controlBoard.RegisterSharedControl(
+            control,
+            "BlockStore_WriteBlobThreshold"));
+        const auto nativeDefault = control.GetDefault();
 
         auto first =
             MakeBlockstoreConfig(MakeConfig(100), MakeConfig(200), controls);
+        TBlockstoreConfigHolder holder(first);
 
         UNIT_ASSERT_VALUES_EQUAL(
             200,
             first->GetStorageConfig()->GetWriteBlobThreshold());
 
+        // Apply an ICB override and verify the effective proto.
         TAtomic previous = 0;
         UNIT_ASSERT(!controlBoard.SetValue(
             "BlockStore_WriteBlobThreshold",
@@ -341,9 +350,13 @@ root_kms: {address: kms}
                 ->GetEffectiveStorageConfigProto()
                 .GetWriteBlobThreshold());
 
+        // Build a new config without changing the ICB override or native
+        // Default.
         auto second =
             MakeBlockstoreConfig(MakeConfig(100), MakeConfig(300), controls);
 
+        UNIT_ASSERT_VALUES_EQUAL(nativeDefault, control.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(100, static_cast<i64>(control));
         UNIT_ASSERT_VALUES_EQUAL(
             100,
             second->GetStorageConfig()->GetWriteBlobThreshold());
@@ -353,47 +366,49 @@ root_kms: {address: kms}
                 ->GetEffectiveStorageConfigProto()
                 .GetWriteBlobThreshold());
 
-        UNIT_ASSERT(controls->RestoreDefault("WriteBlobThreshold"));
+        // Publish the new config without changing the shared ICB controls.
+        holder.Set(second);
+        const auto currentConfig = holder.Get();
+        UNIT_ASSERT_VALUES_EQUAL(nativeDefault, control.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(100, static_cast<i64>(control));
+        UNIT_ASSERT_VALUES_EQUAL(
+            100,
+            currentConfig->GetStorageConfig()->GetWriteBlobThreshold());
+
+        // Change the override and verify that both configs use the shared
+        // controls.
+        UNIT_ASSERT(!controlBoard.SetValue(
+            "BlockStore_WriteBlobThreshold",
+            150,
+            previous));
+        UNIT_ASSERT_VALUES_EQUAL(
+            150,
+            first->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            150,
+            currentConfig->GetStorageConfig()->GetWriteBlobThreshold());
+
+        // Clear the override and read each config's own raw value.
+        controlBoard.RestoreDefault("BlockStore_WriteBlobThreshold");
+        UNIT_ASSERT_VALUES_EQUAL(nativeDefault, control.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(nativeDefault, static_cast<i64>(control));
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            first->GetStorageConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(
             300,
             second->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            holder.Get()->GetStorageConfig()->GetWriteBlobThreshold());
 
+        // Build without dynamic overrides and read the static configuration
+        // value.
         auto third = MakeBlockstoreConfig(MakeConfig(100), {}, controls);
 
         UNIT_ASSERT_VALUES_EQUAL(
             100,
             third->GetStorageConfig()->GetWriteBlobThreshold());
-    }
-
-    // Publish a config with default 300 while the ICB value is 150. Check that
-    // the override stays 150 and RestoreDefault selects the new default 300.
-    Y_UNIT_TEST(ShouldKeepIcbOverrideWhenCurrentConfigIsUpdated)
-    {
-        auto controls = std::make_shared<NStorage::TStorageConfigControls>();
-        NKikimr::TControlBoard controlBoard;
-        controls->Register(controlBoard);
-
-        TBlockstoreConfigHolder holder(
-            MakeBlockstoreConfig(MakeConfig(100), MakeConfig(200), controls));
-
-        TAtomic previous = 0;
-        UNIT_ASSERT(!controlBoard.SetValue(
-            "BlockStore_WriteBlobThreshold",
-            150,
-            previous));
-
-        holder.Set(
-            MakeBlockstoreConfig(MakeConfig(100), MakeConfig(300), controls));
-
-        const auto currentConfig = holder.Get();
-        UNIT_ASSERT_VALUES_EQUAL(
-            150,
-            currentConfig->GetStorageConfig()->GetWriteBlobThreshold());
-
-        UNIT_ASSERT(controls->RestoreDefault("WriteBlobThreshold"));
-        UNIT_ASSERT_VALUES_EQUAL(
-            300,
-            holder.Get()->GetStorageConfig()->GetWriteBlobThreshold());
     }
 
     // Supply Server and Diagnostics fields from both config layers. Check
@@ -448,7 +463,7 @@ root_kms: {address: kms}
             features,
             controls);
         NKikimr::TControlBoard controlBoard;
-        storage->Register(controlBoard);
+        controls->Register(controlBoard);
         NProto::TDiskAgentConfig diskAgentProto;
         diskAgentProto.SetAgentId("bootstrap-agent");
         NStorage::TDiskAgentConfig diskAgent(
@@ -499,7 +514,7 @@ root_kms: {address: kms}
     // the aggregate config. The section must remain alive and keep its value.
     Y_UNIT_TEST(ShouldKeepTopLevelSectionAliveAfterAggregateConfigIsReleased)
     {
-        NServer::TServerAppConfigConstPtr serverConfig;
+        NServer::TServerAppConfigPtr serverConfig;
         {
             const auto config = MakeBlockstoreConfig(
                 MakeConfig(100),
@@ -547,8 +562,10 @@ root_kms: {address: kms}
     {
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
         auto initial = MakeBlockstoreConfig(MakeConfig(1), {}, controls);
-        auto retained = IBlockstoreConfigConstPtr(initial);
-        TBlockstoreConfigHolder holder(std::move(initial));
+        auto retained = IBlockstoreConfigPtr(initial);
+        auto holder =
+            std::make_shared<TBlockstoreConfigHolder>(std::move(initial));
+        const IBlockstoreConfigGetterPtr getter = holder;
 
         std::atomic<bool> stop = false;
         std::atomic<bool> consistent = true;
@@ -559,7 +576,7 @@ root_kms: {address: kms}
                 [&]
                 {
                     while (!stop.load()) {
-                        const auto config = holder.Get();
+                        const auto config = getter->Get();
                         if (config->GetServerConfig()->GetPort() !=
                             config->GetStorageConfig()->GetWriteBlobThreshold())
                         {
@@ -570,7 +587,7 @@ root_kms: {address: kms}
         }
 
         for (ui32 value = 2; value != 100; ++value) {
-            holder.Set(MakeBlockstoreConfig(MakeConfig(value), {}, controls));
+            holder->Set(MakeBlockstoreConfig(MakeConfig(value), {}, controls));
         }
 
         stop.store(true);
@@ -585,7 +602,38 @@ root_kms: {address: kms}
             retained->GetStorageConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(
             99,
-            holder.Get()->GetStorageConfig()->GetWriteBlobThreshold());
+            getter->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+    }
+
+    // Check that updating one holder preserves the other holder's configuration
+    // and a previously returned snapshot.
+    Y_UNIT_TEST(ShouldKeepLocalHoldersIndependent)
+    {
+        // Create two local holders with separate configurations and ICB
+        // controls.
+        auto firstControls =
+            std::make_shared<NStorage::TStorageConfigControls>();
+        auto secondControls =
+            std::make_shared<NStorage::TStorageConfigControls>();
+        auto firstHolder = std::make_shared<TBlockstoreConfigHolder>(
+            MakeBlockstoreConfig(MakeConfig(100), {}, firstControls));
+        auto secondHolder = std::make_shared<TBlockstoreConfigHolder>(
+            MakeBlockstoreConfig(MakeConfig(200), {}, secondControls));
+        IBlockstoreConfigGetterPtr firstGetter = firstHolder;
+        const IBlockstoreConfigGetterPtr secondGetter = secondHolder;
+        const auto retained = firstGetter->Get();
+
+        // Publish through one holder and preserve the other holder's
+        // configuration and the retained snapshot.
+        firstHolder->Set(
+            MakeBlockstoreConfig(MakeConfig(300), {}, firstControls));
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            firstGetter->Get()->GetServerConfig()->GetPort());
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            secondGetter->Get()->GetServerConfig()->GetPort());
+        UNIT_ASSERT_VALUES_EQUAL(100, retained->GetServerConfig()->GetPort());
     }
 
     // Initialize the process provider with value 100, then publish value 200
@@ -596,19 +644,99 @@ root_kms: {address: kms}
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
         auto holder = InitializeBlockstoreConfigProvider(
             MakeBlockstoreConfig(MakeConfig(100), {}, controls));
+        const IBlockstoreConfigGetterPtr getter = holder;
         Y_DEFER
         {
             ResetBlockstoreConfigProvider();
         };
 
         const auto initial = GetCurrentBlockstoreConfig();
+        UNIT_ASSERT_EQUAL(initial.Get(), getter->Get().Get());
         UNIT_ASSERT_VALUES_EQUAL(100, initial->GetServerConfig()->GetPort());
 
         holder->Set(MakeBlockstoreConfig(MakeConfig(200), {}, controls));
 
         const auto current = GetCurrentBlockstoreConfig();
+        UNIT_ASSERT_EQUAL(current.Get(), getter->Get().Get());
         UNIT_ASSERT_VALUES_EQUAL(200, current->GetServerConfig()->GetPort());
         UNIT_ASSERT_VALUES_EQUAL(100, initial->GetServerConfig()->GetPort());
+    }
+
+    // Verify that explicit ICB default updates use the built config's raw
+    // values and reset overrides only when the configured value changes.
+    Y_UNIT_TEST(ShouldUpdateIcbDefaultsFromBuiltConfig)
+    {
+        // Initialize defaults from the first config and install an ICB
+        // override.
+        auto controls = std::make_shared<NStorage::TStorageConfigControls>();
+        const auto initialConfig =
+            MakeBlockstoreConfig(MakeConfig(100), MakeConfig(200), controls);
+        initialConfig->GetStorageConfig()->UpdateControlsDefaults();
+        TBlockstoreConfigHolder holder(initialConfig);
+        NKikimr::TControlBoard controlBoard;
+        controls->Register(controlBoard);
+        NKikimr::TControlWrapper control;
+        UNIT_ASSERT(!controlBoard.RegisterSharedControl(
+            control,
+            "BlockStore_WriteBlobThreshold"));
+        TAtomic previous = 0;
+        UNIT_ASSERT(!controlBoard.SetValue(
+            "BlockStore_WriteBlobThreshold",
+            500,
+            previous));
+        UNIT_ASSERT_VALUES_EQUAL(200, control.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(500, static_cast<i64>(control));
+        UNIT_ASSERT_VALUES_EQUAL(
+            500,
+            initialConfig->GetStorageConfig()->GetWriteBlobThreshold());
+
+        // Build a config with a new raw value without changing the ICB
+        // controls.
+        auto newConfig =
+            MakeBlockstoreConfig(MakeConfig(100), MakeConfig(300), controls);
+        UNIT_ASSERT_VALUES_EQUAL(200, control.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(500, static_cast<i64>(control));
+        UNIT_ASSERT_VALUES_EQUAL(
+            500,
+            newConfig->GetStorageConfig()->GetWriteBlobThreshold());
+
+        // Publish new raw values without changing the shared ICB defaults or
+        // override.
+        holder.Set(std::move(newConfig));
+        const auto currentConfig = holder.Get();
+        UNIT_ASSERT_VALUES_EQUAL(200, control.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(500, static_cast<i64>(control));
+        UNIT_ASSERT_VALUES_EQUAL(
+            500,
+            currentConfig->GetStorageConfig()->GetWriteBlobThreshold());
+
+        // Reset the override using the new raw value and preserve the old
+        // config's fallback.
+        currentConfig->GetStorageConfig()->UpdateControlsDefaults();
+        UNIT_ASSERT_VALUES_EQUAL(300, control.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(300, static_cast<i64>(control));
+        UNIT_ASSERT(!controls->GetOverride("WriteBlobThreshold"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            currentConfig->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            initialConfig->GetStorageConfig()->GetWriteBlobThreshold());
+
+        // Preserve a new override when the raw configuration remains unchanged.
+        UNIT_ASSERT(!controlBoard.SetValue(
+            "BlockStore_WriteBlobThreshold",
+            600,
+            previous));
+        currentConfig->GetStorageConfig()->UpdateControlsDefaults();
+        UNIT_ASSERT_VALUES_EQUAL(300, control.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(600, static_cast<i64>(control));
+        UNIT_ASSERT_VALUES_EQUAL(
+            600,
+            currentConfig->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            600,
+            initialConfig->GetStorageConfig()->GetWriteBlobThreshold());
     }
 }
 

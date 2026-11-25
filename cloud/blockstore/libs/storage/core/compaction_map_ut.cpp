@@ -731,51 +731,92 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldTrackStoredBlocksPerDisk)
+    Y_UNIT_TEST(
+        ShouldTrackStoredAndMixedBlocksInRangesEligibleForMixedBlocksCountCompaction)
     {
         TCompactionMap map(
             RangeSize,
             MakeDefaultCompactionPolicy(
-                {.MixedBlocksCountCompactionEnabled = true}));
+                {.UsedBlocksThresholdForMixedBlocksCompaction = 80,
+                 .MixedBlocksCountCompactionEnabled = true}));
 
         const ui32 range0 = GetGroupIndex(0);
         const ui32 range1 = range0 + RangeSize;
         const ui32 range2 = GetGroupIndex(1);
 
-        UNIT_ASSERT_VALUES_EQUAL(0, map.GetStoredBlocksCountPerDisk());
-        UNIT_ASSERT_VALUES_EQUAL(0, map.GetMixedBlocksCountPerDisk());
-        map.Update(range0, 3, 100, 80, 0, 10, false, false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            map.GetStoredBlocksInRangesEligibleForMixedBlocksCountCompaction());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            map.GetMixedBlocksInRangesEligibleForMixedBlocksCountCompaction());
+        map.Update(range0, 3, 100, 79, 0, 10, false, false);
         map.Update(range1, 3, 200, 100, 0, 20, false, false);
         map.Update(range2, 3, 300, 100, 0, 30, false, false);
-        UNIT_ASSERT_VALUES_EQUAL(600, map.GetStoredBlocksCountPerDisk());
-        UNIT_ASSERT_VALUES_EQUAL(60, map.GetMixedBlocksCountPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(
+            500,
+            map.GetStoredBlocksInRangesEligibleForMixedBlocksCountCompaction());
+        UNIT_ASSERT_VALUES_EQUAL(
+            50,
+            map.GetMixedBlocksInRangesEligibleForMixedBlocksCountCompaction());
+
+        map.Update(range0, 3, 100, 80, 0, 10, false, false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            600,
+            map.GetStoredBlocksInRangesEligibleForMixedBlocksCountCompaction());
+        UNIT_ASSERT_VALUES_EQUAL(
+            60,
+            map.GetMixedBlocksInRangesEligibleForMixedBlocksCountCompaction());
 
         // Repeating an update must not count the same stored blocks twice.
         map.Update(range0, 3, 100, 80, 0, 10, false, false);
-        UNIT_ASSERT_VALUES_EQUAL(600, map.GetStoredBlocksCountPerDisk());
-        UNIT_ASSERT_VALUES_EQUAL(60, map.GetMixedBlocksCountPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(
+            600,
+            map.GetStoredBlocksInRangesEligibleForMixedBlocksCountCompaction());
+        UNIT_ASSERT_VALUES_EQUAL(
+            60,
+            map.GetMixedBlocksInRangesEligibleForMixedBlocksCountCompaction());
 
         // Compacted ranges still contribute to the total stored byte count.
         map.Update(range1, 1, 100, 100, 0, 0, true, false);
+        map.Update(range2, 3, 300, 79, 0, 30, false, false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            map.GetStoredBlocksInRangesEligibleForMixedBlocksCountCompaction());
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            map.GetMixedBlocksInRangesEligibleForMixedBlocksCountCompaction());
         map.Update(range2, 0, 0, 0, 0, 0, false, false);
-        UNIT_ASSERT_VALUES_EQUAL(200, map.GetStoredBlocksCountPerDisk());
-        UNIT_ASSERT_VALUES_EQUAL(10, map.GetMixedBlocksCountPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            map.GetStoredBlocksInRangesEligibleForMixedBlocksCountCompaction());
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            map.GetMixedBlocksInRangesEligibleForMixedBlocksCountCompaction());
 
         // The disk totals must agree with the saturated range counters.
         map.Update(range2, 3, Max<ui32>(), 100, 0, Max<ui32>(), false, false);
         UNIT_ASSERT_VALUES_EQUAL(
             200 + Max<ui16>(),
-            map.GetStoredBlocksCountPerDisk());
+            map.GetStoredBlocksInRangesEligibleForMixedBlocksCountCompaction());
         UNIT_ASSERT_VALUES_EQUAL(
             10 + Max<ui16>(),
-            map.GetMixedBlocksCountPerDisk());
+            map.GetMixedBlocksInRangesEligibleForMixedBlocksCountCompaction());
 
         map.Clear();
-        UNIT_ASSERT_VALUES_EQUAL(0, map.GetStoredBlocksCountPerDisk());
-        UNIT_ASSERT_VALUES_EQUAL(0, map.GetMixedBlocksCountPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            map.GetStoredBlocksInRangesEligibleForMixedBlocksCountCompaction());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            map.GetMixedBlocksInRangesEligibleForMixedBlocksCountCompaction());
         map.Update(range0, 1, 80, 80, 0, 5, false, false);
-        UNIT_ASSERT_VALUES_EQUAL(80, map.GetStoredBlocksCountPerDisk());
-        UNIT_ASSERT_VALUES_EQUAL(5, map.GetMixedBlocksCountPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(
+            80,
+            map.GetStoredBlocksInRangesEligibleForMixedBlocksCountCompaction());
+        UNIT_ASSERT_VALUES_EQUAL(
+            5,
+            map.GetMixedBlocksInRangesEligibleForMixedBlocksCountCompaction());
     }
 
     Y_UNIT_TEST(ShouldNotTrackMixedBlockCountWhenCompactionIsDisabled)
@@ -793,8 +834,12 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, map.Get(range0).MixedBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(0, map.Get(range1).MixedBlockCount);
-        UNIT_ASSERT_VALUES_EQUAL(0, map.GetMixedBlocksCountPerDisk());
-        UNIT_ASSERT_VALUES_EQUAL(200, map.GetStoredBlocksCountPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            map.GetMixedBlocksInRangesEligibleForMixedBlocksCountCompaction());
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            map.GetStoredBlocksInRangesEligibleForMixedBlocksCountCompaction());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             map.GetTopByMixedBlockCount().Stat.MixedBlockCount);
@@ -867,7 +912,10 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 
     Y_UNIT_TEST(ShouldCorrectlyUpdateFromCounterList)
     {
-        TCompactionMap map(RangeSize, MakeDefaultCompactionPolicy());
+        TCompactionMap map(
+            RangeSize,
+            MakeDefaultCompactionPolicy(
+                {.UsedBlocksThresholdForMixedBlocksCompaction = 512}));
         TCompressedBitmap used(3 * RangeSize);
         used.Set(512, 2048);
         for (ui32 blockIndex = 0; blockIndex < 3 * RangeSize;
@@ -883,7 +931,9 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
                 {2 * RangeSize, {3, 3000, 0, 0, 0, 0, false, 0}},
             },
             &used);
-        UNIT_ASSERT_VALUES_EQUAL(6000, map.GetStoredBlocksCountPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3000,
+            map.GetStoredBlocksInRangesEligibleForMixedBlocksCountCompaction());
 
         {
             const auto stat = map.Get(0);

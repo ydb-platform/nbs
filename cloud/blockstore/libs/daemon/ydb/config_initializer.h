@@ -57,10 +57,10 @@ struct TConfigInitializerYdb final
     TOptionsYdbPtr Options;
 
     NYdbStats::TYdbStatsConfigPtr StatsConfig;
-    NStorage::TStorageConfigPtr StorageConfig;
+    NStorage::TStorageConfigMutablePtr StorageConfig;
 
-    // ICB controls reused when StorageConfig is replaced. Created by
-    // InitStorageConfig if the local DynamicYamlConfigurationEnabled is true.
+    // ICB controls shared by all startup replacements of StorageConfig.
+    // Created by the first SetStorageConfig call, before board registration.
     NStorage::TStorageConfigControlsPtr StorageConfigControls;
     NFeatures::TFeaturesConfigPtr FeaturesConfig;
     NLogbroker::TLogbrokerConfigPtr LogbrokerConfig;

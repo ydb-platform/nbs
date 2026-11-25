@@ -57,7 +57,7 @@ class TBanList final
     : public IBanList
 {
 private:
-    TDiscoveryConfigConstPtr Config;
+    TDiscoveryConfigPtr Config;
     ILoggingServicePtr Logging;
     IMonitoringServicePtr Monitoring;
 
@@ -69,7 +69,7 @@ private:
 
 public:
     TBanList(
-            TDiscoveryConfigConstPtr config,
+            TDiscoveryConfigPtr config,
             ILoggingServicePtr logging,
             IMonitoringServicePtr monitoring)
         : Config(std::move(config))
@@ -172,7 +172,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IBanListPtr CreateBanList(
-    TDiscoveryConfigConstPtr config,
+    TDiscoveryConfigPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring)
 {

@@ -11,7 +11,7 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 TMirrorPartitionResyncState::TMirrorPartitionResyncState(
-        TStorageConfigConstPtr config,
+        TStorageConfigPtr config,
         TString rwClientId,
         TNonreplicatedPartitionConfigPtr partConfig,
         TVector<TDevices> replicaDevices,

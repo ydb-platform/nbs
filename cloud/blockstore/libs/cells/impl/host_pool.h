@@ -90,16 +90,20 @@ struct TCellCounters
 class TCellHostPool
     : public std::enable_shared_from_this<TCellHostPool>
 {
+public:
+    struct THostStatus
+    {
+        TString Fqdn;
+        EHostLiveness Liveness = EHostLiveness::Unknown;
+        bool Warm = false;
+        size_t Connections = 0;
+    };
+
 private:
     struct TChannel
     {
-        // Tells one incarnation of a channel from the next: a discovered
-        // host can be dropped and taken again while a ping it answered is
-        // still on its way back.
         ui64 Epoch = 0;
 
-        // one probe at a time: two answers for the same channel can arrive
-        // in the other order, and the older one would have the last word
         bool PingInFlight = false;
 
         ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture Endpoint;
@@ -118,6 +122,7 @@ private:
     mutable TAdaptiveLock Lock;
     THashMap<TString, TChannel> Channels;
     ui64 LastEpoch = 0;
+    size_t LiveChannels = 0;
     bool Stopped = false;
 
 public:
@@ -129,62 +134,30 @@ public:
     [[nodiscard]] TCellHostEndpoints GetDescribeEndpoints(
         const NClient::TClientAppConfigPtr& clientConfig);
 
-    // Where a new connection goes: a configured host not found dead, picked
-    // at random whether or not it has answered a ping yet; a discovered one
-    // only when no configured host is left.
     [[nodiscard]] TResultOrError<TCellHostConfig> PickHost() const;
 
-    // Where a connection moves to, minus hosts the caller already knows are
-    // no good for it - the one it is leaving, and any it has found unusable
-    // since. A host that answered a ping first, configured before
-    // discovered; only when there is none, a host that has not been asked
-    // yet, in the same order. Never a host found dead.
     [[nodiscard]] TResultOrError<TCellHostConfig> PickHostExcept(
         const THashSet<TString>& except) const;
 
     [[nodiscard]] TCellHostConfig MakeHostConfig(const TString& fqdn) const;
 
-    // Both return true if this changed the liveness of the host. The error
-    // is only there for the log line the transition produces.
     bool SetHostAlive(const TString& fqdn, bool alive);
     bool SetHostAlive(
         const TString& fqdn,
         bool alive,
         const NProto::TError& error);
 
-    // False for a host the pool has never talked to: not knowing whether a
-    // host answers is not the same as knowing it does not, and a tablet can
-    // name a host this cell has never used.
     [[nodiscard]] bool IsHostKnownDead(const TString& fqdn) const;
 
-    // The current incarnation of the host's channel, or 0 if there is none.
-    // A connection records it with its binding, so a late liveness verdict
-    // about an older incarnation can be told from one about this one.
     [[nodiscard]] ui64 GetChannelEpoch(const TString& fqdn) const;
-
-    // A point-in-time view of the cell's hosts for monitoring: which are
-    // alive, which have a warm channel, and how many connections hold each
-    // host's channel (the reference count, which a connection keeps for the
-    // whole life of its binding regardless of host migration).
-    struct THostStatus
-    {
-        TString Fqdn;
-        EHostLiveness Liveness = EHostLiveness::Unknown;
-        bool Warm = false;
-        size_t Connections = 0;
-    };
 
     [[nodiscard]] TVector<THostStatus> GetHostStatuses() const;
 
-    // Returns whether the host is known dead at subscription time, so
-    // the caller does not miss a death that landed before it subscribed.
     [[nodiscard]] bool WatchHost(
         const TString& fqdn,
         ICellHostWatcherPtr watcher);
     void UnwatchHost(const TString& fqdn, const ICellHostWatcherPtr& watcher);
 
-    // Registrations held for the host, including those whose watcher is
-    // already gone. For tests: nothing in production asks.
     [[nodiscard]] size_t GetWatcherCount(const TString& fqdn) const;
 
     [[nodiscard]] TString GetCellId() const;
@@ -201,22 +174,20 @@ private:
         bool preferVerified) const;
 
     ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture
-        EnsureChannelLocked(const TString& fqdn);
+        EnsureChannel(const TString& fqdn);
 
-    // Warms configured hosts until MinCellConnections channels are live.
-    void TopUpWarmChannelsLocked();
-    void PruneRetainedDiscoveredLocked();
-    void UpdateHostsUnavailableLocked();
-    [[nodiscard]] size_t CountLiveChannelsLocked(
-        const TString& except) const;
+    void EnsureMinLiveChannels();
+    void DropUnneededDiscoveredHosts();
+    [[nodiscard]] static bool IsLive(const TChannel& channel);
+
+    void AccountChannel(const TChannel& channel, int delta);
+    void EraseChannel(THashMap<TString, TChannel>::iterator it);
+    [[nodiscard]] size_t CountLiveChannelsExcept(
+        const TChannel& except) const;
 
     void SchedulePingSweep();
     void PingSweep();
 
-    // The heart of both SetHostAlive overloads and of the ping path. An
-    // epoch, when given, is checked against the channel: a ping that went
-    // out on a channel since dropped says nothing about the one in its
-    // place.
     bool ApplyLiveness(
         const TString& fqdn,
         const TMaybe<ui64>& epoch,

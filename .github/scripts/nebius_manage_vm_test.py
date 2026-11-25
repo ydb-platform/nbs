@@ -2,9 +2,10 @@ import asyncio
 import argparse
 import sys
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
+from nebius.api.nebius.compute.v1 import Instance
 
 from . import nebius_manage_vm as m
 from . import helpers as h
@@ -29,6 +30,14 @@ def make_create_args(**overrides):
         "no_public_ip": False,
         "allow_downgrade": False,
         "downgrade_after": 2,
+        "github_org": "",
+        "github_team_slug": "",
+        "github_repo_owner": "owner",
+        "github_repo": "repo",
+        "github_runner_version": "latest",
+        "github_override_existing_runner": False,
+        "user": "runner",
+        "apply": True,
     }
     args.update(overrides)
     return argparse.Namespace(**args)
@@ -112,21 +121,6 @@ def test_validate_create_args_allows_other_disk_type_size(monkeypatch):
         disk_type="network-ssd",
         disk_size=100,
     )
-
-
-def test_build_disk_request():
-    request = m.build_disk_request(
-        parent_id="parent-id",
-        name="vm-name",
-        disk_size=930,
-        image_id="image-id",
-    )
-
-    assert request.metadata.parent_id == "parent-id"
-    assert request.metadata.name == "disk-vm-name"
-    assert request.spec.size_gibibytes == 930
-    assert request.spec.source_image_id == "image-id"
-    assert request.spec.type == m.DiskSpec.DiskType.NETWORK_SSD_NON_REPLICATED
 
 
 def test_get_runner_token_retries_github_errors(monkeypatch, capsys):
@@ -790,41 +784,51 @@ def test_retry_calls_final_exception_hook_for_async_function(monkeypatch):
     assert sleeps == [7]
 
 
-def test_create_disk_removes_created_disk_when_wait_fails(monkeypatch):
-    class FakeDiskOperation:
-        resource_id = "disk-id"
+@pytest.mark.parametrize("failure_stage", ["wait", "operation", "registration"])
+def test_create_vm_rolls_back_by_deleting_only_the_instance(monkeypatch, failure_stage):
+    instance_id = "computeinstance-runner"
+    ok_status = SimpleNamespace(code=m.grpc.StatusCode.OK)
+    failed_status = SimpleNamespace(code=m.grpc.StatusCode.FAILED_PRECONDITION)
+    create_status = failed_status if failure_stage == "operation" else ok_status
+    wait_error = m.RequestError(failed_status) if failure_stage == "wait" else None
+    create_operation = SimpleNamespace(
+        resource_id=instance_id,
+        wait=AsyncMock(side_effect=wait_error),
+        status=Mock(return_value=create_status),
+    )
+    delete_operation = SimpleNamespace(
+        wait=AsyncMock(), status=Mock(return_value=ok_status)
+    )
+    instance_service = SimpleNamespace(
+        create=AsyncMock(return_value=create_operation),
+        delete=AsyncMock(return_value=delete_operation),
+        get=AsyncMock(return_value=Instance()),
+    )
+    disk_service = Mock()
+    monkeypatch.setattr(m, "InstanceServiceClient", Mock(return_value=instance_service))
+    monkeypatch.setattr(m, "DiskServiceClient", disk_service)
+    monkeypatch.setattr(m, "validate_create_args", Mock())
+    monkeypatch.setattr(m, "github_client_from_env", Mock())
+    monkeypatch.setattr(m, "get_runner_token", Mock(return_value="token"))
+    monkeypatch.setattr(
+        m, "resolve_runner_release_for_update", Mock(return_value=("", {}))
+    )
+    monkeypatch.setattr(m, "generate_cloud_init_script", Mock(return_value=("", [])))
+    monkeypatch.setattr(
+        m, "extract_instance_ips", Mock(return_value=("10.0.0.5", None))
+    )
+    monkeypatch.setattr(m, "github_output", Mock())
+    monkeypatch.setattr(m, "wait_runner_by_name", Mock(return_value=None))
 
-        async def wait(self):
-            raise m.RequestError(SimpleNamespace())
+    error = ValueError if failure_stage == "registration" else m.RequestError
+    with pytest.raises(error):
+        asyncio.run(m.create_vm.__wrapped__(object(), make_create_args()))
 
-    class FakeDiskService:
-        async def create(self, request):
-            self.request = request
-            return FakeDiskOperation()
-
-    removed = []
-
-    async def fake_remove_disk_by_id(_sdk, disk_id):
-        removed.append((_sdk, disk_id))
-
-    fake_service = FakeDiskService()
-    sdk = object()
-    args = make_create_args(apply=True)
-    created_clients = []
-
-    def fake_disk_service_client(sdk_arg):
-        created_clients.append(sdk_arg)
-        return fake_service
-
-    monkeypatch.setattr(m, "DiskServiceClient", fake_disk_service_client)
-    monkeypatch.setattr(m, "remove_disk_by_id", fake_remove_disk_by_id)
-
-    with pytest.raises(m.RequestError):
-        asyncio.run(m.create_disk(sdk, args))
-
-    assert fake_service.request.metadata.name == "disk-vm-name"
-    assert created_clients == [sdk]
-    assert removed == [(sdk, "disk-id")]
+    request = instance_service.create.await_args.args[0]
+    assert request.spec.boot_disk.managed_disk.name == "disk-vm-name"
+    instance_service.delete.assert_awaited_once()
+    assert instance_service.delete.await_args.args[0].id == instance_id
+    disk_service.assert_not_called()
 
 
 def test_build_vm_labels_adds_runner_metadata_to_copy_of_existing_labels():
@@ -883,18 +887,12 @@ def test_remove_vm_and_disk_by_ids_deletes_instance_before_disk(monkeypatch):
 
 
 def test_remove_vm_and_disk_by_ids_removes_disk_when_instance_is_not_found(monkeypatch):
-    removed = []
-
-    async def fake_remove_instance(remove_sdk, resource_id):
-        assert remove_sdk is sdk
-        assert resource_id == "computeinstance-instance-id"
-        raise m.RequestError(SimpleNamespace(code=m.grpc.StatusCode.NOT_FOUND))
-
-    async def fake_remove_disk(sdk, resource_id):
-        removed.append((sdk, resource_id))
-
-    monkeypatch.setattr(m, "remove_vm_by_id", fake_remove_instance)
-    monkeypatch.setattr(m, "remove_disk_by_id", fake_remove_disk)
+    status = SimpleNamespace(code=m.grpc.StatusCode.NOT_FOUND)
+    delete = AsyncMock(side_effect=m.RequestError(status))
+    service = SimpleNamespace(delete=delete)
+    remove_disk = AsyncMock()
+    monkeypatch.setattr(m, "InstanceServiceClient", Mock(return_value=service))
+    monkeypatch.setattr(m, "remove_disk_by_id", remove_disk)
 
     sdk = object()
     asyncio.run(
@@ -903,7 +901,8 @@ def test_remove_vm_and_disk_by_ids_removes_disk_when_instance_is_not_found(monke
         )
     )
 
-    assert removed == [(sdk, "computedisk-disk-id")]
+    assert delete.await_args.args[0].id == "computeinstance-instance-id"
+    remove_disk.assert_awaited_once_with(sdk, "computedisk-disk-id")
 
 
 def test_remove_vm_and_disk_by_ids_removes_disk_without_instance(monkeypatch):
@@ -929,25 +928,22 @@ def test_remove_vm_and_disk_by_ids_removes_disk_without_instance(monkeypatch):
 def test_remove_vm_and_disk_by_ids_does_not_remove_disk_when_instance_removal_fails(
     monkeypatch,
 ):
-    async def fake_remove_instance(remove_sdk, resource_id):
-        assert remove_sdk is not None
-        assert resource_id == "computeinstance-instance-id"
-        raise RuntimeError("instance is still present")
+    status = SimpleNamespace(code=m.grpc.StatusCode.FAILED_PRECONDITION)
+    operation = SimpleNamespace(wait=AsyncMock(), status=Mock(return_value=status))
+    service = SimpleNamespace(delete=AsyncMock(return_value=operation))
+    remove_disk = AsyncMock()
+    monkeypatch.setattr(m, "InstanceServiceClient", Mock(return_value=service))
+    monkeypatch.setattr(m, "remove_disk_by_id", remove_disk)
 
-    async def fake_remove_disk(remove_sdk, resource_id):
-        raise AssertionError(
-            f"Disk removal should not be called: {remove_sdk!r}, {resource_id}"
-        )
-
-    monkeypatch.setattr(m, "remove_vm_by_id", fake_remove_instance)
-    monkeypatch.setattr(m, "remove_disk_by_id", fake_remove_disk)
-
-    with pytest.raises(RuntimeError, match="instance is still present"):
+    with pytest.raises(m.RequestError) as error:
         asyncio.run(
             m.remove_vm_and_disk_by_ids(
                 object(), "computeinstance-instance-id", "computedisk-disk-id"
             )
         )
+
+    assert error.value.status is status
+    remove_disk.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -972,7 +968,8 @@ def test_build_instance_request_with_public_ip():
         preset="4vcpu-16gb",
         subnet_id="subnet-id",
         no_public_ip=False,
-        disk_id="disk-id",
+        disk_size=930,
+        image_id="image-id",
         user_data="cloud-init",
         labels=labels,
     )
@@ -983,7 +980,12 @@ def test_build_instance_request_with_public_ip():
     assert request.spec.cloud_init_user_data == "cloud-init"
     assert request.spec.resources.platform == "cpu-d3"
     assert request.spec.resources.preset == "4vcpu-16gb"
-    assert request.spec.boot_disk.existing_disk.id == "disk-id"
+    assert not request.spec.boot_disk.HasField("existing_disk")
+    managed_disk = request.spec.boot_disk.managed_disk
+    assert managed_disk.name == "disk-vm-name"
+    assert managed_disk.spec.size_gibibytes == 930
+    assert managed_disk.spec.source_image_id == "image-id"
+    assert managed_disk.spec.type == m.DiskSpec.DiskType.NETWORK_SSD_NON_REPLICATED
     assert request.spec.boot_disk.device_id == "boot"
     assert (
         request.spec.boot_disk.attach_mode == m.AttachedDiskSpec.AttachMode.READ_WRITE
@@ -1003,7 +1005,8 @@ def test_build_instance_request_without_public_ip():
         preset="4vcpu-16gb",
         subnet_id="subnet-id",
         no_public_ip=True,
-        disk_id="disk-id",
+        disk_size=930,
+        image_id="image-id",
         user_data="cloud-init",
         labels={},
     )
@@ -1098,15 +1101,13 @@ def test_labels_match_reports_mismatches():
     assert mismatches == ["owner: expected 'ydb-platform', actual None"]
 
 
-def test_search_vm_cleanup_candidates_by_labels_reports_matching_vm_and_disk(
-    monkeypatch,
-):
-    matching_instance = SimpleNamespace(
-        metadata=SimpleNamespace(
+def test_search_vm_cleanup_candidates_by_labels_reports_matching_vm(monkeypatch):
+    matching_instance = Instance(
+        metadata=m.ResourceMetadata(
             id="computeinstance-match",
             name="runner-match",
             labels={"run": "1-1", "repo": "nbs", "owner": "ydb-platform"},
-        )
+        ),
     )
     non_matching_instance = SimpleNamespace(
         metadata=SimpleNamespace(
@@ -1115,50 +1116,28 @@ def test_search_vm_cleanup_candidates_by_labels_reports_matching_vm_and_disk(
             labels={"run": "2-1", "repo": "nbs", "owner": "ydb-platform"},
         )
     )
-    listed_requests = []
-    disk_requests = []
-
-    class FakeInstanceService:
-        async def list(self, request):
-            listed_requests.append(request)
-            return SimpleNamespace(
-                items=[non_matching_instance, matching_instance],
-                next_page_token="",
-            )
-
-    class FakeDiskService:
-        async def get_by_name(self, request):
-            disk_requests.append(request)
-            return SimpleNamespace(
-                metadata=SimpleNamespace(
-                    id="disk-id",
-                    name="disk-runner-match",
-                )
-            )
-
-    def fake_instance_service_client(sdk):
-        assert sdk is fake_sdk
-        return FakeInstanceService()
-
-    def fake_disk_service_client(sdk):
-        assert sdk is fake_sdk
-        return FakeDiskService()
-
-    fake_sdk = object()
-
-    monkeypatch.setattr(m, "InstanceServiceClient", fake_instance_service_client)
-    monkeypatch.setattr(m, "DiskServiceClient", fake_disk_service_client)
+    list_instances = AsyncMock(
+        return_value=SimpleNamespace(
+            items=[non_matching_instance, matching_instance], next_page_token=""
+        )
+    )
+    instance_service = Mock(return_value=SimpleNamespace(list=list_instances))
+    disk_service = Mock()
+    monkeypatch.setattr(m, "InstanceServiceClient", instance_service)
+    monkeypatch.setattr(m, "DiskServiceClient", disk_service)
 
     args = argparse.Namespace(
         parent_id="parent-id",
         labels={"run": "1-1", "repo": "nbs", "owner": "ydb-platform"},
     )
 
-    candidates = asyncio.run(m.search_vm_cleanup_candidates_by_labels(fake_sdk, args))
+    sdk = object()
+    candidates = asyncio.run(m.search_vm_cleanup_candidates_by_labels(sdk, args))
 
     assert candidates == [matching_instance]
-    assert listed_requests[0].parent_id == "parent-id"
-    assert disk_requests[0].name == "disk-runner-match"
+    instance_service.assert_called_once_with(sdk)
+    assert list_instances.await_args.args[0].parent_id == "parent-id"
+    disk_service.assert_not_called()
 
 
 def test_remove_vm_with_empty_id_only_searches_by_labels(monkeypatch):
@@ -1179,65 +1158,37 @@ def test_remove_vm_with_empty_id_only_searches_by_labels(monkeypatch):
     assert searches == [(sdk, args)]
 
 
-def test_remove_vm_resolves_disk_id_before_removing_resources(monkeypatch):
-    events = []
+@pytest.mark.parametrize("apply", [False, True])
+def test_remove_vm_deletes_by_id_without_looking_up_resources(monkeypatch, apply):
     sdk = object()
-
-    class FakeInstanceService:
-        async def get(self, request):
-            events.append(("get-instance", request.id))
-            return SimpleNamespace(metadata=SimpleNamespace(name="runner-name"))
-
-    async def fake_find_disk(search_sdk, args, instance_name):
-        assert search_sdk is sdk
-        assert args.parent_id == "parent-id"
-        events.append(("find-disk", instance_name))
-        return SimpleNamespace(metadata=SimpleNamespace(id="computedisk-disk-id"))
-
-    async def fake_remove_resources(cleanup_sdk, instance_id, disk_id):
-        assert cleanup_sdk is sdk
-        events.append(
-            (
-                "remove-resources",
-                instance_id,
-                disk_id,
-            )
-        )
-
-    def fake_remove_runner_from_github(*args):
-        assert len(args) == 6
-        return "not_found"
-
-    def fake_instance_service_client(service_sdk):
-        assert service_sdk is sdk
-        return FakeInstanceService()
-
+    instance_id = "computeinstance-instance-id"
+    status = SimpleNamespace(code=m.grpc.StatusCode.OK)
+    operation = SimpleNamespace(wait=AsyncMock(), status=Mock(return_value=status))
+    delete = AsyncMock(return_value=operation)
+    instance_service = Mock(return_value=SimpleNamespace(delete=delete))
+    disk_service = Mock()
     monkeypatch.setattr(m, "github_client_from_env", lambda: object())
-    monkeypatch.setattr(m, "remove_runner_from_github", fake_remove_runner_from_github)
-    monkeypatch.setattr(m, "InstanceServiceClient", fake_instance_service_client)
-    monkeypatch.setattr(m, "find_disk_by_instance_name", fake_find_disk)
-    monkeypatch.setattr(m, "remove_vm_and_disk_by_ids", fake_remove_resources)
+    monkeypatch.setattr(m, "remove_runner_from_github", Mock(return_value="not_found"))
+    monkeypatch.setattr(m, "InstanceServiceClient", instance_service)
+    monkeypatch.setattr(m, "DiskServiceClient", disk_service)
 
     args = argparse.Namespace(
-        id="computeinstance-instance-id",
-        parent_id="parent-id",
+        id=instance_id,
         github_repo_owner="owner",
         github_repo="repo",
-        apply=True,
+        apply=apply,
         require_offline=False,
     )
 
     asyncio.run(m.remove_vm(sdk, args))
 
-    assert events == [
-        ("get-instance", "computeinstance-instance-id"),
-        ("find-disk", "runner-name"),
-        (
-            "remove-resources",
-            "computeinstance-instance-id",
-            "computedisk-disk-id",
-        ),
-    ]
+    if apply:
+        instance_service.assert_called_once_with(sdk)
+        delete.assert_awaited_once()
+        assert delete.await_args.args[0].id == instance_id
+    else:
+        instance_service.assert_not_called()
+    disk_service.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -1249,31 +1200,11 @@ def test_remove_vm_honors_github_error_policy(
     fail_on_github_error,
     remove_resources,
 ):
-    events = []
     sdk = object()
-
-    class FakeInstanceService:
-        async def get(self, request):
-            events.append(("get-instance", request.id))
-            return SimpleNamespace(metadata=SimpleNamespace(name="runner-name"))
-
-    async def fake_find_disk(search_sdk, args, instance_name):
-        assert search_sdk is sdk
-        assert args.id == "computeinstance-instance-id"
-        assert instance_name == "runner-name"
-        return SimpleNamespace(metadata=SimpleNamespace(id="computedisk-disk-id"))
-
-    async def fake_remove_resources(cleanup_sdk, instance_id, disk_id):
-        assert cleanup_sdk is sdk
-        events.append(("remove-resources", instance_id, disk_id))
-
+    remove_vm = AsyncMock()
     monkeypatch.setattr(m, "github_client_from_env", lambda: object())
     monkeypatch.setattr(m, "remove_runner_from_github", Mock(return_value="failed"))
-    monkeypatch.setattr(
-        m, "InstanceServiceClient", Mock(return_value=FakeInstanceService())
-    )
-    monkeypatch.setattr(m, "find_disk_by_instance_name", fake_find_disk)
-    monkeypatch.setattr(m, "remove_vm_and_disk_by_ids", fake_remove_resources)
+    monkeypatch.setattr(m, "remove_vm_by_id", remove_vm)
 
     args = argparse.Namespace(
         id="computeinstance-instance-id",
@@ -1287,7 +1218,10 @@ def test_remove_vm_honors_github_error_policy(
 
     asyncio.run(m.remove_vm(sdk, args))
 
-    assert any(event[0] == "remove-resources" for event in events) is remove_resources
+    if remove_resources:
+        remove_vm.assert_awaited_once_with(sdk, args.id)
+    else:
+        remove_vm.assert_not_called()
 
 
 def test_main_remove_with_empty_id_does_not_require_github_token(monkeypatch):

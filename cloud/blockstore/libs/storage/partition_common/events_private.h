@@ -42,7 +42,8 @@ namespace NCloud::NBlockStore::NStorage {
 
 enum class EErrorSource
 {
-    Local,
+    Regular,
+    ContractViolation,
     BlobStorage,
 };
 
@@ -80,6 +81,19 @@ struct TEvPartitionCommonPrivate
     };
 
     //
+    // TrimFreshLogCompleted
+    //
+
+    struct TTrimFreshLogCompleted: TOperationCompleted
+    {
+        // Set explicitly, because a selective trim may collect nothing.
+        bool SelectiveTrim = false;
+        // See TSelectiveTrimPlan::CollectingCommitIds. Meaningful only if the
+        // trim succeeded.
+        TVector<ui64> CollectedCommitIds;
+    };
+
+    //
     // LoadFreshBlobsCompleted
     //
 
@@ -106,18 +120,21 @@ struct TEvPartitionCommonPrivate
         bool Async = false;
         TInstant Deadline;
         bool ShouldCalculateChecksums = false;
+        std::optional<NProto::TCompressionMetadata> CompressionMetadata;
 
         TReadBlobRequest() = default;
 
         TReadBlobRequest(
-                const NKikimr::TLogoBlobID& blobId,
-                NActors::TActorId proxy,
-                TVector<ui16> blobOffsets,
-                TGuardedSgList sglist,
-                ui32 groupId,
-                bool async,
-                TInstant deadline,
-                bool shouldCalculateChecksums)
+            const NKikimr::TLogoBlobID& blobId,
+            NActors::TActorId proxy,
+            TVector<ui16> blobOffsets,
+            TGuardedSgList sglist,
+            ui32 groupId,
+            bool async,
+            TInstant deadline,
+            bool shouldCalculateChecksums,
+            std::optional<NProto::TCompressionMetadata> compressionMetadata =
+                std::nullopt)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))
@@ -126,6 +143,7 @@ struct TEvPartitionCommonPrivate
             , Async(async)
             , Deadline(deadline)
             , ShouldCalculateChecksums(shouldCalculateChecksums)
+            , CompressionMetadata(std::move(compressionMetadata))
         {}
     };
 
@@ -512,7 +530,7 @@ struct TEvPartitionCommonPrivate
     BLOCKSTORE_PARTITION_COMMON_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENTS)
 
     using TEvLoadFreshBlobsCompleted = TResponseEvent<TLoadFreshBlobsCompleted, EvLoadFreshBlobsCompleted>;
-    using TEvTrimFreshLogCompleted = TResponseEvent<TOperationCompleted, EvTrimFreshLogCompleted>;
+    using TEvTrimFreshLogCompleted = TResponseEvent<TTrimFreshLogCompleted, EvTrimFreshLogCompleted>;
     using TEvReadBlobCompleted = TResponseEvent<TReadBlobCompleted, EvReadBlobCompleted>;
     using TEvDescribeBlocksCompleted = TResponseEvent<TDescribeBlocksCompleted, EvTDescribeBlocksCompleted>;
     using TEvLongRunningOperation = TRequestEvent<TLongRunningOperation, EvLongRunningOperation>;

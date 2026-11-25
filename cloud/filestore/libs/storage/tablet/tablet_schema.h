@@ -485,6 +485,7 @@ struct TIndexTabletSchema
         using StoragePolicy = TStoragePolicy<IndexChannel>;
     };
 
+    // Unused, kept to reserve the table id.
     struct TruncateQueue: TTableSchema<23>
     {
         struct Id       : Column<1, NKikimr::NScheme::NTypeIds::Uint64> {};

@@ -1,5 +1,6 @@
 #pragma once
 #include "public.h"
+#include "tablet_state_iface.h"
 
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filestore.h>
@@ -16,6 +17,10 @@
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
 #include <contrib/ydb/core/base/logoblob.h>
+
+#include <util/generic/maybe.h>
+#include <util/generic/string.h>
+#include <util/generic/vector.h>
 
 #include <util/system/align.h>
 #include <util/system/yassert.h>
@@ -90,6 +95,18 @@ NProto::TNode CreateFifoAttrs(ui32 mode, ui32 uid, ui32 gid);
 NProto::TNode CreateCharDeviceAttrs(ui32 mode, ui32 uid, ui32 gid, ui64 dev);
 NProto::TNode CreateBlockDeviceAttrs(ui32 mode, ui32 uid, ui32 gid, ui64 dev);
 
+struct TNodeCreationPermissions
+{
+    ui32 Mode = 0;
+    TString ParentDefaultAcl;
+    TString ChildAccessAcl;
+};
+
+TResultOrError<TNodeCreationPermissions> GetNodeCreationPermissions(
+    const TMaybe<INodeIndexTabletDatabase::TNodeAttr>& parentDefaultAcl,
+    ui32 srcMode,
+    ui32 umask);
+
 NProto::TNode CopyAttrs(const NProto::TNode& src, ui32 mode = E_CM_CTIME);
 
 void ConvertNodeFromAttrs(
@@ -145,6 +162,21 @@ NProto::TError ValidateNodeName(const TString& name);
 NProto::TError ValidateXAttrName(const TString& name);
 NProto::TError ValidateXAttrValue(const TString& name, const TString& value);
 NProto::TError ValidateRange(TByteRange byteRange, ui32 maxFileBlocks);
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Ensures that every shard id has an entry in the topology. Handles the rare
+// case when a filesystem is created by the new code, then rolled back and
+// altered by the old code. This is not expected to happen.
+void RestoreShardTopology(
+    const google::protobuf::RepeatedPtrField<TString>& shardIds,
+    NProtoPrivate::TShardTopology& topology);
+
+TVector<TString> GetFileShardIds(const NProto::TFileSystem& fileSystem);
+
+NProto::TError ValidateShardTopology(
+    const NProtoPrivate::TShardTopology& currentTopology,
+    const NProtoPrivate::TShardTopology& topology);
 
 ////////////////////////////////////////////////////////////////////////////////
 
