@@ -52,10 +52,10 @@ public:
     struct TOverrideInfo
     {
         // Integer captured from the control, including invalid enum numbers.
-        i64 Value;
+        i64 Value = 0;
 
         // Enum validation result; always true for non-enum parameters.
-        bool IsValid;
+        bool IsValid = false;
     };
 
     // Initialize controls from raw values with compiled fallbacks and no ICB
