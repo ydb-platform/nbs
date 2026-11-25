@@ -72,15 +72,33 @@ func (t *deleteDiskTask) deleteDisk(
 		return err
 	}
 
-	var recordedZoneID string
-	if meta != nil {
-		recordedZoneID = meta.ZoneID
+	if meta == nil {
+		return errors.NewNonCancellableErrorf("disk %v does not exist", diskID)
 	}
-	if recordedZoneID != "" && !t.disabledZones.IsDisabled(recordedZoneID) &&
-		recordedZoneID != requestZoneID && !t.cellSelector.ZoneContainsCell(requestZoneID, recordedZoneID) {
+
+	zoneID := requestZoneID
+	if meta.ZoneID != "" {
+		zoneID = meta.ZoneID
+	}
+
+	if t.disabledZones.IsDisabled(zoneID) {
+		logging.Warn(
+			ctx,
+			"Skipping NBS deletion of disk %v: zone %v is disabled",
+			diskID,
+			zoneID,
+		)
+		_, err = t.storage.DeleteDisk(ctx, diskID, selfTaskID, time.Now(), &meta.ZoneID)
+		if err != nil {
+			return err
+		}
+		return t.storage.DiskDeleted(ctx, diskID, time.Now())
+	}
+
+	if zoneID != requestZoneID && !t.cellSelector.ZoneContainsCell(requestZoneID, zoneID) {
 		return errors.NewNonCancellableErrorf(
 			"zone %q of disk %v from meta does not match request zone %q",
-			recordedZoneID, diskID, requestZoneID,
+			zoneID, diskID, requestZoneID,
 		)
 	}
 
@@ -89,7 +107,7 @@ func (t *deleteDiskTask) deleteDisk(
 		diskID,
 		selfTaskID,
 		time.Now(),
-		&recordedZoneID,
+		&meta.ZoneID,
 	)
 	if err != nil {
 		return err
@@ -97,12 +115,7 @@ func (t *deleteDiskTask) deleteDisk(
 	if diskMeta == nil {
 		return nil
 	}
-	zoneID := diskMeta.ZoneID
-	if zoneID == "" {
-		return errors.NewNonCancellableErrorf("disk %v has no zone in metadata", diskID)
-	}
-	disabled := t.disabledZones.IsDisabled(zoneID)
-	if sync && !disabled {
+	if sync {
 		err = t.setEstimate(ctx, execCtx, diskID, zoneID)
 		if err != nil {
 			return err
@@ -132,27 +145,18 @@ func (t *deleteDiskTask) deleteDisk(
 		return err
 	}
 
-	if disabled {
-		logging.Warn(
-			ctx,
-			"Skipping NBS deletion of disk %v: zone %v is disabled",
-			diskID,
-			zoneID,
-		)
-	} else {
-		client, err := t.nbsFactory.GetClient(ctx, zoneID)
-		if err != nil {
-			return err
-		}
+	client, err := t.nbsFactory.GetClient(ctx, zoneID)
+	if err != nil {
+		return err
+	}
 
-		if sync {
-			err = client.DeleteSync(ctx, diskID)
-		} else {
-			err = client.Delete(ctx, diskID)
-		}
-		if err != nil {
-			return err
-		}
+	if sync {
+		err = client.DeleteSync(ctx, diskID)
+	} else {
+		err = client.Delete(ctx, diskID)
+	}
+	if err != nil {
+		return err
 	}
 
 	// Only overlay disks (created from image) should be released.

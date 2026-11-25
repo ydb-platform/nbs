@@ -203,6 +203,13 @@ func TestDisksDeleteNonexistentDisk(t *testing.T) {
 	emptyZoneID := ""
 	deletingAt := time.Now()
 	actual, err := storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt, &emptyZoneID)
+	require.True(t, errors.Is(err, errors.NewEmptyNonCancellableError()))
+	require.Nil(t, actual)
+	actual, err = storage.GetDiskMeta(ctx, disk.ID)
+	require.NoError(t, err)
+	require.Nil(t, actual)
+
+	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt, nil)
 	require.NoError(t, err)
 	require.Nil(t, actual)
 

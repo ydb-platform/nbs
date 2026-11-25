@@ -179,7 +179,7 @@ type Storage interface {
 	GetDiskMeta(ctx context.Context, diskID string) (*DiskMeta, error)
 
 	// Returns disk if action has been accepted by storage and nil otherwise.
-	// If expectedZoneID is supplied, a concurrent zone change requires a retry.
+	// If expectedZoneID is supplied, the disk must exist and still have that zone.
 	DeleteDisk(
 		ctx context.Context,
 		diskID string,

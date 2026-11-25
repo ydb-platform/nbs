@@ -623,7 +623,7 @@ func TestDiskServiceMigrateDisk(t *testing.T) {
 
 	successfullyMigrateDisk(t, ctx, client, params)
 
-	testcommon.DeleteDisk(t, ctx, client, diskID)
+	testcommon.DeleteDisk(t, ctx, client, params.DstZoneID, diskID)
 
 	// Check that disk is deleted.
 	srcZoneNBSClient := testcommon.NewNbsTestingClient(t, ctx, params.SrcZoneID)

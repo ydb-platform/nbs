@@ -541,6 +541,10 @@ func (s *storageYDB) deleteDisk(
 
 		state.status = diskStatusDeleting
 	} else {
+		if expectedZoneID != nil {
+			return nil, errors.NewNonCancellableErrorf("disk %v does not exist", diskID)
+		}
+
 		// Create a tombstone disk entry to avoid race conditions between
 		// concurrent disk deletion and disk creation operations. The tombstone
 		// prevents new disk creation with the same ID.

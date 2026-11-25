@@ -40,7 +40,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 	testCases := []struct {
 		name             string
 		diskMeta         *resources.DiskMeta
-		deletedZone      string
+		deleted          bool
 		zoneContainsCell bool
 		nonCancellable   bool
 		requestZone      string
@@ -105,31 +105,43 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			disabledZones: disabledZone, cancel: true, expectedZone: "zone-d",
 		},
 		{
-			name: "release overlay in disabled zone", diskMeta: overlayDisk, requestZone: "zone-d",
+			name: "skip overlay release in disabled zone", diskMeta: overlayDisk, requestZone: "zone-d",
 			disabledZones: disabledZone, expectedZone: "zone-d",
 		},
 		{
-			name: "missing disk", requestZone: "zone-a", disabledZones: disabledZone,
+			name: "missing disk", requestZone: "zone-a", disabledZones: disabledZone, nonCancellable: true,
 		},
 		{
 			name:        "missing disk with sync and disabled request zone",
-			requestZone: "zone-d", disabledZones: disabledZone, sync: true,
+			requestZone: "zone-d", disabledZones: disabledZone, sync: true, nonCancellable: true,
 		},
 		{
-			name: "deleted disk zone matches request", deletedZone: "zone-a",
+			name: "empty metadata zone uses request", diskMeta: &resources.DiskMeta{},
+			requestZone: "zone-a", expectedZone: "zone-a", expectNBS: true,
+		},
+		{
+			name: "empty metadata zone uses disabled request zone", diskMeta: &resources.DiskMeta{},
+			requestZone: "zone-d", disabledZones: disabledZone, expectedZone: "zone-d",
+		},
+		{
+			name: "deleted disk with empty zone", diskMeta: &resources.DiskMeta{}, deleted: true,
+			requestZone: "zone-a",
+		},
+		{
+			name: "deleted disk zone matches request", diskMeta: allowedDisk, deleted: true,
 			requestZone: "zone-a", disabledZones: disabledZone,
 		},
 		{
-			name: "deleted disk cell belongs to request zone", deletedZone: "zone-a",
+			name: "deleted disk cell belongs to request zone", diskMeta: allowedDisk, deleted: true,
 			requestZone: "region", zoneContainsCell: true, disabledZones: disabledZone,
 		},
 		{
-			name: "deleted disk zone conflicts with request", deletedZone: "zone-a",
+			name: "deleted disk zone conflicts with request", diskMeta: allowedDisk, deleted: true,
 			requestZone: "zone-b", disabledZones: disabledZone, nonCancellable: true,
 		},
 		{
-			name:        "disabled deleted disk zone is handled before checking the request",
-			deletedZone: "zone-d", requestZone: "zone-a", disabledZones: disabledZone,
+			name:     "disabled deleted disk zone is handled before checking the request",
+			diskMeta: disabledDisk, deleted: true, requestZone: "zone-a", disabledZones: disabledZone, expectedZone: "zone-d",
 		},
 		{
 			name: "request without a zone", nonCancellable: true,
@@ -142,20 +154,20 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			disabledZones: disabledZone, errorAt: "DeleteDisk",
 		},
 		{
-			name: "incremental scheduling error in disabled zone", diskMeta: disabledDisk, requestZone: "zone-d",
-			disabledZones: disabledZone, expectedZone: "zone-d", errorAt: "ScheduleTask",
+			name: "incremental scheduling error", diskMeta: allowedDisk, requestZone: "zone-a",
+			expectedZone: "zone-a", errorAt: "ScheduleTask",
 		},
 		{
-			name: "incremental cleanup error in disabled zone", diskMeta: disabledDisk, requestZone: "zone-d",
-			disabledZones: disabledZone, expectedZone: "zone-d", errorAt: "WaitIncremental",
+			name: "incremental cleanup error", diskMeta: allowedDisk, requestZone: "zone-a",
+			expectedZone: "zone-a", errorAt: "WaitIncremental",
 		},
 		{
-			name: "overlay release scheduling error in disabled zone", diskMeta: overlayDisk, requestZone: "zone-d",
-			disabledZones: disabledZone, expectedZone: "zone-d", errorAt: "ReleaseBaseDisk",
+			name: "overlay release scheduling error", diskMeta: overlayDisk, requestZone: "zone-d",
+			expectedZone: "zone-d", expectNBS: true, errorAt: "ReleaseBaseDisk",
 		},
 		{
-			name: "overlay release error in disabled zone", diskMeta: overlayDisk, requestZone: "zone-d",
-			disabledZones: disabledZone, expectedZone: "zone-d", errorAt: "WaitRelease",
+			name: "overlay release error", diskMeta: overlayDisk, requestZone: "zone-d",
+			expectedZone: "zone-d", expectNBS: true, errorAt: "WaitRelease",
 		},
 		{
 			name: "mark deleted error in disabled zone", diskMeta: disabledDisk, requestZone: "zone-d",
@@ -210,27 +222,32 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 					return
 				}
 				meta := tc.diskMeta
-				if tc.deletedZone != "" {
-					meta = &resources.DiskMeta{ZoneID: tc.deletedZone}
-				}
 				storage.On("GetDiskMeta", ctx, "disk").Return(meta, errorFor("GetDiskMeta")).Once()
-				if tc.errorAt == "GetDiskMeta" {
+				if tc.errorAt == "GetDiskMeta" || meta == nil {
 					return
 				}
-				var recordedZoneID string
-				if meta != nil {
-					recordedZoneID = meta.ZoneID
-				}
 				if tc.zoneContainsCell || tc.nonCancellable {
-					cellSelector.On("ZoneContainsCell", tc.requestZone, recordedZoneID).
+					cellSelector.On("ZoneContainsCell", tc.requestZone, meta.ZoneID).
 						Return(tc.zoneContainsCell).Once()
 				}
 				if tc.nonCancellable {
 					return
 				}
-				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, &recordedZoneID).
-					Return(tc.diskMeta, errorFor("DeleteDisk")).Once()
-				if tc.errorAt == "DeleteDisk" || tc.diskMeta == nil {
+				deleteResult := meta
+				if tc.deleted {
+					deleteResult = nil
+				}
+				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, &meta.ZoneID).
+					Return(deleteResult, errorFor("DeleteDisk")).Once()
+				if tc.errorAt == "DeleteDisk" {
+					return
+				}
+				if tc.disabledZones.IsDisabled(tc.expectedZone) {
+					storage.On("DiskDeleted", ctx, "disk", mock.Anything).
+						Return(errorFor("DiskDeleted")).Once()
+					return
+				}
+				if tc.deleted {
 					return
 				}
 				if tc.sync && tc.expectNBS {
