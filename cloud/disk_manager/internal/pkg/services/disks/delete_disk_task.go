@@ -78,9 +78,9 @@ func (t *deleteDiskTask) deleteDisk(
 
 	// Cancelling disk creation before its metadata exists leaves a tombstone
 	// with no zone.
-	zoneID := requestZoneID
-	if meta.ZoneID != "" {
-		zoneID = meta.ZoneID
+	zoneID := meta.ZoneID
+	if len(zoneID) == 0 {
+		zoneID = requestZoneID
 	}
 
 	if t.disabledZones.IsDisabled(zoneID) {
