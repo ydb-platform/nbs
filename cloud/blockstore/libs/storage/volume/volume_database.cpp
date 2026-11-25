@@ -472,6 +472,32 @@ void TVolumeDatabase::UpdateCheckpointRequest(
         NIceDb::TUpdate<TTable::CheckpointError>(error));
 }
 
+bool TVolumeDatabase::ReadShadowDiskState(
+    ui64 requestId,
+    EShadowDiskState& shadowDiskState,
+    ui64& processedBlockCount)
+{
+    using TTable = TVolumeSchema::CheckpointRequests;
+
+    const auto row = Table<TTable>()
+                         .Key(requestId)
+                         .Select<
+                             TTable::ShadowDiskState,
+                             TTable::ShadowDiskProcessedBlockCount>();
+    if (!row.IsReady()) {
+        return false;
+    }
+
+    shadowDiskState = row.IsValid()
+                          ? static_cast<EShadowDiskState>(
+                                row.GetValue<TTable::ShadowDiskState>())
+                          : EShadowDiskState::None;
+    processedBlockCount =
+        row.IsValid() ? row.GetValue<TTable::ShadowDiskProcessedBlockCount>()
+                      : 0;
+    return true;
+}
+
 void TVolumeDatabase::UpdateShadowDiskState(
     ui64 requestId,
     ui64 processedBlockCount,
@@ -484,8 +510,12 @@ void TVolumeDatabase::UpdateShadowDiskState(
         NIceDb::TUpdate<TTable::ShadowDiskProcessedBlockCount>(
             processedBlockCount),
         NIceDb::TUpdate<TTable::ShadowDiskState>(
-            static_cast<ui32>(shadowDiskState)),
-        NIceDb::TUpdate<TTable::CheckpointError>(errorMessage));
+            static_cast<ui32>(shadowDiskState)));
+
+    if (shadowDiskState == EShadowDiskState::Error) {
+        Table<TTable>().Key(requestId).Update(
+            NIceDb::TUpdate<TTable::CheckpointError>(errorMessage));
+    }
 }
 
 bool TVolumeDatabase::CollectCheckpointsToDelete(

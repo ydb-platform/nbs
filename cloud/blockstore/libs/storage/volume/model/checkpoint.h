@@ -179,10 +179,10 @@ public:
         EShadowDiskState shadowDiskState);
 
     void SetShadowDiskState(
-        const TString& checkpointId,
+        ui64 requestId,
         EShadowDiskState shadowDiskState,
-        ui64 processedBlockCount);
-    void SetCheckpointError(ui64 requestId, const TString& errorMessage);
+        ui64 processedBlockCount,
+        const TString& errorMessage);
     void ShadowActorCreated(const TString& checkpointId);
     void ShadowActorDestroyed(const TString& checkpointId);
     [[nodiscard]] bool HasShadowActor(const TString& checkpointId) const;

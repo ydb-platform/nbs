@@ -508,12 +508,15 @@ struct TTxVolume
         const ui64 ProcessedBlockCount;
         const TString ErrorMessage;
 
+        EShadowDiskState PreviousState = EShadowDiskState::None;
+        ui64 PreviousProcessedBlockCount = 0;
+
         TUpdateShadowDiskState(
-                TRequestInfoPtr requestInfo,
-                ui64 requestId,
-                EShadowDiskState shadowDiskState,
-                ui64 processedBlockCount,
-                TString errorMessage)
+            TRequestInfoPtr requestInfo,
+            ui64 requestId,
+            EShadowDiskState shadowDiskState,
+            ui64 processedBlockCount,
+            TString errorMessage)
             : RequestInfo(std::move(requestInfo))
             , RequestId(requestId)
             , ShadowDiskState(shadowDiskState)
@@ -521,9 +524,18 @@ struct TTxVolume
             , ErrorMessage(std::move(errorMessage))
         {}
 
+        bool CanUpdate() const
+        {
+            return PreviousState != EShadowDiskState::None &&
+                   PreviousState != EShadowDiskState::Error &&
+                   !(PreviousState == EShadowDiskState::Ready &&
+                     ShadowDiskState == EShadowDiskState::Preparing);
+        }
+
         void Clear()
         {
-            // nothing to do
+            PreviousState = EShadowDiskState::None;
+            PreviousProcessedBlockCount = 0;
         }
     };
 

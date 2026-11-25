@@ -110,6 +110,10 @@ public:
         const TString& shadowDiskId,
         EShadowDiskState shadowDiskState,
         const TString& error);
+    bool ReadShadowDiskState(
+        ui64 requestId,
+        EShadowDiskState& shadowDiskState,
+        ui64& processedBlockCount);
     void UpdateShadowDiskState(
         ui64 requestId,
         ui64 processedBlockCount,

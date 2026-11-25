@@ -11,11 +11,26 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TDevices = google::protobuf::RepeatedPtrField<NProto::TDeviceConfig>;
+
+struct TUnacquiredShadowDiskDevices
+{
+    ui64 BlocksEnd = 0;
+    TString DeviceUUIDs;
+
+    TString GetErrorMessage() const;
+};
+
+TUnacquiredShadowDiskDevices FindUnacquiredShadowDiskDevices(
+    const TDevices& devices,
+    const TDevices& acquired);
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TShadowDiskReadAvailability
 {
 private:
-    ui64 UnavailableBlocksEnd = 0;
-    TString UnavailableDeviceUUIDs;
+    TUnacquiredShadowDiskDevices UnacquiredDevices;
     std::optional<TInstant> UnavailableReadSince;
 
 public:
@@ -26,11 +41,9 @@ public:
         Error,
     };
 
-    void UpdateDevices(
-        const google::protobuf::RepeatedPtrField<NProto::TDeviceConfig>& devices,
-        const google::protobuf::RepeatedPtrField<NProto::TDeviceConfig>& acquired,
-        ui32 blockSize);
+    void UpdateDevices(const TDevices& devices, const TDevices& acquired);
     EReadStatus CheckRead(ui64 startIndex, TInstant now, TDuration timeout);
+    EReadStatus CheckUnavailableRead(TInstant now, TDuration timeout);
     TString GetErrorMessage() const;
 };
 

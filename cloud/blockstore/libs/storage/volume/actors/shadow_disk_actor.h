@@ -188,6 +188,11 @@ private:
     bool Acquired() const;
     bool ReadOnlyMount() const;
 
+    NProto::TError CheckCheckpointRead(TInstant now, ui64 startIndex);
+    NProto::TError CheckReadWhileWaitingForAcquire(
+        TInstant now,
+        TDuration timeout);
+
     template <typename TMethod>
     void ForwardRequestToSrcPartition(
         const typename TMethod::TRequest::TPtr& ev,

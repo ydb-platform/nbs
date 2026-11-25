@@ -153,32 +153,29 @@ void TCheckpointStore::SetCheckpointRequestFinished(
 }
 
 void TCheckpointStore::SetShadowDiskState(
-    const TString& checkpointId,
+    ui64 requestId,
     EShadowDiskState shadowDiskState,
-    ui64 processedBlockCount)
+    ui64 processedBlockCount,
+    const TString& errorMessage)
 {
     Y_DEBUG_ABORT_UNLESS(shadowDiskState != EShadowDiskState::None);
 
-    if (auto* checkpointData = ActiveCheckpoints.FindPtr(checkpointId)) {
-        checkpointData->ShadowDiskState = shadowDiskState;
-        checkpointData->ProcessedBlockCount = processedBlockCount;
-
-        if (auto* checkpointRequest =
-                CheckpointRequests.FindPtr(checkpointData->RequestId))
-        {
-            checkpointRequest->ShadowDiskState = shadowDiskState;
-            checkpointRequest->ShadowDiskProcessedBlockCount =
-                processedBlockCount;
-        }
+    auto* request = CheckpointRequests.FindPtr(requestId);
+    if (!request || request->ShadowDiskState == EShadowDiskState::Error) {
+        return;
     }
-}
 
-void TCheckpointStore::SetCheckpointError(
-    ui64 requestId,
-    const TString& errorMessage)
-{
-    if (auto* request = CheckpointRequests.FindPtr(requestId)) {
+    request->ShadowDiskState = shadowDiskState;
+    request->ShadowDiskProcessedBlockCount = processedBlockCount;
+    if (shadowDiskState == EShadowDiskState::Error) {
         request->CheckpointError = errorMessage;
+    }
+
+    if (auto* checkpoint = ActiveCheckpoints.FindPtr(request->CheckpointId);
+        checkpoint && checkpoint->RequestId == requestId)
+    {
+        checkpoint->ShadowDiskState = shadowDiskState;
+        checkpoint->ProcessedBlockCount = processedBlockCount;
     }
 }
 

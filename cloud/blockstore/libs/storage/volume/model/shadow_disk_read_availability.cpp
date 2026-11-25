@@ -7,54 +7,77 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TShadowDiskReadAvailability::UpdateDevices(
-    const google::protobuf::RepeatedPtrField<NProto::TDeviceConfig>& devices,
-    const google::protobuf::RepeatedPtrField<NProto::TDeviceConfig>& acquired,
-    ui32 blockSize)
+TString TUnacquiredShadowDiskDevices::GetErrorMessage() const
+{
+    return TStringBuilder()
+           << "Devices [" << DeviceUUIDs << "] are unavailable";
+}
+
+TUnacquiredShadowDiskDevices FindUnacquiredShadowDiskDevices(
+    const TDevices& devices,
+    const TDevices& acquired)
 {
     THashSet<TString> acquiredUUIDs;
     for (const auto& device: acquired) {
         acquiredUUIDs.insert(device.GetDeviceUUID());
     }
 
-    UnavailableBlocksEnd = 0;
-    UnavailableDeviceUUIDs.clear();
+    TUnacquiredShadowDiskDevices result;
     ui64 blocksEnd = 0;
     for (const auto& device: devices) {
-        blocksEnd += device.GetBlocksCount() * device.GetBlockSize() / blockSize;
+        // Disk Registry describes devices in logical blocks.
+        blocksEnd += device.GetBlocksCount();
         if (!acquiredUUIDs.contains(device.GetDeviceUUID())) {
-            UnavailableBlocksEnd = blocksEnd;
-            if (!UnavailableDeviceUUIDs.empty()) {
-                UnavailableDeviceUUIDs += ", ";
+            result.BlocksEnd = blocksEnd;
+            if (!result.DeviceUUIDs.empty()) {
+                result.DeviceUUIDs += ", ";
             }
-            UnavailableDeviceUUIDs += device.GetDeviceUUID();
+            result.DeviceUUIDs += device.GetDeviceUUID();
         }
     }
-    if (UnavailableDeviceUUIDs.empty()) {
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TShadowDiskReadAvailability::UpdateDevices(
+    const TDevices& devices,
+    const TDevices& acquired)
+{
+    UnacquiredDevices = FindUnacquiredShadowDiskDevices(devices, acquired);
+    if (UnacquiredDevices.DeviceUUIDs.empty()) {
         UnavailableReadSince.reset();
     }
 }
 
-TShadowDiskReadAvailability::EReadStatus
-TShadowDiskReadAvailability::CheckRead(
+TShadowDiskReadAvailability::EReadStatus TShadowDiskReadAvailability::CheckRead(
     ui64 startIndex,
     TInstant now,
     TDuration timeout)
 {
-    if (startIndex >= UnavailableBlocksEnd) {
+    // A sequential snapshot reader can proceed only past the last unavailable
+    // device. Earlier reads must see the failure before reaching that device.
+    if (startIndex >= UnacquiredDevices.BlocksEnd) {
         return EReadStatus::Available;
     }
+    return CheckUnavailableRead(now, timeout);
+}
+
+TShadowDiskReadAvailability::EReadStatus
+TShadowDiskReadAvailability::CheckUnavailableRead(
+    TInstant now,
+    TDuration timeout)
+{
     if (!UnavailableReadSince) {
         UnavailableReadSince = now;
     }
     return now - *UnavailableReadSince < timeout ? EReadStatus::Retry
-                                                : EReadStatus::Error;
+                                                 : EReadStatus::Error;
 }
 
 TString TShadowDiskReadAvailability::GetErrorMessage() const
 {
-    return TStringBuilder() << "Devices [" << UnavailableDeviceUUIDs
-                            << "] are unavailable";
+    return UnacquiredDevices.GetErrorMessage();
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

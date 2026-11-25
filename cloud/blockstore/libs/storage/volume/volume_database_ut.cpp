@@ -482,6 +482,35 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                     EShadowDiskState::Ready,
                     requests[0].ShadowDiskState);
             });
+
+        const TString errorMessage = "Devices [uuid1] are unavailable";
+        executor.WriteTx(
+            [&](TVolumeDatabase db)
+            {
+                db.UpdateShadowDiskState(
+                    1,
+                    1024,
+                    EShadowDiskState::Error,
+                    errorMessage);
+            });
+
+        executor.ReadTx(
+            [&](TVolumeDatabase db)
+            {
+                TVector<TCheckpointRequest> requests;
+                THashMap<TString, TInstant> deletedCheckpoints;
+                TVector<ui64> outdatedCheckpointRequestIds;
+
+                UNIT_ASSERT(db.ReadCheckpointRequests(
+                    deletedCheckpoints,
+                    requests,
+                    outdatedCheckpointRequestIds));
+
+                UNIT_ASSERT_VALUES_EQUAL(1, requests.size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    errorMessage,
+                    requests[0].CheckpointError);
+            });
     }
 
     Y_UNIT_TEST(ShouldStorePartStats)
