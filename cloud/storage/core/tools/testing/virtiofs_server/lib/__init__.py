@@ -53,18 +53,18 @@ class VirtioFsServer:
         # when restarting the same socket during migration.
         statePath = Path(common.work_path("virtiofs-state-" + hashlib.sha256(
             os.path.abspath(self.socket_path).encode()).hexdigest()[:16]))
-        shared = Path(self.fspath).resolve(strict=True)
-        if not shared.is_dir():
-            raise ValueError("shared directory is not a directory: {}".format(shared))
+        sharedPath = Path(self.fspath).resolve(strict=True)
+        if not sharedPath.is_dir():
+            raise ValueError("shared directory is not a directory: {}".format(sharedPath))
         paths = ("root", "sessions", "endpoints", "handles", "cache", "directories")
         for name in paths:
             (statePath / name).mkdir(parents=True, exist_ok=True)
         export = statePath / "root" / "nfs_shared"
         if export.is_symlink():
-            if export.resolve() != shared:
+            if export.resolve() != sharedPath:
                 raise ValueError("socket state belongs to another shared directory")
         else:
-            export.symlink_to(shared, target_is_directory=True)
+            export.symlink_to(sharedPath, target_is_directory=True)
         config = statePath / "vhost.txt"
         config.write_text('''VhostServiceConfig {
   ServiceEndpoints {}
