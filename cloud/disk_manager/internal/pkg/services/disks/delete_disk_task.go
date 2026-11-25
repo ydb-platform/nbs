@@ -77,10 +77,7 @@ func (t *deleteDiskTask) deleteDisk(
 	}
 
 	// Cancelling disk creation before its metadata exists leaves a tombstone
-	// with no zone. For backward compatibility, use the request zone in that case.
-	// TODO: Disable and remove DeleteIfNonExistent in every deployment.
-	// Once cancellation stops writing tombstones without a zone, clear the
-	// existing ones and use meta.ZoneID directly.
+	// with no zone.
 	zoneID := requestZoneID
 	if meta.ZoneID != "" {
 		zoneID = meta.ZoneID
