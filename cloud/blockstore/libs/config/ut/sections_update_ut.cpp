@@ -2,30 +2,43 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/string/builder.h>
+
 namespace NCloud::NBlockStore {
 
 Y_UNIT_TEST_SUITE(TConfigSectionsUpdateTest)
 {
-    // Verify that rejection detection handles multiple sections independently
-    // of warning-only records and of the failing section's position.
+    // Verify that rejection detection distinguishes warnings from errors in
+    // either order and that formatted rejections identify their sections.
     Y_UNIT_TEST(ShouldDistinguishRejectionsFromOtherSectionIssues)
     {
-        // Keep a warning-only record separate from actual section rejections.
-        TConfigSectionsUpdateReport report;
-        auto& warning = report.Sections.emplace_back();
-        warning.Path = "Features";
-        warning.Issues.push_back("Skipped an unsupported entry");
-        UNIT_ASSERT(!report.HasRejectedSections());
+        // Treat a standalone warning as accepted.
+        const TConfigSectionUpdateIssues warning{
+            .Path = "Features",
+            .Issues = {"Skipped an unsupported entry"},
+        };
+        const TConfigSectionsUpdateReport warningsOnly{.Sections = {warning}};
+        UNIT_ASSERT(!warningsOnly.HasRejectedSections());
 
-        // Detect and format more than one rejection without losing its path.
+        // Detect each rejection regardless of its position in the report.
         for (const TString path: {"VolumeThrottling", "OtherSection"}) {
-            auto& rejected = report.Sections.emplace_back();
-            rejected.Path = path;
-            rejected.RejectionError = MakeError(E_ARGUMENT, "Invalid value");
-            UNIT_ASSERT(report.HasRejectedSections());
+            const TConfigSectionUpdateIssues rejected{
+                .Path = path,
+                .RejectionError = MakeError(E_ARGUMENT, "Invalid value"),
+            };
+            const TConfigSectionsUpdateReport rejectionFirst{
+                .Sections = {rejected, warning},
+            };
+            const TConfigSectionsUpdateReport rejectionLast{
+                .Sections = {warning, rejected},
+            };
+            UNIT_ASSERT(rejectionFirst.HasRejectedSections());
+            UNIT_ASSERT(rejectionLast.HasRejectedSections());
+
+            // Include the rejected section's path in the formatted reason.
             UNIT_ASSERT_VALUES_EQUAL(
-                TString("Rejected invalid ") + path +
-                    " configuration: Invalid value",
+                TStringBuilder() << "Rejected invalid " << path
+                                 << " configuration: Invalid value",
                 FormatConfigSectionRejection(rejected));
         }
     }
