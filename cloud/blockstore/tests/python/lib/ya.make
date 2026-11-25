@@ -6,6 +6,7 @@ PEERDIR(
     cloud/blockstore/public/sdk/python/client
     cloud/blockstore/public/sdk/python/protos
 
+    cloud/storage/core/tests/ydb
     cloud/storage/core/tools/common/python
     cloud/storage/core/tools/testing/access_service/lib
     cloud/storage/core/tools/testing/access_service_new/lib
