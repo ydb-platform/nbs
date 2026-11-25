@@ -76,6 +76,8 @@ func (t *deleteDiskTask) deleteDisk(
 		return errors.NewNonCancellableErrorf("disk %v does not exist", diskID)
 	}
 
+	// For backward compatibility, use the request zone when the metadata zone is empty.
+	// (*storageYDB).deleteDisk in ../../resources/disks.go creates deleted records with an empty zone.
 	zoneID := requestZoneID
 	if meta.ZoneID != "" {
 		zoneID = meta.ZoneID
