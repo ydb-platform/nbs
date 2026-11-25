@@ -88,9 +88,7 @@ func (t *deleteDiskTask) deleteDisk(
 			diskID,
 			zoneID,
 		)
-		// In a disabled zone, finish deletion in metadata and skip cell validation,
-		// NBS calls, and cleanup tasks. DiskDeleted requires DeleteDisk to mark
-		// the disk as deleting first.
+		// In a disabled zone, finish deletion in metadata. DiskDeleted requires DeleteDisk to mark the disk as deleting first.
 		_, err = t.storage.DeleteDisk(ctx, diskID, selfTaskID, time.Now())
 		if err != nil {
 			return err
