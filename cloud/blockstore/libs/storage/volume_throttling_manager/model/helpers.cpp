@@ -140,8 +140,6 @@ NProto::TError ValidateThrottlingConfigRules(
     return {};
 }
 
-// Select a rule without borrowing the input; keep the first Filter match
-// while searching for a Disks match, which takes priority.
 NProto::TVolumeThrottlingRule GetThrottlingRuleForVolume(
     const google::protobuf::RepeatedPtrField<NProto::TVolumeThrottlingRule>& rules,
     const TString& diskId,
