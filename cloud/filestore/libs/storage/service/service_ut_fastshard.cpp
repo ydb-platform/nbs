@@ -432,10 +432,49 @@ Y_UNIT_TEST_SUITE(TStorageServiceFastShardTest)
         UNIT_ASSERT_VALUES_EQUAL("test_s3,test_s4", GetDiskIds(env));
     }
 
+    Y_UNIT_TEST(ShouldNotAddShardsToShard)
+    {
+        TFastShardTestEnv env(MakeFastShardConfig());
+
+        // A filesystem with two ordinary and two fast shards.
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            CreateFileStore(
+                env,
+                "test",
+                BlocksCount,
+                2,
+                2,
+                NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR));
+
+        const ui64 shardBlocksCount = env.Service.GetFileStoreInfo("test_s1")
+            ->Record.GetFileStore()
+            .GetBlocksCount();
+
+        // A resize of a shard that asks for shards should be rejected.
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            ResizeFileStore(env, "test_s1", 2 * shardBlocksCount, 2, 0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            ResizeFileStore(env, "test_s1", 2 * shardBlocksCount, 0, 1));
+
+        // A rejected request changes nothing.
+        UNIT_ASSERT_VALUES_EQUAL(
+            "test,test_s1,test_s2,test_s3,test_s4",
+            GetFileStoreIds(env));
+        UNIT_ASSERT_VALUES_EQUAL(
+            shardBlocksCount,
+            env.Service.GetFileStoreInfo("test_s1")
+                ->Record.GetFileStore()
+                .GetBlocksCount());
+    }
+
     Y_UNIT_TEST(ShouldNotAddFastShardsIfShardCountIsCapped)
     {
         auto config = MakeFastShardConfig();
         config.SetMaxShardCount(1024);
+        config.SetOneByteShardCountCapEnabled(true);
         TFastShardTestEnv env(config);
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -447,15 +486,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceFastShardTest)
                 2,
                 2,
                 NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR));
-
-        // The filesystem has a handle with the non-zero 7th byte.
-        using TResponse = TEvIndexTablet::TEvGetStorageStatsResponse;
-        const auto observer = env.Env.GetRuntime().AddObserver<TResponse>(
-            [](TResponse::TPtr& event)
-            {
-                auto& stats = *event->Get()->Record.MutableStats();
-                stats.SetSevenBytesHandlesCount(1);
-            });
 
         // A resize over 255 shards that adds a fast shard should be rejected.
         UNIT_ASSERT_VALUES_EQUAL(

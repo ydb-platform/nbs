@@ -42,7 +42,10 @@ SRCS(
     service_actor_listnodes.cpp
     service_actor_monitoring.cpp
     service_actor_monitoring_search.cpp
+    service_actor_multishard_alter.cpp
+    service_actor_multishard_configure.cpp
     service_actor_multishard_create.cpp
+    service_actor_multishard_describe.cpp
     service_actor_ping.cpp
     service_actor_pingsession.cpp
     service_actor_readdata.cpp

@@ -352,6 +352,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(MinShardCount,                     ui32,      0                       )\
     xxx(MaxShardCount,                     ui32,      254                     )\
+    xxx(OneByteShardCountCapEnabled,       bool,      false                   )\
                                                                                \
     xxx(ReadBlobDisabled,                  bool,      false                   )\
     xxx(WriteBlobDisabled,                 bool,      false                   )\
