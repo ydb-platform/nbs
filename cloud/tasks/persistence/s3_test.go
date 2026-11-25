@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	aws_s3 "github.com/aws/aws-sdk-go/service/s3"
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -662,4 +664,19 @@ func TestS3ShouldLimitPutObjectAttemptsIncludingRetries(t *testing.T) {
 	// The throttle pause is the configured milliseconds, not the SDK
 	// default of 500 ms and more.
 	require.Less(t, elapsed, 400*time.Millisecond)
+}
+
+func TestConfirmedDeleteKeys(t *testing.T) {
+	result := &aws_s3.DeleteObjectsOutput{
+		Deleted: []*aws_s3.DeletedObject{
+			{Key: aws.String("chunks/b")},
+			{Key: aws.String("chunks/a")},
+		},
+		Errors: []*aws_s3.Error{
+			{Key: aws.String("chunks/c"), Code: aws.String("AccessDenied")},
+		},
+	}
+	deleted, err := confirmedDeleteKeys(result, "chunks/", []string{"a", "b", "c"})
+	require.ErrorContains(t, err, "AccessDenied")
+	require.ElementsMatch(t, []string{"a", "b"}, deleted)
 }

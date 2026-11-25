@@ -791,18 +791,7 @@ func (c *S3Client) DeleteObject(
 			Key:    &key,
 		},
 	)
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case aws_s3.ErrCodeNoSuchBucket:
-				return errors.NewNonRetriableError(err)
-			}
-		}
-
-		return errors.NewRetriableError(err)
-	}
-
-	return nil
+	return wrapError(err)
 }
 
 // DeleteObjects deletes keys relative to prefix and returns the confirmed keys
@@ -829,36 +818,42 @@ func (c *S3Client) DeleteObjects(
 		Delete: &aws_s3.Delete{Objects: objects},
 	})
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == aws_s3.ErrCodeNoSuchBucket {
-			return nil, errors.NewNonRetriableError(err)
-		}
-		return nil, errors.NewRetriableError(err)
+		return nil, wrapError(err)
 	}
+
+	return confirmedDeleteKeys(result, prefix, keys)
+}
+
+func confirmedDeleteKeys(
+	result *aws_s3.DeleteObjectsOutput,
+	prefix string,
+	keys []string,
+) ([]string, error) {
 
 	confirmed := make(map[string]bool, len(result.Deleted))
 	for _, object := range result.Deleted {
 		confirmed[aws.StringValue(object.Key)] = true
 	}
 	for _, failure := range result.Errors {
-		key := aws.StringValue(failure.Key)
-		delete(confirmed, key)
-		if err == nil {
-			err = errors.NewRetriableErrorf(
-				"delete %q: %s: %s",
-				key,
-				aws.StringValue(failure.Code),
-				aws.StringValue(failure.Message),
-			)
-		}
+		delete(confirmed, aws.StringValue(failure.Key))
 	}
+
+	var deleted []string
 	for _, key := range keys {
 		if confirmed[prefix+key] {
 			deleted = append(deleted, key)
-		} else if err == nil {
-			err = errors.NewRetriableErrorf("S3 did not confirm deletion of %q", prefix+key)
 		}
 	}
-	return deleted, err
+
+	if len(result.Errors) != 0 {
+		failure := result.Errors[0]
+		return deleted, errors.NewRetriableErrorf("delete %q: %s: %s",
+			aws.StringValue(failure.Key), aws.StringValue(failure.Code), aws.StringValue(failure.Message))
+	}
+	if len(deleted) != len(keys) {
+		return deleted, errors.NewRetriableErrorf("S3 confirmed deletion of %d of %d keys", len(deleted), len(keys))
+	}
+	return deleted, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
