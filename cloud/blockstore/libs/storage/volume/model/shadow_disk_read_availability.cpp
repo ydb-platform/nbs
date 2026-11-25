@@ -45,8 +45,10 @@ void TShadowDiskReadAvailability::UpdateDevices(
     const TDevices& acquired)
 {
     UnacquiredDevices = FindUnacquiredShadowDiskDevices(devices, acquired);
-    if (UnacquiredDevices.DeviceUUIDs.empty()) {
-        UnavailableReadSince.reset();
+    if (FirstUnavailableRead &&
+        FirstUnavailableRead->StartIndex >= UnacquiredDevices.BlocksEnd)
+    {
+        FirstUnavailableRead.reset();
     }
 }
 
@@ -60,19 +62,23 @@ TShadowDiskReadAvailability::EReadStatus TShadowDiskReadAvailability::CheckRead(
     if (startIndex >= UnacquiredDevices.BlocksEnd) {
         return EReadStatus::Available;
     }
-    return CheckUnavailableRead(now, timeout);
+    return CheckUnavailableRead(startIndex, now, timeout);
 }
 
 TShadowDiskReadAvailability::EReadStatus
 TShadowDiskReadAvailability::CheckUnavailableRead(
+    ui64 startIndex,
     TInstant now,
     TDuration timeout)
 {
-    if (!UnavailableReadSince) {
-        UnavailableReadSince = now;
+    if (!FirstUnavailableRead) {
+        FirstUnavailableRead = TUnavailableRead{
+            .StartIndex = startIndex,
+            .Since = now,
+        };
     }
-    return now - *UnavailableReadSince < timeout ? EReadStatus::Retry
-                                                 : EReadStatus::Error;
+    return now - FirstUnavailableRead->Since < timeout ? EReadStatus::Retry
+                                                       : EReadStatus::Error;
 }
 
 TString TShadowDiskReadAvailability::GetErrorMessage() const

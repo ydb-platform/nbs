@@ -191,6 +191,7 @@ private:
     NProto::TError CheckCheckpointRead(TInstant now, ui64 startIndex);
     NProto::TError CheckReadWhileWaitingForAcquire(
         TInstant now,
+        ui64 startIndex,
         TDuration timeout);
 
     template <typename TMethod>

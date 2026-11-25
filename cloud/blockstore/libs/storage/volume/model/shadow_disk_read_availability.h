@@ -30,8 +30,14 @@ TUnacquiredShadowDiskDevices FindUnacquiredShadowDiskDevices(
 class TShadowDiskReadAvailability
 {
 private:
+    struct TUnavailableRead
+    {
+        ui64 StartIndex;
+        TInstant Since;
+    };
+
     TUnacquiredShadowDiskDevices UnacquiredDevices;
-    std::optional<TInstant> UnavailableReadSince;
+    std::optional<TUnavailableRead> FirstUnavailableRead;
 
 public:
     enum class EReadStatus
@@ -43,7 +49,8 @@ public:
 
     void UpdateDevices(const TDevices& devices, const TDevices& acquired);
     EReadStatus CheckRead(ui64 startIndex, TInstant now, TDuration timeout);
-    EReadStatus CheckUnavailableRead(TInstant now, TDuration timeout);
+    EReadStatus
+    CheckUnavailableRead(ui64 startIndex, TInstant now, TDuration timeout);
     TString GetErrorMessage() const;
 };
 

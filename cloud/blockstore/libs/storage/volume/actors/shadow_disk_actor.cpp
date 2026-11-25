@@ -1017,7 +1017,7 @@ NProto::TError TShadowDiskActor::CheckCheckpointRead(
     const auto timeout =
         GetConfig()->GetMaxAcquireShadowDiskTotalTimeoutWhenNonBlocked();
     if (State == EActorState::WaitAcquireForRead) {
-        return CheckReadWhileWaitingForAcquire(now, timeout);
+        return CheckReadWhileWaitingForAcquire(now, startIndex, timeout);
     }
 
     using EReadStatus = TShadowDiskReadAvailability::EReadStatus;
@@ -1035,10 +1035,11 @@ NProto::TError TShadowDiskActor::CheckCheckpointRead(
 
 NProto::TError TShadowDiskActor::CheckReadWhileWaitingForAcquire(
     TInstant now,
+    ui64 startIndex,
     TDuration timeout)
 {
     using EReadStatus = TShadowDiskReadAvailability::EReadStatus;
-    if (ReadAvailability.CheckUnavailableRead(now, timeout) ==
+    if (ReadAvailability.CheckUnavailableRead(startIndex, now, timeout) ==
         EReadStatus::Retry)
     {
         return MakeError(
