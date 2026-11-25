@@ -25,6 +25,7 @@ SRCS(
     part_actor_initschema.cpp
     part_actor_loadstate.cpp
     part_actor_metadata_rebuild_blockcount.cpp
+    part_actor_metadata_rebuild_compactionmap.cpp
     part_actor_metadata_rebuild_usedblocks.cpp
     part_actor_metadata_rebuild.cpp
     part_actor_monitoring.cpp
@@ -61,6 +62,7 @@ PEERDIR(
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/storage/api
     cloud/blockstore/libs/storage/core
+    cloud/blockstore/libs/storage/model
     cloud/blockstore/libs/storage/partition/model
     cloud/blockstore/libs/storage/partition_common
     cloud/blockstore/libs/storage/protos

@@ -827,6 +827,38 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldValidateRebuildMetadataCpuLimit)
+    {
+        TTestEnv env;
+        auto nodeIdx = SetupTestEnv(env);
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        NPrivateProto::TRebuildMetadataRequest request;
+        request.SetDiskId(DefaultDiskId);
+        request.SetBatchSize(1);
+        request.SetAllowedCpuTimePerSecond(3);
+
+        for (auto type:
+             {NPrivateProto::USED_BLOCKS, NPrivateProto::BLOCK_COUNT})
+        {
+            request.SetMetadataType(type);
+            TString input;
+            UNIT_ASSERT(
+                google::protobuf::util::MessageToJsonString(request, &input)
+                    .ok());
+            service.SendExecuteActionRequest("rebuildmetadata", input);
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_ARGUMENT,
+                service.RecvExecuteActionResponse()->GetStatus());
+        }
+        service.CreateVolume();
+        service.MountVolume();
+        request.SetMetadataType(NPrivateProto::COMPACTION_MAP);
+        TString input;
+        UNIT_ASSERT(
+            google::protobuf::util::MessageToJsonString(request, &input).ok());
+        service.ExecuteAction("rebuildmetadata", input);
+    }
+
     Y_UNIT_TEST(ShouldRebuildMetadataForPartitionVersion1)
     {
         TTestEnv env;

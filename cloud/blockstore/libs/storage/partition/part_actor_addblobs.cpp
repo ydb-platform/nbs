@@ -629,10 +629,7 @@ private:
                 State.GetCompactionMap().Get(kv.first).NewlyZeroedBlocks;
             const i64 newlyZeroedBlocksDiff =
                 static_cast<i64>(newlyZeroedBlocks) - prevNewlyZeroedBlocks;
-            State.SetNewlyZeroedBlocks(static_cast<ui32>(std::max(
-                static_cast<i64>(State.GetNewlyZeroedBlocks()) +
-                    newlyZeroedBlocksDiff,
-                0L)));
+            State.AdjustNewlyZeroedBlocks(newlyZeroedBlocksDiff);
 
             if (kv.second.BlocksSkippedByCompaction || kv.second.BlobsSkippedByCompaction) {
                 STORAGE_VERIFY(
@@ -722,11 +719,7 @@ private:
             newlyZeroedBlocksToDecrement += rangeStat.NewlyZeroedBlocks;
         }
 
-        State.SetNewlyZeroedBlocks(
-            static_cast<ui32>(std::max(
-                static_cast<i64>(State.GetNewlyZeroedBlocks()) -
-                    newlyZeroedBlocksToDecrement,
-                0L)));
+        State.AdjustNewlyZeroedBlocks(-newlyZeroedBlocksToDecrement);
 
         auto rangeIndicesToPersist = compactionStatsTracker->FinishCompaction();
 

@@ -7649,6 +7649,62 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         CheckRebuildMetadata(3, 2);
     }
 
+    Y_UNIT_TEST(ShouldShareCompactionMapRebuildCpuBudgetAcrossPartitions)
+    {
+        constexpr ui32 partitionCount = 2;
+        auto runtime = PrepareTestActorRuntime();
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NProto::STORAGE_MEDIA_HYBRID,
+            2 * MaxBlocksCount,
+            "vol0",
+            "cloud",
+            "folder",
+            partitionCount,
+            2);
+        volume.WaitReady();
+
+        THashMap<TActorId, TVector<TInstant>> batchTimes;
+        auto requests = runtime->AddObserver<
+            TEvPartitionPrivate::TEvMetadataRebuildCompactionMapRequest>(
+            [&](auto& ev) {
+                batchTimes[ev->Recipient].push_back(runtime->GetCurrentTime());
+            });
+        auto responses = runtime->AddObserver<
+            TEvPartitionPrivate::TEvMetadataRebuildCompactionMapResponse>(
+            [](auto& ev) { ev->Get()->CpuTime = TDuration::MilliSeconds(1); });
+
+        auto request =
+            volume.CreateRebuildMetadataRequest(NProto::COMPACTION_MAP, 1);
+        request->Record.SetAllowedCpuTimePerSecond(1);
+        volume.SendToPipe(std::move(request));
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            volume.RecvRebuildMetadataResponse()->GetStatus());
+
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(
+            TEvPartitionPrivate::EvMetadataRebuildCompleted,
+            partitionCount);
+        runtime->DispatchEvents(options, TDuration::Seconds(5));
+
+        UNIT_ASSERT_VALUES_EQUAL(partitionCount, batchTimes.size());
+        for (const auto& [_, times]: batchTimes) {
+            UNIT_ASSERT_VALUES_EQUAL(2, times.size());
+            // Each partition starts with 0.5 ms and earns the remaining
+            // 0.5 ms of its first batch cost after one second.
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDuration::Seconds(1),
+                times[1] - times[0]);
+        }
+    }
+
     Y_UNIT_TEST(ShouldHandlePartitionRestartsForMetadataRebuild)
     {
         NProto::TStorageServiceConfig config;

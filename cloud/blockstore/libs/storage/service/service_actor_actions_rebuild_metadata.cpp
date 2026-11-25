@@ -4,7 +4,7 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-
+#include <cloud/blockstore/libs/storage/model/rebuild_metadata.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -12,10 +12,10 @@
 #include <contrib/ydb/library/actors/core/hfunc.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
-#include <google/protobuf/util/json_util.h>
-
 #include <util/generic/guid.h>
 #include <util/string/printf.h>
+
+#include <google/protobuf/util/json_util.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -88,6 +88,8 @@ void TRebuildMetadataActor::Bootstrap(const TActorContext& ctx)
     auto request = std::make_unique<TEvVolume::TEvRebuildMetadataRequest>();
     request->Record.SetDiskId(Request.GetDiskId());
     request->Record.SetBatchSize(Request.GetBatchSize());
+    request->Record.SetAllowedCpuTimePerSecond(
+        Request.GetAllowedCpuTimePerSecond());
 
     switch (Request.GetMetadataType()) {
         case NPrivateProto::USED_BLOCKS: {
@@ -96,6 +98,10 @@ void TRebuildMetadataActor::Bootstrap(const TActorContext& ctx)
         }
         case NPrivateProto::BLOCK_COUNT: {
             request->Record.SetMetadataType(NProto::BLOCK_COUNT);
+            break;
+        }
+        case NPrivateProto::COMPACTION_MAP: {
+            request->Record.SetMetadataType(NProto::COMPACTION_MAP);
             break;
         }
         default: {
@@ -108,6 +114,13 @@ void TRebuildMetadataActor::Bootstrap(const TActorContext& ctx)
                         << static_cast<ui32>(Request.GetMetadataType())));
             return;
         }
+    }
+
+    if (auto error = ValidateRebuildMetadataCpuLimit(request->Record);
+        HasError(error))
+    {
+        ReplyAndDie(ctx, std::move(error));
+        return;
     }
 
     LOG_INFO(ctx, TBlockStoreComponents::SERVICE,

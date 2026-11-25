@@ -97,7 +97,8 @@ enum class EMetadataRebuildType
 {
     NoOperation,
     UsedBlocks,
-    BlockCount
+    BlockCount,
+    CompactionMap,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -178,6 +179,14 @@ struct TMetadataRebuildState
         Started = true;
         MetadataType = EMetadataRebuildType::BlockCount;
         Total = totalBlobs;
+        Processed = 0;
+    }
+
+    void StartRebuildCompactionMap(ui64 totalRangeCount)
+    {
+        Started = true;
+        MetadataType = EMetadataRebuildType::CompactionMap;
+        Total = totalRangeCount;
         Processed = 0;
     }
 
@@ -777,9 +786,10 @@ public:
         return LastCompactionRangeCountPerRunTs;
     }
 
-    void SetNewlyZeroedBlocks(ui32 value)
+    void AdjustNewlyZeroedBlocks(i64 delta)
     {
-        NewlyZeroedBlocks = value;
+        NewlyZeroedBlocks =
+            static_cast<ui32>(Max<i64>(0, i64(NewlyZeroedBlocks) + delta));
     }
 
     ui32 GetNewlyZeroedBlocks() const
@@ -924,6 +934,11 @@ public:
     {
         MetadataRebuildCommitId = InvalidCommitId;
         return std::exchange(MetadataRebuildCounterDelta, {});
+    }
+
+    void StartRebuildCompactionMap(ui64 totalRangeCount)
+    {
+        RebuildState.StartRebuildCompactionMap(totalRangeCount);
     }
 
     TMedatadataRebuildProgress GetMetadataRebuildProgress() const
