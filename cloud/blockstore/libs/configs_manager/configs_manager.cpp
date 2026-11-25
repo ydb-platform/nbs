@@ -156,14 +156,12 @@ private:
     void UpdateRendererOnUnchangedConfig(
         const TEvConsole::TEvConfigNotificationRequest::TPtr& ev,
         const TActorContext& ctx,
-        const TConfigSectionsUpdateIssues& updateIssues,
         TString rejectedSectionsReason);
 
     // Record a published runtime configuration and its preparation diagnostics.
     void UpdateRendererOnAppliedConfig(
         const TEvConsole::TEvConfigNotificationRequest::TPtr& ev,
         const TActorContext& ctx,
-        const TConfigSectionsUpdateIssues& updateIssues,
         TString rejectedSectionsReason,
         NConfig::TConfigPreparationDiagnostics diagnostics);
 
@@ -293,7 +291,6 @@ void TConfigsManagerActor::RememberStartupDelivery(ui64 cookie)
 void TConfigsManagerActor::UpdateRendererOnUnchangedConfig(
     const TEvConsole::TEvConfigNotificationRequest::TPtr& ev,
     const TActorContext& ctx,
-    const TConfigSectionsUpdateIssues& updateIssues,
     TString rejectedSectionsReason)
 {
     // Preserve accepted runtime diagnostics for unchanged deliveries.
@@ -311,15 +308,16 @@ void TConfigsManagerActor::UpdateRendererOnUnchangedConfig(
          ConfigRenderer.Data.UpdateStatus ==
              EConfigUpdateStatus::StartupPartiallyApplied) &&
         ev->Cookie == *StartupDeliveryCookie;
+    const bool hasRejectedSections = !rejectedSectionsReason.empty();
     if (isStartupDelivery) {
         ConfigRenderer.Data.UpdateStatus =
-            updateIssues.HasRejectedSections()
+            hasRejectedSections
                 ? EConfigUpdateStatus::StartupPartiallyApplied
                 : EConfigUpdateStatus::Startup;
     } else {
         ConfigRenderer.Data.LastUpdateTime = ctx.Now();
         ConfigRenderer.Data.UpdateStatus =
-            updateIssues.HasRejectedSections()
+            hasRejectedSections
                 ? EConfigUpdateStatus::RuntimePartiallyApplied
                 : EConfigUpdateStatus::RuntimeUnchanged;
     }
@@ -331,7 +329,6 @@ void TConfigsManagerActor::UpdateRendererOnUnchangedConfig(
 void TConfigsManagerActor::UpdateRendererOnAppliedConfig(
     const TEvConsole::TEvConfigNotificationRequest::TPtr& ev,
     const TActorContext& ctx,
-    const TConfigSectionsUpdateIssues& updateIssues,
     TString rejectedSectionsReason,
     NConfig::TConfigPreparationDiagnostics diagnostics)
 {
@@ -340,7 +337,7 @@ void TConfigsManagerActor::UpdateRendererOnAppliedConfig(
         request->OpaqueConfigs.contains(PrivateDatabaseConfigKind);
     ConfigRenderer.Data.LastUpdateTime = ctx.Now();
     ConfigRenderer.Data.UpdateStatus =
-        updateIssues.HasRejectedSections()
+        !rejectedSectionsReason.empty()
             ? EConfigUpdateStatus::RuntimePartiallyApplied
             : EConfigUpdateStatus::Runtime;
     ConfigRenderer.Data.RejectedSectionsReason =
@@ -522,7 +519,6 @@ void TConfigsManagerActor::Handle(
             UpdateRendererOnUnchangedConfig(
                 ev,
                 ctx,
-                updateIssues,
                 std::move(rejectedSectionsReason));
 
             ReplyConfigNotificationResponse(ev, ctx);
@@ -565,7 +561,6 @@ void TConfigsManagerActor::Handle(
     UpdateRendererOnAppliedConfig(
         ev,
         ctx,
-        updateIssues,
         std::move(rejectedSectionsReason),
         std::move(diagnostics));
 
