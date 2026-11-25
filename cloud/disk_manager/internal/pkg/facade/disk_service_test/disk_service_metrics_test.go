@@ -115,8 +115,8 @@ func TestNbsClientReportsMetrics(t *testing.T) {
 		90*time.Second, // timeout
 	))
 
-	testcommon.DeleteDisk(t, ctx, client, diskID1)
-	testcommon.DeleteDisk(t, ctx, client, diskID2)
+	testcommon.DeleteDisk(t, ctx, client, defaultZoneID, diskID1)
+	testcommon.DeleteDisk(t, ctx, client, defaultZoneID, diskID2)
 }
 
 func TestNbsClientReportsErrorMetrics(t *testing.T) {
@@ -167,5 +167,5 @@ func TestNbsClientReportsErrorMetrics(t *testing.T) {
 		map[string]string{"component": "nbs_client", "request": "Resize"},
 	)[0], float64(0))
 
-	testcommon.DeleteDisk(t, ctx, client, diskID)
+	testcommon.DeleteDisk(t, ctx, client, defaultZoneID, diskID)
 }

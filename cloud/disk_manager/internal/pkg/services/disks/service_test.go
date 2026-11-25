@@ -21,6 +21,21 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func TestDeleteDiskRequiresZoneID(t *testing.T) {
+	scheduler := tasks_mocks.NewSchedulerMock()
+	diskService := &service{taskScheduler: scheduler}
+
+	taskID, err := diskService.DeleteDisk(context.Background(), &disk_manager.DeleteDiskRequest{
+		DiskId: &disk_manager.DiskId{DiskId: "disk"},
+	})
+	require.ErrorContains(t, err, "zone id is empty")
+	require.Empty(t, taskID)
+	scheduler.AssertNotCalled(
+		t, "ScheduleNonCancellableTask",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+	)
+}
+
 func TestAreOverlayDisksSupportedForDiskKind(t *testing.T) {
 	diskService := &service{
 		config: &disks_config.DisksConfig{},

@@ -2,7 +2,6 @@ package disks
 
 import (
 	"context"
-	"slices"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -59,39 +58,30 @@ func (t *deleteDiskTask) deleteDisk(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	err := t.setEstimate(ctx, execCtx)
-	if err != nil {
-		return err
-	}
-
 	selfTaskID := execCtx.GetTaskID()
 	diskID := t.request.Disk.DiskId
 	sync := t.request.Sync
 
-	diskMeta, err := t.storage.DeleteDisk(
+	diskMeta, err := t.storage.DeleteDiskWithZoneCheck(
 		ctx,
 		diskID,
 		selfTaskID,
 		time.Now(),
+		t.checkZone,
 	)
 	if err != nil {
 		return err
 	}
-
-	zoneID := ""
 	if diskMeta == nil {
-		// DeleteDisk returns nil for a missing row and for a disk that is
-		// already deleted but still present in meta (trash retention window).
-		if !t.request.DeleteIfNonExistent {
-			return nil
-		}
-
-		zoneID, err = t.resolveCleanupZoneID(ctx, diskID)
+		return nil
+	}
+	zoneID := diskMeta.ZoneID
+	disabled := t.disabledZones.IsDisabled(zoneID)
+	if sync && !disabled {
+		err = t.setEstimate(ctx, execCtx, diskID, zoneID)
 		if err != nil {
 			return err
 		}
-	} else {
-		zoneID = diskMeta.ZoneID
 	}
 
 	taskID, err := t.scheduler.ScheduleTask(
@@ -117,7 +107,7 @@ func (t *deleteDiskTask) deleteDisk(
 		return err
 	}
 
-	if t.disabledZones.IsDisabled(zoneID) {
+	if disabled {
 		logging.Warn(
 			ctx,
 			"Skipping NBS deletion of disk %v: zone %v is disabled",
@@ -141,7 +131,7 @@ func (t *deleteDiskTask) deleteDisk(
 	}
 
 	// Only overlay disks (created from image) should be released.
-	if diskMeta != nil && len(diskMeta.SrcImageID) != 0 {
+	if len(diskMeta.SrcImageID) != 0 {
 		taskID, err = t.poolService.ReleaseBaseDisk(
 			headers.SetIncomingIdempotencyKey(
 				ctx,
@@ -173,11 +163,11 @@ func (t *deleteDiskTask) Run(
 ) error {
 
 	err := t.deleteDisk(ctx, execCtx)
-	if err != nil {
-		return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
+	if err == nil || errors.Is(err, errors.NewEmptyNonCancellableError()) {
+		return err
 	}
 
-	return nil
+	return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
 }
 
 func (t *deleteDiskTask) Cancel(
@@ -206,96 +196,33 @@ func (t *deleteDiskTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Resolves the zone for a disk that DeleteDisk did not return metadata for.
-// Prefers the zone from meta (the disk may still be in the trash retention
-// window) and falls back to the request zone.
-//
-// An empty request zone finishes the task with a NonCancellableError.
-//
-// A zone from meta (enabled or disabled) must match the request zone or be one
-// of its cells, otherwise the task finishes with a NonCancellableError. For a
-// disabled zone NBS deletion is skipped later by the caller.
-//
-// The zone is not persisted and is resolved again on every retry.
-func (t *deleteDiskTask) resolveCleanupZoneID(
-	ctx context.Context,
-	diskID string,
-) (string, error) {
-
+func (t *deleteDiskTask) checkZone(zoneID string) error {
+	if t.disabledZones.IsDisabled(zoneID) {
+		return nil
+	}
 	requestZoneID := t.request.Disk.ZoneId
-	if len(requestZoneID) == 0 {
-		return "", errors.NewNonCancellableErrorf(
-			"request zone is empty for disk %v",
-			diskID,
-		)
+	// Tasks scheduled before zone validation in the service may lack a zone.
+	if zoneID != "" && (requestZoneID == "" || requestZoneID == zoneID ||
+		t.cellSelector.ZoneContainsCell(requestZoneID, zoneID)) {
+		return nil
 	}
 
-	meta, err := t.storage.GetDiskMeta(ctx, diskID)
-	if err != nil {
-		return "", err
-	}
-
-	// Meta has no zone for the disk: the row is already gone or has no zone
-	// recorded, so the request zone is the only zone known for the disk.
-	if meta == nil || len(meta.ZoneID) == 0 {
-		return requestZoneID, nil
-	}
-
-	if requestZoneID == meta.ZoneID {
-		return meta.ZoneID, nil
-	}
-
-	cellsFromRequestZoneID, err := t.cellSelector.ResolveCells(requestZoneID)
-	if err != nil {
-		return "", err
-	}
-
-	if !slices.Contains(cellsFromRequestZoneID, meta.ZoneID) {
-		return "", errors.NewNonCancellableErrorf(
-			"zone %q of disk %v from meta does not match request zone %q (cells %v)",
-			meta.ZoneID,
-			diskID,
-			requestZoneID,
-			cellsFromRequestZoneID,
-		)
-	}
-
-	return meta.ZoneID, nil
+	return errors.NewNonCancellableErrorf(
+		"zone %q of disk %v from meta does not match request zone %q",
+		zoneID,
+		t.request.Disk.DiskId,
+		requestZoneID,
+	)
 }
 
 func (t *deleteDiskTask) setEstimate(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
+	diskID string,
+	zoneID string,
 ) error {
 
-	// Only sync requests are blocking.
-	if !t.request.Sync {
-		return nil
-	}
-
-	diskID := t.request.Disk.DiskId
-
-	diskMeta, err := t.storage.GetDiskMeta(ctx, diskID)
-	if err != nil {
-		return err
-	}
-
-	if diskMeta == nil || len(diskMeta.ZoneID) == 0 {
-		// Should be idempotent.
-		return nil
-	}
-
-	if t.disabledZones.IsDisabled(diskMeta.ZoneID) {
-		logging.Warn(
-			ctx,
-			"Skipping deletion time estimate for disk %v: zone %v is disabled",
-			diskID,
-			diskMeta.ZoneID,
-		)
-		return nil
-	}
-
-	client, err := t.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
+	client, err := t.nbsFactory.GetClient(ctx, zoneID)
 	if err != nil {
 		return err
 	}

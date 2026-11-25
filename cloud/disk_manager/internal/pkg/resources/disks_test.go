@@ -125,7 +125,8 @@ func TestDisksDeleteDisk(t *testing.T) {
 	defer db.Close(ctx)
 
 	disk := DiskMeta{
-		ID: "disk",
+		ID:     "disk",
+		ZoneID: "zone",
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
@@ -141,6 +142,18 @@ func TestDisksDeleteDisk(t *testing.T) {
 	expected := disk
 	expected.CreateRequest = nil
 	expected.DeleteTaskID = "delete"
+
+	checkZone := func(zoneID string) error {
+		require.Equal(t, disk.ZoneID, zoneID)
+		return errors.NewNonCancellableErrorf("zone mismatch")
+	}
+	actual, err = storage.DeleteDiskWithZoneCheck(ctx, disk.ID, "wrong-zone", time.Now(), checkZone)
+	require.True(t, errors.Is(err, errors.NewEmptyNonCancellableError()))
+	require.Nil(t, actual)
+
+	actual, err = storage.GetDiskMeta(ctx, disk.ID)
+	require.NoError(t, err)
+	require.Empty(t, actual.DeleteTaskID)
 
 	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())
 	require.NoError(t, err)
@@ -162,6 +175,10 @@ func TestDisksDeleteDisk(t *testing.T) {
 
 	err = storage.DiskDeleted(ctx, disk.ID, time.Now())
 	require.NoError(t, err)
+
+	actual, err = storage.DeleteDiskWithZoneCheck(ctx, disk.ID, "wrong-zone", time.Now(), checkZone)
+	require.True(t, errors.Is(err, errors.NewEmptyNonCancellableError()))
+	require.Nil(t, actual)
 
 	// Check that DeleteDisk returns nil for already deleted disk.
 	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())

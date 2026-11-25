@@ -482,6 +482,7 @@ func (s *storageYDB) deleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
+	checkZone func(string) error,
 ) (*DiskMeta, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -515,6 +516,13 @@ func (s *storageYDB) deleteDisk(
 
 	if len(states) != 0 {
 		state = states[0]
+
+		if checkZone != nil && (state.status != diskStatusDeleted || state.zoneID != "") {
+			err = checkZone(state.zoneID)
+			if err != nil {
+				return nil, err
+			}
+		}
 
 		if state.status >= diskStatusDeleting {
 			// Disk already marked as deleting/deleted.
@@ -982,13 +990,24 @@ func (s *storageYDB) DeleteDisk(
 	deletingAt time.Time,
 ) (*DiskMeta, error) {
 
+	return s.DeleteDiskWithZoneCheck(ctx, diskID, taskID, deletingAt, nil)
+}
+
+func (s *storageYDB) DeleteDiskWithZoneCheck(
+	ctx context.Context,
+	diskID string,
+	taskID string,
+	deletingAt time.Time,
+	checkZone func(string) error,
+) (*DiskMeta, error) {
+
 	var disk *DiskMeta
 
 	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt)
+			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt, checkZone)
 			return err
 		},
 	)

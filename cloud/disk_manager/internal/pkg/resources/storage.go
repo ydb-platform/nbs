@@ -186,6 +186,16 @@ type Storage interface {
 		deletingAt time.Time,
 	) (*DiskMeta, error)
 
+	// Like DeleteDisk, but checks the recorded zone before changing the disk
+	// state, including when the disk is already deleted.
+	DeleteDiskWithZoneCheck(
+		ctx context.Context,
+		diskID string,
+		taskID string,
+		deletingAt time.Time,
+		checkZone func(string) error,
+	) (*DiskMeta, error)
+
 	DiskDeleted(ctx context.Context, diskID string, deletedAt time.Time) error
 
 	ClearDeletedDisks(ctx context.Context, deletedBefore time.Time, limit int) error
