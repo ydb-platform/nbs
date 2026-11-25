@@ -72,9 +72,6 @@ type snapshotState struct {
 	encryptionMode    uint32
 	encryptionKeyHash []byte
 
-	checksum           uint32
-	checksumCalculated bool
-
 	status snapshotStatus
 }
 
@@ -106,9 +103,6 @@ func (s *snapshotState) toSnapshotMeta() *SnapshotMeta {
 		},
 		Ready:           s.status == snapshotStatusReady,
 		BackupCompleted: s.backupCompleted,
-
-		Checksum:           s.checksum,
-		ChecksumCalculated: s.checksumCalculated,
 	}
 }
 
@@ -140,14 +134,6 @@ func (s *snapshotState) structValue() persistence.Value {
 			"backup_completed",
 			persistence.BoolValue(s.backupCompleted),
 		),
-		persistence.StructFieldValue(
-			"checksum",
-			persistence.Uint32Value(s.checksum),
-		),
-		persistence.StructFieldValue(
-			"checksum_calculated",
-			persistence.BoolValue(s.checksumCalculated),
-		),
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
 	)
 }
@@ -176,11 +162,6 @@ func scanSnapshotState(res persistence.Result) (state snapshotState, err error) 
 		persistence.OptionalWithDefault(
 			"backup_completed",
 			&state.backupCompleted,
-		),
-		persistence.OptionalWithDefault("checksum", &state.checksum),
-		persistence.OptionalWithDefault(
-			"checksum_calculated",
-			&state.checksumCalculated,
 		),
 		persistence.OptionalWithDefault("status", &state.status),
 	)
@@ -230,8 +211,6 @@ func snapshotStateStructTypeString() string {
 		encryption_mode: Uint32,
 		encryption_keyhash: String,
 		backup_completed: Bool,
-		checksum: Uint32,
-		checksum_calculated: Bool,
 		status: Int64>`
 }
 
@@ -261,14 +240,6 @@ func snapshotStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("encryption_keyhash", persistence.Optional(persistence.TypeString)),
 		persistence.WithColumn(
 			"backup_completed",
-			persistence.Optional(persistence.TypeBool),
-		),
-		persistence.WithColumn(
-			"checksum",
-			persistence.Optional(persistence.TypeUint32),
-		),
-		persistence.WithColumn(
-			"checksum_calculated",
 			persistence.Optional(persistence.TypeBool),
 		),
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
@@ -1188,118 +1159,6 @@ func (s *storageYDB) snapshotBackupCompleted(
 	return err
 }
 
-// The snapshot is checked and the checksum is written in one transaction, so
-// the checksum is never stored for a snapshot that is not ready anymore or that
-// has been created again with the same id.
-func (s *storageYDB) snapshotChecksumCalculated(
-	ctx context.Context,
-	session *persistence.Session,
-	snapshotID string,
-	createTaskID string,
-	checksum uint32,
-) error {
-
-	tx, err := session.BeginRWTransaction(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $id as Utf8;
-
-		select *
-		from snapshots
-		where id = $id
-	`, s.snapshotsPath),
-		persistence.ValueParam("$id", persistence.UTF8Value(snapshotID)),
-	)
-	if err != nil {
-		return err
-	}
-	defer res.Close()
-
-	states, err := scanSnapshotStates(ctx, res)
-	if err != nil {
-		return err
-	}
-
-	if len(states) == 0 {
-		err = tx.Commit(ctx)
-		if err != nil {
-			return err
-		}
-
-		return errors.NewSilentNonRetriableErrorf(
-			"snapshot with id %v is not found",
-			snapshotID,
-		)
-	}
-
-	state := states[0]
-
-	if state.status != snapshotStatusReady {
-		err = tx.Commit(ctx)
-		if err != nil {
-			return err
-		}
-
-		return errors.NewSilentNonRetriableErrorf(
-			"checksum of snapshot with id %v and status %v can't be set",
-			snapshotID,
-			snapshotStatusToString(state.status),
-		)
-	}
-
-	if state.createTaskID != createTaskID {
-		err = tx.Commit(ctx)
-		if err != nil {
-			return err
-		}
-
-		return errors.NewNonRetriableErrorf(
-			"checksum of snapshot with id %v can't be set: the snapshot was "+
-				"deleted and created again with the same id, it is created "+
-				"by task %v, not by task %v",
-			snapshotID,
-			state.createTaskID,
-			createTaskID,
-		)
-	}
-
-	if state.checksumCalculated && state.checksum == checksum {
-		// Nothing to do.
-		return tx.Commit(ctx)
-	}
-
-	// Another stored value is replaced: computing the checksum again is the
-	// way to repair a wrong one.
-	state.checksum = checksum
-	state.checksumCalculated = true
-
-	_, err = tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $states as List<%v>;
-
-		upsert into snapshots
-		select *
-		from AS_TABLE($states)
-	`, s.snapshotsPath, snapshotStateStructTypeString()),
-		persistence.ValueParam(
-			"$states",
-			persistence.ListValue(state.structValue()),
-		),
-	)
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
-}
-
 func (s *storageYDB) listSnapshotBackupIDsForDeletion(
 	ctx context.Context,
 	session *persistence.Session,
@@ -1669,27 +1528,6 @@ func (s *storageYDB) SnapshotBackupCompleted(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			return s.snapshotBackupCompleted(ctx, session, snapshotID)
-		},
-	)
-}
-
-func (s *storageYDB) SnapshotChecksumCalculated(
-	ctx context.Context,
-	snapshotID string,
-	createTaskID string,
-	checksum uint32,
-) error {
-
-	return s.db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			return s.snapshotChecksumCalculated(
-				ctx,
-				session,
-				snapshotID,
-				createTaskID,
-				checksum,
-			)
 		},
 	)
 }

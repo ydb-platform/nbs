@@ -10,8 +10,6 @@ SRCS(
     create_image_from_url_task.proto
     delete_image_task.proto
     export_image_task.proto
-    save_image_checksum_task.proto
-    validate_image_checksum_task.proto
 )
 
 PEERDIR(

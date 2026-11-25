@@ -80,8 +80,6 @@ var requestProtoByTaskType = map[string]func() proto.Message{
 	"images.CreateImageFromSnapshot":                func() proto.Message { return &images_protos.CreateImageFromSnapshotRequest{} },
 	"images.CreateImageFromDisk":                    func() proto.Message { return &images_protos.CreateImageFromDiskRequest{} },
 	"images.DeleteImage":                            func() proto.Message { return &images_protos.DeleteImageRequest{} },
-	"images.SaveImageChecksum":                      func() proto.Message { return &images_protos.SaveImageChecksumRequest{} },
-	"images.ValidateImageChecksum":                  func() proto.Message { return &images_protos.ValidateImageChecksumRequest{} },
 	"placement_group.CreatePlacementGroup":          func() proto.Message { return &placementgroup_protos.CreatePlacementGroupRequest{} },
 	"placement_group.DeletePlacementGroup":          func() proto.Message { return &placementgroup_protos.DeletePlacementGroupRequest{} },
 	"placement_group.AlterPlacementGroupMembership": func() proto.Message { return &placementgroup_protos.AlterPlacementGroupMembershipRequest{} },
@@ -96,8 +94,6 @@ var requestProtoByTaskType = map[string]func() proto.Message{
 	"pools.RetireBaseDisks":                         func() proto.Message { return &pools_protos.RetireBaseDisksRequest{} },
 	"snapshots.CreateSnapshotFromDisk":              func() proto.Message { return &snapshot_protos.CreateSnapshotFromDiskRequest{} },
 	"snapshots.DeleteSnapshot":                      func() proto.Message { return &snapshot_protos.DeleteSnapshotRequest{} },
-	"snapshots.SaveSnapshotChecksum":                func() proto.Message { return &snapshot_protos.SaveSnapshotChecksumRequest{} },
-	"snapshots.ValidateSnapshotChecksum":            func() proto.Message { return &snapshot_protos.ValidateSnapshotChecksumRequest{} },
 	"dataplane.ScrubFilesystem":                     func() proto.Message { return &filesystem_scrubbing_protos.ScrubFilesystemRequest{} },
 }
 
@@ -153,8 +149,6 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"images.CreateImageFromSnapshot":                func() proto.Message { return &images_protos.CreateImageFromSnapshotTaskState{} },
 	"images.CreateImageFromDisk":                    func() proto.Message { return &images_protos.CreateImageFromDiskTaskState{} },
 	"images.DeleteImage":                            func() proto.Message { return &images_protos.DeleteImageTaskState{} },
-	"images.SaveImageChecksum":                      func() proto.Message { return &images_protos.SaveImageChecksumTaskState{} },
-	"images.ValidateImageChecksum":                  func() proto.Message { return &images_protos.ValidateImageChecksumTaskState{} },
 	"placement_group.CreatePlacementGroup":          func() proto.Message { return &placementgroup_protos.CreatePlacementGroupTaskState{} },
 	"placement_group.DeletePlacementGroup":          func() proto.Message { return &placementgroup_protos.DeletePlacementGroupTaskState{} },
 	"placement_group.AlterPlacementGroupMembership": func() proto.Message { return &placementgroup_protos.AlterPlacementGroupMembershipTaskState{} },
@@ -170,8 +164,6 @@ var stateProtoByTaskType = map[string]func() proto.Message{
 	"pools.RetireBaseDisks":                         func() proto.Message { return &pools_protos.RetireBaseDisksTaskState{} },
 	"snapshots.CreateSnapshotFromDisk":              func() proto.Message { return &snapshot_protos.CreateSnapshotFromDiskTaskState{} },
 	"snapshots.DeleteSnapshot":                      func() proto.Message { return &snapshot_protos.DeleteSnapshotTaskState{} },
-	"snapshots.SaveSnapshotChecksum":                func() proto.Message { return &snapshot_protos.SaveSnapshotChecksumTaskState{} },
-	"snapshots.ValidateSnapshotChecksum":            func() proto.Message { return &snapshot_protos.ValidateSnapshotChecksumTaskState{} },
 	"dataplane.ScrubFilesystem":                     func() proto.Message { return &filesystem_scrubbing_protos.ScrubFilesystemTaskState{} },
 	"dataplane.RegularScrubFilesystems":             func() proto.Message { return &filesystem_scrubbing_protos.RegularScrubFilesystemsTaskState{} },
 	"snapshots.ExportSnapshot": func() proto.Message {
