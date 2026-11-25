@@ -42,24 +42,13 @@ public:
     //  - Accepted with issues: nonfatal problems are handled according to the
     //    section's policy, for example by skipping unsupported content.
     //    The resulting section is accepted.
-    //  - Rejected: the entire incoming section is rejected. The owned section
-    //    in dynamicConfigCandidate is restored from
-    //    previousAcceptedDynamicConfig, or cleared if that source is nullptr
-    //    or does not contain the section.
+    //  - Rejected: the entire incoming section is rejected.
     //
     // An absent incoming section is accepted and remains absent.
     // All other sections are preserved.
-    // Restoration or clearing is performed within Prepare(). The caller reports
-    // the rejection and continues processing other sections.
     //
     // @param   dynamicConfigCandidate - Incoming dynamic configuration.
-    //          Contains the prepared, restored or cleared section on return.
-    //
-    // @param   previousAcceptedDynamicConfig - Last accepted dynamic
-    //          configuration.
-    //          Must exclude static configuration.
-    //          Must not alias dynamicConfigCandidate.
-    //          nullptr at startup. This source is left unchanged.
+    //          Contains the prepared section on success.
     //
     // @param   issues - Nonfatal issues detected during this call.
     //          The vector is cleared at the beginning of each call.
@@ -67,13 +56,17 @@ public:
     // @return  Success with empty issues if accepted without issues.
     //          Success with nonempty issues if accepted with issues.
     //          Error for a validation failure that rejects the incoming
-    //          section; issues may be nonempty.
+    //          section:
+    //              - the owned section in dynamicConfigCandidate may have been
+    //                partially modified. It is the caller's responsibility to
+    //                take corresponding actions (e.g. restore the section from
+    //                the last accepted config)
+    //              - issues may be nonempty
     //
     // Discard the entire dynamic configuration candidate if an exception is
     // thrown.
     [[nodiscard]] virtual NCloud::NProto::TError Prepare(
         NProto::TBlockstoreConfig& dynamicConfigCandidate,
-        const NProto::TBlockstoreConfig* previousAcceptedDynamicConfig,
         TVector<TString>& issues) const = 0;
 
     // Apply the owned section's merge policy to the combined configuration.

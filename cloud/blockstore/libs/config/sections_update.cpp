@@ -2,8 +2,7 @@
 
   * Section updates use explicit updaters shared by startup and runtime.
 
-  * Every updater owns its section's validation and fallback. Diagnostics retain
-    updater order and distinguish skipped entries from rejected sections.
+  * Each updater validates and prepares its own section.
 
   * No live configuration or logging state is changed here.
 
@@ -18,6 +17,9 @@
 #include <util/generic/array_ref.h>
 #include <util/generic/strbuf.h>
 #include <util/string/builder.h>
+#include <util/system/yassert.h>
+
+#include <google/protobuf/descriptor.h>
 
 #include <utility>
 
@@ -32,6 +34,10 @@ struct TConfigSectionUpdaterEntry
     // Diagnostic section path backed by a string literal.
     TStringBuf Path;
 
+    // Number of the optional TBlockstoreConfig proto message field this updater
+    // owns.
+    int FieldNumber;
+
     // Section updater owned by its module and valid for the process lifetime.
     const IConfigSectionUpdater& Updater;
 };
@@ -40,9 +46,37 @@ struct TConfigSectionUpdaterEntry
 TArrayRef<const TConfigSectionUpdaterEntry> GetConfigSectionUpdaters()
 {
     static const TConfigSectionUpdaterEntry updaters[] = {
-        {"Features", GetFeaturesSectionUpdater()},
+        {
+            "Features",
+            NProto::TBlockstoreConfig::kFeaturesFieldNumber,
+            GetFeaturesSectionUpdater(),
+        },
     };
     return updaters;
+}
+
+// Restore the previous message field value and its presence, or clear the
+// message field.
+void RestoreRejectedSection(
+    NProto::TBlockstoreConfig& candidate,
+    const NProto::TBlockstoreConfig* previous,
+    int fieldNumber)
+{
+    const auto* field =
+        candidate.GetDescriptor()->FindFieldByNumber(fieldNumber);
+
+    Y_ABORT_UNLESS(
+        field && field->is_optional() &&
+        field->cpp_type() ==
+            google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE);
+
+    const auto* reflection = candidate.GetReflection();
+    if (previous && reflection->HasField(*previous, field)) {
+        reflection->MutableMessage(&candidate, field)
+            ->CopyFrom(reflection->GetMessage(*previous, field));
+    } else {
+        reflection->ClearField(&candidate, field);
+    }
 }
 
 }   // namespace
@@ -60,16 +94,20 @@ TConfigSectionsUpdateIssues PrepareDynamicConfigSectionsUpdate(
 {
     TConfigSectionsUpdateIssues result;
 
-    // Give each updater its own issue buffer and collect rejections without
-    // preventing the remaining sections from being prepared.
+    // Restore each rejected section before preparing the remaining sections.
     for (const auto& entry: GetConfigSectionUpdaters()) {
         TConfigSectionUpdateIssues section;
         section.Path = entry.Path;
-        section.RejectionError = entry.Updater.Prepare(
-            dynamicConfigCandidate,
-            previousAcceptedDynamicConfig,
-            section.Issues);
-        if (!section.Issues.empty() || HasError(section.RejectionError)) {
+        section.RejectionError =
+            entry.Updater.Prepare(dynamicConfigCandidate, section.Issues);
+        const bool rejected = HasError(section.RejectionError);
+        if (rejected) {
+            RestoreRejectedSection(
+                dynamicConfigCandidate,
+                previousAcceptedDynamicConfig,
+                entry.FieldNumber);
+        }
+        if (!section.Issues.empty() || rejected) {
             result.Sections.push_back(std::move(section));
         }
     }

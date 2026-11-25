@@ -28,7 +28,6 @@ class TFeaturesSectionUpdater final: public IConfigSectionUpdater
 public:
     [[nodiscard]] NCloud::NProto::TError Prepare(
         NProto::TBlockstoreConfig& dynamicConfigCandidate,
-        const NProto::TBlockstoreConfig* previousAcceptedDynamicConfig,
         TVector<TString>& issues) const override;
 
     void Merge(
@@ -99,11 +98,9 @@ void MergeFeatures(
 // Accept the Features section unchanged because it needs no preparation.
 NCloud::NProto::TError TFeaturesSectionUpdater::Prepare(
     NProto::TBlockstoreConfig& dynamicConfigCandidate,
-    const NProto::TBlockstoreConfig* previousAcceptedDynamicConfig,
     TVector<TString>& issues) const
 {
     Y_UNUSED(dynamicConfigCandidate);
-    Y_UNUSED(previousAcceptedDynamicConfig);
     issues.clear();
 
     return {};
