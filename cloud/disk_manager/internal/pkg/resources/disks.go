@@ -511,37 +511,24 @@ func (s *storageYDB) deleteDisk(
 		return nil, err
 	}
 
-	var state diskState
-
-	if len(states) != 0 {
-		state = states[0]
-
-		if state.status >= diskStatusDeleting {
-			// Disk already marked as deleting/deleted.
-
-			err = tx.Commit(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			// Should be idempotent.
-			if state.status == diskStatusDeleted {
-				return nil, nil
-			}
-
-			return state.toDiskMeta(), nil
-		}
-
-		state.status = diskStatusDeleting
-	} else {
-		// Create a tombstone disk entry to avoid race conditions between
-		// concurrent disk deletion and disk creation operations. The tombstone
-		// prevents new disk creation with the same ID.
-		state.status = diskStatusDeleted
-		state.deletedAt = deletingAt
+	if len(states) == 0 {
+		return nil, errors.NewNonCancellableErrorf("disk %v does not exist", diskID)
 	}
 
-	state.id = diskID
+	state := states[0]
+	if state.status >= diskStatusDeleting {
+		err = tx.Commit(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		if state.status == diskStatusDeleted {
+			return nil, nil
+		}
+		return state.toDiskMeta(), nil
+	}
+
+	state.status = diskStatusDeleting
 	state.deleteTaskID = taskID
 	state.deletingAt = deletingAt
 
@@ -553,11 +540,6 @@ func (s *storageYDB) deleteDisk(
 	err = tx.Commit(ctx)
 	if err != nil {
 		return nil, err
-	}
-
-	// Should be idempotent.
-	if state.status == diskStatusDeleted {
-		return nil, nil
 	}
 
 	return state.toDiskMeta(), nil

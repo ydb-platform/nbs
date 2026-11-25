@@ -18,6 +18,7 @@ import (
 	pools_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/mocks"
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
@@ -591,7 +592,7 @@ func TestCreateDiskFromBaseDiskTaskCancelBeforeCellIsSelected(t *testing.T) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-	).Return((*resources.DiskMeta)(nil), nil)
+	).Return((*resources.DiskMeta)(nil), errors.NewNonCancellableErrorf("disk does not exist"))
 
 	err := task.Cancel(ctx, execCtx)
 	mock.AssertExpectationsForObjects(
@@ -604,7 +605,7 @@ func TestCreateDiskFromBaseDiskTaskCancelBeforeCellIsSelected(t *testing.T) {
 		execCtx,
 		cellSelector,
 	)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, errors.NewEmptyNonCancellableError())
 }
 
 // The pool may be reconfigured while the task is running: the fill source

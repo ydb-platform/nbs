@@ -181,31 +181,24 @@ func TestDisksDeleteNonexistentDisk(t *testing.T) {
 	ctx, db, storage := setupTest(t)
 	defer db.Close(ctx)
 
-	disk := DiskMeta{
-		ID:           "disk",
-		DeleteTaskID: "delete",
-	}
+	const diskID = "disk"
+	actual, err := storage.DeleteDisk(ctx, diskID, "delete", time.Now())
+	require.ErrorIs(t, err, errors.NewEmptyNonCancellableError())
+	require.Nil(t, actual)
 
-	deletingAt := time.Now()
-	actual, err := storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt)
+	actual, err = storage.GetDiskMeta(ctx, diskID)
 	require.NoError(t, err)
 	require.Nil(t, actual)
 
-	created := disk
-	created.CreatedAt = time.Now()
-	err = storage.DiskCreated(ctx, created)
-	require.Error(t, err)
-	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
-
-	// Check idempotency.
-	deletingAt = deletingAt.Add(time.Second)
-	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt)
+	actual, err = storage.CreateDisk(ctx, DiskMeta{
+		ID:            diskID,
+		ZoneID:        "zone",
+		CreateRequest: &wrappers.UInt64Value{Value: 1},
+		CreateTaskID:  "create",
+		CreatingAt:    time.Now(),
+	})
 	require.NoError(t, err)
-	require.Nil(t, actual)
-
-	_, err = storage.CreateDisk(ctx, disk)
-	require.Error(t, err)
-	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.NotNil(t, actual)
 }
 
 func TestDisksClearDeletedDisks(t *testing.T) {

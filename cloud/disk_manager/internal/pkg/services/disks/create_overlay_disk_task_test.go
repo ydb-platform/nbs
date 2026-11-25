@@ -15,6 +15,7 @@ import (
 	pools_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/mocks"
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
@@ -384,16 +385,15 @@ func TestCancelCreateOverlayDiskTaskBeforeRunIsCalled(t *testing.T) {
 		state:       &protos.CreateOverlayDiskTaskState{},
 	}
 
-	// Must return disk without specified ZoneID.
 	storage.On(
 		"DeleteDisk",
 		ctx,
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-	).Return((*resources.DiskMeta)(nil), nil)
+	).Return((*resources.DiskMeta)(nil), errors.NewNonCancellableErrorf("disk does not exist"))
 
 	err := task.Cancel(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, execCtx)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, errors.NewEmptyNonCancellableError())
 }

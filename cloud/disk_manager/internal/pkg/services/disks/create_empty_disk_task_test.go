@@ -14,6 +14,7 @@ import (
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/disks/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 func TestCreateEmptyDiskTask(t *testing.T) {
@@ -267,11 +268,11 @@ func TestCancelCreateEmptyDiskTaskBeforeRunIsCalled(t *testing.T) {
 		"disk",
 		"toplevel_task_id",
 		mock.Anything,
-	).Return((*resources.DiskMeta)(nil), nil)
+	).Return((*resources.DiskMeta)(nil), errors.NewNonCancellableErrorf("disk does not exist"))
 
 	err := task.Cancel(ctx, execCtx)
 	mock.AssertExpectationsForObjects(t, storage, nbsFactory, execCtx)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, errors.NewEmptyNonCancellableError())
 }
 
 func TestCreateEmptyDiskTaskWithPlacementGroup(t *testing.T) {
