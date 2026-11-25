@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/common/zeroes.h>
 
 #include <library/cpp/blockcodecs/codecs.h>
 
@@ -572,6 +573,14 @@ void TBlobCompressor::CalculateCompressionMetrics(
         return;
     }
 
+    const ui32 blockSize = MetricsConfig->BlockSize;
+    Y_ABORT_UNLESS(blockSize && blobContent.size() % blockSize == 0);
+    ui64 zeroBlocks = 0;
+    for (size_t offset = 0; offset < blobContent.size(); offset += blockSize) {
+        zeroBlocks +=
+            NCloud::IsAllZeroes(blobContent.data() + offset, blockSize);
+    }
+
     const auto size = EstimateCompressedSize(
         *BlobCodec.GetResult(),
         blobContent,
@@ -582,6 +591,8 @@ void TBlobCompressor::CalculateCompressionMetrics(
             counters->Cumulative.UncompressedBytesWritten.Increment(
                 blobContent.size());
             counters->Cumulative.CompressedBytesWritten.Increment(size);
+            counters->Cumulative.ZeroBytesWritten.Increment(
+                zeroBlocks * blockSize);
         });
     for (const ui64 chunkSize: MetricsConfig->ChunkSizes) {
         const auto size = EstimateCompressedSize(
