@@ -373,13 +373,22 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingManagerTest)
     Y_UNIT_TEST(ShouldRejectNonFiniteCoefficients)
     {
         auto runtime = PrepareTestActorRuntime();
-        UNIT_ASSERT(HasError(SetManualConfig(
-            *runtime, 1, std::numeric_limits<double>::quiet_NaN())));
-        UNIT_ASSERT(HasError(SetManualConfig(
-            *runtime, 1, std::numeric_limits<double>::infinity())));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            SetManualConfig(
+                *runtime,
+                1,
+                std::numeric_limits<double>::quiet_NaN())
+                .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            SetManualConfig(
+                *runtime,
+                1,
+                std::numeric_limits<double>::infinity())
+                .GetCode());
         UNIT_ASSERT(!HasError(SetManualConfig(*runtime, 1, 0.5)));
     }
-
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
