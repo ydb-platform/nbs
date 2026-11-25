@@ -876,7 +876,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             UNIT_ASSERT(!state.GetVolumeToPull());
             UNIT_ASSERT_VALUES_EQUAL(
                 state.GetStatus(),
-                NPrivateProto::EBalancerOpStatus::WARNING);
+                NPrivateProto::EBalancerOpStatus::ENABLE);
 
             now += storageConfig->GetInitialPullDelay();
             state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);

@@ -119,7 +119,10 @@ public:
         VolumesInProgress.emplace(std::move(volume));
     }
 
-    void SetVolumeInProgressCompleted(const TString& volume);
+    void SetVolumeInProgressCompleted(TString volume)
+    {
+        VolumesInProgress.erase(std::move(volume));
+    }
 
     auto GetVolumesInProgressCount() const
     {

@@ -99,6 +99,13 @@ void TVolumeBalancerState::UpdateVolumeStats(
             info.SufferStatistics.Add(info.SufferCount);
         }
 
+        // Reset suffer statistics for local or manually preempted tablets
+        if (info.IsLocal ||
+            info.PreemptionSource != NProto::EPreemptionSource::SOURCE_BALANCER)
+        {
+            info.SufferStatistics.Reset();
+        }
+
         if (info.IsLocal) {
             info.Cost = CalculateCostPerIO(v);
         } else {
@@ -147,14 +154,6 @@ TString TVolumeBalancerState::GetVolumeToPush() const
 TString TVolumeBalancerState::GetVolumeToPull() const
 {
     return VolumeToPull;
-}
-
-void TVolumeBalancerState::SetVolumeInProgressCompleted(const TString& volume)
-{
-    VolumesInProgress.erase(volume);
-    if (auto* info = Volumes.FindPtr(volume)){
-        info->SufferStatistics.Reset();
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -298,16 +297,17 @@ bool TVolumeBalancerState::HasSufferingPreemptedVolume() const
         Volumes,
         [this](const auto& item)
         {
-            const auto& info = item.second;
-            if (info.IsLocal || info.PreemptionSource !=
-                                    NProto::EPreemptionSource::SOURCE_BALANCER)
-            {
+            const ui32 numSamples =
+                StorageConfig->GetVolumeBalancerWarningSampleCount();
+            const ui32 threshold =
+                StorageConfig->GetVolumeBalancerSufferCountThreshold();
+            if (numSamples == 0 || threshold == 0) {
                 return false;
             }
-            return info.SufferStatistics.NumSamples >=
-                       StorageConfig->GetVolumeBalancerWarningSampleCount() &&
-                   info.SufferStatistics.GetMeanValue() >=
-                       StorageConfig->GetVolumeBalancerSufferCountThreshold();
+
+            const auto& info = item.second;
+            return info.SufferStatistics.NumSamples >= numSamples &&
+                   info.SufferStatistics.GetMeanValue() >= threshold;
         });
 }
 
