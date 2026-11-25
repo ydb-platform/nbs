@@ -104,8 +104,6 @@ func (s *storageYDB) readParts(
 	limit uint64,
 ) ([]exporter.S3ManifestPart, error) {
 
-	// The result of a regular query is limited to 1000 rows by default, and
-	// a truncated result is an error. A stream query has no such limit.
 	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
