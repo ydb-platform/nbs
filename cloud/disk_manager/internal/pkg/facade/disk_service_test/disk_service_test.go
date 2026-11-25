@@ -146,7 +146,7 @@ func TestDiskServiceStatReturnsUsedLogicalSpace(t *testing.T) {
 			require.NotEmpty(t, operation)
 			err = internal_client.WaitOperation(ctx, client, operation.Id)
 			require.NoError(t, err)
-			defer testcommon.DeleteDisk(t, ctx, client, defaultZoneID, diskID)
+			defer testcommon.DeleteDisk(t, ctx, client, diskID)
 
 			if testCase.writeBlock {
 				nbsClient := testcommon.NewNbsTestingClient(t, ctx, "zone-a")
@@ -353,7 +353,7 @@ func TestDiskServiceDeleteDiskWhenCreationIsInFlight(t *testing.T) {
 	// Need to add some variance for better testing.
 	common.WaitForRandomDuration(time.Millisecond, 2*time.Second)
 
-	testcommon.DeleteDisk(t, ctx, client, defaultZoneID, diskID)
+	testcommon.DeleteDisk(t, ctx, client, diskID)
 
 	tasksStorage := testcommon.NewTaskStorage(t, ctx)
 
@@ -419,7 +419,7 @@ func TestDiskServiceCancelCreateSsdNonreplDiskFromPooledImage(t *testing.T) {
 	// Creation may have won the race: don't leak the disk (nonreplicated disk
 	// devices are limited in the recipe). No-op if the creation has been
 	// cancelled.
-	testcommon.DeleteDisk(t, ctx, client, defaultZoneID, diskID)
+	testcommon.DeleteDisk(t, ctx, client, diskID)
 
 	// Proxy overlay disk is a one-shot entity: it should be deleted and its
 	// slot should be released whether the creation has been cancelled or has
@@ -468,7 +468,7 @@ func TestDiskServiceDeleteSsdNonreplDiskWhenCreationIsInFlight(t *testing.T) {
 	// Need to add some variance for better testing.
 	common.WaitForRandomDuration(time.Millisecond, 10*time.Second)
 
-	testcommon.DeleteDisk(t, ctx, client, defaultZoneID, diskID)
+	testcommon.DeleteDisk(t, ctx, client, diskID)
 
 	tasksStorage := testcommon.NewTaskStorage(t, ctx)
 
@@ -585,7 +585,6 @@ func TestDiskServiceCreateDisksFromImageWithConfiguredPool(t *testing.T) {
 		reqCtx = testcommon.GetRequestContext(t, ctx)
 		operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 			DiskId: &disk_manager.DiskId{
-				ZoneId: defaultZoneID,
 				DiskId: diskID,
 			},
 		})
@@ -707,8 +706,8 @@ func testCreateDiskFromIncrementalSnapshot(
 	err = nbsClient.ValidateCrc32(ctx, diskID2, diskContentInfo)
 	require.NoError(t, err)
 
-	testcommon.DeleteDisk(t, ctx, client, defaultZoneID, diskID1)
-	testcommon.DeleteDisk(t, ctx, client, defaultZoneID, diskID2)
+	testcommon.DeleteDisk(t, ctx, client, diskID1)
+	testcommon.DeleteDisk(t, ctx, client, diskID2)
 
 	testcommon.CheckConsistency(t, ctx)
 }
@@ -1529,7 +1528,7 @@ func testCreateSsdNonreplWithRootKmsEncryption(
 
 	session.Close(ctx)
 
-	testcommon.DeleteDisk(t, ctx, client, defaultZoneID, diskID)
+	testcommon.DeleteDisk(t, ctx, client, diskID)
 
 	testcommon.CheckConsistency(t, ctx)
 }
@@ -1568,7 +1567,6 @@ func testDiskServiceDeleteNonExistentDisk(t *testing.T, sync bool) {
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 		DiskId: &disk_manager.DiskId{
-			ZoneId: defaultZoneID,
 			DiskId: diskID,
 		},
 		Sync: sync,
@@ -1582,7 +1580,6 @@ func testDiskServiceDeleteNonExistentDisk(t *testing.T, sync bool) {
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 		DiskId: &disk_manager.DiskId{
-			ZoneId: defaultZoneID,
 			DiskId: diskID,
 		},
 		Sync: sync,

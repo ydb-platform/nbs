@@ -201,7 +201,7 @@ func (t *deleteDiskTask) checkZone(zoneID string) error {
 		return nil
 	}
 	requestZoneID := t.request.Disk.ZoneId
-	// Tasks scheduled before zone validation in the service may lack a zone.
+	// When the request omits the zone, the recorded zone is sufficient.
 	if zoneID != "" && (requestZoneID == "" || requestZoneID == zoneID ||
 		t.cellSelector.ZoneContainsCell(requestZoneID, zoneID)) {
 		return nil

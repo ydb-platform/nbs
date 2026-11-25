@@ -148,7 +148,6 @@ func TestPrivateServiceRetireBaseDisks(t *testing.T) {
 		reqCtx = testcommon.GetRequestContext(t, ctx)
 		operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 			DiskId: &disk_manager.DiskId{
-				ZoneId: "zone-a",
 				DiskId: diskID,
 			},
 		})
@@ -232,7 +231,7 @@ func TestPrivateServiceRetireBaseDisksUsingBaseDiskAsSrc(t *testing.T) {
 	err = nbsClient.ValidateCrc32(ctx, diskID, diskContentInfo)
 	require.NoError(t, err)
 
-	testcommon.DeleteDisk(t, ctx, client, "zone-a", diskID)
+	testcommon.DeleteDisk(t, ctx, client, diskID)
 
 	testcommon.CheckConsistency(t, ctx)
 }
@@ -292,7 +291,6 @@ func TestPrivateServiceRetireBaseDiskInParallelWithOverlayDiskDeleting(t *testin
 	reqCtx = testcommon.GetRequestContext(t, ctx)
 	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 		DiskId: &disk_manager.DiskId{
-			ZoneId: "zone-a",
 			DiskId: "disk",
 		},
 	})
@@ -405,7 +403,7 @@ func TestPrivateServiceRetireBaseDisksInParallelWithSsdNonreplDiskCreation(
 	err = nbsClient.ValidateCrc32(ctx, diskID, diskContentInfo)
 	require.NoError(t, err)
 
-	testcommon.DeleteDisk(t, ctx, client, "zone-a", diskID)
+	testcommon.DeleteDisk(t, ctx, client, diskID)
 
 	testcommon.CheckConsistency(t, ctx)
 }
@@ -657,8 +655,8 @@ func TestPrivateServiceDeletePool(t *testing.T) {
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
 	require.NoError(t, err)
 
-	testcommon.DeleteDisk(t, ctx, client, "zone-a", diskID1)
-	testcommon.DeleteDisk(t, ctx, client, "zone-a", diskID2)
+	testcommon.DeleteDisk(t, ctx, client, diskID1)
+	testcommon.DeleteDisk(t, ctx, client, diskID2)
 
 	testcommon.CheckConsistency(t, ctx)
 }
@@ -736,7 +734,7 @@ func TestPrivateServiceAcquireAndReleaseBaseDisk(t *testing.T) {
 
 	testcommon.CheckBaseDiskSlotReleased(t, ctx, diskID)
 
-	testcommon.DeleteDisk(t, ctx, client, "zone-a", diskID)
+	testcommon.DeleteDisk(t, ctx, client, diskID)
 
 	testcommon.CheckConsistency(t, ctx)
 }

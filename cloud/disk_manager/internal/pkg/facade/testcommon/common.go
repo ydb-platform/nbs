@@ -607,14 +607,12 @@ func DeleteDisk(
 	t *testing.T,
 	ctx context.Context,
 	client sdk_client.Client,
-	zoneID string,
 	diskID string,
 ) {
 
 	reqCtx := GetRequestContext(t, ctx)
 	operation, err := client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 		DiskId: &disk_manager.DiskId{
-			ZoneId: zoneID,
 			DiskId: diskID,
 		},
 	})

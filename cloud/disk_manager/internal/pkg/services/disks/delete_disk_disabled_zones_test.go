@@ -132,7 +132,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			deletedZone: "zone-d", requestZone: "zone-a", disabledZones: disabledZone,
 		},
 		{
-			name: "legacy scheduled task without a request zone", diskMeta: allowedDisk,
+			name: "request without a zone uses metadata zone", diskMeta: allowedDisk,
 			disabledZones: disabledZone, expectedZone: "zone-a", expectNBS: true,
 		},
 		{

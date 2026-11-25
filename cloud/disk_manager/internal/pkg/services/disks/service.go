@@ -641,16 +641,9 @@ func (s *service) DeleteDisk(
 	req *disk_manager.DeleteDiskRequest,
 ) (string, error) {
 
-	if len(req.GetDiskId().GetDiskId()) == 0 {
+	if len(req.DiskId.DiskId) == 0 {
 		return "", common.NewInvalidArgumentError(
 			"disk id is empty, req=%v",
-			req,
-		)
-	}
-
-	if len(req.DiskId.ZoneId) == 0 {
-		return "", common.NewInvalidArgumentError(
-			"zone id is empty, req=%v",
 			req,
 		)
 	}
