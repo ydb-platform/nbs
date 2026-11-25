@@ -276,19 +276,7 @@ func (s *S3) DeleteImageMeta(ctx context.Context, imageID string) error {
 
 // DeleteChunks returns the confirmed chunk IDs even when some deletions fail.
 func (s *S3) DeleteChunks(ctx context.Context, chunkIDs []string) ([]string, error) {
-	keys := make([]string, len(chunkIDs))
-	for i, id := range chunkIDs {
-		keys[i] = s.Key(ChunkKey(id))
-	}
-
-	deletedKeys, err := s.s3.DeleteObjects(ctx, s.bucket, keys)
-	var deleted []string
-	for i, key := range keys {
-		if deletedKeys[key] {
-			deleted = append(deleted, chunkIDs[i])
-		}
-	}
-	return deleted, err
+	return s.s3.DeleteObjects(ctx, s.bucket, s.Key(chunkKeyPrefix), chunkIDs)
 }
 
 func (s *S3) DeleteChunkMap(ctx context.Context, snapshotID string) error {

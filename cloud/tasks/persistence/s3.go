@@ -805,12 +805,14 @@ func (c *S3Client) DeleteObject(
 	return nil
 }
 
-// DeleteObjects returns the keys confirmed by S3, including on partial failure.
+// DeleteObjects deletes keys relative to prefix and returns the confirmed keys
+// in the same namespace, including on partial failure.
 func (c *S3Client) DeleteObjects(
 	ctx context.Context,
 	bucket string,
+	prefix string,
 	keys []string,
-) (deleted map[string]bool, err error) {
+) (deleted []string, err error) {
 
 	ctx = withComponentLoggingField(ctx)
 	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
@@ -820,7 +822,7 @@ func (c *S3Client) DeleteObjects(
 
 	objects := make([]*aws_s3.ObjectIdentifier, len(keys))
 	for i, key := range keys {
-		objects[i] = &aws_s3.ObjectIdentifier{Key: aws.String(key)}
+		objects[i] = &aws_s3.ObjectIdentifier{Key: aws.String(prefix + key)}
 	}
 	result, err := c.s3.DeleteObjectsWithContext(ctx, &aws_s3.DeleteObjectsInput{
 		Bucket: aws.String(bucket),
@@ -833,13 +835,13 @@ func (c *S3Client) DeleteObjects(
 		return nil, errors.NewRetriableError(err)
 	}
 
-	deleted = make(map[string]bool, len(result.Deleted))
+	confirmed := make(map[string]bool, len(result.Deleted))
 	for _, object := range result.Deleted {
-		deleted[aws.StringValue(object.Key)] = true
+		confirmed[aws.StringValue(object.Key)] = true
 	}
 	for _, failure := range result.Errors {
 		key := aws.StringValue(failure.Key)
-		delete(deleted, key)
+		delete(confirmed, key)
 		if err == nil {
 			err = errors.NewRetriableErrorf(
 				"delete %q: %s: %s",
@@ -849,15 +851,14 @@ func (c *S3Client) DeleteObjects(
 			)
 		}
 	}
-	if err != nil {
-		return deleted, err
-	}
 	for _, key := range keys {
-		if !deleted[key] {
-			return deleted, errors.NewRetriableErrorf("S3 did not confirm deletion of %q", key)
+		if confirmed[prefix+key] {
+			deleted = append(deleted, key)
+		} else if err == nil {
+			err = errors.NewRetriableErrorf("S3 did not confirm deletion of %q", prefix+key)
 		}
 	}
-	return deleted, nil
+	return deleted, err
 }
 
 ////////////////////////////////////////////////////////////////////////////////

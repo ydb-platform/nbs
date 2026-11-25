@@ -20,8 +20,10 @@ func ImageMetaKey(imageID string) string {
 	return fmt.Sprintf("images/%v/meta.json", imageID)
 }
 
+const chunkKeyPrefix = "chunks/"
+
 func ChunkKey(chunkID string) string {
-	return fmt.Sprintf("chunks/%v", chunkID)
+	return chunkKeyPrefix + chunkID
 }
 
 func ChunkMapKey(snapshotID string) string {

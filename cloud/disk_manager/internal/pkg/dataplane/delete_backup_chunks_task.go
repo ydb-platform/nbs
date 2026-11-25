@@ -2,6 +2,7 @@ package dataplane
 
 import (
 	"context"
+	"sync"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -51,16 +52,9 @@ func (t *deleteBackupChunksTask) Run(
 			return errors.NewInterruptExecutionError()
 		}
 
-		deleted, deleteErr := t.deleteChunks(ctx, chunkIDs)
-		if len(deleted) != 0 {
-			err = t.storage.BackupChunksDeleted(ctx, deleted)
-			if err != nil {
-				return err
-			}
-			t.registry.Counter("backup/dequeuedChunks").Add(int64(len(deleted)))
-		}
-		if deleteErr != nil {
-			return deleteErr
+		err = t.deleteChunks(ctx, chunkIDs)
+		if err != nil {
+			return err
 		}
 	}
 }
@@ -90,34 +84,38 @@ func (t *deleteBackupChunksTask) GetResponse() proto.Message {
 func (t *deleteBackupChunksTask) deleteChunks(
 	ctx context.Context,
 	chunkIDs []string,
-) ([]string, error) {
+) error {
 
 	if t.inflightLimit < 1 {
-		return nil, errors.NewNonRetriableErrorf("DeleteBackupChunksInflightLimit must be positive")
+		return errors.NewNonRetriableErrorf("DeleteBackupChunksInflightLimit must be positive")
 	}
 
-	// An S3 error in one request must not cancel other requests in this batch.
+	var deleted []string
+	var mu sync.Mutex
 	var group errgroup.Group
 	group.SetLimit(t.inflightLimit)
-	requestCount := (len(chunkIDs) + backupChunkDeleteRequestSize - 1) / backupChunkDeleteRequestSize
-	results := make([][]string, requestCount)
-	for i := range results {
-		i := i
-		first := i * backupChunkDeleteRequestSize
-		end := min(first+backupChunkDeleteRequestSize, len(chunkIDs))
-		requestIDs := chunkIDs[first:end]
+	for i := 0; i < len(chunkIDs); i += backupChunkDeleteRequestSize {
+		end := min(i+backupChunkDeleteRequestSize, len(chunkIDs))
+		batch := chunkIDs[i:end]
 		group.Go(func() error {
-			deleted, err := t.backupS3.DeleteChunks(ctx, requestIDs)
-			t.registry.Counter("backup/deletedChunks").Add(int64(len(deleted)))
-			results[i] = deleted
+			ids, err := t.backupS3.DeleteChunks(ctx, batch)
+			t.registry.Counter("backup/deletedChunks").Add(int64(len(ids)))
+
+			mu.Lock()
+			deleted = append(deleted, ids...)
+			mu.Unlock()
 			return err
 		})
 	}
 
 	err := group.Wait()
-	deleted := make([]string, 0, len(chunkIDs))
-	for _, ids := range results {
-		deleted = append(deleted, ids...)
+	if len(deleted) == 0 {
+		return err
 	}
-	return deleted, err
+	// Acknowledge successful deletes even if another key or request failed.
+	if err := t.storage.BackupChunksDeleted(ctx, deleted); err != nil {
+		return err
+	}
+	t.registry.Counter("backup/dequeuedChunks").Add(int64(len(deleted)))
+	return err
 }

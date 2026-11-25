@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/mocks"
@@ -39,12 +40,13 @@ func TestDeleteBackupChunksTaskConfirmsPartialBatches(t *testing.T) {
 		}
 
 		if !retry.Load() && request.Keys[0] == "prefix/chunks/0" {
-			// The whole first request fails. Subsequent requests must still run.
+			// Fail this request and let the other requests finish.
 			http.Error(w, "<Error><Code>AccessDenied</Code></Error>", http.StatusForbidden)
 			return
 		}
 		fmt.Fprint(w, "<DeleteResult>")
-		for _, key := range request.Keys {
+		for i := len(request.Keys) - 1; i >= 0; i-- {
+			key := request.Keys[i]
 			if !retry.Load() && key == "prefix/chunks/100" {
 				fmt.Fprintf(w, "<Error><Key>%s</Key><Code>InternalError</Code></Error>", key)
 			} else {
@@ -70,12 +72,17 @@ func TestDeleteBackupChunksTaskConfirmsPartialBatches(t *testing.T) {
 
 	storage := storage_mocks.NewStorageMock()
 	storage.On("GetBackupChunksToDelete", ctx, len(ids)).Return(ids, nil).Once()
-	storage.On("BackupChunksDeleted", ctx, ids[101:]).Return(nil).Once()
+	expectDequeued := func(want []string) {
+		storage.On("BackupChunksDeleted", ctx, mock.Anything).Return(nil).Once().Run(func(args mock.Arguments) {
+			assert.ElementsMatch(t, want, args.Get(1))
+		})
+	}
+	expectDequeued(ids[101:])
 	task := deleteBackupChunksTask{
 		storage:       storage,
 		backupS3:      follower,
 		batchSize:     len(ids),
-		inflightLimit: 1,
+		inflightLimit: 2,
 		registry:      registry,
 	}
 	err = task.Run(ctx, nil)
@@ -84,7 +91,7 @@ func TestDeleteBackupChunksTaskConfirmsPartialBatches(t *testing.T) {
 	retry.Store(true)
 	pending := ids[:101]
 	storage.On("GetBackupChunksToDelete", ctx, len(ids)).Return(pending, nil).Once()
-	storage.On("BackupChunksDeleted", ctx, pending).Return(nil).Once()
+	expectDequeued(pending)
 	storage.On("GetBackupChunksToDelete", ctx, len(ids)).Return([]string{}, nil).Once()
 	err = task.Run(ctx, nil)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
