@@ -897,5 +897,5 @@ inline void Out<NCloud::NBlockStore::NPrivateProto::EBalancerOpStatus>(
     IOutputStream& out,
     const NCloud::NBlockStore::NPrivateProto::EBalancerOpStatus status)
 {
-    out << NCloud::NBlockStore::NPrivateProto::EBalancerOpStatus(status);
+    out << EBalancerOpStatus_Name(status);
 }
