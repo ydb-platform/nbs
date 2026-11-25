@@ -48,7 +48,7 @@ func (c *snapshotExportCheckpoint) Save(
 		tx *persistence.Transaction,
 	) error {
 
-		return t.parts.UpsertParts(ctx, tx, taskID, parts)
+		return t.parts.UpsertPartsTx(ctx, tx, taskID, parts)
 	}
 
 	err := c.execCtx.SaveStateWithPreparation(ctx, prepare)
@@ -88,7 +88,7 @@ func (t *exportSnapshotTask) clearExportParts(
 		) error {
 
 			var err error
-			deleted, err = t.parts.DeleteParts(
+			deleted, err = t.parts.DeletePartsTx(
 				ctx, tx, taskID, batchSize,
 			)
 			return err

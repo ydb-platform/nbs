@@ -22,15 +22,31 @@ type Storage interface {
 		after uint32,
 		limit uint64,
 	) ([]exporter.S3ManifestPart, error)
-	UpsertParts(
+	UpsertPartsTx(
 		ctx context.Context,
 		tx *persistence.Transaction,
 		taskID string,
 		parts []exporter.S3ManifestPart,
 	) error
-	DeleteParts(
+	DeletePartsTx(
 		ctx context.Context,
 		tx *persistence.Transaction,
+		taskID string,
+		limit uint64,
+	) (uint64, error)
+
+	// Used in tests.
+	// Executes UpsertPartsTx in its own transaction.
+	UpsertParts(
+		ctx context.Context,
+		taskID string,
+		parts []exporter.S3ManifestPart,
+	) error
+
+	// Used in tests.
+	// Executes DeletePartsTx in its own transaction.
+	DeleteParts(
+		ctx context.Context,
 		taskID string,
 		limit uint64,
 	) (uint64, error)
@@ -80,14 +96,15 @@ func CreateYDBTables(
 	)
 }
 
-func (s *storageYDB) ReadParts(
+func (s *storageYDB) readParts(
 	ctx context.Context,
+	session *persistence.Session,
 	taskID string,
 	after uint32,
 	limit uint64,
 ) ([]exporter.S3ManifestPart, error) {
 
-	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $task_id as Utf8;
@@ -132,10 +149,37 @@ func (s *storageYDB) ReadParts(
 			parts = append(parts, part)
 		}
 	}
-	return parts, res.Err()
+
+	// NOTE: always check stream query result after iteration.
+	err = res.Err()
+	if err != nil {
+		return nil, errors.NewRetriableError(err)
+	}
+
+	return parts, nil
 }
 
-func (s *storageYDB) UpsertParts(
+func (s *storageYDB) ReadParts(
+	ctx context.Context,
+	taskID string,
+	after uint32,
+	limit uint64,
+) ([]exporter.S3ManifestPart, error) {
+
+	var parts []exporter.S3ManifestPart
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			parts, err = s.readParts(ctx, session, taskID, after, limit)
+			return err
+		},
+	)
+	return parts, err
+}
+
+func (s *storageYDB) UpsertPartsTx(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	taskID string,
@@ -180,7 +224,7 @@ func (s *storageYDB) UpsertParts(
 
 // Delete one bounded primary-key range. Repeating after an uncertain commit
 // removes the next rows, so cleanup needs no persisted cursor.
-func (s *storageYDB) DeleteParts(
+func (s *storageYDB) DeletePartsTx(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	taskID string,
@@ -217,4 +261,88 @@ func (s *storageYDB) DeleteParts(
 		return 0, err
 	}
 	return count, res.Err()
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (s *storageYDB) upsertParts(
+	ctx context.Context,
+	session *persistence.Session,
+	taskID string,
+	parts []exporter.S3ManifestPart,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	err = s.UpsertPartsTx(ctx, tx, taskID, parts)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (s *storageYDB) deleteParts(
+	ctx context.Context,
+	session *persistence.Session,
+	taskID string,
+	limit uint64,
+) (uint64, error) {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	deleted, err := s.DeletePartsTx(ctx, tx, taskID, limit)
+	if err != nil {
+		return 0, err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	return deleted, nil
+}
+
+// Used in tests.
+func (s *storageYDB) UpsertParts(
+	ctx context.Context,
+	taskID string,
+	parts []exporter.S3ManifestPart,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.upsertParts(ctx, session, taskID, parts)
+		},
+	)
+}
+
+// Used in tests.
+func (s *storageYDB) DeleteParts(
+	ctx context.Context,
+	taskID string,
+	limit uint64,
+) (uint64, error) {
+
+	var deleted uint64
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			deleted, err = s.deleteParts(ctx, session, taskID, limit)
+			return err
+		},
+	)
+	return deleted, err
 }
