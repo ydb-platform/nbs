@@ -43,6 +43,40 @@ public:
         return false;
     }
 
+    TResultOrError<TBoundSelect> Run()
+    {
+        if (Bound.Query.Columns.empty()) {
+            ExpandStar();
+        }
+
+        for (const auto& name: Bound.Query.Columns) {
+            const auto column = Resolve(name);
+            if (HasError(column.GetError())) {
+                return column.GetError();
+            }
+            Bound.OutputPositions.push_back(
+                column.GetResult().ReadPosition);
+        }
+
+        if (Bound.Query.Where && !Validate(*Bound.Query.Where)) {
+            return Error;
+        }
+
+        return std::move(Bound);
+    }
+
+    void ExpandStar() {
+        // Hash-map iteration order is unspecified, so sort by column ID.
+        TVector<std::pair<ui32, TString>> columns;
+        for (const auto& [id, column]: Table.Columns) {
+            columns.emplace_back(id, column.Name);
+        }
+        Sort(columns);
+        for (const auto& column: columns) {
+            Bound.Query.Columns.push_back(column.second);
+        }
+    }
+
     TResultOrError<TBoundColumn> Resolve(const TString& name)
     {
         if (const auto* boundColumn = Bound.Columns.FindPtr(name)) {
@@ -53,18 +87,11 @@ public:
         if (!id) {
             return MakeError(
                 E_ARGUMENT,
-                TStringBuilder()
-                    << "Unknown column " << Table.Name << "." << name);
+                TStringBuilder() << "Unknown column '" << name << "' in table '"
+                                 << Table.Name << "'");
         }
 
         const auto& column = Table.Columns.at(*id);
-        const auto type = column.PType.GetTypeId();
-        if (!IsNumber(type) && type != NScheme::NTypeIds::String) {
-            return MakeError(
-                E_ARGUMENT,
-                TStringBuilder() << "Unsupported type for column " << Table.Name
-                                 << "." << name);
-        }
 
         const size_t position = Bound.ReadColumnIds.size();
         Bound.ReadColumnIds.push_back(*id);
@@ -75,6 +102,12 @@ public:
 
     bool ValidateValue(NScheme::TTypeId type, const TValue& value)
     {
+        if (!IsNumber(type) && type != NScheme::NTypeIds::String) {
+            return Fail(
+                "WHERE predicates support only Uint32, Uint64 and String "
+                "columns");
+        }
+
         if (const auto* number = std::get_if<ui64>(&value)) {
             if (!IsNumber(type)) {
                 return Fail("Numeric operand requires a numeric column");
@@ -193,32 +226,6 @@ TResultOrError<TBoundSelect> Bind(
     const auto& table = schema.Tables.at(*tableId);
     TBinder binder(table, bound);
 
-    TVector<TString> outputColumns = bound.Query.Columns;
-    if (outputColumns.empty()) {
-        // Hash-map iteration order is unspecified, so sort by column ID.
-        TVector<std::pair<ui32, TString>> columns;
-        for (const auto& [id, column]: table.Columns) {
-            columns.emplace_back(id, column.Name);
-        }
-        Sort(columns);
-        for (const auto& column: columns) {
-            outputColumns.push_back(column.second);
-        }
-    }
-
-    for (const auto& name: outputColumns) {
-        const auto column = binder.Resolve(name);
-        if (HasError(column.GetError())) {
-            return column.GetError();
-        }
-        bound.OutputPositions.push_back(column.GetResult().ReadPosition);
-    }
-
-    if (bound.Query.Where && !binder.Validate(*bound.Query.Where)) {
-        return binder.GetError();
-    }
-
-    return std::move(bound);
+    return binder.Run();
 }
-
 }   // namespace NCloud::NFileStore::NStorage::NQuery

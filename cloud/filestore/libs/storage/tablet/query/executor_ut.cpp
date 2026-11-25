@@ -121,18 +121,46 @@ Y_UNIT_TEST_SUITE(TQueryBinderTest)
         UNIT_ASSERT_VALUES_EQUAL(bound.Columns.at("Count").ReadPosition, 3);
     }
 
-    Y_UNIT_TEST(ShouldRejectUnsupportedColumnTypes)
+    Y_UNIT_TEST(ShouldAllowProjectionOfTypesUnsupportedInPredicates)
     {
         auto schema = MakeSchema();
         schema.Tables.at(9).Columns.at(7).PType =
             NKikimr::NScheme::TTypeInfo(NKikimr::NScheme::NTypeIds::Double);
-        auto parsed = Parse("SELECT * FROM NodeRefs");
-        UNIT_ASSERT(!HasError(parsed.GetError()));
-        auto result = Bind(parsed.ExtractResult(), schema);
-        UNIT_ASSERT(HasError(result.GetError()));
-        UNIT_ASSERT_STRING_CONTAINS(
-            result.GetError().GetMessage(),
-            "Unsupported type for column NodeRefs.Count");
+        const TVector<TString> queries = {
+            "SELECT Count FROM NodeRefs",
+            "SELECT * FROM NodeRefs",
+        };
+        for (const auto& query: queries) {
+            auto parsed = Parse(query);
+            UNIT_ASSERT_C(!HasError(parsed.GetError()), parsed.GetError());
+            auto result = Bind(parsed.ExtractResult(), schema);
+            UNIT_ASSERT_C(!HasError(result.GetError()), result.GetError());
+            const auto bound = result.ExtractResult();
+            UNIT_ASSERT_VALUES_EQUAL(
+                bound.Columns.at("Count").Type.GetTypeId(),
+                NKikimr::NScheme::NTypeIds::Double);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectUnsupportedTypesInPredicates)
+    {
+        auto schema = MakeSchema();
+        schema.Tables.at(9).Columns.at(7).PType =
+            NKikimr::NScheme::TTypeInfo(NKikimr::NScheme::NTypeIds::Double);
+        const TVector<TString> queries = {
+            "SELECT Name FROM NodeRefs WHERE Count = Count",
+            "SELECT Name FROM NodeRefs WHERE Count IN {Count}",
+        };
+        for (const auto& query: queries) {
+            auto parsed = Parse(query);
+            UNIT_ASSERT_C(!HasError(parsed.GetError()), parsed.GetError());
+            auto result = Bind(parsed.ExtractResult(), schema);
+            UNIT_ASSERT_C(HasError(result.GetError()), query);
+            UNIT_ASSERT_VALUES_EQUAL(result.GetError().GetCode(), E_ARGUMENT);
+            UNIT_ASSERT_STRING_CONTAINS(
+                result.GetError().GetMessage(),
+                "WHERE predicates support only Uint32, Uint64 and String columns");
+        }
     }
 }
 

@@ -26,19 +26,13 @@ struct TBoundColumn
 struct TBoundSelect
 {
     TSelect Query;
-
     ui32 TableId;
-
-    // Unique columns needed by the projection and predicates.
     TVector<ui32> ReadColumnIds;
-
     // Preserves projection order and duplicates; SELECT * uses column ID order.
     TVector<size_t> OutputPositions;
-
     THashMap<TString, TBoundColumn> Columns;
 };
 
-// Consumes the move-only AST. Names must match the runtime schema exactly.
 TResultOrError<TBoundSelect> Bind(
     TSelect query, const NKikimr::NTable::TScheme& schema);
 
