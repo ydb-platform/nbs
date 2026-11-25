@@ -837,7 +837,23 @@ public:
         auto w = weak_from_this();
         auto s = NewPromise<void>();
 
-        auto onStop = [w = std::move(w), s] (const TFuture<void>& f) mutable {
+        // Start cache shutdown before we wait for the completion queue to stop
+        // in order to prevent a deadlock:
+        // - Pending requests cannot be cached and replied if the cache is full
+        // and flush keeps failing;
+        // - Completion queue cannot stop until these writes are replied.
+        //
+        // Shutdown allows dropping unflushed data after a flush failure,
+        // freeing up space in the cache and allowing pending requests to be
+        // cached.
+        auto cacheShutdown =
+            WriteBackCache ? WriteBackCache.Shutdown() : MakeFuture();
+
+        auto onStop = [w = std::move(w),
+                       s,
+                       cacheShutdown = std::move(cacheShutdown)](
+                          const TFuture<void>& f) mutable
+        {
             f.GetValue();
 
             auto p = w.lock();
@@ -845,7 +861,9 @@ public:
                 return;
             }
 
-            p->StopAsyncOnCompletionQueueStopped(std::move(s));
+            p->StopAsyncOnCompletionQueueStopped(
+                std::move(s),
+                std::move(cacheShutdown));
         };
 
         CompletionQueue->StopAsync(FUSE_ERROR)
@@ -1617,20 +1635,18 @@ private:
         }
     }
 
-    void StopAsyncOnCompletionQueueStopped(TPromise<void> stopCompleted)
+    void StopAsyncOnCompletionQueueStopped(
+        TPromise<void> stopCompleted,
+        TFuture<void> cacheShutdown)
     {
-        // Stopping the completion queue first guarantees that no
-        // request-driven WriteBackCache call is in flight. Cache callbacks
-        // retain TImpl while accessing its state, so destruction cannot race
-        // a TQueuedOperations::Release() serialization pass.
         if (WriteBackCache && !WriteBackCache.IsDrained()) {
             STORAGE_INFO(
-                "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained, "
-                "executing Shutdown()",
+                "[f:%s][c:%s] (DestroySession) "
+                "waiting for WriteBackCache Shutdown()",
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str());
 
-            WriteBackCache.Shutdown().Subscribe(
+            cacheShutdown.Subscribe(
                 [w = weak_from_this(),
                  s = std::move(stopCompleted)](const auto&) mutable
                 {
