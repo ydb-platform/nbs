@@ -41,12 +41,12 @@ def storage_config_with_emergency_mode(backups_folder, use_binary_format_for_bac
 
 # TODO(svartmetal): remove this when YDB learns not to erase dynamic groups
 # data after formatting of static pdisk
-def spoil_bs_controller_config(kikimr_cluster):
+def spoil_bs_controller_config(ydb):
     flat_bs_controller = [{
         "info": {
             "channels": [{
                 "channel": 0,
-                "channel_erasure_name": str(kikimr_cluster.config.static_erasure),
+                "channel_erasure_name": ydb.static_erasure,
                 "history": [{
                     "from_generation": 0,
                     "group_id": 100500
@@ -54,15 +54,14 @@ def spoil_bs_controller_config(kikimr_cluster):
             }]
         }
     }]
-    kikimr_cluster.config.yaml_config["system_tablets"]["flat_bs_controller"] = flat_bs_controller
-    kikimr_cluster.config.write_proto_configs(kikimr_cluster.config_path)
+    ydb.yaml_config["system_tablets"]["flat_bs_controller"] = flat_bs_controller
+    ydb.write_config()
 
 
-def format_static_pdisks(kikimr_cluster):
-    for node_id in kikimr_cluster.config.all_node_ids():
-        for pdisk in kikimr_cluster.config.pdisks_info:
-            if pdisk["pdisk_user_kind"] == 0:
-                kikimr_cluster.nodes[node_id].format_pdisk(**pdisk)
+def format_static_pdisks(ydb):
+    for pdisk in ydb.pdisks_info:
+        if pdisk["pdisk_user_kind"] == 0:
+            ydb.format_pdisk(pdisk)
 
 
 class TestCase(object):
@@ -121,11 +120,11 @@ def __run_test(test_case):
     client.execute_action(action="BackupPathDescriptions", input_bytes=str.encode(""))
     client.execute_action(action="BackupTabletBootInfos", input_bytes=str.encode(""))
 
-    format_static_pdisks(env.kikimr_cluster)
+    format_static_pdisks(env.ydb)
     # spoil config to prevent BS Controller from starting otherwise it will
     # erase dynamic groups data
-    spoil_bs_controller_config(env.kikimr_cluster)
-    env.kikimr_cluster.restart_nodes()
+    spoil_bs_controller_config(env.ydb)
+    env.ydb.restart()
 
     env.nbs.storage_config_patches = [
         storage_config_with_emergency_mode(

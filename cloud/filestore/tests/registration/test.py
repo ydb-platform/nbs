@@ -9,36 +9,25 @@ from cloud.filestore.tests.python.lib.server import FilestoreServer, wait_for_fi
 from cloud.filestore.tests.python.lib.server import wait_for_filestore_vhost
 from cloud.filestore.tests.python.lib.daemon_config import FilestoreServerConfigGenerator
 from cloud.filestore.tests.python.lib.daemon_config import FilestoreVhostConfigGenerator
+from cloud.storage.core.tests.ydb import (
+    Ydb,
+    enable_custom_cms_configs,
+    ydb_binary_path,
+)
 
 from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 
-from contrib.ydb.core.protos import console_config_pb2 as console
 from contrib.ydb.core.protos import msgbus_pb2 as msgbus
 
 from google.protobuf.text_format import MessageToString
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 import yatest.common as yatest_common
 
 logger = logging.getLogger(__name__)
 
 CFG_PREFIX = 'Cloud.Filestore.'
-kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
-
-
-def enable_custom_cms_configs(client):
-    req = msgbus.TConsoleRequest()
-    configs_config = req.SetConfigRequest.Config.ConfigsConfig
-    restrictions = configs_config.UsageScopeRestrictions
-    restrictions.AllowedTenantUsageScopeKinds.append(
-        console.TConfigItem.NamedConfigsItem)
-    restrictions.AllowedNodeTypeUsageScopeKinds.append(
-        console.TConfigItem.NamedConfigsItem)
-
-    response = client.invoke(req, 'ConsoleRequest')
-    assert response.Status.Code == StatusIds.SUCCESS
+kikimr_binary_path = ydb_binary_path()
 
 
 def update_cms_config(client, name, config, node_type):
@@ -101,45 +90,33 @@ def wait_for_process(wait_function, process, port, check_function):
 
 
 def setup_kikimr(is_secure_kikimr):
-    configurator = KikimrConfigGenerator(
-        erasure=None,
-        binary_paths=[kikimr_binary_path],
-        use_in_memory_pdisks=True,
-        grpc_ssl_enable=is_secure_kikimr,
-        dynamic_storage_pools=[
-            dict(name="dynamic_storage_pool:1", kind="rot", pdisk_user_kind=0),
-            dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0)
-        ])
-
-    return configurator
+    return Ydb.start(
+        binary_path=kikimr_binary_path,
+        grpc_ssl_enable=is_secure_kikimr)
 
 
 def setup_filestore(
-        configurator,
-        kikimr_cluster,
+        ydb,
         secure_kikimr,
         secure_filestore,
         node_type,
         binary_path,
         configurator_type,
         ic_port=None):
-    kikimr_port = list(kikimr_cluster.nodes.values())[0].port
-    kikimr_ssl_port = list(kikimr_cluster.nodes.values())[0].grpc_ssl_port
-
     server_config = TServerAppConfig()
 
     storage_config = TStorageConfig()
     if secure_kikimr:
-        storage_config.NodeRegistrationRootCertsFile = configurator.grpc_tls_ca_path
-        storage_config.NodeRegistrationCert.CertFile = configurator.grpc_tls_cert_path
-        storage_config.NodeRegistrationCert.CertPrivateKeyFile = configurator.grpc_tls_key_path
+        storage_config.NodeRegistrationRootCertsFile = ydb.tls_ca_path
+        storage_config.NodeRegistrationCert.CertFile = ydb.tls_cert_path
+        storage_config.NodeRegistrationCert.CertPrivateKeyFile = ydb.tls_key_path
     storage_config.NodeType = node_type
 
-    domain = configurator.domains_txt.Domain[0].Name
+    domain = ydb.domains_txt.Domain[0].Name
 
-    port = kikimr_port
-    if secure_kikimr and kikimr_ssl_port is not None:
-        port = kikimr_ssl_port
+    port = ydb.port
+    if secure_kikimr:
+        port = ydb.ssl_port
 
     filestore_configurator = configurator_type(
         binary_path=binary_path,
@@ -169,16 +146,14 @@ def run_filestore(
         binary_path,
         is_secure_kikimr,
         is_secure_filestore,
-        kikimr_configurator,
-        kikimr_cluster,
+        ydb,
         config_generator,
         ping_process_fn,
         check_process_fn,
         ic_port=None):
 
     filestore_configurator = setup_filestore(
-        kikimr_configurator,
-        kikimr_cluster,
+        ydb,
         is_secure_kikimr,
         is_secure_filestore,
         "filestore_server",
@@ -187,13 +162,13 @@ def run_filestore(
         ic_port)
 
     filestore_configurator.generate_configs(
-        kikimr_configurator.domains_txt,
-        kikimr_configurator.names_txt)
+        ydb.domains_txt,
+        ydb.names_txt)
 
     filestore_server = FilestoreServer(
         kikimr_binary_path=kikimr_binary_path,
         configurator=filestore_configurator,
-        dynamic_storage_pools=kikimr_configurator.dynamic_storage_pools,
+        dynamic_storage_pools=ydb.dynamic_storage_pools,
         secure_kikimr=is_secure_kikimr,
     )
     filestore_server.start()
@@ -204,12 +179,9 @@ def run_filestore(
 
 
 def setup_and_run_test_for_server(is_secure_kikimr, is_secure_filestore):
-    kikimr_configurator = setup_kikimr(is_secure_kikimr)
+    ydb = setup_kikimr(is_secure_kikimr)
 
-    kikimr_cluster = kikimr_cluster_factory(configurator=kikimr_configurator)
-    kikimr_cluster.start()
-
-    setup_cms_configs(kikimr_cluster.client)
+    setup_cms_configs(ydb.client)
 
     filestore_binary_path = yatest_common.binary_path("cloud/filestore/apps/server/filestore-server")
 
@@ -217,24 +189,20 @@ def setup_and_run_test_for_server(is_secure_kikimr, is_secure_filestore):
         filestore_binary_path,
         is_secure_kikimr,
         is_secure_filestore,
-        kikimr_configurator,
-        kikimr_cluster,
+        ydb,
         FilestoreServerConfigGenerator,
         wait_for_filestore_server,
         check_filestore_server)
 
-    kikimr_cluster.stop()
+    ydb.stop()
 
     return result[0]
 
 
 def setup_and_run_test_for_vhost(is_secure_kikimr, is_secure_filestore):
-    kikimr_configurator = setup_kikimr(is_secure_kikimr)
+    ydb = setup_kikimr(is_secure_kikimr)
 
-    kikimr_cluster = kikimr_cluster_factory(configurator=kikimr_configurator)
-    kikimr_cluster.start()
-
-    setup_cms_configs(kikimr_cluster.client)
+    setup_cms_configs(ydb.client)
 
     filestore_binary_path = yatest_common.binary_path("cloud/filestore/apps/vhost/filestore-vhost")
 
@@ -242,13 +210,12 @@ def setup_and_run_test_for_vhost(is_secure_kikimr, is_secure_filestore):
         filestore_binary_path,
         is_secure_kikimr,
         is_secure_filestore,
-        kikimr_configurator,
-        kikimr_cluster,
+        ydb,
         FilestoreVhostConfigGenerator,
         wait_for_filestore_vhost,
         None)
 
-    kikimr_cluster.stop()
+    ydb.stop()
 
     return result[0]
 
@@ -258,12 +225,9 @@ def setup_and_run_registration_migration(
         config_generator,
         wait_process,
         check_process):
-    kikimr_configurator = setup_kikimr(True)
+    ydb = setup_kikimr(True)
 
-    kikimr_cluster = kikimr_cluster_factory(configurator=kikimr_configurator)
-    kikimr_cluster.start()
-
-    setup_cms_configs(kikimr_cluster.client)
+    setup_cms_configs(ydb.client)
 
     ic_port = None
     for setting in (False, True, False):
@@ -271,8 +235,7 @@ def setup_and_run_registration_migration(
             binary_path,
             setting,
             setting,
-            kikimr_configurator,
-            kikimr_cluster,
+            ydb,
             config_generator,
             wait_process,
             check_process,
@@ -285,7 +248,7 @@ def setup_and_run_registration_migration(
         else:
             assert ic_port == result[1]
 
-    kikimr_cluster.stop()
+    ydb.stop()
 
     return True
 

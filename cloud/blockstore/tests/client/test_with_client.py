@@ -176,8 +176,7 @@ def send_two_node_nameservice_config(env):
     nameservice_config = TStaticNameserviceConfig()
     nameservice_config.Node.add(
         NodeId=1,
-        Port=env.configurator.port_allocator.get_node_port_allocator(
-            env.configurator.all_node_ids()[0]).ic_port,
+        Port=env.ydb.ic_port,
         Host="localhost",
         InterconnectHost="localhost",
         Location=TNodeLocation(DataCenter="1", Rack="1", Unit="1")
@@ -191,7 +190,7 @@ def send_two_node_nameservice_config(env):
         InterconnectHost="localhost",
         Location=TNodeLocation(DataCenter="2", Rack="2", Unit="2")
     )
-    update_cms_config(env.kikimr_cluster.client, nameservice_config)
+    update_cms_config(env.ydb.client, nameservice_config)
 
 
 ################################################################################

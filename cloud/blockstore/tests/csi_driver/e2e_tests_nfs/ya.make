@@ -22,7 +22,7 @@ DEPENDS(
     cloud/blockstore/apps/server
     cloud/filestore/apps/client
     cloud/filestore/apps/vhost
-    contrib/ydb/apps/ydbd
+    cloud/storage/core/tools/testing/ydb/bin
 )
 
 PEERDIR(

@@ -18,7 +18,7 @@ DEPENDS(
 
     cloud/storage/core/tools/testing/unstable-process
 
-    contrib/ydb/apps/ydbd
+    cloud/storage/core/tools/testing/ydb/bin
 )
 
 DATA(

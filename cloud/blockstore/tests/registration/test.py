@@ -88,9 +88,9 @@ def prepare(
     nbs_configurator.generate_default_nbs_configs()
 
     if blockstore_ssl and kikimr_ssl:
-        nbs_configurator.files['storage'].NodeRegistrationRootCertsFile = ydb.config.grpc_tls_ca_path
-        nbs_configurator.files['storage'].NodeRegistrationCert.CertFile = ydb.config.grpc_tls_cert_path
-        nbs_configurator.files['storage'].NodeRegistrationCert.CertPrivateKeyFile = ydb.config.grpc_tls_key_path
+        nbs_configurator.files['storage'].NodeRegistrationRootCertsFile = ydb.tls_ca_path
+        nbs_configurator.files['storage'].NodeRegistrationCert.CertFile = ydb.tls_cert_path
+        nbs_configurator.files['storage'].NodeRegistrationCert.CertPrivateKeyFile = ydb.tls_key_path
     nbs_configurator.files['storage'].NodeType = node_type
     nbs_configurator.files['storage'].DisableLocalService = False
 

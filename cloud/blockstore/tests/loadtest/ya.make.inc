@@ -10,7 +10,7 @@ DEPENDS(
     cloud/blockstore/tools/testing/loadtest/bin
 
     contrib/ydb/apps/ydb
-    contrib/ydb/apps/ydbd
+    cloud/storage/core/tools/testing/ydb/bin
 )
 
 PEERDIR(

@@ -118,7 +118,7 @@ def start(argv):
             local_service_config.RootPath = fs_root_path
         config.VhostServiceConfig.LocalServiceConfig.CopyFrom(local_service_config)
     elif service_type == "kikimr":
-        kikimr_port = os.getenv("KIKIMR_SERVER_PORT")
+        kikimr_port = os.getenv("YDB_SERVER_PORT")
         domain = os.getenv("NFS_DOMAIN")
 
     config.VhostServiceConfig.ServiceEndpoints.append(service_endpoint)

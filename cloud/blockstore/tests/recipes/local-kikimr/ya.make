@@ -7,6 +7,7 @@ PEERDIR(
     cloud/blockstore/tests/python/lib
 
     cloud/storage/core/tests/common
+    cloud/storage/core/tests/ydb
 
     library/python/testing/recipe
     library/python/testing/yatest_common

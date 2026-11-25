@@ -10,6 +10,7 @@ from google.protobuf.text_format import MessageToBytes
 
 from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig, \
     TDiskRegistryProxyConfig, DISK_AGENT_BACKEND_AIO
+from cloud.storage.core.tests.ydb import enable_custom_cms_configs
 
 from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 
@@ -35,21 +36,6 @@ def get_shutdown_agent_interval():
     if common.context.sanitize is not None:
         return 30 * 1000
     return 0  # Use default
-
-
-def enable_custom_cms_configs(client):
-    req = msgbus.TConsoleRequest()
-    configs_config = req.SetConfigRequest.Config.ConfigsConfig
-
-    restrictions = configs_config.UsageScopeRestrictions
-
-    restrictions.AllowedTenantUsageScopeKinds.append(
-        console.TConfigItem.NamedConfigsItem)
-    restrictions.AllowedNodeTypeUsageScopeKinds.append(
-        console.TConfigItem.NamedConfigsItem)
-
-    response = client.invoke(req, 'ConsoleRequest')
-    assert response.Status.Code == StatusIds.SUCCESS
 
 
 def update_cms_config(client, name, config, node_type=None):

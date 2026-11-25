@@ -99,7 +99,7 @@ class DiscoverService(ydb_discovery_v1_pb2_grpc.DiscoveryServiceServicer):
         self.node_registration_count = 0
         self.max_node_registration_count = max_node_registration_count
         self.secondary_host = "localhost"
-        self.secondary_port = list(ydb.nodes.values())[0].grpc_ssl_port
+        self.secondary_port = ydb.ssl_port
         self.lock = threading.Lock()
         self.stop_event = stop_event
 
@@ -109,11 +109,11 @@ class DiscoverService(ydb_discovery_v1_pb2_grpc.DiscoveryServiceServicer):
 
     def _get_ydb_stub(self):
         if self.ydb_stub is None:
-            with open(self.ydb.config.grpc_tls_ca_path, "rb") as f:
+            with open(self.ydb.tls_ca_path, "rb") as f:
                 ca_cert = f.read()
-            with open(self.ydb.config.grpc_tls_cert_path, "rb") as f:
+            with open(self.ydb.tls_cert_path, "rb") as f:
                 client_cert = f.read()
-            with open(self.ydb.config.grpc_tls_key_path, "rb") as f:
+            with open(self.ydb.tls_key_path, "rb") as f:
                 client_key = f.read()
 
             creds = grpc.ssl_channel_credentials(
@@ -193,15 +193,15 @@ class ServerThread(threading.Thread):
 
 
 def serve(not_responding_server_port, ydb):
-    with open(ydb.config.grpc_tls_key_path, "rb") as f:
+    with open(ydb.tls_key_path, "rb") as f:
         private_key = f.read()
-    with open(ydb.config.grpc_tls_cert_path, "rb") as f:
+    with open(ydb.tls_cert_path, "rb") as f:
         certificate_chain = f.read()
-    with open(ydb.config.grpc_tls_ca_path, "rb") as f:
+    with open(ydb.tls_ca_path, "rb") as f:
         root_certificates = f.read()
 
     interceptor = ProxyInterceptor(
-        f"localhost:{list(ydb.nodes.values())[0].grpc_ssl_port}",
+        f"localhost:{ydb.ssl_port}",
         grpc.ssl_channel_credentials(
             root_certificates=root_certificates,
             private_key=private_key,
@@ -331,13 +331,13 @@ def prepare(
     nbs_configurator.generate_default_nbs_configs()
 
     nbs_configurator.files["storage"].NodeRegistrationRootCertsFile = (
-        ydb.config.grpc_tls_ca_path
+        ydb.tls_ca_path
     )
     nbs_configurator.files["storage"].NodeRegistrationCert.CertFile = (
-        ydb.config.grpc_tls_cert_path
+        ydb.tls_cert_path
     )
     nbs_configurator.files["storage"].NodeRegistrationCert.CertPrivateKeyFile = (
-        ydb.config.grpc_tls_key_path
+        ydb.tls_key_path
     )
     nbs_configurator.files["storage"].NodeType = node_type
     nbs_configurator.files["storage"].DisableLocalService = False

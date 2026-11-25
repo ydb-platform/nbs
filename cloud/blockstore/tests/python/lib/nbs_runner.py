@@ -1,7 +1,6 @@
 import copy
 import os
 import logging
-import subprocess
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 from cloud.blockstore.config.client_pb2 import TClientAppConfig
@@ -15,6 +14,11 @@ from cloud.storage.core.config.features_pb2 import TFeaturesConfig
 from cloud.storage.core.tools.common.python.core_pattern import core_pattern
 from cloud.storage.core.tools.common.python.daemon import Daemon
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
+from cloud.storage.core.tests.ydb import (
+    create_tenant,
+    enable_custom_cms_configs,
+    ydb_binary_path,
+)
 from google.protobuf.text_format import MessageToBytes, MessageToString
 from contrib.ydb.core.protos.auth_pb2 import TAuthConfig
 from contrib.ydb.core.protos.config_pb2 import TActorSystemConfig
@@ -22,7 +26,6 @@ from contrib.ydb.core.protos.config_pb2 import TBlobStorageConfig
 from contrib.ydb.core.protos.config_pb2 import TDomainsConfig
 from contrib.ydb.core.protos.config_pb2 import TDynamicNameserviceConfig
 from contrib.ydb.core.protos.config_pb2 import TLogConfig
-from contrib.ydb.core.protos import console_config_pb2 as console
 from contrib.ydb.core.protos import msgbus_pb2 as msgbus
 from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
@@ -70,7 +73,7 @@ class LocalNbs(Daemon):
     ):
 
         if dynamic_storage_pools is not None:
-            assert len(dynamic_storage_pools) >= 2
+            assert len(dynamic_storage_pools) > 0
             self.__dynamic_storage_pools = dynamic_storage_pools
         else:
             self.__dynamic_storage_pools = [
@@ -224,44 +227,14 @@ class LocalNbs(Daemon):
         return 'null'
 
     def init_scheme(self):
-        scheme_op = """
-ModifyScheme {
-    WorkingDir: "/Root"
-    OperationType: ESchemeOpCreateSubDomain
-    SubDomain {
-        Name: "nbs"
-        Coordinators: 0
-        Mediators: 0
-        PlanResolution: 50
-        TimeCastBucketsPerMediator: 2
-"""
-
-        for pool in self.__dynamic_storage_pools:
-            scheme_op += """
-        StoragePools {
-            Name: "%s"
-            Kind: "%s"
-        }
-""" % (pool['name'], pool['kind'])
-
-        scheme_op += """
-    }
-}
-"""
-
         if self.__kikimr_binary_path is None:
-            self.__kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+            self.__kikimr_binary_path = ydb_binary_path()
 
-        command = [
+        create_tenant(
             self.__kikimr_binary_path,
-            "--server",
-            "grpc://localhost:" + str(self.__grpc_port),
-            "db", "schema", "exec", scheme_op
-        ]
-
-        logger.info("Init scheme {}".format(command))
-        with open(self.__cwd + "/ydbd_output.log", "w") as ydbd_output:
-            subprocess.check_call(command, stdout=ydbd_output, stderr=ydbd_output)
+            self.__grpc_port,
+            "nbs",
+            self.__dynamic_storage_pools)
 
     @property
     def nbs_port(self):
@@ -522,17 +495,7 @@ ModifyScheme {
 
         # setup NBS config
 
-        req = msgbus.TConsoleRequest()
-        configs_config = req.SetConfigRequest.Config.ConfigsConfig
-        restrictions = configs_config.UsageScopeRestrictions
-        restrictions.AllowedTenantUsageScopeKinds.append(
-            console.TConfigItem.NamedConfigsItem)
-        restrictions.AllowedNodeTypeUsageScopeKinds.append(
-            console.TConfigItem.NamedConfigsItem)
-
-        response = kikimr.invoke(req, 'ConsoleRequest')
-
-        assert response.Status.Code == StatusIds.SUCCESS
+        enable_custom_cms_configs(kikimr)
 
         req = msgbus.TConsoleRequest()
         action = req.ConfigureRequest.Actions.add()

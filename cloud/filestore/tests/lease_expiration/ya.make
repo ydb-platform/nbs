@@ -15,6 +15,8 @@ PEERDIR(
     cloud/storage/core/tools/testing/qemu/lib
 
     contrib/ydb/core/protos
+    cloud/storage/core/tests/ydb
+
     contrib/ydb/tests/library
     contrib/python/requests/py3
 
@@ -31,7 +33,7 @@ DEPENDS(
     cloud/storage/core/tools/testing/qemu/bin
     cloud/storage/core/tools/testing/qemu/image-noble
 
-    contrib/ydb/apps/ydbd
+    cloud/storage/core/tools/testing/ydb/bin
 )
 
 DATA(arcadia/cloud/storage/core/tools/testing/qemu/keys)

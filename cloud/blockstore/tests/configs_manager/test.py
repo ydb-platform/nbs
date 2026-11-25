@@ -42,7 +42,7 @@ DATABASE = "/Root/nbs"
 
 # Build main YAML from the running YDB settings for Console validation.
 def make_main_config(ydb):
-    config = copy.deepcopy(ydb.config.yaml_config)
+    config = copy.deepcopy(ydb.yaml_config)
     config["feature_flags"]["database_yaml_config_allowed"] = True
     return yaml.safe_dump({
         "metadata": {"kind": "MainConfig", "cluster": "", "version": 0},
@@ -71,8 +71,7 @@ config:
 
 
 def replace_config(ydb, config, allow_absent_database=False):
-    node = next(iter(ydb.nodes.values()))
-    client = dynconfig_client_factory(node.host, node.port)
+    client = dynconfig_client_factory("localhost", ydb.port)
     try:
         request = ydb_dynamic_config_pb2.ReplaceConfigRequest(
             config=config,
@@ -684,7 +683,7 @@ def test_temporary_server_skips_private_config(tmp_path, invalid_private_config)
         # Use a local nameservice marker that must be replaced by the CMS config.
         config = make_nbs_config(ydb, True)
         config.files["storage"].WriteBlobThreshold = 100
-        config.files["naming"] = copy.deepcopy(ydb.config.names_txt)
+        config.files["naming"] = copy.deepcopy(ydb.names_txt)
         config.files["naming"].ClusterUUID = "temporary-local-nameservice"
         config_path = tmp_path / "cfg"
         config_path.mkdir()

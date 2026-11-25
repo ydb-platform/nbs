@@ -33,7 +33,7 @@ def verify_config_update(ydb, mon_port):
 
     # add new static node
     app_config = config_pb2.TAppConfig()
-    naming_config = ydb.config.names_txt
+    naming_config = ydb.names_txt
     node = naming_config.Node.add(
         NodeId=2,
         Address='::1',

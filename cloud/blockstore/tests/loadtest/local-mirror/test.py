@@ -16,9 +16,8 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, \
 from cloud.blockstore.tests.python.lib.nonreplicated_setup import setup_nonreplicated, \
     create_devices, setup_disk_registry_config, \
     enable_writable_state, make_agent_node_type, make_agent_id, AgentInfo, DeviceInfo
+from cloud.storage.core.tests.ydb import Ydb, ydb_binary_path
 
-from contrib.ydb.tests.library.harness.kikimr_cluster import kikimr_cluster_factory
-from contrib.ydb.tests.library.harness.kikimr_config import KikimrConfigGenerator
 
 import yatest.common as yatest_common
 
@@ -115,12 +114,10 @@ TESTS = [
 
 
 def __run_test(test_case, use_rdma):
-    kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
+    kikimr_binary_path = ydb_binary_path()
 
-    configurator = KikimrConfigGenerator(
-        erasure=None,
-        binary_paths=[kikimr_binary_path],
-        use_in_memory_pdisks=True,
+    ydb = Ydb.start(
+        binary_path=kikimr_binary_path,
         dynamic_storage_pools=[
             dict(name="dynamic_storage_pool:1", kind="hdd", pdisk_user_kind=0),
             dict(name="dynamic_storage_pool:2", kind="ssd", pdisk_user_kind=0)
@@ -129,10 +126,7 @@ def __run_test(test_case, use_rdma):
     nbs_binary_path = "cloud/blockstore/apps/server/nbsd"
     disk_agent_binary_path = "cloud/blockstore/apps/disk_agent/diskagentd"
 
-    kikimr_cluster = kikimr_cluster_factory(configurator=configurator)
-    kikimr_cluster.start()
-
-    kikimr_port = list(kikimr_cluster.nodes.values())[0].port
+    kikimr_port = ydb.port
 
     devices = create_devices(
         False,  # use_memory_devices
@@ -155,7 +149,7 @@ def __run_test(test_case, use_rdma):
 
     try:
         setup_nonreplicated(
-            kikimr_cluster.client,
+            ydb.client,
             devices_per_agent,
             disk_agent_config_patch=TDiskAgentConfig(
                 DedicatedDiskAgent=True,
@@ -207,7 +201,7 @@ def __run_test(test_case, use_rdma):
 
         nbs = LocalNbs(
             kikimr_port,
-            configurator.domains_txt,
+            ydb.domains_txt,
             server_app_config=server_app_config,
             storage_config_patches=[storage],
             client_config_patch=client_app_config,
@@ -233,7 +227,7 @@ def __run_test(test_case, use_rdma):
         for i in range(test_case.agent_count):
             disk_agent = LocalDiskAgent(
                 kikimr_port,
-                configurator.domains_txt,
+                ydb.domains_txt,
                 server_app_config=server_app_config,
                 storage_config_patches=[storage],
                 config_sub_folder="disk_agent_configs_%s" % i,
@@ -274,7 +268,7 @@ def __run_test(test_case, use_rdma):
                 disk_agent.stop()
 
             nbs.stop()
-            kikimr_cluster.stop()
+            ydb.stop()
     finally:
         remove_file_devices(devices)
 
