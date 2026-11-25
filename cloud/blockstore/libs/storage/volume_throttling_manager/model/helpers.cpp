@@ -92,7 +92,7 @@ bool DiskFilterApplies(
     const NProto::TDiskFilter& filter,
     const TString& cloudId,
     const TString& folderId,
-    const NProto::EStorageMediaKind& mediaKind)
+    NProto::EStorageMediaKind mediaKind)
 {
     const auto& cloudIds = filter.GetCloudIds();
     if (!cloudIds.empty() && Find(cloudIds, cloudId) == cloudIds.end()) {
@@ -130,7 +130,8 @@ NProto::TError ValidateThrottlingRule(
 }
 
 NProto::TError ValidateThrottlingConfigRules(
-    const google::protobuf::RepeatedPtrField<NProto::TVolumeThrottlingRule>& rules)
+    const google::protobuf::RepeatedPtrField<NProto::TVolumeThrottlingRule>&
+        rules)
 {
     for (int i = 0; i < rules.size(); ++i) {
         if (auto error = ValidateThrottlingRule(rules[i], i); HasError(error)) {
@@ -141,11 +142,12 @@ NProto::TError ValidateThrottlingConfigRules(
 }
 
 NProto::TVolumeThrottlingRule GetThrottlingRuleForVolume(
-    const google::protobuf::RepeatedPtrField<NProto::TVolumeThrottlingRule>& rules,
+    const google::protobuf::RepeatedPtrField<NProto::TVolumeThrottlingRule>&
+        rules,
     const TString& diskId,
     const TString& cloudId,
     const TString& folderId,
-    const NProto::EStorageMediaKind& mediaKind)
+    NProto::EStorageMediaKind mediaKind)
 {
     const NProto::TVolumeThrottlingRule* firstMatchingFilter = nullptr;
 

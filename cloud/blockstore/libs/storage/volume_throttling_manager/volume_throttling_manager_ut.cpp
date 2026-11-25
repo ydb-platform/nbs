@@ -86,8 +86,8 @@ NProto::TError SetManualConfig(
     ui32 version,
     std::optional<double> coefficient = {})
 {
-    auto request = std::make_unique<TEvVolumeThrottlingManager::
-                                       TEvUpdateVolumeThrottlingConfigRequest>();
+    auto request = std::make_unique<
+        TEvVolumeThrottlingManager::TEvUpdateVolumeThrottlingConfigRequest>();
     request->ThrottlingConfig.SetVersion(version);
     if (coefficient) {
         request->ThrottlingConfig.AddRules()->MutableCoefficients()

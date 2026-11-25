@@ -55,7 +55,8 @@ private:
         const NActors::TActorContext& ctx);
 };
 
-TVolumeThrottlingManagerActor::TVolumeThrottlingManagerActor(TDuration cycleTime)
+TVolumeThrottlingManagerActor::TVolumeThrottlingManagerActor(
+    TDuration cycleTime)
     : CycleTime(cycleTime)
 {}
 
