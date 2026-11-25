@@ -42,6 +42,7 @@ SRCS(
     service_actor_listnodes.cpp
     service_actor_monitoring.cpp
     service_actor_monitoring_search.cpp
+    service_actor_multishard_create.cpp
     service_actor_ping.cpp
     service_actor_pingsession.cpp
     service_actor_readdata.cpp
@@ -53,7 +54,6 @@ SRCS(
     service_actor_writedata.cpp
     service_actor_xattr.cpp
     service_state.cpp
-    shard_creation_state_companion.cpp
     tablet_action_actor.cpp
     worker_actor_pool.cpp
     zero_block_stats.cpp

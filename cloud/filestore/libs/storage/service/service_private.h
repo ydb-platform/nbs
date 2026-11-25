@@ -57,7 +57,7 @@ struct TEvServicePrivate
     // Fast shard device allocation
     //
 
-    struct TFastShardsAllocated
+    struct TMultiShardCreateResponse
     {
         NProtoPrivate::TShardTopology Topology;
     };
@@ -77,7 +77,7 @@ struct TEvServicePrivate
         EvUpdateStats,
         EvStartReadData,
         EvReleaseReadDataActor,
-        EvFastShardsAllocated,
+        EvMultiShardCreateResponse,
         EvFastShardsDeallocated,
         EvStartWriteData,
         EvReleaseWriteDataActor,
@@ -93,8 +93,8 @@ struct TEvServicePrivate
     using TEvSessionCreated = TResponseEvent<TSessionCreated, EvSessionCreated>;
     using TEvSessionDestroyed = TResponseEvent<TSessionDestroyed, EvSessionDestroyed>;
     using TEvUpdateStats = TRequestEvent<TEmpty, EvUpdateStats>;
-    using TEvFastShardsAllocated =
-        TResponseEvent<TFastShardsAllocated, EvFastShardsAllocated>;
+    using TEvMultiShardCreateResponse =
+        TResponseEvent<TMultiShardCreateResponse, EvMultiShardCreateResponse>;
     using TEvFastShardsDeallocated =
         TResponseEvent<TEmpty, EvFastShardsDeallocated>;
 
