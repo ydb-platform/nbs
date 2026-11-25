@@ -840,20 +840,17 @@ public:
         // Start cache shutdown before we wait for the completion queue to stop
         // in order to prevent a deadlock:
         // - Pending requests cannot be cached and replied if the cache is full
-        // and flush keeps failing;
+        // and flush keeps failing for other nodes;
         // - Completion queue cannot stop until these writes are replied.
         //
         // Shutdown allows dropping unflushed data after a flush failure,
         // freeing up space in the cache and allowing pending requests to be
         // cached.
-        auto cacheShutdown =
-            WriteBackCache ? WriteBackCache.Shutdown() : MakeFuture();
+        if (WriteBackCache) {
+            Y_UNUSED(WriteBackCache.Shutdown());
+        }
 
-        auto onStop = [w = std::move(w),
-                       s,
-                       cacheShutdown = std::move(cacheShutdown)](
-                          const TFuture<void>& f) mutable
-        {
+        auto onStop = [w = std::move(w), s] (const TFuture<void>& f) mutable {
             f.GetValue();
 
             auto p = w.lock();
@@ -861,9 +858,7 @@ public:
                 return;
             }
 
-            p->StopAsyncOnCompletionQueueStopped(
-                std::move(s),
-                std::move(cacheShutdown));
+            p->StopAsyncOnCompletionQueueStopped(std::move(s));
         };
 
         CompletionQueue->StopAsync(FUSE_ERROR)
@@ -1635,9 +1630,7 @@ private:
         }
     }
 
-    void StopAsyncOnCompletionQueueStopped(
-        TPromise<void> stopCompleted,
-        TFuture<void> cacheShutdown)
+    void StopAsyncOnCompletionQueueStopped(TPromise<void> stopCompleted)
     {
         if (WriteBackCache && !WriteBackCache.IsDrained()) {
             STORAGE_INFO(
@@ -1646,7 +1639,7 @@ private:
                 Config->GetFileSystemId().Quote().c_str(),
                 Config->GetClientId().Quote().c_str());
 
-            cacheShutdown.Subscribe(
+            WriteBackCache.Shutdown().Subscribe(
                 [w = weak_from_this(),
                  s = std::move(stopCompleted)](const auto&) mutable
                 {

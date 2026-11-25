@@ -7007,17 +7007,19 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         auto flushStarted = NewPromise();
         auto flush = NewPromise<NProto::TWriteDataResponse>();
-        auto prevWriteDataHandler = bootstrap.Service->WriteDataHandler;
         bootstrap.Service->WriteDataHandler = [&](auto, auto)
         {
             flushStarted.TrySetValue();
-            return flush.GetFuture();
+            return flush.GetFuture().Apply(
+                [](const auto& future) { return future.GetValue(); });
         };
 
         bootstrap.Start();
         Y_DEFER
         {
-            bootstrap.Service->SetHandlerWriteData(prevWriteDataHandler);
+            bootstrap.Service->SetHandlerWriteData(
+                [](auto, auto)
+                { return MakeFuture(NProto::TWriteDataResponse{}); });
             flush.TrySetValue({});
             bootstrap.Stop();
         };
@@ -7033,7 +7035,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto stop = bootstrap.StopAsync();
         flush.SetValue(TErrorResponse(E_IO, "Flush failed"));
         UNIT_ASSERT(stop.Wait(WaitTimeout));
-        UNIT_ASSERT_NO_EXCEPTION(pending.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, pending.GetValue(WaitTimeout));
     }
 
     void TestShouldHandleZeroCopyReadRequest(bool enableWriteBackCache)
