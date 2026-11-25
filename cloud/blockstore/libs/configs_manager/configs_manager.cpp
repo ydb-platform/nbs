@@ -504,9 +504,6 @@ void TConfigsManagerActor::Handle(
 
             updateIssues =
                 PrepareDynamicConfigSectionsUpdate(config, &DynamicConfig);
-            rejectedSectionsReason =
-                ReportConfigSectionsIssues(updateIssues, ctx);
-
             newDynamicConfig = std::move(config);
         }
 
@@ -518,12 +515,18 @@ void TConfigsManagerActor::Handle(
                 ctx,
                 TBlockStoreComponents::CONFIGS_MANAGER,
                 "PrivateDatabaseConfig is unchanged; skipping publication");
+
+            rejectedSectionsReason =
+                ReportConfigSectionsIssues(updateIssues, ctx);
+
             UpdateRendererOnUnchangedConfig(
                 ev,
                 ctx,
                 updateIssues,
                 std::move(rejectedSectionsReason));
+
             ReplyConfigNotificationResponse(ev, ctx);
+
             return;
         }
     } catch (...) {
@@ -544,10 +547,11 @@ void TConfigsManagerActor::Handle(
             StorageConfigControls,
             GetBlockstoreConfigExtraParameters(*currentConfig),
             diagnostics);
+        rejectedSectionsReason = ReportConfigSectionsIssues(updateIssues, ctx);
     } catch (...) {
         ReportConfigUpdateError(
             TStringBuilder()
-                << "Failed to apply PrivateDatabaseConfig from CMS: "
+                << "Failed to apply dynamic PrivateDatabaseConfig: "
                 << CurrentExceptionMessage(),
             /*rollbackShallHelp=*/true);
         return;

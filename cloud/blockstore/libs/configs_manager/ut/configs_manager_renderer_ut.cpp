@@ -2217,7 +2217,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             ", startup <span class='config-update-rejected'>- rejected: "
-            "Failed to apply PrivateDatabaseConfig from CMS: ");
+            "Failed to apply dynamic PrivateDatabaseConfig: ");
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "test configuration preparation failure");
