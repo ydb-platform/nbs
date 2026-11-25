@@ -1437,7 +1437,6 @@ root_kms: {address: kms}
                 config.GetDiscoveryService().GetConductorSecureInstancePort());
         }
     }
-
 }
 
 }   // namespace NCloud::NBlockStore
