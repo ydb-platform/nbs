@@ -237,7 +237,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 				if tc.deleted {
 					deleteResult = nil
 				}
-				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, &meta.ZoneID).
+				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything).
 					Return(deleteResult, errorFor("DeleteDisk")).Once()
 				if tc.errorAt == "DeleteDisk" {
 					return

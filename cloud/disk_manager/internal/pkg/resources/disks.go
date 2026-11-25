@@ -482,7 +482,6 @@ func (s *storageYDB) deleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
-	expectedZoneID *string,
 ) (*DiskMeta, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -517,12 +516,6 @@ func (s *storageYDB) deleteDisk(
 	if len(states) != 0 {
 		state = states[0]
 
-		if expectedZoneID != nil && state.zoneID != *expectedZoneID {
-			return nil, errors.NewRetriableErrorf(
-				"zone of disk %q changed since reading its metadata", diskID,
-			)
-		}
-
 		if state.status >= diskStatusDeleting {
 			// Disk already marked as deleting/deleted.
 
@@ -541,10 +534,6 @@ func (s *storageYDB) deleteDisk(
 
 		state.status = diskStatusDeleting
 	} else {
-		if expectedZoneID != nil {
-			return nil, errors.NewNonCancellableErrorf("disk %v does not exist", diskID)
-		}
-
 		// Create a tombstone disk entry to avoid race conditions between
 		// concurrent disk deletion and disk creation operations. The tombstone
 		// prevents new disk creation with the same ID.
@@ -991,7 +980,6 @@ func (s *storageYDB) DeleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
-	expectedZoneID *string,
 ) (*DiskMeta, error) {
 
 	var disk *DiskMeta
@@ -1000,7 +988,7 @@ func (s *storageYDB) DeleteDisk(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt, expectedZoneID)
+			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt)
 			return err
 		},
 	)

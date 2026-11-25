@@ -204,7 +204,6 @@ func (t *createDiskFromImageTask) Cancel(
 		params.Disk.DiskId,
 		selfTaskID,
 		time.Now(),
-		nil, // expectedZoneID
 	)
 	if err != nil {
 		return err
