@@ -163,11 +163,11 @@ func (t *deleteDiskTask) Run(
 ) error {
 
 	err := t.deleteDisk(ctx, execCtx)
-	if err == nil || errors.Is(err, errors.NewEmptyNonCancellableError()) {
-		return err
+	if err != nil {
+		return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
 	}
 
-	return errors.NewRetriableErrorWithIgnoreRetryLimit(err)
+	return nil
 }
 
 func (t *deleteDiskTask) Cancel(
