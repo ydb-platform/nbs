@@ -27,7 +27,6 @@ import (
 type exportResourceStorage interface {
 	GetDiskMeta(context.Context, string) (*resources.DiskMeta, error)
 	GetImageMeta(context.Context, string) (*resources.ImageMeta, error)
-	GetSnapshotMeta(context.Context, string) (*resources.SnapshotMeta, error)
 }
 
 type exportDiskMetadata struct {
@@ -86,16 +85,6 @@ func readExportDiskMetadata(
 		}
 		if image != nil {
 			diskID = image.SrcDiskID
-		} else {
-			// A snapshot copied by dataplane.MigrateSnapshotTask has no disk
-			// in the snapshot storage. Its resource record still has it.
-			snapshot, err := resourceStorage.GetSnapshotMeta(ctx, snapshotID)
-			if err != nil {
-				return exportDiskMetadata{}, fmt.Errorf("reading snapshot metadata for source disk: %w", err)
-			}
-			if snapshot != nil {
-				diskID = snapshot.Disk.GetDiskId()
-			}
 		}
 	}
 

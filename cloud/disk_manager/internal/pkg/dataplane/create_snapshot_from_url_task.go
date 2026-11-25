@@ -185,6 +185,7 @@ func (t *createSnapshotFromURLTask) Run(
 		storageSize,
 		t.state.ChunkCount,
 		nil,
+		false, // updateIncremental
 	)
 }
 

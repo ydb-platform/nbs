@@ -453,6 +453,8 @@ func (t *createSnapshotFromDiskTask) run(
 		storageSize,
 		t.state.ChunkCount,
 		diskParams.EncryptionDesc,
+		// A full snapshot becomes a base for the next one too.
+		true, // updateIncremental
 	)
 }
 

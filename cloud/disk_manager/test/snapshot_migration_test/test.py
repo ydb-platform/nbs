@@ -871,11 +871,16 @@ def test_disk_manager_snapshot_database_migration_with_snapshot_deleted_before_m
             for entry in setup.get_snapshot_database_entries(setup.secondary_ydb.mon_port)
         }
         assert set(destination_entries) == set(checksums_by_snapshot_id)
-        for entry in destination_entries.values():
+        for snapshot_id, entry in destination_entries.items():
             # A zero backlog must correspond to Ready destination snapshots.
             assert int(entry["status"]) == 1
+            # The copies keep the disk and the checkpoint of their sources:
+            # deleting a copy deletes its checkpoint.
+            for column in ["zone_id", "disk_id", "checkpoint_id"]:
+                assert entry[column] != ""
+                assert entry[column] == source_entries[snapshot_id][column]
             # The copies are independent full snapshots.
-            for column in ["zone_id", "disk_id", "checkpoint_id", "base_snapshot_id", "base_checkpoint_id"]:
+            for column in ["base_snapshot_id", "base_checkpoint_id"]:
                 assert entry[column] == ""
         assert setup.get_snapshot_database_entries(
             setup.secondary_ydb.mon_port,

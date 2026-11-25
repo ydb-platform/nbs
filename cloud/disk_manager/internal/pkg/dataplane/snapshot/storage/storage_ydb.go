@@ -58,6 +58,7 @@ func (s *storageYDB) SnapshotCreated(
 	storageSize uint64,
 	chunkCount uint32,
 	encryption *types.EncryptionDesc,
+	updateIncremental bool,
 ) error {
 
 	return s.db.Execute(
@@ -71,6 +72,7 @@ func (s *storageYDB) SnapshotCreated(
 				storageSize,
 				chunkCount,
 				encryption,
+				updateIncremental,
 			)
 		},
 	)

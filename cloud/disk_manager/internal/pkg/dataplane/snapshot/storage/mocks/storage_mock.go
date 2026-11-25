@@ -35,9 +35,18 @@ func (s *StorageMock) SnapshotCreated(
 	storageSize uint64,
 	chunkCount uint32,
 	encryption *types.EncryptionDesc,
+	updateIncremental bool,
 ) error {
 
-	args := s.Called(ctx, snapshotID, size, storageSize, chunkCount, encryption)
+	args := s.Called(
+		ctx,
+		snapshotID,
+		size,
+		storageSize,
+		chunkCount,
+		encryption,
+		updateIncremental,
+	)
 	return args.Error(0)
 }
 

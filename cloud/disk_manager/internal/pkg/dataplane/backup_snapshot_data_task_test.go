@@ -209,6 +209,7 @@ func createSnapshotWithChunk(
 		4096, // storageSize
 		1,    // chunkCount
 		nil,  // encryption
+		true, // updateIncremental
 	)
 	require.NoError(t, err)
 
@@ -309,6 +310,7 @@ func TestBackupSnapshotDataTask(t *testing.T) {
 		4096, // storageSize
 		2,    // chunkCount
 		nil,  // encryption
+		true, // updateIncremental
 	)
 	require.NoError(t, err)
 
@@ -417,6 +419,7 @@ func TestBackupSnapshotDataTaskEnqueuesInBatches(t *testing.T) {
 		8192, // storageSize
 		2,    // chunkCount
 		nil,  // encryption
+		true, // updateIncremental
 	)
 	require.NoError(t, err)
 
@@ -504,6 +507,7 @@ func TestBackupSnapshotDataTaskBacksUpChunkStoredInYDB(t *testing.T) {
 		4096, // storageSize
 		1,    // chunkCount
 		nil,  // encryption
+		true, // updateIncremental
 	)
 	require.NoError(t, err)
 
@@ -586,6 +590,7 @@ func TestBackupSnapshotDataTaskFailsOnChunkIndexOutOfRange(t *testing.T) {
 		4096, // storageSize
 		1,    // chunkCount
 		nil,  // encryption
+		true, // updateIncremental
 	)
 	require.NoError(t, err)
 
@@ -639,6 +644,7 @@ func TestBackupSnapshotDataTaskBacksUpShallowCopyWithoutCreatorBackup(t *testing
 		4096, // storageSize
 		1,    // chunkCount
 		nil,  // encryption
+		true, // updateIncremental
 	)
 	require.NoError(t, err)
 
@@ -931,7 +937,8 @@ func createSnapshotFromChunks(
 		size,
 		size, // storageSize
 		count,
-		nil, // encryption
+		nil,  // encryption
+		true, // updateIncremental
 	)
 	require.NoError(t, err)
 	return own
