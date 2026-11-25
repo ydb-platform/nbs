@@ -250,3 +250,31 @@ with the five agents started by `3-start_nbs.sh`. Use a separate agent identity
 and devices when running an additional agent alongside the full stand.
 QEMU's default socket is `/tmp/<diskid>.sock` in cell-1 and
 `/tmp/<diskid>-cell2.sock` in cell-2; override it with `--socket` if needed.
+
+## Verify intercell I/O over IC V2
+
+Generate the cells configuration with `python3 ./prepare_cells.py`. In `nbs/nbs-cells.txt`, `nbs/nbs-cells2.txt` and the two corresponding files under `cell2/nbs/`, set the peer's `Transport` to `CELL_DATA_TRANSPORT_ICV2`. Restart NBS in both cells to load the configuration.
+
+Create a dedicated test disk in each cell. Run QEMU in cell-1 with the disk from cell-2, and run QEMU in cell-2 with the disk from cell-1. For example, with `cell1-volume` and `cell2-volume` as the test disk IDs, start these commands in separate terminals.
+
+```bash
+./6-run_qemu.sh --diskid cell2-volume
+./6-run_qemu.sh --cell2 --diskid cell1-volume
+```
+
+In each guest, use `lsblk` to identify the unmounted test device. The commands below use `/dev/vdb`.
+
+```bash
+sudo fio --name=verify --filename=/dev/vdb --ioengine=libaio --direct=1 \
+    --rw=randwrite --bs=4k --iodepth=16 --size=256m --verify=crc32c --verify_fatal=1
+sudo fio --name=mixed --filename=/dev/vdb --ioengine=libaio --direct=1 \
+    --rw=randrw --rwmixread=70 --bs=4k --iodepth=16 --size=256m --time_based --runtime=30
+```
+
+Both `fio` jobs should finish without errors in each guest. While they run, open `/blockstore/cells` on both frontends at ports `8766` and `18766` and check that the test mounts show `icv2`. On the host, check for established TCP connections to the default IC V2 peer ports.
+
+```bash
+ss -tn state established '( dport = :29602 or dport = :39602 )'
+```
+
+XDC is enabled in the generated configuration. For a second run, set `IcV2.EnableXdc` to `false` in the four files and restart NBS in both cells. Shut down the guests and the stand processes after testing.
