@@ -1,0 +1,20 @@
+PY3TEST()
+
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
+
+TEST_SRCS(
+    test.py
+)
+
+DEPENDS(
+    cloud/blockstore/apps/server
+    contrib/ydb/apps/ydbd
+)
+
+PEERDIR(
+    cloud/blockstore/public/sdk/python/client
+    cloud/blockstore/tests/python/lib
+    library/python/retry
+)
+
+END()

@@ -22,14 +22,23 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void CopyLogoBlobId(
+    const NKikimrProto::TLogoBlobID& src,
+    NPrivateProto::TLogoBlobID& dst)
+{
+    dst.SetRawX1(src.GetRawX1());
+    dst.SetRawX2(src.GetRawX2());
+    dst.SetRawX3(src.GetRawX3());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TScanDiskActor final
     : public TActorBootstrapped<TScanDiskActor>
 {
 private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
-
-    NPrivateProto::TScanDiskRequest Request;
 
 public:
     TScanDiskActor(TRequestInfoPtr requestInfo, TString input);
@@ -61,34 +70,37 @@ TScanDiskActor::TScanDiskActor(
 
 void TScanDiskActor::Bootstrap(const TActorContext& ctx)
 {
-    if (!google::protobuf::util::JsonStringToMessage(Input, &Request).ok()) {
+    auto request = std::make_unique<TEvVolume::TEvScanDiskRequest>();
+    auto& record = request->Record;
+
+    if (!google::protobuf::util::JsonStringToMessage(Input, &record).ok()) {
         ReplyAndDie(ctx, MakeError(
             E_ARGUMENT,
             "Failed to parse input"));
         return;
     }
 
-    if (!Request.GetDiskId()) {
+    if (!record.GetDiskId()) {
         ReplyAndDie(ctx, MakeError(
             E_ARGUMENT,
             "DiskId should be supplied"));
         return;
     }
 
-    if (!Request.GetBatchSize()) {
+    if (!record.GetBatchSize() && !record.GetCancel()) {
         ReplyAndDie(ctx, MakeError(
             E_ARGUMENT,
             "Batch size should be supplied"));
         return;
     }
 
-    auto request = std::make_unique<TEvVolume::TEvScanDiskRequest>();
-    request->Record.SetDiskId(Request.GetDiskId());
-    request->Record.SetBatchSize(Request.GetBatchSize());
-
-    LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
-        "Start scan disk %s",
-        Request.GetDiskId().c_str());
+    LOG_INFO(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "%s scan disk %s (check integrity: %d)",
+        record.GetCancel() ? "Cancel" : "Start",
+        record.GetDiskId().c_str(),
+        record.GetCheckIntegrity());
 
     NCloud::Send(
         ctx,
@@ -274,16 +286,37 @@ void TScanDiskStatusActor::ReplyAndDie(
     NPrivateProto::TGetScanDiskStatusResponse actionResponse;
 
     auto& progress = *actionResponse.MutableProgress();
-    progress.SetProcessed(response.GetProgress().GetProcessed());
-    progress.SetTotal(response.GetProgress().GetTotal());
-    progress.SetIsCompleted(response.GetProgress().GetIsCompleted());
+    const auto& responseProgress = response.GetProgress();
+    progress.SetProcessed(responseProgress.GetProcessed());
+    progress.SetTotal(responseProgress.GetTotal());
+    progress.SetIsCompleted(responseProgress.GetIsCompleted());
 
-    const auto& responseBrokenBlobs = response.GetProgress().GetBrokenBlobs();
-    for (int i = 0; i < responseBrokenBlobs.size(); ++i) {
-        auto& brokenBlob = *progress.AddBrokenBlobs();
-        brokenBlob.SetRawX1(responseBrokenBlobs.at(i).GetRawX1());
-        brokenBlob.SetRawX2(responseBrokenBlobs.at(i).GetRawX2());
-        brokenBlob.SetRawX3(responseBrokenBlobs.at(i).GetRawX3());
+    for (const auto& responseBrokenBlob: responseProgress.GetBrokenBlobs()) {
+        CopyLogoBlobId(responseBrokenBlob, *progress.AddBrokenBlobs());
+    }
+
+    progress.SetCheckIntegrity(responseProgress.GetCheckIntegrity());
+    progress.SetScanCommitId(responseProgress.GetScanCommitId());
+    progress.SetDeadBlobs(responseProgress.GetDeadBlobs());
+    progress.SetCheckedBlobs(responseProgress.GetCheckedBlobs());
+    progress.SetReplicatingBlobs(responseProgress.GetReplicatingBlobs());
+    progress.SetDegradedBlobs(responseProgress.GetDegradedBlobs());
+    progress.SetUncheckedBlobs(responseProgress.GetUncheckedBlobs());
+    progress.SetDroppedBlobResults(responseProgress.GetDroppedBlobResults());
+    progress.SetCancelled(responseProgress.GetCancelled());
+
+    for (const auto& responseResult: responseProgress.GetBlobResults()) {
+        auto& result = *progress.AddBlobResults();
+        CopyLogoBlobId(responseResult.GetBlobId(), *result.MutableBlobId());
+        result.SetBSGroupId(responseResult.GetBSGroupId());
+        result.SetVerdict(
+            static_cast<NPrivateProto::TScanDiskBlobResult::EVerdict>(
+                responseResult.GetVerdict()));
+        result.SetStatus(responseResult.GetStatus());
+        result.SetPlacementStatus(responseResult.GetPlacementStatus());
+        result.SetDataStatus(responseResult.GetDataStatus());
+        result.SetErrorReason(responseResult.GetErrorReason());
+        result.SetDataInfo(responseResult.GetDataInfo());
     }
 
     google::protobuf::util::MessageToJsonString(

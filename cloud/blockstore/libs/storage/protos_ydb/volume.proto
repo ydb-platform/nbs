@@ -243,8 +243,64 @@ message TScanDiskProgress
     // Is operation completed.
     bool IsCompleted = 3;
 
-    // Blobs processed with error
+    // Blobs processed with error. In CheckIntegrity mode: blobs that came back
+    // lost or with mismatching data.
     repeated NKikimrProto.TLogoBlobID BrokenBlobs = 4;
+
+    // The fields below are filled only in CheckIntegrity mode.
+
+    // The mode this scan runs in.
+    bool CheckIntegrity = 5;
+
+    // Commit at scan start. Blobs written later aren't covered.
+    uint64 ScanCommitId = 6;
+
+    // Rows skipped because no reader would read a block from them.
+    uint64 DeadBlobs = 7;
+
+    // Live blobs with a final verdict: healthy, degraded or broken.
+    uint64 CheckedBlobs = 8;
+
+    // Live blobs that came back recoverable.
+    uint64 DegradedBlobs = 9;
+
+    // Live blobs that ran out of retries.
+    uint64 UncheckedBlobs = 10;
+
+    // One entry per broken, degraded or unchecked blob, capped by
+    // MaxReportedBlobs.
+    repeated TScanDiskBlobResult BlobResults = 11;
+
+    // Entries left out of BlobResults because of the cap.
+    uint64 DroppedBlobResults = 12;
+
+    // A Cancel request stopped the scan, so the counters are partial.
+    bool Cancelled = 13;
+
+    // Healthy blobs whose missing parts replication is still writing.
+    uint64 ReplicatingBlobs = 14;
+}
+
+message TScanDiskBlobResult
+{
+    enum EVerdict
+    {
+        VERDICT_UNSPECIFIED = 0;
+        BROKEN = 1;
+        DEGRADED = 2;
+        UNCHECKED = 3;
+    }
+
+    NKikimrProto.TLogoBlobID BlobId = 1;
+    uint32 BSGroupId = 2;
+    EVerdict Verdict = 3;
+
+    // TEvCheckIntegrityResult fields, statuses as names.
+    string Status = 4;
+    string PlacementStatus = 5;
+    string DataStatus = 6;
+    string ErrorReason = 7;
+    string DataInfo = 8;
 }
 
 message TGetScanDiskStatusRequest

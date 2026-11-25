@@ -478,6 +478,12 @@ public:
 
     std::unique_ptr<TEvVolume::TEvGetRebuildMetadataStatusRequest> CreateGetRebuildMetadataStatusRequest();
 
+    std::unique_ptr<TEvVolume::TEvScanDiskRequest> CreateScanDiskRequest(
+        NProto::TScanDiskRequest record);
+
+    std::unique_ptr<TEvVolume::TEvGetScanDiskStatusRequest>
+    CreateGetScanDiskStatusRequest();
+
     std::unique_ptr<NMon::TEvRemoteHttpInfo> CreateRemoteHttpInfo(
         const TString& params);
 
