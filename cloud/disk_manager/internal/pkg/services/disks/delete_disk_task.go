@@ -62,28 +62,26 @@ func (t *deleteDiskTask) deleteDisk(
 	diskID := t.request.Disk.DiskId
 	sync := t.request.Sync
 
-	var expectedZoneID *string
-	if requestZoneID := t.request.Disk.ZoneId; requestZoneID != "" {
-		meta, err := t.storage.GetDiskMeta(ctx, diskID)
-		if err != nil {
-			return err
-		}
+	requestZoneID := t.request.Disk.ZoneId
+	if requestZoneID == "" {
+		return errors.NewNonCancellableErrorf("request zone is empty for disk %v", diskID)
+	}
 
-		// A missing row or tombstone has no recorded zone.
-		recordedZoneID := ""
-		if meta != nil {
-			recordedZoneID = meta.ZoneID
-		}
-		expectedZoneID = &recordedZoneID
+	meta, err := t.storage.GetDiskMeta(ctx, diskID)
+	if err != nil {
+		return err
+	}
 
-		if recordedZoneID != "" && !t.disabledZones.IsDisabled(recordedZoneID) {
-			if recordedZoneID != requestZoneID && !t.cellSelector.ZoneContainsCell(requestZoneID, recordedZoneID) {
-				return errors.NewNonCancellableErrorf(
-					"zone %q of disk %v from meta does not match request zone %q",
-					recordedZoneID, diskID, requestZoneID,
-				)
-			}
-		}
+	var recordedZoneID string
+	if meta != nil {
+		recordedZoneID = meta.ZoneID
+	}
+	if recordedZoneID != "" && !t.disabledZones.IsDisabled(recordedZoneID) &&
+		recordedZoneID != requestZoneID && !t.cellSelector.ZoneContainsCell(requestZoneID, recordedZoneID) {
+		return errors.NewNonCancellableErrorf(
+			"zone %q of disk %v from meta does not match request zone %q",
+			recordedZoneID, diskID, requestZoneID,
+		)
 	}
 
 	diskMeta, err := t.storage.DeleteDisk(
@@ -91,7 +89,7 @@ func (t *deleteDiskTask) deleteDisk(
 		diskID,
 		selfTaskID,
 		time.Now(),
-		expectedZoneID,
+		&recordedZoneID,
 	)
 	if err != nil {
 		return err

@@ -132,8 +132,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			deletedZone: "zone-d", requestZone: "zone-a", disabledZones: disabledZone,
 		},
 		{
-			name: "request without a zone uses metadata zone", diskMeta: allowedDisk,
-			disabledZones: disabledZone, expectedZone: "zone-a", expectNBS: true,
+			name: "request without a zone", nonCancellable: true,
 		},
 		{
 			name: "metadata read error", requestZone: "zone-a", errorAt: "GetDiskMeta",
@@ -207,29 +206,29 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 				return nil
 			}
 			setupExpectations := func() {
-				var expectedZoneID *string
-				if tc.requestZone != "" {
-					meta := tc.diskMeta
-					if tc.deletedZone != "" {
-						meta = &resources.DiskMeta{ZoneID: tc.deletedZone}
-					}
-					storage.On("GetDiskMeta", ctx, "disk").Return(meta, errorFor("GetDiskMeta")).Once()
-					if tc.errorAt == "GetDiskMeta" {
-						return
-					}
-					expectedZoneID = proto.String("")
-					if meta != nil {
-						expectedZoneID = &meta.ZoneID
-					}
-					if tc.zoneContainsCell || tc.nonCancellable {
-						cellSelector.On("ZoneContainsCell", tc.requestZone, *expectedZoneID).
-							Return(tc.zoneContainsCell).Once()
-					}
-					if tc.nonCancellable {
-						return
-					}
+				if tc.requestZone == "" {
+					return
 				}
-				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, expectedZoneID).
+				meta := tc.diskMeta
+				if tc.deletedZone != "" {
+					meta = &resources.DiskMeta{ZoneID: tc.deletedZone}
+				}
+				storage.On("GetDiskMeta", ctx, "disk").Return(meta, errorFor("GetDiskMeta")).Once()
+				if tc.errorAt == "GetDiskMeta" {
+					return
+				}
+				var recordedZoneID string
+				if meta != nil {
+					recordedZoneID = meta.ZoneID
+				}
+				if tc.zoneContainsCell || tc.nonCancellable {
+					cellSelector.On("ZoneContainsCell", tc.requestZone, recordedZoneID).
+						Return(tc.zoneContainsCell).Once()
+				}
+				if tc.nonCancellable {
+					return
+				}
+				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, &recordedZoneID).
 					Return(tc.diskMeta, errorFor("DeleteDisk")).Once()
 				if tc.errorAt == "DeleteDisk" || tc.diskMeta == nil {
 					return
