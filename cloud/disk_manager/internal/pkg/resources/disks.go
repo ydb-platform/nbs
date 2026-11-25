@@ -482,7 +482,7 @@ func (s *storageYDB) deleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
-	checkZone func(string) error,
+	expectedZoneID *string,
 ) (*DiskMeta, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -517,11 +517,10 @@ func (s *storageYDB) deleteDisk(
 	if len(states) != 0 {
 		state = states[0]
 
-		if checkZone != nil && (state.status != diskStatusDeleted || state.zoneID != "") {
-			err = checkZone(state.zoneID)
-			if err != nil {
-				return nil, err
-			}
+		if expectedZoneID != nil && state.zoneID != *expectedZoneID {
+			return nil, errors.NewRetriableErrorf(
+				"zone of disk %q changed since reading its metadata", diskID,
+			)
 		}
 
 		if state.status >= diskStatusDeleting {
@@ -988,7 +987,7 @@ func (s *storageYDB) DeleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
-	checkZone func(string) error,
+	expectedZoneID *string,
 ) (*DiskMeta, error) {
 
 	var disk *DiskMeta
@@ -997,7 +996,7 @@ func (s *storageYDB) DeleteDisk(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt, checkZone)
+			disk, err = s.deleteDisk(ctx, session, diskID, taskID, deletingAt, expectedZoneID)
 			return err
 		},
 	)

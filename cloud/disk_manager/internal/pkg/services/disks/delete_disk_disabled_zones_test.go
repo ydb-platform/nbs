@@ -136,6 +136,9 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			disabledZones: disabledZone, expectedZone: "zone-a", expectNBS: true,
 		},
 		{
+			name: "metadata read error", requestZone: "zone-a", errorAt: "GetDiskMeta",
+		},
+		{
 			name: "metadata deletion error in disabled zone", diskMeta: disabledDisk, requestZone: "zone-d",
 			disabledZones: disabledZone, errorAt: "DeleteDisk",
 		},
@@ -204,36 +207,31 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 				return nil
 			}
 			setupExpectations := func() {
-				recordedZone := tc.deletedZone
-				if tc.diskMeta != nil {
-					recordedZone = tc.diskMeta.ZoneID
+				var expectedZoneID *string
+				if tc.requestZone != "" {
+					meta := tc.diskMeta
+					if tc.deletedZone != "" {
+						meta = &resources.DiskMeta{ZoneID: tc.deletedZone}
+					}
+					storage.On("GetDiskMeta", ctx, "disk").Return(meta, errorFor("GetDiskMeta")).Once()
+					if tc.errorAt == "GetDiskMeta" {
+						return
+					}
+					expectedZoneID = proto.String("")
+					if meta != nil {
+						expectedZoneID = &meta.ZoneID
+					}
+					if tc.zoneContainsCell || tc.nonCancellable {
+						cellSelector.On("ZoneContainsCell", tc.requestZone, *expectedZoneID).
+							Return(tc.zoneContainsCell).Once()
+					}
+					if tc.nonCancellable {
+						return
+					}
 				}
-				if recordedZone != "" && !tc.disabledZones.IsDisabled(recordedZone) &&
-					tc.requestZone != "" && tc.requestZone != recordedZone && tc.errorAt != "DeleteDisk" {
-					cellSelector.On("ZoneContainsCell", tc.requestZone, recordedZone).
-						Return(tc.zoneContainsCell).Once()
-				}
-
-				deleteErr := errorFor("DeleteDisk")
-				resultMeta := tc.diskMeta
-				if tc.nonCancellable {
-					resultMeta = nil
-					deleteErr = errors.NewNonCancellableErrorf("zone mismatch")
-				}
-				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, mock.Anything).
-					Run(func(args mock.Arguments) {
-						if tc.errorAt == "DeleteDisk" || recordedZone == "" {
-							return
-						}
-						checkZone := args.Get(4).(func(string) error)
-						err := checkZone(recordedZone)
-						if tc.nonCancellable {
-							require.ErrorIs(t, err, errors.NewEmptyNonCancellableError())
-						} else {
-							require.NoError(t, err)
-						}
-					}).Return(resultMeta, deleteErr).Once()
-				if deleteErr != nil || resultMeta == nil {
+				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, expectedZoneID).
+					Return(tc.diskMeta, errorFor("DeleteDisk")).Once()
+				if tc.errorAt == "DeleteDisk" || tc.diskMeta == nil {
 					return
 				}
 				if tc.sync && tc.expectNBS {

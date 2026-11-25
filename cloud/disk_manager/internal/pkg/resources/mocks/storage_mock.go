@@ -47,10 +47,10 @@ func (s *StorageMock) DeleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
-	checkZone func(string) error,
+	expectedZoneID *string,
 ) (*resources.DiskMeta, error) {
 
-	args := s.Called(ctx, diskID, taskID, deletingAt, checkZone)
+	args := s.Called(ctx, diskID, taskID, deletingAt, expectedZoneID)
 	return args.Get(0).(*resources.DiskMeta), args.Error(1)
 }
 

@@ -143,12 +143,9 @@ func TestDisksDeleteDisk(t *testing.T) {
 	expected.CreateRequest = nil
 	expected.DeleteTaskID = "delete"
 
-	checkZone := func(zoneID string) error {
-		require.Equal(t, disk.ZoneID, zoneID)
-		return errors.NewNonCancellableErrorf("zone mismatch")
-	}
-	actual, err = storage.DeleteDisk(ctx, disk.ID, "wrong-zone", time.Now(), checkZone)
-	require.True(t, errors.Is(err, errors.NewEmptyNonCancellableError()))
+	staleZoneID := "old-zone"
+	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", time.Now(), &staleZoneID)
+	require.True(t, errors.CanRetry(err))
 	require.Nil(t, actual)
 
 	actual, err = storage.GetDiskMeta(ctx, disk.ID)
@@ -176,8 +173,8 @@ func TestDisksDeleteDisk(t *testing.T) {
 	err = storage.DiskDeleted(ctx, disk.ID, time.Now())
 	require.NoError(t, err)
 
-	actual, err = storage.DeleteDisk(ctx, disk.ID, "wrong-zone", time.Now(), checkZone)
-	require.True(t, errors.Is(err, errors.NewEmptyNonCancellableError()))
+	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", time.Now(), &staleZoneID)
+	require.True(t, errors.CanRetry(err))
 	require.Nil(t, actual)
 
 	// Check that DeleteDisk returns nil for already deleted disk.
@@ -203,8 +200,9 @@ func TestDisksDeleteNonexistentDisk(t *testing.T) {
 		DeleteTaskID: "delete",
 	}
 
+	emptyZoneID := ""
 	deletingAt := time.Now()
-	actual, err := storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt, nil)
+	actual, err := storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt, &emptyZoneID)
 	require.NoError(t, err)
 	require.Nil(t, actual)
 
@@ -216,7 +214,7 @@ func TestDisksDeleteNonexistentDisk(t *testing.T) {
 
 	// Check idempotency.
 	deletingAt = deletingAt.Add(time.Second)
-	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt, nil)
+	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt, &emptyZoneID)
 	require.NoError(t, err)
 	require.Nil(t, actual)
 

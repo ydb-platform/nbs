@@ -179,14 +179,13 @@ type Storage interface {
 	GetDiskMeta(ctx context.Context, diskID string) (*DiskMeta, error)
 
 	// Returns disk if action has been accepted by storage and nil otherwise.
-	// If checkZone is set, validates the recorded zone before changing state,
-	// including for a disk that is already deleted.
+	// If expectedZoneID is supplied, a concurrent zone change requires a retry.
 	DeleteDisk(
 		ctx context.Context,
 		diskID string,
 		taskID string,
 		deletingAt time.Time,
-		checkZone func(string) error,
+		expectedZoneID *string,
 	) (*DiskMeta, error)
 
 	DiskDeleted(ctx context.Context, diskID string, deletedAt time.Time) error

@@ -48,6 +48,7 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 		Kind:         "ssd",
 		DeleteTaskID: "toplevel_task_id",
 	}
+	storage.On("GetDiskMeta", ctx, "disk").Return(&resources.DiskMeta{ZoneID: "zone"}, nil).Once()
 	storage.On(
 		"DeleteDisk",
 		ctx,
@@ -110,6 +111,7 @@ func TestDeleteDiskTaskRunWithDiskCreatedFromImage(t *testing.T) {
 		state:       &protos.DeleteDiskTaskState{},
 	}
 
+	storage.On("GetDiskMeta", ctx, "disk").Return(&resources.DiskMeta{ZoneID: "zone"}, nil).Once()
 	storage.On(
 		"DeleteDisk",
 		ctx,
@@ -172,6 +174,7 @@ func TestDeleteDiskTaskCancel(t *testing.T) {
 		state:       &protos.DeleteDiskTaskState{},
 	}
 
+	storage.On("GetDiskMeta", ctx, "disk").Return(&resources.DiskMeta{ZoneID: "zone"}, nil).Once()
 	storage.On(
 		"DeleteDisk",
 		ctx,
@@ -260,6 +263,7 @@ func testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
 		}, nil)
 	}
 
+	storage.On("GetDiskMeta", ctx, "disk").Return(&resources.DiskMeta{ZoneID: "zone"}, nil).Once()
 	storage.On(
 		"DeleteDisk",
 		ctx,

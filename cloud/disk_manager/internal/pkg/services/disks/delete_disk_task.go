@@ -62,12 +62,36 @@ func (t *deleteDiskTask) deleteDisk(
 	diskID := t.request.Disk.DiskId
 	sync := t.request.Sync
 
+	var expectedZoneID *string
+	if requestZoneID := t.request.Disk.ZoneId; requestZoneID != "" {
+		meta, err := t.storage.GetDiskMeta(ctx, diskID)
+		if err != nil {
+			return err
+		}
+
+		// A missing row or tombstone has no recorded zone.
+		recordedZoneID := ""
+		if meta != nil {
+			recordedZoneID = meta.ZoneID
+		}
+		expectedZoneID = &recordedZoneID
+
+		if recordedZoneID != "" && !t.disabledZones.IsDisabled(recordedZoneID) {
+			if recordedZoneID != requestZoneID && !t.cellSelector.ZoneContainsCell(requestZoneID, recordedZoneID) {
+				return errors.NewNonCancellableErrorf(
+					"zone %q of disk %v from meta does not match request zone %q",
+					recordedZoneID, diskID, requestZoneID,
+				)
+			}
+		}
+	}
+
 	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
 		diskID,
 		selfTaskID,
 		time.Now(),
-		t.checkZone,
+		expectedZoneID,
 	)
 	if err != nil {
 		return err
@@ -76,6 +100,9 @@ func (t *deleteDiskTask) deleteDisk(
 		return nil
 	}
 	zoneID := diskMeta.ZoneID
+	if zoneID == "" {
+		return errors.NewNonCancellableErrorf("disk %v has no zone in metadata", diskID)
+	}
 	disabled := t.disabledZones.IsDisabled(zoneID)
 	if sync && !disabled {
 		err = t.setEstimate(ctx, execCtx, diskID, zoneID)
@@ -195,25 +222,6 @@ func (t *deleteDiskTask) GetResponse() proto.Message {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-func (t *deleteDiskTask) checkZone(zoneID string) error {
-	if t.disabledZones.IsDisabled(zoneID) {
-		return nil
-	}
-	requestZoneID := t.request.Disk.ZoneId
-	// When the request omits the zone, the recorded zone is sufficient.
-	if zoneID != "" && (requestZoneID == "" || requestZoneID == zoneID ||
-		t.cellSelector.ZoneContainsCell(requestZoneID, zoneID)) {
-		return nil
-	}
-
-	return errors.NewNonCancellableErrorf(
-		"zone %q of disk %v from meta does not match request zone %q",
-		zoneID,
-		t.request.Disk.DiskId,
-		requestZoneID,
-	)
-}
 
 func (t *deleteDiskTask) setEstimate(
 	ctx context.Context,
