@@ -1114,6 +1114,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
     Y_UNIT_TEST(ShouldRenderUnknownEnumValues)
     {
         // Keep undeclared numbers in ordinary configuration fields.
+        // Use open proto3 enums so protobuf preserves undeclared numbers in
+        // the fields.
         auto staticConfig = MakeConfig(100);
         auto* server = staticConfig.MutableServer()->MutableServerConfig();
         server->SetEncryptZeroPolicy(
