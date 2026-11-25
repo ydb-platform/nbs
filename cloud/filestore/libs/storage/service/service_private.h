@@ -79,18 +79,14 @@ struct TEvServicePrivate
         EvReleaseReadDataActor,
         EvFastShardsAllocated,
         EvFastShardsDeallocated,
+        EvStartWriteData,
+        EvReleaseWriteDataActor,
 
         EvEnd
     };
 
     static_assert(EvEnd < (int)TFileStoreEventsPrivate::SERVICE_WORKER_END,
         "EvEnd expected to be < TFileStoreEventsPrivate::SERVICE_WORKER_END");
-
-    struct TEvReleaseReadDataActor final
-        : public NActors::
-              TEventLocal<TEvReleaseReadDataActor, EvReleaseReadDataActor>
-    {
-    };
 
     using TEvPingSession = TRequestEvent<TEmpty, EvPingSession>;
     using TEvCreateSession = TRequestEvent<TCreateSession, EvCreateSession>;
@@ -101,6 +97,19 @@ struct TEvServicePrivate
         TResponseEvent<TFastShardsAllocated, EvFastShardsAllocated>;
     using TEvFastShardsDeallocated =
         TResponseEvent<TEmpty, EvFastShardsDeallocated>;
+
+    // Unlike TRequestEvent following events dont allocalte TCallContext on
+    // the heap
+    struct TEvReleaseReadDataActor final
+        : public NActors::
+              TEventLocal<TEvReleaseReadDataActor, EvReleaseReadDataActor>
+    {
+    };
+    struct TEvReleaseWriteDataActor final
+        : public NActors::
+              TEventLocal<TEvReleaseWriteDataActor, EvReleaseWriteDataActor>
+    {
+    };
 };
 
 }   // namespace NCloud::NFileStore::NStorage
