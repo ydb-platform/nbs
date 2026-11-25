@@ -823,24 +823,24 @@ void TIndexTabletState::UpdateInMemoryIndexState(
 
 void TIndexTabletState::StartNodeSizeUpdate(ui64 nodeId)
 {
-    ++Impl->PendingNodeSizeUpdates[nodeId];
+    ++Impl->NodeId2InFlightSizeUpdates[nodeId];
 }
 
 void TIndexTabletState::EndNodeSizeUpdate(ui64 nodeId)
 {
-    auto it = Impl->PendingNodeSizeUpdates.find(nodeId);
+    auto it = Impl->NodeId2InFlightSizeUpdates.find(nodeId);
     TABLET_VERIFY_C(
-        it != Impl->PendingNodeSizeUpdates.end() && it->second > 0,
+        it != Impl->NodeId2InFlightSizeUpdates.end() && it->second > 0,
         "nodeId: " << nodeId);
 
     if (--it->second == 0) {
-        Impl->PendingNodeSizeUpdates.erase(it);
+        Impl->NodeId2InFlightSizeUpdates.erase(it);
     }
 }
 
 bool TIndexTabletState::HasPendingNodeSizeUpdate(ui64 nodeId) const
 {
-    return Impl->PendingNodeSizeUpdates.contains(nodeId);
+    return Impl->NodeId2InFlightSizeUpdates.contains(nodeId);
 }
 
 void TIndexTabletState::MarkNodeRefsLoadComplete()

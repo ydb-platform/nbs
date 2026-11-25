@@ -550,6 +550,28 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         UNIT_ASSERT_VALUES_EQUAL("X\n", read->Record.GetBuffer());
     }
 
+    Y_UNIT_TEST(ShouldDelayAsyncCreateHandleWithoutInMemoryIndexCache)
+    {
+        auto config = AsyncOpenConfig();
+        config.SetInMemoryIndexCacheEnabled(false);
+        TAsyncOpenEnv env(config, 209);
+        auto& tablet = env.Tablet;
+
+        // The open reads the uncommitted size from LocalDB, so it must not
+        // be answered before the append commits even without the index.
+        env.SendWriteAndHoldCommit(209, "X\n");
+
+        env.SendAsyncOpen();
+        tablet.AssertCreateHandleNoResponse();
+
+        env.ReleaseWriteCommit();
+
+        tablet.AssertWriteDataResponse(S_OK);
+        auto response = tablet.AssertCreateHandleResponse(S_OK);
+        UNIT_ASSERT(!response->Record.GetHandleCreatedAsync());
+        UNIT_ASSERT_VALUES_EQUAL(211, response->Record.GetNodeAttr().GetSize());
+    }
+
     Y_UNIT_TEST(ShouldDelayAsyncCreateHandleUntilAddBlobCompletes)
     {
         auto config = AsyncOpenConfig();
