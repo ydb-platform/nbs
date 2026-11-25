@@ -1166,7 +1166,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         // Keep an explicit valid enum as the fallback for an invalid override.
         auto staticConfig = MakeConfig(100);
         staticConfig.MutableStorageService()->SetSSDCompactionType(
-            NProto::CT_LOAD);
+            NProto::CT_DEFAULT);
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
         const auto config =
             MakeStartupBlockstoreConfig(
@@ -1192,12 +1192,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
                 html,
                 {
                     .ParameterName = "StorageService.SSDCompactionType",
-                    .StaticValue = "CT_LOAD (1)",
+                    .StaticValue = "CT_DEFAULT (0)",
                     .StartupDynamicValue = "—",
                     .RuntimeDynamicValue = "—",
                     .IcbValue =
                         ToString(value) + " (unknown enum value; ignored)",
-                    .EffectiveValue = "CT_LOAD (1)",
+                    .EffectiveValue = "CT_DEFAULT (0)",
                 });
             UNIT_ASSERT_STRING_CONTAINS(html, "class='config-icb'>1</span>");
         }
