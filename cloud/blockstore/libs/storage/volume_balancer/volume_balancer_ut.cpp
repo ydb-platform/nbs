@@ -12,6 +12,7 @@
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/features/features_config.h>
@@ -107,6 +108,13 @@ public:
     TVolumeBalancerConfigBuilder& WithEnabled(bool enabled)
     {
         StorageConfig.SetVolumeBalancerEnabled(enabled);
+        return *this;
+    }
+
+    TVolumeBalancerConfigBuilder& WithVolumeBalancerAutoWarningEnabled(
+        bool enabled)
+    {
+        StorageConfig.SetVolumeBalancerAutoWarningEnabled(enabled);
         return *this;
     }
 
@@ -426,7 +434,8 @@ IActorPtr CreateVolumeBalancerActor(
         std::move(volumeStats),
         std::move(statsFetcher),
         std::move(volumeBalancerSwitch),
-        std::move(serviceActorId));
+        std::move(serviceActorId),
+        CreateLoggingService("null"));
 }
 
 TString RunState(
@@ -819,7 +828,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv.VolumeStats,
             testEnv.Fetcher,
             CreateVolumeBalancerSwitch(),
-            testEnv.GetEdgeActor()));
+            testEnv.GetEdgeActor(),
+            CreateLoggingService("null")));
 
         testEnv.DispatchEvents();
 
@@ -1052,6 +1062,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
     {
         TVolumeBalancerTestEnv testEnv;
         TVolumeBalancerConfigBuilder config;
+        config.WithVolumeBalancerAutoWarningEnabled(true);
 
         const auto initialPullDelay = UpdateCountersInterval * 2;
 

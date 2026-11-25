@@ -4,6 +4,7 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 
 #include <cloud/storage/core/libs/common/media.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/throttling/helpers.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -31,12 +32,12 @@ TVolumeBalancerState::TVolumeBalancerState(
     TStorageConfigPtr storageConfig,
     TDiagnosticsConfigPtr diagnosticsConfig,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch,
-    const ILoggingServicePtr& logging)
+    ILoggingServicePtr logging)
     : StorageConfig(std::move(storageConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PullDelayResetTimespan(StorageConfig->GetInitialPullDelay())
     , VolumeBalancerSwitch(std::move(volumeBalancerSwitch))
-    , Log(logging->CreateLog("BLOCKSTORE_VOLUME_BALANCER"))
+    , Logging(std::move(logging))
 {}
 
 void TVolumeBalancerState::UpdateVolumeStats(
@@ -52,6 +53,8 @@ void TVolumeBalancerState::UpdateVolumeStats(
         HasSufferingPreemptedVolume(stats, perfMap))
     {
         Status = NPrivateProto::EBalancerOpStatus::WARNING;
+
+        auto Log = Logging->CreateLog("BLOCKSTORE_VOLUME_BALANCER");
         STORAGE_WARN(
             "Some of preempted volumes suffers: Volume balancer has been "
             "switched to WARNING state");

@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/diagnostics/volume_balancer_switch.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -34,7 +35,8 @@ TStorageConfigPtr CreateStorageConfig(
     bool volumeBalancerEnabled,
     ui32 cpuLackThreshold,
     NFeatures::TFeaturesConfigPtr featuresConfig,
-    TDuration initialPullDelay = InitialPullDelay)
+    TDuration initialPullDelay = InitialPullDelay,
+    bool autoWarningEnabled = false)
 {
     NProto::TStorageServiceConfig storageConfig;
     storageConfig.SetVolumePreemptionType(type);
@@ -45,6 +47,7 @@ TStorageConfigPtr CreateStorageConfig(
         featuresConfig = std::make_shared<NFeatures::TFeaturesConfig>(config);
     }
     storageConfig.SetInitialPullDelay(initialPullDelay.MilliSeconds());
+    storageConfig.SetVolumeBalancerAutoWarningEnabled(autoWarningEnabled);
 
     return std::make_shared<TStorageConfig>(storageConfig, std::move(featuresConfig));
 };
@@ -148,7 +151,8 @@ TVolumeBalancerStateTestEnv::TVolumeBalancerStateTestEnv(
     : State(
           std::move(storageConfig),
           std::move(diagnosticsConfig),
-          std::move(volumeBalancerSwitch))
+          std::move(volumeBalancerSwitch),
+          CreateLoggingService("null"))
     , Now(TInstant::Zero())
 {
     for (const auto& recipe: volumes) {
@@ -608,7 +612,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 CreateFeatureConfig("Balancer", {}, true)
             ),
             CreateDiagnosticsConfig(),
-            CreateSwitch(true)
+            CreateSwitch(true),
+            CreateLoggingService("null")
         );
         TInstant now = TInstant::Seconds(0);
 
@@ -667,7 +672,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 DefaultCpuThreshold,
                 /*featuresConfig=*/nullptr),
             CreateDiagnosticsConfig(),
-            CreateSwitch(true));
+            CreateSwitch(true),
+            CreateLoggingService("null"));
         TInstant now = TInstant::Seconds(0);
 
         TVector<NProto::TVolumeBalancerDiskStats> vols{
@@ -695,7 +701,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         TVolumeBalancerState state(
             storageConfig,
             CreateDiagnosticsConfig(),
-            CreateSwitch(false));
+            CreateSwitch(false),
+            CreateLoggingService("null"));
         TInstant now = TInstant::Seconds(0);
 
         TVolumeBalancerState::TPerfGuaranteesMap perfMap;
@@ -744,7 +751,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 CreateFeatureConfig("Balancer", {}, true)
             ),
             CreateDiagnosticsConfig(),
-            CreateSwitch(true)
+            CreateSwitch(true),
+            CreateLoggingService("null")
         );
 
         for (ui32 i = 0; i < kinds.size(); ++i) {
@@ -770,12 +778,15 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             NProto::PREEMPTION_MOVE_MOST_HEAVY,
             /*volumeBalancerEnabled=*/true,
             70,
-            /*featuresConfig=*/nullptr);
+            /*featuresConfig=*/nullptr,
+            InitialPullDelay,
+            /*autoWarningEnabled=*/true);
 
         TVolumeBalancerState state(
             storageConfig,
             CreateDiagnosticsConfig(),
-            CreateSwitch(true));
+            CreateSwitch(true),
+            CreateLoggingService("null"));
 
         state.SetStatus(NPrivateProto::EBalancerOpStatus::WARNING);
         TInstant now = TInstant::Seconds(0);
@@ -819,12 +830,15 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             NProto::PREEMPTION_MOVE_MOST_HEAVY,
             /*volumeBalancerEnabled=*/true,
             70,
-            /*featuresConfig=*/nullptr);
+            /*featuresConfig=*/nullptr,
+            InitialPullDelay,
+            /*autoWarningEnabled=*/true);
 
         TVolumeBalancerState state(
             storageConfig,
             CreateDiagnosticsConfig(),
-            CreateSwitch(true));
+            CreateSwitch(true),
+            CreateLoggingService("null"));
         TInstant now = TInstant::Seconds(0);
 
         TVolumeBalancerState::TPerfGuaranteesMap perfMap;
