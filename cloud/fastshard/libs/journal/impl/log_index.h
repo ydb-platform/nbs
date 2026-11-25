@@ -45,9 +45,10 @@ public:
     // not chain from it.
     [[nodiscard]] bool TryApplyNext(const TLogRecord& record);
 
-    // Removes the mappings written below |lsn|. Does not move
-    // LastIndexedLsn.
-    void EraseBelow(ui64 lsn);
+    // Removes the mappings written below |lsn| that overlap |ranges|. Does
+    // not move LastIndexedLsn. Takes the lock many times, each time for a few
+    // mappings, so that a long erase does not hold up the other threads.
+    void EraseBelow(ui64 lsn, const TVector<TPageRangeRef>& ranges);
 
     ui64 GetLastIndexedLsn() const;
 
@@ -60,6 +61,10 @@ public:
 
 private:
     TEntries::iterator ClearRange(ui64 from, ui64 to);
+
+    // Removes some of the mappings written below |lsn| that overlap
+    // [from, to). Returns the page to continue from, |to| when done.
+    ui64 EraseSlice(ui64 lsn, ui64 from, ui64 to);
 };
 
 }   // namespace NCloud::NJournalled

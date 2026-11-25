@@ -627,10 +627,19 @@ struct TFixture: public NUnitTest::TBaseFixture
         return Run([&] { return Journal->CleanupFlushedRecords(); }).GetCode();
     }
 
+    // Marks the records up to |lsn| as flushed. The ranges are the whole
+    // device: these tests do not track which pages a batch has written.
+    void MarkRecordAsFlushed(ui64 lsn)
+    {
+        Journal->MarkRecordAsFlushed(
+            lsn,
+            {Range(0, DevicePageCount)});
+    }
+
     // Takes the given record through the whole flush cycle.
     void FlushUpTo(ui64 lsn)
     {
-        Journal->MarkRecordAsFlushed(lsn);
+        MarkRecordAsFlushed(lsn);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, CleanupFlushedRecords());
     }
 
@@ -847,7 +856,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             "5<-4 10:[");
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(6));
-        Journal->MarkRecordAsFlushed(5);
+        MarkRecordAsFlushed(5);
         UNIT_ASSERT_STRING_CONTAINS(
             GetRecordsToFlushDescription(),
             "6<-5 20:[");
@@ -1587,7 +1596,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 1}}));
 
-        Journal->MarkRecordAsFlushed(1);
+        MarkRecordAsFlushed(1);
 
         // lsn 1 is on the device now, the reader is expected to go there
         auto response = ReadPages({{10, 1}, {20, 1}});
@@ -1629,7 +1638,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         UNIT_ASSERT_VALUES_EQUAL("", MissingRanges({{10, 1}, {20, 1}}));
 
-        Journal->MarkRecordAsFlushed(1);
+        MarkRecordAsFlushed(1);
 
         // lsn 1 is on the device now, the same pages Read stops returning
         UNIT_ASSERT_VALUES_EQUAL("10+1", MissingRanges({{10, 1}, {20, 1}}));
@@ -1964,12 +1973,12 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         // the batch starts right after the flushed lsn
 
-        Journal->MarkRecordAsFlushed(1);
+        MarkRecordAsFlushed(1);
         UNIT_ASSERT_VALUES_EQUAL(
             "2<-1 20:[B020]",
             GetRecordsToFlushDescription());
 
-        Journal->MarkRecordAsFlushed(2);
+        MarkRecordAsFlushed(2);
         UNIT_ASSERT_VALUES_EQUAL("", GetRecordsToFlushDescription());
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(3));
@@ -2002,7 +2011,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             GetRecordsToFlushDescription(anyLsn, 2));
 
         // a record bigger than the whole budget is handed out on its own
-        Journal->MarkRecordAsFlushed(1);
+        MarkRecordAsFlushed(1);
         UNIT_ASSERT_VALUES_EQUAL(
             "2<-1 20:[B020,B021]",
             GetRecordsToFlushDescription(anyLsn, 1));
@@ -2100,7 +2109,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         // the reader has decided to take lsn 1 from the journal, so its pages
         // must stay put even though the flusher is done with them
-        Journal->MarkRecordAsFlushed(2);
+        MarkRecordAsFlushed(2);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, CleanupFlushedRecords());
         UNIT_ASSERT_VALUES_EQUAL("1,2,3", StoredKeys());
 

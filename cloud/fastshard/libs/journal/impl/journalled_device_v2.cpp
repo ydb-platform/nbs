@@ -103,6 +103,20 @@ TVector<TPageRange> MergeRecordPages(const TJournalRecords& records)
     return ranges;
 }
 
+TVector<TPageRangeRef> MakeRangeRefs(const TVector<TPageRange>& ranges)
+{
+    TVector<TPageRangeRef> rangeRefs;
+    rangeRefs.reserve(ranges.size());
+
+    for (const auto& range: ranges) {
+        rangeRefs.push_back(
+            {.FirstPageNo = range.FirstPageNo,
+             .PageCount = range.Pages.size()});
+    }
+
+    return rangeRefs;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TReadPagesResponse MergeResponses(
@@ -662,6 +676,8 @@ void TJournalledDeviceV2::RunFlushCycle()
         //
 
         auto ranges = MergeRecordPages(records);
+        const auto rangeRefs = MakeRangeRefs(ranges);
+
         if (!ranges.empty()) {
             auto acquired = PagesInFlight.TryAcquire(ranges);
             if (HasError(acquired)) {
@@ -687,7 +703,7 @@ void TJournalledDeviceV2::RunFlushCycle()
             }
         }
 
-        Journal->MarkRecordAsFlushed(lsn);
+        Journal->MarkRecordAsFlushed(lsn, rangeRefs);
         lastFlushedLsn = lsn;
 
         STORAGE_DEBUG(
