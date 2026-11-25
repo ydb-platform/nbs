@@ -31,6 +31,16 @@ type Task interface {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// TaskWithRetryPolicy controls retry limits after Run returns RetriableError.
+type TaskWithRetryPolicy interface {
+	Task
+
+	// True ignores the limit; false uses RetriableError.IgnoreRetryLimit.
+	IgnoreRetryLimit() bool
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type StepFunc func(done *bool) error
 
 func RunSteps(
