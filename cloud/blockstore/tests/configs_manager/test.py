@@ -773,7 +773,7 @@ def test_startup_without_overrides(config_yaml):
         page.raise_for_status()
         assert re.search(r"<td>WriteBlobThreshold</td>\s*<td>100</td>", page.text)
         log = Path(nbs.stderr_file_name).read_text()
-        assert "Starting without PrivateDatabaseConfig" not in log
+        assert "Starting without dynamic PrivateDatabaseConfig" not in log
         assert "No startup PrivateDatabaseConfig applied; using configuration after CMS" in log
         updates = wait_config_delivery(nbs)
 
@@ -814,7 +814,7 @@ def test_invalid_config_is_skipped_at_startup():
         assert re.search(r"<td>WriteBlobThreshold</td>\s*<td>100</td>", page.text)
         log = Path(nbs.stderr_file_name).read_text()
         assert "CRITICAL_EVENT:AppCriticalEvents/GetConfigsFromCmsYamlParseError" in log
-        assert "Starting without PrivateDatabaseConfig" in log
+        assert "Starting without dynamic PrivateDatabaseConfig" in log
         assert "expected json map" in log
 
         # Keep the invalid runtime delivery rejected rather than accepting removal.

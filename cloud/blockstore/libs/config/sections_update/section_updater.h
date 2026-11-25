@@ -66,8 +66,11 @@ public:
     //
     // @return  Success with empty issues if accepted without issues.
     //          Success with nonempty issues if accepted with issues.
-    //          Error if the incoming section is rejected; issues may be
-    //          nonempty.
+    //          Error for a validation failure that rejects the incoming
+    //          section; issues may be nonempty.
+    //
+    // Discard the entire dynamic configuration candidate if an exception is
+    // thrown.
     [[nodiscard]] virtual NCloud::NProto::TError Prepare(
         NProto::TBlockstoreConfig& dynamicConfigCandidate,
         const NProto::TBlockstoreConfig* previousAcceptedDynamicConfig,

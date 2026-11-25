@@ -700,13 +700,21 @@ void TBootstrapYdb::InitKikimrService()
                 ReportGetConfigsFromCmsYamlParseError(
                     TStringBuilder()
                     << error.GetMessage()
-                    << ". Starting without PrivateDatabaseConfig.");
+                    << ". Starting without dynamic PrivateDatabaseConfig.");
             } else {
-                const auto updateIssues =
-                    PrepareDynamicConfigSectionsUpdate(config, nullptr);
-                startupRejectedSectionsReason =
-                    ReportStartupConfigSectionsIssues(updateIssues, Log);
-                cmsBlockstoreConfig = std::move(config);
+                try {
+                    const auto updateIssues =
+                        PrepareDynamicConfigSectionsUpdate(config, nullptr);
+                    startupRejectedSectionsReason =
+                        ReportStartupConfigSectionsIssues(updateIssues, Log);
+                    cmsBlockstoreConfig = std::move(config);
+                } catch (...) {
+                    ReportDynamicConfigError(
+                        TStringBuilder()
+                        << "Failed to prepare startup PrivateDatabaseConfig: "
+                        << CurrentExceptionMessage()
+                        << ". Starting without dynamic PrivateDatabaseConfig.");
+                }
             }
         }
 
