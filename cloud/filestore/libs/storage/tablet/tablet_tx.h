@@ -1691,6 +1691,7 @@ struct TTxIndexTablet
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<INodeIndexTabletDatabase::TNode> Node;
+        bool NodeSizeUpdateStarted = false;
 
         TSetNodeAttr(
                 TRequestInfoPtr requestInfo,
@@ -1708,6 +1709,7 @@ struct TTxIndexTablet
 
             CommitId = InvalidCommitId;
             Node.Clear();
+            NodeSizeUpdateStarted = false;
         }
     };
 

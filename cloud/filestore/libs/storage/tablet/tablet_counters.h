@@ -328,7 +328,7 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
     struct TExtraCreateHandleMetrics
     {
         std::atomic<i64> GuestKeepCacheSet{0};
-        // Async replies deferred until a size-growing write completes
+        // Async replies deferred until a size-changing update completes
         std::atomic<i64> AsyncDeferredByPendingWrite{0};
     } CreateHandleExtra;
 

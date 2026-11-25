@@ -249,6 +249,11 @@ void TIndexTabletActor::ExecuteTx_SetNodeAttr(
         attrs,
         args.Node->Attrs);
 
+    if (attrs.GetSize() != args.Node->Attrs.GetSize()) {
+        StartNodeSizeUpdate(args.NodeId);
+        args.NodeSizeUpdateStarted = true;
+    }
+
     args.Node->Attrs = std::move(attrs);
 }
 
@@ -256,6 +261,10 @@ void TIndexTabletActor::CompleteTx_SetNodeAttr(
     const TActorContext& ctx,
     TTxIndexTablet::TSetNodeAttr& args)
 {
+    if (args.NodeSizeUpdateStarted) {
+        EndNodeSizeUpdate(args.NodeId);
+    }
+
     InvalidateReadAheadCache(args.NodeId);
 
     RemoveInFlightRequest(*args.RequestInfo);

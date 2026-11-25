@@ -588,6 +588,55 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         UNIT_ASSERT(response->Record.GetGuestKeepCache());
     }
 
+    Y_UNIT_TEST(ShouldDelayAsyncCreateHandleUntilSetNodeAttrSizeCompletes)
+    {
+        TAsyncOpenEnv env(AsyncOpenConfig(), 209);
+        auto& tablet = env.Tablet;
+        auto& runtime = env.Runtime;
+
+        // Commits must reach the tablet in order, so hold all of them.
+        TVector<TAutoPtr<IEventHandle>> heldCommits;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvTablet::EvCommit &&
+                    event->Get<TEvTablet::TEvCommit>()->TabletID ==
+                        env.TabletId)
+                {
+                    heldCommits.push_back(std::move(event));
+                    return true;
+                }
+
+                return false;
+            });
+
+        // Resize with its commit held: LocalDB and the in-memory index see
+        // different sizes.
+        tablet.SendSetNodeAttrRequest(
+            TSetNodeAttrArgs(env.NodeId).SetSize(4_KB));
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]() { return !heldCommits.empty(); }});
+        UNIT_ASSERT_VALUES_EQUAL(
+            209,
+            GetNodeAttrs(tablet, env.NodeId).GetSize());
+
+        // The open must not report the uncommitted size.
+        env.SendAsyncOpen();
+        tablet.AssertCreateHandleNoResponse();
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        for (auto& commit: heldCommits) {
+            runtime.Send(commit.Release(), env.NodeIdx);
+        }
+
+        tablet.AssertSetNodeAttrResponse(S_OK);
+        auto response = tablet.AssertCreateHandleResponse(S_OK);
+        UNIT_ASSERT(!response->Record.GetHandleCreatedAsync());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB,
+            response->Record.GetNodeAttr().GetSize());
+    }
+
     Y_UNIT_TEST(ShouldCreateHandleAsyncForUncachedNodeWithoutPendingWrites)
     {
         auto config = AsyncOpenConfig();

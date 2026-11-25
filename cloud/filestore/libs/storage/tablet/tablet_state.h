@@ -1849,16 +1849,16 @@ public:
     void MarkNodeRefsExhaustive(ui64 nodeId);
     TInMemoryIndexStateStats GetInMemoryIndexStateStats() const;
 
-    // Tracks size-growing data writes (WriteData, AddBlob) from Execute to
-    // Complete, i.e. while the new size is visible in LocalDB but not yet in
-    // the in-memory index. An async read-only CreateHandle replies upon
-    // completion instead if the node has such a write: otherwise the guest
-    // can drop its page cache and refill it from the stale size served by
-    // the index, zero-filling the tail of a page that is not zeros.
+    // Tracks size-changing node updates (size-growing WriteData and AddBlob,
+    // size-changing SetNodeAttr) from Execute to Complete, i.e. while the new
+    // size is visible in LocalDB but not yet in the in-memory index. An async
+    // read-only CreateHandle replies upon completion instead if the node has
+    // such an update: otherwise the guest can drop its page cache and refill
+    // it from the stale size served by the index, zero-filling the tail of a
+    // page that is not zeros, and the response would report a size that is
+    // not committed yet.
     // Writes within the file size are not tracked: block data is updated in
-    // Execute, so only mtime is stale. Other node updates either expose
-    // zeros anyway (truncate, fallocate) or make the guest drop its page
-    // cache on reply (size-changing setattr).
+    // Execute, so only mtime is stale.
     void StartNodeSizeUpdate(ui64 nodeId);
     void EndNodeSizeUpdate(ui64 nodeId);
     bool HasPendingNodeSizeUpdate(ui64 nodeId) const;
