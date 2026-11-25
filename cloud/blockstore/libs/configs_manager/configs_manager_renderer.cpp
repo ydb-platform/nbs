@@ -617,7 +617,7 @@ bool RenderScalarField(
         icb = context.Controls.GetOverrideInfo(field->name());
     }
 
-    // Omit unset fields unless a live ICB override supplies their value.
+    // Keep a row for any explicit ICB override, including rejected values.
     if (!icb &&
         AllOf(
             sources,
