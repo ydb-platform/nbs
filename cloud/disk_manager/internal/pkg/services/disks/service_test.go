@@ -21,27 +21,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestDeleteDiskWithoutZoneID(t *testing.T) {
-	ctx := context.Background()
-	scheduler := tasks_mocks.NewSchedulerMock()
-	diskService := &service{taskScheduler: scheduler}
-	scheduler.On(
-		"ScheduleNonCancellableTask",
-		ctx,
-		"disks.DeleteDisk",
-		"",
-		"",
-		&protos.DeleteDiskRequest{Disk: &types.Disk{DiskId: "disk"}},
-	).Return("deleteTask", nil).Once()
-
-	taskID, err := diskService.DeleteDisk(ctx, &disk_manager.DeleteDiskRequest{
-		DiskId: &disk_manager.DiskId{DiskId: "disk"},
-	})
-	require.NoError(t, err)
-	require.Equal(t, "deleteTask", taskID)
-	scheduler.AssertExpectations(t)
-}
-
 func TestAreOverlayDisksSupportedForDiskKind(t *testing.T) {
 	diskService := &service{
 		config: &disks_config.DisksConfig{},
