@@ -15,8 +15,6 @@
 #include <util/generic/scope.h>
 #include <util/generic/vector.h>
 
-#include <google/protobuf/unknown_field_set.h>
-
 #include <atomic>
 #include <thread>
 #include <utility>
