@@ -28,6 +28,23 @@ TVolumeBalancerState::TVolumeInfo::TVolumeInfo(TDuration pullInterval)
     , LastSuccessfulPull(TInstant::Now())
 {}
 
+void TVolumeBalancerState::TSufferStatistics::Add(ui32 sufferCount)
+{
+    SufferCountSum += sufferCount;
+    ++NumSamples;
+}
+
+void TVolumeBalancerState::TSufferStatistics::Reset()
+{
+    SufferCountSum = 0;
+    NumSamples = 0;
+}
+
+ui32 TVolumeBalancerState::TSufferStatistics::GetMeanValue() const
+{
+    return NumSamples == 0 ? SufferCountSum : SufferCountSum / NumSamples;
+}
+
 TVolumeBalancerState::TVolumeBalancerState(
     TStorageConfigPtr storageConfig,
     TDiagnosticsConfigPtr diagnosticsConfig,
@@ -47,25 +64,6 @@ void TVolumeBalancerState::UpdateVolumeStats(
     TInstant now)
 {
     CpuLack = cpuLack;
-
-    if (Status == NPrivateProto::EBalancerOpStatus::ENABLE &&
-        StorageConfig->GetVolumeBalancerAutoWarningEnabled() &&
-        HasSufferingPreemptedVolume(stats, perfMap))
-    {
-        Status = NPrivateProto::EBalancerOpStatus::WARNING;
-
-        auto Log = Logging->CreateLog("BLOCKSTORE_VOLUME_BALANCER");
-        STORAGE_WARN(
-            "Some of preempted volumes suffers: Volume balancer has been "
-            "switched to WARNING state");
-    }
-
-    // Push the volume, if balancer is in ENABLE state and if the CPU is in
-    // emergency state. Otherwise, pull the volume
-    const bool pushVolume =
-        Status == NPrivateProto::EBalancerOpStatus::ENABLE &&
-        cpuLack >= StorageConfig->GetCpuLackThreshold();
-
     THashSet<TString> knownDisks;
     for (const auto& d: Volumes) {
         knownDisks.insert(d.first);
@@ -98,6 +96,7 @@ void TVolumeBalancerState::UpdateVolumeStats(
 
         if (auto perfIt = perfMap.find(it->first); perfIt != perfMap.end()) {
             info.SufferCount = perfIt->second;
+            info.SufferStatistics.Add(info.SufferCount);
         }
 
         if (info.IsLocal) {
@@ -112,6 +111,24 @@ void TVolumeBalancerState::UpdateVolumeStats(
     for (const auto& d: knownDisks) {
         Volumes.erase(d);
     }
+
+    if (Status == NPrivateProto::EBalancerOpStatus::ENABLE &&
+        StorageConfig->GetVolumeBalancerAutoWarningEnabled() &&
+        HasSufferingPreemptedVolume())
+    {
+        Status = NPrivateProto::EBalancerOpStatus::WARNING;
+
+        auto Log = Logging->CreateLog("BLOCKSTORE_VOLUME_BALANCER");
+        STORAGE_WARN(
+            "Some of preempted volumes suffers: Volume balancer has been "
+            "switched to WARNING state");
+    }
+
+    // Push the volume, if balancer is in ENABLE state and if the CPU is in
+    // emergency state. Otherwise, pull the volume
+    const bool pushVolume =
+        Status == NPrivateProto::EBalancerOpStatus::ENABLE &&
+        cpuLack >= StorageConfig->GetCpuLackThreshold();
 
     if (pushVolume) {
         VolumeToPull = {};
@@ -130,6 +147,14 @@ TString TVolumeBalancerState::GetVolumeToPush() const
 TString TVolumeBalancerState::GetVolumeToPull() const
 {
     return VolumeToPull;
+}
+
+void TVolumeBalancerState::SetVolumeInProgressCompleted(const TString& volume)
+{
+    VolumesInProgress.erase(volume);
+    if (auto* info = Volumes.FindPtr(volume)){
+        info->SufferStatistics.Reset();
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -267,35 +292,22 @@ void TVolumeBalancerState::RenderHtml(TStringStream& out, TInstant now) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TVolumeBalancerState::HasSufferingPreemptedVolume(
-    const TVector<NProto::TVolumeBalancerDiskStats>& stats,
-    const TPerfGuaranteesMap& perfMap) const
+bool TVolumeBalancerState::HasSufferingPreemptedVolume() const
 {
     return AnyOf(
-        stats,
-        [&](const auto& stat)
+        Volumes,
+        [this](const auto& item)
         {
-            if (stat.GetIsLocal() ||
-                stat.GetPreemptionSource() !=
-                    NProto::EPreemptionSource::SOURCE_BALANCER)
+            const auto& info = item.second;
+            if (info.IsLocal || info.PreemptionSource !=
+                                    NProto::EPreemptionSource::SOURCE_BALANCER)
             {
                 return false;
             }
-
-            const auto* prevStats = Volumes.FindPtr(stat.GetDiskId());
-            if (!prevStats) {
-                return false;
-            }
-
-            const auto* sufferCount = perfMap.FindPtr(stat.GetDiskId());
-            if (!sufferCount) {
-                return false;
-            }
-            const ui32 threshold =
-                StorageConfig->GetVolumeBalancerSufferCountThreshold();
-
-            return *sufferCount > threshold &&
-                   prevStats->SufferCount > threshold;
+            return info.SufferStatistics.NumSamples >=
+                       StorageConfig->GetVolumeBalancerWarningSampleCount() &&
+                   info.SufferStatistics.GetMeanValue() >=
+                       StorageConfig->GetVolumeBalancerSufferCountThreshold();
         });
 }
 

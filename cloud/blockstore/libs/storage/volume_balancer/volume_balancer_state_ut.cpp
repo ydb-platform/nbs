@@ -36,9 +36,8 @@ TStorageConfigPtr CreateStorageConfig(
     ui32 cpuLackThreshold,
     NFeatures::TFeaturesConfigPtr featuresConfig,
     TDuration initialPullDelay = InitialPullDelay,
-    bool autoWarningEnabled = false)
+    NProto::TStorageServiceConfig storageConfig = {})
 {
-    NProto::TStorageServiceConfig storageConfig;
     storageConfig.SetVolumePreemptionType(type);
     storageConfig.SetVolumeBalancerEnabled(volumeBalancerEnabled);
     storageConfig.SetCpuLackThreshold(cpuLackThreshold);
@@ -47,9 +46,10 @@ TStorageConfigPtr CreateStorageConfig(
         featuresConfig = std::make_shared<NFeatures::TFeaturesConfig>(config);
     }
     storageConfig.SetInitialPullDelay(initialPullDelay.MilliSeconds());
-    storageConfig.SetVolumeBalancerAutoWarningEnabled(autoWarningEnabled);
 
-    return std::make_shared<TStorageConfig>(storageConfig, std::move(featuresConfig));
+    return std::make_shared<TStorageConfig>(
+        std::move(storageConfig),
+        std::move(featuresConfig));
 };
 
 NFeatures::TFeaturesConfigPtr CreateFeatureConfig(
@@ -774,13 +774,16 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 
     Y_UNIT_TEST(ShouldOnlyPullVolumesInWarningState)
     {
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeBalancerAutoWarningEnabled(true);
+        config.SetVolumeBalancerWarningSampleCount(2);
         auto storageConfig = CreateStorageConfig(
             NProto::PREEMPTION_MOVE_MOST_HEAVY,
             /*volumeBalancerEnabled=*/true,
             70,
             /*featuresConfig=*/nullptr,
             InitialPullDelay,
-            /*autoWarningEnabled=*/true);
+            std::move(config));
 
         TVolumeBalancerState state(
             storageConfig,
@@ -826,13 +829,16 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 
     Y_UNIT_TEST(ShouldTurnIntoWarningStateIfPreemptedVolumeSuffers)
     {
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeBalancerAutoWarningEnabled(true);
+        config.SetVolumeBalancerWarningSampleCount(2);
         auto storageConfig = CreateStorageConfig(
             NProto::PREEMPTION_MOVE_MOST_HEAVY,
             /*volumeBalancerEnabled=*/true,
             70,
             /*featuresConfig=*/nullptr,
             InitialPullDelay,
-            /*autoWarningEnabled=*/true);
+            std::move(config));
 
         TVolumeBalancerState state(
             storageConfig,

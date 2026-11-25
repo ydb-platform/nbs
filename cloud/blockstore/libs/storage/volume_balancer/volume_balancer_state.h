@@ -24,6 +24,17 @@ namespace NCloud::NBlockStore::NStorage {
 
 class TVolumeBalancerState
 {
+    struct TSufferStatistics
+    {
+        ui32 SufferCountSum = 0;
+        ui32 NumSamples = 0;
+
+        void Add(ui32 sufferCount);
+        void Reset();
+
+        [[nodiscard]] ui32 GetMeanValue() const;
+    };
+
     struct TVolumeInfo
     {
         TString CloudId;
@@ -44,6 +55,8 @@ class TVolumeBalancerState
         // Estimated time to process the reported load statistics with the
         // configured read/write IOPS and bandwidth
         std::optional<TDuration> Cost;
+
+        TSufferStatistics SufferStatistics;
 
         TVolumeInfo(TDuration pullInterval);
     };
@@ -106,10 +119,7 @@ public:
         VolumesInProgress.emplace(std::move(volume));
     }
 
-    void SetVolumeInProgressCompleted(TString volume)
-    {
-        VolumesInProgress.erase(std::move(volume));
-    }
+    void SetVolumeInProgressCompleted(const TString& volume);
 
     auto GetVolumesInProgressCount() const
     {
@@ -122,9 +132,7 @@ private:
     void RenderConfig(TStringStream& out) const;
     void RenderState(TStringStream& out) const;
 
-    bool HasSufferingPreemptedVolume(
-        const TVector<NProto::TVolumeBalancerDiskStats>& stats,
-        const TPerfGuaranteesMap& perfMap) const;
+    bool HasSufferingPreemptedVolume() const;
 
     void UpdateVolumeToPush();
     void UpdateVolumeToPull(TInstant now);

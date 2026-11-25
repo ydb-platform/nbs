@@ -814,7 +814,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(VolumeBalancerEnabled,                      bool,       false         )\
     xxx(VolumeBalancerAutoWarningEnabled,           bool,       false         )\
     xxx(VolumeBalancerSufferCountThreshold,         ui32,       10            )\
-    xxx(VolumeBalancerWarningSampleCount,           ui32,       4             )\
+    xxx(VolumeBalancerWarningSampleCount,           ui32,       20            )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on

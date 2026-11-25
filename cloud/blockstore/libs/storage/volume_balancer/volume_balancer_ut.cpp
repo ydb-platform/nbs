@@ -83,10 +83,9 @@ NProto::TVolumeBalancerDiskStats CreateVolumeStats(
 
 class TVolumeBalancerConfigBuilder
 {
-private:
+public:
     NProto::TStorageServiceConfig StorageConfig;
 
-public:
     TVolumeBalancerConfigBuilder& WithType(NProto::EVolumePreemptionType mode)
     {
         StorageConfig.SetVolumePreemptionType(mode);
@@ -108,13 +107,6 @@ public:
     TVolumeBalancerConfigBuilder& WithEnabled(bool enabled)
     {
         StorageConfig.SetVolumeBalancerEnabled(enabled);
-        return *this;
-    }
-
-    TVolumeBalancerConfigBuilder& WithVolumeBalancerAutoWarningEnabled(
-        bool enabled)
-    {
-        StorageConfig.SetVolumeBalancerAutoWarningEnabled(enabled);
         return *this;
     }
 
@@ -1062,7 +1054,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
     {
         TVolumeBalancerTestEnv testEnv;
         TVolumeBalancerConfigBuilder config;
-        config.WithVolumeBalancerAutoWarningEnabled(true);
+        config.StorageConfig.SetVolumeBalancerAutoWarningEnabled(true);
+        config.StorageConfig.SetVolumeBalancerWarningSampleCount(2);
 
         const auto initialPullDelay = UpdateCountersInterval * 2;
 
@@ -1103,7 +1096,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             {});
         testEnv.DispatchEvents();
 
-        auto pollPreemptedVolume = [&](TMaybe<EChangeBindingOp> expected)
+        auto pollPreemptedVolume = [&](double cpuWait,
+                                       TMaybe<EChangeBindingOp> expected)
         {
             return RunState(
                 testEnv,
@@ -1115,14 +1109,14 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
                     {.DiskId = "vol1", .IsLocal = true},
                 },
                 {{"vol0", 15}, {"vol1", 1}},
-                1,
+                cpuWait,
                 expected,
                 UpdateCountersInterval);
         };
 
-        pollPreemptedVolume({});
-        UNIT_ASSERT_VALUES_EQUAL(1, warningCounter->Val());
-        pollPreemptedVolume({});
+        pollPreemptedVolume(/*cpuWait=*/0, {});
+        UNIT_ASSERT_VALUES_EQUAL(0, warningCounter->Val());
+        pollPreemptedVolume(/*cpuWait=*/1, {});
         UNIT_ASSERT_VALUES_EQUAL(1, warningCounter->Val());
 
         auto setStatus = [&](EBalancerStatus status)
@@ -1138,7 +1132,9 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             response->Record.GetOpStatus());
         UNIT_ASSERT_VALUES_EQUAL(0, warningCounter->Val());
 
-        auto diskId2 = pollPreemptedVolume(EChangeBindingOp::ACQUIRE_FROM_HIVE);
+        auto diskId2 = pollPreemptedVolume(
+            /*cpuWait=*/1,
+            EChangeBindingOp::ACQUIRE_FROM_HIVE);
         UNIT_ASSERT_VALUES_EQUAL("vol0", diskId2);
         UNIT_ASSERT_VALUES_EQUAL(1, warningCounter->Val());
 
