@@ -407,6 +407,9 @@ TResultOrError<TVector<ui32>> TReadBlobActor::CopyReadResultToSglist(
 {
     size_t sglistIndex = 0;
     TVector<ui32> blockChecksums;
+    if (ShouldCalculateChecksums) {
+        blockChecksums.reserve(blockOffsets.size());
+    }
 
     for (auto& response: responses) {
         STORAGE_VERIFY(
@@ -425,7 +428,9 @@ TResultOrError<TVector<ui32>> TReadBlobActor::CopyReadResultToSglist(
                 PartitionTabletId);
 
             void* to = const_cast<char*>(sglist[sglistIndex].Data());
-            if (ShouldCalculateChecksums) {
+            if (ShouldCalculateChecksums &&
+                iter.ContiguousSize() < BlockSize)
+            {
                 auto block = TString::Uninitialized(BlockSize);
                 iter.ExtractPlainDataAndAdvance(block.begin(), BlockSize);
                 blockChecksums.push_back(
@@ -433,6 +438,12 @@ TResultOrError<TVector<ui32>> TReadBlobActor::CopyReadResultToSglist(
 
                 memcpy(to, block.data(), BlockSize);
             } else {
+                if (ShouldCalculateChecksums) {
+                    // The client can modify the destination concurrently.
+                    blockChecksums.push_back(
+                        ComputeDefaultDigest(
+                            {iter.ContiguousData(), BlockSize}));
+                }
                 iter.ExtractPlainDataAndAdvance(to, BlockSize);
             }
             ++sglistIndex;

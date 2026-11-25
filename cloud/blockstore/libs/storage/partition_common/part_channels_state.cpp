@@ -314,15 +314,12 @@ void TPartitionChannelsState::EnqueueIORequest(
     ui64 bsGroupOperationId,
     ui32 group,
     TBSGroupOperationTimeTracker::EOperationType operationType,
-    ui32 blockSize)
+    ui32 blockSize, bool useSameMailbox)
 {
     auto& ch = GetChannel(channel);
     ch.IORequests.emplace_back(
         std::move(requestActor),
-        bsGroupOperationId,
-        group,
-        operationType,
-        blockSize);
+        bsGroupOperationId, group, operationType, blockSize, useSameMailbox);
     ++ch.IORequestsQueued;
 }
 

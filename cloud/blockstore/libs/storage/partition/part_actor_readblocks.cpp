@@ -1280,8 +1280,7 @@ void TPartitionActor::CompleteReadBlocks(
     }
 
     if (describeBlocksRange.Defined() || requests) {
-        const auto readBlocksActorId = NCloud::Register<TReadBlocksActor>(
-            ctx,
+        auto readBlocksActor = std::make_unique<TReadBlocksActor>(
             VolumeLabels,
             args.RequestInfo,
             BlockDigestGenerator,
@@ -1298,6 +1297,15 @@ void TPartitionActor::CompleteReadBlocks(
             std::move(requests),
             std::move(args.BlockInfos),
             describeBlocksRange.Defined());
+        // A single-block worker does little CPU work. Keep its event exchanges
+        // with the partition on the same mailbox to avoid extra scheduling.
+        const auto readBlocksActorId = args.ReadRange.Size() == 1
+                                           ? NCloud::RegisterLocal(
+                                                 ctx,
+                                                 std::move(readBlocksActor))
+                                           : NCloud::Register(
+                                                 ctx,
+                                                 std::move(readBlocksActor));
         Actors.Insert(readBlocksActorId);
 
         if (describeBlocksRange.Defined()) {

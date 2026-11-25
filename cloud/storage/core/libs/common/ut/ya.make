@@ -35,6 +35,7 @@ SRCS(
     scheduler_ut.cpp
     scoped_handle_ut.cpp
     sglist_iter_ut.cpp
+    sglist_checksums_ut.cpp
     sglist_ut.cpp
     simple_template_ut.cpp
     thread_pool_ut.cpp

@@ -7,8 +7,8 @@
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
+#include <cloud/blockstore/libs/storage/partition_common/blob_buffer.h>
 
-#include <cloud/storage/core/libs/common/block_buffer.h>
 #include <cloud/storage/core/libs/common/guarded_sglist.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
@@ -57,7 +57,7 @@ struct TRangeCompactionInfo
     TVector<std::optional<ui32>> BlockChecksums;
     const EChannelDataKind ChannelDataKind;
 
-    TGuardedBuffer<TBlockBuffer> BlobContent;
+    TGuardedBuffer<TBlobBuffer> BlobContent;
     TVector<ui32> ZeroBlocks;
     TAffectedBlobs AffectedBlobs;
     TAffectedBlocks AffectedBlocks;
@@ -79,7 +79,7 @@ struct TRangeCompactionInfo
             ui32 mixedBlockCountSkippedByCompaction,
             TVector<std::optional<ui32>> blockChecksums,
             EChannelDataKind channelDataKind,
-            TBlockBuffer blobContent,
+            TBlobBuffer blobContent,
             TVector<ui32> zeroBlocks,
             TAffectedBlobs affectedBlobs,
             TAffectedBlocks affectedBlocks,

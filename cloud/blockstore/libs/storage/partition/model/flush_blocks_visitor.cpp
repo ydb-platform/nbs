@@ -77,12 +77,11 @@ bool TFlushBlocksVisitor::Visit(const TFreshBlock& block)
             MaxBlobRangeSize / BlockSize)
         {
             FlushBlob(
-                std::move(BlobContent),
+                true,
                 std::move(Blocks),
                 std::move(Checksums));
         }
 
-        BlobContent.AddBlock({block.Content.data(), block.Content.size()});
         Blocks.emplace_back(
             block.Meta.BlockIndex,
             block.Meta.CommitId,
@@ -95,13 +94,11 @@ bool TFlushBlocksVisitor::Visit(const TFreshBlock& block)
 
         if (checksumsEnabled) {
             Checksums.resize(Blocks.size());
-            Checksums[Blocks.size() - 1] =
-                ComputeDefaultDigest(BlobContent.GetBlocks().back());
         }
 
         if (Blocks.size() == MaxBlocksInBlob) {
             FlushBlob(
-                std::move(BlobContent),
+                true,
                 std::move(Blocks),
                 std::move(Checksums));
         }
@@ -130,7 +127,7 @@ void TFlushBlocksVisitor::Finish()
     const size_t dataSize = Blocks.size() * BlockSize;
     if (Blocks && (!Blobs || dataSize >= FlushBlobSizeThreshold)) {
         FlushBlob(
-            std::move(BlobContent),
+            true,
             std::move(Blocks),
             std::move(Checksums));
     }
@@ -153,10 +150,18 @@ ui8 TFlushBlocksVisitor::CalculateCompactionRangeCount(
 }
 
 void TFlushBlocksVisitor::AppendDataBlob(
-    TBlockBuffer blobContent,
+    bool hasData,
     TVector<TBlock> blocks,
     TVector<ui32> checksums)
 {
+    TBlobBuffer blobContent{TProfilingAllocator::Instance()};
+    if (hasData) {
+        blobContent = TBlobBuffer::Allocate(
+            BlockSize,
+            static_cast<ui32>(blocks.size()),
+            TProfilingAllocator::Instance());
+    }
+
     const ui8 compactionRangeCount =
         ReadBlockMaskOnCompactionOptimizationEnabled
             ? CalculateCompactionRangeCount(blocks)
@@ -170,11 +175,11 @@ void TFlushBlocksVisitor::AppendDataBlob(
 
 void TFlushBlocksVisitor::FlushZeroBlob(TVector<TBlock> blocks)
 {
-    FlushBlob({}, std::move(blocks), {});
+    FlushBlob(false, std::move(blocks), {});
 }
 
 void TFlushBlocksVisitor::FlushBlob(
-    TBlockBuffer blobContent,
+    bool hasData,
     TVector<TBlock> blocks,
     TVector<ui32> checksums)
 {
@@ -184,7 +189,7 @@ void TFlushBlocksVisitor::FlushBlob(
         !ReadBlockMaskOnCompactionOptimizationEnabled)
     {
         AppendDataBlob(
-            std::move(blobContent),
+            hasData,
             std::move(blocks),
             std::move(checksums));
         return;
@@ -205,7 +210,7 @@ void TFlushBlocksVisitor::FlushBlob(
             if ((range.End - range.Start) * BlockSize < WriteBlobSizeThreshold)
             {
                 AppendDataBlob(
-                    std::move(blobContent),
+                    hasData,
                     std::move(blocks),
                     std::move(checksums));
                 return;
@@ -215,31 +220,16 @@ void TFlushBlocksVisitor::FlushBlob(
 
     if (!splitByCompactionBorders || compactionRangeCount == 1) {
         AppendDataBlob(
-            std::move(blobContent),
+            hasData,
             std::move(blocks),
             std::move(checksums));
         return;
     }
 
-    const auto& dataRefs = blobContent.GetBlocks();
-    STORAGE_VERIFY_C(
-        (dataRefs.size() == blocks.size()) || (!dataRefs),
-        TWellKnownEntityTypes::TABLET,
-        TabletId,
-        "dataRefs.size(): " << dataRefs.size()
-                            << ", blocks.size(): " << blocks.size());
-
     for (const auto& [start, end]: blocksByRanges) {
         TVector<TBlock> pieceBlocks(
             blocks.begin() + start,
             blocks.begin() + end);
-
-        TBlockBuffer pieceBuf{TProfilingAllocator::Instance()};
-        if (dataRefs) {
-            for (size_t i = start; i < end; ++i) {
-                pieceBuf.AddBlock(dataRefs[i]);
-            }
-        }
 
         TVector<ui32> pieceChecksums;
         if (checksums) {
@@ -252,7 +242,7 @@ void TFlushBlocksVisitor::FlushBlob(
         }
 
         AppendDataBlob(
-            std::move(pieceBuf),
+            hasData,
             std::move(pieceBlocks),
             std::move(pieceChecksums));
     }
@@ -268,6 +258,66 @@ ui32 TFlushBlocksVisitor::GetBlobRangeSize(
         return blockIndex - firstBlockIndex;
     }
     return 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TFlushBlocksMaterializer::TFlushBlocksMaterializer(
+        ui32 blockSize,
+        TVector<TFlushBlocksVisitor::TBlob>& blobs)
+    : BlockSize(blockSize)
+    , Blobs(blobs)
+{
+    SkipZeroBlobs();
+}
+
+bool TFlushBlocksMaterializer::Visit(const TFreshBlock& block)
+{
+    if (!block.Content) {
+        return true;
+    }
+
+    if (BlobIndex == Blobs.size()) {
+        return false;
+    }
+
+    auto& blob = Blobs[BlobIndex];
+    const size_t blockOffset = blob.BlobContent.GetBlocksCount();
+    Y_ABORT_UNLESS(blockOffset < blob.Blocks.size());
+    const auto& expected = blob.Blocks[blockOffset];
+    Y_ABORT_UNLESS(
+        block.Meta == expected &&
+        block.Meta.IsStoredInDb == expected.IsStoredInDb);
+    Y_ABORT_UNLESS(block.Content.size() == BlockSize);
+
+    // AddBlock copies into the preallocated final position. Compute the CRC
+    // from that destination, never from the borrowed source after this call.
+    blob.BlobContent.AddBlock({block.Content.data(), block.Content.size()});
+    if (blockOffset < blob.Checksums.size()) {
+        blob.Checksums[blockOffset] =
+            ComputeDefaultDigest(blob.BlobContent.GetBlock(blockOffset));
+    }
+
+    if (blob.BlobContent.GetBlocksCount() == blob.Blocks.size()) {
+        ++BlobIndex;
+        SkipZeroBlobs();
+    }
+
+    return BlobIndex != Blobs.size();
+}
+
+void TFlushBlocksMaterializer::Finish() const
+{
+    Y_ABORT_UNLESS(BlobIndex == Blobs.size());
+}
+
+void TFlushBlocksMaterializer::SkipZeroBlobs()
+{
+    while (BlobIndex < Blobs.size() &&
+           !Blobs[BlobIndex].BlobContent.IsContiguous())
+    {
+        ++BlobIndex;
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
