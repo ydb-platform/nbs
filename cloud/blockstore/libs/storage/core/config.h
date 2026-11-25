@@ -84,13 +84,9 @@ public:
     // value even when ICB already shows the new default.
     void UpdateDefaults(const NProto::TStorageServiceConfig& config);
 
-    // Return a valid ICB override for a known read-write field. An empty result
-    // means no usable override; use the configuration proto or compiled
-    // default.
-    std::optional<i64> GetOverride(TStringBuf name) const;
-
-    // Return an explicit override with its validation result, including invalid
-    // enum values; return empty for an unknown field or no override.
+    // Return ICB override for a known read-write field with its validation
+    // result, including invalid enum values; return empty for an unknown field
+    // or no override.
     std::optional<TOverrideInfo> GetOverrideInfo(TStringBuf name) const;
 
 private:

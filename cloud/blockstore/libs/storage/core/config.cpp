@@ -1308,13 +1308,6 @@ void TStorageConfigControls::UpdateDefaults(
 #undef BLOCKSTORE_CONFIG_UPDATE_DEFAULT
 }
 
-std::optional<i64> TStorageConfigControls::GetOverride(TStringBuf name) const
-{
-    const auto info = GetOverrideInfo(name);
-    return (info && info->IsValid) ? std::optional<i64>(info->Value)
-                                   : std::nullopt;
-}
-
 // Capture an override and its validation result using the field's declared
 // type.
 std::optional<TStorageConfigControls::TOverrideInfo>
