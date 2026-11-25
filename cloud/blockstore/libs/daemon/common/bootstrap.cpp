@@ -1122,6 +1122,8 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(GetTraceServiceClient());
     START_COMMON_COMPONENT(RdmaRequestServer);
     START_COMMON_COMPONENT(RdmaTarget);
+    START_COMMON_COMPONENT(IcV2AddressResolver);
+    START_COMMON_COMPONENT(IcV2Service);
     START_COMMON_COMPONENT(CellManager);
     START_COMMON_COMPONENT(LongRunningTaskExecutor);
     START_COMMON_COMPONENT(LocalNVMeDeviceProvider);
@@ -1191,7 +1193,9 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(LocalNVMeService);
     STOP_COMMON_COMPONENT(LocalNVMeDeviceProvider);
     STOP_COMMON_COMPONENT(LongRunningTaskExecutor);
+    STOP_COMMON_COMPONENT(IcV2Service);
     STOP_COMMON_COMPONENT(CellManager);
+    STOP_COMMON_COMPONENT(IcV2AddressResolver);
     STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaRequestServer);
     STOP_COMMON_COMPONENT(GetTraceServiceClient());

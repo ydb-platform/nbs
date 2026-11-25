@@ -100,6 +100,8 @@ protected:
     IBlockDigestGeneratorPtr BlockDigestGenerator;
     IBlockStorePtr Service;
     NCells::ICellManagerPtr CellManager;
+    IStartablePtr IcV2AddressResolver;
+    IStartablePtr IcV2Service;
     ISocketEndpointListenerPtr GrpcEndpointListener;
     NVhost::IServerPtr VhostServer;
     NVhost::TVhostCallbacks VhostCallbacks;

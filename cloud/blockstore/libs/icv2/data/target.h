@@ -17,12 +17,9 @@ namespace NCloud::NBlockStore::NIcV2 {
 // not start or stop them. Stop waits for accepted work.
 // Queued requests fail if the target is gone when execution starts.
 // Started storage operations keep their resources alive and finish normally.
-struct IDataTarget
+struct IDataTarget: public NCloud::NIcV2::IRequestChannelHandler
 {
-    virtual ~IDataTarget();
-
-    // Replies with the result; returns without waiting for storage completion.
-    virtual void HandleRequest(NCloud::NIcV2::IIncomingRequestPtr request) = 0;
+    ~IDataTarget() override;
 
     // Rejects new work without waiting or cancelling storage operations.
     // Safe to call from callbacks.

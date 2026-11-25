@@ -1,4 +1,5 @@
 RECURSE(
+    actors
     handshake
     peer
     request_channel

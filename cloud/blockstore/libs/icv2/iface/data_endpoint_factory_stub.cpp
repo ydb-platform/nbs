@@ -4,6 +4,9 @@
 
 namespace NCloud::NBlockStore::NIcV2 {
 
+using NCloud::NIcV2::EPeerState;
+using NCloud::NIcV2::TPeerStatus;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace {
@@ -27,12 +30,11 @@ public:
             "IC V2 data transport is unavailable");
     }
 
-    THostChannelStatus GetDataEndpointStatus(
-        const IBlockStorePtr& endpoint) override
+    TPeerStatus GetDataEndpointStatus(const IBlockStorePtr& endpoint) override
     {
         Y_UNUSED(endpoint);
 
-        return {.State = EHostChannelState::Disconnected};
+        return {.State = EPeerState::Disconnected};
     }
 };
 

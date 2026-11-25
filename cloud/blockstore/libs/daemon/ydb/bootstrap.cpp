@@ -24,7 +24,7 @@
 #include <cloud/blockstore/libs/discovery/healthcheck.h>
 #include <cloud/blockstore/libs/discovery/ping.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_events.h>
-#include <cloud/blockstore/libs/icv2/iface/data_endpoint_factory_stub.h>
+#include <cloud/blockstore/libs/icv2/service/service.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kms/iface/compute_client.h>
 #include <cloud/blockstore/libs/kms/iface/key_provider.h>
@@ -76,6 +76,7 @@
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
 #include <cloud/storage/core/libs/io_uring/service.h>
+#include <cloud/storage/core/libs/icv2/actors/address_resolver.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/kikimr/config_dispatcher_helpers.h>
 #include <cloud/storage/core/libs/kikimr/node.h>
@@ -1155,12 +1156,34 @@ void TBootstrapYdb::InitRdmaRequestServer()
 
 void TBootstrapYdb::SetupCellManager()
 {
-    if (BootstrapConfig->CellsConfig->GetCellsEnabled()) {
-        const auto& grpcConfig =
-            BootstrapConfig->CellsConfig->GetGrpcClientConfig();
-        TVector<NCloud::TCertificateFiles> certList {{
+    const auto& cellsConfig = BootstrapConfig->CellsConfig;
+    NIcV2::IServicePtr icV2Service;
+    if (cellsConfig->GetIcV2Config().GetEnabled()) {
+        auto resolver = NCloud::NIcV2::CreateAddressResolver(
+            ActorSystem,
+            BackgroundThreadPool);
+        IcV2AddressResolver = resolver;
+        auto [service, error] = NIcV2::CreateService(
+            cellsConfig,
+            Service,
+            std::move(resolver),
+            Timer,
+            Scheduler,
+            Logging,
+            Monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "icv2"));
+        Y_ENSURE(
+            !HasError(error),
+            "IC V2 initialization failed: " << FormatError(error));
+        icV2Service = std::move(service);
+    }
+
+    if (cellsConfig->GetCellsEnabled()) {
+        const auto& grpcConfig = cellsConfig->GetGrpcClientConfig();
+        TVector<NCloud::TCertificateFiles> certList{{
             .PrivateKeyPath = grpcConfig.GetCertPrivateKeyFile(),
-            .CertChainPath  = grpcConfig.GetCertFile(),
+            .CertChainPath = grpcConfig.GetCertFile(),
         }};
 
         NCloud::ICertificateProviderPtr cellCertProvider;
@@ -1178,7 +1201,7 @@ void TBootstrapYdb::SetupCellManager()
         }
 
         CellManager = CreateCellManager(
-            BootstrapConfig->CellsConfig,
+            cellsConfig,
             Timer,
             Scheduler,
             Logging,
@@ -1187,8 +1210,9 @@ void TBootstrapYdb::SetupCellManager()
             ServerStats,
             std::move(cellCertProvider),
             RdmaClient,
-            NIcV2::CreateDataEndpointFactoryStub(),
+            icV2Service,
             Service);
+        IcV2Service = std::move(icV2Service);
     } else {
         CellManager = NCells::CreateCellManagerStub(Service);
     }

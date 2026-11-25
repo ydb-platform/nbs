@@ -2,12 +2,11 @@
 
 #include "public.h"
 
-#include "host_connection.h"
-
 #include <cloud/blockstore/libs/service/public.h>
 
 #include <cloud/storage/core/libs/common/endpoint_handler.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/icv2/peer/peer.h>
 
 #include <util/generic/string.h>
 
@@ -34,7 +33,7 @@ struct IDataEndpointFactory
         IClientEndpointHandlerPtr handler) = 0;
 
     // Pass an endpoint created by this factory.
-    virtual THostChannelStatus GetDataEndpointStatus(
+    virtual NCloud::NIcV2::TPeerStatus GetDataEndpointStatus(
         const IBlockStorePtr& endpoint) = 0;
 };
 

@@ -36,7 +36,6 @@ using NCloud::NIcV2::CreateRequestChannel;
 using NCloud::NIcV2::IIncomingRequest;
 using NCloud::NIcV2::IIncomingRequestPtr;
 using NCloud::NIcV2::IRequestChannel;
-using NCloud::NIcV2::IRequestChannelHandler;
 using NCloud::NIcV2::IRequestChannelPtr;
 using NCloud::NIcV2::TRequestChannelConfig;
 using NCloud::NIcV2::TResponseFuture;
@@ -493,23 +492,6 @@ struct TFixture
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDataRequestHandler final: public IRequestChannelHandler
-{
-    const IDataTargetPtr Target;
-
-public:
-    explicit TDataRequestHandler(IDataTargetPtr target)
-        : Target(std::move(target))
-    {}
-
-    void HandleRequest(IIncomingRequestPtr request) override
-    {
-        Target->HandleRequest(std::move(request));
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TNetworkFixture
 {
     std::array<TFixture, 2> Peers;
@@ -598,7 +580,7 @@ struct TNetworkFixture
                 Peers[i].Timer,
                 std::make_shared<TTestScheduler>(),
                 Completions,
-                std::make_shared<TDataRequestHandler>(Peers[i].Target));
+                Peers[i].Target);
             UNIT_ASSERT_C(!HasError(error), FormatError(error));
             Channels[i] = std::move(channel);
             Endpoints[i] = CreateDataEndpoint(
