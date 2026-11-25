@@ -149,7 +149,7 @@ NProto::TVolumeThrottlingRule GetThrottlingRuleForVolume(
     const TString& folderId,
     const NProto::EStorageMediaKind& mediaKind)
 {
-    const NProto::TVolumeThrottlingRule* resultPtr = nullptr;
+    const NProto::TVolumeThrottlingRule* firstMatchingFilter = nullptr;
 
     for (const auto& rule: rules) {
         switch (rule.GetSelectorCase()) {
@@ -159,15 +159,14 @@ NProto::TVolumeThrottlingRule GetThrottlingRuleForVolume(
                 }
                 break;
             case NProto::TVolumeThrottlingRule::kFilter:
-                if (!resultPtr &&
-                    DiskFilterApplies(
-                        rule.GetFilter(),
-                        cloudId,
-                        folderId,
-                        mediaKind))
+                if (!firstMatchingFilter && DiskFilterApplies(
+                                                rule.GetFilter(),
+                                                cloudId,
+                                                folderId,
+                                                mediaKind))
                 {
                     // Pointer is used to avoid copying here
-                    resultPtr = &rule;
+                    firstMatchingFilter = &rule;
                 }
                 break;
             default:
@@ -175,7 +174,8 @@ NProto::TVolumeThrottlingRule GetThrottlingRuleForVolume(
         }
     }
 
-    return resultPtr ? *resultPtr : NProto::TVolumeThrottlingRule{};
+    return firstMatchingFilter ? *firstMatchingFilter
+                               : NProto::TVolumeThrottlingRule{};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
