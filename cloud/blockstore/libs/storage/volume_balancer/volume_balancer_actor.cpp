@@ -145,7 +145,8 @@ TVolumeBalancerActor::TVolumeBalancerActor(
     IVolumeStatsPtr volumeStats,
     NCloud::NStorage::IStatsFetcherPtr statsFetcher,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch,
-    TActorId serviceActorId)
+    TActorId serviceActorId,
+    ILoggingServicePtr logging)
     : StorageConfig(std::move(storageConfig))
     , VolumeStats(std::move(volumeStats))
     , StatsFetcher(std::move(statsFetcher))
@@ -154,7 +155,8 @@ TVolumeBalancerActor::TVolumeBalancerActor(
           std::make_unique<TVolumeBalancerState>(
               StorageConfig,
               std::move(diagnosticsConfig),
-              std::move(volumeBalancerSwitch)))
+              std::move(volumeBalancerSwitch),
+              std::move(logging)))
 {}
 
 void TVolumeBalancerActor::Bootstrap(const TActorContext& ctx)

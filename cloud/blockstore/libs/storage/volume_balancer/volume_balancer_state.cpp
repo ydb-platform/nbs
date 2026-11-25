@@ -30,11 +30,13 @@ TVolumeBalancerState::TVolumeInfo::TVolumeInfo(TDuration pullInterval)
 TVolumeBalancerState::TVolumeBalancerState(
     TStorageConfigPtr storageConfig,
     TDiagnosticsConfigPtr diagnosticsConfig,
-    IVolumeBalancerSwitchPtr volumeBalancerSwitch)
+    IVolumeBalancerSwitchPtr volumeBalancerSwitch,
+    const ILoggingServicePtr& logging)
     : StorageConfig(std::move(storageConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PullDelayResetTimespan(StorageConfig->GetInitialPullDelay())
     , VolumeBalancerSwitch(std::move(volumeBalancerSwitch))
+    , Log(logging->CreateLog("BLOCKSTORE_VOLUME_BALANCER"))
 {}
 
 void TVolumeBalancerState::UpdateVolumeStats(
@@ -50,6 +52,9 @@ void TVolumeBalancerState::UpdateVolumeStats(
         HasSufferingPreemptedVolume(stats, perfMap))
     {
         Status = NPrivateProto::EBalancerOpStatus::WARNING;
+        STORAGE_WARN(
+            "Some of preempted volumes suffers: Volume balancer has been "
+            "switched to WARNING state");
     }
 
     // Push the volume, if balancer is in ENABLE state and if the CPU is in

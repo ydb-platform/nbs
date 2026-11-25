@@ -55,7 +55,8 @@ public:
         IVolumeStatsPtr volumeStats,
         NCloud::NStorage::IStatsFetcherPtr statsFetcher,
         IVolumeBalancerSwitchPtr volumeBalancerSwitch,
-        NActors::TActorId serviceActorId);
+        NActors::TActorId serviceActorId,
+        ILoggingServicePtr logging);
 
     TVolumeBalancerActor() = default;
 

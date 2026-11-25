@@ -8,7 +8,7 @@
 #include <cloud/blockstore/private/api/protos/balancer.pb.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
-
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 
 #include <contrib/ydb/core/tablet/tablet_metrics.h>
@@ -71,12 +71,14 @@ private:
     TDuration PullDelayResetTimespan;
 
     IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
+    TLog Log;
 
 public:
     TVolumeBalancerState(
         TStorageConfigPtr storageConfig,
         TDiagnosticsConfigPtr diagnosticsConfig,
-        IVolumeBalancerSwitchPtr volumeBalancerSwitch);
+        IVolumeBalancerSwitchPtr volumeBalancerSwitch,
+        const ILoggingServicePtr& logging);
 
     TString GetVolumeToPush() const;
     TString GetVolumeToPull() const;
