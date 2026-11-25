@@ -51,21 +51,21 @@ class VirtioFsServer:
     def start(self, output_path, tag):
         # Keep the export symlink out of collected test artifacts; reuse state
         # when restarting the same socket during migration.
-        state = Path(common.work_path("virtiofs-state-" + hashlib.sha256(
+        statePath = Path(common.work_path("virtiofs-state-" + hashlib.sha256(
             os.path.abspath(self.socket_path).encode()).hexdigest()[:16]))
         shared = Path(self.fspath).resolve(strict=True)
         if not shared.is_dir():
             raise ValueError("shared directory is not a directory: {}".format(shared))
         paths = ("root", "sessions", "endpoints", "handles", "cache", "directories")
         for name in paths:
-            (state / name).mkdir(parents=True, exist_ok=True)
-        export = state / "root" / "nfs_shared"
+            (statePath / name).mkdir(parents=True, exist_ok=True)
+        export = statePath / "root" / "nfs_shared"
         if export.is_symlink():
             if export.resolve() != shared:
                 raise ValueError("socket state belongs to another shared directory")
         else:
             export.symlink_to(shared, target_is_directory=True)
-        config = state / "vhost.txt"
+        config = statePath / "vhost.txt"
         config.write_text('''VhostServiceConfig {
   ServiceEndpoints {}
   LocalServiceConfig {
@@ -81,7 +81,7 @@ class VirtioFsServer:
   DirectoryHandlesStoragePath: %(directories)s
   DirectoryHandlesInitialDataSize: 1048576
 }
-''' % {name: json.dumps(str(state / name)) for name in paths})
+''' % {name: json.dumps(str(statePath / name)) for name in paths})
         with PortManager() as ports:
             endpoint_port = ports.get_port()
             self.local_port = ports.get_port()
