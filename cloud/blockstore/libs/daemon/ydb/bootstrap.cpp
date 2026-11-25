@@ -137,11 +137,11 @@ void LogIgnoredDynamicFields(
 // Report startup section issues through the bootstrap log, describe each
 // rejected section's static fallback, and return the rejection reasons.
 TString ReportStartupConfigSectionsIssues(
-    const TConfigSectionsUpdateIssues& updateIssues,
+    const TConfigSectionsUpdateReport& report,
     TLog& Log)
 {
     TString rejectedSectionsReason;
-    for (const auto& section: updateIssues.Sections) {
+    for (const auto& section: report.Sections) {
         // Log compatible skips independently of a possible section rejection.
         for (const auto& issue: section.Issues) {
             STORAGE_WARN(issue);
@@ -703,10 +703,10 @@ void TBootstrapYdb::InitKikimrService()
                     << ". Starting without dynamic PrivateDatabaseConfig.");
             } else {
                 try {
-                    const auto updateIssues =
+                    const auto report =
                         PrepareDynamicConfigSectionsUpdate(config, nullptr);
                     startupRejectedSectionsReason =
-                        ReportStartupConfigSectionsIssues(updateIssues, Log);
+                        ReportStartupConfigSectionsIssues(report, Log);
                     cmsBlockstoreConfig = std::move(config);
                 } catch (...) {
                     ReportDynamicConfigError(

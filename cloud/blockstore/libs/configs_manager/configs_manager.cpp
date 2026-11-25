@@ -63,11 +63,11 @@ void LogIgnoredDynamicFields(
 
 // Report each section's issues and collect every rejection for monitoring.
 TString ReportConfigSectionsIssues(
-    const TConfigSectionsUpdateIssues& updateIssues,
+    const TConfigSectionsUpdateReport& report,
     const TActorContext& ctx)
 {
     TString rejectedSectionsReason;
-    for (const auto& section: updateIssues.Sections) {
+    for (const auto& section: report.Sections) {
         // Keep nonfatal skips visible even if another rule rejects the section.
         for (const auto& issue: section.Issues) {
             LOG_WARN_S(ctx, TBlockStoreComponents::CONFIGS_MANAGER, issue);
@@ -472,7 +472,7 @@ void TConfigsManagerActor::Handle(
     NProto::TBlockstoreConfig newDynamicConfig;
     NConfig::TConfigPreparationDiagnostics diagnostics;
     IBlockstoreConfigMutablePtr newConfig;
-    TConfigSectionsUpdateIssues updateIssues;
+    TConfigSectionsUpdateReport report;
     TString rejectedSectionsReason;
 
     // Prepare the complete update before changing the publication or live
@@ -499,7 +499,7 @@ void TConfigsManagerActor::Handle(
                 return;
             }
 
-            updateIssues =
+            report =
                 PrepareDynamicConfigSectionsUpdate(config, &DynamicConfig);
             newDynamicConfig = std::move(config);
         }
@@ -513,8 +513,7 @@ void TConfigsManagerActor::Handle(
                 TBlockStoreComponents::CONFIGS_MANAGER,
                 "PrivateDatabaseConfig is unchanged; skipping publication");
 
-            rejectedSectionsReason =
-                ReportConfigSectionsIssues(updateIssues, ctx);
+            rejectedSectionsReason = ReportConfigSectionsIssues(report, ctx);
 
             UpdateRendererOnUnchangedConfig(
                 ev,
@@ -543,7 +542,7 @@ void TConfigsManagerActor::Handle(
             StorageConfigControls,
             GetBlockstoreConfigExtraParameters(*currentConfig),
             diagnostics);
-        rejectedSectionsReason = ReportConfigSectionsIssues(updateIssues, ctx);
+        rejectedSectionsReason = ReportConfigSectionsIssues(report, ctx);
     } catch (...) {
         ReportConfigUpdateError(
             TStringBuilder()
@@ -567,7 +566,7 @@ void TConfigsManagerActor::Handle(
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::CONFIGS_MANAGER,
-        (updateIssues.HasRejectedSections()
+        (report.HasRejectedSections()
              ? "Partially accepted PrivateDatabaseConfig"
              : (HasKnownFields(DynamicConfig)
                     ? "Accepted PrivateDatabaseConfig"

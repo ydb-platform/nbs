@@ -81,18 +81,18 @@ void RestoreRejectedSection(
 
 }   // namespace
 
-bool TConfigSectionsUpdateIssues::HasRejectedSections() const
+bool TConfigSectionsUpdateReport::HasRejectedSections() const
 {
     return AnyOf(
         Sections,
         [](const auto& section) { return HasError(section.RejectionError); });
 }
 
-TConfigSectionsUpdateIssues PrepareDynamicConfigSectionsUpdate(
+TConfigSectionsUpdateReport PrepareDynamicConfigSectionsUpdate(
     NProto::TBlockstoreConfig& dynamicConfigCandidate,
     const NProto::TBlockstoreConfig* previousAcceptedDynamicConfig)
 {
-    TConfigSectionsUpdateIssues result;
+    TConfigSectionsUpdateReport report;
 
     // Restore each rejected section before preparing the remaining sections.
     for (const auto& entry: GetConfigSectionUpdaters()) {
@@ -108,10 +108,10 @@ TConfigSectionsUpdateIssues PrepareDynamicConfigSectionsUpdate(
                 entry.FieldNumber);
         }
         if (!section.Issues.empty() || rejected) {
-            result.Sections.push_back(std::move(section));
+            report.Sections.push_back(std::move(section));
         }
     }
-    return result;
+    return report;
 }
 
 void MergeConfigSections(

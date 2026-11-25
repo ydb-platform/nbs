@@ -44,7 +44,7 @@ struct TConfigSectionUpdateIssues
 
 // Diagnostics owned by one preparation call.
 // Sections without issues not included.
-struct TConfigSectionsUpdateIssues
+struct TConfigSectionsUpdateReport
 {
     // Sections with issues or a rejection.
     TVector<TConfigSectionUpdateIssues> Sections;
@@ -57,7 +57,7 @@ struct TConfigSectionsUpdateIssues
 // previousAcceptedDynamicConfig - the last accepted dynamic configuration
 // before merging with static configuration.
 // Pass nullptr at startup; the two inputs must not alias.
-TConfigSectionsUpdateIssues PrepareDynamicConfigSectionsUpdate(
+TConfigSectionsUpdateReport PrepareDynamicConfigSectionsUpdate(
     NProto::TBlockstoreConfig& dynamicConfigCandidate,
     const NProto::TBlockstoreConfig* previousAcceptedDynamicConfig);
 
