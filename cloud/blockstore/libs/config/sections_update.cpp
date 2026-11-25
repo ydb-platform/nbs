@@ -92,6 +92,9 @@ TConfigSectionsUpdateReport PrepareDynamicConfigSectionsUpdate(
     NProto::TBlockstoreConfig& dynamicConfigCandidate,
     const NProto::TBlockstoreConfig* previousAcceptedDynamicConfig)
 {
+    Y_DEBUG_ABORT_UNLESS(
+        &dynamicConfigCandidate != previousAcceptedDynamicConfig);
+
     TConfigSectionsUpdateReport report;
 
     // Restore each rejected section before preparing the remaining sections.
