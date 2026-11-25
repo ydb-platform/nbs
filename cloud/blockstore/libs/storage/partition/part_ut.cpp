@@ -1316,6 +1316,111 @@ protected:
 
 Y_UNIT_TEST_SUITE(TPartitionTest)
 {
+    Y_UNIT_TEST(ShouldPassMergedBlobCompressionMetadataToReaders)
+    {
+        for (bool splitCompactionTx: {false, true}) {
+            auto config = DefaultConfig();
+            config.SetWriteBlobThreshold(1);
+            config.SetBlobPatchingEnabled(true);
+            config.SetCompactionMergedBlobThresholdHDD(1);
+            config.SetSplitCompactionTxEnabled(splitCompactionTx);
+            auto runtime = PrepareTestActorRuntime(config, 2 * MaxBlocksCount);
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            NProto::TCompressionMetadata compressionMetadata;
+            compressionMetadata.SetCodec(
+                NCloud::NProto::COMPRESSION_CODEC_ZSTD_3);
+            compressionMetadata.SetChunkSize(2 * DefaultBlockSize);
+            compressionMetadata.SetLastChunkSize(2 * DefaultBlockSize);
+            compressionMetadata.MutablePlainChunks()->AddCompressedChunkSize(
+                123);
+            ui32 readsWithCompressionMetadata = 0;
+            bool patchSeen = false;
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvAddBlobsRequest)
+                    {
+                        auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvAddBlobsRequest>();
+                        if (msg->Mode == ADD_WRITE_RESULT) {
+                            TVector<TAddMergedBlob> blobs;
+                            for (const auto& blob: msg->MergedBlobs) {
+                                blobs.emplace_back(
+                                    blob.BlobId,
+                                    blob.BlockRange,
+                                    blob.SkipMask,
+                                    blob.Checksums,
+                                    compressionMetadata);
+                            }
+                            msg->MergedBlobs = std::move(blobs);
+                        }
+                    }
+                    if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvReadBlobRequest)
+                    {
+                        auto* msg = event->Get<
+                            TEvPartitionCommonPrivate::TEvReadBlobRequest>();
+                        if (msg->CompressionMetadata) {
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                msg->CompressionMetadata->SerializeAsString(),
+                                compressionMetadata.SerializeAsString());
+                            ++readsWithCompressionMetadata;
+                            // This test checks metadata transport. The writer
+                            // stores plain data; decompression has its own
+                            // tests.
+                            msg->CompressionMetadata.reset();
+                        }
+                    }
+                    patchSeen |= event->GetTypeRewrite() ==
+                                 TEvPartitionCommonPrivate::EvPatchBlobRequest;
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            const auto range = TBlockRange32::WithLength(0, 4);
+            partition.WriteBlocks(range, 'a');
+            partition.RebootTablet();
+            partition.WaitReady();
+            auto response = partition.ReadBlocks(range);
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlocksContent('a', range.Size()),
+                GetBlocksContent(response));
+            UNIT_ASSERT_VALUES_EQUAL(1, readsWithCompressionMetadata);
+
+            readsWithCompressionMetadata = 0;
+            partition.ScanDisk(10);
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvPartitionPrivate::EvScanDiskCompleted);
+            runtime->DispatchEvents(options, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(1, readsWithCompressionMetadata);
+
+            readsWithCompressionMetadata = 0;
+            partition.Compaction(
+                0,
+                TCompactionOptions().set(ToBit(ECompactionOption::Full)));
+            UNIT_ASSERT_VALUES_EQUAL(1, readsWithCompressionMetadata);
+            UNIT_ASSERT(!patchSeen);
+            response = partition.ReadBlocks(range);
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlocksContent('a', range.Size()),
+                GetBlocksContent(response));
+            UNIT_ASSERT_VALUES_EQUAL(1, readsWithCompressionMetadata);
+
+            // Both compaction ranges need the metadata of this single blob.
+            const auto crossingRange =
+                TBlockRange32::WithLength(MaxBlocksCount - 2, 4);
+            partition.WriteBlocks(crossingRange, 'b');
+            readsWithCompressionMetadata = 0;
+            partition.Compaction(
+                TVector<ui32>{crossingRange.Start, crossingRange.End},
+                TCompactionOptions().set(ToBit(ECompactionOption::Full)));
+            UNIT_ASSERT_VALUES_EQUAL(2, readsWithCompressionMetadata);
+        }
+    }
+
     Y_UNIT_TEST(ShouldWaitReady)
     {
         auto runtime = PrepareTestActorRuntime();

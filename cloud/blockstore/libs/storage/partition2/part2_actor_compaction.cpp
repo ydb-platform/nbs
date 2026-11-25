@@ -300,8 +300,8 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
                     req.GroupId,
                     true,               // async
                     readBlobDeadline,   // deadline
-                    false               // shouldCalculateChecksums
-                );
+                    false,              // shouldCalculateChecksums
+                    std::nullopt);
 
             if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
                 LWTRACK(
