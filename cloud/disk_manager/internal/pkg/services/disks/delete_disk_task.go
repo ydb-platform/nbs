@@ -77,8 +77,6 @@ func (t *deleteDiskTask) deleteDisk(
 	}
 
 	// For backward compatibility, use the request zone when the metadata zone is empty.
-	// Older versions of (*storageYDB).deleteDisk in ../../resources/disks.go
-	// wrote tombstones with an empty zone.
 	// TODO: Always use meta.ZoneID once DeleteIfNonExistent has been disabled
 	// and removed everywhere and all tombstones with an empty zone have been cleared.
 	zoneID := requestZoneID
