@@ -481,8 +481,8 @@ void TConfigsManagerActor::Handle(
         if (auto it = request->OpaqueConfigs.find(PrivateDatabaseConfigKind);
             it != request->OpaqueConfigs.end())
         {
-            const std::shared_ptr<const google::protobuf::Message> payload =
-                it->second;
+            const auto& payload = it->second;
+
             if (!payload) {
                 ReportConfigUpdateError(
                     "Internal error: received a null PrivateDatabaseConfig "
