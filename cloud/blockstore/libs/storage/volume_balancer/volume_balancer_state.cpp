@@ -17,7 +17,6 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TDuration MaxPullDelay = TDuration::Hours(24);
-constexpr ui32 SufferCountThreshold = 10;
 
 }   // namespace
 
@@ -47,6 +46,7 @@ void TVolumeBalancerState::UpdateVolumeStats(
     CpuLack = cpuLack;
 
     if (Status == NPrivateProto::EBalancerOpStatus::ENABLE &&
+        StorageConfig->GetVolumeBalancerAutoWarningEnabled() &&
         HasSufferingPreemptedVolume(stats, perfMap))
     {
         Status = NPrivateProto::EBalancerOpStatus::WARNING;
@@ -283,8 +283,11 @@ bool TVolumeBalancerState::HasSufferingPreemptedVolume(
             if (!sufferCount) {
                 return false;
             }
-            return *sufferCount > SufferCountThreshold &&
-                   prevStats->SufferCount > SufferCountThreshold;
+            const ui32 threshold =
+                StorageConfig->GetVolumeBalancerSufferCountThreshold();
+
+            return *sufferCount > threshold &&
+                   prevStats->SufferCount > threshold;
         });
 }
 

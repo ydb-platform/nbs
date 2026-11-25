@@ -1031,6 +1031,10 @@ public:
     [[nodiscard]] bool GetIgnorePartitionCountInMaxBlobsPerRange() const;
 
     [[nodiscard]] bool GetVolumeBalancerEnabled() const;
+
+    [[nodiscard]] bool GetVolumeBalancerAutoWarningEnabled() const;
+    [[nodiscard]] ui32 GetVolumeBalancerSufferCountThreshold() const;
+    [[nodiscard]] ui32 GetVolumeBalancerWarningSampleCount() const;
 };
 
 ui64 GetAllocationUnit(

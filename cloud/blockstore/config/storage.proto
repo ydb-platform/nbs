@@ -1830,4 +1830,16 @@ message TStorageServiceConfig
     // Zero removes the minimum. Hybrid volumes use the HDD value.
     optional uint64 MixedBlocksCompactionMinUsedBytesHDD = 564;
     optional uint64 MixedBlocksCompactionMinUsedBytesSSD = 565;
+
+    // Switch volume balancer to warning state automatically, if any of
+    // preempted volumes suffers.
+    optional bool VolumeBalancerAutoWarningEnabled = 566;
+
+    // The maximum value of SufferCount used to determine that preempted
+    // volume suffers to make a decision about an automatic warning.
+    optional uint32 VolumeBalancerSufferCountThreshold = 567;
+
+    // The number of SufferCount measurements required to make a decision
+    // about an automatic warning.
+    optional uint32 VolumeBalancerWarningSampleCount = 568;
 }
