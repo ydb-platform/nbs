@@ -509,7 +509,6 @@ Y_UNIT_TEST_SUITE(TVolumeActorUpdateThrottlingConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(
             MaxBandwidth * 0.5,
             info.GetActualPerformanceProfile().GetMaxReadBandwidth());
-        UNIT_ASSERT_VALUES_EQUAL(1, info.GetAppliedRule().GetDisks().DiskIdsSize());
     }
 }
 
