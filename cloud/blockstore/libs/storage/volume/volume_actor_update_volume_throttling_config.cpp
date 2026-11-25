@@ -36,7 +36,8 @@ void TVolumeActor::HandleUpdateVolatileThrottlingConfig(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
-            "Ignore throttling config version %u (current version: %u).",
+            "%s Ignore throttling config version %u (current version: %u).",
+            LogTitle.GetWithTime().c_str(),
             incomingVersion,
             currentVersion);
         return;
@@ -47,6 +48,9 @@ void TVolumeActor::HandleUpdateVolatileThrottlingConfig(
         LOG_WARN(
             ctx,
             TBlockStoreComponents::VOLUME,
+            "%s Ignore invalid throttling config version %u: %s",
+            LogTitle.GetWithTime().c_str(),
+            incomingVersion,
             FormatError(error).c_str());
         return;
     }
