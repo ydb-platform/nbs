@@ -178,8 +178,7 @@ type Storage interface {
 
 	GetDiskMeta(ctx context.Context, diskID string) (*DiskMeta, error)
 
-	// Returns the disk being deleted, nil if already deleted, or a
-	// NonCancellableError if the disk has no metadata row.
+	// Returns disk if action has been accepted by storage and nil otherwise.
 	DeleteDisk(
 		ctx context.Context,
 		diskID string,
