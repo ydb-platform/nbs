@@ -522,14 +522,19 @@ void DumpFreshLog(
                 }
             }
             TABLEBODY () {
-                const auto& ordinary = state.GetOrdinaryTrimStats();
+                const auto& ordinary =
+                    state.GetTrimFreshLogStats(ETrimFreshLogKind::Ordinary);
                 TABLER () {
                     TABLED () {
                         out << "<span class='label label-success'>"
                                "Ordinary</span>";
                     }
                     TABLED () {
-                        DumpOperationState(out, ordinary.State, now);
+                        DumpOperationState(
+                            out,
+                            state.GetTrimFreshLogStateOfKind(
+                                ETrimFreshLogKind::Ordinary),
+                            now);
                     }
                     TABLED () {
                         if (deadBlobByteCountTrimThreshold) {
@@ -556,14 +561,19 @@ void DumpFreshLog(
                     }
                 }
 
-                const auto& selective = state.GetSelectiveTrimStats();
+                const auto& selective =
+                    state.GetTrimFreshLogStats(ETrimFreshLogKind::Selective);
                 TABLER () {
                     TABLED () {
                         out << "<span class='label label-warning'>"
                                "Selective</span>";
                     }
                     TABLED () {
-                        DumpOperationState(out, selective.State, now);
+                        DumpOperationState(
+                            out,
+                            state.GetTrimFreshLogStateOfKind(
+                                ETrimFreshLogKind::Selective),
+                            now);
                     }
                     TABLED () {
                         if (selectiveTrimEnabled) {

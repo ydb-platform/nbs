@@ -425,6 +425,88 @@ ui64 TPartitionFreshBlobState::EraseUnflushedFreshBlob(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TOperationState TPartitionTrimFreshLogState::GetTrimFreshLogStateOfKind(
+    ETrimFreshLogKind kind) const
+{
+    if (StartedTrimKind == kind) {
+        return TrimFreshLogState;
+    }
+    return {
+        .Status = EOperationStatus::Idle,
+        .Timestamp = GetTrimFreshLogStats(kind).LastCompletionTimestamp,
+    };
+}
+
+const TTrimFreshLogStats& TPartitionTrimFreshLogState::GetTrimFreshLogStats(
+    ETrimFreshLogKind kind) const
+{
+    Y_ABORT_UNLESS(kind != ETrimFreshLogKind::None);
+    return kind == ETrimFreshLogKind::Selective ? SelectiveTrimStats
+                                                : OrdinaryTrimStats;
+}
+
+void TPartitionTrimFreshLogState::StartTrimFreshLog(
+    ETrimFreshLogKind kind,
+    ui64 trimToCommitId,
+    TInstant now)
+{
+    Y_ABORT_UNLESS(TrimFreshLogState.Status != EOperationStatus::Started);
+    Y_ABORT_UNLESS(kind != ETrimFreshLogKind::None);
+
+    if (kind == ETrimFreshLogKind::Selective) {
+        Y_ABORT_UNLESS(trimToCommitId >= LastSentSelectiveTrimToCommitId);
+        // Set before sending: a failed or timed-out command may still apply,
+        // so every later soft barrier must be at or above its value.
+        LastSentSelectiveTrimToCommitId = trimToCommitId;
+    } else {
+        OrdinaryTrimRequested = false;
+    }
+
+    StartedTrimKind = kind;
+    StartedTrimToCommitId = trimToCommitId;
+    TrimFreshLogState.SetStatus(EOperationStatus::Started, now);
+}
+
+void TPartitionTrimFreshLogState::CompleteTrimFreshLog(
+    bool failed,
+    ui64 trimmedByteCount,
+    TInstant now)
+{
+    Y_ABORT_UNLESS(TrimFreshLogState.Status == EOperationStatus::Started);
+
+    const bool selective = StartedTrimKind == ETrimFreshLogKind::Selective;
+    auto& stats = selective ? SelectiveTrimStats : OrdinaryTrimStats;
+    if (failed) {
+        TrimFreshLogBackoffDelayProvider.IncreaseDelay();
+        ++stats.FailedCount;
+        if (selective) {
+            // Keep LastSentSelectiveTrimToCommitId. The entries stay dead and
+            // untrimmed, so the next scan is due again. It resends Keep for
+            // live blobs in (KeptToCommitId, LastSentSelectiveTrimToCommitId]
+            // and DoNotKeep for dead ones.
+            NextSelectiveScanTotalDeadByteCount = 0;
+        } else {
+            OrdinaryTrimRequested = true;
+        }
+    } else {
+        TrimFreshLogBackoffDelayProvider.Reset();
+        ++stats.SucceededCount;
+        stats.TrimmedByteCount += trimmedByteCount;
+        if (selective) {
+            KeptToCommitId = LastSentSelectiveTrimToCommitId;
+        } else {
+            LastTrimFreshLogToCommitId = StartedTrimToCommitId;
+        }
+    }
+    stats.LastCompletionTimestamp = now;
+
+    StartedTrimKind = ETrimFreshLogKind::None;
+    StartedTrimToCommitId = 0;
+    TrimFreshLogState.SetStatus(EOperationStatus::Idle, now);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TPartitionFreshBlocksState::TPartitionFreshBlocksState(
         const TCommitIdsState& commitIdsState,
         const TPartitionFlushState& flushState,
