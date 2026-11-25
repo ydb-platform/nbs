@@ -62,7 +62,7 @@ func (t *deleteDiskTask) deleteDisk(
 	diskID := t.request.Disk.DiskId
 	sync := t.request.Sync
 
-	diskMeta, err := t.storage.DeleteDiskWithZoneCheck(
+	diskMeta, err := t.storage.DeleteDisk(
 		ctx,
 		diskID,
 		selfTaskID,

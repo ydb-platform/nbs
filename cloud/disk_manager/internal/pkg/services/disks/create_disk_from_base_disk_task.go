@@ -179,6 +179,7 @@ func (t *createDiskFromBaseDiskTask) Cancel(
 		params.Disk.DiskId,
 		execCtx.GetTaskID(),
 		time.Now(),
+		nil, // checkZone
 	)
 	if err != nil {
 		return err

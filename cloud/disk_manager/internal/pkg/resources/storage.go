@@ -179,16 +179,9 @@ type Storage interface {
 	GetDiskMeta(ctx context.Context, diskID string) (*DiskMeta, error)
 
 	// Returns disk if action has been accepted by storage and nil otherwise.
+	// If checkZone is set, validates the recorded zone before changing state,
+	// including for a disk that is already deleted.
 	DeleteDisk(
-		ctx context.Context,
-		diskID string,
-		taskID string,
-		deletingAt time.Time,
-	) (*DiskMeta, error)
-
-	// Like DeleteDisk, but checks the recorded zone before changing the disk
-	// state, including when the disk is already deleted.
-	DeleteDiskWithZoneCheck(
 		ctx context.Context,
 		diskID string,
 		taskID string,

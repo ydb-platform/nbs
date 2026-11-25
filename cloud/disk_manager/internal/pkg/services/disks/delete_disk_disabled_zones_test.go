@@ -220,7 +220,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 					resultMeta = nil
 					deleteErr = errors.NewNonCancellableErrorf("zone mismatch")
 				}
-				storage.On("DeleteDiskWithZoneCheck", ctx, "disk", "toplevel_task_id", mock.Anything, mock.Anything).
+				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything, mock.Anything).
 					Run(func(args mock.Arguments) {
 						if tc.errorAt == "DeleteDisk" || recordedZone == "" {
 							return

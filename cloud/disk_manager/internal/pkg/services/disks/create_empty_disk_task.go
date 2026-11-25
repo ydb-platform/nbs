@@ -121,6 +121,7 @@ func (t *createEmptyDiskTask) Cancel(
 		t.params.Disk.DiskId,
 		selfTaskID,
 		time.Now(),
+		nil, // checkZone
 	)
 	if err != nil {
 		return err

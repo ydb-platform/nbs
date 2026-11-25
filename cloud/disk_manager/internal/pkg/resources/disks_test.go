@@ -147,7 +147,7 @@ func TestDisksDeleteDisk(t *testing.T) {
 		require.Equal(t, disk.ZoneID, zoneID)
 		return errors.NewNonCancellableErrorf("zone mismatch")
 	}
-	actual, err = storage.DeleteDiskWithZoneCheck(ctx, disk.ID, "wrong-zone", time.Now(), checkZone)
+	actual, err = storage.DeleteDisk(ctx, disk.ID, "wrong-zone", time.Now(), checkZone)
 	require.True(t, errors.Is(err, errors.NewEmptyNonCancellableError()))
 	require.Nil(t, actual)
 
@@ -155,7 +155,7 @@ func TestDisksDeleteDisk(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, actual.DeleteTaskID)
 
-	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())
+	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", time.Now(), nil)
 	require.NoError(t, err)
 	requireDisksAreEqual(t, expected, *actual)
 
@@ -165,7 +165,7 @@ func TestDisksDeleteDisk(t *testing.T) {
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
 	// Check idempotency.
-	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())
+	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", time.Now(), nil)
 	require.NoError(t, err)
 	requireDisksAreEqual(t, expected, *actual)
 
@@ -176,12 +176,12 @@ func TestDisksDeleteDisk(t *testing.T) {
 	err = storage.DiskDeleted(ctx, disk.ID, time.Now())
 	require.NoError(t, err)
 
-	actual, err = storage.DeleteDiskWithZoneCheck(ctx, disk.ID, "wrong-zone", time.Now(), checkZone)
+	actual, err = storage.DeleteDisk(ctx, disk.ID, "wrong-zone", time.Now(), checkZone)
 	require.True(t, errors.Is(err, errors.NewEmptyNonCancellableError()))
 	require.Nil(t, actual)
 
 	// Check that DeleteDisk returns nil for already deleted disk.
-	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", time.Now())
+	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", time.Now(), nil)
 	require.NoError(t, err)
 	require.Nil(t, actual)
 
@@ -204,7 +204,7 @@ func TestDisksDeleteNonexistentDisk(t *testing.T) {
 	}
 
 	deletingAt := time.Now()
-	actual, err := storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt)
+	actual, err := storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt, nil)
 	require.NoError(t, err)
 	require.Nil(t, actual)
 
@@ -216,7 +216,7 @@ func TestDisksDeleteNonexistentDisk(t *testing.T) {
 
 	// Check idempotency.
 	deletingAt = deletingAt.Add(time.Second)
-	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt)
+	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt, nil)
 	require.NoError(t, err)
 	require.Nil(t, actual)
 
@@ -249,7 +249,7 @@ func TestDisksClearDeletedDisks(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, actual)
 
-	_, err = storage.DeleteDisk(ctx, disk.ID, "delete", deletedAt)
+	_, err = storage.DeleteDisk(ctx, disk.ID, "delete", deletedAt, nil)
 	require.NoError(t, err)
 
 	err = storage.DiskDeleted(ctx, disk.ID, deletedAt)

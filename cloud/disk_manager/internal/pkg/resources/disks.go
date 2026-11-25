@@ -988,16 +988,6 @@ func (s *storageYDB) DeleteDisk(
 	diskID string,
 	taskID string,
 	deletingAt time.Time,
-) (*DiskMeta, error) {
-
-	return s.DeleteDiskWithZoneCheck(ctx, diskID, taskID, deletingAt, nil)
-}
-
-func (s *storageYDB) DeleteDiskWithZoneCheck(
-	ctx context.Context,
-	diskID string,
-	taskID string,
-	deletingAt time.Time,
 	checkZone func(string) error,
 ) (*DiskMeta, error) {
 

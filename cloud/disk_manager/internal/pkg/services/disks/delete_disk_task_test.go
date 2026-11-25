@@ -49,7 +49,7 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 		DeleteTaskID: "toplevel_task_id",
 	}
 	storage.On(
-		"DeleteDiskWithZoneCheck",
+		"DeleteDisk",
 		ctx,
 		"disk",
 		"toplevel_task_id",
@@ -111,7 +111,7 @@ func TestDeleteDiskTaskRunWithDiskCreatedFromImage(t *testing.T) {
 	}
 
 	storage.On(
-		"DeleteDiskWithZoneCheck",
+		"DeleteDisk",
 		ctx,
 		"disk",
 		"toplevel_task_id",
@@ -173,7 +173,7 @@ func TestDeleteDiskTaskCancel(t *testing.T) {
 	}
 
 	storage.On(
-		"DeleteDiskWithZoneCheck",
+		"DeleteDisk",
 		ctx,
 		"disk",
 		"toplevel_task_id",
@@ -261,7 +261,7 @@ func testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
 	}
 
 	storage.On(
-		"DeleteDiskWithZoneCheck",
+		"DeleteDisk",
 		ctx,
 		"disk",
 		"toplevel_task_id",
