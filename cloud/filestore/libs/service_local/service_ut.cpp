@@ -2531,8 +2531,8 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         data.append(directIoAlign, 'y');
         bootstrap.WriteDataAligned(handle, 0, data, directIoAlign);
 
-        // Check unaligned O_DIRECT rejection via read: some ext4 kernels                  
-        // silently fall back to buffered I/O for unaligned direct writes.                 
+        // Check unaligned O_DIRECT rejection via read: some ext4 kernels
+        // silently fall back to buffered I/O for unaligned direct writes.
         // Read after write, since reads at EOF skip alignment checks.
 
         const auto response =
