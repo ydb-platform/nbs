@@ -18,7 +18,7 @@
 #include <util/string/builder.h>
 #include <util/system/datetime.h>
 
-namespace NCloud::NFileStore::NStorage::NFastShard {
+namespace NCloud::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -37,7 +37,7 @@ inline void FillHeaders(
  */
 template <typename TCall>
 auto CallWithRetries(
-    NCloud::NFastShard::TFastShardContext& ctx,
+    TFastShardContext& ctx,
     const TStorageGroupRetryPolicy& policy,
     ITimer& timer,
     TCall call)
@@ -78,7 +78,7 @@ auto CallWithRetries(
             FormatError(error).c_str());
 
         const ui64 parked = GetCycleCount();
-        NCloud::NFastShard::WaitFor(ctx.Cancel, backoff);
+        WaitFor(ctx.Cancel, backoff);
         ctx.BackoffCycles += GetCycleCount() - parked;
     }
 }
@@ -91,7 +91,7 @@ inline NProto::TError MakeSpawnError(int r)
         E_FAIL,
         TStringBuilder()
             << "failed to spawn fiber: "
-            << NCloud::NFastShard::SystemErrorText(r));
+            << SystemErrorText(r));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -125,7 +125,7 @@ struct TAcquireDevicesParams
     NProto::TAcquireDevicesResponse* Response;
     const TStorageGroupRetryPolicy* RetryPolicy;
     ITimer* Timer;
-    NCloud::NFastShard::TFastShardContext* Context;
+    TFastShardContext* Context;
 };
 
 int AcquireDevicesFiberMain(TAcquireDevicesParams* params) noexcept;
@@ -137,7 +137,7 @@ struct TReleaseDevicesParams
     NProto::TReleaseDevicesResponse* Response;
     const TStorageGroupRetryPolicy* RetryPolicy;
     ITimer* Timer;
-    NCloud::NFastShard::TFastShardContext* Context;
+    TFastShardContext* Context;
 };
 
 int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept;
@@ -155,7 +155,7 @@ int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept;
  */
 template <typename TResponse, typename TRequest, typename TParams>
 NProto::TError MirrorRequest(
-    NCloud::NFastShard::TFastShardContext& ctx,
+    TFastShardContext& ctx,
     const TStorageGroupConfig& config,
     const TVector<TStorageDevice>& devices,
     ITimer& timer,
@@ -196,7 +196,7 @@ NProto::TError MirrorRequest(
         if (r) {
             SILK_ERROR(
                 "future error: %s",
-                NCloud::NFastShard::SystemErrorText(r).c_str());
+                SystemErrorText(r).c_str());
             if (!HasError(error)) {
                 error = MakeError(MAKE_SYSTEM_ERROR(r));
             }
@@ -217,4 +217,4 @@ NProto::TError MirrorRequest(
     return error;
 }
 
-}   // namespace NCloud::NFileStore::NStorage::NFastShard
+}   // namespace NCloud::NFastShard

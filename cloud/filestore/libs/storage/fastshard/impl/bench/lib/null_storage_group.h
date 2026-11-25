@@ -2,7 +2,7 @@
 
 #include <cloud/fastshard/libs/sn/testlib/delay_policy.h>
 
-#include <cloud/filestore/libs/storage/fastshard/impl/factory/public.h>
+#include <cloud/filestore/libs/storage/fastshard/storage_group/public.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 

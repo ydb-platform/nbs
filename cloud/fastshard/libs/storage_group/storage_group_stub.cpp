@@ -5,7 +5,7 @@
 
 #include <util/generic/vector.h>
 
-namespace NCloud::NFileStore::NStorage::NFastShard {
+namespace NCloud::NFastShard {
 
 namespace {
 
@@ -70,4 +70,4 @@ ITimerPtr CreateFiberTimer()
     return CreateWallClockTimer();
 }
 
-}   // namespace NCloud::NFileStore::NStorage::NFastShard
+}   // namespace NCloud::NFastShard

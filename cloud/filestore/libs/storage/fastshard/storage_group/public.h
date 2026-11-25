@@ -1,7 +1,5 @@
 #pragma once
 
-#include <util/system/defaults.h>
-
 #include <memory>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {

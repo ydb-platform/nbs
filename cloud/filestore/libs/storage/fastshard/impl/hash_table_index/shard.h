@@ -1,8 +1,9 @@
 #pragma once
 
 #include <cloud/filestore/libs/storage/fastshard/iface/public.h>
-#include <cloud/filestore/libs/storage/fastshard/impl/factory/public.h>
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group.h>
+#include <cloud/filestore/libs/storage/fastshard/storage_group/public.h>
+
+#include <cloud/fastshard/libs/storage_group/storage_group.h>
 
 namespace NCloud::NFileStore::NProtoPrivate {
 

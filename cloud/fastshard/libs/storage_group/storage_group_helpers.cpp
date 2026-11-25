@@ -1,6 +1,6 @@
 #include "storage_group_helpers.h"
 
-namespace NCloud::NFileStore::NStorage::NFastShard {
+namespace NCloud::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -124,4 +124,4 @@ int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept
     return 0;
 }
 
-}   // namespace NCloud::NFileStore::NStorage::NFastShard
+}   // namespace NCloud::NFastShard

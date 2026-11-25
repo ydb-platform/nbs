@@ -14,7 +14,7 @@
 #include <memory>
 #include <utility>
 
-namespace NCloud::NFileStore::NStorage::NFastShard {
+namespace NCloud::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -49,16 +49,16 @@ public:
     }
 
     NProto::TError Write(
-        NCloud::NFastShard::TFastShardContext& ctx,
+        TFastShardContext& ctx,
         const NProto::TWriteLogRecordRequest& request);
 
     NProto::TError Read(
-        NCloud::NFastShard::TFastShardContext& ctx,
+        TFastShardContext& ctx,
         const NProto::TReadPagesRequest& request,
         NProto::TReadPagesResponse* response);
 
     NProto::TError ReadJournalTail(
-        NCloud::NFastShard::TFastShardContext& ctx,
+        TFastShardContext& ctx,
         ui64 afterLsn,
         ui32 maxRecords,
         NProto::TReadJournalTailResponse* response);
@@ -74,12 +74,12 @@ public:
     }
 
     NProto::TError AdvanceLsnLowWatermark(
-        NCloud::NFastShard::TFastShardContext& ctx,
+        TFastShardContext& ctx,
         ui64 lsn);
 
-    NProto::TError Acquire(NCloud::NFastShard::TFastShardContext& ctx);
+    NProto::TError Acquire(TFastShardContext& ctx);
 
-    NProto::TError Release(NCloud::NFastShard::TFastShardContext& ctx);
+    NProto::TError Release(TFastShardContext& ctx);
 
 private:
     NProto::TError MakeProxyError(
@@ -89,4 +89,4 @@ private:
 
 using TDeviceProxyPtr = std::shared_ptr<TDeviceProxy>;
 
-}   // namespace NCloud::NFileStore::NStorage::NFastShard
+}   // namespace NCloud::NFastShard

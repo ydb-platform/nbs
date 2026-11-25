@@ -4,7 +4,7 @@
 
 #include <util/generic/vector.h>
 
-namespace NCloud::NFileStore::NStorage::NFastShard {
+namespace NCloud::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -26,4 +26,4 @@ IStorageGroupPtr CreateQuorumMirroredStorageGroup(
     TVector<TStorageDevice> devices,
     ITimerPtr timer);
 
-}   // namespace NCloud::NFileStore::NStorage::NFastShard
+}   // namespace NCloud::NFastShard

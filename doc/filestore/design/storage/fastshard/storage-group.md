@@ -2,9 +2,10 @@
 
 A storage group is N storage devices treated as one replicated unit. The
 shard's page store addresses a group, never an individual device. The
-interface is `IStorageGroup` (`sn/quorum/storage_group.h`): `AcquireDevices`,
-`ReleaseDevices`, `WriteLogRecord`, `ReadPages` - synchronous, called from
-silk fibers. In the production implementation we'll also need the methods for:
+interface is `IStorageGroup`
+(`cloud/fastshard/libs/storage_group/storage_group.h`):
+`AcquireDevices`, `ReleaseDevices`, `WriteLogRecord`, `ReadPages` - synchronous,
+called from silk fibers. In the production implementation we'll also need the methods for:
 * advancing LSN low watermark (below which the journal can be checkpointed and
   trimmed)
 * locking the storage group (to ensure that an old instance of the same shard

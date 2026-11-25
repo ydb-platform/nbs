@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/fastshard/libs/sn/iface/storage_node.h>
+#include <cloud/fastshard/public/api/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -11,9 +12,7 @@
 
 #include <memory>
 
-namespace NCloud::NFileStore::NStorage::NFastShard {
-
-using NCloud::NFastShard::IStorageNodePtr;
+namespace NCloud::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -134,4 +133,4 @@ IStorageGroupPtr CreateNaiveMirroredStorageGroup(
  */
 ITimerPtr CreateFiberTimer();
 
-}   // namespace NCloud::NFileStore::NStorage::NFastShard
+}   // namespace NCloud::NFastShard

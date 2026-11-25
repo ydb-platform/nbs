@@ -1,7 +1,6 @@
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group.h>
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_impl.h>
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_quorum.h>
-#include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/fastshard/libs/storage_group/storage_group.h>
+#include <cloud/fastshard/libs/storage_group/storage_group_impl.h>
+#include <cloud/fastshard/libs/storage_group/storage_group_quorum.h>
 
 #include <cloud/fastshard/libs/common/error.h>
 #include <cloud/fastshard/libs/sn/iface/storage_node.h>
@@ -36,7 +35,6 @@
 #include <utility>
 
 using namespace NCloud;
-using namespace NFileStore::NStorage::NFastShard;
 using namespace NCloud::NFastShard;
 using silk::FiberScheduler;
 

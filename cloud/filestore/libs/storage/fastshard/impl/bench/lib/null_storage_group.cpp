@@ -7,6 +7,10 @@
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 using NCloud::NFastShard::IDelayPolicyPtr;
+using NCloud::NFastShard::IStorageGroup;
+using NCloud::NFastShard::TLsnLink;
+using NCloud::NFastShard::TPageGroup;
+using NCloud::NFastShard::TPageGroupRef;
 
 namespace {
 
