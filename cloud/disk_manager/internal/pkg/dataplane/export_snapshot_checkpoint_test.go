@@ -49,7 +49,7 @@ func (s *exportPartsMemoryStorage) ReadParts(
 	return parts, nil
 }
 
-func (s *exportPartsMemoryStorage) UpsertParts(
+func (s *exportPartsMemoryStorage) UpsertPartsTx(
 	_ context.Context,
 	_ *persistence.Transaction,
 	id string,
@@ -65,7 +65,7 @@ func (s *exportPartsMemoryStorage) UpsertParts(
 	return nil
 }
 
-func (s *exportPartsMemoryStorage) DeleteParts(
+func (s *exportPartsMemoryStorage) DeletePartsTx(
 	ctx context.Context,
 	_ *persistence.Transaction,
 	id string,
@@ -80,22 +80,22 @@ func (s *exportPartsMemoryStorage) DeleteParts(
 	return uint64(len(parts)), err
 }
 
-func (s *exportPartsMemoryStorage) UpsertPartsInOwnTransaction(
+func (s *exportPartsMemoryStorage) UpsertParts(
 	ctx context.Context,
 	id string,
 	parts []exporter.S3ManifestPart,
 ) error {
 
-	return s.UpsertParts(ctx, nil, id, parts)
+	return s.UpsertPartsTx(ctx, nil, id, parts)
 }
 
-func (s *exportPartsMemoryStorage) DeletePartsInOwnTransaction(
+func (s *exportPartsMemoryStorage) DeleteParts(
 	ctx context.Context,
 	id string,
 	limit uint64,
 ) (uint64, error) {
 
-	return s.DeleteParts(ctx, nil, id, limit)
+	return s.DeletePartsTx(ctx, nil, id, limit)
 }
 
 type exportCheckpointExecutionContext struct {
@@ -190,7 +190,7 @@ func TestExportResumesTableCheckpoint(t *testing.T) {
 	parts := task.resume.Manifest.Parts
 	task.resume.Initialized = true
 	task.resume.UploadedPartCount = uint32(len(parts))
-	require.NoError(t, task.parts.UpsertParts(ctx, nil, "task", parts))
+	require.NoError(t, task.parts.UpsertParts(ctx, "task", parts))
 	state, err := task.Save()
 	require.NoError(t, err)
 	request, err := proto.Marshal(task.request)
@@ -214,7 +214,7 @@ func TestExportPublishedTaskRetriesOnlyCleanup(t *testing.T) {
 	task := exportCheckpointTaskForTest()
 	execCtx := &exportCheckpointExecutionContext{task: task, id: "task"}
 	require.NoError(t, task.parts.UpsertParts(
-		ctx, nil, "task", task.resume.Manifest.Parts,
+		ctx, "task", task.resume.Manifest.Parts,
 	))
 	task.resume.Manifest.Parts = nil
 	task.resume.Completed = true
@@ -248,7 +248,7 @@ func TestExportCancellationClearsParts(t *testing.T) {
 	)
 	task.config.PartsCleanupBatchSize = proto.Uint32(17)
 	require.NoError(t, task.parts.UpsertParts(
-		ctx, nil, "task", task.resume.Manifest.Parts,
+		ctx, "task", task.resume.Manifest.Parts,
 	))
 	task.resume.Manifest.Parts = nil
 	require.NoError(t, task.Cancel(ctx, execCtx))

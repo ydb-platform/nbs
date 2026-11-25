@@ -101,14 +101,14 @@ func TestExportPartsStorage(t *testing.T) {
 	store := newStorage(t, ctx, db, "export_parts_test")
 	parts := newParts(1, 5)
 
-	err := store.UpsertPartsInOwnTransaction(ctx, "task-a", parts)
+	err := store.UpsertParts(ctx, "task-a", parts)
 	require.NoError(t, err)
 
-	err = store.UpsertPartsInOwnTransaction(ctx, "task-b", parts[:1])
+	err = store.UpsertParts(ctx, "task-b", parts[:1])
 	require.NoError(t, err)
 
 	// Lost acknowledgements may repeat the same confirmation.
-	err = store.UpsertPartsInOwnTransaction(ctx, "task-a", parts[:1])
+	err = store.UpsertParts(ctx, "task-a", parts[:1])
 	require.NoError(t, err)
 
 	page, err := store.ReadParts(ctx, "task-a", 0, 2)
@@ -120,7 +120,7 @@ func TestExportPartsStorage(t *testing.T) {
 	require.Equal(t, parts[2:], page)
 
 	for _, expected := range []uint64{2, 2, 1, 0} {
-		deleted, err := store.DeletePartsInOwnTransaction(ctx, "task-a", 2)
+		deleted, err := store.DeleteParts(ctx, "task-a", 2)
 		require.NoError(t, err)
 		require.Equal(t, expected, deleted)
 	}
@@ -153,11 +153,7 @@ func TestExportPartsStorageReadsMoreRowsThanQueryResultLimit(t *testing.T) {
 			end = len(parts)
 		}
 
-		err := store.UpsertPartsInOwnTransaction(
-			ctx,
-			taskID,
-			parts[start:end],
-		)
+		err := store.UpsertParts(ctx, taskID, parts[start:end])
 		require.NoError(t, err)
 	}
 

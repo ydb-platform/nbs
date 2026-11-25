@@ -22,13 +22,13 @@ type Storage interface {
 		after uint32,
 		limit uint64,
 	) ([]exporter.S3ManifestPart, error)
-	UpsertParts(
+	UpsertPartsTx(
 		ctx context.Context,
 		tx *persistence.Transaction,
 		taskID string,
 		parts []exporter.S3ManifestPart,
 	) error
-	DeleteParts(
+	DeletePartsTx(
 		ctx context.Context,
 		tx *persistence.Transaction,
 		taskID string,
@@ -36,16 +36,16 @@ type Storage interface {
 	) (uint64, error)
 
 	// Used in tests.
-	// Executes UpsertParts in its own transaction.
-	UpsertPartsInOwnTransaction(
+	// Executes UpsertPartsTx in its own transaction.
+	UpsertParts(
 		ctx context.Context,
 		taskID string,
 		parts []exporter.S3ManifestPart,
 	) error
 
 	// Used in tests.
-	// Executes DeleteParts in its own transaction.
-	DeletePartsInOwnTransaction(
+	// Executes DeletePartsTx in its own transaction.
+	DeleteParts(
 		ctx context.Context,
 		taskID string,
 		limit uint64,
@@ -181,7 +181,7 @@ func (s *storageYDB) ReadParts(
 	return parts, err
 }
 
-func (s *storageYDB) UpsertParts(
+func (s *storageYDB) UpsertPartsTx(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	taskID string,
@@ -226,7 +226,7 @@ func (s *storageYDB) UpsertParts(
 
 // Delete one bounded primary-key range. Repeating after an uncertain commit
 // removes the next rows, so cleanup needs no persisted cursor.
-func (s *storageYDB) DeleteParts(
+func (s *storageYDB) DeletePartsTx(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	taskID string,
@@ -267,47 +267,70 @@ func (s *storageYDB) DeleteParts(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (s *storageYDB) executeInOwnTransaction(
+func (s *storageYDB) upsertParts(
 	ctx context.Context,
-	f func(ctx context.Context, tx *persistence.Transaction) error,
+	session *persistence.Session,
+	taskID string,
+	parts []exporter.S3ManifestPart,
 ) error {
 
-	return s.db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			tx, err := session.BeginRWTransaction(ctx)
-			if err != nil {
-				return err
-			}
-			defer tx.Rollback(ctx)
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
 
-			err = f(ctx, tx)
-			if err != nil {
-				return err
-			}
+	err = s.UpsertPartsTx(ctx, tx, taskID, parts)
+	if err != nil {
+		return err
+	}
 
-			return tx.Commit(ctx)
-		},
-	)
+	return tx.Commit(ctx)
+}
+
+func (s *storageYDB) deleteParts(
+	ctx context.Context,
+	session *persistence.Session,
+	taskID string,
+	limit uint64,
+) (uint64, error) {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	deleted, err := s.DeletePartsTx(ctx, tx, taskID, limit)
+	if err != nil {
+		return 0, err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	return deleted, nil
 }
 
 // Used in tests.
-func (s *storageYDB) UpsertPartsInOwnTransaction(
+func (s *storageYDB) UpsertParts(
 	ctx context.Context,
 	taskID string,
 	parts []exporter.S3ManifestPart,
 ) error {
 
-	return s.executeInOwnTransaction(
+	return s.db.Execute(
 		ctx,
-		func(ctx context.Context, tx *persistence.Transaction) error {
-			return s.UpsertParts(ctx, tx, taskID, parts)
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.upsertParts(ctx, session, taskID, parts)
 		},
 	)
 }
 
 // Used in tests.
-func (s *storageYDB) DeletePartsInOwnTransaction(
+func (s *storageYDB) DeleteParts(
 	ctx context.Context,
 	taskID string,
 	limit uint64,
@@ -315,11 +338,11 @@ func (s *storageYDB) DeletePartsInOwnTransaction(
 
 	var deleted uint64
 
-	err := s.executeInOwnTransaction(
+	err := s.db.Execute(
 		ctx,
-		func(ctx context.Context, tx *persistence.Transaction) error {
+		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			deleted, err = s.DeleteParts(ctx, tx, taskID, limit)
+			deleted, err = s.deleteParts(ctx, session, taskID, limit)
 			return err
 		},
 	)
