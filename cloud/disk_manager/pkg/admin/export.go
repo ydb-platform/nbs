@@ -158,8 +158,6 @@ func (c *exportResource) run() error {
 				PartSize:          c.parsedS3PartSize,
 				ReadWorkerCount:   c.readWorkerCount,
 				UploadWorkerCount: c.s3UploadWorkers,
-
-				PartsReadBatchSize: int(exportConfig.GetPartsReadBatchSize()),
 			},
 		)
 		return err

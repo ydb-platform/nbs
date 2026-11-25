@@ -96,14 +96,17 @@ func CreateYDBTables(
 	)
 }
 
-func (s *storageYDB) ReadParts(
+func (s *storageYDB) readParts(
 	ctx context.Context,
+	session *persistence.Session,
 	taskID string,
 	after uint32,
 	limit uint64,
 ) ([]exporter.S3ManifestPart, error) {
 
-	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
+	// The result of a regular query is limited to 1000 rows by default, and
+	// a truncated result is an error. A stream query has no such limit.
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $task_id as Utf8;
@@ -148,7 +151,34 @@ func (s *storageYDB) ReadParts(
 			parts = append(parts, part)
 		}
 	}
-	return parts, res.Err()
+
+	// NOTE: always check stream query result after iteration.
+	err = res.Err()
+	if err != nil {
+		return nil, errors.NewRetriableError(err)
+	}
+
+	return parts, nil
+}
+
+func (s *storageYDB) ReadParts(
+	ctx context.Context,
+	taskID string,
+	after uint32,
+	limit uint64,
+) ([]exporter.S3ManifestPart, error) {
+
+	var parts []exporter.S3ManifestPart
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			parts, err = s.readParts(ctx, session, taskID, after, limit)
+			return err
+		},
+	)
+	return parts, err
 }
 
 func (s *storageYDB) UpsertParts(

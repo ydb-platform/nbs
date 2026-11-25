@@ -11,7 +11,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/require"
 
-	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/exporter"
 	export_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/exporter/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -135,26 +134,21 @@ func TestExportPartsStorage(t *testing.T) {
 	require.Equal(t, parts[:1], page)
 }
 
-// By default YDB returns at most 1000 rows from one data query, and the client
-// fails on a truncated result. An export with more parts must still be
-// readable with the default read batch size.
-func TestExportPartsStorageReadsMorePartsThanOneBatch(t *testing.T) {
+// By default YDB limits the result of a regular query to 1000 rows, and the
+// client fails on a truncated result. Reading parts must not depend on that
+// limit.
+func TestExportPartsStorageReadsMoreRowsThanQueryResultLimit(t *testing.T) {
 	ctx := newContext()
 	db := newYDB(t, ctx)
 	defer db.Close(ctx)
 
-	store := newStorage(t, ctx, db, "export_parts_read_batches_test")
+	store := newStorage(t, ctx, db, "export_parts_result_limit_test")
 	taskID := "task"
+	parts := newParts(1, 2001)
 
-	exportConfig := &server_config.ExportConfig{}
-	readBatchSize := exportConfig.GetPartsReadBatchSize()
-
-	// Two full read batches and a partial one.
-	parts := newParts(1, 2*readBatchSize+1)
-
-	upsertBatchSize := 500
-	for start := 0; start < len(parts); start += upsertBatchSize {
-		end := start + upsertBatchSize
+	batchSize := 500
+	for start := 0; start < len(parts); start += batchSize {
+		end := start + batchSize
 		if end > len(parts) {
 			end = len(parts)
 		}
@@ -167,31 +161,13 @@ func TestExportPartsStorageReadsMorePartsThanOneBatch(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	var actual []exporter.S3ManifestPart
-	var readBatchSizes []int
-	after := uint32(0)
-	for {
-		batch, err := store.ReadParts(
-			ctx,
-			taskID,
-			after,
-			uint64(readBatchSize),
-		)
-		require.NoError(t, err)
+	limit := uint64(len(parts))
 
-		if len(batch) == 0 {
-			break
-		}
-
-		actual = append(actual, batch...)
-		readBatchSizes = append(readBatchSizes, len(batch))
-		after = batch[len(batch)-1].Number
-	}
-
-	require.Equal(
-		t,
-		[]int{int(readBatchSize), int(readBatchSize), 1},
-		readBatchSizes,
-	)
+	actual, err := store.ReadParts(ctx, taskID, 0, limit)
+	require.NoError(t, err)
 	require.Equal(t, parts, actual)
+
+	actual, err = store.ReadParts(ctx, taskID, 500, limit)
+	require.NoError(t, err)
+	require.Equal(t, parts[500:], actual)
 }

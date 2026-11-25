@@ -239,12 +239,11 @@ func (d *s3TestDestination) GetObjectWithLimit(
 
 func s3TestOptions() S3ExportOptions {
 	return S3ExportOptions{
-		Bucket:             "destination",
-		Prefix:             "/parent/",
-		PartSize:           2 * chunkSize,
-		ReadWorkerCount:    2,
-		UploadWorkerCount:  1,
-		PartsReadBatchSize: 1000,
+		Bucket:            "destination",
+		Prefix:            "/parent/",
+		PartSize:          2 * chunkSize,
+		ReadWorkerCount:   2,
+		UploadWorkerCount: 1,
 	}
 }
 

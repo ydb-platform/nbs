@@ -52,9 +52,6 @@ type S3ExportOptions struct {
 	CheckpointPartCount int
 	// Zero uses a one-second interval for pending confirmations.
 	CheckpointInterval time.Duration
-	// Maximum saved parts read from the checkpoint by one call. Must be
-	// positive.
-	PartsReadBatchSize int
 	// Optional registry for aggregate transfer metrics; never persisted.
 	MetricsRegistry metrics.Registry
 	// MaxRetries limits retries per source/destination operation after its
@@ -451,12 +448,6 @@ func ExportToS3WithCheckpoint(
 		)
 	}
 
-	if options.PartsReadBatchSize <= 0 {
-		return S3Manifest{}, task_errors.NewNonRetriableErrorf(
-			"parts read batch size must be positive",
-		)
-	}
-
 	if err := ctx.Err(); err != nil {
 		return S3Manifest{}, err
 	}
@@ -643,7 +634,7 @@ func ExportToS3WithCheckpoint(
 	state.UploadedPartCount = 0
 	state.UploadedBytes = 0
 	state.StoredBytes = 0
-	iterator := newS3PartIterator(partCheckpoint, options)
+	iterator := s3PartIterator{checkpoint: partCheckpoint}
 	for {
 		part, err := iterator.next(ctx)
 		if err != nil {
@@ -705,7 +696,7 @@ func ExportToS3WithCheckpoint(
 	// Only the final manifest needs the full list in memory. Durable task
 	// checkpoints omit it and continue to use the rows until publication.
 	parts := make([]S3ManifestPart, 0, int(manifest.PartCount))
-	iterator = newS3PartIterator(partCheckpoint, options)
+	iterator = s3PartIterator{checkpoint: partCheckpoint}
 	for {
 		part, err := iterator.next(ctx)
 		if err != nil {

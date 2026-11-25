@@ -392,7 +392,6 @@ func (t *exportSnapshotTask) run(
 	target := snapshotExportTarget{S3Destination: client, uploads: uploads}
 	options.CheckpointPartCount = int(t.config.GetCheckpointPartCount())
 	options.CheckpointInterval = checkpointInterval
-	options.PartsReadBatchSize = int(t.config.GetPartsReadBatchSize())
 	_, err = exporter.ExportToS3WithCheckpoint(
 		ctx, source, t.request.SnapshotId, target,
 		options, &t.resume, checkpoint,

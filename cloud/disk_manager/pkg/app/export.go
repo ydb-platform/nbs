@@ -80,12 +80,6 @@ func initSnapshotExport(
 		)
 	}
 
-	if exportConfig.GetPartsReadBatchSize() == 0 {
-		return nil, fmt.Errorf(
-			"export parts read batch size must be positive",
-		)
-	}
-
 	sourceRetryTimeout, err := time.ParseDuration(
 		exportConfig.GetSourceRetryTimeout(),
 	)
