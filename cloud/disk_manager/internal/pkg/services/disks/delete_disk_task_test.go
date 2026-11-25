@@ -16,6 +16,7 @@ import (
 	pools_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/mocks"
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
@@ -83,6 +84,20 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 
 func TestDeleteDiskTaskRun(t *testing.T) {
 	testDeleteDiskTaskRun(t, false)
+}
+
+func TestDeleteDiskTaskRunWithoutZoneID(t *testing.T) {
+	storage := storage_mocks.NewStorageMock()
+	task := &deleteDiskTask{
+		storage: storage,
+		request: &protos.DeleteDiskRequest{Disk: &types.Disk{DiskId: "disk"}},
+	}
+
+	err := task.Run(context.Background(), newExecutionContextMock())
+	require.ErrorIs(t, err, errors.NewEmptyNonCancellableError())
+	require.ErrorContains(t, err, "request zone is empty")
+	require.False(t, errors.CanRetry(err))
+	storage.AssertNumberOfCalls(t, "GetDiskMeta", 0)
 }
 
 func TestDeleteDiskSyncTaskRun(t *testing.T) {

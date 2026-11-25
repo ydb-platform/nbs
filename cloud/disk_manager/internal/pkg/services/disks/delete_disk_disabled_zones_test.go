@@ -144,9 +144,6 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			diskMeta: disabledDisk, deleted: true, requestZone: "zone-a", disabledZones: disabledZone, expectedZone: "zone-d",
 		},
 		{
-			name: "request without a zone", nonCancellable: true,
-		},
-		{
 			name: "metadata read error", requestZone: "zone-a", errorAt: "GetDiskMeta",
 		},
 		{
@@ -218,9 +215,6 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 				return nil
 			}
 			setupExpectations := func() {
-				if tc.requestZone == "" {
-					return
-				}
 				meta := tc.diskMeta
 				storage.On("GetDiskMeta", ctx, "disk").Return(meta, errorFor("GetDiskMeta")).Once()
 				if tc.errorAt == "GetDiskMeta" || meta == nil {
