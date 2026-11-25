@@ -2313,7 +2313,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             html,
             startupTime +
                 ", startup (partially applied) "
-                "<span class='config-update-rejected'>- rejected: "
+                "<span class='config-update-rejected'>- section fallback: "
                 "Rejected TestSection configuration: invalid value "
                 "&lt;&amp;&gt;</span>");
 
@@ -2327,6 +2327,46 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
                 .IcbValue = "—",
                 .EffectiveValue = "200",
             });
+    }
+
+    // Verify that monitoring tracks section rejections for the accepted
+    // configuration independently of the latest delivery failure.
+    Y_UNIT_TEST_F(
+        ShouldRenderSectionAndDeliveryRejectionsIndependently,
+        TConfigsManagerFixture)
+    {
+        // Start with accepted values and a rejected section.
+        StartupRejectedSectionsReason =
+            "Rejected TestSection configuration: invalid value";
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
+
+        // Reject a delivery with a present private section and a null payload.
+        auto event =
+            std::make_unique<TEvConsole::TEvConfigNotificationRequest>();
+        event->OpaqueConfigs.emplace(PrivateDatabaseConfigKind, nullptr);
+        Runtime.Send(
+            new IEventHandle(Manager, Dispatcher, event.release(), 0, 1));
+
+        // Show both reasons alongside the retained startup status.
+        const auto rejectedHtml = GetMonitoringPage();
+        UNIT_ASSERT_STRING_CONTAINS(
+            rejectedHtml,
+            ", startup (partially applied)");
+        UNIT_ASSERT_STRING_CONTAINS(rejectedHtml, StartupRejectedSectionsReason);
+        UNIT_ASSERT_STRING_CONTAINS(
+            rejectedHtml,
+            "received a null PrivateDatabaseConfig payload");
+
+        // Clear both reasons even when a valid delivery leaves values unchanged.
+        SendNotification(
+            std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(200)),
+            2);
+        WaitForAck(2);
+        UNIT_ASSERT_STRING_CONTAINS(
+            GetMonitoringPage(),
+            ", runtime (unchanged)</td>");
     }
 
     // Verify that clean initial deliveries clear startup rejection and a new

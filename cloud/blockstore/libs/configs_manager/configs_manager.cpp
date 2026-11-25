@@ -268,9 +268,9 @@ void TConfigsManagerActor::InitRenderer(
         ConfigRenderer.Data.StartupDynamicConfigNormalizationDiagnostics;
 
     // Show section rejections already reported by bootstrap.
-    ConfigRenderer.Data.RejectedUpdateReason =
+    ConfigRenderer.Data.RejectedSectionsReason =
         std::move(startupRejectedSectionsReason);
-    if (ConfigRenderer.Data.RejectedUpdateReason) {
+    if (ConfigRenderer.Data.RejectedSectionsReason) {
         ConfigRenderer.Data.UpdateStatus =
             EConfigUpdateStatus::StartupPartiallyApplied;
     }
@@ -323,8 +323,9 @@ void TConfigsManagerActor::UpdateRendererOnUnchangedConfig(
                 ? EConfigUpdateStatus::RuntimePartiallyApplied
                 : EConfigUpdateStatus::RuntimeUnchanged;
     }
-    ConfigRenderer.Data.RejectedUpdateReason =
+    ConfigRenderer.Data.RejectedSectionsReason =
         std::move(rejectedSectionsReason);
+    ConfigRenderer.Data.RejectedUpdateReason.clear();
 }
 
 void TConfigsManagerActor::UpdateRendererOnAppliedConfig(
@@ -342,8 +343,9 @@ void TConfigsManagerActor::UpdateRendererOnAppliedConfig(
         updateIssues.HasRejectedSections()
             ? EConfigUpdateStatus::RuntimePartiallyApplied
             : EConfigUpdateStatus::Runtime;
-    ConfigRenderer.Data.RejectedUpdateReason =
+    ConfigRenderer.Data.RejectedSectionsReason =
         std::move(rejectedSectionsReason);
+    ConfigRenderer.Data.RejectedUpdateReason.clear();
     ConfigRenderer.Data.CurrentConfigPreparationDiagnostics =
         std::move(diagnostics);
     LogIgnoredDynamicFields(

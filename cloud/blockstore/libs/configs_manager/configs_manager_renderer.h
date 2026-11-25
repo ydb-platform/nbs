@@ -47,8 +47,12 @@ struct TBlockstoreConfigRendererData
     // applied.
     EConfigUpdateStatus UpdateStatus = EConfigUpdateStatus::Startup;
 
-    // Last rejected delivery or section reason; owned and empty after a fully
-    // accepted delivery.
+    // Section rejection reasons from startup or the last accepted delivery.
+    // Empty after a fully accepted delivery.
+    TString RejectedSectionsReason;
+
+    // Rejection reason for the last delivery.
+    // Empty after an accepted delivery (fully or partially).
     TString RejectedUpdateReason;
 
     // Presence of private_database_config, including an empty section.

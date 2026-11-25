@@ -908,6 +908,13 @@ $(function () {
                             out << EncodeHtmlPcdata(
                                 GetUpdateStatusName(Data.UpdateStatus));
 
+                            if (Data.RejectedSectionsReason) {
+                                out << " <span class='config-update-rejected'>"
+                                       "- section fallback: "
+                                    << EncodeHtmlPcdata(
+                                           Data.RejectedSectionsReason)
+                                    << "</span>";
+                            }
                             if (Data.RejectedUpdateReason) {
                                 // Highlight the last rejected delivery reason.
                                 out << " <span class='config-update-rejected'>"
