@@ -963,11 +963,6 @@ func requireChecksumTestProgress(
 		),
 		progress.state.Checksum,
 	)
-	require.Equal(
-		t,
-		checksumTestSparseChunkCount,
-		progress.state.ChunkCount,
-	)
 
 	expectedProgress :=
 		float64(chunkIndex) / float64(checksumTestSparseChunkCount)
@@ -1034,12 +1029,7 @@ func TestComputeSnapshotChecksumTask(t *testing.T) {
 			// milestone might be behind the last chunks.
 			require.GreaterOrEqual(t, state.NextChunkIndex, uint32(11))
 			require.LessOrEqual(t, state.NextChunkIndex, uint32(12))
-			require.EqualValues(t, 16, state.ChunkCount)
 			require.EqualValues(t, 1, state.Progress)
-			// Each of 9 written chunks is counted once, zero chunks included.
-			// It is so even if the task has been restarted: the counter is
-			// saved together with NextChunkIndex.
-			require.EqualValues(t, 9, state.TransferredChunkCount)
 
 			require.EqualValues(t, 1, runners.getTaskProgress(t, taskID))
 
@@ -1311,7 +1301,6 @@ func TestComputeSnapshotChecksumTaskReturnsZeroWithoutDataChunks(
 				state.NextChunkIndex,
 				testCase.maxNextChunkIndex,
 			)
-			require.Equal(t, testCase.chunkCount, state.ChunkCount)
 			require.EqualValues(t, 1, state.Progress)
 		})
 	}
@@ -1353,7 +1342,6 @@ func TestComputeSnapshotChecksumTaskCoversChunksAfterChunkCount(
 
 			_, state := runners.getTaskState(t, taskID)
 			require.EqualValues(t, 6, state.NextChunkIndex)
-			require.Equal(t, chunkCount, state.ChunkCount)
 			require.EqualValues(t, 1, state.Progress)
 		})
 	}
@@ -1476,13 +1464,6 @@ func TestComputeSnapshotChecksumTaskContinuesAfterInterruption(
 			require.Equal(t, expected, state.Checksum)
 			require.EqualValues(t, 12, state.NextChunkIndex)
 			require.EqualValues(t, 1, state.Progress)
-			// The chunks that were written before an interruption are not
-			// counted once again.
-			require.EqualValues(
-				t,
-				len(writtenChunks),
-				state.TransferredChunkCount,
-			)
 
 			// The task has continued from the saved state each time: the
 			// attempt that follows the interruption reads the chunk map from
@@ -1858,7 +1839,6 @@ func TestComputeSnapshotChecksumTaskIsRegistered(t *testing.T) {
 	state, err := proto.Marshal(&protos.ComputeSnapshotChecksumTaskState{
 		NextChunkIndex: 5,
 		Checksum:       12345,
-		ChunkCount:     10,
 		Progress:       0.5,
 	})
 	require.NoError(t, err)

@@ -54,7 +54,9 @@ func (t *computeSnapshotChecksumTask) Run(
 		return err
 	}
 
-	t.state.ChunkCount = snapshotMeta.ChunkCount
+	// Is used only to show the progress. It is not saved: a ready snapshot
+	// does not change.
+	chunkCount := snapshotMeta.ChunkCount
 
 	source := snapshot.NewSnapshotSource(t.request.SnapshotId, t.storage)
 	defer source.Close(ctx)
@@ -79,15 +81,12 @@ func (t *computeSnapshotChecksumTask) Run(
 		ChunkSize:           chunkSize,
 	}
 
-	transferredChunkCount, err := transferer.Transfer(
+	_, err = transferer.Transfer(
 		ctx,
 		source,
 		target,
 		// Chunks before NextChunkIndex are already covered by Checksum.
-		common.Milestone{
-			ChunkIndex:            t.state.NextChunkIndex,
-			TransferredChunkCount: t.state.TransferredChunkCount,
-		},
+		common.Milestone{ChunkIndex: t.state.NextChunkIndex},
 		func(ctx context.Context, milestone common.Milestone) error {
 			_, err := t.checkSnapshotReady(ctx)
 			if err != nil {
@@ -102,8 +101,7 @@ func (t *computeSnapshotChecksumTask) Run(
 			targetState := target.GetState(milestone.ChunkIndex)
 			t.state.NextChunkIndex = targetState.NextChunkIndex
 			t.state.Checksum = targetState.Checksum
-			t.state.TransferredChunkCount = milestone.TransferredChunkCount
-			return t.saveProgress(ctx, execCtx)
+			return t.saveProgress(ctx, execCtx, chunkCount)
 		},
 	)
 	if err != nil {
@@ -120,7 +118,6 @@ func (t *computeSnapshotChecksumTask) Run(
 	targetState := target.Finish()
 	t.state.NextChunkIndex = targetState.NextChunkIndex
 	t.state.Checksum = targetState.Checksum
-	t.state.TransferredChunkCount = transferredChunkCount
 	t.state.Progress = 1
 	return nil
 }
@@ -200,13 +197,14 @@ func (t *computeSnapshotChecksumTask) setEstimate(
 func (t *computeSnapshotChecksumTask) saveProgress(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
+	chunkCount uint32,
 ) error {
 
-	if t.state.ChunkCount != 0 {
-		// NextChunkIndex is greater than ChunkCount if the snapshot has
-		// chunks after ChunkCount.
+	if chunkCount != 0 {
+		// NextChunkIndex is greater than the chunk count if the snapshot has
+		// chunks after it.
 		t.state.Progress = min(
-			float64(t.state.NextChunkIndex)/float64(t.state.ChunkCount),
+			float64(t.state.NextChunkIndex)/float64(chunkCount),
 			1,
 		)
 	}

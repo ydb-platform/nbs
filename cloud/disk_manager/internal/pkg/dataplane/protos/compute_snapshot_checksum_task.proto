@@ -19,9 +19,7 @@ message ComputeSnapshotChecksumTaskState {
     // The transfer is resumed from it.
     uint32 NextChunkIndex = 1;
     uint32 Checksum = 2;
-    uint32 TransferredChunkCount = 3;
-    uint32 ChunkCount = 4;
-    double Progress = 5;
+    double Progress = 3;
 }
 
 message ComputeSnapshotChecksumMetadata {
