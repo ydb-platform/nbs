@@ -2107,7 +2107,7 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(1, describeCount);
     }
 
-    Y_UNIT_TEST(ShouldForgetVolumeInfoAtOnceWithZeroTimeout)
+    Y_UNIT_TEST(ShouldKeepUnusedVolumeInfoWithZeroTimeout)
     {
         TTestEnv env;
         NProto::TStorageServiceConfig config;
@@ -2133,12 +2133,11 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                 return false;
             });
 
-        for (ui32 i = 1; i != 4; ++i) {
-            // let the check of the previous request run
-            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
-            service.StatVolume();
-            UNIT_ASSERT_VALUES_EQUAL(i, describeCount);
-        }
+        // The volume info of the created volume is used without a describe.
+        runtime.AdvanceCurrentTime(TDuration::Hours(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+        service.StatVolume();
+        UNIT_ASSERT_VALUES_EQUAL(0, describeCount);
     }
 
     Y_UNIT_TEST(ShouldMapBaseDiskIfSchemeShardIsNotAvailable)
@@ -2335,7 +2334,7 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldDescribeOnceWhenPublicNameUsedFirst)
+    Y_UNIT_TEST(ShouldDescribeTwiceWhenPublicNameUsedFirst)
     {
         TTestEnv env;
         ui32 nodeIdx = SetupTestEnv(env);
@@ -2375,9 +2374,8 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                 statResponse->Record.GetVolume().GetDiskId());
         }
 
-        // The VolumeProxy should find both Disk-1 and Disk-1-copy when forward
-        // first request to Disk-1.
-        UNIT_ASSERT_VALUES_EQUAL(1ul, describeCount);
+        // The VolumeProxy should describe each requested name on its own.
+        UNIT_ASSERT_VALUES_EQUAL(2ul, describeCount);
     }
 
     Y_UNIT_TEST(ShouldDescribeTwiceWhenSecondaryNameUsedFirst)
@@ -2464,10 +2462,12 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         }
 
         {
-            // The resolved exact match replaces the route to the copy.
+            // A request that does not require an exact name match should be
+            // forward to the old disk, since the existing connection has not
+            // been terminated.
             auto statResponse = service.StatVolume("Disk-1");
             UNIT_ASSERT_VALUES_EQUAL(
-                "Disk-1",
+                "Disk-1-copy",
                 statResponse->Record.GetVolume().GetDiskId());
         }
 
@@ -2674,6 +2674,189 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                 "Disk-1-copy",
                 statResponse->Record.GetVolume().GetDiskId());
         }
+    }
+
+    Y_UNIT_TEST(ShouldUseBaseDiskMappingOverCachedVolumeInfo)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume("Disk-1-copy");
+        service.CreateVolume("Disk-1");
+
+        ui64 copyTabletId = 0;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvSSProxy::EvDescribeVolumeResponse)
+                {
+                    auto* msg = event->template Get<
+                        TEvSSProxy::TEvDescribeVolumeResponse>();
+                    copyTabletId =
+                        msg->PathDescription.GetBlockStoreVolumeDescription()
+                            .GetVolumeTabletId();
+                }
+                return false;
+            });
+        service.DescribeVolume("Disk-1-copy");
+        UNIT_ASSERT(copyTabletId);
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+
+        {
+            // Disk-1 is resolved by its name before the mapping is set.
+            auto statResponse = service.StatVolume("Disk-1");
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1",
+                statResponse->Record.GetVolume().GetDiskId());
+        }
+
+        // The base disk mapping of Disk-1 points to the tablet of the copy.
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            std::make_unique<TEvVolume::TEvMapBaseDiskIdToTabletId>(
+                "Disk-1",
+                copyTabletId));
+
+        {
+            // The exact request goes to Disk-1.
+            auto request = service.CreateStatVolumeRequest("Disk-1");
+            request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+            service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+            auto statResponse = service.RecvStatVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1",
+                statResponse->Record.GetVolume().GetDiskId());
+        }
+
+        {
+            // The overlay requests go to the mapped tablet.
+            auto statResponse = service.StatVolume("Disk-1");
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1-copy",
+                statResponse->Record.GetVolume().GetDiskId());
+        }
+
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            std::make_unique<TEvVolume::TEvClearBaseDiskIdToTabletIdMapping>(
+                "Disk-1"));
+
+        {
+            // Without the mapping Disk-1 is resolved by its name again.
+            auto statResponse = service.StatVolume("Disk-1");
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Disk-1",
+                statResponse->Record.GetVolume().GetDiskId());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotUseVolumeInfoOfClearedBaseDiskMapping)
+    {
+        TTestEnv env;
+        const ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume("Disk-1");
+        service.CreateVolume("Disk-A");
+        service.CreateVolume("Disk-B");
+
+        const TActorId volumeProxyId =
+            runtime.GetLocalServiceId(MakeVolumeProxyServiceId(), nodeIdx);
+        ui64 describedTabletId = 0;
+        bool holdDescribeResponse = false;
+        IEventHandlePtr describeResponse;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                if (event->GetTypeRewrite() !=
+                    TEvSSProxy::EvDescribeVolumeResponse)
+                {
+                    return false;
+                }
+                if (holdDescribeResponse &&
+                    event->GetRecipientRewrite() == volumeProxyId)
+                {
+                    holdDescribeResponse = false;
+                    describeResponse.reset(event.Release());
+                    return true;
+                }
+                auto* msg =
+                    event->template Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                describedTabletId =
+                    msg->PathDescription.GetBlockStoreVolumeDescription()
+                        .GetVolumeTabletId();
+                return false;
+            });
+
+        service.DescribeVolume("Disk-A");
+        const ui64 tabletIdA = describedTabletId;
+        service.DescribeVolume("Disk-B");
+        const ui64 tabletIdB = describedTabletId;
+        UNIT_ASSERT(tabletIdA);
+        UNIT_ASSERT(tabletIdB);
+        UNIT_ASSERT_VALUES_UNEQUAL(tabletIdA, tabletIdB);
+
+        auto mapBaseDisk = [&](ui64 tabletId)
+        {
+            service.SendRequest(
+                MakeVolumeProxyServiceId(),
+                std::make_unique<TEvVolume::TEvMapBaseDiskIdToTabletId>(
+                    "Disk-1",
+                    tabletId));
+        };
+        auto clearBaseDisk = [&]
+        {
+            service.SendRequest(
+                MakeVolumeProxyServiceId(),
+                std::make_unique<
+                    TEvVolume::TEvClearBaseDiskIdToTabletIdMapping>("Disk-1"));
+        };
+
+        // The base disk mapping of Disk-1 points to the tablet of Disk-A.
+        mapBaseDisk(tabletIdA);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Disk-A",
+            service.StatVolume("Disk-1")->Record.GetVolume().GetDiskId());
+
+        // A new mapping points to the tablet of Disk-B, both tablets are alive.
+        clearBaseDisk();
+        mapBaseDisk(tabletIdB);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Disk-B",
+            service.StatVolume("Disk-1")->Record.GetVolume().GetDiskId());
+
+        // A request waits for the describe when the mapping is cleared: it is
+        // rejected.
+        clearBaseDisk();
+        mapBaseDisk(tabletIdA);
+        holdDescribeResponse = true;
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            service.CreateStatVolumeRequest("Disk-1"));
+        UNIT_ASSERT(runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]
+                {
+                    return !!describeResponse;
+                }},
+            TDuration::Seconds(5)));
+        clearBaseDisk();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            service.RecvStatVolumeResponse()->GetStatus());
+
+        // The late describe response does not bring the old tablet back.
+        mapBaseDisk(tabletIdB);
+        runtime.Send(describeResponse.release(), nodeIdx);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "Disk-B",
+            service.StatVolume("Disk-1")->Record.GetVolume().GetDiskId());
     }
 
     Y_UNIT_TEST(ShouldMatchExactDiskIdWithEscapedPath)

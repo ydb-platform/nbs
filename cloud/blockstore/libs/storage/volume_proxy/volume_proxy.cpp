@@ -93,6 +93,19 @@ class TVolumeProxyActor final
         FAILED = 2,
     };
 
+    // Volume infos of different kinds are resolved and cached independently.
+    enum class EVolumeInfoKind
+    {
+        // The disk is found by its name, a copy with a suffix is accepted.
+        LOGICAL,
+        // The disk is found by its name, a copy is not accepted.
+        EXACT,
+        // The tablet comes from the base disk mapping, not from the describe.
+        BASE_DISK,
+    };
+
+    using TVolumeInfoKey = std::pair<TString, EVolumeInfoKind>;
+
     struct TVolumeInfo
     {
         // Numeric volume info ID. It is used to find the volume info by cookie.
@@ -103,18 +116,9 @@ class TVolumeProxyActor final
         // copied, since a suffix is added to the name of the copied disk.
         const TString DiskId;
 
-        // Id of the disk that was found by the SchemeShard describe.
-        // Note: If the disk was a copy the name of the real disk differs
-        // from the DiskId.
-        TString RealDiskId;
-
-        // An exact name match is required. It is forbidden to forward to a
-        // copied disk that has a name with a suffix.
-        const bool RequireExactDiskIdMatch = false;
+        const EVolumeInfoKind Kind;
 
         EVolumeInfoState State = RESOLVING;
-        // The tablet comes from the base disk mapping, not from the describe.
-        bool IsBaseDisk = false;
         ui64 TabletId = 0;
 
         // An error that is returned for all requests of a failed volume info.
@@ -132,11 +136,11 @@ class TVolumeProxyActor final
         TVolumeInfo(
             ui64 id,
             TString diskId,
-            bool requireExactDiskIdMatch,
+            EVolumeInfoKind kind,
             bool temporaryServer)
             : Id(id)
             , DiskId(std::move(diskId))
-            , RequireExactDiskIdMatch(requireExactDiskIdMatch)
+            , Kind(kind)
             , LogTitle(
                   GetCycleCount(),
                   TLogTitle::TVolumeProxy{
@@ -188,12 +192,11 @@ private:
     ui64 VolumeInfoIdGenerator = 0;
 
     THashMap<ui64, TVolumeInfo> VolumeInfoById;
-    // Mapping of logical DiskId to the volume info. The DiskId of the real
-    // disk that serves the requests may differ and have the suffix "-copy".
-    THashMap<TString, TVolumeInfo*> VolumeInfoByDiskId;
-    // Mapping of the DiskId to the volume info with exact DiskId match.
-    THashMap<TString, TVolumeInfo*> VolumeInfoByRealDiskId;
-    // Ids of the resolved volume infos by their tablet.
+    // A volume info is found by the DiskId of the request and its kind.
+    THashMap<TVolumeInfoKey, TVolumeInfo*> VolumeInfoByKey;
+    // Ids of the resolved volume infos by their tablet. A tablet has several
+    // volume infos if it is found by different DiskIds (a disk and its copy
+    // with a suffix) or by requests of different kinds.
     THashMap<ui64, THashSet<ui64>> VolumeInfoIdsByTabletId;
 
     struct TBaseTabletId
@@ -206,7 +209,7 @@ private:
 
     ui64 RequestId = 0;
     TActiveRequestMap ActiveRequests;
-    THashMap<ui64, TBaseDiskPingRequest> BaseDiskPingRequests;
+    THashMap<ui64, TBaseDiskPingRequest> BaseDiskPingRequestsByRequestId;
 
 public:
     TVolumeProxyActor(
@@ -215,8 +218,11 @@ public:
         bool temporaryServer);
 
 private:
-    TVolumeInfo* FindVolumeInfo(const TString& diskId, bool exactDiskIdMatch);
-    TVolumeInfo& CreateVolumeInfo(const TString& diskId, bool exactDiskIdMatch);
+    EVolumeInfoKind GetVolumeInfoKind(
+        const TString& diskId,
+        bool exactDiskIdMatch) const;
+    TVolumeInfo* FindVolumeInfo(const TString& diskId, EVolumeInfoKind kind);
+    TVolumeInfo& CreateVolumeInfo(const TString& diskId, EVolumeInfoKind kind);
     void EraseVolumeInfo(TVolumeInfo* volumeInfo);
 
     template <typename TMethod>
@@ -323,61 +329,50 @@ TVolumeProxyActor::TVolumeProxyActor(
 {
 }
 
+TVolumeProxyActor::EVolumeInfoKind TVolumeProxyActor::GetVolumeInfoKind(
+    const TString& diskId,
+    bool exactDiskIdMatch) const
+{
+    // An exact match is confirmed by describe only.
+    if (exactDiskIdMatch) {
+        return EVolumeInfoKind::EXACT;
+    }
+    if (BaseDiskIdToTabletId.contains(diskId)) {
+        return EVolumeInfoKind::BASE_DISK;
+    }
+    return EVolumeInfoKind::LOGICAL;
+}
+
 TVolumeProxyActor::TVolumeInfo* TVolumeProxyActor::FindVolumeInfo(
     const TString& diskId,
-    bool exactDiskIdMatch)
+    EVolumeInfoKind kind)
 {
-    if (exactDiskIdMatch) {
-        if (TVolumeInfo** volumeInfo =
-                VolumeInfoByRealDiskId.FindPtr(diskId))
-        {
-            return *volumeInfo;
-        }
-    } else {
-        if (TVolumeInfo** volumeInfo = VolumeInfoByDiskId.FindPtr(diskId)) {
-            return *volumeInfo;
-        }
+    const TVolumeInfoKey key(diskId, kind);
+    TVolumeInfo** volumeInfo = VolumeInfoByKey.FindPtr(key);
+    if (!volumeInfo) {
+        return nullptr;
     }
-
-    return nullptr;
+    return *volumeInfo;
 }
 
 TVolumeProxyActor::TVolumeInfo& TVolumeProxyActor::CreateVolumeInfo(
     const TString& diskId,
-    bool exactDiskIdMatch)
+    EVolumeInfoKind kind)
 {
     const ui64 volumeInfoId = ++VolumeInfoIdGenerator;
 
     auto [it, inserted] = VolumeInfoById.emplace(
         volumeInfoId,
-        TVolumeInfo(volumeInfoId, diskId, exactDiskIdMatch, TemporaryServer));
+        TVolumeInfo(volumeInfoId, diskId, kind, TemporaryServer));
 
-    if (exactDiskIdMatch) {
-        VolumeInfoByRealDiskId[diskId] = &it->second;
-    } else {
-        VolumeInfoByDiskId[diskId] = &it->second;
-    }
+    VolumeInfoByKey[TVolumeInfoKey(diskId, kind)] = &it->second;
 
     return it->second;
 }
 
 void TVolumeProxyActor::EraseVolumeInfo(TVolumeInfo* volumeInfo)
 {
-    // Different DiskIds can resolve to the same RealDiskId. The mapping can
-    // belong to another volume info that still uses it.
-    auto removeFromMap =
-        [volumeInfo](auto& map, const auto& key)
-    {
-        auto it = map.find(key);
-        if (it != map.end() && it->second == volumeInfo) {
-            map.erase(it);
-        }
-    };
-
-    removeFromMap(VolumeInfoByDiskId, volumeInfo->DiskId);
-    removeFromMap(VolumeInfoByDiskId, volumeInfo->RealDiskId);
-    removeFromMap(VolumeInfoByRealDiskId, volumeInfo->DiskId);
-    removeFromMap(VolumeInfoByRealDiskId, volumeInfo->RealDiskId);
+    VolumeInfoByKey.erase(TVolumeInfoKey(volumeInfo->DiskId, volumeInfo->Kind));
 
     auto it = VolumeInfoIdsByTabletId.find(volumeInfo->TabletId);
     if (it != VolumeInfoIdsByTabletId.end()) {
@@ -395,10 +390,9 @@ void TVolumeProxyActor::ResolveVolumeInfo(
     const TActorContext& ctx,
     TVolumeInfo& volumeInfo)
 {
-    // An exact match is confirmed by describe only.
-    auto* baseDisk = BaseDiskIdToTabletId.FindPtr(volumeInfo.DiskId);
-    if (baseDisk && !volumeInfo.RequireExactDiskIdMatch) {
-        if (!baseDisk->TabletId) {
+    if (volumeInfo.Kind == EVolumeInfoKind::BASE_DISK) {
+        const auto* baseDisk = BaseDiskIdToTabletId.FindPtr(volumeInfo.DiskId);
+        if (!baseDisk || !baseDisk->TabletId) {
             ReportVolumeProxyInvalidState(
                 "Base disk tablet id is not set",
                 {{"VolumeInfoId", volumeInfo.Id},
@@ -411,7 +405,6 @@ void TVolumeProxyActor::ResolveVolumeInfo(
         }
 
         volumeInfo.TabletId = baseDisk->TabletId;
-        volumeInfo.IsBaseDisk = true;
 
         if constexpr (IsDataPlaneMethod<TMethod>) {
             HandleBaseDiskDescribeResponse(&volumeInfo, {}, ctx);
@@ -430,38 +423,25 @@ void TVolumeProxyActor::CompleteVolumeInfo(
     const TString& realDiskId)
 {
     volumeInfo.LogTitle.SetTabletId(tabletId);
-    volumeInfo.RealDiskId = realDiskId;
 
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME_PROXY,
         "%s Resolved TabletID for volume %s with path %s",
         volumeInfo.LogTitle.GetWithTime().c_str(),
-        volumeInfo.RealDiskId.Quote().c_str(),
+        realDiskId.Quote().c_str(),
         path.Quote().c_str());
-
-    // An overlay keeps the tablet of its base disk.
-    const auto* baseDisk = BaseDiskIdToTabletId.FindPtr(realDiskId);
-    const bool pinned = baseDisk && baseDisk->TabletId != tabletId;
-    if (volumeInfo.RequireExactDiskIdMatch && !pinned) {
-        VolumeInfoByDiskId[realDiskId] = &volumeInfo;
-    } else {
-        VolumeInfoByDiskId.try_emplace(realDiskId, &volumeInfo);
-    }
-
-    // The name of a base disk tablet is not confirmed by describe.
-    if (!volumeInfo.IsBaseDisk) {
-        VolumeInfoByRealDiskId.try_emplace(realDiskId, &volumeInfo);
-    }
 
     volumeInfo.State = RESOLVED;
     volumeInfo.TabletId = tabletId;
     VolumeInfoIdsByTabletId[tabletId].insert(volumeInfo.Id);
     volumeInfo.LastActivity = ctx.Now();
-    ScheduleActivityCheck(
-        ctx,
-        volumeInfo,
-        Config->GetVolumeProxyPipeInactivityTimeout());
+
+    // Zero timeout: an unused volume info is kept.
+    const TDuration timeout = Config->GetVolumeProxyPipeInactivityTimeout();
+    if (timeout) {
+        ScheduleActivityCheck(ctx, volumeInfo, timeout);
+    }
 
     ProcessPendingRequests(volumeInfo);
 }
@@ -564,7 +544,7 @@ void TVolumeProxyActor::DescribeVolume(
         MakeSSProxyServiceId(),
         std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
             volumeInfo.DiskId,
-            volumeInfo.RequireExactDiskIdMatch),
+            volumeInfo.Kind == EVolumeInfoKind::EXACT),
         volumeInfo.Id);
 }
 
@@ -695,7 +675,7 @@ void TVolumeProxyActor::HandleDescribeResponse(
 
     const auto& error = msg->GetError();
 
-    if (volumeInfo->IsBaseDisk) {
+    if (volumeInfo->Kind == EVolumeInfoKind::BASE_DISK) {
         HandleBaseDiskDescribeResponse(volumeInfo, error, ctx);
         return;
     }
@@ -716,7 +696,7 @@ void TVolumeProxyActor::HandleDescribeResponse(
     const auto& volumeDescr = pathDescr.GetBlockStoreVolumeDescription();
     const TString realDiskId = PathNameToDiskId(volumeDescr.GetName());
 
-    if (volumeInfo->RequireExactDiskIdMatch &&
+    if (volumeInfo->Kind == EVolumeInfoKind::EXACT &&
         volumeInfo->DiskId != realDiskId)
     {
         ReportLogicalDiskIdMismatch(
@@ -780,9 +760,10 @@ void TVolumeProxyActor::HandleRequest(
 
     const bool exactDiskIdMatch =
         msg->Record.GetHeaders().GetExactDiskIdMatch();
-    TVolumeInfo* volumeInfo = FindVolumeInfo(diskId, exactDiskIdMatch);
+    const EVolumeInfoKind kind = GetVolumeInfoKind(diskId, exactDiskIdMatch);
+    TVolumeInfo* volumeInfo = FindVolumeInfo(diskId, kind);
     if (!volumeInfo) {
-        volumeInfo = &CreateVolumeInfo(diskId, exactDiskIdMatch);
+        volumeInfo = &CreateVolumeInfo(diskId, kind);
         PostponeRequest(*volumeInfo, IEventHandlePtr(ev.Release()));
         ResolveVolumeInfo<TMethod>(ctx, *volumeInfo);
         return;
@@ -907,12 +888,26 @@ void TVolumeProxyActor::HandleClearBaseDiskIdToTabletIdMapping(
     Y_UNUSED(ctx);
     const auto* msg = ev->Get();
     auto itr = BaseDiskIdToTabletId.find(msg->BaseDiskId);
-    if (itr != BaseDiskIdToTabletId.end()) {
-        --itr->second.RefCount;
-        if (itr->second.RefCount == 0) {
-            BaseDiskIdToTabletId.erase(itr);
-        }
+    if (itr == BaseDiskIdToTabletId.end()) {
+        return;
     }
+
+    --itr->second.RefCount;
+    if (itr->second.RefCount != 0) {
+        return;
+    }
+
+    // A base disk volume info does not outlive its mapping: a new mapping can
+    // have another tablet.
+    TVolumeInfo* volumeInfo =
+        FindVolumeInfo(msg->BaseDiskId, EVolumeInfoKind::BASE_DISK);
+    if (volumeInfo) {
+        FailVolumeInfo(
+            *volumeInfo,
+            MakeError(E_REJECTED, "Base disk mapping is cleared"));
+    }
+
+    BaseDiskIdToTabletId.erase(msg->BaseDiskId);
 }
 
 void TVolumeProxyActor::HandlePingRequest(
@@ -925,7 +920,8 @@ void TVolumeProxyActor::HandlePingRequest(
     // the volume info resolved for an earlier request.
     ui64 tabletId = 0;
     ui64 volumeInfoId = 0;
-    if (TVolumeInfo* volumeInfo = FindVolumeInfo(msg->DiskId, false)) {
+    const EVolumeInfoKind kind = GetVolumeInfoKind(msg->DiskId, false);
+    if (TVolumeInfo* volumeInfo = FindVolumeInfo(msg->DiskId, kind)) {
         if (volumeInfo->State == RESOLVED) {
             tabletId = volumeInfo->TabletId;
             volumeInfoId = volumeInfo->Id;
@@ -946,7 +942,7 @@ void TVolumeProxyActor::HandlePingRequest(
 
     // The tablet proxy owns the pipe and tells whether there is one to keep.
     const ui64 requestId = ++RequestId;
-    BaseDiskPingRequests.emplace(
+    BaseDiskPingRequestsByRequestId.emplace(
         requestId,
         TBaseDiskPingRequest{
             .Sender = ev->Sender,
@@ -964,13 +960,13 @@ void TVolumeProxyActor::HandlePingResponse(
     const TEvTabletProxy::TEvKeepAliveResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto it = BaseDiskPingRequests.find(ev->Cookie);
-    if (it == BaseDiskPingRequests.end()) {
+    auto it = BaseDiskPingRequestsByRequestId.find(ev->Cookie);
+    if (it == BaseDiskPingRequestsByRequestId.end()) {
         return;
     }
 
     const TBaseDiskPingRequest request = it->second;
-    BaseDiskPingRequests.erase(it);
+    BaseDiskPingRequestsByRequestId.erase(it);
 
     const auto& error = ev->Get()->GetError();
     if (!HasError(error)) {
@@ -1012,7 +1008,8 @@ void TVolumeProxyActor::HandlePoisonPill(
         Receive(handle);
     }
 
-    for (auto& [requestId, request]: std::exchange(BaseDiskPingRequests, {})) {
+    auto pingRequests = std::exchange(BaseDiskPingRequestsByRequestId, {});
+    for (auto& [requestId, request]: pingRequests) {
         NCloud::Reply(
             ctx,
             request,

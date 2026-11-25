@@ -4,9 +4,6 @@
 
 #include <cloud/blockstore/libs/kikimr/components.h>
 
-#include <util/datetime/base.h>
-#include <util/generic/utility.h>
-
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -19,11 +16,7 @@ NCloud::NStorage::TTabletProxyConfig GetTabletProxyConfig(
         .PipeClientRetryCount = config.GetPipeClientRetryCount(),
         .PipeClientMinRetryTime = config.GetPipeClientMinRetryTime(),
         .PipeClientMaxRetryTime = config.GetPipeClientMaxRetryTime(),
-        // Zero closes an idle pipe at once; the tablet proxy reads zero as
-        // "never close".
-        .PipeInactivityTimeout =
-            Max(config.GetVolumeProxyPipeInactivityTimeout(),
-                TDuration::MicroSeconds(1))};
+        .PipeInactivityTimeout = config.GetVolumeProxyPipeInactivityTimeout()};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
