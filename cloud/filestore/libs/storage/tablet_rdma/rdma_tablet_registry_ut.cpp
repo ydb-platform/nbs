@@ -26,6 +26,15 @@ TActorId MakeActorId(ui64 localId)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TStorageConfig RdmaEnabledConfig()
+{
+    NProto::TStorageConfig config;
+    config.SetTabletDirectRdmaEnabled(true);
+    return config;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TTabletEnv
 {
     using TEvServerConnected = TEvTabletPipe::TEvServerConnected;
@@ -40,7 +49,12 @@ struct TTabletEnv
     TTestActorRuntime::TEventObserverHolder PipeObserver;
 
     TTabletEnv()
-        : NodeIdx(Env.AddDynamicNode())
+        : TTabletEnv(RdmaEnabledConfig())
+    {}
+
+    explicit TTabletEnv(NProto::TStorageConfig storageConfig)
+        : Env({}, std::move(storageConfig))
+        , NodeIdx(Env.AddDynamicNode())
         , TabletId(Env.BootIndexTablet(NodeIdx))
         , Registry(Env.GetRdmaTabletRegistry(GetRuntime().GetNodeId(NodeIdx)))
     {
@@ -192,6 +206,32 @@ Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
             env.Registry->FindTablet(pipeServerId));
     }
 
+    Y_UNIT_TEST(ShouldRegisterPipesOnlyWhenRdmaIsEnabledForFileSystem)
+    {
+        TTabletEnv env{NProto::TStorageConfig()};
+        TIndexTabletClient tablet(env.GetRuntime(), env.NodeIdx, env.TabletId);
+        tablet.WaitReady();
+
+        const auto [pipeServerId, tabletActorId] = env.GetPipeServer();
+        UNIT_ASSERT(tabletActorId);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TActorId(),
+            env.Registry->FindTablet(pipeServerId));
+
+        NProto::TStorageConfig patch;
+        patch.SetTabletDirectRdmaEnabled(true);
+        tablet.ChangeStorageConfig(patch);
+
+        env.PipeServers.clear();
+        tablet.RebootTablet();
+        tablet.WaitReady();
+
+        const auto [nextPipeServerId, nextTabletActorId] = env.GetPipeServer();
+        UNIT_ASSERT_VALUES_EQUAL(
+            nextTabletActorId,
+            env.Registry->FindTablet(nextPipeServerId));
+    }
+
     Y_UNIT_TEST(ShouldUnregisterPipesWhenTabletDies)
     {
         using TEvServerDisconnected = TEvTabletPipe::TEvServerDisconnected;
@@ -248,6 +288,24 @@ Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
             TDuration::Seconds(10));
         UNIT_ASSERT(gone);
         UNIT_ASSERT_VALUES_EQUAL(tabletActorId, gone->Get()->TabletActorId);
+    }
+
+    Y_UNIT_TEST(ShouldNotNotifyForwarderWhenRdmaIsDisabledForFileSystem)
+    {
+        using TEvTabletGone = TEvRdmaTabletPrivate::TEvTabletGone;
+
+        TTabletEnv env{NProto::TStorageConfig()};
+        auto& runtime = env.GetRuntime();
+        const auto forwarderId = runtime.AllocateEdgeActor(env.NodeIdx);
+        env.Registry->AttachForwarder(forwarderId);
+
+        TIndexTabletClient tablet(runtime, env.NodeIdx, env.TabletId);
+        tablet.RebootTablet();
+        tablet.WaitReady();
+
+        UNIT_ASSERT(!runtime.GrabEdgeEvent<TEvTabletGone>(
+            forwarderId,
+            TDuration::Seconds(1)));
     }
 }
 

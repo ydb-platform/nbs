@@ -47,6 +47,14 @@ struct TPipe
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TStorageConfig WithRdmaEnabled(NProto::TStorageConfig config)
+{
+    config.SetTabletDirectRdmaEnabled(true);
+    return config;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TEnv
 {
     TTestEnv Env;
@@ -65,7 +73,7 @@ struct TEnv
     {}
 
     TEnv(TDuration requestTimeout, NProto::TStorageConfig storageConfig)
-        : Env({}, std::move(storageConfig))
+        : Env({}, WithRdmaEnabled(std::move(storageConfig)))
         , Runtime(Env.GetRuntime())
         , NodeIdx(Env.AddDynamicNode())
         , TabletId(Env.BootIndexTablet(NodeIdx))
