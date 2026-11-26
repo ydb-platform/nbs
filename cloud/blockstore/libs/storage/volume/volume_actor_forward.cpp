@@ -54,6 +54,7 @@ TVolumeThrottleTiming GetVolumeThrottleTiming(const TRequest& request)
 template <typename TMethod>
 void StoreVolumeThrottleTiming(
     typename TMethod::TResponse& response,
+    const TCallContext& callContext,
     TVolumeThrottleTiming timing,
     TDuration shapingDelay = {})
 {
@@ -67,19 +68,17 @@ void StoreVolumeThrottleTiming(
                 timing.QueueDelay.MicroSeconds());
         }
     }
-}
 
-template <typename TMethod>
-void StoreThrottlerDelay(
-    typename TMethod::TResponse& response,
-    TDuration delay,
-    TDuration shapingDelay)
-{
     if constexpr (RequiresThrottling<TMethod>) {
-        response.Record.MutableHeaders()->MutableThrottler()->SetDelay(
-            delay.MicroSeconds());
-        response.Record.MutableHeaders()->MutableThrottler()->SetShapingDelay(
-            shapingDelay.MicroSeconds());
+        auto* throttler = response.Record.MutableHeaders()->MutableThrottler();
+        // Split parts share their parent's context. Report only the part's
+        // own queue wait in SplitPostponedUs, even when that wait is zero.
+        throttler->SetDelay(
+            timing.ParallelSplitPart
+                ? 0
+                : callContext.Time(EProcessingStage::Postponed).MicroSeconds());
+        throttler->SetShapingDelay(
+            callContext.Time(EProcessingStage::Shaping).MicroSeconds());
     }
 }
 
@@ -94,11 +93,7 @@ void RejectVolumeRequest(const TActorContext& ctx, NActors::TActorId caller,
     auto response =
         std::make_unique<typename TMethod::TResponse>(std::move(error));
 
-    StoreVolumeThrottleTiming<TMethod>(*response, throttleTiming);
-    StoreThrottlerDelay<TMethod>(
-        *response,
-        callContext.Time(EProcessingStage::Postponed),
-        callContext.Time(EProcessingStage::Shaping));
+    StoreVolumeThrottleTiming<TMethod>(*response, callContext, throttleTiming);
 
     NCloud::Send(ctx, caller, std::move(response), callerCookie);
 }
@@ -342,7 +337,9 @@ template <typename TMethod>
 void TVolumeActor::FillResponse(
     typename TMethod::TResponse& response,
     TCallContext& callContext,
-    ui64 startTime)
+    ui64 startTime,
+    TVolumeThrottleTiming throttleTiming,
+    TDuration shapingDelay)
 {
     LWTRACK(
         ResponseSent_Volume,
@@ -358,10 +355,11 @@ void TVolumeActor::FillResponse(
             GetCycleCount());
     }
 
-    StoreThrottlerDelay<TMethod>(
+    StoreVolumeThrottleTiming<TMethod>(
         response,
-        callContext.Time(EProcessingStage::Postponed),
-        callContext.Time(EProcessingStage::Shaping));
+        callContext,
+        throttleTiming,
+        shapingDelay);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -495,12 +493,12 @@ bool TVolumeActor::ReplyToOriginalRequest(
             shapingDelay);
     }
 
-    StoreVolumeThrottleTiming<TMethod>(
-        *response, volumeRequest.ThrottleTiming, shapingDelay);
     FillResponse<TMethod>(
         *response,
         *volumeRequest.CallContext,
-        volumeRequest.ReceiveTime);
+        volumeRequest.ReceiveTime,
+        volumeRequest.ThrottleTiming,
+        shapingDelay);
 
     // forward response to the caller
     auto event = std::make_unique<IEventHandle>(
@@ -570,12 +568,11 @@ void TVolumeActor::ReplyToDuplicateRequests(
         switch (duplicateRequest.EventType) {
             case TEvService::EvWriteBlocksRequest: {
                 auto response = std::make_unique<TEvService::TEvWriteBlocksResponse>(error);
-                StoreVolumeThrottleTiming<TEvService::TWriteBlocksMethod>(
-                    *response, duplicateRequest.ThrottleTiming);
                 FillResponse<TEvService::TWriteBlocksMethod>(
                     *response,
                     *duplicateRequest.CallContext,
-                    duplicateRequest.ReceiveTime);
+                    duplicateRequest.ReceiveTime,
+                    duplicateRequest.ThrottleTiming);
 
                 NCloud::Reply(ctx, *duplicateRequest.Event, std::move(response));
                 break;
@@ -583,24 +580,22 @@ void TVolumeActor::ReplyToDuplicateRequests(
 
             case TEvService::EvWriteBlocksLocalRequest: {
                 auto response = std::make_unique<TEvService::TEvWriteBlocksLocalResponse>(error);
-                StoreVolumeThrottleTiming<TEvService::TWriteBlocksLocalMethod>(
-                    *response, duplicateRequest.ThrottleTiming);
                 FillResponse<TEvService::TWriteBlocksLocalMethod>(
                     *response,
                     *duplicateRequest.CallContext,
-                    duplicateRequest.ReceiveTime);
+                    duplicateRequest.ReceiveTime,
+                    duplicateRequest.ThrottleTiming);
                 NCloud::Reply(ctx, *duplicateRequest.Event, std::move(response));
                 break;
             }
 
             case TEvService::EvZeroBlocksRequest: {
                 auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>(error);
-                StoreVolumeThrottleTiming<TEvService::TZeroBlocksMethod>(
-                    *response, duplicateRequest.ThrottleTiming);
                 FillResponse<TEvService::TZeroBlocksMethod>(
                     *response,
                     *duplicateRequest.CallContext,
-                    duplicateRequest.ReceiveTime);
+                    duplicateRequest.ReceiveTime,
+                    duplicateRequest.ThrottleTiming);
                 NCloud::Reply(ctx, *duplicateRequest.Event, std::move(response));
                 break;
             }
@@ -694,9 +689,11 @@ void TVolumeActor::ForwardRequest(
         auto response = std::make_unique<typename TMethod::TResponse>(
             std::move(error));
 
-        StoreVolumeThrottleTiming<TMethod>(*response,
-                                          GetVolumeThrottleTiming(*msg));
-        FillResponse<TMethod>(*response, *msg->CallContext, now);
+        FillResponse<TMethod>(
+            *response,
+            *msg->CallContext,
+            now,
+            GetVolumeThrottleTiming(*msg));
 
         NCloud::Reply(ctx, *ev, std::move(response));
     };

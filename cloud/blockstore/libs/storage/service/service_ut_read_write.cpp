@@ -616,6 +616,24 @@ Y_UNIT_TEST_SUITE(TServiceReadWriteZeroBlocksTest)
                 response->Record.GetHeaders().GetThrottler().GetDelay());
         }
 
+        {
+            // A remote mount can reach the volume through a same-node pipe.
+            // The volume sees the time already spent before the request split.
+            const auto priorWait = TDuration::MilliSeconds(20);
+            auto part = service.CreateReadBlocksRequest(DefaultDiskId, 0, sessionId);
+            part->Record.MutableHeaders()->MutableInternal()->SetParallelSplitPart(true);
+            auto context = part->CallContext;
+            context->AddTime(EProcessingStage::Postponed, priorWait);
+            context->SetPossiblePostponeDuration(priorWait);
+
+            service.SendRequest(MakeStorageServiceId(), std::move(part));
+            auto response = service.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.GetHeaders().GetSplitPostponedUs());
+            UNIT_ASSERT_VALUES_EQUAL(priorWait, context->Time(EProcessingStage::Postponed));
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), context->GetPossiblePostponeDuration());
+        }
+
         runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvWriteBlocksResponse: {

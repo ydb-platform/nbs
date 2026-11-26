@@ -565,8 +565,11 @@ Y_UNIT_TEST_SUITE(TVolumeActorShapingThrottlingTest)
                     TEvService::EvWriteBlocksRequest) {
                     if (firstWriteRequest) {
                         firstWriteRequest = false;
-                        auto& headers = *event->Get<TEvService::TEvWriteBlocksRequest>()
-                                             ->Record.MutableHeaders();
+                        auto* msg = event->Get<TEvService::TEvWriteBlocksRequest>();
+                        msg->CallContext->AddTime(
+                            EProcessingStage::Postponed,
+                            TDuration::MilliSeconds(20));
+                        auto& headers = *msg->Record.MutableHeaders();
                         headers.SetLatencyTimingRequested(true);
                         headers.MutableInternal()->SetParallelSplitPart(true);
                         headers.MutableInternal()->SetVolumeThrottleDelayUs(123);
@@ -607,6 +610,7 @@ Y_UNIT_TEST_SUITE(TVolumeActorShapingThrottlingTest)
             headers.GetSplitPostponedUs() + scheduledDelay.MicroSeconds(),
             headers.GetThrottleDelayUs());
         const auto& throttler = headers.GetThrottler();
+        UNIT_ASSERT_VALUES_EQUAL(0, throttler.GetDelay());
         UNIT_ASSERT_VALUES_EQUAL(
             scheduledDelay.MicroSeconds(),
             throttler.GetShapingDelay());

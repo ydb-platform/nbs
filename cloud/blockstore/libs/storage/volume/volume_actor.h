@@ -1140,7 +1140,9 @@ private:
     void FillResponse(
         typename TMethod::TResponse& response,
         TCallContext& callContext,
-        ui64 startTime);
+        ui64 startTime,
+        TVolumeThrottleTiming throttleTiming,
+        TDuration shapingDelay = {});
 
     template <typename TMethod>
     typename TMethod::TRequest::TPtr WrapRequest(
