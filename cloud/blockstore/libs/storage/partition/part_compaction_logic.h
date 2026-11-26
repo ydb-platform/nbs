@@ -20,6 +20,8 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <variant>
+
 namespace NKikimr {
     class TTabletStorageInfo;
 }
@@ -46,7 +48,7 @@ struct TRangeCompactionInfo
 {
     const TBlockRange32 BlockRange;
     const TPartialBlobId OriginalBlobId;
-    const TPartialBlobId DataBlobId;
+    TPartialBlobId DataBlobId;
     const TBlockMask DataBlobSkipMask;
     const TPartialBlobId ZeroBlobId;
     const TBlockMask ZeroBlobSkipMask;
@@ -57,7 +59,8 @@ struct TRangeCompactionInfo
     TVector<std::optional<ui32>> BlockChecksums;
     const EChannelDataKind ChannelDataKind;
 
-    TGuardedBuffer<TBlockBuffer> BlobContent;
+    std::variant<TGuardedBuffer<TBlockBuffer>, TString> BlobContent;
+    std::optional<NProto::TCompressionMetadata> CompressionMetadata;
     TVector<ui32> ZeroBlocks;
     TAffectedBlobs AffectedBlobs;
     TAffectedBlocks AffectedBlocks;
