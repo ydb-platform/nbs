@@ -190,6 +190,17 @@ NCloud::NStorage::NRdma::IServerEndpointPtr TRdmaAsyncTestServer::StartEndpoint(
     return ep;
 }
 
+NCloud::NStorage::NRdma::IServerEndpointPtr TRdmaAsyncTestServer::StartEndpoint(
+    TString host,
+    ui32 port,
+    NCloud::NStorage::NRdma::IServerConnectHandlerPtr connectHandler)
+{
+    Y_UNUSED(host);
+    Y_UNUSED(port);
+    Y_UNUSED(connectHandler);
+    return nullptr;
+}
+
 NThreading::TFuture<NProto::TWriteDeviceBlocksResponse> TRdmaAsyncTestServer::
     Run(TString host, ui32 port, NProto::TWriteDeviceBlocksRequest request)
 {

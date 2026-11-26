@@ -38,6 +38,12 @@ public:
         ui32 port,
         NCloud::NStorage::NRdma::IServerHandlerPtr handler) override;
 
+    NCloud::NStorage::NRdma::IServerEndpointPtr StartEndpoint(
+        TString host,
+        ui32 port,
+        NCloud::NStorage::NRdma::IServerConnectHandlerPtr connectHandler)
+        override;
+
     void Start() override;
     void Stop() override;
     void DumpHtml(IOutputStream& out) const override;

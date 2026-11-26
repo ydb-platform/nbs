@@ -70,13 +70,6 @@ struct TClientHandler
 struct TServerHandler
     : IServerHandler
 {
-    TResultOrError<IServerHandlerPtr> HandleConnect(
-        TStringBuf externalData) override
-    {
-        Y_UNUSED(externalData);
-        return IServerHandlerPtr();
-    }
-
     TCallContextBasePtr CreateCallContext() override
     {
         return MakeIntrusive<TCallContextBase>(ui64{0});
@@ -104,13 +97,6 @@ struct TDelayedServerHandler final
     void* Context = nullptr;
     TStringBuf Out;
 
-    TResultOrError<IServerHandlerPtr> HandleConnect(
-        TStringBuf externalData) override
-    {
-        Y_UNUSED(externalData);
-        return IServerHandlerPtr();
-    }
-
     TCallContextBasePtr CreateCallContext() override
     {
         return MakeIntrusive<TCallContextBase>(ui64{0});
@@ -131,13 +117,12 @@ struct TDelayedServerHandler final
     }
 };
 
-struct TConnectHandler final: IServerHandler
+struct TConnectHandler final: IServerConnectHandler
 {
     using TConnect =
         std::function<TResultOrError<IServerHandlerPtr>(TStringBuf)>;
 
     const TConnect Connect;
-    NThreading::TPromise<void*> Request = NThreading::NewPromise<void*>();
 
     explicit TConnectHandler(TConnect connect)
         : Connect(std::move(connect))
@@ -147,24 +132,6 @@ struct TConnectHandler final: IServerHandler
         TStringBuf externalData) override
     {
         return Connect(externalData);
-    }
-
-    TCallContextBasePtr CreateCallContext() override
-    {
-        return MakeIntrusive<TCallContextBase>(ui64{0});
-    }
-
-    void HandleRequest(
-        void* context,
-        TCallContextBasePtr callContext,
-        TStringBuf in,
-        TStringBuf out) override
-    {
-        Y_UNUSED(callContext);
-        Y_UNUSED(in);
-        Y_UNUSED(out);
-
-        Request.SetValue(context);
     }
 };
 
@@ -560,13 +527,6 @@ TEST(TRdmaServerTest, ShouldBoundErrorResponsesByClientBuffer)
     {
         std::atomic<void*> Context{nullptr};
 
-        TResultOrError<IServerHandlerPtr> HandleConnect(
-            TStringBuf externalData) override
-        {
-            Y_UNUSED(externalData);
-            return IServerHandlerPtr();
-        }
-
         TCallContextBasePtr CreateCallContext() override
         {
             return MakeIntrusive<TCallContextBase>(ui64{0});
@@ -800,13 +760,6 @@ TEST(TRdmaServerTest, ShouldExecuteEagerRequestsWithoutRdmaRead)
         std::atomic<int> Calls{0};
         TStringBuf In;
         void* Context = nullptr;
-
-        TResultOrError<IServerHandlerPtr> HandleConnect(
-            TStringBuf externalData) override
-        {
-            Y_UNUSED(externalData);
-            return IServerHandlerPtr();
-        }
 
         TCallContextBasePtr CreateCallContext() override
         {
@@ -1258,12 +1211,12 @@ TEST(TRdmaServerTest, ShouldServeConnectionWithHandlerReturnedFromHandleConnect)
     };
 
     auto receivedData = NThreading::NewPromise<TString>();
-    auto connectionHandler = std::make_shared<TConnectHandler>(nullptr);
-    auto handler = std::make_shared<TConnectHandler>(
+    auto handler = std::make_shared<TDelayedServerHandler>();
+    auto connectHandler = std::make_shared<TConnectHandler>(
         [&](TStringBuf externalData)
         {
             receivedData.SetValue(TString(externalData));
-            return IServerHandlerPtr(connectionHandler);
+            return IServerHandlerPtr(handler);
         });
 
     auto verbs = NVerbs::CreateTestVerbs(context);
@@ -1283,7 +1236,7 @@ TEST(TRdmaServerTest, ShouldServeConnectionWithHandlerReturnedFromHandleConnect)
         server->Stop();
     };
 
-    auto endpoint = server->StartEndpoint("::", 10020, handler);
+    auto endpoint = server->StartEndpoint("::", 10020, connectHandler);
 
     const auto message = MakeConnectMessage(MakeExternalDataOption("pipe-1"));
     NVerbs::CreateConnection(context, message.data(), message.size());
@@ -1313,10 +1266,9 @@ TEST(TRdmaServerTest, ShouldServeConnectionWithHandlerReturnedFromHandleConnect)
         context->CompletionHandle.Set();
     }
 
-    void* request = connectionHandler->Request.GetFuture().GetValueSync();
-    ASSERT_FALSE(handler->Request.HasValue());
+    handler->RequestReceived.GetFuture().GetValueSync();
 
-    endpoint->SendResponse(request, 0);
+    endpoint->SendResponse(handler->Context, 0);
 
     while (sends.load() != 1) {
         SpinLockPause();
@@ -1348,16 +1300,19 @@ TEST(TRdmaServerTest, ShouldRejectConnectionWhenHandleConnectFails)
         EXPECT_TRUE(IsValidMessageHeader(rejectMsg));
         EXPECT_EQ(RDMA_PROTO_REJECTED, rejectMsg->Status);
 
-        if (++rejectCount == 2) {
+        if (++rejectCount == 3) {
             done.TrySetValue();
         }
     };
 
-    auto handler = std::make_shared<TConnectHandler>(
+    auto connectHandler = std::make_shared<TConnectHandler>(
         [](TStringBuf externalData) -> TResultOrError<IServerHandlerPtr>
         {
             if (externalData == "throw") {
                 ythrow yexception() << "unknown connection";
+            }
+            if (externalData == "empty") {
+                return IServerHandlerPtr();
             }
             return MakeError(E_ARGUMENT, "unknown connection");
         });
@@ -1376,16 +1331,16 @@ TEST(TRdmaServerTest, ShouldRejectConnectionWhenHandleConnectFails)
         server->Stop();
     };
 
-    auto endpoint = server->StartEndpoint("::", 10020, handler);
+    auto endpoint = server->StartEndpoint("::", 10020, connectHandler);
 
-    for (TStringBuf externalData: {"error", "throw"}) {
+    for (TStringBuf externalData: {"error", "throw", "empty"}) {
         const auto message =
             MakeConnectMessage(MakeExternalDataOption(externalData));
         NVerbs::CreateConnection(context, message.data(), message.size());
     }
 
     done.GetFuture().Wait();
-    EXPECT_EQ(2, rejectCount.load());
+    EXPECT_EQ(3, rejectCount.load());
     EXPECT_FALSE(createQpCalled.load());
 }
 
@@ -1449,7 +1404,7 @@ TEST(TRdmaServerTest, ShouldParseConnectOptions)
         }
     };
 
-    auto handler = std::make_shared<TConnectHandler>(
+    auto connectHandler = std::make_shared<TConnectHandler>(
         [&](TStringBuf externalData) -> TResultOrError<IServerHandlerPtr>
         {
             lastExternalData = TString(externalData);
@@ -1470,7 +1425,7 @@ TEST(TRdmaServerTest, ShouldParseConnectOptions)
         server->Stop();
     };
 
-    auto endpoint = server->StartEndpoint("::", 10020, handler);
+    auto endpoint = server->StartEndpoint("::", 10020, connectHandler);
 
     for (const auto& testCase: testCases) {
         const auto message = MakeConnectMessage(testCase.Options);

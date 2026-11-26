@@ -47,6 +47,9 @@ using IServerEndpointPtr = std::shared_ptr<IServerEndpoint>;
 struct IServerHandler;
 using IServerHandlerPtr = std::shared_ptr<IServerHandler>;
 
+struct IServerConnectHandler;
+using IServerConnectHandlerPtr = std::shared_ptr<IServerConnectHandler>;
+
 struct TServerConfig;
 using TServerConfigPtr = std::shared_ptr<TServerConfig>;
 

@@ -51,6 +51,17 @@ IServerEndpointPtr TTestRdmaServer::StartEndpoint(
     return Endpoint;
 }
 
+IServerEndpointPtr TTestRdmaServer::StartEndpoint(
+    TString host,
+    ui32 port,
+    IServerConnectHandlerPtr connectHandler)
+{
+    Y_UNUSED(host);
+    Y_UNUSED(port);
+    Y_UNUSED(connectHandler);
+    return nullptr;
+}
+
 void TTestRdmaServer::Start()
 {}
 

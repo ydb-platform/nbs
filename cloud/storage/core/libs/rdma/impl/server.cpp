@@ -1205,6 +1205,27 @@ void TServerSession::SendResponseCompleted(TSendWr* send) noexcept
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TSingleHandlerConnectHandler final
+    : public IServerConnectHandler
+{
+private:
+    const IServerHandlerPtr Handler;
+
+public:
+    explicit TSingleHandlerConnectHandler(IServerHandlerPtr handler)
+        : Handler(std::move(handler))
+    {}
+
+    TResultOrError<IServerHandlerPtr> HandleConnect(
+        TStringBuf externalData) override
+    {
+        Y_UNUSED(externalData);
+        return Handler;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TServerEndpoint final
     : public IServerEndpoint
 {
@@ -1217,7 +1238,7 @@ private:
     NVerbs::TConnectionPtr Connection;
     TString Host;
     ui32 Port;
-    IServerHandlerPtr Handler;
+    IServerConnectHandlerPtr ConnectHandler;
 
 public:
     TServerEndpoint(
@@ -1225,12 +1246,12 @@ public:
             NVerbs::TConnectionPtr connection,
             TString host,
             ui32 port,
-            IServerHandlerPtr handler)
+            IServerConnectHandlerPtr connectHandler)
         : Verbs(std::move(verbs))
         , Connection(std::move(connection))
         , Host(std::move(host))
         , Port(port)
-        , Handler(std::move(handler))
+        , ConnectHandler(std::move(connectHandler))
     {
         Connection->context = this;
     }
@@ -1644,6 +1665,10 @@ public:
         TString host,
         ui32 port,
         IServerHandlerPtr handler) override;
+    IServerEndpointPtr StartEndpoint(
+        TString host,
+        ui32 port,
+        IServerConnectHandlerPtr connectHandler) override;
     void DumpHtml(IOutputStream& out) const override;
 
 private:
@@ -1731,6 +1756,17 @@ IServerEndpointPtr TServer::StartEndpoint(
     ui32 port,
     IServerHandlerPtr handler)
 {
+    return StartEndpoint(
+        std::move(host),
+        port,
+        std::make_shared<TSingleHandlerConnectHandler>(std::move(handler)));
+}
+
+IServerEndpointPtr TServer::StartEndpoint(
+    TString host,
+    ui32 port,
+    IServerConnectHandlerPtr connectHandler)
+{
     if (ConnectionPoller == nullptr) {
         RDMA_ERROR("unable to start endpoint: connection poller is down");
         return nullptr;
@@ -1742,7 +1778,7 @@ IServerEndpointPtr TServer::StartEndpoint(
             ConnectionPoller->CreateConnection(Config->IpTypeOfService),
             std::move(host),
             port,
-            std::move(handler));
+            std::move(connectHandler));
 
         Listen(endpoint.get());
 
@@ -1995,7 +2031,11 @@ void TServer::HandleConnectRequest(
     }
 
     auto [handler, error] = SafeExecute<TResultOrError<IServerHandlerPtr>>(
-        [&] { return endpoint->Handler->HandleConnect(externalData); });
+        [&] { return endpoint->ConnectHandler->HandleConnect(externalData); });
+
+    if (!HasError(error) && !handler) {
+        error = MakeError(E_INVALID_STATE, "no handler for the connection");
+    }
 
     if (HasError(error)) {
         RDMA_ERROR(
@@ -2010,7 +2050,7 @@ void TServer::HandleConnectRequest(
         connectMsg->MaxEagerRequestBytes,
         Config->MaxEagerRequestBytes);
 
-    Accept(event, handler ? std::move(handler) : endpoint->Handler, eagerBytes);
+    Accept(event, std::move(handler), eagerBytes);
 }
 
 void TServer::Accept(

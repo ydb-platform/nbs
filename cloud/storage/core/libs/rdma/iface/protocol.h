@@ -165,7 +165,7 @@ static_assert(sizeof(TRejectMessage) == RDMA_PRIVATE_SIZE);
 // are not zero: private data comes padded with zeros.
 
 enum {
-    // size + data, the data is handed to IServerHandler::HandleConnect
+    // size + data, handed to IServerConnectHandler::HandleConnect
     RDMA_CONNECT_OPTION_EXTERNAL_DATA = 1,
 };
 

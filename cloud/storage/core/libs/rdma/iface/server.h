@@ -54,12 +54,6 @@ struct IServerHandler
 {
     virtual ~IServerHandler() = default;
 
-    // Called for every connect request with the data the client passed to
-    // IClient::StartEndpoint. The returned handler serves the connection, an
-    // empty one leaves it to this handler. An error rejects the connection.
-    virtual TResultOrError<IServerHandlerPtr> HandleConnect(
-        TStringBuf externalData) = 0;
-
     virtual TCallContextBasePtr CreateCallContext() = 0;
 
     virtual void HandleRequest(
@@ -67,6 +61,19 @@ struct IServerHandler
         TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IServerConnectHandler
+{
+    virtual ~IServerConnectHandler() = default;
+
+    // Called for every connect request with the data the client passed to
+    // IClient::StartEndpoint. The returned handler serves the connection. An
+    // error rejects the connection.
+    virtual TResultOrError<IServerHandlerPtr> HandleConnect(
+        TStringBuf externalData) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,6 +97,11 @@ struct IServer
         TString host,
         ui32 port,
         IServerHandlerPtr handler) = 0;
+
+    virtual IServerEndpointPtr StartEndpoint(
+        TString host,
+        ui32 port,
+        IServerConnectHandlerPtr connectHandler) = 0;
 
     virtual void DumpHtml(IOutputStream& out) const = 0;
 };
