@@ -566,7 +566,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
             UNIT_ASSERT(HasError(rejected.GetValue()));
         }
     }
-    Y_UNIT_TEST(ConnectsDataEndpointBeforeAnyIo)
+    Y_UNIT_TEST(ConnectsDataEndpointBeforeAnyIoAndKeepsItAlive)
     {
         if (!IsAvailable()) {
             return;
@@ -583,7 +583,22 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         UNIT_ASSERT(handler->Connected.GetFuture().Wait(TDuration::Seconds(5)));
         const auto status = factory->GetDataEndpointStatus(endpoint);
         UNIT_ASSERT(status.State == EPeerState::Connected);
-        UNIT_ASSERT_VALUES_EQUAL(status.ConnectionAttempts, 1);
+        UNIT_ASSERT_VALUES_EQUAL(1, status.ConnectionAttempts);
+
+        // Exceed the engine's default 10s idle timeout before sending I/O.
+        std::this_thread::sleep_for(12s);
+        auto zero = std::make_shared<NProto::TZeroBlocksRequest>();
+        zero->SetDiskId("disk");
+        zero->SetBlocksCount(1);
+        zero->MutableHeaders()->SetRequestTimeout(5000);
+        auto reply = endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), zero);
+        UNIT_ASSERT(reply.Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT_C(
+            !HasError(reply.GetValue()),
+            FormatError(reply.GetValue().GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            factory->GetDataEndpointStatus(endpoint).ConnectionAttempts);
         endpoint->Stop();
     }
 
@@ -1012,16 +1027,23 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         UNIT_ASSERT(!HasError(fixture.Service->GetError()));
     }
 
-    Y_UNIT_TEST(TerminalAcceptErrorIsObservableAndClosesChannels)
+    Y_UNIT_TEST(TerminalAcceptErrorLeavesDataChannelsWorking)
     {
         if (!IsAvailable()) {
             return;
         }
 
         TFixture fixture;
+        TFixture remote;
+        remote.Start();
+        auto config = MakeConfig();
+        config.SetCellId("cell-1");
+        auto& peer = *config.MutableCells(0);
+        peer.SetCellId("cell-2");
+        peer.SetIcV2Port(remote.Service->GetAddress().GetPort());
         auto injector = std::make_shared<TListenerErrorInjector>();
         auto [service, error] = NPrivate::CreateService(
-            std::make_shared<NCells::TCellsConfig>(MakeConfig()),
+            std::make_shared<NCells::TCellsConfig>(std::move(config)),
             fixture.DataService,
             NCloud::NIcV2::CreateAddressResolver(
                 fixture.Runtime.GetActorSystem(0),
@@ -1056,8 +1078,41 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             fixture.Counters->GetCounter("Listening", false)->Val());
-        UNIT_ASSERT(fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
+
+        // The established inbound channel still serves requests.
+        auto incoming =
+            std::make_unique<NStorage::TEvService::TEvZeroBlocksRequest>();
+        incoming->Record.SetDiskId("disk");
+        incoming->Record.SetBlocksCount(1);
+        auto reply = fixture.Channel->Request(
+            std::move(incoming),
+            TDuration::Seconds(5));
+        UNIT_ASSERT(reply.Wait(TDuration::Seconds(5)));
+        auto [event, replyError] = reply.ExtractValue();
+        UNIT_ASSERT_C(!HasError(replyError), FormatError(replyError));
+        const auto& result =
+            event->Get<NStorage::TEvService::TEvZeroBlocksResponse>()->Record;
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+
+        // The service can still establish outbound channels.
+        auto handler = std::make_shared<TDataConnectionHandler>();
+        auto [endpoint, endpointError] =
+            fixture.Service->CreateDataEndpoint("cell-2", "127.0.0.1", handler);
+        UNIT_ASSERT_C(!HasError(endpointError), FormatError(endpointError));
+        UNIT_ASSERT(handler->Connected.GetFuture().Wait(TDuration::Seconds(5)));
+        auto outgoing = std::make_shared<NProto::TZeroBlocksRequest>();
+        outgoing->SetDiskId("disk");
+        outgoing->SetBlocksCount(1);
+        outgoing->MutableHeaders()->SetRequestTimeout(5000);
+        auto response =
+            endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), outgoing);
+        UNIT_ASSERT(response.Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT_C(
+            !HasError(response.GetValue()),
+            FormatError(response.GetValue().GetError()));
+
         fixture.Service->Stop();
+        UNIT_ASSERT(fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
         UNIT_ASSERT_VALUES_EQUAL(
             MAKE_SYSTEM_ERROR(EMFILE),
             fixture.Service->GetError().GetCode());

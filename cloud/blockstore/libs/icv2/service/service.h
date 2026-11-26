@@ -28,7 +28,7 @@ struct IService
 {
     [[nodiscard]] virtual const NInterconnect::TAddress& GetAddress() const = 0;
 
-    // A terminal error closes all connections. Create a new service to recover.
+    // A terminal listener error prevents new inbound connections.
     [[nodiscard]] virtual NProto::TError GetError() const = 0;
 
     // Safe in callbacks. Call Stop outside callbacks to finish shutdown.

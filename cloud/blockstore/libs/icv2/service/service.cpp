@@ -6,6 +6,7 @@
 #include "service_private.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/icv2/data/protocol.h>
 #include <cloud/blockstore/libs/icv2/data/target.h>
 
@@ -41,8 +42,6 @@ using NCloud::NIcV2::IPeerManagerPtr;
 using NCloud::NIcV2::IPeerPtr;
 using NCloud::NIcV2::TChannelResult;
 using NCloud::NIcV2::TPeerStatus;
-
-using NCloud::NIcV2::TSocketResult;
 
 using NCloud::NIcV2::CreateRequestChannel;
 using NCloud::NIcV2::IRequestChannel;
@@ -108,7 +107,7 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
 
     TMutex Mutex;
     EServicePhase Phase = EServicePhase::Created;
-    NProto::TError Error;
+    NProto::TError ListenerError;
     size_t ConnectionCount = 0;
     ui64 NextConnectionId = 1;
     THashMap<ui64, IRequestChannelPtr> Channels;
@@ -162,26 +161,24 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
         Transport->RequestStop();
     }
 
-    void Accept(TSocketResult result)
+    void OnListenerError(const NProto::TError& error)
     {
-        if (HasError(result.GetError())) {
-            {
-                TGuard<TMutex> guard(Mutex);
-                if (Phase >= EServicePhase::Stopping) {
-                    return;
-                }
-                Error = result.GetError();
-                Phase = EServicePhase::Stopping;
-                *Listening = 0;
-                ++*ListenerErrors;
+        {
+            TGuard<TMutex> guard(Mutex);
+            if (Phase >= EServicePhase::Stopping) {
+                return;
             }
-            STORAGE_ERROR(
-                "IC V2 listener stopped: " << FormatError(result.GetError()));
-            // The accept worker cannot join itself. The owner still calls the
-            // external Stop barrier, which joins workers and result callbacks.
-            RequestStop();
-            return;
+            ListenerError = error;
+            *Listening = 0;
+            ++*ListenerErrors;
         }
+        const auto message = FormatError(error);
+        STORAGE_ERROR("IC V2 listener stopped: " << message);
+        ReportIcV2ListenerFailure(message);
+    }
+
+    void Accept(TSocketPtr socket)
+    {
         {
             TGuard<TMutex> guard(Mutex);
             if (Phase >= EServicePhase::Stopping) {
@@ -200,7 +197,7 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
         }
         ++*AcceptedConnections;
         const auto timeout = Config->GetIcV2Config().GetHandshakeTimeout();
-        auto future = Handshake->Accept(result.ExtractResult(), timeout);
+        auto future = Handshake->Accept(std::move(socket), timeout);
         future.Subscribe(
             [weak = weak_from_this()](const TAcceptHandshakeFuture& future)
             {
@@ -234,8 +231,9 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
         if (std::holds_alternative<THandshakeIncomplete>(result.GetResult())) {
             return;
         }
-        auto [channel, error] =
-            MakeChannel(std::get<THandshakeReady>(result.GetResult()));
+        auto [channel, error] = MakeChannel(
+            std::get<THandshakeReady>(result.GetResult()),
+            false);   // The peer sends pings on connections it initiates.
         if (HasError(error)) {
             {
                 TGuard<TMutex> guard(Mutex);
@@ -287,15 +285,18 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
         }
     }
 
-    TChannelResult MakeChannel(const THandshakeReady& connection)
+    TChannelResult MakeChannel(
+        const THandshakeReady& connection,
+        bool sendPings)
     {
         return CreateRequestChannel(
             Transport,
             connection.Socket,
             connection.XdcSocket,
-            {{DataEventTypes.begin(), DataEventTypes.end()},
-             false,
-             Config->GetIcV2Config().GetMaxPendingRequests()},
+            {.EventTypes = {DataEventTypes.begin(), DataEventTypes.end()},
+             .SendPings = sendPings,
+             .MaxPendingRequests =
+                 Config->GetIcV2Config().GetMaxPendingRequests()},
             Timer,
             Scheduler,
             Completions,
@@ -318,7 +319,7 @@ public:
     TChannelResult CreateChannel(const THandshakeReady& connection) override
     {
         if (auto state = State.lock()) {
-            return state->MakeChannel(connection);
+            return state->MakeChannel(connection, true);
         }
         return MakeError(E_REJECTED, "IC V2 service has been destroyed");
     }
@@ -345,7 +346,7 @@ public:
     void OnError(const NProto::TError& error) override
     {
         if (auto state = State.lock()) {
-            state->Accept(error);
+            state->OnListenerError(error);
         }
     }
 };
@@ -375,7 +376,7 @@ public:
     NProto::TError GetError() const override
     {
         TGuard<TMutex> guard(State->Mutex);
-        return State->Error;
+        return State->ListenerError;
     }
 
     TResultOrError<IBlockStorePtr> CreateDataEndpoint(
