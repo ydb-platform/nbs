@@ -16,7 +16,7 @@ namespace NCloud::NStorage::NRdma {
 
 // usage of fixed-size structures greatly simplifies message passing
 constexpr size_t RDMA_PRIVATE_SIZE = 16;
-// private data of the connect request of an RC connection
+// private data of the connect request of an rdma_cm connection
 constexpr size_t RDMA_MAX_CONNECT_PRIVATE_SIZE = 56;
 constexpr size_t RDMA_MAX_EXTERNAL_DATA_SIZE = 24;
 constexpr size_t RDMA_REQUEST_SIZE = 64;
