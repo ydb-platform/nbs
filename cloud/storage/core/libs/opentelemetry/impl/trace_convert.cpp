@@ -69,11 +69,12 @@ struct TReferenceTimeCycle
 {
     TInstant ReferenceTimeStamp;
     ui64 ReferenceTimeCycle = 0;
+    const NLWTrace::TTrackLog::TItem* RequestStarted = nullptr;
+    ui64 RequestStartTimeNs = 0;
 };
 
 TInstant GetTimestampFromCycle(
-    TReferenceTimeCycle referenceTimeCycle,
-    ui64 timeCycles)
+    const TReferenceTimeCycle& referenceTimeCycle, ui64 timeCycles)
 {
     if (referenceTimeCycle.ReferenceTimeCycle >= timeCycles) {
         return referenceTimeCycle.ReferenceTimeStamp -
@@ -87,20 +88,25 @@ TInstant GetTimestampFromCycle(
 }
 
 ui64 GetTimestampInNanoSeconds(
-    TReferenceTimeCycle referenceTimeCycle,
-    ui64 timeCycles)
+    const TReferenceTimeCycle& referenceTimeCycle,
+    const NLWTrace::TTrackLog::TItem& item)
 {
-    return GetTimestampFromCycle(referenceTimeCycle, timeCycles).NanoSeconds();
+    // RequestStarted also supplies the exact start recorded in the profile log.
+    if (&item == referenceTimeCycle.RequestStarted) {
+        return referenceTimeCycle.RequestStartTimeNs;
+    }
+    return GetTimestampFromCycle(referenceTimeCycle, item.TimestampCycles)
+        .NanoSeconds();
 }
 
 Span_Event ProcessRegularItem(
     const NLWTrace::TTrackLog::TItem& item,
-    TReferenceTimeCycle referenceTimeCycle)
+    const TReferenceTimeCycle& referenceTimeCycle)
 {
     Span_Event event;
     event.set_name(item.Probe->Event.Name);
     event.set_time_unix_nano(
-        GetTimestampInNanoSeconds(referenceTimeCycle, item.TimestampCycles));
+        GetTimestampInNanoSeconds(referenceTimeCycle, item));
 
     Y_ABORT_UNLESS(
         item.SavedParamsCount <= LWTRACE_MAX_PARAMS,
@@ -283,8 +289,8 @@ private:
 
         THashMap<ui64, ui64> spanIdToStartTime;
 
-        ui64 startTimeCycles = tl.Items[iterationContext.Idx].TimestampCycles;
-        ui64 endTimeCycles = 0;
+        const auto& firstItem = tl.Items[iterationContext.Idx];
+        const auto* lastItem = &firstItem;
 
         auto operationName = FindOperationName(tl, iterationContext);
         spanTree.GetParentSpan().Setname(operationName);
@@ -292,11 +298,11 @@ private:
         for (; iterationContext; iterationContext.Next()) {
             const auto& item = tl.Items[iterationContext.Idx];
             const auto& name = item.Probe->Event.Name;
-            auto timeCycles = item.TimestampCycles;
-
-            endTimeCycles = Max(endTimeCycles, timeCycles);
+            if (lastItem->TimestampCycles < item.TimestampCycles) {
+                lastItem = &item;
+            }
             auto curTimeStampNano =
-                GetTimestampInNanoSeconds(ReferenceTimeCycle, timeCycles);
+                GetTimestampInNanoSeconds(ReferenceTimeCycle, item);
 
             if (TStringBuf(name) == "Fork") {
                 const auto childSpanId = item.Params.Param[0].Get<ui64>();
@@ -332,9 +338,9 @@ private:
         }
 
         spanTree.GetParentSpan().set_start_time_unix_nano(
-            GetTimestampInNanoSeconds(ReferenceTimeCycle, startTimeCycles));
+            GetTimestampInNanoSeconds(ReferenceTimeCycle, firstItem));
         spanTree.GetParentSpan().set_end_time_unix_nano(
-            GetTimestampInNanoSeconds(ReferenceTimeCycle, endTimeCycles));
+            GetTimestampInNanoSeconds(ReferenceTimeCycle, *lastItem));
 
         return spanTree;
     }
@@ -352,8 +358,7 @@ private:
 
 TReferenceTimeCycle GetReferenceTimeCycle(const NLWTrace::TTrackLog& tl)
 {
-    // Use the request's own wall clock before projecting cycle deltas. The
-    // reader may export the track seconds later, with a different time offset.
+    TReferenceTimeCycle requestStart;
     for (TLogItemsIterationContext ctx{0, tl.Items.size()}; ctx; ctx.Next()) {
         const auto& item = tl.Items[ctx.Idx];
         const TStringBuf name = item.Probe->Event.Name;
@@ -361,18 +366,40 @@ TReferenceTimeCycle GetReferenceTimeCycle(const NLWTrace::TTrackLog& tl)
             // A joined request can carry an independent wall clock.
             ctx.ConstructSubSpanIterationContext(
                 item.Params.Param[1].Get<ui64>());
-        } else if (name == "RequestStarted") {
-            const auto value = item.GetParam("requestStartTimeUs");
+            continue;
+        }
+
+        const bool sync = name == "RequestClockSync";
+        if (sync ||
+            (name == "RequestStarted" && !requestStart.ReferenceTimeCycle))
+        {
+            const auto value =
+                item.GetParam(sync ? "wallTimeUs" : "requestStartTimeUs");
             if (value.GetType() == NLWTrace::PT_Ui64) {
                 const ui64 us = value.GetParam().Get<ui64>();
                 if (us && us <= Max<ui64>() / 1000) {
-                    return {TInstant::MicroSeconds(us), item.TimestampCycles};
+                    TReferenceTimeCycle anchor{
+                        TInstant::MicroSeconds(us),
+                        item.TimestampCycles};
+                    if (sync) {
+                        anchor.RequestStarted = requestStart.RequestStarted;
+                        anchor.RequestStartTimeNs =
+                            requestStart.RequestStartTimeNs;
+                        return anchor;
+                    }
+                    requestStart = anchor;
+                    requestStart.RequestStarted = &item;
+                    requestStart.RequestStartTimeNs = us * 1000;
                 }
             }
         }
     }
 
-    // Older producers and tracks that start at another probe have no anchor.
+    if (requestStart.ReferenceTimeCycle) {
+        return requestStart;
+    }
+
+    // Tracks without either clock sample retain the reader-time fallback.
     return {
         .ReferenceTimeStamp = TInstant::Now(),
         .ReferenceTimeCycle = GetCycleCount()};

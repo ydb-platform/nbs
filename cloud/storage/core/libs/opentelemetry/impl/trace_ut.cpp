@@ -32,6 +32,7 @@ enum class EEnumClass
     PROBE(                                                                     \
         RequestStarted,                                                        \
         GROUPS("Group"), TYPES(ui64), NAMES("requestStartTimeUs"))             \
+    PROBE(RequestClockSync, GROUPS("Group"), TYPES(ui64), NAMES("wallTimeUs")) \
     PROBE(StringParam, GROUPS("Group"), TYPES(TString), NAMES("svalue"))       \
     PROBE(                                                                     \
         SymbolParam,                                                           \
@@ -203,6 +204,7 @@ Y_UNIT_TEST_SUITE(TraceConverter)
             TOrbit child;
             root.Fork(child);
             LWTRACK(RequestStarted, child, ui64{10000000});
+            LWTRACK(RequestClockSync, child, ui64{30000000});
             root.Join(child);
             LWTRACK(RequestStarted, root, ui64{20000000});
             LWTRACK(IntParam, root, 1);
@@ -242,6 +244,58 @@ Y_UNIT_TEST_SUITE(TraceConverter)
         } reader;
 
         manager.ReadDepot("TimeAnchor", reader);
+        UNIT_ASSERT_VALUES_EQUAL(reader.Count, 1);
+    }
+
+    Y_UNIT_TEST(ShouldUseClockSampleIndependentOfProbeRecordingDelay)
+    {
+        TManager manager(*Singleton<TProbeRegistry>(), true);
+        TQuery query;
+        auto* block = query.AddBlocks();
+        block->MutableProbeDesc()->SetName("NoParam");
+        block->MutableProbeDesc()->SetProvider("LWTRACE_UT_PROVIDER");
+        block->AddAction()->MutableRunLogShuttleAction();
+        manager.New("ClockSample", query);
+        {
+            TOrbit root;
+            LWTRACK(NoParam, root);
+            LWTRACK(RequestStarted, root, ui64{19000000});
+            const auto cycles = GetCycleCount();
+            NLWTrace::TParams params;
+            params.Param[0].CopyConstruct<ui64>(20000000);
+            root.AddProbe(
+                &LWTRACE_GET_NAME(RequestClockSync).Probe, params, cycles);
+            NLWTrace::TUserSignature<ui64>::DestroyParams(params);
+            LWTRACK(IntParam, root, 1);
+        }
+
+        struct
+        {
+            size_t Count = 0;
+
+            void Push(TThread::TId, const TTrackLog& log)
+            {
+                ++Count;
+                const auto spans = ConvertToOpenTelemetrySpans(log).Spans;
+                const auto& root = spans.front();
+                const auto& sample = root.events(2);
+                UNIT_ASSERT_VALUES_EQUAL(sample.name(), "RequestClockSync");
+                const auto wall = TInstant::MicroSeconds(20000000);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    sample.time_unix_nano(), wall.NanoSeconds());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    root.events(1).time_unix_nano(),
+                    TInstant::MicroSeconds(19000000).NanoSeconds());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    root.events(3).time_unix_nano(),
+                    (wall + CyclesToDurationSafe(
+                                log.Items[3].TimestampCycles -
+                                log.Items[2].TimestampCycles))
+                        .NanoSeconds());
+            }
+        } reader;
+
+        manager.ReadDepot("ClockSample", reader);
         UNIT_ASSERT_VALUES_EQUAL(reader.Count, 1);
     }
 

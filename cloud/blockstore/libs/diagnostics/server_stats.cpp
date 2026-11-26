@@ -30,6 +30,27 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void RecordRequestClock(NLWTrace::TOrbit& orbit)
+{
+#if !defined(LWTRACE_DISABLE) && !defined(LWTRACE_DISABLE_PROBES)
+    if (orbit.HasShuttles()) {
+        // Timestamp the clock read itself. Recording into a shuttle may take
+        // a lock or copy parameters after the wall clock has been sampled.
+        const ui64 before = GetCycleCount();
+        const auto wall = TInstant::Now();
+        const ui64 after = GetCycleCount();
+        NLWTrace::TParams params;
+        params.Param[0].CopyConstruct<ui64>(wall.MicroSeconds());
+        orbit.AddProbe(
+            &LWTRACE_GET_NAME(RequestClockSync).Probe,
+            params, before + (after - before) / 2);
+        NLWTrace::TUserSignature<ui64>::DestroyParams(params);
+    }
+#else
+    Y_UNUSED(orbit);
+#endif
+}
+
 TString Capitalize(TString str)
 {
     if (str.empty()) {
@@ -327,6 +348,7 @@ void TServerStats::RequestStarted(
         req.StartIndex,
         req.RequestBytes,
         req.RequestTimestamp.MicroSeconds());
+    RecordRequestClock(callContext.LWOrbit);
 
     auto started = RequestStats->RequestStarted(
         req.MediaKind,

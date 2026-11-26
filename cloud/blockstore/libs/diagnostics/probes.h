@@ -26,6 +26,10 @@
             NCloud::NProbeParam::StartBlock,                                   \
             NCloud::NProbeParam::RequestSize,                                  \
             "requestStartTimeUs"))                                             \
+    PROBE(RequestClockSync,                                                    \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(ui64),                                                           \
+        NAMES("wallTimeUs"))                                                   \
     PROBE(RequestAcquired,                                                     \
         GROUPS("NBSRequest"),                                                  \
         TYPES(TString, ui64, TString),                                         \
