@@ -105,6 +105,12 @@ bool TLeaderDiskInfo::operator==(const TLeaderDiskInfo& rhs) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TFollowerDiskInfo::IsCopyInProgress() const
+{
+    return State == EState::Created || State == EState::Preparing ||
+           State == EState::DataReady;
+}
+
 TString TFollowerDiskInfo::Describe() const
 {
     auto builder = TStringBuilder();

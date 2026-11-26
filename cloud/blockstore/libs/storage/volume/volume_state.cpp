@@ -1176,6 +1176,14 @@ const TFollowerDisks& TVolumeState::GetAllFollowers() const
     return FollowerDisks;
 }
 
+bool TVolumeState::IsCopyingToFollower() const
+{
+    return AnyOf(FollowerDisks, [](const TFollowerDiskInfo& follower)
+    {
+        return follower.IsCopyInProgress();
+    });
+}
+
 std::optional<TLeaderDiskInfo> TVolumeState::FindLeader(
     const TLeaderFollowerLink& link) const
 {
