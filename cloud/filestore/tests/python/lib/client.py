@@ -318,6 +318,36 @@ class FilestoreCliClient:
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
+    def set_quota(self, fs, quota_id, max_bytes=0, max_nodes=0):
+        cmd = [
+            self.__binary_path, "setquota",
+            "--filesystem", fs,
+            "--quota-id", str(quota_id),
+            "--max-bytes", str(max_bytes),
+            "--max-nodes", str(max_nodes),
+            "--json",
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def delete_quota(self, fs, quota_id):
+        cmd = [
+            self.__binary_path, "deletequota",
+            "--filesystem", fs,
+            "--quota-id", str(quota_id),
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def list_quotas(self, fs):
+        cmd = [
+            self.__binary_path, "listquotas",
+            "--filesystem", fs,
+            "--json",
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
     def set_node_xattr(self, fs, node_id, name, value, *argv):
         list_args = [str(x) for x in argv]
         cmd = [
