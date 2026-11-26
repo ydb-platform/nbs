@@ -82,6 +82,46 @@ fuse_file_info MakeFuseFileInfo(
     return fi;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+// The queue must outlive Enqueue and DequeueIfNeeded.
+class TFSyncQueueRegistration
+{
+private:
+    IFSyncQueue& FSyncQueue;
+    IFSyncQueue::TRequestId RequestId;
+    TNodeId NodeId;
+    THandle Handle;
+    bool Enqueued = false;
+
+public:
+    TFSyncQueueRegistration(
+        IFSyncQueue& fsyncQueue,
+        IFSyncQueue::TRequestId requestId,
+        TNodeId nodeId,
+        THandle handle)
+        : FSyncQueue(fsyncQueue)
+        , RequestId(requestId)
+        , NodeId(nodeId)
+        , Handle(handle)
+    {}
+
+    void Enqueue()
+    {
+        Y_ABORT_UNLESS(!Enqueued);
+        FSyncQueue.Enqueue(RequestId, NodeId, Handle);
+        Enqueued = true;
+    }
+
+    void DequeueIfNeeded(const NProto::TError& error)
+    {
+        if (Enqueued) {
+            Enqueued = false;
+            FSyncQueue.Dequeue(RequestId, error, NodeId, Handle);
+        }
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -797,10 +837,20 @@ void TFileSystem::DoWrite(
 {
     const auto strategy = GetWriteBackCacheRequestStrategy(fi);
 
-    const auto handle = fi->fh;
-    const auto reqId = callContext->RequestId;
+    TFSyncQueueRegistration registration(
+        *FSyncQueue,
+        callContext->RequestId,
+        TNodeId{ino},
+        THandle{fi->fh});
 
-    auto callback = [=, ptr = weak_from_this()](const auto& future)
+    if (strategy != EWriteBackCacheRequestStrategy::UseNonDirect) {
+        registration.Enqueue();
+    }
+
+    // The capture copies the Enqueued flag - the request should be put into
+    // FSyncQueue before callback initialization.
+    // Only the single completion callback may dequeue the request.
+    auto callback = [=, ptr = weak_from_this()](const auto& future) mutable
     {
         auto self = ptr.lock();
         if (!self) {
@@ -810,10 +860,7 @@ void TFileSystem::DoWrite(
         const auto& response = future.GetValue();
         const auto& error = response.GetError();
 
-        if (strategy != EWriteBackCacheRequestStrategy::UseNonDirect) {
-            self->FSyncQueue
-                ->Dequeue(reqId, error, TNodeId{ino}, THandle{handle});
-        }
+        registration.DequeueIfNeeded(error);
 
         if (self->CheckResponse(self, *callContext, req, response)) {
             //
@@ -825,10 +872,6 @@ void TFileSystem::DoWrite(
             self->ReplyWrite(*callContext, error, req, size);
         }
     };
-
-    if (strategy != EWriteBackCacheRequestStrategy::UseNonDirect) {
-        FSyncQueue->Enqueue(reqId, TNodeId{ino}, THandle{handle});
-    }
 
     switch (strategy) {
         case EWriteBackCacheRequestStrategy::UseNonDirect: {
