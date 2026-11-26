@@ -31,23 +31,31 @@ enum ECompressionCodec
 
 message TBlobCompressionInfo
 {
-    ECompressionCodec Codec = 1;
+    // Every chunk except the last one has MaxUncompressedChunkSize bytes.
+    message TRegularChunks
+    {
+        uint32 MaxUncompressedChunkSize = 1;
+        uint32 LastUncompressedChunkSize = 2;
+    }
 
-    // Maximum uncompressed chunk size in bytes, a multiple of the block size.
-    uint32 MaxUncompressedChunkSize = 2;
+    message TExplicitChunks
+    {
+        // One uncompressed size per chunk, in blob order.
+        repeated uint32 UncompressedChunkSizes = 1;
+    }
+
+    reserved 2, 4, 5;
+
+    ECompressionCodec Codec = 1;
 
     // Compressed sizes of the chunks in blob order. Zero means that the chunk
     // is stored raw and occupies its uncompressed size.
     repeated uint32 CompressedChunkSizes = 3;
 
-    // Uncompressed sizes of the chunks in blob order. Each one is a nonzero
-    // multiple of the block size and is at most MaxUncompressedChunkSize.
-    // Empty if every chunk except the last one is MaxUncompressedChunkSize
-    // bytes, see LastUncompressedChunkSize.
-    repeated uint32 UncompressedChunkSizes = 4;
-
-    // Uncompressed size of the last chunk: a nonzero multiple of the block
-    // size, at most MaxUncompressedChunkSize. Set only if
-    // UncompressedChunkSizes is empty.
-    optional uint32 LastUncompressedChunkSize = 5;
+    // Uncompressed sizes are nonzero multiples of the block size in bytes.
+    oneof UncompressedChunkLayout
+    {
+        TRegularChunks RegularChunks = 6;
+        TExplicitChunks ExplicitChunks = 7;
+    }
 }

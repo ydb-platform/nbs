@@ -17,12 +17,13 @@ ui32 GetUncompressedChunkSize(
     const NProto::TBlobCompressionInfo& info,
     size_t chunk)
 {
-    if (info.UncompressedChunkSizesSize()) {
-        return info.GetUncompressedChunkSizes(chunk);
+    if (info.HasExplicitChunks()) {
+        return info.GetExplicitChunks().GetUncompressedChunkSizes(chunk);
     }
+    const auto& regular = info.GetRegularChunks();
     return chunk + 1 == info.CompressedChunkSizesSize()
-        ? info.GetLastUncompressedChunkSize()
-        : info.GetMaxUncompressedChunkSize();
+        ? regular.GetLastUncompressedChunkSize()
+        : regular.GetMaxUncompressedChunkSize();
 }
 
 }   // namespace
@@ -77,7 +78,6 @@ TResultOrError<TCompressedBlob> CompressChunks(
     TCompressedBlob result;
     auto& info = result.Info;
     info.SetCodec(codec);
-    info.SetMaxUncompressedChunkSize(chunkSize);
 
     auto& content = result.Content;
 
@@ -131,9 +131,11 @@ TResultOrError<TCompressedBlob> CompressChunks(
         chunkSizes.first(chunkSizes.size() - 1),
         [=] (ui32 size) { return size == chunkSize; });
     if (fullChunks) {
-        info.SetLastUncompressedChunkSize(chunkSizes.back());
+        auto* regular = info.MutableRegularChunks();
+        regular->SetMaxUncompressedChunkSize(chunkSize);
+        regular->SetLastUncompressedChunkSize(chunkSizes.back());
     } else {
-        info.MutableUncompressedChunkSizes()->Assign(
+        info.MutableExplicitChunks()->MutableUncompressedChunkSizes()->Assign(
             chunkSizes.begin(),
             chunkSizes.end());
     }
@@ -160,23 +162,32 @@ TResultOrError<TBlobChunkLayout> TBlobChunkLayout::Create(
         return codec.GetError();
     }
 
-    const ui32 maxChunkSize = info.GetMaxUncompressedChunkSize();
-    if (!blockSize || !maxChunkSize || maxChunkSize % blockSize != 0) {
+    const size_t chunkCount = info.CompressedChunkSizesSize();
+    if (!blockSize || !chunkCount) {
         return MakeError(E_ARGUMENT, TStringBuilder()
-            << "invalid chunk size " << maxChunkSize << " for block size "
+            << "invalid chunk count " << chunkCount << " or block size "
             << blockSize);
     }
 
-    // either the size of every chunk or only the size of the last one
-    const size_t chunkCount = info.CompressedChunkSizesSize();
-    const bool validSizes = info.UncompressedChunkSizesSize()
-        ? info.UncompressedChunkSizesSize() == chunkCount
-            && !info.HasLastUncompressedChunkSize()
-        : info.HasLastUncompressedChunkSize();
-    if (!chunkCount || !validSizes) {
-        return MakeError(E_ARGUMENT, TStringBuilder()
-            << "invalid chunk sizes: " << chunkCount << " stored, "
-            << info.UncompressedChunkSizesSize() << " uncompressed");
+    if (info.HasRegularChunks()) {
+        const auto& regular = info.GetRegularChunks();
+        const ui32 maxSize = regular.GetMaxUncompressedChunkSize();
+        const ui32 lastSize = regular.GetLastUncompressedChunkSize();
+        if (!maxSize || maxSize % blockSize != 0 || lastSize > maxSize) {
+            return MakeError(E_ARGUMENT, TStringBuilder()
+                << "invalid regular chunks: maximum " << maxSize
+                << ", last " << lastSize << ", block size " << blockSize);
+        }
+    } else if (info.HasExplicitChunks()) {
+        const size_t count =
+            info.GetExplicitChunks().UncompressedChunkSizesSize();
+        if (count != chunkCount) {
+            return MakeError(E_ARGUMENT, TStringBuilder()
+                << "invalid chunk sizes: " << chunkCount << " stored, "
+                << count << " uncompressed");
+        }
+    } else {
+        return MakeError(E_ARGUMENT, "missing uncompressed chunk layout");
     }
 
     TBlobChunkLayout layout;
@@ -185,12 +196,13 @@ TResultOrError<TBlobChunkLayout> TBlobChunkLayout::Create(
     layout.StoredOffsets.reserve(chunkCount + 1);
     layout.RawChunks.reserve(chunkCount);
 
+    layout.Offsets.push_back(0);
+    layout.StoredOffsets.push_back(0);
     for (size_t i = 0; i < chunkCount; ++i) {
         const ui32 chunkSize = GetUncompressedChunkSize(info, i);
         const ui32 compressedSize = info.GetCompressedChunkSizes(i);
 
         if (!chunkSize || chunkSize % blockSize != 0
-                || chunkSize > maxChunkSize
                 || compressedSize > chunkSize)
         {
             return MakeError(E_ARGUMENT, TStringBuilder()
@@ -221,12 +233,12 @@ const NBlockCodecs::ICodec* TBlobChunkLayout::GetCodec() const
 
 ui32 TBlobChunkLayout::GetChunkCount() const
 {
-    return Offsets.size() - 1;
+    return RawChunks.size();
 }
 
 ui64 TBlobChunkLayout::GetUncompressedSize() const
 {
-    return Offsets.back();
+    return Offsets.empty() ? 0 : Offsets.back();
 }
 
 ui32 TBlobChunkLayout::GetChunkIndex(ui64 offset) const

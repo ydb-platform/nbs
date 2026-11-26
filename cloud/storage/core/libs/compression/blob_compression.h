@@ -52,10 +52,10 @@ private:
     const NBlockCodecs::ICodec* Codec = nullptr;
     // Offsets[i] is the offset of chunk i in the uncompressed blob,
     // Offsets.back() is the uncompressed blob size.
-    TVector<ui64> Offsets = {0};
+    TVector<ui64> Offsets;
     // StoredOffsets[i] is the offset of chunk i in the stored blob,
     // StoredOffsets.back() is the stored blob size.
-    TVector<ui64> StoredOffsets = {0};
+    TVector<ui64> StoredOffsets;
     // RawChunks[i] is set if chunk i is stored uncompressed.
     TVector<bool> RawChunks;
 
