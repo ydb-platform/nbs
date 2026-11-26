@@ -1238,6 +1238,19 @@ private:
         const TEvVolume::TEvGetScanDiskStatusResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleScanDiskBatchResponse(
+        const TEvVolume::TEvScanDiskBatchResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleVerifyBlobChecksumsResponse(
+        const TEvVolume::TEvVerifyBlobChecksumsResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    template <typename TMethod>
+    void ForwardPartitionIndexRequest(
+        const NActors::TActorContext& ctx,
+        const typename TMethod::TRequest::TPtr& ev);
+
     void HandleReadBlocksResponse(
         const TEvService::TEvReadBlocksResponse::TPtr& ev,
         const NActors::TActorContext& ctx);

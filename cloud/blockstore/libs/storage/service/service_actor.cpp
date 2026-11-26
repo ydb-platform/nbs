@@ -326,6 +326,9 @@ STFUNC(TServiceActor::StateWork)
             TEvService::TEvSetVhostDiscardFlagRequest,
             HandleSetVhostDiscardFlagRequest);
 
+        HFunc(TEvServicePrivate::TEvScanDiskStarted, HandleScanDiskStarted);
+        HFunc(TEvServicePrivate::TEvScanDiskStopped, HandleScanDiskStopped);
+
         default:
             if (!HandleRequests(ev)) {
                 HandleUnexpectedEvent(

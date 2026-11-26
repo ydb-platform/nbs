@@ -243,64 +243,8 @@ message TScanDiskProgress
     // Is operation completed.
     bool IsCompleted = 3;
 
-    // Blobs processed with error. In CheckIntegrity mode: blobs that came back
-    // lost or with mismatching data.
+    // Blobs processed with error
     repeated NKikimrProto.TLogoBlobID BrokenBlobs = 4;
-
-    // The fields below are filled only in CheckIntegrity mode.
-
-    // The mode this scan runs in.
-    bool CheckIntegrity = 5;
-
-    // Commit at scan start. Blobs written later aren't covered.
-    uint64 ScanCommitId = 6;
-
-    // Rows skipped because no reader would read a block from them.
-    uint64 DeadBlobs = 7;
-
-    // Live blobs with a final verdict: healthy, degraded or broken.
-    uint64 CheckedBlobs = 8;
-
-    // Live blobs that came back recoverable.
-    uint64 DegradedBlobs = 9;
-
-    // Live blobs that ran out of retries.
-    uint64 UncheckedBlobs = 10;
-
-    // One entry per broken, degraded or unchecked blob, capped by
-    // MaxReportedBlobs.
-    repeated TScanDiskBlobResult BlobResults = 11;
-
-    // Entries left out of BlobResults because of the cap.
-    uint64 DroppedBlobResults = 12;
-
-    // A Cancel request stopped the scan, so the counters are partial.
-    bool Cancelled = 13;
-
-    // Healthy blobs whose missing parts replication is still writing.
-    uint64 ReplicatingBlobs = 14;
-}
-
-message TScanDiskBlobResult
-{
-    enum EVerdict
-    {
-        VERDICT_UNSPECIFIED = 0;
-        BROKEN = 1;
-        DEGRADED = 2;
-        UNCHECKED = 3;
-    }
-
-    NKikimrProto.TLogoBlobID BlobId = 1;
-    uint32 BSGroupId = 2;
-    EVerdict Verdict = 3;
-
-    // TEvCheckIntegrityResult fields, statuses as names.
-    string Status = 4;
-    string PlacementStatus = 5;
-    string DataStatus = 6;
-    string ErrorReason = 7;
-    string DataInfo = 8;
 }
 
 message TGetScanDiskStatusRequest
@@ -319,6 +263,142 @@ message TGetScanDiskStatusResponse
     NCloud.NProto.TError Error = 1;
 
     TScanDiskProgress Progress = 2;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// ScanDiskBatch request/response.
+
+message TScanDiskBatchRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    string DiskId = 2;
+
+    // Partition to scan, the volume routes the request by it.
+    uint32 PartitionIndex = 3;
+
+    // NextCursor of the previous batch. Empty to start at MinCommitId.
+    string Cursor = 4;
+
+    // Lowest commit id to scan, inclusive. Used only with an empty Cursor.
+    uint64 MinCommitId = 5;
+
+    // Blob index rows to visit. With 0 nothing is listed and only
+    // BlobsToConfirm is answered.
+    uint32 Count = 6;
+
+    // Highest commit id to scan, inclusive. 0 means no bound. The partition
+    // caps it at its last commit.
+    uint64 ScanCommitId = 7;
+
+    // Blobs to look up in the blob index.
+    repeated NKikimrProto.TLogoBlobID BlobsToConfirm = 8;
+}
+
+message TScanDiskBatchBlob
+{
+    NKikimrProto.TLogoBlobID BlobId = 1;
+    uint32 BSGroupId = 2;
+
+    // The blob meta has at least one non-zero block checksum.
+    bool HasChecksums = 3;
+}
+
+message TScanDiskBatchResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Live blobs of the batch.
+    repeated TScanDiskBatchBlob Blobs = 2;
+
+    // Where the next batch starts.
+    string NextCursor = 3;
+
+    // Rows skipped because no reader would read a block from them.
+    uint64 DeadBlobs = 4;
+
+    // Nothing is left to list up to ScanCommitId.
+    bool IsCompleted = 5;
+
+    // The capped upper bound to send in every later request of the scan.
+    uint64 ScanCommitId = 6;
+
+    // The part of BlobsToConfirm still in the blob index.
+    repeated NKikimrProto.TLogoBlobID ConfirmedBlobs = 7;
+
+    // Optional response headers.
+    TResponseHeaders Headers = 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// VerifyBlobChecksums request/response.
+
+message TVerifyBlobChecksumsRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    string DiskId = 2;
+
+    // Partition the blobs belong to, the volume routes the request by it.
+    uint32 PartitionIndex = 3;
+
+    repeated NKikimrProto.TLogoBlobID BlobIds = 4;
+
+    // Blobs read in parallel. 0 means the default, 4.
+    uint32 MaxInFlight = 5;
+
+    // The partition replies with what it has after this time. 0 means the
+    // default, 10000.
+    uint32 DeadlineMs = 6;
+}
+
+message TBlockChecksumMismatch
+{
+    uint32 BlockIndex = 1;
+    uint32 BlobOffset = 2;
+    uint32 ExpectedChecksum = 3;
+    uint32 ActualChecksum = 4;
+}
+
+message TBlobChecksumsResult
+{
+    enum EStatus
+    {
+        STATUS_UNSPECIFIED = 0;
+        VERIFIED = 1;
+        MISMATCH = 2;
+        READ_FAILED = 3;
+        // The deadline came before the read finished.
+        NOT_READ = 4;
+        NOT_IN_INDEX = 5;
+    }
+
+    NKikimrProto.TLogoBlobID BlobId = 1;
+    EStatus Status = 2;
+
+    // MISMATCH: the first mismatched blocks.
+    repeated TBlockChecksumMismatch Mismatches = 3;
+
+    // MISMATCH: all mismatched blocks, including the ones not listed.
+    uint32 MismatchedBlockCount = 4;
+
+    // READ_FAILED: the read error.
+    NCloud.NProto.TError Error = 5;
+}
+
+message TVerifyBlobChecksumsResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // One result per requested blob, in the request order.
+    repeated TBlobChecksumsResult Results = 2;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

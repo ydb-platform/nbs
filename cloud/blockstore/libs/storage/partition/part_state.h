@@ -4,7 +4,6 @@
 
 #include "part_counters.h"
 #include "part_database.h"
-#include "part_scan_disk.h"
 #include "part_schema.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
@@ -205,13 +204,7 @@ struct TScanDiskProgress
     ui64 ProcessedBlobs = 0;
     ui64 TotalBlobs = 0;
     bool IsCompleted = false;
-
-    bool CheckIntegrity = false;
-    ui64 ScanCommitId = 0;
-    bool Cancelled = false;
-    NProto::TError Error;
-
-    TScanDiskResults Results;
+    TVector<NKikimr::TLogoBlobID> BrokenBlobs;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -220,15 +213,12 @@ struct TScanDiskState
 {
     bool Started = false;
     bool EverStarted = false;
-    bool CancelRequested = false;
 
-    TScanDiskProgress Progress;
+    TVector<NKikimr::TLogoBlobID> BrokenBlobs;
+    ui64 ProcessedBlobs = 0;
+    ui64 TotalBlobs = 0;
 
     ui64 BlobsToBeProcessed = 0;
-
-    // Bounds of the checkpoints the in-flight batch was checked against.
-    ui64 HeldMinCheckpointCommitId = Max<ui64>();
-    ui64 HeldMaxCheckpointCommitId = 0;
 
     bool IsStarted() const
     {
@@ -240,27 +230,24 @@ struct TScanDiskState
         return EverStarted;
     }
 
-    void Start(ui64 totalBlobs, bool checkIntegrity, ui64 scanCommitId)
+    void Start(ui64 totalBlobs)
     {
         Started = true;
         EverStarted = true;
-        CancelRequested = false;
-        Progress = {
-            .TotalBlobs = totalBlobs,
-            .CheckIntegrity = checkIntegrity,
-            .ScanCommitId = scanCommitId};
+        BrokenBlobs.clear();
+        ProcessedBlobs = 0;
+        TotalBlobs = totalBlobs;
         BlobsToBeProcessed = 0;
-        ReleaseBatchCheckpoints();
     }
 
-    const TScanDiskProgress& GetProgress() const
+    TScanDiskProgress GetProgress() const
     {
-        return Progress;
+        return {ProcessedBlobs, TotalBlobs, !Started, BrokenBlobs};
     }
 
     void UpdateProcessedBlobs()
     {
-        Progress.ProcessedBlobs += BlobsToBeProcessed;
+        ProcessedBlobs += BlobsToBeProcessed;
         BlobsToBeProcessed = 0;
     }
 
@@ -269,31 +256,14 @@ struct TScanDiskState
         BlobsToBeProcessed = toBeProcessed;
     }
 
-    void HoldBatchCheckpoints(ui64 minCommitId, ui64 maxCommitId)
+    void SetBrokenBlobs(TVector<NKikimr::TLogoBlobID> blobIds)
     {
-        // A batch that outlives its scan must not hold checkpoints.
-        if (!Started) {
-            return;
-        }
-
-        HeldMinCheckpointCommitId = minCommitId;
-        HeldMaxCheckpointCommitId = maxCommitId;
+        BrokenBlobs = std::move(blobIds);
     }
 
-    void ReleaseBatchCheckpoints()
-    {
-        HeldMinCheckpointCommitId = Max<ui64>();
-        HeldMaxCheckpointCommitId = 0;
-    }
-
-    void Complete(TScanDiskResults results, NProto::TError error)
+    void Complete()
     {
         Started = false;
-        Progress.IsCompleted = true;
-        Progress.Cancelled = CancelRequested;
-        Progress.Error = std::move(error);
-        Progress.Results = std::move(results);
-        ReleaseBatchCheckpoints();
     }
 };
 
@@ -1033,30 +1003,14 @@ public:
         return ScanDiskState.HasProgress();
     }
 
-    void StartScanDisk(bool checkIntegrity = false, ui64 scanCommitId = 0)
+    void StartScanDisk()
     {
-        ScanDiskState.Start(GetTotalBlobsCount(), checkIntegrity, scanCommitId);
+        ScanDiskState.Start(GetTotalBlobsCount());
     }
 
-    const TScanDiskProgress& GetScanDiskProgress() const
+    TScanDiskProgress GetScanDiskProgress() const
     {
         return ScanDiskState.GetProgress();
-    }
-
-    bool IsScanDiskBlockingCleanup() const
-    {
-        return ScanDiskState.IsStarted() &&
-               !ScanDiskState.GetProgress().CheckIntegrity;
-    }
-
-    bool IsScanDiskCancelRequested() const
-    {
-        return ScanDiskState.CancelRequested;
-    }
-
-    void RequestScanDiskCancel()
-    {
-        ScanDiskState.CancelRequested = true;
     }
 
     void UpdateScanDiskProgress()
@@ -1069,23 +1023,13 @@ public:
         ScanDiskState.UpdateBlobsToBeProcessed(toBeProcessed);
     }
 
-    // Cleanup keeps honoring the checkpoints an integrity scan batch was
-    // checked against until its checks finish, even if they are deleted.
-    void HoldScanDiskBatchCheckpoints()
-    {
-        ScanDiskState.HoldBatchCheckpoints(
-            GetMinCheckpointCommitId(),
-            GetMaxCheckpointCommitId());
+    void SetBrokenBlobs(TVector<NKikimr::TLogoBlobID> blobIds) {
+        ScanDiskState.SetBrokenBlobs(std::move(blobIds));
     }
 
-    void ReleaseScanDiskBatchCheckpoints()
+    void CompleteScanDisk()
     {
-        ScanDiskState.ReleaseBatchCheckpoints();
-    }
-
-    void CompleteScanDisk(TScanDiskResults results, NProto::TError error)
-    {
-        ScanDiskState.Complete(std::move(results), std::move(error));
+        ScanDiskState.Complete();
     }
 
     //

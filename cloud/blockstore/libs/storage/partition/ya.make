@@ -39,6 +39,7 @@ SRCS(
     part_actor_statpartition.cpp
     part_actor_stats.cpp
     part_actor_trimfreshlog.cpp
+    part_actor_verify_blob_checksums.cpp
     part_actor_waitready.cpp
     part_actor_writeblocks.cpp
     part_actor_writefreshblocks.cpp

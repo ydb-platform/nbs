@@ -4,6 +4,7 @@ package NCloud.NBlockStore.NPrivateProto;
 
 import "cloud/blockstore/private/api/protos/blob.proto";
 import "cloud/storage/core/protos/drain.proto";
+import "cloud/storage/core/protos/error.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/private/api/protos";
 
@@ -243,45 +244,65 @@ message TScanDiskRequest
 {
     string DiskId = 1;
 
-    // Number of blobs per batch.
+    // Number of blobs per batch. Default 100.
     uint32 BatchSize = 2;
 
-    // Check every part of each live blob with TEvCheckIntegrity instead of
-    // reading its first block.
-    bool CheckIntegrity = 3;
+    // Zero means the default in the fields below.
 
-    // The settings below apply only to CheckIntegrity mode.
-    // Zero means the default.
+    // Scan only this partition. All partitions, one after another, by default.
+    optional uint32 PartitionIndex = 3;
 
-    // Checks in flight per partition. Default 4.
-    uint32 MaxInFlight = 4;
+    // Also compare block checksums.
+    bool VerifyChecksums = 4;
 
-    // Deadline for each check. Default 60000.
-    uint32 CheckTimeoutMs = 5;
+    // Scan only blobs with this commit id or a newer one. Needs
+    // PartitionIndex on a multi-partition disk.
+    uint64 MinCommitId = 5;
 
-    // Retries before a blob is reported as unchecked. Default 5.
-    uint32 MaxRetries = 6;
+    // Scan only blobs with this commit id or an older one. 0 means no bound.
+    // Needs PartitionIndex on a multi-partition disk.
+    uint64 MaxCommitId = 6;
 
-    // First retry delay, doubled on each attempt up to 1 minute. Default 1000.
-    uint32 RetryTimeoutMs = 7;
+    // Start from the NextCursor of a record. Needs PartitionIndex on a
+    // multi-partition disk.
+    string Cursor = 7;
 
-    // Cap on BlobResults per partition. Default 10000.
-    uint32 MaxReportedBlobs = 8;
+    // Parallel checks and checksum reads per batch. Default 4.
+    uint32 MaxInFlight = 8;
 
-    // Cap on each DataInfo, in bytes. Default 1024.
-    uint32 MaxDataInfoSize = 9;
+    // Retries for a blob with no verdict. Default 5.
+    uint32 MaxRetries = 9;
 
-    // Stop the running scan instead of starting one.
-    bool Cancel = 10;
+    // First delay before a retry, doubled on each attempt up to 1 minute.
+    // Default 1000.
+    uint32 RetryTimeoutMs = 10;
+
+    // Give up on a partition after its batches have been failing this long.
+    // Default 600000.
+    uint32 UnavailableTimeoutMs = 11;
+
+    // Limit on the DataInfo text per blob. Default 1024.
+    uint32 MaxDataInfoSize = 12;
+
+    // Stop the scan when nobody has polled it for this long. Default 600000.
+    uint32 PollTimeoutMs = 13;
+
+    // Stop listing new batches while the unacknowledged records hold this
+    // many blob results. Default 1000.
+    uint32 MaxPendingBlobResults = 14;
 }
 
 message TScanDiskResponse
 {
+    // Pass it to getscandiskstatus.
+    string OperationId = 1;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // GetScanDiskStatus request/response.
 
+// Unused. Kept only so that Go code generated from these protos keeps
+// building.
 message TScanDiskProgress
 {
     // Number of blobs processed so far.
@@ -293,42 +314,118 @@ message TScanDiskProgress
     // Is operation completed.
     bool IsCompleted = 3;
 
-    // Blobs processed with error. In CheckIntegrity mode: blobs that came back
-    // lost or with mismatching data.
+    // Blobs processed with error.
     repeated TLogoBlobID BrokenBlobs = 4;
+}
 
-    // The fields below are filled only in CheckIntegrity mode.
+message TGetScanDiskStatusRequest
+{
+    // Unused: the server ignores it. Kept only so that Go code generated from
+    // these protos keeps building.
+    string DiskId = 1;
 
-    // The mode this scan runs in.
-    bool CheckIntegrity = 5;
+    string OperationId = 2;
 
-    // Commit at scan start. Blobs written later aren't covered.
-    uint64 ScanCommitId = 6;
+    // RecordId of the last record the caller saved, 0 at first. The scan
+    // drops the records up to it.
+    uint64 AckedRecordId = 3;
+}
 
+message TScanDiskCounters
+{
     // Rows skipped because no reader would read a block from them.
-    uint64 DeadBlobs = 7;
+    uint64 DeadBlobs = 1;
 
-    // Live blobs with a final verdict: healthy, degraded or broken.
-    uint64 CheckedBlobs = 8;
+    // Blobs with an integrity verdict: healthy, replicating, degraded or
+    // broken.
+    uint64 CheckedBlobs = 2;
+    uint64 ReplicatingBlobs = 3;
+    uint64 DegradedBlobs = 4;
+    uint64 BrokenBlobs = 5;
+    uint64 ChecksumVerifiedBlobs = 6;
+    uint64 ChecksumMismatchBlobs = 7;
 
-    // Live blobs that came back recoverable.
-    uint64 DegradedBlobs = 9;
+    // Blobs dropped because the disk itself deleted them during the scan.
+    uint64 DeletedDuringScan = 8;
 
-    // Live blobs that ran out of retries.
-    uint64 UncheckedBlobs = 10;
+    // The blobs the scan gave up on after the last retry.
+    uint64 UncheckedBlobs = 9;
+    uint64 ReadFailedBlobs = 10;
+    uint64 UnconfirmedBlobs = 11;
+    uint64 ChecksumNotVerifiedBlobs = 12;
+}
 
-    // One entry per broken, degraded or unchecked blob, capped by
-    // MaxReportedBlobs.
-    repeated TScanDiskBlobResult BlobResults = 11;
+// A batch the scan has finished, or a partition it left incomplete. Either is
+// a safe point to resume from: the NextCursor of a batch record, or the Cursor
+// of a record with an Error.
+message TScanDiskRecord
+{
+    // 1, 2 and so on within the scan.
+    uint64 RecordId = 1;
 
-    // Entries left out of BlobResults because of the cap.
-    uint64 DroppedBlobResults = 12;
+    uint32 PartitionIndex = 2;
 
-    // A Cancel request stopped the scan, so the counters are partial.
-    bool Cancelled = 13;
+    // Where the batch started.
+    string Cursor = 3;
 
-    // Healthy blobs whose missing parts replication is still writing.
-    uint64 ReplicatingBlobs = 14;
+    // Where the next batch of the partition starts.
+    string NextCursor = 4;
+
+    // Pass it as MaxCommitId to resume the partition.
+    uint64 ScanCommitId = 5;
+
+    // The partition has nothing left to scan.
+    bool IsCompleted = 6;
+
+    TScanDiskCounters Counters = 7;
+
+    // The broken, degraded, mismatched and given-up blobs.
+    repeated TScanDiskBlobResult BlobResults = 8;
+
+    // The partition is left incomplete at Cursor.
+    NCloud.NProto.TError Error = 9;
+}
+
+message TScanDiskPartitionStatus
+{
+    uint32 PartitionIndex = 1;
+    bool IsCompleted = 2;
+
+    // The partition is left incomplete.
+    NCloud.NProto.TError Error = 3;
+
+    // The counters of the batches finished so far.
+    TScanDiskCounters Counters = 4;
+}
+
+message TGetScanDiskStatusResponse
+{
+    // Unused: the server never fills it. Kept only so that Go code generated
+    // from these protos keeps building.
+    TScanDiskProgress Progress = 1;
+
+    // The records after AckedRecordId, in order.
+    repeated TScanDiskRecord Records = 2;
+
+    repeated TScanDiskPartitionStatus Partitions = 3;
+
+    // Every partition of the scan has finished, either completed or left
+    // incomplete. No more records will come.
+    bool IsCompleted = 4;
+
+    // The partitions left incomplete.
+    repeated uint32 IncompletePartitions = 5;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// The input and output of one batch of a scan. No action takes them.
+
+message TScanDiskBlockChecksumMismatch
+{
+    uint32 BlockIndex = 1;
+    uint32 BlobOffset = 2;
+    uint32 ExpectedChecksum = 3;
+    uint32 ActualChecksum = 4;
 }
 
 message TScanDiskBlobResult
@@ -336,9 +433,19 @@ message TScanDiskBlobResult
     enum EVerdict
     {
         VERDICT_UNSPECIFIED = 0;
-        BROKEN = 1;
-        DEGRADED = 2;
-        UNCHECKED = 3;
+        HEALTHY = 1;
+        // Healthy, and replication is still writing missing parts.
+        REPLICATING = 2;
+        // Readable, but some parts are missing.
+        DEGRADED = 3;
+        // Lost or with parts that don't match each other.
+        BROKEN = 4;
+        // No integrity verdict.
+        UNCHECKED = 5;
+        // All parts match, but some blocks don't match their checksums.
+        CHECKSUM_MISMATCH = 6;
+        // The integrity check found the blob readable, but the read fails.
+        READ_FAILED = 7;
     }
 
     TLogoBlobID BlobId = 1;
@@ -351,16 +458,101 @@ message TScanDiskBlobResult
     string DataStatus = 6;
     string ErrorReason = 7;
     string DataInfo = 8;
+
+    // CHECKSUM_MISMATCH: the first mismatched blocks.
+    repeated TScanDiskBlockChecksumMismatch Mismatches = 9;
+
+    // CHECKSUM_MISMATCH: all mismatched blocks, including the ones not listed.
+    uint32 MismatchedBlockCount = 10;
+
+    // The blob index couldn't be consulted, so the disk may have deleted the
+    // blob and the verdict may be a false alarm.
+    bool Unconfirmed = 11;
+
+    // The block checksums weren't verified.
+    bool ChecksumsNotVerified = 12;
+
+    // The last error that left the blob without a final result.
+    NCloud.NProto.TError Error = 13;
 }
 
-message TGetScanDiskStatusRequest
+message TScanDiskBlobToRetry
+{
+    TLogoBlobID BlobId = 1;
+    uint32 BSGroupId = 2;
+
+    // The blob meta has at least one non-zero block checksum.
+    bool HasChecksums = 3;
+
+    // The result of the last attempt.
+    TScanDiskBlobResult Result = 4;
+}
+
+message TScanDiskBatchRequest
 {
     string DiskId = 1;
+    uint32 PartitionIndex = 2;
+
+    // NextCursor of the previous batch. Empty to start at MinCommitId.
+    string Cursor = 3;
+
+    // Lowest commit id to scan, inclusive. Used only with an empty Cursor.
+    uint64 MinCommitId = 4;
+
+    // Blob index rows to list. With 0 nothing is listed and only
+    // BlobsToRecheck are checked.
+    uint32 Count = 5;
+
+    // Highest commit id to scan, inclusive. 0 means no bound. The partition
+    // caps it at its last commit, and the response returns the capped value.
+    uint64 ScanCommitId = 6;
+
+    // BlobsToRetry of earlier responses.
+    repeated TScanDiskBlobToRetry BlobsToRecheck = 7;
+
+    // Also compare the block checksums of the readable blobs.
+    bool VerifyChecksums = 8;
+
+    // Integrity checks and checksum reads in parallel. 0 means the default, 4.
+    uint32 MaxInFlight = 9;
+
+    // The batch replies with what it has after this time. 0 means the
+    // default, 25000.
+    uint32 DeadlineMs = 10;
+
+    // Limit on DataInfo per blob. 0 means the default, 1024.
+    uint32 MaxDataInfoSize = 11;
 }
 
-message TGetScanDiskStatusResponse
+message TScanDiskBatchResponse
 {
-    TScanDiskProgress Progress = 1;
+    string NextCursor = 1;
+    bool IsCompleted = 2;
+    uint64 ScanCommitId = 3;
+
+    // Counters of the blobs this batch finished with. A blob in
+    // BlobsToRetry isn't counted.
+
+    // Rows skipped because no reader would read a block from them.
+    uint64 DeadBlobs = 4;
+
+    // Blobs with an integrity verdict: healthy, replicating, degraded or
+    // broken.
+    uint64 CheckedBlobs = 5;
+    uint64 ReplicatingBlobs = 6;
+    uint64 DegradedBlobs = 7;
+    uint64 BrokenBlobs = 8;
+    uint64 ChecksumVerifiedBlobs = 9;
+    uint64 ChecksumMismatchBlobs = 10;
+
+    // Blobs dropped because the disk itself deleted them during the scan.
+    uint64 DeletedDuringScan = 11;
+
+    // The confirmed broken, degraded and mismatched blobs.
+    repeated TScanDiskBlobResult BlobResults = 12;
+
+    // Blobs that need another attempt. Send them back as BlobsToRecheck.
+    repeated TScanDiskBlobToRetry BlobsToRetry = 13;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

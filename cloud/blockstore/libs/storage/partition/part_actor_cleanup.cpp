@@ -34,7 +34,7 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    if (State->IsScanDiskBlockingCleanup()) {
+    if (State->IsScanDiskStarted()) {
         return;
     }
 
@@ -144,7 +144,7 @@ void TPartitionActor::HandleCleanup(
         return;
     }
 
-    if (State->IsScanDiskBlockingCleanup()) {
+    if (State->IsScanDiskStarted()) {
         State->GetCleanupState().SetStatus(EOperationStatus::Idle, ctx.Now());
 
         replyError(ctx, *requestInfo, E_TRY_AGAIN, "Scan disk is running");

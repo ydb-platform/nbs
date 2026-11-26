@@ -34,6 +34,8 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetRebuildMetadataStatus,                                  __VA_ARGS__)\
     xxx(ScanDisk,                                                  __VA_ARGS__)\
     xxx(GetScanDiskStatus,                                         __VA_ARGS__)\
+    xxx(ScanDiskBatch,                                             __VA_ARGS__)\
+    xxx(VerifyBlobChecksums,                                       __VA_ARGS__)\
     xxx(GetVolumeInfo,                                             __VA_ARGS__)\
     xxx(UpdateVolumeParams,                                        __VA_ARGS__)\
     xxx(ChangeStorageConfig,                                       __VA_ARGS__)\
@@ -74,6 +76,8 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(GetRebuildMetadataStatus, __VA_ARGS__)                                 \
     xxx(ScanDisk,                 __VA_ARGS__)                                 \
     xxx(GetScanDiskStatus,        __VA_ARGS__)                                 \
+    xxx(ScanDiskBatch,            __VA_ARGS__)                                 \
+    xxx(VerifyBlobChecksums,      __VA_ARGS__)                                 \
     xxx(CheckRange,               __VA_ARGS__)                                 \
 // BLOCKSTORE_VOLUME_HANDLED_RESPONSES
 
@@ -399,6 +403,12 @@ struct TEvVolume
 
         EvDescribeBlobRequest = EvBegin + 74,
         EvDescribeBlobResponse = EvBegin + 75,
+
+        EvScanDiskBatchRequest = EvBegin + 76,
+        EvScanDiskBatchResponse = EvBegin + 77,
+
+        EvVerifyBlobChecksumsRequest = EvBegin + 78,
+        EvVerifyBlobChecksumsResponse = EvBegin + 79,
 
         EvEnd
     };

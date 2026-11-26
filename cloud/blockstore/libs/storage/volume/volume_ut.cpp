@@ -7731,14 +7731,14 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldMergeCheckIntegrityScanDiskStatusOfPartitions)
+    Y_UNIT_TEST(ShouldRouteScanDiskBatchByPartitionIndex)
     {
         NProto::TStorageServiceConfig config;
         config.SetMinChannelCount(4);
         auto runtime = PrepareTestActorRuntime(config);
 
         constexpr ui32 PartitionCount = 2;
-        constexpr ui32 BlocksPerPartition = 7 * 1024;
+        constexpr ui32 BlocksPerPartition = 1024;
 
         TVolumeClient volume(*runtime);
         volume.UpdateVolumeConfig(
@@ -7768,84 +7768,118 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             TBlockRange64::WithLength(0, PartitionCount * BlocksPerPartition),
             clientInfo.GetClientId(),
             GetBlockContent(1));
-        // Overwrites the first merged blob of each partition.
-        volume.WriteBlocksLocal(
-            TBlockRange64::WithLength(0, PartitionCount * 1024),
-            clientInfo.GetClientId(),
-            GetBlockContent(2));
 
-        THashSet<ui64> checkedTabletIds;
-        runtime->SetEventFilter(
-            [&](TTestActorRuntimeBase& testRuntime,
-                TAutoPtr<IEventHandle>& event)
-            {
-                if (event->GetTypeRewrite() != TEvBlobStorage::EvCheckIntegrity)
-                {
-                    return false;
-                }
+        TVector<TVector<TLogoBlobID>> blobIdsByPartition(PartitionCount);
+        THashSet<ui64> tabletIds;
+        for (ui32 i = 0; i < PartitionCount; ++i) {
+            NProto::TScanDiskBatchRequest request;
+            request.SetPartitionIndex(i);
+            request.SetCount(100);
+            const auto response = volume.ScanDiskBatch(std::move(request));
+            const auto& record = response->Record;
+            UNIT_ASSERT_LT(0, record.BlobsSize());
+            UNIT_ASSERT(record.GetIsCompleted());
 
-                using TResult = TEvBlobStorage::TEvCheckIntegrityResult;
-                const auto blobId =
-                    event->Get<TEvBlobStorage::TEvCheckIntegrity>()->Id;
-                checkedTabletIds.insert(blobId.TabletID());
+            THashSet<ui64> partitionTabletIds;
+            for (const auto& blob: record.GetBlobs()) {
+                const auto blobId = LogoBlobIDFromLogoBlobID(blob.GetBlobId());
+                blobIdsByPartition[i].push_back(blobId);
+                partitionTabletIds.insert(blobId.TabletID());
+            }
+            UNIT_ASSERT_VALUES_EQUAL(1, partitionTabletIds.size());
+            tabletIds.insert(*partitionTabletIds.begin());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(PartitionCount, tabletIds.size());
 
-                auto result = std::make_unique<TResult>(NKikimrProto::OK);
-                result->Id = blobId;
-                result->PlacementStatus = TResult::PS_BLOB_IS_RECOVERABLE;
-                testRuntime.Send(
-                    new IEventHandle(
-                        event->Sender,
-                        event->Recipient,
-                        result.release(),
-                        0,   // flags
-                        event->Cookie),
-                    0);
-                return true;
-            });
+        NProto::TVerifyBlobChecksumsRequest request;
+        request.SetPartitionIndex(1);
+        LogoBlobIDFromLogoBlobID(
+            blobIdsByPartition[1][0],
+            request.AddBlobIds());
+        LogoBlobIDFromLogoBlobID(
+            blobIdsByPartition[0][0],
+            request.AddBlobIds());
+        const auto response = volume.VerifyBlobChecksums(std::move(request));
+        const auto& results = response->Record.GetResults();
+        UNIT_ASSERT_VALUES_EQUAL(2, results.size());
+        UNIT_ASSERT_EQUAL(
+            NProto::TBlobChecksumsResult::VERIFIED,
+            results[0].GetStatus());
+        // Partition 1 doesn't know the blobs of partition 0.
+        UNIT_ASSERT_EQUAL(
+            NProto::TBlobChecksumsResult::NOT_IN_INDEX,
+            results[1].GetStatus());
+    }
 
-        NProto::TScanDiskRequest request;
-        request.SetBatchSize(100);
-        request.SetCheckIntegrity(true);
-        volume.ScanDisk(request);
+    Y_UNIT_TEST(ShouldRejectScanDiskBatchWithPartitionIndexOutOfRange)
+    {
+        auto runtime = PrepareTestActorRuntime();
 
-        auto response = volume.GetScanDiskStatus();
-        for (ui32 attempt = 0;
-             attempt < 1000 && !response->Record.GetProgress().GetIsCompleted();
-             ++attempt)
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+
         {
-            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
-            response = volume.GetScanDiskStatus();
+            NProto::TScanDiskBatchRequest request;
+            request.SetPartitionIndex(1);
+            request.SetCount(100);
+            volume.SendScanDiskBatchRequest(std::move(request));
+            const auto response = volume.RecvScanDiskBatchResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                response->GetErrorReason());
         }
 
-        const auto& progress = response->Record.GetProgress();
-
-        constexpr ui32 BlobsPerPartition = BlocksPerPartition / 1024 + 1;
-        constexpr ui32 LiveBlobsPerPartition = BlobsPerPartition - 1;
-
-        UNIT_ASSERT_VALUES_EQUAL(PartitionCount, checkedTabletIds.size());
-        UNIT_ASSERT(progress.GetIsCompleted());
-        UNIT_ASSERT(progress.GetCheckIntegrity());
-        UNIT_ASSERT_LT(0, progress.GetScanCommitId());
-        UNIT_ASSERT_VALUES_EQUAL(
-            PartitionCount * BlobsPerPartition,
-            progress.GetTotal());
-        UNIT_ASSERT_VALUES_EQUAL(PartitionCount, progress.GetDeadBlobs());
-        UNIT_ASSERT_VALUES_EQUAL(
-            PartitionCount * LiveBlobsPerPartition,
-            progress.GetCheckedBlobs());
-        UNIT_ASSERT_VALUES_EQUAL(
-            PartitionCount * LiveBlobsPerPartition,
-            progress.GetDegradedBlobs());
-
-        THashSet<ui64> reportedTabletIds;
-        for (const auto& result: progress.GetBlobResults()) {
-            reportedTabletIds.insert(
-                LogoBlobIDFromLogoBlobID(result.GetBlobId()).TabletID());
+        {
+            NProto::TVerifyBlobChecksumsRequest request;
+            request.SetPartitionIndex(1);
+            volume.SendVerifyBlobChecksumsRequest(std::move(request));
+            const auto response = volume.RecvVerifyBlobChecksumsResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                response->GetErrorReason());
         }
-        UNIT_ASSERT_VALUES_EQUAL(
-            PartitionCount * LiveBlobsPerPartition,
-            progress.BlobResultsSize());
-        UNIT_ASSERT(checkedTabletIds == reportedTabletIds);
+    }
+
+    Y_UNIT_TEST(ShouldRejectScanDiskBatchForDiskRegistryBasedDisks)
+    {
+        auto runtime = PrepareTestActorRuntime();
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            DefaultDeviceBlockSize * DefaultDeviceBlockCount /
+                DefaultBlockSize);
+        volume.WaitReady();
+
+        {
+            NProto::TScanDiskBatchRequest request;
+            request.SetCount(100);
+            volume.SendScanDiskBatchRequest(std::move(request));
+            const auto response = volume.RecvScanDiskBatchResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_NOT_IMPLEMENTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            volume.SendVerifyBlobChecksumsRequest(
+                NProto::TVerifyBlobChecksumsRequest());
+            const auto response = volume.RecvVerifyBlobChecksumsResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_NOT_IMPLEMENTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
     }
 
     Y_UNIT_TEST(ShouldSetClientIdWhenAddingNewClient)

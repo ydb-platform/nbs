@@ -233,16 +233,14 @@ ui64 TPartitionState::GetMaxCheckpointCommitId() const
 {
     return Max(
         GetCheckpoints().GetMaxCommitId(),
-        GetCheckpointsInFlight()->GetMaxCommitId(),
-        ScanDiskState.HeldMaxCheckpointCommitId);
+        GetCheckpointsInFlight()->GetMaxCommitId());
 }
 
 ui64 TPartitionState::GetMinCheckpointCommitId() const
 {
     return Min(
         GetCheckpoints().GetMinCommitId(),
-        GetCheckpointsInFlight()->GetMinCommitId(),
-        ScanDiskState.HeldMinCheckpointCommitId);
+        GetCheckpointsInFlight()->GetMinCommitId());
 }
 
 ui64 TPartitionState::GetCleanupCommitId() const

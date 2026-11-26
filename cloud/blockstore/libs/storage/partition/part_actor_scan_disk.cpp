@@ -2,13 +2,10 @@
 
 #include <cloud/blockstore/libs/storage/partition/model/blob_liveness.h>
 
-#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
-
-#include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/algorithm.h>
-#include <util/generic/deque.h>
+#include <util/string/split.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -17,119 +14,13 @@ using namespace NActors;
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
 
-using TBlobMark = TEvPartitionPrivate::TScanDiskBatchResponse::TBlobMark;
+using TBlobMark = TEvPartitionPrivate::TScanDiskReadBatchResponse::TBlobMark;
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui64 MaxUniqueId = std::numeric_limits<ui64>::max();
-
-constexpr ui32 DefaultMaxInFlight = 4;
-constexpr auto DefaultCheckTimeout = TDuration::Seconds(60);
-constexpr ui32 DefaultMaxRetries = 5;
-constexpr auto DefaultRetryTimeout = TDuration::Seconds(1);
-constexpr ui32 DefaultMaxReportedBlobs = 10000;
-constexpr ui32 DefaultMaxDataInfoSize = 1024;
-
-constexpr auto MaxCheckRetryDelay = TDuration::Minutes(1);
-
-constexpr ui64 RetryCheckWakeupTag = 1;
-
-////////////////////////////////////////////////////////////////////////////////
-
-ui32 ValueOrDefault(ui32 value, ui32 defaultValue)
-{
-    return value ? value : defaultValue;
-}
-
-TDuration MillisecondsOrDefault(ui32 milliseconds, TDuration defaultValue)
-{
-    return milliseconds ? TDuration::MilliSeconds(milliseconds) : defaultValue;
-}
-
-TScanDiskSettings MakeScanDiskSettings(const NProto::TScanDiskRequest& request)
-{
-    return {
-        .BatchSize = request.GetBatchSize(),
-        .CheckIntegrity = request.GetCheckIntegrity(),
-        .MaxInFlight =
-            ValueOrDefault(request.GetMaxInFlight(), DefaultMaxInFlight),
-        .CheckTimeout = MillisecondsOrDefault(
-            request.GetCheckTimeoutMs(),
-            DefaultCheckTimeout),
-        .MaxRetries =
-            ValueOrDefault(request.GetMaxRetries(), DefaultMaxRetries),
-        .RetryTimeout = MillisecondsOrDefault(
-            request.GetRetryTimeoutMs(),
-            DefaultRetryTimeout),
-        .MaxReportedBlobs = ValueOrDefault(
-            request.GetMaxReportedBlobs(),
-            DefaultMaxReportedBlobs),
-        .MaxDataInfoSize = ValueOrDefault(
-            request.GetMaxDataInfoSize(),
-            DefaultMaxDataInfoSize),
-    };
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-NProto::TScanDiskBlobResult::EVerdict ToProtoVerdict(
-    EScanDiskBlobVerdict verdict)
-{
-    switch (verdict) {
-        case EScanDiskBlobVerdict::Broken:
-            return NProto::TScanDiskBlobResult::BROKEN;
-        case EScanDiskBlobVerdict::Degraded:
-            return NProto::TScanDiskBlobResult::DEGRADED;
-        case EScanDiskBlobVerdict::Unchecked:
-            return NProto::TScanDiskBlobResult::UNCHECKED;
-    }
-}
-
-void FillScanDiskProgress(
-    const TScanDiskProgress& progress,
-    NProto::TScanDiskProgress& proto)
-{
-    const auto& results = progress.Results;
-
-    proto.SetProcessed(progress.ProcessedBlobs);
-    proto.SetTotal(progress.TotalBlobs);
-    proto.SetIsCompleted(progress.IsCompleted);
-
-    for (const auto& blobId: results.BrokenBlobs) {
-        LogoBlobIDFromLogoBlobID(blobId, proto.AddBrokenBlobs());
-    }
-
-    if (!progress.CheckIntegrity) {
-        proto.SetCancelled(progress.Cancelled);
-        return;
-    }
-
-    proto.SetCheckIntegrity(true);
-    proto.SetScanCommitId(progress.ScanCommitId);
-    proto.SetDeadBlobs(results.DeadBlobs);
-    proto.SetCheckedBlobs(results.CheckedBlobs);
-    proto.SetReplicatingBlobs(results.ReplicatingBlobs);
-    proto.SetDegradedBlobs(results.DegradedBlobs);
-    proto.SetUncheckedBlobs(results.UncheckedBlobs);
-    proto.SetDroppedBlobResults(results.DroppedBlobResults);
-    proto.SetCancelled(progress.Cancelled);
-
-    for (const auto& blobResult: results.BlobResults) {
-        auto& protoResult = *proto.AddBlobResults();
-        LogoBlobIDFromLogoBlobID(
-            blobResult.BlobId,
-            protoResult.MutableBlobId());
-        protoResult.SetBSGroupId(blobResult.BSGroupId);
-        protoResult.SetVerdict(ToProtoVerdict(blobResult.Verdict));
-        protoResult.SetStatus(blobResult.Status);
-        protoResult.SetPlacementStatus(blobResult.PlacementStatus);
-        protoResult.SetDataStatus(blobResult.DataStatus);
-        protoResult.SetErrorReason(blobResult.ErrorReason);
-        protoResult.SetDataInfo(blobResult.DataInfo);
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -146,16 +37,44 @@ TString StringifyScanDiskBatchTx(const TTxPartition::TScanDiskBatch& args)
            << args.LastVisitedBlobId.UniqueId() << ']'
            << " BlobsToReadInCurrentBatchSize: "
            << args.BlobsToReadInCurrentBatch.size()
-           << " DeadBlobCount: " << args.DeadBlobCount;
+           << " DeadBlobCount: " << args.DeadBlobCount
+           << " ConfirmedBlobsSize: " << args.ConfirmedBlobs.size();
+}
+
+TString FormatScanDiskCursor(const TPartialBlobId& blobId)
+{
+    return TStringBuilder() << blobId.CommitId() << ':' << blobId.UniqueId();
+}
+
+bool TryParseScanDiskCursor(TStringBuf cursor, TPartialBlobId& blobId)
+{
+    ui64 commitId = 0;
+    ui64 uniqueId = 0;
+    if (!StringSplitter(cursor).Split(':').TryCollectInto(&commitId, &uniqueId))
+    {
+        return false;
+    }
+
+    blobId = MakePartialBlobId(commitId, uniqueId);
+    return true;
+}
+
+bool HasBlockChecksums(const NProto::TBlobMeta& blobMeta)
+{
+    return AnyOf(
+        blobMeta.GetBlockChecksums(),
+        [](ui32 checksum) { return checksum != 0; });
 }
 
 TBlobMark MakeBlobMark(
     const TTabletStorageInfo& tabletInfo,
-    const TPartialBlobId& blobId)
+    const TPartialBlobId& blobId,
+    bool hasChecksums)
 {
     return {
         MakeBlobId(tabletInfo.TabletID, blobId),
-        tabletInfo.GroupFor(blobId.Channel(), blobId.Generation())};
+        tabletInfo.GroupFor(blobId.Channel(), blobId.Generation()),
+        hasChecksums};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -188,12 +107,15 @@ public:
         Args.LastVisitedBlobId = MakePartialBlobId(commitId, blobId);
 
         if (!IsDeletionMarker(Args.LastVisitedBlobId)) {
-            if (Args.SkipDeadBlobs) {
-                Args.VisitedBlobIds.push_back(Args.LastVisitedBlobId);
+            if (Args.BatchRequest) {
+                Args.VisitedBlobs.push_back(
+                    {Args.LastVisitedBlobId, HasBlockChecksums(blobMeta)});
                 AppendBlobBlocks(blobMeta, Args.VisitedBlobBlocks);
             } else {
-                Args.BlobsToReadInCurrentBatch.push_back(
-                    MakeBlobMark(TabletInfo, Args.LastVisitedBlobId));
+                Args.BlobsToReadInCurrentBatch.push_back(MakeBlobMark(
+                    TabletInfo,
+                    Args.LastVisitedBlobId,
+                    false));   // hasChecksums
             }
         }
 
@@ -248,15 +170,16 @@ public:
     }
 };
 
-// Judges liveness as a read at the scan commit would. The scan barrier keeps a
-// blob live then until the scan ends, even if compaction or a write kills it.
+// Only saves checks, so it judges liveness at the current commit: a dead blob
+// stays dead, and an unhealthy verdict is confirmed against the blob index
+// anyway.
 bool SelectLiveBlobs(
     TPartitionState& state,
     const TTabletStorageInfo& tabletInfo,
     TPartitionDatabase& db,
     TTxPartition::TScanDiskBatch& args)
 {
-    const ui64 scanCommitId = args.FinalBlobId.CommitId();
+    const ui64 readerCommitId = state.GetLastCommitId();
 
     Sort(args.VisitedBlobBlocks);
 
@@ -268,10 +191,11 @@ bool SelectLiveBlobs(
 
     TVector<TBlockVersion> versions;
     TBlockVersionsVisitor visitor(versions);
+    TIndexOnlyBlobsVisitor blobsVisitor;
 
     bool ready = true;
     for (const auto& range: ranges) {
-        state.FindFreshBlocks(visitor, range, scanCommitId);
+        state.FindFreshBlocks(visitor, range, readerCommitId);
         ready &= db.FindMixedBlocks(
             visitor,
             range,
@@ -279,6 +203,7 @@ bool SelectLiveBlobs(
         );
         ready &= db.FindMergedBlocks(
             visitor,
+            blobsVisitor,
             range,
             true,   // precharge
             state.GetMaxBlocksInBlob());
@@ -294,13 +219,13 @@ bool SelectLiveBlobs(
 
     const auto liveBlobs = FindLiveBlobs(
         std::move(versions),
-        scanCommitId,
+        readerCommitId,
         std::move(checkpointCommitIds));
 
-    for (const auto& blobId: args.VisitedBlobIds) {
-        if (liveBlobs.contains(blobId)) {
+    for (const auto& blob: args.VisitedBlobs) {
+        if (liveBlobs.contains(blob.BlobId)) {
             args.BlobsToReadInCurrentBatch.push_back(
-                MakeBlobMark(tabletInfo, blobId));
+                MakeBlobMark(tabletInfo, blob.BlobId, blob.HasChecksums));
         } else {
             ++args.DeadBlobCount;
         }
@@ -309,92 +234,60 @@ bool SelectLiveBlobs(
     return true;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-enum class ECheckVerdict
+bool FindBlobsToConfirm(
+    TPartitionDatabase& db,
+    TTxPartition::TScanDiskBatch& args)
 {
-    Healthy,
-    Replicating,
-    Degraded,
-    Broken,
-    NoVerdict,
-};
-
-ECheckVerdict ClassifyCheckIntegrityResult(
-    const TEvBlobStorage::TEvCheckIntegrityResult& result)
-{
-    using TResult = TEvBlobStorage::TEvCheckIntegrityResult;
-
-    // Error replies may keep the default PS_OK and DS_OK.
-    if (result.Status != NKikimrProto::OK) {
-        return ECheckVerdict::NoVerdict;
+    bool ready = true;
+    for (const auto& blobId: args.BatchRequest->BlobsToConfirm) {
+        TMaybe<NProto::TBlobMeta> blobMeta;
+        if (!db.ReadBlobMeta(blobId, blobMeta)) {
+            ready = false;
+        } else if (blobMeta) {
+            args.ConfirmedBlobs.push_back(blobId);
+        }
     }
-
-    if (result.PlacementStatus == TResult::PS_BLOB_IS_LOST ||
-        result.DataStatus == TResult::DS_ERROR)
-    {
-        return ECheckVerdict::Broken;
-    }
-
-    if (result.DataStatus == TResult::DS_UNKNOWN) {
-        return ECheckVerdict::NoVerdict;
-    }
-
-    switch (result.PlacementStatus) {
-        case TResult::PS_OK:
-            return ECheckVerdict::Healthy;
-        case TResult::PS_REPLICATION_IN_PROGRESS:
-            return ECheckVerdict::Replicating;
-        case TResult::PS_BLOB_IS_RECOVERABLE:
-            return ECheckVerdict::Degraded;
-        default:
-            return ECheckVerdict::NoVerdict;
-    }
+    return ready;
 }
 
-TScanDiskBlobResult MakeBlobResult(
-    const TEvBlobStorage::TEvCheckIntegrityResult& result,
-    ui32 maxDataInfoSize)
+std::unique_ptr<TEvVolume::TEvScanDiskBatchResponse> MakeScanDiskBatchResponse(
+    ui64 tabletId,
+    const TTxPartition::TScanDiskBatch& args)
 {
-    using TResult = TEvBlobStorage::TEvCheckIntegrityResult;
+    const auto& batchRequest = *args.BatchRequest;
 
-    return {
-        .Status = TString(NKikimrProto::EReplyStatus_Name(result.Status)),
-        .PlacementStatus =
-            TResult::PlacementStatusToString(result.PlacementStatus),
-        .DataStatus = TResult::DataStatusToString(result.DataStatus),
-        .ErrorReason = result.ErrorReason,
-        .DataInfo = result.DataInfo.substr(0, maxDataInfoSize),
-    };
-}
+    auto response = std::make_unique<TEvVolume::TEvScanDiskBatchResponse>();
+    auto& record = response->Record;
 
-TScanDiskBlobResult MakeUndeliveredBlobResult()
-{
-    return {
-        .Status = TString(NKikimrProto::EReplyStatus_Name(NKikimrProto::ERROR)),
-        .ErrorReason = "CheckIntegrity was not delivered to the group proxy",
-    };
-}
-
-TStringBuf DescribeVerdict(EScanDiskBlobVerdict verdict)
-{
-    switch (verdict) {
-        case EScanDiskBlobVerdict::Broken:
-            return "broken";
-        case EScanDiskBlobVerdict::Degraded:
-            return "degraded";
-        case EScanDiskBlobVerdict::Unchecked:
-            return "unchecked";
+    for (const auto& blobMark: args.BlobsToReadInCurrentBatch) {
+        auto& blob = *record.AddBlobs();
+        LogoBlobIDFromLogoBlobID(blobMark.BlobId, blob.MutableBlobId());
+        blob.SetBSGroupId(blobMark.BSGroupId);
+        blob.SetHasChecksums(blobMark.HasChecksums);
     }
+
+    TPartialBlobId nextBlobId = args.StartBlobId;
+    if (args.BlobCountToVisit) {
+        const auto lastListedBlobId =
+            args.ReachedFinalBlobId ? args.FinalBlobId : args.LastVisitedBlobId;
+        nextBlobId = Max(nextBlobId, NextBlobId(lastListedBlobId, MaxUniqueId));
+        record.SetIsCompleted(
+            args.ReachedFinalBlobId &&
+            !batchRequest.ListingBoundedByPendingCommits);
+    }
+    record.SetNextCursor(FormatScanDiskCursor(nextBlobId));
+
+    record.SetDeadBlobs(args.DeadBlobCount);
+    record.SetScanCommitId(batchRequest.ScanCommitId);
+
+    for (const auto& blobId: args.ConfirmedBlobs) {
+        LogoBlobIDFromLogoBlobID(
+            MakeBlobId(tabletId, blobId),
+            record.AddConfirmedBlobs());
+    }
+
+    return response;
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TBlobCheck
-{
-    ui32 Attempts = 0;
-    TBackoffDelayProvider RetryDelay;
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -403,7 +296,6 @@ class TScanDiskActor final
 {
 private:
     const TActorId Tablet;
-    const TScanDiskSettings Settings;
     const ui32 BlobsPerBatch = 0;
     const TPartialBlobId FinalBlobId;
     const TDuration RetryTimeout;
@@ -415,17 +307,11 @@ private:
 
     TGuardedBuffer<TBlockBuffer> GuardedBuffer;
 
-    TVector<TBlobCheck> Checks;
-    TDeque<ui32> ChecksToSend;
-    ui32 ChecksInFlight = 0;
-    ui32 FinishedChecks = 0;
-
-    TScanDiskResults Results;
+    TVector<TLogoBlobID> BrokenBlobs;
 
 public:
     TScanDiskActor(
         const TActorId& tablet,
-        const TScanDiskSettings& settings,
         ui32 blobsPerBatch,
         ui64 finalCommitId,
         TDuration retryTimeout,
@@ -434,35 +320,13 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void SendScanDiskBatchRequest(const TActorContext& ctx);
+    void SendScanDiskReadBatchRequest(const TActorContext& ctx);
 
     void NotifyCompleted(
         const TActorContext& ctx,
         const NProto::TError& error = {});
 
     void SendReadBlobRequest(const TActorContext& ctx, ui32 requestIndex);
-
-    void StartChecks(const TActorContext& ctx);
-    void SendChecks(const TActorContext& ctx);
-    void SendCheck(const TActorContext& ctx, ui32 requestIndex);
-
-    void OnCheckReply(
-        const TActorContext& ctx,
-        ui32 requestIndex,
-        ECheckVerdict verdict,
-        TScanDiskBlobResult blobResult);
-
-    void FinishCheck(
-        const TActorContext& ctx,
-        ui32 requestIndex,
-        ECheckVerdict verdict,
-        TScanDiskBlobResult blobResult);
-
-    void ReportBlob(
-        const TActorContext& ctx,
-        ui32 requestIndex,
-        EScanDiskBlobVerdict verdict,
-        TScanDiskBlobResult blobResult);
 
 private:
     STFUNC(StateWork);
@@ -475,34 +339,24 @@ private:
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleScanDiskBatchResponse(
-        const TEvPartitionPrivate::TEvScanDiskBatchResponse::TPtr& ev,
+    void HandleScanDiskReadBatchResponse(
+        const TEvPartitionPrivate::TEvScanDiskReadBatchResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleReadBlobResponse(
         const TEvPartitionCommonPrivate::TEvReadBlobResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleCheckIntegrityResult(
-        const TEvBlobStorage::TEvCheckIntegrityResult::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleUndelivered(
-        const TEvents::TEvUndelivered::TPtr& ev,
         const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TScanDiskActor::TScanDiskActor(
-    const TActorId& tablet,
-    const TScanDiskSettings& settings,
-    ui32 blobsPerBatch,
-    ui64 finalCommitId,
-    TDuration retryTimeout,
-    TBlockBuffer blockBuffer)
+        const TActorId& tablet,
+        ui32 blobsPerBatch,
+        ui64 finalCommitId,
+        TDuration retryTimeout,
+        TBlockBuffer blockBuffer)
     : Tablet(tablet)
-    , Settings(settings)
     , BlobsPerBatch(blobsPerBatch)
     , FinalBlobId(MakePartialBlobId(finalCommitId, Max()))
     , RetryTimeout(retryTimeout)
@@ -511,17 +365,18 @@ TScanDiskActor::TScanDiskActor(
 
 void TScanDiskActor::Bootstrap(const TActorContext &ctx)
 {
-    SendScanDiskBatchRequest(ctx);
+    SendScanDiskReadBatchRequest(ctx);
     Become(&TThis::StateWork);
 }
 
-void TScanDiskActor::SendScanDiskBatchRequest(const TActorContext& ctx)
+void TScanDiskActor::SendScanDiskReadBatchRequest(const TActorContext& ctx)
 {
-    auto request = std::make_unique<TEvPartitionPrivate::TEvScanDiskBatchRequest>(
-        MakeIntrusive<TCallContext>(),
-        BlobIdToRead,
-        BlobsPerBatch,
-        FinalBlobId);
+    auto request =
+        std::make_unique<TEvPartitionPrivate::TEvScanDiskReadBatchRequest>(
+            MakeIntrusive<TCallContext>(),
+            BlobIdToRead,
+            BlobsPerBatch,
+            FinalBlobId);
 
     NCloud::Send(ctx, Tablet, std::move(request));
 }
@@ -531,7 +386,9 @@ void TScanDiskActor::NotifyCompleted(
     const NProto::TError& error)
 {
     using TEvent = TEvPartitionPrivate::TEvScanDiskCompleted;
-    auto response = std::make_unique<TEvent>(error, std::move(Results));
+    auto response = std::make_unique<TEvent>(
+            error,
+            std::move(BrokenBlobs));
 
     NCloud::Send(ctx, Tablet, std::move(response));
     Die(ctx);
@@ -566,167 +423,6 @@ void TScanDiskActor::SendReadBlobRequest(
         requestIndex);
 }
 
-void TScanDiskActor::StartChecks(const TActorContext& ctx)
-{
-    const ui32 blobCount = RequestsInCurrentBatch.size();
-
-    Checks.clear();
-    Checks.reserve(blobCount);
-    ChecksToSend.clear();
-    for (ui32 requestIndex = 0; requestIndex < blobCount; ++requestIndex) {
-        Checks.push_back(
-            {.RetryDelay = TBackoffDelayProvider(
-                 Settings.RetryTimeout,
-                 MaxCheckRetryDelay)});
-        ChecksToSend.push_back(requestIndex);
-    }
-    FinishedChecks = 0;
-
-    SendChecks(ctx);
-}
-
-void TScanDiskActor::SendChecks(const TActorContext& ctx)
-{
-    while (ChecksInFlight < Settings.MaxInFlight && !ChecksToSend.empty()) {
-        const ui32 requestIndex = ChecksToSend.front();
-        ChecksToSend.pop_front();
-        SendCheck(ctx, requestIndex);
-    }
-}
-
-void TScanDiskActor::SendCheck(const TActorContext& ctx, ui32 requestIndex)
-{
-    const auto& blobMark = RequestsInCurrentBatch[requestIndex];
-
-    ++Checks[requestIndex].Attempts;
-    ++ChecksInFlight;
-
-    auto request = std::make_unique<TEvBlobStorage::TEvCheckIntegrity>(
-        blobMark.BlobId,
-        ctx.Now() + Settings.CheckTimeout,
-        NKikimrBlobStorage::LowRead);
-
-    SendToBSProxy(
-        ctx,
-        MakeBlobStorageProxyID(blobMark.BSGroupId),
-        request.release(),
-        requestIndex);
-}
-
-void TScanDiskActor::OnCheckReply(
-    const TActorContext& ctx,
-    ui32 requestIndex,
-    ECheckVerdict verdict,
-    TScanDiskBlobResult blobResult)
-{
-    Y_DEBUG_ABORT_UNLESS(ChecksInFlight > 0);
-    --ChecksInFlight;
-
-    auto& check = Checks[requestIndex];
-    if (verdict == ECheckVerdict::NoVerdict &&
-        check.Attempts <= Settings.MaxRetries)
-    {
-        ctx.Schedule(
-            check.RetryDelay.GetDelayAndIncrease(),
-            std::make_unique<IEventHandle>(
-                SelfId(),
-                SelfId(),
-                new TEvents::TEvWakeup(RetryCheckWakeupTag),
-                0,   // flags
-                requestIndex));
-    } else {
-        FinishCheck(ctx, requestIndex, verdict, std::move(blobResult));
-    }
-
-    SendChecks(ctx);
-
-    if (FinishedChecks == RequestsInCurrentBatch.size()) {
-        SendScanDiskBatchRequest(ctx);
-    }
-}
-
-void TScanDiskActor::FinishCheck(
-    const TActorContext& ctx,
-    ui32 requestIndex,
-    ECheckVerdict verdict,
-    TScanDiskBlobResult blobResult)
-{
-    ++FinishedChecks;
-
-    switch (verdict) {
-        case ECheckVerdict::Healthy:
-            ++Results.CheckedBlobs;
-            break;
-        case ECheckVerdict::Replicating:
-            ++Results.CheckedBlobs;
-            ++Results.ReplicatingBlobs;
-            break;
-        case ECheckVerdict::Degraded:
-            ++Results.CheckedBlobs;
-            ++Results.DegradedBlobs;
-            ReportBlob(
-                ctx,
-                requestIndex,
-                EScanDiskBlobVerdict::Degraded,
-                std::move(blobResult));
-            break;
-        case ECheckVerdict::Broken:
-            ++Results.CheckedBlobs;
-            Results.BrokenBlobs.push_back(
-                RequestsInCurrentBatch[requestIndex].BlobId);
-            ReportBlob(
-                ctx,
-                requestIndex,
-                EScanDiskBlobVerdict::Broken,
-                std::move(blobResult));
-            break;
-        case ECheckVerdict::NoVerdict:
-            ++Results.UncheckedBlobs;
-            ReportBlob(
-                ctx,
-                requestIndex,
-                EScanDiskBlobVerdict::Unchecked,
-                std::move(blobResult));
-            break;
-    }
-}
-
-void TScanDiskActor::ReportBlob(
-    const TActorContext& ctx,
-    ui32 requestIndex,
-    EScanDiskBlobVerdict verdict,
-    TScanDiskBlobResult blobResult)
-{
-    const auto& blobMark = RequestsInCurrentBatch[requestIndex];
-
-    // One dead disk makes every blob it held degraded, so only broken blobs
-    // are warnings.
-    LOG_LOG(
-        ctx,
-        verdict == EScanDiskBlobVerdict::Broken ? NLog::PRI_WARN
-                                                : NLog::PRI_INFO,
-        TBlockStoreComponents::PARTITION_WORKER,
-        "ScanDisk: blob %s in group %u is %s: Status# %s PlacementStatus# %s "
-        "DataStatus# %s ErrorReason# %s",
-        blobMark.BlobId.ToString().c_str(),
-        blobMark.BSGroupId,
-        TString(DescribeVerdict(verdict)).c_str(),
-        blobResult.Status.c_str(),
-        blobResult.PlacementStatus.c_str(),
-        blobResult.DataStatus.c_str(),
-        blobResult.ErrorReason.c_str());
-
-    if (Results.BlobResults.size() >= Settings.MaxReportedBlobs) {
-        ++Results.DroppedBlobResults;
-        return;
-    }
-
-    blobResult.BlobId = blobMark.BlobId;
-    blobResult.BSGroupId = blobMark.BSGroupId;
-    blobResult.Verdict = verdict;
-    Results.BlobResults.push_back(std::move(blobResult));
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TScanDiskActor::StateWork)
@@ -734,16 +430,12 @@ STFUNC(TScanDiskActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
-        HFunc(TEvents::TEvUndelivered, HandleUndelivered);
         HFunc(
-            TEvPartitionPrivate::TEvScanDiskBatchResponse,
-            HandleScanDiskBatchResponse);
+            TEvPartitionPrivate::TEvScanDiskReadBatchResponse,
+            HandleScanDiskReadBatchResponse);
         HFunc(
             TEvPartitionCommonPrivate::TEvReadBlobResponse,
             HandleReadBlobResponse);
-        HFunc(
-            TEvBlobStorage::TEvCheckIntegrityResult,
-            HandleCheckIntegrityResult);
 
         default:
             HandleUnexpectedEvent(
@@ -758,13 +450,9 @@ void TScanDiskActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (ev->Get()->Tag == RetryCheckWakeupTag) {
-        ChecksToSend.push_back(ev->Cookie);
-        SendChecks(ctx);
-        return;
-    }
+    Y_UNUSED(ev);
 
-    SendScanDiskBatchRequest(ctx);
+    SendScanDiskReadBatchRequest(ctx);
 }
 
 void TScanDiskActor::HandlePoisonPill(
@@ -778,11 +466,11 @@ void TScanDiskActor::HandlePoisonPill(
     NotifyCompleted(ctx, error);
 }
 
-void TScanDiskActor::HandleScanDiskBatchResponse(
-    const TEvPartitionPrivate::TEvScanDiskBatchResponse::TPtr& ev,
+void TScanDiskActor::HandleScanDiskReadBatchResponse(
+    const TEvPartitionPrivate::TEvScanDiskReadBatchResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* msg = ev->Get();
+    const auto* msg = ev->Get();
 
     if (FAILED(msg->GetStatus())) {
         if (GetErrorKind(msg->Error) == EErrorKind::ErrorRetriable) {
@@ -799,21 +487,14 @@ void TScanDiskActor::HandleScanDiskBatchResponse(
     }
 
     BlobIdToRead = NextBlobId(msg->LastVisitedBlobId, MaxUniqueId);
-    Results.DeadBlobs += msg->DeadBlobCount;
 
     if (msg->BlobsInBatch.empty()) {
-        SendScanDiskBatchRequest(ctx);
+        SendScanDiskReadBatchRequest(ctx);
         return;
     }
+    ReadBlobResponsesCounter = 0;
 
     RequestsInCurrentBatch = std::move(msg->BlobsInBatch);
-
-    if (Settings.CheckIntegrity) {
-        StartChecks(ctx);
-        return;
-    }
-
-    ReadBlobResponsesCounter = 0;
     for (ui32 requestIndex = 0; requestIndex < RequestsInCurrentBatch.size(); ++requestIndex) {
         SendReadBlobRequest(ctx, requestIndex);
     }
@@ -829,41 +510,12 @@ void TScanDiskActor::HandleReadBlobResponse(
 
     if (FAILED(msg->GetStatus())) {
         const ui32 requestIndex = ev->Cookie;
-        Results.BrokenBlobs.push_back(
-            RequestsInCurrentBatch[requestIndex].BlobId);
+        BrokenBlobs.push_back(RequestsInCurrentBatch[requestIndex].BlobId);
     }
 
     if (ReadBlobResponsesCounter == RequestsInCurrentBatch.size()) {
-        SendScanDiskBatchRequest(ctx);
+        SendScanDiskReadBatchRequest(ctx);
     }
-}
-
-void TScanDiskActor::HandleCheckIntegrityResult(
-    const TEvBlobStorage::TEvCheckIntegrityResult::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    OnCheckReply(
-        ctx,
-        ev->Cookie,
-        ClassifyCheckIntegrityResult(*msg),
-        MakeBlobResult(*msg, Settings.MaxDataInfoSize));
-}
-
-void TScanDiskActor::HandleUndelivered(
-    const TEvents::TEvUndelivered::TPtr& ev,
-    const TActorContext& ctx)
-{
-    if (ev->Get()->SourceType != TEvBlobStorage::EvCheckIntegrity) {
-        return;
-    }
-
-    OnCheckReply(
-        ctx,
-        ev->Cookie,
-        ECheckVerdict::NoVerdict,
-        MakeUndeliveredBlobResult());
 }
 
 }   // namespace
@@ -887,8 +539,7 @@ void TPartitionActor::HandleHttpInfo_ScanDisk(
     }
 
     if (!HasError(result)) {
-        result =
-            DoHandleScanDisk(ctx, TScanDiskSettings{.BatchSize = batchSize});
+        result = DoHandleScanDisk(ctx, batchSize);
     }
 
     auto alertType = EAlertLevel::SUCCESS;
@@ -905,11 +556,9 @@ void TPartitionActor::HandleScanDisk(
     const TEvVolume::TEvScanDiskRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto& record = ev->Get()->Record;
+    const auto* msg = ev->Get();
 
-    auto result = record.GetCancel()
-                      ? CancelScanDisk(ctx)
-                      : DoHandleScanDisk(ctx, MakeScanDiskSettings(record));
+    NProto::TError result = DoHandleScanDisk(ctx, msg->Record.GetBatchSize());
 
     auto response =
         std::make_unique<TEvVolume::TEvScanDiskResponse>(std::move(result));
@@ -918,62 +567,34 @@ void TPartitionActor::HandleScanDisk(
 
 NProto::TError TPartitionActor::DoHandleScanDisk(
     const TActorContext& ctx,
-    const TScanDiskSettings& settings)
+    ui32 blobsPerBatch)
 {
     if (State->IsScanDiskStarted()) {
         return MakeError(S_ALREADY, "Scan disk is already running");
     }
 
-    if (!settings.BatchSize) {
+    if (!blobsPerBatch) {
         return MakeError(E_ARGUMENT, "Batch size is 0");
     }
 
-    const ui64 scanCommitId = State->GetLastCommitId();
+    State->StartScanDisk();
 
-    State->StartScanDisk(settings.CheckIntegrity, scanCommitId);
+    blobsPerBatch = Min(
+        static_cast<ui64>(blobsPerBatch),
+        State->GetMixedBlobsCount() + State->GetMergedBlobsCount());
 
-    // Keeps every blob live at or after scan start until its check is done,
-    // while cleanup goes on deleting blobs that died earlier.
-    if (settings.CheckIntegrity) {
-        State->GetCleanupQueue().AcquireBarrier(scanCommitId);
-    }
-
-    const ui32 blobsPerBatch =
-        Min(static_cast<ui64>(settings.BatchSize),
-            State->GetMixedBlobsCount() + State->GetMergedBlobsCount());
-
-    const ui32 readBufferBlockCount =
-        settings.CheckIntegrity ? 0 : blobsPerBatch;
-
-    ScanDiskActorId = NCloud::Register(
+    const auto actorId = NCloud::Register(
         ctx,
         CreateScanDiskActor(
             SelfId(),
-            settings,
             blobsPerBatch,
-            scanCommitId,
+            State->GetLastCommitId(),
             Config->GetCompactionRetryTimeout(),
-            CreateScanDiskBlockBuffer(readBufferBlockCount)));
+            CreateScanDiskBlockBuffer(blobsPerBatch)));
 
-    Actors.Insert(ScanDiskActorId);
+    Actors.Insert(actorId);
 
     return MakeError(S_OK, "Scan disk has been started");
-}
-
-NProto::TError TPartitionActor::CancelScanDisk(const TActorContext& ctx)
-{
-    if (!State->IsScanDiskStarted()) {
-        return MakeError(S_FALSE, "Scan disk is not running");
-    }
-
-    if (State->IsScanDiskCancelRequested()) {
-        return MakeError(S_ALREADY, "Scan disk is already being cancelled");
-    }
-
-    State->RequestScanDiskCancel();
-    NCloud::Send<TEvents::TEvPoisonPill>(ctx, ScanDiskActorId);
-
-    return MakeError(S_OK, "Scan disk is being cancelled");
 }
 
 void TPartitionActor::HandleGetScanDiskStatus(
@@ -988,12 +609,18 @@ void TPartitionActor::HandleGetScanDiskStatus(
         if (!State->HasScanDiskProgress()) {
             result = MakeError(E_NOT_FOUND, "No operation found");
         } else {
-            const auto& progress = State->GetScanDiskProgress();
-            FillScanDiskProgress(progress, *response->Record.MutableProgress());
+            auto& progress = *response->Record.MutableProgress();
+            const auto p = State->GetScanDiskProgress();
 
-            // A scan that stopped on an error must not look complete.
-            if (HasError(progress.Error)) {
-                result = progress.Error;
+            progress.SetProcessed(p.ProcessedBlobs);
+            progress.SetTotal(p.TotalBlobs);
+            progress.SetIsCompleted(p.IsCompleted);
+
+            for (size_t i = 0; i < p.BrokenBlobs.size(); ++i) {
+                auto& brokenBlob = *progress.AddBrokenBlobs();
+                brokenBlob.SetRawX1(p.BrokenBlobs[i].GetRaw()[0]);
+                brokenBlob.SetRawX2(p.BrokenBlobs[i].GetRaw()[1]);
+                brokenBlob.SetRawX3(p.BrokenBlobs[i].GetRaw()[2]);
             }
         }
     } else {
@@ -1004,8 +631,8 @@ void TPartitionActor::HandleGetScanDiskStatus(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
-void TPartitionActor::HandleScanDiskBatch(
-    const TEvPartitionPrivate::TEvScanDiskBatchRequest::TPtr& ev,
+void TPartitionActor::HandleScanDiskReadBatch(
+    const TEvPartitionPrivate::TEvScanDiskReadBatchRequest::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -1024,9 +651,6 @@ void TPartitionActor::HandleScanDiskBatch(
         requestInfo->CallContext->RequestId);
 
     State->UpdateScanDiskProgress();
-    // The scan actor asks for the next batch only after every check of the
-    // previous one has finished.
-    State->ReleaseScanDiskBatchCheckpoints();
 
     auto replyError = [=] (
         const TActorContext& ctx,
@@ -1035,7 +659,7 @@ void TPartitionActor::HandleScanDiskBatch(
         TString errorReason)
     {
         auto response =
-            std::make_unique<TEvPartitionPrivate::TEvScanDiskBatchResponse>(
+            std::make_unique<TEvPartitionPrivate::TEvScanDiskReadBatchResponse>(
                 MakeError(errorCode, std::move(errorReason)));
 
         LWTRACK(
@@ -1056,14 +680,7 @@ void TPartitionActor::HandleScanDiskBatch(
         return;
     }
 
-    const bool skipDeadBlobs = State->IsScanDiskStarted() &&
-                               State->GetScanDiskProgress().CheckIntegrity;
-
-    // Without the liveness filter a running cleanup could delete a blob
-    // between the batch and its read.
-    if (!skipDeadBlobs &&
-        State->GetCleanupState().Status == EOperationStatus::Started)
-    {
+    if (State->GetCleanupState().Status == EOperationStatus::Started) {
         replyError(ctx, *requestInfo, E_REJECTED, "Cleanup is running");
         return;
     }
@@ -1078,7 +695,7 @@ void TPartitionActor::HandleScanDiskBatch(
         gen,
         step);
 
-    AddTransaction<TEvPartitionPrivate::TScanDiskBatchMethod>(*requestInfo);
+    AddTransaction<TEvPartitionPrivate::TScanDiskReadBatchMethod>(*requestInfo);
 
     ExecuteTx(
         ctx,
@@ -1086,8 +703,99 @@ void TPartitionActor::HandleScanDiskBatch(
             requestInfo,
             msg->BlobId,
             msg->Count,
-            msg->FinalBlobId,
-            skipDeadBlobs));
+            msg->FinalBlobId));
+}
+
+void TPartitionActor::HandleScanDiskBatch(
+    const TEvVolume::TEvScanDiskBatchRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    auto requestInfo = CreateRequestInfo<TEvVolume::TScanDiskBatchMethod>(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
+
+    TRequestScope timer(*requestInfo);
+
+    LWTRACK(
+        RequestReceived_Partition,
+        requestInfo->CallContext->LWOrbit,
+        "ScanDiskBatch",
+        requestInfo->CallContext->RequestId);
+
+    auto replyError = [&](NProto::TError error)
+    {
+        auto response = std::make_unique<TEvVolume::TEvScanDiskBatchResponse>(
+            std::move(error));
+
+        LWTRACK(
+            ResponseSent_Partition,
+            requestInfo->CallContext->LWOrbit,
+            "ScanDiskBatch",
+            requestInfo->CallContext->RequestId);
+
+        NCloud::Reply(ctx, *requestInfo, std::move(response));
+    };
+
+    const auto& record = msg->Record;
+
+    auto startBlobId = MakePartialBlobId(record.GetMinCommitId(), 0);
+    if (record.GetCursor() &&
+        !TryParseScanDiskCursor(record.GetCursor(), startBlobId))
+    {
+        replyError(MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "invalid cursor: " << record.GetCursor().Quote()));
+        return;
+    }
+
+    // An omitted ScanCommitId reads as 0, and a request written by hand
+    // without it must not scan nothing.
+    const ui64 requestedScanCommitId =
+        record.GetScanCommitId() ? record.GetScanCommitId() : Max<ui64>();
+    const ui64 scanCommitId =
+        Min(requestedScanCommitId, State->GetLastCommitId());
+
+    // Writes, flushes and compactions in flight add their blobs to the index
+    // later. The cursor must not pass them, or the scan would miss the blobs.
+    const ui64 minPendingCommitId = State->GetCommitQueue()->GetMinCommitId();
+    const bool boundedByPendingCommits = minPendingCommitId <= scanCommitId;
+    const ui64 listingCommitId =
+        boundedByPendingCommits ? minPendingCommitId - 1 : scanCommitId;
+
+    if (record.GetCount() && boundedByPendingCommits &&
+        startBlobId.CommitId() > listingCommitId)
+    {
+        replyError(MakeError(E_REJECTED, "There are pending commits"));
+        return;
+    }
+
+    TTxPartition::TScanDiskBatch::TBatchRequest batchRequest{
+        .ScanCommitId = scanCommitId,
+        .ListingBoundedByPendingCommits = boundedByPendingCommits,
+    };
+    for (const auto& protoBlobId: record.GetBlobsToConfirm()) {
+        const auto blobId = LogoBlobIDFromLogoBlobID(protoBlobId);
+        // Blobs of other tablets, of a base disk for example, can't be in
+        // this blob index.
+        if (blobId.TabletID() == TabletID()) {
+            batchRequest.BlobsToConfirm.push_back(MakePartialBlobId(blobId));
+        }
+    }
+
+    AddTransaction<TEvVolume::TScanDiskBatchMethod>(*requestInfo);
+
+    ExecuteTx(
+        ctx,
+        CreateTx<TScanDiskBatch>(
+            requestInfo,
+            startBlobId,
+            record.GetCount(),
+            MakePartialBlobId(listingCommitId, MaxUniqueId),
+            std::move(batchRequest)));
 }
 
 void TPartitionActor::HandleScanDiskCompleted(
@@ -1096,25 +804,14 @@ void TPartitionActor::HandleScanDiskCompleted(
 {
     auto* msg = ev->Get();
 
+    State->SetBrokenBlobs(std::move(msg->BrokenBlobs));
+
+    if (State && State->IsScanDiskStarted()) {
+        State->CompleteScanDisk();
+        EnqueueCleanupIfNeeded(ctx);
+    }
+
     Actors.Erase(ev->Sender);
-
-    if (!State->IsScanDiskStarted()) {
-        return;
-    }
-
-    ScanDiskActorId = {};
-
-    const auto& progress = State->GetScanDiskProgress();
-    if (progress.CheckIntegrity) {
-        State->GetCleanupQueue().ReleaseBarrier(progress.ScanCommitId);
-    }
-
-    // Cancel poisons the scan actor, which reports that as an error.
-    auto error = State->IsScanDiskCancelRequested() ? NProto::TError()
-                                                    : std::move(msg->Error);
-
-    State->CompleteScanDisk(std::move(msg->Results), std::move(error));
-    EnqueueCleanupIfNeeded(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1128,25 +825,36 @@ bool TPartitionActor::PrepareScanDiskBatch(
 
     TPartitionDatabase db(tx.DB);
 
-    TScanDiskVisitor visitor(*Info(), args);
+    using EProgress = TPartitionDatabase::EBlobIndexScanProgress;
 
-    const auto progress = db.FindBlocksInBlobsIndex(
-        visitor,
-        args.StartBlobId,
-        args.FinalBlobId,
-        args.BlobCountToVisit);
-    bool ready =
-        progress != TPartitionDatabase::EBlobIndexScanProgress::NotReady;
+    // A batch request with Count 0 lists nothing. The read-only mode always
+    // lists.
+    const bool listBlobs = !args.BatchRequest || args.BlobCountToVisit;
 
-    if (ready && args.SkipDeadBlobs) {
-        ready = SelectLiveBlobs(*State, *Info(), db, args);
+    auto progress = EProgress::Completed;
+    bool ready = true;
+
+    if (listBlobs && args.StartBlobId <= args.FinalBlobId) {
+        TScanDiskVisitor visitor(*Info(), args);
+
+        progress = db.FindBlocksInBlobsIndex(
+            visitor,
+            args.StartBlobId,
+            args.FinalBlobId,
+            args.BlobCountToVisit);
+        ready = progress != EProgress::NotReady;
     }
 
-    if (ready) {
+    args.ReachedFinalBlobId = progress == EProgress::Completed &&
+                              args.VisitCount < args.BlobCountToVisit;
+
+    if (ready && args.BatchRequest) {
+        ready = SelectLiveBlobs(*State, *Info(), db, args);
+        ready &= FindBlobsToConfirm(db, args);
+    }
+
+    if (ready && !args.BatchRequest) {
         State->UpdateScanDiskBlobsToBeProcessed(args.VisitCount);
-        if (args.SkipDeadBlobs) {
-            State->HoldScanDiskBatchCheckpoints();
-        }
     }
 
     LOG_DEBUG(
@@ -1180,16 +888,29 @@ void TPartitionActor::CompleteScanDiskBatch(
 
     UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
 
+    if (args.BatchRequest) {
+        LWTRACK(
+            ResponseSent_Partition,
+            args.RequestInfo->CallContext->LWOrbit,
+            "ScanDiskBatch",
+            args.RequestInfo->CallContext->RequestId);
+
+        NCloud::Reply(
+            ctx,
+            *args.RequestInfo,
+            MakeScanDiskBatchResponse(TabletID(), args));
+        return;
+    }
+
     const bool isScanCompleted = args.VisitCount == 0;
 
     NCloud::Reply(
         ctx,
         *args.RequestInfo,
-        std::make_unique<TEvPartitionPrivate::TEvScanDiskBatchResponse>(
+        std::make_unique<TEvPartitionPrivate::TEvScanDiskReadBatchResponse>(
             std::move(args.BlobsToReadInCurrentBatch),
             args.LastVisitedBlobId,
-            isScanCompleted,
-            args.DeadBlobCount));
+            isScanCompleted));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1207,7 +928,6 @@ TBlockBuffer TPartitionActor::CreateScanDiskBlockBuffer(ui32 blobsPerBatch)
 
 IActorPtr TPartitionActor::CreateScanDiskActor(
     TActorId tablet,
-    const TScanDiskSettings& settings,
     ui64 blobsPerBatch,
     ui64 finalCommitId,
     TDuration retryTimeout,
@@ -1215,7 +935,6 @@ IActorPtr TPartitionActor::CreateScanDiskActor(
 {
     return std::make_unique<TScanDiskActor>(
         std::move(tablet),
-        settings,
         blobsPerBatch,
         finalCommitId,
         retryTimeout,

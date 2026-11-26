@@ -32,6 +32,8 @@
 #include <util/generic/variant.h>
 #include <util/generic/vector.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -62,6 +64,7 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
     xxx(MetadataRebuildUsedBlocks,  __VA_ARGS__)                               \
     xxx(MetadataRebuildBlockCount,  __VA_ARGS__)                               \
     xxx(ScanDiskBatch,              __VA_ARGS__)                               \
+    xxx(VerifyBlobChecksums,        __VA_ARGS__)                               \
     xxx(AddUnconfirmedBlobs,        __VA_ARGS__)                               \
     xxx(ConfirmBlobs,               __VA_ARGS__)                               \
     xxx(DeleteUnconfirmedBlobs,     __VA_ARGS__)                               \
@@ -627,43 +630,108 @@ struct TTxPartition
 
     struct TScanDiskBatch
     {
+        using TBlobMark =
+            TEvPartitionPrivate::TScanDiskReadBatchResponse::TBlobMark;
+
+        struct TVisitedBlob
+        {
+            TPartialBlobId BlobId;
+            bool HasChecksums = false;
+        };
+
+        // Parameters of TEvVolume::TEvScanDiskBatchRequest. The read-only
+        // mode lists every blob and confirms nothing.
+        struct TBatchRequest
+        {
+            ui64 ScanCommitId = 0;
+            bool ListingBoundedByPendingCommits = false;
+            TVector<TPartialBlobId> BlobsToConfirm;
+        };
+
         const TRequestInfoPtr RequestInfo;
         const TPartialBlobId StartBlobId;
         const ui32 BlobCountToVisit = 0;
         const TPartialBlobId FinalBlobId;
-        const bool SkipDeadBlobs = false;
+        const std::optional<TBatchRequest> BatchRequest;
 
-        using TBlobMark =
-            TEvPartitionPrivate::TScanDiskBatchResponse::TBlobMark;
-
-        TVector<TPartialBlobId> VisitedBlobIds;
-        TVector<ui32> VisitedBlobBlocks;
         TVector<TBlobMark> BlobsToReadInCurrentBatch;
-        ui64 DeadBlobCount = 0;
         ui32 VisitCount = 0;
         TPartialBlobId LastVisitedBlobId;
+        bool ReachedFinalBlobId = false;
+
+        TVector<TVisitedBlob> VisitedBlobs;
+        TVector<ui32> VisitedBlobBlocks;
+        ui64 DeadBlobCount = 0;
+        TVector<TPartialBlobId> ConfirmedBlobs;
 
         TScanDiskBatch(
             TRequestInfoPtr requestInfo,
             TPartialBlobId startBlobId,
             ui32 blobCountToRead,
             TPartialBlobId finalBlobId,
-            bool skipDeadBlobs)
+            std::optional<TBatchRequest> batchRequest = std::nullopt)
             : RequestInfo(std::move(requestInfo))
             , StartBlobId(startBlobId)
             , BlobCountToVisit(blobCountToRead)
             , FinalBlobId(finalBlobId)
-            , SkipDeadBlobs(skipDeadBlobs)
+            , BatchRequest(std::move(batchRequest))
         {}
 
         void Clear()
         {
-            VisitedBlobIds.clear();
-            VisitedBlobBlocks.clear();
             BlobsToReadInCurrentBatch.clear();
-            DeadBlobCount = 0;
             VisitCount = 0;
             LastVisitedBlobId = TPartialBlobId();
+            ReachedFinalBlobId = false;
+            VisitedBlobs.clear();
+            VisitedBlobBlocks.clear();
+            DeadBlobCount = 0;
+            ConfirmedBlobs.clear();
+        }
+    };
+
+    //
+    // VerifyBlobChecksums
+    //
+
+    struct TVerifyBlobChecksums
+    {
+        struct TBlob
+        {
+            NKikimr::TLogoBlobID BlobId;
+            TMaybe<NProto::TBlobMeta> BlobMeta;
+            // Block index of each blob offset. Filled only for blobs with
+            // checksums.
+            TVector<ui32> BlockIndices;
+        };
+
+        const TRequestInfoPtr RequestInfo;
+        const ui32 MaxInFlight = 0;
+        const TInstant Deadline;
+
+        TVector<TBlob> Blobs;
+
+        TVerifyBlobChecksums(
+            TRequestInfoPtr requestInfo,
+            const TVector<NKikimr::TLogoBlobID>& blobIds,
+            ui32 maxInFlight,
+            TInstant deadline)
+            : RequestInfo(std::move(requestInfo))
+            , MaxInFlight(maxInFlight)
+            , Deadline(deadline)
+        {
+            Blobs.reserve(blobIds.size());
+            for (const auto& blobId: blobIds) {
+                Blobs.push_back({.BlobId = blobId});
+            }
+        }
+
+        void Clear()
+        {
+            for (auto& blob: Blobs) {
+                blob.BlobMeta.Clear();
+                blob.BlockIndices.clear();
+            }
         }
     };
 

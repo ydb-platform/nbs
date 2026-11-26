@@ -412,6 +412,13 @@ public:
     static std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
     CreateCheckRangeRequest(const TString& diskId, ui32 startIndex, ui32 size);
 
+    static std::unique_ptr<TEvVolume::TEvScanDiskBatchRequest>
+    CreateScanDiskBatchRequest(NProto::TScanDiskBatchRequest record);
+
+    static std::unique_ptr<TEvVolume::TEvVerifyBlobChecksumsRequest>
+    CreateVerifyBlobChecksumsRequest(
+        NProto::TVerifyBlobChecksumsRequest record);
+
     std::unique_ptr<TEvService::TEvWriteBlocksRequest> CreateWriteBlocksRequest(
         const TBlockRange64& writeRange,
         const TString& clientId,
@@ -477,12 +484,6 @@ public:
         ui32 batchSize);
 
     std::unique_ptr<TEvVolume::TEvGetRebuildMetadataStatusRequest> CreateGetRebuildMetadataStatusRequest();
-
-    std::unique_ptr<TEvVolume::TEvScanDiskRequest> CreateScanDiskRequest(
-        NProto::TScanDiskRequest record);
-
-    std::unique_ptr<TEvVolume::TEvGetScanDiskStatusRequest>
-    CreateGetScanDiskStatusRequest();
 
     std::unique_ptr<NMon::TEvRemoteHttpInfo> CreateRemoteHttpInfo(
         const TString& params);

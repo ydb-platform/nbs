@@ -607,34 +607,6 @@ message TScanDiskRequest
 
     // Number of blobs per batch.
     uint32 BatchSize = 3;
-
-    // Check every part of each live blob with TEvCheckIntegrity instead of
-    // reading its first block.
-    bool CheckIntegrity = 4;
-
-    // The settings below apply only to CheckIntegrity mode.
-    // Zero means the default.
-
-    // Checks in flight per partition. Default 4.
-    uint32 MaxInFlight = 5;
-
-    // Deadline for each check. Default 60000.
-    uint32 CheckTimeoutMs = 6;
-
-    // Retries before a blob is reported as unchecked. Default 5.
-    uint32 MaxRetries = 7;
-
-    // First retry delay, doubled on each attempt up to 1 minute. Default 1000.
-    uint32 RetryTimeoutMs = 8;
-
-    // Cap on BlobResults per partition. Default 10000.
-    uint32 MaxReportedBlobs = 9;
-
-    // Cap on each DataInfo, in bytes. Default 1024.
-    uint32 MaxDataInfoSize = 10;
-
-    // Stop the running scan instead of starting one.
-    bool Cancel = 11;
 }
 
 message TScanDiskResponse

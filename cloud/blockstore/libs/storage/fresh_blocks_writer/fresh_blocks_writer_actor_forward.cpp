@@ -35,6 +35,8 @@ using namespace NPartition;
     BLOCKSTORE_FORWARD_TO_PARTITION(GetRebuildMetadataStatus, TEvVolume)
     BLOCKSTORE_FORWARD_TO_PARTITION(ScanDisk,                 TEvVolume)
     BLOCKSTORE_FORWARD_TO_PARTITION(GetScanDiskStatus,        TEvVolume)
+    BLOCKSTORE_FORWARD_TO_PARTITION(ScanDiskBatch,            TEvVolume)
+    BLOCKSTORE_FORWARD_TO_PARTITION(VerifyBlobChecksums,      TEvVolume)
     BLOCKSTORE_FORWARD_TO_PARTITION(CheckRange,               TEvVolume)
     BLOCKSTORE_FORWARD_TO_PARTITION(DescribeBlob,             TEvVolume)
 

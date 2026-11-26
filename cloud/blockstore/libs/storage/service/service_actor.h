@@ -30,6 +30,7 @@
 #include <contrib/ydb/library/actors/core/log.h>
 #include <contrib/ydb/library/actors/core/mon.h>
 
+#include <util/generic/hash.h>
 #include <util/stream/output.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -67,6 +68,9 @@ private:
 
     NMonitoring::TDynamicCounters::TCounterPtr SelfPingMaxUsCounter;
     ui64 SelfPingMaxUs = 0;
+
+    // The running scans by OperationId.
+    THashMap<TString, NActors::TActorId> ScanDiskActors;
 
 public:
     TServiceActor(
@@ -221,6 +225,14 @@ private:
 
     void HandleSetVhostDiscardFlagRequest(
         const TEvService::TEvSetVhostDiscardFlagRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleScanDiskStarted(
+        const TEvServicePrivate::TEvScanDiskStarted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleScanDiskStopped(
+        const TEvServicePrivate::TEvScanDiskStopped::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     bool HandleRequests(STFUNC_SIG);

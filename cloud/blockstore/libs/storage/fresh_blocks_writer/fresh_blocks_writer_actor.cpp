@@ -57,6 +57,8 @@ ui32 GetMaxIORequestsInFlight(
     xxx(GetRebuildMetadataStatus,    __VA_ARGS__)                              \
     xxx(ScanDisk,                    __VA_ARGS__)                              \
     xxx(GetScanDiskStatus,           __VA_ARGS__)                              \
+    xxx(ScanDiskBatch,               __VA_ARGS__)                              \
+    xxx(VerifyBlobChecksums,         __VA_ARGS__)                              \
     xxx(CheckRange,                  __VA_ARGS__)                              \
     xxx(DescribeBlob,                __VA_ARGS__)                              \
 // BLOCKSTORE_VOLUME_FWD_TO_PARTITION_REQUESTS

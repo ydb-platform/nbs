@@ -263,6 +263,8 @@ GENERATE_IMPL(RebuildMetadata,          TEvVolume)
 GENERATE_IMPL(GetRebuildMetadataStatus, TEvVolume)
 GENERATE_IMPL(ScanDisk,                 TEvVolume)
 GENERATE_IMPL(GetScanDiskStatus,        TEvVolume)
+GENERATE_IMPL(ScanDiskBatch,            TEvVolume)
+GENERATE_IMPL(VerifyBlobChecksums,      TEvVolume)
 GENERATE_IMPL(CheckRange,               TEvVolume)
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -2,8 +2,6 @@
 
 #include "public.h"
 
-#include "part_scan_disk.h"
-
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
@@ -231,7 +229,7 @@ using TFlushedCommitIds = TVector<TFlushedCommitId>;
     xxx(CompactionReadBlobInfo,    __VA_ARGS__)                                \
     xxx(MetadataRebuildUsedBlocks, __VA_ARGS__)                                \
     xxx(MetadataRebuildBlockCount, __VA_ARGS__)                                \
-    xxx(ScanDiskBatch,             __VA_ARGS__)                                \
+    xxx(ScanDiskReadBatch,         __VA_ARGS__)                                \
     xxx(Cleanup,                   __VA_ARGS__)                                \
     xxx(CollectGarbage,            __VA_ARGS__)                                \
     xxx(AddGarbage,                __VA_ARGS__)                                \
@@ -506,16 +504,16 @@ struct TEvPartitionPrivate
     };
 
     //
-    // ScanDiskBatch
+    // ScanDiskReadBatch
     //
 
-    struct TScanDiskBatchRequest
+    struct TScanDiskReadBatchRequest
     {
         const TPartialBlobId BlobId;
         const ui32 Count = 0;
         const TPartialBlobId FinalBlobId;
 
-        TScanDiskBatchRequest(
+        TScanDiskReadBatchRequest(
                 TPartialBlobId blobId,
                 ui32 count,
                 TPartialBlobId finalBlobId)
@@ -525,36 +523,36 @@ struct TEvPartitionPrivate
         {}
     };
 
-    struct TScanDiskBatchResponse
+    struct TScanDiskReadBatchResponse
     {
         struct TBlobMark {
             NKikimr::TLogoBlobID BlobId;
             ui32 BSGroupId;
+            bool HasChecksums = false;
 
             TBlobMark(
                     const NKikimr::TLogoBlobID& blobId,
-                    ui32 bSGroupId)
+                    ui32 bSGroupId,
+                    bool hasChecksums = false)
                 : BlobId(blobId)
                 , BSGroupId(bSGroupId)
+                , HasChecksums(hasChecksums)
             {}
         };
 
         TVector<TBlobMark> BlobsInBatch;
         TPartialBlobId LastVisitedBlobId;
         bool IsScanCompleted = false;
-        ui64 DeadBlobCount = 0;
 
-        TScanDiskBatchResponse() = default;
+        TScanDiskReadBatchResponse() = default;
 
-        TScanDiskBatchResponse(
-            TVector<TBlobMark> blobs,
-            TPartialBlobId lastVisitedBlobId,
-            bool isScanCompleted,
-            ui64 deadBlobCount)
+        TScanDiskReadBatchResponse(
+                TVector<TBlobMark> blobs,
+                TPartialBlobId lastVisitedBlobId,
+                bool isScanCompleted)
             : BlobsInBatch(std::move(blobs))
             , LastVisitedBlobId(lastVisitedBlobId)
             , IsScanCompleted(isScanCompleted)
-            , DeadBlobCount(deadBlobCount)
         {}
     };
 
@@ -817,10 +815,10 @@ struct TEvPartitionPrivate
     struct TScanDiskCompleted
         : TOperationCompleted
     {
-        TScanDiskResults Results;
+        TVector<NKikimr::TLogoBlobID> BrokenBlobs;
 
-        explicit TScanDiskCompleted(TScanDiskResults results)
-            : Results(std::move(results))
+        TScanDiskCompleted(TVector<NKikimr::TLogoBlobID> brokenBlobs)
+            : BrokenBlobs(std::move(brokenBlobs))
         {}
     };
 
@@ -934,6 +932,7 @@ struct TEvPartitionPrivate
         EvLoadMixedBlocksFilterChunkRequest,
         EvUpdateResourceMetrics,
         EvResumeFlush,
+        EvVerifyBlobChecksumsCompleted,
 
         EvEnd
     };
@@ -967,6 +966,9 @@ struct TEvPartitionPrivate
         TResponseEvent<TUpdateResourceMetrics, EvUpdateResourceMetrics>;
 
     using TEvResumeFlush = TResponseEvent<TResumeFlush, EvResumeFlush>;
+
+    using TEvVerifyBlobChecksumsCompleted =
+        TResponseEvent<TOperationCompleted, EvVerifyBlobChecksumsCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

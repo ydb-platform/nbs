@@ -172,8 +172,6 @@ private:
     TRunningActors Actors;
     TIntrusiveList<TRequestInfo> ActiveTransactions;
 
-    NActors::TActorId ScanDiskActorId;
-
     TPartitionDiskCountersPtr PartCounters;
 
     ui64 SysCPUConsumption = 0;
@@ -513,7 +511,6 @@ private:
 
     NActors::IActorPtr CreateScanDiskActor(
         NActors::TActorId tablet,
-        const TScanDiskSettings& settings,
         ui64 blobsPerBatch,
         ui64 finalCommitId,
         TDuration retryTimeout,
@@ -765,6 +762,10 @@ private:
         const TEvPartitionPrivate::TEvScanDiskCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleVerifyBlobChecksumsCompleted(
+        const TEvPartitionPrivate::TEvVerifyBlobChecksumsCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandleCollectGarbageCompleted(
         const TEvPartitionPrivate::TEvCollectGarbageCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -804,9 +805,7 @@ private:
 
     NProto::TError DoHandleScanDisk(
         const NActors::TActorContext& ctx,
-        const TScanDiskSettings& settings);
-
-    NProto::TError CancelScanDisk(const NActors::TActorContext& ctx);
+        ui32 blobsPerBatch);
 
     void MapBaseDiskIdToTabletId(const NActors::TActorContext& ctx);
     void ClearBaseDiskIdToTabletIdMapping(const NActors::TActorContext& ctx);

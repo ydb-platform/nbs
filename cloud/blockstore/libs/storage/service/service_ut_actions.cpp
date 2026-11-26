@@ -1,5 +1,8 @@
 #include "service_ut.h"
 
+#include "scan_disk_batch_actor.h"
+#include "service_events_private.h"
+
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry_proxy.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
@@ -7,8 +10,8 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
-#include <cloud/blockstore/libs/storage/model/volume_label.h>
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
@@ -17,11 +20,18 @@
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/libs/common/media.h>
+#include <cloud/storage/core/libs/tablet/model/commit.h>
 
+#include <contrib/ydb/core/base/blobstorage.h>
+
+#include <library/cpp/json/json_reader.h>
 #include <library/cpp/json/json_writer.h>
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/guid.h>
 #include <util/generic/size_literals.h>
+
+#include <google/protobuf/util/json_util.h>
 
 using TVolumeParamMap = ::google::protobuf::Map<
     TString,
@@ -45,6 +55,467 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NKikimr;
 using namespace std::string_literals;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TCheckIntegrityResult = TEvBlobStorage::TEvCheckIntegrityResult;
+using TScanDiskBlobResult = NPrivateProto::TScanDiskBlobResult;
+
+constexpr ui32 ScanDiskBlobBlockCount = 1024;
+constexpr ui32 ScanDiskBlobsPerPartition = 4;
+
+NProto::TStorageServiceConfig MakeScanDiskBatchConfig(
+    bool checksums,
+    ui32 partitionCount)
+{
+    NProto::TStorageServiceConfig config;
+    if (checksums) {
+        config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(1_GB);
+    }
+    config.SetCleanupThreshold(1);
+
+    if (partitionCount > 1) {
+        // A stripe per blob, so that every blob lands in one partition.
+        const ui64 bytesPerPartition = ScanDiskBlobsPerPartition *
+                                       ScanDiskBlobBlockCount *
+                                       DefaultBlockSize;
+        config.SetMultipartitionVolumesEnabled(true);
+        config.SetBytesPerPartition(bytesPerPartition);
+        config.SetBytesPerPartitionSSD(bytesPerPartition);
+        config.SetBytesPerStripe(ScanDiskBlobBlockCount * DefaultBlockSize);
+        config.SetMaxPartitionsPerVolume(partitionCount);
+    }
+
+    return config;
+}
+
+TBlockRange64 MakeScanDiskBlobRange(ui32 blobIndex)
+{
+    return TBlockRange64::WithLength(
+        blobIndex * ScanDiskBlobBlockCount,
+        ScanDiskBlobBlockCount);
+}
+
+NPrivateProto::TScanDiskBatchRequest MakeScanDiskBatchRequest(ui32 count = 100)
+{
+    NPrivateProto::TScanDiskBatchRequest request;
+    request.SetDiskId(DefaultDiskId);
+    request.SetCount(count);
+    return request;
+}
+
+TString ToJson(const google::protobuf::Message& message)
+{
+    TString json;
+    google::protobuf::util::MessageToJsonString(message, &json);
+    return json;
+}
+
+NPrivateProto::TScanDiskBatchResponse ParseScanDiskBatchResponse(
+    const TEvServicePrivate::TEvScanDiskBatchResponse& response)
+{
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        S_OK,
+        response.GetStatus(),
+        response.GetErrorReason());
+    return response.Record;
+}
+
+TLogoBlobID MakeLogoBlobId(const NPrivateProto::TLogoBlobID& blobId)
+{
+    return TLogoBlobID(blobId.GetRawX1(), blobId.GetRawX2(), blobId.GetRawX3());
+}
+
+ui32 GetNodeIndex(TTestActorRuntimeBase& runtime, const TActorId& actorId)
+{
+    ui32 nodeIndex = 0;
+    while (runtime.GetNodeId(nodeIndex) != actorId.NodeId()) {
+        ++nodeIndex;
+    }
+    return nodeIndex;
+}
+
+void ReplyToCheckIntegrity(
+    TTestActorRuntimeBase& runtime,
+    IEventHandle& request,
+    TCheckIntegrityResult::EPlacementStatus placementStatus)
+{
+    auto result = std::make_unique<TCheckIntegrityResult>(NKikimrProto::OK);
+    result->Id = request.Get<TEvBlobStorage::TEvCheckIntegrity>()->Id;
+    result->PlacementStatus = placementStatus;
+    result->DataStatus = TCheckIntegrityResult::DS_OK;
+    result->DataInfo = "crafted";
+
+    runtime.Send(
+        new IEventHandle(
+            request.Sender,
+            request.Recipient,
+            result.release(),
+            0,   // flags
+            request.Cookie),
+        GetNodeIndex(runtime, request.Sender));
+}
+
+// Answers the checks of the given blobs with the given placement status and
+// lets the other checks through.
+auto MakeCheckIntegrityFilter(
+    THashMap<TLogoBlobID, TCheckIntegrityResult::EPlacementStatus>&
+        placementStatuses)
+{
+    return [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+    {
+        if (event->GetTypeRewrite() != TEvBlobStorage::EvCheckIntegrity) {
+            return false;
+        }
+
+        const auto& blobId =
+            event->Get<TEvBlobStorage::TEvCheckIntegrity>()->Id;
+        const auto* placementStatus = placementStatuses.FindPtr(blobId);
+        if (!placementStatus) {
+            return false;
+        }
+
+        ReplyToCheckIntegrity(runtime, *event, *placementStatus);
+        return true;
+    };
+}
+
+// Every check finds its blob lost, so that every live blob is reported.
+bool ReplyThatBlobIsLost(
+    TTestActorRuntimeBase& runtime,
+    TAutoPtr<IEventHandle>& event)
+{
+    if (event->GetTypeRewrite() != TEvBlobStorage::EvCheckIntegrity) {
+        return false;
+    }
+
+    ReplyToCheckIntegrity(
+        runtime,
+        *event,
+        TCheckIntegrityResult::PS_BLOB_IS_LOST);
+    return true;
+}
+
+// Fails the requests of this partition the way a restarting one does.
+auto MakeRejectPartitionFilter(ui32 partitionIndex, ui32& rejectedRequests)
+{
+    return [=, &rejectedRequests](
+               TTestActorRuntimeBase& runtime,
+               TAutoPtr<IEventHandle>& event)
+    {
+        if (event->GetTypeRewrite() != TEvVolume::EvScanDiskBatchRequest) {
+            return false;
+        }
+
+        using TEv = TEvVolume::TEvScanDiskBatchRequest;
+        if (event->Get<TEv>()->Record.GetPartitionIndex() != partitionIndex) {
+            return false;
+        }
+
+        ++rejectedRequests;
+        runtime.Send(
+            new IEventHandle(
+                event->Sender,
+                event->Recipient,
+                new TEvVolume::TEvScanDiskBatchResponse(
+                    MakeError(E_REJECTED, "crafted error")),
+                0,   // flags
+                event->Cookie),
+            GetNodeIndex(runtime, event->Sender));
+        return true;
+    };
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TScanDiskRecord = NPrivateProto::TScanDiskRecord;
+using TScanDiskStatus = NPrivateProto::TGetScanDiskStatusResponse;
+using TScanDiskCounters = NPrivateProto::TScanDiskCounters;
+
+NPrivateProto::TScanDiskRequest MakeScanDiskRequest()
+{
+    NPrivateProto::TScanDiskRequest request;
+    request.SetDiskId(DefaultDiskId);
+    request.SetBatchSize(1);
+    return request;
+}
+
+template <typename T>
+T ParseJson(const TString& json)
+{
+    T message;
+    UNIT_ASSERT_C(
+        google::protobuf::util::JsonStringToMessage(json, &message).ok(),
+        json);
+    return message;
+}
+
+TScanDiskCounters SumCounters(const TVector<TScanDiskRecord>& records)
+{
+    TScanDiskCounters total;
+    const auto* descriptor = total.GetDescriptor();
+    const auto* reflection = total.GetReflection();
+    for (const auto& record: records) {
+        for (int i = 0; i < descriptor->field_count(); ++i) {
+            const auto* field = descriptor->field(i);
+            reflection->SetUInt64(
+                &total,
+                field,
+                reflection->GetUInt64(total, field) +
+                    reflection->GetUInt64(record.GetCounters(), field));
+        }
+    }
+    return total;
+}
+
+TVector<TScanDiskBlobResult> GetBlobResults(
+    const TVector<TScanDiskRecord>& records)
+{
+    TVector<TScanDiskBlobResult> results;
+    for (const auto& record: records) {
+        for (const auto& result: record.GetBlobResults()) {
+            results.push_back(result);
+        }
+    }
+    return results;
+}
+
+TVector<TLogoBlobID> GetReportedBlobIds(const TVector<TScanDiskRecord>& records)
+{
+    TVector<TLogoBlobID> blobIds;
+    for (const auto& result: GetBlobResults(records)) {
+        blobIds.push_back(MakeLogoBlobId(result.GetBlobId()));
+    }
+    Sort(blobIds);
+    return blobIds;
+}
+
+ui64 GetCommitId(const TLogoBlobID& blobId)
+{
+    return MakeCommitId(blobId.Generation(), blobId.Step());
+}
+
+// What a caller saves: every record, and the status that completed the scan.
+struct TScanDiskResult
+{
+    TVector<TScanDiskRecord> Records;
+    TScanDiskStatus Status;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TScanDiskBatchTestEnv
+{
+    TTestEnv Env;
+    ui32 NodeIdx = 0;
+    std::unique_ptr<TServiceClient> Service;
+    TString SessionId;
+
+    explicit TScanDiskBatchTestEnv(
+        bool checksums = true,
+        ui32 partitionCount = 1)
+    {
+        NodeIdx = SetupTestEnv(
+            Env,
+            MakeScanDiskBatchConfig(checksums, partitionCount));
+        Service = std::make_unique<TServiceClient>(Env.GetRuntime(), NodeIdx);
+        Service->CreateVolume(
+            DefaultDiskId,
+            partitionCount * ScanDiskBlobsPerPartition *
+                ScanDiskBlobBlockCount);
+        SessionId = Service->MountVolume()->Record.GetSessionId();
+    }
+
+    TTestActorRuntime& GetRuntime()
+    {
+        return Env.GetRuntime();
+    }
+
+    void WriteBlob(ui32 blobIndex, char fill)
+    {
+        Service->WriteBlocks(
+            DefaultDiskId,
+            MakeScanDiskBlobRange(blobIndex),
+            SessionId,
+            fill);
+    }
+
+    // Runs the batch actor the way the scan actor does.
+    TActorId SendScanDiskBatch(
+        const NPrivateProto::TScanDiskBatchRequest& request)
+    {
+        auto& runtime = GetRuntime();
+        const auto owner = runtime.AllocateEdgeActor(NodeIdx);
+        const auto actorId = runtime.Register(
+            CreateScanDiskBatchActor(owner, request).release(),
+            NodeIdx);
+        // The batch actor relies on its deadline wakeups.
+        runtime.EnableScheduleForActor(actorId);
+        return owner;
+    }
+
+    TEvServicePrivate::TEvScanDiskBatchResponse::TPtr RecvScanDiskBatchResponse(
+        const TActorId& owner)
+    {
+        return GetRuntime()
+            .GrabEdgeEvent<TEvServicePrivate::TEvScanDiskBatchResponse>(owner);
+    }
+
+    NPrivateProto::TScanDiskBatchResponse ScanDiskBatch(
+        const NPrivateProto::TScanDiskBatchRequest& request)
+    {
+        return ParseScanDiskBatchResponse(
+            *RecvScanDiskBatchResponse(SendScanDiskBatch(request))->Get());
+    }
+
+    std::unique_ptr<TEvService::TEvExecuteActionResponse> SendScanDisk(
+        const TString& input)
+    {
+        Service->SendExecuteActionRequest("scandisk", input);
+        return Service->RecvExecuteActionResponse();
+    }
+
+    TString StartScanDisk(const NPrivateProto::TScanDiskRequest& request)
+    {
+        const auto response = SendScanDisk(ToJson(request));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        const auto operationId = ParseJson<NPrivateProto::TScanDiskResponse>(
+                                     response->Record.GetOutput())
+                                     .GetOperationId();
+        UNIT_ASSERT(operationId);
+        return operationId;
+    }
+
+    std::unique_ptr<TEvService::TEvExecuteActionResponse> SendGetScanDiskStatus(
+        const TString& operationId,
+        ui64 ackedRecordId)
+    {
+        NPrivateProto::TGetScanDiskStatusRequest request;
+        request.SetOperationId(operationId);
+        request.SetAckedRecordId(ackedRecordId);
+        Service->SendExecuteActionRequest("getscandiskstatus", ToJson(request));
+        return Service->RecvExecuteActionResponse();
+    }
+
+    TScanDiskStatus GetScanDiskStatus(
+        const TString& operationId,
+        ui64 ackedRecordId)
+    {
+        const auto response = SendGetScanDiskStatus(operationId, ackedRecordId);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+        return ParseJson<TScanDiskStatus>(response->Record.GetOutput());
+    }
+
+    void CheckScanDiskNotFound(const TString& operationId)
+    {
+        const auto response = SendGetScanDiskStatus(operationId, 0);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_NOT_FOUND,
+            response->GetStatus(),
+            response->GetErrorReason());
+    }
+
+    // Polls the way a caller does: saves the records in order, acknowledges
+    // them, and checks that acknowledging the last one stops the scan.
+    TScanDiskResult PollScanDiskToEnd(
+        const TString& operationId,
+        ui64 ackedRecordId = 0)
+    {
+        TScanDiskResult result;
+        for (ui32 poll = 0;; ++poll) {
+            UNIT_ASSERT_LT(poll, 1000);
+
+            auto status = GetScanDiskStatus(operationId, ackedRecordId);
+            for (const auto& record: status.GetRecords()) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    ackedRecordId + 1,
+                    record.GetRecordId());
+                ackedRecordId = record.GetRecordId();
+                result.Records.push_back(record);
+            }
+
+            if (status.GetIsCompleted()) {
+                result.Status = std::move(status);
+                break;
+            }
+
+            GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        }
+
+        const auto status = GetScanDiskStatus(operationId, ackedRecordId);
+        UNIT_ASSERT(status.GetIsCompleted());
+        UNIT_ASSERT_VALUES_EQUAL(0, status.RecordsSize());
+        CheckScanDiskNotFound(operationId);
+
+        return result;
+    }
+
+    TScanDiskResult ScanDiskToEnd(
+        const NPrivateProto::TScanDiskRequest& request)
+    {
+        return PollScanDiskToEnd(StartScanDisk(request));
+    }
+
+    ui64 GetPartitionTabletId()
+    {
+        const auto response = Service->ExecuteAction(
+            "describevolume",
+            TStringBuilder() << R"({"DiskId": ")" << DefaultDiskId << R"("})");
+
+        NJson::TJsonValue description;
+        UNIT_ASSERT(
+            NJson::ReadJsonTree(response->Record.GetOutput(), &description));
+        return description["Partitions"][0]["TabletId"].GetUIntegerRobust();
+    }
+
+    // Lists the live blobs the way the batch actor does and returns their ids.
+    TVector<TLogoBlobID> ListBlobs()
+    {
+        auto& runtime = GetRuntime();
+
+        TVector<TLogoBlobID> blobIds;
+        bool dropChecks = true;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolume::EvScanDiskBatchResponse: {
+                        using TEv = TEvVolume::TEvScanDiskBatchResponse;
+                        for (const auto& blob:
+                             event->Get<TEv>()->Record.GetBlobs()) {
+                            blobIds.push_back(
+                                LogoBlobIDFromLogoBlobID(blob.GetBlobId()));
+                        }
+                        break;
+                    }
+                    case TEvBlobStorage::EvCheckIntegrity:
+                        return dropChecks;
+                }
+                return false;
+            });
+
+        auto request = MakeScanDiskBatchRequest();
+        request.SetDeadlineMs(1000);
+        ScanDiskBatch(request);
+
+        dropChecks = false;
+        runtime.SetEventFilter(TTestActorRuntime::DefaultFilterFunc);
+
+        SortUnique(blobIds);
+        return blobIds;
+    }
+};
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -934,159 +1405,1058 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
     Y_UNIT_TEST(ShouldScanDiskForPartitionVersion1)
     {
-        TTestEnv env;
-        NProto::TStorageServiceConfig config;
-        const ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+        TScanDiskBatchTestEnv env;
+        env.WriteBlob(0, 1);
+        env.WriteBlob(0, 2);
+        env.WriteBlob(1, 3);
 
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateVolume("vol0");
+        const auto result = env.ScanDiskToEnd(MakeScanDiskRequest());
 
-        const auto sessionId = service.MountVolume("vol0")->Record.GetSessionId();
+        UNIT_ASSERT_LT(1, result.Records.size());
+        for (ui32 i = 0; i < result.Records.size(); ++i) {
+            const auto& record = result.Records[i];
+            UNIT_ASSERT_VALUES_EQUAL(0, record.GetPartitionIndex());
+            UNIT_ASSERT(!HasError(record.GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(0, record.BlobResultsSize());
+            UNIT_ASSERT_LT(0, record.GetScanCommitId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                i + 1 == result.Records.size(),
+                record.GetIsCompleted());
+            if (i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    result.Records[i - 1].GetNextCursor(),
+                    record.GetCursor());
+            }
+        }
 
-        service.WriteBlocks(
-            "vol0",
-            TBlockRange64::WithLength(0, 1024),
-            sessionId,
-            char(1));
+        const auto counters = SumCounters(result.Records);
+        UNIT_ASSERT_VALUES_EQUAL(2, counters.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.GetDeadBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.GetBrokenBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.GetUncheckedBlobs());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, result.Status.PartitionsSize());
+        const auto& partition = result.Status.GetPartitions(0);
+        UNIT_ASSERT(partition.GetIsCompleted());
+        UNIT_ASSERT(!HasError(partition.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            ToJson(counters),
+            ToJson(partition.GetCounters()));
+        UNIT_ASSERT_VALUES_EQUAL(0, result.Status.IncompletePartitionsSize());
+    }
+
+    Y_UNIT_TEST(ShouldScanEveryPartitionOfDisk)
+    {
+        TScanDiskBatchTestEnv env(true, 2);   // checksums, partitionCount
+        for (ui32 blobIndex = 0; blobIndex < 2 * ScanDiskBlobsPerPartition;
+             ++blobIndex)
+        {
+            env.WriteBlob(blobIndex, 1);
+        }
+
+        const auto result = env.ScanDiskToEnd(MakeScanDiskRequest());
+
+        // The partitions are scanned one after another.
+        TVector<TVector<TScanDiskRecord>> partitionRecords(2);
+        ui32 lastPartitionIndex = 0;
+        for (const auto& record: result.Records) {
+            UNIT_ASSERT(!HasError(record.GetError()));
+            UNIT_ASSERT_LE(lastPartitionIndex, record.GetPartitionIndex());
+            lastPartitionIndex = record.GetPartitionIndex();
+            partitionRecords[lastPartitionIndex].push_back(record);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(2, result.Status.PartitionsSize());
+        for (const auto& partition: result.Status.GetPartitions()) {
+            const auto& records =
+                partitionRecords[partition.GetPartitionIndex()];
+            UNIT_ASSERT(!records.empty());
+            UNIT_ASSERT(records.back().GetIsCompleted());
+            UNIT_ASSERT(partition.GetIsCompleted());
+            UNIT_ASSERT_VALUES_EQUAL(
+                ScanDiskBlobsPerPartition,
+                partition.GetCounters().GetCheckedBlobs());
+            UNIT_ASSERT_VALUES_EQUAL(
+                ToJson(SumCounters(records)),
+                ToJson(partition.GetCounters()));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(0, result.Status.IncompletePartitionsSize());
+    }
+
+    Y_UNIT_TEST(ShouldWriteBlobsGivenUpAfterLastRetry)
+    {
+        TScanDiskBatchTestEnv env;
+        auto& runtime = env.GetRuntime();
+        env.WriteBlob(0, 1);
+        const auto blobIds = env.ListBlobs();
+        UNIT_ASSERT_VALUES_EQUAL(1, blobIds.size());
+
+        auto request = MakeScanDiskRequest();
+        request.SetMaxRetries(1);
+        request.SetRetryTimeoutMs(10);
+
+        auto scanGivenUpBlob =
+            [&](const NPrivateProto::TScanDiskRequest& request)
+        {
+            const auto result = env.ScanDiskToEnd(request);
+            runtime.SetEventFilter(TTestActorRuntime::DefaultFilterFunc);
+
+            const auto blobResults = GetBlobResults(result.Records);
+            UNIT_ASSERT_VALUES_EQUAL(1, blobResults.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                blobIds[0],
+                MakeLogoBlobId(blobResults[0].GetBlobId()));
+            return std::make_pair(blobResults[0], SumCounters(result.Records));
+        };
 
         {
-            NPrivateProto::TScanDiskRequest request;
-            request.SetDiskId("vol0");
-            request.SetBatchSize(100);
+            ui32 checks = 0;
+            runtime.SetEventFilter(
+                [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() ==
+                        TEvBlobStorage::EvCheckIntegrity) {
+                        ++checks;
+                        return true;
+                    }
+                    return false;
+                });
 
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
+            const auto [result, counters] = scanGivenUpBlob(request);
 
-            const auto response = service.ExecuteAction("scandisk", buf);
-            NPrivateProto::TScanDiskResponse scanDiskResponse;
-            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                response->Record.GetOutput(),
-                &scanDiskResponse
-            ).ok());
+            UNIT_ASSERT_VALUES_EQUAL(1 + request.GetMaxRetries(), checks);
+            UNIT_ASSERT_EQUAL(
+                TScanDiskBlobResult::UNCHECKED,
+                result.GetVerdict());
+            UNIT_ASSERT_VALUES_EQUAL(E_TIMEOUT, result.GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.GetUncheckedBlobs());
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.GetCheckedBlobs());
         }
 
         {
-            NPrivateProto::TGetScanDiskStatusRequest request;
-            request.SetDiskId("vol0");
+            runtime.SetEventFilter(
+                [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() == TEvBlobStorage::EvGetResult)
+                    {
+                        auto* msg = event->Get<TEvBlobStorage::TEvGetResult>();
+                        if (msg->Responses[0].Id == blobIds[0]) {
+                            msg->Status = NKikimrProto::ERROR;
+                            msg->ErrorReason = "crafted error";
+                        }
+                    }
+                    return false;
+                });
 
-            TString buf;
-            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto checksumRequest = request;
+            checksumRequest.SetVerifyChecksums(true);
+            const auto [result, counters] = scanGivenUpBlob(checksumRequest);
 
-            const auto response = service.ExecuteAction("getscandiskstatus", buf);
-            NPrivateProto::TGetScanDiskStatusResponse scanDiskResponse;
-            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
-                response->Record.GetOutput(),
-                &scanDiskResponse
-            ).ok());
+            UNIT_ASSERT_EQUAL(
+                TScanDiskBlobResult::READ_FAILED,
+                result.GetVerdict());
+            UNIT_ASSERT_STRING_CONTAINS(
+                result.GetError().GetMessage(),
+                "crafted error");
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.GetReadFailedBlobs());
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.GetCheckedBlobs());
+        }
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                1,
-                scanDiskResponse.GetProgress().GetTotal());
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                scanDiskResponse.GetProgress().GetBrokenBlobs().size());
+        {
+            // The blob comes back lost, and the partition fails every
+            // confirmation.
+            runtime.SetEventFilter(
+                [&](TTestActorRuntimeBase& runtime,
+                    TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() ==
+                        TEvVolume::EvScanDiskBatchRequest)
+                    {
+                        using TEv = TEvVolume::TEvScanDiskBatchRequest;
+                        auto& record = event->Get<TEv>()->Record;
+                        if (record.BlobsToConfirmSize()) {
+                            record.SetCursor("not a cursor");
+                        }
+                    }
+                    return ReplyThatBlobIsLost(runtime, event);
+                });
+
+            const auto [result, counters] = scanGivenUpBlob(request);
+
+            UNIT_ASSERT_EQUAL(TScanDiskBlobResult::BROKEN, result.GetVerdict());
+            UNIT_ASSERT(result.GetUnconfirmed());
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.GetUnconfirmedBlobs());
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.GetBrokenBlobs());
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.GetCheckedBlobs());
         }
     }
 
-    Y_UNIT_TEST(ShouldScanDiskWithCheckIntegrityForPartitionVersion1)
+    Y_UNIT_TEST(ShouldGiveSameTotalsWhenStartedFromRecord)
     {
-        TTestEnv env;
-        NProto::TStorageServiceConfig config;
-        const ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+        TScanDiskBatchTestEnv env;
+        for (ui32 blobIndex = 0; blobIndex < ScanDiskBlobsPerPartition;
+             ++blobIndex)
+        {
+            env.WriteBlob(blobIndex, 1);
+        }
+        env.WriteBlob(0, 2);
+
+        const auto full = env.ScanDiskToEnd(MakeScanDiskRequest());
+        UNIT_ASSERT_LT(2, full.Records.size());
+
+        const auto& resumeRecord = full.Records[1];
+        auto request = MakeScanDiskRequest();
+        request.SetCursor(resumeRecord.GetNextCursor());
+        request.SetMaxCommitId(resumeRecord.GetScanCommitId());
+        const auto rest = env.ScanDiskToEnd(request);
+
+        TVector<TScanDiskRecord> records(
+            full.Records.begin(),
+            full.Records.begin() + 2);
+        records.insert(records.end(), rest.Records.begin(), rest.Records.end());
+
+        const auto counters = SumCounters(records);
+        UNIT_ASSERT_VALUES_EQUAL(
+            ToJson(SumCounters(full.Records)),
+            ToJson(counters));
+        UNIT_ASSERT_VALUES_EQUAL(
+            ScanDiskBlobsPerPartition,
+            counters.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(1, counters.GetDeadBlobs());
+        for (const auto& record: rest.Records) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                resumeRecord.GetScanCommitId(),
+                record.GetScanCommitId());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReportEveryBlobOnceWithAdjacentCommitIdRanges)
+    {
+        TScanDiskBatchTestEnv env;
+        for (ui32 blobIndex = 0; blobIndex < ScanDiskBlobsPerPartition;
+             ++blobIndex)
+        {
+            env.WriteBlob(blobIndex, 1);
+        }
+        env.GetRuntime().SetEventFilter(ReplyThatBlobIsLost);
+
+        const auto allBlobIds = GetReportedBlobIds(
+            env.ScanDiskToEnd(MakeScanDiskRequest()).Records);
+        UNIT_ASSERT_VALUES_EQUAL(ScanDiskBlobsPerPartition, allBlobIds.size());
+
+        const ui64 lastCommitIdOfFirstRange = GetCommitId(allBlobIds[1]);
+
+        auto firstRange = MakeScanDiskRequest();
+        firstRange.SetMaxCommitId(lastCommitIdOfFirstRange);
+        auto blobIds =
+            GetReportedBlobIds(env.ScanDiskToEnd(firstRange).Records);
+        UNIT_ASSERT_VALUES_EQUAL(2, blobIds.size());
+
+        auto secondRange = MakeScanDiskRequest();
+        secondRange.SetMinCommitId(lastCommitIdOfFirstRange + 1);
+        const auto secondBlobIds =
+            GetReportedBlobIds(env.ScanDiskToEnd(secondRange).Records);
+        UNIT_ASSERT_VALUES_EQUAL(2, secondBlobIds.size());
+
+        blobIds.insert(
+            blobIds.end(),
+            secondBlobIds.begin(),
+            secondBlobIds.end());
+        Sort(blobIds);
+        UNIT_ASSERT_VALUES_EQUAL(allBlobIds, blobIds);
+    }
+
+    Y_UNIT_TEST(ShouldRejectInvalidScanDiskInput)
+    {
+        TScanDiskBatchTestEnv env(true, 2);   // checksums, partitionCount
+        const TString singlePartitionDiskId = "vol1";
+        env.Service->CreateVolume(
+            singlePartitionDiskId,
+            ScanDiskBlobsPerPartition * ScanDiskBlobBlockCount);
+
+        auto check = [&](const TString& input)
+        {
+            const auto response = env.SendScanDisk(input);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                input + ": " + response->GetErrorReason());
+        };
+
+        auto checkRequest =
+            [&](std::function<void(NPrivateProto::TScanDiskRequest&)> change)
+        {
+            auto request = MakeScanDiskRequest();
+            change(request);
+            check(ToJson(request));
+        };
+
+        check("not json");
+        check(R"({"DiskId": "vol0", "UnknownField": 1})");
+        checkRequest([](auto& request) { request.ClearDiskId(); });
+
+        checkRequest(
+            [](auto& request)
+            {
+                request.SetPartitionIndex(0);
+                request.SetMinCommitId(10);
+                request.SetMaxCommitId(9);
+            });
+        checkRequest(
+            [](auto& request)
+            {
+                request.SetPartitionIndex(0);
+                request.SetMinCommitId(10);
+                request.SetCursor("cursor");
+            });
+        checkRequest([](auto& request) { request.SetPartitionIndex(2); });
+        checkRequest(
+            [&](auto& request)
+            {
+                request.SetDiskId(singlePartitionDiskId);
+                request.SetPartitionIndex(1);
+            });
+
+        // Commit ids and cursors belong to one partition.
+        checkRequest([](auto& request) { request.SetMinCommitId(10); });
+        checkRequest([](auto& request) { request.SetMaxCommitId(10); });
+        checkRequest([](auto& request) { request.SetCursor("cursor"); });
+
+        // A single-partition disk takes them without PartitionIndex.
+        auto request = MakeScanDiskRequest();
+        request.SetDiskId(singlePartitionDiskId);
+        request.SetMaxCommitId(10);
+        env.PollScanDiskToEnd(env.StartScanDisk(request));
+    }
+
+    Y_UNIT_TEST(ShouldLeavePartitionIncompleteAfterUnavailableTimeout)
+    {
+        TScanDiskBatchTestEnv env(true, 2);   // checksums, partitionCount
+        for (ui32 blobIndex = 0; blobIndex < 2 * ScanDiskBlobsPerPartition;
+             ++blobIndex)
+        {
+            env.WriteBlob(blobIndex, 1);
+        }
+
+        ui32 rejectedRequests = 0;
+        env.GetRuntime().SetEventFilter(
+            MakeRejectPartitionFilter(0, rejectedRequests));
+
+        auto request = MakeScanDiskRequest();
+        request.SetRetryTimeoutMs(100);
+        request.SetUnavailableTimeoutMs(5000);
+        const auto result = env.ScanDiskToEnd(request);
+
+        UNIT_ASSERT_LT(1, rejectedRequests);
+
+        const auto& failedRecord = result.Records.front();
+        UNIT_ASSERT_VALUES_EQUAL(0, failedRecord.GetPartitionIndex());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, failedRecord.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL("", failedRecord.GetCursor());
+        UNIT_ASSERT(!failedRecord.GetIsCompleted());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<ui32>{0},
+            TVector<ui32>(
+                result.Status.GetIncompletePartitions().begin(),
+                result.Status.GetIncompletePartitions().end()));
+
+        const auto& failedPartition = result.Status.GetPartitions(0);
+        UNIT_ASSERT(!failedPartition.GetIsCompleted());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            failedPartition.GetError().GetCode());
+
+        const auto& nextPartition = result.Status.GetPartitions(1);
+        UNIT_ASSERT(nextPartition.GetIsCompleted());
+        UNIT_ASSERT(!HasError(nextPartition.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            ScanDiskBlobsPerPartition,
+            nextPartition.GetCounters().GetCheckedBlobs());
+    }
+
+    Y_UNIT_TEST(ShouldLoseNothingWhenPartitionRebootsMidScan)
+    {
+        TScanDiskBatchTestEnv env;
         auto& runtime = env.GetRuntime();
+        for (ui32 blobIndex = 0; blobIndex < ScanDiskBlobsPerPartition;
+             ++blobIndex)
+        {
+            env.WriteBlob(blobIndex, 1);
+        }
+        const ui64 partitionTabletId = env.GetPartitionTabletId();
 
-        TServiceClient service(runtime, nodeIdx);
-        service.CreateVolume("vol0");
-
-        const auto sessionId =
-            service.MountVolume("vol0")->Record.GetSessionId();
-
-        service.WriteBlocks(
-            "vol0",
-            TBlockRange64::WithLength(0, 1024),
-            sessionId,
-            char(1));
-
-        NProto::TScanDiskRequest partitionRequest;
+        // Holds the second listing, which is the first with a cursor.
+        TAutoPtr<IEventHandle> heldListing;
+        bool listingHeld = false;
         runtime.SetEventFilter(
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
-                if (event->GetTypeRewrite() == TEvVolume::EvScanDiskRequest) {
-                    partitionRequest =
-                        event->Get<TEvVolume::TEvScanDiskRequest>()->Record;
+                if (listingHeld || event->GetTypeRewrite() !=
+                                       TEvVolume::EvScanDiskBatchRequest)
+                {
+                    return false;
+                }
+
+                using TEv = TEvVolume::TEvScanDiskBatchRequest;
+                const auto& record = event->Get<TEv>()->Record;
+                if (record.GetCount() && record.GetCursor()) {
+                    heldListing = event.Release();
+                    listingHeld = true;
+                    return true;
                 }
                 return false;
             });
 
-        auto toJson = [](const google::protobuf::Message& message)
+        const auto operationId = env.StartScanDisk(MakeScanDiskRequest());
         {
-            TString json;
-            google::protobuf::util::MessageToJsonString(message, &json);
-            return json;
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return listingHeld;
+            };
+            runtime.DispatchEvents(options);
+        }
+        UNIT_ASSERT(listingHeld);
+
+        RebootTablet(
+            runtime,
+            partitionTabletId,
+            env.Service->GetSender(),
+            env.NodeIdx);
+        runtime.Send(heldListing.Release(), env.NodeIdx);
+
+        const auto result = env.PollScanDiskToEnd(operationId);
+
+        for (const auto& record: result.Records) {
+            UNIT_ASSERT(!HasError(record.GetError()));
+        }
+        const auto counters = SumCounters(result.Records);
+        UNIT_ASSERT_VALUES_EQUAL(
+            ScanDiskBlobsPerPartition,
+            counters.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.GetUncheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, result.Status.IncompletePartitionsSize());
+    }
+
+    Y_UNIT_TEST(ShouldReturnRecordsUntilAcknowledged)
+    {
+        TScanDiskBatchTestEnv env;
+        for (ui32 blobIndex = 0; blobIndex < ScanDiskBlobsPerPartition;
+             ++blobIndex)
+        {
+            env.WriteBlob(blobIndex, 1);
+        }
+        env.GetRuntime().SetEventFilter(ReplyThatBlobIsLost);
+
+        const auto operationId = env.StartScanDisk(MakeScanDiskRequest());
+
+        TScanDiskStatus status;
+        for (ui32 poll = 0; !status.GetIsCompleted(); ++poll) {
+            UNIT_ASSERT_LT(poll, 100);
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            status = env.GetScanDiskStatus(operationId, 0);
+        }
+        UNIT_ASSERT_LE(ScanDiskBlobsPerPartition, status.RecordsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, status.GetRecords(0).GetRecordId());
+
+        // A lost reply loses nothing.
+        UNIT_ASSERT_VALUES_EQUAL(
+            ToJson(status),
+            ToJson(env.GetScanDiskStatus(operationId, 0)));
+
+        const ui64 ackedRecordId = status.GetRecords(1).GetRecordId();
+        const auto rest = env.GetScanDiskStatus(operationId, ackedRecordId);
+        UNIT_ASSERT_VALUES_EQUAL(status.RecordsSize() - 2, rest.RecordsSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            ackedRecordId + 1,
+            rest.GetRecords(0).GetRecordId());
+
+        // An older acknowledgement brings nothing back.
+        UNIT_ASSERT_VALUES_EQUAL(
+            ToJson(rest),
+            ToJson(env.GetScanDiskStatus(operationId, 0)));
+
+        env.PollScanDiskToEnd(operationId, ackedRecordId);
+    }
+
+    Y_UNIT_TEST(ShouldPauseListingAtMaxPendingBlobResults)
+    {
+        TScanDiskBatchTestEnv env;
+        auto& runtime = env.GetRuntime();
+        for (ui32 blobIndex = 0; blobIndex < ScanDiskBlobsPerPartition;
+             ++blobIndex)
+        {
+            env.WriteBlob(blobIndex, 1);
+        }
+        runtime.SetEventFilter(ReplyThatBlobIsLost);
+
+        auto request = MakeScanDiskRequest();
+        request.SetMaxPendingBlobResults(2);
+        const auto operationId = env.StartScanDisk(request);
+
+        auto getRecordIds = [&](ui64 ackedRecordId)
+        {
+            runtime.DispatchEvents({}, TDuration::Seconds(2));
+            const auto status =
+                env.GetScanDiskStatus(operationId, ackedRecordId);
+            UNIT_ASSERT(!status.GetIsCompleted());
+
+            TVector<ui64> recordIds;
+            for (const auto& record: status.GetRecords()) {
+                UNIT_ASSERT_VALUES_EQUAL(1, record.BlobResultsSize());
+                recordIds.push_back(record.GetRecordId());
+            }
+            return recordIds;
         };
 
-        NPrivateProto::TScanDiskRequest request;
-        request.SetDiskId("vol0");
-        request.SetBatchSize(10);
-        request.SetCheckIntegrity(true);
-        request.SetMaxInFlight(2);
-        request.SetCheckTimeoutMs(30000);
-        request.SetMaxRetries(3);
-        request.SetRetryTimeoutMs(100);
-        request.SetMaxReportedBlobs(50);
-        request.SetMaxDataInfoSize(64);
+        UNIT_ASSERT_VALUES_EQUAL((TVector<ui64>{1, 2}), getRecordIds(0));
+        UNIT_ASSERT_VALUES_EQUAL((TVector<ui64>{1, 2}), getRecordIds(0));
 
-        service.ExecuteAction("scandisk", toJson(request));
+        // The acknowledgement makes room for one more batch.
+        UNIT_ASSERT_VALUES_EQUAL((TVector<ui64>{2}), getRecordIds(1));
+        UNIT_ASSERT_VALUES_EQUAL((TVector<ui64>{2, 3}), getRecordIds(1));
 
-        UNIT_ASSERT_VALUES_EQUAL("vol0", partitionRequest.GetDiskId());
-        UNIT_ASSERT_VALUES_EQUAL(10, partitionRequest.GetBatchSize());
-        UNIT_ASSERT(partitionRequest.GetCheckIntegrity());
-        UNIT_ASSERT_VALUES_EQUAL(2, partitionRequest.GetMaxInFlight());
-        UNIT_ASSERT_VALUES_EQUAL(30000, partitionRequest.GetCheckTimeoutMs());
-        UNIT_ASSERT_VALUES_EQUAL(3, partitionRequest.GetMaxRetries());
-        UNIT_ASSERT_VALUES_EQUAL(100, partitionRequest.GetRetryTimeoutMs());
-        UNIT_ASSERT_VALUES_EQUAL(50, partitionRequest.GetMaxReportedBlobs());
-        UNIT_ASSERT_VALUES_EQUAL(64, partitionRequest.GetMaxDataInfoSize());
-        UNIT_ASSERT(!partitionRequest.GetCancel());
+        const auto result = env.PollScanDiskToEnd(operationId, 1);
+        UNIT_ASSERT_VALUES_EQUAL(2, result.Records.front().GetRecordId());
+    }
 
-        NPrivateProto::TGetScanDiskStatusRequest statusRequest;
-        statusRequest.SetDiskId("vol0");
+    Y_UNIT_TEST(ShouldStopScanDiskWhenNobodyPolls)
+    {
+        TScanDiskBatchTestEnv env;
+        env.WriteBlob(0, 1);
+        // The scan doesn't finish: no check ever replies.
+        env.GetRuntime().SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                return event->GetTypeRewrite() ==
+                       TEvBlobStorage::EvCheckIntegrity;
+            });
 
-        TString statusJson;
-        NPrivateProto::TGetScanDiskStatusResponse status;
-        for (ui32 i = 0; i < 100 && !status.GetProgress().GetIsCompleted(); ++i)
+        auto request = MakeScanDiskRequest();
+        request.SetPollTimeoutMs(2000);
+        const auto operationId = env.StartScanDisk(request);
+
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(1500));
+        UNIT_ASSERT(!env.GetScanDiskStatus(operationId, 0).GetIsCompleted());
+
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(1500));
+        UNIT_ASSERT(!env.GetScanDiskStatus(operationId, 0).GetIsCompleted());
+
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(3));
+        env.CheckScanDiskNotFound(operationId);
+    }
+
+    Y_UNIT_TEST(ShouldNotFindUnknownScanDisk)
+    {
+        TScanDiskBatchTestEnv env;
+        env.CheckScanDiskNotFound(CreateGuidAsString());
+
+        env.Service->SendExecuteActionRequest("getscandiskstatus", "{}");
+        const auto response = env.Service->RecvExecuteActionResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetStatus(),
+            response->GetErrorReason());
+    }
+
+    Y_UNIT_TEST(ShouldScanDiskBatch)
+    {
+        TScanDiskBatchTestEnv env;
+        env.WriteBlob(0, 1);
+        env.WriteBlob(0, 2);
+        env.WriteBlob(1, 3);
+
+        const auto response = env.ScanDiskBatch(MakeScanDiskBatchRequest());
+
+        UNIT_ASSERT(response.GetIsCompleted());
+        UNIT_ASSERT(response.GetNextCursor());
+        UNIT_ASSERT_LT(0, response.GetScanCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetDeadBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetBrokenBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetDeletedDuringScan());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.BlobResultsSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.BlobsToRetrySize());
+    }
+
+    Y_UNIT_TEST(ShouldReportLostBlobStillInBlobIndex)
+    {
+        TScanDiskBatchTestEnv env;
+        env.WriteBlob(0, 1);
+        env.WriteBlob(1, 2);
+        const auto blobIds = env.ListBlobs();
+        UNIT_ASSERT_VALUES_EQUAL(2, blobIds.size());
+
+        THashMap<TLogoBlobID, TCheckIntegrityResult::EPlacementStatus>
+            placementStatuses = {
+                {blobIds[0], TCheckIntegrityResult::PS_BLOB_IS_LOST}};
+        env.GetRuntime().SetEventFilter(
+            MakeCheckIntegrityFilter(placementStatuses));
+
+        const auto response = env.ScanDiskBatch(MakeScanDiskBatchRequest());
+
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetBrokenBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.BlobsToRetrySize());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.BlobResultsSize());
+
+        const auto& result = response.GetBlobResults(0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            blobIds[0],
+            MakeLogoBlobId(result.GetBlobId()));
+        UNIT_ASSERT_EQUAL(TScanDiskBlobResult::BROKEN, result.GetVerdict());
+        UNIT_ASSERT_VALUES_EQUAL("OK", result.GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "PS_BLOB_IS_LOST",
+            result.GetPlacementStatus());
+        UNIT_ASSERT_VALUES_EQUAL("crafted", result.GetDataInfo());
+        UNIT_ASSERT(!result.GetUnconfirmed());
+    }
+
+    Y_UNIT_TEST(ShouldDropBlobDeletedBetweenListingAndCheck)
+    {
+        TScanDiskBatchTestEnv env;
+        auto& runtime = env.GetRuntime();
+        env.WriteBlob(0, 1);
+
+        TVector<TAutoPtr<IEventHandle>> heldChecks;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvCheckIntegrity)
+                {
+                    heldChecks.push_back(event.Release());
+                    return true;
+                }
+                return false;
+            });
+
+        const auto owner = env.SendScanDiskBatch(MakeScanDiskBatchRequest());
         {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return !heldChecks.empty();
+            };
+            runtime.DispatchEvents(options);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(1, heldChecks.size());
+        const auto blobId =
+            heldChecks[0]->Get<TEvBlobStorage::TEvCheckIntegrity>()->Id;
+
+        // A write makes the blob dead, and compaction and cleanup delete it
+        // from the blob index.
+        env.WriteBlob(0, 2);
+        NPrivateProto::TCompactRangeRequest compactRequest;
+        compactRequest.SetDiskId(DefaultDiskId);
+        compactRequest.SetBlocksCount(ScanDiskBlobBlockCount);
+        env.Service->ExecuteAction("compactrange", ToJson(compactRequest));
+
+        NPrivateProto::TDescribeBlobRequest describeRequest;
+        describeRequest.SetDiskId(DefaultDiskId);
+        auto& describeBlobId = *describeRequest.MutableBlobId();
+        describeBlobId.SetRawX1(blobId.GetRaw()[0]);
+        describeBlobId.SetRawX2(blobId.GetRaw()[1]);
+        describeBlobId.SetRawX3(blobId.GetRaw()[2]);
+        for (ui32 attempt = 0;; ++attempt) {
+            UNIT_ASSERT_LT(attempt, 100);
+            const auto response = env.Service->ExecuteAction(
+                "describeblob",
+                ToJson(describeRequest));
+            NPrivateProto::TDescribeBlobResponse describe;
+            google::protobuf::util::JsonParseOptions options;
+            options.ignore_unknown_fields = true;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                            response->Record.GetOutput(),
+                            &describe,
+                            options)
+                            .ok());
+            if (!describe.BlocksSize()) {
+                break;
+            }
             runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
-            statusJson =
-                service
-                    .ExecuteAction("getscandiskstatus", toJson(statusRequest))
-                    ->Record.GetOutput();
-            UNIT_ASSERT(
-                google::protobuf::util::JsonStringToMessage(statusJson, &status)
-                    .ok());
         }
 
-        const auto& progress = status.GetProgress();
-        UNIT_ASSERT_C(progress.GetIsCompleted(), statusJson);
-        UNIT_ASSERT(progress.GetCheckIntegrity());
-        UNIT_ASSERT_LT(0, progress.GetScanCommitId());
-        UNIT_ASSERT_VALUES_EQUAL(1, progress.GetCheckedBlobs());
-        UNIT_ASSERT_VALUES_EQUAL(0, progress.GetDeadBlobs());
-        UNIT_ASSERT_VALUES_EQUAL(0, progress.BlobResultsSize());
-        UNIT_ASSERT_STRING_CONTAINS(statusJson, "\"CheckIntegrity\":true");
-        UNIT_ASSERT_STRING_CONTAINS(statusJson, "\"CheckedBlobs\":\"1\"");
+        // The disks have started dropping the blob.
+        runtime.SetEventFilter(TTestActorRuntime::DefaultFilterFunc);
+        ReplyToCheckIntegrity(
+            runtime,
+            *heldChecks[0],
+            TCheckIntegrityResult::PS_BLOB_IS_LOST);
+
+        const auto response = ParseScanDiskBatchResponse(
+            *env.RecvScanDiskBatchResponse(owner)->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetDeletedDuringScan());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetBrokenBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.BlobResultsSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.BlobsToRetrySize());
+    }
+
+    Y_UNIT_TEST(ShouldRetryBlobWithoutCheckReplyByDeadline)
+    {
+        TScanDiskBatchTestEnv env;
+        auto& runtime = env.GetRuntime();
+        env.WriteBlob(0, 1);
+
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                return event->GetTypeRewrite() ==
+                       TEvBlobStorage::EvCheckIntegrity;
+            });
+
+        auto request = MakeScanDiskBatchRequest();
+        request.SetDeadlineMs(1000);
+        const auto response = env.ScanDiskBatch(request);
+
+        UNIT_ASSERT(response.GetIsCompleted());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.BlobResultsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.BlobsToRetrySize());
+
+        const auto& blobToRetry = response.GetBlobsToRetry(0);
+        UNIT_ASSERT(blobToRetry.GetHasChecksums());
+        UNIT_ASSERT_LT(0, blobToRetry.GetBSGroupId());
+        UNIT_ASSERT_EQUAL(
+            TScanDiskBlobResult::UNCHECKED,
+            blobToRetry.GetResult().GetVerdict());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_TIMEOUT,
+            blobToRetry.GetResult().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldRecheckBlobsWithoutListing)
+    {
+        TScanDiskBatchTestEnv env;
+        auto& runtime = env.GetRuntime();
+        env.WriteBlob(0, 1);
+
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                return event->GetTypeRewrite() ==
+                       TEvBlobStorage::EvCheckIntegrity;
+            });
+
+        auto listingRequest = MakeScanDiskBatchRequest();
+        listingRequest.SetDeadlineMs(1000);
+        const auto listingResponse = env.ScanDiskBatch(listingRequest);
+        UNIT_ASSERT_VALUES_EQUAL(1, listingResponse.BlobsToRetrySize());
+
+        ui32 listingRequests = 0;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvScanDiskBatchRequest) {
+                    using TEv = TEvVolume::TEvScanDiskBatchRequest;
+                    listingRequests += event->Get<TEv>()->Record.GetCount() > 0;
+                }
+                return false;
+            });
+
+        // The client sends BlobsToRetry back as they came.
+        auto request = MakeScanDiskBatchRequest(0);
+        *request.MutableBlobsToRecheck() = listingResponse.GetBlobsToRetry();
+        const auto response = env.ScanDiskBatch(request);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, listingRequests);
+        UNIT_ASSERT(!response.GetIsCompleted());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetDeadBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.BlobsToRetrySize());
+    }
+
+    Y_UNIT_TEST(ShouldReportChecksumMismatch)
+    {
+        TScanDiskBatchTestEnv env;
+        auto& runtime = env.GetRuntime();
+        env.WriteBlob(0, 1);
+        const auto blobIds = env.ListBlobs();
+        UNIT_ASSERT_VALUES_EQUAL(1, blobIds.size());
+
+        // The same corruption in every part: only the checksums show it.
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvGetResult) {
+                    auto* msg = event->Get<TEvBlobStorage::TEvGetResult>();
+                    auto& response = msg->Responses[0];
+                    if (response.Id == blobIds[0] && response.Shift == 0) {
+                        auto data = response.Buffer.ConvertToString();
+                        data.begin()[0] ^= 1;
+                        response.Buffer = TRope(data);
+                    }
+                }
+                return false;
+            });
+
+        auto request = MakeScanDiskBatchRequest();
+        request.SetVerifyChecksums(true);
+        const auto response = env.ScanDiskBatch(request);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetChecksumMismatchBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetChecksumVerifiedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.BlobsToRetrySize());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.BlobResultsSize());
+
+        const auto& result = response.GetBlobResults(0);
+        UNIT_ASSERT_EQUAL(
+            TScanDiskBlobResult::CHECKSUM_MISMATCH,
+            result.GetVerdict());
+        UNIT_ASSERT_VALUES_EQUAL(1, result.GetMismatchedBlockCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, result.MismatchesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, result.GetMismatches(0).GetBlockIndex());
+        UNIT_ASSERT_VALUES_EQUAL(0, result.GetMismatches(0).GetBlobOffset());
+        // The integrity check found the parts consistent.
+        UNIT_ASSERT_VALUES_EQUAL("PS_OK", result.GetPlacementStatus());
+    }
+
+    Y_UNIT_TEST(ShouldKeepDegradedVerdictWhenChecksumsMatch)
+    {
+        TScanDiskBatchTestEnv env;
+        env.WriteBlob(0, 1);
+        const auto blobIds = env.ListBlobs();
+        UNIT_ASSERT_VALUES_EQUAL(1, blobIds.size());
+
+        THashMap<TLogoBlobID, TCheckIntegrityResult::EPlacementStatus>
+            placementStatuses = {
+                {blobIds[0], TCheckIntegrityResult::PS_BLOB_IS_RECOVERABLE}};
+        env.GetRuntime().SetEventFilter(
+            MakeCheckIntegrityFilter(placementStatuses));
+
+        auto request = MakeScanDiskBatchRequest();
+        request.SetVerifyChecksums(true);
+        const auto response = env.ScanDiskBatch(request);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetDegradedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetChecksumVerifiedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.BlobsToRetrySize());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.BlobResultsSize());
+        UNIT_ASSERT_EQUAL(
+            TScanDiskBlobResult::DEGRADED,
+            response.GetBlobResults(0).GetVerdict());
+    }
+
+    Y_UNIT_TEST(ShouldVerifyChecksumsOnlyOfReadableBlobs)
+    {
+        TScanDiskBatchTestEnv env;
+        auto& runtime = env.GetRuntime();
+        env.WriteBlob(0, 1);
+        env.WriteBlob(1, 2);
+        const auto blobIds = env.ListBlobs();
+        UNIT_ASSERT_VALUES_EQUAL(2, blobIds.size());
+
+        THashMap<TLogoBlobID, TCheckIntegrityResult::EPlacementStatus>
+            placementStatuses = {
+                {blobIds[0], TCheckIntegrityResult::PS_BLOB_IS_LOST}};
+        auto checkIntegrityFilter = MakeCheckIntegrityFilter(placementStatuses);
+
+        TVector<TLogoBlobID> verifiedBlobIds;
+        ui32 verifyRequests = 0;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvVerifyBlobChecksumsRequest)
+                {
+                    using TEv = TEvVolume::TEvVerifyBlobChecksumsRequest;
+                    ++verifyRequests;
+                    for (const auto& blobId:
+                         event->Get<TEv>()->Record.GetBlobIds()) {
+                        verifiedBlobIds.push_back(
+                            LogoBlobIDFromLogoBlobID(blobId));
+                    }
+                }
+                return checkIntegrityFilter(runtime, event);
+            });
+
+        env.ScanDiskBatch(MakeScanDiskBatchRequest());
+        UNIT_ASSERT_VALUES_EQUAL(0, verifyRequests);
+
+        auto request = MakeScanDiskBatchRequest();
+        request.SetVerifyChecksums(true);
+        const auto response = env.ScanDiskBatch(request);
+
+        UNIT_ASSERT_LT(0, verifyRequests);
+        SortUnique(verifiedBlobIds);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<TLogoBlobID>{blobIds[1]},
+            verifiedBlobIds);
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetBrokenBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetChecksumVerifiedBlobs());
+    }
+
+    Y_UNIT_TEST(ShouldNotVerifyBlobsWithoutChecksums)
+    {
+        TScanDiskBatchTestEnv env(false);   // checksums
+        auto& runtime = env.GetRuntime();
+        env.WriteBlob(0, 1);
+
+        ui32 verifyRequests = 0;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                verifyRequests += event->GetTypeRewrite() ==
+                                  TEvVolume::EvVerifyBlobChecksumsRequest;
+                return false;
+            });
+
+        auto request = MakeScanDiskBatchRequest();
+        request.SetVerifyChecksums(true);
+        const auto response = env.ScanDiskBatch(request);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, verifyRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetChecksumVerifiedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.BlobsToRetrySize());
+    }
+
+    Y_UNIT_TEST(ShouldReportFailedChecksumReadAsReadFailed)
+    {
+        TScanDiskBatchTestEnv env;
+        auto& runtime = env.GetRuntime();
+        env.WriteBlob(0, 1);
+        const auto blobIds = env.ListBlobs();
+        UNIT_ASSERT_VALUES_EQUAL(1, blobIds.size());
+
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvGetResult) {
+                    auto* msg = event->Get<TEvBlobStorage::TEvGetResult>();
+                    if (msg->Responses[0].Id == blobIds[0]) {
+                        msg->Status = NKikimrProto::ERROR;
+                        msg->ErrorReason = "crafted error";
+                    }
+                }
+                return false;
+            });
+
+        auto request = MakeScanDiskBatchRequest();
+        request.SetVerifyChecksums(true);
+        const auto response = env.ScanDiskBatch(request);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.BlobResultsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.BlobsToRetrySize());
+
+        const auto& result = response.GetBlobsToRetry(0).GetResult();
+        UNIT_ASSERT_EQUAL(
+            TScanDiskBlobResult::READ_FAILED,
+            result.GetVerdict());
+        UNIT_ASSERT(!result.GetUnconfirmed());
+        UNIT_ASSERT_STRING_CONTAINS(
+            result.GetError().GetMessage(),
+            "crafted error");
+    }
+
+    Y_UNIT_TEST(ShouldNotVerifyChecksumsWhenChecksumRequestFails)
+    {
+        TScanDiskBatchTestEnv env;
+        auto& runtime = env.GetRuntime();
+        env.WriteBlob(0, 1);
+
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvVerifyBlobChecksumsResponse)
+                {
+                    using TEv = TEvVolume::TEvVerifyBlobChecksumsResponse;
+                    auto& record = event->Get<TEv>()->Record;
+                    record.Clear();
+                    *record.MutableError() =
+                        MakeError(E_REJECTED, "crafted error");
+                }
+                return false;
+            });
+
+        auto request = MakeScanDiskBatchRequest();
+        request.SetVerifyChecksums(true);
+        const auto response = env.ScanDiskBatch(request);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.BlobsToRetrySize());
+
+        const auto& result = response.GetBlobsToRetry(0).GetResult();
+        UNIT_ASSERT_EQUAL(TScanDiskBlobResult::HEALTHY, result.GetVerdict());
+        UNIT_ASSERT(result.GetChecksumsNotVerified());
+        UNIT_ASSERT(!result.GetUnconfirmed());
+    }
+
+    Y_UNIT_TEST(ShouldFlagVerdictsUnconfirmedWhenConfirmationFails)
+    {
+        TScanDiskBatchTestEnv env;
+        auto& runtime = env.GetRuntime();
+        env.WriteBlob(0, 1);
+        const auto blobIds = env.ListBlobs();
+        UNIT_ASSERT_VALUES_EQUAL(1, blobIds.size());
+
+        THashMap<TLogoBlobID, TCheckIntegrityResult::EPlacementStatus>
+            placementStatuses = {
+                {blobIds[0], TCheckIntegrityResult::PS_BLOB_IS_LOST}};
+        auto checkIntegrityFilter = MakeCheckIntegrityFilter(placementStatuses);
+
+        // The partition fails the confirmation request.
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvScanDiskBatchRequest) {
+                    using TEv = TEvVolume::TEvScanDiskBatchRequest;
+                    auto& record = event->Get<TEv>()->Record;
+                    if (record.BlobsToConfirmSize()) {
+                        record.SetCursor("not a cursor");
+                    }
+                }
+                return checkIntegrityFilter(runtime, event);
+            });
+
+        const auto response = env.ScanDiskBatch(MakeScanDiskBatchRequest());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetCheckedBlobs());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.BlobResultsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.BlobsToRetrySize());
+
+        const auto& result = response.GetBlobsToRetry(0).GetResult();
+        UNIT_ASSERT_EQUAL(TScanDiskBlobResult::BROKEN, result.GetVerdict());
+        UNIT_ASSERT(result.GetUnconfirmed());
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, result.GetError().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldFailScanDiskBatchWhenListingFails)
+    {
+        TScanDiskBatchTestEnv env;
+        env.WriteBlob(0, 1);
+
+        auto check = [&](const NPrivateProto::TScanDiskBatchRequest& request)
+        {
+            const auto response =
+                env.RecvScanDiskBatchResponse(env.SendScanDiskBatch(request));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->Get()->GetStatus(),
+                response->Get()->GetErrorReason());
+        };
 
         {
-            NPrivateProto::TScanDiskRequest cancelRequest;
-            cancelRequest.SetDiskId("vol0");
-            cancelRequest.SetCancel(true);
+            auto request = MakeScanDiskBatchRequest();
+            request.SetCursor("not a cursor");
+            check(request);
+        }
 
-            const auto response =
-                service.ExecuteAction("scandisk", toJson(cancelRequest));
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_FALSE,
-                response->GetStatus(),
-                response->GetErrorReason());
+        {
+            auto request = MakeScanDiskBatchRequest();
+            request.SetPartitionIndex(1);
+            check(request);
+        }
+
+        {
+            auto request = MakeScanDiskBatchRequest();
+            request.ClearDiskId();
+            check(request);
         }
     }
 

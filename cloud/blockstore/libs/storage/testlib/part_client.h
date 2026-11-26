@@ -172,8 +172,8 @@ public:
         ui32 count,
         TPartialBlobId lastBlobId);
 
-    std::unique_ptr<TEvPartitionPrivate::TEvScanDiskBatchRequest>
-    CreateScanDiskBatchRequest(
+    std::unique_ptr<TEvPartitionPrivate::TEvScanDiskReadBatchRequest>
+    CreateScanDiskReadBatchRequest(
         TPartialBlobId blobId,
         ui32 count,
         TPartialBlobId lastBlobId);
@@ -258,14 +258,18 @@ public:
     std::unique_ptr<TEvVolume::TEvScanDiskRequest> CreateScanDiskRequest(
         ui32 blobsPerBatch);
 
-    std::unique_ptr<TEvVolume::TEvScanDiskRequest> CreateScanDiskRequest(
-        NProto::TScanDiskRequest record);
-
     std::unique_ptr<TEvVolume::TEvGetScanDiskStatusRequest>
     CreateGetScanDiskStatusRequest();
 
     std::unique_ptr<TEvVolume::TEvCheckRangeRequest>
     CreateCheckRangeRequest(TString id, ui32 startIndex, ui32 size);
+
+    std::unique_ptr<TEvVolume::TEvScanDiskBatchRequest>
+    CreateScanDiskBatchRequest(NProto::TScanDiskBatchRequest record);
+
+    std::unique_ptr<TEvVolume::TEvVerifyBlobChecksumsRequest>
+    CreateVerifyBlobChecksumsRequest(
+        NProto::TVerifyBlobChecksumsRequest record);
 
     std::unique_ptr<TEvVolume::TEvGetPartitionInfoRequest>
     CreateGetPartitionInfoRequest();

@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/blockstore/libs/storage/protos/volume.pb.h>
+#include <cloud/blockstore/private/api/protos/volume.pb.h>
 
 #include <contrib/ydb/core/tablet/tablet_counters.h>
 
@@ -325,6 +326,77 @@ struct TEvServicePrivate
     };
 
     //
+    // ScanDiskStarted notification
+    //
+
+    struct TScanDiskStarted
+    {
+        const TString OperationId;
+
+        explicit TScanDiskStarted(TString operationId)
+            : OperationId(std::move(operationId))
+        {}
+    };
+
+    //
+    // ScanDiskStopped notification
+    //
+
+    struct TScanDiskStopped
+    {
+        const TString OperationId;
+
+        explicit TScanDiskStopped(TString operationId)
+            : OperationId(std::move(operationId))
+        {}
+    };
+
+    //
+    // ScanDiskBatch response
+    //
+
+    struct TScanDiskBatchResponse
+    {
+        NPrivateProto::TScanDiskBatchResponse Record;
+
+        TScanDiskBatchResponse() = default;
+
+        explicit TScanDiskBatchResponse(
+                NPrivateProto::TScanDiskBatchResponse record)
+            : Record(std::move(record))
+        {}
+    };
+
+    //
+    // ScanDiskStatus request
+    //
+
+    struct TScanDiskStatusRequest
+    {
+        const ui64 AckedRecordId = 0;
+
+        explicit TScanDiskStatusRequest(ui64 ackedRecordId)
+            : AckedRecordId(ackedRecordId)
+        {}
+    };
+
+    //
+    // ScanDiskStatus response
+    //
+
+    struct TScanDiskStatusResponse
+    {
+        NPrivateProto::TGetScanDiskStatusResponse Record;
+
+        TScanDiskStatusResponse() = default;
+
+        explicit TScanDiskStatusResponse(
+                NPrivateProto::TGetScanDiskStatusResponse record)
+            : Record(std::move(record))
+        {}
+    };
+
+    //
     // Events declaration
     //
 
@@ -355,6 +427,11 @@ struct TEvServicePrivate
         EvReleaseVolumeToHiveRequest,
         EvReleaseVolumeToHiveResponse,
         EvGentlePreemptionRequestProcessed,
+        EvScanDiskStarted,
+        EvScanDiskStopped,
+        EvScanDiskBatchResponse,
+        EvScanDiskStatusRequest,
+        EvScanDiskStatusResponse,
 
         EvEnd
     };
@@ -468,6 +545,21 @@ struct TEvServicePrivate
     using TEvGentlePreemptionRequestProcessed = TResponseEvent<
         TGentlePreemptionRequestProcessed,
         EvGentlePreemptionRequestProcessed>;
+
+    using TEvScanDiskStarted =
+        TRequestEvent<TScanDiskStarted, EvScanDiskStarted>;
+
+    using TEvScanDiskStopped =
+        TRequestEvent<TScanDiskStopped, EvScanDiskStopped>;
+
+    using TEvScanDiskBatchResponse =
+        TResponseEvent<TScanDiskBatchResponse, EvScanDiskBatchResponse>;
+
+    using TEvScanDiskStatusRequest =
+        TRequestEvent<TScanDiskStatusRequest, EvScanDiskStatusRequest>;
+
+    using TEvScanDiskStatusResponse =
+        TResponseEvent<TScanDiskStatusResponse, EvScanDiskStatusResponse>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

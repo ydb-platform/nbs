@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    scan_disk_batch_actor.cpp
     service.cpp
     service_actor.cpp
     service_actor_actions_backup_disk_registry_state.cpp

@@ -245,6 +245,12 @@ void TVolumeActor::SendRequestToPartition(
         if (auto* partition = State->GetPartition(blobId.TabletID())) {
             partActorId = partition->GetTopActorId();
         }
+    } else if constexpr (IsPartitionIndexMethod<TMethod>) {
+        const ui32 partitionIndex = ev->Get()->Record.GetPartitionIndex();
+        if (partitionIndex < State->GetPartitions().size()) {
+            partActorId =
+                State->GetPartitions()[partitionIndex].GetTopActorId();
+        }
     } else {
         forkTraces = false;
         partActorId = State->GetMultiPartitionWrapperActor();
@@ -1103,6 +1109,74 @@ void TVolumeActor::HandleDescribeBlobResponse(
     const TActorContext& ctx)
 {
     ForwardResponse<TEvVolume::TDescribeBlobMethod>(ctx, ev);
+}
+
+template <typename TMethod>
+void TVolumeActor::ForwardPartitionIndexRequest(
+    const TActorContext& ctx,
+    const typename TMethod::TRequest::TPtr& ev)
+{
+    auto replyError = [&](NProto::TError error)
+    {
+        auto response =
+            std::make_unique<typename TMethod::TResponse>(std::move(error));
+        NCloud::Reply(ctx, *ev, std::move(response));
+    };
+
+    if (State->IsDiskRegistryMediaKind()) {
+        replyError(MakeError(
+            E_NOT_IMPLEMENTED,
+            TStringBuilder() << TMethod::Name
+                             << " is not implemented for DiskRegistry disks"));
+        return;
+    }
+
+    const ui32 partitionIndex = ev->Get()->Record.GetPartitionIndex();
+    const ui32 partitionCount = State->GetPartitions().size();
+    if (partitionIndex >= partitionCount) {
+        replyError(MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "partition index " << partitionIndex
+                             << " is out of range, the volume has "
+                             << partitionCount << " partitions"));
+        return;
+    }
+
+    ForwardRequest<TMethod>(ctx, ev);
+}
+
+void TVolumeActor::HandleScanDiskBatch(
+    const TEvVolume::TEvScanDiskBatchRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    BLOCKSTORE_VOLUME_COUNTER(ScanDiskBatch);
+
+    ForwardPartitionIndexRequest<TEvVolume::TScanDiskBatchMethod>(ctx, ev);
+}
+
+void TVolumeActor::HandleScanDiskBatchResponse(
+    const TEvVolume::TEvScanDiskBatchResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ForwardResponse<TEvVolume::TScanDiskBatchMethod>(ctx, ev);
+}
+
+void TVolumeActor::HandleVerifyBlobChecksums(
+    const TEvVolume::TEvVerifyBlobChecksumsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    BLOCKSTORE_VOLUME_COUNTER(VerifyBlobChecksums);
+
+    ForwardPartitionIndexRequest<TEvVolume::TVerifyBlobChecksumsMethod>(
+        ctx,
+        ev);
+}
+
+void TVolumeActor::HandleVerifyBlobChecksumsResponse(
+    const TEvVolume::TEvVerifyBlobChecksumsResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    ForwardResponse<TEvVolume::TVerifyBlobChecksumsMethod>(ctx, ev);
 }
 
 #define BLOCKSTORE_FORWARD_REQUEST(name, ns)                                   \

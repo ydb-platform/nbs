@@ -43,6 +43,11 @@ template <typename T>
 constexpr bool IsDescribeBlobMethod =
     std::is_same_v<T, TEvVolume::TDescribeBlobMethod>;
 
+template <typename T>
+constexpr bool IsPartitionIndexMethod =
+    std::is_same_v<T, TEvVolume::TScanDiskBatchMethod> ||
+    std::is_same_v<T, TEvVolume::TVerifyBlobChecksumsMethod>;
+
 template <typename TMethod>
 constexpr bool IsCheckpointMethod =
     std::is_same_v<TMethod, TEvService::TCreateCheckpointMethod> ||

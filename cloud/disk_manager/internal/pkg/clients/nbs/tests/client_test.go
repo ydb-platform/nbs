@@ -967,6 +967,12 @@ func TestFreeze(t *testing.T) {
 }
 
 func TestScanDisk(t *testing.T) {
+	t.Skip(
+		"NBS replaced ScanDisk with a scan operation that has to be " +
+			"polled by OperationId, and GetScanDiskStatus sends none. " +
+			"The wrappers and this test have to be ported or deleted",
+	)
+
 	ctx := newContext()
 	client := newClient(t, ctx)
 
