@@ -6,7 +6,10 @@ import argparse
 
 import yatest.common as common
 
-from cloud.storage.core.tools.testing.virtiofs_server.lib import VirtioFsServer
+from cloud.storage.core.tools.testing.virtiofs_server.lib import (
+    VirtioFsServer,
+    get_virtiofs_server_binary,
+)
 from cloud.storage.core.tools.testing.qemu.lib.recipe import recipe_set_env, recipe_get_env
 from library.python.testing.recipe import declare_recipe
 from cloud.storage.core.tests.common import (
@@ -65,8 +68,7 @@ def start_server(args, index):
 
         recipe_set_env("VIRTIOFS_SOCKET_{}".format(tag), socket, index)
 
-        virtiofs_server_binary = common.binary_path(
-            "cloud/filestore/apps/vhost/filestore-vhost")
+        virtiofs_server_binary = get_virtiofs_server_binary()
 
         virtiofs = VirtioFsServer(virtiofs_server_binary,
                                   socket,

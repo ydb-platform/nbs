@@ -17,6 +17,11 @@ from contrib.ydb.tests.library.harness.daemon import Daemon
 logger = logging.getLogger(__name__)
 
 
+def get_virtiofs_server_binary():
+    return common.binary_path(os.getenv(
+        "VIRTIOFS_SERVER_BINARY", "cloud/filestore/apps/vhost/filestore-vhost"))
+
+
 def daemon_log_files(prefix, cwd):
     files = [
         ("stdout_file", ".out"),
@@ -112,7 +117,9 @@ class VirtioFsServer:
                 raise RuntimeError("filestore-vhost exited during startup")
             try:
                 result = subprocess.run(
-                    [common.binary_path("cloud/filestore/apps/client/filestore-client"),
+                    [common.binary_path(os.getenv(
+                        "VIRTIOFS_CLIENT_BINARY",
+                        "cloud/filestore/apps/client/filestore-client")),
                      *args, "--server-port", str(port)],
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=5)
                 if result.returncode == 0:

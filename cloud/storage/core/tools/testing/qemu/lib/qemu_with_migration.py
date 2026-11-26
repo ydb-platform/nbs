@@ -4,7 +4,10 @@ import time
 
 import yatest.common as common
 
-from cloud.storage.core.tools.testing.virtiofs_server.lib import VirtioFsServerSet
+from cloud.storage.core.tools.testing.virtiofs_server.lib import (
+    VirtioFsServerSet,
+    get_virtiofs_server_binary,
+)
 
 from .common import (
     env_with_guest_index,
@@ -17,9 +20,6 @@ from .common import (
 )
 from .qemu import Qemu
 from .recipe import recipe_get_env
-
-VIRTIOFS_SERVER_BINARY = (
-    "cloud/filestore/apps/vhost/filestore-vhost")
 
 
 class QemuWithMigration:
@@ -44,7 +44,7 @@ class QemuWithMigration:
 
         self.socket_generator = socket_generator
         self.virtiofs_servers = VirtioFsServerSet(
-            common.binary_path(VIRTIOFS_SERVER_BINARY),
+            get_virtiofs_server_binary(),
             common.output_path(),
             env_get=self._get_env,
             env_set=self._set_env)
