@@ -146,35 +146,30 @@ struct TJournalledDevices
     // A device's own page, before the group's page shift.
     NProto::TError ReadPage(ui32 i, ui64 pageNo, TString& page)
     {
-        NProto::TReadPagesRequest request;
-        request.SetDeviceUUID(DeviceUUIDs[i]);
-        auto* ref = request.AddPageGroupRefs();
-        ref->SetFirstPageNo(pageNo);
-        ref->SetPageCount(1);
-        ref->SetPageSize(Nodes[i]->Layout.PageSize);
-
-        auto response = Nodes[i]->Device->ReadPages(request).GetValueSync();
-        if (HasError(response.GetError())) {
-            return response.GetError();
+        auto result =
+            Nodes[i]
+                ->Device->ReadPages({{.FirstPageNo = pageNo, .PageCount = 1}})
+                .GetValueSync();
+        if (HasError(result)) {
+            return result.GetError();
         }
 
-        page = response.GetPageGroups(0).GetContent(0);
+        const auto& buffer = result.GetResult().Pages[0];
+        page.assign(buffer.Data(), buffer.Size());
         return {};
     }
 
     // A record on the device itself, behind the group's back.
     NProto::TError WritePage(ui32 i, ui64 lsn, ui64 pageNo, TString page)
     {
-        NProto::TWriteLogRecordRequest request;
-        request.SetDeviceUUID(DeviceUUIDs[i]);
-        request.SetLogSequenceNumber(lsn);
-        request.SetPrevLogSequenceNumber(lsn - 1);
+        TVector<NJournalled::TPageRange> ranges;
+        auto& range = ranges.emplace_back();
+        range.FirstPageNo = pageNo;
+        range.Pages.emplace_back(page.data(), page.size());
 
-        auto* pg = request.AddPageGroups();
-        pg->SetFirstPageNo(pageNo);
-        *pg->AddContent() = std::move(page);
-
-        return Nodes[i]->Device->WriteLogRecord(request).GetValueSync().GetError();
+        return Nodes[i]
+            ->Device->WriteLogRecord(std::move(ranges), lsn, lsn - 1)
+            .GetValueSync();
     }
 };
 

@@ -21,17 +21,26 @@ not merged yet answers `E_NOT_IMPLEMENTED`.
 
 ## Interface
 
-`IJournalledDevice` (`iface/journalled_device.h`) is what the stack exposes:
+`IJournalledDevice` (`iface/journalled_device.h`) is what the stack exposes.
+Its methods take and return plain types (`iface/types.h`), not the messages of
+the device protocol:
 
 | method | meaning |
 | --- | --- |
-| `WriteLogRecord` | write a record - a set of page groups tagged with an `Lsn` and the `PrevLsn` it chains from |
-| `ReadPages` | read pages, newest content wins, whether it is still in the journal or already on the device |
+| `WriteLogRecord` | write a record - a set of page ranges tagged with an `lsn` and the `prevLsn` it chains from |
+| `ReadPages` | read pages, newest content wins, whether it is still in the journal or already on the device. The result holds one buffer per requested page, in the order of the request, and `LastAckedLsn` |
 | `ReadJournalTail` | the records the journal still holds past a given lsn, in chain order - how a writer that restarts finds out what has been written |
-| `AdvanceLsnLowWatermark` | the writer no longer needs the records up to and including this lsn - they may be flushed to the data device and dropped |
+| `AdvanceWatermark` | the writer no longer needs the records up to and including this lsn - they may be flushed to the data device and dropped |
+| `WritePages` | write pages right to the data device, past the journal. The caller must not read or write the same pages at the same time |
 
-Every request must carry the `deviceUUID` the device was built with, and the
-page ranges of a single request must not intersect.
+The page ranges of a single request must not intersect.
+
+The device does not check which device a request is addressed to. The journal
+service (`cloud/fastshard/libs/journal/server`) finds the device by the
+`DeviceUUID` of the request, rejects an empty or unknown one, and converts
+the protocol messages to the arguments of the device and back
+(`server/proto_helpers.h`). The service method of `AdvanceWatermark` is
+`AdvanceLsnLowWatermark`.
 
 ## Layout
 
@@ -85,7 +94,8 @@ Three lsn marks describe the state of the journal:
 
 * `LastIndexedLsn` - the end of the chained run applied to the index. Every
   record up to it is acknowledged to the writer and readable from the journal.
-  Reads report it to the writer as `LastAckedLogSequenceNumber`.
+  Reads report it to the writer as `LastAckedLsn`
+  (`LastAckedLogSequenceNumber` in the protocol).
 * `LsnLowWatermark` - the writer no longer needs the records up to it. It is
   persisted in the journal metadata, and only records at or below it are
   flushed.
@@ -175,9 +185,16 @@ The journal pins the flushed barrier, looks the ranges up in the page index,
 and returns the mapped pages from the log data - only the pages it actually
 has, and only those written after the flushed lsn.
 
-The device pins the indexed barrier, asks the journal, reads the missing pages
-from the data device, and stitches the two responses together in the shape of
-the request. A page missing from both is an error.
+The journal answers at once with the ranges it does not hold (the missing
+ranges) and a future for the pages it does hold. Both lists follow the order of
+the request.
+
+The device pins the indexed barrier, asks the journal, and reads the missing
+ranges from the data device in parallel with the journal read. Then it merges
+the two page lists by position: it walks the requested pages in order and takes
+each page from the device if the current missing range covers it, and from the
+journal otherwise. The pages carry no page numbers, so the merge relies on the
+order of both lists. A page count that does not match the request is an error.
 
 ### Tail
 
@@ -188,7 +205,7 @@ count limit may be given.
 
 ### Watermark
 
-`AdvanceLsnLowWatermark` accepts a watermark up to `LastIndexedLsn`, persists
+`AdvanceWatermark` accepts a watermark up to `LastIndexedLsn`, persists
 it in the journal metadata, and only then moves the in-memory mark. Until the
 writer moves the watermark past a record, it stays in the journal and the data
 device is left untouched.
