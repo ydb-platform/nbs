@@ -366,8 +366,10 @@ struct TRdmaClientTest::TRdmaEndpointImpl
 ////////////////////////////////////////////////////////////////////////////////
 
 TFuture<NCloud::NStorage::NRdma::IClientEndpointPtr>
-TRdmaClientTest::StartEndpoint(TString host, ui32 port)
+TRdmaClientTest::StartEndpoint(TString host, ui32 port, TBuffer externalData)
 {
+    Y_UNUSED(externalData);
+
     auto& ep = Endpoints[MakeKey(host, port)];
     if (!ep.Endpoint) {
         ep.Endpoint = std::make_shared<TRdmaEndpointImpl>();
@@ -380,11 +382,13 @@ TResultOrError<NCloud::NStorage::NRdma::IClientEndpointPtr>
 TRdmaClientTest::StartEndpoint(
     TString host,
     ui32 port,
-    NCloud::IClientEndpointHandlerPtr handler)
+    NCloud::IClientEndpointHandlerPtr handler,
+    TBuffer externalData)
 {
     Y_UNUSED(host);
     Y_UNUSED(port);
     Y_UNUSED(handler);
+    Y_UNUSED(externalData);
 
     return MakeError(E_NOT_IMPLEMENTED);
 }

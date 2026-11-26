@@ -11,6 +11,7 @@
 #include "work_queue.h"
 
 #include <cloud/storage/core/libs/common/context.h>
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -1204,6 +1205,27 @@ void TServerSession::SendResponseCompleted(TSendWr* send) noexcept
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TSingleHandlerConnectionHandler final
+    : public IServerConnectionHandler
+{
+private:
+    const IServerHandlerPtr Handler;
+
+public:
+    explicit TSingleHandlerConnectionHandler(IServerHandlerPtr handler)
+        : Handler(std::move(handler))
+    {}
+
+    TResultOrError<IServerHandlerPtr> HandleConnect(
+        TStringBuf externalData) override
+    {
+        Y_UNUSED(externalData);
+        return Handler;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TServerEndpoint final
     : public IServerEndpoint
 {
@@ -1216,7 +1238,7 @@ private:
     NVerbs::TConnectionPtr Connection;
     TString Host;
     ui32 Port;
-    IServerHandlerPtr Handler;
+    IServerConnectionHandlerPtr ConnectionHandler;
 
 public:
     TServerEndpoint(
@@ -1224,12 +1246,12 @@ public:
             NVerbs::TConnectionPtr connection,
             TString host,
             ui32 port,
-            IServerHandlerPtr handler)
+            IServerConnectionHandlerPtr connectionHandler)
         : Verbs(std::move(verbs))
         , Connection(std::move(connection))
         , Host(std::move(host))
         , Port(port)
-        , Handler(std::move(handler))
+        , ConnectionHandler(std::move(connectionHandler))
     {
         Connection->context = this;
     }
@@ -1643,6 +1665,10 @@ public:
         TString host,
         ui32 port,
         IServerHandlerPtr handler) override;
+    IServerEndpointPtr StartEndpoint(
+        TString host,
+        ui32 port,
+        IServerConnectionHandlerPtr connectionHandler) override;
     void DumpHtml(IOutputStream& out) const override;
 
 private:
@@ -1654,8 +1680,8 @@ private:
     void HandleConnectRequest(
         TServerEndpoint* endpoint, rdma_cm_event* event) noexcept;
     void Accept(
-        TServerEndpoint* endpoint,
         rdma_cm_event* event,
+        IServerHandlerPtr handler,
         ui32 eagerBytes) noexcept;
     void HandleConnected(TServerSession* session) noexcept;
     void HandleDisconnected(TServerSession* session) noexcept;
@@ -1730,6 +1756,17 @@ IServerEndpointPtr TServer::StartEndpoint(
     ui32 port,
     IServerHandlerPtr handler)
 {
+    return StartEndpoint(
+        std::move(host),
+        port,
+        std::make_shared<TSingleHandlerConnectionHandler>(std::move(handler)));
+}
+
+IServerEndpointPtr TServer::StartEndpoint(
+    TString host,
+    ui32 port,
+    IServerConnectionHandlerPtr connectionHandler)
+{
     if (ConnectionPoller == nullptr) {
         RDMA_ERROR("unable to start endpoint: connection poller is down");
         return nullptr;
@@ -1741,7 +1778,7 @@ IServerEndpointPtr TServer::StartEndpoint(
             ConnectionPoller->CreateConnection(Config->IpTypeOfService),
             std::move(host),
             port,
-            std::move(handler));
+            std::move(connectionHandler));
 
         Listen(endpoint.get());
 
@@ -1982,23 +2019,51 @@ void TServer::HandleConnectRequest(
         }
     }
 
+    TStringBuf externalData;
+
+    TOptionReader options(
+        connectMsg + 1,
+        connectParams->private_data_len - sizeof(TConnectMessage));
+    if (!options.ReadData(RDMA_CONNECT_OPTION_EXTERNAL_DATA, &externalData)) {
+        RDMA_ERROR("Failed to parse options of the connect message");
+        Reject(event->id, RDMA_PROTO_INVALID_REQUEST);
+        return;
+    }
+
+    auto [handler, error] = SafeExecute<TResultOrError<IServerHandlerPtr>>(
+        [&]
+        { return endpoint->ConnectionHandler->HandleConnect(externalData); });
+
+    if (!HasError(error) && !handler) {
+        error = MakeError(E_INVALID_STATE, "no handler for the connection");
+    }
+
+    if (HasError(error)) {
+        RDMA_ERROR(
+            "connect from "
+            << Verbs->GetPeer(event->id)
+            << " is rejected by the handler: " << FormatError(error));
+        Reject(event->id, RDMA_PROTO_REJECTED);
+        return;
+    }
+
     const ui32 eagerBytes = Min<ui32>(
         connectMsg->MaxEagerRequestBytes,
         Config->MaxEagerRequestBytes);
 
-    Accept(endpoint, event, eagerBytes);
+    Accept(event, std::move(handler), eagerBytes);
 }
 
 void TServer::Accept(
-    TServerEndpoint* endpoint,
     rdma_cm_event* event,
+    IServerHandlerPtr handler,
     ui32 eagerBytes) noexcept
 {
     auto session = std::make_shared<TServerSession>(
         Verbs,
         NVerbs::WrapPtr(event->id),
         PickPoller(),
-        endpoint->Handler,
+        std::move(handler),
         Config,
         Counters,
         Log,

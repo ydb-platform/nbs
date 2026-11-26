@@ -64,6 +64,18 @@ public:
         return Endpoint;
     }
 
+    NCloud::NStorage::NRdma::IServerEndpointPtr StartEndpoint(
+        TString host,
+        ui32 port,
+        NCloud::NStorage::NRdma::IServerConnectionHandlerPtr connectionHandler)
+        override
+    {
+        Y_UNUSED(host);
+        Y_UNUSED(port);
+        Y_UNUSED(connectionHandler);
+        return nullptr;
+    }
+
     void Start() override {}
     void Stop() override {}
     void DumpHtml(IOutputStream& out) const override { Y_UNUSED(out); }
