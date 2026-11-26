@@ -2,7 +2,9 @@
 
 #include <cloud/blockstore/libs/common/printable_params.h>
 
+#include <util/datetime/base.h>
 #include <util/generic/string.h>
+#include <util/string/builder.h>
 #include <util/system/types.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -172,8 +174,14 @@ private:
 
     const TString CachedPrefix;
     const ui64 StartTime;
+    const TDuration ParentDuration;
+    const bool IsFirstChild;
 
-    TChildLogTitle(TString cachedPrefix, ui64 startTime);
+    TChildLogTitle(
+        TString cachedPrefix,
+        ui64 startTime,
+        TDuration parentDuration,
+        bool isFirstChild);
 
 public:
     [[nodiscard]] TChildLogTitle GetChild(const ui64 startTime) const;
@@ -188,6 +196,9 @@ public:
             additionalTags) const;
 
     [[nodiscard]] TString GetWithTime() const;
+
+private:
+    void AppendPrefix(TStringBuilder& builder) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

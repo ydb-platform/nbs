@@ -221,12 +221,8 @@ TString TLogTitle::GetPartitionPrefix(
 
 TChildLogTitle TLogTitle::GetChild(const ui64 startTime) const
 {
-    TStringBuilder childPrefix;
-    childPrefix << CachedPrefix;
     const auto duration = CyclesToDurationSafe(startTime - StartTime);
-    childPrefix << " t:" << FormatDuration(duration);
-
-    return {childPrefix, startTime};
+    return {CachedPrefix, startTime, duration, true};
 }
 
 TChildLogTitle TLogTitle::GetChildWithTags(
@@ -241,9 +237,7 @@ TChildLogTitle TLogTitle::GetChildWithTags(
     }
 
     const auto duration = CyclesToDurationSafe(startTime - StartTime);
-    childPrefix << " t:" << FormatDuration(duration);
-
-    return {childPrefix, startTime};
+    return {childPrefix, startTime, duration, true};
 }
 
 TChildLogTitle TLogTitle::GetChildWithTags(
@@ -331,18 +325,23 @@ void TLogTitle::Rebuild()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TChildLogTitle::TChildLogTitle(TString cachedPrefix, ui64 startTime)
+TChildLogTitle::TChildLogTitle(
+        TString cachedPrefix,
+        ui64 startTime,
+        TDuration parentDuration,
+        bool isFirstChild)
     : CachedPrefix(std::move(cachedPrefix))
     , StartTime(startTime)
+    , ParentDuration(parentDuration)
+    , IsFirstChild(isFirstChild)
 {}
 
 TChildLogTitle TChildLogTitle::GetChild(const ui64 startTime) const
 {
     TStringBuilder childPrefix;
-    childPrefix << CachedPrefix;
+    AppendPrefix(childPrefix);
     const auto duration = CyclesToDurationSafe(startTime - StartTime);
-    childPrefix << " + " << FormatDuration(duration);
-    return {childPrefix, startTime};
+    return {childPrefix, startTime, duration, false};
 }
 
 TChildLogTitle TChildLogTitle::GetChildWithTags(
@@ -350,16 +349,14 @@ TChildLogTitle TChildLogTitle::GetChildWithTags(
     const TPrintableParams& additionalTags) const
 {
     TStringBuilder childPrefix;
-    childPrefix << CachedPrefix;
+    AppendPrefix(childPrefix);
 
     if (!additionalTags.empty()) {
         childPrefix << " " << PrintParams(additionalTags);
     }
 
     const auto duration = CyclesToDurationSafe(startTime - StartTime);
-    childPrefix << " + " << FormatDuration(duration);
-
-    return {childPrefix, startTime};
+    return {childPrefix, startTime, duration, false};
 }
 
 TChildLogTitle TChildLogTitle::GetChildWithTags(
@@ -374,8 +371,15 @@ TString TChildLogTitle::GetWithTime() const
 {
     const auto duration = CyclesToDurationSafe(GetCycleCount() - StartTime);
     TStringBuilder builder;
-    builder << CachedPrefix << " + " << FormatDuration(duration) << "]";
+    AppendPrefix(builder);
+    builder << " + " << FormatDuration(duration) << "]";
     return builder;
+}
+
+void TChildLogTitle::AppendPrefix(TStringBuilder& builder) const
+{
+    builder << CachedPrefix << (IsFirstChild ? " t:" : " + ")
+            << FormatDuration(ParentDuration);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
