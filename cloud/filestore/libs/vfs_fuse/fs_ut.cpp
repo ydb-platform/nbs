@@ -6994,16 +6994,23 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
     Y_UNIT_TEST(ShouldShutdownCacheWhileCompletionQueueIsDraining)
     {
+        const ui32 writeSize = NSystemInfo::GetPageSize();
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);
-        features.SetServerWriteBackCacheStateFileSize(8_KB);
-        features.SetMaxRequestSize(4_KB);
+        // Two payloads would fill the ring even without their entry headers.
+        features.SetServerWriteBackCacheStateFileSize(
+            GetStateFileSize(2 * writeSize));
+        features.SetMaxRequestSize(writeSize);
         TBootstrap bootstrap(
             CreateWallClockTimer(),
             CreateScheduler(),
             features,
             /* handleOpsQueueStateFileSize= */ 1000,
             /* writeBackCacheAutomaticFlushPeriodMs= */ 0);
+        bootstrap.Fuse = std::make_shared<TFuseVirtioClient>(
+            bootstrap.SocketPath,
+            WaitTimeout,
+            writeSize + 8_KB);
 
         auto flushStarted = NewPromise();
         auto flush = NewPromise<NProto::TWriteDataResponse>();
@@ -7025,17 +7032,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         };
 
         // The cache holds one write. The other node's write must wait for space.
-        bootstrap.Fuse->SendRequest<TWriteRequest>(
-            123, 456, 0, CreateBuffer(4_KB, 'a')).GetValue(WaitTimeout);
+        auto first = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            123, 456, 0, CreateBuffer(writeSize, 'a'));
+        UNIT_ASSERT_VALUES_EQUAL(writeSize, first.GetValue(WaitTimeout));
         auto pending = bootstrap.Fuse->SendRequest<TWriteRequest>(
-            124, 457, 0, CreateBuffer(4_KB, 'b'));
+            124, 457, 0, CreateBuffer(writeSize, 'b'));
         flushStarted.GetFuture().GetValue(WaitTimeout);
         UNIT_ASSERT(!pending.IsReady());
 
         auto stop = bootstrap.StopAsync();
         flush.SetValue(TErrorResponse(E_IO, "Flush failed"));
         UNIT_ASSERT(stop.Wait(WaitTimeout));
-        UNIT_ASSERT_VALUES_EQUAL(4_KB, pending.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(writeSize, pending.GetValue(WaitTimeout));
     }
 
     void TestShouldHandleZeroCopyReadRequest(bool enableWriteBackCache)
