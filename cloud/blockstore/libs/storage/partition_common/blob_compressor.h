@@ -212,6 +212,9 @@ public:
         // Sample every Nth blob; zero disables estimation.
         ui32 CompressionRate = 0;
 
+        // Logical block size in bytes for counting zero-filled blocks.
+        ui32 BlockSize = 0;
+
         // Uncompressed chunk sizes to estimate; zero means the whole blob.
         TVector<ui64> ChunkSizes;
 
