@@ -6992,6 +6992,52 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(!path.Exists());
     }
 
+    Y_UNIT_TEST(ShouldShutdownCacheWhileCompletionQueueIsDraining)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+        features.SetServerWriteBackCacheStateFileSize(8_KB);
+        features.SetMaxRequestSize(4_KB);
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            /* handleOpsQueueStateFileSize= */ 1000,
+            /* writeBackCacheAutomaticFlushPeriodMs= */ 0);
+
+        auto flushStarted = NewPromise();
+        auto flush = NewPromise<NProto::TWriteDataResponse>();
+        bootstrap.Service->WriteDataHandler = [&](auto, auto)
+        {
+            flushStarted.TrySetValue();
+            return flush.GetFuture().Apply(
+                [](const auto& future) { return future.GetValue(); });
+        };
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Service->SetHandlerWriteData(
+                [](auto, auto)
+                { return MakeFuture(NProto::TWriteDataResponse{}); });
+            flush.TrySetValue({});
+            bootstrap.Stop();
+        };
+
+        // The cache holds one write. The other node's write must wait for space.
+        bootstrap.Fuse->SendRequest<TWriteRequest>(
+            123, 456, 0, CreateBuffer(4_KB, 'a')).GetValue(WaitTimeout);
+        auto pending = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            124, 457, 0, CreateBuffer(4_KB, 'b'));
+        flushStarted.GetFuture().GetValue(WaitTimeout);
+        UNIT_ASSERT(!pending.IsReady());
+
+        auto stop = bootstrap.StopAsync();
+        flush.SetValue(TErrorResponse(E_IO, "Flush failed"));
+        UNIT_ASSERT(stop.Wait(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, pending.GetValue(WaitTimeout));
+    }
+
     void TestShouldHandleZeroCopyReadRequest(bool enableWriteBackCache)
     {
         NProto::TFileStoreFeatures features;
