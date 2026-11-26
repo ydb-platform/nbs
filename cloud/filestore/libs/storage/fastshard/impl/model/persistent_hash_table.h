@@ -398,7 +398,6 @@ private:
                 if (candidateSlotNo == InvalidSlotNo) {
                     candidateSlotNo = it.SlotNo;
                 }
-                ++tombstoneCount;
             } else if (k == MakeKey(*v)) {
                 return MakeError(E_FS_EXIST);
             }
@@ -409,10 +408,6 @@ private:
             }
 
             if (it.SlotNo == firstSlotNo) {
-                if (candidateSlotNo != InvalidSlotNo) {
-                    break;
-                }
-
                 return MakeError(E_FS_OUT_OF_SPACE, TStringBuilder()
                     << "no free slot"
                     << ", firstSlotNo=" << firstSlotNo
