@@ -29,7 +29,9 @@ enum class EEnumClass
     PROBE(                                                                     \
         TwoIntParam,                                                           \
         GROUPS("Group"), TYPES(ui32, ui32), NAMES("value1", "value2"))         \
-    PROBE(RequestStarted, GROUPS("Group"), TYPES(ui64), NAMES("requestStartTimeUs")) \
+    PROBE(                                                                     \
+        RequestStarted,                                                        \
+        GROUPS("Group"), TYPES(ui64), NAMES("requestStartTimeUs"))             \
     PROBE(StringParam, GROUPS("Group"), TYPES(TString), NAMES("svalue"))       \
     PROBE(                                                                     \
         SymbolParam,                                                           \
