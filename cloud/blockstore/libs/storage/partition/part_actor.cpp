@@ -115,7 +115,18 @@ TPartitionActor::TPartitionActor(
             .CompressionRate = Config->GetBlobCompressionRate(),
             .BlockSize = PartitionConfig.GetBlockSize(),
             .ChunkSizes = DiagnosticsConfig->GetBlobCompressionChunkSizes(),
-            .PartCounters = SharedState->GetPartCounters()});
+            .PartCounters = SharedState->GetPartCounters()},
+        TBlobCompressor::TCompressionConfig{
+            .BlockSize = PartitionConfig.GetBlockSize(),
+            .ChunkSize = Max<ui64>(
+                Config->GetMergedBlobsCompressionChunkSize(),
+                PartitionConfig.GetBlockSize()),
+            .HugeBlobSlotSizes = Config->GetHugeBlobSlotSizes(),
+            .HugeBlobHeaderSize = Config->GetHugeBlobHeaderSize(),
+            .MinHugeBlobPartSizeHDD = Config->GetMinHugeBlobPartSizeHDD(),
+            .MinHugeBlobPartSizeSSD = Config->GetMinHugeBlobPartSizeSSD(),
+            .MinSavingsPercent =
+                Config->GetMergedBlobsCompressionMinSavingsPercent()});
 }
 
 TPartitionActor::~TPartitionActor()

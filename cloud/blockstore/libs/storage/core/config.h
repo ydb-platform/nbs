@@ -766,6 +766,13 @@ public:
 
     ui32 GetBlobCompressionRate() const;
     TString GetBlobCompressionCodec() const;
+    bool GetMergedBlobsCompressionEnabled() const;
+    ui64 GetMergedBlobsCompressionChunkSize() const;
+    ui64 GetMergedBlobsCompressionMinSavingsPercent() const;
+    TVector<ui32> GetHugeBlobSlotSizes() const;
+    ui32 GetMinHugeBlobPartSizeSSD() const;
+    ui32 GetMinHugeBlobPartSizeHDD() const;
+    ui32 GetHugeBlobHeaderSize() const;
 
     bool GetSerialNumberValidationEnabled() const;
 

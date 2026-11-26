@@ -178,6 +178,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ManuallyPreemptedVolumeLivenessCheckPeriod,  TDuration,   Days(7)     )\
                                                                                \
     xxx(BlobCompressionCodec,           TString,     "lz4"                    )\
+    xxx(HugeBlobSlotSizes,              TVector<ui32>, {}                     )\
                                                                                \
     xxx(KnownSpareNodes,                TVector<TString>,   {}                )\
     xxx(SpareNodeProbability,           ui32,               0                 )\
@@ -644,6 +645,12 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(AddingUnconfirmedBlobsEnabled,             bool,      false           )\
                                                                                \
     xxx(BlobCompressionRate,                       ui32,      0               )\
+    xxx(MergedBlobsCompressionEnabled,             bool,      false           )\
+    xxx(MergedBlobsCompressionChunkSize,           ui64,      32_KB           )\
+    xxx(MergedBlobsCompressionMinSavingsPercent,   ui64,      0               )\
+    xxx(MinHugeBlobPartSizeSSD,                    ui32,      64_KB           )\
+    xxx(MinHugeBlobPartSizeHDD,                    ui32,      512_KB          )\
+    xxx(HugeBlobHeaderSize,                        ui32,      5               )\
     xxx(SerialNumberValidationEnabled,             bool,      false           )\
                                                                                \
     xxx(RejectLateRequestsAtDiskAgentEnabled,      bool,      false           )\
@@ -909,6 +916,12 @@ TVector<TString> ConvertValue(
 }
 
 template <>
+TVector<ui32> ConvertValue(const google::protobuf::RepeatedField<ui32>& value)
+{
+    return TVector<ui32>(value.begin(), value.end());
+}
+
+template <>
 TCertificate ConvertValue(const NCloud::NProto::TCertificate& value)
 {
     return {value.GetCertFile(), value.GetCertPrivateKeyFile()};
@@ -994,7 +1007,8 @@ void DumpImpl(const T& t, IOutputStream& os)
     os << t;
 }
 
-void DumpImpl(const TVector<TString>& value, IOutputStream& os)
+template <typename T>
+void DumpImpl(const TVector<T>& value, IOutputStream& os)
 {
     for (size_t i = 0; i < value.size(); ++i) {
         if (i) {
