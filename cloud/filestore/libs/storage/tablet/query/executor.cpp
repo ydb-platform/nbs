@@ -13,7 +13,7 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool IsNumber(NScheme::TTypeId type)
+bool IsSupportedNumericType(NScheme::TTypeId type)
 {
     return type == NScheme::NTypeIds::Uint32 ||
            type == NScheme::NTypeIds::Uint64;
@@ -102,14 +102,14 @@ public:
 
     bool ValidateValue(NScheme::TTypeId type, const TValue& value)
     {
-        if (!IsNumber(type) && type != NScheme::NTypeIds::String) {
+        if (!IsSupportedNumericType(type) && type != NScheme::NTypeIds::String) {
             return Fail(
                 "WHERE predicates support only Uint32, Uint64 and String "
                 "columns");
         }
 
         if (const auto* number = std::get_if<ui64>(&value)) {
-            if (!IsNumber(type)) {
+            if (!IsSupportedNumericType(type)) {
                 return Fail("Numeric operand requires a numeric column");
             }
             if (type == NScheme::NTypeIds::Uint32 && *number > Max<ui32>()) {
@@ -131,7 +131,7 @@ public:
             return false;
         }
         const auto otherType = other.GetResult().Type.GetTypeId();
-        if (type != otherType && !(IsNumber(type) && IsNumber(otherType))) {
+        if (type != otherType && !(IsSupportedNumericType(type) && IsSupportedNumericType(otherType))) {
             return Fail("Incompatible column types in predicate");
         }
         return true;
