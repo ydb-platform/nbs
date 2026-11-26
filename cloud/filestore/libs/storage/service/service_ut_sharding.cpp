@@ -2018,6 +2018,173 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             response->GetErrorReason());
     }
 
+    void CheckListNodesWithLockedNodeRefs(bool useListNodesInternal)
+    {
+        NProto::TStorageConfig config;
+        config.SetUseListNodesInternal(useListNodesInternal);
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        auto leaderHeaders = headers;
+        leaderHeaders.DisableMultiTabletForwarding = true;
+
+        service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file1"));
+
+        // removing the node directly from the shard leaves a NodeRef in the
+        // leader which points to a node missing in the shard
+        {
+            const auto node =
+                service
+                    .GetNodeAttr(
+                        leaderHeaders,
+                        fsConfig.FsId,
+                        RootNodeId,
+                        "file1")
+                    ->Record.GetNode();
+
+            auto shardHeaders = headers;
+            shardHeaders.FileSystemId = node.GetShardFileSystemId();
+            shardHeaders.DisableMultiTabletForwarding = true;
+            service.UnlinkNode(
+                shardHeaders,
+                RootNodeId,
+                node.GetShardNodeName());
+        }
+
+        // the leader's response is patched to report the NodeRefs as locked
+        // and to report that there are more nodes to list
+
+        TVector<ui32> lockedNodeRefIndices;
+        TString cookie;
+
+        auto patchLeaderResponse = [&] (auto& record) {
+            for (const ui32 i: lockedNodeRefIndices) {
+                record.AddLockedNodeRefIndices(i);
+            }
+            lockedNodeRefIndices.clear();
+
+            if (cookie) {
+                record.SetCookie(cookie);
+                cookie.clear();
+            }
+        };
+
+        auto& runtime = env.GetRuntime();
+        runtime.SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvListNodesResponse: {
+                        using TResponse = TEvService::TEvListNodesResponse;
+                        patchLeaderResponse(
+                            event->template Get<TResponse>()->Record);
+                        break;
+                    }
+                    case TEvIndexTablet::EvListNodesInternalResponse: {
+                        using TResponse =
+                            TEvIndexTablet::TEvListNodesInternalResponse;
+                        patchLeaderResponse(
+                            event->template Get<TResponse>()->Record);
+                        break;
+                    }
+                }
+
+                return false;
+            });
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter =
+            counters->GetCounter("AppCriticalEvents/NodeNotFoundInShard");
+
+        // all the listed nodes are missing in the shards and there is nothing
+        // more to list
+        {
+            lockedNodeRefIndices = {0};
+            auto listing =
+                service.ListNodes(headers, fsConfig.FsId, RootNodeId)->Record;
+            UNIT_ASSERT_VALUES_EQUAL(0, listing.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, listing.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+        }
+
+        // all the listed nodes are missing in the shards but there are more
+        // nodes to list - an empty response would look like the end of the
+        // directory stream, the client should retry the listing instead
+        {
+            lockedNodeRefIndices = {0};
+            cookie = "cookie";
+            auto response = service.SendAndRecvListNodes(
+                headers,
+                fsConfig.FsId,
+                RootNodeId);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT(HasProtoFlag(
+                response->GetError().GetFlags(),
+                NCloud::NProto::EF_INSTANT_RETRIABLE));
+            UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+        }
+
+        const auto nodeId2 =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file2"))
+                ->Record.GetNode()
+                .GetId();
+
+        // the node missing in the shard is not reported as lost, the node
+        // present in the shard is listed
+        {
+            lockedNodeRefIndices = {0, 1};
+            auto listing =
+                service.ListNodes(headers, fsConfig.FsId, RootNodeId)->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, listing.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, listing.NodesSize());
+            UNIT_ASSERT_VALUES_EQUAL("file2", listing.GetNames(0));
+            UNIT_ASSERT_VALUES_EQUAL(nodeId2, listing.GetNodes(0).GetId());
+            UNIT_ASSERT_VALUES_EQUAL(0, listing.LockedNodeRefIndicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+        }
+
+        // the leader's response is returned as is if the nodes are not
+        // fetched from the shards
+        {
+            lockedNodeRefIndices = {0, 1};
+            auto listing =
+                service.ListNodes(leaderHeaders, fsConfig.FsId, RootNodeId)
+                    ->Record;
+            UNIT_ASSERT_VALUES_EQUAL(2, listing.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL("file1", listing.GetNames(0));
+            UNIT_ASSERT_VALUES_EQUAL("file2", listing.GetNames(1));
+            UNIT_ASSERT_VALUES_EQUAL(2, listing.LockedNodeRefIndicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(0, listing.GetLockedNodeRefIndices(0));
+            UNIT_ASSERT_VALUES_EQUAL(1, listing.GetLockedNodeRefIndices(1));
+        }
+
+        // a node missing in the shard is still reported as lost if its
+        // NodeRef was not locked
+        {
+            auto listing =
+                service.ListNodes(headers, fsConfig.FsId, RootNodeId)->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, listing.NamesSize());
+            UNIT_ASSERT_VALUES_EQUAL("file2", listing.GetNames(0));
+            UNIT_ASSERT_VALUES_EQUAL(1, counter->GetAtomic());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotReportNodesAsLostIfNodeRefsWereLockedUponListing)
+    {
+        CheckListNodesWithLockedNodeRefs(false /* useListNodesInternal */);
+        CheckListNodesWithLockedNodeRefs(true /* useListNodesInternal */);
+    }
+
     SERVICE_TEST(ShouldListMultipleNodesWithGetNodeAttrBatch)
     {
         TShardedFileSystemConfig fsConfig;
@@ -8424,13 +8591,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
         UNIT_ASSERT(unlinkNodeResponse);
 
-        service.SendListNodesRequest(headers, fsConfig.FsId, dirId);
-        auto listingResponse = service.RecvListNodesResponse();
         // all the listed node refs point to the nodes that are being unlinked
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_REJECTED,
-            listingResponse->GetStatus(),
-            FormatError(listingResponse->GetError()));
+        // and there is nothing more to list
+        listing = service.ListNodes(headers, fsConfig.FsId, dirId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(0, listing.NodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, listing.NamesSize());
 
         shouldIntercept = false;
         env.GetRuntime().Send(unlinkNodeResponse.release());
