@@ -29,14 +29,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The tablet would deliver filesystem events of the client's pipe to the
-// forwarder, which serves every vhost of a node and has no way to route them.
-// TODO(#8001): route file system events via pipe
+// The sender of the request is the forwarder, which serves every vhost of a
+// node and must not become the client of the pipe: the filesystem events go
+// to the client that has registered the pipe.
 template <typename T>
-void DisableFileSystemEventSubscription(T& record)
+void DisableFileSystemEventClientRegistration(T& record)
 {
     if constexpr (requires { record.MutableHeaders(); }) {
-        record.MutableHeaders()->SetFileSystemEventSubscriptionDisabled(true);
+        record.MutableHeaders()
+            ->SetFileSystemEventClientRegistrationDisabled(true);
     }
 }
 
@@ -115,7 +116,7 @@ public:
             promise.SetValue(Reject(E_ARGUMENT, message));                     \
             break;                                                             \
         }                                                                      \
-        DisableFileSystemEventSubscription(request->Record);                   \
+        DisableFileSystemEventClientRegistration(request->Record);             \
         Send(std::move(request), tabletActorId, pipeServerId, promise);        \
         break;                                                                 \
     }                                                                          \

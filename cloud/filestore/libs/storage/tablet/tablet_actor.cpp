@@ -1151,15 +1151,6 @@ void TIndexTabletActor::HandleTabletMetrics(
     Y_UNUSED(ctx);
 }
 
-void TIndexTabletActor::HandleServerConnected(
-    const TEvTabletPipe::TEvServerConnected::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ctx);
-
-    RegisterRdmaPipe(ev->Get()->ServerId);
-}
-
 void TIndexTabletActor::HandleSessionDisconnected(
     const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
     const TActorContext& ctx)
@@ -1859,7 +1850,7 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
-        HFunc(TEvTabletPipe::TEvServerConnected, HandleServerConnected);
+        IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         HFunc(
             TEvTabletPipe::TEvServerDisconnected,
             HandleSessionDisconnectedInWork);
@@ -2198,11 +2189,25 @@ void TIndexTabletActor::UnregisterFileStore(const NActors::TActorContext& ctx)
     ctx.Send(MakeStorageServiceId(), request.release());
 }
 
-void TIndexTabletActor::RegisterRdmaPipe(const TActorId& pipeServerId)
+void TIndexTabletActor::HandleRegisterRdmaPipe(
+    const TEvIndexTablet::TEvRegisterRdmaPipeRequest::TPtr& ev,
+    const TActorContext& ctx)
 {
-    if (RdmaTabletRegistry && Config->GetTabletDirectRdmaEnabled()) {
+    using TResponse = TEvIndexTablet::TEvRegisterRdmaPipeResponse;
+
+    const auto& pipeServerId = ev->Recipient;
+
+    NProto::TError error;
+    if (pipeServerId == SelfId()) {
+        error = MakeError(E_ARGUMENT, "request is not sent through a pipe");
+    } else if (!RdmaTabletRegistry || !Config->GetTabletDirectRdmaEnabled()) {
+        error = MakeError(E_PRECONDITION_FAILED, "RDMA is not enabled");
+    } else {
+        FileSystemEventClients[pipeServerId] = ev->Sender;
         RdmaTabletRegistry->RegisterPipe(pipeServerId, SelfId());
     }
+
+    NCloud::Reply(ctx, *ev, std::make_unique<TResponse>(std::move(error)));
 }
 
 void TIndexTabletActor::UnregisterRdmaPipe(const TActorId& pipeServerId)

@@ -1699,6 +1699,29 @@ message TListNodesInternalResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// RegisterRdmaPipe request/response
+//
+// Sent by a client through its tablet pipe before it uses RDMA for the
+// requests of that pipe. The tablet registers the pipe for RDMA and the sender
+// as the client of the pipe: the sender gets the FileSystemEvents of the
+// requests that come over RDMA.
+
+message TRegisterRdmaPipeRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TRegisterRdmaPipeResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // GenerateFileSystemEvent request/response
 
 message TGenerateFileSystemEventRequest

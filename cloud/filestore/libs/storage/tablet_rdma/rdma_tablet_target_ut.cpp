@@ -158,7 +158,18 @@ struct TEnv
                 { return ev->Get()->ClientId == clientId; });
         const auto serverId = connected->Get()->ServerId;
 
-        WaitUntil([&] { return !!Registry->FindTablet(serverId); });
+        Runtime.SendToPipe(
+            clientId,
+            sender,
+            Tablet.CreateRegisterRdmaPipeRequest().release(),
+            NodeIdx);
+        auto registered =
+            Runtime.GrabEdgeEvent<TEvIndexTablet::TEvRegisterRdmaPipeResponse>(
+                sender);
+        UNIT_ASSERT_C(
+            !HasError(registered->Get()->GetError()),
+            FormatError(registered->Get()->GetError()));
+        UNIT_ASSERT(Registry->FindTablet(serverId));
         return serverId;
     }
 
