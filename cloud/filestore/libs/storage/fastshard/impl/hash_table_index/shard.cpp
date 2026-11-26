@@ -42,6 +42,10 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+constexpr ui64 DefaultMaxCachedPageCount = 1_GB / DefaultBlockSize;
+
+////////////////////////////////////////////////////////////////////////////////
 // page index layout
 
 constexpr ui32 PageIndexLayoutMinVersion = 1;
@@ -764,10 +768,16 @@ public:
                 FileSystemId.c_str());
         }
 
+        const ui64 maxCachedDataPageCount = Config.GetMaxCachedDataPages()
+            ? Config.GetMaxCachedDataPages() : DefaultMaxCachedPageCount;
+        if (!Config.GetMaxCachedDataPages()) {
+            SILK_WARN("[%s] max cached data pages configuration is missing",
+                FileSystemId.c_str());
+        }
+
         const ui64 metadataPageCount =
             CalcRequiredMetadataPageCount(Config, PageSize);
-        const ui64 cachedPageCount =
-            metadataPageCount + Config.GetMaxCachedDataPages();
+        const ui64 cachedPageCount = metadataPageCount + maxCachedDataPageCount;
         PageStore = CreatePageStore(Storage, {
             .PageSize = PageSize,
             .PinnedPageCount = metadataPageCount,
