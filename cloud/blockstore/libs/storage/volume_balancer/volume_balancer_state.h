@@ -16,6 +16,7 @@
 #include <util/datetime/base.h>
 #include <util/generic/algorithm.h>
 #include <util/generic/hash.h>
+#include <util/generic/queue.h>
 #include <util/generic/string.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -24,14 +25,20 @@ namespace NCloud::NBlockStore::NStorage {
 
 class TVolumeBalancerState
 {
-    struct TSufferStatistics
+    class TSufferStatistics
     {
-        ui32 SufferCountSum = 0;
+        TQueue<ui32> Values;
+
+        ui32 Sum = 0;
         ui32 NumSamples = 0;
+
+    public:
+        explicit TSufferStatistics(ui32 numSamples);
 
         void Add(ui32 sufferCount);
         void Reset();
 
+        // Returns 0 if samples count is less than NumSamples
         [[nodiscard]] ui32 GetMeanValue() const;
     };
 
@@ -58,7 +65,7 @@ class TVolumeBalancerState
 
         TSufferStatistics SufferStatistics;
 
-        TVolumeInfo(TDuration pullInterval);
+        TVolumeInfo(TDuration pullInterval, ui32 sufferCountSamples);
     };
 
 public:

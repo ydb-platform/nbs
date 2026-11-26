@@ -23,26 +23,41 @@ constexpr TDuration MaxPullDelay = TDuration::Hours(24);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVolumeBalancerState::TVolumeInfo::TVolumeInfo(TDuration pullInterval)
+TVolumeBalancerState::TVolumeInfo::TVolumeInfo(
+    TDuration pullInterval,
+    ui32 sufferCountSamples)
     : BackoffDelayProvider(pullInterval, MaxPullDelay)
     , LastSuccessfulPull(TInstant::Now())
+    , SufferStatistics(sufferCountSamples)
 {}
+
+TVolumeBalancerState::TSufferStatistics::TSufferStatistics(ui32 numSamples)
+    : NumSamples(numSamples)
+{
+}
 
 void TVolumeBalancerState::TSufferStatistics::Add(ui32 sufferCount)
 {
-    SufferCountSum += sufferCount;
-    ++NumSamples;
+    Values.push(sufferCount);
+    Sum += sufferCount;
+
+    if (Values.size() > NumSamples)
+    {
+        Sum -= Values.front();
+        Values.pop();
+    }
 }
 
 void TVolumeBalancerState::TSufferStatistics::Reset()
 {
-    SufferCountSum = 0;
-    NumSamples = 0;
+    Sum = 0;
+    Values.clear();
 }
 
 ui32 TVolumeBalancerState::TSufferStatistics::GetMeanValue() const
 {
-    return NumSamples == 0 ? 0 : SufferCountSum / NumSamples;
+    return (Values.empty() || Values.size() != NumSamples) ? 0
+                                                           : Sum / NumSamples;
 }
 
 TVolumeBalancerState::TVolumeBalancerState(
@@ -70,7 +85,11 @@ void TVolumeBalancerState::UpdateVolumeStats(
     }
 
     for (auto& v: stats) {
-        auto it = Volumes.emplace(v.GetDiskId(), TVolumeInfo(StorageConfig->GetInitialPullDelay())).first;
+        TVolumeInfo volumeInfo(
+            StorageConfig->GetInitialPullDelay(),
+            StorageConfig->GetVolumeBalancerWarningSampleCount());
+
+        auto it = Volumes.emplace(v.GetDiskId(), std::move(volumeInfo)).first;
 
         auto& info = it->second;
 
@@ -94,15 +113,20 @@ void TVolumeBalancerState::UpdateVolumeStats(
                 now + info.BackoffDelayProvider.GetDelayAndIncrease();
         }
 
+        const bool isPreemptedByBalancer =
+            !info.IsLocal &&
+            info.PreemptionSource == NProto::EPreemptionSource::SOURCE_BALANCER;
+
         if (auto perfIt = perfMap.find(it->first); perfIt != perfMap.end()) {
             info.SufferCount = perfIt->second;
-            info.SufferStatistics.Add(info.SufferCount);
+
+            if (isPreemptedByBalancer) {
+                info.SufferStatistics.Add(info.SufferCount);
+            }
         }
 
         // Reset suffer statistics for local or manually preempted tablets
-        if (info.IsLocal ||
-            info.PreemptionSource != NProto::EPreemptionSource::SOURCE_BALANCER)
-        {
+        if (!isPreemptedByBalancer) {
             info.SufferStatistics.Reset();
         }
 
@@ -316,19 +340,14 @@ bool TVolumeBalancerState::HasSufferingPreemptedVolume() const
 {
     return AnyOf(
         Volumes,
-        [this](const auto& item)
+        [this](const auto& v)
         {
-            const ui32 numSamples =
-                StorageConfig->GetVolumeBalancerWarningSampleCount();
             const ui32 threshold =
                 StorageConfig->GetVolumeBalancerSufferCountThreshold();
-            if (numSamples == 0 || threshold == 0) {
+            if (threshold == 0) {
                 return false;
             }
-
-            const auto& info = item.second;
-            return info.SufferStatistics.NumSamples >= numSamples &&
-                   info.SufferStatistics.GetMeanValue() >= threshold;
+            return v.second.SufferStatistics.GetMeanValue() >= threshold;
         });
 }
 
