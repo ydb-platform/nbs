@@ -246,6 +246,7 @@ Y_UNIT_TEST_SUITE(TLogTitleTest)
 
         auto childLogTitle =
             logTitle1.GetChild(startTime + GetCyclesPerMillisecond() * 1001);
+        logTitle1.SetGeneration(6);
 
         UNIT_ASSERT_STRING_CONTAINS(
             childLogTitle.GetWithTime(),
