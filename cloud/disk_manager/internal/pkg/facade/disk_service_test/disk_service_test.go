@@ -1567,6 +1567,7 @@ func testDiskServiceDeleteNonExistentDisk(t *testing.T, sync bool) {
 	reqCtx := testcommon.GetRequestContext(t, ctx)
 	operation, err := client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
 		DiskId: &disk_manager.DiskId{
+			ZoneId: defaultZoneID,
 			DiskId: diskID,
 		},
 		Sync: sync,
@@ -1574,20 +1575,11 @@ func testDiskServiceDeleteNonExistentDisk(t *testing.T, sync bool) {
 	require.NoError(t, err)
 	require.NotEmpty(t, operation)
 	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.NoError(t, err)
-
-	// Should be idempotent.
-	reqCtx = testcommon.GetRequestContext(t, ctx)
-	operation, err = client.DeleteDisk(reqCtx, &disk_manager.DeleteDiskRequest{
-		DiskId: &disk_manager.DiskId{
-			DiskId: diskID,
-		},
-		Sync: sync,
-	})
-	require.NoError(t, err)
-	require.NotEmpty(t, operation)
-	err = internal_client.WaitOperation(ctx, client, operation.Id)
-	require.NoError(t, err)
+	require.ErrorContains(
+		t,
+		err,
+		fmt.Sprintf("Non cancellable error: disk %s does not exist", diskID),
+	)
 
 	testcommon.CheckConsistency(t, ctx)
 }
