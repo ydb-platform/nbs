@@ -14,8 +14,9 @@ namespace {
 class TStorageGroupStub: public IStorageGroup
 {
 public:
-    TResultOrError<ui64> Init() override
+    TResultOrError<ui64> Init(ui64 generation) override
     {
+        Y_UNUSED(generation);
         return MakeError(E_NOT_IMPLEMENTED);
     }
 

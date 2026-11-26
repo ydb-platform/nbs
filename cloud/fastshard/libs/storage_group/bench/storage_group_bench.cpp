@@ -254,7 +254,7 @@ int WriteFiberMain(TBench* bench) noexcept
 
 int BenchFiberMain(TBench* bench) noexcept
 {
-    auto init = bench->Group->Init();
+    auto init = bench->Group->Init(0 /* generation */);
     Y_ABORT_UNLESS(
         !HasError(init.GetError()),
         "%s",

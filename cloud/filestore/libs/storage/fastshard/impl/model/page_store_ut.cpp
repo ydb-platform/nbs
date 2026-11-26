@@ -38,8 +38,10 @@ struct TTestStorageGroup: IStorageGroup
     // loading them.
     std::function<void()> OnRead;
 
-    TResultOrError<ui64> Init() override
+    TResultOrError<ui64> Init(ui64 generation) override
     {
+        Y_UNUSED(generation);
+
         return 0;
     }
 

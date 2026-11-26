@@ -9,12 +9,12 @@ SRCS(
 PEERDIR(
     cloud/fastshard/libs/bootstrap
     cloud/fastshard/libs/sn/testlib
+    cloud/fastshard/libs/storage_group
 
     cloud/filestore/libs/service
     cloud/filestore/libs/storage/fastshard/iface
     cloud/filestore/libs/storage/fastshard/impl/factory
     cloud/filestore/libs/storage/fastshard/impl/hash_table_index
-    cloud/filestore/libs/storage/fastshard/storage_group
     cloud/filestore/private/api/protos
 
     cloud/storage/core/libs/common

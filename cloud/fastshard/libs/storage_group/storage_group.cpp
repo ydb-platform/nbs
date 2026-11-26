@@ -98,6 +98,7 @@ private:
     ITimerPtr Timer;
     std::atomic<ui64> NextRequestId = 1;
     std::atomic<ui32> Selector{0};
+    ui64 Generation = 0;
     bool TornDown = false;
 
 public:
@@ -113,11 +114,14 @@ public:
 public:
     // The naive group does no recovery: Init is the acquire plus a look at
     // where every device's journal ends.
-    TResultOrError<ui64> Init() override
+    TResultOrError<ui64> Init(ui64 generation) override
     {
+        Generation = generation;
+
         TFastShardContext ctx(NextRequestId++);
         NProto::TAcquireDevicesRequest acquire;
-        acquire.SetGeneration(Config.AcquireGeneration);
+        acquire.SetFastshardId(Config.ClientId);
+        acquire.SetGeneration(Generation);
         auto error = MirrorRequest<NProto::TAcquireDevicesResponse>(
             ctx,
             Config,
@@ -160,13 +164,16 @@ public:
         TornDown = true;
 
         TFastShardContext ctx(NextRequestId++);
+        NProto::TReleaseDevicesRequest release;
+        release.SetFastshardId(Config.ClientId);
+        release.SetGeneration(Generation);
         auto error = MirrorRequest<NProto::TReleaseDevicesResponse>(
             ctx,
             Config,
             Devices,
             *Timer,
             ReleaseDevicesFiberMain,
-            NProto::TReleaseDevicesRequest{});
+            std::move(release));
         if (HasError(error)) {
             SILK_WARN("sg release error=%s", FormatError(error).c_str());
         }

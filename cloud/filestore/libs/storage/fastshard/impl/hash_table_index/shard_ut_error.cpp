@@ -1,7 +1,6 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/hash_table_index/shard.h>
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_factory.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -67,8 +66,10 @@ struct TTestStorageGroup: IStorageGroup
     ui64 LastLsn = 0;
     TVector<TLsnLink> WriteLinks;
 
-    TResultOrError<ui64> Init() override
+    TResultOrError<ui64> Init(ui64 generation) override
     {
+        Y_UNUSED(generation);
+
         return LastLsn;
     }
 
@@ -126,28 +127,11 @@ struct TTestStorageGroup: IStorageGroup
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestStorageGroupFactory: IStorageGroupFactory
-{
-    std::shared_ptr<TTestStorageGroup> Group =
-        std::make_shared<TTestStorageGroup>();
-
-    IStorageGroupPtr MakeStorageGroup(
-        const NProtoPrivate::TPersistentFastShardConfig& config,
-        ui64 generation) override
-    {
-        Y_UNUSED(config, generation);
-
-        return Group;
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TStorageFixture
 {
     NProtoPrivate::TPersistentFastShardConfig Config;
-    std::shared_ptr<TTestStorageGroupFactory> Factory =
-        std::make_shared<TTestStorageGroupFactory>();
+    std::shared_ptr<TTestStorageGroup> Group =
+        std::make_shared<TTestStorageGroup>();
 
     TStorageFixture()
     {
@@ -171,7 +155,7 @@ TEST(HashTableIndexShardErrorTest, CreatesHandles)
         "fs0",
         ShardNo,
         1 /* generation */,
-        fx.Factory,
+        fx.Group,
         fx.Config);
     {
         auto e = shard->Init().GetValueSync();
@@ -188,7 +172,7 @@ TEST(HashTableIndexShardErrorTest, CreatesHandles)
     const ui32 createExcl =
         create | ProtoFlag(TCreateHandleRequest::E_EXCLUSIVE);
 
-    fx.Factory->Group->ReadError.Set(MakeError(E_REJECTED), 1 /* ttl */);
+    fx.Group->ReadError.Set(MakeError(E_REJECTED), 1 /* ttl */);
 
     {
         TCreateHandleRequest request;
@@ -301,13 +285,13 @@ TEST(HashTableIndexShardErrorTest, NumbersRecordsAboveTheStorageGroupLsn)
     silk::Logger::setLevel(silk::LogLevel::DEBUG);
 
     TStorageFixture fx;
-    fx.Factory->Group->LastLsn = 41;
+    fx.Group->LastLsn = 41;
 
     auto shard = CreateHashTableIndexFileSystemShard(
         "fs0",
         ShardNo,
         1 /* generation */,
-        fx.Factory,
+        fx.Group,
         fx.Config);
     {
         auto e = shard->Init().GetValueSync();
@@ -323,7 +307,7 @@ TEST(HashTableIndexShardErrorTest, NumbersRecordsAboveTheStorageGroupLsn)
     ASSERT_EQ(S_OK, response.GetError().GetCode())
         << FormatError(response.GetError());
 
-    const auto& links = fx.Factory->Group->WriteLinks;
+    const auto& links = fx.Group->WriteLinks;
     ASSERT_FALSE(links.empty());
     EXPECT_EQ(42U, links.front().Lsn);
     EXPECT_EQ(41U, links.front().PrevLsn);
@@ -339,7 +323,7 @@ TEST(HashTableIndexShardErrorTest, LinksPastTheLsnOfAnOperationThatWroteNothing)
         "fs0",
         ShardNo,
         1 /* generation */,
-        fx.Factory,
+        fx.Group,
         fx.Config);
     {
         auto e = shard->Init().GetValueSync();
@@ -368,7 +352,7 @@ TEST(HashTableIndexShardErrorTest, LinksPastTheLsnOfAnOperationThatWroteNothing)
     error = create("file2");
     ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
 
-    const auto& links = fx.Factory->Group->WriteLinks;
+    const auto& links = fx.Group->WriteLinks;
     ASSERT_EQ(3U, links.size());
     // The chain is unbroken, and the lsn nobody wrote is not in it.
     EXPECT_EQ(links[0].Lsn, links[1].PrevLsn);
@@ -394,7 +378,7 @@ TEST(HashTableIndexShardErrorTest, EntersErrorStateUponBrokenFormatPage)
             "fs0",
             ShardNo,
             1 /* generation */,
-            fx.Factory,
+            fx.Group,
             fx.Config);
         {
             auto e = shard->Init().GetValueSync();
@@ -435,7 +419,7 @@ TEST(HashTableIndexShardErrorTest, EntersErrorStateUponBrokenFormatPage)
         memset(page.Data(), 1, PageSize);
         pageGroups.push_back(
             TPageGroup{.FirstPageNo = pageNo, .Content = {page}});
-        auto e = fx.Factory->Group->WriteLogRecord(
+        auto e = fx.Group->WriteLogRecord(
             {} /* headers */,
             std::move(pageGroups),
             TLsnLink{});
@@ -449,7 +433,7 @@ TEST(HashTableIndexShardErrorTest, EntersErrorStateUponBrokenFormatPage)
             "fs0",
             ShardNo,
             1 /* generation */,
-            fx.Factory,
+            fx.Group,
             fx.Config);
         e = shard->Init().GetValueSync();
         ASSERT_EQ(S_FALSE, e.GetCode()) << e.GetMessage();
