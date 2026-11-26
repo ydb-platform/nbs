@@ -31,11 +31,8 @@ private:
     TAtomic CurrentScore = 0;
 
     ui64 UpdateCounter = 0;
-    TIntrusivePtr<NMonitoring::TCounterForPtr> Counter;
-    TIntrusivePtr<NMonitoring::TCounterForPtr> SmoothCounter;
-    TIntrusivePtr<NMonitoring::TCounterForPtr> CriticalCounter;
 
-    bool IsEnabled = false;
+    bool Enabled = false;
     THotSwap<TVolumePerfSettings> PerfSettings;
 
     struct TSample
@@ -60,10 +57,12 @@ public:
         const NProto::TVolume& volume,
         TDiagnosticsConfigPtr diagnosticsConfig);
 
-    void Register(
-        NMonitoring::TDynamicCounters& counters,
-        const NProto::TVolume& volume);
     void Register(const NProto::TVolume& volume);
+
+    bool IsEnabled() const
+    {
+        return Enabled;
+    }
 
     void OnRequestCompleted(
         EBlockStoreRequest requestType,
@@ -110,6 +109,25 @@ public:
 
     TDuration GetExpectedCost() const;
     TDuration GetCurrentCost() const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TVolumeSufferCounters
+{
+private:
+    using TDynamicCounterPtr = NMonitoring::TDynamicCounters::TCounterPtr;
+
+    TDynamicCounterPtr Suffer;
+    TDynamicCounterPtr SmoothSuffer;
+    TDynamicCounterPtr CriticalSuffer;
+
+public:
+    void Register(
+        NMonitoring::TDynamicCounters& counters,
+        const TVolumePerformanceCalculator& calc);
+
+    void Publish(const TVolumePerformanceCalculator& calc);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -1155,6 +1155,118 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         DoTestShouldReportSufferMetrics({DefaultCloudId}, true);
     }
 
+    Y_UNIT_TEST(ShouldReportVolumeSufferCountersPerInstance)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+
+        NProto::TDiagnosticsConfig cfg;
+        cfg.MutableSsdPerfSettings()->MutableWrite()->SetIops(4200);
+        cfg.MutableSsdPerfSettings()->MutableWrite()->SetBandwidth(342000000);
+        cfg.MutableSsdPerfSettings()->MutableRead()->SetIops(4200);
+        cfg.MutableSsdPerfSettings()->MutableRead()->SetBandwidth(342000000);
+        auto diagConfig = std::make_shared<TDiagnosticsConfig>(std::move(cfg));
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            diagConfig,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        Mount(
+            volumeStats,
+            "ssd",
+            "client1",
+            "instance1",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        Mount(
+            volumeStats,
+            "ssd",
+            "client2",
+            "instance2",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        Mount(
+            volumeStats,
+            "hdd",
+            "client3",
+            "instance3",
+            NCloud::NProto::STORAGE_MEDIA_HDD);
+
+        auto requestDuration =
+            TDuration::MilliSeconds(400) +
+            diagConfig->GetExpectedIoParallelism() *
+                CostPerIO(
+                    diagConfig->GetSsdPerfSettings().Write.Iops,
+                    diagConfig->GetSsdPerfSettings().Write.Bandwidth,
+                    1_MB);
+        auto durationInCycles = DurationToCyclesSafe(requestDuration);
+        auto now = GetCycleCount();
+
+        volumeStats->GetVolumeInfo("ssd", "client1")
+            ->RequestCompleted(
+                EBlockStoreRequest::WriteBlocks,
+                now - Min(now, durationInCycles),
+                TDuration::Zero(),   // postponedTime
+                TDuration::Zero(),   // backoffTime
+                TDuration::Zero(),   // shapingTime
+                1_MB,
+                {},
+                NCloud::NProto::EF_NONE,
+                false,
+                0);
+
+        auto volumesGroup = monitoring->GetCounters()
+                                ->GetSubgroup("counters", "blockstore")
+                                ->GetSubgroup("component", "server_volume")
+                                ->GetSubgroup("host", "cluster");
+
+        auto getInstanceGroup = [&](const TString& diskId,
+                                    const TString& instanceId,
+                                    const TString& type)
+        {
+            return volumesGroup->GetSubgroup("volume", diskId)
+                ->GetSubgroup("instance", instanceId)
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", type);
+        };
+
+        const TVector<TString> sufferCounterNames = {
+            "Suffer",
+            "SmoothSuffer",
+            "CriticalSuffer"};
+
+        auto checkSsdInstances = [&](i64 expected)
+        {
+            for (const TString instanceId: {"instance1", "instance2"}) {
+                auto group = getInstanceGroup("ssd", instanceId, "ssd");
+                for (const auto& name: sufferCounterNames) {
+                    auto counter = group->FindCounter(name);
+                    UNIT_ASSERT_C(counter, instanceId + " " + name);
+                    UNIT_ASSERT_VALUES_EQUAL_C(
+                        expected,
+                        counter->Val(),
+                        instanceId + " " + name);
+                }
+            }
+        };
+
+        volumeStats->UpdateStats(false);
+        checkSsdInstances(0);
+
+        volumeStats->UpdateStats(true);
+        checkSsdInstances(1);
+
+        for (const auto& name: sufferCounterNames) {
+            UNIT_ASSERT_C(
+                !volumesGroup->GetSubgroup("volume", "ssd")->FindCounter(name),
+                name);
+            UNIT_ASSERT_C(
+                !getInstanceGroup("hdd", "instance3", "hdd")->FindCounter(name),
+                name);
+        }
+    }
+
     Y_UNIT_TEST(ShouldCorrectlyCalculatePossiblePostponeTimeForVolume)
     {
         auto timer = std::make_shared<TTestTimer>();
