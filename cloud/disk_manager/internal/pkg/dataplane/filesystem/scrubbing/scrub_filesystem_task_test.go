@@ -519,7 +519,7 @@ func (s *interruptingTraversalStorage) ScheduleChildNodesForListing(
 
 	interruptOnPage := parentNodeID == nfs.RootNodeID
 	if s.mode == interruptionAfterFinalPageCommit {
-		// ponytail: the fixture has one child directory, which is listed last.
+		// The fixture has one child directory, which is listed last.
 		interruptOnPage = parentNodeID != nfs.RootNodeID
 	}
 	interrupt := s.mode != noInterruption && interruptOnPage &&
@@ -540,7 +540,7 @@ func (s *interruptingTraversalStorage) ScheduleChildNodesForListing(
 		children,
 	)
 	if err == nil && interrupt {
-		// Leave the task running with only its last saved state, as on a crash.
+		// The page is committed, but the task is restarted.
 		return tasks_errors.NewInterruptExecutionError()
 	}
 	return err
@@ -579,7 +579,7 @@ func (f *fixture) createFileWithSize(
 	}
 }
 
-func TestScrubFilesystemTaskMarksHistogramUnreliableAfterInterruption(t *testing.T) {
+func TestScrubFilesystemTaskHistogramAfterInterruption(t *testing.T) {
 	f := newFixture(t)
 	defer f.close(t)
 
@@ -604,7 +604,6 @@ func TestScrubFilesystemTaskMarksHistogramUnreliableAfterInterruption(t *testing
 		expectedCounts          []float64
 		expectedBytes           []float64
 		expectedRetriableErrors uint64
-		expectedUnreliable      bool
 	}{
 		{
 			name:           "no_interruption",
@@ -618,21 +617,19 @@ func TestScrubFilesystemTaskMarksHistogramUnreliableAfterInterruption(t *testing
 			expectedCounts:          []float64{3, 0, 2},
 			expectedBytes:           []float64{0, 0, 6},
 			expectedRetriableErrors: 1,
-			expectedUnreliable:      true,
 		},
 		{
-			// Counts of the root page are lost, only "dir" is listed after
-			// the restart.
-			name:               "interruption_after_page_commit",
-			mode:               interruptionAfterPageCommit,
-			expectedCounts:     []float64{1},
-			expectedBytes:      []float64{0},
-			expectedUnreliable: true,
+			// Counts of committed pages are saved before the restart.
+			name:           "interruption_after_page_commit",
+			mode:           interruptionAfterPageCommit,
+			expectedCounts: []float64{2, 0, 1},
+			expectedBytes:  []float64{0, 0, 3},
 		},
 		{
-			name:               "interruption_after_final_page_commit",
-			mode:               interruptionAfterFinalPageCommit,
-			expectedUnreliable: true,
+			name:           "interruption_after_final_page_commit",
+			mode:           interruptionAfterFinalPageCommit,
+			expectedCounts: []float64{2, 0, 1},
+			expectedBytes:  []float64{0, 0, 3},
 		},
 	}
 
@@ -714,11 +711,6 @@ func TestScrubFilesystemTaskMarksHistogramUnreliableAfterInterruption(t *testing
 			var state scrubbing_protos.ScrubFilesystemTaskState
 			require.NoError(t, proto.Unmarshal(taskState.State, &state))
 			require.True(t, state.RootNodeScheduled)
-			require.Equal(
-				t,
-				testCase.expectedUnreliable,
-				state.FileSizeHistogramUnreliable,
-			)
 			require.Equal(t, testCase.expectedCounts, state.FileCountBySizeLog2)
 			require.Equal(t, testCase.expectedBytes, state.FileBytesBySizeLog2)
 		})

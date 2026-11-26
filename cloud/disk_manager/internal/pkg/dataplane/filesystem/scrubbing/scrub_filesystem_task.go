@@ -9,6 +9,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/listers"
 	scrubbing_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/config"
 	scrubbing_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/protos"
@@ -32,7 +33,7 @@ type scrubFilesystemTask struct {
 	state    *scrubbing_protos.ScrubFilesystemTaskState
 	callback OnScrubbedCallback
 
-	histogramMutex sync.Mutex
+	stateMutex sync.Mutex
 }
 
 func (t *scrubFilesystemTask) getSnapshotID(
@@ -43,10 +44,16 @@ func (t *scrubFilesystemTask) getSnapshotID(
 }
 
 func (t *scrubFilesystemTask) Save() ([]byte, error) {
+	t.stateMutex.Lock()
+	defer t.stateMutex.Unlock()
+
 	return proto.Marshal(t.state)
 }
 
 func (t *scrubFilesystemTask) Load(request, state []byte) error {
+	t.stateMutex.Lock()
+	defer t.stateMutex.Unlock()
+
 	t.request = &scrubbing_protos.ScrubFilesystemRequest{}
 	err := proto.Unmarshal(request, t.request)
 	if err != nil {
@@ -78,10 +85,6 @@ func (t *scrubFilesystemTask) Run(
 	)
 
 	rootNodeAlreadyScheduled := t.state.GetRootNodeScheduled()
-	// The histogram is not saved periodically, so a resumed traversal can have
-	// missing or duplicate counts. Keep this flag sticky.
-	t.state.FileSizeHistogramUnreliable =
-		t.state.FileSizeHistogramUnreliable || rootNodeAlreadyScheduled
 	onListedNodes := func(
 		ctx context.Context,
 		nodes []nfs.Node,
@@ -100,7 +103,10 @@ func (t *scrubFilesystemTask) Run(
 	// Called by the traverser once the root node is added to the listing
 	// queue, so that a restarted task does not schedule it again.
 	onRootNodeScheduled := func(ctx context.Context) error {
+		t.stateMutex.Lock()
 		t.state.RootNodeScheduled = true
+		t.stateMutex.Unlock()
+
 		return execCtx.SaveState(ctx)
 	}
 
@@ -120,6 +126,12 @@ func (t *scrubFilesystemTask) Run(
 	if err != nil {
 		return err
 	}
+
+	// Periodically saves the histogram. On restart, pages committed after the
+	// last save are lost and pages listed but not yet committed are counted
+	// twice.
+	waitSaver, _ := common.ProgressSaver(ctx, execCtx.SaveState)
+	defer waitSaver()
 
 	return traverser.Traverse(ctx)
 }
@@ -149,8 +161,8 @@ func (t *scrubFilesystemTask) GetResponse() proto.Message {
 ////////////////////////////////////////////////////////////////////////////////
 
 func (t *scrubFilesystemTask) addToFileSizeHistogram(nodes []nfs.Node) {
-	t.histogramMutex.Lock()
-	defer t.histogramMutex.Unlock()
+	t.stateMutex.Lock()
+	defer t.stateMutex.Unlock()
 
 	for _, node := range nodes {
 		if node.Type != nfs.NODE_KIND_FILE {

@@ -20,9 +20,6 @@ message ScrubFilesystemTaskState {
     // 1/Links, hence double.
     repeated double FileCountBySizeLog2 = 2;
     repeated double FileBytesBySizeLog2 = 3;
-    // Set when the traversal was resumed after an interruption: the histogram
-    // may have missing or duplicated counts. Never cleared within the task.
-    bool FileSizeHistogramUnreliable = 4;
 }
 
 message RegularScrubFilesystemsTaskState {
