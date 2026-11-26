@@ -96,8 +96,9 @@ TResultOrError<TCompressedBlob> CompressChunks(
 
             const auto chunk = data.SubStr(offset, size);
             const size_t storedSize = content.size();
-            content.ReserveAndResize(
-                storedSize + blockCodec->MaxCompressedLength(chunk));
+            const size_t maxChunkSize =
+                Max(chunk.size(), blockCodec->MaxCompressedLength(chunk));
+            content.ReserveAndResize(storedSize + maxChunkSize);
             char* out = content.begin() + storedSize;
 
             const size_t compressedSize = blockCodec->Compress(chunk, out);
