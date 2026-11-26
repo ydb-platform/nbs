@@ -3,14 +3,13 @@
 #include "external_endpoint_stats.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/coroutine/public.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/ptr.h>
 #include <util/system/file.h>
 
 #include <sys/types.h>
-
-class TContExecutor;
 
 namespace NCloud::NBlockStore::NServer::NPrivate {
 
@@ -66,12 +65,12 @@ TChild SpawnChild(
 
 struct IEndpointProcess: TThrRefBase
 {
-    virtual void Start(TContExecutor* executor) = 0;
     virtual void Stop() = 0;
     virtual NProto::TError Wait() = 0;
 };
 
 TIntrusivePtr<IEndpointProcess> CreateEndpointProcess(
+    TExecutor& executor,
     TString clientId,
     ILoggingServicePtr logging,
     TEndpointStats stats,

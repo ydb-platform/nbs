@@ -215,7 +215,12 @@ NProto::TError TChild::Wait() const
 {
     int status = 0;
 
-    if (::waitpid(Pid, &status, 0) == -1) {
+    pid_t waited;
+    do {
+        waited = ::waitpid(Pid, &status, 0);
+    } while (waited == -1 && errno == EINTR);
+
+    if (waited == -1) {
         int err = errno;
         return MakeError(
             MAKE_SYSTEM_ERROR(err),
@@ -363,10 +368,23 @@ public:
         }
     }
 
-    void Start(TContExecutor* e) override
+    void StartReaders(TExecutor& executor)
     {
-        e->Create<TEndpointProcess, &TEndpointProcess::ReadStats>(this, "stats");
-        e->Create<TEndpointProcess, &TEndpointProcess::ReadStdErr>(this, "err");
+        auto start = [self = TIntrusivePtr<TEndpointProcess>(this)] {
+            auto* e = RunningCont()->Executor();
+            e->CreateOwned([self](TCont* c) { self->ReadStats(c); }, "stats");
+            e->CreateOwned([self](TCont* c) { self->ReadStdErr(c); }, "err");
+        };
+        if (!executor.TryEnqueue(
+                std::make_unique<TSimpleTask<decltype(start)>>(std::move(start))))
+        {
+            // No reader or waiter owns the child yet.
+            Process.Kill();
+            Process.Wait();
+            Exited = true;
+            Stats.FinishExternalStats();
+            ythrow TServiceError(E_REJECTED) << "endpoint executor is stopped";
+        }
     }
 
     void Stop() override
@@ -388,7 +406,6 @@ public:
 private:
     void ReadStats(TCont* c)
     {
-        TIntrusivePtr<TEndpointProcess> holder{this};
         Y_DEFER
         {
             Stats.FinishExternalStats();
@@ -453,8 +470,6 @@ private:
 
     void ReadStdErr(TCont* c)
     {
-        TIntrusivePtr<TEndpointProcess> holder{this};
-
         try {
             ReadStdErrImpl(c);
         } catch (...) {
@@ -524,16 +539,19 @@ private:
 }   // namespace
 
 TIntrusivePtr<IEndpointProcess> CreateEndpointProcess(
+    TExecutor& executor,
     TString clientId,
     ILoggingServicePtr logging,
     TEndpointStats stats,
     TChild child)
 {
-    return MakeIntrusive<TEndpointProcess>(
+    auto process = MakeIntrusive<TEndpointProcess>(
         std::move(clientId),
         std::move(logging),
         std::move(stats),
         std::move(child));
+    process->StartReaders(executor);
+    return process;
 }
 
 }   // namespace NPrivate
@@ -711,23 +729,12 @@ private:
 
         try {
             AddToCGroups(process.Pid, Cgroups);
+            return CreateEndpointProcess(
+                *Executor, ClientId, Logging, Stats, std::move(process));
         } catch (...) {
             ShouldStop = true;
             throw;
         }
-
-        auto ep = CreateEndpointProcess(
-            ClientId,
-            Logging,
-            Stats,
-            std::move(process));
-        process = TChild{0};
-
-        Executor->ExecuteSimple([=, this] {
-            ep->Start(Executor->GetContExecutor());
-        });
-
-        return ep;
     }
 
     TIntrusivePtr<IEndpointProcess> RestartProcess()

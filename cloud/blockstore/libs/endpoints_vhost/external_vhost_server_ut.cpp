@@ -26,8 +26,10 @@
 #include <util/system/env.h>
 
 #include <poll.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
+#include <cerrno>
 #include <thread>
 #include <variant>
 
@@ -454,6 +456,97 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
         UNIT_ASSERT(GetArgN(create->CmdArgs, "--latency-sli").empty());
     }
 
+    Y_UNIT_TEST(ShouldRejectEndpointProcessWhenExecutorStopped)
+    {
+        auto executor = TExecutor::Create("stats-test");
+        executor->Start();
+        executor->Stop();
+
+        auto child = SpawnChild("/bin/true", {}, "");
+        const auto pid = child.Pid;
+        int status = 0;
+        Y_DEFER {
+            ::waitpid(pid, &status, 0);
+        };
+        auto stats = std::make_shared<TTestServerStats>();
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            CreateEndpointProcess(
+                *executor,
+                "client",
+                CreateLoggingService("console"),
+                TEndpointStats{"client", "disk", stats},
+                std::move(child)),
+            TServiceError,
+            "endpoint executor is stopped");
+        const auto waited = ::waitpid(pid, &status, WNOHANG);
+        const auto waitError = errno;
+        UNIT_ASSERT_VALUES_EQUAL(-1, waited);
+        UNIT_ASSERT_VALUES_EQUAL(ECHILD, waitError);
+    }
+
+    Y_UNIT_TEST(ShouldDrainFinalStatsWhenChildExitsBeforeReadersStart)
+    {
+        auto executor = TExecutor::Create("stats-test");
+        executor->Start();
+        auto release = NewPromise<void>();
+        executor->ExecuteSimple([release] {
+            release.GetFuture().Wait(TDuration::Seconds(15));
+        });
+        Y_DEFER {
+            release.TrySetValue();
+            executor->Stop();
+        };
+
+        auto child = SpawnChild(
+            "/bin/sh",
+            {"-c", R"(echo '{"final":1,"read":{"errors":3},"write":{}}')"},
+            "");
+        pollfd stderrPipe{child.StdErr, POLLIN, 0};
+        UNIT_ASSERT(poll(&stderrPipe, 1, 5000) > 0);
+        UNIT_ASSERT(stderrPipe.revents & POLLHUP);
+
+        auto stats = std::make_shared<TTestServerStats>();
+        auto finalRead = NewPromise<void>();
+        stats->BatchCompletedHandler =
+            [finalRead](auto&, ui64, ui64, ui64 failed, auto, auto) mutable
+        {
+            if (failed == 3) {
+                finalRead.TrySetValue();
+            }
+        };
+        const auto pid = child.Pid;
+        auto process = CreateEndpointProcess(
+            *executor,
+            "client",
+            CreateLoggingService("console"),
+            TEndpointStats{"client", "disk", stats},
+            std::move(child));
+
+        auto drained = NewPromise<bool>();
+        std::thread([process, finalRead, drained]() mutable {
+            drained.SetValue(!HasError(process->Wait()) && finalRead.HasValue());
+        }).detach();
+
+        // Wait until the waiter has reaped the child, leaving its frame in
+        // the pipe. The executor still holds the reader's start in its queue.
+        siginfo_t info{};
+        const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        int result;
+        do {
+            result = ::waitid(P_PID, pid, &info, WEXITED | WNOHANG | WNOWAIT);
+            if (result == -1) {
+                break;
+            }
+            std::this_thread::yield();
+        } while (TInstant::Now() < deadline);
+        const auto waitError = errno;
+        UNIT_ASSERT_VALUES_EQUAL(-1, result);
+        UNIT_ASSERT_VALUES_EQUAL(ECHILD, waitError);
+
+        release.SetValue();
+        UNIT_ASSERT(drained.GetFuture().GetValue(TDuration::Seconds(5)));
+    }
+
     Y_UNIT_TEST(ShouldDrainFinalStatsOrStopOnExecutorCancellation)
     {
         enum EShutdown { WithoutFinal, WithFinal, CancelCollector };
@@ -509,14 +602,13 @@ trap stats USR1
                 poll(&descriptor, 1, 5000) > 0, "child did not start");
             char ready[16];
             UNIT_ASSERT(child.StdErr.Read(ready, sizeof(ready)) > 0);
+            auto executor = TExecutor::Create("stats-test");
+            executor->Start();
             auto process = CreateEndpointProcess(
+                *executor,
                 "client",
                 CreateLoggingService("console"),
                 TEndpointStats{"client", "disk", stats}, std::move(child));
-            auto executor = TExecutor::Create("stats-test");
-            executor->Start();
-            executor->ExecuteSimple(
-                [=] { process->Start(executor->GetContExecutor()); });
             auto stopped = NewPromise<NProto::TError>();
             std::thread stopExecutor;
             std::thread waiter([=]() mutable
