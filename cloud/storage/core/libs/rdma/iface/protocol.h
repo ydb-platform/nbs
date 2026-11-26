@@ -5,9 +5,7 @@
 #include <util/generic/strbuf.h>
 #include <util/generic/ylimits.h>
 #include <util/system/defaults.h>
-#include <util/system/yassert.h>
 
-#include <cstring>
 #include <type_traits>
 
 namespace NCloud::NStorage::NRdma {
@@ -184,52 +182,24 @@ private:
     ui8 LastFlag = 0;
 
 public:
-    TOptionWriter(void* buffer, size_t capacity)
-        : Begin(static_cast<char*>(buffer))
-        , End(Begin + capacity)
-        , Ptr(Begin)
-    {}
+    TOptionWriter(void* buffer, size_t capacity);
 
-    size_t Size() const
-    {
-        return Ptr - Begin;
-    }
+    size_t Size() const;
 
     template <typename T>
     void WriteValue(ui8 flag, const T& value)
     {
         static_assert(std::is_trivially_copyable_v<T>);
 
-        WriteFlag(flag);
-        Write(&value, sizeof(value));
+        WriteValueImpl(flag, &value, sizeof(value));
     }
 
-    void WriteData(ui8 flag, TStringBuf data)
-    {
-        Y_ABORT_UNLESS(data.size() <= Max<ui8>());
-        const ui8 size = static_cast<ui8>(data.size());
-
-        WriteFlag(flag);
-        Write(&size, sizeof(size));
-        Write(data.data(), data.size());
-    }
+    void WriteData(ui8 flag, TStringBuf data);
 
 private:
-    void WriteFlag(ui8 flag)
-    {
-        Y_ABORT_UNLESS(flag > LastFlag);
-        LastFlag = flag;
-        Write(&flag, sizeof(flag));
-    }
-
-    void Write(const void* data, size_t size)
-    {
-        Y_ABORT_UNLESS(size <= static_cast<size_t>(End - Ptr));
-        if (size) {
-            memcpy(Ptr, data, size);
-            Ptr += size;
-        }
-    }
+    void WriteValueImpl(ui8 flag, const void* value, size_t size);
+    void WriteFlag(ui8 flag);
+    void Write(const void* data, size_t size);
 };
 
 // An option that is not the next one is absent: the reader leaves the value
@@ -242,59 +212,22 @@ private:
     ui8 LastFlag = 0;
 
 public:
-    TOptionReader(const void* options, size_t size)
-        : Ptr(static_cast<const char*>(options))
-        , End(Ptr + size)
-    {}
+    TOptionReader(const void* options, size_t size);
 
     template <typename T>
     bool ReadValue(ui8 flag, T* value)
     {
         static_assert(std::is_trivially_copyable_v<T>);
 
-        if (!IsNext(flag)) {
-            return true;
-        }
-        if (Left() < sizeof(flag) + sizeof(T)) {
-            return false;
-        }
-
-        memcpy(value, Ptr + sizeof(flag), sizeof(T));
-        Ptr += sizeof(flag) + sizeof(T);
-        return true;
+        return ReadValueImpl(flag, value, sizeof(T));
     }
 
-    bool ReadData(ui8 flag, TStringBuf* data)
-    {
-        if (!IsNext(flag)) {
-            return true;
-        }
-        if (Left() < sizeof(flag) + sizeof(ui8)) {
-            return false;
-        }
-
-        const size_t size = static_cast<ui8>(Ptr[sizeof(flag)]);
-        if (Left() < sizeof(flag) + sizeof(ui8) + size) {
-            return false;
-        }
-
-        *data = TStringBuf(Ptr + sizeof(flag) + sizeof(ui8), size);
-        Ptr += sizeof(flag) + sizeof(ui8) + size;
-        return true;
-    }
+    bool ReadData(ui8 flag, TStringBuf* data);
 
 private:
-    bool IsNext(ui8 flag)
-    {
-        Y_ABORT_UNLESS(flag > LastFlag);
-        LastFlag = flag;
-        return Ptr < End && static_cast<ui8>(*Ptr) == flag;
-    }
-
-    size_t Left() const
-    {
-        return End - Ptr;
-    }
+    bool ReadValueImpl(ui8 flag, void* value, size_t size);
+    bool IsNext(ui8 flag);
+    size_t Left() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
