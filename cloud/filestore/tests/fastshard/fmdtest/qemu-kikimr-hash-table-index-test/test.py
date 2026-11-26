@@ -1,84 +1,18 @@
 import json
 import os
-import pytest
 
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
 
-from cloud.filestore.tests.python.lib.fastshard import (
-    configure_fastshard,
-    fetch_layout,
-)
+from cloud.filestore.tests.python.lib.fastshard import fetch_layout
 from cloud.storage.core.tools.testing.qemu.lib.common import (
     env_with_guest_index,
     SshToGuest,
 )
 
 
-# Storage group type -> device count.
-STORAGE_GROUPS = {
-    "mirror": ("FAST_SHARD_STORAGE_MIRROR", 1),
-    "quorum": ("FAST_SHARD_STORAGE_QUORUM_MIRROR", 3),
-}
-
-
-def _build_persistent_config(group_type, device_count):
-    #
-    # Values published by the blockstore-disk-agent recipe.
-    #
-
-    host = os.environ["FASTSHARD_DA_HOST"]
-    port = int(os.environ["FASTSHARD_DA_PORT"])
-    uuids = os.environ["FASTSHARD_DA_DEVICE_UUIDS"].split(",")
-    device_size = int(os.environ["FASTSHARD_DA_DEVICE_SIZE"])
-    assert len(uuids) >= device_count, uuids
-
-    return {
-        "PersistentConfig": {
-            "StorageGroups": [{
-                "Type": group_type,
-                "Devices": [
-                    {
-                        "Host": host,
-                        "Port": port,
-                        "DeviceId": uuid,
-                    }
-                    for uuid in uuids[:device_count]
-                ],
-            }],
-            "NodesPerGroup": 100000,
-            #
-            # ExpectedGroupCapacity is the projected user-data byte
-            # count per storage group; the shard uses it to size its
-            # per-cluster maps. Metadata footprint itself is small, but
-            # still non-zero. 10% is probably a bit excessive but let's keep it
-            # this way for this test to be on the safe side.
-            #
-            "ExpectedGroupCapacity": int(device_size * 0.9),
-        },
-    }
-
-
-def do_test(test_name, aux_params, group):
-    fast_shard_config = _build_persistent_config(*STORAGE_GROUPS[group])
-
-    #
-    # file_shard_count=1: every fast shard would otherwise get the same
-    # PersistentConfig (configure_fastshard fans one template out to all
-    # shards), which means all shards would map the same page ranges on
-    # the same physical devices and clobber each other. Memshard gets
-    # away with fanning-out because each shard builds its own separate
-    # in-memory state; hash_table_index talks to real disks and cannot.
-    # Provisioning one storage group per shard would need N * devices,
-    # which is a bit excessive for this test.
-    #
-
-    file_shard_ids = configure_fastshard(
-        shard_count=2,
-        file_shard_count=1,
-        fast_shard_config=fast_shard_config)
-
+def do_test(test_name, aux_params):
     port = int(os.getenv(env_with_guest_index("QEMU_FORWARDING_PORT", 0)))
     ssh_key = os.getenv("QEMU_SSH_KEY")
     mount_dir = os.getenv("NFS_MOUNT_PATH")
@@ -116,11 +50,15 @@ def do_test(test_name, aux_params, group):
         port,
         cwd=common.output_path())
 
-    for shard_id in file_shard_ids:
-        shard = json.loads(client.describe(shard_id))
-        # MainTabletId for a shard is actually its own IndexTabletId
-        tablet_id = shard["FileStore"]["MainTabletId"]
-        layout = fetch_layout(tablet_id)
+    request = {"FileSystemId": os.getenv("NFS_FILESYSTEM")}
+    response = client.execute_action("getfilesystemtopology", request)
+    topology = json.loads(response)
+
+    for shard in topology["ShardTopology"]["Shards"]:
+        if shard["Type"] != "E_FASTSHARD":
+            continue
+
+        layout = fetch_layout(shard["TabletId"])
 
         #
         # Masking unstable fields.
@@ -128,6 +66,7 @@ def do_test(test_name, aux_params, group):
 
         for sg in layout["storageGroups"]:
             for d in sg["devices"]:
+                d["host"] = len(d["host"]) > 0
                 d["port"] = d.get("port", 0) != 0
                 d["deviceId"] = len(d["deviceId"]) > 0
 
@@ -140,9 +79,7 @@ def do_test(test_name, aux_params, group):
     return ret
 
 
-@pytest.mark.parametrize("group", STORAGE_GROUPS.keys())
-def test_create_unlink_steal(group):
+def test_create_unlink_steal():
     return do_test(
         "create_unlink_steal",
-        "--duration 60s --stealer-threads 1",
-        group)
+        "--duration 60s --stealer-threads 1")

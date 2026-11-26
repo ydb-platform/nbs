@@ -6,3 +6,10 @@ AutomaticallyCreatedShardSize: 1073741824
 DirectoryCreationInShardsEnabled: true
 FastShardRuntimeEnabled: true
 FastShardExtendedVerificationEnabled: true
+FastShardDiskRegistryOwner: 16045690984503103501
+FastShardDiskRegistryOwnerIdx: 2
+FastShardDiskRegistryLookupTimeout: 1000
+FastShardDevicePoolName: "fastshard"
+FastShardAllocationSize: 1073741824
+FastShardReservedSize: 107374182
+SizeToNodesRatio: 8192
