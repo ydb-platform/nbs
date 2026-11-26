@@ -100,6 +100,100 @@ ui64 GetUsedNodesCount(TIndexTabletClient& tablet)
     return GetStorageStats(tablet).GetUsedNodesCount();
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TStorageConfig AsyncOpenConfig()
+{
+    NProto::TStorageConfig config;
+    config.SetAsyncCreateHandleEnabled(true);
+    config.SetGuestCachingType(NProto::GCT_ANY_READ);
+    config.SetInMemoryIndexCacheEnabled(true);
+    config.SetInMemoryIndexCacheNodesCapacity(16);
+    return config;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// A file of the given size with an open write handle. Can hold a write
+// between its Execute and Complete and send async read-only opens.
+struct TAsyncOpenEnv
+{
+    TTestEnv Env;
+    NActors::TTestActorRuntime& Runtime;
+    const ui32 NodeIdx;
+    const ui64 TabletId;
+    TIndexTabletClient Tablet;
+    ui64 NodeId = InvalidNodeId;
+    ui64 WriteHandle = 0;
+
+    bool HoldArmed = false;
+    TAutoPtr<IEventHandle> HeldPut;
+
+    TAsyncOpenEnv(const NProto::TStorageConfig& config, ui64 fileSize)
+        : Env({}, config)
+        , Runtime(Env.GetRuntime())
+        , NodeIdx(Env.AddDynamicNode())
+        , TabletId(Env.BootIndexTablet(NodeIdx))
+        , Tablet(Runtime, NodeIdx, TabletId)
+    {
+        Tablet.InitSession("client", "session");
+        NodeId =
+            CreateNode(Tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        WriteHandle =
+            CreateHandle(Tablet, NodeId, {}, TCreateHandleArgs::WRNLY);
+        Tablet.WriteData(WriteHandle, 0, fileSize, 'a');
+    }
+
+    // Sends a write and holds the first TEvPut (or the first one after an
+    // event of afterEventType): the write's commit, so the write is executed
+    // but not completed until ReleaseWriteCommit.
+    void SendWriteAndHoldCommit(
+        ui64 offset,
+        const TString& data,
+        TMaybe<ui32> afterEventType = Nothing())
+    {
+        HoldArmed = !afterEventType;
+        Runtime.SetEventFilter(
+            [this, afterEventType](auto&, auto& ev)
+            {
+                if (!HoldArmed) {
+                    HoldArmed = ev->GetTypeRewrite() == *afterEventType;
+                    return false;
+                }
+
+                if (!HeldPut && ev->GetTypeRewrite() == TEvBlobStorage::EvPut)
+                {
+                    HeldPut = std::move(ev);
+                    return true;
+                }
+
+                return false;
+            });
+
+        Tablet.SendWriteDataRequest(
+            WriteHandle,
+            offset,
+            data.size(),
+            data.data());
+        Runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [this]() { return HeldPut != nullptr; }});
+    }
+
+    void ReleaseWriteCommit()
+    {
+        Runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        Runtime.Send(HeldPut.Release(), NodeIdx);
+    }
+
+    void SendAsyncOpen()
+    {
+        auto request =
+            Tablet.CreateCreateHandleRequest(NodeId, TCreateHandleArgs::RDNLY);
+        request->Record.SetAllowAsyncCreateHandle(true);
+        Tablet.SendRequest(std::move(request));
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -296,6 +390,295 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
                 response->Record.GetError().GetMessage());
             UNIT_ASSERT(!response->Record.GetHandleCreatedAsync());
         }
+    }
+
+    Y_UNIT_TEST(ShouldDelayAsyncCreateHandleUntilNodeUpdateCompletes)
+    {
+        TAsyncOpenEnv env(AsyncOpenConfig(), 209);
+        auto& tablet = env.Tablet;
+
+        // LocalDB and the in-memory index see different sizes.
+        env.SendWriteAndHoldCommit(209, "X\n");
+        UNIT_ASSERT_VALUES_EQUAL(
+            209,
+            GetNodeAttrs(tablet, env.NodeId).GetSize());
+
+        env.SendAsyncOpen();
+        tablet.AssertCreateHandleNoResponse();
+
+        env.ReleaseWriteCommit();
+
+        tablet.AssertWriteDataResponse(S_OK);
+        auto response = tablet.AssertCreateHandleResponse(S_OK);
+        UNIT_ASSERT(!response->Record.GetHandleCreatedAsync());
+        UNIT_ASSERT(!response->Record.GetGuestKeepCache());
+        UNIT_ASSERT_VALUES_EQUAL(211, response->Record.GetNodeAttr().GetSize());
+        auto read = tablet.ReadData(response->Record.GetHandle(), 209, 2);
+        UNIT_ASSERT_VALUES_EQUAL("X\n", read->Record.GetBuffer());
+
+        env.SendAsyncOpen();
+        response = tablet.AssertCreateHandleResponse(S_OK);
+        UNIT_ASSERT(response->Record.GetHandleCreatedAsync());
+        UNIT_ASSERT(response->Record.GetGuestKeepCache());
+
+        tablet.SendRequest(tablet.CreateUpdateCounters());
+        env.Runtime.DispatchEvents({}, TDuration::Seconds(1));
+        TTestRegistryVisitor visitor;
+        env.Env.GetRegistry()->Visit(TInstant::Zero(), visitor);
+        visitor.ValidateExpectedCounters({
+            {{{"filesystem", "test"},
+              {"sensor", "AsyncDeferredByPendingWrite"},
+              {"request", "CreateHandle"}},
+             1},
+        });
+    }
+
+    Y_UNIT_TEST(ShouldNotKeepCacheBeforeDeferredInvalidatingOpenReplies)
+    {
+        TAsyncOpenEnv env(AsyncOpenConfig(), 209);
+        auto& tablet = env.Tablet;
+        auto& runtime = env.Runtime;
+
+        TVector<TAutoPtr<IEventHandle>> heldCommits;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvTablet::EvCommit &&
+                    event->Get<TEvTablet::TEvCommit>()->TabletID ==
+                        env.TabletId)
+                {
+                    heldCommits.push_back(std::move(event));
+                    return true;
+                }
+
+                return false;
+            });
+
+        // Append with its commit held.
+        tablet.SendWriteDataRequest(env.WriteHandle, 209, 2, "X\n");
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]() { return !heldCommits.empty(); }});
+        UNIT_ASSERT_VALUES_EQUAL(1, heldCommits.size());
+
+        // Open A: no keep-cache, deferred because of the pending append.
+        env.SendAsyncOpen();
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]() { return heldCommits.size() >= 2; }});
+        tablet.AssertCreateHandleNoResponse();
+
+        // Let the append complete, A is still uncommitted.
+        runtime.Send(heldCommits[0].Release(), env.NodeIdx);
+        tablet.AssertWriteDataResponse(S_OK);
+        tablet.AssertCreateHandleNoResponse();
+
+        // Open B: no pending write, so it replies from Execute. It must not
+        // get keep-cache from A's baseline: A's invalidating reply has not
+        // been sent yet, and B's reply would overtake it.
+        env.SendAsyncOpen();
+        auto response = tablet.AssertCreateHandleResponse(S_OK);
+        UNIT_ASSERT(response->Record.GetHandleCreatedAsync());
+        UNIT_ASSERT(!response->Record.GetGuestKeepCache());
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        for (ui32 i = 1; i < heldCommits.size(); ++i) {
+            runtime.Send(heldCommits[i].Release(), env.NodeIdx);
+        }
+
+        // A replies after its commit.
+        response = tablet.AssertCreateHandleResponse(S_OK);
+        UNIT_ASSERT(!response->Record.GetHandleCreatedAsync());
+        UNIT_ASSERT(!response->Record.GetGuestKeepCache());
+        UNIT_ASSERT_VALUES_EQUAL(211, response->Record.GetNodeAttr().GetSize());
+
+        // The node did not change since, so the next open keeps the cache.
+        env.SendAsyncOpen();
+        response = tablet.AssertCreateHandleResponse(S_OK);
+        UNIT_ASSERT(response->Record.GetHandleCreatedAsync());
+        UNIT_ASSERT(response->Record.GetGuestKeepCache());
+    }
+
+    Y_UNIT_TEST(ShouldNotDelayAsyncCreateHandleForWriteWithinFileSize)
+    {
+        TAsyncOpenEnv env(AsyncOpenConfig(), 209);
+        auto& tablet = env.Tablet;
+
+        // The size does not change, and block data is visible from Execute,
+        // so the open need not wait for the commit.
+        env.SendWriteAndHoldCommit(100, "X\n");
+
+        env.SendAsyncOpen();
+        auto response = tablet.AssertCreateHandleResponse(S_OK);
+        UNIT_ASSERT(response->Record.GetHandleCreatedAsync());
+        UNIT_ASSERT(!response->Record.GetGuestKeepCache());
+        UNIT_ASSERT_VALUES_EQUAL(209, response->Record.GetNodeAttr().GetSize());
+
+        tablet.SendReadDataRequest(response->Record.GetHandle(), 100, 2);
+
+        env.ReleaseWriteCommit();
+
+        tablet.AssertWriteDataResponse(S_OK);
+        auto read = tablet.AssertReadDataResponse(S_OK);
+        UNIT_ASSERT_VALUES_EQUAL("X\n", read->Record.GetBuffer());
+    }
+
+    Y_UNIT_TEST(ShouldDelayAsyncCreateHandleWithoutGuestCaching)
+    {
+        auto config = AsyncOpenConfig();
+        config.SetGuestCachingType(NProto::GCT_NONE);
+        TAsyncOpenEnv env(config, 209);
+        auto& tablet = env.Tablet;
+
+        // Every open drops the guest page cache when guest caching is off,
+        // so the open must not be answered before the in-flight append is
+        // published to the in-memory index.
+        env.SendWriteAndHoldCommit(209, "X\n");
+        UNIT_ASSERT_VALUES_EQUAL(
+            209,
+            GetNodeAttrs(tablet, env.NodeId).GetSize());
+
+        env.SendAsyncOpen();
+        tablet.AssertCreateHandleNoResponse();
+
+        env.ReleaseWriteCommit();
+
+        tablet.AssertWriteDataResponse(S_OK);
+        auto response = tablet.AssertCreateHandleResponse(S_OK);
+        UNIT_ASSERT(!response->Record.GetHandleCreatedAsync());
+        UNIT_ASSERT(!response->Record.GetGuestKeepCache());
+        UNIT_ASSERT_VALUES_EQUAL(211, response->Record.GetNodeAttr().GetSize());
+        auto read = tablet.ReadData(response->Record.GetHandle(), 209, 2);
+        UNIT_ASSERT_VALUES_EQUAL("X\n", read->Record.GetBuffer());
+    }
+
+    Y_UNIT_TEST(ShouldDelayAsyncCreateHandleWithoutInMemoryIndexCache)
+    {
+        auto config = AsyncOpenConfig();
+        config.SetInMemoryIndexCacheEnabled(false);
+        TAsyncOpenEnv env(config, 209);
+        auto& tablet = env.Tablet;
+
+        // The open reads the uncommitted size from LocalDB, so it must not
+        // be answered before the append commits even without the index.
+        env.SendWriteAndHoldCommit(209, "X\n");
+
+        env.SendAsyncOpen();
+        tablet.AssertCreateHandleNoResponse();
+
+        env.ReleaseWriteCommit();
+
+        tablet.AssertWriteDataResponse(S_OK);
+        auto response = tablet.AssertCreateHandleResponse(S_OK);
+        UNIT_ASSERT(!response->Record.GetHandleCreatedAsync());
+        UNIT_ASSERT_VALUES_EQUAL(211, response->Record.GetNodeAttr().GetSize());
+    }
+
+    Y_UNIT_TEST(ShouldDelayAsyncCreateHandleUntilAddBlobCompletes)
+    {
+        auto config = AsyncOpenConfig();
+        config.SetWriteBlobThreshold(128_KB);
+        TAsyncOpenEnv env(config, 4_KB);
+        auto& tablet = env.Tablet;
+
+        // A large aligned write goes through WriteBlob + AddBlob. Hold the
+        // AddBlob commit so LocalDB and the cache see different sizes.
+        env.SendWriteAndHoldCommit(
+            4_KB,
+            TString(128_KB, 'b'),
+            TEvIndexTabletPrivate::EvAddBlobRequest);
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB,
+            GetNodeAttrs(tablet, env.NodeId).GetSize());
+
+        env.SendAsyncOpen();
+        tablet.AssertCreateHandleNoResponse();
+
+        env.ReleaseWriteCommit();
+
+        tablet.AssertWriteDataResponse(S_OK);
+        auto response = tablet.AssertCreateHandleResponse(S_OK);
+        UNIT_ASSERT(!response->Record.GetHandleCreatedAsync());
+        UNIT_ASSERT(!response->Record.GetGuestKeepCache());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB + 128_KB,
+            response->Record.GetNodeAttr().GetSize());
+        auto read = tablet.ReadData(response->Record.GetHandle(), 4_KB, 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(TString(4_KB, 'b'), read->Record.GetBuffer());
+
+        env.SendAsyncOpen();
+        response = tablet.AssertCreateHandleResponse(S_OK);
+        UNIT_ASSERT(response->Record.GetHandleCreatedAsync());
+        UNIT_ASSERT(response->Record.GetGuestKeepCache());
+    }
+
+    Y_UNIT_TEST(ShouldDelayAsyncCreateHandleUntilSetNodeAttrSizeCompletes)
+    {
+        TAsyncOpenEnv env(AsyncOpenConfig(), 209);
+        auto& tablet = env.Tablet;
+        auto& runtime = env.Runtime;
+
+        // Commits must reach the tablet in order, so hold all of them.
+        TVector<TAutoPtr<IEventHandle>> heldCommits;
+        runtime.SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvTablet::EvCommit &&
+                    event->Get<TEvTablet::TEvCommit>()->TabletID ==
+                        env.TabletId)
+                {
+                    heldCommits.push_back(std::move(event));
+                    return true;
+                }
+
+                return false;
+            });
+
+        // Resize with its commit held: LocalDB and the in-memory index see
+        // different sizes.
+        tablet.SendSetNodeAttrRequest(
+            TSetNodeAttrArgs(env.NodeId).SetSize(4_KB));
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]() { return !heldCommits.empty(); }});
+        UNIT_ASSERT_VALUES_EQUAL(
+            209,
+            GetNodeAttrs(tablet, env.NodeId).GetSize());
+
+        // The open must not report the uncommitted size.
+        env.SendAsyncOpen();
+        tablet.AssertCreateHandleNoResponse();
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        for (auto& commit: heldCommits) {
+            runtime.Send(commit.Release(), env.NodeIdx);
+        }
+
+        tablet.AssertSetNodeAttrResponse(S_OK);
+        auto response = tablet.AssertCreateHandleResponse(S_OK);
+        UNIT_ASSERT(!response->Record.GetHandleCreatedAsync());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB,
+            response->Record.GetNodeAttr().GetSize());
+    }
+
+    Y_UNIT_TEST(ShouldCreateHandleAsyncForUncachedNodeWithoutPendingWrites)
+    {
+        auto config = AsyncOpenConfig();
+        config.SetInMemoryIndexCacheNodesCapacity(2);
+        config.SetInMemoryIndexCacheNodeRefsCapacity(1);
+        TAsyncOpenEnv env(config, 4_KB);
+        auto& tablet = env.Tablet;
+
+        // Evict "test" from the nodes cache (capacity 2: root + one file).
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test3"));
+
+        // No write is in flight, so the open must not wait for its commit
+        // even though the node is not in the in-memory index.
+        env.SendAsyncOpen();
+        auto response = tablet.AssertCreateHandleResponse(S_OK);
+        UNIT_ASSERT(response->Record.GetHandleCreatedAsync());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB,
+            response->Record.GetNodeAttr().GetSize());
     }
 
     Y_UNIT_TEST(ShouldCacheAsyncCreateHandleFlagForDuplicateRequests)

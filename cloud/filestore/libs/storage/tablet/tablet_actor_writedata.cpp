@@ -310,7 +310,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
     SplitRange(
         args.ByteRange.FirstAlignedBlock(),
         args.ByteRange.AlignedBlockCount(),
-        BlockGroupSize,
+        GetBlockGroupSize(),
         [&] (ui32 blockOffset, ui32 blocksCount) {
             MarkMixedBlocksDeleted(
                 *db,
@@ -377,7 +377,8 @@ void TIndexTabletActor::ExecuteTx_WriteData(
     }
 
     auto attrs = CopyAttrs(args.Node->Attrs, E_CM_MTIME);
-    if (args.ByteRange.End() > args.Node->Attrs.GetSize()) {
+    const bool sizeGrows = args.ByteRange.End() > args.Node->Attrs.GetSize();
+    if (sizeGrows) {
         attrs.SetSize(args.ByteRange.End());
     }
 
@@ -389,12 +390,21 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         args.CommitId,
         attrs,
         args.Node->Attrs);
+
+    if (sizeGrows) {
+        StartNodeSizeUpdate(args.NodeId);
+        args.NodeSizeUpdateStarted = true;
+    }
 }
 
 void TIndexTabletActor::CompleteTx_WriteData(
     const TActorContext& ctx,
     TTxIndexTablet::TWriteData& args)
 {
+    if (args.NodeSizeUpdateStarted) {
+        EndNodeSizeUpdate(args.NodeId);
+    }
+
     InvalidateReadAheadCache(args.NodeId);
 
     RemoveInFlightRequest(*args.RequestInfo);
@@ -453,7 +463,7 @@ void TIndexTabletActor::CompleteTx_WriteData(
     SplitRange(
         args.ByteRange.FirstAlignedBlock(),
         args.ByteRange.AlignedBlockCount(),
-        BlockGroupSize,
+        GetBlockGroupSize(),
         [&] (ui32 blockOffset, ui32 blocksCount) {
             TBlock block {
                 args.NodeId,

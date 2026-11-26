@@ -14,6 +14,7 @@ using namespace NKikimr;
 
 constexpr ui32 RequestCookieBit = 63;
 constexpr ui32 InitialReadDataActorPoolSize = 100;
+constexpr ui32 InitialWriteDataActorPoolSize = 100;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -33,6 +34,7 @@ TStorageServiceActor::TStorageServiceActor(
     , StatsRegistry{std::move(statsRegistry)}
     , InFlightRequests(MakeIntrusive<TInFlightRequestStorage>(ProfileLog))
     , ReadDataActorPool(ProfileLog, TraceSerializer, InFlightRequests)
+    , WriteDataActorPool(ProfileLog, TraceSerializer)
 {}
 
 TStorageServiceActor::~TStorageServiceActor()
@@ -48,6 +50,7 @@ void TStorageServiceActor::Bootstrap(const TActorContext& ctx)
 
     if (StorageConfig->GetPermanentReadWriteDataActorsEnabled()) {
         ReadDataActorPool.Initialize(ctx, InitialReadDataActorPoolSize);
+        WriteDataActorPool.Initialize(ctx, InitialWriteDataActorPoolSize);
     }
 
     RegisterPages(ctx);
@@ -111,6 +114,10 @@ void TStorageServiceActor::RegisterCounters(const NActors::TActorContext& ctx)
     ReadDataActorPoolSize =
         serviceCounters->GetCounter("ReadDataActorPoolSize");
     ReadDataActorPoolSize->Set(ReadDataActorPool.GetSize());
+
+    WriteDataActorPoolSize =
+        serviceCounters->GetCounter("WriteDataActorPoolSize");
+    WriteDataActorPoolSize->Set(WriteDataActorPool.GetSize());
 }
 
 void TStorageServiceActor::ScheduleUpdateStats(const NActors::TActorContext& ctx)
@@ -210,6 +217,9 @@ bool TStorageServiceActor::HandleRequests(STFUNC_SIG)
         HFunc(
             TEvServicePrivate::TEvReleaseReadDataActor,
             HandleReleaseReadDataActor);
+        HFunc(
+            TEvServicePrivate::TEvReleaseWriteDataActor,
+            HandleReleaseWriteDataActor);
 
         default:
             return false;

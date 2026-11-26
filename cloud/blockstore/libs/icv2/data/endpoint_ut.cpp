@@ -36,7 +36,6 @@ using NCloud::NIcV2::CreateRequestChannel;
 using NCloud::NIcV2::IIncomingRequest;
 using NCloud::NIcV2::IIncomingRequestPtr;
 using NCloud::NIcV2::IRequestChannel;
-using NCloud::NIcV2::IRequestChannelHandler;
 using NCloud::NIcV2::IRequestChannelPtr;
 using NCloud::NIcV2::TRequestChannelConfig;
 using NCloud::NIcV2::TResponseFuture;
@@ -117,7 +116,9 @@ struct TTestChannel final: IRequestChannel
 
     TMutex Mutex;
     TVector<TRequest> Requests;
+    TCallback BeforeRequestAdmission;
     bool Closing = false;
+    bool FailOnClose = false;
     size_t ActiveCompletions = 0;
     NThreading::TPromise<NProto::TError> Closed =
         NThreading::NewPromise<NProto::TError>();
@@ -131,6 +132,9 @@ struct TTestChannel final: IRequestChannel
         std::unique_ptr<NActors::IEventBase> event,
         TDuration timeout) override
     {
+        if (BeforeRequestAdmission) {
+            BeforeRequestAdmission();
+        }
         TGuard<TMutex> guard(Mutex);
         if (Closing) {
             return NThreading::MakeFuture<TResponseResult>(
@@ -239,8 +243,52 @@ private:
             closed = Closing && !ActiveCompletions;
         }
         if (closed) {
-            Closed.SetValue(NProto::TError{});
+            if (FailOnClose) {
+                Closed.SetException("test channel close failed");
+            } else {
+                Closed.SetValue(NProto::TError{});
+            }
         }
+    }
+};
+
+class TTestDataRequestChannel final: public IDataRequestChannel
+{
+    const IRequestChannelPtr Channel;
+    const NThreading::TFuture<void> Closed;
+
+public:
+    explicit TTestDataRequestChannel(IRequestChannelPtr channel)
+        : Channel(std::move(channel))
+        , Closed(Channel->WhenClosed().IgnoreResult())
+    {}
+
+    TDataResponseFuture Request(
+        std::unique_ptr<NActors::IEventBase> event,
+        TDuration timeout) override
+    {
+        const auto channel = Channel;
+        return channel->Request(std::move(event), timeout)
+            .Apply(
+                [source = std::weak_ptr<IRequestChannel>(channel)]   //
+                (TResponseFuture future) mutable -> TDataResponseResult
+                {
+                    auto result = future.ExtractValue();
+                    if (HasError(result)) {
+                        return result.GetError();
+                    }
+                    return TDataResponse{
+                        .Event = result.ExtractResult(),
+                        .SourceChannel = std::move(source),
+                    };
+                });
+    }
+
+    NThreading::TFuture<void> Close() override
+    {
+        auto closed = Closed;
+        Channel->Close();
+        return closed;
     }
 };
 
@@ -351,10 +399,9 @@ struct TFixture
         TDataConfig endpointConfig = {},
         TDataConfig targetConfig = {})
     {
-        auto [endpoint, endpointError] =
-            CreateDataEndpoint(Channel, endpointConfig);
-        UNIT_ASSERT_C(!HasError(endpointError), FormatError(endpointError));
-        Endpoint = std::move(endpoint);
+        Endpoint = CreateDataEndpoint(
+            std::make_shared<TTestDataRequestChannel>(Channel),
+            endpointConfig);
         auto [target, targetError] =
             CreateDataTarget(Service, Executor, targetConfig);
         UNIT_ASSERT_C(!HasError(targetError), FormatError(targetError));
@@ -450,23 +497,6 @@ struct TFixture
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDataRequestHandler final: public IRequestChannelHandler
-{
-    const IDataTargetPtr Target;
-
-public:
-    explicit TDataRequestHandler(IDataTargetPtr target)
-        : Target(std::move(target))
-    {}
-
-    void HandleRequest(IIncomingRequestPtr request) override
-    {
-        Target->HandleRequest(std::move(request));
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TNetworkFixture
 {
     std::array<TFixture, 2> Peers;
@@ -555,13 +585,12 @@ struct TNetworkFixture
                 Peers[i].Timer,
                 std::make_shared<TTestScheduler>(),
                 Completions,
-                std::make_shared<TDataRequestHandler>(Peers[i].Target));
+                Peers[i].Target);
             UNIT_ASSERT_C(!HasError(error), FormatError(error));
             Channels[i] = std::move(channel);
-            auto [endpoint, endpointError] =
-                CreateDataEndpoint(Channels[i], {});
-            UNIT_ASSERT_C(!HasError(endpointError), FormatError(endpointError));
-            Endpoints[i] = std::move(endpoint);
+            Endpoints[i] = CreateDataEndpoint(
+                std::make_shared<TTestDataRequestChannel>(Channels[i]),
+                {});
             Peers[i].Data.resize(8 * 1024 * 1024, 'x');
         }
         for (auto& channel: Channels) {
@@ -832,6 +861,36 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), '?'), buffer);
     }
 
+    Y_UNIT_TEST(ClosedWaitsForWriteBeforeChannelAdmission)
+    {
+        for (bool failOnClose: {false, true}) {
+            TFixture f;
+            f.Channel->FailOnClose = failOnClose;
+            NThreading::TFuture<void> closed;
+            bool closedWhileSubmitting = true;
+            f.Channel->BeforeRequestAdmission = [&]
+            {
+                closed = f.Endpoint->RequestStop();
+                closedWhileSubmitting = closed.IsReady();
+            };
+
+            auto request = MakeRequest<NProto::TWriteBlocksRequest>();
+            request->SetBlockSize(BlockSize);
+            request->MutableBlocks()->AddBuffers(TString(BlockSize, 'w'));
+            auto response = f.Endpoint->WriteBlocks(
+                MakeIntrusive<TCallContext>(),
+                std::move(request));
+
+            UNIT_ASSERT(!closedWhileSubmitting);
+            UNIT_ASSERT(f.Channel->Requests.empty());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED,
+                Wait(response).GetError().GetCode());
+            UNIT_ASSERT(closed.HasValue());
+            UNIT_ASSERT_NO_EXCEPTION(f.Endpoint->Stop());
+        }
+    }
+
     Y_UNIT_TEST(TargetStopWaitsForActualStorageCompletionAfterDisconnect)
     {
         TFixture f;
@@ -891,7 +950,7 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         }
     }
 
-    Y_UNIT_TEST(TargetDoesNotChargeReadBuffersToWritePayloadBudget)
+    Y_UNIT_TEST(TargetRejectsReadBufferThatExceedsBudget)
     {
         TDataConfig config;
         config.MaxInflightBytes = BlockSize;
@@ -901,8 +960,8 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
             MakeIntrusive<TCallContext>(),
             MakeRead(buffer));
         f.Run(0);
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, Wait(read).GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(1, f.Reads);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, Wait(read).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, f.Reads);
         auto zero =
             f.Endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), MakeZero());
         f.Run(1);
@@ -951,25 +1010,42 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
         UNIT_ASSERT_VALUES_EQUAL(2, f.Writes);
     }
 
-    Y_UNIT_TEST(ChargesOnlyOutgoingWritePayloadBytes)
+    Y_UNIT_TEST(TargetSharesByteBudgetBetweenReadsAndWrites)
     {
-        TDataConfig endpointConfig;
-        endpointConfig.MaxInflightBytes = 2 * BlockSize;
+        TString readBuffer(2 * BlockSize, '?');
+        const TString writeBuffer(2 * BlockSize, 'w');
         TDataConfig targetConfig;
-        targetConfig.MaxInflightBytes = 1;
-        TFixture f(endpointConfig, targetConfig);
-        TString buffer(2 * BlockSize, 'w');
-        auto write = f.Endpoint->WriteBlocksLocal(
-            MakeIntrusive<TCallContext>(),
-            MakeWrite(buffer));
-        f.Run(0);
-        UNIT_ASSERT(!HasError(Wait(write)));
-
+        targetConfig.MaxInflightRequests = 2;
+        targetConfig.MaxInflightBytes = 3 * BlockSize;
+        TFixture f({}, targetConfig);
+        f.DelayRead();
         auto read = f.Endpoint->ReadBlocksLocal(
             MakeIntrusive<TCallContext>(),
-            MakeRead(buffer));
-        f.Run(1);
+            MakeRead(readBuffer));
+        f.Run(0);
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Reads);
+
+        auto write = f.Endpoint->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeWrite(writeBuffer));
+        f.Target->HandleRequest(
+            std::make_unique<TTestIncomingRequest>(
+                f.Channel,
+                f.Channel->Take(1)));
+        UNIT_ASSERT(write.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, Wait(write).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, f.Writes);
+
+        f.ReadCompletion.SetValue({});
+        f.Executor->Run();
         UNIT_ASSERT(!HasError(Wait(read)));
+
+        auto retry = f.Endpoint->WriteBlocksLocal(
+            MakeIntrusive<TCallContext>(),
+            MakeWrite(writeBuffer));
+        f.Run(2);
+        UNIT_ASSERT(!HasError(Wait(retry)));
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Writes);
     }
 
     Y_UNIT_TEST(StorageErrorsAndExceptionsAreReturnedWithoutRetry)
@@ -1090,16 +1166,12 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
             }
             f.Channel->Reply(1, std::move(response));
             UNIT_ASSERT_VALUES_EQUAL(
-                E_BADMSG,
+                E_REJECTED,
                 Wait(future).GetError().GetCode());
-            UNIT_ASSERT(!f.Channel->Closing);
-            f.Run(1);
-            UNIT_ASSERT(!HasError(Wait(pendingZero)));
-            auto nextZero = f.Endpoint->ZeroBlocks(
-                MakeIntrusive<TCallContext>(),
-                MakeZero());
-            f.Run(2);
-            UNIT_ASSERT(!HasError(Wait(nextZero)));
+            UNIT_ASSERT(f.Channel->Closing);
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED,
+                Wait(pendingZero).GetError().GetCode());
             UNIT_ASSERT_VALUES_EQUAL(TString(buffer.size(), '?'), buffer);
         }
     }

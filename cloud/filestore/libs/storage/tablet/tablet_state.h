@@ -1370,6 +1370,10 @@ public:
     ui32 GetMixedRangeIndex(ui64 nodeId, ui32 blockIndex, ui32 blocksCount) const;
     ui32 GetMixedRangeIndex(const TVector<TBlock>& blocks) const;
     const IBlockLocation2RangeIndex& GetRangeIdHasher() const;
+    // Blocks per range and per blob split, fixed by RangeIdHasherType.
+    ui32 GetBlockGroupSize() const;
+    // The caller guarantees that the tablet has no data.
+    void SetRangeIdHasherType(IIndexTabletDatabase& db, ui32 type);
 
     ui32 CalculateMixedIndexRangeGarbageBlockCount(ui32 rangeId) const;
 
@@ -1844,6 +1848,21 @@ public:
     void MarkNodeRefsLoadComplete();
     void MarkNodeRefsExhaustive(ui64 nodeId);
     TInMemoryIndexStateStats GetInMemoryIndexStateStats() const;
+
+    // Tracks size-changing node updates (size-growing WriteData and AddBlob,
+    // size-changing SetNodeAttr) from Execute to Complete, i.e. while the new
+    // size is visible in LocalDB but not committed yet (and not yet in the
+    // in-memory index, if it is enabled). An async read-only CreateHandle
+    // replies upon completion instead if the node has such an update:
+    // otherwise the response would report a size that is not committed yet,
+    // and the guest could drop its page cache and refill it from the stale
+    // size served by the index, zero-filling the tail of a page that is not
+    // zeros.
+    // Writes within the file size are not tracked: block data is updated in
+    // Execute, so only mtime is stale.
+    void StartNodeSizeUpdate(ui64 nodeId);
+    void EndNodeSizeUpdate(ui64 nodeId);
+    bool HasPendingNodeSizeUpdate(ui64 nodeId) const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

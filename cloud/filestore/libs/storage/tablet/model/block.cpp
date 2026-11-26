@@ -23,10 +23,16 @@ struct TLegacyHasher: IBlockLocation2RangeIndex
         // 4. shuffle around
         return IntHash(nodeGroup) ^ IntHash(blockGroup);
     }
+
+    ui32 GetBlockGroupSize() const override
+    {
+        return BlockGroupSize;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <ui32 RangeBlockGroupSize>
 struct TBlockLocalityHasher: IBlockLocation2RangeIndex
 {
     ui32 Calc(ui64 nodeId, ui32 blockIndex) const override
@@ -37,10 +43,15 @@ struct TBlockLocalityHasher: IBlockLocation2RangeIndex
         ui32 nodeGroup = static_cast<ui32>(nodeId) / NodeGroupSize;
 
         // 3. split blocks in groups
-        ui32 blockGroup = blockIndex / BlockGroupSize;
+        ui32 blockGroup = blockIndex / RangeBlockGroupSize;
 
         // 4. shuffle around
         return (0xFFFF0000 & IntHash(nodeGroup)) | (0xFFFF & blockGroup);
+    }
+
+    ui32 GetBlockGroupSize() const override
+    {
+        return RangeBlockGroupSize;
     }
 };
 
@@ -52,7 +63,10 @@ IBlockLocation2RangeIndexPtr CreateRangeIdHasher(ui32 type)
 {
     switch (type) {
         case 0: return std::make_shared<TLegacyHasher>();
-        case 1: return std::make_shared<TBlockLocalityHasher>();
+        case 1:
+            return std::make_shared<TBlockLocalityHasher<BlockGroupSize>>();
+        case 2: return std::make_shared<TBlockLocalityHasher<128>>();
+        case 3: return std::make_shared<TBlockLocalityHasher<256>>();
     }
 
     return nullptr;

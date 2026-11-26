@@ -87,7 +87,7 @@ bool TPartitionActor::CheckDeadFreshBlobByteCount() const
     return State->CheckDeadFreshBlobByteCount(liveCommitIds, addedToCommitId);
 }
 
-TPartitionActor::ETrimFreshLogKind TPartitionActor::ChooseTrimFreshLogKind(
+ETrimFreshLogKind TPartitionActor::ChooseTrimFreshLogKind(
     const TActorContext& ctx,
     const TPartitionThreadSafeState::TFreshTrimSnapshot& snapshot)
 {
@@ -119,9 +119,7 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    State->AccessTrimFreshLogState().SetStatus(
-        EOperationStatus::Enqueued,
-        ctx.Now());
+    State->EnqueueTrimFreshLog(ctx.Now());
 
     using TRequest = TEvPartitionCommonPrivate::TEvTrimFreshLogRequest;
     auto request = std::make_unique<TRequest>(
@@ -245,9 +243,7 @@ void TPartitionActor::HandleTrimFreshLog(
     }
 
     if (kind == ETrimFreshLogKind::None) {
-        State->AccessTrimFreshLogState().SetStatus(
-            EOperationStatus::Idle,
-            ctx.Now());
+        State->SkipTrimFreshLog(ctx.Now());
         replyError(ctx, *requestInfo, S_ALREADY, "nothing to trim");
         return;
     }
@@ -258,7 +254,7 @@ void TPartitionActor::HandleTrimFreshLog(
         return;
     }
 
-    const bool selective = plan.has_value();
+    const bool selective = kind == ETrimFreshLogKind::Selective;
     ui64 trimFreshLogToCommitId = snapshot.OrdinaryTrimToCommitId;
     TVector<TPartialBlobId> keep;
     TVector<TPartialBlobId> doNotKeep;
@@ -268,9 +264,6 @@ void TPartitionActor::HandleTrimFreshLog(
         keep = std::move(plan->Keep);
         doNotKeep = std::move(plan->DoNotKeep);
         collectingCommitIds = std::move(plan->CollectingCommitIds);
-        State->StartSelectiveTrim(trimFreshLogToCommitId);
-    } else {
-        State->SetOrdinaryTrimRequested(false);
     }
 
     LOG_DEBUG(
@@ -282,7 +275,7 @@ void TPartitionActor::HandleTrimFreshLog(
         trimFreshLogToCommitId,
         nextPerGenerationCounter);
 
-    State->StartTrimFreshLog(selective, ctx.Now());
+    State->StartTrimFreshLog(kind, trimFreshLogToCommitId, ctx.Now());
 
     TVector<ui32> freshChannels = State->GetChannelsByKind([](auto kind) {
         return kind == EChannelDataKind::Fresh;
@@ -314,6 +307,11 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
 {
     const auto* msg = ev->Get();
 
+    Y_DEBUG_ABORT_UNLESS(
+        State->GetStartedTrimFreshLogKind() ==
+        (msg->SelectiveTrim ? ETrimFreshLogKind::Selective
+                            : ETrimFreshLogKind::Ordinary));
+
     const ui64 untrimmedByteCount = State->GetUntrimmedFreshBlobByteCount();
 
     ui64 unflushedBytesRemoved = 0;
@@ -325,13 +323,6 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
             LogTitle.GetWithTime().c_str(),
             msg->GetStatus(),
             FormatError(msg->GetError()).c_str());
-
-        State->RegisterTrimFreshLogError();
-        if (msg->SelectiveTrim) {
-            State->FailSelectiveTrim();
-        } else {
-            State->SetOrdinaryTrimRequested(true);
-        }
     } else {
         LOG_DEBUG(
             ctx,
@@ -339,14 +330,11 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
             "%s TrimFreshLog completed",
             LogTitle.GetWithTime().c_str());
 
-        State->RegisterTrimFreshLogSuccess();
         if (msg->SelectiveTrim) {
-            State->CompleteSelectiveTrim();
             unflushedBytesRemoved =
                 State->TrimCollectedFreshBlobs(msg->CollectedCommitIds)
                     .UnflushedBytesRemoved;
         } else {
-            State->SetLastTrimFreshLogToCommitId(msg->CommitId);
             unflushedBytesRemoved =
                 State->TrimFreshBlobs(msg->CommitId).UnflushedBytesRemoved;
         }
@@ -363,7 +351,6 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
         State->GetDeadUntrimmedFreshBlobByteCount());
 
     State->CompleteTrimFreshLog(
-        msg->SelectiveTrim,
         HasError(msg->GetError()),
         untrimmedByteCount - State->GetUntrimmedFreshBlobByteCount(),
         ctx.Now());

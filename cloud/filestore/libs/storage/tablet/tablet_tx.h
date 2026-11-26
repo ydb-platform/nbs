@@ -1691,6 +1691,7 @@ struct TTxIndexTablet
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<INodeIndexTabletDatabase::TNode> Node;
+        bool NodeSizeUpdateStarted = false;
 
         TSetNodeAttr(
                 TRequestInfoPtr requestInfo,
@@ -1708,6 +1709,7 @@ struct TTxIndexTablet
 
             CommitId = InvalidCommitId;
             Node.Clear();
+            NodeSizeUpdateStarted = false;
         }
     };
 
@@ -2352,6 +2354,7 @@ struct TTxIndexTablet
         ui64 CommitId = InvalidCommitId;
         ui64 NodeId = InvalidNodeId;
         TMaybe<INodeIndexTabletDatabase::TNode> Node;
+        bool NodeSizeUpdateStarted = false;
 
         TWriteData(
                 TRequestInfoPtr requestInfo,
@@ -2378,6 +2381,7 @@ struct TTxIndexTablet
             CommitId = InvalidCommitId;
             NodeId = InvalidNodeId;
             Node.Clear();
+            NodeSizeUpdateStarted = false;
 
             // deliberately not calling TProfileAware::Clear()
         }
@@ -2582,6 +2586,7 @@ struct TTxIndexTablet
         // ConfirmedData entries after successful indexing
         ui64 ConfirmedDataRefCommitId = InvalidCommitId;
         TNodeSet Nodes;
+        TVector<ui64> StartedNodeSizeUpdates;
 
         TAddBlob(
                 TRequestInfoPtr requestInfo,
@@ -2613,6 +2618,7 @@ struct TTxIndexTablet
 
             CommitId = InvalidCommitId;
             Nodes.clear();
+            StartedNodeSizeUpdates.clear();
         }
     };
 

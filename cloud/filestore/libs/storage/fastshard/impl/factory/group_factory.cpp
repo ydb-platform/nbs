@@ -1,69 +1,61 @@
 #include "group_factory.h"
 
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_quorum.h>
-
 #include <cloud/fastshard/libs/sn/client/client.h>
+#include <cloud/fastshard/libs/storage_group/storage_group_quorum.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
+using NCloud::NFastShard::CreateFiberTimer;
+using NCloud::NFastShard::CreateNaiveMirroredStorageGroup;
+using NCloud::NFastShard::CreateQuorumMirroredStorageGroup;
 using NCloud::NFastShard::CreateStorageNodeClient;
-
-namespace {
+using NCloud::NFastShard::IStorageGroupPtr;
+using NCloud::NFastShard::TStorageDevice;
+using NCloud::NFastShard::TStorageGroupConfig;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TStorageGroupFactory: IStorageGroupFactory
+IStorageGroupPtr CreateStorageGroup(
+    const TString& fileSystemId,
+    const NProtoPrivate::TPersistentFastShardConfig& config)
 {
-    IStorageGroupPtr MakeStorageGroup(
-        const NProtoPrivate::TPersistentFastShardConfig& config,
-        ui64 generation) override
-    {
-        TVector<TStorageDevice> devices;
-        const auto& sg = config.GetStorageGroups(0);
-        for (const auto& d: sg.GetDevices()) {
-            devices.push_back({
-                .Node = CreateStorageNodeClient(d.GetHost(), d.GetPort()),
-                .DeviceUUID = d.GetDeviceId(),
-            });
-        }
+    // Using only one storage group for now.
+    const auto& sg = config.GetStorageGroups(0);
 
-        TStorageGroupConfig groupConfig;
-        // TODO(#5894): set client id
-        groupConfig.AcquireGeneration = generation;
-        if (config.GetRetryTotalTimeoutMs()) {
-            groupConfig.RetryPolicy.TotalTimeout =
-                TDuration::MilliSeconds(config.GetRetryTotalTimeoutMs());
-        }
-        if (config.GetRetryBackoffIncrementMs()) {
-            groupConfig.RetryPolicy.BackoffIncrement =
-                TDuration::MilliSeconds(config.GetRetryBackoffIncrementMs());
-        }
+    TVector<TStorageDevice> devices;
+    for (const auto& d: sg.GetDevices()) {
+        devices.push_back({
+            .Node = CreateStorageNodeClient(d.GetHost(), d.GetPort()),
+            .DeviceUUID = d.GetDeviceId(),
+        });
+    }
 
-        if (config.GetPageSize()) {
-            groupConfig.PageSize = config.GetPageSize();
-        }
+    TStorageGroupConfig groupConfig;
+    groupConfig.ClientId = fileSystemId;
+    if (config.GetRetryTotalTimeoutMs()) {
+        groupConfig.RetryPolicy.TotalTimeout =
+            TDuration::MilliSeconds(config.GetRetryTotalTimeoutMs());
+    }
+    if (config.GetRetryBackoffIncrementMs()) {
+        groupConfig.RetryPolicy.BackoffIncrement =
+            TDuration::MilliSeconds(config.GetRetryBackoffIncrementMs());
+    }
 
-        if (sg.GetType() == NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR) {
-            return CreateQuorumMirroredStorageGroup(
-                std::move(groupConfig),
-                std::move(devices),
-                CreateFiberTimer());
-        }
+    if (config.GetPageSize()) {
+        groupConfig.PageSize = config.GetPageSize();
+    }
 
-        return CreateNaiveMirroredStorageGroup(
+    if (sg.GetType() == NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR) {
+        return CreateQuorumMirroredStorageGroup(
             std::move(groupConfig),
             std::move(devices),
             CreateFiberTimer());
     }
-};
 
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-IStorageGroupFactoryPtr CreateStorageGroupFactory()
-{
-    return std::make_shared<TStorageGroupFactory>();
+    return CreateNaiveMirroredStorageGroup(
+        std::move(groupConfig),
+        std::move(devices),
+        CreateFiberTimer());
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

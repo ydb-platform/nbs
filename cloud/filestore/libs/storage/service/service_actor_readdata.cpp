@@ -218,11 +218,12 @@ private:
 
     void FillZeroIntervals();
 
-    void SendResponseAndDie(
+    void SendResponse(
         const TActorContext& ctx,
         std::unique_ptr<TEvService::TEvReadDataResponse> response);
     void ReplyTwoStageAndDie(const TActorContext& ctx);
     void HandleError(const TActorContext& ctx, const NProto::TError& error);
+    void ReleaseToPoolOrDie(const TActorContext& ctx);
 
     static ui64 GetCookie(ui32 requestGeneration, ui32 blobPieceId)
     {
@@ -233,6 +234,11 @@ private:
     {
         return static_cast<ui32>(cookie >> 32U);
     }
+
+    bool ShouldSkipOutdatedResponse(
+        ui64 cookie,
+        TString responseType,
+        const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -475,11 +481,36 @@ void ApplyFreshDataRange(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TReadDataActor::ShouldSkipOutdatedResponse(
+    ui64 cookie,
+    TString responseType,
+    const TActorContext& ctx)
+{
+    auto& state = GetState();
+    if (cookie != RequestGeneration) {
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "%s unexpected %s cookie: expected=%lu; "
+            "actual=%lu",
+            state.RequestContext.LogTag.c_str(),
+            responseType.c_str(),
+            RequestGeneration,
+            cookie);
+        return true;
+    }
+    return false;
+}
+
 void TReadDataActor::HandleDescribeDataResponse(
     const TEvIndexTablet::TEvDescribeDataResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (ExtractRequestGeneration(ev->Cookie) != RequestGeneration) {
+    if (ShouldSkipOutdatedResponse(
+            ExtractRequestGeneration(ev->Cookie),
+            "DescribeDataResponse",
+            ctx))
+    {
         return;
     }
 
@@ -638,7 +669,11 @@ void TReadDataActor::HandleReadBlobResponse(
     const TEvBlobStorage::TEvGetResult::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (ExtractRequestGeneration(ev->Cookie) != RequestGeneration) {
+    if (ShouldSkipOutdatedResponse(
+            ExtractRequestGeneration(ev->Cookie),
+            "ReadBlobResponse",
+            ctx))
+    {
         return;
     }
 
@@ -936,7 +971,11 @@ void TReadDataActor::HandleReadDataResponse(
     const TEvService::TEvReadDataResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (ExtractRequestGeneration(ev->Cookie) != RequestGeneration) {
+    if (ShouldSkipOutdatedResponse(
+            ExtractRequestGeneration(ev->Cookie),
+            "ReadDataResponse",
+            ctx))
+    {
         return;
     }
 
@@ -1011,7 +1050,7 @@ void TReadDataActor::HandleReadDataResponse(
 
     MoveBufferToIovecsIfNeeded(ctx, record);
 
-    SendResponseAndDie(ctx, std::move(response));
+    SendResponse(ctx, std::move(response));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1143,10 +1182,10 @@ void TReadDataActor::ReplyTwoStageAndDie(const TActorContext& ctx)
     }
 
     MoveBufferToIovecsIfNeeded(ctx, response->Record);
-    SendResponseAndDie(ctx, std::move(response));
+    SendResponse(ctx, std::move(response));
 }
 
-void TReadDataActor::SendResponseAndDie(
+void TReadDataActor::SendResponse(
     const TActorContext& ctx,
     std::unique_ptr<TEvService::TEvReadDataResponse> response)
 {
@@ -1170,6 +1209,11 @@ void TReadDataActor::SendResponseAndDie(
         0 /* flags */,
         state.RequestContext.Cookie);
 
+    ReleaseToPoolOrDie(ctx);
+}
+
+void TReadDataActor::ReleaseToPoolOrDie(const TActorContext& ctx)
+{
     if (ServiceActorId) {
         RequestState.reset();
         Become(&TThis::StateIdle);
@@ -1185,7 +1229,7 @@ void TReadDataActor::HandleError(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    SendResponseAndDie(
+    SendResponse(
         ctx,
         std::make_unique<TEvService::TEvReadDataResponse>(error));
 }
@@ -1199,10 +1243,9 @@ STFUNC(TReadDataActor::StateIdle)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         // Ignore responses left over from a completed request while idle.
-        case TEvIndexTablet::TEvDescribeDataResponse::EventType:
-        case TEvService::TEvReadDataResponse::EventType:
-        case TEvBlobStorage::TEvGetResult::EventType:
-            break;
+        IgnoreFunc(TEvIndexTablet::TEvDescribeDataResponse);
+        IgnoreFunc(TEvService::TEvReadDataResponse);
+        IgnoreFunc(TEvBlobStorage::TEvGetResult);
 
         default:
             HandleUnexpectedEvent(

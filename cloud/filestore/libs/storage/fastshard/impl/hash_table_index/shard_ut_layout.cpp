@@ -1,7 +1,6 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/hash_table_index/shard.h>
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_factory.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -32,8 +31,10 @@ constexpr size_t NodesPerGroup = 64;
 
 struct TNullStorageGroup: IStorageGroup
 {
-    TResultOrError<ui64> Init() override
+    TResultOrError<ui64> Init(ui64 generation) override
     {
+        Y_UNUSED(generation);
+
         return {0};
     }
 
@@ -72,25 +73,13 @@ struct TNullStorageGroup: IStorageGroup
     }
 };
 
-struct TNullStorageGroupFactory: IStorageGroupFactory
-{
-    IStorageGroupPtr MakeStorageGroup(
-        const NProtoPrivate::TPersistentFastShardConfig& config,
-        ui64 generation) override
-    {
-        Y_UNUSED(config, generation);
-
-        return std::make_shared<TNullStorageGroup>();
-    }
-};
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TStorageFixture
 {
     NProtoPrivate::TPersistentFastShardConfig Config;
-    std::shared_ptr<TNullStorageGroupFactory> Factory =
-        std::make_shared<TNullStorageGroupFactory>();
+    std::shared_ptr<TNullStorageGroup> Group =
+        std::make_shared<TNullStorageGroup>();
 
     TStorageFixture()
     {
@@ -99,7 +88,7 @@ struct TStorageFixture
         Config.SetPageSize(4_KB);
 
         //
-        // The null storage group factory ignores the devices; they are
+        // The null storage group ignores the devices; they are
         // here so that the layout dump has something to display.
         //
 
@@ -126,7 +115,7 @@ TEST(HashTableIndexShardLayoutTest, DumpsLayout)
         "fs0",
         ShardNo,
         1 /* generation */,
-        fx.Factory,
+        fx.Group,
         fx.Config);
     {
         auto e = shard->Init().GetValueSync();
@@ -289,7 +278,7 @@ TEST(HashTableIndexShardLayoutTest, RejectsLayoutChange)
         "fs0",
         ShardNo,
         1 /* generation */,
-        fx.Factory,
+        fx.Group,
         fx.Config);
 
     NProtoPrivate::TFastShardConfig config;

@@ -398,6 +398,10 @@ struct TCumulativeDiskCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
+    TCounter ZeroBytesWritten{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
     TCounter CompactionByReadStats{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
@@ -481,15 +485,19 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::MixedBlocksFilterTruePositives>(),
         MakeMeta<&TCumulativeDiskCounters::UncompressedBytesWritten>(),
         MakeMeta<&TCumulativeDiskCounters::CompressedBytesWritten>(),
+        MakeMeta<&TCumulativeDiskCounters::ZeroBytesWritten>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByReadStats>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByBlobCountPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByBlobCountPerDisk>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerDisk>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionByIgnoringZeroedPerRange>(),
+        MakeMeta<
+            &TCumulativeDiskCounters::CompactionByIgnoringZeroedPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByIgnoringZeroedPerDisk>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionByMixedBlockCountPerRange>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionByMixedBlockCountPerDisk>(),
+        MakeMeta<
+            &TCumulativeDiskCounters::CompactionByMixedBlockCountPerRange>(),
+        MakeMeta<
+            &TCumulativeDiskCounters::CompactionByMixedBlockCountPerDisk>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionTxTime>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionReadBlobsTime>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionWriteBlobsTime>(),
@@ -968,15 +976,10 @@ struct TBlobCompressionCounters
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
         ECounterExpirationPolicy::Permanent};
-    TCounter ZeroBytesCompressed{
-        EPublishingPolicy::Repl,
-        TCumulativeCounter::ECounterType::Generic,
-        ECounterExpirationPolicy::Permanent};
 
     static constexpr TMeta AllCounters[] = {
         MakeMeta<&TBlobCompressionCounters::UncompressedBytesWritten>(),
-        MakeMeta<&TBlobCompressionCounters::CompressedBytesWritten>(),
-        MakeMeta<&TBlobCompressionCounters::ZeroBytesCompressed>()};
+        MakeMeta<&TBlobCompressionCounters::CompressedBytesWritten>()};
 };
 
 struct TPartitionDiskCounters

@@ -181,6 +181,17 @@ Y_UNIT_TEST_SUITE(GetDiagnosticsErrorKindTest)
         UNIT_ASSERT_VALUES_EQUAL(EErrorKind::ErrorAborted, GetErrorKind(e));
     }
 
+    Y_UNIT_TEST(ShouldNotRetryVolumeOperationConflictAutomatically)
+    {
+        const auto error = MakeError(E_BS_VOLUME_OPERATION_CONFLICT);
+
+        UNIT_ASSERT_VALUES_EQUAL(0x80050007u, error.GetCode());
+        UNIT_ASSERT_EQUAL(EErrorKind::ErrorFatal, GetErrorKind(error));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "E_BS_VOLUME_OPERATION_CONFLICT",
+            FormatResultCode(error.GetCode()));
+    }
+
     Y_UNIT_TEST(ShouldCorrectlyInterpretErrorKindForSystemErrors)
     {
         constexpr std::array FatalSystemErrors = {EIO, EREMOTEIO, ENODATA};

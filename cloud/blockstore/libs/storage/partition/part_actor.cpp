@@ -109,11 +109,11 @@ TPartitionActor::TPartitionActor(
     }
 
     BlobCompressor = std::make_shared<TBlobCompressor>(
-        HasError(codec.GetError())
-            ? NCloud::NProto::COMPRESSION_CODEC_NONE
-            : codec.GetResult(),
+        HasError(codec.GetError()) ? NCloud::NProto::COMPRESSION_CODEC_NONE
+                                   : codec.GetResult(),
         TBlobCompressor::TMetricsConfig{
             .CompressionRate = Config->GetBlobCompressionRate(),
+            .BlockSize = PartitionConfig.GetBlockSize(),
             .ChunkSizes = DiagnosticsConfig->GetBlobCompressionChunkSizes(),
             .PartCounters = SharedState->GetPartCounters()});
 }

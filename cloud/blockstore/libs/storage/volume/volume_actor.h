@@ -604,6 +604,14 @@ private:
     void StartPartitionsIfNeeded(const NActors::TActorContext& ctx);
     void StartPartitionsForUse(const NActors::TActorContext& ctx);
     void StartPartitionsForGc(const NActors::TActorContext& ctx);
+    void StartPartitions(
+        const NActors::TActorContext& ctx,
+        EPartitionsStartedReason reason);
+    // How to start partitions right after the volume state is loaded.
+    EPartitionsStartedReason GetPartitionsStartedReasonOnLoad(
+        TInstant now) const;
+    // How to start partitions again after RestartPartition stops them.
+    EPartitionsStartedReason GetPartitionsStartedReasonOnRestart() const;
     void StopPartitions(
         const NActors::TActorContext& ctx,
         TPoisonCallback onPartitionStopped);

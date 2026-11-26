@@ -584,6 +584,7 @@ private:
     NVerbs::TConnectionPtr Connection;
     TString Host;
     ui32 Port;
+    const TBuffer ExternalData;
     IClientRequestHandlerPtr Handler;
     TEndpointCountersPtr Counters;
     TLog Log;
@@ -662,6 +663,7 @@ public:
         NVerbs::TConnectionPtr connection,
         TString host,
         ui32 port,
+        TBuffer externalData,
         TClientConfigPtr config,
         TEndpointCountersPtr stats,
         TLog log,
@@ -754,6 +756,7 @@ TClientEndpoint::TClientEndpoint(
         NVerbs::TConnectionPtr connection,
         TString host,
         ui32 port,
+        TBuffer externalData,
         TClientConfigPtr config,
         TEndpointCountersPtr stats,
         TLog log,
@@ -762,6 +765,7 @@ TClientEndpoint::TClientEndpoint(
     , Connection(std::move(connection))
     , Host(std::move(host))
     , Port(port)
+    , ExternalData(std::move(externalData))
     , Counters(std::move(stats))
     , Log(log)
     , Reconnect(config->MaxReconnectDelay)
@@ -2557,11 +2561,13 @@ public:
     void Stop() noexcept override;
     TFuture<IClientEndpointPtr> StartEndpoint(
         TString host,
-        ui32 port) noexcept override;
+        ui32 port,
+        TBuffer externalData) noexcept override;
     TResultOrError<IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
-        IClientEndpointHandlerPtr handler) noexcept override;
+        IClientEndpointHandlerPtr handler,
+        TBuffer externalData) noexcept override;
     void DumpHtml(IOutputStream& out) const override;
     bool IsAlignedDataEnabled() const override;
 
@@ -2652,10 +2658,15 @@ void TClient::Stop() noexcept
 TResultOrError<IClientEndpointPtr> TClient::StartEndpoint(
     TString host,
     ui32 port,
-    IClientEndpointHandlerPtr handler) noexcept
+    IClientEndpointHandlerPtr handler,
+    TBuffer externalData) noexcept
 {
     if (ConnectionPoller == nullptr) {
         return MakeError(E_RDMA_UNAVAILABLE, "rdma client is down");
+    }
+
+    if (externalData.Size() > RDMA_MAX_EXTERNAL_DATA_SIZE) {
+        return MakeError(E_ARGUMENT, "external data is too large");
     }
 
     try {
@@ -2664,6 +2675,7 @@ TResultOrError<IClientEndpointPtr> TClient::StartEndpoint(
             ConnectionPoller->CreateConnection(Config->IpTypeOfService),
             std::move(host),
             port,
+            std::move(externalData),
             Config,
             Counters,
             Log,
@@ -2682,7 +2694,8 @@ TResultOrError<IClientEndpointPtr> TClient::StartEndpoint(
 
 TFuture<IClientEndpointPtr> TClient::StartEndpoint(
     TString host,
-    ui32 port) noexcept
+    ui32 port,
+    TBuffer externalData) noexcept
 {
     auto unavailable = [&](TString message) {
         return MakeErrorFuture<IClientEndpointPtr>(
@@ -2694,12 +2707,19 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
         return unavailable("rdma client is down");
     }
 
+    if (externalData.Size() > RDMA_MAX_EXTERNAL_DATA_SIZE) {
+        return MakeErrorFuture<IClientEndpointPtr>(
+            std::make_exception_ptr(TServiceError(
+                MakeError(E_ARGUMENT, "external data is too large"))));
+    }
+
     try {
         auto endpoint = std::make_shared<TClientEndpoint>(
             Verbs,
             ConnectionPoller->CreateConnection(Config->IpTypeOfService),
             std::move(host),
             port,
+            std::move(externalData),
             Config,
             Counters,
             Log,
@@ -3003,9 +3023,24 @@ void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
         };
         InitMessageHeader(&message);
 
+        char privateData[RDMA_MAX_CONNECT_PRIVATE_SIZE];
+        memcpy(privateData, &message, sizeof(message));
+
+        TOptionWriter options(
+            privateData + sizeof(message),
+            sizeof(privateData) - sizeof(message));
+        if (endpoint->ExternalData) {
+            options.WriteData(
+                RDMA_CONNECT_OPTION_EXTERNAL_DATA,
+                TStringBuf(
+                    endpoint->ExternalData.Data(),
+                    endpoint->ExternalData.Size()));
+        }
+
         rdma_conn_param param = {
-            .private_data = &message,
-            .private_data_len = sizeof(TConnectMessage),
+            .private_data = privateData,
+            .private_data_len =
+                SafeCast<ui8>(sizeof(message) + options.Size()),
             .responder_resources = RDMA_MAX_RESP_RES,
             .initiator_depth = RDMA_MAX_INIT_DEPTH,
             .flow_control = 1,

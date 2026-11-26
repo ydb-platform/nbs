@@ -499,7 +499,7 @@ void TAlterVolumeActor::HandleStatVolumeResponse(
 
     if (msg->Record.GetIsVolumeOperationRestricted()) {
         Error = MakeError(
-            E_TRY_AGAIN,
+            E_BS_VOLUME_OPERATION_CONFLICT,
             TStringBuilder()
                 << GetOperationString()
                 << "Volume is not allowed while another exclusive volume "

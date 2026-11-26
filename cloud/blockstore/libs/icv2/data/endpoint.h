@@ -1,36 +1,33 @@
 #pragma once
 
 #include "config.h"
+#include "request_channel.h"
 
 #include <cloud/blockstore/libs/service/service.h>
-
-#include <cloud/storage/core/libs/icv2/request_channel/request_channel.h>
 
 namespace NCloud::NBlockStore::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Supports ReadBlocks, WriteBlocks, their Local variants and ZeroBlocks
-// without retries.
-// Activate the channel before sending requests; Start is optional.
-// Set a positive Headers.RequestTimeout in milliseconds for each request.
-// Write buffers may be reused after the call. Keep Local read buffers
-// accessible until the future is ready, or close their Sglist before reuse.
-// Release without Stop is allowed; the channel owner must outlive cleanup.
-// Optional Stop waits for requests and continuations; call it outside
-// callbacks. Continuations must not throw or call Stop. Neither timeout nor
-// shutdown cancels operations already sent to remote storage.
+// Use for reads, writes and zeroes. Set a positive Headers.RequestTimeout
+// in milliseconds. Reuse write buffers after the call returns. For
+// ReadBlocksLocal, keep buffers valid until the result is ready or close
+// their Sglist before reuse. Call Stop() outside callbacks. Keep callbacks
+// non-throwing. Requests already sent may still run after timeout or shutdown.
 struct IDataEndpoint: public IBlockStore
 {
-    // Rejects new requests with E_REJECTED and closes the channel without
-    // waiting. Safe to call from a result continuation.
-    virtual void RequestStop() = 0;
+    // Safe to call from result callbacks. Wait on the future outside callbacks.
+    virtual NThreading::TFuture<void> RequestStop() = 0;
+
+    // Observe shutdown completion without initiating it.
+    [[nodiscard]] virtual NThreading::TFuture<void> WhenClosed() const = 0;
 };
 
 using IDataEndpointPtr = std::shared_ptr<IDataEndpoint>;
 
-TResultOrError<IDataEndpointPtr> CreateDataEndpoint(
-    NCloud::NIcV2::IRequestChannelPtr channel,
+// Keep the channel's dependencies running until shutdown finishes.
+IDataEndpointPtr CreateDataEndpoint(
+    IDataRequestChannelPtr channel,
     TDataConfig config);
 
 }   // namespace NCloud::NBlockStore::NIcV2

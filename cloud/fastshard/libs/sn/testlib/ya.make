@@ -32,6 +32,7 @@ PEERDIR(
 IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
     PEERDIR(
         cloud/fastshard/libs/journal/impl
+        cloud/fastshard/libs/journal/server
 
         contrib/libs/silk/src/fibers
         contrib/restricted/googletest/googletest

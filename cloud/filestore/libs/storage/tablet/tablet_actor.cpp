@@ -889,7 +889,11 @@ ui32 TIndexTabletActor::ScaleCompactionThreshold(ui32 t) const
     // of blobs per range by something that's linear w.r.t. BlockSize.
     //
     // See issue #95.
-    const ui64 factor = blockSize / DefaultBlockSize;
+    //
+    // The same applies to the range block group size: a range of a larger
+    // layout (RangeIdHasherType 2 / 3) holds proportionally more blobs.
+    const ui64 factor = (blockSize / DefaultBlockSize)
+        * (GetBlockGroupSize() / BlockGroupSize);
     return Min<ui64>(Max<ui32>(), factor * t);
 }
 
@@ -983,7 +987,7 @@ TCleanupInfo TIndexTabletActor::GetCleanupInfo() const
     const double rangeCount =
         Config->GetCalculateCleanupScoreBasedOnUsedBlocksCount()
             ? static_cast<double>(stats.GetUsedBlocksCount()) /
-                  (BlockGroupSize * NodeGroupSize)
+                  (GetBlockGroupSize() * NodeGroupSize)
             : static_cast<double>(compactionStats.UsedRangesCount);
 
     const auto avgCleanupScore = rangeCount > 0.0
@@ -2196,21 +2200,21 @@ void TIndexTabletActor::UnregisterFileStore(const NActors::TActorContext& ctx)
 
 void TIndexTabletActor::RegisterRdmaPipe(const TActorId& pipeServerId)
 {
-    if (RdmaTabletRegistry) {
+    if (RdmaTabletRegistry && Config->GetTabletDirectRdmaEnabled()) {
         RdmaTabletRegistry->RegisterPipe(pipeServerId, SelfId());
     }
 }
 
 void TIndexTabletActor::UnregisterRdmaPipe(const TActorId& pipeServerId)
 {
-    if (RdmaTabletRegistry) {
+    if (RdmaTabletRegistry && Config->GetTabletDirectRdmaEnabled()) {
         RdmaTabletRegistry->UnregisterPipe(pipeServerId);
     }
 }
 
 void TIndexTabletActor::UnregisterRdmaTablet()
 {
-    if (RdmaTabletRegistry) {
+    if (RdmaTabletRegistry && Config->GetTabletDirectRdmaEnabled()) {
         RdmaTabletRegistry->UnregisterTablet(SelfId());
     }
 }

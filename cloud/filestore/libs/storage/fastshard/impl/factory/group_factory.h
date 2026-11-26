@@ -1,16 +1,18 @@
 #pragma once
 
-#include "public.h"
-
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_factory.h>
-
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
+#include <cloud/fastshard/libs/storage_group/storage_group.h>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
+
+////////////////////////////////////////////////////////////////////////////////
 
 /**
  * An unrecognised type falls back to FAST_SHARD_STORAGE_MIRROR.
  */
-IStorageGroupFactoryPtr CreateStorageGroupFactory();
+NCloud::NFastShard::IStorageGroupPtr CreateStorageGroup(
+    const TString& fileSystemId,
+    const NProtoPrivate::TPersistentFastShardConfig& config);
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

@@ -759,27 +759,23 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetLastSentSelectiveTrimToCommitId());
         UNIT_ASSERT(state.IsSelectiveScanAllowed(0));
 
-        auto setStatus = [&state](EOperationStatus status)
-        {
-            state.AccessTrimFreshLogState().SetStatus(status, TInstant::Zero());
-        };
-
         // After a scan, the next one waits until another threshold of bytes
         // is killed.
         state.DeferSelectiveScan(100, 30);
         UNIT_ASSERT(!state.IsSelectiveScanAllowed(129));
         UNIT_ASSERT(state.IsSelectiveScanAllowed(130));
 
-        state.StartSelectiveTrim(10);
-        setStatus(EOperationStatus::Started);
+        state.StartTrimFreshLog(
+            ETrimFreshLogKind::Selective,
+            10,
+            TInstant::Zero());
         // The barrier counts as sent before the command succeeds.
         UNIT_ASSERT_VALUES_EQUAL(
             10,
             state.GetLastSentSelectiveTrimToCommitId());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetKeptToCommitId());
 
-        state.FailSelectiveTrim();
-        setStatus(EOperationStatus::Idle);
+        state.CompleteTrimFreshLog(/*failed=*/true, 0, TInstant::Zero());
         UNIT_ASSERT_VALUES_EQUAL(
             10,
             state.GetLastSentSelectiveTrimToCommitId());
@@ -788,15 +784,51 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         UNIT_ASSERT(state.IsSelectiveScanAllowed(100));
 
         state.DeferSelectiveScan(100, 30);
-        state.StartSelectiveTrim(12);
-        setStatus(EOperationStatus::Started);
-        state.CompleteSelectiveTrim();
+        state.StartTrimFreshLog(
+            ETrimFreshLogKind::Selective,
+            12,
+            TInstant::Zero());
+        state.CompleteTrimFreshLog(/*failed=*/false, 0, TInstant::Zero());
         UNIT_ASSERT_VALUES_EQUAL(12, state.GetKeptToCommitId());
         UNIT_ASSERT_VALUES_EQUAL(
             12,
             state.GetLastSentSelectiveTrimToCommitId());
         // After a success, it does.
         UNIT_ASSERT(!state.IsSelectiveScanAllowed(129));
+    }
+
+    Y_UNIT_TEST(ShouldTrackOrdinaryTrimState)
+    {
+        TPartitionTrimFreshLogState state(/*tabletId=*/0);
+        state.SetOrdinaryTrimRequested(true);
+
+        state.StartTrimFreshLog(
+            ETrimFreshLogKind::Ordinary,
+            5,
+            TInstant::Zero());
+        UNIT_ASSERT(!state.IsOrdinaryTrimRequested());
+
+        // A failed trim is requested again, after a backoff.
+        state.CompleteTrimFreshLog(/*failed=*/true, 0, TInstant::Zero());
+        UNIT_ASSERT(state.IsOrdinaryTrimRequested());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetLastTrimFreshLogToCommitId());
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            TDuration::Zero(),
+            state.GetTrimFreshLogBackoffDelay());
+
+        state.StartTrimFreshLog(
+            ETrimFreshLogKind::Ordinary,
+            7,
+            TInstant::Zero());
+        state.CompleteTrimFreshLog(/*failed=*/false, 0, TInstant::Zero());
+        UNIT_ASSERT(!state.IsOrdinaryTrimRequested());
+        UNIT_ASSERT_VALUES_EQUAL(7, state.GetLastTrimFreshLogToCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Zero(),
+            state.GetTrimFreshLogBackoffDelay());
+        UNIT_ASSERT_EQUAL(
+            ETrimFreshLogKind::None,
+            state.GetStartedTrimFreshLogKind());
     }
 
     Y_UNIT_TEST(ShouldBreakDownUntrimmedFreshBlobs)
@@ -847,47 +879,35 @@ Y_UNIT_TEST_SUITE(TPartitionFreshBlocksStateTest)
         {
             return TInstant::Seconds(seconds);
         };
+        constexpr auto Ordinary = ETrimFreshLogKind::Ordinary;
+        constexpr auto Selective = ETrimFreshLogKind::Selective;
 
-        state.StartTrimFreshLog(/*selective=*/false, at(1));
-        state.CompleteTrimFreshLog(
-            /*selective=*/false,
-            /*failed=*/false,
-            10,
-            at(2));
-        state.StartTrimFreshLog(/*selective=*/true, at(3));
-        state.CompleteTrimFreshLog(
-            /*selective=*/true,
-            /*failed=*/false,
-            20,
-            at(4));
+        state.StartTrimFreshLog(Ordinary, 1, at(1));
+        state.CompleteTrimFreshLog(/*failed=*/false, 10, at(2));
+        state.StartTrimFreshLog(Selective, 3, at(3));
+        state.CompleteTrimFreshLog(/*failed=*/false, 20, at(4));
         // A failed trim removes nothing.
-        state.StartTrimFreshLog(/*selective=*/true, at(5));
-        state.CompleteTrimFreshLog(
-            /*selective=*/true,
-            /*failed=*/true,
-            0,
-            at(6));
-        state.StartTrimFreshLog(/*selective=*/true, at(7));
-        state.CompleteTrimFreshLog(
-            /*selective=*/true,
-            /*failed=*/false,
-            30,
-            at(8));
-        state.StartTrimFreshLog(/*selective=*/true, at(9));
+        state.StartTrimFreshLog(Selective, 5, at(5));
+        state.CompleteTrimFreshLog(/*failed=*/true, 0, at(6));
+        state.StartTrimFreshLog(Selective, 7, at(7));
+        state.CompleteTrimFreshLog(/*failed=*/false, 30, at(8));
+        state.StartTrimFreshLog(Selective, 9, at(9));
         UNIT_ASSERT_EQUAL(
             EOperationStatus::Started,
             state.GetTrimFreshLogState().Status);
 
-        const auto& ordinary = state.GetOrdinaryTrimStats();
-        UNIT_ASSERT_EQUAL(EOperationStatus::Idle, ordinary.State.Status);
-        UNIT_ASSERT_VALUES_EQUAL(at(2), ordinary.State.Timestamp);
+        const auto ordinaryState = state.GetTrimFreshLogStateOfKind(Ordinary);
+        UNIT_ASSERT_EQUAL(EOperationStatus::Idle, ordinaryState.Status);
+        UNIT_ASSERT_VALUES_EQUAL(at(2), ordinaryState.Timestamp);
+        const auto& ordinary = state.GetTrimFreshLogStats(Ordinary);
         UNIT_ASSERT_VALUES_EQUAL(1, ordinary.SucceededCount);
         UNIT_ASSERT_VALUES_EQUAL(0, ordinary.FailedCount);
         UNIT_ASSERT_VALUES_EQUAL(10, ordinary.TrimmedByteCount);
 
-        const auto& selective = state.GetSelectiveTrimStats();
-        UNIT_ASSERT_EQUAL(EOperationStatus::Started, selective.State.Status);
-        UNIT_ASSERT_VALUES_EQUAL(at(9), selective.State.Timestamp);
+        const auto selectiveState = state.GetTrimFreshLogStateOfKind(Selective);
+        UNIT_ASSERT_EQUAL(EOperationStatus::Started, selectiveState.Status);
+        UNIT_ASSERT_VALUES_EQUAL(at(9), selectiveState.Timestamp);
+        const auto& selective = state.GetTrimFreshLogStats(Selective);
         UNIT_ASSERT_VALUES_EQUAL(2, selective.SucceededCount);
         UNIT_ASSERT_VALUES_EQUAL(1, selective.FailedCount);
         UNIT_ASSERT_VALUES_EQUAL(50, selective.TrimmedByteCount);

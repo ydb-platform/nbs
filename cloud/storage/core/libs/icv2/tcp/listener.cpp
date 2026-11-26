@@ -9,6 +9,8 @@
 
 #include <util/generic/yexception.h>
 
+#include <poll.h>
+
 #include <array>
 
 namespace NCloud::NIcV2 {
@@ -18,6 +20,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr int SocketBacklog = 128;
+constexpr int AcceptRetryDelayMs = 100;
 
 // Linux may report a pending TCP connection's network error from accept4().
 // Leave the listener running and return to the poller for the next attempt.
@@ -42,6 +45,12 @@ bool IsTransientAcceptError(int error)
         default:
             return false;
     }
+}
+
+bool IsResourceExhaustion(int error)
+{
+    return error == EMFILE || error == ENFILE || error == ENOBUFS ||
+           error == ENOMEM;
 }
 
 class TListener final
@@ -148,6 +157,10 @@ private:
                 if (IsTransientAcceptError(error)) {
                     break;
                 }
+                if (IsResourceExhaustion(error)) {
+                    WaitBeforeAcceptRetry();
+                    break;
+                }
                 Client->OnError(MakeSocketError(error, "accept"));
                 RequestStop();
                 break;
@@ -160,6 +173,21 @@ private:
             if (!Worker.IsStopping()) {
                 Client->OnConnection(result.ExtractResult());
             }
+        }
+    }
+
+    void WaitBeforeAcceptRetry()
+    {
+        pollfd wake{
+            .fd = Worker.GetWakeSocket(),
+            .events = POLLIN,
+            .revents = 0,
+        };
+        // Waiting on the listen socket would immediately wake with a backlog.
+        const int result = Worker.Poll({&wake, 1}, AcceptRetryDelayMs);
+        if (result < 0 && !Worker.IsStopping()) {
+            Client->OnError(MakeSocketError(-result, "wait to retry accept"));
+            RequestStop();
         }
     }
 

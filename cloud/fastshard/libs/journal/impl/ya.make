@@ -1,7 +1,6 @@
 LIBRARY()
 
 SRCS(
-    device_helpers.cpp
     device_page_store.cpp
     file_device.cpp
     journal.cpp
@@ -18,8 +17,6 @@ SRCS(
 
 PEERDIR(
     cloud/fastshard/libs/journal/iface
-    cloud/fastshard/public/api/protos
-
     cloud/storage/core/libs/common
     cloud/storage/core/libs/coroutine
     cloud/storage/core/libs/diagnostics

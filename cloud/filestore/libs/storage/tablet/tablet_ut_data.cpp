@@ -9987,6 +9987,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             UNIT_ASSERT(backendInfo->GetIsOverloaded());
         }
 
+        // The read worker enqueues TEvReadDataCompleted before replying to us,
+        // but the tablet may not have processed it yet. Querying storage stats
+        // through the same mailbox ensures completion accounting has finished.
+        tablet.GetStorageStats();
+
         {
             TTestRegistryVisitor visitor;
             registry->Visit(TInstant::Zero(), visitor);

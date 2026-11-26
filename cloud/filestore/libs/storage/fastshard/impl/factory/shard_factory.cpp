@@ -36,11 +36,15 @@ public:
             return CreateFileSystemShardStub();
         }
 
+        auto storageGroup = CreateStorageGroup(
+            fileSystemId,
+            config.GetPersistentConfig());
+
         return CreateHashTableIndexFileSystemShard(
             fileSystemId,
             shardNo,
             generation,
-            CreateStorageGroupFactory(),
+            std::move(storageGroup),
             config.GetPersistentConfig());
     }
 };

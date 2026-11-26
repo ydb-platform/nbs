@@ -156,6 +156,7 @@ TPrepareCompleteResult RunPrepareAndComplete(
     TTxPartition::TRangeCompaction args(rangeIdx, compactionRange);
     THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
     THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlobMetas;
+    TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata;
     bool ready = true;
 
     executor.ReadTx(
@@ -173,7 +174,8 @@ TPrepareCompleteResult RunPrepareAndComplete(
                 state,
                 args,
                 blobsToReadBlockMasks,
-                blobsToReadBlobMetas);
+                blobsToReadBlobMetas,
+                blobId2CompressionMetadata);
         });
 
     TVector<TBlobCompactionRequest> requests;
@@ -354,6 +356,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             TBlockRange32::MakeClosedInterval(0, MaxBlocksCount - 1));
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlobMetas;
+        TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata;
         bool ready = true;
 
         executor.ReadTx(
@@ -371,7 +374,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     state,
                     args,
                     blobsToReadBlockMasks,
-                    blobsToReadBlobMetas);
+                    blobsToReadBlobMetas,
+                    blobId2CompressionMetadata);
             });
 
         UNIT_ASSERT(ready);
@@ -404,6 +408,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             TBlockRange32::MakeClosedInterval(0, MaxBlocksCount - 1));
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlobMetas;
+        TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata;
         bool ready = true;
 
         executor.ReadTx(
@@ -421,7 +426,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     state,
                     args,
                     blobsToReadBlockMasks,
-                    blobsToReadBlobMetas);
+                    blobsToReadBlobMetas,
+                    blobId2CompressionMetadata);
             });
 
         UNIT_ASSERT(ready);
@@ -455,6 +461,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             TBlockRange32::MakeClosedInterval(0, MaxBlocksCount - 1));
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlobMetas;
+        TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata;
         bool ready = true;
 
         executor.ReadTx(
@@ -472,7 +479,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     state,
                     args,
                     blobsToReadBlockMasks,
-                    blobsToReadBlobMetas);
+                    blobsToReadBlobMetas,
+                    blobId2CompressionMetadata);
             });
 
         UNIT_ASSERT(ready);
@@ -504,6 +512,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             TBlockRange32::MakeClosedInterval(101, 103));
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlobMetas;
+        TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata;
         bool ready = true;
 
         executor.ReadTx(
@@ -521,7 +530,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     state,
                     args,
                     blobsToReadBlockMasks,
-                    blobsToReadBlobMetas);
+                    blobsToReadBlobMetas,
+                    blobId2CompressionMetadata);
             });
 
         UNIT_ASSERT(ready);
@@ -559,6 +569,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             TBlockRange32::MakeClosedInterval(0, MaxBlocksCount - 1));
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlobMetas;
+        TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata;
         bool ready = true;
 
         executor.ReadTx(
@@ -576,7 +587,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     state,
                     args,
                     blobsToReadBlockMasks,
-                    blobsToReadBlobMetas);
+                    blobsToReadBlobMetas,
+                    blobId2CompressionMetadata);
             });
 
         UNIT_ASSERT(ready);
@@ -611,6 +623,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             TBlockRange32::MakeClosedInterval(0, MaxBlocksCount - 1));
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlobMetas;
+        TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata;
         bool ready = true;
 
         executor.ReadTx(
@@ -628,7 +641,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     state,
                     args,
                     blobsToReadBlockMasks,
-                    blobsToReadBlobMetas);
+                    blobsToReadBlobMetas,
+                    blobId2CompressionMetadata);
             });
 
         UNIT_ASSERT(ready);
@@ -661,6 +675,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             TBlockRange32::MakeClosedInterval(0, MaxBlocksCount - 1));
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlobMetas;
+        TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata;
         bool ready = true;
 
         executor.ReadTx(
@@ -679,7 +694,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     state,
                     args,
                     blobsToReadBlockMasks,
-                    blobsToReadBlobMetas);
+                    blobsToReadBlobMetas,
+                    blobId2CompressionMetadata);
             });
 
         UNIT_ASSERT(ready);
@@ -721,6 +737,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             TBlockRange32::MakeClosedInterval(0, MaxBlocksCount - 1));
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlobMetas;
+        TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata;
         bool ready = true;
 
         executor.ReadTx(
@@ -738,7 +755,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     state,
                     args,
                     blobsToReadBlockMasks,
-                    blobsToReadBlobMetas);
+                    blobsToReadBlobMetas,
+                    blobId2CompressionMetadata);
             });
 
         UNIT_ASSERT(ready);
@@ -1079,6 +1097,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             auto args = MakeArgs();
             THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
             THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlobMetas;
+            TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata;
             bool ready = true;
 
             executor.ReadTx(
@@ -1096,7 +1115,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                         state,
                         args,
                         blobsToReadBlockMasks,
-                        blobsToReadBlobMetas);
+                        blobsToReadBlobMetas,
+                        blobId2CompressionMetadata);
                 });
 
             UNIT_ASSERT(ready);
@@ -1132,6 +1152,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
         auto args = MakeArgs();
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
         THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlobMetas;
+        TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata;
         bool ready = true;
 
         executor.ReadTx(
@@ -1149,7 +1170,8 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
                     state,
                     args,
                     blobsToReadBlockMasks,
-                    blobsToReadBlobMetas);
+                    blobsToReadBlobMetas,
+                    blobId2CompressionMetadata);
             });
 
         UNIT_ASSERT(ready);

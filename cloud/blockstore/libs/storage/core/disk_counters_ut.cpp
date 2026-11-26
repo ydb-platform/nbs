@@ -23,12 +23,11 @@ Y_UNIT_TEST_SUITE(TDiskCountersTests)
             return TPartitionDiskCounters(EPublishingPolicy::Repl, diagnostics);
         };
         auto first = makeCounters();
+        first.Cumulative.ZeroBytesWritten.Increment(4096);
         first.BlobCompression.at(4096).UncompressedBytesWritten.Increment(4096);
         first.BlobCompression.at(4096).CompressedBytesWritten.Increment(100);
-        first.BlobCompression.at(4096).ZeroBytesCompressed.Increment(1024);
         first.BlobCompression.at(8192).UncompressedBytesWritten.Increment(4096);
         first.BlobCompression.at(8192).CompressedBytesWritten.Increment(80);
-        first.BlobCompression.at(8192).ZeroBytesCompressed.Increment(2048);
 
         auto accumulated = makeCounters();
         accumulated.Add(first);
@@ -36,9 +35,6 @@ Y_UNIT_TEST_SUITE(TDiskCountersTests)
         UNIT_ASSERT_VALUES_EQUAL(
             200,
             accumulated.BlobCompression.at(4096).CompressedBytesWritten.Value);
-        UNIT_ASSERT_VALUES_EQUAL(
-            2 * 1024,
-            accumulated.BlobCompression.at(4096).ZeroBytesCompressed.Value);
 
         auto published = makeCounters();
         NMonitoring::TDynamicCountersPtr dynCounters =
@@ -58,6 +54,9 @@ Y_UNIT_TEST_SUITE(TDiskCountersTests)
             dynCounters->GetSubgroup("compression_chunk_size", "8.00 KiB");
         UNIT_ASSERT_VALUES_EQUAL(
             3 * 4096,
+            dynCounters->GetCounter("ZeroBytesWritten", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3 * 4096,
             singleBlock->GetCounter("UncompressedBytesWritten", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             300,
@@ -66,44 +65,26 @@ Y_UNIT_TEST_SUITE(TDiskCountersTests)
             240,
             twoBlocks->GetCounter("CompressedBytesWritten", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            3 * 1024,
-            singleBlock->GetCounter("ZeroBytesCompressed", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(
-            3 * 2048,
-            twoBlocks->GetCounter("ZeroBytesCompressed", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(
             0,
             published.BlobCompression.at(4096).CompressedBytesWritten.Value);
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             published.BlobCompression.at(4096).UncompressedBytesWritten.Value);
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            published.BlobCompression.at(4096).ZeroBytesCompressed.Value);
 
         published.Publish(now);
         UNIT_ASSERT_VALUES_EQUAL(
             300,
             singleBlock->GetCounter("CompressedBytesWritten", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(
-            3 * 1024,
-            singleBlock->GetCounter("ZeroBytesCompressed", true)->Val());
 
         published.Add(first);
         published.Publish(now);
         UNIT_ASSERT_VALUES_EQUAL(
             400,
             singleBlock->GetCounter("CompressedBytesWritten", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(
-            4 * 1024,
-            singleBlock->GetCounter("ZeroBytesCompressed", true)->Val());
         accumulated.Reset();
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             accumulated.BlobCompression.at(8192).CompressedBytesWritten.Value);
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            accumulated.BlobCompression.at(8192).ZeroBytesCompressed.Value);
     }
 
     Y_UNIT_TEST(ShouldResetAfterPublish)

@@ -18,4 +18,14 @@ public:
         TInFlightRequestStoragePtr inFlightRequests);
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TWriteDataActorPool final: public TWorkerActorPool
+{
+public:
+    TWriteDataActorPool(
+        IProfileLogPtr profileLog,
+        ITraceSerializerPtr traceSerializer);
+};
+
 }   // namespace NCloud::NFileStore::NStorage

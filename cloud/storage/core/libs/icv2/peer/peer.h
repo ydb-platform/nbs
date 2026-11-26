@@ -2,31 +2,12 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/icv2/peer/iface/status.h>
 #include <cloud/storage/core/libs/icv2/request_channel/request_channel.h>
-
-#include <util/system/types.h>
 
 namespace NCloud::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-enum class EPeerState
-{
-    Idle,
-    Connecting,
-    Connected,
-    Disconnected,   // Waiting to reconnect or permanently closed.
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-// Counts connection attempts and failed attempts for this peer.
-struct TPeerStatus
-{
-    EPeerState State = EPeerState::Idle;
-    ui64 ConnectionAttempts = 0;
-    ui64 ConnectionFailures = 0;
-};
 
 using TChannelResult = TResultOrError<IRequestChannelPtr>;
 using TChannelFuture = NThreading::TFuture<TChannelResult>;

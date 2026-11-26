@@ -128,23 +128,7 @@ void TVolumePerformanceCalculator::Register(const NProto::TVolume& volume)
         PerfSettings.AtomicStore(new TVolumePerfSettings(clientSettings));
     }
 
-    IsEnabled = true;
-}
-
-void TVolumePerformanceCalculator::Register(
-    TDynamicCounters& counters,
-    const NProto::TVolume& volume)
-{
-    Register(volume);
-    if (IsEnabled && !Counter) {
-        Counter = counters.GetCounter("Suffer", false);
-    }
-    if (IsEnabled && !SmoothCounter) {
-        SmoothCounter = counters.GetCounter("SmoothSuffer", false);
-    }
-    if (IsEnabled && !CriticalCounter) {
-        CriticalCounter = counters.GetCounter("CriticalSuffer", false);
-    }
+    Enabled = true;
 }
 
 void TVolumePerformanceCalculator::OnRequestCompleted(
@@ -157,7 +141,7 @@ void TVolumePerformanceCalculator::OnRequestCompleted(
     bool isRead = IsReadRequest(requestType);
     bool isWrite = IsWriteRequest(requestType);
 
-    if (IsEnabled && (isRead || isWrite)) {
+    if (Enabled && (isRead || isWrite)) {
         if (isRead) {
             AtomicAdd(
                 ExpectedScore,
@@ -187,7 +171,7 @@ bool TVolumePerformanceCalculator::DidSuffer(
 
 bool TVolumePerformanceCalculator::UpdateStats()
 {
-    if (!IsEnabled) {
+    if (!Enabled) {
         return false;
     }
 
@@ -222,22 +206,36 @@ bool TVolumePerformanceCalculator::UpdateStats()
             windowActualScore,
             UpdateCountersInterval));
 
-    if (!UpdateCounter && Counter) {
-        *Counter = SufferCount;
-    }
-
-    if (!UpdateCounter && SmoothCounter) {
-        *SmoothCounter = SmoothSufferCount;
-    }
-
-    if (!UpdateCounter && CriticalCounter) {
-        *CriticalCounter = CriticalSufferCount;
-    }
-
     AtomicSub(CurrentScore, actualScore);
     AtomicSub(ExpectedScore, expectedScore);
 
     return suffered;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TVolumeSufferCounters::Register(
+    TDynamicCounters& counters,
+    const TVolumePerformanceCalculator& calc)
+{
+    if (!calc.IsEnabled()) {
+        return;
+    }
+
+    Suffer = counters.GetCounter("Suffer", false);
+    SmoothSuffer = counters.GetCounter("SmoothSuffer", false);
+    CriticalSuffer = counters.GetCounter("CriticalSuffer", false);
+}
+
+void TVolumeSufferCounters::Publish(const TVolumePerformanceCalculator& calc)
+{
+    if (!Suffer) {
+        return;
+    }
+
+    *Suffer = calc.GetSufferCount();
+    *SmoothSuffer = calc.GetSmoothSufferCount();
+    *CriticalSuffer = calc.GetCriticalSufferCount();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

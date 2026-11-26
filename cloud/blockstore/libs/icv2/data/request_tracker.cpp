@@ -16,6 +16,15 @@ TRequestTracker::TReservation::~TReservation()
     Owner->Release(Bytes);
 }
 
+NProto::TError TRequestTracker::TReservation::ReserveBytes(ui64 bytes)
+{
+    if (auto error = Owner->ReserveBytes(bytes); HasError(error)) {
+        return error;
+    }
+    Bytes += bytes;
+    return {};
+}
+
 TRequestTracker::TRequestTracker(TDataConfig config)
     : Config(config)
 {}
@@ -94,8 +103,9 @@ NProto::TError TRequestTracker::CheckRunning() const
     return {};
 }
 
-void TRequestTracker::RequestStop()
+NThreading::TFuture<void> TRequestTracker::RequestStop()
 {
+    auto closed = Closed.GetFuture();
     auto state = State.load();
     while (state.Phase == EState::Running) {
         auto next = state;
@@ -106,15 +116,15 @@ void TRequestTracker::RequestStop()
 
                 Closed.SetValue();
             }
-            return;
+            break;
         }
     }
+    return closed;
 }
 
 void TRequestTracker::Stop()
 {
-    RequestStop();
-    Closed.GetFuture().GetValueSync();
+    RequestStop().Wait();
 }
 
 }   // namespace NCloud::NBlockStore::NIcV2

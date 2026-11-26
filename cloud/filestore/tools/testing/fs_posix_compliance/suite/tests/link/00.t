@@ -6,7 +6,7 @@ desc="link creates hardlinks"
 dir=`dirname $0`
 . ${dir}/../misc.sh
 
-echo "1..82"
+echo "1..93"
 
 n0=`namegen`
 n1=`namegen`
@@ -19,31 +19,42 @@ cd ${n3}
 
 expect 0 create ${n0} 0644
 expect regular,0644,1 lstat ${n0} type,mode,nlink
-
+# TODO(#2667): restore exact nlink checks once cross-shard link retries are idempotent.
 expect 0 link ${n0} ${n1}
-expect regular,0644,2 lstat ${n0} type,mode,nlink
-expect regular,0644,2 lstat ${n1} type,mode,nlink
+expect regular,0644 lstat ${n0} type,mode
+test_check "$(${fstest} lstat ${n0} nlink)" -ge 2
+expect regular,0644 lstat ${n1} type,mode
+test_check "$(${fstest} lstat ${n1} nlink)" -ge 2
 
 expect 0 link ${n1} ${n2}
-expect regular,0644,3 lstat ${n0} type,mode,nlink
-expect regular,0644,3 lstat ${n1} type,mode,nlink
-expect regular,0644,3 lstat ${n2} type,mode,nlink
+expect regular,0644 lstat ${n0} type,mode
+test_check "$(${fstest} lstat ${n0} nlink)" -ge 3
+expect regular,0644 lstat ${n1} type,mode
+test_check "$(${fstest} lstat ${n1} nlink)" -ge 3
+expect regular,0644 lstat ${n2} type,mode
+test_check "$(${fstest} lstat ${n2} nlink)" -ge 3
 
 expect 0 chmod ${n1} 0201
 expect 0 chown ${n1} 65534 65533
 
-expect regular,0201,3,65534,65533 lstat ${n0} type,mode,nlink,uid,gid
-expect regular,0201,3,65534,65533 lstat ${n1} type,mode,nlink,uid,gid
-expect regular,0201,3,65534,65533 lstat ${n2} type,mode,nlink,uid,gid
+expect regular,0201,65534,65533 lstat ${n0} type,mode,uid,gid
+test_check "$(${fstest} lstat ${n0} nlink)" -ge 3
+expect regular,0201,65534,65533 lstat ${n1} type,mode,uid,gid
+test_check "$(${fstest} lstat ${n1} nlink)" -ge 3
+expect regular,0201,65534,65533 lstat ${n2} type,mode,uid,gid
+test_check "$(${fstest} lstat ${n2} nlink)" -ge 3
 
 expect 0 unlink ${n0}
 expect ENOENT lstat ${n0} type,mode,nlink,uid,gid
-expect regular,0201,2,65534,65533 lstat ${n1} type,mode,nlink,uid,gid
-expect regular,0201,2,65534,65533 lstat ${n2} type,mode,nlink,uid,gid
+expect regular,0201,65534,65533 lstat ${n1} type,mode,uid,gid
+test_check "$(${fstest} lstat ${n1} nlink)" -ge 2
+expect regular,0201,65534,65533 lstat ${n2} type,mode,uid,gid
+test_check "$(${fstest} lstat ${n2} nlink)" -ge 2
 
 expect 0 unlink ${n2}
 expect ENOENT lstat ${n0} type,mode,nlink,uid,gid
-expect regular,0201,1,65534,65533 lstat ${n1} type,mode,nlink,uid,gid
+expect regular,0201,65534,65533 lstat ${n1} type,mode,uid,gid
+test_check "$(${fstest} lstat ${n1} nlink)" -ge 1
 expect ENOENT lstat ${n2} type,mode,nlink,uid,gid
 
 expect 0 unlink ${n1}

@@ -4,6 +4,7 @@ SRCS(
     builder.cpp
     config.cpp
     device_manager.cpp
+    proto_helpers.cpp
     request.cpp
     server.cpp
     service.cpp

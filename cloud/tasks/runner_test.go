@@ -802,41 +802,57 @@ func TestRunnerForRunRetriableErrorCountExceeded(t *testing.T) {
 }
 
 func TestRunnerForRunIgnoreRetryLimit(t *testing.T) {
-	ctx := newContext()
-	taskStorage := mocks.NewStorageMock()
-	task := NewTaskMock()
+	for _, count := range []uint64{0, 1, 2} {
+		t.Run(fmt.Sprintf("error_count_%d", count), func(t *testing.T) {
+			ctx := newContext()
+			taskStorage := mocks.NewStorageMock()
+			task := NewTaskMock()
 
-	execCtx := newTestExecutionContext(
-		task,
-		taskStorage,
-		storage.TaskState{
-			ID:                  taskID,
-			Status:              storage.TaskStatusRunning,
-			RetriableErrorCount: 1,
-		},
-	)
+			execCtx := newTestExecutionContext(
+				task,
+				taskStorage,
+				storage.TaskState{
+					ID:                  taskID,
+					Status:              storage.TaskStatusRunning,
+					RetriableErrorCount: count,
+					State:               []byte("before retry"),
+				},
+			)
 
-	err := errors.NewRetriableErrorWithIgnoreRetryLimit(assert.AnError)
-	task.On("Run", mock.Anything, execCtx).Run(func(args mock.Arguments) {
-	}).Return(err)
+			err := errors.NewRetriableErrorWithIgnoreRetryLimit(
+				assert.AnError,
+			)
+			task.On("Run", mock.Anything, execCtx).Return(err).Once()
 
-	state := storage.TaskState{
-		ID:                  taskID,
-		Status:              storage.TaskStatusRunning,
-		RetriableErrorCount: 2,
+			state := storage.TaskState{
+				ID:                  taskID,
+				Status:              storage.TaskStatusRunning,
+				RetriableErrorCount: count,
+				State:               []byte("after retry"),
+			}
+			task.On("Save").Return(state.State, nil).Once()
+			taskStorage.On(
+				"UpdateTask",
+				ctx,
+				mock.MatchedBy(matchesState(t, state)),
+			).Return(state, nil).Once()
+
+			runnerMetrics := &mockRunnerMetrics{}
+			runnerMetrics.On("OnExecutionError", err).Return().Once()
+
+			runner := runnerForRun{
+				metrics:                       runnerMetrics,
+				maxRetriableErrorCountDefault: 1,
+			}
+			runner.executeTask(ctx, execCtx, task)
+			mock.AssertExpectationsForObjects(
+				t,
+				task,
+				taskStorage,
+				runnerMetrics,
+			)
+		})
 	}
-	task.On("Save").Return(state.State, nil)
-	taskStorage.On("UpdateTask", ctx, mock.MatchedBy(matchesState(t, state))).Return(state, nil)
-
-	runnerMetrics := &mockRunnerMetrics{}
-	runnerMetrics.On("OnExecutionError", err).Return().Once()
-
-	runner := runnerForRun{
-		metrics:                       runnerMetrics,
-		maxRetriableErrorCountDefault: 1,
-	}
-	runner.executeTask(ctx, execCtx, task)
-	mock.AssertExpectationsForObjects(t, task, taskStorage, runnerMetrics)
 }
 
 func TestRunnerForRunGotNonRetriableError1(t *testing.T) {

@@ -1,0 +1,127 @@
+#include "storage_group_helpers.h"
+
+namespace NCloud::NFastShard {
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TWriteLogRecordRequest MakeWriteLogRecordRequest(
+    NProto::TDeviceRequestHeaders headers,
+    const TVector<TPageGroup>& pageGroups,
+    TLsnLink link)
+{
+    NProto::TWriteLogRecordRequest request;
+    *request.MutableHeaders() = std::move(headers);
+    request.MutablePageGroups()->Reserve(pageGroups.size());
+    for (const auto& pg: pageGroups) {
+        auto* w = request.AddPageGroups();
+        w->SetFirstPageNo(pg.FirstPageNo);
+        w->MutableContent()->Reserve(pg.Content.size());
+        for (const auto& c: pg.Content) {
+            // proto content is TString - the copy stays until the protocol
+            // itself switches away from TString
+            w->AddContent()->assign(c.Data(), c.Size());
+        }
+    }
+
+    request.SetLogSequenceNumber(link.Lsn);
+    request.SetPrevLogSequenceNumber(link.PrevLsn);
+    return request;
+}
+
+NProto::TWriteLogRecordRequest MakeReplayRequest(
+    NProto::TDeviceRequestHeaders headers,
+    const NProto::TJournalRecord& record)
+{
+    NProto::TWriteLogRecordRequest request;
+    *request.MutableHeaders() = std::move(headers);
+    *request.MutablePageGroups() = record.GetPageGroups();
+    request.SetLogSequenceNumber(record.GetLogSequenceNumber());
+    request.SetPrevLogSequenceNumber(record.GetPrevLogSequenceNumber());
+    return request;
+}
+
+NProto::TReadPagesRequest MakeReadPagesRequest(
+    NProto::TDeviceRequestHeaders headers,
+    const TVector<TPageGroupRef>& pageGroupRefs,
+    ui32 pageSize)
+{
+    NProto::TReadPagesRequest request;
+    *request.MutableHeaders() = std::move(headers);
+    for (const auto& pg: pageGroupRefs) {
+        auto* ref = request.AddPageGroupRefs();
+        ref->SetPageSize(pageSize);
+        ref->SetFirstPageNo(pg.FirstPageNo);
+        ref->SetPageCount(pg.PageCount);
+    }
+
+    return request;
+}
+
+void ExtractPageGroups(
+    const NProto::TReadPagesResponse& response,
+    TVector<TPageGroup>* pageGroups)
+{
+    pageGroups->reserve(response.PageGroupsSize());
+    for (const auto& pg: response.GetPageGroups()) {
+        auto& r = pageGroups->emplace_back();
+        r.FirstPageNo = pg.GetFirstPageNo();
+        r.Content.reserve(pg.ContentSize());
+        for (const auto& c: pg.GetContent()) {
+            r.Content.emplace_back(c.data(), c.size());
+        }
+    }
+}
+
+TString DebugMessage(const NProto::TWriteLogRecordRequest& w)
+{
+    NProto::TReadPagesRequest r;
+    *r.MutableHeaders() = w.GetHeaders();
+    for (const auto& pg: w.GetPageGroups()) {
+        auto* rpg = r.AddPageGroupRefs();
+        rpg->SetPageSize(pg.ContentSize() ? pg.GetContent(0).size() : 0);
+        rpg->SetPageCount(pg.ContentSize());
+        rpg->SetFirstPageNo(pg.GetFirstPageNo());
+    }
+
+    return r.ShortUtf8DebugString();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+int AcquireDevicesFiberMain(TAcquireDevicesParams* params) noexcept
+{
+    NProto::TAcquireDevicesRequest request = *params->Request;
+    request.AddDeviceUUIDs(params->Device.DeviceUUID);
+    *params->Response = CallWithRetries(
+        *params->Context,
+        *params->RetryPolicy,
+        *params->Timer,
+        [&]
+        {
+            return params->Device.Node->AcquireDevices(
+                *params->Context,
+                request);
+        });
+
+    return 0;
+}
+
+int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept
+{
+    NProto::TReleaseDevicesRequest request = *params->Request;
+    request.AddDeviceUUIDs(params->Device.DeviceUUID);
+    *params->Response = CallWithRetries(
+        *params->Context,
+        *params->RetryPolicy,
+        *params->Timer,
+        [&]
+        {
+            return params->Device.Node->ReleaseDevices(
+                *params->Context,
+                request);
+        });
+
+    return 0;
+}
+
+}   // namespace NCloud::NFastShard

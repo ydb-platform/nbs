@@ -3,4 +3,5 @@ RECURSE(
     access-service-new
     qemu
     virtiofs-server
+    ydb
 )

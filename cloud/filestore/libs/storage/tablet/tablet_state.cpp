@@ -346,6 +346,16 @@ void TIndexTabletState::UpdateConfig(
     InitShardBalancer(config);
 }
 
+void TIndexTabletState::SetRangeIdHasherType(
+    IIndexTabletDatabase& db,
+    ui32 type)
+{
+    FileSystem.SetRangeIdHasherType(type);
+    db.WriteFileSystem(FileSystem);
+
+    Impl->RangeIdHasher = CreateHasher(FileSystem);
+}
+
 void TIndexTabletState::SetFrozen(IIndexTabletDatabase& db, bool frozen)
 {
     FileSystem.SetFrozen(frozen);

@@ -8,10 +8,10 @@ IFileSystemShardPtr CreateHashTableIndexFileSystemShard(
     TString fileSystemId,
     ui32 shardNo,
     ui64 generation,
-    IStorageGroupFactoryPtr storageGroupFactory,
+    NCloud::NFastShard::IStorageGroupPtr storageGroup,
     const NProtoPrivate::TPersistentFastShardConfig& config)
 {
-    Y_UNUSED(fileSystemId, shardNo, generation, storageGroupFactory, config);
+    Y_UNUSED(fileSystemId, shardNo, generation, storageGroup, config);
 
     return nullptr;
 }

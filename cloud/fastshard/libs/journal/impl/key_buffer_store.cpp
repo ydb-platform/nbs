@@ -425,8 +425,9 @@ public:
 // A write copies an appendable page plus the new entry into an empty page and
 // releases the original once the copy has landed. Old copies of a key stay
 // until an erase passes it, the newest seq wins. The superblock alternates
-// between its slots, one write at a time. Restore keeps the highest seq of
-// every key above the erased bound, a tie goes to the later appended page.
+// between its slots, one write at a time: a write that comes during another
+// one starts when that one is done. Restore keeps the highest seq of every
+// key above the erased bound, a tie goes to the later appended page.
 
 class TDeviceKeyBufferStore final
     : public IKeyBufferStore
@@ -450,7 +451,9 @@ private:
     // The superblock the device holds.
     TSuperblock Superblock;
 
-    bool SuperblockWriteInFlight = false;
+    // The last superblock write that was asked for. The next one starts when
+    // this one is done.
+    TFuture<NProto::TError> LastSuperblockWrite = MakeFuture(NProto::TError());
     ui64 NextSuperblockSlot = 0;
 
 public:
@@ -472,12 +475,16 @@ public:
     TFuture<NProto::TError> EraseBelow(ui64 key) override;
 
 private:
-    TRestoreResult RestoreFromPages(TVector<TBuffer> pages);
+    TRestoreResult RestoreFromPages(
+        TVector<TFuture<TResultOrError<TVector<TBuffer>>>> futures);
+
+    using TSuperblockUpdate = std::function<bool(TSuperblock&)>;
 
     // Applies |update| to a copy of the superblock and writes it to the next
-    // slot.
-    TFuture<NProto::TError> WriteSuperblock(
-        const std::function<bool(TSuperblock&)>& update);
+    // slot. Waits for the superblock writes asked for earlier.
+    TFuture<NProto::TError> WriteSuperblock(TSuperblockUpdate update);
+
+    TFuture<NProto::TError> DoWriteSuperblock(const TSuperblockUpdate& update);
 
     NProto::TError OnEntryWritten(
         std::shared_ptr<TWriteController> writeController,
@@ -543,33 +550,16 @@ TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
     }
 
     return WaitAll(futures).Apply(
-        [self = shared_from_this(),
-         futures = std::move(futures)](const TFuture<void>&)
+        [weakSelf = weak_from_this(),
+         futures = std::move(futures)](const TFuture<void>&) mutable
         {
-            TVector<TBuffer> pages;
-            pages.reserve(self->PageCount);
-
-            for (auto& future: futures) {
-                auto result = UnsafeExtractValue(future);
-                if (HasError(result)) {
-                    return TRestoreResult(result.GetError());
-                }
-
-                auto readPages = result.ExtractResult();
-                for (auto& readPage: readPages) {
-                    pages.emplace_back(std::move(readPage));
-                }
+            auto self = weakSelf.lock();
+            if (!self) {
+                return TRestoreResult(
+                    MakeError(E_CANCELLED, "KeyBufferStore is destroyed"));
             }
 
-            if (pages.size() != self->PageCount) {
-                return TRestoreResult(MakeError(
-                    E_INVALID_STATE,
-                    TStringBuilder()
-                        << "the device returned " << pages.size()
-                        << " pages, expected " << self->PageCount));
-            }
-
-            return self->RestoreFromPages(std::move(pages));
+            return self->RestoreFromPages(std::move(futures));
         });
 }
 
@@ -628,10 +618,20 @@ TResultOrError<TFuture<NProto::TError>> TDeviceKeyBufferStore::Write(
     ranges.push_back(std::move(pageRange));
 
     return Device->WritePages(std::move(ranges))
-        .Apply([self = shared_from_this(),
-                controller = std::move(writeController)](
-                   const TFuture<NProto::TError>& future) mutable
-               { return self->OnEntryWritten(std::move(controller), future); });
+        .Apply(
+            [weakSelf = weak_from_this(),
+             controller = std::move(writeController)](
+                const TFuture<NProto::TError>& future) mutable
+            {
+                auto self = weakSelf.lock();
+                if (!self) {
+                    return MakeError(
+                        E_CANCELLED,
+                        "KeyBufferStore is destroyed");
+                }
+
+                return self->OnEntryWritten(std::move(controller), future);
+            });
 }
 
 TFuture<NProto::TError> TDeviceKeyBufferStore::WriteMeta(TBuffer buffer)
@@ -646,7 +646,7 @@ TFuture<NProto::TError> TDeviceKeyBufferStore::WriteMeta(TBuffer buffer)
     }
 
     return WriteSuperblock(
-        [&buffer](TSuperblock& superblock)
+        [buffer = std::move(buffer)](TSuperblock& superblock) mutable
         {
             superblock.MetaBuffer = std::move(buffer);
             return true;
@@ -668,10 +668,11 @@ TFuture<NProto::TError> TDeviceKeyBufferStore::EraseBelow(ui64 key)
 }
 
 TFuture<NProto::TError> TDeviceKeyBufferStore::WriteSuperblock(
-    const std::function<bool(TSuperblock&)>& update)
+    TSuperblockUpdate update)
 {
-    TSuperblock superblock;
-    ui64 slot = 0;
+    auto promise = NewPromise<NProto::TError>();
+    auto future = promise.GetFuture();
+    TFuture<NProto::TError> prevWrite;
 
     {
         std::lock_guard lock(Lock);
@@ -681,27 +682,58 @@ TFuture<NProto::TError> TDeviceKeyBufferStore::WriteSuperblock(
                 MakeError(E_INVALID_STATE, "the store is not restored"));
         }
 
+        prevWrite = std::exchange(LastSuperblockWrite, future);
+    }
+
+    //
+    // Start the write when the previous one is done, with or without an
+    // error. Subscribe without the lock: the callback runs at once if the
+    // previous write is done already
+    //
+
+    prevWrite.Subscribe(
+        [weakSelf = weak_from_this(),
+         update = std::move(update),
+         promise = std::move(promise)](const TFuture<NProto::TError>&) mutable
+        {
+            auto self = weakSelf.lock();
+            if (!self) {
+                promise.SetValue(
+                    MakeError(E_CANCELLED, "KeyBufferStore is destroyed"));
+                return;
+            }
+
+            self->DoWriteSuperblock(update).Subscribe(
+                [promise = std::move(promise)](
+                    const TFuture<NProto::TError>& future) mutable
+                { promise.SetValue(future.GetValue()); });
+        });
+
+    return future;
+}
+
+TFuture<NProto::TError> TDeviceKeyBufferStore::DoWriteSuperblock(
+    const TSuperblockUpdate& update)
+{
+    TSuperblock superblock;
+    ui64 slot = 0;
+
+    {
+        std::lock_guard lock(Lock);
+
         superblock = Superblock;
         if (!update(superblock)) {
             return MakeFuture(
                 MakeError(S_FALSE, "nothing to update in the superblock"));
         }
 
-        if (SuperblockWriteInFlight) {
-            return MakeFuture(
-                MakeError(E_REJECTED, "A superblock write is in progress"));
-        }
-
         superblock.Seq = NextSeq++;
         slot = NextSuperblockSlot;
-
-        SuperblockWriteInFlight = true;
     }
 
     auto result = MakeSuperblockPage(superblock, PageSize);
     if (HasError(result)) {
-        return MakeFuture(
-            OnSuperblockWritten(std::move(superblock), result.GetError()));
+        return MakeFuture(result.GetError());
     }
 
     auto superblockPage = result.ExtractResult();
@@ -714,9 +746,16 @@ TFuture<NProto::TError> TDeviceKeyBufferStore::WriteSuperblock(
 
     return Device->WritePages(std::move(ranges))
         .Apply(
-            [self = shared_from_this(), superblock = std::move(superblock)](
+            [weakSelf = weak_from_this(), superblock = std::move(superblock)](
                 const TFuture<NProto::TError>& future) mutable
             {
+                auto self = weakSelf.lock();
+                if (!self) {
+                    return MakeError(
+                        E_CANCELLED,
+                        "KeyBufferStore is destroyed");
+                }
+
                 return self->OnSuperblockWritten(
                     std::move(superblock),
                     future.GetValue());
@@ -724,8 +763,30 @@ TFuture<NProto::TError> TDeviceKeyBufferStore::WriteSuperblock(
 }
 
 IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
-    TVector<TBuffer> pages)
+    TVector<TFuture<TResultOrError<TVector<TBuffer>>>> futures)
 {
+    TVector<TBuffer> pages;
+    pages.reserve(PageCount);
+
+    for (auto& future: futures) {
+        auto result = UnsafeExtractValue(future);
+        if (HasError(result)) {
+            return TRestoreResult(result.GetError());
+        }
+
+        auto readPages = result.ExtractResult();
+        for (auto& readPage: readPages) {
+            pages.emplace_back(std::move(readPage));
+        }
+    }
+
+    if (pages.size() != PageCount) {
+        return TRestoreResult(MakeError(
+            E_INVALID_STATE,
+            TStringBuilder() << "the device returned " << pages.size()
+                             << " pages, expected " << PageCount));
+    }
+
     ui64 maxSeq = 0;
 
     std::optional<TSuperblock> superblock;
@@ -879,13 +940,11 @@ NProto::TError TDeviceKeyBufferStore::OnSuperblockWritten(
     TSuperblock superblock,
     const NProto::TError& error)
 {
-    std::lock_guard lock(Lock);
-
-    SuperblockWriteInFlight = false;
-
     if (HasError(error)) {
         return error;
     }
+
+    std::lock_guard lock(Lock);
 
     const bool erasedBelowKeyChanged =
         Superblock.ErasedBelowKey != superblock.ErasedBelowKey;

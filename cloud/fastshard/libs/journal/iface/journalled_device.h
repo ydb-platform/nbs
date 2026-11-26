@@ -2,9 +2,13 @@
 
 #include "public.h"
 
-#include <cloud/fastshard/public/api/protos/device.pb.h>
+#include "types.h"
+
+#include <cloud/storage/core/libs/common/error.h>
 
 #include <library/cpp/threading/future/future.h>
+
+#include <util/generic/vector.h>
 
 namespace NCloud::NJournalled {
 
@@ -17,28 +21,28 @@ struct IJournalledDevice
     [[nodiscard]] virtual auto Start() noexcept
         -> NThreading::TFuture<NProto::TError> = 0;
 
-    [[nodiscard]] virtual auto Stop() noexcept
-        -> NThreading::TFuture<void> = 0;
+    [[nodiscard]] virtual NThreading::TFuture<void> Stop() noexcept = 0;
 
-    [[nodiscard]] virtual auto ReadPages(NProto::TReadPagesRequest request)
-        -> NThreading::TFuture<NProto::TReadPagesResponse> = 0;
+    [[nodiscard]] virtual auto ReadPages(TVector<TPageRangeRef> rangeRefs)
+        -> NThreading::TFuture<TResultOrError<TReadPagesResult>> = 0;
 
-    [[nodiscard]] virtual auto WriteLogRecord(
-        NProto::TWriteLogRecordRequest request)
-        -> NThreading::TFuture<NProto::TWriteLogRecordResponse> = 0;
+    [[nodiscard]] virtual NThreading::TFuture<NProto::TError> WriteLogRecord(
+        TVector<TPageRange> ranges,
+        ui64 lsn,
+        ui64 prevLsn) = 0;
 
     [[nodiscard]] virtual auto ReadJournalTail(
-        NProto::TReadJournalTailRequest request)
-        -> NThreading::TFuture<NProto::TReadJournalTailResponse> = 0;
+        ui64 afterLsn,
+        ui32 maxRecordCount)
+        -> NThreading::TFuture<TResultOrError<TJournalTail>> = 0;
 
-    [[nodiscard]] virtual auto AdvanceLsnLowWatermark(
-        NProto::TAdvanceLsnLowWatermarkRequest request)
-        -> NThreading::TFuture<NProto::TAdvanceLsnLowWatermarkResponse> = 0;
+    [[nodiscard]] virtual NThreading::TFuture<NProto::TError> AdvanceWatermark(
+        ui64 lsnLowWatermark) = 0;
 
     // Writes the pages right to the data area, past the journal. The caller
     // must not read or write the same pages at the same time.
-    [[nodiscard]] virtual auto WritePages(NProto::TWritePagesRequest request)
-        -> NThreading::TFuture<NProto::TWritePagesResponse> = 0;
+    [[nodiscard]] virtual NThreading::TFuture<NProto::TError> WritePages(
+        TVector<TPageRange> ranges) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

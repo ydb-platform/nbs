@@ -14,12 +14,10 @@
 #include <cloud/filestore/libs/storage/fastshard/impl/model/persistent_bitmap.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/persistent_hash_table.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/superblock.h>
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group.h>
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_factory.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
-#include <cloud/fastshard/libs/sn/client/client.h>
+#include <cloud/fastshard/libs/storage_group/storage_group.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/simple_template.h>
@@ -670,7 +668,6 @@ private:
     const TString FileSystemId;
     const ui32 ShardNo;
     const ui64 Generation;
-    const IStorageGroupFactoryPtr StorageGroupFactory;
     const NProtoPrivate::TPersistentFastShardConfig Config;
     const ui64 PageSize;
     const ui64 PageClusterSize;
@@ -696,15 +693,15 @@ public:
         TString fileSystemId,
         ui32 shardNo,
         ui64 generation,
-        IStorageGroupFactoryPtr storageGroupFactory,
+        IStorageGroupPtr storageGroup,
         NProtoPrivate::TPersistentFastShardConfig config)
         : FileSystemId(std::move(fileSystemId))
         , ShardNo(shardNo)
         , Generation(generation)
-        , StorageGroupFactory(std::move(storageGroupFactory))
         , Config(std::move(config))
         , PageSize(Config.GetPageSize() ? Config.GetPageSize() : DefaultBlockSize)
         , PageClusterSize(PageClusterPageCount * PageSize)
+        , Storage(std::move(storageGroup))
     {
         // TODO(#5895): Remove fallback after proper shards configuration.
         if (!Config.GetPageSize()) {
@@ -712,11 +709,6 @@ public:
                 FileSystemId.c_str());
         }
 
-        //
-        // Using only one storage group for now.
-        //
-
-        Storage = StorageGroupFactory->MakeStorageGroup(Config, Generation);
         PageStore = CreatePageStore(Storage, PageSize);
 
         InitDataStructures();
@@ -2403,7 +2395,7 @@ private:
 public:
     NProto::TError Init()
     {
-        auto [lastLsn, error] = Storage->Init();
+        auto [lastLsn, error] = Storage->Init(Generation);
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -2607,14 +2599,14 @@ public:
         TString fileSystemId,
         ui32 shardNo,
         ui64 generation,
-        IStorageGroupFactoryPtr storageGroupFactory,
+        IStorageGroupPtr storageGroup,
         NProtoPrivate::TPersistentFastShardConfig config)
         : TFiberShard<TFiberShardImpl>(
               std::make_shared<TFiberShardImpl>(
                   std::move(fileSystemId),
                   shardNo,
                   generation,
-                  std::move(storageGroupFactory),
+                  std::move(storageGroup),
                   std::move(config)))
     {}
 };
@@ -2625,14 +2617,14 @@ IFileSystemShardPtr CreateHashTableIndexFileSystemShard(
     TString fileSystemId,
     ui32 shardNo,
     ui64 generation,
-    IStorageGroupFactoryPtr storageGroupFactory,
+    IStorageGroupPtr storageGroup,
     const NProtoPrivate::TPersistentFastShardConfig& config)
 {
     return std::make_shared<THashTableIndexFileSystemShard>(
         std::move(fileSystemId),
         shardNo,
         generation,
-        std::move(storageGroupFactory),
+        std::move(storageGroup),
         config);
 }
 

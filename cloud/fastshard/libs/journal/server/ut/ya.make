@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
     builder_ut.cpp
+    proto_helpers_ut.cpp
     server_ut.cpp
     service_ut.cpp
 )

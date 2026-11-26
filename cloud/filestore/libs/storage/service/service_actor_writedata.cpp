@@ -20,6 +20,7 @@
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 
 #include <library/cpp/iterator/enumerate.h>
 
@@ -144,6 +145,7 @@ struct TWriteRequestContext
     const bool UseThreeStageWrite = false;
     const bool ExternalWriteDataPayloadEnabled = false;
     [[maybe_unused]] const bool EnableRdmaForWrites = false;
+    const std::optional<TWriteDataZeroCounters> ZeroCounters;
 
     TWriteRequestContext(
         NProto::TWriteDataRequest writeRequest,
@@ -156,7 +158,8 @@ struct TWriteRequestContext
         NCloud::NProto::EStorageMediaKind mediaKind,
         bool useThreeStageWrite,
         bool externalWriteDataPayloadEnabled,
-        bool enableRdmaForWrites)
+        bool enableRdmaForWrites,
+        std::optional<TWriteDataZeroCounters> zeroCounters)
         : WriteRequest(std::move(writeRequest))
         , Range(range)
         , RequestInfo(std::move(requestInfo))
@@ -168,10 +171,14 @@ struct TWriteRequestContext
         , UseThreeStageWrite(useThreeStageWrite)
         , ExternalWriteDataPayloadEnabled(externalWriteDataPayloadEnabled)
         , EnableRdmaForWrites(enableRdmaForWrites)
+        , ZeroCounters(std::move(zeroCounters))
     {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+using TEvStartWriteData =
+    TRequestEvent<TWriteRequestContext, TEvServicePrivate::EvStartWriteData>;
 
 class TWriteDataActor final: public TActorBootstrapped<TWriteDataActor>
 {
@@ -220,17 +227,24 @@ private:
 
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
-    const std::optional<TWriteDataZeroCounters> ZeroCounters;
+
+    // Empty for one-shot actors and when shutting down.
+    TActorId ServiceActorId;
+
+    // Unique request epoch number. Preserved across resets and used
+    // to filter out delayed TEvPut responses after fallback to
+    // TEvWriteDataRequest.
+    ui64 RequestGeneration = 0;
     std::optional<TRequestState> RequestState;
 
 public:
     TWriteDataActor(
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
-        std::optional<TWriteDataZeroCounters> zeroCounters)
+        TActorId serviceActorId)
         : ProfileLog(std::move(profileLog))
         , TraceSerializer(std::move(traceSerializer))
-        , ZeroCounters(std::move(zeroCounters))
+        , ServiceActorId(serviceActorId)
     {}
 
     void Initialize(TWriteRequestContext params)
@@ -241,9 +255,30 @@ public:
 
     void Bootstrap(const TActorContext& ctx)
     {
-        auto& state = GetState();
+        if (RequestState) {
+            StartRequest(ctx);
+        } else {
+            Become(&TThis::StateIdle);
+        }
+    }
 
-        if (ZeroCounters) {
+private:
+    void HandleStartWriteData(
+        const TEvStartWriteData::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        auto* msg = ev->Get();
+        Initialize(std::move(*msg));
+        StartRequest(ctx);
+    }
+
+    void StartRequest(const TActorContext& ctx)
+    {
+        Become(&TThis::StateWork);
+        auto& state = GetState();
+        ++RequestGeneration;
+
+        if (state.RequestContext.ZeroCounters) {
             state.ZeroBlockStats = CalculateZeroBlockStats(
                 state.RequestContext.WriteRequest,
                 state.RequestContext.Range.BlockSize);
@@ -256,7 +291,6 @@ public:
                 "Forwarding WriteData request to tablet");
 
             WriteData(ctx, false /* isFallback */);
-            Become(&TThis::StateWork);
             return;
         }
 
@@ -311,9 +345,11 @@ public:
             state.BlobRange.Length,
             state.BlobRange.Offset);
 
-        ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
-
-        Become(&TThis::StateWork);
+        ctx.Send(
+            MakeIndexTabletProxyServiceId(),
+            request.release(),
+            0 /* flags */,
+            RequestGeneration);
     }
 
 private:
@@ -325,12 +361,38 @@ private:
 
     void UpdateZeroCounters()
     {
-        const auto& stats = GetState().ZeroBlockStats;
+        const auto& state = GetState();
+        const auto& stats = state.ZeroBlockStats;
+        const auto& zeroCounters = state.RequestContext.ZeroCounters;
 
-        ZeroCounters->CheckedBytes->Add(stats.Bytes);
-        ZeroCounters->ZeroBlockBytes->Add(stats.ZeroBlockBytes);
+        zeroCounters->CheckedBytes->Add(stats.Bytes);
+        zeroCounters->ZeroBlockBytes->Add(stats.ZeroBlockBytes);
         if (stats.AllZeroes) {
-            ZeroCounters->ZeroRequestBytes->Add(stats.Bytes);
+            zeroCounters->ZeroRequestBytes->Add(stats.Bytes);
+        }
+    }
+
+    STFUNC(StateIdle)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(TEvStartWriteData, HandleStartWriteData);
+            HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+            // Ignore responses and retries left over from a completed request.
+            IgnoreFunc(TEvIndexTablet::TEvGenerateBlobIdsResponse);
+            IgnoreFunc(TEvBlobStorage::TEvPutResult);
+            IgnoreFunc(TEvIndexTablet::TEvAddDataResponse);
+            IgnoreFunc(TEvIndexTablet::TEvConfirmAddDataResponse);
+            IgnoreFunc(TEvIndexTablet::TEvCancelAddDataResponse);
+            IgnoreFunc(TEvService::TEvWriteDataResponse);
+            IgnoreFunc(TEvents::TEvWakeup);
+
+            default:
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::SERVICE_WORKER,
+                    __PRETTY_FUNCTION__);
+                break;
         }
     }
 
@@ -366,10 +428,39 @@ private:
         }
     }
 
+    bool ShouldSkipOutdatedResponse(
+        ui64 cookie,
+        TString responseType,
+        const TActorContext& ctx)
+    {
+        auto& state = GetState();
+        if (cookie != RequestGeneration) {
+            LOG_DEBUG(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s unexpected %s cookie: expected=%lu; "
+                "actual=%lu",
+                state.RequestContext.LogTag.c_str(),
+                responseType.c_str(),
+                RequestGeneration,
+                cookie);
+            return true;
+        }
+        return false;
+    }
+
     void HandleGenerateBlobIdsResponse(
         const TEvIndexTablet::TEvGenerateBlobIdsResponse::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (ShouldSkipOutdatedResponse(
+                ev->Cookie,
+                "GenerateBlobIdsResponse",
+                ctx))
+        {
+            return;
+        }
+
         auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
@@ -546,7 +637,7 @@ private:
                 blobId.ToString().c_str(),
                 proxy.ToString().c_str(),
                 state.RequestContext.WriteRequest.GetIovecs().size());
-            SendToBSProxy(ctx, proxy, request.release(), blobId.Cookie());
+            SendToBSProxy(ctx, proxy, request.release(), RequestGeneration);
         }
     }
 
@@ -554,6 +645,10 @@ private:
         const TEvBlobStorage::TEvPutResult::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (ShouldSkipOutdatedResponse(ev->Cookie, "WriteBlobResponse", ctx)) {
+            return;
+        }
+
         auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
@@ -738,13 +833,22 @@ private:
             state.RequestContext.LogTag.c_str(),
             request->Record.DebugString().Quote().c_str());
 
-        ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+        ctx.Send(
+            MakeIndexTabletProxyServiceId(),
+            request.release(),
+            0 /* flags */,
+            RequestGeneration);
     }
 
     void HandleAddDataResponse(
         const TEvIndexTablet::TEvAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (ShouldSkipOutdatedResponse(ev->Cookie, "AddDataResponse", ctx))
+        {
+            return;
+        }
+
         auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
@@ -764,7 +868,7 @@ private:
             return;
         }
 
-        ReplyAndDie(ctx, {} /* record */);
+        SendResponse(ctx, {} /* record */);
     }
 
     void ConfirmAddData(const TActorContext& ctx)
@@ -803,7 +907,11 @@ private:
             state.RequestContext.LogTag.c_str(),
             state.GenerateBlobIdsResponse.GetCommitId());
 
-        ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+        ctx.Send(
+            MakeIndexTabletProxyServiceId(),
+            request.release(),
+            0 /* flags */,
+            RequestGeneration);
     }
 
     void CancelAddData(const TActorContext& ctx)
@@ -839,13 +947,25 @@ private:
             state.RequestContext.LogTag.c_str(),
             state.GenerateBlobIdsResponse.GetCommitId());
 
-        ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+        ctx.Send(
+            MakeIndexTabletProxyServiceId(),
+            request.release(),
+            0 /* flags */,
+            RequestGeneration);
     }
 
     void HandleConfirmAddDataResponse(
         const TEvIndexTablet::TEvConfirmAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (ShouldSkipOutdatedResponse(
+                ev->Cookie,
+                "ConfirmAddDataResponse",
+                ctx))
+        {
+            return;
+        }
+
         auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
@@ -874,13 +994,21 @@ private:
         }
 
         ResetTabletProxyRetryState();
-        ReplyAndDie(ctx, {});
+        SendResponse(ctx, {});
     }
 
     void HandleCancelAddDataResponse(
         const TEvIndexTablet::TEvCancelAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (ShouldSkipOutdatedResponse(
+                ev->Cookie,
+                "CancelAddDataResponse",
+                ctx))
+        {
+            return;
+        }
+
         auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
@@ -913,9 +1041,13 @@ private:
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (ShouldSkipOutdatedResponse(ev->Get()->Tag, "HandleWakeup", ctx))
+        {
+            return;
+        }
+
         auto& state = GetState();
 
-        Y_UNUSED(ev);
         if (state.TabletRetryRequest == ETabletRetryRequest::None) {
             return;
         }
@@ -965,7 +1097,7 @@ private:
         }
 
         state.TabletRetryRequest = retryRequest;
-        ctx.Schedule(delay, new TEvents::TEvWakeup());
+        ctx.Schedule(delay, new TEvents::TEvWakeup(RequestGeneration));
     }
 
     void ResetTabletProxyRetryState()
@@ -1027,13 +1159,21 @@ private:
             state.RequestContext.RequestInfo->CallContext->LWOrbit);
 
         // forward request through tablet proxy
-        ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+        ctx.Send(
+            MakeIndexTabletProxyServiceId(),
+            request.release(),
+            0 /* flags */,
+            RequestGeneration);
     }
 
     void HandleWriteDataResponse(
         const TEvService::TEvWriteDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
+        if (ev->Cookie != RequestGeneration) {
+            return;
+        }
+
         auto& state = GetState();
 
         auto* msg = ev->Get();
@@ -1049,16 +1189,16 @@ private:
             "%s WriteData succeeded",
             state.RequestContext.LogTag.c_str());
 
-        ReplyAndDie(ctx, std::move(msg->Record));
+        SendResponse(ctx, std::move(msg->Record));
     }
 
-    void ReplyAndDie(
+    void SendResponse(
         const TActorContext& ctx,
         NProto::TWriteDataResponse record)
     {
         auto& state = GetState();
 
-        if (ZeroCounters) {
+        if (state.RequestContext.ZeroCounters) {
             UpdateZeroCounters();
         }
 
@@ -1073,7 +1213,7 @@ private:
             ctx,
             *state.RequestContext.RequestInfo,
             std::move(response));
-        Die(ctx);
+        ReleaseToPoolOrDie(ctx);
     }
 
     void HandleError(const TActorContext& ctx, const NProto::TError& error)
@@ -1091,7 +1231,20 @@ private:
             ctx,
             *state.RequestContext.RequestInfo,
             std::move(response));
-        Die(ctx);
+        ReleaseToPoolOrDie(ctx);
+    }
+
+    void ReleaseToPoolOrDie(const TActorContext& ctx)
+    {
+        if (ServiceActorId) {
+            RequestState.reset();
+            Become(&TThis::StateIdle);
+            NCloud::Send<TEvServicePrivate::TEvReleaseWriteDataActor>(
+                ctx,
+                ServiceActorId);
+        } else {
+            Die(ctx);
+        }
     }
 
     void HandlePoisonPill(
@@ -1099,6 +1252,13 @@ private:
         const TActorContext& ctx)
     {
         Y_UNUSED(ev);
+        // A poisoned actor must terminate instead of returning to the pool.
+        ServiceActorId = {};
+        if (!RequestState) {
+            Die(ctx);
+            return;
+        }
+
         HandleError(ctx, MakeError(E_REJECTED, "request cancelled"));
     }
 
@@ -1154,6 +1314,29 @@ private:
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TWriteDataActorPool::TWriteDataActorPool(
+    IProfileLogPtr profileLog,
+    ITraceSerializerPtr traceSerializer)
+    : TWorkerActorPool(
+          [profileLog = std::move(profileLog),
+           traceSerializer = std::move(traceSerializer)](TActorId parentActorId)
+          {
+              return new TWriteDataActor(
+                  profileLog,
+                  traceSerializer,
+                  parentActorId);
+          })
+{}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TStorageServiceActor::HandleReleaseWriteDataActor(
+    const TEvServicePrivate::TEvReleaseWriteDataActor::TPtr& ev,
+    const TActorContext&)
+{
+    WriteDataActorPool.ReleaseActor(ev->Sender);
+}
 
 void TStorageServiceActor::HandleWriteData(
     const TEvService::TEvWriteDataRequest::TPtr& ev,
@@ -1254,11 +1437,7 @@ void TStorageServiceActor::HandleWriteData(
         zeroCounters = WriteDataZeroCounters;
     }
 
-    auto actor = std::make_unique<TWriteDataActor>(
-        ProfileLog,
-        TraceSerializer,
-        std::move(zeroCounters));
-    actor->Initialize(TWriteRequestContext(
+    TWriteRequestContext context(
         std::move(msg->Record),
         range,
         std::move(requestInfo),
@@ -1269,8 +1448,23 @@ void TStorageServiceActor::HandleWriteData(
         session->MediaKind,
         threeStageWriteEnabled,
         filestore.GetFeatures().GetExternalWriteDataPayloadEnabled(),
-        filestore.GetFeatures().GetEnableRdmaForWrites()));
-    NCloud::Register(ctx, std::move(actor));
+        filestore.GetFeatures().GetEnableRdmaForWrites(),
+        std::move(zeroCounters));
+
+    if (StorageConfig->GetPermanentReadWriteDataActorsEnabled()) {
+        auto request = std::make_unique<TEvStartWriteData>(std::move(context));
+        NCloud::Send(
+            ctx,
+            WriteDataActorPool.GetOrCreateActor(ctx),
+            std::move(request));
+    } else {
+        auto actor = std::make_unique<TWriteDataActor>(
+            ProfileLog,
+            TraceSerializer,
+            TActorId{});
+        actor->Initialize(std::move(context));
+        NCloud::Register(ctx, std::move(actor));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

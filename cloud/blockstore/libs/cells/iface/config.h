@@ -154,18 +154,19 @@ public:
     [[nodiscard]] bool GetEnabled() const;
     [[nodiscard]] TString GetListenAddress() const;
     [[nodiscard]] ui32 GetPort() const;
-    [[nodiscard]] ui32 GetThreads() const;
+    [[nodiscard]] bool GetEnableXdc() const;
     [[nodiscard]] TDuration GetHandshakeTimeout() const;
     [[nodiscard]] bool GetChecksumEvents() const;
-    [[nodiscard]] ui32 GetMaxConnections() const;
-    [[nodiscard]] ui32 GetMaxPendingRequests() const;
-    [[nodiscard]] ui64 GetMaxOutputQueueBytes() const;
-    [[nodiscard]] ui32 GetCompletionThreads() const;
+    [[nodiscard]] ui32 GetMaxIncomingConnections() const;
     [[nodiscard]] ui32 GetMaxOutgoingConnections() const;
-    [[nodiscard]] ui64 GetMaxDataRequestBytes() const;
-    [[nodiscard]] ui64 GetMaxDataInflightBytes() const;
-    [[nodiscard]] ui32 GetDataWorkers() const;
-    [[nodiscard]] bool GetEnableXdc() const;
+    [[nodiscard]] ui32 GetMaxOutgoingInflightRequests() const;
+    [[nodiscard]] ui64 GetMaxOutgoingInflightBytes() const;
+    [[nodiscard]] ui32 GetMaxIncomingInflightRequests() const;
+    [[nodiscard]] ui64 GetMaxIncomingInflightBytes() const;
+    [[nodiscard]] ui64 GetMaxTotalOutputQueueBytes() const;
+    [[nodiscard]] ui32 GetNetworkIoThreads() const;
+    [[nodiscard]] ui32 GetOutgoingCompletionThreads() const;
+    [[nodiscard]] ui32 GetIncomingRequestThreads() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

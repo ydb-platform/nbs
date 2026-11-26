@@ -47,6 +47,7 @@ using TCritEventParams =
     xxx(DiskRegistryInitialAgentRejectionThresholdExceeded)                    \
     xxx(DiskAgentInconsistentMultiWriteResponse)                               \
     xxx(WrongCellIdInDescribeVolume)                                           \
+    xxx(IcV2ListenerFailure)                                                   \
     xxx(DiskRegistryStateIntegrityBroken)                                      \
     xxx(DiskRegistryPurgeDeviceError)                                          \
     xxx(CompressionChunkNotFound)                                              \

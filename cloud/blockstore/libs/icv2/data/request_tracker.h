@@ -20,13 +20,16 @@ public:
     class TReservation
     {
         const std::shared_ptr<TRequestTracker> Owner;
-        const ui64 Bytes;
+        ui64 Bytes;
 
     public:
         TReservation(std::shared_ptr<TRequestTracker> owner, ui64 bytes);
         TReservation(const TReservation&) = delete;
         TReservation& operator=(const TReservation&) = delete;
         ~TReservation();
+
+        // Called by the worker before allocating additional buffers.
+        NProto::TError ReserveBytes(ui64 bytes);
     };
 
 private:
@@ -59,7 +62,9 @@ public:
     explicit TRequestTracker(TDataConfig config);
     TResultOrError<std::shared_ptr<TReservation>> Acquire(ui64 bytes);
     NProto::TError CheckRunning() const;
-    void RequestStop();
+
+    // Release your reservations before waiting on the returned future.
+    NThreading::TFuture<void> RequestStop();
 
     // Waits for all reservations; do not call while holding one.
     void Stop();

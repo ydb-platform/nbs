@@ -1,8 +1,6 @@
 DEPENDS(
     cloud/filestore/apps/server
     cloud/filestore/tests/recipes/service-kikimr
-
-    cloud/storage/core/tools/testing/ydb/bin
 )
 
 IF (NFS_RESTART_INTERVAL)
@@ -12,14 +10,13 @@ IF (NFS_RESTART_INTERVAL)
 ENDIF()
 
 SET(RECIPE_ARGS
-    --use-log-files
-    --in-memory-pdisks
     --restart-interval $NFS_RESTART_INTERVAL
 )
 
 # Use XDC only in open-source builds as YDB Storage doesn't enable it by default
 IF (OPENSOURCE)
     SET_APPEND(RECIPE_ARGS --enable-external-data-channel)
+    SET(YDB_ENABLE_EXTERNAL_DATA_CHANNEL yes)
 ENDIF()
 
 IF (NFS_STORAGE_CONFIG_PATCH)
@@ -32,10 +29,6 @@ ENDIF()
 
 IF (NFS_SERVER_CONFIG_PATCH)
     SET_APPEND(RECIPE_ARGS --server-config-patch $NFS_SERVER_CONFIG_PATCH)
-ENDIF()
-
-IF (NFS_BS_CACHE_FILE_PATH)
-    SET_APPEND(RECIPE_ARGS --bs-cache-file-path $NFS_BS_CACHE_FILE_PATH)
 ENDIF()
 
 IF (NOT OPENSOURCE OR NFS_FORCE_VERBOSE)
@@ -57,6 +50,8 @@ ENDIF()
 IF (NFS_BS_FAILURE_PROBABILITY)
     SET_APPEND(RECIPE_ARGS --bs-failure-probability $NFS_BS_FAILURE_PROBABILITY)
 ENDIF()
+
+INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/ydb.inc)
 
 USE_RECIPE(
     cloud/filestore/tests/recipes/service-kikimr/service-kikimr-recipe

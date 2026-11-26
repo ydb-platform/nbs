@@ -54,6 +54,20 @@ struct TTestServer final
         return Server->StartEndpoint(std::move(host), port, std::move(handler));
     }
 
+    IServerEndpointPtr StartEndpoint(
+        TString host,
+        ui32 port,
+        IServerConnectionHandlerPtr connectionHandler) override
+    {
+        if (!Server) {
+            return nullptr;
+        }
+        return Server->StartEndpoint(
+            std::move(host),
+            port,
+            std::move(connectionHandler));
+    }
+
     void Start() override
     {
         ++Started;
@@ -72,6 +86,15 @@ struct TTestServer final
         Y_UNUSED(out);
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TStorageConfig RdmaEnabledConfig()
+{
+    NProto::TStorageConfig config;
+    config.SetTabletDirectRdmaEnabled(true);
+    return config;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -94,7 +117,8 @@ struct TEnv
     const std::shared_ptr<TTestRdmaServer> Endpoints;
 
     TEnv()
-        : Runtime(Env.GetRuntime())
+        : Env({}, RdmaEnabledConfig())
+        , Runtime(Env.GetRuntime())
         , NodeIdx(Env.AddDynamicNode())
         , TabletId(Env.BootIndexTablet(NodeIdx))
         , Tablet(Runtime, NodeIdx, TabletId)

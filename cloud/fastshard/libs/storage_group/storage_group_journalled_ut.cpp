@@ -1,0 +1,296 @@
+#include <cloud/fastshard/libs/storage_group/storage_group.h>
+#include <cloud/fastshard/libs/storage_group/storage_group_quorum.h>
+
+#include <cloud/fastshard/libs/journal/iface/journalled_device.h>
+#include <cloud/fastshard/libs/sn/testlib/fiber_test.h>
+#include <cloud/fastshard/libs/sn/testlib/journalled_storage_node.h>
+#include <cloud/fastshard/public/api/protos/device.pb.h>
+#include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/coroutine/executor.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
+#include <util/string/builder.h>
+
+#include <gtest/gtest.h>
+
+#include <utility>
+
+#include <initializer_list>
+
+using namespace NCloud;
+using namespace NCloud::NFastShard;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString Content(ui64 page)
+{
+    TString content = TStringBuilder() << "page" << page;
+    content.resize(DefaultBlockSize, 'a' + page % 26);
+    return content;
+}
+
+TVector<TString> Pages(ui64 from, ui64 to)
+{
+    TVector<TString> pages;
+    for (ui64 page = from; page < to; ++page) {
+        pages.push_back(Content(page));
+    }
+    return pages;
+}
+
+NProto::TError WritePages(IStorageGroup& group, ui64 from, ui64 to)
+{
+    for (ui64 page = from; page < to; ++page) {
+        const TString content = Content(page);
+        TPageGroup pageGroup{.FirstPageNo = page};
+        pageGroup.Content.emplace_back(content.data(), content.size());
+        TVector<TPageGroup> pageGroups;
+        pageGroups.push_back(std::move(pageGroup));
+
+        auto error = group.WriteLogRecord(
+            {},
+            std::move(pageGroups),
+            {.Lsn = page, .PrevLsn = page - 1});
+        if (HasError(error)) {
+            return error;
+        }
+    }
+    return {};
+}
+
+NProto::TError ReadPages(
+    IStorageGroup& group,
+    ui64 from,
+    ui64 to,
+    TVector<TString>& pages)
+{
+    TVector<TPageGroupRef> refs = {{.FirstPageNo = from, .PageCount = to - from}};
+    TVector<TPageGroup> pageGroups;
+    auto error = group.ReadPages({}, refs, &pageGroups);
+    if (HasError(error)) {
+        return error;
+    }
+
+    pages.clear();
+    for (const auto& pageGroup: pageGroups) {
+        for (const auto& content: pageGroup.Content) {
+            pages.emplace_back(content.Data(), content.Size());
+        }
+    }
+    return {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Journalled devices on an executor of their own. A test opens groups over
+// any of them, and is to tear a group down before the devices go.
+struct TJournalledDevices
+{
+    ILoggingServicePtr Logging = CreateLoggingService("console");
+    TExecutorPtr Executor = TExecutor::Create("journalled-sn");
+    TVector<TString> DeviceUUIDs;
+    TVector<std::shared_ptr<TJournalledStorageNode>> Nodes;
+    TVector<IStorageGroupPtr> Groups;
+    // A group opened over the devices again is a restart.
+    ui64 Generation = 0;
+
+    TJournalledDevices(ui32 count)
+    {
+        Executor->Start();
+        for (ui32 i = 0; i < count; ++i) {
+            DeviceUUIDs.push_back(TStringBuilder() << "dev-" << char('a' + i));
+            Nodes.push_back(std::make_shared<TJournalledStorageNode>(
+                DeviceUUIDs[i],
+                Logging,
+                Executor));
+            Nodes[i]->Start();
+        }
+    }
+
+    // The nodes run on the executor, so they stop before it does. The
+    // executor is joined here: a flush cycle may still hold the last device
+    // reference, and dropping it on the executor would join that thread
+    // from itself.
+    ~TJournalledDevices()
+    {
+        for (auto& group: Groups) {
+            group->TearDown();
+        }
+        for (auto& node: Nodes) {
+            node->Stop();
+        }
+        Executor->Stop();
+    }
+
+    TJournalledStorageNode& operator[](ui32 i)
+    {
+        return *Nodes[i];
+    }
+
+    // Torn down with the fixture at the latest, so a failed assertion does
+    // not leave a group's loops running on the devices.
+    IStorageGroupPtr MakeGroup(std::initializer_list<ui32> indexes)
+    {
+        TVector<TStorageDevice> devices;
+        for (ui32 i: indexes) {
+            devices.push_back({.Node = Nodes[i], .DeviceUUID = DeviceUUIDs[i]});
+        }
+
+        Groups.push_back(CreateQuorumMirroredStorageGroup(
+            TStorageGroupConfig{},
+            std::move(devices),
+            CreateFiberTimer()));
+        return Groups.back();
+    }
+
+    // A device's own page, before the group's page shift.
+    NProto::TError ReadPage(ui32 i, ui64 pageNo, TString& page)
+    {
+        auto result =
+            Nodes[i]
+                ->Device->ReadPages({{.FirstPageNo = pageNo, .PageCount = 1}})
+                .GetValueSync();
+        if (HasError(result)) {
+            return result.GetError();
+        }
+
+        const auto& buffer = result.GetResult().Pages[0];
+        page.assign(buffer.Data(), buffer.Size());
+        return {};
+    }
+
+    // A record on the device itself, behind the group's back.
+    NProto::TError WritePage(ui32 i, ui64 lsn, ui64 pageNo, TString page)
+    {
+        TVector<NJournalled::TPageRange> ranges;
+        auto& range = ranges.emplace_back();
+        range.FirstPageNo = pageNo;
+        range.Pages.emplace_back(page.data(), page.size());
+
+        return Nodes[i]
+            ->Device->WriteLogRecord(std::move(ranges), lsn, lsn - 1)
+            .GetValueSync();
+    }
+};
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+FIBER_TEST(JournalledGroupTest, WritesSurviveARestart)
+{
+    TJournalledDevices devices(3);
+    auto group = devices.MakeGroup({0, 1, 2});
+    auto init = group->Init(++devices.Generation);
+    ASSERT_EQ(S_OK, init.GetError().GetCode()) << init.GetError().GetMessage();
+    ASSERT_EQ(1U, init.GetResult());
+
+    auto error = WritePages(*group, 2, 7);
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+    TVector<TString> pages;
+    error = ReadPages(*group, 2, 7, pages);
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+    ASSERT_EQ(Pages(2, 7), pages);
+    group->TearDown();
+
+    group = devices.MakeGroup({0, 1, 2});
+    init = group->Init(++devices.Generation);
+    ASSERT_EQ(S_OK, init.GetError().GetCode()) << init.GetError().GetMessage();
+    ASSERT_EQ(6U, init.GetResult());
+
+    error = ReadPages(*group, 2, 7, pages);
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+    ASSERT_EQ(Pages(2, 7), pages);
+
+    error = WritePages(*group, 7, 9);
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+    error = ReadPages(*group, 2, 9, pages);
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+    ASSERT_EQ(Pages(2, 9), pages);
+}
+
+FIBER_TEST(JournalledGroupTest, ABlankDeviceCatchesUpAndServesAlone)
+{
+    TJournalledDevices devices(2);
+    auto group = devices.MakeGroup({0});
+    auto init = group->Init(++devices.Generation);
+    ASSERT_EQ(S_OK, init.GetError().GetCode()) << init.GetError().GetMessage();
+
+    auto error = WritePages(*group, 2, 5);
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+    group->TearDown();
+
+    // A blank device joins: it gets its header page and is brought up with the
+    // records.
+    group = devices.MakeGroup({0, 1});
+    init = group->Init(++devices.Generation);
+    ASSERT_EQ(S_OK, init.GetError().GetCode()) << init.GetError().GetMessage();
+    ASSERT_EQ(4U, init.GetResult());
+    group->TearDown();
+
+    // What it holds is enough on its own.
+    group = devices.MakeGroup({1});
+    init = group->Init(++devices.Generation);
+    ASSERT_EQ(S_OK, init.GetError().GetCode()) << init.GetError().GetMessage();
+    ASSERT_EQ(4U, init.GetResult());
+
+    TVector<TString> pages;
+    error = ReadPages(*group, 2, 5, pages);
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+    ASSERT_EQ(Pages(2, 5), pages);
+}
+
+FIBER_TEST(JournalledGroupTest, ADamagedFirstPageFailsInit)
+{
+    TJournalledDevices devices(3);
+    auto group = devices.MakeGroup({0, 1, 2});
+    auto init = group->Init(++devices.Generation);
+    ASSERT_EQ(S_OK, init.GetError().GetCode()) << init.GetError().GetMessage();
+
+    auto error = WritePages(*group, 2, 5);
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+    group->TearDown();
+
+    // Garbage where the header page was.
+    error = devices.WritePage(0, 5, 0, TString(DefaultBlockSize, 'x'));
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+    group = devices.MakeGroup({0, 1, 2});
+    init = group->Init(++devices.Generation);
+    ASSERT_EQ(E_INVALID_STATE, init.GetError().GetCode())
+        << init.GetError().GetMessage();
+    ASSERT_TRUE(init.GetError().GetMessage().Contains(devices.DeviceUUIDs[0]))
+        << init.GetError().GetMessage();
+    group->TearDown();
+
+    // Another device's header page there is no better.
+    TString headerPage;
+    error = devices.ReadPage(1, 0, headerPage);
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+    error = devices.WritePage(0, 6, 0, headerPage);
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+    group = devices.MakeGroup({0, 1, 2});
+    init = group->Init(++devices.Generation);
+    ASSERT_EQ(E_INVALID_STATE, init.GetError().GetCode())
+        << init.GetError().GetMessage();
+    ASSERT_TRUE(init.GetError().GetMessage().Contains(devices.DeviceUUIDs[0]))
+        << init.GetError().GetMessage();
+}
+
+FIBER_TEST(JournalledGroupTest, ADeadDeviceFailsInit)
+{
+    TJournalledDevices devices(3);
+    devices[2].Stop();
+
+    auto group = devices.MakeGroup({0, 1, 2});
+    const auto init = group->Init(++devices.Generation);
+
+    ASSERT_TRUE(HasError(init.GetError()));
+    ASSERT_TRUE(init.GetError().GetMessage().Contains(devices.DeviceUUIDs[2]))
+        << init.GetError().GetMessage();
+}

@@ -15,6 +15,9 @@
 
 namespace NCloud::NBlockStore::NIcV2 {
 
+using NCloud::NIcV2::EPeerState;
+using NCloud::NIcV2::TPeerStatus;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace {
@@ -55,7 +58,7 @@ public:
         ++Unavailable;
     }
 
-    THostChannelStatus ObservedStatus;
+    TPeerStatus ObservedStatus;
 
     explicit TRecordingHandler(std::weak_ptr<TTestDataEndpointFactory> factory)
         : Factory(std::move(factory))
@@ -317,7 +320,7 @@ Y_UNIT_TEST_SUITE(TTestDataEndpointFactoryTest)
         UNIT_ASSERT_VALUES_EQUAL(writes, 1);
         UNIT_ASSERT(
             factory.GetDataEndpointStatus(first).State ==
-            EHostChannelState::Disconnected);
+            EPeerState::Disconnected);
         UNIT_ASSERT_VALUES_EQUAL(backendStops.load(), 0);
         second->Stop();
     }
@@ -333,21 +336,21 @@ Y_UNIT_TEST_SUITE(TTestDataEndpointFactoryTest)
         UNIT_ASSERT(first != second);
         UNIT_ASSERT(
             factory.GetDataEndpointStatus(first).State ==
-            EHostChannelState::Connecting);
+            EPeerState::Connecting);
         factory.SetStatus(
             first,
-            {.State = EHostChannelState::Connected,
+            {.State = EPeerState::Connected,
              .ConnectionAttempts = 3,
              .ConnectionFailures = 2});
         factory.SetStatus(
             second,
-            {.State = EHostChannelState::Connecting, .ConnectionAttempts = 1});
+            {.State = EPeerState::Connecting, .ConnectionAttempts = 1});
         const auto firstStatus = factory.GetDataEndpointStatus(first);
         const auto secondStatus = factory.GetDataEndpointStatus(second);
-        UNIT_ASSERT(firstStatus.State == EHostChannelState::Connected);
+        UNIT_ASSERT(firstStatus.State == EPeerState::Connected);
         UNIT_ASSERT_VALUES_EQUAL(firstStatus.ConnectionAttempts, 3);
         UNIT_ASSERT_VALUES_EQUAL(firstStatus.ConnectionFailures, 2);
-        UNIT_ASSERT(secondStatus.State == EHostChannelState::Connecting);
+        UNIT_ASSERT(secondStatus.State == EPeerState::Connecting);
         UNIT_ASSERT_VALUES_EQUAL(secondStatus.ConnectionAttempts, 1);
         UNIT_ASSERT_VALUES_EQUAL(secondStatus.ConnectionFailures, 0);
         UNIT_ASSERT_VALUES_EQUAL(factory.GetRequests().size(), 2);
@@ -363,14 +366,14 @@ Y_UNIT_TEST_SUITE(TTestDataEndpointFactoryTest)
         factory->NotifyDisconnected(endpoint);
         UNIT_ASSERT_VALUES_EQUAL(handler->Notifications, 0);
 
-        factory->SetStatus(endpoint, {.State = EHostChannelState::Connected});
+        factory->SetStatus(endpoint, {.State = EPeerState::Connected});
         factory->NotifyDisconnected(endpoint);
         UNIT_ASSERT_VALUES_EQUAL(handler->Notifications, 1);
         UNIT_ASSERT(
-            handler->ObservedStatus.State == EHostChannelState::Disconnected);
+            handler->ObservedStatus.State == EPeerState::Disconnected);
         factory->NotifyDisconnected(endpoint);
         UNIT_ASSERT_VALUES_EQUAL(handler->Notifications, 1);
-        factory->SetStatus(endpoint, {.State = EHostChannelState::Connected});
+        factory->SetStatus(endpoint, {.State = EPeerState::Connected});
         factory->NotifyDisconnected(endpoint);
         UNIT_ASSERT_VALUES_EQUAL(handler->Notifications, 2);
 

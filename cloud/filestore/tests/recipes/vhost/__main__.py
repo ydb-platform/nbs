@@ -25,6 +25,7 @@ from cloud.storage.core.protos.endpoints_pb2 import EEndpointStorageType
 
 from cloud.storage.core.tools.testing.access_service.lib import AccessService
 from cloud.storage.core.tools.testing.access_service_new.lib import NewAccessService
+from cloud.storage.core.tests.ydb import Ydb
 from cloud.storage.core.tests.common import (
     append_recipe_err_files,
     process_recipe_err_files,
@@ -118,7 +119,7 @@ def start(argv):
             local_service_config.RootPath = fs_root_path
         config.VhostServiceConfig.LocalServiceConfig.CopyFrom(local_service_config)
     elif service_type == "kikimr":
-        kikimr_port = os.getenv("KIKIMR_SERVER_PORT")
+        kikimr_port = Ydb.from_recipe().port
         domain = os.getenv("NFS_DOMAIN")
 
     config.VhostServiceConfig.ServiceEndpoints.append(service_endpoint)
