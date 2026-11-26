@@ -91,19 +91,6 @@ public:
         EFileStoreRequest requestType,
         TInstant now,
         TDuration latency);
-    bool UpdateLatencyStats(
-        ui64 nodeId,
-        EFileStoreRequest requestType,
-        TInstant now,
-        TDuration latency)
-    {
-        return UpdateLatencyStats(
-            nodeId,
-            NProto::E_INVALID_NODE,
-            requestType,
-            now,
-            latency);
-    }
     static double CalculateLatencyDecay(
         const TNodeLatencyStats& stats,
         TInstant now,

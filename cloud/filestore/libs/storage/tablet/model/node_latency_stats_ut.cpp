@@ -18,11 +18,13 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
 
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             1,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::ReadData,
             start,
             TDuration::MicroSeconds(50)));
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             1,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::WriteData,
             start,
             TDuration::MicroSeconds(60)));
@@ -48,6 +50,7 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
 
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             2,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::ReadData,
             start,
             TDuration::MicroSeconds(100)));
@@ -74,11 +77,13 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
 
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             1,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::ReadData,
             start,
             TDuration::MicroSeconds(50)));
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             1,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::ReadData,
             start,
             TDuration::MicroSeconds(150)));
@@ -109,11 +114,13 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
 
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             1,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::ReadData,
             old,
             TDuration::MicroSeconds(50)));
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             2,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::ReadData,
             start,
             TDuration::MicroSeconds(50)));
@@ -134,11 +141,13 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
 
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             1,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::ReadData,
             start,
             TDuration::MicroSeconds(50)));
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             2,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::ReadData,
             start,
             TDuration::MicroSeconds(50)));
@@ -159,26 +168,31 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
 
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             1,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::ReadData,
             start - TDuration::Minutes(10),
             TDuration::MicroSeconds(100)));
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             2,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::WriteData,
             start,
             TDuration::MicroSeconds(50)));
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             2,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::WriteData,
             start,
             TDuration::MicroSeconds(150)));
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             3,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::AddData,
             start,
             TDuration::MicroSeconds(200)));
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             4,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::GetNodeAttr,
             start,
             TDuration::MicroSeconds(300)));
@@ -198,6 +212,7 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
 
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             1,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::ReadData,
             start,
             TDuration::MicroSeconds(100)));
@@ -207,6 +222,7 @@ Y_UNIT_TEST_SUITE(TNodeLatencyStatsTrackerTest)
 
         UNIT_ASSERT(tracker.UpdateLatencyStats(
             1,
+            NProto::E_REGULAR_NODE,
             EFileStoreRequest::ReadData,
             start,
             TDuration::MicroSeconds(50)));

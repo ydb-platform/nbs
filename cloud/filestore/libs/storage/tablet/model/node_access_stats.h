@@ -65,10 +65,6 @@ public:
         ui64 nodeId,
         NProto::ENodeType nodeType,
         TInstant now);
-    bool UpdateAccessStats(ui64 nodeId, TInstant now)
-    {
-        return UpdateAccessStats(nodeId, NProto::E_INVALID_NODE, now);
-    }
 
     TVector<TNodeAccessStats> GetStats(TInstant now, ui32 n) const;
 };

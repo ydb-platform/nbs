@@ -14,7 +14,7 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
         const auto start = TInstant::Hours(1);
 
-        UNIT_ASSERT(tracker.UpdateAccessStats(1, start));
+        UNIT_ASSERT(tracker.UpdateAccessStats(1, NProto::E_REGULAR_NODE, start););
 
         const auto stats = tracker.GetStats(start, 3);
 
@@ -31,8 +31,8 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
         const auto start = TInstant::Hours(1);
 
-        UNIT_ASSERT(tracker.UpdateAccessStats(1, start));
-        UNIT_ASSERT(tracker.UpdateAccessStats(1, start));
+        UNIT_ASSERT(tracker.UpdateAccessStats(1, NProto::E_REGULAR_NODE, start););
+        UNIT_ASSERT(tracker.UpdateAccessStats(1, NProto::E_REGULAR_NODE, start););
 
         const auto stats = tracker.GetStats(start, 3);
 
@@ -76,8 +76,8 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
         const auto start = TInstant::Hours(1);
 
-        UNIT_ASSERT(tracker.UpdateAccessStats(1, start));
-        UNIT_ASSERT(tracker.UpdateAccessStats(2, start));
+        UNIT_ASSERT(tracker.UpdateAccessStats(1, NProto::E_REGULAR_NODE, start));
+        UNIT_ASSERT(tracker.UpdateAccessStats(2, NProto::E_REGULAR_NODE, start));
 
         const auto stats = tracker.GetStats(start, 5);
 
@@ -94,11 +94,11 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
         const auto start = TInstant::Hours(1);
 
         UNIT_ASSERT(
-            tracker.UpdateAccessStats(1, start - TDuration::Minutes(10)));
-        UNIT_ASSERT(tracker.UpdateAccessStats(2, start));
-        UNIT_ASSERT(tracker.UpdateAccessStats(3, start));
-        UNIT_ASSERT(tracker.UpdateAccessStats(4, start));
-        UNIT_ASSERT(tracker.UpdateAccessStats(4, start));
+            tracker.UpdateAccessStats(1, NProto::E_REGULAR_NODE, start - TDuration::Minutes(10)));
+        UNIT_ASSERT(tracker.UpdateAccessStats(2, NProto::E_REGULAR_NODE, start));
+        UNIT_ASSERT(tracker.UpdateAccessStats(3, NProto::E_REGULAR_NODE, start));
+        UNIT_ASSERT(tracker.UpdateAccessStats(4, NProto::E_REGULAR_NODE, start));
+        UNIT_ASSERT(tracker.UpdateAccessStats(4, NProto::E_REGULAR_NODE, start));
 
         const auto stats = tracker.GetStats(start, 5);
 
