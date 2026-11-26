@@ -45,3 +45,11 @@ func TestIsDiskNotFoundError(t *testing.T) {
 	clientErr.Code = E_NOT_FOUND
 	require.True(t, IsDiskNotFoundError(err))
 }
+
+func TestVolumeOperationConflict(t *testing.T) {
+	err := &ClientError{Code: E_VOLUME_OPERATION_CONFLICT}
+
+	require.Equal(t, uint32(0x80050007), err.Code)
+	require.Equal(t, "E_VOLUME_OPERATION_CONFLICT", err.Error())
+	require.False(t, err.IsRetriable())
+}
