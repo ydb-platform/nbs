@@ -77,9 +77,9 @@ public:
         TFastShardContext& ctx,
         ui64 lsn);
 
-    NProto::TError Acquire(TFastShardContext& ctx);
+    NProto::TError Acquire(TFastShardContext& ctx, ui64 generation);
 
-    NProto::TError Release(TFastShardContext& ctx);
+    NProto::TError Release(TFastShardContext& ctx, ui64 generation);
 
 private:
     NProto::TError MakeProxyError(

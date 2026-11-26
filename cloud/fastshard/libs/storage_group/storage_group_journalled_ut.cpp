@@ -93,6 +93,8 @@ struct TJournalledDevices
     TVector<TString> DeviceUUIDs;
     TVector<std::shared_ptr<TJournalledStorageNode>> Nodes;
     TVector<IStorageGroupPtr> Groups;
+    // A group opened over the devices again is a restart.
+    ui64 Generation = 0;
 
     TJournalledDevices(ui32 count)
     {
@@ -186,7 +188,7 @@ FIBER_TEST(JournalledGroupTest, WritesSurviveARestart)
 {
     TJournalledDevices devices(3);
     auto group = devices.MakeGroup({0, 1, 2});
-    auto init = group->Init();
+    auto init = group->Init(++devices.Generation);
     ASSERT_EQ(S_OK, init.GetError().GetCode()) << init.GetError().GetMessage();
     ASSERT_EQ(1U, init.GetResult());
 
@@ -200,7 +202,7 @@ FIBER_TEST(JournalledGroupTest, WritesSurviveARestart)
     group->TearDown();
 
     group = devices.MakeGroup({0, 1, 2});
-    init = group->Init();
+    init = group->Init(++devices.Generation);
     ASSERT_EQ(S_OK, init.GetError().GetCode()) << init.GetError().GetMessage();
     ASSERT_EQ(6U, init.GetResult());
 
@@ -220,7 +222,7 @@ FIBER_TEST(JournalledGroupTest, ABlankDeviceCatchesUpAndServesAlone)
 {
     TJournalledDevices devices(2);
     auto group = devices.MakeGroup({0});
-    auto init = group->Init();
+    auto init = group->Init(++devices.Generation);
     ASSERT_EQ(S_OK, init.GetError().GetCode()) << init.GetError().GetMessage();
 
     auto error = WritePages(*group, 2, 5);
@@ -230,14 +232,14 @@ FIBER_TEST(JournalledGroupTest, ABlankDeviceCatchesUpAndServesAlone)
     // A blank device joins: it gets its header page and is brought up with the
     // records.
     group = devices.MakeGroup({0, 1});
-    init = group->Init();
+    init = group->Init(++devices.Generation);
     ASSERT_EQ(S_OK, init.GetError().GetCode()) << init.GetError().GetMessage();
     ASSERT_EQ(4U, init.GetResult());
     group->TearDown();
 
     // What it holds is enough on its own.
     group = devices.MakeGroup({1});
-    init = group->Init();
+    init = group->Init(++devices.Generation);
     ASSERT_EQ(S_OK, init.GetError().GetCode()) << init.GetError().GetMessage();
     ASSERT_EQ(4U, init.GetResult());
 
@@ -251,7 +253,7 @@ FIBER_TEST(JournalledGroupTest, ADamagedFirstPageFailsInit)
 {
     TJournalledDevices devices(3);
     auto group = devices.MakeGroup({0, 1, 2});
-    auto init = group->Init();
+    auto init = group->Init(++devices.Generation);
     ASSERT_EQ(S_OK, init.GetError().GetCode()) << init.GetError().GetMessage();
 
     auto error = WritePages(*group, 2, 5);
@@ -263,7 +265,7 @@ FIBER_TEST(JournalledGroupTest, ADamagedFirstPageFailsInit)
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
     group = devices.MakeGroup({0, 1, 2});
-    init = group->Init();
+    init = group->Init(++devices.Generation);
     ASSERT_EQ(E_INVALID_STATE, init.GetError().GetCode())
         << init.GetError().GetMessage();
     ASSERT_TRUE(init.GetError().GetMessage().Contains(devices.DeviceUUIDs[0]))
@@ -278,7 +280,7 @@ FIBER_TEST(JournalledGroupTest, ADamagedFirstPageFailsInit)
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
     group = devices.MakeGroup({0, 1, 2});
-    init = group->Init();
+    init = group->Init(++devices.Generation);
     ASSERT_EQ(E_INVALID_STATE, init.GetError().GetCode())
         << init.GetError().GetMessage();
     ASSERT_TRUE(init.GetError().GetMessage().Contains(devices.DeviceUUIDs[0]))
@@ -291,7 +293,7 @@ FIBER_TEST(JournalledGroupTest, ADeadDeviceFailsInit)
     devices[2].Stop();
 
     auto group = devices.MakeGroup({0, 1, 2});
-    const auto init = group->Init();
+    const auto init = group->Init(++devices.Generation);
 
     ASSERT_TRUE(HasError(init.GetError()));
     ASSERT_TRUE(init.GetError().GetMessage().Contains(devices.DeviceUUIDs[2]))

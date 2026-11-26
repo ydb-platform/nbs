@@ -30,12 +30,10 @@ ENDIF()
 PEERDIR(
     cloud/filestore/libs/service
     cloud/filestore/libs/storage/fastshard/iface
-    cloud/filestore/libs/storage/fastshard/storage_group
     cloud/filestore/libs/storage/model
 
     cloud/filestore/private/api/protos
 
-    cloud/fastshard/libs/sn/client
     cloud/fastshard/libs/storage_group
 )
 

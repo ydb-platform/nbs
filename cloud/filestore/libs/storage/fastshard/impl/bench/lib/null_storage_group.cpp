@@ -1,7 +1,5 @@
 #include "null_storage_group.h"
 
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_factory.h>
-
 #include <silk/fibers/fiber.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
@@ -28,8 +26,10 @@ public:
         , PageSize(pageSize)
     {}
 
-    TResultOrError<ui64> Init() override
+    TResultOrError<ui64> Init(ui64 generation) override
     {
+        Y_UNUSED(generation);
+
         Wait();
         return {0};
     }
@@ -87,38 +87,17 @@ private:
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-class TNullStorageGroupFactory final: public IStorageGroupFactory
-{
-private:
-    const IDelayPolicyPtr DelayPolicy;
-
-public:
-    explicit TNullStorageGroupFactory(IDelayPolicyPtr delayPolicy)
-        : DelayPolicy(std::move(delayPolicy))
-    {}
-
-    IStorageGroupPtr MakeStorageGroup(
-        const NProtoPrivate::TPersistentFastShardConfig& config,
-        ui64 generation) override
-    {
-        Y_UNUSED(generation);
-
-        return std::make_shared<TNullStorageGroup>(
-            DelayPolicy,
-            config.GetPageSize());
-    }
-};
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IStorageGroupFactoryPtr CreateNullStorageGroupFactory(
-    IDelayPolicyPtr delayPolicy)
+NCloud::NFastShard::IStorageGroupPtr CreateNullStorageGroup(
+    IDelayPolicyPtr delayPolicy,
+    ui32 pageSize)
 {
-    return std::make_shared<TNullStorageGroupFactory>(std::move(delayPolicy));
+    return std::make_shared<TNullStorageGroup>(
+        std::move(delayPolicy),
+        pageSize);
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

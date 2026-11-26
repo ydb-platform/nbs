@@ -380,7 +380,7 @@ void RenewSessionsLoop(TFastShardContext& ctx, TQuorumState& state)
         [&](TFastShardContext& ctx, ui32, TDeviceProxy& proxy)
             -> NProto::TError
         {
-            RenewSession(ctx, state.Health, proxy);
+            RenewSession(ctx, state.Health, proxy, state.Generation);
             return {};
         });
 }
@@ -411,8 +411,10 @@ public:
         }
     }
 
-    TResultOrError<ui64> Init() override
+    TResultOrError<ui64> Init(ui64 generation) override
     {
+        State->Generation = generation;
+
         if (State->Proxies.empty()) {
             return MakeError(E_ARGUMENT, "empty device configuration");
         }
@@ -435,9 +437,9 @@ public:
         auto error = ForEachProxy(
             ctx,
             *State,
-            [](TFastShardContext& ctx, ui32, TDeviceProxy& proxy)
+            [&](TFastShardContext& ctx, ui32, TDeviceProxy& proxy)
             {
-                return proxy.Release(ctx);
+                return proxy.Release(ctx, State->Generation);
             });
 
         if (HasError(error)) {
@@ -526,9 +528,9 @@ private:
         auto error = ForEachProxy(
             ctx,
             *State,
-            [](TFastShardContext& ctx, ui32, TDeviceProxy& proxy)
+            [&](TFastShardContext& ctx, ui32, TDeviceProxy& proxy)
             {
-                return proxy.Acquire(ctx);
+                return proxy.Acquire(ctx, State->Generation);
             });
 
         if (HasError(error)) {

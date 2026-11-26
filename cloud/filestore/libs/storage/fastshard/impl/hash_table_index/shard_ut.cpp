@@ -119,7 +119,7 @@ struct TStorageFixture
             "fs0",
             ShardNo,
             1 /* generation */,
-            CreateStorageGroupFactory(),
+            CreateStorageGroup("fs0", Config),
             Config);
     }
 

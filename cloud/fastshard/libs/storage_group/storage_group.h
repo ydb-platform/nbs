@@ -48,7 +48,7 @@ struct IStorageGroup
     virtual ~IStorageGroup() = default;
 
     // Returns highest lsn the group has discovered.
-    virtual TResultOrError<ui64> Init() = 0;
+    virtual TResultOrError<ui64> Init(ui64 generation) = 0;
 
     virtual void TearDown() = 0;
 
@@ -89,8 +89,6 @@ struct TStorageGroupConfig
 {
     // TODO(#5895): use proper client-id
     TString ClientId = "fastshard-prototype-client";
-
-    ui64 AcquireGeneration = 0;
 
     TStorageGroupRetryPolicy RetryPolicy;
 
