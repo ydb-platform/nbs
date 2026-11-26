@@ -16,6 +16,15 @@ TRequestTracker::TReservation::~TReservation()
     Owner->Release(Bytes);
 }
 
+NProto::TError TRequestTracker::TReservation::ReserveBytes(ui64 bytes)
+{
+    if (auto error = Owner->ReserveBytes(bytes); HasError(error)) {
+        return error;
+    }
+    Bytes += bytes;
+    return {};
+}
+
 TRequestTracker::TRequestTracker(TDataConfig config)
     : Config(config)
 {}

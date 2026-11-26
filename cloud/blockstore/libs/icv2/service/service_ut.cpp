@@ -324,7 +324,7 @@ void StartPair(
     auto firstConfig = MakeConfig(checksums);
     firstConfig.SetCellId("cell-1");
     firstConfig.MutableIcV2()->SetEnableXdc(firstXdc);
-    firstConfig.MutableIcV2()->SetMaxConnections(maxConnections);
+    firstConfig.MutableIcV2()->SetMaxIncomingConnections(maxConnections);
     auto& firstPeer = *firstConfig.MutableCells(0);
     firstPeer.SetCellId("cell-2");
     firstPeer.SetIcV2Port(secondPort);
@@ -335,7 +335,7 @@ void StartPair(
     auto secondConfig = MakeConfig(differentChecksums ? !checksums : checksums);
     secondConfig.MutableIcV2()->SetPort(secondPort);
     secondConfig.MutableIcV2()->SetEnableXdc(secondXdc);
-    secondConfig.MutableIcV2()->SetMaxConnections(maxConnections);
+    secondConfig.MutableIcV2()->SetMaxIncomingConnections(maxConnections);
     auto& secondPeer = *secondConfig.MutableCells(0);
     secondPeer.SetIcV2Port(first.Service->GetAddress().GetPort());
     secondPeer.AddHosts()->SetFqdn("127.0.0.1");
@@ -990,7 +990,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         }
         TFixture fixture;
         auto config = MakeConfig();
-        config.MutableIcV2()->SetMaxConnections(1);
+        config.MutableIcV2()->SetMaxIncomingConnections(1);
         auto [service, error] = fixture.Create(std::move(config));
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
         fixture.Service = std::move(service);
@@ -1121,7 +1121,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
     Y_UNIT_TEST(RejectsInvalidConfigurationBeforeEngineCreation)
     {
         TFixture fixture;
-        for (size_t variant = 0; variant < 13; ++variant) {
+        for (size_t variant = 0; variant < 16; ++variant) {
             auto config = MakeConfig();
             auto& icv2 = *config.MutableIcV2();
             switch (variant) {
@@ -1150,19 +1150,28 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
                     icv2.SetDataWorkers(0);
                     break;
                 case 8:
-                    icv2.SetMaxConnections(0);
+                    icv2.SetMaxIncomingConnections(0);
                     break;
                 case 9:
-                    icv2.SetMaxPendingRequests(0);
+                    icv2.SetMaxOutgoingConnections(0);
                     break;
                 case 10:
-                    icv2.SetMaxOutputQueueBytes(0);
+                    icv2.SetMaxOutgoingInflightRequests(0);
                     break;
                 case 11:
-                    icv2.SetCompletionThreads(0);
+                    icv2.SetMaxOutgoingInflightBytes(0);
                     break;
                 case 12:
-                    icv2.SetMaxOutgoingConnections(0);
+                    icv2.SetMaxIncomingInflightRequests(0);
+                    break;
+                case 13:
+                    icv2.SetMaxIncomingInflightBytes(0);
+                    break;
+                case 14:
+                    icv2.SetMaxTotalOutputQueueBytes(0);
+                    break;
+                case 15:
+                    icv2.SetCompletionThreads(0);
                     break;
             }
             auto result = fixture.Create(std::move(config));

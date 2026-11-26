@@ -187,7 +187,7 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
             const auto& options = Config->GetIcV2Config();
             // Reserve room for the auxiliary hello even when every main slot
             // is occupied. Logical channels have their own admission below.
-            const ui64 socketLimit = ui64(options.GetMaxConnections()) *
+            const ui64 socketLimit = ui64(options.GetMaxIncomingConnections()) *
                                      (options.GetEnableXdc() ? 2 : 1);
             if (ConnectionCount >= socketLimit) {
                 ++*RejectedConnections;
@@ -247,7 +247,8 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
         {
             TGuard<TMutex> guard(Mutex);
             if (Phase < EServicePhase::Stopping &&
-                Channels.size() < Config->GetIcV2Config().GetMaxConnections())
+                Channels.size() <
+                    Config->GetIcV2Config().GetMaxIncomingConnections())
             {
                 Y_ABORT_UNLESS(
                     NextConnectionId,
@@ -293,10 +294,12 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
             Transport,
             connection.Socket,
             connection.XdcSocket,
-            {.EventTypes = {DataEventTypes.begin(), DataEventTypes.end()},
-             .SendPings = sendPings,
-             .MaxPendingRequests =
-                 Config->GetIcV2Config().GetMaxPendingRequests()},
+            {
+                .EventTypes = {DataEventTypes.begin(), DataEventTypes.end()},
+                .SendPings = sendPings,
+                .MaxPendingRequests =
+                    Config->GetIcV2Config().GetMaxOutgoingInflightRequests(),
+            },
             Timer,
             Scheduler,
             Completions,
@@ -412,8 +415,10 @@ public:
             static_cast<ui16>((*cell)->GetIcV2Port()),
             std::move(handler),
             State->Peers,
-            {.MaxInflightRequests = options.GetMaxPendingRequests(),
-             .MaxInflightBytes = options.GetMaxDataInflightBytes()});
+            {
+                .MaxInflightRequests = options.GetMaxOutgoingInflightRequests(),
+                .MaxInflightBytes = options.GetMaxOutgoingInflightBytes(),
+            });
         if (HasError(error)) {
             return error;
         }
@@ -568,11 +573,15 @@ TResultOrError<IServicePtr> NPrivate::CreateService(
     const auto& options = config->GetIcV2Config();
     if (!config->GetCellsEnabled() || !options.GetEnabled() ||
         !options.GetIcV2Config().HasPort() || options.GetPort() > 65535 ||
-        !options.GetThreads() || !options.GetHandshakeTimeout() ||
-        !options.GetMaxConnections() || !options.GetMaxPendingRequests() ||
-        !options.GetMaxOutputQueueBytes() || !options.GetCompletionThreads() ||
-        !options.GetMaxOutgoingConnections() || !options.GetDataWorkers() ||
-        !options.GetMaxDataRequestBytes() || !options.GetMaxDataInflightBytes())
+        !options.GetHandshakeTimeout() ||
+        !options.GetMaxIncomingConnections() ||
+        !options.GetMaxOutgoingConnections() ||
+        !options.GetMaxOutgoingInflightRequests() ||
+        !options.GetMaxOutgoingInflightBytes() ||
+        !options.GetMaxIncomingInflightRequests() ||
+        !options.GetMaxIncomingInflightBytes() ||
+        !options.GetMaxTotalOutputQueueBytes() || !options.GetThreads() ||
+        !options.GetCompletionThreads() || !options.GetDataWorkers())
     {
         return MakeError(E_ARGUMENT, "invalid IC V2 service configuration");
     }
@@ -604,8 +613,10 @@ TResultOrError<IServicePtr> NPrivate::CreateService(
     auto [target, targetError] = CreateDataTarget(
         std::move(dataService),
         state->DataExecutor,
-        {.MaxInflightRequests = options.GetMaxPendingRequests(),
-         .MaxInflightBytes = options.GetMaxDataInflightBytes()});
+        {
+            .MaxInflightRequests = options.GetMaxIncomingInflightRequests(),
+            .MaxInflightBytes = options.GetMaxIncomingInflightBytes(),
+        });
     if (HasError(targetError)) {
         return targetError;
     }
@@ -631,7 +642,7 @@ TResultOrError<IServicePtr> NPrivate::CreateService(
     common->Settings.V2.EnableSQPOLL = false;
     state->Transport = NCloud::NIcV2::CreateTransport(
         NActors::CreateUringEngine(std::move(common)),
-        options.GetMaxOutputQueueBytes(),
+        options.GetMaxTotalOutputQueueBytes(),
         {});
     if (!state->Transport) {
         return MakeError(E_NOT_IMPLEMENTED, "IC V2 engine is unavailable");
