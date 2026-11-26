@@ -143,7 +143,7 @@ public:
         if (it == PageNo2Slot.end()) {
             ++Misses;
 
-            auto error = AcquireSlot(slot);
+            auto error = AcquireSlot(pageNo, slot);
             if (HasError(error)) {
                 return error;
             }
@@ -197,23 +197,24 @@ public:
     }
 
 private:
-    NProto::TError AcquireSlot(TSlot** slot)
+    NProto::TError AcquireSlot(ui64 pageNo, TSlot** slot)
     {
         for (;;) {
             const ui64 j = ClockHand++ % Slots.size();
             auto& s = Slots[j];
 
-            const bool isPinned = s.PageNo < PinnedPageCount;
+            const bool isPinnedPage = pageNo < PinnedPageCount;
+            const bool isPinnedSlot = s.PageNo < PinnedPageCount;
 
             if (s.PageNo == InvalidPageNo) {
-                Pins += isPinned ? 1 : 0;
+                Pins += isPinnedPage ? 1 : 0;
 
                 Y_ABORT_UNLESS(!s.Locked);
                 *slot = &s;
                 return {};
             }
 
-            if (s.Locked || isPinned) {
+            if (s.Locked || isPinnedSlot) {
                 continue;
             }
 
