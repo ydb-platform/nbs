@@ -18,6 +18,9 @@ struct IDataEndpoint: public IBlockStore
 {
     // Safe to call from result callbacks. Wait on the future outside callbacks.
     virtual NThreading::TFuture<void> RequestStop() = 0;
+
+    // Observe shutdown completion without initiating it.
+    [[nodiscard]] virtual NThreading::TFuture<void> WhenClosed() const = 0;
 };
 
 using IDataEndpointPtr = std::shared_ptr<IDataEndpoint>;

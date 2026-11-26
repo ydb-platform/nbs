@@ -20,13 +20,16 @@ public:
     class TReservation
     {
         const std::shared_ptr<TRequestTracker> Owner;
-        const ui64 Bytes;
+        ui64 Bytes;
 
     public:
         TReservation(std::shared_ptr<TRequestTracker> owner, ui64 bytes);
         TReservation(const TReservation&) = delete;
         TReservation& operator=(const TReservation&) = delete;
         ~TReservation();
+
+        // Called by the worker before allocating additional buffers.
+        NProto::TError ReserveBytes(ui64 bytes);
     };
 
 private:

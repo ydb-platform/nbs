@@ -202,6 +202,7 @@ class TDataEndpoint final: public TBlockStoreImpl<TDataEndpoint, IDataEndpoint>
 {
     const IDataRequestChannelPtr Channel;
     const std::shared_ptr<TRequestTracker> Tracker;
+    NThreading::TPromise<void> Closed = NThreading::NewPromise<void>();
 
 public:
     TDataEndpoint(IDataRequestChannelPtr channel, TDataConfig config)
@@ -211,8 +212,7 @@ public:
 
     ~TDataEndpoint() override
     {
-        Tracker->RequestStop();
-        Channel->Close();
+        RequestStop();
     }
 
     void Start() override
@@ -220,15 +220,29 @@ public:
 
     NThreading::TFuture<void> RequestStop() override
     {
+        auto closed = Closed;
         const auto tracker = Tracker;
         const auto channel = Channel;
         const auto requestsClosed = tracker->RequestStop();
-        return NThreading::WaitAll(requestsClosed, channel->Close());
+        const auto channelClosed = channel->Close();
+        NThreading::WaitAll(requestsClosed, channelClosed)
+            .Subscribe(
+                [closed](const NThreading::TFuture<void>& completed) mutable
+                {
+                    Y_UNUSED(completed);
+                    closed.TrySetValue();
+                });
+        return closed.GetFuture();
+    }
+
+    NThreading::TFuture<void> WhenClosed() const override
+    {
+        return Closed.GetFuture();
     }
 
     void Stop() override
     {
-        RequestStop().GetValueSync();
+        RequestStop().Wait();
     }
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override

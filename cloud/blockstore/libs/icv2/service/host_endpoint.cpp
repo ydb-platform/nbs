@@ -20,6 +20,11 @@ IDataEndpointPtr THostDataEndpoint::GetEndpoint() const
     return Endpoint;
 }
 
+IPeerPtr THostDataEndpoint::GetPeer() const
+{
+    return Peer;
+}
+
 TPeerStatus THostDataEndpoint::GetStatus() const
 {
     Y_DEBUG_ABORT_UNLESS(Peer);

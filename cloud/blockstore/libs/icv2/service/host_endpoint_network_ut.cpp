@@ -346,7 +346,9 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointNetworkTest)
 {
     Y_UNIT_TEST(DurableReadRetriesAfterTcpDisconnect)
     {
-        if (!NActors::TUringContext::IsAvailable()) {
+        const bool available = NActors::TUringContext::IsAvailable();
+        UNIT_ADD_METRIC("io_uring_available", available);
+        if (!available) {
             Cerr << "io_uring not available; skipping" << Endl;
             return;
         }
