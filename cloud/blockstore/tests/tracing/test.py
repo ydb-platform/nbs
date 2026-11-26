@@ -6,7 +6,9 @@ import urllib.request
 import pytest
 import yatest.common as common
 
+from cloud.blockstore.public.api.protos import mount_pb2, volume_pb2
 from cloud.storage.core.protos import media_pb2
+from contrib.ydb.tests.library.common.wait_for import wait_for
 from cloud.blockstore.tests.tracing.tracing_harness import Environment, trace_id, wait_for_traces, write_json
 from cloud.blockstore.tests.tracing.tracing_perf import run_comparison
 
@@ -65,6 +67,37 @@ def test_data_path_traces():
                          request_id)
             cases.append(dict(media=name, disk=disk, operation="WriteBlocks",
                               request_id=request_id, attempts=2))
+
+        # A remote mount can still reach the volume through an in-process
+        # tablet pipe. Each YDB request must retain its exported wire parent.
+        disk = "trace-remote-mount"
+        session = env.volume(media_pb2.STORAGE_MEDIA_SSD, disk)
+        env.call("UnmountVolume", mount_pb2.TUnmountVolumeRequest(
+            DiskId=disk, SessionId=session))
+        session = env.call("MountVolume", mount_pb2.TMountVolumeRequest(
+            DiskId=disk, InstanceId="remote-reader",
+            VolumeMountMode=volume_pb2.VOLUME_MOUNT_REMOTE)).SessionId
+
+        def remote_partition_ready():
+            request = env.operation("ReadBlocks", disk, session)
+            response = env.client.ReadBlocks(env.header(request), timeout=10)
+            if response.Error.Message.endswith("not ready by partition state"):
+                return False
+            assert not response.Error.Code, response.Error
+            return True
+
+        assert wait_for(remote_partition_ready, timeout_seconds=60)
+        # A small zero uses the fresh channel. A whole-blob zero can complete
+        # with a partition metadata update and no data request to DSProxy.
+        for index, operation in enumerate(("ReadBlocks", "WriteBlocks", "ZeroBlocks")):
+            request_id = 731100 + len(cases)
+            blocks = 256 if operation == "ReadBlocks" else 1
+            response = env.call(operation, env.operation(
+                operation, disk, session, index=index, blocks=blocks), request_id)
+            if operation == "ReadBlocks":
+                assert b"".join(response.Blocks.Buffers) == b"p" * (1024 * 1024)
+            cases.append(dict(media="ssd", disk=disk, operation=operation,
+                              request_id=request_id, remote_mount=True))
 
         # Session rejection gives each API operation a deterministic error trace.
         # This does not replace the actor-level BlobStorage error scenarios.

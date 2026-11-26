@@ -18176,6 +18176,69 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldPassTraceIdToBlobstorage)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        auto writeReq = partition.CreateWriteBlocksRequest(0, 1);
+        writeReq->CallContext->RequestId = 12345;
+
+        auto shuttle = MakeIntrusive<TMockShuttle>(ui64{10}, ui64{10});
+        writeReq->CallContext->LWOrbit.AddShuttle(shuttle);
+
+        ui64 spanId = 0;
+        writeReq->CallContext->LWOrbit.ForEachShuttle(
+            [&](const NLWTrace::IShuttle* s) { spanId = s->GetSpanId(); });
+
+        std::optional<NWilson::TTraceId> traceId;
+
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvPut) {
+                    traceId = NWilson::TTraceId(event->TraceId);
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.SendToPipe(std::move(writeReq));
+
+        auto response =
+            partition.RecvResponse<TEvService::TEvWriteBlocksResponse>();
+        UNIT_ASSERT_C(
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason());
+
+        NProto::TVolumeStats stats =
+            partition.StatPartition()->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 1);
+
+        UNIT_ASSERT(traceId.has_value());
+
+        NWilson::TTraceId expectedTraceId(
+            {12345, 0},
+            spanId,
+            NWilson::TTraceId::MAX_VERBOSITY,
+            NWilson::TTraceId::MAX_TIME_TO_LIVE);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedTraceId.GetHexTraceId(),
+            traceId->GetHexTraceId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedTraceId.GetVerbosity(),
+            traceId->GetVerbosity());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedTraceId.GetTimeToLive(),
+            traceId->GetTimeToLive());
+    }
+
     void TestCorrelateDataPathTraces(bool mergedWrite)
     {
         for (const auto media:
@@ -18467,69 +18530,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             }
             UNIT_ASSERT_VALUES_EQUAL(seen.size(), wireParents.size());
         }
-    }
-
-    Y_UNIT_TEST(ShouldPassTraceIdToBlobstorage)
-    {
-        auto config = DefaultConfig();
-        config.SetFreshChannelWriteRequestsEnabled(true);
-
-        auto runtime = PrepareTestActorRuntime(config);
-
-        TPartitionClient partition(*runtime);
-        partition.WaitReady();
-
-        auto writeReq = partition.CreateWriteBlocksRequest(0, 1);
-        writeReq->CallContext->RequestId = 12345;
-
-        auto shuttle = MakeIntrusive<TMockShuttle>(ui64{10}, ui64{10});
-        writeReq->CallContext->LWOrbit.AddShuttle(shuttle);
-
-        ui64 spanId = 0;
-        writeReq->CallContext->LWOrbit.ForEachShuttle(
-            [&](const NLWTrace::IShuttle* s) { spanId = s->GetSpanId(); });
-
-        std::optional<NWilson::TTraceId> traceId;
-
-        runtime->SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
-            {
-                if (event->GetTypeRewrite() == TEvBlobStorage::EvPut) {
-                    traceId = NWilson::TTraceId(event->TraceId);
-                }
-
-                return TTestActorRuntime::DefaultObserverFunc(event);
-            });
-
-        partition.SendToPipe(std::move(writeReq));
-
-        auto response =
-            partition.RecvResponse<TEvService::TEvWriteBlocksResponse>();
-        UNIT_ASSERT_C(
-            SUCCEEDED(response->GetStatus()),
-            response->GetErrorReason());
-
-        NProto::TVolumeStats stats =
-            partition.StatPartition()->Record.GetStats();
-        UNIT_ASSERT_VALUES_EQUAL(stats.GetFreshBlocksCount(), 1);
-
-        UNIT_ASSERT(traceId.has_value());
-
-        NWilson::TTraceId expectedTraceId(
-            {12345, 0},
-            spanId,
-            NWilson::TTraceId::MAX_VERBOSITY,
-            NWilson::TTraceId::MAX_TIME_TO_LIVE);
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            expectedTraceId.GetHexTraceId(),
-            traceId->GetHexTraceId());
-        UNIT_ASSERT_VALUES_EQUAL(
-            expectedTraceId.GetVerbosity(),
-            traceId->GetVerbosity());
-        UNIT_ASSERT_VALUES_EQUAL(
-            expectedTraceId.GetTimeToLive(),
-            traceId->GetTimeToLive());
     }
 
     Y_UNIT_TEST(ShouldZeroFreshBlocks)
