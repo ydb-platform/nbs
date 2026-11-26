@@ -69,11 +69,18 @@ struct IEndpointProcess: TThrRefBase
     virtual NProto::TError Wait() = 0;
 };
 
+enum class EEndpointStartMode
+{
+    Initial,
+    Restart,
+};
+
 TIntrusivePtr<IEndpointProcess> CreateEndpointProcess(
     TExecutor& executor,
     TString clientId,
     ILoggingServicePtr logging,
     TEndpointStats stats,
-    TChild child);
+    TChild child,
+    EEndpointStartMode mode = EEndpointStartMode::Initial);
 
 }   // namespace NCloud::NBlockStore::NServer::NPrivate

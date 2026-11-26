@@ -368,7 +368,7 @@ public:
         }
     }
 
-    void StartReaders(TExecutor& executor)
+    void StartReaders(TExecutor& executor, EEndpointStartMode mode)
     {
         auto start = [self = TIntrusivePtr<TEndpointProcess>(this)] {
             auto* e = RunningCont()->Executor();
@@ -378,11 +378,15 @@ public:
         if (!executor.TryEnqueue(
                 std::make_unique<TSimpleTask<decltype(start)>>(std::move(start))))
         {
-            // No reader or waiter owns the child yet.
+            FinishStats();
+            if (mode == EEndpointStartMode::Restart) {
+                // The VM can still use the replacement during NBS shutdown.
+                return;
+            }
+            // The initial start can fall back to the in-process endpoint.
             Process.Kill();
             Process.Wait();
             Exited = true;
-            Stats.FinishExternalStats();
             ythrow TServiceError(E_REJECTED) << "endpoint executor is stopped";
         }
     }
@@ -404,12 +408,17 @@ public:
     }
 
 private:
+    void FinishStats()
+    {
+        Stats.FinishExternalStats();
+        StatsReadFinished.TrySetValue();
+    }
+
     void ReadStats(TCont* c)
     {
         Y_DEFER
         {
-            Stats.FinishExternalStats();
-            StatsReadFinished.TrySetValue();
+            FinishStats();
         };
         // Since it is not guaranteed that the vhost-server will receive first
         // signal to generate statistics, we need to read the response with a
@@ -543,14 +552,15 @@ TIntrusivePtr<IEndpointProcess> CreateEndpointProcess(
     TString clientId,
     ILoggingServicePtr logging,
     TEndpointStats stats,
-    TChild child)
+    TChild child,
+    EEndpointStartMode mode)
 {
     auto process = MakeIntrusive<TEndpointProcess>(
         std::move(clientId),
         std::move(logging),
         std::move(stats),
         std::move(child));
-    process->StartReaders(executor);
+    process->StartReaders(executor, mode);
     return process;
 }
 
@@ -559,6 +569,7 @@ TIntrusivePtr<IEndpointProcess> CreateEndpointProcess(
 namespace {
 
 using NPrivate::CreateEndpointProcess;
+using NPrivate::EEndpointStartMode;
 using NPrivate::IEndpointProcess;
 using NPrivate::SpawnChild;
 using NPrivate::TChild;
@@ -655,7 +666,7 @@ public:
         if (Stats.SocketPath) {
             Stats.RegisterExternalStats();
         }
-        Process = StartProcess();
+        Process = StartProcess(EEndpointStartMode::Initial);
         std::thread(&TEndpoint::ThreadProc, shared_from_this()).detach();
     }
 
@@ -713,7 +724,7 @@ private:
                                 { promise.SetValue(error); });
     }
 
-    TIntrusivePtr<IEndpointProcess> StartProcess()
+    TIntrusivePtr<IEndpointProcess> StartProcess(EEndpointStartMode mode)
     {
         auto process = SpawnChild(BinaryPath, Args, LatencySli);
 
@@ -730,7 +741,7 @@ private:
         try {
             AddToCGroups(process.Pid, Cgroups);
             return CreateEndpointProcess(
-                *Executor, ClientId, Logging, Stats, std::move(process));
+                *Executor, ClientId, Logging, Stats, std::move(process), mode);
         } catch (...) {
             ShouldStop = true;
             throw;
@@ -758,7 +769,7 @@ private:
 
         try {
             LastRestartAt = TInstant::Now();
-            return StartProcess();
+            return StartProcess(EEndpointStartMode::Restart);
         } catch (...) {
             STORAGE_ERROR(
                 LogPrefix << "Can't restart external endpoint: "

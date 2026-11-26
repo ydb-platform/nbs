@@ -484,6 +484,49 @@ Y_UNIT_TEST_SUITE(TExternalEndpointTest)
         UNIT_ASSERT_VALUES_EQUAL(ECHILD, waitError);
     }
 
+    Y_UNIT_TEST(ShouldKeepRestartedEndpointRunningWhenExecutorStopped)
+    {
+        auto executor = TExecutor::Create("stats-test");
+        executor->Start();
+        executor->Stop();
+
+        auto child = SpawnChild(
+            "/bin/sh",
+            {"-c", "trap 'exit 0' INT; echo ready >&2; while :; do sleep 0.1; done"},
+            "");
+        Y_DEFER {
+            if (child.Pid) {
+                child.Kill();
+                child.Wait();
+            }
+        };
+        pollfd ready{child.StdErr, POLLIN, 0};
+        UNIT_ASSERT(poll(&ready, 1, 5000) > 0 && (ready.revents & POLLIN));
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        auto gaps = counters->GetCounter("LatencyIncompleteStreams", true);
+        TEndpointStats stats{"client", "disk", std::make_shared<TTestServerStats>()};
+        stats.IncompleteStreams = gaps;
+        const auto pid = child.Pid;
+        auto process = CreateEndpointProcess(
+            *executor,
+            "client",
+            CreateLoggingService("console"),
+            std::move(stats),
+            std::move(child),
+            NPrivate::EEndpointStartMode::Restart);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, ::waitpid(pid, nullptr, WNOHANG));
+        process->Stop();
+        auto stopped = NewPromise<NProto::TError>();
+        std::thread([process, stopped]() mutable {
+            stopped.SetValue(process->Wait());
+        }).detach();
+        const auto error = stopped.GetFuture().GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(error), error);
+        UNIT_ASSERT_VALUES_EQUAL(1, gaps->Val());
+    }
+
     Y_UNIT_TEST(ShouldDrainFinalStatsWhenChildExitsBeforeReadersStart)
     {
         auto executor = TExecutor::Create("stats-test");
