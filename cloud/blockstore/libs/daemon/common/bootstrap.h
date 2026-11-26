@@ -100,6 +100,7 @@ protected:
     IBlockDigestGeneratorPtr BlockDigestGenerator;
     IBlockStorePtr Service;
     NCells::ICellManagerPtr CellManager;
+    ITaskQueuePtr IcV2DnsThreadPool;
     IStartablePtr IcV2AddressResolver;
     IStartablePtr IcV2Service;
     ISocketEndpointListenerPtr GrpcEndpointListener;

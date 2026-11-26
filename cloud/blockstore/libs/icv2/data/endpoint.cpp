@@ -8,8 +8,6 @@
 #include <cloud/blockstore/libs/service/service_method.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 
-#include <exception>
-
 namespace NCloud::NBlockStore::NIcV2 {
 
 namespace {
@@ -231,12 +229,7 @@ public:
             .Subscribe(
                 [closed](const NThreading::TFuture<void>& completed) mutable
                 {
-                    try {
-                        completed.GetValue();
-                    } catch (...) {
-                        closed.TrySetException(std::current_exception());
-                        return;
-                    }
+                    Y_UNUSED(completed);
                     closed.TrySetValue();
                 });
         return closed.GetFuture();
@@ -249,7 +242,7 @@ public:
 
     void Stop() override
     {
-        RequestStop().GetValueSync();
+        RequestStop().Wait();
     }
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override

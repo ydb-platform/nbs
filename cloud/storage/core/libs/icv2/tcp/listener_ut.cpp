@@ -149,7 +149,7 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
         UNIT_ASSERT_VALUES_EQUAL(received, sent);
     }
 
-    Y_UNIT_TEST(ContinuesAcceptingAfterPendingNetworkErrors)
+    Y_UNIT_TEST(ContinuesAcceptingAfterRetryableErrors)
     {
         constexpr int errors[] = {
             ENETDOWN,
@@ -160,7 +160,12 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
             EHOSTUNREACH,
             EOPNOTSUPP,
             ENETUNREACH,
-            EPERM};
+            EPERM,
+            EMFILE,
+            ENFILE,
+            ENOBUFS,
+            ENOMEM,
+        };
         for (int injectedError: errors) {
             auto firstAccepted = NThreading::NewPromise<TSocketResult>();
             auto secondAccepted = NThreading::NewPromise<TSocketResult>();
@@ -224,7 +229,7 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
 
     Y_UNIT_TEST(ReportsTerminalAcceptError)
     {
-        for (int injectedError: {EBADF, EMFILE, ENFILE, ENOBUFS, ENOMEM}) {
+        for (int injectedError: {EBADF, EINVAL}) {
             auto client = std::make_shared<TErrorListenerClient>();
             auto injector = std::make_shared<TTestErrorInjector>(injectedError);
             auto [listener, error] = NPrivate::CreateListener(

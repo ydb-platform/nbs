@@ -6,6 +6,8 @@
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
 
+#include <library/cpp/threading/hot_swap/hot_swap.h>
+
 #include <utility>
 
 namespace NCloud::NIcV2 {
@@ -18,11 +20,36 @@ namespace {
 
 using namespace NActors;
 
+class TRegisteredActor final: public TAtomicRefCount<TRegisteredActor>
+{
+    const IActorSystemPtr ActorSystem;
+    const TActorId Id;
+
+public:
+    TRegisteredActor(IActorSystemPtr actorSystem, TActorId id)
+        : ActorSystem(std::move(actorSystem))
+        , Id(id)
+    {}
+
+    ~TRegisteredActor()
+    {
+        Send(std::make_unique<TEvents::TEvPoison>());
+    }
+
+    bool Send(IEventBasePtr event) const
+    {
+        return ActorSystem->Send(Id, std::move(event));
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TResolver final: public IActorAddressResolver
 {
     const IActorSystemPtr ActorSystem;
     const ITaskQueuePtr Completions;
-    TActorId Actor;
+
+    THotSwap<TRegisteredActor> Actor;
 
 public:
     TResolver(IActorSystemPtr actorSystem, ITaskQueuePtr completions)
@@ -30,38 +57,38 @@ public:
         , Completions(std::move(completions))
     {}
 
-    ~TResolver() override
-    {
-        Stop();
-    }
-
     // IStartable implementation
     void Start() override
     {
-        Y_DEBUG_ABORT_UNLESS(!Actor);
+        Y_DEBUG_ABORT_UNLESS(!Actor.AtomicLoad());
 
-        Actor = ActorSystem->Register(
+        const auto id = ActorSystem->Register(
             NPrivate::CreateAddressResolverActor(Completions),
             {});
+        if (id) {
+            Actor.AtomicStore(MakeIntrusive<TRegisteredActor>(ActorSystem, id));
+        }
     }
 
     void Stop() override
     {
-        if (const auto actor = std::exchange(Actor, TActorId{})) {
-            ActorSystem->Send(actor, std::make_unique<TEvents::TEvPoison>());
-        }
+        Actor.AtomicStore(nullptr);
     }
 
     // IAddressResolver implementation
     TResolveFuture
     Resolve(const TString& host, ui16 port, TMonotonic deadline) override
     {
-        Y_DEBUG_ABORT_UNLESS(Actor);
+        // Keep the actor alive until the admitted request has been enqueued.
+        const auto actor = Actor.AtomicLoad();
+        if (!actor) {
+            return NThreading::MakeFuture<TResolveResult>(
+                MakeError(E_REJECTED, "DNS resolver unavailable"));
+        }
 
         auto promise = NThreading::NewPromise<TResolveResult>();
         auto future = promise.GetFuture();
-        if (!ActorSystem->Send(
-                Actor,
+        if (!actor->Send(
                 NPrivate::CreateResolveRequest(host, port, deadline, promise)))
         {
             promise.SetValue(MakeError(E_REJECTED, "DNS resolver unavailable"));

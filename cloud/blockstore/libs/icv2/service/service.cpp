@@ -25,6 +25,7 @@
 
 #include <util/generic/algorithm.h>
 #include <util/generic/hash.h>
+#include <util/generic/scope.h>
 #include <util/generic/vector.h>
 #include <util/network/address.h>
 #include <util/system/guard.h>
@@ -109,6 +110,7 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
     EServicePhase Phase = EServicePhase::Created;
     NProto::TError ListenerError;
     size_t ConnectionCount = 0;
+    size_t PendingDataEndpointCreations = 0;
     ui64 NextConnectionId = 1;
     THashMap<ui64, IRequestChannelPtr> Channels;
 
@@ -124,10 +126,10 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
         , Log(std::move(log))
         , Completions(CreateThreadPool(
               "ICV2Result",
-              Config->GetIcV2Config().GetCompletionThreads()))
+              Config->GetIcV2Config().GetOutgoingCompletionThreads()))
         , DataExecutor(CreateThreadPool(
               "ICV2Data",
-              Config->GetIcV2Config().GetDataWorkers()))
+              Config->GetIcV2Config().GetIncomingRequestThreads()))
         , AcceptedConnections(counters->GetCounter("AcceptedConnections", true))
         , RejectedConnections(counters->GetCounter("RejectedConnections", true))
         , ListenerErrors(counters->GetCounter("ListenerErrors", true))
@@ -395,21 +397,39 @@ public:
                 E_ARGUMENT,
                 "invalid IC V2 data host or cell port");
         }
-        TGuard<TMutex> guard(State->Mutex);
-        if (State->Phase != EServicePhase::Running) {
-            return MakeError(E_REJECTED, "IC V2 service is not running");
-        }
         const auto& options = State->Config->GetIcV2Config();
-        EraseIf(
-            State->DataEndpoints,
-            [](const TServiceState::TDataBinding& binding)
-            {
-                return binding.Endpoint.expired() && binding.Closed.HasValue();
-            });
-        if (State->DataEndpoints.size() >= options.GetMaxOutgoingConnections())
         {
-            return MakeError(E_REJECTED, "IC V2 data binding limit reached");
+            TGuard<TMutex> guard(State->Mutex);
+            if (State->Phase != EServicePhase::Running) {
+                return MakeError(E_REJECTED, "IC V2 service is not running");
+            }
+            EraseIf(
+                State->DataEndpoints,
+                [](const TServiceState::TDataBinding& binding)
+                {
+                    return binding.Endpoint.expired() &&
+                           binding.Closed.HasValue();
+                });
+            if (State->DataEndpoints.size() +
+                    State->PendingDataEndpointCreations >=
+                options.GetMaxOutgoingConnections())
+            {
+                return MakeError(
+                    E_REJECTED,
+                    "IC V2 data binding limit reached");
+            }
+            ++State->PendingDataEndpointCreations;
         }
+
+        bool reserved = true;
+        Y_DEFER
+        {
+            if (reserved) {
+                TGuard<TMutex> guard(State->Mutex);
+                --State->PendingDataEndpointCreations;
+            }
+        };
+
         auto [binding, error] = CreateHostDataEndpoint(
             host,
             static_cast<ui16>((*cell)->GetIcV2Port()),
@@ -423,12 +443,22 @@ public:
             return error;
         }
         auto endpoint = binding.GetEndpoint();
-        State->DataEndpoints.push_back({
+        TServiceState::TDataBinding entry{
             .Endpoint = endpoint,
             .Closed = endpoint->WhenClosed(),
             .Peer = binding.GetPeer(),
-        });
-        return IBlockStorePtr(std::move(endpoint));
+        };
+        {
+            TGuard<TMutex> guard(State->Mutex);
+            if (State->Phase == EServicePhase::Running) {
+                State->DataEndpoints.push_back(std::move(entry));
+                --State->PendingDataEndpointCreations;
+                reserved = false;
+                return IBlockStorePtr(std::move(endpoint));
+            }
+        }
+        endpoint->RequestStop();
+        return MakeError(E_REJECTED, "IC V2 service is not running");
     }
 
     TPeerStatus GetDataEndpointStatus(const IBlockStorePtr& endpoint) override
@@ -437,8 +467,8 @@ public:
         {
             TGuard<TMutex> guard(State->Mutex);
             for (const auto& binding: State->DataEndpoints) {
-                if (const auto current = binding.Endpoint.lock();
-                    current && current.get() == endpoint.get())
+                if (!binding.Endpoint.owner_before(endpoint) &&
+                    !endpoint.owner_before(binding.Endpoint))
                 {
                     peer = binding.Peer.lock();
                     break;
@@ -507,7 +537,7 @@ public:
         State->Peers->Stop();
         State->Transport->Stop();
         for (const auto& channel: channels) {
-            channel->WhenClosed().GetValueSync();
+            channel->WhenClosed().Wait();
         }
         TVector<TFuture<void>> bindings;
         {
@@ -518,7 +548,7 @@ public:
         }
         // The shutdown barrier survives the endpoint and covers its callbacks.
         for (const auto& closed: bindings) {
-            closed.GetValueSync();
+            closed.Wait();
         }
         State->DataTarget->Stop();
         State->DataExecutor->Stop();
@@ -580,8 +610,10 @@ TResultOrError<IServicePtr> NPrivate::CreateService(
         !options.GetMaxOutgoingInflightBytes() ||
         !options.GetMaxIncomingInflightRequests() ||
         !options.GetMaxIncomingInflightBytes() ||
-        !options.GetMaxTotalOutputQueueBytes() || !options.GetThreads() ||
-        !options.GetCompletionThreads() || !options.GetDataWorkers())
+        !options.GetMaxTotalOutputQueueBytes() ||
+        !options.GetNetworkIoThreads() ||
+        !options.GetOutgoingCompletionThreads() ||
+        !options.GetIncomingRequestThreads())
     {
         return MakeError(E_ARGUMENT, "invalid IC V2 service configuration");
     }
@@ -637,7 +669,7 @@ TResultOrError<IServicePtr> NPrivate::CreateService(
     }
     auto common = MakeIntrusive<NActors::TInterconnectProxyCommon>();
     common->MonCounters = counters;
-    common->Settings.V2.Threads = options.GetThreads();
+    common->Settings.V2.Threads = options.GetNetworkIoThreads();
     common->Settings.V2.ChecksumEvents = options.GetChecksumEvents();
     common->Settings.V2.EnableSQPOLL = false;
     state->Transport = NCloud::NIcV2::CreateTransport(

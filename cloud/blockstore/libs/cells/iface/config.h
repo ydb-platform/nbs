@@ -164,9 +164,9 @@ public:
     [[nodiscard]] ui32 GetMaxIncomingInflightRequests() const;
     [[nodiscard]] ui64 GetMaxIncomingInflightBytes() const;
     [[nodiscard]] ui64 GetMaxTotalOutputQueueBytes() const;
-    [[nodiscard]] ui32 GetThreads() const;
-    [[nodiscard]] ui32 GetCompletionThreads() const;
-    [[nodiscard]] ui32 GetDataWorkers() const;
+    [[nodiscard]] ui32 GetNetworkIoThreads() const;
+    [[nodiscard]] ui32 GetOutgoingCompletionThreads() const;
+    [[nodiscard]] ui32 GetIncomingRequestThreads() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

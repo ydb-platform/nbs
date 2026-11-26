@@ -95,7 +95,7 @@ message TCellsIcV2Config
 
     // Numeric IPv4 or IPv6 address. IPv6 listener accepts only IPv6 sockets.
     optional string ListenAddress = 2;
-    // Unset or zero selects an ephemeral port.
+    // Required when IC V2 is enabled. Zero selects an ephemeral port.
     optional uint32 Port = 3;
     // Use a separate data socket when both peers enable XDC.
     optional bool EnableXdc = 4;
@@ -122,12 +122,10 @@ message TCellsIcV2Config
     // Service-wide byte limit for queued outgoing requests and responses.
     optional uint64 MaxTotalOutputQueueBytes = 13;
 
-    // Network I/O threads.
-    optional uint32 Threads = 14;
-    // Request completion threads.
-    optional uint32 CompletionThreads = 15;
-    // Incoming request processing threads.
-    optional uint32 DataWorkers = 16;
+    optional uint32 NetworkIoThreads = 14;
+    // Reports results of outgoing requests and connection attempts.
+    optional uint32 OutgoingCompletionThreads = 15;
+    optional uint32 IncomingRequestThreads = 16;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

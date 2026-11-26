@@ -11,6 +11,9 @@ PEERDIR(
     cloud/storage/core/libs/kikimr
 
     contrib/ydb/library/actors/core
+    library/cpp/threading/hot_swap
 )
 
 END()
+
+RECURSE_FOR_TESTS(ut)

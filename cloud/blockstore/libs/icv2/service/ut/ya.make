@@ -15,8 +15,6 @@ PEERDIR(
     cloud/storage/core/libs/icv2/handshake
     cloud/storage/core/libs/icv2/tcp/testlib
     cloud/storage/core/libs/icv2/transport/testlib
-    contrib/ydb/library/actors/dnsresolver
-    contrib/ydb/library/actors/testlib
 )
 
 END()

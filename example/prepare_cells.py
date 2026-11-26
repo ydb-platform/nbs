@@ -20,8 +20,8 @@ CellId: "{cell_id}"
 IcV2 {{
   Enabled: true
   EnableXdc: true
-  ListenAddress: "127.0.0.1"
-  Port: {icv2_port + node * 20}
+  ListenAddress: "127.0.0.{node + 1}"
+  Port: {icv2_port}
 }}
 
 Cells {{

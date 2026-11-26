@@ -30,12 +30,12 @@ Y_UNIT_TEST_SUITE(TCellsIcV2ConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(1024, config.GetMaxIncomingInflightRequests());
         UNIT_ASSERT_VALUES_EQUAL(1_GB, config.GetMaxIncomingInflightBytes());
         UNIT_ASSERT_VALUES_EQUAL(1_GB, config.GetMaxTotalOutputQueueBytes());
-        UNIT_ASSERT_VALUES_EQUAL(1, config.GetThreads());
-        UNIT_ASSERT_VALUES_EQUAL(2, config.GetCompletionThreads());
-        UNIT_ASSERT_VALUES_EQUAL(1, config.GetDataWorkers());
+        UNIT_ASSERT_VALUES_EQUAL(1, config.GetNetworkIoThreads());
+        UNIT_ASSERT_VALUES_EQUAL(2, config.GetOutgoingCompletionThreads());
+        UNIT_ASSERT_VALUES_EQUAL(1, config.GetIncomingRequestThreads());
         UNIT_ASSERT(!cells.GetCellsConfig().HasIcV2());
         UNIT_ASSERT(!config.GetIcV2Config().HasPort());
-        UNIT_ASSERT(!config.GetIcV2Config().HasThreads());
+        UNIT_ASSERT(!config.GetIcV2Config().HasNetworkIoThreads());
     }
 
     Y_UNIT_TEST(ShouldPreserveExplicitZeroValues)
@@ -52,9 +52,9 @@ Y_UNIT_TEST_SUITE(TCellsIcV2ConfigTest)
         icV2.SetMaxIncomingInflightRequests(0);
         icV2.SetMaxIncomingInflightBytes(0);
         icV2.SetMaxTotalOutputQueueBytes(0);
-        icV2.SetThreads(0);
-        icV2.SetCompletionThreads(0);
-        icV2.SetDataWorkers(0);
+        icV2.SetNetworkIoThreads(0);
+        icV2.SetOutgoingCompletionThreads(0);
+        icV2.SetIncomingRequestThreads(0);
 
         const TCellsConfig cells(std::move(proto));
         const auto& config = cells.GetIcV2Config();
@@ -70,9 +70,9 @@ Y_UNIT_TEST_SUITE(TCellsIcV2ConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(0, config.GetMaxIncomingInflightRequests());
         UNIT_ASSERT_VALUES_EQUAL(0, config.GetMaxIncomingInflightBytes());
         UNIT_ASSERT_VALUES_EQUAL(0, config.GetMaxTotalOutputQueueBytes());
-        UNIT_ASSERT_VALUES_EQUAL(0, config.GetThreads());
-        UNIT_ASSERT_VALUES_EQUAL(0, config.GetCompletionThreads());
-        UNIT_ASSERT_VALUES_EQUAL(0, config.GetDataWorkers());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetNetworkIoThreads());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetOutgoingCompletionThreads());
+        UNIT_ASSERT_VALUES_EQUAL(0, config.GetIncomingRequestThreads());
         UNIT_ASSERT(config.GetIcV2Config().HasPort());
     }
 
@@ -90,7 +90,7 @@ Y_UNIT_TEST_SUITE(TCellsIcV2ConfigTest)
         icV2.SetMaxOutgoingInflightBytes(32_MB);
         icV2.SetMaxIncomingInflightRequests(2048);
         icV2.SetMaxIncomingInflightBytes(512_MB);
-        icV2.SetThreads(3);
+        icV2.SetNetworkIoThreads(3);
 
         const TCellsConfig cells(std::move(proto));
         const auto& config = cells.GetIcV2Config();
@@ -106,7 +106,7 @@ Y_UNIT_TEST_SUITE(TCellsIcV2ConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(32_MB, config.GetMaxOutgoingInflightBytes());
         UNIT_ASSERT_VALUES_EQUAL(2048, config.GetMaxIncomingInflightRequests());
         UNIT_ASSERT_VALUES_EQUAL(512_MB, config.GetMaxIncomingInflightBytes());
-        UNIT_ASSERT_VALUES_EQUAL(3, config.GetThreads());
+        UNIT_ASSERT_VALUES_EQUAL(3, config.GetNetworkIoThreads());
     }
 }
 

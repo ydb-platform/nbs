@@ -1157,11 +1157,17 @@ void TBootstrapYdb::InitRdmaRequestServer()
 void TBootstrapYdb::SetupCellManager()
 {
     const auto& cellsConfig = BootstrapConfig->CellsConfig;
+    if (!cellsConfig->GetCellsEnabled()) {
+        CellManager = NCells::CreateCellManagerStub(Service);
+        return;
+    }
+
     NIcV2::IServicePtr icV2Service;
     if (cellsConfig->GetIcV2Config().GetEnabled()) {
+        IcV2DnsThreadPool = CreateThreadPool("ICV2Dns", 1);
         auto resolver = NCloud::NIcV2::CreateAddressResolver(
             ActorSystem,
-            BackgroundThreadPool);
+            IcV2DnsThreadPool);
         IcV2AddressResolver = resolver;
         auto [service, error] = NIcV2::CreateService(
             cellsConfig,
@@ -1179,43 +1185,39 @@ void TBootstrapYdb::SetupCellManager()
         icV2Service = std::move(service);
     }
 
-    if (cellsConfig->GetCellsEnabled()) {
-        const auto& grpcConfig = cellsConfig->GetGrpcClientConfig();
-        TVector<NCloud::TCertificateFiles> certList{{
-            .PrivateKeyPath = grpcConfig.GetCertPrivateKeyFile(),
-            .CertChainPath = grpcConfig.GetCertFile(),
-        }};
+    const auto& grpcConfig = cellsConfig->GetGrpcClientConfig();
+    TVector<NCloud::TCertificateFiles> certList{{
+        .PrivateKeyPath = grpcConfig.GetCertPrivateKeyFile(),
+        .CertChainPath = grpcConfig.GetCertFile(),
+    }};
 
-        NCloud::ICertificateProviderPtr cellCertProvider;
-        if (!grpcConfig.GetSecurePort()) {
-            cellCertProvider = CreateCertificateProviderStub();
-        } else {
-            Y_ENSURE(
-                certList || grpcConfig.GetRootCertsFile(),
-                "Secure cells port is configured without certificates");
-
-            cellCertProvider = CreateCertificateProvider(
-                CertificateWatcher,
-                grpcConfig.GetRootCertsFile(),
-                std::move(certList));
-        }
-
-        CellManager = CreateCellManager(
-            cellsConfig,
-            Timer,
-            Scheduler,
-            Logging,
-            Monitoring,
-            GetTraceSerializer(),
-            ServerStats,
-            std::move(cellCertProvider),
-            RdmaClient,
-            icV2Service,
-            Service);
-        IcV2Service = std::move(icV2Service);
+    NCloud::ICertificateProviderPtr cellCertProvider;
+    if (!grpcConfig.GetSecurePort()) {
+        cellCertProvider = CreateCertificateProviderStub();
     } else {
-        CellManager = NCells::CreateCellManagerStub(Service);
+        Y_ENSURE(
+            certList || grpcConfig.GetRootCertsFile(),
+            "Secure cells port is configured without certificates");
+
+        cellCertProvider = CreateCertificateProvider(
+            CertificateWatcher,
+            grpcConfig.GetRootCertsFile(),
+            std::move(certList));
     }
+
+    CellManager = CreateCellManager(
+        cellsConfig,
+        Timer,
+        Scheduler,
+        Logging,
+        Monitoring,
+        GetTraceSerializer(),
+        ServerStats,
+        std::move(cellCertProvider),
+        RdmaClient,
+        icV2Service,
+        Service);
+    IcV2Service = std::move(icV2Service);
 }
 
 void TBootstrapYdb::SetupCellProxy()

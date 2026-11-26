@@ -5,6 +5,7 @@
 #include "service_private.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
+#include <cloud/blockstore/libs/icv2/data/endpoint.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_test.h>
@@ -12,7 +13,7 @@
 
 #include <cloud/storage/core/libs/common/scheduler_test.h>
 #include <cloud/storage/core/libs/common/sglist.h>
-#include <cloud/storage/core/libs/common/thread_pool.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/icv2/handshake/handshake.h>
@@ -22,13 +23,12 @@
 #include <cloud/storage/core/libs/icv2/tcp/listener.h>
 #include <cloud/storage/core/libs/icv2/tcp/testlib/socket_test.h>
 
-#include <contrib/ydb/library/actors/dnsresolver/dnsresolver.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect_common.h>
 #include <contrib/ydb/library/actors/interconnect/interconnect_uring_engine.h>
 #include <contrib/ydb/library/actors/interconnect/uring_context.h>
-#include <contrib/ydb/library/actors/testlib/test_runtime.h>
 
 #include <library/cpp/testing/unittest/registar.h>
+#include <library/cpp/testing/unittest/tests_data.h>
 
 #include <util/generic/scope.h>
 #include <util/system/mutex.h>
@@ -37,6 +37,7 @@
 
 #include <atomic>
 #include <cerrno>
+#include <functional>
 #include <future>
 #include <thread>
 
@@ -154,7 +155,7 @@ void WaitCounter(
     {
         std::this_thread::sleep_for(1ms);
     }
-    UNIT_ASSERT_VALUES_EQUAL(counter->Val(), value);
+    UNIT_ASSERT_VALUES_EQUAL(value, counter->Val());
 }
 
 NProto::TCellsConfig MakeConfig(bool checksums = false)
@@ -171,9 +172,34 @@ NProto::TCellsConfig MakeConfig(bool checksums = false)
     return config;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TTestAddressResolver final: public NCloud::NIcV2::IAddressResolver
+{
+public:
+    NProto::TError Error;
+
+    NCloud::NIcV2::TResolveFuture
+    Resolve(const TString& host, ui16 port, TMonotonic deadline) override
+    {
+        Y_UNUSED(deadline);
+
+        if (HasError(Error)) {
+            return NThreading::MakeFuture<NCloud::NIcV2::TResolveResult>(Error);
+        }
+
+        TVector<NInterconnect::TAddress> addresses;
+        addresses.emplace_back(host.c_str(), port);
+        return NThreading::MakeFuture<NCloud::NIcV2::TResolveResult>(
+            std::move(addresses));
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TFixture
 {
-    NActors::TTestActorRuntimeBase Runtime{1, true};
+    TPortManager PortManager;
     std::shared_ptr<TTestTimer> Timer = std::make_shared<TTestTimer>();
     std::shared_ptr<TTestScheduler> Scheduler =
         std::make_shared<TTestScheduler>();
@@ -183,7 +209,8 @@ struct TFixture
         MakeIntrusive<NMonitoring::TDynamicCounters>();
     std::shared_ptr<TTestService> DataService =
         std::make_shared<TTestService>();
-    ITaskQueuePtr DnsCompletions = CreateThreadPool("TestDns", 1);
+    NCloud::NIcV2::IAddressResolverPtr Resolver =
+        std::make_shared<TTestAddressResolver>();
     IServicePtr Service;
     IConnectorPtr Connector = NCloud::NIcV2::NTests::CreateTestConnector();
     IHandshakeProviderPtr Hello;
@@ -197,12 +224,6 @@ struct TFixture
         {
             return NThreading::MakeFuture<NProto::TZeroBlocksResponse>();
         };
-        DnsCompletions->Start();
-        Runtime.Initialize();
-        Runtime.RegisterService(
-            NActors::NDnsResolver::MakeDnsResolverActorId(),
-            Runtime.Register(
-                NActors::NDnsResolver::CreateOnDemandDnsResolver()));
     }
 
     ~TFixture()
@@ -223,26 +244,28 @@ struct TFixture
         if (Service) {
             Service->Stop();
         }
-        DnsCompletions->Stop();
     }
 
-    TResultOrError<IServicePtr> Create(NProto::TCellsConfig config)
+    TResultOrError<IServicePtr> Create(
+        NProto::TCellsConfig config,
+        NCloud::NIcV2::NPrivate::IListenerErrorInjectorPtr injector = {})
     {
-        return CreateService(
+        return NPrivate::CreateService(
             std::make_shared<NCells::TCellsConfig>(std::move(config)),
             DataService,
-            NCloud::NIcV2::CreateAddressResolver(
-                Runtime.GetActorSystem(0),
-                DnsCompletions),
+            Resolver,
             Timer,
             Scheduler,
             Logging,
-            Counters);
+            Counters,
+            std::move(injector));
     }
 
-    void Start(bool checksums = false)
+    void Start(
+        NProto::TCellsConfig config = MakeConfig(),
+        NCloud::NIcV2::NPrivate::IListenerErrorInjectorPtr injector = {})
     {
-        auto [service, error] = Create(MakeConfig(checksums));
+        auto [service, error] = Create(std::move(config), std::move(injector));
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
         Service = std::move(service);
         Service->Start();
@@ -306,56 +329,59 @@ struct TFixture
     }
 };
 
-void StartPair(
-    TFixture& first,
-    TFixture& second,
-    bool checksums,
-    bool startSecond = true,
-    bool firstXdc = false,
-    bool secondXdc = false,
-    ui32 maxConnections = 128,
-    bool differentChecksums = false)
+struct TPairConfig
 {
-    auto [reserved, reserveError] = CreateListener(
-        NInterconnect::TAddress("127.0.0.1", 0),
-        std::make_shared<TTestListenerClient>([](TSocketResult) {}));
-    UNIT_ASSERT_C(!HasError(reserveError), FormatError(reserveError));
-    const auto secondPort = reserved->GetAddress().GetPort();
-    auto firstConfig = MakeConfig(checksums);
+    bool FirstChecksums = false;
+    bool SecondChecksums = false;
+    bool StartSecond = true;
+    bool FirstXdc = false;
+    bool SecondXdc = false;
+    ui32 MaxIncomingConnections = 128;
+    ui32 FirstMaxOutgoingConnections = 128;
+};
+
+void StartPair(TFixture& first, TFixture& second, TPairConfig config = {})
+{
+    const auto secondPort = second.PortManager.GetTcpPort();
+    auto firstConfig = MakeConfig(config.FirstChecksums);
     firstConfig.SetCellId("cell-1");
-    firstConfig.MutableIcV2()->SetEnableXdc(firstXdc);
-    firstConfig.MutableIcV2()->SetMaxIncomingConnections(maxConnections);
+    firstConfig.MutableIcV2()->SetEnableXdc(config.FirstXdc);
+    firstConfig.MutableIcV2()->SetMaxIncomingConnections(
+        config.MaxIncomingConnections);
+    firstConfig.MutableIcV2()->SetMaxOutgoingConnections(
+        config.FirstMaxOutgoingConnections);
     auto& firstPeer = *firstConfig.MutableCells(0);
     firstPeer.SetCellId("cell-2");
     firstPeer.SetIcV2Port(secondPort);
-    firstPeer.AddHosts()->SetFqdn("localhost");
+    firstPeer.AddHosts()->SetFqdn("127.0.0.1");
     auto [firstService, firstError] = first.Create(std::move(firstConfig));
     UNIT_ASSERT_C(!HasError(firstError), FormatError(firstError));
     first.Service = std::move(firstService);
-    auto secondConfig = MakeConfig(differentChecksums ? !checksums : checksums);
+    auto secondConfig = MakeConfig(config.SecondChecksums);
     secondConfig.MutableIcV2()->SetPort(secondPort);
-    secondConfig.MutableIcV2()->SetEnableXdc(secondXdc);
-    secondConfig.MutableIcV2()->SetMaxIncomingConnections(maxConnections);
+    secondConfig.MutableIcV2()->SetEnableXdc(config.SecondXdc);
+    secondConfig.MutableIcV2()->SetMaxIncomingConnections(
+        config.MaxIncomingConnections);
     auto& secondPeer = *secondConfig.MutableCells(0);
     secondPeer.SetIcV2Port(first.Service->GetAddress().GetPort());
     secondPeer.AddHosts()->SetFqdn("127.0.0.1");
-    reserved->Stop();
     auto [secondService, secondError] = second.Create(std::move(secondConfig));
     UNIT_ASSERT_C(!HasError(secondError), FormatError(secondError));
     second.Service = std::move(secondService);
     first.Service->Start();
-    if (startSecond) {
+    if (config.StartSecond) {
         second.Service->Start();
     }
 }
 
-bool IsAvailable()
+bool HasIoUring(NUnitTest::TTestContext& context)
 {
-    if (!NActors::TUringContext::IsAvailable()) {
+    const bool available = NActors::TUringContext::IsAvailable();
+    context.Metrics["io_uring_available"] = available;
+    if (!available) {
         Cerr << "io_uring not available; skipping" << Endl;
-        return false;
     }
-    return true;
+    return available;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -364,6 +390,7 @@ class TDataConnectionHandler final: public IClientEndpointHandler
 {
 public:
     NThreading::TPromise<void> Connected = NThreading::NewPromise();
+    std::function<void()> OnUnavailable;
 
     void HandleConnected() noexcept override
     {
@@ -374,7 +401,11 @@ public:
     {}
 
     void HandleUnavailable() noexcept override
-    {}
+    {
+        if (OnUnavailable) {
+            OnUnavailable();
+        }
+    }
 };
 
 }   // namespace
@@ -383,7 +414,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
 {
     Y_UNIT_TEST(ZeroBlocksWithOptionalXdcAndDifferentChecksums)
     {
-        if (!IsAvailable()) {
+        if (!HasIoUring(ut_context)) {
             return;
         }
         for (bool firstXdc: {false, true}) {
@@ -393,12 +424,12 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
                 StartPair(
                     first,
                     second,
-                    false,
-                    true,
-                    firstXdc,
-                    secondXdc,
-                    1,
-                    true);
+                    {
+                        .SecondChecksums = true,
+                        .FirstXdc = firstXdc,
+                        .SecondXdc = secondXdc,
+                        .MaxIncomingConnections = 1,
+                    });
                 TVector<IBlockStorePtr> endpoints;
                 for (const auto& [service, peer]:
                      {std::pair{first.Service, TString("cell-2")},
@@ -460,7 +491,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
 
     Y_UNIT_TEST(DataBindingsExchangeBlocksWithBothChecksumModes)
     {
-        if (!IsAvailable()) {
+        if (!HasIoUring(ut_context)) {
             return;
         }
         for (bool checksums: {false, true}) {
@@ -497,7 +528,10 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
                 stored = TString(8192, '\0');
                 return NThreading::MakeFuture<NProto::TZeroBlocksResponse>();
             };
-            StartPair(first, second, checksums);
+            StartPair(
+                first,
+                second,
+                {.FirstChecksums = checksums, .SecondChecksums = checksums});
             IDataEndpointFactoryPtr factory = first.Service;
             auto handler = std::make_shared<TDataConnectionHandler>();
             auto [endpoint, error] =
@@ -568,13 +602,13 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
     }
     Y_UNIT_TEST(ConnectsDataEndpointBeforeAnyIoAndKeepsItAlive)
     {
-        if (!IsAvailable()) {
+        if (!HasIoUring(ut_context)) {
             return;
         }
 
         TFixture first;
         TFixture second;
-        StartPair(first, second, false);
+        StartPair(first, second);
         auto handler = std::make_shared<TDataConnectionHandler>();
         IDataEndpointFactoryPtr factory = first.Service;
         auto [endpoint, error] =
@@ -602,9 +636,9 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         endpoint->Stop();
     }
 
-    Y_UNIT_TEST(ReleasedEndpointStillDrainsItsResultCallbackDuringServiceStop)
+    Y_UNIT_TEST(ReleasedEndpointHoldsItsSlotUntilResultCallbackCompletes)
     {
-        if (!IsAvailable()) {
+        if (!HasIoUring(ut_context)) {
             return;
         }
 
@@ -621,26 +655,23 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
             storageEntered.SetValue();
             return storageDone.GetFuture();
         };
-        StartPair(first, second, false);
+        StartPair(first, second, {.FirstMaxOutgoingConnections = 1});
         auto handler = std::make_shared<TDataConnectionHandler>();
         auto [endpoint, error] =
             first.Service->CreateDataEndpoint("cell-2", "127.0.0.1", handler);
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
         UNIT_ASSERT(handler->Connected.GetFuture().Wait(TDuration::Seconds(5)));
         const std::weak_ptr<IBlockStore> weak = endpoint;
+        const auto closed = static_cast<IDataEndpoint&>(*endpoint).WhenClosed();
         auto zero = std::make_shared<NProto::TZeroBlocksRequest>();
         zero->SetDiskId("disk");
         zero->SetBlocksCount(1);
         zero->MutableHeaders()->SetRequestTimeout(5000);
         auto response =
             endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), zero);
-        auto subscribed = NThreading::NewPromise();
         auto released = NThreading::NewPromise();
         auto release = NThreading::NewPromise();
-        auto stopEntered = NThreading::NewPromise();
         std::future<void> subscribing;
-        std::future<void> completing;
-        std::future<void> stopping;
         Y_DEFER
         {
             release.TrySetValue();
@@ -652,7 +683,6 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
             std::launch::async,
             [endpoint = std::move(endpoint),
              response,
-             subscribed,
              released,
              release]() mutable
             {
@@ -666,48 +696,44 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
                         released.SetValue();
                         release.GetFuture().GetValueSync();
                     });
-                subscribed.SetValue();
             });
-        UNIT_ASSERT(subscribed.GetFuture().Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT(subscribing.wait_for(5s) == std::future_status::ready);
         subscribing.get();
-        completing = std::async(
-            std::launch::async,
-            [storageDone]() mutable
-            { storageDone.SetValue(NProto::TZeroBlocksResponse{}); });
+        storageDone.SetValue({});
         UNIT_ASSERT(released.GetFuture().Wait(TDuration::Seconds(5)));
         UNIT_ASSERT(weak.expired());
-        stopping = std::async(
-            std::launch::async,
-            [service = first.Service, stopEntered]() mutable
-            {
-                stopEntered.SetValue();
-                service->Stop();
-            });
-        UNIT_ASSERT(stopEntered.GetFuture().Wait(TDuration::Seconds(5)));
-        const auto status = stopping.wait_for(50ms);
+        UNIT_ASSERT(!closed.HasValue());
+        const auto rejected =
+            first.Service->CreateDataEndpoint("cell-2", "127.0.0.1", {});
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, rejected.GetError().GetCode());
+
         release.SetValue();
-        UNIT_ASSERT(status == std::future_status::timeout);
-        UNIT_ASSERT(stopping.wait_for(5s) == std::future_status::ready);
-        stopping.get();
-        completing.get();
-        UNIT_ASSERT(response.Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT(closed.Wait(TDuration::Seconds(5)));
+        const auto next =
+            first.Service->CreateDataEndpoint("cell-2", "127.0.0.1", {});
+        UNIT_ASSERT_C(!HasError(next.GetError()), FormatError(next.GetError()));
     }
 
     Y_UNIT_TEST(StopWaitsForAdmittedStorageOperation)
     {
-        if (!IsAvailable()) {
+        if (!HasIoUring(ut_context)) {
             return;
         }
         TFixture first;
         TFixture second;
         auto entered = NThreading::NewPromise<void>();
         auto completed = NThreading::NewPromise<NProto::TZeroBlocksResponse>();
+        std::future<void> stopped;
+        Y_DEFER
+        {
+            completed.TrySetValue(NProto::TZeroBlocksResponse{});
+        };
         second.DataService->ZeroBlocksHandler = [&](auto)
         {
             entered.SetValue();
             return completed.GetFuture();
         };
-        StartPair(first, second, false);
+        StartPair(first, second);
         auto handler = std::make_shared<TDataConnectionHandler>();
         auto [endpoint, error] =
             first.Service->CreateDataEndpoint("cell-2", "127.0.0.1", handler);
@@ -720,20 +746,21 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         auto response =
             endpoint->ZeroBlocks(MakeIntrusive<TCallContext>(), zero);
         UNIT_ASSERT(entered.GetFuture().Wait(TDuration::Seconds(5)));
-        auto stopped =
+        stopped =
             std::async(std::launch::async, [&] { second.Service->Stop(); });
-        const auto status = stopped.wait_for(50ms);
-        completed.SetValue({});
-        UNIT_ASSERT(status == std::future_status::timeout);
-        UNIT_ASSERT(stopped.wait_for(5s) == std::future_status::ready);
-        stopped.get();
+        WaitCounter(second.Counters->GetCounter("ActiveConnections", false), 0);
         UNIT_ASSERT(response.Wait(TDuration::Seconds(5)));
         UNIT_ASSERT(HasError(response.GetValue()));
+        UNIT_ASSERT(stopped.wait_for(50ms) == std::future_status::timeout);
+
+        completed.SetValue({});
+        UNIT_ASSERT(stopped.wait_for(5s) == std::future_status::ready);
+        stopped.get();
     }
 
     Y_UNIT_TEST(DataRequestBeforeConnectionFailsWithoutSending)
     {
-        if (!IsAvailable()) {
+        if (!HasIoUring(ut_context)) {
             return;
         }
         TFixture first;
@@ -744,7 +771,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
             ++calls;
             return NThreading::MakeFuture<NProto::TZeroBlocksResponse>();
         };
-        StartPair(first, second, false, false);
+        StartPair(first, second, {.StartSecond = false});
         auto handler = std::make_shared<TDataConnectionHandler>();
         auto [endpoint, error] =
             first.Service->CreateDataEndpoint("cell-2", "127.0.0.1", handler);
@@ -769,9 +796,67 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(calls.load(), 1);
     }
 
+    Y_UNIT_TEST(EndpointCreationReservesSlotAndAllowsConcurrentStop)
+    {
+        if (!HasIoUring(ut_context)) {
+            return;
+        }
+
+        TFixture fixture;
+        auto resolver = std::make_shared<TTestAddressResolver>();
+        resolver->Error = MakeError(E_UNAVAILABLE, "test resolution failure");
+        fixture.Resolver = std::move(resolver);
+        auto config = MakeConfig();
+        config.MutableIcV2()->SetMaxOutgoingConnections(1);
+        config.MutableCells(0)->SetIcV2Port(1234);
+        fixture.Start(std::move(config));
+
+        auto reentrantError = NThreading::NewPromise<ui32>();
+        auto release = NThreading::NewPromise();
+        auto handler = std::make_shared<TDataConnectionHandler>();
+        handler->OnUnavailable = [&]
+        {
+            auto result =
+                fixture.Service->CreateDataEndpoint("cell-1", "127.0.0.1", {});
+            reentrantError.SetValue(result.GetError().GetCode());
+            release.GetFuture().GetValueSync();
+        };
+
+        std::future<TResultOrError<IBlockStorePtr>> creating;
+        std::future<void> stopping;
+        Y_DEFER
+        {
+            release.TrySetValue();
+        };
+        creating = std::async(
+            std::launch::async,
+            [&]
+            {
+                return fixture.Service->CreateDataEndpoint(
+                    "cell-1",
+                    "127.0.0.1",
+                    handler);
+            });
+        const auto reentered = reentrantError.GetFuture();
+        UNIT_ASSERT(reentered.Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, reentered.GetValue());
+
+        stopping = std::async(
+            std::launch::async,
+            [&] { fixture.Service->RequestStop(); });
+        UNIT_ASSERT(stopping.wait_for(5s) == std::future_status::ready);
+        stopping.get();
+
+        release.SetValue();
+        UNIT_ASSERT(creating.wait_for(5s) == std::future_status::ready);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            creating.get().GetError().GetCode());
+    }
+
     Y_UNIT_TEST(DataBindingLimitRecoversAfterClosedEndpointIsReleased)
     {
-        if (!IsAvailable()) {
+        if (!HasIoUring(ut_context)) {
             return;
         }
         TFixture fixture;
@@ -801,11 +886,14 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
 
     Y_UNIT_TEST(OutgoingCacheExchangesMessagesAndReconnectsToRestartedService)
     {
-        if (!IsAvailable()) {
+        if (!HasIoUring(ut_context)) {
             return;
         }
         TFixture fixture;
-        fixture.Start();
+        const auto port = fixture.PortManager.GetTcpPort();
+        auto config = MakeConfig();
+        config.MutableIcV2()->SetPort(port);
+        fixture.Start(std::move(config));
         auto common = MakeIntrusive<NActors::TInterconnectProxyCommon>();
         common->MonCounters = MakeIntrusive<NMonitoring::TDynamicCounters>();
         common->Settings.V2.Threads = 1;
@@ -822,9 +910,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
             std::move(hello),
             fixture.Timer,
             fixture.Scheduler,
-            NCloud::NIcV2::CreateAddressResolver(
-                fixture.Runtime.GetActorSystem(0),
-                CreateTaskQueueStub()),
+            fixture.Resolver,
             CreateTaskQueueStub(),
             std::make_shared<TTestChannelFactory>(
                 fixture.Transport,
@@ -833,10 +919,8 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
         fixture.Peers = std::move(peers);
         fixture.Peers->Start();
-        const auto [peer, createError] = fixture.Peers->CreatePeer(
-            "localhost",
-            fixture.Service->GetAddress().GetPort(),
-            {});
+        const auto [peer, createError] =
+            fixture.Peers->CreatePeer("127.0.0.1", port, {});
         UNIT_ASSERT_C(!HasError(createError), FormatError(createError));
         TVector<TChannelFuture> connections;
         for (size_t i = 0; i < 32; ++i) {
@@ -871,7 +955,6 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         WaitCounter(
             fixture.Counters->GetCounter("AcceptedConnections", true),
             1);
-        const auto port = fixture.Service->GetAddress().GetPort();
         fixture.Service->Stop();
         UNIT_ASSERT(first->WhenClosed().Wait(TDuration::Seconds(5)));
         auto failed = peer->GetChannel();
@@ -908,7 +991,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
 
     Y_UNIT_TEST(AcceptsHelloWithoutCellIdentity)
     {
-        if (!IsAvailable()) {
+        if (!HasIoUring(ut_context)) {
             return;
         }
 
@@ -929,7 +1012,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
 
     Y_UNIT_TEST(StopCancelsSilentHelloWithoutWaitingForDeadline)
     {
-        if (!IsAvailable()) {
+        if (!HasIoUring(ut_context)) {
             return;
         }
         TFixture fixture;
@@ -960,11 +1043,12 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
 
     Y_UNIT_TEST(StopBeforeStartReleasesPort)
     {
-        if (!IsAvailable()) {
+        if (!HasIoUring(ut_context)) {
             return;
         }
         TFixture fixture;
         auto config = MakeConfig();
+        config.MutableIcV2()->SetPort(fixture.PortManager.GetTcpPort());
         config.MutableCells(0)->SetIcV2Port(1234);
         auto [service, error] = fixture.Create(std::move(config));
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
@@ -985,7 +1069,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
 
     Y_UNIT_TEST(ConnectionLimitIncludesSilentHelloAndActiveChannels)
     {
-        if (!IsAvailable()) {
+        if (!HasIoUring(ut_context)) {
             return;
         }
         TFixture fixture;
@@ -1027,9 +1111,30 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         UNIT_ASSERT(!HasError(fixture.Service->GetError()));
     }
 
+    Y_UNIT_TEST(AcceptsNewChannelsAfterTemporaryAcceptError)
+    {
+        if (!HasIoUring(ut_context)) {
+            return;
+        }
+
+        TFixture fixture;
+        auto injector = std::make_shared<TListenerErrorInjector>();
+        injector->AcceptError = EMFILE;
+        fixture.Start(MakeConfig(), injector);
+        fixture.ConnectChannel(false);
+        WaitCounter(
+            fixture.Counters->GetCounter("ActiveConnections", false),
+            1);
+        UNIT_ASSERT_VALUES_EQUAL(0, injector->AcceptError.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            fixture.Counters->GetCounter("ListenerErrors", true)->Val());
+        UNIT_ASSERT(!HasError(fixture.Service->GetError()));
+    }
+
     Y_UNIT_TEST(TerminalAcceptErrorLeavesDataChannelsWorking)
     {
-        if (!IsAvailable()) {
+        if (!HasIoUring(ut_context)) {
             return;
         }
 
@@ -1042,21 +1147,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         peer.SetCellId("cell-2");
         peer.SetIcV2Port(remote.Service->GetAddress().GetPort());
         auto injector = std::make_shared<TListenerErrorInjector>();
-        auto [service, error] = NPrivate::CreateService(
-            std::make_shared<NCells::TCellsConfig>(std::move(config)),
-            fixture.DataService,
-            NCloud::NIcV2::CreateAddressResolver(
-                fixture.Runtime.GetActorSystem(0),
-                fixture.DnsCompletions),
-            fixture.Timer,
-            fixture.Scheduler,
-            fixture.Logging,
-            fixture.Counters,
-            injector);
-        UNIT_ASSERT_C(!HasError(error), FormatError(error));
-        fixture.Service = std::move(service);
-        fixture.Service->Start();
-        fixture.Connector->Start();
+        fixture.Start(std::move(config), injector);
         fixture.ConnectChannel(false);
         WaitCounter(
             fixture.Counters->GetCounter("ActiveConnections", false),
@@ -1065,7 +1156,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         UNIT_ASSERT(client >= 0);
         TSocketPtr socket = MakeIntrusive<NInterconnect::TStreamSocket>(client);
 
-        injector->AcceptError = EMFILE;
+        injector->AcceptError = EBADF;
         const auto address = fixture.Service->GetAddress();
         const int connected =
             connect(client, address.SockAddr(), address.Size());
@@ -1073,7 +1164,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         UNIT_ASSERT(connected == 0 || errno == ECONNREFUSED);
         WaitCounter(fixture.Counters->GetCounter("ListenerErrors", true), 1);
         UNIT_ASSERT_VALUES_EQUAL(
-            MAKE_SYSTEM_ERROR(EMFILE),
+            MAKE_SYSTEM_ERROR(EBADF),
             fixture.Service->GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
@@ -1114,7 +1205,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         fixture.Service->Stop();
         UNIT_ASSERT(fixture.Channel->WhenClosed().Wait(TDuration::Seconds(5)));
         UNIT_ASSERT_VALUES_EQUAL(
-            MAKE_SYSTEM_ERROR(EMFILE),
+            MAKE_SYSTEM_ERROR(EBADF),
             fixture.Service->GetError().GetCode());
     }
 
@@ -1141,13 +1232,13 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
                     icv2.ClearPort();
                     break;
                 case 5:
-                    icv2.SetThreads(0);
+                    icv2.SetNetworkIoThreads(0);
                     break;
                 case 6:
                     icv2.SetHandshakeTimeout(0);
                     break;
                 case 7:
-                    icv2.SetDataWorkers(0);
+                    icv2.SetIncomingRequestThreads(0);
                     break;
                 case 8:
                     icv2.SetMaxIncomingConnections(0);
@@ -1171,7 +1262,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
                     icv2.SetMaxTotalOutputQueueBytes(0);
                     break;
                 case 15:
-                    icv2.SetCompletionThreads(0);
+                    icv2.SetOutgoingCompletionThreads(0);
                     break;
             }
             auto result = fixture.Create(std::move(config));

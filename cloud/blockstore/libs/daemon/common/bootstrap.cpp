@@ -1122,6 +1122,7 @@ void TBootstrapBase::Start()
     START_COMMON_COMPONENT(GetTraceServiceClient());
     START_COMMON_COMPONENT(RdmaRequestServer);
     START_COMMON_COMPONENT(RdmaTarget);
+    START_COMMON_COMPONENT(IcV2DnsThreadPool);
     START_COMMON_COMPONENT(IcV2AddressResolver);
     START_COMMON_COMPONENT(IcV2Service);
     START_COMMON_COMPONENT(CellManager);
@@ -1187,15 +1188,16 @@ void TBootstrapBase::Stop()
     // otherwise keep its request in flight until the server stops.
     STOP_COMMON_COMPONENT(CertificateWatcher);
 
-    // stopping scheduler before all other components to avoid races between
-    // scheduled tasks and shutting down of component dependencies
+    // IC V2 channels need the scheduler until they finish closing.
+    STOP_COMMON_COMPONENT(CellManager);
+    STOP_COMMON_COMPONENT(IcV2Service);
+    STOP_COMMON_COMPONENT(IcV2AddressResolver);
+
+    // Stop scheduled tasks before shutting down their remaining dependencies.
     STOP_COMMON_COMPONENT(Scheduler);
     STOP_COMMON_COMPONENT(LocalNVMeService);
     STOP_COMMON_COMPONENT(LocalNVMeDeviceProvider);
     STOP_COMMON_COMPONENT(LongRunningTaskExecutor);
-    STOP_COMMON_COMPONENT(IcV2Service);
-    STOP_COMMON_COMPONENT(CellManager);
-    STOP_COMMON_COMPONENT(IcV2AddressResolver);
     STOP_COMMON_COMPONENT(RdmaTarget);
     STOP_COMMON_COMPONENT(RdmaRequestServer);
     STOP_COMMON_COMPONENT(GetTraceServiceClient());
@@ -1213,6 +1215,9 @@ void TBootstrapBase::Stop()
     STOP_COMMON_COMPONENT(EndpointManager);
 
     STOP_KIKIMR_COMPONENT(ActorSystem);
+
+    // DNS actors can enqueue results until the actor system stops.
+    STOP_COMMON_COMPONENT(IcV2DnsThreadPool);
 
     // stop FileIOServiceProvider after ActorSystem to ensure that there are no
     // in-flight I/O requests from TDiskAgentActor

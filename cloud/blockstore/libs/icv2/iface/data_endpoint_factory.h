@@ -6,7 +6,7 @@
 
 #include <cloud/storage/core/libs/common/endpoint_handler.h>
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/icv2/peer/peer.h>
+#include <cloud/storage/core/libs/icv2/peer/iface/status.h>
 
 #include <util/generic/string.h>
 

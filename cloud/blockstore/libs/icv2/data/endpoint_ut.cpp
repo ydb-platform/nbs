@@ -118,6 +118,7 @@ struct TTestChannel final: IRequestChannel
     TVector<TRequest> Requests;
     TCallback BeforeRequestAdmission;
     bool Closing = false;
+    bool FailOnClose = false;
     size_t ActiveCompletions = 0;
     NThreading::TPromise<NProto::TError> Closed =
         NThreading::NewPromise<NProto::TError>();
@@ -242,7 +243,11 @@ private:
             closed = Closing && !ActiveCompletions;
         }
         if (closed) {
-            Closed.SetValue(NProto::TError{});
+            if (FailOnClose) {
+                Closed.SetException("test channel close failed");
+            } else {
+                Closed.SetValue(NProto::TError{});
+            }
         }
     }
 };
@@ -858,28 +863,32 @@ Y_UNIT_TEST_SUITE(TIcV2DataEndpointTest)
 
     Y_UNIT_TEST(ClosedWaitsForWriteBeforeChannelAdmission)
     {
-        TFixture f;
-        NThreading::TFuture<void> closed;
-        bool closedWhileSubmitting = true;
-        f.Channel->BeforeRequestAdmission = [&]
-        {
-            closed = f.Endpoint->RequestStop();
-            closedWhileSubmitting = closed.IsReady();
-        };
+        for (bool failOnClose: {false, true}) {
+            TFixture f;
+            f.Channel->FailOnClose = failOnClose;
+            NThreading::TFuture<void> closed;
+            bool closedWhileSubmitting = true;
+            f.Channel->BeforeRequestAdmission = [&]
+            {
+                closed = f.Endpoint->RequestStop();
+                closedWhileSubmitting = closed.IsReady();
+            };
 
-        auto request = MakeRequest<NProto::TWriteBlocksRequest>();
-        request->SetBlockSize(BlockSize);
-        request->MutableBlocks()->AddBuffers(TString(BlockSize, 'w'));
-        auto response = f.Endpoint->WriteBlocks(
-            MakeIntrusive<TCallContext>(),
-            std::move(request));
+            auto request = MakeRequest<NProto::TWriteBlocksRequest>();
+            request->SetBlockSize(BlockSize);
+            request->MutableBlocks()->AddBuffers(TString(BlockSize, 'w'));
+            auto response = f.Endpoint->WriteBlocks(
+                MakeIntrusive<TCallContext>(),
+                std::move(request));
 
-        UNIT_ASSERT(!closedWhileSubmitting);
-        UNIT_ASSERT(f.Channel->Requests.empty());
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
-            Wait(response).GetError().GetCode());
-        UNIT_ASSERT(closed.IsReady());
+            UNIT_ASSERT(!closedWhileSubmitting);
+            UNIT_ASSERT(f.Channel->Requests.empty());
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_REJECTED,
+                Wait(response).GetError().GetCode());
+            UNIT_ASSERT(closed.HasValue());
+            UNIT_ASSERT_NO_EXCEPTION(f.Endpoint->Stop());
+        }
     }
 
     Y_UNIT_TEST(TargetStopWaitsForActualStorageCompletionAfterDisconnect)

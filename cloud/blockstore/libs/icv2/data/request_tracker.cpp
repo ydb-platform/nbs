@@ -124,7 +124,7 @@ NThreading::TFuture<void> TRequestTracker::RequestStop()
 
 void TRequestTracker::Stop()
 {
-    RequestStop().GetValueSync();
+    RequestStop().Wait();
 }
 
 }   // namespace NCloud::NBlockStore::NIcV2

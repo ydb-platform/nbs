@@ -255,6 +255,8 @@ QEMU's default socket is `/tmp/<diskid>.sock` in cell-1 and
 
 Generate the cells configuration with `python3 ./prepare_cells.py`. In `nbs/nbs-cells.txt`, `nbs/nbs-cells2.txt` and the two corresponding files under `cell2/nbs/`, set the peer's `Transport` to `CELL_DATA_TRANSPORT_ICV2`. Restart NBS in both cells to load the configuration.
 
+The first and second NBS nodes listen for IC V2 on `127.0.0.1` and `127.0.0.2`. Both nodes use port `29602` in cell-1 and `39602` in cell-2. The generated peer entry uses `localhost` so the stand also works with `--one-nbs`.
+
 Create a dedicated test disk in each cell. Run QEMU in cell-1 with the disk from cell-2, and run QEMU in cell-2 with the disk from cell-1. For example, with `cell1-volume` and `cell2-volume` as the test disk IDs, start these commands in separate terminals.
 
 ```bash

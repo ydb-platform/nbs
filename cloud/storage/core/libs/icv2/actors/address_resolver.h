@@ -9,8 +9,8 @@ namespace NCloud::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Start once after the actor system and completion queue. Finish all queries
-// and callbacks before Stop; stop dependencies afterwards.
+// Start once after the actor system and completion queue. Stop cancels pending
+// lookups and rejects new ones. Keep dependencies running until results arrive.
 struct IActorAddressResolver
     : public IAddressResolver
     , public IStartable
