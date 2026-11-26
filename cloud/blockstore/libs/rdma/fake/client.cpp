@@ -1084,13 +1084,14 @@ public:
 
     // IClient
 
-    auto StartEndpoint(TString host, ui32 port)
+    auto StartEndpoint(TString host, ui32 port, TString externalData)
         -> TFuture<NRdma::IClientEndpointPtr> override;
 
     auto StartEndpoint(
         TString host,
         ui32 port,
-        NCloud::IClientEndpointHandlerPtr handler)
+        NCloud::IClientEndpointHandlerPtr handler,
+        TString externalData)
         -> TResultOrError<NRdma::IClientEndpointPtr> override;
 
     void DumpHtml(IOutputStream& out) const override;
@@ -1116,9 +1117,14 @@ void TFakeRdmaClient::Stop()
     ActorSystem->Send(RdmaActorId, std::make_unique<TEvents::TEvPoisonPill>());
 }
 
-auto TFakeRdmaClient::StartEndpoint(TString host, ui32 port)
+auto TFakeRdmaClient::StartEndpoint(
+    TString host,
+    ui32 port,
+    TString externalData)
     -> TFuture<NRdma::IClientEndpointPtr>
 {
+    Y_UNUSED(externalData);
+
     STORAGE_INFO("Start endpoint " << host << ":" << port);
 
     auto request = std::make_unique<TEvFakeRdmaClient::TEvStartEndpoint>();
@@ -1136,10 +1142,12 @@ auto TFakeRdmaClient::StartEndpoint(TString host, ui32 port)
 auto TFakeRdmaClient::StartEndpoint(
     TString host,
     ui32 port,
-    NCloud::IClientEndpointHandlerPtr handler)
+    NCloud::IClientEndpointHandlerPtr handler,
+    TString externalData)
     -> TResultOrError<NRdma::IClientEndpointPtr>
 {
     Y_UNUSED(handler);
+    Y_UNUSED(externalData);
 
     // the fake sets endpoints up through the actor system, so it has no way to
     // hand one back before that has happened

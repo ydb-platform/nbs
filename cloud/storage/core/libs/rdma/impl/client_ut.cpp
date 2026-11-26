@@ -2364,4 +2364,150 @@ TEST(TRdmaClientTest, ShouldKeepRetryingAnEndpointCreatedSynchronously)
     ASSERT_TRUE(result.GetResult());
 }
 
+TEST(TRdmaClientTest, ShouldSendExternalDataOnEveryConnect)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+
+    TMutex lock;
+    TVector<TString> connectMessages;
+
+    auto getConnectMessages = [&]
+    {
+        with_lock (lock) {
+            return connectMessages;
+        }
+    };
+
+    testContext->HandleConnect = [&](auto* id, auto* param)
+    {
+        with_lock (lock) {
+            connectMessages.emplace_back(
+                static_cast<const char*>(param->private_data),
+                param->private_data_len);
+        }
+
+        TAcceptMessage acceptMsg{};
+        InitMessageHeader(&acceptMsg);
+        NVerbs::EnqueueAcceptEvent(
+            testContext,
+            id,
+            &acceptMsg,
+            sizeof(acceptMsg));
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+    client->Start();
+    Y_DEFER
+    {
+        client->Stop();
+    };
+
+    auto endpoint =
+        client->StartEndpoint("::", 10020, "pipe-1").ExtractValueSync();
+
+    Disconnect(testContext);
+
+    while (getConnectMessages().size() < 2) {
+        SpinLockPause();
+    }
+
+    for (const auto& connectMessage: getConnectMessages()) {
+        ASSERT_LT(sizeof(TConnectMessage), connectMessage.size());
+
+        TConnectMessage message;
+        memcpy(&message, connectMessage.data(), sizeof(message));
+
+        EXPECT_TRUE(IsValidMessageHeader(&message));
+        EXPECT_EQ(clientConfig->MaxBufferSize, message.MaxBufferSize);
+
+        // flag, size, data
+        EXPECT_EQ(
+            TString("\x01\x06pipe-1"),
+            connectMessage.substr(sizeof(message)));
+    }
+}
+
+TEST(TRdmaClientTest, ShouldNotSendOptionsWithoutExternalData)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+
+    auto connectMessageSize = NThreading::NewPromise<size_t>();
+
+    testContext->HandleConnect = [&](auto* id, auto* param)
+    {
+        connectMessageSize.TrySetValue(param->private_data_len);
+
+        TAcceptMessage acceptMsg{};
+        InitMessageHeader(&acceptMsg);
+        NVerbs::EnqueueAcceptEvent(
+            testContext,
+            id,
+            &acceptMsg,
+            sizeof(acceptMsg));
+    };
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+    client->Start();
+    Y_DEFER
+    {
+        client->Stop();
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+    ASSERT_EQ(
+        sizeof(TConnectMessage),
+        connectMessageSize.GetFuture().GetValueSync());
+}
+
+TEST(TRdmaClientTest, ShouldNotStartEndpointWithTooLargeExternalData)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    testContext->AllowConnect = true;
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+    client->Start();
+    Y_DEFER
+    {
+        client->Stop();
+    };
+
+    const TString externalData(RDMA_MAX_EXTERNAL_DATA_SIZE + 1, 'x');
+
+    try {
+        client->StartEndpoint("::", 10020, externalData).ExtractValueSync();
+        FAIL() << "expected exception";
+    } catch (const TServiceError& e) {
+        ASSERT_EQ(E_ARGUMENT, e.GetCode()) << e.GetMessage();
+    }
+
+    auto result = client->StartEndpoint(
+        "::",
+        10020,
+        std::make_shared<TTestEndpointHandler>(),
+        externalData);
+    ASSERT_EQ(E_ARGUMENT, result.GetError().GetCode());
+}
+
 }   // namespace NCloud::NStorage::NRdma

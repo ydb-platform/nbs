@@ -146,12 +146,14 @@ struct IClient
 
     virtual NThreading::TFuture<IClientEndpointPtr> StartEndpoint(
         TString host,
-        ui32 port) = 0;
+        ui32 port,
+        TString externalData = {}) = 0;
 
     virtual TResultOrError<IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
-        IClientEndpointHandlerPtr handler) = 0;
+        IClientEndpointHandlerPtr handler,
+        TString externalData = {}) = 0;
 
     virtual void DumpHtml(IOutputStream& out) const = 0;
 

@@ -11,6 +11,7 @@
 #include "work_queue.h"
 
 #include <cloud/storage/core/libs/common/context.h>
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -1654,8 +1655,8 @@ private:
     void HandleConnectRequest(
         TServerEndpoint* endpoint, rdma_cm_event* event) noexcept;
     void Accept(
-        TServerEndpoint* endpoint,
         rdma_cm_event* event,
+        IServerHandlerPtr handler,
         ui32 eagerBytes) noexcept;
     void HandleConnected(TServerSession* session) noexcept;
     void HandleDisconnected(TServerSession* session) noexcept;
@@ -1982,23 +1983,46 @@ void TServer::HandleConnectRequest(
         }
     }
 
+    TStringBuf externalData;
+
+    TOptionReader options(
+        connectMsg + 1,
+        connectParams->private_data_len - sizeof(TConnectMessage));
+    if (!options.ReadData(RDMA_CONNECT_OPTION_EXTERNAL_DATA, &externalData)) {
+        RDMA_ERROR("Failed to parse options of the connect message");
+        Reject(event->id, RDMA_PROTO_INVALID_REQUEST);
+        return;
+    }
+
+    auto [handler, error] = SafeExecute<TResultOrError<IServerHandlerPtr>>(
+        [&] { return endpoint->Handler->HandleConnect(externalData); });
+
+    if (HasError(error)) {
+        RDMA_ERROR(
+            "connect from "
+            << Verbs->GetPeer(event->id)
+            << " is rejected by the handler: " << FormatError(error));
+        Reject(event->id, RDMA_PROTO_REJECTED);
+        return;
+    }
+
     const ui32 eagerBytes = Min<ui32>(
         connectMsg->MaxEagerRequestBytes,
         Config->MaxEagerRequestBytes);
 
-    Accept(endpoint, event, eagerBytes);
+    Accept(event, handler ? std::move(handler) : endpoint->Handler, eagerBytes);
 }
 
 void TServer::Accept(
-    TServerEndpoint* endpoint,
     rdma_cm_event* event,
+    IServerHandlerPtr handler,
     ui32 eagerBytes) noexcept
 {
     auto session = std::make_shared<TServerSession>(
         Verbs,
         NVerbs::WrapPtr(event->id),
         PickPoller(),
-        endpoint->Handler,
+        std::move(handler),
         Config,
         Counters,
         Log,

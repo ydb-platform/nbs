@@ -4,6 +4,7 @@
 
 #include "buffer.h"
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -52,6 +53,12 @@ struct TServerConfig
 struct IServerHandler
 {
     virtual ~IServerHandler() = default;
+
+    // Called for every connect request with the data the client passed to
+    // IClient::StartEndpoint. The returned handler serves the connection, an
+    // empty one leaves it to this handler. An error rejects the connection.
+    virtual TResultOrError<IServerHandlerPtr> HandleConnect(
+        TStringBuf externalData) = 0;
 
     virtual TCallContextBasePtr CreateCallContext() = 0;
 

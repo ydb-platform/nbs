@@ -189,10 +189,12 @@ struct TTestRdmaClient: public NRdma::IClient
 
     TFuture<NRdma::IClientEndpointPtr> StartEndpoint(
         TString host,
-        ui32 port) override
+        ui32 port,
+        TString externalData) override
     {
         Y_UNUSED(host);
         Y_UNUSED(port);
+        Y_UNUSED(externalData);
 
         return MakeFuture<NRdma::IClientEndpointPtr>(Endpoint);
     }
@@ -200,11 +202,13 @@ struct TTestRdmaClient: public NRdma::IClient
     TResultOrError<NRdma::IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
-        NCloud::IClientEndpointHandlerPtr handler) override
+        NCloud::IClientEndpointHandlerPtr handler,
+        TString externalData) override
     {
         Y_UNUSED(host);
         Y_UNUSED(port);
         Y_UNUSED(handler);
+        Y_UNUSED(externalData);
 
         return NRdma::IClientEndpointPtr(Endpoint);
     }
