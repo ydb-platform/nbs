@@ -55,7 +55,7 @@ public:
                 return column.GetError();
             }
             Bound.OutputPositions.push_back(
-                column.GetResult().ReadPosition);
+                column.GetResult().IndexInReadColumnIds);
         }
 
         if (Bound.Query.Where && !Validate(*Bound.Query.Where)) {
@@ -65,7 +65,8 @@ public:
         return std::move(Bound);
     }
 
-    void ExpandStar() {
+    void ExpandStar()
+    {
         // Hash-map iteration order is unspecified, so sort by column ID.
         TVector<std::pair<ui32, TString>> columns;
         for (const auto& [id, column]: Table.Columns) {
@@ -91,18 +92,26 @@ public:
                                  << Table.Name << "'");
         }
 
-        const auto& column = Table.Columns.at(*id);
+        const auto* column = Table.Columns.FindPtr(*id);
+        if (!column) {
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "Missing schema metadata for column '" << name
+                    << "' (id " << *id << ") in table '" << Table.Name << "'");
+        }
 
         const size_t position = Bound.ReadColumnIds.size();
         Bound.ReadColumnIds.push_back(*id);
-        const TBoundColumn boundColumn{*id, column.PType, position};
+        const TBoundColumn boundColumn{*id, column->PType, position};
         Bound.Columns.emplace(name, boundColumn);
         return boundColumn;
     }
 
     bool ValidateValue(NScheme::TTypeId type, const TValue& value)
     {
-        if (!IsSupportedNumericType(type) && type != NScheme::NTypeIds::String) {
+        if (!IsSupportedNumericType(type) && type != NScheme::NTypeIds::String)
+        {
             return Fail(
                 "WHERE predicates support only Uint32, Uint64 and String "
                 "columns");
@@ -131,7 +140,9 @@ public:
             return false;
         }
         const auto otherType = other.GetResult().Type.GetTypeId();
-        if (type != otherType && !(IsSupportedNumericType(type) && IsSupportedNumericType(otherType))) {
+        if (type != otherType && !(IsSupportedNumericType(type) &&
+                                   IsSupportedNumericType(otherType)))
+        {
             return Fail("Incompatible column types in predicate");
         }
         return true;
@@ -220,12 +231,20 @@ TResultOrError<TBoundSelect> Bind(
             TStringBuilder() << "Unknown table " << query.Table);
     }
 
+    const auto* table = schema.Tables.FindPtr(*tableId);
+    if (!table) {
+        return MakeError(
+            E_INVALID_STATE,
+            TStringBuilder() << "Missing schema metadata for table '"
+                             << query.Table << "' (id " << *tableId << ")");
+    }
+
     TBoundSelect bound;
     bound.Query = std::move(query);
     bound.TableId = *tableId;
-    const auto& table = schema.Tables.at(*tableId);
-    TBinder binder(table, bound);
+    TBinder binder(*table, bound);
 
     return binder.Run();
 }
+
 }   // namespace NCloud::NFileStore::NStorage::NQuery

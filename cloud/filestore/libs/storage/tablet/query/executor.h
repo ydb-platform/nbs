@@ -20,7 +20,7 @@ struct TBoundColumn
     ui32 Id;
     NKikimr::NScheme::TTypeInfo Type;
     // Position in the row fetched using ReadColumnIds.
-    size_t ReadPosition;
+    size_t IndexInReadColumnIds;
 };
 
 struct TBoundSelect

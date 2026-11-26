@@ -5,6 +5,8 @@
 namespace NCloud::NFileStore::NStorage::NQuery {
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 NKikimr::NTable::TScheme MakeSchema()
 {
     using namespace NKikimr;
@@ -17,7 +19,8 @@ NKikimr::NTable::TScheme MakeSchema()
     {
         table.ColumnNames.emplace(name, id);
         table.Columns.emplace(
-            id, NTable::TColumn(name, id, NScheme::TTypeInfo(type), ""));
+            id,
+            NTable::TColumn(name, id, NScheme::TTypeInfo(type), ""));
     };
     addColumn(1, "NodeId", NScheme::NTypeIds::Uint64);
     addColumn(3, "Name", NScheme::NTypeIds::String);
@@ -46,22 +49,24 @@ Y_UNIT_TEST_SUITE(TQueryBinderTest)
             "LIMIT 0");
         UNIT_ASSERT_C(!HasError(result.GetError()), result.GetError());
         auto bound = result.ExtractResult();
-        UNIT_ASSERT_VALUES_EQUAL(bound.TableId, 9);
-        UNIT_ASSERT_VALUES_EQUAL(bound.ReadColumnIds.size(), 4);
-        UNIT_ASSERT_VALUES_EQUAL(bound.ReadColumnIds[0], 3);
-        UNIT_ASSERT_VALUES_EQUAL(bound.ReadColumnIds[1], 4);
-        UNIT_ASSERT_VALUES_EQUAL(bound.ReadColumnIds[2], 1);
-        UNIT_ASSERT_VALUES_EQUAL(bound.ReadColumnIds[3], 7);
-        UNIT_ASSERT_VALUES_EQUAL(bound.OutputPositions.size(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(bound.OutputPositions[0], 0);
-        UNIT_ASSERT_VALUES_EQUAL(bound.OutputPositions[1], 0);
-        UNIT_ASSERT_VALUES_EQUAL(bound.Columns.at("ChildId").ReadPosition, 1);
+        UNIT_ASSERT_VALUES_EQUAL(9, bound.TableId);
+        UNIT_ASSERT_VALUES_EQUAL(4, bound.ReadColumnIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, bound.ReadColumnIds[0]);
+        UNIT_ASSERT_VALUES_EQUAL(4, bound.ReadColumnIds[1]);
+        UNIT_ASSERT_VALUES_EQUAL(1, bound.ReadColumnIds[2]);
+        UNIT_ASSERT_VALUES_EQUAL(7, bound.ReadColumnIds[3]);
+        UNIT_ASSERT_VALUES_EQUAL(2, bound.OutputPositions.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, bound.OutputPositions[0]);
+        UNIT_ASSERT_VALUES_EQUAL(0, bound.OutputPositions[1]);
         UNIT_ASSERT_VALUES_EQUAL(
-            bound.Columns.at("ChildId").Type.GetTypeId(),
-            NKikimr::NScheme::NTypeIds::Uint64);
+            1,
+            bound.Columns.at("ChildId").IndexInReadColumnIds);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NKikimr::NScheme::NTypeIds::Uint64,
+            bound.Columns.at("ChildId").Type.GetTypeId());
         UNIT_ASSERT(bound.Query.Where);
         UNIT_ASSERT(bound.Query.Limit);
-        UNIT_ASSERT_VALUES_EQUAL(*bound.Query.Limit, 0);
+        UNIT_ASSERT_VALUES_EQUAL(0, *bound.Query.Limit);
     }
 
     Y_UNIT_TEST(ShouldExpandStarInColumnIdOrder)
@@ -69,12 +74,12 @@ Y_UNIT_TEST_SUITE(TQueryBinderTest)
         auto result = BindQuery("SELECT * FROM NodeRefs");
         UNIT_ASSERT_C(!HasError(result.GetError()), result.GetError());
         const auto bound = result.ExtractResult();
-        UNIT_ASSERT_VALUES_EQUAL(bound.ReadColumnIds.size(), 4);
-        UNIT_ASSERT_VALUES_EQUAL(bound.OutputPositions.size(), 4);
+        UNIT_ASSERT_VALUES_EQUAL(4, bound.ReadColumnIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(4, bound.OutputPositions.size());
         const TVector<ui32> expected = {1, 3, 4, 7};
         for (size_t i = 0; i < expected.size(); ++i) {
-            UNIT_ASSERT_VALUES_EQUAL(bound.ReadColumnIds[i], expected[i]);
-            UNIT_ASSERT_VALUES_EQUAL(bound.OutputPositions[i], i);
+            UNIT_ASSERT_VALUES_EQUAL(expected[i], bound.ReadColumnIds[i]);
+            UNIT_ASSERT_VALUES_EQUAL(i, bound.OutputPositions[i]);
         }
     }
 
@@ -97,7 +102,7 @@ Y_UNIT_TEST_SUITE(TQueryBinderTest)
         for (const auto& query: queries) {
             auto result = BindQuery(query);
             UNIT_ASSERT_C(HasError(result.GetError()), query);
-            UNIT_ASSERT_VALUES_EQUAL(result.GetError().GetCode(), E_ARGUMENT);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, result.GetError().GetCode());
             UNIT_ASSERT(!result.GetError().GetMessage().empty());
         }
     }
@@ -116,9 +121,13 @@ Y_UNIT_TEST_SUITE(TQueryBinderTest)
             "SELECT Name FROM NodeRefs WHERE ChildId IN {NodeId, Count, 42}");
         UNIT_ASSERT_C(!HasError(result.GetError()), result.GetError());
         const auto bound = result.ExtractResult();
-        UNIT_ASSERT_VALUES_EQUAL(bound.ReadColumnIds.size(), 4);
-        UNIT_ASSERT_VALUES_EQUAL(bound.Columns.at("NodeId").ReadPosition, 2);
-        UNIT_ASSERT_VALUES_EQUAL(bound.Columns.at("Count").ReadPosition, 3);
+        UNIT_ASSERT_VALUES_EQUAL(4, bound.ReadColumnIds.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            bound.Columns.at("NodeId").IndexInReadColumnIds);
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            bound.Columns.at("Count").IndexInReadColumnIds);
     }
 
     Y_UNIT_TEST(ShouldAllowProjectionOfTypesUnsupportedInPredicates)
@@ -137,8 +146,8 @@ Y_UNIT_TEST_SUITE(TQueryBinderTest)
             UNIT_ASSERT_C(!HasError(result.GetError()), result.GetError());
             const auto bound = result.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(
-                bound.Columns.at("Count").Type.GetTypeId(),
-                NKikimr::NScheme::NTypeIds::Double);
+                NKikimr::NScheme::NTypeIds::Double,
+                bound.Columns.at("Count").Type.GetTypeId());
         }
     }
 
@@ -156,10 +165,11 @@ Y_UNIT_TEST_SUITE(TQueryBinderTest)
             UNIT_ASSERT_C(!HasError(parsed.GetError()), parsed.GetError());
             auto result = Bind(parsed.ExtractResult(), schema);
             UNIT_ASSERT_C(HasError(result.GetError()), query);
-            UNIT_ASSERT_VALUES_EQUAL(result.GetError().GetCode(), E_ARGUMENT);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, result.GetError().GetCode());
             UNIT_ASSERT_STRING_CONTAINS(
                 result.GetError().GetMessage(),
-                "WHERE predicates support only Uint32, Uint64 and String columns");
+                "WHERE predicates support only Uint32, Uint64 and String "
+                "columns");
         }
     }
 }
