@@ -407,7 +407,7 @@ private:
 
     void RunFlushCycle();
 
-    void CleanupFlushedRecords(ui64 lastFlushedLsn);
+    void CleanupFlushedRecords();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -672,8 +672,6 @@ void TJournalledDeviceV2::ScheduleFlushCycle()
 
 void TJournalledDeviceV2::RunFlushCycle()
 {
-    ui64 lastFlushedLsn = 0;
-
     while (!ShouldStop.load()) {
         //
         // Take the next batch of records the journal lets go of. The
@@ -736,8 +734,7 @@ void TJournalledDeviceV2::RunFlushCycle()
             }
         }
 
-        Journal->MarkRecordAsFlushed(lsn, rangeRefs);
-        lastFlushedLsn = lsn;
+        Journal->MarkRecordsAsFlushed(lsn, rangeRefs);
 
         STORAGE_DEBUG(
             "flushed " << records.size() << " records up to lsn " << lsn);
@@ -748,7 +745,7 @@ void TJournalledDeviceV2::RunFlushCycle()
         // the pages for the records coming in
         //
 
-        CleanupFlushedRecords(lastFlushedLsn);
+        CleanupFlushedRecords();
     }
 
     if (ShouldStop.load()) {
@@ -756,20 +753,27 @@ void TJournalledDeviceV2::RunFlushCycle()
         return;
     }
 
-    CleanupFlushedRecords(lastFlushedLsn);
+    CleanupFlushedRecords();
+
+    //
+    // Clean up the stranded records only here, when there is nothing to
+    // flush: the journal walks all records that are not chained yet, and
+    // a write waits for that
+    //
+
+    Journal->CleanupStrandedRecords();
 
     RunningCont()->SleepT(IdleFlushDelay);
 
     ScheduleFlushCycle();
 }
 
-void TJournalledDeviceV2::CleanupFlushedRecords(ui64 lastFlushedLsn)
+void TJournalledDeviceV2::CleanupFlushedRecords()
 {
     auto response = Journal->CleanupFlushedRecords();
     if (HasError(response)) {
         STORAGE_ERROR(
-            "unable to cleanup flushed records up to lsn "
-            << lastFlushedLsn << ": " << FormatError(response));
+            "unable to cleanup flushed records: " << FormatError(response));
     }
 }
 
