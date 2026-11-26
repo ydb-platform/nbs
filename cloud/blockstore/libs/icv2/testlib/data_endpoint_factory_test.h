@@ -35,7 +35,7 @@ public:
     TResultOrError<IBlockStorePtr> CreateDataEndpoint(
         const TString& cellId,
         const TString& host,
-        IClientEndpointHandlerPtr handler) override;
+        IClientConnectionHandlerPtr handler) override;
     NCloud::NIcV2::TPeerStatus GetDataEndpointStatus(
         const IBlockStorePtr& endpoint) override;
 

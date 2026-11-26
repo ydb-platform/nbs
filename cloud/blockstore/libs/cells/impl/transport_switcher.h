@@ -4,7 +4,7 @@
 
 #include <cloud/blockstore/libs/service/public.h>
 
-#include <cloud/storage/core/libs/common/endpoint_handler.h>
+#include <cloud/storage/core/libs/common/connection_handler.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -26,7 +26,7 @@ struct TTransportSwitcherConfig
 };
 
 using TEndpointFactory = std::function<TResultOrError<IBlockStorePtr>(
-    NCloud::IClientEndpointHandlerPtr)>;
+    NCloud::IClientConnectionHandlerPtr)>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -38,7 +38,7 @@ struct ITransportSwitcher
 {
     virtual ~ITransportSwitcher() = default;
 
-    virtual NCloud::IClientEndpointHandlerPtr GetEndpointHandler() = 0;
+    virtual NCloud::IClientConnectionHandlerPtr GetEndpointHandler() = 0;
 
     // Enables router updates after the prepared binding has been installed.
     virtual void Activate() = 0;

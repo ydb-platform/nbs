@@ -8,9 +8,9 @@ namespace NCloud {
 
 // Keep references back to the endpoint or its owner weak.
 // Callbacks may be late; do not throw or wait for shutdown.
-struct IClientEndpointHandler
+struct IClientConnectionHandler
 {
-    virtual ~IClientEndpointHandler();
+    virtual ~IClientConnectionHandler();
 
     // Ready for I/O.
     virtual void HandleConnected() = 0;

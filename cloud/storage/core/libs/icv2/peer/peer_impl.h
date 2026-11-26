@@ -2,7 +2,7 @@
 
 #include "peer.h"
 
-#include <cloud/storage/core/libs/common/endpoint_handler.h>
+#include <cloud/storage/core/libs/common/connection_handler.h>
 #include <cloud/storage/core/libs/icv2/handshake/handshake.h>
 #include <cloud/storage/core/libs/icv2/tcp/address_resolver.h>
 #include <cloud/storage/core/libs/icv2/tcp/connector.h>
@@ -58,7 +58,7 @@ class TPeer final
     ui64 ConnectionFailures = 0;
     std::shared_ptr<TConnectionAttempt> Attempt;
     IRequestChannelPtr Channel;
-    IClientEndpointHandlerPtr Handler;
+    IClientConnectionHandlerPtr Handler;
     TDeque<EPeerEvent> Notifications;
     bool DispatchingNotifications = false;
     THotSwap<TReadyChannel> ReadyChannel;
@@ -70,7 +70,7 @@ public:
         TPeerDependencies dependencies,
         TString host,
         ui16 port,
-        IClientEndpointHandlerPtr handler);
+        IClientConnectionHandlerPtr handler);
 
     ~TPeer() override;
 

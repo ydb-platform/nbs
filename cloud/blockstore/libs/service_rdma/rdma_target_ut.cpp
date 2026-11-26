@@ -67,12 +67,12 @@ public:
     NCloud::NStorage::NRdma::IServerEndpointPtr StartEndpoint(
         TString host,
         ui32 port,
-        NCloud::NStorage::NRdma::IServerConnectionHandlerPtr connectionHandler)
+        NCloud::NStorage::NRdma::IServerEndpointHandlerPtr endpointHandler)
         override
     {
         Y_UNUSED(host);
         Y_UNUSED(port);
-        Y_UNUSED(connectionHandler);
+        Y_UNUSED(endpointHandler);
         return nullptr;
     }
 

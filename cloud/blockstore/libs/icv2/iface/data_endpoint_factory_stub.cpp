@@ -19,7 +19,7 @@ public:
     TResultOrError<IBlockStorePtr> CreateDataEndpoint(
         const TString& cellId,
         const TString& host,
-        IClientEndpointHandlerPtr handler) override
+        IClientConnectionHandlerPtr handler) override
     {
         Y_UNUSED(cellId);
         Y_UNUSED(host);

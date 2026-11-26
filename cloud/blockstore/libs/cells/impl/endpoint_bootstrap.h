@@ -31,12 +31,12 @@ struct ICellHostEndpointBootstrap
     virtual TRdmaEndpointBootstrapResult SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,
-        NCloud::IClientEndpointHandlerPtr handler) = 0;
+        NCloud::IClientConnectionHandlerPtr handler) = 0;
 
     virtual TResultOrError<IBlockStorePtr> SetupHostIcV2Endpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,
-        NCloud::IClientEndpointHandlerPtr handler) = 0;
+        NCloud::IClientConnectionHandlerPtr handler) = 0;
 
     virtual ~ICellHostEndpointBootstrap() = default;
 };

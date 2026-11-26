@@ -59,7 +59,7 @@ public:
         , Log(logging->CreateLog("BLOCKSTORE_CELLS"))
     {}
 
-    NCloud::IClientEndpointHandlerPtr GetEndpointHandler() override;
+    NCloud::IClientConnectionHandlerPtr GetEndpointHandler() override;
 
     bool IsPreferredActive() override
     {
@@ -214,7 +214,7 @@ private:
 
 // The switcher owns the endpoint, which owns this handler.
 // Keep the reference back weak to avoid a cycle.
-class TEndpointHandler final: public NCloud::IClientEndpointHandler
+class TEndpointHandler final: public NCloud::IClientConnectionHandler
 {
 private:
     const std::weak_ptr<TTransportSwitcher> Switcher;
@@ -254,7 +254,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NCloud::IClientEndpointHandlerPtr TTransportSwitcher::GetEndpointHandler()
+NCloud::IClientConnectionHandlerPtr TTransportSwitcher::GetEndpointHandler()
 {
     return std::make_shared<TEndpointHandler>(
         weak_from_this(),

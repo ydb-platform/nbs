@@ -37,7 +37,7 @@ TPeerStatus THostDataEndpoint::GetStatus() const
 TResultOrError<THostDataEndpoint> CreateHostDataEndpoint(
     TString host,
     ui16 port,
-    IClientEndpointHandlerPtr handler,
+    IClientConnectionHandlerPtr handler,
     IPeerManagerPtr peers,
     TDataConfig dataConfig)
 {

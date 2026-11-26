@@ -387,7 +387,7 @@ bool HasIoUring(NUnitTest::TTestContext& context)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDataConnectionHandler final: public IClientEndpointHandler
+class TDataConnectionHandler final: public IClientConnectionHandler
 {
 public:
     NThreading::TPromise<void> Connected = NThreading::NewPromise();

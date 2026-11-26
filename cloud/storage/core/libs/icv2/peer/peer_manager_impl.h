@@ -58,7 +58,7 @@ public:
     TResultOrError<IPeerPtr> CreatePeer(
         TString host,
         ui16 port,
-        IClientEndpointHandlerPtr handler) override;
+        IClientConnectionHandlerPtr handler) override;
 
     void RequestStop() override;
 

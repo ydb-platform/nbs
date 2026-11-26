@@ -1090,7 +1090,7 @@ public:
     auto StartEndpoint(
         TString host,
         ui32 port,
-        NCloud::IClientEndpointHandlerPtr handler,
+        NCloud::IClientConnectionHandlerPtr handler,
         TBuffer externalData)
         -> TResultOrError<NRdma::IClientEndpointPtr> override;
 
@@ -1142,7 +1142,7 @@ auto TFakeRdmaClient::StartEndpoint(
 auto TFakeRdmaClient::StartEndpoint(
     TString host,
     ui32 port,
-    NCloud::IClientEndpointHandlerPtr handler,
+    NCloud::IClientConnectionHandlerPtr handler,
     TBuffer externalData)
     -> TResultOrError<NRdma::IClientEndpointPtr>
 {

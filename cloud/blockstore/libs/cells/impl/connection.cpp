@@ -63,7 +63,7 @@ struct THostBinding
     IDetachableTargetPtr Sink;
 
     // only without a fallback: there is no switcher to hold it
-    NCloud::IClientEndpointHandlerPtr DataHandler;
+    NCloud::IClientConnectionHandlerPtr DataHandler;
 };
 using THostBindingPtr = std::shared_ptr<THostBinding>;
 
@@ -150,7 +150,7 @@ TString DescribeDataTransport(
 TResultOrError<IBlockStorePtr> SetupHostDataEndpoint(
     const TBootstrap& bootstrap,
     const TCellHostConfig& hostConfig,
-    NCloud::IClientEndpointHandlerPtr handler)
+    NCloud::IClientConnectionHandlerPtr handler)
 {
     if (hostConfig.GetTransport() == NProto::CELL_DATA_TRANSPORT_ICV2) {
         return bootstrap.EndpointsSetup->SetupHostIcV2Endpoint(
@@ -181,7 +181,7 @@ TResultOrError<ITransportSwitcherPtr> PrepareBindingTransportSwitching(
     return PrepareTransportSwitching(
         binding.Sink,
         binding.DataEndpoint,
-        [bootstrap, hostConfig](NCloud::IClientEndpointHandlerPtr handler)
+        [bootstrap, hostConfig](NCloud::IClientConnectionHandlerPtr handler)
         {
             return SetupHostDataEndpoint(
                 bootstrap,
@@ -1105,7 +1105,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 // The data endpoint handler used when there is no fallback.
-class TNoFallbackHandler final: public NCloud::IClientEndpointHandler
+class TNoFallbackHandler final: public NCloud::IClientConnectionHandler
 {
 private:
     const std::weak_ptr<TCellConnection> Connection;

@@ -388,7 +388,7 @@ public:
     TResultOrError<IBlockStorePtr> CreateDataEndpoint(
         const TString& cellId,
         const TString& host,
-        IClientEndpointHandlerPtr handler) override
+        IClientConnectionHandlerPtr handler) override
     {
         const auto* cell = State->Config->GetCells().FindPtr(cellId);
         if (!cell || cellId == State->Config->GetCellId() || host.empty() ||

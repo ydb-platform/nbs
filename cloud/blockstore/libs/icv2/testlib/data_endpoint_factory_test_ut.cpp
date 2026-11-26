@@ -26,7 +26,7 @@ namespace {
 
 IBlockStorePtr CreateEndpoint(
     IDataEndpointFactory& factory,
-    IClientEndpointHandlerPtr handler)
+    IClientConnectionHandlerPtr handler)
 {
     auto [endpoint, error] =
         factory.CreateDataEndpoint("cell", "host", std::move(handler));
@@ -38,7 +38,7 @@ IBlockStorePtr CreateEndpoint(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRecordingHandler final: public IClientEndpointHandler
+class TRecordingHandler final: public IClientConnectionHandler
 {
     const std::weak_ptr<TTestDataEndpointFactory> Factory;
 
@@ -378,7 +378,7 @@ Y_UNIT_TEST_SUITE(TTestDataEndpointFactoryTest)
         UNIT_ASSERT_VALUES_EQUAL(handler->Notifications, 2);
 
         const std::weak_ptr<IBlockStore> weakEndpoint = endpoint;
-        const std::weak_ptr<IClientEndpointHandler> weakHandler = handler;
+        const std::weak_ptr<IClientConnectionHandler> weakHandler = handler;
         handler.reset();
         endpoint.reset();
         UNIT_ASSERT(weakEndpoint.expired());

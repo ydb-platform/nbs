@@ -85,7 +85,7 @@ struct TClientHandler
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestEndpointHandler: public IClientEndpointHandler
+struct TTestEndpointHandler: public IClientConnectionHandler
 {
     TMutex Lock;
     TVector<TString> Events;

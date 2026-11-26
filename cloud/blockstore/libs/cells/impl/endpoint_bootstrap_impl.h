@@ -20,7 +20,7 @@ struct TCellCellHostEndpointBootstrap: public ICellHostEndpointBootstrap
     TResultOrError<IBlockStorePtr> SetupHostIcV2Endpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,
-        NCloud::IClientEndpointHandlerPtr handler) override;
+        NCloud::IClientConnectionHandlerPtr handler) override;
 
     auto SetupHostGrpcEndpoint(
         const TBootstrap& bootstrap,
@@ -29,7 +29,7 @@ struct TCellCellHostEndpointBootstrap: public ICellHostEndpointBootstrap
     auto SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,
-        NCloud::IClientEndpointHandlerPtr handler)
+        NCloud::IClientConnectionHandlerPtr handler)
         -> TRdmaEndpointBootstrapResult override;
 };
 

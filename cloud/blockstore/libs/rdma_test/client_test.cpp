@@ -382,7 +382,7 @@ TResultOrError<NCloud::NStorage::NRdma::IClientEndpointPtr>
 TRdmaClientTest::StartEndpoint(
     TString host,
     ui32 port,
-    NCloud::IClientEndpointHandlerPtr handler,
+    NCloud::IClientConnectionHandlerPtr handler,
     TBuffer externalData)
 {
     Y_UNUSED(host);

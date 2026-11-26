@@ -32,7 +32,7 @@ NBS supplies the resolver during bootstrap. The service creates the other shared
 | [`IDataEndpoint`](../../../cloud/blockstore/libs/icv2/data/endpoint.h) / [`IBlockStore`](../../../cloud/blockstore/libs/service/service.h) | One instance per successful `CreateDataEndpoint()` call | The data endpoint encodes outgoing block requests and decodes replies. Cells uses the same instance through `IBlockStore`. |
 | [`IDataRequestSender`](../../../cloud/blockstore/libs/icv2/data/request_sender.h) | One adapter per endpoint | Gets the peer's current channel for each outgoing request. |
 | [`IPeer`](../../../cloud/storage/core/libs/icv2/peer/peer.h) | One peer per endpoint | Connects to the selected host, publishes its active channel, and reconnects after disconnects. |
-| [`IClientEndpointHandler`](../../../cloud/storage/core/libs/common/endpoint_handler.h) | Zero or one callback reference per peer | The caller supplies the optional handler for connection state changes. |
+| [`IClientConnectionHandler`](../../../cloud/storage/core/libs/common/connection_handler.h) | Zero or one callback reference per peer | The caller supplies the optional handler for connection state changes. |
 
 Multiple calls for the same host produce independent endpoints and peers. The endpoint, adapter, and peer stay in place across reconnects. [Endpoint creation](../../../cloud/blockstore/libs/icv2/service/host_endpoint.cpp), [peer reconnect logic](../../../cloud/storage/core/libs/icv2/peer/peer_impl.cpp).
 

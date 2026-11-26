@@ -60,8 +60,8 @@ using TCallContextBasePtr = TIntrusivePtr<TCallContextBase>;
 struct IScheduler;
 using ISchedulerPtr = std::shared_ptr<IScheduler>;
 
-struct IClientEndpointHandler;
-using IClientEndpointHandlerPtr = std::shared_ptr<IClientEndpointHandler>;
+struct IClientConnectionHandler;
+using IClientConnectionHandlerPtr = std::shared_ptr<IClientConnectionHandler>;
 
 struct IStartable;
 using IStartablePtr = std::shared_ptr<IStartable>;
