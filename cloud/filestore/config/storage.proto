@@ -1046,4 +1046,10 @@ message TStorageConfig
 
     // Device space kept for the journal, the storage group and shard metadata.
     optional uint64 FastShardReservedSize = 570;
+
+    // If false, a pipe disconnect does not actually mark the session as
+    // orphan (all other bookkeeping still happens) - it is only logged.
+    // Default false; this flag is temporary and will be removed once
+    // verified against real clusters, making orphaning unconditional.
+    optional bool SessionOrphaningEnabled = 571;
 }
