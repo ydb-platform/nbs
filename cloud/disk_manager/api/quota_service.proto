@@ -11,7 +11,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_man
 
 service QuotaService {
     // Returns operation with:
-    // response: CreateQuotaResponse
+    // response: google.protobuf.Empty
     rpc Create(CreateQuotaRequest) returns (Operation);
 
     // Returns operation with:
@@ -26,35 +26,39 @@ service QuotaService {
     // response: google.protobuf.Empty
     rpc Attach(AttachQuotaRequest) returns (Operation);
 
+    rpc Get(GetQuotaRequest) returns (Quota) {}
+
     rpc List(ListQuotasRequest) returns (ListQuotasResponse) {}
 }
 
 message CreateQuotaRequest {
     FilesystemId filesystem_id = 1;
-    uint64 max_bytes = 2;
-    uint64 max_nodes = 3;
-}
-
-message CreateQuotaResponse {
-    uint32 quota_id = 1;
+    string quota_id = 2;
+    uint64 max_bytes = 3;
+    uint64 max_nodes = 4;
 }
 
 message DeleteQuotaRequest {
     FilesystemId filesystem_id = 1;
-    uint32 quota_id = 2;
+    string quota_id = 2;
 }
 
 message UpdateQuotaRequest {
     FilesystemId filesystem_id = 1;
-    uint32 quota_id = 2;
+    string quota_id = 2;
     uint64 max_bytes = 3;
     uint64 max_nodes = 4;
 }
 
 message AttachQuotaRequest {
     FilesystemId filesystem_id = 1;
-    uint32 quota_id = 2;
+    string quota_id = 2;
     string path = 3;
+}
+
+message GetQuotaRequest {
+    FilesystemId filesystem_id = 1;
+    string quota_id = 2;
 }
 
 message ListQuotasRequest {

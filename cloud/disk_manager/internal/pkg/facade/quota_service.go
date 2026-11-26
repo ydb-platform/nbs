@@ -58,6 +58,17 @@ func (s *quotaService) Attach(
 	)
 }
 
+func (s *quotaService) Get(
+	ctx context.Context,
+	req *disk_manager.GetQuotaRequest,
+) (*disk_manager.Quota, error) {
+
+	return nil, status.Error(
+		codes.Unimplemented,
+		"QuotaService.Get is not implemented yet",
+	)
+}
+
 func (s *quotaService) List(
 	ctx context.Context,
 	req *disk_manager.ListQuotasRequest,
