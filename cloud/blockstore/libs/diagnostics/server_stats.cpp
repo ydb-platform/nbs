@@ -316,6 +316,7 @@ void TServerStats::RequestStarted(
         << " REQUEST " << message
         << ", peer: " << req.Peer);
 
+    req.RequestTimestamp = TInstant::Now();
     LWTRACK(
         RequestStarted,
         callContext.LWOrbit,
@@ -324,9 +325,9 @@ void TServerStats::RequestStarted(
         callContext.RequestId,
         req.DiskId,
         req.StartIndex,
-        req.RequestBytes);
+        req.RequestBytes,
+        req.RequestTimestamp.MicroSeconds());
 
-    req.RequestTimestamp = TInstant::Now();
     auto started = RequestStats->RequestStarted(
         req.MediaKind,
         req.RequestType,

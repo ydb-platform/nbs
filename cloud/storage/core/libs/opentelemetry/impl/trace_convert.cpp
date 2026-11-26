@@ -350,8 +350,29 @@ private:
     }
 };
 
-TReferenceTimeCycle GetReferenceTimeCycle()
+TReferenceTimeCycle GetReferenceTimeCycle(const NLWTrace::TTrackLog& tl)
 {
+    // Use the request's own wall clock before projecting cycle deltas. The
+    // reader may export the track seconds later, with a different time offset.
+    for (TLogItemsIterationContext ctx{0, tl.Items.size()}; ctx; ctx.Next()) {
+        const auto& item = tl.Items[ctx.Idx];
+        const TStringBuf name = item.Probe->Event.Name;
+        if (name == "Join") {
+            // A joined request can carry an independent wall clock.
+            ctx.ConstructSubSpanIterationContext(
+                item.Params.Param[1].Get<ui64>());
+        } else if (name == "RequestStarted") {
+            const auto value = item.GetParam("requestStartTimeUs");
+            if (value.GetType() == NLWTrace::PT_Ui64) {
+                const ui64 us = value.GetParam().Get<ui64>();
+                if (us && us <= Max<ui64>() / 1000) {
+                    return {TInstant::MicroSeconds(us), item.TimestampCycles};
+                }
+            }
+        }
+    }
+
+    // Older producers and tracks that start at another probe have no anchor.
     return {
         .ReferenceTimeStamp = TInstant::Now(),
         .ReferenceTimeCycle = GetCycleCount()};
@@ -431,7 +452,7 @@ TTraceInfo ConvertToOpenTelemetrySpans(const NLWTrace::TTrackLog& tl)
     }
     auto converter = TTraceConverter(
         {traceId, 0},   // traceId
-        GetReferenceTimeCycle(),
+        GetReferenceTimeCycle(tl),
         TConflictDetecter().HasConflict(tl, traceItCtx, 0));
 
     traceInfo.Spans =

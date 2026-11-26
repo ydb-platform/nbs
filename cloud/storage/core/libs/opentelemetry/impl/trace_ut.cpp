@@ -29,6 +29,7 @@ enum class EEnumClass
     PROBE(                                                                     \
         TwoIntParam,                                                           \
         GROUPS("Group"), TYPES(ui32, ui32), NAMES("value1", "value2"))         \
+    PROBE(RequestStarted, GROUPS("Group"), TYPES(ui64), NAMES("requestStartTimeUs")) \
     PROBE(StringParam, GROUPS("Group"), TYPES(TString), NAMES("svalue"))       \
     PROBE(                                                                     \
         SymbolParam,                                                           \
@@ -183,6 +184,63 @@ Y_UNIT_TEST_SUITE(TraceConverter)
             }
         } reader;
         mngr.ReadDepot("Query1", reader);
+    }
+
+    Y_UNIT_TEST(ShouldAnchorDelayedTraceToRequestStart)
+    {
+        TManager manager(*Singleton<TProbeRegistry>(), true);
+        TQuery query;
+        auto* block = query.AddBlocks();
+        block->MutableProbeDesc()->SetName("NoParam");
+        block->MutableProbeDesc()->SetProvider("LWTRACE_UT_PROVIDER");
+        block->AddAction()->MutableRunLogShuttleAction();
+        manager.New("TimeAnchor", query);
+        {
+            TOrbit root;
+            LWTRACK(NoParam, root);
+            TOrbit child;
+            root.Fork(child);
+            LWTRACK(RequestStarted, child, ui64{10000000});
+            root.Join(child);
+            LWTRACK(RequestStarted, root, ui64{20000000});
+            LWTRACK(IntParam, root, 1);
+        }
+
+        struct
+        {
+            size_t Count = 0;
+
+            void Push(TThread::TId, const TTrackLog& log)
+            {
+                ++Count;
+                const auto& items = log.Items;
+                const auto& anchor = items[items.size() - 2];
+                UNIT_ASSERT_VALUES_EQUAL(
+                    anchor.Probe->Event.Name, "RequestStarted");
+                const auto spans = ConvertToOpenTelemetrySpans(log).Spans;
+                const auto epoch = TInstant::MicroSeconds(20000000);
+                const auto& root = spans.front();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    root.events(1).name(), "RequestStarted");
+                UNIT_ASSERT_VALUES_EQUAL(
+                    root.events(1).time_unix_nano(), epoch.NanoSeconds());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    root.start_time_unix_nano(),
+                    (epoch - CyclesToDurationSafe(
+                                 anchor.TimestampCycles -
+                                 items.front().TimestampCycles))
+                        .NanoSeconds());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    root.end_time_unix_nano(),
+                    (epoch +
+                     CyclesToDurationSafe(
+                         items.back().TimestampCycles - anchor.TimestampCycles))
+                        .NanoSeconds());
+            }
+        } reader;
+
+        manager.ReadDepot("TimeAnchor", reader);
+        UNIT_ASSERT_VALUES_EQUAL(reader.Count, 1);
     }
 
     Y_UNIT_TEST(ShouldPreserveSymbolAndCheckAttributes)
