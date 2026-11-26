@@ -896,7 +896,7 @@ def execute_proto(nbs, tmp_path, command, request, response):
 
 
 # Wait for the actual Volume profile rather than only ConfigsManager publication.
-def wait_volume_throttling(nbs, tmp_path, disk_id, bandwidth, coefficient, timeout=120):
+def wait_volume_throttling(nbs, tmp_path, disk_id, bandwidth, coefficient, timeout=100):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         response = execute_proto(
@@ -910,7 +910,7 @@ def wait_volume_throttling(nbs, tmp_path, disk_id, bandwidth, coefficient, timeo
             else:
                 assert info.AppliedRule.Coefficients.MaxReadBandwidth == coefficient
             return
-        time.sleep(0.1)
+        time.sleep(1)
     raise AssertionError(f"Volume {disk_id} did not apply throttling: {info}")
 
 
