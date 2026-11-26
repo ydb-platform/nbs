@@ -357,18 +357,19 @@ struct TTestJournal final: public IJournal
         return records;
     }
 
-    void MarkRecordAsFlushed(
-        ui64 lsn,
+    void MarkRecordsAsFlushed(
+        ui64 lastFlushedLsn,
         const TVector<TPageRangeRef>& ranges) override
     {
         with_lock (Mutex) {
             while (!RecordsToFlush.empty() &&
-                   RecordsToFlush.front().GetLogSequenceNumber() <= lsn)
+                   RecordsToFlush.front().GetLogSequenceNumber() <=
+                       lastFlushedLsn)
             {
                 RecordsToFlush.pop_front();
             }
 
-            FlushedLsns.push_back(lsn);
+            FlushedLsns.push_back(lastFlushedLsn);
             FlushedRanges.push_back(ranges);
         }
     }
@@ -388,6 +389,9 @@ struct TTestJournal final: public IJournal
 
         return {};
     }
+
+    void CleanupStrandedRecords() override
+    {}
 
     // helpers
 

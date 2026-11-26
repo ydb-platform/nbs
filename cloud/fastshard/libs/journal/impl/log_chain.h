@@ -6,6 +6,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
+#include <util/generic/deque.h>
 #include <util/generic/hash.h>
 #include <util/generic/vector.h>
 
@@ -27,46 +28,36 @@ private:
         TLogRecordPtr Record;
     };
 
-    mutable std::mutex Lock;
-    ui64 LastErasedLsn = 0;
+    mutable std::mutex PoolLock;
+    THashMap<ui64 /*prevLsn*/, TEntry> RecordPool;
+    TLogRecordPtr LastChainedRecord;
     ui64 LastChainedLsn = 0;
-    THashMap<ui64 /*prevLsn*/, TEntry> Records;
+
+    mutable std::mutex ChainLock;
+    TDeque<TLogRecordPtr> RecordChain;
+
+    // used only on the executor thread, don't need a lock
+    ui64 LsnLowWatermark = 0;
 
 public:
-    // Call before any Insert; |lsn| is the PrevLsn of the oldest record.
-    void InitLastErasedLsn(ui64 lsn);
+    void InitLastChainedLsn(ui64 lsn);
 
-    // Rejects a record that overlaps a held one or ends at or below the
-    // watermark. Returns the record to wait on: the held one for a duplicate.
-    TResultOrError<TLogRecordPtr> Insert(TLogRecordPtr record);
+    TResultOrError<bool> Insert(TLogRecordPtr record);
 
     [[nodiscard]] bool MarkAsReady(ui64 prevLsn);
     [[nodiscard]] bool Remove(ui64 prevLsn);
 
-    struct TErasedRecords
-    {
-        // The chained run below the erased lsn.
-        TVector<TLogRecordPtr> Chained;
+    // TODO: too slow, need to update, or call it rarely
+    TVector<TLogRecordPtr> RemoveStrandedRecords();
 
-        // The ready records that can no longer join the chain.
-        TVector<TLogRecordPtr> Stranded;
-    };
+    TLogRecordPtr ChainNextRecord(ui64 lsn);
 
-    // Removes and returns the run below |lsn|, plus the ready records left
-    // starting below the new watermark; failing their promises is up to the
-    // caller. Fails without changing anything when |lsn| > LastChainedLsn + 1.
-    TResultOrError<TErasedRecords> EraseBelow(ui64 lsn);
+    TVector<TLogRecordPtr> ExtractRecords(ui64 lsnLowWatermark);
+    ui64 GetLsnLowWatermark() const;
 
-    // The ready record following |lsn|, nullptr when missing or not ready.
-    TLogRecordPtr GetNext(ui64 lsn) const;
-
-    // Ready records following |afterLsn| with lsn not above |maxLsn|, up to
-    // the first gap or record not ready yet. A zero |maxRecordCount| means no
-    // limit.
-    TVector<TLogRecordPtr> GetReadyRun(
+    std::pair<TVector<TLogRecordPtr>, ui64 /* lsnLowWatermark */> GetTail(
         ui64 afterLsn,
-        ui64 maxLsn,
-        ui64 maxRecordCount) const;
+        ui32 maxRecordCount) const;
 };
 
 }   // namespace NCloud::NJournalled

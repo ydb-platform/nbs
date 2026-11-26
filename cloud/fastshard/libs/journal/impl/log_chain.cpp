@@ -3,182 +3,229 @@
 #include <util/generic/utility.h>
 #include <util/string/builder.h>
 
+#include <algorithm>
+#include <iterator>
+
 namespace NCloud::NJournalled {
+
+namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TLogRecordChain::InitLastErasedLsn(ui64 lsn)
+// Returns the first record with Lsn above |lsn|, or the end of |chain| when
+// there is no such record. The records in |chain| are sorted by Lsn.
+TDeque<TLogRecordPtr>::const_iterator FindFirstAbove(
+    const TDeque<TLogRecordPtr>& chain,
+    ui64 lsn)
 {
-    std::lock_guard lock(Lock);
+    return std::upper_bound(
+        chain.begin(),
+        chain.end(),
+        lsn,
+        [](ui64 lsn, const TLogRecordPtr& record)
+        { return lsn < record->Lsn; });
+}
 
-    LastErasedLsn = lsn;
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TLogRecordChain::InitLastChainedLsn(ui64 lsn)
+{
+    LsnLowWatermark = lsn;
+
+    std::lock_guard lock(PoolLock);
     LastChainedLsn = lsn;
 }
 
-TResultOrError<TLogRecordPtr> TLogRecordChain::Insert(TLogRecordPtr record)
+TResultOrError<bool> TLogRecordChain::Insert(TLogRecordPtr record)
 {
     if (record->PrevLsn >= record->Lsn) {
         return MakeError(E_ARGUMENT);
     }
 
-    {
-        std::lock_guard lock(Lock);
+    std::lock_guard lock(PoolLock);
 
-        if (record->Lsn <= LastErasedLsn) {
-            return MakeError(E_INVALID_STATE);
+    if (record->Lsn == LastChainedLsn) {
+        if (!LastChainedRecord) {
+            record->Promise.SetValue(TErrorResponse(S_ALREADY));
+            return false;
         }
 
-        if (auto it = Records.find(record->PrevLsn); it != Records.end()) {
-            const auto& held = it->second.Record;
-            if (held->Lsn == record->Lsn) {
-                return held;
-            }
-            // another record already continues from the same lsn
-            return MakeError(E_INVALID_STATE);
-        }
-
-        // TODO(#6956): check, that there is no record with the same Lsn
-
-        // the boundaries of the chained run are all held, so a record
-        // starting below LastChainedLsn starts inside another record
-        if (record->PrevLsn < LastChainedLsn) {
-            return MakeError(E_INVALID_STATE);
-        }
-
-        Records.emplace(record->PrevLsn, TEntry{.Record = record});
+        LastChainedRecord->Promise.GetFuture().Subscribe(
+            [record = std::move(record)](const auto& future)
+            { record->Promise.SetValue(future.GetValue()); });
+        return false;
     }
 
-    return record;
+    if (record->Lsn < LastChainedLsn) {
+        std::lock_guard chainLock(ChainLock);
+
+        // TODO: add comment about this is a rare case
+
+        //
+        // Find the chained record with the same lsn. The lsn of the new
+        // record is above zero here, so the subtraction is safe
+        //
+
+        auto it = FindFirstAbove(RecordChain, record->Lsn - 1);
+        if (it == RecordChain.end() || (*it)->Lsn != record->Lsn) {
+            return MakeError(E_INVALID_STATE);
+        }
+
+        (*it)->Promise.GetFuture().Subscribe(
+            [record = std::move(record)](const auto& future)
+            { record->Promise.SetValue(future.GetValue()); });
+        return false;
+    }
+
+    if (auto it = RecordPool.find(record->PrevLsn); it != RecordPool.end()) {
+        const auto& held = it->second.Record;
+        if (held->Lsn == record->Lsn) {
+            held->Promise.GetFuture().Subscribe(
+                [record = std::move(record)](const auto& future)
+                { record->Promise.SetValue(future.GetValue()); });
+            return false;
+        }
+        // another record already continues from the same lsn
+        return MakeError(E_INVALID_STATE);
+    }
+
+    // TODO(#6956): check, that there is no record with the same Lsn
+
+    // the boundaries of the chained run are all held, so a record
+    // starting below LastChainedLsn starts inside another record
+    if (record->PrevLsn < LastChainedLsn) {
+        return MakeError(E_INVALID_STATE);
+    }
+
+    RecordPool.emplace(record->PrevLsn, TEntry{.Record = record});
+    return true;
 }
 
 bool TLogRecordChain::MarkAsReady(ui64 prevLsn)
 {
-    {
-        std::lock_guard lock(Lock);
+    std::lock_guard lock(PoolLock);
 
-        auto it = Records.find(prevLsn);
-        if (it == Records.end()) {
-            return false;
-        }
-
-        it->second.Ready = true;
-
-        for (;;) {
-            auto next = Records.find(LastChainedLsn);
-            if (next == Records.end() || !next->second.Ready) {
-                break;
-            }
-            LastChainedLsn = next->second.Record->Lsn;
-        }
+    auto it = RecordPool.find(prevLsn);
+    if (it == RecordPool.end()) {
+        return false;
     }
 
+    it->second.Ready = true;
     return true;
 }
 
 bool TLogRecordChain::Remove(ui64 prevLsn)
 {
-    {
-        std::lock_guard lock(Lock);
+    std::lock_guard lock(PoolLock);
 
-        auto it = Records.find(prevLsn);
-        if (it == Records.end()) {
-            return false;
-        }
-
-        if (it->second.Ready) {
-            return false;
-        }
-
-        Records.erase(it);
+    auto it = RecordPool.find(prevLsn);
+    if (it == RecordPool.end()) {
+        return false;
     }
 
+    if (it->second.Ready) {
+        return false;
+    }
+
+    RecordPool.erase(it);
     return true;
 }
 
-auto TLogRecordChain::EraseBelow(ui64 lsn) -> TResultOrError<TErasedRecords>
+TVector<TLogRecordPtr> TLogRecordChain::RemoveStrandedRecords()
 {
-    TErasedRecords erased;
+    std::lock_guard lock(PoolLock);
 
-    {
-        std::lock_guard lock(Lock);
-
-        if (lsn > LastChainedLsn + 1) {
-            return MakeError(
-                E_INVALID_STATE,
-                TStringBuilder() << "lsn " << lsn
-                                 << " reaches past the chained run ending at "
-                                 << LastChainedLsn);
-        }
-
-        for (;;) {
-            auto it = Records.find(LastErasedLsn);
-            if (it == Records.end() || it->second.Record->Lsn >= lsn) {
-                break;
-            }
-
-            erased.Chained.push_back(std::move(it->second.Record));
-            Records.erase(it);
-            LastErasedLsn = erased.Chained.back()->Lsn;
-        }
-
-        // ready records chaining from below the watermark can never join
-        for (auto it = Records.begin(); it != Records.end();) {
-            if (it->first < LastErasedLsn && it->second.Ready) {
-                erased.Stranded.push_back(std::move(it->second.Record));
-                Records.erase(it++);
-            } else {
-                ++it;
-            }
+    TVector<TLogRecordPtr> erased;
+    // ready records with prevLsn below LastChainedLsn can never join
+    for (auto it = RecordPool.begin(); it != RecordPool.end();) {
+        if (it->first < LastChainedLsn && it->second.Ready) {
+            erased.push_back(std::move(it->second.Record));
+            RecordPool.erase(it++);
+        } else {
+            ++it;
         }
     }
 
     return erased;
 }
 
-TLogRecordPtr TLogRecordChain::GetNext(ui64 lsn) const
+TLogRecordPtr TLogRecordChain::ChainNextRecord(ui64 lsn)
 {
-    std::lock_guard lock(Lock);
-
-    auto it = Records.find(lsn);
-    if (it == Records.end() || !it->second.Ready) {
-        return nullptr;
-    }
-    return it->second.Record;
-}
-
-TVector<TLogRecordPtr> TLogRecordChain::GetReadyRun(
-    ui64 afterLsn,
-    ui64 maxLsn,
-    ui64 maxRecordCount) const
-{
-    TVector<TLogRecordPtr> records;
+    TLogRecordPtr record;
 
     {
-        std::lock_guard lock(Lock);
-
-        auto recordCount = maxRecordCount > 0
-                               ? Min<size_t>(maxRecordCount, Records.size())
-                               : Records.size();
-
-        records.reserve(recordCount);
-
-        ui64 tailLsn = afterLsn;
-        while (records.size() < recordCount) {
-            auto it = Records.find(tailLsn);
-            if (it == Records.end() || !it->second.Ready) {
-                break;
-            }
-
-            if (it->second.Record->Lsn > maxLsn) {
-                break;
-            }
-
-            records.push_back(it->second.Record);
-            tailLsn = it->second.Record->Lsn;
+        std::lock_guard lock(PoolLock);
+        if (LastChainedLsn != lsn) {
+            return nullptr;
         }
+
+        auto it = RecordPool.find(lsn);
+        if (it == RecordPool.end() || !it->second.Ready) {
+            return nullptr;
+        }
+
+        record = std::move(it->second.Record);
+        RecordPool.erase(it);
+        LastChainedRecord = record;
+        LastChainedLsn = record->Lsn;
     }
 
-    return records;
+    {
+        std::lock_guard lock(ChainLock);
+        RecordChain.push_back(record);
+    }
+    return record;
+}
+
+TVector<TLogRecordPtr> TLogRecordChain::ExtractRecords(ui64 lsnLowWatermark)
+{
+    std::lock_guard lock(ChainLock);
+
+    LsnLowWatermark = lsnLowWatermark;
+
+    //
+    // Find the end of the records to extract with a binary search, then move
+    // them out and erase them in one go. The write path waits for this lock,
+    // so do not pop the records one by one
+    //
+
+    const size_t recordCount =
+        FindFirstAbove(RecordChain, lsnLowWatermark) - RecordChain.cbegin();
+
+    auto first = RecordChain.begin();
+    auto last = first + recordCount;
+
+    TVector<TLogRecordPtr> result(
+        std::make_move_iterator(first),
+        std::make_move_iterator(last));
+
+    RecordChain.erase(first, last);
+
+    return result;
+}
+
+ui64 TLogRecordChain::GetLsnLowWatermark() const
+{
+    return LsnLowWatermark;
+}
+
+std::pair<TVector<TLogRecordPtr>, ui64> TLogRecordChain::GetTail(
+    ui64 afterLsn,
+    ui32 maxRecordCount) const
+{
+    std::lock_guard lock(ChainLock);
+
+    auto first = FindFirstAbove(RecordChain, afterLsn);
+
+    size_t recordCount = RecordChain.end() - first;
+    if (maxRecordCount > 0) {
+        recordCount = Min<size_t>(recordCount, maxRecordCount);
+    }
+
+    TVector<TLogRecordPtr> records(first, first + recordCount);
+    return std::make_pair(std::move(records), LsnLowWatermark);
 }
 
 }   // namespace NCloud::NJournalled

@@ -2,9 +2,9 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <util/generic/algorithm.h>
-
 namespace NCloud::NJournalled {
+
+using namespace NThreading;
 
 namespace {
 
@@ -15,39 +15,68 @@ TLogRecordPtr MakeRecord(ui64 prevLsn, ui64 lsn)
     auto record = std::make_shared<TLogRecord>();
     record->PrevLsn = prevLsn;
     record->Lsn = lsn;
+    record->Promise = NewPromise<NProto::TWriteLogRecordResponse>();
     return record;
 }
 
-// inserts a record and marks it as ready, the way a finished write lands in
-// the chain
-TLogRecordPtr InsertReady(TLogRecordChain& chain, ui64 prevLsn, ui64 lsn)
+// Inserts a new record. The chain must take it.
+TLogRecordPtr Insert(TLogRecordChain& chain, ui64 prevLsn, ui64 lsn)
 {
     auto record = MakeRecord(prevLsn, lsn);
     auto result = chain.Insert(record);
     UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetError().GetCode());
-    UNIT_ASSERT_VALUES_EQUAL(record.get(), result.GetResult().get());
+    UNIT_ASSERT(result.GetResult());
+    return record;
+}
+
+// Inserts a record and marks it as ready, like a finished write does.
+TLogRecordPtr InsertReady(TLogRecordChain& chain, ui64 prevLsn, ui64 lsn)
+{
+    auto record = Insert(chain, prevLsn, lsn);
     UNIT_ASSERT(chain.MarkAsReady(prevLsn));
     return record;
 }
 
-// erases below |lsn| the way cleanup does, once the watermark is known to
-// sit inside the chained run
-TVector<TLogRecordPtr> EraseBelow(TLogRecordChain& chain, ui64 lsn)
+// Inserts a ready record, chains it and answers its writer, like the journal
+// does. The record must continue the chain.
+TLogRecordPtr InsertChained(TLogRecordChain& chain, ui64 prevLsn, ui64 lsn)
 {
-    auto result = chain.EraseBelow(lsn);
-    UNIT_ASSERT_VALUES_EQUAL_C(
-        S_OK,
-        result.GetError().GetCode(),
-        result.GetError().GetMessage());
+    auto record = InsertReady(chain, prevLsn, lsn);
+    auto chained = chain.ChainNextRecord(prevLsn);
+    UNIT_ASSERT_VALUES_EQUAL(record.get(), chained.get());
+    record->Promise.SetValue(TErrorResponse(S_OK));
+    return record;
+}
 
-    auto erased = result.ExtractResult();
+// Inserts a record that repeats a held one. The chain must not take it and
+// must not return an error.
+TLogRecordPtr InsertDuplicate(TLogRecordChain& chain, ui64 prevLsn, ui64 lsn)
+{
+    auto record = MakeRecord(prevLsn, lsn);
+    auto result = chain.Insert(record);
+    UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetError().GetCode());
+    UNIT_ASSERT(!result.GetResult());
+    return record;
+}
 
-    TVector<TLogRecordPtr> records = std::move(erased.Chained);
-    records.insert(
-        records.end(),
-        erased.Stranded.begin(),
-        erased.Stranded.end());
-    return records;
+// Returns the error code of an insert that the chain must reject.
+ui32 InsertRejected(TLogRecordChain& chain, ui64 prevLsn, ui64 lsn)
+{
+    auto result = chain.Insert(MakeRecord(prevLsn, lsn));
+    UNIT_ASSERT(!result.GetResult());
+    return result.GetError().GetCode();
+}
+
+bool IsAnswered(const TLogRecordPtr& record)
+{
+    return record->Promise.HasValue();
+}
+
+// Returns the code that the writer of the record has got.
+ui32 GetAnswer(const TLogRecordPtr& record)
+{
+    UNIT_ASSERT(IsAnswered(record));
+    return record->Promise.GetFuture().GetValue().GetError().GetCode();
 }
 
 TVector<ui64> GetLsns(const TVector<TLogRecordPtr>& records)
@@ -59,11 +88,12 @@ TVector<ui64> GetLsns(const TVector<TLogRecordPtr>& records)
     return lsns;
 }
 
-TVector<ui64> GetSortedLsns(const TVector<TLogRecordPtr>& records)
+TVector<ui64> GetTailLsns(
+    const TLogRecordChain& chain,
+    ui64 afterLsn,
+    ui32 maxRecordCount = 0)
 {
-    auto lsns = GetLsns(records);
-    Sort(lsns);
-    return lsns;
+    return GetLsns(chain.GetTail(afterLsn, maxRecordCount).first);
 }
 
 }   // namespace
@@ -75,668 +105,595 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
     Y_UNIT_TEST(ShouldRejectRecordWithPrevLsnNotBelowLsn)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            chain.Insert(MakeRecord(25, 20)).GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            chain.Insert(MakeRecord(20, 20)).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, InsertRejected(chain, 25, 20));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, InsertRejected(chain, 20, 20));
 
-        UNIT_ASSERT(!chain.GetNext(10));
+        UNIT_ASSERT(!chain.MarkAsReady(25));
+        UNIT_ASSERT(!chain.MarkAsReady(20));
     }
 
-    Y_UNIT_TEST(ShouldInsertChainedRecords)
+    Y_UNIT_TEST(ShouldChainRecordsInOrder)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
+
+        auto first = InsertReady(chain, 10, 20);
+        auto second = InsertReady(chain, 20, 30);
+
+        UNIT_ASSERT_VALUES_EQUAL(first.get(), chain.ChainNextRecord(10).get());
+        UNIT_ASSERT_VALUES_EQUAL(second.get(), chain.ChainNextRecord(20).get());
+        UNIT_ASSERT(!chain.ChainNextRecord(30));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            (TVector<ui64>{20, 30}),
+            GetTailLsns(chain, 10));
+    }
+
+    Y_UNIT_TEST(ShouldChainRecordsInsertedOutOfOrder)
+    {
+        TLogRecordChain chain;
+        chain.InitLastChainedLsn(10);
+
+        InsertReady(chain, 30, 40);
+        InsertReady(chain, 20, 30);
+
+        //
+        // Check that nothing continues the chain before the gap is filled
+        //
+
+        UNIT_ASSERT(!chain.ChainNextRecord(10));
+        UNIT_ASSERT(GetTailLsns(chain, 0).empty());
+
+        InsertReady(chain, 10, 20);
+
+        UNIT_ASSERT_VALUES_EQUAL(20, chain.ChainNextRecord(10)->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(30, chain.ChainNextRecord(20)->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(40, chain.ChainNextRecord(30)->Lsn);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            (TVector<ui64>{20, 30, 40}),
+            GetTailLsns(chain, 10));
+    }
+
+    Y_UNIT_TEST(ShouldNotChainRecordThatIsNotReady)
+    {
+        TLogRecordChain chain;
+        chain.InitLastChainedLsn(10);
+
+        Insert(chain, 10, 20);
+        InsertReady(chain, 20, 30);
+
+        UNIT_ASSERT(!chain.ChainNextRecord(10));
+        UNIT_ASSERT(GetTailLsns(chain, 0).empty());
+
+        UNIT_ASSERT(chain.MarkAsReady(10));
+
+        UNIT_ASSERT_VALUES_EQUAL(20, chain.ChainNextRecord(10)->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(30, chain.ChainNextRecord(20)->Lsn);
+    }
+
+    Y_UNIT_TEST(ShouldChainOnlyFromLastChainedLsn)
+    {
+        TLogRecordChain chain;
+        chain.InitLastChainedLsn(10);
 
         InsertReady(chain, 10, 20);
         InsertReady(chain, 20, 30);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20, 30}),
-            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
+        //
+        // Check that the chain gives no record for an lsn ahead of its end
+        //
+
+        UNIT_ASSERT(!chain.ChainNextRecord(20));
+
+        UNIT_ASSERT_VALUES_EQUAL(20, chain.ChainNextRecord(10)->Lsn);
+
+        //
+        // Check that the chain gives no record for an old lsn: another
+        // thread has chained from it already
+        //
+
+        UNIT_ASSERT(!chain.ChainNextRecord(10));
+
+        UNIT_ASSERT_VALUES_EQUAL(30, chain.ChainNextRecord(20)->Lsn);
     }
 
-    Y_UNIT_TEST(ShouldAcceptRecordsInsertedOutOfOrder)
+    Y_UNIT_TEST(ShouldNotChainAcrossGap)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
 
-        InsertReady(chain, 20, 30);
         InsertReady(chain, 10, 20);
+        InsertReady(chain, 30, 40);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20, 30}),
-            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
+        UNIT_ASSERT_VALUES_EQUAL(20, chain.ChainNextRecord(10)->Lsn);
+        UNIT_ASSERT(!chain.ChainNextRecord(20));
+        UNIT_ASSERT(!chain.ChainNextRecord(30));
+
+        UNIT_ASSERT_VALUES_EQUAL((TVector<ui64>{20}), GetTailLsns(chain, 10));
     }
 
     Y_UNIT_TEST(ShouldMarkRecordAsReadyByPrevLsn)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
 
-        // nothing to mark yet
         UNIT_ASSERT(!chain.MarkAsReady(10));
 
-        chain.Insert(MakeRecord(10, 20));
-
-        // a record that is not ready is held but invisible to the walk
-        UNIT_ASSERT(!chain.GetNext(10));
+        Insert(chain, 10, 20);
 
         UNIT_ASSERT(chain.MarkAsReady(10));
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
-
-        // marking twice is harmless
         UNIT_ASSERT(chain.MarkAsReady(10));
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
+
+        UNIT_ASSERT_VALUES_EQUAL(20, chain.ChainNextRecord(10)->Lsn);
+
+        //
+        // Check that a chained record is not in the pool any more
+        //
+
+        UNIT_ASSERT(!chain.MarkAsReady(10));
     }
 
-    Y_UNIT_TEST(ShouldExtendRunOnlyOverReadyRecords)
+    Y_UNIT_TEST(ShouldRemoveRecordThatIsNotReady)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
 
-        chain.Insert(MakeRecord(10, 20));
-        chain.Insert(MakeRecord(20, 30));
-
-        // the second record is durable before the first one, so the run
-        // cannot move past the first yet
-        UNIT_ASSERT(chain.MarkAsReady(20));
-        UNIT_ASSERT(!chain.GetNext(10));
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            chain.Insert(MakeRecord(15, 25)).GetError().GetCode());
-
-        // marking the first one carries the run over both
-        UNIT_ASSERT(chain.MarkAsReady(10));
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_INVALID_STATE,
-            chain.Insert(MakeRecord(25, 35)).GetError().GetCode());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20, 30}),
-            GetSortedLsns(EraseBelow(chain, 31)));
-    }
-
-    Y_UNIT_TEST(ShouldReturnHeldRecordForExactDuplicate)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
-
-        InsertReady(chain, 10, 20);
+        Insert(chain, 10, 20);
         InsertReady(chain, 20, 30);
 
-        // a duplicate is not an error: the chain hands back the record it
-        // already holds, so the caller can wait on that one's promise
-        auto first = chain.Insert(MakeRecord(10, 20));
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, first.GetError().GetCode());
-        UNIT_ASSERT(first.GetResult());
-        UNIT_ASSERT_VALUES_EQUAL(20, first.GetResult()->Lsn);
+        UNIT_ASSERT(chain.Remove(10));
+        UNIT_ASSERT(!chain.Remove(10));
+        UNIT_ASSERT(!chain.Remove(999));
+        UNIT_ASSERT(!chain.MarkAsReady(10));
 
-        auto second = chain.Insert(MakeRecord(20, 30));
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, second.GetError().GetCode());
-        UNIT_ASSERT(second.GetResult());
-        UNIT_ASSERT_VALUES_EQUAL(30, second.GetResult()->Lsn);
+        //
+        // Check that a ready record stays: its write is done
+        //
+
+        UNIT_ASSERT(!chain.Remove(20));
+        UNIT_ASSERT(chain.MarkAsReady(20));
     }
 
-    Y_UNIT_TEST(ShouldRejectConflictingRecordWithSameLsn)
+    Y_UNIT_TEST(ShouldTakeRecordAgainAfterRemove)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
 
-        InsertReady(chain, 10, 20);
+        InsertChained(chain, 10, 20);
+        Insert(chain, 20, 30);
+        InsertReady(chain, 30, 40);
 
-        // same lsn, different prev lsn
+        UNIT_ASSERT(chain.Remove(20));
+        UNIT_ASSERT(!chain.ChainNextRecord(20));
+
+        InsertReady(chain, 20, 30);
+
+        UNIT_ASSERT_VALUES_EQUAL(30, chain.ChainNextRecord(20)->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(40, chain.ChainNextRecord(30)->Lsn);
+    }
+
+    Y_UNIT_TEST(ShouldAnswerDuplicateOfPooledRecord)
+    {
+        TLogRecordChain chain;
+        chain.InitLastChainedLsn(10);
+
+        auto record = Insert(chain, 20, 30);
+        auto duplicate = InsertDuplicate(chain, 20, 30);
+
+        UNIT_ASSERT(!IsAnswered(duplicate));
+
+        record->Promise.SetValue(TErrorResponse(S_OK));
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, GetAnswer(duplicate));
+    }
+
+    Y_UNIT_TEST(ShouldAnswerDuplicateOfFailedRecordWithItsError)
+    {
+        TLogRecordChain chain;
+        chain.InitLastChainedLsn(10);
+
+        auto record = Insert(chain, 10, 20);
+        auto duplicate = InsertDuplicate(chain, 10, 20);
+
+        UNIT_ASSERT(chain.Remove(10));
+        record->Promise.SetValue(TErrorResponse(E_IO));
+
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, GetAnswer(duplicate));
+    }
+
+    Y_UNIT_TEST(ShouldAnswerDuplicateOfLastChainedRecordAfterItsWriter)
+    {
+        TLogRecordChain chain;
+        chain.InitLastChainedLsn(10);
+
+        auto record = InsertReady(chain, 10, 20);
+        UNIT_ASSERT_VALUES_EQUAL(record.get(), chain.ChainNextRecord(10).get());
+
+        //
+        // Check that the duplicate waits: the record is chained, but its
+        // writer has no answer yet, so the record may be not indexed
+        //
+
+        auto duplicate = InsertDuplicate(chain, 10, 20);
+        UNIT_ASSERT(!IsAnswered(duplicate));
+
+        record->Promise.SetValue(TErrorResponse(S_OK));
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, GetAnswer(duplicate));
+
+        //
+        // Check that a later duplicate gets the answer at once
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            GetAnswer(InsertDuplicate(chain, 10, 20)));
+    }
+
+    Y_UNIT_TEST(ShouldAnswerDuplicateOfChainedRecord)
+    {
+        TLogRecordChain chain;
+        chain.InitLastChainedLsn(10);
+
+        InsertChained(chain, 10, 20);
+        InsertChained(chain, 20, 30);
+        InsertChained(chain, 30, 40);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            GetAnswer(InsertDuplicate(chain, 10, 20)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            GetAnswer(InsertDuplicate(chain, 20, 30)));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            (TVector<ui64>{20, 30, 40}),
+            GetTailLsns(chain, 10));
+    }
+
+    Y_UNIT_TEST(ShouldAnswerAlreadyForRecordAtInitLsn)
+    {
+        TLogRecordChain chain;
+        chain.InitLastChainedLsn(30);
+
+        //
+        // Check the record that ends at the init lsn: the chain does not
+        // hold it, but the lsn says that it was written before
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_ALREADY,
+            GetAnswer(InsertDuplicate(chain, 20, 30)));
+
+        UNIT_ASSERT(!chain.MarkAsReady(20));
+    }
+
+    Y_UNIT_TEST(ShouldRejectRecordBelowInitLsn)
+    {
+        TLogRecordChain chain;
+        chain.InitLastChainedLsn(30);
+
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
-            chain.Insert(MakeRecord(5, 20)).GetError().GetCode());
+            InsertRejected(chain, 10, 20));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            InsertRejected(chain, 20, 40));
 
-        // the original record is still the one held by the chain
-        UNIT_ASSERT_VALUES_EQUAL(10, chain.GetNext(10)->PrevLsn);
+        InsertChained(chain, 30, 40);
+    }
+
+    Y_UNIT_TEST(ShouldRejectExtractedRecord)
+    {
+        TLogRecordChain chain;
+        chain.InitLastChainedLsn(10);
+
+        InsertChained(chain, 10, 20);
+        InsertChained(chain, 20, 30);
+
+        chain.ExtractRecords(30);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            InsertRejected(chain, 10, 20));
+
+        //
+        // Check that the last chained record is still answered: the chain
+        // keeps it after the extract
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            GetAnswer(InsertDuplicate(chain, 20, 30)));
     }
 
     Y_UNIT_TEST(ShouldRejectForkFromSameLsn)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
 
-        InsertReady(chain, 10, 20);
+        auto record = InsertReady(chain, 10, 20);
 
-        // two records cannot both continue from lsn 10
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
-            chain.Insert(MakeRecord(10, 25)).GetError().GetCode());
+            InsertRejected(chain, 10, 25));
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20}),
-            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
+        UNIT_ASSERT_VALUES_EQUAL(record.get(), chain.ChainNextRecord(10).get());
     }
 
-    Y_UNIT_TEST(ShouldRejectRecordStartingInsideChainedRun)
+    Y_UNIT_TEST(ShouldRejectRecordStartingInsideChain)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
 
-        InsertReady(chain, 10, 20);
-        InsertReady(chain, 20, 30);
+        InsertChained(chain, 10, 20);
+        InsertChained(chain, 20, 30);
 
-        // every boundary of the run is held, so a record starting anywhere
-        // else below its end starts inside another record
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
-            chain.Insert(MakeRecord(15, 25)).GetError().GetCode());
+            InsertRejected(chain, 15, 25));
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
-            chain.Insert(MakeRecord(25, 35)).GetError().GetCode());
+            InsertRejected(chain, 15, 35));
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
-            chain.Insert(MakeRecord(5, 15)).GetError().GetCode());
+            InsertRejected(chain, 25, 35));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            InsertRejected(chain, 5, 15));
 
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30}),
-            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
+            GetTailLsns(chain, 10));
     }
 
     Y_UNIT_TEST(ShouldNotDetectOverlapPastGap)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
 
-        InsertReady(chain, 10, 20);
         InsertReady(chain, 30, 40);
 
-        // (35, 45] intersects (30, 40], but past the gap the chain only
-        // looks up records by their boundaries, so this is the caller's
-        // responsibility
+        //
+        // Check that the chain takes a record that overlaps a pooled one:
+        // it finds pooled records only by prev lsn
+        //
+
+        Insert(chain, 35, 45);
+    }
+
+    Y_UNIT_TEST(ShouldRemoveStrandedRecords)
+    {
+        TLogRecordChain chain;
+        chain.InitLastChainedLsn(10);
+
+        auto ready = InsertReady(chain, 15, 25);
+        Insert(chain, 18, 28);
+        InsertReady(chain, 20, 30);
+
+        UNIT_ASSERT(chain.RemoveStrandedRecords().empty());
+
+        InsertChained(chain, 10, 20);
+
+        //
+        // Check that the ready record that starts below the end of the
+        // chain is removed: it can never join the chain
+        //
+
         UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            chain.Insert(MakeRecord(35, 45)).GetError().GetCode());
+            (TVector<ui64>{25}),
+            GetLsns(chain.RemoveStrandedRecords()));
+
+        // The chain does not answer the writer, the caller does
+        UNIT_ASSERT(!IsAnswered(ready));
+
+        //
+        // Check that the record that is not ready stays until its write
+        // finishes
+        //
+
+        UNIT_ASSERT(chain.RemoveStrandedRecords().empty());
+        UNIT_ASSERT(chain.MarkAsReady(18));
+        UNIT_ASSERT_VALUES_EQUAL(
+            (TVector<ui64>{28}),
+            GetLsns(chain.RemoveStrandedRecords()));
+        UNIT_ASSERT(!chain.MarkAsReady(18));
+
+        //
+        // Check that the record that continues the chain is not touched
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(30, chain.ChainNextRecord(20)->Lsn);
     }
 
-    Y_UNIT_TEST(ShouldAcceptAbuttingRecords)
+    Y_UNIT_TEST(ShouldInitLsnLowWatermark)
     {
         TLogRecordChain chain;
+        UNIT_ASSERT_VALUES_EQUAL(0, chain.GetLsnLowWatermark());
 
-        InsertReady(chain, 10, 20);
+        chain.InitLastChainedLsn(10);
+        UNIT_ASSERT_VALUES_EQUAL(10, chain.GetLsnLowWatermark());
+    }
 
-        // (0, 10] abuts (10, 20] without intersecting it
-        InsertReady(chain, 0, 10);
+    Y_UNIT_TEST(ShouldExtractRecordsUpToLsnLowWatermark)
+    {
+        TLogRecordChain chain;
+        chain.InitLastChainedLsn(10);
+
+        InsertChained(chain, 10, 20);
+        InsertChained(chain, 20, 30);
+        InsertChained(chain, 30, 40);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{10, 20}),
-            GetLsns(chain.GetReadyRun(0, Max<ui64>(), 10)));
+            (TVector<ui64>{20, 30}),
+            GetLsns(chain.ExtractRecords(30)));
+        UNIT_ASSERT_VALUES_EQUAL(30, chain.GetLsnLowWatermark());
+        UNIT_ASSERT_VALUES_EQUAL((TVector<ui64>{40}), GetTailLsns(chain, 0));
+
+        UNIT_ASSERT(chain.ExtractRecords(30).empty());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            (TVector<ui64>{40}),
+            GetLsns(chain.ExtractRecords(40)));
+        UNIT_ASSERT_VALUES_EQUAL(40, chain.GetLsnLowWatermark());
+        UNIT_ASSERT(GetTailLsns(chain, 0).empty());
     }
 
-    Y_UNIT_TEST(ShouldReturnNullptrFromGetNextWhenEmpty)
+    Y_UNIT_TEST(ShouldExtractOnlyWholeRecords)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
 
-        UNIT_ASSERT(!chain.GetNext(10));
-        UNIT_ASSERT(!chain.GetNext(0));
-        UNIT_ASSERT(!chain.GetNext(100));
-    }
+        InsertChained(chain, 10, 20);
+        InsertChained(chain, 20, 30);
 
-    Y_UNIT_TEST(ShouldRemoveRecordByPrevLsn)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        UNIT_ASSERT(chain.ExtractRecords(15).empty());
+        UNIT_ASSERT_VALUES_EQUAL(15, chain.GetLsnLowWatermark());
 
-        chain.Insert(MakeRecord(10, 20));
-        chain.Insert(MakeRecord(20, 30));
-
-        UNIT_ASSERT(chain.Remove(10));
-
-        // removing an unknown prev lsn is reported, not ignored
-        UNIT_ASSERT(!chain.Remove(10));
-        UNIT_ASSERT(!chain.Remove(999));
-
-        // the record after it is still held
-        UNIT_ASSERT(chain.MarkAsReady(20));
-        UNIT_ASSERT_VALUES_EQUAL(30, chain.GetNext(20)->Lsn);
-        UNIT_ASSERT(!chain.MarkAsReady(10));
-
-        // a ready record is part of the chain and cannot be taken out
-        UNIT_ASSERT(!chain.Remove(20));
-        UNIT_ASSERT_VALUES_EQUAL(30, chain.GetNext(20)->Lsn);
-    }
-
-    Y_UNIT_TEST(ShouldRestoreRunWhenRemovedRecordIsReinserted)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
-
-        InsertReady(chain, 10, 20);
-        chain.Insert(MakeRecord(20, 30));   // its write is about to fail
-        InsertReady(chain, 30, 40);
-
-        // the failed write is taken out, the run still ends before it
-        UNIT_ASSERT(chain.Remove(20));
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20}),
-            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
-
-        // the retry starts at the end of the run and rejoins the rest
-        InsertReady(chain, 20, 30);
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20, 30, 40}),
-            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20, 30, 40}),
-            GetSortedLsns(EraseBelow(chain, 41)));
+            GetLsns(chain.ExtractRecords(25)));
+        UNIT_ASSERT_VALUES_EQUAL(25, chain.GetLsnLowWatermark());
+        UNIT_ASSERT_VALUES_EQUAL((TVector<ui64>{30}), GetTailLsns(chain, 0));
     }
 
-    Y_UNIT_TEST(ShouldExtendRunThroughWaitingRecords)
+    Y_UNIT_TEST(ShouldChainAfterExtractingAllRecords)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
 
-        InsertReady(chain, 30, 40);
-        InsertReady(chain, 20, 30);
-
-        // nothing chains from the watermark yet
-        UNIT_ASSERT(!chain.GetNext(10));
-
-        // filling the gap joins everything behind it, so the run now covers
-        // (10, 40] and guards against records starting inside it
-        InsertReady(chain, 10, 20);
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_INVALID_STATE,
-            chain.Insert(MakeRecord(35, 45)).GetError().GetCode());
+        InsertChained(chain, 10, 20);
 
         UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20, 30, 40}),
-            GetSortedLsns(EraseBelow(chain, 41)));
+            (TVector<ui64>{20}),
+            GetLsns(chain.ExtractRecords(20)));
+
+        InsertChained(chain, 20, 30);
+
+        UNIT_ASSERT_VALUES_EQUAL((TVector<ui64>{30}), GetTailLsns(chain, 0));
     }
 
-    Y_UNIT_TEST(ShouldGetRecordChainedFromLsn)
+    Y_UNIT_TEST(ShouldReturnEmptyTailWhenEmpty)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
 
-        InsertReady(chain, 10, 20);
-        InsertReady(chain, 20, 30);
-
-        // GetNext follows the chain: it returns the record whose prev lsn is
-        // exactly the given lsn
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
-        UNIT_ASSERT_VALUES_EQUAL(30, chain.GetNext(20)->Lsn);
-
-        // nothing chains from an lsn that is not a record boundary
-        UNIT_ASSERT(!chain.GetNext(0));
-        UNIT_ASSERT(!chain.GetNext(15));
-        UNIT_ASSERT(!chain.GetNext(25));
-
-        // nothing chains from the last record
-        UNIT_ASSERT(!chain.GetNext(30));
-        UNIT_ASSERT(!chain.GetNext(100));
+        UNIT_ASSERT(GetTailLsns(chain, 0).empty());
+        UNIT_ASSERT(GetTailLsns(chain, 10).empty());
+        UNIT_ASSERT(GetTailLsns(chain, 100).empty());
     }
 
-    Y_UNIT_TEST(ShouldNotGetNextAcrossGap)
+    Y_UNIT_TEST(ShouldReturnTailAfterLsn)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
 
-        InsertReady(chain, 10, 20);
-        InsertReady(chain, 30, 40);
-
-        // (20, 30] is missing, so the chain stops at 20 even though a record
-        // with a greater lsn exists
-        UNIT_ASSERT(!chain.GetNext(20));
-        UNIT_ASSERT_VALUES_EQUAL(40, chain.GetNext(30)->Lsn);
-    }
-
-    Y_UNIT_TEST(ShouldReturnEmptyRunWhenEmpty)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
-
-        UNIT_ASSERT(chain.GetReadyRun(0, Max<ui64>(), 10).empty());
-    }
-
-    Y_UNIT_TEST(ShouldReturnReadyRunAfterLsn)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
-
-        InsertReady(chain, 10, 20);
-        InsertReady(chain, 20, 30);
-        InsertReady(chain, 30, 40);
+        InsertChained(chain, 10, 20);
+        InsertChained(chain, 20, 30);
+        InsertChained(chain, 30, 40);
 
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30, 40}),
-            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
-
-        // the tail continues from afterLsn, ascending
+            GetTailLsns(chain, 0));
+        UNIT_ASSERT_VALUES_EQUAL(
+            (TVector<ui64>{20, 30, 40}),
+            GetTailLsns(chain, 10));
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{30, 40}),
-            GetLsns(chain.GetReadyRun(20, Max<ui64>(), 10)));
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{40}),
-            GetLsns(chain.GetReadyRun(30, Max<ui64>(), 10)));
+            GetTailLsns(chain, 20));
+        UNIT_ASSERT_VALUES_EQUAL((TVector<ui64>{40}), GetTailLsns(chain, 30));
 
-        UNIT_ASSERT(chain.GetReadyRun(40, Max<ui64>(), 10).empty());
-        UNIT_ASSERT(chain.GetReadyRun(100, Max<ui64>(), 10).empty());
+        UNIT_ASSERT(GetTailLsns(chain, 40).empty());
+        UNIT_ASSERT(GetTailLsns(chain, 100).empty());
     }
 
-    Y_UNIT_TEST(ShouldLimitRunByMaxRecordCount)
+    Y_UNIT_TEST(ShouldReturnTailAfterLsnInsideRecord)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
 
-        InsertReady(chain, 10, 20);
-        InsertReady(chain, 20, 30);
-        InsertReady(chain, 30, 40);
+        InsertChained(chain, 10, 20);
+        InsertChained(chain, 20, 30);
+
+        //
+        // Check that the tail starts from the first record above the lsn,
+        // also when the lsn is not the end of a record
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            (TVector<ui64>{20, 30}),
+            GetTailLsns(chain, 15));
+        UNIT_ASSERT_VALUES_EQUAL((TVector<ui64>{30}), GetTailLsns(chain, 25));
+    }
+
+    Y_UNIT_TEST(ShouldLimitTailByMaxRecordCount)
+    {
+        TLogRecordChain chain;
+        chain.InitLastChainedLsn(10);
+
+        InsertChained(chain, 10, 20);
+        InsertChained(chain, 20, 30);
+        InsertChained(chain, 30, 40);
 
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20}),
-            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 1)));
+            GetTailLsns(chain, 10, 1));
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30}),
-            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 2)));
+            GetTailLsns(chain, 10, 2));
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{30}),
-            GetLsns(chain.GetReadyRun(20, Max<ui64>(), 1)));
-
-        // asking for more than the chain holds is not an error
+            GetTailLsns(chain, 20, 1));
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30, 40}),
-            GetLsns(chain.GetReadyRun(10, Max<ui64>(), Max<ui64>())));
-    }
-
-    Y_UNIT_TEST(ShouldLimitRunByMaxLsn)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
-
-        InsertReady(chain, 10, 20);
-        InsertReady(chain, 20, 30);
-        InsertReady(chain, 30, 40);
-
-        // the limit is inclusive
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20, 30}),
-            GetLsns(chain.GetReadyRun(10, 30, 0)));
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20, 30, 40}),
-            GetLsns(chain.GetReadyRun(10, 40, 0)));
-
-        // a record ending past the limit is left out as a whole
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20}),
-            GetLsns(chain.GetReadyRun(10, 29, 0)));
-        UNIT_ASSERT(chain.GetReadyRun(10, 19, 0).empty());
-
-        // zero is a limit like any other, not "no limit"
-        UNIT_ASSERT(chain.GetReadyRun(10, 0, 0).empty());
-
-        // both limits apply
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20}),
-            GetLsns(chain.GetReadyRun(10, 30, 1)));
-    }
-
-    Y_UNIT_TEST(ShouldReturnEmptyRunWhenAfterLsnIsNotRecordBoundary)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
-
-        InsertReady(chain, 10, 20);
-        InsertReady(chain, 20, 30);
-
-        // the tail is anchored at afterLsn: nothing chains from 0, 15 or 25,
-        // so no run can be returned without leaving a hole behind it
-        UNIT_ASSERT(chain.GetReadyRun(0, Max<ui64>(), 10).empty());
-        UNIT_ASSERT(chain.GetReadyRun(15, Max<ui64>(), 10).empty());
-        UNIT_ASSERT(chain.GetReadyRun(25, Max<ui64>(), 10).empty());
-    }
-
-    Y_UNIT_TEST(ShouldStopRunAtGap)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
-
-        InsertReady(chain, 10, 20);
-        InsertReady(chain, 30, 40);
-
-        // (20, 30] is missing, so the tail ends at 20 rather than spanning it
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20}),
-            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{40}),
-            GetLsns(chain.GetReadyRun(30, Max<ui64>(), 10)));
+            GetTailLsns(chain, 10, 100));
     }
 
     Y_UNIT_TEST(ShouldTreatZeroMaxRecordCountAsNoLimit)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
 
-        InsertReady(chain, 10, 20);
-        InsertReady(chain, 20, 30);
-        InsertReady(chain, 30, 40);
+        InsertChained(chain, 10, 20);
+        InsertChained(chain, 20, 30);
+        InsertChained(chain, 30, 40);
 
-        // TReadJournalTailRequest documents 0 as "no limit"
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30, 40}),
-            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 0)));
-
-        UNIT_ASSERT(chain.GetReadyRun(40, Max<ui64>(), 0).empty());
+            GetTailLsns(chain, 10, 0));
+        UNIT_ASSERT(GetTailLsns(chain, 40, 0).empty());
     }
 
-    Y_UNIT_TEST(ShouldStopRunAtFirstRecordThatIsNotReady)
+    Y_UNIT_TEST(ShouldNotReturnPooledRecordsInTail)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
 
-        InsertReady(chain, 10, 20);
-        chain.Insert(MakeRecord(20, 30));   // still being written
-        InsertReady(chain, 30, 40);
-
-        // the tail stops at the record that is not ready instead of skipping
-        // it and returning a hole
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20}),
-            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
-
-        // once it becomes durable the rest of the tail is visible
-        UNIT_ASSERT(chain.MarkAsReady(20));
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20, 30, 40}),
-            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
-    }
-
-    Y_UNIT_TEST(ShouldReturnEmptyRunWhenFirstRecordIsNotReady)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
-
-        chain.Insert(MakeRecord(10, 20));
+        InsertChained(chain, 10, 20);
         InsertReady(chain, 20, 30);
+        Insert(chain, 30, 40);
 
-        UNIT_ASSERT(chain.GetReadyRun(10, Max<ui64>(), 10).empty());
-
-        // a record that is not ready is invisible to GetNext as well,
-        // but the ready ones behind it can still be reached
-        UNIT_ASSERT(!chain.GetNext(10));
-        UNIT_ASSERT_VALUES_EQUAL(30, chain.GetNext(20)->Lsn);
-
-        UNIT_ASSERT(chain.MarkAsReady(10));
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20, 30}),
-            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
+        UNIT_ASSERT_VALUES_EQUAL((TVector<ui64>{20}), GetTailLsns(chain, 10));
     }
 
-    Y_UNIT_TEST(ShouldNotMarkRemovedRecordAsErased)
+    Y_UNIT_TEST(ShouldReturnLsnLowWatermarkWithTail)
     {
         TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
+        chain.InitLastChainedLsn(10);
 
-        chain.Insert(MakeRecord(10, 20));
-        UNIT_ASSERT(chain.Remove(10));
+        InsertChained(chain, 10, 20);
+        InsertChained(chain, 20, 30);
 
-        // Remove leaves LastErasedLsn alone, so the very same record is
-        // accepted again rather than reported as already done
-        auto record = MakeRecord(10, 20);
-        auto result = chain.Insert(record);
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(record.get(), result.GetResult().get());
+        UNIT_ASSERT_VALUES_EQUAL(10, chain.GetTail(0, 0).second);
 
-        UNIT_ASSERT(chain.MarkAsReady(10));
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
-    }
+        chain.ExtractRecords(20);
 
-    Y_UNIT_TEST(ShouldEraseRecordsBelowLsn)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
-
-        InsertReady(chain, 10, 20);
-        InsertReady(chain, 20, 30);
-        InsertReady(chain, 30, 40);
-
-        // everything below lsn 31 is removed and handed back
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20, 30}),
-            GetSortedLsns(EraseBelow(chain, 31)));
-        UNIT_ASSERT_VALUES_EQUAL(40, chain.GetNext(30)->Lsn);
-    }
-
-    Y_UNIT_TEST(ShouldEraseNothingBelowOldestLsn)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
-
-        InsertReady(chain, 10, 20);
-
-        UNIT_ASSERT(EraseBelow(chain, 20).empty());
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20}),
-            GetLsns(EraseBelow(chain, 21)));
-        UNIT_ASSERT(!chain.GetNext(20));
-    }
-
-    Y_UNIT_TEST(ShouldDropReadyRecordsStrandedBelowWatermark)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
-
-        // both start inside (10, 20], which is not held yet, so the overlap
-        // goes unnoticed
-        auto ready = InsertReady(chain, 15, 25);
-        chain.Insert(MakeRecord(18, 28));   // still being written
-
-        InsertReady(chain, 10, 20);
-        InsertReady(chain, 20, 30);
-
-        // the head is erased, and so is the ready record that now starts
-        // below the watermark: it can never join the chain
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20, 25}),
-            GetSortedLsns(EraseBelow(chain, 21)));
-
-        // the chain does not touch promises, the caller fails them
-        UNIT_ASSERT(!ready->Promise.Initialized());
-
-        // the one that is not ready is left alone until its write finishes
-        UNIT_ASSERT_VALUES_EQUAL(30, chain.GetNext(20)->Lsn);
-        UNIT_ASSERT(chain.MarkAsReady(18));
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{28}),
-            GetLsns(EraseBelow(chain, 21)));
-        UNIT_ASSERT(!chain.MarkAsReady(18));
-        UNIT_ASSERT_VALUES_EQUAL(30, chain.GetNext(20)->Lsn);
-    }
-
-    Y_UNIT_TEST(ShouldRejectRecordAtOrBelowLastErasedLsn)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
-
-        InsertReady(chain, 10, 20);
-        InsertReady(chain, 20, 30);
-        InsertReady(chain, 30, 40);
-        EraseBelow(chain, 31);
-
-        // an erased record is gone for good, the chain will not take it back
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_INVALID_STATE,
-            chain.Insert(MakeRecord(10, 20)).GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_INVALID_STATE,
-            chain.Insert(MakeRecord(20, 30)).GetError().GetCode());
-
-        // nothing was inserted - the chain still starts where it did
-        UNIT_ASSERT(!chain.MarkAsReady(10));
-        UNIT_ASSERT_VALUES_EQUAL(40, chain.GetNext(30)->Lsn);
-    }
-
-    Y_UNIT_TEST(ShouldTreatLsnsBelowInitLastErasedLsnAsErased)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(30);
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_INVALID_STATE,
-            chain.Insert(MakeRecord(20, 30)).GetError().GetCode());
-        UNIT_ASSERT(!chain.GetNext(30));
-
-        // the first record above the watermark is inserted as usual
-        InsertReady(chain, 30, 40);
-        UNIT_ASSERT_VALUES_EQUAL(40, chain.GetNext(30)->Lsn);
-    }
-
-    Y_UNIT_TEST(ShouldRejectEraseBelowPastChainedRun)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
-
-        InsertReady(chain, 10, 20);
-        chain.Insert(MakeRecord(20, 30));   // still being written
-        InsertReady(chain, 30, 40);
-
-        // the run ends at 20, so nothing past it can be erased yet and the
-        // chain stays as it was
-        auto result = chain.EraseBelow(31);
-        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
-        UNIT_ASSERT(result.GetResult().Chained.empty());
-        UNIT_ASSERT(result.GetResult().Stranded.empty());
-        UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
-
-        // once the gap is filled the same watermark goes through
-        UNIT_ASSERT(chain.MarkAsReady(20));
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<ui64>{20, 30}),
-            GetSortedLsns(EraseBelow(chain, 31)));
-        UNIT_ASSERT_VALUES_EQUAL(40, chain.GetNext(30)->Lsn);
-    }
-
-    Y_UNIT_TEST(ShouldNotRewindLastErasedLsnOnEraseBelow)
-    {
-        TLogRecordChain chain;
-        chain.InitLastErasedLsn(10);
-
-        InsertReady(chain, 10, 20);
-        InsertReady(chain, 20, 30);
-        EraseBelow(chain, 31);
-        EraseBelow(chain, 11);
-
-        // the watermark stays at 30, so lsn 20 is still reported as erased
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_INVALID_STATE,
-            chain.Insert(MakeRecord(10, 20)).GetError().GetCode());
-        UNIT_ASSERT(!chain.GetNext(30));
+        auto [records, lsnLowWatermark] = chain.GetTail(0, 0);
+        UNIT_ASSERT_VALUES_EQUAL((TVector<ui64>{30}), GetLsns(records));
+        UNIT_ASSERT_VALUES_EQUAL(20, lsnLowWatermark);
     }
 }
 
