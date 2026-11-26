@@ -70,11 +70,15 @@ struct IJournal
         ui64 maxAllowedLsn,
         ui64 maxPageCount) const = 0;
 
-    virtual void MarkRecordAsFlushed(
-        ui64 lsn,
+    virtual void MarkRecordsAsFlushed(
+        ui64 lastFlushedLsn,
         const TVector<TPageRangeRef>& ranges) = 0;
 
     [[nodiscard]] virtual NProto::TError CleanupFlushedRecords() = 0;
+
+    // Fails the writers of the records that can no longer join the chain and
+    // frees their pages. Slow: it walks all records that are not chained yet.
+    virtual void CleanupStrandedRecords() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

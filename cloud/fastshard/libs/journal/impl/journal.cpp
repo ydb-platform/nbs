@@ -11,12 +11,14 @@
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <util/generic/deque.h>
 #include <util/generic/hash.h>
 #include <util/generic/scope.h>
 #include <util/generic/utility.h>
 #include <util/string/builder.h>
 
 #include <atomic>
+#include <iterator>
 #include <mutex>
 #include <utility>
 
@@ -318,15 +320,20 @@ private:
 
     TLog Log;
 
-    // Lets one thread at a time move a ready record to the page index.
-    std::mutex ChainLock;
     TLogRecordChain LogRecordChain;
     TLogPageIndex LogPageIndex;
+
+    // Used only on the executor thread: the acked records that wait for the
+    // flush, the flushed records that wait for the cleanup, and the lsn that
+    // the last cleanup erased up to.
+    TDeque<TLogRecordPtr> RecordsToFlush;
+    TDeque<TLogRecordPtr> FlushedRecords;
+    ui64 EraseUpToLsn = 0;
+
     std::shared_ptr<TLsnBarrier> FlushedLsnBarrier =
         std::make_shared<TLsnBarrier>();
 
     std::atomic<bool> AdvancingLsnLowWatermark = false;
-    std::atomic<ui64> LsnLowWatermark = 0;
 
 public:
     TJournal(
@@ -359,11 +366,13 @@ public:
         ui64 maxAllowedLsn,
         ui64 maxPageCount) const override;
 
-    void MarkRecordAsFlushed(
-        ui64 lsn,
+    void MarkRecordsAsFlushed(
+        ui64 lastFlushedLsn,
         const TVector<TPageRangeRef>& ranges) override;
 
     [[nodiscard]] NProto::TError CleanupFlushedRecords() override;
+
+    void CleanupStrandedRecords() override;
 
 private:
     TVector<TLogRecordPtr> FilterStrandedRecords(
@@ -385,6 +394,8 @@ private:
 
     void IndexChainedRecords();
 
+    void SetLsnLowWatermark(ui64 lsnLowWatermark);
+
     static TResultOrError<TReadPagesResult> OnRead(
         const TLogPageIndex::TLookupResult& lookup,
         TResultOrError<TVector<TBuffer>> buffersOrError);
@@ -392,6 +403,8 @@ private:
     NProto::TError ReadPageRanges(
         const TVector<TPageMapping>& mappings,
         TVector<TPageRange>* ranges) const;
+
+    void FreeRecordPages(const TVector<TLogRecordPtr>& records);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -423,6 +436,8 @@ TResultOrError<ui64> TJournal::Restore()
 
     auto restored = response.ExtractResult();
 
+    ui64 lsnLowWatermark = 0;
+
     //
     // Take the lsn low watermark from the metadata - a journal that has
     // never advanced it holds no metadata
@@ -438,10 +453,8 @@ TResultOrError<ui64> TJournal::Restore()
                     << buffer.Size() << " bytes");
         }
 
-        LsnLowWatermark.store(metadata->LsnLowWatermark);
+        lsnLowWatermark = metadata->LsnLowWatermark;
     }
-
-    ui64 lsnLowWatermark = LsnLowWatermark.load();
 
     //
     // Deserialize and validate the records
@@ -512,7 +525,7 @@ TResultOrError<ui64> TJournal::Restore()
     // chain
     //
 
-    LogRecordChain.InitLastErasedLsn(headLsn);
+    LogRecordChain.InitLastChainedLsn(headLsn);
     LogPageIndex.InitLastIndexedLsn(headLsn);
     FlushedLsnBarrier->Advance(headLsn);
 
@@ -526,12 +539,12 @@ TResultOrError<ui64> TJournal::Restore()
             return error;
         }
 
-        auto insertResult = LogRecordChain.Insert(record);
-        if (HasError(insertResult)) {
-            return insertResult.GetError();
+        auto [inserted, insertError] = LogRecordChain.Insert(record);
+        if (HasError(insertError)) {
+            return insertError;
         }
 
-        bool marked = LogRecordChain.MarkAsReady(record->PrevLsn);
+        bool marked = inserted && LogRecordChain.MarkAsReady(record->PrevLsn);
         STORAGE_VERIFY_C(
             marked,
             "JournalledDevice",
@@ -554,6 +567,13 @@ TResultOrError<ui64> TJournal::Restore()
                              << ", below the lsn low watermark "
                              << lsnLowWatermark);
     }
+
+    //
+    // Move the acked records to the flush queue. Do it after the indexing:
+    // the indexing puts the records into the chain
+    //
+
+    SetLsnLowWatermark(lsnLowWatermark);
 
     return lastIndexedLsn;
 }
@@ -673,9 +693,8 @@ TFuture<NProto::TError> TJournal::Write(
     auto record = CreateRecord(lsn, prevLsn);
 
     //
-    // Add the record to the chain, which holds it under its prev lsn - answer
-    // a record repeating a held one, a retry, with the held record and do not
-    // write it again
+    // Add the record to the chain. If the chain already has this record, it
+    // is a retry: do not write it again
     //
 
     auto [inserted, insertError] = LogRecordChain.Insert(record);
@@ -683,8 +702,8 @@ TFuture<NProto::TError> TJournal::Write(
         return MakeFuture(std::move(insertError));
     }
 
-    if (inserted != record) {
-        return inserted->Promise.GetFuture();
+    if (!inserted) {
+        return record->Promise.GetFuture();
     }
 
     //
@@ -821,39 +840,32 @@ void TJournal::FreePages(const TVector<TPageRangeRef>& locations, ui64 lsn)
 void TJournal::IndexChainedRecords()
 {
     //
-    // Index the ready records that continue the page index. Several threads
-    // can do this at the same time
+    // Chain and index the ready records that continue the page index. No
+    // lock keeps the threads in order: the chain gives out a record only for
+    // the last indexed lsn, and the page index moves to that lsn last
     //
 
+    auto lastIndexedLsn = LogPageIndex.GetLastIndexedLsn();
+
     while (true) {
-        TLogRecordPtr record;
-
-        {
-            //
-            // Take the lock, or two threads could index the same record
-            //
-
-            std::lock_guard lock(ChainLock);
-
-            auto lastIndexedLsn = LogPageIndex.GetLastIndexedLsn();
-            record = LogRecordChain.GetNext(lastIndexedLsn);
-            if (!record) {
-                break;
-            }
-
-            bool applied = LogPageIndex.TryApplyNext(*record);
-
-            // Verify that the page index has taken the record
-            STORAGE_VERIFY_C(
-                applied,
-                "JournalledDevice",
-                DeviceUUID,
-                "Lsn: " << record->Lsn);
+        auto record = LogRecordChain.ChainNextRecord(lastIndexedLsn);
+        if (!record) {
+            break;
         }
 
+        bool applied = LogPageIndex.TryApplyNext(*record);
+
+        // Verify that the page index has taken the record
+        STORAGE_VERIFY_C(
+            applied,
+            "JournalledDevice",
+            DeviceUUID,
+            "Lsn: " << record->Lsn);
+
+        lastIndexedLsn = record->Lsn;
+
         //
-        // Complete the promise without the lock: its subscribers send the
-        // response, and other threads must not wait for that
+        // Answer the writer only now, when the record is indexed
         //
 
         record->Promise.SetValue(NProto::TError());
@@ -960,18 +972,12 @@ TResultOrError<TJournalTail> TJournal::ReadTail(
     auto lsnBarrierGuard = FlushedLsnBarrier->AcquireAtLeast(afterLsn);
 
     //
-    // Walk the ready records that follow each other unbroken past the pinned
-    // lsn and the lsn low watermark - the acked records are of no use to the
-    // reader, and a gap must not be skipped
+    // Take the chained records past the pinned lsn, together with the lsn
+    // low watermark that matches them
     //
 
-    ui64 lsnLowWatermark = LsnLowWatermark.load(std::memory_order_acquire);
-    ui64 firstLsn = Max(lsnBarrierGuard.GetLsn(), lsnLowWatermark);
-
-    auto records = LogRecordChain.GetReadyRun(
-        firstLsn,
-        Max<ui64>() /* maxLsn */,
-        maxRecordCount);
+    auto [records, lsnLowWatermark] =
+        LogRecordChain.GetTail(lsnBarrierGuard.GetLsn(), maxRecordCount);
 
     //
     // Fill the tail with the records and their page contents
@@ -1029,7 +1035,7 @@ NProto::TError TJournal::AdvanceLsnLowWatermark(ui64 lsnLowWatermark)
         AdvancingLsnLowWatermark.store(false, std::memory_order_release);
     };
 
-    if (lsnLowWatermark <= LsnLowWatermark.load(std::memory_order_acquire)) {
+    if (lsnLowWatermark <= LogRecordChain.GetLsnLowWatermark()) {
         return MakeError(S_ALREADY);
     }
 
@@ -1048,8 +1054,23 @@ NProto::TError TJournal::AdvanceLsnLowWatermark(ui64 lsnLowWatermark)
         return error;
     }
 
-    LsnLowWatermark.store(lsnLowWatermark, std::memory_order_release);
+    SetLsnLowWatermark(lsnLowWatermark);
+
     return {};
+}
+
+void TJournal::SetLsnLowWatermark(ui64 lsnLowWatermark)
+{
+    //
+    // Move the records up to the watermark from the chain to the flush queue
+    //
+
+    auto records = LogRecordChain.ExtractRecords(lsnLowWatermark);
+
+    RecordsToFlush.insert(
+        RecordsToFlush.end(),
+        std::make_move_iterator(records.begin()),
+        std::make_move_iterator(records.end()));
 }
 
 TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
@@ -1057,33 +1078,20 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
     ui64 maxPageCount) const
 {
     //
-    // Take the ready records right after the flushed lsn, in chain order -
-    // stop at the first one that has not been acked yet or is past what the
-    // caller allows
-    //
-
-    const ui64 flushedLsn = FlushedLsnBarrier->Acquire().GetLsn();
-
-    const ui64 lsnLowWatermark =
-        LsnLowWatermark.load(std::memory_order_acquire);
-    const ui64 maxLsn = Min(maxAllowedLsn, lsnLowWatermark);
-
-    auto run = LogRecordChain.GetReadyRun(
-        flushedLsn,
-        maxLsn,
-        0 /* maxRecordCount */);
-
-    //
-    // Cut the run to the page budget: a record that takes the batch past it
-    // waits for the next one, unless it is the first - a record bigger than
-    // the whole budget still has to be flushed
+    // Take the acked records in lsn order, up to the lsn the caller allows
+    // and up to the page budget. Take the first record even if it is bigger
+    // than the budget: it still has to be flushed
     //
 
     TVector<TLogRecordPtr> records;
     TVector<TPageRangeRef> locations;
     ui64 pageCount = 0;
 
-    for (const auto& record: run) {
+    for (const auto& record: RecordsToFlush) {
+        if (record->Lsn > maxAllowedLsn) {
+            break;
+        }
+
         const ui64 recordPageCount = GetPageCount(record->PageMappings);
         if (!records.empty() && pageCount + recordPageCount > maxPageCount) {
             break;
@@ -1140,11 +1148,11 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
     return result;
 }
 
-void TJournal::MarkRecordAsFlushed(
-    ui64 lsn,
+void TJournal::MarkRecordsAsFlushed(
+    ui64 lastFlushedLsn,
     const TVector<TPageRangeRef>& ranges)
 {
-    FlushedLsnBarrier->Advance(lsn);
+    FlushedLsnBarrier->Advance(lastFlushedLsn);
 
     //
     // Erase the flushed records from the page index right away, without
@@ -1154,49 +1162,69 @@ void TJournal::MarkRecordAsFlushed(
     // looked them up already
     //
 
-    LogPageIndex.EraseBelow(lsn + 1, ranges);
+    LogPageIndex.EraseBelow(lastFlushedLsn + 1, ranges);
+
+    //
+    // Move the flushed records to the cleanup queue, so that the next flush
+    // does not take them again
+    //
+
+    while (!RecordsToFlush.empty() &&
+           RecordsToFlush.front()->Lsn <= lastFlushedLsn)
+    {
+        FlushedRecords.push_back(std::move(RecordsToFlush.front()));
+        RecordsToFlush.pop_front();
+    }
 }
 
 NProto::TError TJournal::CleanupFlushedRecords()
 {
     //
-    // Erase the records up to the barrier lsn - the flushed ones that no
-    // reader is looking at any more - from the meta store first: a restart
-    // must not find a record whose pages have been reused
+    // Skip the cleanup when the barrier has not moved since the last one
     //
 
-    ui64 eraseUpToLsn = FlushedLsnBarrier->GetBarrierLsn();
-
-    // The meta store holds the records by their lsn
-    auto future = MetaStore->EraseBelow(eraseUpToLsn + 1);
-    if (const auto& error = Executor->WaitFor(future); HasError(error)) {
-        return error;
+    const ui64 eraseUpToLsn = FlushedLsnBarrier->GetBarrierLsn();
+    if (eraseUpToLsn <= EraseUpToLsn) {
+        return {};
     }
 
     //
-    // Erase them from the chain, then release their pages.
+    // Erase the records up to the barrier lsn from the meta store first: a
+    // restart must not find a record whose pages have been reused
     //
 
-    // The chain holds the records by their lsn
-    auto recordsOrError = LogRecordChain.EraseBelow(eraseUpToLsn + 1);
+    auto future = MetaStore->EraseBelow(eraseUpToLsn + 1);
+    if (auto error = Executor->WaitFor(future); HasError(error)) {
+        return error;
+    }
 
-    // Verify that the erased run is chained: the barrier never moves past a
-    // record the chain does not hold ready
-    STORAGE_VERIFY_C(
-        !HasError(recordsOrError),
-        "JournalledDevice",
-        DeviceUUID,
-        "Lsn: " << eraseUpToLsn << ", error: "
-                << FormatError(recordsOrError.GetError()));
-
-    auto erased = recordsOrError.ExtractResult();
+    EraseUpToLsn = eraseUpToLsn;
 
     //
-    // Fail the writers of the stranded records: nobody else answers them.
-    // The thread that indexed a chained record sets its promise
+    // Free the pages of the erased records
     //
 
-    for (const auto& record: erased.Stranded) {
+    TVector<TLogRecordPtr> erasedRecords;
+    while (!FlushedRecords.empty() &&
+           FlushedRecords.front()->Lsn <= eraseUpToLsn)
+    {
+        erasedRecords.push_back(std::move(FlushedRecords.front()));
+        FlushedRecords.pop_front();
+    }
+
+    FreeRecordPages(erasedRecords);
+    return {};
+}
+
+void TJournal::CleanupStrandedRecords()
+{
+    //
+    // Fail the writers of the stranded records: nobody else answers them
+    //
+
+    auto strandedRecords = LogRecordChain.RemoveStrandedRecords();
+
+    for (const auto& record: strandedRecords) {
         const TString message = TStringBuilder()
             << "record with lsn " << record->Lsn << " chaining from lsn "
             << record->PrevLsn << " can no longer join the chain";
@@ -1205,20 +1233,19 @@ NProto::TError TJournal::CleanupFlushedRecords()
         ReportJournalStrandedRecordDetectedError(message);
     }
 
-    auto result = MakeError(S_OK);
-    for (const auto* records: {&erased.Chained, &erased.Stranded}) {
-        for (const auto& record: *records) {
-            auto error = DataStore->Free(GetLocations(record->PageMappings));
-            if (HasError(error)) {
-                STORAGE_ERROR(
-                    "unable to free the pages of the erased record with lsn "
-                    << record->Lsn << ": " << FormatError(error));
-                result = error;
-            }
+    FreeRecordPages(strandedRecords);
+}
+
+void TJournal::FreeRecordPages(const TVector<TLogRecordPtr>& records)
+{
+    for (const auto& record: records) {
+        auto error = DataStore->Free(GetLocations(record->PageMappings));
+        if (HasError(error)) {
+            STORAGE_ERROR(
+                "unable to free the pages of the erased record with lsn "
+                << record->Lsn << ": " << FormatError(error));
         }
     }
-
-    return result;
 }
 
 NProto::TError TJournal::ReadPageRanges(
