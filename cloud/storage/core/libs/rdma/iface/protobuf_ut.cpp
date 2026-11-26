@@ -105,6 +105,68 @@ TEST(TProtoMessageSerializerTest, ShouldSerializeMessages)
     }
 }
 
+TEST(TProtoMessageSerializerTest, ShouldSerializeProtoAsData)
+{
+    auto* serializer = TTestProtocol::Serializer();
+
+    NProto::TError proto;
+    proto.SetCode(E_ARGUMENT);
+    proto.SetMessage("test");
+
+    NProto::TError data;
+    data.SetCode(E_IO);
+    data.SetMessage(TString(1024, 'A'));
+
+    const size_t msgByteSize = NRdma::TProtoMessageSerializer::MessageByteSize(
+        proto,
+        data.ByteSizeLong());
+
+    for (const ui32 flags: {0U, ui32{RDMA_PROTO_FLAG_DATA_AT_THE_END}}) {
+        const size_t bufferSize = msgByteSize + 1024;
+        auto buffer = TString::Uninitialized(bufferSize);
+
+        const size_t serializedBytes =
+            NRdma::TProtoMessageSerializer::SerializeWithProtoData(
+                buffer,
+                TTestProtocol::Error,
+                flags,
+                proto,
+                data);
+
+        if (HasProtoFlag(flags, RDMA_PROTO_FLAG_DATA_AT_THE_END)) {
+            ASSERT_EQ(bufferSize, serializedBytes) << "flags=" << flags;
+        } else {
+            ASSERT_EQ(msgByteSize, serializedBytes) << "flags=" << flags;
+        }
+
+        const auto resultOrError = serializer->Parse(buffer);
+        ASSERT_FALSE(HasError(resultOrError)) << "flags=" << flags;
+
+        const auto& result = resultOrError.GetResult();
+        EXPECT_EQ(TTestProtocol::Error, result.MsgId);
+
+        const auto& proto2 = static_cast<const NProto::TError&>(*result.Proto);
+        EXPECT_EQ(E_ARGUMENT, proto2.GetCode());
+        EXPECT_EQ("test", proto2.GetMessage());
+
+        NProto::TError data2;
+        ASSERT_TRUE(
+            data2.ParseFromArray(result.Data.data(), result.Data.size()));
+        EXPECT_EQ(E_IO, data2.GetCode());
+        EXPECT_EQ(data.GetMessage(), data2.GetMessage());
+    }
+
+    auto smallBuffer = TString::Uninitialized(msgByteSize - 1);
+    EXPECT_THROW(
+        NRdma::TProtoMessageSerializer::SerializeWithProtoData(
+            smallBuffer,
+            TTestProtocol::Error,
+            0,   // flags
+            proto,
+            data),
+        yexception);
+}
+
 TEST(TProtoMessageSerializerTest, ShouldNotWriteErrorPastBuffer)
 {
     auto buffer = TString(64, 'A');

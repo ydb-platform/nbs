@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    client.cpp
     endpoint.cpp
     protocol.cpp
 )
