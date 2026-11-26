@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -507,6 +509,44 @@ type interruptingTraversalStorage struct {
 	traversal_storage.Storage
 	mode        interruptionMode
 	interrupted atomic.Bool
+
+	// Used to wait until the periodic save persists the histogram before
+	// interrupting the task.
+	taskStorage                tasks_storage.Storage
+	countsSavedBeforeInterrupt []float64
+}
+
+func (s *interruptingTraversalStorage) waitForSavedCounts(
+	ctx context.Context,
+	snapshotID string,
+) error {
+
+	taskID := strings.TrimPrefix(snapshotID, "scrubbing_")
+	for {
+		taskState, err := s.taskStorage.GetTask(ctx, taskID)
+		if err != nil {
+			return err
+		}
+
+		var state scrubbing_protos.ScrubFilesystemTaskState
+		err = proto.Unmarshal(taskState.State, &state)
+		if err != nil {
+			return err
+		}
+
+		if slices.Equal(
+			state.FileCountBySizeLog2,
+			s.countsSavedBeforeInterrupt,
+		) {
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
 
 func (s *interruptingTraversalStorage) ScheduleChildNodesForListing(
@@ -530,6 +570,15 @@ func (s *interruptingTraversalStorage) ScheduleChildNodesForListing(
 		return tasks_errors.NewRetriableErrorf(
 			"interrupted before saving traversal progress",
 		)
+	}
+
+	if interrupt {
+		// Nothing is saved on interruption, so the counts of this page survive
+		// the restart only if they were saved periodically before the commit.
+		err := s.waitForSavedCounts(ctx, snapshotID)
+		if err != nil {
+			return err
+		}
 	}
 
 	err := s.Storage.ScheduleChildNodesForListing(
@@ -604,6 +653,10 @@ func TestScrubFilesystemTaskHistogramAfterInterruption(t *testing.T) {
 		expectedCounts          []float64
 		expectedBytes           []float64
 		expectedRetriableErrors uint64
+
+		// Histogram persisted by the periodic save before the interrupted
+		// page is committed.
+		countsSavedBeforeInterrupt []float64
 	}{
 		{
 			name:           "no_interruption",
@@ -619,17 +672,22 @@ func TestScrubFilesystemTaskHistogramAfterInterruption(t *testing.T) {
 			expectedRetriableErrors: 1,
 		},
 		{
-			// Counts of committed pages are saved before the restart.
-			name:           "interruption_after_page_commit",
-			mode:           interruptionAfterPageCommit,
-			expectedCounts: []float64{2, 0, 1},
-			expectedBytes:  []float64{0, 0, 3},
+			// The root page is saved periodically before the restart, "dir"
+			// is listed by the next attempt.
+			name:                       "interruption_after_page_commit",
+			mode:                       interruptionAfterPageCommit,
+			expectedCounts:             []float64{2, 0, 1},
+			expectedBytes:              []float64{0, 0, 3},
+			countsSavedBeforeInterrupt: []float64{1, 0, 1},
 		},
 		{
-			name:           "interruption_after_final_page_commit",
-			mode:           interruptionAfterFinalPageCommit,
-			expectedCounts: []float64{2, 0, 1},
-			expectedBytes:  []float64{0, 0, 3},
+			// All pages are saved periodically, the next attempt lists
+			// nothing.
+			name:                       "interruption_after_final_page_commit",
+			mode:                       interruptionAfterFinalPageCommit,
+			expectedCounts:             []float64{2, 0, 1},
+			expectedBytes:              []float64{0, 0, 3},
+			countsSavedBeforeInterrupt: []float64{2, 0, 1},
 		},
 	}
 
@@ -673,12 +731,15 @@ func TestScrubFilesystemTaskHistogramAfterInterruption(t *testing.T) {
 				&scrubbing_config.FilesystemScrubbingConfig{
 					TraversalConfig: &traversal_config.FilesystemTraversalConfig{
 						TraversalWorkersCount: proto.Uint32(1),
+						FinishedCheckInterval: proto.String("100ms"),
 					},
 				},
 				f.factory,
 				&interruptingTraversalStorage{
-					Storage: f.storage,
-					mode:    testCase.mode,
+					Storage:                    f.storage,
+					mode:                       testCase.mode,
+					taskStorage:                taskStorage,
+					countsSavedBeforeInterrupt: testCase.countsSavedBeforeInterrupt,
 				},
 				scheduler,
 			)

@@ -9,7 +9,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/listers"
 	scrubbing_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/config"
 	scrubbing_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing/protos"
@@ -51,9 +50,6 @@ func (t *scrubFilesystemTask) Save() ([]byte, error) {
 }
 
 func (t *scrubFilesystemTask) Load(request, state []byte) error {
-	t.stateMutex.Lock()
-	defer t.stateMutex.Unlock()
-
 	t.request = &scrubbing_protos.ScrubFilesystemRequest{}
 	err := proto.Unmarshal(request, t.request)
 	if err != nil {
@@ -101,12 +97,10 @@ func (t *scrubFilesystemTask) Run(
 	}
 
 	// Called by the traverser once the root node is added to the listing
-	// queue, so that a restarted task does not schedule it again.
+	// queue, so that a restarted task does not schedule it again. Runs before
+	// traversal workers are started, so no locking is needed.
 	onRootNodeScheduled := func(ctx context.Context) error {
-		t.stateMutex.Lock()
 		t.state.RootNodeScheduled = true
-		t.stateMutex.Unlock()
-
 		return execCtx.SaveState(ctx)
 	}
 
@@ -118,7 +112,7 @@ func (t *scrubFilesystemTask) Run(
 		t.storage,
 		onRootNodeScheduled,
 		onListedNodes,
-		nil,
+		execCtx.SaveState,
 		t.config.GetTraversalConfig(),
 		rootNodeAlreadyScheduled,
 		nfs.RootNodeID,
@@ -126,12 +120,6 @@ func (t *scrubFilesystemTask) Run(
 	if err != nil {
 		return err
 	}
-
-	// Periodically saves the histogram. On restart, pages committed after the
-	// last save are lost and pages listed but not yet committed are counted
-	// twice.
-	waitSaver, _ := common.ProgressSaver(ctx, execCtx.SaveState)
-	defer waitSaver()
 
 	return traverser.Traverse(ctx)
 }
