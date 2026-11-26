@@ -17,6 +17,7 @@ private:
     ui64 BlocksCount = 0;
     bool Force = false;
     ui32 ShardCount = 0;
+    ui32 FastShardCount = 0;
     bool EnableStrictFileSystemSizeEnforcement = false;
     bool EnableDirectoryCreationInShards = false;
     bool ForceDirectoryCreationInShards = false;
@@ -39,6 +40,11 @@ public:
             .RequiredArgument("NUM")
             .Help("explicitly specifies the required shard count")
             .StoreResult(&ShardCount);
+
+        Opts.AddLongOption("fast-shard-count")
+            .RequiredArgument("NUM")
+            .Help("explicitly specifies the required fast shard count")
+            .StoreResult(&FastShardCount);
 
         Opts.AddLongOption("enable-strict")
             .StoreTrue(&EnableStrictFileSystemSizeEnforcement)
@@ -65,6 +71,7 @@ public:
         request->SetBlocksCount(BlocksCount);
         request->SetForce(Force);
         request->SetShardCount(ShardCount);
+        request->SetFastShardCount(FastShardCount);
         request->SetEnableStrictFileSystemSizeEnforcement(
             EnableStrictFileSystemSizeEnforcement);
         request->SetEnableDirectoryCreationInShards(

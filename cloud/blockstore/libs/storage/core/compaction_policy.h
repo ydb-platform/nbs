@@ -93,6 +93,11 @@ struct TRangeStat
         return UsedBlockCount + NewlyZeroedBlocks;
     }
 
+    [[nodiscard]] bool MeetsUsedBlocksThreshold(ui64 usedBlocksThreshold) const
+    {
+        return UsedBlockCount >= usedBlocksThreshold;
+    }
+
     [[nodiscard]] bool HasHigherMixedBlocksCompactionPriority(
         const TRangeStat& stat,
         ui64 usedBlocksThreshold) const
@@ -101,9 +106,9 @@ struct TRangeStat
         // blob, which is especially bad for hdds. So we priorites ranges with
         // enough used blocks, although they can have a lot of mixed blocks.
         const bool lUsedBlocksThresholdReached =
-            UsedBlockCount >= usedBlocksThreshold;
+            MeetsUsedBlocksThreshold(usedBlocksThreshold);
         const bool rUsedBlocksThresholdReached =
-            stat.UsedBlockCount >= usedBlocksThreshold;
+            stat.MeetsUsedBlocksThreshold(usedBlocksThreshold);
 
         return std::tie(
                    lUsedBlocksThresholdReached,

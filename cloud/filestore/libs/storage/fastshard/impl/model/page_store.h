@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group.h>
+#include <cloud/fastshard/libs/storage_group/storage_group.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -9,6 +9,12 @@
 #include <memory>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
+
+using NCloud::NFastShard::IStorageGroup;
+using NCloud::NFastShard::IStorageGroupPtr;
+using NCloud::NFastShard::TLsnLink;
+using NCloud::NFastShard::TPageGroup;
+using NCloud::NFastShard::TPageGroupRef;
 
 ////////////////////////////////////////////////////////////////////////////////
 

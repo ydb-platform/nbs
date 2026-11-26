@@ -2,6 +2,12 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/storage/core/helpers.h>
+
+#include <cloud/storage/core/libs/common/compressed_bitmap_serialization.h>
+
+#include <util/string/builder.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -886,7 +892,7 @@ void TIndexTabletActor::HandleUnsafeChangeTabletState(
         TFileStoreComponents::TABLET,
         "%s UnsafeChangeTabletState: %s",
         LogTag.c_str(),
-        msg->Record.DebugString().Quote().c_str());
+        DescribeChangeTabletStateRequest(msg->Record).Quote().c_str());
 
     ExecuteTx<TUnsafeChangeTabletState>(
         ctx,
@@ -908,25 +914,112 @@ bool TIndexTabletActor::PrepareTx_UnsafeChangeTabletState(
     return true;
 }
 
+NProto::TError TIndexTabletActor::TryUpdateShardCreationState(
+    IIndexTabletDatabase& db,
+    const NProtoPrivate::TFileSystemShardCreationState& requested)
+{
+    // An unset Version requests the current state without updating it. A
+    // version mismatch means this update lost the CAS, so leave the stored
+    // state unchanged. The response returns the current state for the caller
+    // to merge and retry.
+    if (!requested.HasVersion() ||
+        requested.GetVersion() !=
+            GetFileSystem().GetShardCreationState().GetVersion())
+    {
+        return {};
+    }
+
+    auto error = ValidateCompressedBitmapData(
+        requested.GetCreatedShardBitmap(),
+        Config->GetMaxShardCount());
+    if (HasError(error)) {
+        return error;
+    }
+
+    auto newState = requested;
+    newState.SetVersion(requested.GetVersion() + 1);
+    SetShardCreationState(db, newState);
+
+    return {};
+}
+
 void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
     const TActorContext& ctx,
     TTransactionContext& tx,
     TTxIndexTablet::TUnsafeChangeTabletState& args)
 {
-    Y_UNUSED(ctx);
-
     if (args.Request.HasGuestPosixAclEnabled() &&
         args.Request.GetGuestPosixAclEnabled() != GetGuestPosixAclEnabled() &&
         HasSessions())
     {
-        args.Error = MakeError(
+        *args.Response.MutableError() = MakeError(
             E_PRECONDITION_FAILED,
             "GuestPosixAclEnabled cannot be changed while the tablet has "
             "sessions");
         return;
     }
 
+    const bool changeRangeIdHasherType =
+        args.Request.HasRangeIdHasherType() &&
+        args.Request.GetRangeIdHasherType() !=
+            GetFileSystem().GetRangeIdHasherType();
+    if (changeRangeIdHasherType) {
+        const ui32 type = args.Request.GetRangeIdHasherType();
+        const auto hasher = CreateRangeIdHasher(type);
+        if (!hasher) {
+            *args.Response.MutableError() = MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "unsupported RangeIdHasherType " << type);
+            return;
+        }
+
+        // A blob never spans ranges, so a range must fit into a blob.
+        const ui64 rangeSize =
+            static_cast<ui64>(GetBlockSize()) * hasher->GetBlockGroupSize();
+        if (rangeSize > Config->GetMaxBlobSize()) {
+            *args.Response.MutableError() = MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "RangeIdHasherType " << type
+                    << " range size " << rangeSize << " exceeds MaxBlobSize "
+                    << Config->GetMaxBlobSize());
+            return;
+        }
+
+        // The range id is a persisted key of the data tables. Data can be
+        // written only to a node and only within a session, so with no node
+        // ever created and no sessions there is no data and no write in
+        // flight. An unconfigured tablet would get the schemeshard's type
+        // with its first config.
+        if (GetFileSystemId().empty() || GetLastNodeId() != RootNodeId ||
+            HasSessions())
+        {
+            *args.Response.MutableError() = MakeError(
+                E_PRECONDITION_FAILED,
+                "RangeIdHasherType can be changed only on a configured tablet"
+                " with no nodes ever created and no sessions");
+            return;
+        }
+    }
+
     auto db = CreateIndexTabletDatabase(tx.DB);
+
+    if (args.Request.HasShardCreationState()) {
+        auto error = TryUpdateShardCreationState(
+            *db,
+            args.Request.GetShardCreationState());
+        if (HasError(error)) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET,
+                "%s Invalid shard creation state: %s",
+                LogTag.c_str(),
+                FormatError(error).c_str());
+
+            *args.Response.MutableError() = std::move(error);
+            return;
+        }
+    }
+
     if (args.Request.HasCompressNodeRef()) {
         SetCompressNodeRef(*db, args.Request.GetCompressNodeRef());
     }
@@ -940,6 +1033,10 @@ void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
             *db,
             args.Request.GetGuestPosixAclEnabled());
     }
+
+    if (changeRangeIdHasherType) {
+        SetRangeIdHasherType(*db, args.Request.GetRangeIdHasherType());
+    }
 }
 
 void TIndexTabletActor::CompleteTx_UnsafeChangeTabletState(
@@ -949,16 +1046,23 @@ void TIndexTabletActor::CompleteTx_UnsafeChangeTabletState(
     RemoveInFlightRequest(*args.RequestInfo);
 
     auto response =
-        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>(
-            std::move(args.Error));
+        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>();
+    if (HasError(args.Response)) {
+        *response->Record.MutableError() = args.Response.GetError();
+    }
+
+    if (args.Request.HasShardCreationState()) {
+        *response->Record.MutableShardCreationState() =
+            GetFileSystem().GetShardCreationState();
+    }
 
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
         "%s UnsafeChangeTabletState: %s, result: %s",
         LogTag.c_str(),
-        args.Request.DebugString().Quote().c_str(),
-        response->Record.ShortUtf8DebugString().Quote().c_str());
+        DescribeChangeTabletStateRequest(args.Request).Quote().c_str(),
+        DescribeChangeTabletStateResponse(response->Record).Quote().c_str());
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }

@@ -1,6 +1,7 @@
 LIBRARY(blockstore-libs-storage-testlib)
 
 SRCS(
+    cell_manager_mock.cpp
     counters_printer.cpp
     diagnostics.cpp
     disk_agent_mock.cpp
@@ -27,6 +28,7 @@ PEERDIR(
     cloud/blockstore/libs/local_nvme/protos
     cloud/blockstore/libs/service
     cloud/blockstore/libs/storage/api
+    cloud/blockstore/libs/storage/cell_proxy
     cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/disk_agent/actors
     cloud/blockstore/libs/storage/service

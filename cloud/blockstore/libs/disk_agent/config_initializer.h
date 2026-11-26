@@ -31,7 +31,7 @@ struct TConfigInitializer
 
     NKikimrConfig::TAppConfigPtr KikimrConfig;
     TServerAppConfigPtr ServerConfig;
-    NStorage::TStorageConfigPtr StorageConfig;
+    NStorage::TStorageConfigMutablePtr StorageConfig;
     NStorage::TDiskAgentConfigPtr DiskAgentConfig;
     NStorage::TDiskRegistryProxyConfigPtr DiskRegistryProxyConfig;
     TDiagnosticsConfigPtr DiagnosticsConfig;

@@ -29,6 +29,7 @@ struct TClientInfo
     TString DiskId;
     NProto::EVolumeAccessMode VolumeAccessMode = NProto::VOLUME_ACCESS_READ_WRITE;
     NProto::EVolumeMountMode VolumeMountMode = NProto::VOLUME_MOUNT_LOCAL;
+    bool ForceRemoteBinding = false;
     ui64 MountSeqNumber = 0;
     ui32 MountFlags = 0;
     TInstant LastActivityTime;
@@ -43,6 +44,12 @@ struct TClientInfo
     TClientInfo(
         TString clientId,
         TString diskId);
+
+    bool KeepsVolumeLocal() const
+    {
+        return VolumeMountMode == NProto::VOLUME_MOUNT_LOCAL &&
+               !ForceRemoteBinding;
+    }
 };
 
 using TClientInfoList = TIntrusiveListWithAutoDelete<TClientInfo, TDelete>;
@@ -52,11 +59,11 @@ using TClientInfoList = TIntrusiveListWithAutoDelete<TClientInfo, TDelete>;
 struct TSharedServiceCounters
     : TAtomicRefCount<TSharedServiceCounters>
 {
-    const TStorageConfigConstPtr Config;
+    const TStorageConfigPtr Config;
 
     TAtomic LocalVolumeCount = 0;
 
-    TSharedServiceCounters(TStorageConfigConstPtr config)
+    TSharedServiceCounters(TStorageConfigPtr config)
         : Config(std::move(config))
     {}
 

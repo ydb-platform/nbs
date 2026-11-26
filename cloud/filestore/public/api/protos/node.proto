@@ -213,6 +213,15 @@ message TCreateNodeRequest
     uint32 QuotaId = 20;
 
     bool GuestPosixAclEnabled = 21;
+
+    // POSIX ACLs inherited from the parent. These fields are resolved by the
+    // tablet that owns the parent directory and carried to the shard that
+    // creates the actual node.
+    bytes ParentDefaultAcl = 22;
+
+    // Access ACL derived from the parent directory’s default POSIX ACL
+    // and limited by the requested mode.
+    bytes ChildAccessAcl = 23;
 }
 
 message TCreateNodeResponse
@@ -533,6 +542,20 @@ message TGetNodeAttrResponse
     // means that caching is not allowed.
     uint32 NodeRefCacheTTL = 5;
 
+    // Identifier of the backend component which sends the invalidations of the
+    // cached Node (see FileSystemEvents). Upon the loss of the connection to it
+    // the client gets IFileSystemEventHandler::OnDisconnect with the same
+    // identifier: the invalidations may have been lost. Set only along with a
+    // nonzero NodeCacheTTL.
+    uint64 NodeCacheSourceId = 6;
+
+    // Identifier of the backend component which sends the invalidations of the
+    // cached NodeRef (see FileSystemEvents). Upon the loss of the connection to
+    // it the client gets IFileSystemEventHandler::OnDisconnect with the same
+    // identifier: the invalidations may have been lost. Set only along with a
+    // nonzero NodeRefCacheTTL.
+    uint64 NodeRefCacheSourceId = 7;
+
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }
@@ -570,6 +593,13 @@ message TGetNodeXAttrResponse
     // attribute value or, for E_FS_NOXATTR, its absence. Zero means that
     // caching is not allowed.
     uint32 XAttrCacheTTL = 4;
+
+    // Identifier of the backend component which sends the invalidations of the
+    // cached attribute (see FileSystemEvents). Upon the loss of the connection
+    // to it the client gets IFileSystemEventHandler::OnDisconnect with the same
+    // identifier: the invalidations may have been lost. Set only along with a
+    // nonzero XAttrCacheTTL.
+    uint64 XAttrCacheSourceId = 5;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -617,6 +647,13 @@ message TSetNodeXAttrResponse
     // For how long (in milliseconds) the client is allowed to cache the set
     // attribute value. Zero means that caching is not allowed.
     uint32 XAttrCacheTTL = 3;
+
+    // Identifier of the backend component which sends the invalidations of the
+    // cached attribute (see FileSystemEvents). Upon the loss of the connection
+    // to it the client gets IFileSystemEventHandler::OnDisconnect with the same
+    // identifier: the invalidations may have been lost. Set only along with a
+    // nonzero XAttrCacheTTL.
+    uint64 XAttrCacheSourceId = 4;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

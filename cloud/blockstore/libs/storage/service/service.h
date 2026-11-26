@@ -16,8 +16,8 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 NActors::IActorPtr CreateStorageService(
-    TStorageConfigConstPtr config,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
     NDiscovery::IDiscoveryServicePtr discoveryService,

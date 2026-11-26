@@ -17,6 +17,7 @@ SRCS(
 
 PEERDIR(
     cloud/fastshard/libs/ipc
+    cloud/fastshard/libs/storage_group
 
     cloud/storage/core/libs/common
 
@@ -28,7 +29,6 @@ PEERDIR(
 PEERDIR(
     cloud/filestore/libs/service
     cloud/filestore/libs/storage/fastshard/iface
-    cloud/filestore/libs/storage/fastshard/storage_group
     cloud/filestore/libs/storage/model
 
     cloud/filestore/public/api/protos

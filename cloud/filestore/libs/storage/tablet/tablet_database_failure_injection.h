@@ -195,15 +195,6 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         TVector<TNodeRef>& refs) override;
 
     //
-    // TruncateQueue
-    //
-
-    void WriteTruncateQueueEntry(ui64 nodeId, TByteRange range) override;
-    void DeleteTruncateQueueEntry(ui64 id) override;
-    bool ReadTruncateQueue(
-        TVector<NProto::TTruncateEntry>& entries) override;
-
-    //
     // Sessions
     //
 

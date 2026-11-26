@@ -23,12 +23,11 @@ Y_UNIT_TEST_SUITE(TDiskCountersTests)
             return TPartitionDiskCounters(EPublishingPolicy::Repl, diagnostics);
         };
         auto first = makeCounters();
+        first.Cumulative.ZeroBytesWritten.Increment(4096);
         first.BlobCompression.at(4096).UncompressedBytesWritten.Increment(4096);
         first.BlobCompression.at(4096).CompressedBytesWritten.Increment(100);
-        first.BlobCompression.at(4096).ZeroBytesCompressed.Increment(1024);
         first.BlobCompression.at(8192).UncompressedBytesWritten.Increment(4096);
         first.BlobCompression.at(8192).CompressedBytesWritten.Increment(80);
-        first.BlobCompression.at(8192).ZeroBytesCompressed.Increment(2048);
 
         auto accumulated = makeCounters();
         accumulated.Add(first);
@@ -36,9 +35,6 @@ Y_UNIT_TEST_SUITE(TDiskCountersTests)
         UNIT_ASSERT_VALUES_EQUAL(
             200,
             accumulated.BlobCompression.at(4096).CompressedBytesWritten.Value);
-        UNIT_ASSERT_VALUES_EQUAL(
-            2 * 1024,
-            accumulated.BlobCompression.at(4096).ZeroBytesCompressed.Value);
 
         auto published = makeCounters();
         NMonitoring::TDynamicCountersPtr dynCounters =
@@ -58,6 +54,9 @@ Y_UNIT_TEST_SUITE(TDiskCountersTests)
             dynCounters->GetSubgroup("compression_chunk_size", "8.00 KiB");
         UNIT_ASSERT_VALUES_EQUAL(
             3 * 4096,
+            dynCounters->GetCounter("ZeroBytesWritten", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            3 * 4096,
             singleBlock->GetCounter("UncompressedBytesWritten", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             300,
@@ -66,44 +65,26 @@ Y_UNIT_TEST_SUITE(TDiskCountersTests)
             240,
             twoBlocks->GetCounter("CompressedBytesWritten", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(
-            3 * 1024,
-            singleBlock->GetCounter("ZeroBytesCompressed", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(
-            3 * 2048,
-            twoBlocks->GetCounter("ZeroBytesCompressed", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(
             0,
             published.BlobCompression.at(4096).CompressedBytesWritten.Value);
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             published.BlobCompression.at(4096).UncompressedBytesWritten.Value);
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            published.BlobCompression.at(4096).ZeroBytesCompressed.Value);
 
         published.Publish(now);
         UNIT_ASSERT_VALUES_EQUAL(
             300,
             singleBlock->GetCounter("CompressedBytesWritten", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(
-            3 * 1024,
-            singleBlock->GetCounter("ZeroBytesCompressed", true)->Val());
 
         published.Add(first);
         published.Publish(now);
         UNIT_ASSERT_VALUES_EQUAL(
             400,
             singleBlock->GetCounter("CompressedBytesWritten", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(
-            4 * 1024,
-            singleBlock->GetCounter("ZeroBytesCompressed", true)->Val());
         accumulated.Reset();
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             accumulated.BlobCompression.at(8192).CompressedBytesWritten.Value);
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            accumulated.BlobCompression.at(8192).ZeroBytesCompressed.Value);
     }
 
     Y_UNIT_TEST(ShouldResetAfterPublish)
@@ -146,6 +127,47 @@ Y_UNIT_TEST_SUITE(TDiskCountersTests)
                 counters.IngestTimeRequestCounters.ReadBlocks.GetBuckets();
             UNIT_ASSERT_VALUES_EQUAL(0, buckets[1].second);
         }
+    }
+
+    Y_UNIT_TEST(ShouldAccumulateBlobIoCountersAndCountPatchesAsWrites)
+    {
+        THistogramRequestCounters first(
+            EHistogramCounterOption::ReportMultipleCounters);
+        first.ReadBlob.Count = 2;
+        first.ReadBlob.RequestBytes = 4 * 1024;
+        first.WriteBlob.Count = 3;
+        first.WriteBlob.RequestBytes = 8 * 1024;
+        first.PatchBlob.Count = 5;
+        first.PatchBlob.RequestBytes = 16 * 1024;
+
+        THistogramRequestCounters second(
+            EHistogramCounterOption::ReportMultipleCounters);
+        second.ReadBlob.Count = 7;
+        second.ReadBlob.RequestBytes = 32 * 1024;
+        second.WriteBlob.Count = 11;
+        second.WriteBlob.RequestBytes = 64 * 1024;
+        second.PatchBlob.Count = 13;
+        second.PatchBlob.RequestBytes = 128 * 1024;
+
+        TBlobIoCounters counters;
+        counters.Add(first);
+        counters.Add(second);
+        UNIT_ASSERT_VALUES_EQUAL(9, counters.ReadBlob.Count);
+        UNIT_ASSERT_VALUES_EQUAL(36 * 1024, counters.ReadBlob.Bytes);
+        UNIT_ASSERT_VALUES_EQUAL(32, counters.WriteBlob.Count);
+        UNIT_ASSERT_VALUES_EQUAL(216 * 1024, counters.WriteBlob.Bytes);
+
+        counters.Reset();
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadBlob.Count);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.ReadBlob.Bytes);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.WriteBlob.Count);
+        UNIT_ASSERT_VALUES_EQUAL(0, counters.WriteBlob.Bytes);
+
+        counters.Add(first);
+        UNIT_ASSERT_VALUES_EQUAL(2, counters.ReadBlob.Count);
+        UNIT_ASSERT_VALUES_EQUAL(4 * 1024, counters.ReadBlob.Bytes);
+        UNIT_ASSERT_VALUES_EQUAL(8, counters.WriteBlob.Count);
+        UNIT_ASSERT_VALUES_EQUAL(24 * 1024, counters.WriteBlob.Bytes);
     }
 }
 

@@ -546,6 +546,15 @@ void TIndexTabletActor::CompleteTx_CreateSession(
             *Config,
             fileStore);
 
+        //
+        // The effective value: the tablet reads the config only upon start
+        // and doesn't send any events in dry run mode.
+        //
+
+        fileStore.MutableFeatures()->SetFileSystemEventsEnabled(
+            IsFileSystemEventsEnabled() &&
+            !IsFileSystemEventsDryRunModeEnabled());
+
         LOG_DEBUG(
             ctx,
             TFileStoreComponents::TABLET,

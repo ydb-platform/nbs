@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/small.inc)
 
 SRCS(
     block_list_ut.cpp
+    block_ut.cpp
     channels_ut.cpp
     compaction_map_ut.cpp
     deletion_markers_ut.cpp

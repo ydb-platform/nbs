@@ -45,8 +45,8 @@ private:
 
 private:
     const TActorId SessionActorId;
-    const TStorageConfigConstPtr Config;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     const ITraceSerializerPtr TraceSerializer;
@@ -87,8 +87,8 @@ private:
 public:
     TStartVolumeActor(
         const TActorId& sessionActorId,
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
         ITraceSerializerPtr traceSerializer,
@@ -182,8 +182,8 @@ private:
 
 TStartVolumeActor::TStartVolumeActor(
         const TActorId& sessionActorId,
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
         ITraceSerializerPtr traceSerializer,

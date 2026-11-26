@@ -461,6 +461,30 @@ void TAppContext::ValidateRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+//
+// The FileSystemEvents are delivered only to the processes which send the
+// requests to the tablets themselves - the clients of the gRPC API don't get
+// them, so they must not cache the data according to the cache TTLs: the
+// tablets don't subscribe them (and return zero TTLs), and their session
+// features don't enable the events.
+//
+
+void DisableFileSystemEvents(NProto::THeaders& headers)
+{
+    headers.SetFileSystemEventSubscriptionDisabled(true);
+}
+
+void DisableFileSystemEvents(NProto::TCreateSessionResponse& response)
+{
+    if (response.HasFileStore()) {
+        response.MutableFileStore()
+            ->MutableFeatures()
+            ->SetFileSystemEventsEnabled(false);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 using TRequestsInFlight = NStorage::NGrpc::TRequestsInFlight<
     TServerRequestHandlerBase,
     TWellKnownEntityTypes::SERVER>;
@@ -702,10 +726,29 @@ private:
             try {
                 AppCtx.ValidateRequest(*Context, *Request->MutableHeaders());
 
+                constexpr bool isFileStoreRequest =
+                    std::is_same_v<TAppContext, TFileStoreContext>;
+                if constexpr (isFileStoreRequest) {
+                    DisableFileSystemEvents(*Request->MutableHeaders());
+                }
+
                 Response = TMethod::Execute(
                     *AppCtx.ServiceImpl,
                     CallContext,
                     Request);
+
+                if constexpr (
+                    isFileStoreRequest &&
+                    std::is_same_v<TResponse, NProto::TCreateSessionResponse>)
+                {
+                    Response = Response.Apply(
+                        [] (auto future)
+                        {
+                            auto response = future.ExtractValue();
+                            DisableFileSystemEvents(response);
+                            return response;
+                        });
+                }
             } catch (const TServiceError& e) {
                 STORAGE_WARN(
                     TMethod::RequestName << " #" << RequestId

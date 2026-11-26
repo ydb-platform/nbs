@@ -285,6 +285,9 @@ void TIndexTabletActor::HandleUpdateConfig(
     }
 
     // Setting the fields that schemeshard is not aware of.
+    // RangeIdHasherType may be changed by SetRangeIdHasherType, it must never
+    // change afterwards: the range id is a persisted key of the data tables.
+    newConfig.SetRangeIdHasherType(oldConfig.GetRangeIdHasherType());
     // TODO(#8034): switch to shard topology
     *newConfig.MutableShardFileSystemIds() =
         oldConfig.GetShardFileSystemIds();
@@ -304,6 +307,15 @@ void TIndexTabletActor::HandleUpdateConfig(
         oldConfig.GetStrictFileSystemSizeEnforcementEnabled());
     newConfig.SetGuestPosixAclEnabled(
         oldConfig.GetGuestPosixAclEnabled());
+
+    // Preserve the shard creation state across AlterFileStore/resize
+    // UpdateConfig calls. Otherwise a retry could wipe the persisted bitmap and
+    // reset the CAS version while the resize actor still needs them for
+    // subsequent shard creation state updates.
+    if (oldConfig.HasShardCreationState()) {
+        *newConfig.MutableShardCreationState() =
+            oldConfig.GetShardCreationState();
+    }
 
     // Config update occured due to alter/resize.
     if (auto error = ValidateUpdateConfigRequest(oldConfig, newConfig)) {
@@ -437,7 +449,9 @@ void TIndexTabletActor::HandleConfigureShards(
     }
 
     if (!HasError(error) && !msg->Record.GetForce()) {
-        error = ValidateShardTopology(msg->Record.GetShardTopology());
+        error = ValidateShardTopology(
+            GetFileSystem().GetShardTopology(),
+            msg->Record.GetShardTopology());
     }
 
     if (error.GetCode() != S_OK) {
@@ -561,7 +575,9 @@ void TIndexTabletActor::HandleConfigureAsShard(
     }
 
     if (!HasError(error) && !msg->Record.GetForce()) {
-        error = ValidateShardTopology(msg->Record.GetShardTopology());
+        error = ValidateShardTopology(
+            GetFileSystem().GetShardTopology(),
+            msg->Record.GetShardTopology());
     }
 
     if (!HasError(error) && !msg->Record.GetForce()) {

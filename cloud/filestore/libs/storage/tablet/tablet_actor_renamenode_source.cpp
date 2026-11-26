@@ -478,6 +478,8 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
     TTransactionContext& tx,
     TTxIndexTablet::TPrepareRenameNodeInSource& args)
 {
+    Y_UNUSED(ctx);
+
     FILESTORE_VALIDATE_TX_ERROR(RenameNode, args);
     if (args.Error.GetCode() == S_ALREADY) {
         return; // nothing to do
@@ -502,7 +504,8 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
             args.Request,
             args.ChildRef->ShardId,
             args.ChildRef->ShardNodeName,
-            args.NewParentShardId);
+            args.NewParentShardId,
+            args.ParentNode->Attrs.GetQuotaId());
 
     WriteOpLogEntry(*db, args.OpLogEntry);
 
@@ -531,8 +534,6 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
         args.RequestId,
         NProto::TRenameNodeResponse{},
         Config->GetDupCacheEntryCount());
-
-    EnqueueTruncateIfNeeded(ctx);
 }
 
 void TIndexTabletActor::CompleteTx_PrepareRenameNodeInSource(
@@ -877,7 +878,8 @@ MakeRenameNodeInDestinationRequest(
     NProto::TRenameNodeRequest originalRequest,
     TString sourceNodeShardId,
     TString sourceNodeShardNodeName,
-    TString newParentShardId)
+    TString newParentShardId,
+    ui32 sourceParentQuotaId)
 {
     NProtoPrivate::TRenameNodeInDestinationRequest request;
     auto& headers = *request.MutableHeaders();
@@ -890,6 +892,7 @@ MakeRenameNodeInDestinationRequest(
     request.SetFlags(originalRequest.GetFlags());
     request.SetSourceNodeShardId(std::move(sourceNodeShardId));
     request.SetSourceNodeShardNodeName(std::move(sourceNodeShardNodeName));
+    request.SetSourceParentQuotaId(sourceParentQuotaId);
     *request.MutableOriginalRequest() = std::move(originalRequest);
     return request;
 }

@@ -6,6 +6,9 @@
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/api/events.h>
 #include <cloud/filestore/libs/storage/core/public.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
+
+#include <contrib/ydb/library/actors/core/event_local.h>
 
 #include <util/generic/string.h>
 
@@ -51,6 +54,15 @@ struct TEvServicePrivate
     };
 
     //
+    // Fast shard device allocation
+    //
+
+    struct TFastShardsAllocated
+    {
+        NProtoPrivate::TShardTopology Topology;
+    };
+
+    //
     // Events declaration
     //
 
@@ -63,6 +75,12 @@ struct TEvServicePrivate
         EvSessionCreated,
         EvSessionDestroyed,
         EvUpdateStats,
+        EvStartReadData,
+        EvReleaseReadDataActor,
+        EvFastShardsAllocated,
+        EvFastShardsDeallocated,
+        EvStartWriteData,
+        EvReleaseWriteDataActor,
 
         EvEnd
     };
@@ -75,6 +93,23 @@ struct TEvServicePrivate
     using TEvSessionCreated = TResponseEvent<TSessionCreated, EvSessionCreated>;
     using TEvSessionDestroyed = TResponseEvent<TSessionDestroyed, EvSessionDestroyed>;
     using TEvUpdateStats = TRequestEvent<TEmpty, EvUpdateStats>;
+    using TEvFastShardsAllocated =
+        TResponseEvent<TFastShardsAllocated, EvFastShardsAllocated>;
+    using TEvFastShardsDeallocated =
+        TResponseEvent<TEmpty, EvFastShardsDeallocated>;
+
+    // Unlike TRequestEvent following events dont allocalte TCallContext on
+    // the heap
+    struct TEvReleaseReadDataActor final
+        : public NActors::
+              TEventLocal<TEvReleaseReadDataActor, EvReleaseReadDataActor>
+    {
+    };
+    struct TEvReleaseWriteDataActor final
+        : public NActors::
+              TEventLocal<TEvReleaseWriteDataActor, EvReleaseWriteDataActor>
+    {
+    };
 };
 
 }   // namespace NCloud::NFileStore::NStorage

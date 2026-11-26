@@ -25,14 +25,6 @@ constexpr size_t RDMA_MAX_DATA_LEN = Max<ui32>();
 ////////////////////////////////////////////////////////////////////////////////
 
 enum {
-    RDMA_PROTO_VERSION_0        = 0,
-    RDMA_PROTO_VERSION_2        = 2,
-    RDMA_PROTO_VERSION_3        = 3,
-    RDMA_PROTO_PREV_VERSION     = RDMA_PROTO_VERSION_2,
-    RDMA_PROTO_VERSION          = RDMA_PROTO_VERSION_3,
-};
-
-enum {
     RDMA_PROTO_OK               = 0,
     RDMA_PROTO_INVALID_REQUEST  = 1,
     RDMA_PROTO_CONFIG_MISMATCH  = 2,
@@ -69,27 +61,22 @@ struct Y_PACKED TMessageHeader
     ui8 Magic[4];
 };
 
-inline void InitMessageHeader(void* msg, int version)
+inline void InitMessageHeader(void* msg)
 {
     auto* hdr = static_cast<TMessageHeader*>(msg);
     hdr->Magic[0] = 'R';
     hdr->Magic[1] = 'D';
     hdr->Magic[2] = 'M';
-    hdr->Magic[3] = '0' + version;
+    hdr->Magic[3] = '3';
 }
 
-inline int ParseMessageHeader(const void* msg)
+inline bool IsValidMessageHeader(const void* msg)
 {
     const auto* hdr = static_cast<const TMessageHeader*>(msg);
-    if (hdr->Magic[0] == 'R' &&
-        hdr->Magic[1] == 'D' &&
-        hdr->Magic[2] == 'M' &&
-        hdr->Magic[3]  > '0')
-    {
-        return hdr->Magic[3] - '0';
-    }
-
-    return RDMA_PROTO_VERSION_0;
+    return hdr->Magic[0] == 'R' &&
+           hdr->Magic[1] == 'D' &&
+           hdr->Magic[2] == 'M' &&
+           hdr->Magic[3] == '3';
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -102,7 +89,7 @@ struct Y_PACKED TConnectMessage
             ui32 SendQueueSize : 16;
             ui32 RecvQueueSize : 16;
             ui32 MaxBufferSize;
-            // v3+: largest request payload sent eagerly, 0 disables
+            // largest request payload sent eagerly, 0 disables
             ui32 MaxEagerRequestBytes;
         };
         ui8 Padding[RDMA_PRIVATE_SIZE];
@@ -120,7 +107,7 @@ struct Y_PACKED TAcceptMessage
             TMessageHeader Header;
             ui32 Unused : 16;
             ui32 KeepAliveTimeout : 16;
-            // v3+: effective eager limit, min(client request, server config)
+            // effective eager limit, min(client request, server config)
             ui32 MaxEagerRequestBytes;
         };
         ui8 Padding[RDMA_PRIVATE_SIZE];

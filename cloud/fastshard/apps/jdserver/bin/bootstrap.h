@@ -24,6 +24,7 @@ private:
 
     IFileIOServicePtr FileIO;
     TExecutorPtr Executor;
+    TVector<TExecutorPtr> ConnectionExecutors;
     // The journalled device server over the file device.
     IStartablePtr Server;
 

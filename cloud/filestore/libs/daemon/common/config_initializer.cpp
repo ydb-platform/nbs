@@ -73,6 +73,13 @@ void TConfigInitializerCommon::InitFeaturesConfig()
         std::move(featuresConfig));
 }
 
+void TConfigInitializerCommon::InitRdmaConfig()
+{
+    if (Options->RdmaConfig) {
+        ParseProtoTextFromFileRobust(Options->RdmaConfig, RdmaConfig);
+    }
+}
+
 TNodeRegistrationSettings
     TConfigInitializerCommon::GetNodeRegistrationSettings()
 {

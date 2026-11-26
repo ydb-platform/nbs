@@ -1607,6 +1607,7 @@ func createImagesYDBTables(
 	folder string,
 	db *persistence.YDBClient,
 	dropUnusedColumns bool,
+	backupEnabled bool,
 ) error {
 
 	logging.Info(ctx, "Creating tables for images in %v", db.AbsolutePath(folder))
@@ -1639,7 +1640,59 @@ func createImagesYDBTables(
 	}
 	logging.Info(ctx, "Created deleted table")
 
-	err = db.CreateOrAlterTable(
+	if backupEnabled {
+		err = createImagesBackupTables(ctx, folder, db, dropUnusedColumns)
+		if err != nil {
+			return err
+		}
+	}
+
+	logging.Info(ctx, "Created tables for images")
+
+	return nil
+}
+
+func dropImagesYDBTables(
+	ctx context.Context,
+	folder string,
+	db *persistence.YDBClient,
+	backupEnabled bool,
+) error {
+
+	logging.Info(ctx, "Dropping tables for images in %v", db.AbsolutePath(folder))
+
+	err := db.DropTable(ctx, folder, "images")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped images table")
+
+	err = db.DropTable(ctx, folder, "deleted")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped deleted table")
+
+	if backupEnabled {
+		err = dropImagesBackupTables(ctx, folder, db)
+		if err != nil {
+			return err
+		}
+	}
+
+	logging.Info(ctx, "Dropped tables for images")
+
+	return nil
+}
+
+func createImagesBackupTables(
+	ctx context.Context,
+	folder string,
+	db *persistence.YDBClient,
+	dropUnusedColumns bool,
+) error {
+
+	err := db.CreateOrAlterTable(
 		ctx,
 		folder,
 		"backup_queue",
@@ -1688,32 +1741,16 @@ func createImagesYDBTables(
 	}
 	logging.Info(ctx, "Created backup_delete_queue table")
 
-	logging.Info(ctx, "Created tables for images")
-
 	return nil
 }
 
-func dropImagesYDBTables(
+func dropImagesBackupTables(
 	ctx context.Context,
 	folder string,
 	db *persistence.YDBClient,
 ) error {
 
-	logging.Info(ctx, "Dropping tables for images in %v", db.AbsolutePath(folder))
-
-	err := db.DropTable(ctx, folder, "images")
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Dropped images table")
-
-	err = db.DropTable(ctx, folder, "deleted")
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Dropped deleted table")
-
-	err = db.DropTable(ctx, folder, "backup_queue")
+	err := db.DropTable(ctx, folder, "backup_queue")
 	if err != nil {
 		return err
 	}
@@ -1724,8 +1761,6 @@ func dropImagesYDBTables(
 		return err
 	}
 	logging.Info(ctx, "Dropped backup_delete_queue table")
-
-	logging.Info(ctx, "Dropped tables for images")
 
 	return nil
 }

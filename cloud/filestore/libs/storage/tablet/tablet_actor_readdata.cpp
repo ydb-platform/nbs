@@ -966,7 +966,7 @@ bool TIndexTabletActor::PrepareTx_ReadData(
     SplitRange(
         args.ActualRange().FirstBlock(),
         args.ActualRange().BlockCount(),
-        BlockGroupSize,
+        GetBlockGroupSize(),
         [&] (ui32 blockOffset, ui32 blocksCount) {
             ranges.insert(GetMixedRangeIndex(
                 args.NodeId,
@@ -1008,7 +1008,7 @@ bool TIndexTabletActor::PrepareTx_ReadData(
     SplitRange(
         args.ActualRange().FirstBlock(),
         args.ActualRange().BlockCount(),
-        BlockGroupSize,
+        GetBlockGroupSize(),
         [&] (ui32 blockOffset, ui32 blocksCount) {
             FindMixedBlocks(
                 visitor,

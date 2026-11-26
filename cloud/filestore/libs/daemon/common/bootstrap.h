@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/service/public.h>
 #include <cloud/filestore/libs/storage/core/public.h>
 #include <cloud/filestore/libs/storage/fastshard/server/server.h>
+#include <cloud/filestore/libs/storage/tablet_rdma/rdma_tablet_registry.h>
 
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -79,6 +80,7 @@ protected:
     IProfileLogPtr ProfileLog;
     IActorSystemPtr ActorSystem;
     NStorage::NFastShard::IServerPtr FastShardServer;
+    NStorage::TRdmaTabletRegistryPtr RdmaTabletRegistry;
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     ITaskQueuePtr LongRunningTaskExecutor;
     ICertificateWatcherPtr CertificateWatcher;

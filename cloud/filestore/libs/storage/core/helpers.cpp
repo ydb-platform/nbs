@@ -4,6 +4,7 @@
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
+#include <cloud/storage/core/libs/common/compressed_bitmap_serialization.h>
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <contrib/ydb/core/protos/filestore_config.pb.h>
@@ -303,6 +304,16 @@ void AddOrdinaryShard(
         ProtoFlag(NProtoPrivate::TShardTopology::E_DIRECTORY));
 }
 
+void AddFastShard(
+    const TString& shardId,
+    NProtoPrivate::TShardTopology& topology)
+{
+    auto& shard = *topology.AddShards();
+    shard.SetShardId(shardId);
+    shard.SetType(NProtoPrivate::TShardTopology::E_FASTSHARD);
+    shard.SetRoleMask(ProtoFlag(NProtoPrivate::TShardTopology::E_FILE));
+}
+
 NProtoPrivate::TShardTopology BuildOrdinaryShardTopology(
     const google::protobuf::RepeatedPtrField<TString>& shardIds)
 {
@@ -313,6 +324,77 @@ NProtoPrivate::TShardTopology BuildOrdinaryShardTopology(
     }
 
     return topology;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+TString DescribeShardCreationState(
+    const NProtoPrivate::TFileSystemShardCreationState& state)
+{
+    const auto& bitmap = state.GetCreatedShardBitmap();
+
+    TStringBuilder out;
+    out << "{Version: ";
+    if (state.HasVersion()) {
+        out << state.GetVersion();
+    } else {
+        out << "<unset>";
+    }
+    out << ", TopologyShardCount: " << state.GetTopologyShardCount()
+        << ", TargetShardCount: " << state.GetTargetShardCount()
+        << ", TargetShardConfigHash: " << state.GetTargetShardConfigHash()
+        << ", CreatedShardBitmap: {BitCount: " << bitmap.GetBitCount()
+        << ", Chunks: " << bitmap.ChunksSize()
+        << ", ChunkDataSize: " << GetCompressedBitmapChunkDataSize(bitmap) << "}}";
+
+    return out;
+}
+
+TString DescribeChangeTabletStateRequest(
+    const NProtoPrivate::TUnsafeChangeTabletStateRequest& request)
+{
+    if (!request.HasShardCreationState()) {
+        return request.DebugString();
+    }
+
+    TStringBuilder out;
+    out << "{FileSystemId: " << request.GetFileSystemId();
+    if (request.HasFrozen()) {
+        out << ", Frozen: " << (request.GetFrozen() ? "true" : "false");
+    }
+    if (request.HasCompressNodeRef()) {
+        out << ", CompressNodeRef: "
+            << (request.GetCompressNodeRef() ? "true" : "false");
+    }
+    if (request.HasGuestPosixAclEnabled()) {
+        out << ", GuestPosixAclEnabled: "
+            << (request.GetGuestPosixAclEnabled() ? "true" : "false");
+    }
+    if (request.HasRangeIdHasherType()) {
+        out << ", RangeIdHasherType: " << request.GetRangeIdHasherType();
+    }
+    out << ", ShardCreationState: "
+        << DescribeShardCreationState(request.GetShardCreationState()) << "}";
+
+    return out;
+}
+
+TString DescribeChangeTabletStateResponse(
+    const NProtoPrivate::TUnsafeChangeTabletStateResponse& response)
+{
+    if (!response.HasShardCreationState()) {
+        return response.ShortUtf8DebugString();
+    }
+
+    TStringBuilder out;
+    out << "{";
+    if (HasError(response.GetError())) {
+        out << "Error: " << FormatError(response.GetError()) << ", ";
+    }
+    out << "ShardCreationState: "
+        << DescribeShardCreationState(response.GetShardCreationState()) << "}";
+
+    return out;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

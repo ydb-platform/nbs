@@ -500,13 +500,14 @@ bool TPartitionActor::PrepareGetChangedBlocks(
         true,   // precharge
         args.HighCommitId
     );
+    TIndexOnlyBlobsVisitor blobsVisitor;
     ready &= db.FindMergedBlocks(
         visitor,
+        blobsVisitor,
         args.ReadRange,
         true,   // precharge
         State->GetMaxBlocksInBlob(),
-        args.HighCommitId
-    );
+        args.HighCommitId);
 
     return ready;
 }

@@ -76,6 +76,7 @@ IJournalPtr CreateJournal(
     TExecutorPtr executor,
     IKeyBufferStorePtr metaStore,
     IDevicePageStorePtr dataStore,
+    TString deviceUUID,
     ui64 devicePageCount);
 
 }   // namespace NCloud::NJournalled

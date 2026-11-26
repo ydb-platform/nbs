@@ -39,7 +39,15 @@ TVector<TLogRecordPtr> EraseBelow(TLogRecordChain& chain, ui64 lsn)
         S_OK,
         result.GetError().GetCode(),
         result.GetError().GetMessage());
-    return result.ExtractResult();
+
+    auto erased = result.ExtractResult();
+
+    TVector<TLogRecordPtr> records = std::move(erased.Chained);
+    records.insert(
+        records.end(),
+        erased.Stranded.begin(),
+        erased.Stranded.end());
+    return records;
 }
 
 TVector<ui64> GetLsns(const TVector<TLogRecordPtr>& records)
@@ -89,7 +97,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30}),
-            GetLsns(chain.GetReadyRun(10, 10)));
+            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
     }
 
     Y_UNIT_TEST(ShouldAcceptRecordsInsertedOutOfOrder)
@@ -102,7 +110,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30}),
-            GetLsns(chain.GetReadyRun(10, 10)));
+            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
     }
 
     Y_UNIT_TEST(ShouldMarkRecordAsReadyByPrevLsn)
@@ -207,7 +215,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20}),
-            GetLsns(chain.GetReadyRun(10, 10)));
+            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
         UNIT_ASSERT_VALUES_EQUAL(20, chain.GetNext(10)->Lsn);
     }
 
@@ -233,7 +241,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30}),
-            GetLsns(chain.GetReadyRun(10, 10)));
+            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
     }
 
     Y_UNIT_TEST(ShouldNotDetectOverlapPastGap)
@@ -263,7 +271,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{10, 20}),
-            GetLsns(chain.GetReadyRun(0, 10)));
+            GetLsns(chain.GetReadyRun(0, Max<ui64>(), 10)));
     }
 
     Y_UNIT_TEST(ShouldReturnNullptrFromGetOldestAndGetNextWhenEmpty)
@@ -324,13 +332,13 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT(chain.Remove(20));
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20}),
-            GetLsns(chain.GetReadyRun(10, 10)));
+            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
 
         // the retry starts at the end of the run and rejoins the rest
         InsertReady(chain, 20, 30);
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30, 40}),
-            GetLsns(chain.GetReadyRun(10, 10)));
+            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30, 40}),
             GetSortedLsns(EraseBelow(chain, 41)));
@@ -402,7 +410,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
 
-        UNIT_ASSERT(chain.GetReadyRun(0, 10).empty());
+        UNIT_ASSERT(chain.GetReadyRun(0, Max<ui64>(), 10).empty());
     }
 
     Y_UNIT_TEST(ShouldReturnReadyRunAfterLsn)
@@ -416,18 +424,18 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30, 40}),
-            GetLsns(chain.GetReadyRun(10, 10)));
+            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
 
         // the tail continues from afterLsn, ascending
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{30, 40}),
-            GetLsns(chain.GetReadyRun(20, 10)));
+            GetLsns(chain.GetReadyRun(20, Max<ui64>(), 10)));
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{40}),
-            GetLsns(chain.GetReadyRun(30, 10)));
+            GetLsns(chain.GetReadyRun(30, Max<ui64>(), 10)));
 
-        UNIT_ASSERT(chain.GetReadyRun(40, 10).empty());
-        UNIT_ASSERT(chain.GetReadyRun(100, 10).empty());
+        UNIT_ASSERT(chain.GetReadyRun(40, Max<ui64>(), 10).empty());
+        UNIT_ASSERT(chain.GetReadyRun(100, Max<ui64>(), 10).empty());
     }
 
     Y_UNIT_TEST(ShouldLimitRunByMaxRecordCount)
@@ -441,18 +449,50 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20}),
-            GetLsns(chain.GetReadyRun(10, 1)));
+            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 1)));
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30}),
-            GetLsns(chain.GetReadyRun(10, 2)));
+            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 2)));
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{30}),
-            GetLsns(chain.GetReadyRun(20, 1)));
+            GetLsns(chain.GetReadyRun(20, Max<ui64>(), 1)));
 
         // asking for more than the chain holds is not an error
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30, 40}),
-            GetLsns(chain.GetReadyRun(10, Max<ui64>())));
+            GetLsns(chain.GetReadyRun(10, Max<ui64>(), Max<ui64>())));
+    }
+
+    Y_UNIT_TEST(ShouldLimitRunByMaxLsn)
+    {
+        TLogRecordChain chain;
+        chain.InitLastErasedLsn(10);
+
+        InsertReady(chain, 10, 20);
+        InsertReady(chain, 20, 30);
+        InsertReady(chain, 30, 40);
+
+        // the limit is inclusive
+        UNIT_ASSERT_VALUES_EQUAL(
+            (TVector<ui64>{20, 30}),
+            GetLsns(chain.GetReadyRun(10, 30, 0)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            (TVector<ui64>{20, 30, 40}),
+            GetLsns(chain.GetReadyRun(10, 40, 0)));
+
+        // a record ending past the limit is left out as a whole
+        UNIT_ASSERT_VALUES_EQUAL(
+            (TVector<ui64>{20}),
+            GetLsns(chain.GetReadyRun(10, 29, 0)));
+        UNIT_ASSERT(chain.GetReadyRun(10, 19, 0).empty());
+
+        // zero is a limit like any other, not "no limit"
+        UNIT_ASSERT(chain.GetReadyRun(10, 0, 0).empty());
+
+        // both limits apply
+        UNIT_ASSERT_VALUES_EQUAL(
+            (TVector<ui64>{20}),
+            GetLsns(chain.GetReadyRun(10, 30, 1)));
     }
 
     Y_UNIT_TEST(ShouldReturnEmptyRunWhenAfterLsnIsNotRecordBoundary)
@@ -465,9 +505,9 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
 
         // the tail is anchored at afterLsn: nothing chains from 0, 15 or 25,
         // so no run can be returned without leaving a hole behind it
-        UNIT_ASSERT(chain.GetReadyRun(0, 10).empty());
-        UNIT_ASSERT(chain.GetReadyRun(15, 10).empty());
-        UNIT_ASSERT(chain.GetReadyRun(25, 10).empty());
+        UNIT_ASSERT(chain.GetReadyRun(0, Max<ui64>(), 10).empty());
+        UNIT_ASSERT(chain.GetReadyRun(15, Max<ui64>(), 10).empty());
+        UNIT_ASSERT(chain.GetReadyRun(25, Max<ui64>(), 10).empty());
     }
 
     Y_UNIT_TEST(ShouldStopRunAtGap)
@@ -481,11 +521,11 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         // (20, 30] is missing, so the tail ends at 20 rather than spanning it
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20}),
-            GetLsns(chain.GetReadyRun(10, 10)));
+            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
 
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{40}),
-            GetLsns(chain.GetReadyRun(30, 10)));
+            GetLsns(chain.GetReadyRun(30, Max<ui64>(), 10)));
     }
 
     Y_UNIT_TEST(ShouldTreatZeroMaxRecordCountAsNoLimit)
@@ -500,9 +540,9 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         // TReadJournalTailRequest documents 0 as "no limit"
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30, 40}),
-            GetLsns(chain.GetReadyRun(10, 0)));
+            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 0)));
 
-        UNIT_ASSERT(chain.GetReadyRun(40, 0).empty());
+        UNIT_ASSERT(chain.GetReadyRun(40, Max<ui64>(), 0).empty());
     }
 
     Y_UNIT_TEST(ShouldStopRunAtFirstRecordThatIsNotReady)
@@ -518,13 +558,13 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         // it and returning a hole
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20}),
-            GetLsns(chain.GetReadyRun(10, 10)));
+            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
 
         // once it becomes durable the rest of the tail is visible
         UNIT_ASSERT(chain.MarkAsReady(20));
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30, 40}),
-            GetLsns(chain.GetReadyRun(10, 10)));
+            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
     }
 
     Y_UNIT_TEST(ShouldReturnEmptyRunWhenFirstRecordIsNotReady)
@@ -535,7 +575,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         chain.Insert(MakeRecord(10, 20));
         InsertReady(chain, 20, 30);
 
-        UNIT_ASSERT(chain.GetReadyRun(10, 10).empty());
+        UNIT_ASSERT(chain.GetReadyRun(10, Max<ui64>(), 10).empty());
 
         // a record that is not ready is invisible to GetOldest and GetNext as
         // well, but the ready ones behind it can still be reached
@@ -547,7 +587,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT_VALUES_EQUAL(20, chain.GetOldest()->Lsn);
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30}),
-            GetLsns(chain.GetReadyRun(10, 10)));
+            GetLsns(chain.GetReadyRun(10, Max<ui64>(), 10)));
     }
 
     Y_UNIT_TEST(ShouldNotMarkRemovedRecordAsErased)
@@ -684,7 +724,8 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         // chain stays as it was
         auto result = chain.EraseBelow(31);
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
-        UNIT_ASSERT(result.GetResult().empty());
+        UNIT_ASSERT(result.GetResult().Chained.empty());
+        UNIT_ASSERT(result.GetResult().Stranded.empty());
         UNIT_ASSERT_VALUES_EQUAL(20, chain.GetOldest()->Lsn);
 
         // once the gap is filled the same watermark goes through

@@ -853,32 +853,6 @@ struct TTestBootstrap
 
         return response;
     }
-
-    NProto::TWriteDataResponse AssertWriteDataAlignedFailed(
-        ui64 handle,
-        ui64 offset,
-        const TString& buffer,
-        ui32 align)
-    {
-        auto request = CreateRequest<NProto::TWriteDataRequest>();
-        request->SetHandle(handle);
-        request->SetOffset(offset);
-
-        TAlignedBuffer alignedBuffer(buffer.size(), align);
-        memcpy(alignedBuffer.Begin(), buffer.data(), buffer.size());
-        request->SetBufferOffset(alignedBuffer.AlignedDataOffset());
-        request->SetBuffer(alignedBuffer.TakeBuffer());
-
-        auto dbg = request->ShortDebugString();
-        auto response =
-            Store->WriteData(Ctx, std::move(request)).GetValueSync();
-
-        UNIT_ASSERT_C(
-            FAILED(response.GetError().GetCode()),
-            "WriteDataAligned has not failed as expected " + dbg);
-
-        return response;
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2552,19 +2526,20 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         UNIT_ASSERT_VALUES_EQUAL(data.size(), 0);
 
         data = "aaaabbbbcccccdddddeeee";
-        const auto response = bootstrap.AssertWriteDataAlignedFailed(
-            handle,
-            0,
-            data,
-            directIoAlign);
-        const auto& error = response.GetError();
-        UNIT_ASSERT_VALUES_EQUAL(
-            static_cast<ui32>(NProto::E_FS_INVAL),
-            STATUS_FROM_CODE(error.GetCode()));
-
+        const auto unalignedReadLength = data.size();
         data.append(directIoAlign-data.size(), 'x');
         data.append(directIoAlign, 'y');
         bootstrap.WriteDataAligned(handle, 0, data, directIoAlign);
+
+        // Check unaligned O_DIRECT rejection via read: some ext4 kernels
+        // silently fall back to buffered I/O for unaligned direct writes.
+        // Read after write, since reads at EOF skip alignment checks.
+
+        const auto response =
+            bootstrap.AssertReadDataFailed(handle, 0, unalignedReadLength);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(NProto::E_FS_INVAL),
+            STATUS_FROM_CODE(response.GetError().GetCode()));
 
         auto readDataWithOffset =
             [&bootstrap](ui64 handle, ui64 offset, ui32 len)

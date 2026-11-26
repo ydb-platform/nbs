@@ -5,6 +5,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
 	common_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
@@ -15,9 +16,19 @@ func NewStorage(
 	metricsRegistry common_metrics.Registry,
 	db *persistence.YDBClient,
 	s3 *persistence.S3Client,
+	backupEnabled bool,
 ) (Storage, error) {
 
 	tablesPath := db.AbsolutePath(config.GetStorageFolder())
+	followerChunksTableName := ""
+	if backupEnabled {
+		followerChunksTableName = config.GetFollowerChunksTableName()
+		if len(followerChunksTableName) == 0 {
+			return nil, errors.NewNonRetriableErrorf(
+				"FollowerChunksTableName must not be empty when backups are enabled",
+			)
+		}
+	}
 	probeCompressionPercentage := config.GetProbeCompressionPercentage()
 
 	var chunkStorageS3 *chunks.StorageS3
@@ -31,7 +42,7 @@ func NewStorage(
 			tablesPath,
 			config.GetChunkBlobsTableName(),
 			config.GetChunkBlobsShadowTableName(),
-			config.GetFollowerChunksTableName(),
+			followerChunksTableName,
 			metrics.New(metricsRegistry, "s3"),
 			probeCompressionPercentage,
 		)
@@ -39,6 +50,7 @@ func NewStorage(
 
 	ydbMetrics := metrics.New(metricsRegistry, "ydb")
 	return &storageYDB{
+		backupEnabled:            backupEnabled,
 		db:                       db,
 		tablesPath:               tablesPath,
 		metrics:                  ydbMetrics,
@@ -46,13 +58,13 @@ func NewStorage(
 		shallowCopyWorkerCount:   int(config.GetShallowCopyWorkerCount()),
 		shallowCopyInflightLimit: int(config.GetShallowCopyInflightLimit()),
 		chunkCompression:         config.GetChunkCompression(),
-		followerChunksTableName:  config.GetFollowerChunksTableName(),
+		followerChunksTableName:  followerChunksTableName,
 		chunkStorageYDB: chunks.NewStorageYDB(
 			db,
 			tablesPath,
 			config.GetChunkBlobsTableName(),
 			config.GetChunkBlobsShadowTableName(),
-			config.GetFollowerChunksTableName(),
+			followerChunksTableName,
 			ydbMetrics,
 			probeCompressionPercentage,
 		),

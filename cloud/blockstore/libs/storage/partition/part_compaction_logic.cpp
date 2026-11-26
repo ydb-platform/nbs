@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/model/channel_permissions.h>
 #include <cloud/blockstore/libs/storage/partition/model/block.h>
 #include <cloud/blockstore/libs/storage/partition/model/block_mask.h>
+#include <cloud/blockstore/libs/storage/partition_common/blob_compressor.h>
 
 #include <cloud/storage/core/libs/common/alloc.h>
 #include <cloud/storage/core/libs/common/block_buffer.h>
@@ -121,16 +122,20 @@ private:
     const TCompactionMap& CompactionMap;
     const ui64 TabletId;
 
+    TPartialBlobId2CompressionMetadataMap& BlobId2CompressionMetadata;
+
 public:
     TCompactionBlockVisitor(
         TTxPartition::TRangeCompaction& args,
         ui64 maxCommitId,
         const TCompactionMap& compactionMap,
-        ui64 tabletId)
+        ui64 tabletId,
+        TPartialBlobId2CompressionMetadataMap& blobId2CompressionMetadata)
         : Args(args)
         , MaxCommitId(maxCommitId)
         , CompactionMap(compactionMap)
         , TabletId(tabletId)
+        , BlobId2CompressionMetadata(blobId2CompressionMetadata)
     {}
 
     bool Visit(const TFreshBlock& block) override
@@ -202,6 +207,9 @@ public:
             return true;
         }
 
+        // Mixed blobs are not compressed.
+        BlobId2CompressionMetadata[blobId] = std::nullopt;
+
         Args.MarkBlock(
             blockIndex,
             commitId,
@@ -214,8 +222,12 @@ public:
     bool Visit(
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
-        const TBlockMask& skipMask) override
+        const TBlockMask& skipMask,
+        const std::optional<NProto::TCompressionMetadata>& compressionMetadata)
+        override
     {
+        BlobId2CompressionMetadata[blobId] = compressionMetadata;
+
         auto& ab = Args.AffectedBlobs[blobId];
         ab.MaxCommitIdInCompactionRange = blobId.CommitId();
         ab.MinCommitIdInCompactionRange = blobId.CommitId();
@@ -854,13 +866,15 @@ void PrepareRangeCompaction(
     TPartitionState& state,
     TTxPartition::TRangeCompaction& args,
     THashSet<TPartialBlobId, TPartialBlobIdHash>& blobsToReadBlockMasks,
-    THashSet<TPartialBlobId, TPartialBlobIdHash>& blobsToReadBlobMetas)
+    THashSet<TPartialBlobId, TPartialBlobIdHash>& blobsToReadBlobMetas,
+    TPartialBlobId2CompressionMetadataMap& blobId2CompressionMetadata)
 {
     TCompactionBlockVisitor visitor(
         args,
         commitId,
         state.GetCompactionMap(),
-        tabletId);
+        tabletId,
+        blobId2CompressionMetadata);
     state.FindFreshBlocks(visitor, args.BlockRange, commitId);
     visitor.KeepTrackOfAffectedBlocks = true;
     ready &= state.FindMixedBlocksForCompaction(db, visitor, args.RangeIdx);

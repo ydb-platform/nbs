@@ -22,6 +22,7 @@ private:
     NServer::IServerPtr Server;
     IFileStoreServicePtr Service;
     ITaskQueuePtr ThreadPool;
+    IStartablePtr RdmaTarget;
 
 public:
     TBootstrapServer(
@@ -43,6 +44,7 @@ private:
     void InitConfigs();
     void InitLWTrace();
     void InitKikimrService();
+    void InitRdmaTarget();
     void InitLocalService();
     void InitNullService();
 };

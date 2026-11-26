@@ -193,7 +193,7 @@ TManuallyPreemptedVolumesPtr CreateManuallyPreemptedVolumes()
 }
 
 TManuallyPreemptedVolumesPtr CreateManuallyPreemptedVolumes(
-    const TStorageConfigConstPtr& storageConfig,
+    const TStorageConfigPtr& storageConfig,
     TLog& log,
     TVector<TString>& criticalEventsStorage)
 {

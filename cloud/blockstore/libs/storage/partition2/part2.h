@@ -15,8 +15,8 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 NActors::IActorPtr CreatePartitionTablet(
     const NActors::TActorId& owner,
     NKikimr::TTabletStorageInfoPtr storage,
-    TStorageConfigConstPtr config,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorPtr blockDigestGenerator,
     NProto::TPartitionConfig partitionConfig,

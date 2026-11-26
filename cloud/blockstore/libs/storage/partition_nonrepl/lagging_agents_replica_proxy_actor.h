@@ -44,8 +44,8 @@ class TLaggingAgentsReplicaProxyActor final
 private:
     using TBase = NActors::TActorBootstrapped<TLaggingAgentsReplicaProxyActor>;
 
-    const TStorageConfigConstPtr Config;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>
         Migrations;
@@ -101,8 +101,8 @@ public:
     };
 
     TLaggingAgentsReplicaProxyActor(
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         TNonreplicatedPartitionConfigPtr partConfig,
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         ui32 replicaIndex,

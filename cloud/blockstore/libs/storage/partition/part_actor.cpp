@@ -54,8 +54,8 @@ const TString PartitionTransactions[] = {
 TPartitionActor::TPartitionActor(
     const TActorId& owner,
     TTabletStorageInfoPtr storage,
-    TStorageConfigConstPtr config,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorPtr blockDigestGenerator,
     NProto::TPartitionConfig partitionConfig,
@@ -74,6 +74,7 @@ TPartitionActor::TPartitionActor(
               PartitionConfig.GetCloudId(),
               PartitionConfig.GetFolderId(),
               PartitionConfig.GetDiskId()))
+    , FlushThresholds(BuildFlushThresholds(*Config, PartitionConfig))
     , VolumeLabels(MakeVolumeLabels(
           PartitionConfig.GetDiskId(),
           PartitionConfig.GetCloudId(),
@@ -108,11 +109,11 @@ TPartitionActor::TPartitionActor(
     }
 
     BlobCompressor = std::make_shared<TBlobCompressor>(
-        HasError(codec.GetError())
-            ? NCloud::NProto::COMPRESSION_CODEC_NONE
-            : codec.GetResult(),
+        HasError(codec.GetError()) ? NCloud::NProto::COMPRESSION_CODEC_NONE
+                                   : codec.GetResult(),
         TBlobCompressor::TMetricsConfig{
             .CompressionRate = Config->GetBlobCompressionRate(),
+            .BlockSize = PartitionConfig.GetBlockSize(),
             .ChunkSizes = DiagnosticsConfig->GetBlobCompressionChunkSizes(),
             .PartCounters = SharedState->GetPartCounters()});
 }
@@ -1071,6 +1072,15 @@ ui32 TPartitionActor::GetFreshDeadBlobByteCountTrimThreshold() const
     return PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
                ? Config->GetFreshDeadBlobByteCountTrimThresholdSSD()
                : Config->GetFreshDeadBlobByteCountTrimThresholdHDD();
+}
+
+bool TPartitionActor::IsSelectiveTrimEnabled() const
+{
+    const bool enabled =
+        PartitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+            ? Config->GetFreshSelectiveTrimEnabledSSD()
+            : Config->GetFreshSelectiveTrimEnabledHDD();
+    return enabled && GetFreshDeadBlobByteCountTrimThreshold();
 }
 
 void TPartitionActor::CreateFreshBlocksCompanionClient()

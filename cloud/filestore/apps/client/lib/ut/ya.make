@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/small.inc)
 
 SRCS(
     performance_profile_params_ut.cpp
+    latency_normalization_ut.cpp
 )
 
 END()

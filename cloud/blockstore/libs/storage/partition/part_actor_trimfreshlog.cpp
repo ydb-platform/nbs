@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/actor_trimfreshlog.h>
 
 #include <cloud/storage/core/libs/common/format.h>
+#include <cloud/storage/core/libs/tablet/model/commit.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -28,18 +29,80 @@ bool TPartitionActor::ShouldStartOrdinaryTrim(ui64 ordinaryTrimToCommitId)
                ordinaryTrimToCommitId) >= threshold;
 }
 
-bool TPartitionActor::CheckDeadFreshBlobByteCount() const
+bool TPartitionActor::ShouldStartSelectiveTrim(
+    const TActorContext& ctx,
+    const TPartitionThreadSafeState::TFreshTrimSnapshot& snapshot)
 {
-    TVector<ui64> liveCommitIds;
-    State->GetTrimFreshLogBarriers()->GetCommitIds(liveCommitIds);
-    return State->CheckDeadFreshBlobByteCount(liveCommitIds);
+    if (!IsSelectiveTrimEnabled()) {
+        return false;
+    }
+
+    // Normally, the SelectiveTrimToCommitId is above the
+    // OrdinaryTrimToCommitId. But the opposite is a technically possible
+    // situation, since the OrdinaryTrimToCommitId can be advanced a little
+    // earlier than the SelectiveTrimToCommitId. No point in doing the selective
+    // trim in this case.
+    if (snapshot.SelectiveTrimToCommitId <= snapshot.OrdinaryTrimToCommitId) {
+        return false;
+    }
+
+    const ui64 ordinaryTrimToCommitId = snapshot.OrdinaryTrimToCommitId;
+    const ui64 trimmableByOrdinaryTrimByteCount =
+        State->GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(
+            ordinaryTrimToCommitId);
+    const ui64 threshold = GetFreshDeadBlobByteCountTrimThreshold();
+    // A selective trim is worth doing only if it can trim at least threshold
+    // bytes more than an ordinary trim.
+    if (State->GetDeadUntrimmedFreshBlobByteCount() <
+            trimmableByOrdinaryTrimByteCount + threshold ||
+        !State->IsSelectiveScanAllowed(State->GetTotalDeadFreshBlobByteCount()))
+    {
+        return false;
+    }
+
+    // No need to start a selective trim since OrdinaryTrimToCommitId is about
+    // to be increased.
+    if (State->GetFlushState().GetOperationState().Status !=
+            EOperationStatus::Idle ||
+        ShouldFlush(ctx))
+    {
+        return false;
+    }
+
+    // Selective trims are disabled until the ordinary trims reach tablet's
+    // current generation. This is done for simplicity. Otherwise, we would have
+    // to restore the state of keep/doNotKeep flags on restart. Plus, this way
+    // we guarantee that we won't place the barrier below already placed one or
+    // with the same key but different value.
+    return ParseCommitId(ordinaryTrimToCommitId).first ==
+           Executor()->Generation();
 }
 
-TPartitionActor::ETrimFreshLogKind TPartitionActor::ChooseTrimFreshLogKind()
+bool TPartitionActor::CheckDeadFreshBlobByteCount() const
 {
-    return ShouldStartOrdinaryTrim(State->GetTrimFreshLogToCommitId())
-               ? ETrimFreshLogKind::Ordinary
-               : ETrimFreshLogKind::None;
+    const ui64 addedToCommitId =
+        SharedState->GetFreshTrimSnapshot().SelectiveTrimToCommitId;
+    TVector<ui64> liveCommitIds;
+    State->GetTrimFreshLogBarriers()->GetCommitIds(liveCommitIds);
+    return State->CheckDeadFreshBlobByteCount(liveCommitIds, addedToCommitId);
+}
+
+ETrimFreshLogKind TPartitionActor::ChooseTrimFreshLogKind(
+    const TActorContext& ctx,
+    const TPartitionThreadSafeState::TFreshTrimSnapshot& snapshot)
+{
+    // An ordinary trim wins when both are due. It is cheaper, its hard barrier
+    // also deletes dead blobs with Keep flags, and the selective trim stays due
+    // after it.
+    if (ShouldStartOrdinaryTrim(snapshot.OrdinaryTrimToCommitId)) {
+        return ETrimFreshLogKind::Ordinary;
+    }
+
+    if (ShouldStartSelectiveTrim(ctx, snapshot)) {
+        return ETrimFreshLogKind::Selective;
+    }
+
+    return ETrimFreshLogKind::None;
 }
 
 void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
@@ -49,14 +112,14 @@ void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    if (ChooseTrimFreshLogKind() == ETrimFreshLogKind::None) {
+    if (ChooseTrimFreshLogKind(ctx, SharedState->GetFreshTrimSnapshot()) ==
+        ETrimFreshLogKind::None)
+    {
         // not ready
         return;
     }
 
-    State->AccessTrimFreshLogState().SetStatus(
-        EOperationStatus::Enqueued,
-        ctx.Now());
+    State->EnqueueTrimFreshLog(ctx.Now());
 
     using TRequest = TEvPartitionCommonPrivate::TEvTrimFreshLogRequest;
     auto request = std::make_unique<TRequest>(
@@ -140,16 +203,50 @@ void TPartitionActor::HandleTrimFreshLog(
         "Dead fresh blob byte count: %lu",
         State->GetDeadUntrimmedFreshBlobByteCount());
 
-    if (ChooseTrimFreshLogKind() == ETrimFreshLogKind::None) {
-        State->AccessTrimFreshLogState().SetStatus(
-            EOperationStatus::Idle,
-            ctx.Now());
+    const auto snapshot = SharedState->GetFreshTrimSnapshot();
+    auto kind = ChooseTrimFreshLogKind(ctx, snapshot);
+
+    std::optional<TSelectiveTrimPlan> plan;
+    if (kind == ETrimFreshLogKind::Selective) {
+        plan = State->BuildSelectiveTrimPlan({
+            .OrdinaryTrimToCommitId = snapshot.OrdinaryTrimToCommitId,
+            .SelectiveTrimToCommitId = snapshot.SelectiveTrimToCommitId,
+            .KeptToCommitId = State->GetKeptToCommitId(),
+            .LastSentSelectiveTrimToCommitId =
+                State->GetLastSentSelectiveTrimToCommitId(),
+            .CurrentGeneration = Executor()->Generation(),
+        });
+
+        LOG_DEBUG(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Selective TrimFreshLog scan ordinary trim to: @%lu, "
+            "selective trim to: @%lu, soft barrier: @%lu, keep: %lu, "
+            "do not keep: %lu, collecting: %lu",
+            LogTitle.GetWithTime().c_str(),
+            snapshot.OrdinaryTrimToCommitId,
+            snapshot.SelectiveTrimToCommitId,
+            plan ? plan->TrimToCommitId : 0,
+            plan ? plan->Keep.size() : 0,
+            plan ? plan->DoNotKeep.size() : 0,
+            plan ? plan->CollectingCommitIds.size() : 0);
+
+        State->DeferSelectiveScan(
+            State->GetTotalDeadFreshBlobByteCount(),
+            GetFreshDeadBlobByteCountTrimThreshold());
+
+        if (!plan) {
+            // Nothing to collect behind live blobs. No ordinary trim is due
+            // either, or it would have been chosen.
+            kind = ETrimFreshLogKind::None;
+        }
+    }
+
+    if (kind == ETrimFreshLogKind::None) {
+        State->SkipTrimFreshLog(ctx.Now());
         replyError(ctx, *requestInfo, S_ALREADY, "nothing to trim");
         return;
     }
-
-    State->SetOrdinaryTrimRequested(false);
-    const ui64 trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
 
     ui32 nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
     if (nextPerGenerationCounter == InvalidCollectPerGenerationCounter) {
@@ -157,17 +254,28 @@ void TPartitionActor::HandleTrimFreshLog(
         return;
     }
 
+    const bool selective = kind == ETrimFreshLogKind::Selective;
+    ui64 trimFreshLogToCommitId = snapshot.OrdinaryTrimToCommitId;
+    TVector<TPartialBlobId> keep;
+    TVector<TPartialBlobId> doNotKeep;
+    TVector<ui64> collectingCommitIds;
+    if (selective) {
+        trimFreshLogToCommitId = plan->TrimToCommitId;
+        keep = std::move(plan->Keep);
+        doNotKeep = std::move(plan->DoNotKeep);
+        collectingCommitIds = std::move(plan->CollectingCommitIds);
+    }
+
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,
-        "%s Start TrimFreshLog @%lu @%lu",
+        "%s Start %s TrimFreshLog @%lu @%lu",
         LogTitle.GetWithTime().c_str(),
+        selective ? "selective" : "ordinary",
         trimFreshLogToCommitId,
         nextPerGenerationCounter);
 
-    State->AccessTrimFreshLogState().SetStatus(
-        EOperationStatus::Started,
-        ctx.Now());
+    State->StartTrimFreshLog(kind, trimFreshLogToCommitId, ctx.Now());
 
     TVector<ui32> freshChannels = State->GetChannelsByKind([](auto kind) {
         return kind == EChannelDataKind::Fresh;
@@ -181,9 +289,11 @@ void TPartitionActor::HandleTrimFreshLog(
         trimFreshLogToCommitId,
         Executor()->Generation(),
         nextPerGenerationCounter,
-        true,   // hard
-        TVector<TPartialBlobId>(),   // keep
-        TVector<TPartialBlobId>(),   // doNotKeep
+        !selective,   // hard
+        std::move(keep),
+        std::move(doNotKeep),
+        selective,
+        std::move(collectingCommitIds),
         std::move(freshChannels),
         VolumeLabels,
         Config->GetTrimFreshLogTimeout());
@@ -197,7 +307,15 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
 {
     const auto* msg = ev->Get();
 
-    if (FAILED(msg->GetStatus())) {
+    Y_DEBUG_ABORT_UNLESS(
+        State->GetStartedTrimFreshLogKind() ==
+        (msg->SelectiveTrim ? ETrimFreshLogKind::Selective
+                            : ETrimFreshLogKind::Ordinary));
+
+    const ui64 untrimmedByteCount = State->GetUntrimmedFreshBlobByteCount();
+
+    ui64 unflushedBytesRemoved = 0;
+    if (HasError(msg->GetError())) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::PARTITION,
@@ -205,9 +323,6 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
             LogTitle.GetWithTime().c_str(),
             msg->GetStatus(),
             FormatError(msg->GetError()).c_str());
-
-        State->RegisterTrimFreshLogError();
-        State->SetOrdinaryTrimRequested(true);
     } else {
         LOG_DEBUG(
             ctx,
@@ -215,13 +330,19 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
             "%s TrimFreshLog completed",
             LogTitle.GetWithTime().c_str());
 
-        State->RegisterTrimFreshLogSuccess();
-        State->SetLastTrimFreshLogToCommitId(msg->CommitId);
-        const auto trimResult = State->TrimFreshBlobs(msg->CommitId);
-        if (IsFreshBlocksWriterEnabled()) {
-            SharedState->UnflushedFreshBlobByteCount.fetch_sub(
-                trimResult.UnflushedBytesRemoved);
+        if (msg->SelectiveTrim) {
+            unflushedBytesRemoved =
+                State->TrimCollectedFreshBlobs(msg->CollectedCommitIds)
+                    .UnflushedBytesRemoved;
+        } else {
+            unflushedBytesRemoved =
+                State->TrimFreshBlobs(msg->CommitId).UnflushedBytesRemoved;
         }
+    }
+
+    if (IsFreshBlocksWriterEnabled()) {
+        SharedState->UnflushedFreshBlobByteCount.fetch_sub(
+            unflushedBytesRemoved);
     }
 
     Y_DEBUG_ABORT_UNLESS(
@@ -229,8 +350,9 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
         "Dead fresh blob byte count: %lu",
         State->GetDeadUntrimmedFreshBlobByteCount());
 
-    State->AccessTrimFreshLogState().SetStatus(
-        EOperationStatus::Idle,
+    State->CompleteTrimFreshLog(
+        HasError(msg->GetError()),
+        untrimmedByteCount - State->GetUntrimmedFreshBlobByteCount(),
         ctx.Now());
 
     Actors.Erase(ev->Sender);

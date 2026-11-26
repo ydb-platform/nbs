@@ -11,7 +11,7 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 NActors::IActorPtr CreateDiskRegistryProxy(
-    TStorageConfigConstPtr storageConfig,
-    TDiskRegistryProxyConfigConstPtr proxyConfig);
+    TStorageConfigPtr storageConfig,
+    TDiskRegistryProxyConfigPtr proxyConfig);
 
 }   // namespace NCloud::NBlockStore::NStorage

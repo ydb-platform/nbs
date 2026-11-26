@@ -121,15 +121,15 @@ struct IServerStats
 ////////////////////////////////////////////////////////////////////////////////
 
 IServerStatsPtr CreateServerStats(
-    IDumpableConstPtr config,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    IDumpablePtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     IMonitoringServicePtr monitoring,
     IProfileLogPtr profileLog,
     IRequestStatsPtr requestStats,
     IVolumeStatsPtr volumeStats);
 
 IServerStatsPtr CreateClientStats(
-    IDumpableConstPtr config,
+    IDumpablePtr config,
     IMonitoringServicePtr monitoring,
     IRequestStatsPtr requestStats,
     IVolumeStatsPtr volumeStats,

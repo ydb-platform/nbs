@@ -108,7 +108,7 @@ private:
 
     void InitHTTPServer();
 
-    void InitRdmaServer(NRdma::TRdmaConfig& config);
+    void InitRdmaServer(const NRdma::TRdmaConfig& config);
 
     bool InitBackend();
 };

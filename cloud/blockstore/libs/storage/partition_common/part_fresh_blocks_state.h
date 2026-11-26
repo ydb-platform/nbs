@@ -10,11 +10,15 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/operation_status.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
+#include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/tablet/gc_logic.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/set.h>
+#include <util/generic/utility.h>
 #include <util/system/types.h>
+
+#include <optional>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -135,12 +139,62 @@ struct TFlushFreshBlobResult
     ui64 UnflushedBytesRemoved = 0;
 };
 
+struct TSelectiveTrimPlanParams
+{
+    ui64 OrdinaryTrimToCommitId = 0;
+    ui64 SelectiveTrimToCommitId = 0;
+    // Every live blob at or below this commit carries an acknowledged Keep
+    // flag.
+    ui64 KeptToCommitId = 0;
+    // The highest soft barrier sent in this tablet lifetime.
+    ui64 LastSentSelectiveTrimToCommitId = 0;
+    // Blobs of earlier generations may carry Keep flags of an earlier tablet
+    // lifetime.
+    ui32 CurrentGeneration = 0;
+};
+
+struct TSelectiveTrimPlan
+{
+    // New soft barrier. Never below OrdinaryTrimToCommitId or
+    // LastSentSelectiveTrimToCommitId.
+    ui64 TrimToCommitId = 0;
+    TVector<TPartialBlobId> Keep;
+    TVector<TPartialBlobId> DoNotKeep;
+    // Dead blobs that the soft command collects or releases. They leave the
+    // untrimmed and unflushed accounting only after the command succeeds in
+    // every group.
+    TVector<ui64> CollectingCommitIds;
+};
+
+struct TFreshBlobStats
+{
+    ui64 BlobCount = 0;
+    ui64 ByteCount = 0;
+};
+
+// Untrimmed fresh blobs by the kind of trim that can reach them.
+struct TUntrimmedFreshBlobsBreakdown
+{
+    // At or below OrdinaryTrimToCommitId, so all dead.
+    TFreshBlobStats OrdinaryTrimmable;
+    // Dead blobs above OrdinaryTrimToCommitId, which an older live blob or
+    // in-flight write holds. Until it moves, only a selective trim reaches
+    // them.
+    TFreshBlobStats DeadAboveBoundary;
+    TFreshBlobStats Live;
+    // Live blobs at or below the last soft barrier sent in this tablet
+    // lifetime: they carry Keep flags.
+    ui64 KeptBlobCount = 0;
+};
+
 class TPartitionFreshBlobState
 {
 private:
     struct TUntrimmedFreshBlob
     {
         ui64 ByteCount = 0;
+        // The blob as written. Selective trim names it in Keep and DoNotKeep.
+        TPartialBlobId BlobId;
         bool Dead = false;
     };
 
@@ -156,9 +210,10 @@ private:
 
     using TUntrimmedFreshBlobsByCommitId = TMap<ui64, TUntrimmedFreshBlob>;
     TUntrimmedFreshBlobsByCommitId UntrimmedFreshBlobsByCommitId;
-    ui64 TrimmedToCommitId = 0;
 
     ui64 DeadUntrimmedFreshBlobByteCount = 0;
+    // Every blob marked dead in this tablet lifetime. Only grows.
+    ui64 TotalDeadFreshBlobByteCount = 0;
     ui64 TrimmableByOrdinaryToCommitId = 0;
     ui64 OrdinaryTrimmableFreshBlobByteCount = 0;
 
@@ -183,6 +238,11 @@ public:
         return DeadUntrimmedFreshBlobByteCount;
     }
 
+    [[nodiscard]] ui64 GetTotalDeadFreshBlobByteCount() const
+    {
+        return TotalDeadFreshBlobByteCount;
+    }
+
     [[nodiscard]] ui64 GetUnflushedFreshBlobCount() const
     {
         return UnflushedFreshBlobCount;
@@ -201,7 +261,11 @@ public:
     [[nodiscard]] TInstant GetFirstUnflushedFreshBlobTimestamp(
         ui64 trimFreshLogToCommitId) const;
 
-    void AddFreshBlob(ui64 commitId, ui64 blobSize, TInstant timestamp);
+    void AddFreshBlob(
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui64 blobSize,
+        TInstant timestamp);
 
     // Called when the blob's last trim barrier reference is released.
     void MarkFreshBlobDead(ui64 commitId);
@@ -213,12 +277,36 @@ public:
     [[nodiscard]] ui64 GetAndUpdateOrdinaryTrimmableFreshBlobByteCount(
         ui64 ordinaryTrimToCommitId);
 
-    // Debug check of the dead byte counts. liveCommitIds: all referenced
-    // commits, ascending.
+    // Debug check of the Dead flags and the dead byte counts. liveCommitIds:
+    // all referenced commits, ascending. Each of them at or below
+    // addedToCommitId must have an untrimmed entry.
     [[nodiscard]] bool CheckDeadFreshBlobByteCount(
-        const TVector<ui64>& liveCommitIds) const;
+        const TVector<ui64>& liveCommitIds,
+        ui64 addedToCommitId) const;
+
+    // Scans every untrimmed blob, for the monitoring page.
+    [[nodiscard]] TUntrimmedFreshBlobsBreakdown GetUntrimmedFreshBlobsBreakdown(
+        ui64 ordinaryTrimToCommitId,
+        ui64 lastSentSelectiveTrimToCommitId) const;
 
     [[nodiscard]] TTrimFreshBlobsResult TrimFreshBlobs(ui64 commitId);
+
+    // Trims the blobs that a selective trim collected or released.
+    [[nodiscard]] TTrimFreshBlobsResult TrimCollectedFreshBlobs(
+        const TVector<ui64>& commitIds);
+
+    // Places the soft barrier on the newest dead blob in
+    // (OrdinaryTrimToCommitId, SelectiveTrimToCommitId], with Keep flags for
+    // the live blobs below it and DoNotKeep flags for kept blobs that died. The
+    // barrier also collects the blobs at or below OrdinaryTrimToCommitId that
+    // are known to carry no Keep flag: those of the current generation above
+    // LastSentSelectiveTrimToCommitId. Every blob at or below
+    // SelectiveTrimToCommitId must have been added, so that its Dead flag tells
+    // whether it is live. Returns std::nullopt when no soft command is needed,
+    // in particular when SelectiveTrimToCommitId is not above
+    // OrdinaryTrimToCommitId.
+    [[nodiscard]] std::optional<TSelectiveTrimPlan> BuildSelectiveTrimPlan(
+        const TSelectiveTrimPlanParams& params) const;
 
     [[nodiscard]] TFlushFreshBlobResult FlushFreshBlob(ui64 commitId);
 
@@ -228,10 +316,41 @@ private:
     ui64 EraseUnflushedFreshBlob(TUnflushedFreshBlobsByCommitId::iterator it);
 };
 
+// Both kinds send CollectGarbage to the fresh channels. BlobStorage keeps a
+// soft and a hard barrier per channel, and neither may decrease. A hard barrier
+// deletes every blob at or below it, and a soft one spares the blobs with a
+// Keep flag. See doc/blockstore/storage/selective_fresh_log_trim.md.
+enum class ETrimFreshLogKind
+{
+    // Nothing to trim yet.
+    None,
+    // A hard barrier on the fresh channels at TrimFreshLogToCommitId, the
+    // highest commit id below every live fresh blob. Every fresh blob at or
+    // below it is dead, so the barrier deletes all of them.
+    Ordinary,
+    // A soft barrier above TrimFreshLogToCommitId, below every in-flight fresh
+    // write, with Keep flags for the live blobs below it. Deletes dead blobs
+    // that an ordinary trim cannot reach yet.
+    Selective,
+};
+
+struct TTrimFreshLogStats
+{
+    TInstant LastCompletionTimestamp;
+    ui64 SucceededCount = 0;
+    ui64 FailedCount = 0;
+    ui64 TrimmedByteCount = 0;
+};
+
 class TPartitionTrimFreshLogState
 {
 private:
+    ui64 TabletID = 0;
+
     TOperationState TrimFreshLogState;
+    // None unless TrimFreshLogState is Started.
+    ETrimFreshLogKind StartedTrimKind = ETrimFreshLogKind::None;
+    ui64 StartedTrimToCommitId = 0;
     ui64 LastTrimFreshLogToCommitId = 0;
     TBackoffDelayProvider TrimFreshLogBackoffDelayProvider{
         TDuration::Zero(),
@@ -240,40 +359,75 @@ private:
 
     bool OrdinaryTrimRequested = false;
 
+    // Selective trim. Nothing here is persisted.
+
+    // Every live untrimmed blob at or below this commit carries a Keep flag
+    // that every group acknowledged.
+    ui64 KeptToCommitId = 0;
+
+    // The highest soft barrier sent in this tablet lifetime, whether or not
+    // the command succeeded. A later soft barrier must not be lower: a VDisk
+    // rejects a decreasing one.
+    ui64 LastSentSelectiveTrimToCommitId = 0;
+
+    // After a scan, the next one waits until the total dead byte count
+    // reaches this value, unless the soft command of the scan failed.
+    ui64 NextSelectiveScanTotalDeadByteCount = 0;
+
+    TTrimFreshLogStats OrdinaryTrimStats;
+    TTrimFreshLogStats SelectiveTrimStats;
+
 public:
-    [[nodiscard]] TOperationState& AccessTrimFreshLogState()
-    {
-        return TrimFreshLogState;
-    }
+    explicit TPartitionTrimFreshLogState(ui64 tabletID)
+        : TabletID(tabletID)
+    {}
 
     [[nodiscard]] const TOperationState& GetTrimFreshLogState() const
     {
         return TrimFreshLogState;
     }
 
+    // Started while a trim of this kind runs. Otherwise Idle since the last
+    // trim of this kind completed.
+    [[nodiscard]] TOperationState GetTrimFreshLogStateOfKind(
+        ETrimFreshLogKind kind) const;
+
+    [[nodiscard]] ETrimFreshLogKind GetStartedTrimFreshLogKind() const
+    {
+        return StartedTrimKind;
+    }
+
+    [[nodiscard]] const TTrimFreshLogStats& GetTrimFreshLogStats(
+        ETrimFreshLogKind kind) const;
+
+    void EnqueueTrimFreshLog(TInstant now)
+    {
+        Y_ABORT_UNLESS(TrimFreshLogState.Status == EOperationStatus::Idle);
+        TrimFreshLogState.SetStatus(EOperationStatus::Enqueued, now);
+    }
+
+    // For a request that found nothing to trim.
+    void SkipTrimFreshLog(TInstant now)
+    {
+        Y_ABORT_UNLESS(TrimFreshLogState.Status != EOperationStatus::Started);
+        TrimFreshLogState.SetStatus(EOperationStatus::Idle, now);
+    }
+
+    void StartTrimFreshLog(
+        ETrimFreshLogKind kind,
+        ui64 trimToCommitId,
+        TInstant now);
+
+    void CompleteTrimFreshLog(bool failed, ui64 trimmedByteCount, TInstant now);
+
     [[nodiscard]] TDuration GetTrimFreshLogBackoffDelay() const
     {
         return TrimFreshLogBackoffDelayProvider.GetDelay();
     }
 
-    void RegisterTrimFreshLogError()
-    {
-        TrimFreshLogBackoffDelayProvider.IncreaseDelay();
-    }
-
-    void RegisterTrimFreshLogSuccess()
-    {
-        TrimFreshLogBackoffDelayProvider.Reset();
-    }
-
     [[nodiscard]] ui64 GetLastTrimFreshLogToCommitId() const
     {
         return LastTrimFreshLogToCommitId;
-    }
-
-    void SetLastTrimFreshLogToCommitId(ui64 commitId)
-    {
-        LastTrimFreshLogToCommitId = commitId;
     }
 
     [[nodiscard]] bool IsOrdinaryTrimRequested() const
@@ -284,6 +438,39 @@ public:
     void SetOrdinaryTrimRequested(bool requested)
     {
         OrdinaryTrimRequested = requested;
+    }
+
+    [[nodiscard]] ui64 GetKeptToCommitId() const
+    {
+        return KeptToCommitId;
+    }
+
+    [[nodiscard]] ui64 GetLastSentSelectiveTrimToCommitId() const
+    {
+        return LastSentSelectiveTrimToCommitId;
+    }
+
+    [[nodiscard]] bool IsSelectiveScanAllowed(ui64 totalDeadByteCount) const
+    {
+        return totalDeadByteCount >= NextSelectiveScanTotalDeadByteCount;
+    }
+
+    [[nodiscard]] ui64 GetNextSelectiveScanTotalDeadByteCount() const
+    {
+        return NextSelectiveScanTotalDeadByteCount;
+    }
+
+    // Called on every scan, so that soft commands that collect little cannot
+    // follow each other while dead blobs out of reach keep the trim due.
+    void DeferSelectiveScan(ui64 totalDeadByteCount, ui64 threshold)
+    {
+        STORAGE_VERIFY_C(
+            threshold <= Max<ui64>() - totalDeadByteCount,
+            TWellKnownEntityTypes::TABLET,
+            TabletID,
+            "Total dead byte count: " << totalDeadByteCount
+                                      << ", threshold: " << threshold);
+        NextSelectiveScanTotalDeadByteCount = totalDeadByteCount + threshold;
     }
 };
 

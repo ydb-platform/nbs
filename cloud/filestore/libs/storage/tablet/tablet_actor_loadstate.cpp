@@ -116,7 +116,6 @@ bool TIndexTabletActor::PrepareTx_LoadState(
         db->ReadCheckpoints(args.Checkpoints),
         db->ReadQuotas(args.Quotas),
         db->ReadQuotaUsages(args.QuotaUsages),
-        db->ReadTruncateQueue(args.TruncateQueue),
         db->ReadStorageConfig(args.StorageConfig),
         db->ReadSessionHistoryEntries(args.SessionHistory),
         db->ReadOpLog(args.OpLog),
@@ -410,15 +409,6 @@ void TIndexTabletActor::CompleteTx_LoadState(
         SetStartupGcExecuted();
     }
 
-    LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
-        LogTag << " Enqueueing truncate operations: "
-            << args.TruncateQueue.size());
-    for (const auto& entry: args.TruncateQueue) {
-        EnqueueTruncateOp(
-            entry.GetNodeId(),
-            TByteRange(entry.GetOffset(), entry.GetLength(), GetBlockSize()));
-    }
-
     // checkpoints should be loaded before data
     LOG_INFO_S(ctx, TFileStoreComponents::TABLET,
         LogTag << " Loading tablet checkpoints: "
@@ -527,7 +517,6 @@ void TIndexTabletActor::CompleteTx_LoadState(
     ScheduleCleanupSessions(ctx);
     RestartCheckpointDestruction(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
-    EnqueueTruncateIfNeeded(ctx);
 
     RegisterFileStore(ctx);
     RegisterStatCounters(ctx.Now());

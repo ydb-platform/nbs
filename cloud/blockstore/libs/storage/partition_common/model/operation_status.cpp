@@ -1,5 +1,7 @@
 #include "operation_status.h"
 
+#include <cloud/storage/core/libs/common/format.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NJson;
@@ -15,12 +17,15 @@ NJson::TJsonValue ToJson(const TOperationState& op)
     return json;
 }
 
-void DumpOperationState(IOutputStream& out, const TOperationState& op)
+void DumpOperationState(
+    IOutputStream& out,
+    const TOperationState& op,
+    TInstant now)
 {
     out << ToString(op.Status);
 
     if (op.Timestamp != TInstant::Zero()) {
-        out << " for " << TInstant::Now() - op.Timestamp;
+        out << " for " << FormatDuration(now - op.Timestamp);
     }
 }
 

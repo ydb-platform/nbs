@@ -15,6 +15,12 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Source of the data received from a backend which doesn't report the source
+// (see NodeCacheSourceId and the like in the responses).
+constexpr ui64 UnknownSourceId = 0;
+
+////////////////////////////////////////////////////////////////////////////////
+
 /*
  * Remembers the invalidations of the cached metadata so that the data fetched
  * by the requests started before an invalidation of the same key is not
@@ -22,6 +28,10 @@ namespace NCloud::NFileStore::NFuse {
  * version of the invalidation, one tombstone per key. The number of the
  * tombstones is limited: the least recently invalidated key is evicted first
  * and its version raises the watermark below which nothing is cached.
+ *
+ * The invalidations of all the data received from a source (e.g. upon the loss
+ * of the connection to it) are remembered as the per-source watermarks below
+ * which the data of the source is neither cached nor used.
  *
  * Not thread-safe - the users protect it with their own locks.
  */
@@ -32,9 +42,15 @@ private:
     // Tombstone versions by key, the least recently invalidated key first.
     TLRUCache<TKey, ui64> Tombstones;
     const ui32 MaxTombstoneCount;
-    // Max version among the tombstones added since the last InvalidateAll.
-    ui64 MaxTombstoneVersion = 0;
     ui64 Watermark = 0;
+    // Watermarks by source id, see InvalidateSource. The disconnects of all
+    // the sources are delivered to all the filesystems, so this map gets an
+    // entry for each source disconnected during the lifetime of the
+    // process - even for the sources this cache has no data from. It is
+    // bounded by the number of the sources (tablets) and never pruned: an
+    // entry could be dropped only once no request started before its
+    // watermark is in flight, which is not tracked.
+    THashMap<ui64, ui64> SourceWatermarks;
 
 public:
     /**
@@ -64,6 +80,36 @@ public:
     }
 
     /**
+     * Checks whether the data fetched from a source by a request is valid:
+     * the source hasn't been invalidated after the request had started.
+     *
+     * @param sourceId - Source of the data.
+     * @param version - Cache version at which the request has started.
+     * @return - False if the source has been invalidated after version.
+     */
+    bool IsSourceValid(ui64 sourceId, ui64 version) const
+    {
+        const ui64* watermark = SourceWatermarks.FindPtr(sourceId);
+        return !watermark || version >= *watermark;
+    }
+
+    /**
+     * Remembers an invalidation of all the data received from a source. The
+     * data received from an unknown source (UnknownSourceId) is invalidated
+     * by the invalidation of any source.
+     *
+     * @param sourceId - Source of the invalidated data.
+     * @param version - Cache version of the invalidation.
+     */
+    void InvalidateSource(ui64 sourceId, ui64 version)
+    {
+        for (const ui64 id: {sourceId, UnknownSourceId}) {
+            ui64& watermark = SourceWatermarks[id];
+            watermark = Max(watermark, version);
+        }
+    }
+
+    /**
      * Remembers an invalidation.
      *
      * @param key - Key of the invalidated data.
@@ -71,8 +117,6 @@ public:
      */
     void Invalidate(const TKey& key, ui64 version)
     {
-        MaxTombstoneVersion = Max(MaxTombstoneVersion, version);
-
         //
         // The tombstone of a key keeps the max version of its invalidations,
         // the invalidated key becomes the most recently invalidated one.
@@ -101,26 +145,6 @@ public:
             Tombstones.Erase(oldest);
         }
     }
-
-    /**
-     * Remembers an invalidation of all the keys.
-     *
-     * @param version - Cache version of the invalidation.
-     */
-    void InvalidateAll(ui64 version)
-    {
-        //
-        // The cleared tombstones may have versions greater than version: the
-        // versions are generated before taking the users' locks, so a
-        // concurrent invalidation with a greater version may be applied
-        // first. Their versions are kept in the watermark.
-        //
-
-        Watermark = Max(Watermark, version, MaxTombstoneVersion);
-
-        Tombstones.Clear();
-        MaxTombstoneVersion = 0;
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -130,7 +154,8 @@ public:
  * TTL. The backend sends an invalidation event upon a change of the cached
  * data, the local changes invalidate the data directly. The data fetched by
  * the requests started before an invalidation of the same key is not cached,
- * see TInvalidations.
+ * see TInvalidations. Each entry remembers its source so that all the data
+ * of a source can be invalidated at once, see InvalidateSource.
  */
 template <typename TKey, typename TValue>
 class TTTLCacheShard
@@ -140,6 +165,10 @@ private:
     {
         TValue Value;
         TInstant Deadline;
+        ui64 SourceId = UnknownSourceId;
+        // Cache version at which the request that has fetched the entry
+        // started.
+        ui64 Version = 0;
     };
 
     TLRUCache<TKey, TEntry> Entries;
@@ -152,17 +181,28 @@ public:
         , Invalidations(maxEntryCount)
     {}
 
-    void Add(const TKey& key, TValue value, ui64 version, TInstant deadline)
+    void Add(
+        const TKey& key,
+        TValue value,
+        ui64 version,
+        ui64 sourceId,
+        TInstant deadline)
     {
         auto g = Guard(Lock);
 
-        if (!Invalidations.IsCacheable(key, version)) {
+        if (!Invalidations.IsCacheable(key, version) ||
+            !Invalidations.IsSourceValid(sourceId, version))
+        {
             return;
         }
 
         Entries.Update(
             key,
-            TEntry{.Value = std::move(value), .Deadline = deadline});
+            TEntry{
+                .Value = std::move(value),
+                .Deadline = deadline,
+                .SourceId = sourceId,
+                .Version = version});
     }
 
     bool IsCacheable(const TKey& key, ui64 version)
@@ -181,12 +221,15 @@ public:
             return Nothing();
         }
 
-        if (now >= it.Value().Deadline) {
+        const auto& entry = it.Value();
+        if (now >= entry.Deadline ||
+            !Invalidations.IsSourceValid(entry.SourceId, entry.Version))
+        {
             Entries.Erase(it);
             return Nothing();
         }
 
-        return it.Value().Value;
+        return entry.Value;
     }
 
     TMaybe<TValue> Invalidate(const TKey& key, ui64 version)
@@ -232,12 +275,18 @@ public:
         return cacheable;
     }
 
-    void InvalidateAll(ui64 version)
+    /**
+     * Invalidates all the entries received from a source. The entries are
+     * erased lazily, upon access or eviction.
+     *
+     * @param sourceId - Source of the invalidated entries.
+     * @param version - Cache version of the invalidation.
+     */
+    void InvalidateSource(ui64 sourceId, ui64 version)
     {
         auto g = Guard(Lock);
 
-        Invalidations.InvalidateAll(version);
-        Entries.Clear();
+        Invalidations.InvalidateSource(sourceId, version);
     }
 
     size_t GetEntryCount()

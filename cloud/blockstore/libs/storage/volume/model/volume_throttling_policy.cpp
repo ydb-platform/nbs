@@ -15,6 +15,48 @@ namespace {
 
 using EOpType = EVolumeThrottlingOpType;
 
+// Apply a coefficient with a minimum of 1 for positive inputs.
+// Preserve original zeros and explicitly zero coefficients.
+template <typename T>
+T ThrottledNonZero(T value, double coefficient)
+{
+    const T throttledValue = value * coefficient;
+
+    if (value && coefficient > 0. && throttledValue < 1) {
+        return 1;
+    }
+
+    return throttledValue;
+}
+
+// Apply a bandwidth coefficient with a minimum of 1 byte/s for positive inputs.
+// Preserve original zeros and explicitly zero coefficients.
+ui64 ThrottledBandwidth(ui64 bandwidth, double coefficient)
+{
+    return ThrottledNonZero(bandwidth, coefficient);
+}
+
+// Apply an IOPS coefficient with a minimum of 1 IOPS for positive inputs.
+// Preserve original zeros and explicitly zero coefficients.
+ui32 ThrottledIops(ui32 iops, double coefficient)
+{
+    return ThrottledNonZero(iops, coefficient);
+}
+
+// Apply a BoostRefillTime coefficient with a minimum of 1 ms for positive
+// inputs, so rounding cannot disable boost refill. Preserve intentional zeros.
+ui32 ThrottledBoostRefillTime(ui32 boostRefillTime, double coefficient)
+{
+    return ThrottledNonZero(boostRefillTime, coefficient);
+}
+
+// Apply a BurstPercentage coefficient with a minimum of 1% for positive inputs,
+// so rounding cannot select the default burst. Preserve intentional zeros.
+ui32 ThrottledBurstPercentage(ui32 burstPercentage, double coefficient)
+{
+    return ThrottledNonZero(burstPercentage, coefficient);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // IOPS throttle
 //
@@ -142,9 +184,9 @@ struct TVolumeThrottlingPolicy::TImpl
         }
         // Volatile throttling can multiply PerformanceProfile by coefficients
         if (coefficients.HasMaxReadBandwidth()) {
-            result.SetMaxReadBandwidth(
-                OriginalConfig.GetMaxReadBandwidth() *
-                coefficients.GetMaxReadBandwidth());
+            result.SetMaxReadBandwidth(ThrottledBandwidth(
+                OriginalConfig.GetMaxReadBandwidth(),
+                coefficients.GetMaxReadBandwidth()));
         }
         if (coefficients.HasMaxPostponedWeight()) {
             result.SetMaxPostponedWeight(
@@ -152,18 +194,18 @@ struct TVolumeThrottlingPolicy::TImpl
                 coefficients.GetMaxPostponedWeight());
         }
         if (coefficients.HasMaxReadIops()) {
-            result.SetMaxReadIops(
-                OriginalConfig.GetMaxReadIops() *
-                coefficients.GetMaxReadIops());
+            result.SetMaxReadIops(ThrottledIops(
+                OriginalConfig.GetMaxReadIops(),
+                coefficients.GetMaxReadIops()));
         }
         if (coefficients.HasBoostTime()) {
             result.SetBoostTime(
                 OriginalConfig.GetBoostTime() * coefficients.GetBoostTime());
         }
         if (coefficients.HasBoostRefillTime()) {
-            result.SetBoostRefillTime(
-                OriginalConfig.GetBoostRefillTime() *
-                coefficients.GetBoostRefillTime());
+            result.SetBoostRefillTime(ThrottledBoostRefillTime(
+                OriginalConfig.GetBoostRefillTime(),
+                coefficients.GetBoostRefillTime()));
         }
         if (coefficients.HasBoostPercentage()) {
             result.SetBoostPercentage(
@@ -171,19 +213,19 @@ struct TVolumeThrottlingPolicy::TImpl
                 coefficients.GetBoostPercentage());
         }
         if (coefficients.HasMaxWriteBandwidth()) {
-            result.SetMaxWriteBandwidth(
-                OriginalConfig.GetMaxWriteBandwidth() *
-                coefficients.GetMaxWriteBandwidth());
+            result.SetMaxWriteBandwidth(ThrottledBandwidth(
+                OriginalConfig.GetMaxWriteBandwidth(),
+                coefficients.GetMaxWriteBandwidth()));
         }
         if (coefficients.HasMaxWriteIops()) {
-            result.SetMaxWriteIops(
-                OriginalConfig.GetMaxWriteIops() *
-                coefficients.GetMaxWriteIops());
+            result.SetMaxWriteIops(ThrottledIops(
+                OriginalConfig.GetMaxWriteIops(),
+                coefficients.GetMaxWriteIops()));
         }
         if (coefficients.HasBurstPercentage()) {
-            result.SetBurstPercentage(
-                OriginalConfig.GetBurstPercentage() *
-                coefficients.GetBurstPercentage());
+            result.SetBurstPercentage(ThrottledBurstPercentage(
+                OriginalConfig.GetBurstPercentage(),
+                coefficients.GetBurstPercentage()));
         }
 
         return result;

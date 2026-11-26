@@ -68,8 +68,8 @@ class TMirrorPartitionActor final
     };
 
 private:
-    const TStorageConfigConstPtr Config;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    const TStorageConfigPtr Config;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     NCloud::NStorage::NRdma::IClientPtr RdmaClient;
@@ -132,8 +132,8 @@ private:
 
 public:
     TMirrorPartitionActor(
-        TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr config,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         TString rwClientId,

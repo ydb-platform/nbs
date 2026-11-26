@@ -20,7 +20,7 @@ struct IDiscoveryService
 ////////////////////////////////////////////////////////////////////////////////
 
 IDiscoveryServicePtr CreateDiscoveryService(
-    TDiscoveryConfigConstPtr config,
+    TDiscoveryConfigPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,

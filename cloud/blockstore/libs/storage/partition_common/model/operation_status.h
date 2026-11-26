@@ -31,6 +31,9 @@ struct TOperationState
 
 NJson::TJsonValue ToJson(const TOperationState& op);
 
-void DumpOperationState(IOutputStream& out, const TOperationState& op);
+void DumpOperationState(
+    IOutputStream& out,
+    const TOperationState& op,
+    TInstant now);
 
 }   // namespace NCloud::NBlockStore::NStorage

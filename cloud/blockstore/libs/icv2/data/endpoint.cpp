@@ -8,14 +8,9 @@
 #include <cloud/blockstore/libs/service/service_method.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
 
-#include <cloud/storage/core/libs/common/future_helper.h>
-
 namespace NCloud::NBlockStore::NIcV2 {
 
 namespace {
-
-using NCloud::NIcV2::IRequestChannelPtr;
-using NCloud::NIcV2::TResponseFuture;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -149,40 +144,47 @@ NProto::TError CopyReadPayload(
 template <typename TResponse>
 TResponse DecodeResponse(
     const NProto::TWriteBlocksRequest& request,
-    NActors::IEventHandle& event)
+    const TDataResponse& reply)
 {
     Y_UNUSED(request);
     return TResponse(
         std::move(
-            event.Get<NStorage::TEvService::TEvWriteBlocksResponse>()->Record));
+            reply.Event->Get<NStorage::TEvService::TEvWriteBlocksResponse>()
+                ->Record));
 }
 
 template <typename TResponse>
 TResponse DecodeResponse(
     const NProto::TZeroBlocksRequest& request,
-    NActors::IEventHandle& event)
+    const TDataResponse& reply)
 {
     Y_UNUSED(request);
     return TResponse(
         std::move(
-            event.Get<NStorage::TEvService::TEvZeroBlocksResponse>()->Record));
+            reply.Event->Get<NStorage::TEvService::TEvZeroBlocksResponse>()
+                ->Record));
 }
 
 template <typename TResponse, typename TRequest>
     requires std::is_base_of_v<NProto::TReadBlocksRequest, TRequest>
-TResponse DecodeResponse(const TRequest& request, NActors::IEventHandle& handle)
+TResponse DecodeResponse(const TRequest& request, const TDataResponse& reply)
 {
-    auto& event = *handle.Get<NStorage::TEvService::TEvReadBlocksResponse>();
-    TResponse response(std::move(event.Record));
+    auto& event =
+        *reply.Event->Get<NStorage::TEvService::TEvReadBlocksResponse>();
     const ui64 bytes = CalculateBytesCount(request, request.GetBlockSize());
-    const bool failed = HasError(response.GetError());
-    if (response.GetBlocks().BuffersSize() ||
+    const bool failed = HasError(event.Record.GetError());
+    if (event.Record.GetBlocks().BuffersSize() ||
         event.GetPayloadCount() != (failed ? 0 : 1) ||
         (!failed && event.GetPayload(0).GetSize() != bytes))
     {
+        if (const auto channel = reply.SourceChannel.lock()) {
+            channel->Close();
+        }
         return TResponse(
-            TErrorResponse(E_BADMSG, "invalid IC V2 read payload"));
+            TErrorResponse(E_REJECTED, "invalid IC V2 read payload"));
     }
+
+    TResponse response(std::move(event.Record));
     if (!failed) {
         if (auto error =
                 CopyReadPayload(request, event.GetPayload(0), response);
@@ -198,34 +200,35 @@ TResponse DecodeResponse(const TRequest& request, NActors::IEventHandle& handle)
 
 class TDataEndpoint final: public TBlockStoreImpl<TDataEndpoint, IDataEndpoint>
 {
-    const IRequestChannelPtr Channel;
+    const IDataRequestChannelPtr Channel;
     const std::shared_ptr<TRequestTracker> Tracker;
 
 public:
-    TDataEndpoint(IRequestChannelPtr channel, TDataConfig config)
+    TDataEndpoint(IDataRequestChannelPtr channel, TDataConfig config)
         : Channel(std::move(channel))
         , Tracker(std::make_shared<TRequestTracker>(config))
     {}
 
     ~TDataEndpoint() override
     {
-        RequestStop();
+        Tracker->RequestStop();
+        Channel->Close();
     }
 
     void Start() override
     {}
 
-    void RequestStop() override
+    NThreading::TFuture<void> RequestStop() override
     {
-        Tracker->RequestStop();
-        Channel->Close();
+        const auto tracker = Tracker;
+        const auto channel = Channel;
+        const auto requestsClosed = tracker->RequestStop();
+        return NThreading::WaitAll(requestsClosed, channel->Close());
     }
 
     void Stop() override
     {
-        RequestStop();
-        Tracker->Stop();
-        Channel->WhenClosed().GetValueSync();
+        RequestStop().GetValueSync();
     }
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
@@ -263,6 +266,11 @@ public:
 
         const auto bytes =
             CalculateBytesCount(*request, request->GetBlockSize());
+        if (!bytes) {
+            return Fail<NProto::TWriteBlocksResponse>(
+                MakeError(E_ARGUMENT, "empty IC V2 write payload"));
+        }
+
         return ExecuteDataRequest<NProto::TWriteBlocksResponse>(
             std::move(context),
             std::move(request),
@@ -277,6 +285,11 @@ public:
 
         const auto bytes =
             CalculateBytesCount(*request, request->GetBlockSize());
+        if (!bytes) {
+            return Fail<NProto::TWriteBlocksLocalResponse>(
+                MakeError(E_ARGUMENT, "empty IC V2 write payload"));
+        }
+
         return ExecuteDataRequest<NProto::TWriteBlocksLocalResponse>(
             std::move(context),
             std::move(request),
@@ -323,32 +336,29 @@ private:
         }
         const auto timeout =
             TDuration::MilliSeconds(request->GetHeaders().GetRequestTimeout());
-        auto promise = NThreading::NewPromise<TResponse>();
-        Channel->Request(std::move(event), timeout)
-            .Subscribe(
-                [promise,
-                 reservation = std::move(reservation),
+        return Channel->Request(std::move(event), timeout)
+            .Apply(
+                [reservation = std::move(reservation),
                  request = std::move(request),
                  context = std::move(context)]   //
-                (const TResponseFuture& future) mutable
+                (TDataResponseFuture future) mutable
                 {
                     auto response = SafeExecute<TResponse>(
                         [&]() -> TResponse
                         {
-                            auto result = UnsafeExtractValue(future);
+                            auto result = future.ExtractValue();
                             if (HasError(result.GetError())) {
                                 return TErrorResponse(result.GetError());
                             }
                             auto response = DecodeResponse<TResponse>(
                                 *request,
-                                *result.GetResult());
+                                result.GetResult());
                             ProcessThrottleTime(context, response);
                             return response;
                         });
                     reservation.reset();
-                    promise.SetValue(std::move(response));
+                    return response;
                 });
-        return promise.GetFuture();
     }
 };
 
@@ -356,17 +366,15 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<IDataEndpointPtr> CreateDataEndpoint(
-    IRequestChannelPtr channel,
+IDataRequestChannel::~IDataRequestChannel() = default;
+
+IDataEndpointPtr CreateDataEndpoint(
+    IDataRequestChannelPtr channel,
     TDataConfig config)
 {
-    if (!channel || !config.IsValid()) {
-        return MakeError(
-            E_ARGUMENT,
-            "invalid IC V2 data endpoint configuration");
-    }
-    return IDataEndpointPtr(
-        std::make_shared<TDataEndpoint>(std::move(channel), config));
+    Y_DEBUG_ABORT_UNLESS(channel && config.IsValid());
+
+    return std::make_shared<TDataEndpoint>(std::move(channel), config);
 }
 
 }   // namespace NCloud::NBlockStore::NIcV2

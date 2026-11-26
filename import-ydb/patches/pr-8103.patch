@@ -1,0 +1,13 @@
+diff --git a/contrib/ydb/library/actors/interconnect/interconnect_tcp_input_session.cpp b/contrib/ydb/library/actors/interconnect/interconnect_tcp_input_session.cpp
+index 6e78bf9492..c1f5031448 100644
+--- a/contrib/ydb/library/actors/interconnect/interconnect_tcp_input_session.cpp
++++ b/contrib/ydb/library/actors/interconnect/interconnect_tcp_input_session.cpp
+@@ -910,7 +910,7 @@ namespace NActors {
+                     // allows to prevent such situations
+                     TQueuePair::TQpState res = qp.GetState(false);
+                     if (std::holds_alternative<TQueuePair::TQpErr>(res)) {
+-                        LOG_ERROR_IC_SESSION("ICRDMA", "unable to get qp state, %d err is: %s",
++                        LOG_ERROR_IC_SESSION("ICRDMA", "unable to get qp state, %u err is: %d",
+                             qp.GetQpNum(), std::get<TQueuePair::TQpErr>(res).Err);
+                         throw TExDestroySession{TDisconnectReason::RdmaError()};
+                     }

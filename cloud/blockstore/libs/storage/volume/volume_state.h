@@ -217,8 +217,8 @@ public:
     };
 
 private:
-    TStorageConfigConstPtr StorageConfig;
-    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    TStorageConfigPtr StorageConfig;
+    const TDiagnosticsConfigPtr DiagnosticsConfig;
     NProto::TVolumeMeta Meta;
     TVector<TVolumeMetaHistoryItem> MetaHistory;
     const NProto::TPartitionConfig* Config;
@@ -243,6 +243,11 @@ private:
 
     TThrottlerConfig ThrottlerConfig;
     TVolumeThrottlingPolicy ThrottlingPolicy;
+
+    // Rule selection invalidated by a CloudId or FolderId change.
+    // Clear after applying an accepted configuration.
+    bool ThrottlingRuleOutdated = false;
+
     TVolumeShapingThrottler ShapingThrottler;
 
     TCachedVolumeMountHistory MountHistory;
@@ -303,8 +308,8 @@ private:
 
 public:
     TVolumeState(
-        TStorageConfigConstPtr storageConfig,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr storageConfig,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         NProto::TVolumeMeta meta,
         TVector<TVolumeMetaHistoryItem> metaHistory,
         TVector<TRuntimeVolumeParamsValue> volumeParams,
@@ -701,6 +706,11 @@ public:
     const TVolumeThrottlingPolicy& GetThrottlingPolicy() const
     {
         return ThrottlingPolicy;
+    }
+
+    bool IsThrottlingRuleOutdated() const
+    {
+        return ThrottlingRuleOutdated;
     }
 
     TVolumeShapingThrottler& AccessShapingThrottler()

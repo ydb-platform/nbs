@@ -3,6 +3,8 @@ UNITTEST_FOR(cloud/filestore/libs/service)
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/small.inc)
 
 SRCS(
+    filesystem_event_ut.cpp
+    mediakind_ut.cpp
     request_ut.cpp
     service_actions_ut.cpp
 )

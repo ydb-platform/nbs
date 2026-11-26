@@ -83,6 +83,8 @@ void TIndexTabletActor::HandleGetNodeAttr(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
     requestInfo->PipeServerId = pipeServerId;
+    requestInfo->FileSystemEventSourceId =
+        msg->Record.GetHeaders().GetFileSystemEventSourceId();
 
     auto& requestMetrics = behaveAsShard
         ? Metrics->GetNodeAttrInShard : Metrics->GetNodeAttr;
@@ -206,6 +208,10 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
                 args.NodeId,
                 args.Name);
             response->Record.SetNodeRefCacheTTL(cacheTTL);
+            if (cacheTTL) {
+                response->Record.SetNodeRefCacheSourceId(
+                    args.RequestInfo->FileSystemEventSourceId);
+            }
         }
         if (!args.ShardId) {
             AddFileSystemEventNodeSubscriber(
@@ -213,6 +219,10 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
                 pipeServerId,
                 args.TargetNodeId);
             response->Record.SetNodeCacheTTL(cacheTTL);
+            if (cacheTTL) {
+                response->Record.SetNodeCacheSourceId(
+                    args.RequestInfo->FileSystemEventSourceId);
+            }
         }
 
         auto* node = response->Record.MutableNode();

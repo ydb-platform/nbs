@@ -363,7 +363,7 @@ public:
     void InvalidateCachedNodeXAttr(
         ui64 nodeId,
         const TString& name) override;
-    void InvalidateAllCachedMetadata() override;
+    void InvalidateCachedMetadataOfSource(ui64 sourceId) override;
 
     TMetadataCacheSizes GetMetadataCacheSizes();
 
@@ -466,6 +466,7 @@ private:
         bool cacheable);
 
     TInstant GetCacheDeadline(ui32 cacheTTL) const;
+    TDuration GetCacheTTL(ui32 cacheTTL) const;
     void UpdateCachedNodeRef(
         ui64 parentNodeId,
         const TString& name,
@@ -500,6 +501,7 @@ private:
         ui64 version,
         const NProto::TError& error,
         ui64 cacheVersion,
+        ui64 sourceId,
         TDuration cacheTTL);
     void UpdateXAttrCacheUponSetXAttr(
         ui64 ino,
@@ -508,6 +510,7 @@ private:
         ui64 version,
         const NProto::TError& error,
         ui64 cacheVersion,
+        ui64 sourceId,
         TDuration cacheTTL);
 
     void ReplyCreateWithCache(

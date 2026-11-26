@@ -210,7 +210,6 @@ void TIndexTabletState::LoadState(
     LastStep = 1;
     LastCollectPerGenerationCounter = 0;
 
-    TruncateBlocksThreshold = config.GetMaxBlocksPerTruncateTx();
     SessionHistoryEntryCount = config.GetSessionHistoryEntryCount();
 
     ChannelMinFreeSpace = config.GetChannelMinFreeSpace() / 100.;
@@ -347,6 +346,16 @@ void TIndexTabletState::UpdateConfig(
     InitShardBalancer(config);
 }
 
+void TIndexTabletState::SetRangeIdHasherType(
+    IIndexTabletDatabase& db,
+    ui32 type)
+{
+    FileSystem.SetRangeIdHasherType(type);
+    db.WriteFileSystem(FileSystem);
+
+    Impl->RangeIdHasher = CreateHasher(FileSystem);
+}
+
 void TIndexTabletState::SetFrozen(IIndexTabletDatabase& db, bool frozen)
 {
     FileSystem.SetFrozen(frozen);
@@ -366,6 +375,14 @@ void TIndexTabletState::SetGuestPosixAclEnabled(
     bool guestPosixAclEnabled)
 {
     FileSystem.SetGuestPosixAclEnabled(guestPosixAclEnabled);
+    db.WriteFileSystem(FileSystem);
+}
+
+void TIndexTabletState::SetShardCreationState(
+    IIndexTabletDatabase& db,
+    const NProtoPrivate::TFileSystemShardCreationState& state)
+{
+    *FileSystem.MutableShardCreationState() = state;
     db.WriteFileSystem(FileSystem);
 }
 

@@ -9,6 +9,7 @@
 #include <cloud/storage/core/libs/coroutine/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
+#include <util/generic/vector.h>
 #include <util/network/socket.h>
 
 namespace NCloud::NJournalled {
@@ -30,6 +31,7 @@ private:
     ILoggingServicePtr Logging;
     TExecutorPtr Executor;
     IDeviceManagerPtr DeviceManager;
+    TVector<TExecutorPtr> ConnectionExecutors;
     TServerConfig ServerConfig;
     TVector<TJournalledDeviceConfig> DeviceConfigs;
 
@@ -38,6 +40,7 @@ public:
         ILoggingServicePtr logging,
         TExecutorPtr executor,
         IDeviceManagerPtr deviceManager,
+        TVector<TExecutorPtr> connectionExecutors,
         TServerConfig serverConfig,
         TVector<TJournalledDeviceConfig> deviceConfigs);
 

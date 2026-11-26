@@ -59,6 +59,8 @@ void TIndexTabletActor::HandleSetNodeXAttr(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
     requestInfo->PipeServerId = pipeServerId;
+    requestInfo->FileSystemEventSourceId =
+        msg->Record.GetHeaders().GetFileSystemEventSourceId();
 
     AddInFlightRequest<TEvService::TSetNodeXAttrMethod>(*requestInfo);
 
@@ -177,8 +179,13 @@ void TIndexTabletActor::CompleteTx_SetNodeXAttr(
             pipeServerId,
             args.NodeId,
             args.Name);
-        response->Record.SetXAttrCacheTTL(
-            GetFileSystemEventsCacheTTL(pipeServerId).MilliSeconds());
+        const ui32 cacheTTL =
+            GetFileSystemEventsCacheTTL(pipeServerId).MilliSeconds();
+        response->Record.SetXAttrCacheTTL(cacheTTL);
+        if (cacheTTL) {
+            response->Record.SetXAttrCacheSourceId(
+                args.RequestInfo->FileSystemEventSourceId);
+        }
     }
     CompleteResponse<TEvService::TSetNodeXAttrMethod>(
         response->Record,

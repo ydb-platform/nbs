@@ -13,6 +13,8 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+	ydb_status "github.com/ydb-platform/ydb-go-genproto/protos/Ydb"
+	"github.com/ydb-platform/ydb-go-sdk/v3"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -79,6 +81,7 @@ func newStorageWithBackupFolders(
 		placementGroupsFolder,
 		db,
 		false, // dropUnusedColumns
+		true,  // backupEnabled
 	)
 	require.NoError(t, err)
 
@@ -103,4 +106,82 @@ func newStorageWithBackupFolders(
 	require.NoError(t, err)
 
 	return storage
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Check the control-plane backup queues for images and snapshots. Dataplane
+// chunk queues are covered by the snapshot storage schema tests.
+func TestCreateAndDropResourceSchemaWithoutBackups(t *testing.T) {
+	for _, kind := range []string{"images", "snapshots"} {
+		t.Run(kind, func(t *testing.T) {
+			ctx := newContext()
+			db, err := newYDB(ctx)
+			require.NoError(t, err)
+			defer db.Close(ctx)
+
+			folder := t.Name()
+
+			idColumn := "image_id"
+			create, drop := createImagesYDBTables, dropImagesYDBTables
+			if kind == "snapshots" {
+				idColumn = "snapshot_id"
+				create, drop = createSnapshotsYDBTables, dropSnapshotsYDBTables
+			}
+
+			err = db.CreateOrAlterTable(
+				ctx,
+				folder,
+				"backup_queue",
+				persistence.NewCreateTableDescription(
+					persistence.WithColumn(
+						idColumn,
+						persistence.Optional(persistence.TypeUTF8),
+					),
+					persistence.WithPrimaryKeyColumn(idColumn),
+				),
+				false, // dropUnusedColumns
+			)
+			require.NoError(t, err)
+
+			err = create(
+				ctx,
+				folder,
+				db,
+				true,  // dropUnusedColumns
+				false, // backupEnabled
+			)
+			require.NoError(t, err)
+
+			// This column must not be added to the legacy backup table.
+			query := fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+				select backup_id from backup_queue;
+			`, db.AbsolutePath(folder))
+			res, err := db.ExecuteRO(ctx, query)
+			if err == nil {
+				require.NoError(t, res.Close())
+			}
+			require.True(
+				t,
+				ydb.IsOperationError(err, ydb_status.StatusIds_GENERIC_ERROR),
+				"expected missing backup_id column, got: %v",
+				err,
+			)
+			require.ErrorContains(t, err, "Member not found: backup_id")
+
+			err = drop(ctx, folder, db, false /* backupEnabled */)
+			require.NoError(t, err)
+
+			query = fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+				select %v from backup_queue;
+			`, db.AbsolutePath(folder), idColumn)
+			res, err = db.ExecuteRO(ctx, query)
+			require.NoError(t, err)
+			require.NoError(t, res.Close())
+		})
+	}
 }

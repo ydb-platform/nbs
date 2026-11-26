@@ -9,8 +9,8 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 IActorPtr CreateNonreplicatedPartitionRdma(
-    TStorageConfigConstPtr config,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
+    TStorageConfigPtr config,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     TNonreplicatedPartitionConfigPtr partConfig,
     NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     TActorId volumeActorId,

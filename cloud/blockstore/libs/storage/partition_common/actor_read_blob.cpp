@@ -103,16 +103,33 @@ void TReadBlobActor::Bootstrap(const TActorContext& ctx)
         lastOffset = offset;
     }
 
+    if (Request->CompressionMetadata) {
+        auto read = ValidateReadBlobInput(
+            BlockSize,
+            *Request->CompressionMetadata,
+            Request->BlobId.BlobSize(),
+            Request->BlobOffsets);
+        if (HasError(read.GetError())) {
+            ReplyError(
+                ctx,
+                read.GetError().GetMessage(),
+                EErrorSource::ContractViolation,
+                nullptr);
+            return;
+        }
+        ValidatedCompressedRead = read.ExtractResult();
+    }
+
     SendGetRequest(ctx);
 }
 
-TResultOrError<TReadPlan> TReadBlobActor::GetQueries() const
+TReadPlan TReadBlobActor::GetQueries() const
 {
     using TEvGetQuery = TEvBlobStorage::TEvGet::TQuery;
 
-    if (Request->CompressionMetadata) {
+    if (ValidatedCompressedRead) {
         return PlanReadBlob(
-            BlockSize,
+            *ValidatedCompressedRead,
             Request->BlobId,
             *Request->CompressionMetadata,
             Request->BlobOffsets);
@@ -147,16 +164,7 @@ TResultOrError<TReadPlan> TReadBlobActor::GetQueries() const
 
 void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
 {
-    auto planOrError = GetQueries();
-    if (HasError(planOrError.GetError())) {
-        ReplyError(
-            ctx,
-            planOrError.GetError().GetMessage(),
-            EErrorSource::ContractViolation,
-            nullptr);
-        return;
-    }
-    auto plan = planOrError.ExtractResult();
+    auto plan = GetQueries();
     Queries = std::move(plan.Queries);
     QueryBlockRanges = std::move(plan.QueryBlockRanges);
     using TQuery = TEvBlobStorage::TEvGet::TQuery;
@@ -396,10 +404,9 @@ TResultOrError<TVector<ui32>> TReadBlobActor::DecompressReadResultToSglist(
     TVector<ui32> blockChecksums;
 
     auto error = DecompressBlob(
-        BlockSize,
+        *ValidatedCompressedRead,
         compressedData,
         *Request->CompressionMetadata,
-        Request->BlobId.BlobSize(),
         blockOffsets,
         sglist,
         ShouldCalculateChecksums ? &blockChecksums : nullptr);
@@ -611,7 +618,7 @@ void TReadBlobActor::HandleGetResult(
 
         TResultOrError<TVector<ui32>> checksumsOrError = [&]()
         {
-            if (Request->CompressionMetadata) {
+            if (ValidatedCompressedRead) {
                 return DecompressReadResultToSglist(
                     responsesToProcess,
                     sglistToProcess,

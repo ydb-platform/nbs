@@ -178,6 +178,60 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldValidateCompressionMetadataWithoutReadingBlob)
+    {
+        auto compression = MakeCompression();
+        constexpr ui32 blockCount = 5 * (ChunkSize / BlockSize);
+        UNIT_ASSERT(!HasError(ValidateCompressionMetadata(
+            BlockSize,
+            compression,
+            1500,
+            blockCount)));
+        // The stored sizes total 1000 bytes, leaving no room for the last
+        // chunk.
+        AssertArgumentError(
+            [&]
+            {
+                return ValidateCompressionMetadata(
+                    BlockSize,
+                    compression,
+                    1000,
+                    blockCount);
+            });
+        compression.SetCodec(NProto::COMPRESSION_CODEC_NONE);
+        AssertArgumentError(
+            [&]
+            {
+                return ValidateCompressionMetadata(
+                    BlockSize,
+                    compression,
+                    1500,
+                    blockCount);
+            });
+    }
+
+    Y_UNIT_TEST(ShouldRequireChunksToCoverExactlyThePayloadBlocks)
+    {
+        auto compression = MakeCompression();
+        compression.SetLastChunkSize(BlockSize);
+        constexpr ui32 blockCount = 4 * (ChunkSize / BlockSize) + 1;
+        auto validate = [&](ui32 expectedBlockCount)
+        {
+            return ValidateCompressionMetadata(
+                BlockSize,
+                compression,
+                1500,
+                expectedBlockCount);
+        };
+        UNIT_ASSERT(!HasError(validate(blockCount)));
+        AssertArgumentError([&] { return validate(blockCount - 1); });
+        AssertArgumentError([&] { return validate(blockCount + 1); });
+
+        compression.MutablePlainChunks()->ClearCompressedChunkSize();
+        UNIT_ASSERT(!HasError(validate(1)));
+        AssertArgumentError([&] { return validate(blockCount); });
+    }
+
     Y_UNIT_TEST(ShouldSkipMetricsWhenNotConfigured)
     {
         const TString payload(BlockSize, 'a');
@@ -199,7 +253,9 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
             proto.AddBlobCompressionChunkSizes(size);
         }
         const TDiagnosticsConfig diagnostics(proto);
-        const TString payload(2 * BlockSize, 'a');
+        const ui32 logicalBlockSize = 2 * BlockSize;
+        TString payload(3 * logicalBlockSize, '\0');
+        payload[2 * logicalBlockSize - 1] = 'a';
         auto counters = std::make_shared<TThreadSafePartCounters>(
             std::make_unique<TPartitionDiskCounters>(
                 EPublishingPolicy::Repl,
@@ -208,6 +264,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
             NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
             TBlobCompressor::TMetricsConfig{
                 .CompressionRate = 1,
+                .BlockSize = logicalBlockSize,
                 .ChunkSizes = chunkSizes,
                 .PartCounters = counters});
 
@@ -224,6 +281,9 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
                     values->Cumulative.CompressedBytesWritten.Value <
                     payload.size());
                 UNIT_ASSERT_VALUES_EQUAL(2, values->BlobCompression.size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2 * logicalBlockSize,
+                    values->Cumulative.ZeroBytesWritten.Value);
                 for (const auto& [size, compression]: values->BlobCompression) {
                     // Repeated chunk sizes must be counted only once.
                     UNIT_ASSERT_VALUES_EQUAL(

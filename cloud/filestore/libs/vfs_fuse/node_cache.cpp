@@ -7,11 +7,13 @@ namespace NCloud::NFileStore::NFuse {
 bool TXAttrCache::IsCacheable(
     ui64 ino,
     const TString& name,
-    ui64 cacheVersion) const
+    ui64 cacheVersion,
+    ui64 sourceId) const
 {
     return Invalidations.IsCacheable(
                TXAttrCacheKey{.NodeId = ino, .Name = name},
                cacheVersion) &&
+           Invalidations.IsSourceValid(sourceId, cacheVersion) &&
            NodeInvalidations.IsCacheable(ino, cacheVersion);
 }
 
@@ -34,9 +36,10 @@ void TXAttrCache::Add(
     const TString& value,
     ui64 version,
     ui64 cacheVersion,
+    ui64 sourceId,
     TDuration cacheTTL)
 {
-    if (!IsCacheable(ino, name, cacheVersion)) {
+    if (!IsCacheable(ino, name, cacheVersion, sourceId)) {
         return;
     }
 
@@ -49,6 +52,7 @@ void TXAttrCache::Add(
                 .Value = value,
                 .Version = version,
                 .CacheVersion = cacheVersion,
+                .SourceId = sourceId,
                 .Deadline = GetDeadline(cacheTTL)
             }
         );
@@ -59,9 +63,10 @@ void TXAttrCache::AddAbsent(
     ui64 ino,
     const TString& name,
     ui64 cacheVersion,
+    ui64 sourceId,
     TDuration cacheTTL)
 {
-    if (!IsCacheable(ino, name, cacheVersion)) {
+    if (!IsCacheable(ino, name, cacheVersion, sourceId)) {
         return;
     }
 
@@ -72,6 +77,7 @@ void TXAttrCache::AddAbsent(
             .Value = Nothing(),
             .Version = 0,
             .CacheVersion = cacheVersion,
+            .SourceId = sourceId,
             .Deadline = GetDeadline(cacheTTL)
         }
     );
@@ -84,17 +90,18 @@ void TXAttrCache::AddOwn(
     ui64 version,
     ui64 cacheVersion,
     ui64 invalidationVersion,
+    ui64 sourceId,
     TDuration cacheTTL)
 {
-    if (!IsCacheable(ino, name, cacheVersion)) {
+    if (!IsCacheable(ino, name, cacheVersion, sourceId)) {
         Invalidate(ino, name, invalidationVersion);
         return;
     }
 
     if (value) {
-        Add(ino, name, *value, version, cacheVersion, cacheTTL);
+        Add(ino, name, *value, version, cacheVersion, sourceId, cacheTTL);
     } else {
-        AddAbsent(ino, name, cacheVersion, cacheTTL);
+        AddAbsent(ino, name, cacheVersion, sourceId, cacheTTL);
     }
 
     //
@@ -115,13 +122,14 @@ const TXAttr* TXAttrCache::Get(ui64 ino, const TString& name)
     }
 
     //
-    // The node-wide invalidations don't erase the entries of the node - the
-    // entries cached before such an invalidation are dropped here.
+    // The node-wide and the source invalidations don't erase the entries -
+    // the entries cached before such an invalidation are dropped here.
     //
 
     const auto& xattr = it.Value();
     if (Timer->Now() >= xattr.Deadline ||
-        !NodeInvalidations.IsCacheable(ino, xattr.CacheVersion))
+        !NodeInvalidations.IsCacheable(ino, xattr.CacheVersion) ||
+        !Invalidations.IsSourceValid(xattr.SourceId, xattr.CacheVersion))
     {
         Cache.Erase(it);
         return nullptr;
@@ -149,10 +157,9 @@ size_t TXAttrCache::GetEntryCount() const
     return Cache.Size();
 }
 
-void TXAttrCache::InvalidateAll(ui64 version)
+void TXAttrCache::InvalidateSource(ui64 sourceId, ui64 version)
 {
-    Invalidations.InvalidateAll(version);
-    Cache.Clear();
+    Invalidations.InvalidateSource(sourceId, version);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

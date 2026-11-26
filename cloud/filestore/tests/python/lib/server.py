@@ -1,12 +1,11 @@
-import subprocess
 import retrying
 
 import cloud.filestore.public.sdk.python.client as client
 import cloud.filestore.public.sdk.python.protos as protos
 
 from cloud.filestore.tests.python.lib.common import daemon_log_files, is_grpc_error
+from cloud.storage.core.tests.ydb import create_tenant
 from contrib.ydb.tests.library.harness.daemon import Daemon
-import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
 
 class FilestoreServer(Daemon):
@@ -41,45 +40,16 @@ class FilestoreServer(Daemon):
         return super(FilestoreServer, self).daemon.process.pid
 
     def init_scheme(self):
-        scheme_op = f"""
-ModifyScheme {{
-    WorkingDir: "/Root"
-    OperationType: ESchemeOpCreateSubDomain
-    SubDomain {{
-        Name: "{self.__schemeshard_dir.lstrip('/Root/')}"
-        Coordinators: 0
-        Mediators: 0
-        PlanResolution: 50
-        TimeCastBucketsPerMediator: 2
-"""
-
-        for pool in self.__dynamic_storage_pools:
-            scheme_op += """
-        StoragePools {
-            Name: "%s"
-            Kind: "%s"
-        }
-""" % (pool['name'], pool['kind'])
-
-        scheme_op += """
-    }
-}
-"""
-        schema = "grpcs" if self.__secure_kikimr else "grpc"
-        command = [
-            self.__kikimr_binary_path,
-            "--server",
-            f"{schema}://localhost:" + str(self.__configurator.kikimr_port),
-        ]
+        ca_file = None
         if self.__secure_kikimr:
-            command += [
-                "--ca-file",
-                self.__configurator.get_kikimr_ca(),
-            ]
-        command += ["db", "schema", "exec", scheme_op]
-        output = yatest_common.output_path("nfs_ydbd_output.log")
-        with open(output, "w") as ydbd_output:
-            subprocess.check_call(command, stdout=ydbd_output, stderr=ydbd_output)
+            ca_file = self.__configurator.get_kikimr_ca()
+
+        create_tenant(
+            self.__kikimr_binary_path,
+            self.__configurator.kikimr_port,
+            self.__schemeshard_dir.lstrip('/Root/'),
+            self.__dynamic_storage_pools,
+            ca_file)
 
 
 @retrying.retry(stop_max_delay=180000, wait_fixed=1000, retry_on_exception=is_grpc_error)

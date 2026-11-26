@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/config/blockstore_config.h>
+#include <cloud/blockstore/libs/config/blockstore_config_getter.h>
 #include <cloud/blockstore/libs/daemon/common/bootstrap.h>
 #include <cloud/blockstore/libs/discovery/public.h>
 #include <cloud/blockstore/libs/kms/iface/public.h>
@@ -44,11 +45,11 @@ struct TServerModuleFactories
     TServerModuleFactories();
 
     std::function<NLogbroker::IServicePtr(
-        NLogbroker::TLogbrokerConfigConstPtr config,
+        NLogbroker::TLogbrokerConfigPtr config,
         ILoggingServicePtr logging)> LogbrokerServiceFactory;
 
     std::function<NIamClient::IIamTokenClientPtr(
-        NIamClient::TIamClientConfigConstPtr config,
+        NIamClient::TIamClientConfigPtr config,
         ILoggingServicePtr logging,
         ISchedulerPtr scheduler,
         ITimerPtr timer)> IamClientFactory;
@@ -75,7 +76,7 @@ struct TServerModuleFactories
         ILoggingServicePtr logging)>
         TraceServiceClientFactory;
 
-    std::function<TSpdkParts(NSpdk::TSpdkEnvConfigConstPtr config)> SpdkFactory;
+    std::function<TSpdkParts(NSpdk::TSpdkEnvConfigPtr config)> SpdkFactory;
 
     std::function<NCloud::NStorage::NRdma::IServerPtr(
         ILoggingServicePtr logging,
@@ -88,7 +89,7 @@ struct TServerModuleFactories
         NCloud::NStorage::NRdma::TClientConfigPtr config)> RdmaClientFactory;
 
     std::function<NNotify::IServicePtr(
-        NNotify::TNotifyConfigConstPtr config,
+        NNotify::TNotifyConfigPtr config,
         NIamClient::IIamTokenClientPtr iamTokenClient,
         ILoggingServicePtr logging)>
         NotifyServiceFactory;
@@ -115,7 +116,12 @@ private:
     // retained for the bootstrap lifetime. Unset in Local and Null service modes.
     // Shared methods, including TBootstrapYdb overrides used in Local and Null
     // service modes, must read BootstrapConfig.
-    IBlockstoreConfigPtr StartupBlockstoreConfig;
+    IBlockstoreConfigMutablePtr StartupBlockstoreConfig;
+
+    // Current Blockstore configuration source; owns the holder shared with
+    // ConfigsManager after the startup snapshot has been constructed.
+    // Initialized only in YDB service mode; unset in Local and Null modes.
+    IBlockstoreConfigGetterPtr BlockstoreConfigGetter;
 
     IActorSystemPtr ActorSystem;
     IAsyncLoggerPtr AsyncLogger;
@@ -174,6 +180,7 @@ protected:
     void WarmupBSGroupConnections() override;
 
     void SetupCellManager() override;
+    void SetupCellProxy() override;
     void SetupCellMonitoringActor() override;
     IBlockStorePtr WrapServiceForInterCellForward(
         IBlockStorePtr authorized,

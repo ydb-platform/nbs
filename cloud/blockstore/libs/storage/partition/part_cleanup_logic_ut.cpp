@@ -158,7 +158,8 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
             db.WriteMergedBlocks(
                 setup.MergedBlobId,
                 TBlockRange32::MakeClosedInterval(10, 13),
-                TBlockMask{});
+                TBlockMask{},
+                std::nullopt);
             db.WriteBlobMeta(setup.MergedBlobId, setup.MergedBlobMeta);
             db.WriteCleanupQueue(setup.MergedBlobId, deletionCommitId);
         });
@@ -190,8 +191,11 @@ struct TMergedBlobVisitor final
     bool Visit(
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
-        const TBlockMask& skipMask) override
+        const TBlockMask& skipMask,
+        const std::optional<NProto::TCompressionMetadata>& compressionMetadata)
+        override
     {
+        Y_UNUSED(compressionMetadata);
         Y_UNUSED(blockRange);
         Y_UNUSED(skipMask);
 
@@ -1021,7 +1025,8 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
                         TBlockRange32::MakeClosedInterval(
                             tc.StartIndex,
                             tc.EndIndex),
-                        TBlockMask{});
+                        TBlockMask{},
+                        std::nullopt);
                     db.WriteBlobMeta(
                         blobId,
                         MakeMergedBlobMeta(tc.StartIndex, tc.EndIndex));

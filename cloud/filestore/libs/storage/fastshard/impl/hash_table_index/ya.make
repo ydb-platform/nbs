@@ -36,6 +36,7 @@ PEERDIR(
     cloud/filestore/private/api/protos
 
     cloud/fastshard/libs/sn/client
+    cloud/fastshard/libs/storage_group
 )
 
 END()

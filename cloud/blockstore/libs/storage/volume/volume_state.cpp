@@ -123,8 +123,8 @@ void TCachedVolumeMountHistory::CleanupHistoryIfNeeded(TInstant oldest)
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeState::TVolumeState(
-        TStorageConfigConstPtr storageConfig,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
+        TStorageConfigPtr storageConfig,
+        TDiagnosticsConfigPtr diagnosticsConfig,
         NProto::TVolumeMeta meta,
         TVector<TVolumeMetaHistoryItem> metaHistory,
         TVector<TRuntimeVolumeParamsValue> volumeParams,
@@ -291,6 +291,15 @@ auto TVolumeState::GetLaggingAgentsMigrationInfo() const
 
 void TVolumeState::ResetMeta(NProto::TVolumeMeta meta)
 {
+    // Invalidate the throttling rule.
+    if (Meta.GetVolumeConfig().GetCloudId() !=
+            meta.GetVolumeConfig().GetCloudId() ||
+        Meta.GetVolumeConfig().GetFolderId() !=
+            meta.GetVolumeConfig().GetFolderId())
+    {
+        ThrottlingRuleOutdated = true;
+    }
+
     Meta = std::move(meta);
     Config = &Meta.GetConfig();
 
@@ -320,6 +329,7 @@ void TVolumeState::ResetThrottlingPolicy(
     ui32 throttlingRuleVersion)
 {
     ThrottlingPolicy.Reset(throttlingRule, throttlingRuleVersion);
+    ThrottlingRuleOutdated = false;
 }
 
 bool TVolumeState::ShouldTrackUsedBlocks() const

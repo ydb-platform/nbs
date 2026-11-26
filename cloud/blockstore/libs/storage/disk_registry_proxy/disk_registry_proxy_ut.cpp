@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
+#include <cloud/blockstore/libs/storage/testlib/mon_http_request.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_mock.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
@@ -433,6 +434,13 @@ public:
 
         UNIT_ASSERT(handle);
         return std::unique_ptr<TResponse>(handle->Release<TResponse>().Release());
+    }
+
+    std::unique_ptr<NMon::TEvHttpInfoRes> HttpInfo(TCgiParameters params = {})
+    {
+        TTestMonHttpRequest request(std::move(params));
+        SendRequest(MakeDiskRegistryProxyServiceId(), request.CreateEvent());
+        return RecvResponse<NMon::TEvHttpInfoRes>();
     }
 
     auto CreateAllocateDiskRequest(const TString& diskId, ui64 diskSize)
@@ -1100,6 +1108,67 @@ Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
 
         client.AllocateDisk("disk-1", 10_GB);
         client.Unsubscribe(subscriber);
+    }
+
+    Y_UNIT_TEST(ShouldRedirectToDiskRegistryTabletApp)
+    {
+        auto runtime = TTestRuntimeBuilder().Build();
+
+        TDiskRegistryClient client(*runtime);
+        client.AllocateDisk("disk-1", 10_GB);
+
+        const TString location = TStringBuilder()
+            << "../tablets/app?TabletID=" << TestDiskRegistryTabletId;
+
+        auto response = client.HttpInfo({{"action", "appRedirect"}});
+        UNIT_ASSERT_EQUAL(
+            NMon::IEvHttpInfoRes::EContentType::Custom,
+            response->GetContentType());
+        UNIT_ASSERT_STRING_CONTAINS(response->Answer, "HTTP/1.1 302 Found\r\n");
+        UNIT_ASSERT_STRING_CONTAINS(
+            response->Answer,
+            "Location: " + location + "\r\n");
+    }
+
+    Y_UNIT_TEST(ShouldRenderDiskRegistryTabletLinks)
+    {
+        auto runtime = TTestRuntimeBuilder().Build();
+
+        TDiskRegistryClient client(*runtime);
+        client.AllocateDisk("disk-1", 10_GB);
+
+        auto response = client.HttpInfo();
+        UNIT_ASSERT_EQUAL(
+            NMon::IEvHttpInfoRes::EContentType::Html,
+            response->GetContentType());
+
+        // Tablet id is a link to the tablet info page.
+        UNIT_ASSERT_STRING_CONTAINS(
+            response->Answer,
+            TStringBuilder() << "<a href='../tablets?TabletID="
+                             << TestDiskRegistryTabletId << "'>"
+                             << TestDiskRegistryTabletId << "</a>");
+
+        // Link to the tablet app page.
+        UNIT_ASSERT_STRING_CONTAINS(
+            response->Answer,
+            TStringBuilder() << "<a href='../tablets/app?TabletID="
+                             << TestDiskRegistryTabletId << "'>app</a>");
+    }
+
+    Y_UNIT_TEST(ShouldNotRedirectIfDiskRegistryTabletIsNotResolved)
+    {
+        auto runtime = TTestRuntimeBuilder()
+            .WithOwnerId(0)
+            .Build();
+
+        TDiskRegistryClient client(*runtime);
+
+        auto response = client.HttpInfo({{"action", "appRedirect"}});
+        UNIT_ASSERT_EQUAL(
+            NMon::IEvHttpInfoRes::EContentType::Html,
+            response->GetContentType());
+        UNIT_ASSERT_STRING_CONTAINS(response->Answer, "not resolved yet");
     }
 }
 
