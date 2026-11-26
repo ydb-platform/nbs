@@ -20,15 +20,17 @@ public:
         Opts.AddLongOption("quota-id")
             .Required()
             .RequiredArgument("NUM")
-            .Help("creates the quota or updates its limits")
+            .Help("creates the quota or replaces both its limits")
             .StoreResult(&QuotaId);
 
         Opts.AddLongOption("max-bytes")
+            .Required()
             .RequiredArgument("NUM")
             .Help("byte limit, 0 means unlimited")
             .StoreResult(&MaxBytes);
 
         Opts.AddLongOption("max-nodes")
+            .Required()
             .RequiredArgument("NUM")
             .Help("node limit, 0 means unlimited")
             .StoreResult(&MaxNodes);

@@ -318,7 +318,7 @@ class FilestoreCliClient:
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
-    def set_quota(self, fs, quota_id, max_bytes=0, max_nodes=0):
+    def set_quota(self, fs, quota_id, max_bytes, max_nodes):
         cmd = [
             self.__binary_path, "setquota",
             "--filesystem", fs,
