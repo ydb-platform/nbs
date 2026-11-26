@@ -14,7 +14,7 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
         const auto start = TInstant::Hours(1);
 
-        UNIT_ASSERT(tracker.UpdateAccessStats(1, NProto::E_REGULAR_NODE, start););
+        UNIT_ASSERT(tracker.UpdateAccessStats(1, NProto::E_REGULAR_NODE, start));
 
         const auto stats = tracker.GetStats(start, 3);
 
@@ -31,8 +31,8 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
 
         const auto start = TInstant::Hours(1);
 
-        UNIT_ASSERT(tracker.UpdateAccessStats(1, NProto::E_REGULAR_NODE, start););
-        UNIT_ASSERT(tracker.UpdateAccessStats(1, NProto::E_REGULAR_NODE, start););
+        UNIT_ASSERT(tracker.UpdateAccessStats(1, NProto::E_REGULAR_NODE, start));
+        UNIT_ASSERT(tracker.UpdateAccessStats(1, NProto::E_REGULAR_NODE, start));
 
         const auto stats = tracker.GetStats(start, 3);
 
@@ -56,10 +56,10 @@ Y_UNIT_TEST_SUITE(TNodeAccessStatsTrackerTest)
         const auto old = start - TDuration::Minutes(10);
 
         for (ui32 i = 0; i < 10; ++i) {
-            UNIT_ASSERT(tracker.UpdateAccessStats(1, old));
+            UNIT_ASSERT(tracker.UpdateAccessStats(1, NProto::E_REGULAR_NODE, old));
         }
         for (ui32 i = 0; i < 9; ++i) {
-            UNIT_ASSERT(tracker.UpdateAccessStats(2, start));
+            UNIT_ASSERT(tracker.UpdateAccessStats(2, NProto::E_REGULAR_NODE, start));
         }
 
         const auto stats = tracker.GetStats(start, 5);
