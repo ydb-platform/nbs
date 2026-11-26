@@ -7,6 +7,9 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 ////////////////////////////////////////////////////////////////////////////////
 
 message DisksConfig {
+    reserved 14;
+    reserved "DeleteNonExistentDisks";
+
     optional uint32 DefaultBlockSize = 1 [default = 4096];
     optional string DeletedDiskExpirationTimeout = 2 [default = "30m"];
     optional string ClearDeletedDisksTaskScheduleInterval = 3 [default = "1m"];
@@ -20,7 +23,6 @@ message DisksConfig {
     optional string CreationAndDeletionAllowedOnlyForDisksWithIdPrefix = 11;
     optional bool DisableDiskRegistryBasedDisks = 12;
     repeated string DiskRegistryBasedDisksFolderIdAllowList = 13;
-    optional bool DeleteNonExistentDisks = 14;
     repeated string OverlayDiskRegistryBasedDisksFolderIdAllowList = 15;
     // When enabled, Disk Registry based disks (nrd, mirror2, mirror3, ...)
     // created from an image with a configured pool are filled from a base
