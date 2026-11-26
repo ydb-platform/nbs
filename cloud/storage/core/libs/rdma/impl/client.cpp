@@ -584,7 +584,7 @@ private:
     NVerbs::TConnectionPtr Connection;
     TString Host;
     ui32 Port;
-    const TString ExternalData;
+    const TBuffer ExternalData;
     IClientRequestHandlerPtr Handler;
     TEndpointCountersPtr Counters;
     TLog Log;
@@ -663,7 +663,7 @@ public:
         NVerbs::TConnectionPtr connection,
         TString host,
         ui32 port,
-        TString externalData,
+        TBuffer externalData,
         TClientConfigPtr config,
         TEndpointCountersPtr stats,
         TLog log,
@@ -756,7 +756,7 @@ TClientEndpoint::TClientEndpoint(
         NVerbs::TConnectionPtr connection,
         TString host,
         ui32 port,
-        TString externalData,
+        TBuffer externalData,
         TClientConfigPtr config,
         TEndpointCountersPtr stats,
         TLog log,
@@ -2562,12 +2562,12 @@ public:
     TFuture<IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
-        TString externalData) noexcept override;
+        TBuffer externalData) noexcept override;
     TResultOrError<IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
         IClientEndpointHandlerPtr handler,
-        TString externalData) noexcept override;
+        TBuffer externalData) noexcept override;
     void DumpHtml(IOutputStream& out) const override;
     bool IsAlignedDataEnabled() const override;
 
@@ -2659,13 +2659,13 @@ TResultOrError<IClientEndpointPtr> TClient::StartEndpoint(
     TString host,
     ui32 port,
     IClientEndpointHandlerPtr handler,
-    TString externalData) noexcept
+    TBuffer externalData) noexcept
 {
     if (ConnectionPoller == nullptr) {
         return MakeError(E_RDMA_UNAVAILABLE, "rdma client is down");
     }
 
-    if (externalData.size() > RDMA_MAX_EXTERNAL_DATA_SIZE) {
+    if (externalData.Size() > RDMA_MAX_EXTERNAL_DATA_SIZE) {
         return MakeError(E_ARGUMENT, "external data is too large");
     }
 
@@ -2695,7 +2695,7 @@ TResultOrError<IClientEndpointPtr> TClient::StartEndpoint(
 TFuture<IClientEndpointPtr> TClient::StartEndpoint(
     TString host,
     ui32 port,
-    TString externalData) noexcept
+    TBuffer externalData) noexcept
 {
     auto unavailable = [&](TString message) {
         return MakeErrorFuture<IClientEndpointPtr>(
@@ -2707,7 +2707,7 @@ TFuture<IClientEndpointPtr> TClient::StartEndpoint(
         return unavailable("rdma client is down");
     }
 
-    if (externalData.size() > RDMA_MAX_EXTERNAL_DATA_SIZE) {
+    if (externalData.Size() > RDMA_MAX_EXTERNAL_DATA_SIZE) {
         return MakeErrorFuture<IClientEndpointPtr>(
             std::make_exception_ptr(TServiceError(
                 MakeError(E_ARGUMENT, "external data is too large"))));
@@ -3032,7 +3032,9 @@ void TClient::BeginConnect(TClientEndpoint* endpoint) noexcept
         if (endpoint->ExternalData) {
             options.WriteData(
                 RDMA_CONNECT_OPTION_EXTERNAL_DATA,
-                endpoint->ExternalData);
+                TStringBuf(
+                    endpoint->ExternalData.Data(),
+                    endpoint->ExternalData.Size()));
         }
 
         rdma_conn_param param = {

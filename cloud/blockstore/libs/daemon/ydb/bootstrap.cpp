@@ -152,7 +152,7 @@ public:
         Impl.reset();
     }
 
-    auto StartEndpoint(TString host, ui32 port, TString externalData)
+    auto StartEndpoint(TString host, ui32 port, TBuffer externalData)
         -> NThreading::TFuture<NCloud::NStorage::NRdma::IClientEndpointPtr>
         override
     {
@@ -166,7 +166,7 @@ public:
         TString host,
         ui32 port,
         NCloud::IClientEndpointHandlerPtr handler,
-        TString externalData)
+        TBuffer externalData)
         -> TResultOrError<NCloud::NStorage::NRdma::IClientEndpointPtr> override
     {
         return Impl->StartEndpoint(

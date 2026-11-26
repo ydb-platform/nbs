@@ -1084,14 +1084,14 @@ public:
 
     // IClient
 
-    auto StartEndpoint(TString host, ui32 port, TString externalData)
+    auto StartEndpoint(TString host, ui32 port, TBuffer externalData)
         -> TFuture<NRdma::IClientEndpointPtr> override;
 
     auto StartEndpoint(
         TString host,
         ui32 port,
         NCloud::IClientEndpointHandlerPtr handler,
-        TString externalData)
+        TBuffer externalData)
         -> TResultOrError<NRdma::IClientEndpointPtr> override;
 
     void DumpHtml(IOutputStream& out) const override;
@@ -1120,7 +1120,7 @@ void TFakeRdmaClient::Stop()
 auto TFakeRdmaClient::StartEndpoint(
     TString host,
     ui32 port,
-    TString externalData)
+    TBuffer externalData)
     -> TFuture<NRdma::IClientEndpointPtr>
 {
     Y_UNUSED(externalData);
@@ -1143,7 +1143,7 @@ auto TFakeRdmaClient::StartEndpoint(
     TString host,
     ui32 port,
     NCloud::IClientEndpointHandlerPtr handler,
-    TString externalData)
+    TBuffer externalData)
     -> TResultOrError<NRdma::IClientEndpointPtr>
 {
     Y_UNUSED(handler);

@@ -31,13 +31,13 @@ struct TRdmaClientTest: NCloud::NStorage::NRdma::IClient
     THashMap<TString, TEndpointInfo> Endpoints;
 
     NThreading::TFuture<NCloud::NStorage::NRdma::IClientEndpointPtr>
-    StartEndpoint(TString host, ui32 port, TString externalData) override;
+    StartEndpoint(TString host, ui32 port, TBuffer externalData) override;
 
     TResultOrError<NCloud::NStorage::NRdma::IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
         NCloud::IClientEndpointHandlerPtr handler,
-        TString externalData) override;
+        TBuffer externalData) override;
 
     void Start() override
     {

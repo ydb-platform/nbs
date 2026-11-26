@@ -366,7 +366,7 @@ struct TRdmaClientTest::TRdmaEndpointImpl
 ////////////////////////////////////////////////////////////////////////////////
 
 TFuture<NCloud::NStorage::NRdma::IClientEndpointPtr>
-TRdmaClientTest::StartEndpoint(TString host, ui32 port, TString externalData)
+TRdmaClientTest::StartEndpoint(TString host, ui32 port, TBuffer externalData)
 {
     Y_UNUSED(externalData);
 
@@ -383,7 +383,7 @@ TRdmaClientTest::StartEndpoint(
     TString host,
     ui32 port,
     NCloud::IClientEndpointHandlerPtr handler,
-    TString externalData)
+    TBuffer externalData)
 {
     Y_UNUSED(host);
     Y_UNUSED(port);

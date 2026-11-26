@@ -2410,7 +2410,8 @@ TEST(TRdmaClientTest, ShouldSendExternalDataOnEveryConnect)
     };
 
     auto endpoint =
-        client->StartEndpoint("::", 10020, "pipe-1").ExtractValueSync();
+        client->StartEndpoint("::", 10020, TBuffer("pipe-1", 6))
+            .ExtractValueSync();
 
     Disconnect(testContext);
 
@@ -2493,7 +2494,8 @@ TEST(TRdmaClientTest, ShouldNotStartEndpointWithTooLargeExternalData)
         client->Stop();
     };
 
-    const TString externalData(RDMA_MAX_EXTERNAL_DATA_SIZE + 1, 'x');
+    TBuffer externalData;
+    externalData.Fill('x', RDMA_MAX_EXTERNAL_DATA_SIZE + 1);
 
     try {
         client->StartEndpoint("::", 10020, externalData).ExtractValueSync();

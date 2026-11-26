@@ -67,7 +67,7 @@ public:
     TFuture<NCloud::NStorage::NRdma::IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
-        TString externalData) noexcept override
+        TBuffer externalData) noexcept override
     {
         Y_UNUSED(externalData);
 
@@ -81,7 +81,7 @@ public:
         TString host,
         ui32 port,
         NCloud::IClientEndpointHandlerPtr handler,
-        TString externalData) noexcept override
+        TBuffer externalData) noexcept override
     {
         Y_UNUSED(handler);
         Y_UNUSED(externalData);

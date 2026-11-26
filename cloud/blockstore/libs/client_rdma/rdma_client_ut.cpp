@@ -190,7 +190,7 @@ struct TTestRdmaClient: public NRdma::IClient
     TFuture<NRdma::IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
-        TString externalData) override
+        TBuffer externalData) override
     {
         Y_UNUSED(host);
         Y_UNUSED(port);
@@ -203,7 +203,7 @@ struct TTestRdmaClient: public NRdma::IClient
         TString host,
         ui32 port,
         NCloud::IClientEndpointHandlerPtr handler,
-        TString externalData) override
+        TBuffer externalData) override
     {
         Y_UNUSED(host);
         Y_UNUSED(port);

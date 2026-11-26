@@ -13,6 +13,7 @@
 #include <library/cpp/threading/future/future.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/buffer.h>
 #include <util/generic/string.h>
 
 namespace NCloud::NStorage::NRdma {
@@ -147,13 +148,13 @@ struct IClient
     virtual NThreading::TFuture<IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
-        TString externalData = {}) = 0;
+        TBuffer externalData = {}) = 0;
 
     virtual TResultOrError<IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
         IClientEndpointHandlerPtr handler,
-        TString externalData = {}) = 0;
+        TBuffer externalData = {}) = 0;
 
     virtual void DumpHtml(IOutputStream& out) const = 0;
 
