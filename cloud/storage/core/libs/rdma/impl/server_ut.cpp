@@ -117,14 +117,14 @@ struct TDelayedServerHandler final
     }
 };
 
-struct TConnectHandler final: IServerConnectHandler
+struct TConnectionHandler final: IServerConnectionHandler
 {
     using TConnect =
         std::function<TResultOrError<IServerHandlerPtr>(TStringBuf)>;
 
     const TConnect Connect;
 
-    explicit TConnectHandler(TConnect connect)
+    explicit TConnectionHandler(TConnect connect)
         : Connect(std::move(connect))
     {}
 
@@ -1212,7 +1212,7 @@ TEST(TRdmaServerTest, ShouldServeConnectionWithHandlerReturnedFromHandleConnect)
 
     auto receivedData = NThreading::NewPromise<TString>();
     auto handler = std::make_shared<TDelayedServerHandler>();
-    auto connectHandler = std::make_shared<TConnectHandler>(
+    auto connectionHandler = std::make_shared<TConnectionHandler>(
         [&](TStringBuf externalData)
         {
             receivedData.SetValue(TString(externalData));
@@ -1236,7 +1236,7 @@ TEST(TRdmaServerTest, ShouldServeConnectionWithHandlerReturnedFromHandleConnect)
         server->Stop();
     };
 
-    auto endpoint = server->StartEndpoint("::", 10020, connectHandler);
+    auto endpoint = server->StartEndpoint("::", 10020, connectionHandler);
 
     const auto message = MakeConnectMessage(MakeExternalDataOption("pipe-1"));
     NVerbs::CreateConnection(context, message.data(), message.size());
@@ -1305,7 +1305,7 @@ TEST(TRdmaServerTest, ShouldRejectConnectionWhenHandleConnectFails)
         }
     };
 
-    auto connectHandler = std::make_shared<TConnectHandler>(
+    auto connectionHandler = std::make_shared<TConnectionHandler>(
         [](TStringBuf externalData) -> TResultOrError<IServerHandlerPtr>
         {
             if (externalData == "throw") {
@@ -1331,7 +1331,7 @@ TEST(TRdmaServerTest, ShouldRejectConnectionWhenHandleConnectFails)
         server->Stop();
     };
 
-    auto endpoint = server->StartEndpoint("::", 10020, connectHandler);
+    auto endpoint = server->StartEndpoint("::", 10020, connectionHandler);
 
     for (TStringBuf externalData: {"error", "throw", "empty"}) {
         const auto message =
@@ -1404,7 +1404,7 @@ TEST(TRdmaServerTest, ShouldParseConnectOptions)
         }
     };
 
-    auto connectHandler = std::make_shared<TConnectHandler>(
+    auto connectionHandler = std::make_shared<TConnectionHandler>(
         [&](TStringBuf externalData) -> TResultOrError<IServerHandlerPtr>
         {
             lastExternalData = TString(externalData);
@@ -1425,7 +1425,7 @@ TEST(TRdmaServerTest, ShouldParseConnectOptions)
         server->Stop();
     };
 
-    auto endpoint = server->StartEndpoint("::", 10020, connectHandler);
+    auto endpoint = server->StartEndpoint("::", 10020, connectionHandler);
 
     for (const auto& testCase: testCases) {
         const auto message = MakeConnectMessage(testCase.Options);

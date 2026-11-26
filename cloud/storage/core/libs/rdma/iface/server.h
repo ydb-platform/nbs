@@ -65,9 +65,9 @@ struct IServerHandler
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IServerConnectHandler
+struct IServerConnectionHandler
 {
-    virtual ~IServerConnectHandler() = default;
+    virtual ~IServerConnectionHandler() = default;
 
     // Called for every connect request with the data the client passed to
     // IClient::StartEndpoint. The returned handler serves the connection. An
@@ -101,7 +101,7 @@ struct IServer
     virtual IServerEndpointPtr StartEndpoint(
         TString host,
         ui32 port,
-        IServerConnectHandlerPtr connectHandler) = 0;
+        IServerConnectionHandlerPtr connectionHandler) = 0;
 
     virtual void DumpHtml(IOutputStream& out) const = 0;
 };

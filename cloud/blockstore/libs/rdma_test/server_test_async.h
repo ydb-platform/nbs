@@ -27,7 +27,7 @@ public:
     NCloud::NStorage::NRdma::IServerEndpointPtr StartEndpoint(
         TString host,
         ui32 port,
-        NCloud::NStorage::NRdma::IServerConnectHandlerPtr connectHandler)
+        NCloud::NStorage::NRdma::IServerConnectionHandlerPtr connectionHandler)
         override;
 
     void Start() override
