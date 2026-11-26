@@ -767,8 +767,8 @@ private:
             });
     }
 
-    // Everything of a move that can fail, done while the connection still
-    // serves through the host it has.
+    // Builds the target binding while the old host is still serving requests.
+    // With gRPC fallback, InstallBinding starts the switcher after the move.
     TResultOrError<THostBindingPtr> PrepareMigration(
         const TString& fqdn,
         const IBlockStorePtr& controlService)
