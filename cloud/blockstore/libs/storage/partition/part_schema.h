@@ -418,13 +418,19 @@ struct TPartitionSchema
         {
         };
 
+        struct CompressionMetadata
+            : public Column<5, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = NProto::TCompressionMetadata;
+        };
+
         using TKey = TableKey<CommitId, BlobId>;
         using TColumns = TableColumns<
             CommitId,
             BlobId,
             RangeStart,
-            RangeEnd
-        >;
+            RangeEnd,
+            CompressionMetadata>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
         using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;

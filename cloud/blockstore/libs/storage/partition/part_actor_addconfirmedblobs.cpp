@@ -296,7 +296,7 @@ void TPartitionActor::HandleAddConfirmedBlobs(
                 blob.BlockRange,
                 TBlockMask(),   // skipMask
                 blob.Checksums,
-                std::nullopt);
+                blob.CompressionMetadata);
         }
 
         auto request = std::make_unique<TRequest>(
