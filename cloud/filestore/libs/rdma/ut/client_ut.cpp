@@ -243,7 +243,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletClientTest)
             *request,
             RDMA_PROTO_OK,
             responseBytes,
-            record);
+            &record);
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
         UNIT_ASSERT_VALUES_EQUAL(101, methodId);
         UNIT_ASSERT_VALUES_EQUAL(static_cast<ui32>(E_IO), record.GetCode());
@@ -314,7 +314,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletClientTest)
                 *request,
                 status,
                 responseBytes,
-                record);
+                &record);
         };
 
         {
@@ -357,7 +357,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletClientTest)
             *request,
             RDMA_PROTO_FAIL,
             responseBytes,
-            record);
+            &record);
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_TIMEOUT),
             error.GetCode());
@@ -379,7 +379,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletClientTest)
             *request,
             RDMA_PROTO_THROTTLED,
             responseBytes,
-            record);
+            &record);
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_FS_THROTTLED),
             error.GetCode());
@@ -414,7 +414,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletClientTest)
             *request,
             RDMA_PROTO_OK,
             RDMA_PROTO_HEADER_SIZE,
-            record);
+            &record);
         UNIT_ASSERT(HasError(error));
     }
 
@@ -434,7 +434,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletClientTest)
             *request,
             RDMA_PROTO_OK,
             responseBytes,
-            record);
+            &record);
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_NOT_IMPLEMENTED),
             error.GetCode());
@@ -463,7 +463,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletClientTest)
             *request,
             RDMA_PROTO_OK,
             responseBytes,
-            record);
+            &record);
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_ARGUMENT),
             error.GetCode());
@@ -493,7 +493,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletClientTest)
             *request,
             RDMA_PROTO_OK,
             responseBytes,
-            record);
+            &record);
         UNIT_ASSERT_STRING_CONTAINS(
             error.GetMessage(),
             "invalid buffer length");
@@ -521,7 +521,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletClientTest)
             *request,
             RDMA_PROTO_OK,
             responseBytes,
-            record);
+            &record);
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
         UNIT_ASSERT_VALUES_EQUAL(largest.GetMessage(), record.GetMessage());
     }

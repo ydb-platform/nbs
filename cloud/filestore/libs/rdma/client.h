@@ -36,6 +36,6 @@ TResultOrError<ui32> ParseRdmaTabletResponse(
     const NCloud::NStorage::NRdma::TClientRequest& request,
     ui32 status,
     size_t responseBytes,
-    google::protobuf::Message& response);
+    google::protobuf::Message* response);
 
 }   // namespace NCloud::NFileStore::NStorage

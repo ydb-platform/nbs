@@ -44,12 +44,12 @@ TResultOrError<TClientRequestPtr> AllocateRdmaTabletRequest(
     const google::protobuf::Message& request,
     size_t maxResponseBytes)
 {
-    const size_t requestBodyBytes = request.ByteSizeLong();
-
     auto [clientRequest, allocationError] = endpoint.AllocateRequest(
         std::move(handler),
         nullptr,   // context
-        TProtoMessageSerializer::MessageByteSize(envelope, requestBodyBytes),
+        TProtoMessageSerializer::MessageByteSize(
+            envelope,
+            request.ByteSizeLong()),
         ResponseBufferSize(maxResponseBytes));
 
     if (HasError(allocationError)) {
@@ -59,20 +59,12 @@ TResultOrError<TClientRequestPtr> AllocateRdmaTabletRequest(
     auto error = SafeExecute<NProto::TError>(
         [&]
         {
-            const size_t offset =
-                TProtoMessageSerializer::SerializeWithDataLength(
-                    clientRequest->RequestBuffer,
-                    TTabletRdmaProtocol::TabletRequest,
-                    0,   // flags
-                    envelope,
-                    requestBodyBytes);
-
-            auto* body = reinterpret_cast<ui8*>(
-                             const_cast<char*>(
-                                 clientRequest->RequestBuffer.data())) +
-                         offset;
-            auto* end = request.SerializeWithCachedSizesToArray(body);
-            Y_DEBUG_ABORT_UNLESS(end == body + requestBodyBytes);
+            TProtoMessageSerializer::SerializeWithProtoData(
+                clientRequest->RequestBuffer,
+                TTabletRdmaProtocol::TabletRequest,
+                0,   // flags
+                envelope,
+                request);
 
             return NProto::TError();
         });
@@ -88,7 +80,7 @@ TResultOrError<ui32> ParseRdmaTabletResponse(
     const TClientRequest& request,
     ui32 status,
     size_t responseBytes,
-    google::protobuf::Message& response)
+    google::protobuf::Message* response)
 {
     const TStringBuf buffer = request.ResponseBuffer.Head(responseBytes);
 
@@ -116,7 +108,7 @@ TResultOrError<ui32> ParseRdmaTabletResponse(
         static_cast<const NProtoPrivate::TTabletRdmaResponse*>(
             parsed.Proto.get());
 
-    if (!response.ParseFromArray(parsed.Data.data(), parsed.Data.size())) {
+    if (!response->ParseFromArray(parsed.Data.data(), parsed.Data.size())) {
         return MakeError(
             E_ARGUMENT,
             TStringBuilder() << "malformed RDMA response body for method "
