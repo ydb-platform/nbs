@@ -76,6 +76,10 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			requestZone: "zone-a", disabledZones: disabledZone, expectedZone: "zone-d",
 		},
 		{
+			name: "disabled metadata zone without request zone", diskMeta: disabledDisk,
+			disabledZones: disabledZone, expectedZone: "zone-d",
+		},
+		{
 			name: "disabled request zone conflicts with enabled metadata zone", diskMeta: allowedDisk,
 			requestZone: "zone-d", disabledZones: disabledZone, nonCancellable: true,
 		},
@@ -98,6 +102,14 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 		},
 		{
 			name: "allowed sync estimate", diskMeta: allowedDisk, requestZone: "zone-a",
+			disabledZones: disabledZone, sync: true, expectedZone: "zone-a", expectNBS: true,
+		},
+		{
+			name: "enabled metadata zone without request zone", diskMeta: allowedDisk,
+			disabledZones: disabledZone, expectedZone: "zone-a", expectNBS: true,
+		},
+		{
+			name: "allowed sync estimate without request zone", diskMeta: allowedDisk,
 			disabledZones: disabledZone, sync: true, expectedZone: "zone-a", expectNBS: true,
 		},
 		{

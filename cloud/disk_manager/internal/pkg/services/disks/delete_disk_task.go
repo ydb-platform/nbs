@@ -61,11 +61,7 @@ func (t *deleteDiskTask) deleteDisk(
 	selfTaskID := execCtx.GetTaskID()
 	diskID := t.request.Disk.DiskId
 	sync := t.request.Sync
-
 	requestZoneID := t.request.Disk.ZoneId
-	if requestZoneID == "" {
-		return errors.NewNonCancellableErrorf("request zone is empty for disk %v", diskID)
-	}
 
 	meta, err := t.storage.GetDiskMeta(ctx, diskID)
 	if err != nil {
@@ -81,6 +77,9 @@ func (t *deleteDiskTask) deleteDisk(
 	zoneID := meta.ZoneID
 	if len(zoneID) == 0 {
 		zoneID = requestZoneID
+	}
+	if len(zoneID) == 0 {
+		return errors.NewNonCancellableErrorf("zone is unknown for disk %v", diskID)
 	}
 
 	if t.disabledZones.IsDisabled(zoneID) {
@@ -98,7 +97,9 @@ func (t *deleteDiskTask) deleteDisk(
 		return t.storage.DiskDeleted(ctx, diskID, time.Now())
 	}
 
-	if zoneID != requestZoneID && !t.cellSelector.ZoneContainsCell(requestZoneID, zoneID) {
+	if requestZoneID != "" && zoneID != requestZoneID &&
+		!t.cellSelector.ZoneContainsCell(requestZoneID, zoneID) {
+
 		return errors.NewNonCancellableErrorf(
 			"zone %q of disk %v from meta does not match request zone %q",
 			zoneID, diskID, requestZoneID,

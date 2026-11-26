@@ -86,18 +86,21 @@ func TestDeleteDiskTaskRun(t *testing.T) {
 	testDeleteDiskTaskRun(t, false)
 }
 
-func TestDeleteDiskTaskRunWithoutZoneID(t *testing.T) {
+func TestDeleteDiskTaskRunWithoutAnyZone(t *testing.T) {
+	ctx := context.Background()
 	storage := storage_mocks.NewStorageMock()
+	storage.On("GetDiskMeta", ctx, "disk").Return(&resources.DiskMeta{}, nil).Once()
 	task := &deleteDiskTask{
 		storage: storage,
 		request: &protos.DeleteDiskRequest{Disk: &types.Disk{DiskId: "disk"}},
 	}
 
-	err := task.Run(context.Background(), newExecutionContextMock())
+	err := task.Run(ctx, newExecutionContextMock())
 	require.ErrorIs(t, err, errors.NewEmptyNonCancellableError())
-	require.ErrorContains(t, err, "request zone is empty")
+	require.ErrorContains(t, err, "zone is unknown")
 	require.False(t, errors.CanRetry(err))
-	storage.AssertNumberOfCalls(t, "GetDiskMeta", 0)
+	storage.AssertExpectations(t)
+	storage.AssertNumberOfCalls(t, "DeleteDisk", 0)
 }
 
 func TestDeleteDiskSyncTaskRun(t *testing.T) {
