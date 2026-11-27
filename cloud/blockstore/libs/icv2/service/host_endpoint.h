@@ -18,6 +18,7 @@ public:
     THostDataEndpoint(NCloud::NIcV2::IPeerPtr peer, IDataEndpointPtr endpoint);
 
     [[nodiscard]] IDataEndpointPtr GetEndpoint() const;
+    [[nodiscard]] NCloud::NIcV2::IPeerPtr GetPeer() const;
     [[nodiscard]] NCloud::NIcV2::TPeerStatus GetStatus() const;
 };
 

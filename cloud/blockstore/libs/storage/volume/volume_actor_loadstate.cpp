@@ -187,13 +187,7 @@ void TVolumeActor::CompleteLoadState(
         RegisterCounters(ctx);
         RegisterVolume(ctx);
 
-        if (State->IsDiskRegistryMediaKind() || PendingRequests.size()) {
-            StartPartitionsForUse(ctx);
-        } else if (State->GetShouldStartPartitionsForGc(ctx.Now())
-            && !Config->GetDisableStartPartitionsForGc())
-        {
-            StartPartitionsForGc(ctx);
-        }
+        StartPartitions(ctx, GetPartitionsStartedReasonOnLoad(ctx.Now()));
     }
 
     if (args.UsedBlocks) {

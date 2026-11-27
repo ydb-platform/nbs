@@ -441,9 +441,10 @@ private:
             }
 
             // mtime is always updated, ctime - only if the file size changes
+            const bool sizeGrows = it->Attrs.GetSize() < maxOffset;
             auto attrs = CopyAttrs(
                 it->Attrs,
-                it->Attrs.GetSize() < maxOffset ? E_CM_CMTIME : E_CM_MTIME);
+                sizeGrows ? E_CM_CMTIME : E_CM_MTIME);
             attrs.SetSize(Max<ui64>(attrs.GetSize(), maxOffset));
 
             Tablet.UpdateNode(
@@ -454,6 +455,11 @@ private:
                 args.CommitId,
                 attrs,
                 it->Attrs);
+
+            if (sizeGrows) {
+                Tablet.StartNodeSizeUpdate(id);
+                args.StartedNodeSizeUpdates.push_back(id);
+            }
         }
     }
 
@@ -560,6 +566,10 @@ void TIndexTabletActor::CompleteTx_AddBlob(
     const TActorContext& ctx,
     TTxIndexTablet::TAddBlob& args)
 {
+    for (const ui64 nodeId: args.StartedNodeSizeUpdates) {
+        EndNodeSizeUpdate(nodeId);
+    }
+
     for (auto [nodeId, _]: args.WriteRanges) {
         InvalidateReadAheadCache(nodeId);
     }

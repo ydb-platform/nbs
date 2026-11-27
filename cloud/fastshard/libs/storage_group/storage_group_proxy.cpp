@@ -117,11 +117,14 @@ NProto::TError TDeviceProxy::AdvanceLsnLowWatermark(
     return {};
 }
 
-NProto::TError TDeviceProxy::Acquire(TFastShardContext& ctx)
+NProto::TError TDeviceProxy::Acquire(
+    TFastShardContext& ctx,
+    ui64 generation)
 {
     NProto::TAcquireDevicesRequest request;
     FillHeaders(Config, request.MutableHeaders());
-    request.SetGeneration(Config.AcquireGeneration);
+    request.SetFastshardId(Config.ClientId);
+    request.SetGeneration(generation);
     request.AddDeviceUUIDs(DeviceUUID);
 
     auto response = CallWithRetries(
@@ -140,10 +143,14 @@ NProto::TError TDeviceProxy::Acquire(TFastShardContext& ctx)
     return {};
 }
 
-NProto::TError TDeviceProxy::Release(TFastShardContext& ctx)
+NProto::TError TDeviceProxy::Release(
+    TFastShardContext& ctx,
+    ui64 generation)
 {
     NProto::TReleaseDevicesRequest request;
     FillHeaders(Config, request.MutableHeaders());
+    request.SetFastshardId(Config.ClientId);
+    request.SetGeneration(generation);
     request.AddDeviceUUIDs(DeviceUUID);
 
     auto response = CallWithRetries(

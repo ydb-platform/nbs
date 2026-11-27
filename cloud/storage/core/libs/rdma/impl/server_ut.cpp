@@ -12,8 +12,10 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/gtest/gtest.h>
 
+#include <util/generic/maybe.h>
 #include <util/generic/scope.h>
 #include <util/stream/printf.h>
+#include <util/system/mutex.h>
 
 #include <array>
 #include <atomic>
@@ -114,6 +116,45 @@ struct TDelayedServerHandler final
         RequestReceived.SetValue();
     }
 };
+
+struct TConnectionHandler final: IServerConnectionHandler
+{
+    using TConnect =
+        std::function<TResultOrError<IServerHandlerPtr>(TStringBuf)>;
+
+    const TConnect Connect;
+
+    explicit TConnectionHandler(TConnect connect)
+        : Connect(std::move(connect))
+    {}
+
+    TResultOrError<IServerHandlerPtr> HandleConnect(
+        TStringBuf externalData) override
+    {
+        return Connect(externalData);
+    }
+};
+
+TString MakeConnectMessage(TStringBuf options)
+{
+    TConnectMessage message = {};
+    InitMessageHeader(&message);
+    message.SendQueueSize = 10;
+    message.RecvQueueSize = 10;
+    message.MaxBufferSize = 4_MB + 4_KB;
+
+    TString result(reinterpret_cast<const char*>(&message), sizeof(message));
+    result += options;
+    return result;
+}
+
+TString MakeExternalDataOption(TStringBuf externalData)
+{
+    char buffer[RDMA_MAX_CONNECT_PRIVATE_SIZE];
+    TOptionWriter options(buffer, sizeof(buffer));
+    options.WriteData(RDMA_CONNECT_OPTION_EXTERNAL_DATA, externalData);
+    return TString(buffer, options.Size());
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1147,6 +1188,263 @@ TEST(TRdmaServerTest, ShouldKeepSessionAliveUntilHandlerCompletesOnDisconnect)
     endpoint->SendResponse(handler->Context, 0);
 
     sessionDestroyed.GetFuture().GetValueSync();
+}
+
+TEST(TRdmaServerTest, ShouldServeConnectionWithHandlerReturnedFromHandleConnect)
+{
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    // flush posted WRs when the session enters the error state on Stop()
+    context->ModifyQP = [&](ibv_qp* qp, ibv_qp_attr* attr, int mask)
+    {
+        Y_UNUSED(qp);
+        if ((mask & IBV_QP_STATE) && attr->qp_state == IBV_QPS_ERR) {
+            NVerbs::Flush(context);
+        }
+    };
+
+    std::atomic<int> sends = 0;
+    context->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
+    {
+        PostSend<TResponseMessage>(context, qp, wr);
+        ++sends;
+    };
+
+    auto receivedData = NThreading::NewPromise<TString>();
+    auto handler = std::make_shared<TDelayedServerHandler>();
+    auto connectionHandler = std::make_shared<TConnectionHandler>(
+        [&](TStringBuf externalData)
+        {
+            receivedData.SetValue(TString(externalData));
+            return IServerHandlerPtr(handler);
+        });
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+    serverConfig->QueueSize = 1;
+    serverConfig->SendQueueSize = 1;
+    serverConfig->RecvQueueSize = 1;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
+    server->Start();
+    Y_DEFER
+    {
+        server->Stop();
+    };
+
+    auto endpoint = server->StartEndpoint("::", 10020, connectionHandler);
+
+    const auto message = MakeConnectMessage(MakeExternalDataOption("pipe-1"));
+    NVerbs::CreateConnection(context, message.data(), message.size());
+
+    ASSERT_EQ("pipe-1", receivedData.GetFuture().GetValueSync());
+
+    auto activeRecv = GetServerCounters(monitoring)->GetCounter("ActiveRecv");
+
+    // wait for session to initialize
+    while (activeRecv->Val() != serverConfig->RecvQueueSize) {
+        SpinLockPause();
+    }
+
+    with_lock (context->CompletionLock) {
+        ASSERT_FALSE(context->RecvEvents.empty());
+
+        auto* recv = context->RecvEvents.back();
+        context->RecvEvents.pop_back();
+
+        auto* msg = reinterpret_cast<TRequestMessage*>(recv->sg_list[0].addr);
+        memset(msg, 0, sizeof(*msg));
+        InitMessageHeader(msg);
+        msg->ReqId = 1;
+        msg->Out.Length = 4_KB;
+
+        context->ProcessedRecvEvents.push_back(recv);
+        context->CompletionHandle.Set();
+    }
+
+    handler->RequestReceived.GetFuture().GetValueSync();
+
+    endpoint->SendResponse(handler->Context, 0);
+
+    while (sends.load() != 1) {
+        SpinLockPause();
+    }
+}
+
+TEST(TRdmaServerTest, ShouldRejectConnectionWhenHandleConnectFails)
+{
+    NThreading::TPromise<void> done = NThreading::NewPromise<void>();
+    std::atomic<int> rejectCount = 0;
+    std::atomic<bool> createQpCalled = false;
+
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    context->CreateQP = [&](rdma_cm_id* id, ibv_qp_init_attr* attr)
+    {
+        Y_UNUSED(id);
+        Y_UNUSED(attr);
+        createQpCalled.store(true);
+    };
+
+    context->Reject = [&](rdma_cm_id* id, const void* data, ui8 size)
+    {
+        Y_UNUSED(id);
+
+        EXPECT_EQ(sizeof(TRejectMessage), size);
+
+        const auto* rejectMsg = static_cast<const TRejectMessage*>(data);
+        EXPECT_TRUE(IsValidMessageHeader(rejectMsg));
+        EXPECT_EQ(RDMA_PROTO_REJECTED, rejectMsg->Status);
+
+        if (++rejectCount == 3) {
+            done.TrySetValue();
+        }
+    };
+
+    auto connectionHandler = std::make_shared<TConnectionHandler>(
+        [](TStringBuf externalData) -> TResultOrError<IServerHandlerPtr>
+        {
+            if (externalData == "throw") {
+                ythrow yexception() << "unknown connection";
+            }
+            if (externalData == "empty") {
+                return IServerHandlerPtr();
+            }
+            return MakeError(E_ARGUMENT, "unknown connection");
+        });
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
+    server->Start();
+    Y_DEFER
+    {
+        server->Stop();
+    };
+
+    auto endpoint = server->StartEndpoint("::", 10020, connectionHandler);
+
+    for (TStringBuf externalData: {"error", "throw", "empty"}) {
+        const auto message =
+            MakeConnectMessage(MakeExternalDataOption(externalData));
+        NVerbs::CreateConnection(context, message.data(), message.size());
+    }
+
+    done.GetFuture().Wait();
+    EXPECT_EQ(3, rejectCount.load());
+    EXPECT_FALSE(createQpCalled.load());
+}
+
+TEST(TRdmaServerTest, ShouldParseConnectOptions)
+{
+    struct TTestCase
+    {
+        TString Options;
+        // what HandleConnect gets, nothing if it is not called
+        TMaybe<TString> ExternalData;
+    };
+
+    const TString unknownOption("\x7f\x01\x02", 3);
+    const TString maxData(RDMA_MAX_EXTERNAL_DATA_SIZE, 'x');
+
+    const TVector<TTestCase> testCases = {
+        {"", ""},
+        // private data arrives padded with zeros
+        {TString(40, '\0'), ""},
+        {MakeExternalDataOption("pipe-1"), "pipe-1"},
+        {MakeExternalDataOption("pipe-2") + TString(32, '\0'), "pipe-2"},
+        {MakeExternalDataOption(maxData), maxData},
+        // options of a newer client are ignored
+        {MakeExternalDataOption("pipe-3") + unknownOption, "pipe-3"},
+        {unknownOption + MakeExternalDataOption("pipe-4"), ""},
+        // no size
+        {TString("\x01", 1), Nothing()},
+        // the data is shorter than its size
+        {TString("\x01\x0axyz", 5), Nothing()},
+    };
+
+    struct TResult
+    {
+        ui32 Status = 0;
+        TMaybe<TString> ExternalData;
+    };
+
+    TMutex lock;
+    TVector<TResult> results;
+    // HandleConnect and Reject are called from the same thread
+    TMaybe<TString> lastExternalData;
+    NThreading::TPromise<void> done = NThreading::NewPromise<void>();
+
+    auto context = MakeIntrusive<NVerbs::TTestContext>();
+
+    context->Reject = [&](rdma_cm_id* id, const void* data, ui8 size)
+    {
+        Y_UNUSED(id);
+
+        EXPECT_EQ(sizeof(TRejectMessage), size);
+        const auto* rejectMsg = static_cast<const TRejectMessage*>(data);
+
+        with_lock (lock) {
+            results.push_back({
+                .Status = rejectMsg->Status,
+                .ExternalData = std::exchange(lastExternalData, Nothing()),
+            });
+            if (results.size() == testCases.size()) {
+                done.TrySetValue();
+            }
+        }
+    };
+
+    auto connectionHandler = std::make_shared<TConnectionHandler>(
+        [&](TStringBuf externalData) -> TResultOrError<IServerHandlerPtr>
+        {
+            lastExternalData = TString(externalData);
+            return MakeError(E_ARGUMENT, "unknown connection");
+        });
+
+    auto verbs = NVerbs::CreateTestVerbs(context);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto serverConfig = std::make_shared<TServerConfig>();
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto server = CreateTestServer(verbs, logging, monitoring, serverConfig);
+    server->Start();
+    Y_DEFER
+    {
+        server->Stop();
+    };
+
+    auto endpoint = server->StartEndpoint("::", 10020, connectionHandler);
+
+    for (const auto& testCase: testCases) {
+        const auto message = MakeConnectMessage(testCase.Options);
+        NVerbs::CreateConnection(context, message.data(), message.size());
+    }
+
+    done.GetFuture().Wait();
+
+    with_lock (lock) {
+        ASSERT_EQ(testCases.size(), results.size());
+        for (size_t i = 0; i < testCases.size(); ++i) {
+            const auto& expected = testCases[i].ExternalData;
+            EXPECT_EQ(expected, results[i].ExternalData) << "test case " << i;
+            EXPECT_EQ(
+                expected ? RDMA_PROTO_REJECTED : RDMA_PROTO_INVALID_REQUEST,
+                results[i].Status)
+                << "test case " << i;
+        }
+    }
 }
 
 int NVerbs::DestroyId(rdma_cm_id* id)

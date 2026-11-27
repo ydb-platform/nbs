@@ -33,6 +33,7 @@ SRCS(
     mv.cpp
     performance_profile_params.cpp
     ping.cpp
+    quota.cpp
     read.cpp
     readlink.cpp
     remove_cluster_node.cpp

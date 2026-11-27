@@ -16,7 +16,7 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/discovery
     cloud/blockstore/libs/endpoints
-    cloud/blockstore/libs/icv2/iface
+    cloud/blockstore/libs/icv2/service
     cloud/blockstore/libs/kms/iface
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/local_nvme
@@ -45,6 +45,7 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/grpc
     cloud/storage/core/libs/iam/iface
+    cloud/storage/core/libs/icv2/actors
     cloud/storage/core/libs/io_uring
     cloud/storage/core/libs/kikimr
     cloud/storage/core/libs/version

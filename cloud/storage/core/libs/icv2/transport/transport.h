@@ -26,34 +26,30 @@ struct ITransport
 {
     virtual ~ITransport() = default;
 
-    // Requires Activate() before use.
-    // Optional xdcSocket is closed together with socket; an error in either
-    // closes both. Idle XDC disconnects may remain undetected until a data
-    // transfer is attempted. Returns null if socket or handler is null, or
-    // shutdown has started.
+    // xdcSocket is optional. Activate the returned connection before use.
+    // An error in either socket closes both; idle XDC failures may remain
+    // undetected until data is sent.
+    // Returns null for a null socket or handler, or after shutdown begins.
     virtual IConnectionPtr CreateConnection(
         TIntrusivePtr<NInterconnect::TStreamSocket> socket,
         TIntrusivePtr<NInterconnect::TStreamSocket> xdcSocket,
         std::shared_ptr<IConnectionHandler> handler,
         bool sendPings) = 0;
 
-    // Safe from callbacks. Rejects new work without waiting for callbacks to
-    // finish.
+    // Begins shutdown without waiting. Safe in callbacks.
     virtual void RequestStop() = 0;
 
-    // Waits for handler callbacks and WhenClosed() subscribers invoked during
-    // closure. Call outside these callbacks and before releasing the
-    // transport's last reference.
+    // Waits for callbacks, including WhenClosed() subscribers. Call outside
+    // callbacks and keep the transport alive until it returns.
     virtual void Stop() = 0;
 };
 
 using ITransportPtr = std::shared_ptr<ITransport>;
 
-// Requires exclusive control of an unused engine.
-// maxOutputQueueBytes limits the combined output queues of all connections,
-// including data not yet released after a connection closes.
-// Optional eventDestructor receives outgoing payloads for deferred destruction.
-// Stop() does not wait for deferred destruction to complete.
+// Pass an unused engine and do not use it elsewhere.
+// maxOutputQueueBytes limits total outgoing data, including data retained
+// after closure. Optional eventDestructor defers releasing outgoing payloads;
+// Stop() does not wait for it.
 // Returns null if engine is null or maxOutputQueueBytes is zero.
 ITransportPtr CreateTransport(
     NActors::TUringEnginePtr engine,

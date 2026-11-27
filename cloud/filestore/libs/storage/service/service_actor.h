@@ -73,6 +73,7 @@ private:
     ui64 InFlightRequestCounter = 0;
 
     TReadDataActorPool ReadDataActorPool;
+    TWriteDataActorPool WriteDataActorPool;
 
     using TCounterPtr = NMonitoring::TDynamicCounters::TCounterPtr;
 
@@ -95,6 +96,7 @@ private:
     TWriteDataZeroCounters WriteDataZeroCounters;
 
     TCounterPtr ReadDataActorPoolSize;
+    TCounterPtr WriteDataActorPoolSize;
 
     NProto::EServiceState ServiceState = NProto::SERVICE_STATE_UNKNOWN;
 
@@ -132,6 +134,10 @@ private:
 
     void HandleReleaseReadDataActor(
         const TEvServicePrivate::TEvReleaseReadDataActor::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleReleaseWriteDataActor(
+        const TEvServicePrivate::TEvReleaseWriteDataActor::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>
@@ -449,18 +455,6 @@ private:
         TString input);
 
     NActors::IActorPtr CreateListNodesInternalActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
-
-    NActors::IActorPtr CreateSetQuotaActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
-
-    NActors::IActorPtr CreateDeleteQuotaActionActor(
-        TRequestInfoPtr requestInfo,
-        TString input);
-
-    NActors::IActorPtr CreateListQuotasActionActor(
         TRequestInfoPtr requestInfo,
         TString input);
 

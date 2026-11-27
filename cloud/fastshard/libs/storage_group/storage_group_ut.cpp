@@ -46,6 +46,7 @@ namespace {
     ::testing::AddGlobalTestEnvironment(MakeSilkTestEnv());
 
 constexpr ui32 DeviceCount = 3;
+constexpr ui64 Generation = 42;
 
 constexpr ui64 PageNo = 111;
 constexpr ui64 Lsn = 2;
@@ -207,7 +208,6 @@ TStorageGroupConfig MakeConfig(ui32 pageSize = DefaultBlockSize)
 {
     TStorageGroupConfig config;
     config.ClientId = "test-client";
-    config.AcquireGeneration = 42;
     config.PageSize = pageSize;
     // Retries are instant: a test counts the attempts.
     config.RetryPolicy.BackoffIncrement = TDuration::Zero();
@@ -303,7 +303,7 @@ struct TQuorumFixture: TGroupFixture
             StorageDevices(),
             CreateFiberTimer());
         if (init) {
-            auto error = Group->Init().GetError();
+            auto error = Group->Init(Generation).GetError();
             Y_ABORT_UNLESS(
                 !HasError(error),
                 "failed to initialize: %s",
@@ -414,7 +414,7 @@ struct TInitParams
 // Init on its own fiber, its error left for the test.
 int InitFiberMain(TInitParams* params) noexcept
 {
-    *params->Error = params->Fixture->Group->Init().GetError();
+    *params->Error = params->Fixture->Group->Init(Generation).GetError();
     return 0;
 }
 
@@ -521,7 +521,7 @@ NProto::TError ReadFromEachReplica(TGroupFixture& fx)
 FIBER_TEST(NaiveGroupTest, ShouldInitializeDevices)
 {
     TNaiveFixture fx;
-    const auto init = fx.Group->Init();
+    const auto init = fx.Group->Init(Generation);
     ASSERT_EQ(S_OK, init.GetError().GetCode())
         << init.GetError().GetMessage();
 
@@ -542,10 +542,30 @@ FIBER_TEST(NaiveGroupTest, ShouldInitializeDevices)
     }
 }
 
+FIBER_TEST(NaiveGroupTest, ShouldSendFastShardIdAndGeneration)
+{
+    TNaiveFixture fx;
+    const auto init = fx.Group->Init(Generation);
+    ASSERT_EQ(S_OK, init.GetError().GetCode())
+        << init.GetError().GetMessage();
+
+    fx.Group->TearDown();
+
+    for (ui32 i = 0; i < DeviceCount; ++i) {
+        const auto acquire = fx[i].Acquires.Last();
+        ASSERT_EQ("test-client", acquire.GetFastshardId());
+        ASSERT_EQ(Generation, acquire.GetGeneration());
+
+        ASSERT_EQ(1U, fx[i].ReleaseCalls.size());
+        ASSERT_EQ("test-client", fx[i].ReleaseCalls[0].GetFastshardId());
+        ASSERT_EQ(Generation, fx[i].ReleaseCalls[0].GetGeneration());
+    }
+}
+
 FIBER_TEST(NaiveGroupTest, ShouldMirrorWrites)
 {
     TNaiveFixture fx;
-    const auto init = fx.Group->Init();
+    const auto init = fx.Group->Init(Generation);
     ASSERT_EQ(S_OK, init.GetError().GetCode())
         << init.GetError().GetMessage();
 
@@ -576,7 +596,7 @@ FIBER_TEST(NaiveGroupTest, ShouldInitFromTheHighestAckedLsn)
         fx[i].ReadJournalTailResp.SetLsnLowWatermark(acked[i]);
     }
 
-    const auto init = fx.Group->Init();
+    const auto init = fx.Group->Init(Generation);
     ASSERT_EQ(S_OK, init.GetError().GetCode())
         << init.GetError().GetMessage();
     ASSERT_EQ(7U, init.GetResult());
@@ -595,7 +615,7 @@ FIBER_TEST(NaiveGroupTest, ShouldInitFromTheHighestAckedLsn)
 FIBER_TEST(NaiveGroupTest, ShouldRoundRobinReads)
 {
     TNaiveFixture fx;
-    const auto init = fx.Group->Init();
+    const auto init = fx.Group->Init(Generation);
     ASSERT_EQ(S_OK, init.GetError().GetCode())
         << init.GetError().GetMessage();
 
@@ -622,7 +642,7 @@ FIBER_TEST(NaiveGroupTest, ShouldRoundRobinReads)
 FIBER_TEST(NaiveGroupTest, ShouldRetryErrors)
 {
     TNaiveFixture fx;
-    const auto init = fx.Group->Init();
+    const auto init = fx.Group->Init(Generation);
     ASSERT_EQ(S_OK, init.GetError().GetCode())
         << init.GetError().GetMessage();
 
@@ -653,7 +673,7 @@ FIBER_TEST(NaiveGroupTest, ShouldNotRetryErrors)
 {
     {
         TNaiveFixture fx;
-        const auto init = fx.Group->Init();
+        const auto init = fx.Group->Init(Generation);
         ASSERT_EQ(S_OK, init.GetError().GetCode())
             << init.GetError().GetMessage();
 
@@ -685,7 +705,7 @@ FIBER_TEST(NaiveGroupTest, ShouldNotRetryErrors)
 
     {
         TNaiveFixture fx(config);
-        const auto init = fx.Group->Init();
+        const auto init = fx.Group->Init(Generation);
         ASSERT_EQ(S_OK, init.GetError().GetCode())
             << init.GetError().GetMessage();
         *fx[1].Writes.Response.MutableError() =
@@ -699,7 +719,7 @@ FIBER_TEST(NaiveGroupTest, ShouldNotRetryErrors)
 
     {
         TNaiveFixture fx(config);
-        const auto init = fx.Group->Init();
+        const auto init = fx.Group->Init(Generation);
         ASSERT_EQ(S_OK, init.GetError().GetCode())
             << init.GetError().GetMessage();
         for (ui32 i = 0; i < DeviceCount; ++i) {
@@ -727,7 +747,7 @@ FIBER_TEST(QuorumGroupTest, ShouldInit)
     // record 1, and TearDown releases every device.
     {
         TQuorumFixture fx(false /* init */);
-        const auto init = fx.Group->Init();
+        const auto init = fx.Group->Init(Generation);
         ASSERT_EQ(S_OK, init.GetError().GetCode())
             << init.GetError().GetMessage();
 
@@ -758,6 +778,23 @@ FIBER_TEST(QuorumGroupTest, ShouldInit)
     }
 }
 
+FIBER_TEST(QuorumGroupTest, ShouldSendFastShardIdAndGeneration)
+{
+    TQuorumFixture fx;
+
+    fx.Group->TearDown();
+
+    for (ui32 i = 0; i < DeviceCount; ++i) {
+        const auto acquire = fx[i].Acquires.Last();
+        ASSERT_EQ("test-client", acquire.GetFastshardId());
+        ASSERT_EQ(Generation, acquire.GetGeneration());
+
+        ASSERT_EQ(1U, fx[i].ReleaseCalls.size());
+        ASSERT_EQ("test-client", fx[i].ReleaseCalls[0].GetFastshardId());
+        ASSERT_EQ(Generation, fx[i].ReleaseCalls[0].GetGeneration());
+    }
+}
+
 FIBER_TEST(QuorumGroupTest, ShouldNotRewriteExistingHeaderOnInit)
 {
     TQuorumFixture fx(false /* init */);
@@ -766,7 +803,7 @@ FIBER_TEST(QuorumGroupTest, ShouldNotRewriteExistingHeaderOnInit)
         fx[i].Reads.Response.SetLastAckedLogSequenceNumber(Lsn);
     }
 
-    const auto init = fx.Group->Init();
+    const auto init = fx.Group->Init(Generation);
     ASSERT_EQ(S_OK, init.GetError().GetCode())
         << init.GetError().GetMessage();
     ASSERT_EQ(Lsn, init.GetResult());
@@ -781,7 +818,7 @@ FIBER_TEST(QuorumGroupTest, ShouldFailInitOnErrors)
         *fx[1].Acquires.Response.MutableError() =
             MakeError(E_ARGUMENT, "no session");
 
-        auto error = fx.Group->Init().GetError();
+        auto error = fx.Group->Init(Generation).GetError();
         ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
     }
 
@@ -790,7 +827,7 @@ FIBER_TEST(QuorumGroupTest, ShouldFailInitOnErrors)
         TQuorumFixture fx(false /* init */);
         *fx[0].Reads.Response.MutableError() = MakeError(E_IO, "media error");
 
-        auto error = fx.Group->Init().GetError();
+        auto error = fx.Group->Init(Generation).GetError();
         ASSERT_EQ(E_IO, error.GetCode()) << error.GetMessage();
         ASSERT_EQ(0U, fx[0].Writes.Count())
             << "header written despite the error";
@@ -803,7 +840,7 @@ FIBER_TEST(QuorumGroupTest, ShouldFailInitOnErrors)
         *fx[1].Writes.ResponseQueue.back().MutableError() =
             MakeError(E_ARGUMENT, "read only");
 
-        auto error = fx.Group->Init().GetError();
+        auto error = fx.Group->Init(Generation).GetError();
         ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
         ASSERT_EQ(1U, fx[1].Writes.Count());
     }
@@ -817,7 +854,7 @@ FIBER_TEST(QuorumGroupTest, ShouldFailInitOnErrors)
         *fx[0].ReadJournalTailResp.MutableError() =
             MakeError(E_ARGUMENT, "no journal");
 
-        auto error = fx.Group->Init().GetError();
+        auto error = fx.Group->Init(Generation).GetError();
         ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
 
         // An uninitialised group serves nobody.
@@ -850,7 +887,7 @@ FIBER_TEST(QuorumGroupTest, ShouldValidateGroupHeader)
         TQuorumFixture fx(false /* init */);
         fx[2].Reads.Response = PageResponse(0, TString(1, 'x'));
 
-        auto error = fx.Group->Init().GetError();
+        auto error = fx.Group->Init(Generation).GetError();
         ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
         ASSERT_EQ(0U, fx[2].Writes.Count())
             << "header written despite the error";
@@ -863,7 +900,7 @@ FIBER_TEST(QuorumGroupTest, ShouldValidateGroupHeader)
         TQuorumFixture other(false /* init */);
         other[1].Reads.Response = PageResponse(0, headerPage);
 
-        auto error = other.Group->Init().GetError();
+        auto error = other.Group->Init(Generation).GetError();
         ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
         ASSERT_EQ(0U, other[1].Writes.Count());
     }
@@ -896,7 +933,7 @@ FIBER_TEST(QuorumGroupTest, ShouldValidateGroupHeader)
             TQuorumFixture fx(false /* init */);
             fx[2].Reads.Response = PageResponse(0, headerPage);
 
-            auto error = fx.Group->Init().GetError();
+            auto error = fx.Group->Init(Generation).GetError();
             ASSERT_EQ(E_INVALID_STATE, error.GetCode())
                 << field << ": " << error.GetMessage();
             ASSERT_EQ(0U, fx[2].Writes.Count())
@@ -921,7 +958,7 @@ FIBER_TEST(QuorumGroupTest, ShouldReplayTheJournalTailOnInit)
         pg->AddContent(TStringBuilder() << "record" << lsn);
     }
 
-    const auto init = fx.Group->Init();
+    const auto init = fx.Group->Init(Generation);
     ASSERT_EQ(S_OK, init.GetError().GetCode())
         << init.GetError().GetMessage();
     ASSERT_EQ(4U, init.GetResult());
@@ -962,7 +999,7 @@ FIBER_TEST(QuorumGroupTest, ShouldFailIfReplayImpossible)
         response.SetLastAckedLogSequenceNumber(Lsn);
         fx[0].Reads.ResponseQueue.push_back(response);
 
-        auto error = fx.Group->Init().GetError();
+        auto error = fx.Group->Init(Generation).GetError();
         ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
     }
 
@@ -982,7 +1019,7 @@ FIBER_TEST(QuorumGroupTest, ShouldFailIfReplayImpossible)
         *fx[2].Writes.Response.MutableError() =
             MakeError(E_ARGUMENT, "read only");
 
-        auto error = fx.Group->Init().GetError();
+        auto error = fx.Group->Init(Generation).GetError();
         ASSERT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
     }
 }
@@ -1237,7 +1274,7 @@ FIBER_TEST(QuorumGroupTest, ShouldPushLowWatermark)
         *fx[2].Watermarks.Response.MutableError() =
             MakeError(E_REJECTED, "busy");
 
-        auto error = fx.Group->Init().GetError();
+        auto error = fx.Group->Init(Generation).GetError();
         ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
         ASSERT_TRUE(WaitFor([&] { return fx[2].Watermarks.Count() == 1; }));
 
@@ -1255,7 +1292,7 @@ FIBER_TEST(QuorumGroupTest, ShouldPushLowWatermark)
         TQuorumFixture fx(false /* init */, config);
         *fx[2].Watermarks.Response.MutableError() =
             MakeError(E_ARGUMENT, "unknown device");
-        auto error = fx.Group->Init().GetError();
+        auto error = fx.Group->Init(Generation).GetError();
         ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
         TVector<TPageGroup> pageGroups;
@@ -1281,7 +1318,7 @@ FIBER_TEST(QuorumGroupTest, ShouldRenewSessions)
         fx[i].Acquires.Paused = true;
         fx[i].Acquires.Step();
     }
-    auto error = fx.Group->Init().GetError();
+    auto error = fx.Group->Init(Generation).GetError();
     ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
     // Init's acquire is the one before step 1.

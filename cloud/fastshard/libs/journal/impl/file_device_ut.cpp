@@ -1,6 +1,6 @@
 #include "file_device.h"
 
-#include "device_helpers.h"
+#include "ut_helpers.h"
 
 #include <cloud/fastshard/libs/journal/iface/device.h>
 
@@ -80,19 +80,19 @@ TString DescribePage(const TString& page)
 }
 
 // "10:[a,b] 20:[c]"
-TString DescribeGroups(const NProto::TReadPagesResponse& response)
+TString DescribeGroups(const TVector<TPageGroup>& response)
 {
     TVector<TString> groups;
 
-    for (const auto& group: response.GetPageGroups()) {
+    for (const auto& group: response) {
         TVector<TString> pages;
-        for (const auto& page: group.GetContent()) {
+        for (const auto& page: group.Pages) {
             pages.push_back(DescribePage(page));
         }
 
-        groups.push_back(TStringBuilder()
-            << group.GetFirstPageNo()
-            << ":[" << JoinSeq(",", pages) << "]");
+        groups.push_back(
+            TStringBuilder()
+            << group.FirstPageNo << ":[" << JoinSeq(",", pages) << "]");
     }
 
     return JoinSeq(" ", groups);
@@ -169,19 +169,20 @@ struct TFixture: public NUnitTest::TBaseFixture
     }
 
     // the pages read are grouped after the refs they have been read for
-    NProto::TReadPagesResponse Read(const TVector<std::pair<ui64, ui64>>& refs)
+    TResultOrError<TVector<TPageGroup>> Read(
+        const TVector<std::pair<ui64, ui64>>& refs)
     {
         const auto rangeRefs = MakeRangeRefs(refs);
 
         const auto result = Device->ReadPages(rangeRefs).GetValueSync();
         if (HasError(result)) {
-            return TErrorResponse(result.GetError());
+            return result.GetError();
         }
 
-        return MakeReadPagesResponse(rangeRefs, result.GetResult());
+        return GroupPages(rangeRefs, result.GetResult());
     }
 
-    NProto::TReadPagesResponse ReadPagesResponse(
+    TVector<TPageGroup> ReadPagesResponse(
         const TVector<std::pair<ui64, ui64>>& refs)
     {
         auto response = Read(refs);
@@ -191,7 +192,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             response.GetError().GetCode(),
             FormatError(response.GetError()));
 
-        return response;
+        return response.ExtractResult();
     }
 
     TString ReadPages(const TVector<std::pair<ui64, ui64>>& refs)
@@ -250,13 +251,13 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         {
             const auto response = ReadPagesResponse({{10, 3}});
 
-            UNIT_ASSERT_VALUES_EQUAL(1, response.PageGroupsSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, response.size());
 
-            const auto& group = response.GetPageGroups(0);
-            UNIT_ASSERT_VALUES_EQUAL(10, group.GetFirstPageNo());
-            UNIT_ASSERT_VALUES_EQUAL(3, group.ContentSize());
+            const auto& group = response[0];
+            UNIT_ASSERT_VALUES_EQUAL(10, group.FirstPageNo);
+            UNIT_ASSERT_VALUES_EQUAL(3, group.Pages.size());
 
-            for (const auto& content: group.GetContent()) {
+            for (const auto& content: group.Pages) {
                 UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(), content);
             }
         }
@@ -268,13 +269,13 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         {
             const auto response = ReadPagesResponse({{10, 3}});
 
-            UNIT_ASSERT_VALUES_EQUAL(1, response.PageGroupsSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, response.size());
 
-            const auto& group = response.GetPageGroups(0);
-            UNIT_ASSERT_VALUES_EQUAL(3, group.ContentSize());
-            UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(), group.GetContent(0));
-            UNIT_ASSERT_VALUES_EQUAL(Page('b'), group.GetContent(1));
-            UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(), group.GetContent(2));
+            const auto& group = response[0];
+            UNIT_ASSERT_VALUES_EQUAL(3, group.Pages.size());
+            UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(), group.Pages[0]);
+            UNIT_ASSERT_VALUES_EQUAL(Page('b'), group.Pages[1]);
+            UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(), group.Pages[2]);
         }
     }
 
@@ -308,13 +309,13 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
 
         const auto response = ReadPagesResponse({{0, DefaultPageCount}});
 
-        UNIT_ASSERT_VALUES_EQUAL(1, response.PageGroupsSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.size());
 
-        const auto& group = response.GetPageGroups(0);
-        UNIT_ASSERT_VALUES_EQUAL(DefaultPageCount, group.ContentSize());
+        const auto& group = response[0];
+        UNIT_ASSERT_VALUES_EQUAL(DefaultPageCount, group.Pages.size());
 
         for (ui64 i = 0; i != DefaultPageCount; ++i) {
-            UNIT_ASSERT_VALUES_EQUAL_C(pages[i], group.GetContent(i), i);
+            UNIT_ASSERT_VALUES_EQUAL_C(pages[i], group.Pages[i], i);
         }
     }
 
@@ -368,9 +369,7 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         UNIT_ASSERT_VALUES_EQUAL("0:[a,b]", ReadPages({{0, 2}}));
 
         const auto response = ReadPagesResponse({{2, 1}});
-        UNIT_ASSERT_VALUES_EQUAL(
-            ZeroedPage(),
-            response.GetPageGroups(0).GetContent(0));
+        UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(), response[0].Pages[0]);
     }
 
     Y_UNIT_TEST_F(ShouldNotTruncateLongerFile, TFixture)
@@ -410,9 +409,7 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         // nothing has been written
 
         const auto response = ReadPagesResponse({{10, 1}});
-        UNIT_ASSERT_VALUES_EQUAL(
-            ZeroedPage(),
-            response.GetPageGroups(0).GetContent(0));
+        UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(), response[0].Pages[0]);
     }
 
     Y_UNIT_TEST_F(ShouldRejectPagesBeyondDevice, TFixture)
@@ -484,9 +481,7 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         // the valid group has not been written either
 
         const auto response = ReadPagesResponse({{10, 1}});
-        UNIT_ASSERT_VALUES_EQUAL(
-            ZeroedPage(),
-            response.GetPageGroups(0).GetContent(0));
+        UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(), response[0].Pages[0]);
     }
 
     Y_UNIT_TEST_F(ShouldZeroPages, TFixture)
@@ -524,7 +519,7 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         ZeroPages({{1, pageCount}});
 
         const auto response = ReadPagesResponse({{0, pageCount + 2}});
-        const auto& content = response.GetPageGroups(0).GetContent();
+        const auto& content = response[0].Pages;
 
         UNIT_ASSERT_VALUES_EQUAL(pageCount + 2, content.size());
         UNIT_ASSERT_VALUES_EQUAL("a", DescribePage(content[0]));

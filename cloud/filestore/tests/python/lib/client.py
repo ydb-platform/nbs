@@ -54,6 +54,9 @@ class FilestoreCliClient:
         blk_count=100 * 1024 * 1024 * 1024,
         return_stdout=True,
         verbose=False,
+        shard_count=None,
+        fast_shard_count=None,
+        fast_shard_storage_kind=None,
     ):
         cmd = [
             self.__binary_path, "create",
@@ -63,6 +66,15 @@ class FilestoreCliClient:
             "--block-size", str(blk_size),
             "--blocks-count", str(blk_count),
         ] + self.__cmd_opts()
+
+        if shard_count is not None:
+            cmd += ["--shard-count", str(shard_count)]
+
+        if fast_shard_count is not None:
+            cmd += ["--fast-shard-count", str(fast_shard_count)]
+
+        if fast_shard_storage_kind is not None:
+            cmd += ["--fast-shard-storage-kind", fast_shard_storage_kind]
 
         if verbose:
             cmd += ["--verbose", "trace"]
@@ -315,6 +327,36 @@ class FilestoreCliClient:
             "--filesystem", fs,
             "--node-id", str(node_id),
         ] + list_args + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def set_quota(self, fs, quota_id, max_bytes, max_nodes):
+        cmd = [
+            self.__binary_path, "setquota",
+            "--filesystem", fs,
+            "--quota-id", str(quota_id),
+            "--max-bytes", str(max_bytes),
+            "--max-nodes", str(max_nodes),
+            "--json",
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def delete_quota(self, fs, quota_id):
+        cmd = [
+            self.__binary_path, "deletequota",
+            "--filesystem", fs,
+            "--quota-id", str(quota_id),
+        ] + self.__cmd_opts()
+
+        return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
+
+    def list_quotas(self, fs):
+        cmd = [
+            self.__binary_path, "listquotas",
+            "--filesystem", fs,
+            "--json",
+        ] + self.__cmd_opts()
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 

@@ -2200,21 +2200,21 @@ void TIndexTabletActor::UnregisterFileStore(const NActors::TActorContext& ctx)
 
 void TIndexTabletActor::RegisterRdmaPipe(const TActorId& pipeServerId)
 {
-    if (RdmaTabletRegistry) {
+    if (RdmaTabletRegistry && Config->GetTabletDirectRdmaEnabled()) {
         RdmaTabletRegistry->RegisterPipe(pipeServerId, SelfId());
     }
 }
 
 void TIndexTabletActor::UnregisterRdmaPipe(const TActorId& pipeServerId)
 {
-    if (RdmaTabletRegistry) {
+    if (RdmaTabletRegistry && Config->GetTabletDirectRdmaEnabled()) {
         RdmaTabletRegistry->UnregisterPipe(pipeServerId);
     }
 }
 
 void TIndexTabletActor::UnregisterRdmaTablet()
 {
-    if (RdmaTabletRegistry) {
+    if (RdmaTabletRegistry && Config->GetTabletDirectRdmaEnabled()) {
         RdmaTabletRegistry->UnregisterTablet(SelfId());
     }
 }

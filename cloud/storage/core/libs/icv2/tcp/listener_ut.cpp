@@ -24,14 +24,14 @@ using namespace std::chrono_literals;
 
 namespace {
 
-class TErrorListenerClient final: public IListenerClient
+class TErrorListenerHandler final: public IListenerHandler
 {
 public:
     NThreading::TPromise<NProto::TError> Error =
         NThreading::NewPromise<NProto::TError>();
     size_t Connections = 0;
 
-    void OnConnection(TSocketPtr) override
+    void OnSocketAccepted(TSocketPtr) override
     {
         ++Connections;
     }
@@ -78,7 +78,7 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
             TSystemError error(EMFILE);
             auto listener = CreateListener(
                 NInterconnect::TAddress("127.0.0.1", 0),
-                std::make_shared<TTestListenerClient>([](TSocketResult) {}));
+                std::make_shared<TTestListenerHandler>([](TSocketResult) {}));
             UNIT_ASSERT(!HasError(listener.GetError()));
         }
 
@@ -93,7 +93,7 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
         };
 
         auto client =
-            std::make_shared<TTestListenerClient>([](TSocketResult) {});
+            std::make_shared<TTestListenerHandler>([](TSocketResult) {});
         for (size_t available: {1u, 3u}) {
             TVector<TFileHandle> files;
             int fd;
@@ -149,7 +149,7 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
         UNIT_ASSERT_VALUES_EQUAL(received, sent);
     }
 
-    Y_UNIT_TEST(ContinuesAcceptingAfterPendingNetworkErrors)
+    Y_UNIT_TEST(ContinuesAcceptingAfterRetryableErrors)
     {
         constexpr int errors[] = {
             ENETDOWN,
@@ -160,7 +160,12 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
             EHOSTUNREACH,
             EOPNOTSUPP,
             ENETUNREACH,
-            EPERM};
+            EPERM,
+            EMFILE,
+            ENFILE,
+            ENOBUFS,
+            ENOMEM,
+        };
         for (int injectedError: errors) {
             auto firstAccepted = NThreading::NewPromise<TSocketResult>();
             auto secondAccepted = NThreading::NewPromise<TSocketResult>();
@@ -169,7 +174,7 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
             auto [listener, error] = NPrivate::CreateListener(
                 NInterconnect::TAddress("127.0.0.1", 0),
                 16,
-                std::make_shared<TTestListenerClient>(
+                std::make_shared<TTestListenerHandler>(
                     [&](TSocketResult result)
                     {
                         if (accepted++ == 0) {
@@ -204,7 +209,7 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
         auto [listener, error] = NPrivate::CreateListener(
             NInterconnect::TAddress("127.0.0.1", 0),
             16,
-            std::make_shared<TTestListenerClient>(
+            std::make_shared<TTestListenerHandler>(
                 [accepted](TSocketResult result) mutable
                 { accepted.SetValue(std::move(result)); }),
             injector);
@@ -224,8 +229,8 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
 
     Y_UNIT_TEST(ReportsTerminalAcceptError)
     {
-        for (int injectedError: {EBADF, EMFILE, ENFILE, ENOBUFS, ENOMEM}) {
-            auto client = std::make_shared<TErrorListenerClient>();
+        for (int injectedError: {EBADF, EINVAL}) {
+            auto client = std::make_shared<TErrorListenerHandler>();
             auto injector = std::make_shared<TTestErrorInjector>(injectedError);
             auto [listener, error] = NPrivate::CreateListener(
                 NInterconnect::TAddress("127.0.0.1", 0),
@@ -256,12 +261,12 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
         const auto address = first.Listener->GetAddress();
         auto duplicate = CreateListener(
             address,
-            std::make_shared<TTestListenerClient>([](TSocketResult) {}));
+            std::make_shared<TTestListenerHandler>([](TSocketResult) {}));
         UNIT_ASSERT(HasError(duplicate.GetError()));
         first.Listener->Stop();   // covers Stop before Start
         auto [second, error] = CreateListener(
             address,
-            std::make_shared<TTestListenerClient>([](TSocketResult) {}));
+            std::make_shared<TTestListenerHandler>([](TSocketResult) {}));
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
         second->Start();
         second->Stop();
@@ -276,7 +281,7 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
         auto badBacklog = NPrivate::CreateListener(
             NInterconnect::TAddress("127.0.0.1", 0),
             0,
-            std::make_shared<TTestListenerClient>([](TSocketResult) {}),
+            std::make_shared<TTestListenerHandler>([](TSocketResult) {}),
             nullptr);
         UNIT_ASSERT_VALUES_EQUAL(badBacklog.GetError().GetCode(), E_ARGUMENT);
     }
@@ -288,7 +293,7 @@ Y_UNIT_TEST_SUITE(TIcV2ListenerTest)
         IListenerPtr listener;
         auto [created, error] = CreateListener(
             NInterconnect::TAddress("127.0.0.1", 0),
-            std::make_shared<TTestListenerClient>(
+            std::make_shared<TTestListenerHandler>(
                 [&](TSocketResult result)
                 {
                     listener->RequestStop();

@@ -420,6 +420,10 @@ func wrapErrorWithInternalFlag(e error, internal bool) error {
 
 	var clientErr *nbs_client.ClientError
 	if errors.As(e, &clientErr) {
+		if clientErr.Code == nbs_client.E_VOLUME_OPERATION_CONFLICT {
+			return errors.NewRetriableErrorWithIgnoreRetryLimit(e)
+		}
+
 		if clientErr.IsRetriable() ||
 			clientErr.Code == nbs_client.E_CANCELLED ||
 			clientErr.Code == nbs_client.E_INVALID_SESSION ||

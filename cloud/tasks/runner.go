@@ -279,12 +279,17 @@ func (r *runnerForRun) executeTask(
 			return
 		}
 
-		err = execCtx.incrementRetriableErrorCount(ctx)
+		if retriableError.IgnoreRetryLimit {
+			err = execCtx.SaveState(ctx)
+		} else {
+			err = execCtx.incrementRetriableErrorCount(ctx)
+		}
 		if err != nil {
 			logError(
 				ctx,
 				err,
-				"failed to increment retriable error count for %v with task id %v",
+				"failed to save state after retriable error for %v "+
+					"with task id %v",
 				taskType,
 				taskID,
 			)

@@ -97,6 +97,31 @@ size_t TProtoMessageSerializer::SerializeWithData(
 }
 
 // static
+size_t TProtoMessageSerializer::SerializeWithProtoData(
+    TStringBuf buffer,
+    ui32 msgId,
+    ui32 flags,
+    const TProtoMessage& proto,
+    const TProtoMessage& data)
+{
+    const size_t dataLen = data.ByteSizeLong();
+
+    char* begin = const_cast<char*>(buffer.data());
+    char* ptr =
+        begin + SerializeWithDataLength(buffer, msgId, flags, proto, dataLen);
+
+    if (HasProtoFlag(flags, RDMA_PROTO_FLAG_DATA_AT_THE_END)) {
+        ptr = begin + buffer.length() - dataLen;
+    }
+
+    bool succeeded = data.SerializeToArray(ptr, dataLen);
+    Y_ENSURE(succeeded, "could not serialize protobuf data");
+    ptr += dataLen;
+
+    return ptr - begin;
+}
+
+// static
 size_t TProtoMessageSerializer::SerializeWithDataLength(
     TStringBuf buffer,
     ui32 msgId,

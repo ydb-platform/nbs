@@ -1027,7 +1027,7 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
                 .SendAlterVolumeRequest(diskId, "project", "folder", "cloud");
             auto response = service.RecvAlterVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_TRY_AGAIN,
+                E_BS_VOLUME_OPERATION_CONFLICT,
                 response->GetStatus(),
                 response->GetErrorReason());
 
@@ -1036,7 +1036,7 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
                 DefaultBlocksCount * 2);
             auto resizeResponse = service.RecvResizeVolumeResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
-                E_TRY_AGAIN,
+                E_BS_VOLUME_OPERATION_CONFLICT,
                 resizeResponse->GetStatus(),
                 resizeResponse->GetErrorReason());
         }
@@ -1093,14 +1093,14 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
             "cloud");
         auto alterResponse = service.RecvAlterVolumeResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_TRY_AGAIN,
+            E_BS_VOLUME_OPERATION_CONFLICT,
             alterResponse->GetStatus(),
             alterResponse->GetErrorReason());
 
         service.SendResizeVolumeRequest("vol-1", DefaultBlocksCount * 2);
         auto resizeResponse = service.RecvResizeVolumeResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_TRY_AGAIN,
+            E_BS_VOLUME_OPERATION_CONFLICT,
             resizeResponse->GetStatus(),
             resizeResponse->GetErrorReason());
 
@@ -1164,6 +1164,13 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         for (const auto& diskId: {TString("vol-1"), TString("vol-2")}) {
             service.CreateCheckpoint(diskId, "checkpoint");
 
+            service.SendResizeVolumeRequest(diskId, DefaultBlocksCount * 4);
+            auto resizeResponse = service.RecvResizeVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_VOLUME_OPERATION_CONFLICT,
+                resizeResponse->GetStatus(),
+                resizeResponse->GetErrorReason());
+
             NPrivateProto::TDeleteCheckpointDataRequest request;
             request.SetDiskId(diskId);
             request.SetCheckpointId("checkpoint");
@@ -1225,14 +1232,14 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
             "cloud");
         auto alterResponse = service.RecvAlterVolumeResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_TRY_AGAIN,
+            E_BS_VOLUME_OPERATION_CONFLICT,
             alterResponse->GetStatus(),
             alterResponse->GetErrorReason());
 
         service.SendResizeVolumeRequest("vol-1", DefaultBlocksCount * 2);
         auto resizeResponse = service.RecvResizeVolumeResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_TRY_AGAIN,
+            E_BS_VOLUME_OPERATION_CONFLICT,
             resizeResponse->GetStatus(),
             resizeResponse->GetErrorReason());
 

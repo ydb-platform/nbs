@@ -100,6 +100,12 @@ void CreateConnection(
     ui16 recvQueueSize,
     ui32 maxBufferSize,
     ui32 maxEagerRequestBytes);
+// Enqueues an RDMA_CM_EVENT_CONNECT_REQUEST with the supplied private data
+// (typically a TConnectMessage followed by options).
+void CreateConnection(
+    TTestContextPtr context,
+    const void* privateData,
+    size_t privateDataLen);
 void Flush(TTestContextPtr context);
 void Disconnect(TTestContextPtr context);
 

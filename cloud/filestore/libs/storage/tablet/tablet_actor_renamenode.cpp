@@ -364,6 +364,21 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
         return true;
     }
 
+    // A node keeps the QuotaId it got upon creation, so a move across a quota
+    // domain boundary would leave it charged to the wrong quota. Such moves
+    // are rejected the same way as moves across filesystems - the client is
+    // expected to copy + unlink instead. The parents are compared, not the
+    // node itself: a quota attach point belongs to its quota while its parent
+    // doesn't, and it should still be possible to move it around.
+    if (args.ParentNode->Attrs.GetQuotaId()
+            != args.NewParentNode->Attrs.GetQuotaId())
+    {
+        args.Error = ErrorCrossQuotaDomainRenameNotSupported(
+            args.ParentNodeId,
+            args.NewParentNodeId);
+        return true;
+    }
+
     // TODO: AccessCheck
 
     // check if new ref exists
@@ -710,7 +725,8 @@ void TIndexTabletActor::CompleteTx_RenameNode(
                 args.Request,
                 args.ChildRef->ShardId,
                 args.ChildRef->ShardNodeName,
-                args.NewChildRef->ShardId),
+                args.NewChildRef->ShardId,
+                0 /* sourceParentQuotaId, unneeded */),
             std::move(args.ProfileLogRequest),
             std::move(args.NewChildRef->ShardId),
             std::move(args.NewChildRef->ShardNodeName),
@@ -733,7 +749,8 @@ void TIndexTabletActor::CompleteTx_RenameNode(
                     args.Request,
                     args.ChildRef->ShardId,
                     args.ChildRef->ShardNodeName,
-                    args.NewChildRef->ShardId),
+                    args.NewChildRef->ShardId,
+                    0 /* sourceParentQuotaId, unneeded */),
                 std::move(args.ProfileLogRequest),
                 args.Error,
                 args.NewChildRef->ShardId,

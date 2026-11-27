@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cloud/filestore/libs/storage/fastshard/iface/public.h>
-#include <cloud/filestore/libs/storage/fastshard/storage_group/public.h>
 
 #include <cloud/fastshard/libs/storage_group/storage_group.h>
 
@@ -22,7 +21,7 @@ IFileSystemShardPtr CreateHashTableIndexFileSystemShard(
     TString fileSystemId,
     ui32 shardNo,
     ui64 generation,
-    IStorageGroupFactoryPtr storageGroupFactory,
+    NCloud::NFastShard::IStorageGroupPtr storageGroup,
     const NProtoPrivate::TPersistentFastShardConfig& config);
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

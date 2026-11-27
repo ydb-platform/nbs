@@ -296,12 +296,13 @@ struct TTestChannel final: IRequestChannel
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestChannelFactory final: IChannelFactory
+struct TTestRequestChannelFactory final: IRequestChannelFactory
 {
     TVector<std::shared_ptr<TTestChannel>> Channels;
     std::function<void(TTestChannel&)> PrepareChannel;
 
-    TChannelResult CreateChannel(const THandshakeReady& connection) override
+    TRequestChannelResult CreateRequestChannel(
+        const THandshakeReady& connection) override
     {
         Y_UNUSED(connection);
 
@@ -329,7 +330,7 @@ TSocketPtr MakeSocket()
     return MakeIntrusive<NInterconnect::TStreamSocket>(fd);
 }
 
-TChannelResult Wait(const TChannelFuture& future)
+TRequestChannelResult Wait(const TRequestChannelFuture& future)
 {
     UNIT_ASSERT(future.Wait(TDuration::Seconds(5)));
     return future.GetValue();
@@ -347,8 +348,8 @@ struct TFixture
     std::shared_ptr<TTestScheduler> Scheduler =
         std::make_shared<TTestScheduler>(Timer->Now());
     std::shared_ptr<TTestResolver> Resolver = std::make_shared<TTestResolver>();
-    const std::shared_ptr<TTestChannelFactory> ChannelFactory =
-        std::make_shared<TTestChannelFactory>();
+    const std::shared_ptr<TTestRequestChannelFactory> ChannelFactory =
+        std::make_shared<TTestRequestChannelFactory>();
     IPeerManagerPtr Peers;
 
     explicit TFixture(
@@ -418,7 +419,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         TFixture f;
         f.Peers->Start();
         const auto peer = f.CreatePeer("127.0.0.1", 39602, {});
-        auto channel = peer->GetChannel();
+        auto channel = peer->GetRequestChannel();
         f.Connect();
         UNIT_ASSERT_VALUES_EQUAL(1, f.Handshake->Requests.size());
         f.Hello();
@@ -437,7 +438,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
 
         f.Resolver->ThrowOnResolve = false;
         f.Retry();
-        const auto pending = peer->GetChannel();
+        const auto pending = peer->GetRequestChannel();
         f.Connect();
         f.Hello();
         UNIT_ASSERT(!HasError(Wait(pending).GetError()));
@@ -475,7 +476,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
             };
             f.Peers->Start();
             const auto peer = f.CreatePeer("host", 1111, handler);
-            const auto pending = peer->GetChannel();
+            const auto pending = peer->GetRequestChannel();
             f.Resolver->Requests.at(0).Promise.SetValue(
                 TVector<NInterconnect::TAddress>{
                     NInterconnect::TAddress("127.0.0.1", 1111)});
@@ -497,7 +498,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
             const auto connectIndex = f.Connector->Requests.size();
             const auto helloIndex = f.Handshake->Requests.size();
             f.Retry();
-            const auto retry = peer->GetChannel();
+            const auto retry = peer->GetRequestChannel();
             f.Resolver->Requests.at(1).Promise.SetValue(
                 TVector<NInterconnect::TAddress>{
                     NInterconnect::TAddress("127.0.0.1", 1111)});
@@ -521,7 +522,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
             f.Resolver->Deferred = true;
             f.Peers->Start();
             const auto peer = f.CreatePeer("host", 1111, {});
-            const auto pending = peer->GetChannel();
+            const auto pending = peer->GetRequestChannel();
             const auto exception =
                 std::make_exception_ptr(std::runtime_error("future failed"));
             if (step == EStep::Resolve) {
@@ -553,7 +554,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
                 std::make_shared<TThrowingScheduler>());
             f.Peers->Start();
             const auto peer = f.CreatePeer("host", 1111, {});
-            const auto pending = peer->GetChannel();
+            const auto pending = peer->GetRequestChannel();
             if (connected) {
                 f.Connect();
                 f.Hello();
@@ -567,7 +568,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
                 Wait(pending).GetError().GetCode());
             UNIT_ASSERT_VALUES_EQUAL(
                 E_FAIL,
-                Wait(peer->GetChannel()).GetError().GetCode());
+                Wait(peer->GetRequestChannel()).GetError().GetCode());
             UNIT_ASSERT(peer->GetStatus().State == EPeerState::Disconnected);
         }
     }
@@ -579,7 +580,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
             TFixture f(MakeConfig(), queue);
             f.Peers->Start();
             const auto peer = f.CreatePeer("host", 1111, {});
-            const auto pending = peer->GetChannel();
+            const auto pending = peer->GetRequestChannel();
             queue->ThrowOnEnqueue = true;
             if (success) {
                 f.Connect();
@@ -642,7 +643,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         };
         f.Peers->Start();
         peer = f.CreatePeer("host", 1111, {});
-        const auto pending = peer->GetChannel();
+        const auto pending = peer->GetRequestChannel();
         f.Connect();
         f.Hello();
         const auto channel = f.ChannelFactory->Channels.at(0);
@@ -691,7 +692,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         };
         f.Peers->Start();
         peer = f.CreatePeer("host", 1111, {});
-        const auto pending = peer->GetChannel();
+        const auto pending = peer->GetRequestChannel();
         f.Connect();
         f.Hello();
 
@@ -725,7 +726,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         };
         f.Peers->Start();
         const auto peer = f.CreatePeer("host", 1111, handler);
-        const auto pending = peer->GetChannel();
+        const auto pending = peer->GetRequestChannel();
         f.Connect();
         f.Hello();
 
@@ -735,7 +736,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, handler->Unavailable.load());
         f.ChannelFactory->PrepareChannel = {};
         f.Retry();
-        const auto next = peer->GetChannel();
+        const auto next = peer->GetRequestChannel();
         f.Connect(1);
         f.Hello(1);
         UNIT_ASSERT(!HasError(Wait(next).GetError()));
@@ -752,7 +753,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT_VALUES_EQUAL("selected-host", f.Resolver->Requests[0].Host);
         UNIT_ASSERT_VALUES_EQUAL(1, f.Connector->Requests.size());
         UNIT_ASSERT(peer->GetStatus().State == EPeerState::Connecting);
-        auto failed = peer->GetChannel();
+        auto failed = peer->GetRequestChannel();
         f.Connector->Requests[0].Promise.SetValue(
             MakeError(E_IO, "connection refused"));
         UNIT_ASSERT_VALUES_EQUAL(E_IO, Wait(failed).GetError().GetCode());
@@ -761,7 +762,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, peer->GetStatus().ConnectionFailures);
         UNIT_ASSERT_VALUES_EQUAL(
             E_UNAVAILABLE,
-            Wait(peer->GetChannel()).GetError().GetCode());
+            Wait(peer->GetRequestChannel()).GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(1, f.Connector->Requests.size());
         f.Retry();
         UNIT_ASSERT_VALUES_EQUAL(2, f.Connector->Requests.size());
@@ -785,7 +786,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         f.Timer->AdvanceTime(TDuration::MilliSeconds(999));
         UNIT_ASSERT_VALUES_EQUAL(
             E_UNAVAILABLE,
-            Wait(peer->GetChannel()).GetError().GetCode());
+            Wait(peer->GetRequestChannel()).GetError().GetCode());
 
         f.Scheduler->AdvanceTime(TDuration::Seconds(1));
         f.Scheduler->RunAllScheduledTasksUntilNow();
@@ -798,14 +799,14 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
     Y_UNIT_TEST(EnforcesRetryBackoffDuringHostNotifications)
     {
         for (bool disconnect: {false, true}) {
-            TChannelFuture reentered;
+            TRequestChannelFuture reentered;
             TFixture f;
             auto handler = std::make_shared<TTestHostHandler>();
             f.Peers->Start();
             const auto peer = f.CreatePeer("host", 1111, handler);
             auto getChannel = [&]
             {
-                reentered = peer->GetChannel();
+                reentered = peer->GetRequestChannel();
             };
             handler->OnUnavailable = getChannel;
             handler->OnDisconnected = getChannel;
@@ -829,7 +830,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
             UNIT_ASSERT_VALUES_EQUAL(2, f.Connector->Requests.size());
             f.Connect(1);
             f.Hello(disconnect ? 1 : 0);
-            UNIT_ASSERT(!HasError(Wait(peer->GetChannel()).GetError()));
+            UNIT_ASSERT(!HasError(Wait(peer->GetRequestChannel()).GetError()));
         }
     }
 
@@ -864,7 +865,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         f.Resolver->Deferred = true;
         f.Peers->Start();
         const auto peer = f.CreatePeer("host", 1111, {});
-        const auto first = peer->GetChannel();
+        const auto first = peer->GetRequestChannel();
         f.Resolver->Requests.at(0).Promise.SetValue(
             TVector<NInterconnect::TAddress>{
                 NInterconnect::TAddress("127.0.0.1", 1111),
@@ -887,7 +888,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, peer->GetStatus().ConnectionFailures);
 
         f.Retry();
-        const auto next = peer->GetChannel();
+        const auto next = peer->GetRequestChannel();
         f.Resolver->Requests.at(1).Promise.SetValue(
             TVector<NInterconnect::TAddress>{
                 NInterconnect::TAddress("127.0.0.1", 3333),
@@ -915,7 +916,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
             };
             f.Peers->Start();
             const auto peer = f.CreatePeer("host", 1111, {});
-            const auto first = peer->GetChannel();
+            const auto first = peer->GetRequestChannel();
             f.Resolver->Requests.at(0).Promise.SetValue(addresses);
             UNIT_ASSERT_VALUES_EQUAL(
                 1111,
@@ -930,7 +931,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
 
             f.Retry();
             UNIT_ASSERT_VALUES_EQUAL(2, f.Resolver->Requests.size());
-            const auto next = peer->GetChannel();
+            const auto next = peer->GetRequestChannel();
             f.Resolver->Requests.at(1).Promise.SetValue(addresses);
             UNIT_ASSERT_VALUES_EQUAL(2, f.Connector->Requests.size());
             UNIT_ASSERT_VALUES_EQUAL(
@@ -984,7 +985,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
                 NInterconnect::TAddress("127.0.0.1", 1111));
             f.Peers->Start();
             const auto peer = f.CreatePeer("host", 1111, handler);
-            const auto pending = peer->GetChannel();
+            const auto pending = peer->GetRequestChannel();
             f.Resolver->Requests.at(0).Promise.SetValue(std::move(addresses));
 
             UNIT_ASSERT_VALUES_EQUAL(
@@ -1008,7 +1009,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         auto handler = std::make_shared<TTestHostHandler>();
         f.Peers->Start();
         const auto peer = f.CreatePeer("host", 1111, handler);
-        auto pending = peer->GetChannel();
+        auto pending = peer->GetRequestChannel();
         f.Resolver->Requests.at(0).Promise.SetValue(
             TVector<NInterconnect::TAddress>{});
 
@@ -1026,7 +1027,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, f.Connector->Requests.size());
         f.Connect();
         f.Hello();
-        UNIT_ASSERT(!HasError(Wait(peer->GetChannel()).GetError()));
+        UNIT_ASSERT(!HasError(Wait(peer->GetRequestChannel()).GetError()));
         UNIT_ASSERT_VALUES_EQUAL(1, handler->Connects.load());
     }
 
@@ -1040,7 +1041,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         const auto before = TMonotonic::Now();
         const auto peer = f.CreatePeer("host", 1111, handler);
         const auto after = TMonotonic::Now();
-        auto pending = peer->GetChannel();
+        auto pending = peer->GetRequestChannel();
         const auto deadline = f.Resolver->Requests.at(0).Deadline;
         f.Resolver->Requests.at(0).Promise.SetValue(
             MakeError(E_TIMEOUT, "DNS deadline expired"));
@@ -1054,7 +1055,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
 
         f.Resolver->Deferred = false;
         f.Retry();
-        auto replacement = peer->GetChannel();
+        auto replacement = peer->GetRequestChannel();
         UNIT_ASSERT_VALUES_EQUAL(1, f.Connector->Requests.size());
         f.Connect();
         f.Hello();
@@ -1103,7 +1104,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT(third != second);
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
-            Wait(first->GetChannel()).GetError().GetCode());
+            Wait(first->GetRequestChannel()).GetError().GetCode());
     }
 
     Y_UNIT_TEST(DestroysHandlerOutsideManagerLock)
@@ -1137,7 +1138,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         TFixture f;
         f.Peers->Start();
         auto peer = f.CreatePeer("host", 1111, {});
-        auto pending = peer->GetChannel();
+        auto pending = peer->GetRequestChannel();
         auto retained = peer;
         peer.reset();
         UNIT_ASSERT(!pending.HasValue());
@@ -1150,7 +1151,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         replacement->Close();
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
-            Wait(replacement->GetChannel()).GetError().GetCode());
+            Wait(replacement->GetRequestChannel()).GetError().GetCode());
     }
 
     Y_UNIT_TEST(ReleasingLastConnectedPeerClosesChannel)
@@ -1161,7 +1162,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         std::weak_ptr<IPeer> weak = peer;
         f.Connect();
         f.Hello();
-        const auto channel = Wait(peer->GetChannel()).ExtractResult();
+        const auto channel = Wait(peer->GetRequestChannel()).ExtractResult();
         peer.reset();
 
         UNIT_ASSERT(weak.expired());
@@ -1182,7 +1183,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         f.Peers->Start();
         peer = f.CreatePeer("host", 1111, handler);
         std::weak_ptr<IPeer> weak = peer;
-        const auto pending = peer->GetChannel();
+        const auto pending = peer->GetRequestChannel();
         f.Connect();
         f.Hello();
 
@@ -1201,7 +1202,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         f.Peers->Start();
         peer = f.CreatePeer("host", 1111, {});
         std::weak_ptr<IPeer> weak = peer;
-        const auto pending = peer->GetChannel();
+        const auto pending = peer->GetRequestChannel();
         pending.Subscribe([&](const auto&) { peer.reset(); });
         peer->Close();
 
@@ -1217,7 +1218,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
             TFixture f;
             f.Peers->Start();
             auto peer = f.CreatePeer("host", 1111, {});
-            const auto pending = peer->GetChannel();
+            const auto pending = peer->GetRequestChannel();
             auto released = std::async(
                 std::launch::async,
                 [peer = std::move(peer)]() mutable { peer.reset(); });
@@ -1295,7 +1296,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         };
         f.Peers->Start();
         peer = f.CreatePeer("host", 1111, handler);
-        const auto pending = peer->GetChannel();
+        const auto pending = peer->GetRequestChannel();
         f.Connect();
         f.Hello();
 
@@ -1332,7 +1333,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         f.Peers->Start();
         const auto peer = f.CreatePeer("127.0.0.1", 1111, handler);
 
-        auto connected = peer->GetChannel();
+        auto connected = peer->GetRequestChannel();
         f.Connect();
         f.Hello();
         UNIT_ASSERT(!HasError(Wait(connected).GetError()));
@@ -1340,7 +1341,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, handler->Disconnects.load());
         f.Retry();
 
-        auto reconnected = peer->GetChannel();
+        auto reconnected = peer->GetRequestChannel();
         f.Connect(1);
         f.Hello(1);
         UNIT_ASSERT(!HasError(Wait(reconnected).GetError()));
@@ -1354,8 +1355,8 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         f.Peers->Start();
         const auto firstPeer = f.CreatePeer("127.0.0.1", 1111, {});
         const auto secondPeer = f.CreatePeer("127.0.0.1", 2222, {});
-        auto retired = firstPeer->GetChannel();
-        auto current = secondPeer->GetChannel();
+        auto retired = firstPeer->GetRequestChannel();
+        auto current = secondPeer->GetRequestChannel();
         UNIT_ASSERT_VALUES_EQUAL(
             1111,
             f.Connector->Requests[0].Address.GetPort());
@@ -1372,11 +1373,11 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         f.Hello();
         UNIT_ASSERT(!HasError(Wait(current).GetError()));
         UNIT_ASSERT(
-            secondPeer->GetChannel().GetValue().GetResult() ==
+            secondPeer->GetRequestChannel().GetValue().GetResult() ==
             f.ChannelFactory->Channels[0]);
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
-            Wait(firstPeer->GetChannel()).GetError().GetCode());
+            Wait(firstPeer->GetRequestChannel()).GetError().GetCode());
         secondPeer->Close();
         UNIT_ASSERT(f.ChannelFactory->Channels[0]->Closing);
     }
@@ -1386,14 +1387,14 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         TFixture f;
         f.Peers->Start();
         const auto firstPeer = f.CreatePeer("127.0.0.1", 1111, {});
-        auto retired = firstPeer->GetChannel();
+        auto retired = firstPeer->GetRequestChannel();
         f.Connect();
         firstPeer->Close();
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
             Wait(retired).GetError().GetCode());
         const auto secondPeer = f.CreatePeer("127.0.0.1", 2222, {});
-        auto current = secondPeer->GetChannel();
+        auto current = secondPeer->GetRequestChannel();
         f.Hello();
         UNIT_ASSERT(f.ChannelFactory->Channels.empty());
         f.Connect(1);
@@ -1405,13 +1406,13 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         TFixture f;
         f.Peers->Start();
         const auto peer = f.CreatePeer("127.0.0.1", 39602, {});
-        std::array<std::future<TChannelFuture>, 32> callers;
+        std::array<std::future<TRequestChannelFuture>, 32> callers;
         for (auto& caller: callers) {
             caller = std::async(
                 std::launch::async,
-                [&] { return peer->GetChannel(); });
+                [&] { return peer->GetRequestChannel(); });
         }
-        TVector<TChannelFuture> results;
+        TVector<TRequestChannelFuture> results;
         for (auto& caller: callers) {
             results.push_back(caller.get());
         }
@@ -1425,7 +1426,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
             UNIT_ASSERT(channel == f.ChannelFactory->Channels[0]);
         }
         UNIT_ASSERT(
-            Wait(peer->GetChannel()).GetResult() ==
+            Wait(peer->GetRequestChannel()).GetResult() ==
             f.ChannelFactory->Channels[0]);
         UNIT_ASSERT_VALUES_EQUAL(1, f.Connector->Requests.size());
     }
@@ -1444,12 +1445,12 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         };
 
         UNIT_ASSERT(peer->GetStatus().State == EPeerState::Connected);
-        UNIT_ASSERT(Wait(peer->GetChannel()).GetResult() == channel);
+        UNIT_ASSERT(Wait(peer->GetRequestChannel()).GetResult() == channel);
         channel->Close();
         UNIT_ASSERT(peer->GetStatus().State == EPeerState::Disconnected);
         UNIT_ASSERT_VALUES_EQUAL(
             E_UNAVAILABLE,
-            Wait(peer->GetChannel()).GetError().GetCode());
+            Wait(peer->GetRequestChannel()).GetError().GetCode());
     }
 
     Y_UNIT_TEST(OtherPeersRemainUsableWhileOneChannelGetterIsBlocked)
@@ -1467,7 +1468,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         auto release = NewPromise<void>();
         std::future<void> activation;
         std::future<TPeerStatus> otherStatus;
-        std::future<TChannelFuture> lookup;
+        std::future<TRequestChannelFuture> lookup;
         Y_DEFER
         {
             release.TrySetValue();
@@ -1485,7 +1486,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         const bool blocked = entered.GetFuture().Wait(TDuration::Seconds(5));
         lookup = std::async(
             std::launch::async,
-            [&] { return second->GetChannel(); });
+            [&] { return second->GetRequestChannel(); });
         const bool ready = lookup.wait_for(5s) == std::future_status::ready;
         otherStatus =
             std::async(std::launch::async, [&] { return second->GetStatus(); });
@@ -1511,10 +1512,10 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
             const auto peer = f.CreatePeer("host", 1111, {});
             f.Connect();
             f.Hello();
-            TChannelFuture duringClose;
+            TRequestChannelFuture duringClose;
             f.ChannelFactory->Channels.at(0)->OnClose = [&]
             {
-                duringClose = peer->GetChannel();
+                duringClose = peer->GetRequestChannel();
             };
             if (stopManager) {
                 f.Peers->RequestStop();
@@ -1533,7 +1534,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         f.Resolver->Deferred = true;
         f.Peers->Start();
         const auto peer = f.CreatePeer("127.0.0.1", 39602, {});
-        auto result = peer->GetChannel();
+        auto result = peer->GetRequestChannel();
         f.Timer->AdvanceTime(TDuration::MilliSeconds(30));
         f.Resolver->Requests.at(0).Promise.SetValue(
             TVector<NInterconnect::TAddress>{
@@ -1563,7 +1564,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         TFixture f;
         f.Peers->Start();
         const auto peer = f.CreatePeer("127.0.0.1", 39602, {});
-        auto result = peer->GetChannel();
+        auto result = peer->GetRequestChannel();
         f.Connect();
         f.Timer->AdvanceTime(TDuration::MilliSeconds(100));
         f.Handshake->Requests.at(0).Promise.SetValue(
@@ -1586,7 +1587,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         };
         f.Peers->Start();
         const auto peer = f.CreatePeer("127.0.0.1", 39602, {});
-        auto result = peer->GetChannel();
+        auto result = peer->GetRequestChannel();
         f.Connect();
         f.Hello();
         const auto ready = Wait(result);
@@ -1602,7 +1603,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         TFixture f;
         f.Peers->Start();
         const auto peer = f.CreatePeer("127.0.0.1", 39602, {});
-        auto result = peer->GetChannel();
+        auto result = peer->GetRequestChannel();
         f.Timer->AdvanceTime(TDuration::MilliSeconds(100));
         f.Connect();
         UNIT_ASSERT(f.Handshake->Requests.empty());
@@ -1614,7 +1615,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         TFixture f;
         f.Peers->Start();
         const auto peer = f.CreatePeer("127.0.0.1", 39602, {});
-        auto first = peer->GetChannel();
+        auto first = peer->GetRequestChannel();
         f.Connect();
         f.Hello();
         auto channel = Wait(first).ExtractResult();
@@ -1622,7 +1623,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(1, f.Connector->Requests.size());
         f.Retry();
         UNIT_ASSERT_VALUES_EQUAL(2, f.Connector->Requests.size());
-        auto next = peer->GetChannel();
+        auto next = peer->GetRequestChannel();
         f.Connect(1);
         f.Hello(1);
         auto [replacement, error] = Wait(next);
@@ -1635,7 +1636,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         TFixture f;
         f.Peers->Start();
         const auto peer = f.CreatePeer("127.0.0.1", 39602, {});
-        TChannelFuture next;
+        TRequestChannelFuture next;
         f.ChannelFactory->PrepareChannel = [&](TTestChannel& channel)
         {
             if (f.ChannelFactory->Channels.size() == 1) {
@@ -1643,13 +1644,13 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
                 {
                     f.ChannelFactory->Channels[0]->Close();
                     f.Retry();
-                    next = peer->GetChannel();
+                    next = peer->GetRequestChannel();
                     f.Connect(1);
                     f.Hello(1);
                 };
             }
         };
-        auto first = peer->GetChannel();
+        auto first = peer->GetRequestChannel();
         f.Connect();
         f.Hello();
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1657,7 +1658,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
             Wait(first).GetError().GetCode());
         UNIT_ASSERT(Wait(next).GetResult() == f.ChannelFactory->Channels[1]);
         UNIT_ASSERT(
-            Wait(peer->GetChannel()).GetResult() ==
+            Wait(peer->GetRequestChannel()).GetResult() ==
             f.ChannelFactory->Channels[1]);
     }
 
@@ -1686,18 +1687,18 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         };
         f.Peers->Start();
         peer = f.CreatePeer("127.0.0.1", 39602, {});
-        auto first = peer->GetChannel();
+        auto first = peer->GetRequestChannel();
         f.Connect();
         f.Hello();
         auto channel = Wait(first).ExtractResult();
         closing =
             std::async(std::launch::async, [channel] { channel->Close(); });
         const bool delayed = entered.GetFuture().Wait(TDuration::Seconds(5));
-        TChannelFuture next;
+        TRequestChannelFuture next;
         if (delayed) {
             // The close future is ready, but the peer's close callback has
             // not run. A new generation can already replace the old channel.
-            next = peer->GetChannel();
+            next = peer->GetRequestChannel();
             if (f.Connector->Requests.size() == 2) {
                 f.Connect(1);
                 f.Hello(1);
@@ -1708,7 +1709,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         UNIT_ASSERT(delayed);
         UNIT_ASSERT(next.HasValue());
         UNIT_ASSERT(!HasError(next.GetValue().GetError()));
-        auto reused = peer->GetChannel();
+        auto reused = peer->GetRequestChannel();
         UNIT_ASSERT(reused.HasValue());
         UNIT_ASSERT(
             reused.GetValue().GetResult() == next.GetValue().GetResult());
@@ -1720,16 +1721,16 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         TFixture f;
         f.Peers->Start();
         const auto peer = f.CreatePeer("127.0.0.1", 39602, {});
-        TChannelFuture joined;
+        TRequestChannelFuture joined;
         f.ChannelFactory->PrepareChannel = [&](TTestChannel& channel)
         {
             channel.OnActivate = [&]
             {
-                joined = peer->GetChannel();
+                joined = peer->GetRequestChannel();
                 UNIT_ASSERT(!joined.HasValue());
             };
         };
-        auto first = peer->GetChannel();
+        auto first = peer->GetRequestChannel();
         f.Connect();
         f.Hello();
         const auto result = Wait(first);
@@ -1745,7 +1746,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
             TFixture f;
             f.Peers->Start();
             const auto peer = f.CreatePeer("127.0.0.1", 39602, {});
-            auto result = peer->GetChannel();
+            auto result = peer->GetRequestChannel();
             if (connected) {
                 f.Connect();
             }
@@ -1784,7 +1785,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         }
         UNIT_ASSERT_VALUES_EQUAL(peerCount, f.ChannelFactory->Channels.size());
         for (size_t i = 0; i < peerCount; ++i) {
-            const auto channel = Wait(peers.at(i)->GetChannel());
+            const auto channel = Wait(peers.at(i)->GetRequestChannel());
             UNIT_ASSERT_C(
                 !HasError(channel.GetError()),
                 FormatError(channel.GetError()));
@@ -1810,7 +1811,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         queue->ExecuteSimple([release] { release.GetFuture().GetValueSync(); });
         f.Peers->Start();
         const auto firstPeer = f.CreatePeer("host", 1111, {});
-        auto first = firstPeer->GetChannel();
+        auto first = firstPeer->GetRequestChannel();
         f.Connector->Requests[0].Promise.SetValue(
             MakeError(E_IO, "connection refused"));
         const bool queued = !first.HasValue();
@@ -1822,7 +1823,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         queue->Execute([] {}).GetValueSync();
         UNIT_ASSERT(queued);
         UNIT_ASSERT_VALUES_EQUAL(2, started);
-        auto next = secondPeer->GetChannel();
+        auto next = secondPeer->GetRequestChannel();
         f.Connect(1);
         f.Hello();
         UNIT_ASSERT(!HasError(Wait(next).GetError()));
@@ -1858,7 +1859,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
                                  { release.GetFuture().GetValueSync(); });
             f.Peers->Start();
             auto peer = f.CreatePeer("host", 1111, {});
-            auto result = peer->GetChannel();
+            auto result = peer->GetRequestChannel();
             peer.reset();
 
             // The pending task still owns the registration. Check ownership
@@ -1894,7 +1895,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
         };
         f.Peers->Start();
         const auto peer = f.CreatePeer("127.0.0.1", 39602, {});
-        auto result = peer->GetChannel();
+        auto result = peer->GetRequestChannel();
         std::future<void> stop;
         std::future<void> otherStop;
         Y_DEFER
@@ -1961,7 +1962,7 @@ Y_UNIT_TEST_SUITE(TIcV2PeerManagerTest)
             f.Peers->CreatePeer("host", 1111, {}).GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
-            Wait(peer->GetChannel()).GetError().GetCode());
+            Wait(peer->GetRequestChannel()).GetError().GetCode());
     }
 }
 

@@ -1,6 +1,6 @@
 #include "host_endpoint.h"
 
-#include "peer_request_channel.h"
+#include "peer_request_sender.h"
 
 namespace NCloud::NBlockStore::NIcV2 {
 
@@ -18,6 +18,11 @@ THostDataEndpoint::THostDataEndpoint(IPeerPtr peer, IDataEndpointPtr endpoint)
 IDataEndpointPtr THostDataEndpoint::GetEndpoint() const
 {
     return Endpoint;
+}
+
+IPeerPtr THostDataEndpoint::GetPeer() const
+{
+    return Peer;
 }
 
 TPeerStatus THostDataEndpoint::GetStatus() const
@@ -47,8 +52,8 @@ TResultOrError<THostDataEndpoint> CreateHostDataEndpoint(
     if (HasError(error)) {
         return error;
     }
-    auto channel = CreatePeerRequestChannel(peer);
-    auto endpoint = CreateDataEndpoint(std::move(channel), dataConfig);
+    auto sender = CreateDataRequestSender(peer);
+    auto endpoint = CreateDataEndpoint(std::move(sender), dataConfig);
     return THostDataEndpoint(std::move(peer), std::move(endpoint));
 }
 

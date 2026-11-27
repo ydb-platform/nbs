@@ -92,6 +92,9 @@ NProto::TError PrepareStorageRequest(
     if (bytes > MaxSubRequestSize) {
         return MakeError(E_REJECTED, "IC V2 read size exceeds limit");
     }
+    if (auto error = op.Reservation->ReserveBytes(bytes); HasError(error)) {
+        return error;
+    }
 
     op.Payload = TRope(TString(bytes, '\0'));
     SetStorageSgList(op);
@@ -210,15 +213,16 @@ private:
     template <typename TEventMethod, typename TMethod>
     void HandleDataRequest(IIncomingRequestPtr request)
     {
-        auto [reservation, error] = Tracker->Acquire(0);
+        auto [reservation, error] =
+            Tracker->Acquire(request->GetEvent().GetSize());
         if (HasError(error)) {
             ReplyError<typename TEventMethod::TResponse>(*request, error);
             return;
         }
         Executor->ExecuteSimple(
             [weak = weak_from_this(),
-             request = std::move(request),
-             reservation = std::move(reservation)]() mutable
+             reservation = std::move(reservation),
+             request = std::move(request)]() mutable
             {
                 auto self = weak.lock();
                 if (!self) {

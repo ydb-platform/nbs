@@ -52,56 +52,37 @@ TString MakeContent(char tag, ui64 pageNo)
     return Sprintf("%c%03u", tag, static_cast<ui32>(pageNo % 1000));
 }
 
-NProto::TWriteLogRecordRequest
-MakeWriteRequest(ui64 lsn, ui64 prevLsn, char tag, const TGroups& groups)
+TJournalRecord MakeRecord(
+    ui64 lsn,
+    ui64 prevLsn,
+    char tag,
+    const TGroups& groups)
 {
-    NProto::TWriteLogRecordRequest request;
-    request.SetLogSequenceNumber(lsn);
-    request.SetPrevLogSequenceNumber(prevLsn);
+    TJournalRecord record{.Lsn = lsn, .PrevLsn = prevLsn};
 
     for (const auto& [firstPageNo, pageCount]: groups) {
-        auto& group = *request.AddPageGroups();
-        group.SetFirstPageNo(firstPageNo);
+        auto& range = record.Ranges.emplace_back();
+        range.FirstPageNo = firstPageNo;
 
         for (ui64 i = 0; i < pageCount; ++i) {
-            *group.AddContent() = MakeContent(tag, firstPageNo + i);
+            const auto content = MakeContent(tag, firstPageNo + i);
+            range.Pages.emplace_back(content.data(), content.size());
         }
     }
 
-    return request;
+    return record;
 }
 
-NProto::TReadPagesRequest MakeReadRequest(const TGroups& refs)
+TVector<TPageRangeRef> MakeRangeRefs(const TGroups& refs)
 {
-    NProto::TReadPagesRequest request;
+    TVector<TPageRangeRef> rangeRefs;
 
     for (const auto& [firstPageNo, pageCount]: refs) {
-        auto& ref = *request.AddPageGroupRefs();
-        ref.SetFirstPageNo(firstPageNo);
-        ref.SetPageCount(pageCount);
-        ref.SetPageSize(DefaultPageSize);
+        rangeRefs.push_back(
+            {.FirstPageNo = firstPageNo, .PageCount = pageCount});
     }
 
-    return request;
-}
-
-NProto::TReadJournalTailRequest MakeReadTailRequest(
-    ui64 afterLsn,
-    ui32 maxRecordCount = 0)
-{
-    NProto::TReadJournalTailRequest request;
-    request.SetAfterLogSequenceNumber(afterLsn);
-    request.SetMaxRecordCount(maxRecordCount);
-
-    return request;
-}
-
-NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(ui64 lsn)
-{
-    NProto::TAdvanceLsnLowWatermarkRequest request;
-    request.SetLsnLowWatermark(lsn);
-
-    return request;
+    return rangeRefs;
 }
 
 TPageRangeRef Range(ui64 firstPageNo, ui64 pageCount)
@@ -110,49 +91,121 @@ TPageRangeRef Range(ui64 firstPageNo, ui64 pageCount)
 }
 
 // "10:[A010,A011] 20:[A020]"
-template <typename T>
-TString DescribeGroups(const T& source)
+TString DescribeRanges(const TVector<TPageRange>& ranges)
 {
     TVector<TString> groups;
 
-    for (const auto& group: source.GetPageGroups()) {
+    for (const auto& range: ranges) {
+        TVector<TStringBuf> pages;
+        for (const auto& page: range.Pages) {
+            pages.emplace_back(page.Data(), page.Size());
+        }
+
         groups.push_back(
-            TStringBuilder() << group.GetFirstPageNo() << ":["
-                             << JoinSeq(",", group.GetContent()) << "]");
+            TStringBuilder()
+            << range.FirstPageNo << ":[" << JoinSeq(",", pages) << "]");
     }
 
     return JoinSeq(" ", groups);
 }
 
-// "2<-1 20:[B020]", empty for the empty record the journal hands back when
-// there is nothing to flush
-TString DescribeRecord(const NProto::TJournalRecord& record)
+// "2<-1 20:[B020]"
+TString DescribeRecord(const TJournalRecord& record)
 {
-    if (!record.GetLogSequenceNumber() && !record.PageGroupsSize()) {
-        return {};
-    }
-
     TStringBuilder sb;
-    sb << record.GetLogSequenceNumber() << "<-"
-       << record.GetPrevLogSequenceNumber();
+    sb << record.Lsn << "<-" << record.PrevLsn;
 
-    if (const auto groups = DescribeGroups(record)) {
-        sb << " " << groups;
+    if (const auto ranges = DescribeRanges(record.Ranges)) {
+        sb << " " << ranges;
     }
 
     return sb;
 }
 
 // "1<-0 10:[A010]; 2<-1 20:[B020]"
-TString DescribeRecords(const NProto::TReadJournalTailResponse& response)
+TString DescribeRecords(const TResultOrError<TJournalTail>& tail)
 {
+    UNIT_ASSERT_C(!HasError(tail), FormatError(tail.GetError()));
+
     TVector<TString> records;
 
-    for (const auto& record: response.GetRecords()) {
+    for (const auto& record: tail.GetResult().Records) {
         records.push_back(DescribeRecord(record));
     }
 
     return JoinSeq("; ", records);
+}
+
+// What a journal read gives. The journal returns its pages as a plain list,
+// so the page numbers are worked out from the request and the missing ranges.
+struct TReadResponse
+{
+    NProto::TError Error;
+    ui64 LastAckedLsn = 0;
+
+    // "10:[A010,A011] 20:[A020]" - each run of pages that follow one another
+    // in one range ref of the request
+    TString Pages;
+
+    const NProto::TError& GetError() const
+    {
+        return Error;
+    }
+};
+
+TReadResponse DescribeRead(
+    const TVector<TPageRangeRef>& rangeRefs,
+    const TVector<TPageRangeRef>& missing,
+    const TResultOrError<TReadPagesResult>& result)
+{
+    if (HasError(result)) {
+        return {.Error = result.GetError()};
+    }
+
+    const auto& pages = result.GetResult().Pages;
+
+    TVector<TPageRange> ranges;
+    size_t pageIndex = 0;
+    size_t missingIndex = 0;
+
+    for (const auto& ref: rangeRefs) {
+        bool extend = false;
+
+        for (ui64 i = 0; i != ref.PageCount; ++i) {
+            const ui64 pageNo = ref.FirstPageNo + i;
+
+            while (missingIndex < missing.size() &&
+                   missing[missingIndex].FirstPageNo +
+                           missing[missingIndex].PageCount <=
+                       pageNo)
+            {
+                ++missingIndex;
+            }
+
+            if (missingIndex < missing.size() &&
+                missing[missingIndex].FirstPageNo <= pageNo)
+            {
+                extend = false;
+                continue;
+            }
+
+            UNIT_ASSERT(pageIndex < pages.size());
+
+            if (!extend) {
+                ranges.push_back({.FirstPageNo = pageNo});
+                extend = true;
+            }
+
+            const auto& page = pages[pageIndex++];
+            ranges.back().Pages.emplace_back(page.Data(), page.Size());
+        }
+    }
+
+    UNIT_ASSERT_VALUES_EQUAL(pages.size(), pageIndex);
+
+    return {
+        .LastAckedLsn = result.GetResult().LastAckedLsn,
+        .Pages = DescribeRanges(ranges)};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -503,48 +556,59 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     // The response is ready only once the record has made it into the page
     // index, which a record that does not continue the chain yet has not.
-    TFuture<NProto::TWriteLogRecordResponse> WriteAsync(
-        NProto::TWriteLogRecordRequest request)
+    TFuture<NProto::TError> WriteAsync(TJournalRecord record)
     {
-        return Run([&] { return Journal->Write(std::move(request)); });
+        return Run(
+            [&]
+            {
+                return Journal->Write(
+                    std::move(record.Ranges),
+                    record.Lsn,
+                    record.PrevLsn);
+            });
     }
 
     // Returns once the write is on the executor - for a write the test
     // holds up at a store.
-    TFuture<NProto::TWriteLogRecordResponse> StartWrite(
-        NProto::TWriteLogRecordRequest request)
+    TFuture<NProto::TError> StartWrite(TJournalRecord record)
     {
         return Executor->Execute(
-            [this, request = std::move(request)]() mutable
-            { return Journal->Write(std::move(request)); });
+            [this, record = std::move(record)]() mutable
+            {
+                return Journal->Write(
+                    std::move(record.Ranges),
+                    record.Lsn,
+                    record.PrevLsn);
+            });
     }
 
-    ui32 Write(NProto::TWriteLogRecordRequest request)
+    ui32 Write(TJournalRecord record)
     {
-        return WriteAsync(std::move(request))
-            .GetValueSync()
-            .GetError()
-            .GetCode();
+        return WriteAsync(std::move(record)).GetValueSync().GetCode();
     }
 
     ui32 WriteRecord(ui64 lsn, ui64 prevLsn, char tag, const TGroups& groups)
     {
-        return Write(MakeWriteRequest(lsn, prevLsn, tag, groups));
+        return Write(MakeRecord(lsn, prevLsn, tag, groups));
     }
 
     TResultOrError<TJournalReadResult> StartRead(const TGroups& refs)
     {
-        return Run([&] { return Journal->Read(MakeReadRequest(refs)); });
+        return Run([&] { return Journal->Read(MakeRangeRefs(refs)); });
     }
 
-    NProto::TReadPagesResponse ReadPages(const TGroups& refs)
+    TReadResponse ReadPages(const TGroups& refs)
     {
         auto result = StartRead(refs);
         if (HasError(result)) {
-            return TErrorResponse(result.GetError());
+            return {.Error = result.GetError()};
         }
 
-        return result.GetResult().Future.GetValueSync();
+        const auto& [missing, future] = result.GetResult();
+        return DescribeRead(
+            MakeRangeRefs(refs),
+            missing,
+            future.GetValueSync());
     }
 
     // "5+2, 20+1" - the page ranges the reader has to take from the device
@@ -564,35 +628,28 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     // The journal read does not wait for the device, so the future is not
     // set while the device holds the read.
-    TFuture<NProto::TReadPagesResponse> ReadPagesAsync(
-        const TGroups& refs)
+    TFuture<TReadResponse> ReadPagesAsync(const TGroups& refs)
     {
         auto result = StartRead(refs);
         UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
-        return result.GetResult().Future;
+
+        const auto& [missing, future] = result.GetResult();
+        return future.Apply(
+            [rangeRefs = MakeRangeRefs(refs),
+             missing = missing](const auto& future)
+            { return DescribeRead(rangeRefs, missing, future.GetValue()); });
     }
 
-    NProto::TReadJournalTailResponse ReadTail(
+    TResultOrError<TJournalTail> ReadTail(
         ui64 afterLsn,
         ui32 maxRecordCount = 0)
     {
-        return Run(
-                   [&]
-                   {
-                       return Journal->ReadTail(
-                           MakeReadTailRequest(afterLsn, maxRecordCount));
-                   });
+        return Run([&] { return Journal->ReadTail(afterLsn, maxRecordCount); });
     }
 
     ui32 AdvanceLsnLowWatermark(ui64 lsn)
     {
-        return Run(
-                   [&]
-                   {
-                       return Journal->AdvanceLsnLowWatermark(
-                           MakeAdvanceRequest(lsn));
-                   })
-            .GetError()
+        return Run([&] { return Journal->AdvanceLsnLowWatermark(lsn); })
             .GetCode();
     }
 
@@ -795,10 +852,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         // the newest content of every journalled page survives the restart
         auto response = ReadPages({{10, 2}});
-        UNIT_ASSERT_VALUES_EQUAL(
-            "10:[A010] 11:[B011]",
-            DescribeGroups(response));
-        UNIT_ASSERT_VALUES_EQUAL(2, response.GetLastAckedLogSequenceNumber());
+        UNIT_ASSERT_VALUES_EQUAL("10:[A010,B011]", response.Pages);
+        UNIT_ASSERT_VALUES_EQUAL(2, response.LastAckedLsn);
     }
 
     Y_UNIT_TEST_F(ShouldRestoreLsnLowWatermark, TFixture)
@@ -813,7 +868,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(3, RestoreOrFail());
 
         auto response = ReadTail(0);
-        UNIT_ASSERT_VALUES_EQUAL(2, response.GetLsnLowWatermark());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetResult().LsnLowWatermark);
         UNIT_ASSERT_VALUES_EQUAL("3<-2 30:[C030]", DescribeRecords(response));
 
         // and it is not silently moved back
@@ -897,7 +952,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         // and its contents are where the mappings say they are
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010,A011,A012,A013]",
-            DescribeGroups(ReadPages({{10, 4}})));
+            ReadPages({{10, 4}}).Pages);
     }
 
     Y_UNIT_TEST_F(ShouldFailToRestoreCorruptedMetadata, TFixture)
@@ -961,12 +1016,10 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         // lsn 3 chains from lsn 2, but lsn 4 continues from lsn 1: once lsn 1
         // arrives the chain is 0 -> 1 -> 4 and lsn 3 is stranded, durable and
         // still holding its page
-        auto third = WriteAsync(MakeWriteRequest(3, 2, 'C', {{30, 1}}));
-        auto fourth = WriteAsync(MakeWriteRequest(4, 1, 'D', {{40, 1}}));
+        auto third = WriteAsync(MakeRecord(3, 2, 'C', {{30, 1}}));
+        auto fourth = WriteAsync(MakeRecord(4, 1, 'D', {{40, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            fourth.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fourth.GetValueSync().GetCode());
         UNIT_ASSERT(!third.HasValue());
         UNIT_ASSERT_VALUES_EQUAL("1,3,4", StoredKeys());
 
@@ -981,7 +1034,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             CriticalEventCount("JournalStrandedRecordDetectedError"));
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010] 40:[D040]",
-            DescribeGroups(ReadPages({{10, 1}, {30, 1}, {40, 1}})));
+            ReadPages({{10, 1}, {30, 1}, {40, 1}}).Pages);
 
         // its page is free again - the journal fits one more record
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(5, 4, 'E', {{50, 1}}));
@@ -1163,7 +1216,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         // the chain stops before the torn record, lsn 3 is dropped with it
         UNIT_ASSERT_VALUES_EQUAL(1, RestoreOrFail());
         UNIT_ASSERT_VALUES_EQUAL("", DescribeRecords(ReadTail(1)));
-        UNIT_ASSERT_VALUES_EQUAL("", DescribeGroups(ReadPages({{20, 1}})));
+        UNIT_ASSERT_VALUES_EQUAL("", ReadPages({{20, 1}}).Pages);
 
         // and its page is free: the rewrite of lsn 2 fits, lsn 3 is written
         // again after it
@@ -1212,7 +1265,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(1, RestoreOrFail());
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010]",
-            DescribeGroups(ReadPages({{10, 1}, {20, 1}})));
+            ReadPages({{10, 1}, {20, 1}}).Pages);
         UNIT_ASSERT_VALUES_EQUAL(
             "1<-0 10:[A010]",
             DescribeRecords(ReadTail(0)));
@@ -1229,10 +1282,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 3}}));
 
         auto response = ReadPages({{10, 3}});
-        UNIT_ASSERT_VALUES_EQUAL(
-            "10:[A010,A011,A012]",
-            DescribeGroups(response));
-        UNIT_ASSERT_VALUES_EQUAL(1, response.GetLastAckedLogSequenceNumber());
+        UNIT_ASSERT_VALUES_EQUAL("10:[A010,A011,A012]", response.Pages);
+        UNIT_ASSERT_VALUES_EQUAL(1, response.LastAckedLsn);
     }
 
     Y_UNIT_TEST_F(ShouldAnswerRetryOfIndexedRecord, TFixture)
@@ -1248,7 +1299,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         // and the retry has changed nothing
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010] 30:[C030]",
-            DescribeGroups(ReadPages({{10, 1}, {30, 1}})));
+            ReadPages({{10, 1}, {30, 1}}).Pages);
     }
 
     Y_UNIT_TEST_F(ShouldRejectRecordThatFollowsItself, TFixture)
@@ -1262,19 +1313,17 @@ Y_UNIT_TEST_SUITE(TJournalTest)
     Y_UNIT_TEST_F(ShouldRejectRecordThatContradictsChain, TFixture)
     {
         // held until lsn 2 shows up
-        auto third = WriteAsync(MakeWriteRequest(3, 2, 'C', {{30, 1}}));
+        auto third = WriteAsync(MakeRecord(3, 2, 'C', {{30, 1}}));
         UNIT_ASSERT(!third.HasValue());
 
         // lsn 4 following lsn 1 leaves no room for lsn 2, so lsn 3 can never
         // be chained - but the chain only finds that out once the run passes
         // lsn 2 by
-        auto fourth = WriteAsync(MakeWriteRequest(4, 1, 'D', {{40, 1}}));
+        auto fourth = WriteAsync(MakeRecord(4, 1, 'D', {{40, 1}}));
         UNIT_ASSERT(!fourth.HasValue());
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            fourth.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fourth.GetValueSync().GetCode());
         UNIT_ASSERT(!third.HasValue());
 
         // erasing the run strands lsn 3 for good
@@ -1283,51 +1332,47 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
-            third.GetValueSync().GetError().GetCode());
+            third.GetValueSync().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             CriticalEventCount("JournalStrandedRecordDetectedError"));
-        UNIT_ASSERT_VALUES_EQUAL("", DescribeGroups(ReadPages({{30, 1}})));
+        UNIT_ASSERT_VALUES_EQUAL("", ReadPages({{30, 1}}).Pages);
     }
 
     Y_UNIT_TEST_F(ShouldIndexOutOfOrderWritesOnceGapIsFilled, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
-        auto second = WriteAsync(MakeWriteRequest(2, 1, 'B', {{20, 1}}));
-        auto third = WriteAsync(MakeWriteRequest(3, 2, 'C', {{30, 1}}));
+        auto second = WriteAsync(MakeRecord(2, 1, 'B', {{20, 1}}));
+        auto third = WriteAsync(MakeRecord(3, 2, 'C', {{30, 1}}));
 
         // neither is acked and neither is visible while lsn 1 is missing
         UNIT_ASSERT(!second.HasValue());
         UNIT_ASSERT(!third.HasValue());
 
         auto response = ReadPages({{20, 1}, {30, 1}});
-        UNIT_ASSERT_VALUES_EQUAL("", DescribeGroups(response));
-        UNIT_ASSERT_VALUES_EQUAL(0, response.GetLastAckedLogSequenceNumber());
+        UNIT_ASSERT_VALUES_EQUAL("", response.Pages);
+        UNIT_ASSERT_VALUES_EQUAL(0, response.LastAckedLsn);
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
 
         // the whole run is applied at once
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            second.GetValueSync().GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            third.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, second.GetValueSync().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, third.GetValueSync().GetCode());
 
         response = ReadPages({{10, 1}, {20, 1}, {30, 1}});
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010] 20:[B020] 30:[C030]",
-            DescribeGroups(response));
-        UNIT_ASSERT_VALUES_EQUAL(3, response.GetLastAckedLogSequenceNumber());
+            response.Pages);
+        UNIT_ASSERT_VALUES_EQUAL(3, response.LastAckedLsn);
     }
 
     Y_UNIT_TEST_F(ShouldDeduplicateRepeatedRecord, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
-        auto first = WriteAsync(MakeWriteRequest(2, 1, 'B', {{20, 1}}));
-        auto retry = WriteAsync(MakeWriteRequest(2, 1, 'B', {{20, 1}}));
+        auto first = WriteAsync(MakeRecord(2, 1, 'B', {{20, 1}}));
+        auto retry = WriteAsync(MakeRecord(2, 1, 'B', {{20, 1}}));
 
         UNIT_ASSERT(!first.HasValue());
         UNIT_ASSERT(!retry.HasValue());
@@ -1335,12 +1380,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
 
         // both callers are answered by the record that was inserted
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            first.GetValueSync().GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            retry.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, first.GetValueSync().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, retry.GetValueSync().GetCode());
 
         // and the retry took no pages of its own
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1359,8 +1400,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 1}}));
 
         auto response = ReadPages({{20, 1}});
-        UNIT_ASSERT_VALUES_EQUAL("20:[B020]", DescribeGroups(response));
-        UNIT_ASSERT_VALUES_EQUAL(2, response.GetLastAckedLogSequenceNumber());
+        UNIT_ASSERT_VALUES_EQUAL("20:[B020]", response.Pages);
+        UNIT_ASSERT_VALUES_EQUAL(2, response.LastAckedLsn);
     }
 
     Y_UNIT_TEST_F(ShouldRejectWriteThatDoesNotFitJournal, TFixture)
@@ -1394,7 +1435,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010,A011,A012,A013]",
-            DescribeGroups(ReadPages({{10, 4}})));
+            ReadPages({{10, 4}}).Pages);
     }
 
     Y_UNIT_TEST_F(ShouldReleasePagesOfFailedMetaWrite, TFixture)
@@ -1418,7 +1459,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
         Device->BlockWritesUntilReleased();
-        auto write = StartWrite(MakeWriteRequest(1, 0, 'A', {{10, 1}}));
+        auto write = StartWrite(MakeRecord(1, 0, 'A', {{10, 1}}));
         UNIT_ASSERT(Device->WriteBlocked.WaitT(TDuration::Seconds(30)));
 
         // the record is in the meta store while its page is still in flight
@@ -1426,12 +1467,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT(!write.HasValue());
 
         Device->ReleaseWrites();
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            write.GetValueSync().GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            "10:[A010]",
-            DescribeGroups(ReadPages({{10, 1}})));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, write.GetValueSync().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL("10:[A010]", ReadPages({{10, 1}}).Pages);
     }
 
     Y_UNIT_TEST_F(ShouldNotFreePagesBeforeFailedWriteIsOver, TFixture)
@@ -1444,7 +1481,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         // the page write fails at once, the record write is still in flight
         MetaStore->BlockWritesUntilReleased();
         Device->FailWrites.store(true);
-        auto write = StartWrite(MakeWriteRequest(1, 0, 'A', {{10, 1}}));
+        auto write = StartWrite(MakeRecord(1, 0, 'A', {{10, 1}}));
         UNIT_ASSERT(MetaStore->WriteBlocked.WaitT(TDuration::Seconds(30)));
 
         // the failure waits for the record write: the page is still taken
@@ -1452,9 +1489,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WriteRecord(2, 1, 'B', {{20, 1}}));
 
         MetaStore->ReleaseWrites();
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_IO,
-            write.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, write.GetValueSync().GetCode());
 
         // and free once it is over
         Device->FailWrites.store(false);
@@ -1471,11 +1506,11 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         // a page write, if there were one, would be held here
         Device->BlockWritesUntilReleased();
         MetaStore->FailWrites.store(true);
-        auto write = StartWrite(MakeWriteRequest(1, 0, 'A', {{10, 1}}));
+        auto write = StartWrite(MakeRecord(1, 0, 'A', {{10, 1}}));
 
         // the record write fails at once, so the write is over without it
         UNIT_ASSERT(write.Wait(TDuration::Seconds(30)));
-        UNIT_ASSERT_VALUES_EQUAL(E_IO, write.GetValue().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, write.GetValue().GetCode());
         with_lock (Device->Mutex) {
             UNIT_ASSERT(Device->BlockedWrites.empty());
         }
@@ -1502,8 +1537,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(3, 2, 'C', {{30, 3}}));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "30:[C030,C031] 32:[C032]",
-            DescribeGroups(ReadPages({{30, 3}})));
+            "30:[C030,C031,C032]",
+            ReadPages({{30, 3}}).Pages);
     }
 
     Y_UNIT_TEST_F(ShouldPackSeveralPageGroupsIntoOneRun, TFixture)
@@ -1516,7 +1551,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010] 20:[A020,A021]",
-            DescribeGroups(ReadPages({{10, 1}, {20, 2}})));
+            ReadPages({{10, 1}, {20, 2}}).Pages);
     }
 
     Y_UNIT_TEST_F(ShouldRejectRecordWithIntersectingPageGroups, TFixture)
@@ -1556,7 +1591,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         // pages 5 and 20 have never been journalled
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010,A011]",
-            DescribeGroups(ReadPages({{5, 2}, {10, 2}, {20, 1}})));
+            ReadPages({{5, 2}, {10, 2}, {20, 1}}).Pages);
     }
 
     Y_UNIT_TEST_F(ShouldClipMappingsToRequestedRange, TFixture)
@@ -1565,9 +1600,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            "11:[A011,A012]",
-            DescribeGroups(ReadPages({{11, 2}})));
+        UNIT_ASSERT_VALUES_EQUAL("11:[A011,A012]", ReadPages({{11, 2}}).Pages);
     }
 
     Y_UNIT_TEST_F(ShouldReturnNewestContentOfPage, TFixture)
@@ -1578,8 +1611,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{11, 1}}));
 
         UNIT_ASSERT_VALUES_EQUAL(
-            "10:[A010] 11:[B011] 12:[A012]",
-            DescribeGroups(ReadPages({{10, 3}})));
+            "10:[A010,B011,A012]",
+            ReadPages({{10, 3}}).Pages);
     }
 
     Y_UNIT_TEST_F(ShouldStopReturningFlushedPages, TFixture)
@@ -1591,8 +1624,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         // lsn 1 is on the device now, the reader is expected to go there
         auto response = ReadPages({{10, 1}, {20, 1}});
-        UNIT_ASSERT_VALUES_EQUAL("20:[B020]", DescribeGroups(response));
-        UNIT_ASSERT_VALUES_EQUAL(2, response.GetLastAckedLogSequenceNumber());
+        UNIT_ASSERT_VALUES_EQUAL("20:[B020]", response.Pages);
+        UNIT_ASSERT_VALUES_EQUAL(2, response.LastAckedLsn);
     }
 
     Y_UNIT_TEST_F(ShouldReturnMissingRanges, TFixture)
@@ -1635,7 +1668,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL("10+1", MissingRanges({{10, 1}, {20, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(
             "20:[B020]",
-            DescribeGroups(ReadPages({{10, 1}, {20, 1}})));
+            ReadPages({{10, 1}, {20, 1}}).Pages);
     }
 
     Y_UNIT_TEST_F(ShouldReturnMissingRangesBeforeJournalIsRead, TFixture)
@@ -1659,7 +1692,11 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         Device->ReleaseReads();
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010,A011]",
-            DescribeGroups(future.GetValueSync()));
+            DescribeRead(
+                MakeRangeRefs({{9, 4}}),
+                missing,
+                future.GetValueSync())
+                .Pages);
     }
 
     Y_UNIT_TEST_F(ShouldFailReadWhenDeviceFails, TFixture)
@@ -1726,7 +1763,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         auto response = ReadPages({{last - 1, 2}});
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL("1022:[A022,A023]", DescribeGroups(response));
+        UNIT_ASSERT_VALUES_EQUAL("1022:[A022,A023]", response.Pages);
 
         // a ref that covers no pages asks for nothing, wherever it points
         response = ReadPages({{last + 1, 0}, {last - 1, 2}});
@@ -1766,7 +1803,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         // the refs a request is allowed to hold still work
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010] 12:[A012,A013]",
-            DescribeGroups(ReadPages({{10, 1}, {12, 2}})));
+            ReadPages({{10, 1}, {12, 2}}).Pages);
     }
 
     // Reading the tail
@@ -1781,7 +1818,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "1<-0 10:[A010]; 2<-1 20:[B020]; 3<-2 30:[C030]",
             DescribeRecords(response));
-        UNIT_ASSERT_VALUES_EQUAL(0, response.GetLsnLowWatermark());
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetResult().LsnLowWatermark);
     }
 
     Y_UNIT_TEST_F(ShouldReadTailAfterGivenLsn, TFixture)
@@ -1813,7 +1850,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
 
-        auto third = WriteAsync(MakeWriteRequest(3, 2, 'C', {{30, 1}}));
+        auto third = WriteAsync(MakeRecord(3, 2, 'C', {{30, 1}}));
 
         // lsn 3 is written and durable but the reader must not skip lsn 2
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1821,9 +1858,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             DescribeRecords(ReadTail(0)));
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 1}}));
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            third.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, third.GetValueSync().GetCode());
 
         UNIT_ASSERT_VALUES_EQUAL(
             "1<-0 10:[A010]; 2<-1 20:[B020]; 3<-2 30:[C030]",
@@ -1841,7 +1876,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         // from the very beginning
         auto response = ReadTail(0);
         UNIT_ASSERT_VALUES_EQUAL("3<-2 30:[C030]", DescribeRecords(response));
-        UNIT_ASSERT_VALUES_EQUAL(2, response.GetLsnLowWatermark());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetResult().LsnLowWatermark);
     }
 
     Y_UNIT_TEST_F(ShouldFailTailReadWhenDeviceFails, TFixture)
@@ -1872,9 +1907,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, AdvanceLsnLowWatermark(1));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(3));
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            3,
-            ReadTail(0).GetLsnLowWatermark());
+        UNIT_ASSERT_VALUES_EQUAL(3, ReadTail(0).GetResult().LsnLowWatermark);
     }
 
     Y_UNIT_TEST_F(ShouldRejectUnindexedLsnLowWatermark, TFixture)
@@ -1884,9 +1917,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         WriteThreeRecords();
 
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, AdvanceLsnLowWatermark(4));
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            ReadTail(0).GetLsnLowWatermark());
+        UNIT_ASSERT_VALUES_EQUAL(0, ReadTail(0).GetResult().LsnLowWatermark);
     }
 
     Y_UNIT_TEST_F(ShouldNotAdvanceLsnLowWatermarkWhenMetaStoreFails, TFixture)
@@ -1899,9 +1930,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(E_IO, AdvanceLsnLowWatermark(2));
 
         MetaStore->FailWrites.store(false);
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            ReadTail(0).GetLsnLowWatermark());
+        UNIT_ASSERT_VALUES_EQUAL(0, ReadTail(0).GetResult().LsnLowWatermark);
 
         // and the failure has not blocked the next attempt
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
@@ -1916,8 +1945,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         MetaStore->BlockWritesUntilReleased();
 
         auto first = Executor->Execute(
-            [&]
-            { return Journal->AdvanceLsnLowWatermark(MakeAdvanceRequest(2)); });
+            [&] { return Journal->AdvanceLsnLowWatermark(2); });
 
         UNIT_ASSERT(MetaStore->WriteBlocked.WaitT(TDuration::Seconds(30)));
 
@@ -1925,9 +1953,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, AdvanceLsnLowWatermark(3));
 
         MetaStore->ReleaseWrites();
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            first.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, first.GetValueSync().GetCode());
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(3));
     }
@@ -2010,15 +2036,13 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldNotOfferUnwrittenRecordToFlusher, TFixture)
     {
-        auto second = WriteAsync(MakeWriteRequest(2, 1, 'B', {{20, 1}}));
+        auto second = WriteAsync(MakeRecord(2, 1, 'B', {{20, 1}}));
 
         // lsn 1 has not been written at all, so the chain starts at a gap
         UNIT_ASSERT_VALUES_EQUAL("", GetRecordsToFlushDescription());
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            second.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, second.GetValueSync().GetCode());
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
         UNIT_ASSERT_VALUES_EQUAL(
@@ -2052,13 +2076,13 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         // the record is gone from the meta store, its pages are free again
         UNIT_ASSERT_VALUES_EQUAL("2", StoredKeys());
-        UNIT_ASSERT_VALUES_EQUAL("", DescribeGroups(ReadPages({{10, 2}})));
+        UNIT_ASSERT_VALUES_EQUAL("", ReadPages({{10, 2}}).Pages);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(3, 2, 'C', {{30, 2}}));
 
         // and lsn 2 is still served from the journal
         UNIT_ASSERT_VALUES_EQUAL(
             "20:[B020,B021] 30:[C030,C031]",
-            DescribeGroups(ReadPages({{20, 2}, {30, 2}})));
+            ReadPages({{20, 2}, {30, 2}}).Pages);
     }
 
     Y_UNIT_TEST_F(ShouldCleanupNothingWhenNothingHasBeenFlushed, TFixture)
@@ -2086,7 +2110,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(3, RestoreOrFail());
         UNIT_ASSERT_VALUES_EQUAL(
             "30:[C030]",
-            DescribeGroups(ReadPages({{10, 1}, {20, 1}, {30, 1}})));
+            ReadPages({{10, 1}, {20, 1}, {30, 1}}).Pages);
     }
 
     Y_UNIT_TEST_F(ShouldNotCleanupWhatReaderIsStillLookingAt, TFixture)
@@ -2105,9 +2129,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL("1,2,3", StoredKeys());
 
         Device->ReleaseReads();
-        UNIT_ASSERT_VALUES_EQUAL(
-            "10:[A010]",
-            DescribeGroups(read.GetValueSync()));
+        UNIT_ASSERT_VALUES_EQUAL("10:[A010]", read.GetValueSync().Pages);
 
         // once it is done the cleanup goes through
         UNIT_ASSERT_VALUES_EQUAL(S_OK, CleanupFlushedRecords());

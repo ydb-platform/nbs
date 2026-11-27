@@ -4,6 +4,7 @@
 
 #include "buffer.h"
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -64,6 +65,19 @@ struct IServerHandler
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IServerConnectionHandler
+{
+    virtual ~IServerConnectionHandler() = default;
+
+    // Called for every connect request with the data the client passed to
+    // IClient::StartEndpoint. The returned handler serves the connection. An
+    // error rejects the connection.
+    virtual TResultOrError<IServerHandlerPtr> HandleConnect(
+        TStringBuf externalData) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IServerEndpoint
 {
     virtual ~IServerEndpoint() = default;
@@ -83,6 +97,11 @@ struct IServer
         TString host,
         ui32 port,
         IServerHandlerPtr handler) = 0;
+
+    virtual IServerEndpointPtr StartEndpoint(
+        TString host,
+        ui32 port,
+        IServerConnectionHandlerPtr connectionHandler) = 0;
 
     virtual void DumpHtml(IOutputStream& out) const = 0;
 };

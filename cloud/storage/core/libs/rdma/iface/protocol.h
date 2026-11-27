@@ -2,8 +2,11 @@
 
 #include "public.h"
 
+#include <util/generic/strbuf.h>
 #include <util/generic/ylimits.h>
 #include <util/system/defaults.h>
+
+#include <type_traits>
 
 namespace NCloud::NStorage::NRdma {
 
@@ -11,6 +14,9 @@ namespace NCloud::NStorage::NRdma {
 
 // usage of fixed-size structures greatly simplifies message passing
 constexpr size_t RDMA_PRIVATE_SIZE = 16;
+// private data of the connect request of an rdma_cm connection
+constexpr size_t RDMA_MAX_CONNECT_PRIVATE_SIZE = 56;
+constexpr size_t RDMA_MAX_EXTERNAL_DATA_SIZE = 24;
 constexpr size_t RDMA_REQUEST_SIZE = 64;
 constexpr size_t RDMA_RESPONSE_SIZE = 16;
 constexpr size_t RDMA_PROTO_HEADER_SIZE = 8;
@@ -30,6 +36,7 @@ enum {
     RDMA_PROTO_CONFIG_MISMATCH  = 2,
     RDMA_PROTO_THROTTLED        = 3,
     RDMA_PROTO_FAIL             = 4,
+    RDMA_PROTO_REJECTED         = 5,
 };
 
 enum {
@@ -136,6 +143,92 @@ struct Y_PACKED TRejectMessage
 };
 
 static_assert(sizeof(TRejectMessage) == RDMA_PRIVATE_SIZE);
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Options follow the fixed part of a connection message:
+//
+// |---------------+--------+--------+-----|
+// | fixed message | option | option | ... |
+// |---------------+--------+--------+-----|
+//
+// An option is a flag (ui8) followed either by a value of a fixed size or by a
+// size (ui8) and that many bytes of data, the flag tells which:
+//
+// |------+-------|    |------+------+------|
+// | flag | value | or | flag | size | data |
+// |------+-------|    |------+------+------|
+//
+// Options are written in the ascending order of flags. A receiver reads the
+// options it knows and ignores everything starting from the first flag it does
+// not know, so a new option gets a flag greater than the existing ones. Flags
+// are not zero: private data comes padded with zeros.
+
+enum {
+    // size + data, handed to IServerConnectionHandler::HandleConnect
+    RDMA_CONNECT_OPTION_EXTERNAL_DATA = 1,
+};
+
+static_assert(
+    sizeof(TConnectMessage) + 2 * sizeof(ui8) + RDMA_MAX_EXTERNAL_DATA_SIZE <=
+    RDMA_MAX_CONNECT_PRIVATE_SIZE);
+
+class TOptionWriter
+{
+private:
+    char* const Begin;
+    char* const End;
+    char* Ptr;
+    ui8 LastFlag = 0;
+
+public:
+    TOptionWriter(void* buffer, size_t capacity);
+
+    size_t Size() const;
+
+    template <typename T>
+    void WriteValue(ui8 flag, const T& value)
+    {
+        static_assert(std::is_trivially_copyable_v<T>);
+
+        WriteValueImpl(flag, &value, sizeof(value));
+    }
+
+    void WriteData(ui8 flag, TStringBuf data);
+
+private:
+    void WriteValueImpl(ui8 flag, const void* value, size_t size);
+    void WriteFlag(ui8 flag);
+    void Write(const void* data, size_t size);
+};
+
+// An option that is not the next one is absent: the reader leaves the value
+// as it is and returns true. False means that the option is cut short.
+class TOptionReader
+{
+private:
+    const char* Ptr;
+    const char* const End;
+    ui8 LastFlag = 0;
+
+public:
+    TOptionReader(const void* options, size_t size);
+
+    template <typename T>
+    bool ReadValue(ui8 flag, T* value)
+    {
+        static_assert(std::is_trivially_copyable_v<T>);
+
+        return ReadValueImpl(flag, value, sizeof(T));
+    }
+
+    bool ReadData(ui8 flag, TStringBuf* data);
+
+private:
+    bool ReadValueImpl(ui8 flag, void* value, size_t size);
+    bool IsNext(ui8 flag);
+    size_t Left() const;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 

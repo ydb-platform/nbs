@@ -299,6 +299,9 @@ void TestSuffer(
     ui32 expectedSmooth,
     ui32 expectedCritical)
 {
+    TVolumeSufferCounters sufferCounters;
+    sufferCounters.Register(*counters, calc);
+
     calc.OnRequestCompleted(
         EBlockStoreRequest::WriteBlocks,
         0,
@@ -307,6 +310,7 @@ void TestSuffer(
         1024 * 1024);
 
     Wait(calc, waitDuration);
+    sufferCounters.Publish(calc);
 
     auto sufferCounter = counters->GetCounter("Suffer", false);
     UNIT_ASSERT_VALUES_EQUAL(expected, sufferCounter->Val());
@@ -518,13 +522,12 @@ void TestSufferWithMetrics(NCloud::NProto::EStorageMediaKind diskKind)
     auto config = CreateDefaultPerformanceSettings();
 
     auto volume = CreateVolumeWithDiagnosticsProfile("test1", diskKind, config);
-    auto volumeCounters = CreateVolumeCounters(counters, "test1");
 
     auto calc = TVolumePerformanceCalculator(
         volume,
         std::make_shared<TDiagnosticsConfig>(std::move(config)));
 
-    calc.Register(*volumeCounters, volume);
+    calc.Register(volume);
 
     TSufferCounters sufferCounters(
         "DisksSuffer",
@@ -619,9 +622,10 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             volume,
             std::make_shared<TDiagnosticsConfig>());
 
-        volumePerfCalc.Register(
-            *volumeCounters,
-            volume);
+        volumePerfCalc.Register(volume);
+
+        TVolumeSufferCounters sufferCounters;
+        sufferCounters.Register(*volumeCounters, volumePerfCalc);
 
         TStringStream strStream;
         volumeCounters->OutputPlainText(strStream);
@@ -650,9 +654,10 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             volume,
             std::make_shared<TDiagnosticsConfig>(std::move(config)));
 
-        volumePerfCalc.Register(
-            *volumeCounters,
-            volume);
+        volumePerfCalc.Register(volume);
+
+        TVolumeSufferCounters sufferCounters;
+        sufferCounters.Register(*volumeCounters, volumePerfCalc);
 
         TStringStream strStream;
         volumeCounters->OutputPlainText(strStream);
@@ -663,9 +668,6 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
 
     Y_UNIT_TEST(ShouldNotSetSufferIfLoadIsBelowThresholds)
     {
-        auto monitoring = CreateMonitoringServiceStub();
-        auto counters = monitoring->GetCounters();
-
         auto config = CreateDefaultPerformanceSettings(
             NCloud::NProto::STORAGE_MEDIA_SSD
         );
@@ -675,15 +677,12 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             NCloud::NProto::STORAGE_MEDIA_SSD,
             config
         );
-        auto volumeCounters = CreateVolumeCounters(counters, "test1");
 
         auto volumePerfCalc = TVolumePerformanceCalculator(
             volume,
             std::make_shared<TDiagnosticsConfig>(std::move(config)));
 
-        volumePerfCalc.Register(
-            *volumeCounters,
-            volume);
+        volumePerfCalc.Register(volume);
 
         volumePerfCalc.OnRequestCompleted(
             EBlockStoreRequest::WriteBlocks,
@@ -696,19 +695,12 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             volumePerfCalc.UpdateStats();
         }
 
-        auto sufferCounter = counters
-            ->GetSubgroup("host", "cluster")
-            ->FindSubgroup("volume", "test1")
-            ->GetCounter("Suffer", false);
-        UNIT_ASSERT_VALUES_EQUAL(0, sufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, volumePerfCalc.GetSufferCount());
     }
 
     Y_UNIT_TEST(ShouldUse15SecondWindowForSmoothSuffer)
     {
         constexpr ui32 RequestBytes = 1024 * 1024;
-
-        auto monitoring = CreateMonitoringServiceStub();
-        auto counters = monitoring->GetCounters();
 
         auto config = CreatePerformanceSettings(
             NCloud::NProto::STORAGE_MEDIA_SSD,
@@ -730,11 +722,10 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             config
         );
 
-        auto volumeCounters = CreateVolumeCounters(counters, volume.GetDiskId());
         TVolumePerformanceCalculator calc(
             volume,
             std::make_shared<TDiagnosticsConfig>(std::move(config)));
-        calc.Register(*volumeCounters, volume);
+        calc.Register(volume);
 
         const auto expectedCost = calc.GetExpectedWriteCost(RequestBytes);
         UNIT_ASSERT(expectedCost > TDuration::Seconds(8));
@@ -756,9 +747,6 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
     {
         constexpr ui32 RequestBytes = 1024 * 1024;
 
-        auto monitoring = CreateMonitoringServiceStub();
-        auto counters = monitoring->GetCounters();
-
         auto config = CreatePerformanceSettings(
             NCloud::NProto::STORAGE_MEDIA_SSD,
             1,          // readIops
@@ -779,11 +767,10 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             config
         );
 
-        auto volumeCounters = CreateVolumeCounters(counters, volume.GetDiskId());
         TVolumePerformanceCalculator calc(
             volume,
             std::make_shared<TDiagnosticsConfig>(std::move(config)));
-        calc.Register(*volumeCounters, volume);
+        calc.Register(volume);
 
         const auto expectedCost = calc.GetExpectedWriteCost(RequestBytes);
         UNIT_ASSERT(expectedCost > TDuration::Seconds(1));
@@ -866,7 +853,7 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             volume,
             std::make_shared<TDiagnosticsConfig>(std::move(config)));
 
-        volumePerfCalc.Register(*volumeCounters, volume);
+        volumePerfCalc.Register(volume);
 
         // run slow request
         TestSuffer(
@@ -888,7 +875,7 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             config.GetSsdPerfSettings().GetWrite().GetIops() * 10,
             config.GetSsdPerfSettings().GetWrite().GetBandwidth() * 10);
 
-        volumePerfCalc.Register(*volumeCounters, updatedVolume);
+        volumePerfCalc.Register(updatedVolume);
 
         // run previously "slow" request and make sure it is "fast enough" now.
         TestSuffer(
@@ -957,7 +944,7 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             TVolumePerformanceCalculator calc(
                 volume,
                 std::make_shared<TDiagnosticsConfig>(config));
-            calc.Register(*volumeCounters, volume);
+            calc.Register(volume);
 
             // Since config is clamped by profile limits, expectedScore becomes
             // too large for the 1s window — per-second Suffer cannot fire even
@@ -992,7 +979,7 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
                 std::make_shared<TDiagnosticsConfig>(std::move(configWithMin)));
 
             const auto before = calc.GetExpectedWriteCost(RequestBytes);
-            calc.Register(*volumeCounters, volume);
+            calc.Register(volume);
             const auto after = calc.GetExpectedWriteCost(RequestBytes);
 
             UNIT_ASSERT_VALUES_EQUAL(before, after);
@@ -1123,7 +1110,7 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             volume,
             std::make_shared<TDiagnosticsConfig>(config));
 
-        volumePerfCalc.Register(*volumeCounters, volumeNoSettings);
+        volumePerfCalc.Register(volumeNoSettings);
 
         // run slow request for default settings
         TestSuffer(
@@ -1137,7 +1124,7 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
         auto oldTime = volumePerfCalc.GetExpectedWriteCost(1024 * 1024) + TDuration::MicroSeconds(10);
 
         // mount with settings
-        volumePerfCalc.Register(*volumeCounters, volume);
+        volumePerfCalc.Register(volume);
         // make sure that previously slow request becomes fast
         TestSuffer(
             volumePerfCalc,
@@ -1153,7 +1140,7 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             NCloud::NProto::STORAGE_MEDIA_SSD,
             config
         );
-        volumePerfCalc.Register(*volumeCounters, updatedVolume);
+        volumePerfCalc.Register(updatedVolume);
 
         TestSuffer(
             volumePerfCalc,
@@ -1167,9 +1154,6 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
 
     Y_UNIT_TEST(ShouldTrackNumberOfSufferSeconds)
     {
-        auto monitoring = CreateMonitoringServiceStub();
-        auto counters = monitoring->GetCounters();
-
         auto config = CreateDefaultPerformanceSettings(
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
         );
@@ -1179,13 +1163,12 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
             config
         );
-        auto volumeCounters = CreateVolumeCounters(counters, "test1");
 
         auto volumePerfCalc = TVolumePerformanceCalculator(
             volume,
             std::make_shared<TDiagnosticsConfig>(std::move(config)));
 
-        volumePerfCalc.Register(*volumeCounters, volume);
+        volumePerfCalc.Register(volume);
 
         TestSufferCount(volumePerfCalc, TDuration::Seconds(1), true, 1, 1, 0);
         TestSufferCount(volumePerfCalc, TDuration::Seconds(1), true, 2, 1, 0);
@@ -1196,49 +1179,43 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
 
     Y_UNIT_TEST(ShouldNotTurnOnSufferIfDiskIsOverloaded)
     {
-        auto monitoring = CreateMonitoringServiceStub();
-        auto counters = monitoring->GetCounters();
-
         auto config = CreateDefaultPerformanceSettings(
             NCloud::NProto::STORAGE_MEDIA_SSD
         );
+        const TDuration windowCapacity =
+            config.GetExpectedIoParallelism() * UpdateStatsInterval;
 
         auto volume = CreateVolumeWithDiagnosticsProfile(
             "test1",
             NCloud::NProto::STORAGE_MEDIA_SSD,
             config
         );
-        auto volumeCounters = CreateVolumeCounters(counters, "test1");
 
         auto volumePerfCalc = TVolumePerformanceCalculator(
             volume,
             std::make_shared<TDiagnosticsConfig>(std::move(config)));
 
-        volumePerfCalc.Register(*volumeCounters, volume);
+        volumePerfCalc.Register(volume);
 
-        for (ui32 i = 0; i < 33; ++i) {
+        const auto requestCost = volumePerfCalc.GetExpectedWriteCost(4096);
+        UNIT_ASSERT(requestCost);
+        while (volumePerfCalc.GetExpectedCost() < windowCapacity) {
             volumePerfCalc.OnRequestCompleted(
                 EBlockStoreRequest::WriteBlocks,
                 0,
-                DurationToCyclesSafe(
-                    volumePerfCalc.GetExpectedWriteCost(4096)
-                    + TDuration::Seconds(1)),
+                DurationToCyclesSafe(requestCost + TDuration::Seconds(1)),
                 0,
                 4096);
         }
 
         Wait(volumePerfCalc, TDuration::Seconds(1));
 
-        auto sufferCounter = volumeCounters->GetCounter("Suffer", false);
-        UNIT_ASSERT_VALUES_EQUAL(0, sufferCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, volumePerfCalc.GetSufferCount());
     }
 
     Y_UNIT_TEST(ShouldTakePostponedTimeIntoAccount)
     {
         using namespace NCloud::NProto;
-
-        auto monitoring = CreateMonitoringServiceStub();
-        auto counters = monitoring->GetCounters();
 
         auto config = CreateDefaultPerformanceSettings();
 
@@ -1246,13 +1223,12 @@ Y_UNIT_TEST_SUITE(TVolumePerfTest)
             "test1",
             NProto::STORAGE_MEDIA_SSD,
             config);
-        auto volumeCounters = CreateVolumeCounters(counters, "test1");
 
         auto calc = TVolumePerformanceCalculator(
             volume,
             std::make_shared<TDiagnosticsConfig>(std::move(config)));
 
-        calc.Register(*volumeCounters, volume);
+        calc.Register(volume);
 
         TestSufferCountPostponed(calc, TDuration::Seconds(15), 0, 0, 0);
 

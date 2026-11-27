@@ -50,6 +50,15 @@ struct TTestDevice final: public IDevice
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TBuffer MakePage(char fill)
+{
+    TBuffer page;
+    page.Fill(fill, 4096);
+    return page;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TFixture: public NUnitTest::TBaseFixture
 {
     std::shared_ptr<TTestDevice> DataStore;
@@ -63,17 +72,13 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     NProto::TError WriteLogRecord(ui64 lsn, ui64 prevLsn)
     {
-        NProto::TWriteLogRecordRequest request;
-        request.SetLogSequenceNumber(lsn);
-        request.SetPrevLogSequenceNumber(prevLsn);
+        TVector<TPageRange> ranges;
+        auto& range = ranges.emplace_back();
+        range.FirstPageNo = 0x10;
+        range.Pages.push_back(MakePage('A'));
 
-        auto& group = *request.MutablePageGroups()->Add();
-        group.SetFirstPageNo(0x10);
-        group.MutableContent()->Add()->resize(4096, 'A');
-
-        return Device->WriteLogRecord(std::move(request))
-            .GetValueSync()
-            .GetError();
+        return Device->WriteLogRecord(std::move(ranges), lsn, prevLsn)
+            .GetValueSync();
     }
 };
 
@@ -122,28 +127,27 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
 
     Y_UNIT_TEST_F(ShouldWritePagesToDataStore, TFixture)
     {
-        NProto::TWritePagesRequest request;
+        TVector<TPageRange> ranges(1);
+        ranges[0].FirstPageNo = 0x10;
+        ranges[0].Pages.push_back(MakePage('A'));
+        ranges[0].Pages.push_back(MakePage('B'));
 
-        auto& group = *request.AddPageGroups();
-        group.SetFirstPageNo(0x10);
-        group.AddContent()->resize(4096, 'A');
-        group.AddContent()->resize(4096, 'B');
-
-        const auto error =
-            Device->WritePages(request).GetValueSync().GetError();
+        const auto error = Device->WritePages(std::move(ranges)).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
         UNIT_ASSERT_VALUES_EQUAL(1, DataStore->WritePagesCount);
 
-        const auto& ranges = DataStore->LastWrittenRanges;
-        UNIT_ASSERT_VALUES_EQUAL(1, ranges.size());
-        UNIT_ASSERT_VALUES_EQUAL(0x10, ranges[0].FirstPageNo);
-        UNIT_ASSERT_VALUES_EQUAL(2, ranges[0].Pages.size());
+        const auto& written = DataStore->LastWrittenRanges;
+        UNIT_ASSERT_VALUES_EQUAL(1, written.size());
+        UNIT_ASSERT_VALUES_EQUAL(0x10, written[0].FirstPageNo);
+        UNIT_ASSERT_VALUES_EQUAL(2, written[0].Pages.size());
 
-        for (size_t i = 0; i != group.ContentSize(); ++i) {
-            const auto& page = ranges[0].Pages[i];
+        const TString expected[] = {TString(4096, 'A'), TString(4096, 'B')};
+
+        for (size_t i = 0; i != std::size(expected); ++i) {
+            const auto& page = written[0].Pages[i];
             UNIT_ASSERT_VALUES_EQUAL_C(
-                group.GetContent(i),
+                expected[i],
                 TStringBuf(page.Data(), page.Size()),
                 i);
         }
@@ -153,14 +157,11 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
     {
         DataStore->WritePagesError = MakeError(E_IO, "device is broken");
 
-        NProto::TWritePagesRequest request;
+        TVector<TPageRange> ranges(1);
+        ranges[0].FirstPageNo = 0x10;
+        ranges[0].Pages.push_back(MakePage('A'));
 
-        auto& group = *request.AddPageGroups();
-        group.SetFirstPageNo(0x10);
-        group.AddContent()->resize(4096, 'A');
-
-        const auto error =
-            Device->WritePages(request).GetValueSync().GetError();
+        const auto error = Device->WritePages(std::move(ranges)).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
     }
 }

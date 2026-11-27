@@ -3,6 +3,7 @@ UNITTEST_FOR(cloud/filestore/libs/rdma)
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
+    client_ut.cpp
     endpoint_ut.cpp
     protocol_ut.cpp
 )

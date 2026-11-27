@@ -253,7 +253,9 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
             proto.AddBlobCompressionChunkSizes(size);
         }
         const TDiagnosticsConfig diagnostics(proto);
-        const TString payload(2 * BlockSize, 'a');
+        const ui32 logicalBlockSize = 2 * BlockSize;
+        TString payload(3 * logicalBlockSize, '\0');
+        payload[2 * logicalBlockSize - 1] = 'a';
         auto counters = std::make_shared<TThreadSafePartCounters>(
             std::make_unique<TPartitionDiskCounters>(
                 EPublishingPolicy::Repl,
@@ -262,6 +264,7 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
             NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
             TBlobCompressor::TMetricsConfig{
                 .CompressionRate = 1,
+                .BlockSize = logicalBlockSize,
                 .ChunkSizes = chunkSizes,
                 .PartCounters = counters});
 
@@ -278,6 +281,9 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
                     values->Cumulative.CompressedBytesWritten.Value <
                     payload.size());
                 UNIT_ASSERT_VALUES_EQUAL(2, values->BlobCompression.size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    2 * logicalBlockSize,
+                    values->Cumulative.ZeroBytesWritten.Value);
                 for (const auto& [size, compression]: values->BlobCompression) {
                     // Repeated chunk sizes must be counted only once.
                     UNIT_ASSERT_VALUES_EQUAL(

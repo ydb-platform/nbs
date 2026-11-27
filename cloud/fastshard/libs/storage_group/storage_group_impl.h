@@ -111,6 +111,8 @@ struct TGroupState
     std::atomic<bool> Initialized = false;
     std::atomic<ui64> RequestId = 1;
 
+    ui64 Generation = 0;
+
     TGroupState(TStorageGroupConfig config, ITimerPtr timer)
         : Config(std::move(config))
         , Timer(std::move(timer))
@@ -163,6 +165,7 @@ void PushLowWatermark(
 void RenewSession(
     TFastShardContext& ctx,
     TGroupHealth& health,
-    TDeviceProxy& proxy);
+    TDeviceProxy& proxy,
+    ui64 generation);
 
 }   // namespace NCloud::NFastShard

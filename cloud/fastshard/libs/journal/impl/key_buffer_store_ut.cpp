@@ -227,7 +227,7 @@ bool IsZeroDevicePage(const IDevicePtr& device, ui64 pageNo)
 ////////////////////////////////////////////////////////////////////////////////
 
 // A device that holds its write responses until they are released and fails
-// the writes while broken.
+// the writes while broken. It can also fail the held writes on release.
 class TStuckDevice final: public IDevice
 {
 private:
@@ -237,6 +237,9 @@ private:
 
 public:
     bool Broken = false;
+
+    // Makes ReleaseAll fail the held writes and not do them.
+    bool FailPending = false;
 
     NThreading::TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
         TVector<TPageRangeRef> rangeRefs) override
@@ -255,10 +258,15 @@ public:
         auto promise = NThreading::NewPromise<NProto::TError>();
 
         Pending.push_back(
-            [device = Device, ranges = std::move(ranges), promise]() mutable
+            [this, ranges = std::move(ranges), promise]() mutable
             {
+                if (FailPending) {
+                    promise.SetValue(MakeError(E_IO, "the write failed"));
+                    return;
+                }
+
                 promise.SetValue(
-                    device->WritePages(std::move(ranges)).GetValueSync());
+                    Device->WritePages(std::move(ranges)).GetValueSync());
             });
 
         return promise.GetFuture();
@@ -958,7 +966,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("last", Get(buffers, 2501));
     }
 
-    Y_UNIT_TEST(ShouldRejectOverlappingErase)
+    Y_UNIT_TEST(ShouldWriteOverlappingSuperblockUpdatesOneByOne)
     {
         auto device = std::make_shared<TStuckDevice>();
         auto store = CreateTestStore(device);
@@ -975,21 +983,24 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         error = write3.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
-        auto erase = store->EraseBelow(3);
+        auto erase3 = store->EraseBelow(3);
         UNIT_ASSERT_VALUES_EQUAL(1, device->PendingCount());
-        UNIT_ASSERT(!erase.HasValue());
+        UNIT_ASSERT(!erase3.HasValue());
 
-        // a second erase has to wait for the first one to complete
-        error = store->EraseBelow(4).GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
+        // a second erase waits for the first one to complete
+        auto erase4 = store->EraseBelow(4);
+        UNIT_ASSERT(!erase4.HasValue());
 
         // even a lower bound - it is not persisted until the write is done
-        error = store->EraseBelow(2).GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
+        auto erase2 = store->EraseBelow(2);
+        UNIT_ASSERT(!erase2.HasValue());
 
         // and so does a metadata write, it shares the superblock
-        error = store->WriteMeta(MakeBuffer("m")).GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
+        auto meta = store->WriteMeta(MakeBuffer("m"));
+        UNIT_ASSERT(!meta.HasValue());
+
+        // the waiting updates do not go to the device yet
+        UNIT_ASSERT_VALUES_EQUAL(1, device->PendingCount());
 
         // a key below the pending bound is taken, the write is dropped once
         // the erase lands
@@ -998,22 +1009,80 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT(!write.HasValue());
 
         device->ReleaseAll();
-        error = erase.GetValueSync();
+        error = erase3.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         error = write.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(0, device->PendingCount());
 
-        auto code = EraseBelow(store, 2);
-        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, code);
+        // the updates go to the device one by one, in the order they came
+        UNIT_ASSERT_VALUES_EQUAL(1, device->PendingCount());
+        UNIT_ASSERT(!erase4.HasValue());
+        UNIT_ASSERT(!erase2.HasValue());
+        UNIT_ASSERT(!meta.HasValue());
 
-        auto erase3 = store->EraseBelow(4);
         device->ReleaseAll();
-        error = erase3.GetValueSync();
+        error = erase4.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
-        auto buffers = Reopen(device);
-        UNIT_ASSERT(buffers.empty());
+        // the erases before it cover the lower bound, there is nothing to
+        // write
+        error = erase2.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, error.GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, device->PendingCount());
+        UNIT_ASSERT(!meta.HasValue());
+
+        device->ReleaseAll();
+        error = meta.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, device->PendingCount());
+
+        auto code = EraseBelow(store, 4);
+        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, code);
+
+        auto restored = RestoreAll(CreateTestStore(device));
+        UNIT_ASSERT_VALUES_EQUAL("m", AsString(restored.MetaBuffer));
+        UNIT_ASSERT(restored.KeyBuffers.empty());
+    }
+
+    Y_UNIT_TEST(ShouldWriteWaitingSuperblockUpdateAfterFailedWrite)
+    {
+        auto device = std::make_shared<TStuckDevice>();
+        auto store = CreateTestStore(device);
+        Restore(store);
+
+        auto write = StartWrite(store, 1, MakeBuffer("one"));
+        device->ReleaseAll();
+        auto error = write.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+
+        auto meta = store->WriteMeta(MakeBuffer("m"));
+        auto erase = store->EraseBelow(2);
+        UNIT_ASSERT_VALUES_EQUAL(1, device->PendingCount());
+
+        // the metadata write fails, the waiting erase is written after it
+        device->FailPending = true;
+        device->ReleaseAll();
+        device->FailPending = false;
+
+        error = meta.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, error.GetCode());
+        UNIT_ASSERT(!erase.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(1, device->PendingCount());
+
+        device->ReleaseAll();
+        error = erase.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+
+        // the store takes the next superblock write right away
+        meta = store->WriteMeta(MakeBuffer("n"));
+        device->ReleaseAll();
+        error = meta.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+
+        auto restored = RestoreAll(CreateTestStore(device));
+        UNIT_ASSERT_VALUES_EQUAL("n", AsString(restored.MetaBuffer));
+        UNIT_ASSERT(restored.KeyBuffers.empty());
     }
 
     Y_UNIT_TEST(ShouldEraseKeyWrittenBeforeOverlappingEraseLands)
@@ -1058,7 +1127,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
             Describe(buffers));
     }
 
-    Y_UNIT_TEST(ShouldNotRejectNoOpEraseDuringMetadataWrite)
+    Y_UNIT_TEST(ShouldNotWriteNoOpEraseAfterMetadataWrite)
     {
         auto device = std::make_shared<TStuckDevice>();
         auto store = CreateTestStore(device);
@@ -1078,23 +1147,35 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         UNIT_ASSERT_VALUES_EQUAL(1, device->PendingCount());
         UNIT_ASSERT(!meta.HasValue());
 
-        // the bound is persisted already, there is nothing to wait for
-        error = store->EraseBelow(3).GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, error.GetCode());
-        error = store->EraseBelow(2).GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, error.GetCode());
-
-        // a higher bound does have to wait
-        error = store->EraseBelow(4).GetValueSync();
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
+        // every update waits for the write in flight, also the ones whose
+        // bound is persisted already
+        auto erase3 = store->EraseBelow(3);
+        UNIT_ASSERT(!erase3.HasValue());
+        auto erase2 = store->EraseBelow(2);
+        UNIT_ASSERT(!erase2.HasValue());
+        auto erase4 = store->EraseBelow(4);
+        UNIT_ASSERT(!erase4.HasValue());
 
         device->ReleaseAll();
         error = meta.GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
+        // the erases that change nothing are answered without a write
+        error = erase3.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, error.GetCode());
+        error = erase2.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, error.GetCode());
+
+        // the higher bound goes to the device
+        UNIT_ASSERT_VALUES_EQUAL(1, device->PendingCount());
+        UNIT_ASSERT(!erase4.HasValue());
+        device->ReleaseAll();
+        error = erase4.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+
         auto restored = RestoreAll(CreateTestStore(device));
         UNIT_ASSERT_VALUES_EQUAL("m", AsString(restored.MetaBuffer));
-        UNIT_ASSERT_VALUES_EQUAL("3=three", Describe(restored.KeyBuffers));
+        UNIT_ASSERT(restored.KeyBuffers.empty());
     }
 
     Y_UNIT_TEST(ShouldReportDeviceWriteError)

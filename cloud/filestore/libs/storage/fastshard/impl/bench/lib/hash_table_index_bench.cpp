@@ -128,14 +128,15 @@ IFileSystemShardPtr MakeHashTableIndexShard(const TMaybe<cpu_set_t>& cpuMask)
     config.SetExpectedGroupCapacity(GroupCapacity);
     config.SetPageSize(4_KB);
 
+    auto delayPolicy = NCloud::NFastShard::CreateLognormalDelayPolicy(
+        NCloud::NFastShard::DefaultStorageDelayMean,
+        NCloud::NFastShard::DefaultStorageDelayStdDev);
+
     return CreateHashTableIndexFileSystemShard(
         "bench-fs",
         ShardNo,
         1 /* generation */,
-        CreateNullStorageGroupFactory(
-            NCloud::NFastShard::CreateLognormalDelayPolicy(
-                NCloud::NFastShard::DefaultStorageDelayMean,
-                NCloud::NFastShard::DefaultStorageDelayStdDev)),
+        CreateNullStorageGroup(std::move(delayPolicy), config.GetPageSize()),
         config);
 }
 

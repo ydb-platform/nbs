@@ -4,6 +4,8 @@
 
 #include "log_record.h"
 
+#include <cloud/fastshard/libs/journal/iface/public.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <library/cpp/threading/future/future.h>

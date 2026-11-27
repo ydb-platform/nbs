@@ -2,12 +2,11 @@
 
 #include "public.h"
 
-#include "host_connection.h"
-
 #include <cloud/blockstore/libs/service/public.h>
 
 #include <cloud/storage/core/libs/common/endpoint_handler.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/icv2/peer/iface/status.h>
 
 #include <util/generic/string.h>
 
@@ -16,7 +15,8 @@ namespace NCloud::NBlockStore::NIcV2 {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Start the transport first. Its owner drains retired endpoints at shutdown.
-// Endpoints support ReadBlocksLocal, WriteBlocksLocal and ZeroBlocks only.
+// Endpoints support ReadBlocks, ReadBlocksLocal, WriteBlocks, WriteBlocksLocal,
+// and ZeroBlocks.
 struct IDataEndpointFactory
 {
     virtual ~IDataEndpointFactory();
@@ -34,7 +34,7 @@ struct IDataEndpointFactory
         IClientEndpointHandlerPtr handler) = 0;
 
     // Pass an endpoint created by this factory.
-    virtual THostChannelStatus GetDataEndpointStatus(
+    virtual NCloud::NIcV2::TPeerStatus GetDataEndpointStatus(
         const IBlockStorePtr& endpoint) = 0;
 };
 

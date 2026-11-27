@@ -120,6 +120,7 @@ struct TFollowerDiskInfo
     std::optional<ui64> MigratedBytes;
     TString ErrorMessage;
 
+    bool IsCopyInProgress() const;
     TString Describe() const;
     bool operator==(const TFollowerDiskInfo& rhs) const;
 };

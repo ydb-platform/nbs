@@ -200,19 +200,19 @@ TResponse DecodeResponse(const TRequest& request, const TDataResponse& reply)
 
 class TDataEndpoint final: public TBlockStoreImpl<TDataEndpoint, IDataEndpoint>
 {
-    const IDataRequestChannelPtr Channel;
+    const IDataRequestSenderPtr Sender;
     const std::shared_ptr<TRequestTracker> Tracker;
+    NThreading::TPromise<void> Closed = NThreading::NewPromise<void>();
 
 public:
-    TDataEndpoint(IDataRequestChannelPtr channel, TDataConfig config)
-        : Channel(std::move(channel))
+    TDataEndpoint(IDataRequestSenderPtr sender, TDataConfig config)
+        : Sender(std::move(sender))
         , Tracker(std::make_shared<TRequestTracker>(config))
     {}
 
     ~TDataEndpoint() override
     {
-        Tracker->RequestStop();
-        Channel->Close();
+        RequestStop();
     }
 
     void Start() override
@@ -220,15 +220,29 @@ public:
 
     NThreading::TFuture<void> RequestStop() override
     {
+        auto closed = Closed;
         const auto tracker = Tracker;
-        const auto channel = Channel;
+        const auto sender = Sender;
         const auto requestsClosed = tracker->RequestStop();
-        return NThreading::WaitAll(requestsClosed, channel->Close());
+        const auto senderClosed = sender->Close();
+        NThreading::WaitAll(requestsClosed, senderClosed)
+            .Subscribe(
+                [closed](const NThreading::TFuture<void>& completed) mutable
+                {
+                    Y_UNUSED(completed);
+                    closed.TrySetValue();
+                });
+        return closed.GetFuture();
+    }
+
+    NThreading::TFuture<void> WhenClosed() const override
+    {
+        return Closed.GetFuture();
     }
 
     void Stop() override
     {
-        RequestStop().GetValueSync();
+        RequestStop().Wait();
     }
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
@@ -336,7 +350,7 @@ private:
         }
         const auto timeout =
             TDuration::MilliSeconds(request->GetHeaders().GetRequestTimeout());
-        return Channel->Request(std::move(event), timeout)
+        return Sender->Request(std::move(event), timeout)
             .Apply(
                 [reservation = std::move(reservation),
                  request = std::move(request),
@@ -366,15 +380,15 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IDataRequestChannel::~IDataRequestChannel() = default;
+IDataRequestSender::~IDataRequestSender() = default;
 
 IDataEndpointPtr CreateDataEndpoint(
-    IDataRequestChannelPtr channel,
+    IDataRequestSenderPtr sender,
     TDataConfig config)
 {
-    Y_DEBUG_ABORT_UNLESS(channel && config.IsValid());
+    Y_DEBUG_ABORT_UNLESS(sender && config.IsValid());
 
-    return std::make_shared<TDataEndpoint>(std::move(channel), config);
+    return std::make_shared<TDataEndpoint>(std::move(sender), config);
 }
 
 }   // namespace NCloud::NBlockStore::NIcV2

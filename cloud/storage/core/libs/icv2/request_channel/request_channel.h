@@ -25,7 +25,7 @@ struct TRequestChannelConfig
     // At least one pair; each event type must be nonzero and occur only once.
     TVector<TRequestEventTypes> EventTypes;
     bool SendPings = false;
-    // Includes queued results; a slot is freed before its continuation runs.
+    // Maximum requests awaiting result delivery.
     ui32 MaxPendingRequests = 1024;
 };
 
@@ -55,8 +55,7 @@ using IIncomingRequestPtr = std::unique_ptr<IIncomingRequest>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Handles incoming requests. Calls may overlap; do not throw or wait for
-// closure.
+// Calls may overlap. Handlers must not throw or await channel closure.
 struct IRequestChannelHandler
 {
     virtual ~IRequestChannelHandler();
@@ -85,27 +84,23 @@ struct IRequestChannel
         std::unique_ptr<NActors::IEventBase> event,
         TDuration timeout) = 0;
 
-    // Safe from callbacks. Closes the connection and fails pending requests.
-    // Does not wait for callbacks. Admitted results are completed on the
-    // completion executor. Handlers and continuations must not throw or wait
-    // for WhenClosed(), or stop/destroy the executor from its own worker.
+    // Closes the connection and fails pending requests without waiting.
+    // Safe in callbacks. Callbacks must not throw, await WhenClosed(), or
+    // stop or destroy the completion executor.
     virtual void Close() = 0;
 
-    // Ready after connection callbacks and result continuations finish, and
-    // discarded events are released. An external thread may then stop and
-    // release the completion executor. Returns the first closure reason; local
-    // Close succeeds.
+    // Ready after callbacks finish and discarded events are released; the
+    // completion executor may then be stopped. Returns the first closure
+    // error, or success after local Close().
     [[nodiscard]] virtual NThreading::TFuture<NProto::TError>
     WhenClosed() const = 0;
 };
 
 using IRequestChannelPtr = std::shared_ptr<IRequestChannel>;
 
-// Pass connected sockets after handshake; call Activate when the handler is
-// ready. The channel keeps the handler alive until destruction.
-// Use the same clock for timer and scheduler. Keep both scheduler and
-// completions running until WhenClosed(), retaining an owning reference to
-// completions. Completions must enqueue asynchronously.
+// Pass sockets after handshake; call Activate() when the handler is ready.
+// Use the same clock for timer and scheduler. Keep scheduler and completions
+// alive and running until WhenClosed(). Completions must not run tasks inline.
 TResultOrError<IRequestChannelPtr> CreateRequestChannel(
     const ITransportPtr& transport,
     TSocketPtr socket,

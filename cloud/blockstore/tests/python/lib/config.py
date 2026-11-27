@@ -14,6 +14,8 @@ from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, \
     TKikimrServiceConfig, TServerConfig, TLocation
 
+from cloud.storage.core.tests.ydb import Ydb
+
 from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 
 from contrib.ydb.core.protos.msgbus_pb2 import TConsoleRequest
@@ -29,15 +31,13 @@ class NbsConfigurator:
 
     def __init__(
             self,
-            ydb,
+            ydb: Ydb,
             node_type=None,
             pm=None,
             ssl_registration=False,
             ic_port=None,
             use_location=True,
             location=None):
-        assert ydb.config
-
         self.__pm = PortManager() if pm is None else pm
         self.__ydb = ydb
         self.__node_type = node_type
@@ -60,11 +60,11 @@ class NbsConfigurator:
 
     @property
     def ydb_port(self):
-        return list(self.__ydb.nodes.values())[0].port
+        return self.__ydb.port
 
     @property
     def ydb_ssl_port(self):
-        return list(self.__ydb.nodes.values())[0].grpc_ssl_port
+        return self.__ydb.ssl_port
 
     @property
     def node_type(self):
@@ -96,7 +96,7 @@ class NbsConfigurator:
         self.files["dynamic-naming"] = generate_dyn_ns_txt()
         self.files["diag"] = generate_diag_txt()
         self.files["dr-proxy"] = generate_dr_proxy_txt()
-        self.files["domains"] = self.__ydb.config.domains_txt
+        self.files["domains"] = self.__ydb.domains_txt
         if self.use_location:
             self.files["location"] = self.location
             if self.location is None:

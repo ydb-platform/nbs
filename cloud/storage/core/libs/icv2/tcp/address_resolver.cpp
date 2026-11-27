@@ -1,5 +1,7 @@
 #include "address_resolver.h"
 
+#include "address_resolver_private.h"
+
 #include <cloud/storage/core/libs/common/task_queue.h>
 
 #include <contrib/ydb/library/actors/core/actorsystem.h>
@@ -159,7 +161,8 @@ public:
     TAddressResolver(TActorSystem* actorSystem, ITaskQueuePtr completions)
         : ActorSystem(actorSystem)
         , Actor(actorSystem->Register(
-              new TAddressResolverActor(std::move(completions))))
+              NPrivate::CreateAddressResolverActor(std::move(completions))
+                  .release()))
     {}
 
     ~TAddressResolver() override
@@ -175,7 +178,12 @@ public:
         ActorSystem->Send(new IEventHandle(
             Actor,
             {},
-            new TEvResolve(host, port, deadline, std::move(promise))));
+            NPrivate::CreateResolveRequest(
+                host,
+                port,
+                deadline,
+                std::move(promise))
+                .release()));
         return future;
     }
 };
@@ -185,6 +193,25 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IAddressResolver::~IAddressResolver() = default;
+
+NActors::IActorPtr NPrivate::CreateAddressResolverActor(
+    ITaskQueuePtr completions)
+{
+    return std::make_unique<TAddressResolverActor>(std::move(completions));
+}
+
+NActors::IEventBasePtr NPrivate::CreateResolveRequest(
+    TString host,
+    ui16 port,
+    TMonotonic deadline,
+    NThreading::TPromise<TResolveResult> promise)
+{
+    return std::make_unique<TEvResolve>(
+        std::move(host),
+        port,
+        deadline,
+        std::move(promise));
+}
 
 IAddressResolverPtr CreateAddressResolver(
     NActors::TActorSystem* actorSystem,

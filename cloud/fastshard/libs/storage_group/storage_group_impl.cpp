@@ -327,9 +327,10 @@ void PushLowWatermark(
 void RenewSession(
     TFastShardContext& ctx,
     TGroupHealth& health,
-    TDeviceProxy& proxy)
+    TDeviceProxy& proxy,
+    ui64 generation)
 {
-    auto error = proxy.Acquire(ctx);
+    auto error = proxy.Acquire(ctx, generation);
     if (!HasError(error)) {
         return;
     }
