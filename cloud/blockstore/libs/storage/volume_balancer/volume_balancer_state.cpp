@@ -33,9 +33,19 @@ TVolumeBalancerState::TVolumeBalancerState(
     IVolumeBalancerSwitchPtr volumeBalancerSwitch)
     : StorageConfig(std::move(storageConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
-    , PullDelayResetTimespan(StorageConfig->GetInitialPullDelay())
     , VolumeBalancerSwitch(std::move(volumeBalancerSwitch))
 {}
+
+// Preserve manual control, pending operations and scheduled pull times.
+// Use the current InitialPullDelay for new volume entries and for the time
+// a volume must remain local before its backoff is reset.
+// Keep existing backoff providers' parameters unchanged: a reset still
+// restores the initial delay stored when the volume entry was created.
+void TVolumeBalancerState::UpdateStorageConfig(
+    TStorageConfigPtr storageConfig)
+{
+    StorageConfig = std::move(storageConfig);
+}
 
 void TVolumeBalancerState::UpdateVolumeStats(
     TVector<NProto::TVolumeBalancerDiskStats> stats,
@@ -48,13 +58,16 @@ void TVolumeBalancerState::UpdateVolumeStats(
     bool emergencyCpu =
         cpuLack >= StorageConfig->GetCpuLackThreshold();
 
+    const auto initialPullDelay = StorageConfig->GetInitialPullDelay();
+
     THashSet<TString> knownDisks;
     for (const auto& d: Volumes) {
         knownDisks.insert(d.first);
     }
 
     for (auto& v: stats) {
-        auto it = Volumes.emplace(v.GetDiskId(), TVolumeInfo(StorageConfig->GetInitialPullDelay())).first;
+        auto it =
+            Volumes.emplace(v.GetDiskId(), TVolumeInfo(initialPullDelay)).first;
 
         auto& info = it->second;
 
@@ -70,7 +83,7 @@ void TVolumeBalancerState::UpdateVolumeStats(
                 info.NextPullAttempt = {};
                 info.LastSuccessfulPull = now;   // Rough but ok
             }
-            if (info.LastSuccessfulPull + PullDelayResetTimespan <= now) {
+            if (info.LastSuccessfulPull + initialPullDelay <= now) {
                 info.BackoffDelayProvider.Reset();
             }
         } else if (!info.NextPullAttempt) {

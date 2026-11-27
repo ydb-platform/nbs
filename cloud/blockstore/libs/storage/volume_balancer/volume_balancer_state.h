@@ -66,8 +66,6 @@ private:
 
     bool IsEnabled = true;
 
-    TDuration PullDelayResetTimespan;
-
     IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
 
 public:
@@ -75,6 +73,10 @@ public:
         TStorageConfigPtr storageConfig,
         TDiagnosticsConfigPtr diagnosticsConfig,
         IVolumeBalancerSwitchPtr volumeBalancerSwitch);
+
+    // Apply a dynamic configuration while preserving balancing state.
+    // Require a non-null storageConfig.
+    void UpdateStorageConfig(TStorageConfigPtr storageConfig);
 
     TString GetVolumeToPush() const;
     TString GetVolumeToPull() const;

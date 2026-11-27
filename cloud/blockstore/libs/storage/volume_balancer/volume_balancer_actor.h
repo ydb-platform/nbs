@@ -5,6 +5,7 @@
 #include "volume_balancer_events_private.h"
 #include "volume_balancer_state.h"
 
+#include <cloud/blockstore/libs/configs_manager/events.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
@@ -29,7 +30,7 @@ class TVolumeBalancerActor final
 {
 
 private:
-    const TStorageConfigPtr StorageConfig;
+    TStorageConfigPtr StorageConfig;
     const IVolumeStatsPtr VolumeStats;
     const NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     const NActors::TActorId ServiceActorId;
@@ -61,6 +62,9 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
+    // Apply a dynamic configuration without resetting balancing state.
+    void ApplyStorageConfig(TStorageConfigPtr storageConfig);
+
     void RegisterPages(const NActors::TActorContext& ctx);
     void RegisterCounters(const NActors::TActorContext& ctx);
 
@@ -75,6 +79,13 @@ private:
     bool IsMaxInProgressLimitReached() const;
 
     STFUNC(StateWork);
+
+    void HandleConfigChanged(
+        const TEvConfigsManager::TEvConfigChanged::TPtr& ev);
+
+    void HandlePoisonPill(
+        const NActors::TEvents::TEvPoisonPill::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,

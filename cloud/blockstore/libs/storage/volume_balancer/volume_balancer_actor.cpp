@@ -2,6 +2,7 @@
 
 #include "volume_balancer_events_private.h"
 
+#include <cloud/blockstore/libs/configs_manager/configs_manager.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -164,6 +165,22 @@ void TVolumeBalancerActor::Bootstrap(const TActorContext& ctx)
     RegisterPages(ctx);
     RegisterCounters(ctx);
     Become(&TThis::StateWork);
+
+    // Keep the stub independent of dynamic config updates.
+    if (State) {
+        ctx.Send(
+            MakeConfigsManagerServiceId(),
+            new TEvConfigsManager::TEvSetConfigSubscriptionRequest());
+    }
+}
+
+void TVolumeBalancerActor::ApplyStorageConfig(
+    TStorageConfigPtr storageConfig)
+{
+    if (State) {
+        StorageConfig = std::move(storageConfig);
+        State->UpdateStorageConfig(StorageConfig);
+    }
 }
 
 void TVolumeBalancerActor::RegisterPages(const TActorContext& ctx)
@@ -399,11 +416,37 @@ void TVolumeBalancerActor::HandleConfigureVolumeBalancerRequest(
     }
 }
 
+void TVolumeBalancerActor::HandleConfigChanged(
+    const TEvConfigsManager::TEvConfigChanged::TPtr& ev)
+{
+    ApplyStorageConfig(ev->Get()->Config->GetStorageConfig());
+}
+
+void TVolumeBalancerActor::HandlePoisonPill(
+    const TEvents::TEvPoisonPill::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    if (State) {
+        ctx.Send(
+            MakeConfigsManagerServiceId(),
+            new TEvConfigsManager::TEvRemoveConfigSubscriptionRequest());
+    }
+
+    Die(ctx);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TVolumeBalancerActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
+        IgnoreFunc(TEvConfigsManager::TEvSetConfigSubscriptionResponse);
+        hFunc(TEvConfigsManager::TEvConfigChanged, HandleConfigChanged);
+        IgnoreFunc(TEvConfigsManager::TEvRemoveConfigSubscriptionResponse);
+
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         HFunc(TEvService::TEvChangeVolumeBindingResponse, HandleBindingResponse);
