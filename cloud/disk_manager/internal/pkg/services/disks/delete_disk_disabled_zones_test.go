@@ -9,7 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	cells_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/mocks"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
+	cells_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
@@ -37,19 +38,28 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 	shardDisk := &resources.DiskMeta{ZoneID: "zone-d-shard1"}
 	overlayDisk := &resources.DiskMeta{ZoneID: "zone-d", SrcImageID: "image"}
 
+	cellConfig := &cells_config.CellsConfig{
+		Cells: map[string]*cells_config.ZoneCells{
+			"region": {
+				Cells:                   []string{"zone-a"},
+				DiskKindToDedicatedCell: map[string]string{"ssd": "dedicated-cell"},
+			},
+		},
+	}
+
 	testCases := []struct {
-		name             string
-		diskMeta         *resources.DiskMeta
-		deleted          bool
-		zoneContainsCell bool
-		nonCancellable   bool
-		requestZone      string
-		disabledZones    *common.DisabledZones
-		sync             bool
-		cancel           bool
-		expectedZone     string
-		expectNBS        bool
-		errorAt          string
+		name           string
+		diskMeta       *resources.DiskMeta
+		deleted        bool
+		cellsConfig    *cells_config.CellsConfig
+		nonCancellable bool
+		requestZone    string
+		disabledZones  *common.DisabledZones
+		sync           bool
+		cancel         bool
+		expectedZone   string
+		expectNBS      bool
+		errorAt        string
 	}{
 		{
 			name: "disabled zone", diskMeta: disabledDisk, requestZone: "zone-d",
@@ -80,17 +90,29 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			disabledZones: disabledZone, expectedZone: "zone-d",
 		},
 		{
-			name: "disabled request zone conflicts with enabled metadata zone", diskMeta: allowedDisk,
-			requestZone: "zone-d", disabledZones: disabledZone, nonCancellable: true,
+			name: "disabled request zone conflicts with enabled metadata cell", diskMeta: allowedDisk,
+			requestZone: "zone-d", disabledZones: disabledZone, cellsConfig: cellConfig, nonCancellable: true,
 		},
 		{
 			name: "enabled metadata cell belongs to request zone", diskMeta: allowedDisk,
-			requestZone: "region", zoneContainsCell: true,
+			requestZone: "region", cellsConfig: cellConfig,
 			disabledZones: disabledZone, expectedZone: "zone-a", expectNBS: true,
 		},
 		{
-			name: "enabled metadata zone conflicts with request zone before sync estimate", diskMeta: allowedDisk,
-			requestZone: "zone-b", disabledZones: disabledZone, sync: true, nonCancellable: true,
+			name: "metadata cell conflicts with request zone before sync estimate", diskMeta: allowedDisk,
+			requestZone: "zone-b", disabledZones: disabledZone, sync: true, cellsConfig: cellConfig, nonCancellable: true,
+		},
+		{
+			name: "different request zone without cells config", diskMeta: allowedDisk,
+			requestZone: "zone-b", expectedZone: "zone-a", expectNBS: true,
+		},
+		{
+			name: "metadata stores a zone with configured cells", diskMeta: &resources.DiskMeta{ZoneID: "region"},
+			cellsConfig: cellConfig, requestZone: "zone-b", expectedZone: "region", expectNBS: true,
+		},
+		{
+			name: "dedicated cell outside request zone", diskMeta: &resources.DiskMeta{ZoneID: "dedicated-cell"},
+			cellsConfig: cellConfig, requestZone: "zone-b", nonCancellable: true,
 		},
 		{
 			name: "missing policy", diskMeta: disabledDisk, requestZone: "zone-d",
@@ -145,11 +167,11 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 		},
 		{
 			name: "deleted disk cell belongs to request zone", diskMeta: allowedDisk, deleted: true,
-			requestZone: "region", zoneContainsCell: true, disabledZones: disabledZone,
+			requestZone: "region", cellsConfig: cellConfig, disabledZones: disabledZone,
 		},
 		{
-			name: "deleted disk zone conflicts with request", diskMeta: allowedDisk, deleted: true,
-			requestZone: "zone-b", disabledZones: disabledZone, nonCancellable: true,
+			name: "deleted disk cell conflicts with request", diskMeta: allowedDisk, deleted: true,
+			requestZone: "zone-b", disabledZones: disabledZone, cellsConfig: cellConfig, nonCancellable: true,
 		},
 		{
 			name:     "disabled deleted disk zone is handled before checking the request",
@@ -203,14 +225,13 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			poolService := pools_mocks.NewServiceMock()
 			nbsFactory := nbs_mocks.NewFactoryMock()
 			nbsClient := nbs_mocks.NewClientMock()
-			cellSelector := cells_mocks.NewCellSelectorMock()
 			execCtx := newExecutionContextMock()
 			task := &deleteDiskTask{
 				performanceConfig: &performance_config.PerformanceConfig{
 					SSDLocalDiskDeletingBandwidthMiBs: proto.Uint64(100),
 				},
 				storage: storage, scheduler: scheduler, poolService: poolService,
-				nbsFactory: nbsFactory, cellSelector: cellSelector,
+				nbsFactory: nbsFactory, cellSelector: cells.NewCellSelector(tc.cellsConfig, nil, nil, nil),
 				disabledZones: tc.disabledZones,
 				request: &protos.DeleteDiskRequest{
 					Disk: &types.Disk{DiskId: "disk", ZoneId: tc.requestZone},
@@ -231,10 +252,6 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 				storage.On("GetDiskMeta", ctx, "disk").Return(meta, errorFor("GetDiskMeta")).Once()
 				if tc.errorAt == "GetDiskMeta" || meta == nil {
 					return
-				}
-				if tc.zoneContainsCell || tc.nonCancellable {
-					cellSelector.On("ZoneContainsCell", tc.requestZone, meta.ZoneID).
-						Return(tc.zoneContainsCell).Once()
 				}
 				if tc.nonCancellable {
 					return
@@ -343,7 +360,7 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 				nbsClient.AssertNotCalled(t, "DeleteSync", mock.Anything, mock.Anything)
 				execCtx.AssertNotCalled(t, "SetEstimatedInflightDuration", mock.Anything)
 			}
-			mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, cellSelector, execCtx)
+			mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, execCtx)
 		})
 	}
 }

@@ -97,9 +97,10 @@ func (t *deleteDiskTask) deleteDisk(
 		return t.storage.DiskDeleted(ctx, diskID, time.Now())
 	}
 
-	// Validate the requested zone against the disk metadata before marking the
-	// disk as deleting. The metadata may store a cell ID within that zone.
+	// If the disk is in a configured cell, validate the requested zone against
+	// that cell before marking the disk as deleting.
 	if requestZoneID != "" && zoneID != requestZoneID &&
+		t.cellSelector.IsCell(zoneID) &&
 		!t.cellSelector.ZoneContainsCell(requestZoneID, zoneID) {
 
 		return errors.NewNonCancellableErrorf(
