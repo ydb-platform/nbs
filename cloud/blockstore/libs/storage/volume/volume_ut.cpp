@@ -1,6 +1,9 @@
 #include "volume_ut.h"
 
 #include <cloud/blockstore/libs/common/constants.h>
+#include <cloud/blockstore/libs/configs_manager/events.h>
+#include <cloud/blockstore/libs/configs_manager/public.h>
+#include <cloud/blockstore/libs/configs_manager/testlib/dynconfig.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
@@ -10502,6 +10505,107 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             volume.GetStorageConfig()
                 ->Record.GetStorageConfig()
                 .GetMaxMigrationIoDepth());
+    }
+
+    // Check that an explicit local limit equal to startup survives a global
+    // change and that clearing it updates I/O on the running partition.
+    Y_UNIT_TEST(ShouldApplyPublishedStorageConfigToRunningPartition)
+    {
+        // Identify the volume and count partition startups while serving I/O.
+        NProto::TStorageServiceConfig config;
+        config.SetMaxReadWriteRangeSize(2 * DefaultBlockSize);
+        auto runtime = PrepareTestActorRuntime(config);
+        const auto manager = runtime->AllocateEdgeActor();
+        runtime->RegisterService(MakeConfigsManagerServiceId(), manager);
+        THashSet<TActorId> subscribers;
+        TActorId volumeActor;
+        ui32 starts = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvConfigsManager::TEvSetConfigSubscriptionRequest::
+                        EventType)
+                {
+                    subscribers.insert(event->Sender);
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvGetStorageConfigRequest) {
+                    volumeActor = event->GetRecipientRewrite();
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvPartition::EvWaitReadyResponse) {
+                    ++starts;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        auto client = CreateVolumeClientInfo(NProto::VOLUME_ACCESS_READ_WRITE,
+                                             NProto::VOLUME_MOUNT_REMOTE, 0);
+        volume.AddClient(client);
+        volume.WaitReady();
+        volume.GetStorageConfig();
+        UNIT_ASSERT(subscribers.contains(volumeActor));
+        UNIT_ASSERT(starts > 0);
+        const auto initialStarts = starts;
+
+        // Pin the initial value, then publish a higher limit for the server.
+        volume.ChangeStorageConfig(config);
+        NProto::TBlockstoreConfig publication;
+        publication.MutableStorageService()->SetMaxReadWriteRangeSize(
+            4 * DefaultBlockSize);
+        auto provider =
+            std::make_shared<NTestDynconfig::TTestBlockstoreConfigProvider>(
+                publication);
+        NTestDynconfig::SendDynconfigTo(*runtime, volumeActor, provider);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2 * DefaultBlockSize,
+            volume.GetStorageConfig()
+                ->Record.GetStorageConfig()
+                .GetMaxReadWriteRangeSize());
+        const auto range = TBlockRange64::WithLength(0, 3);
+        volume.SendReadBlocksRequest(range, client.GetClientId());
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT,
+                                 volume.RecvReadBlocksResponse()->GetStatus());
+
+        // Clear the local field and observe the latest global limit on the same
+        // child.
+        volume.ChangeStorageConfig(NProto::TStorageServiceConfig{});
+        volume.ReadBlocks(range, client.GetClientId());
+        UNIT_ASSERT_VALUES_EQUAL(initialStarts, starts);
+    }
+
+    // Check that a committed patch and its removal reach the existing client
+    // state on a mounted volume.
+    Y_UNIT_TEST(ShouldApplyStorageConfigPatchToMountedClient)
+    {
+        // Mount once so both checks use the same read-write client record.
+        NProto::TStorageServiceConfig config;
+        config.SetSendErrorOnAddClientConflict(false);
+        auto runtime = PrepareTestActorRuntime(config);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        auto client = CreateVolumeClientInfo(NProto::VOLUME_ACCESS_READ_WRITE,
+                                             NProto::VOLUME_MOUNT_LOCAL, 0);
+        volume.AddClient(client);
+        volume.WaitReady();
+        client.SetVolumeAccessMode(NProto::VOLUME_ACCESS_READ_ONLY);
+        client.SetVolumeMountMode(NProto::VOLUME_MOUNT_REMOTE);
+
+        // Apply the local policy before replying to ChangeStorageConfig.
+        NProto::TStorageServiceConfig patch;
+        patch.SetSendErrorOnAddClientConflict(true);
+        volume.ChangeStorageConfig(patch);
+        volume.SendAddClientRequest(client);
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE,
+                                 volume.RecvAddClientResponse()->GetStatus());
+
+        // Replace the patch with an empty proto to restore the global policy.
+        volume.ChangeStorageConfig(NProto::TStorageServiceConfig{});
+        volume.SendAddClientRequest(client);
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY,
+                                 volume.RecvAddClientResponse()->GetStatus());
     }
 
     Y_UNIT_TEST(ShouldGetStorageConfig)

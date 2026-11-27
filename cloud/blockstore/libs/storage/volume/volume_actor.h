@@ -9,6 +9,7 @@
 #include "volume_throttler_logger.h"
 #include "volume_tx.h"
 
+#include <cloud/blockstore/libs/configs_manager/events.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
@@ -205,8 +206,12 @@ public:
 private:
     const ui64 StartTime = GetCycleCount();
     const TInstant VolumeStartTime = TInstant::Now();
-    TStorageConfigPtr GlobalStorageConfig;
-    TStorageConfigPtr Config;
+    // Accepted global raw section from the most recent processed notification.
+    TStorageServiceConfigPtr GlobalStorageConfig;
+    // Explicit local fields committed in the volume database.
+    NProto::TStorageServiceConfig StorageConfigPatch;
+    // Volume-owned working configuration handed to state and child actors.
+    TStorageConfigMutablePtr Config;
     bool HasStorageConfigPatch = false;
     bool HasPerformanceProfileModifications = false;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -530,6 +535,15 @@ private:
         const NActors::TActorContext& ctx,
         const TString& diskId);
     void SendSelfStatsToService(const NActors::TActorContext& ctx);
+
+    // Recompute local RW values from the latest publication and committed
+    // patch.
+    void ApplyStorageConfig(bool localPatchChanged);
+
+    // Install the global base carried by this particular notification.
+    void HandleStorageConfigChanged(
+        const TEvConfigsManager::TEvConfigChanged::TPtr& ev,
+        const NActors::TActorContext& ctx);
 
     void OnActivateExecutor(const NActors::TActorContext& ctx) override;
 

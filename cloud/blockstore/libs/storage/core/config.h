@@ -110,6 +110,7 @@ private:
     struct TImpl;
     std::unique_ptr<TImpl> Impl;
 
+    explicit TStorageConfig(std::unique_ptr<TImpl> impl);
     const TStorageConfigControls::TImpl* ControlsImpl() const;
 
 public:
@@ -153,6 +154,12 @@ public:
     // Keep RO settings unchanged and serialize writes for this server or
     // volume. Absent fields use compiled defaults.
     void ApplyRwConfig(TStorageServiceConfigPtr config);
+
+    // Install a local base containing RO changes and return its immutable RO
+    // view. Retained views continue to read the same live RW cells and
+    // Features.
+    [[nodiscard]] TStorageConfigMutablePtr ReplaceReadOnlyConfig(
+        TStorageServiceConfigPtr config);
 
     // Apply a patch to the raw proto while retaining the same live ICB
     // controls without changing their defaults.

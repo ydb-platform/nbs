@@ -16,6 +16,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/blockstore/libs/configs_manager/testlib
     cloud/blockstore/libs/rdma_test
     cloud/blockstore/libs/storage/disk_agent/actors
     cloud/blockstore/libs/storage/testlib
