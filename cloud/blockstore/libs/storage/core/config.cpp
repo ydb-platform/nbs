@@ -178,7 +178,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ManuallyPreemptedVolumeLivenessCheckPeriod,  TDuration,   Days(7)     )\
                                                                                \
     xxx(BlobCompressionCodec,           TString,     "lz4"                    )\
-    xxx(HugeBlobSlotSizes,              TVector<ui32>, {}                     )\
                                                                                \
     xxx(KnownSpareNodes,                TVector<TString>,   {}                )\
     xxx(SpareNodeProbability,           ui32,               0                 )\
@@ -237,6 +236,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
         NProto::ERequestSplitterPolicy,                                        \
         NProto::ERequestSplitterPolicy::RSP_ENABLE                            )\
 /* Safety-critical section end.                                              */\
+                                                                               \
+    xxx(HugeBlobSlotSizes,              TVector<ui32>, {}                     )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RO
 // clang-format on
@@ -645,12 +646,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(AddingUnconfirmedBlobsEnabled,             bool,      false           )\
                                                                                \
     xxx(BlobCompressionRate,                       ui32,      0               )\
-    xxx(MergedBlobsCompressionEnabled,             bool,      false           )\
-    xxx(MergedBlobsCompressionChunkSize,           ui64,      32_KB           )\
-    xxx(MergedBlobsCompressionMinSavingsPercent,   ui64,      0               )\
-    xxx(MinHugeBlobPartSizeSSD,                    ui32,      64_KB           )\
-    xxx(MinHugeBlobPartSizeHDD,                    ui32,      512_KB          )\
-    xxx(HugeBlobHeaderSize,                        ui32,      5               )\
     xxx(SerialNumberValidationEnabled,             bool,      false           )\
                                                                                \
     xxx(RejectLateRequestsAtDiskAgentEnabled,      bool,      false           )\
@@ -819,6 +814,13 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MixedBlocksCompactionByteCountersEnabled,   bool,       false         )\
     xxx(IgnorePartitionCountInMaxBlobsPerRange,     bool,       false         )\
     xxx(VolumeBalancerEnabled,                      bool,       false         )\
+                                                                               \
+    xxx(MergedBlobsCompressionEnabled,             bool,      false           )\
+    xxx(MergedBlobsCompressionChunkSize,           ui64,      32_KB           )\
+    xxx(MergedBlobsCompressionMinSavingsPercent,   ui64,      0               )\
+    xxx(MinHugeBlobPartSizeSSD,                    ui32,      64_KB           )\
+    xxx(MinHugeBlobPartSizeHDD,                    ui32,      512_KB          )\
+    xxx(HugeBlobHeaderSize,                        ui32,      5               )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -866,6 +868,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(CompactionStatsTracker)                                                \
     xxx(MixedBlocksCountCompactionSSD)                                         \
     xxx(MixedBlocksCountCompactionHDD)                                         \
+    xxx(MergedBlobsCompression)
 
 // BLOCKSTORE_BINARY_FEATURES
 
