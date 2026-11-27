@@ -32,7 +32,7 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
 
-	disk := &types.Disk{DiskId: "disk", ZoneId: "zone"}
+	disk := &types.Disk{DiskId: "disk"}
 	request := &protos.DeleteDiskRequest{Disk: disk, Sync: sync}
 
 	task := &deleteDiskTask{
@@ -49,7 +49,7 @@ func testDeleteDiskTaskRun(t *testing.T, sync bool) {
 		Kind:         "ssd",
 		DeleteTaskID: "toplevel_task_id",
 	}
-	storage.On("GetDiskMeta", ctx, "disk").Return(&resources.DiskMeta{ZoneID: "zone"}, nil).Once()
+	storage.On("GetDiskMeta", ctx, "disk").Return(diskMeta, nil).Once()
 	storage.On(
 		"DeleteDisk",
 		ctx,
@@ -252,7 +252,7 @@ func testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
 	nbsClient := nbs_mocks.NewClientMock()
 	execCtx := newExecutionContextMock()
 
-	disk := &types.Disk{DiskId: "disk", ZoneId: "zone"}
+	disk := &types.Disk{DiskId: "disk"}
 	request := &protos.DeleteDiskRequest{Disk: disk, Sync: sync}
 
 	task := &deleteDiskTask{
@@ -278,7 +278,7 @@ func testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
 		}, nil)
 	}
 
-	storage.On("GetDiskMeta", ctx, "disk").Return(&resources.DiskMeta{ZoneID: "zone"}, nil).Once()
+	storage.On("GetDiskMeta", ctx, "disk").Return(diskMeta, nil).Once()
 	storage.On(
 		"DeleteDisk",
 		ctx,
