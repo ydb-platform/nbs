@@ -918,6 +918,9 @@ message TPersistentFastShardConfig
     uint64 RetryBackoffIncrementMs = 5;
 
     uint32 PageSize = 6;
+
+    // Shard PageStore data page cache size (metadata pages are always cached).
+    uint32 MaxCachedDataPages = 7;
 }
 
 message TMemFastShardConfig

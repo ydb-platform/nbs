@@ -6,17 +6,35 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/* static */ ui64 TSuperBlock::CalcRequiredPageCount()
+{
+    ui64 totalPageCount = 0;
+
+    //
+    // FormatPage.
+    //
+
+    totalPageCount += 1;
+
+    //
+    // Content.
+    //
+
+    totalPageCount += 1;
+
+    return totalPageCount;
+}
+
 ui64 TSuperBlock::Init(ui64 firstPageNo, IPageStorePtr pageStore)
 {
     TDescriptionBuilder debuilder("SuperBlock");
 
     ui64 totalPageCount = 0;
-    {
-        const ui64 pageCount = FormatPage.Init(firstPageNo, pageStore);
 
-        totalPageCount += pageCount;
-        firstPageNo += pageCount;
-    }
+    FormatPage.Init(firstPageNo, pageStore);
+
+    totalPageCount += 1;
+    firstPageNo += 1;
 
     {
         debuilder.RegisterOffset("Content", firstPageNo);

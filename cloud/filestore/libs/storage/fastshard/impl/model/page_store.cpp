@@ -14,83 +14,267 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TPage
+{
+    TBuffer Content;
+
+    //
+    // Lsn is used for additional correctness checks and for the Committed
+    // page it is not strictly equal to commit Lsn but is actually <= it.
+    //
+    // This happens because when we ReadForLookup we might actually read a
+    // version of the page which is newer than the last Lsn for which we
+    // already got commit confirmation.
+    //
+    // For Dirty pages we know the exact Lsn.
+    //
+
+    ui64 Lsn = 0;
+};
+
+enum class EPageState
+{
+    NotLoaded,
+    Loading,
+    Loaded,
+};
+
+struct TPageVersions
+{
+    TPage Committed;
+    TVector<TPage> Dirty;
+    EPageState State = EPageState::NotLoaded;
+
+    TVector<TPage>::iterator FindAtLsn(ui64 lsn)
+    {
+        auto* it = std::lower_bound(
+            Dirty.begin(),
+            Dirty.end(),
+            lsn,
+            [] (const TPage& page, ui64 lsn) {
+                return page.Lsn < lsn;
+            });
+        if (it == Dirty.end() || it->Lsn != lsn) {
+            return Dirty.end();
+        }
+
+        return it;
+    }
+
+    [[nodiscard]] ui64 LastLsn() const
+    {
+        if (Dirty) {
+            return Dirty.back().Lsn;
+        }
+
+        return Committed.Lsn;
+    }
+
+    [[nodiscard]] TBuffer LastContent() const
+    {
+        if (Dirty) {
+            return Dirty.back().Content;
+        }
+
+        return Committed.Content;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TPageCache
+{
+public:
+    static constexpr ui64 InvalidPageNo = Max<ui64>();
+
+    class TSlot
+    {
+    private:
+        TPageVersions PV;
+        ui64 PageNo = InvalidPageNo;
+        bool Accessed = false;
+        bool Locked = false;
+
+        friend class TPageCache;
+
+    public:
+        TPageVersions& AccessPV()
+        {
+            return PV;
+        }
+    };
+
+private:
+    const ui64 PinnedPageCount;
+
+    using TLookupMap = THashMap<ui64, TSlot*>;
+    TLookupMap PageNo2Slot;
+    TDeque<TSlot> Slots;
+    ui64 ClockHand = 0;
+
+    ui64 Pins = 0;
+    ui64 Hits = 0;
+    ui64 Misses = 0;
+    ui64 Evictions = 0;
+
+public:
+    explicit TPageCache(ui64 pinnedPageCount, ui64 maxPages)
+        : PinnedPageCount(pinnedPageCount)
+        , Slots(maxPages)
+    {}
+
+public:
+    TSlot* Find(ui64 pageNo)
+    {
+        auto it = PageNo2Slot.find(pageNo);
+        if (it == PageNo2Slot.end()) {
+            return nullptr;
+        }
+
+        return it->second;
+    }
+
+    NProto::TError Acquire(ui64 pageNo, TSlot** slot)
+    {
+        TLookupMap::insert_ctx insertCtx{};
+        auto it = PageNo2Slot.find(pageNo, insertCtx);
+        if (it == PageNo2Slot.end()) {
+            ++Misses;
+
+            auto error = AcquireSlot(slot);
+            if (HasError(error)) {
+                return error;
+            }
+
+            (*slot)->PageNo = pageNo;
+            PageNo2Slot.insert_direct(std::make_pair(pageNo, *slot), insertCtx);
+
+            if (pageNo < PinnedPageCount) {
+                ++Pins;
+            }
+        } else {
+            ++Hits;
+
+            *slot = it->second;
+        }
+
+        (*slot)->Accessed = true;
+        return {};
+    }
+
+    static void Lock(TSlot& slot)
+    {
+        slot.Locked = true;
+    }
+
+    static void Unlock(TSlot& slot)
+    {
+        Y_ABORT_UNLESS(slot.Locked);
+        slot.Locked = false;
+    }
+
+    NProto::TError Clear()
+    {
+        //
+        // Check for invalid usage.
+        //
+
+        for (auto& [p, s]: PageNo2Slot) {
+            if (s->PV.Dirty) {
+                return MakeError(
+                    E_INVALID_STATE,
+                    TStringBuilder() << "Dirty page found upon clear: " << p);
+            }
+        }
+
+        //
+        // We're fine, clearing.
+        //
+
+        TLookupMap rep;
+
+        for (auto& [p, s]: PageNo2Slot) {
+            if (s->Locked) {
+                rep[p] = s;
+                continue;
+            }
+
+            if (s->PageNo < PinnedPageCount) {
+                --Pins;
+            }
+
+            *s = {};
+        }
+
+        PageNo2Slot.swap(rep);
+        return {};
+    }
+
+    [[nodiscard]] TPageStoreStats CollectStats() const
+    {
+        TPageStoreStats stats;
+        stats.PinnedPageCount = Pins;
+        stats.CachedPageCount = PageNo2Slot.size();
+        stats.CacheHits = Hits;
+        stats.CacheMisses = Misses;
+        stats.Evictions = Evictions;
+        return stats;
+    }
+
+private:
+    NProto::TError AcquireSlot(TSlot** slot)
+    {
+        for (ui64 i = 0; i < 2 * Slots.size(); ++i) {
+            const ui64 j = ClockHand++ % Slots.size();
+            auto& s = Slots[j];
+
+            const bool isPinnedSlot = s.PageNo < PinnedPageCount;
+
+            if (s.PageNo == InvalidPageNo) {
+                Y_ABORT_UNLESS(!s.Locked);
+                *slot = &s;
+                return {};
+            }
+
+            //
+            // Skipping:
+            // * pinned pages
+            // * the pages that are being read right now (Locked)
+            // * the pages with dirty versions
+            //
+
+            if (s.Locked || isPinnedSlot || s.PV.Dirty) {
+                continue;
+            }
+
+            if (!s.Accessed) {
+                ++Evictions;
+
+                PageNo2Slot.erase(s.PageNo);
+                s.PageNo = InvalidPageNo;
+                s.PV = {};
+                *slot = &s;
+                return {};
+            }
+
+            s.Accessed = false;
+        }
+
+        return MakeError(E_REJECTED, "could not acquire slot");
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TPageStore: public IPageStore
 {
 private:
     IStorageGroupPtr Storage;
 
 protected:
-    const ui64 PageSize;
+    const TPageStoreConfig Config;
 
 private:
-    struct TPage
-    {
-        TBuffer Content;
-
-        //
-        // Lsn is used for additional correctness checks and for the Committed
-        // page it is not strictly equal to commit Lsn but is actually <= it.
-        //
-        // This happens because when we ReadForLookup we might actually read a
-        // version of the page which is newer than the last Lsn for which we
-        // already got commit confirmation.
-        //
-        // For Dirty pages we know the exact Lsn.
-        //
-
-        ui64 Lsn = 0;
-    };
-
-    enum class EPageState
-    {
-        NotLoaded,
-        Loading,
-        Loaded,
-    };
-
-    struct TPageVersions
-    {
-        TPage Committed;
-        TVector<TPage> Dirty;
-        EPageState State = EPageState::NotLoaded;
-
-        TVector<TPage>::iterator FindAtLsn(ui64 lsn)
-        {
-            auto* it = std::lower_bound(
-                Dirty.begin(),
-                Dirty.end(),
-                lsn,
-                [] (const TPage& page, ui64 lsn) {
-                    return page.Lsn < lsn;
-                });
-            if (it == Dirty.end() || it->Lsn != lsn) {
-                return Dirty.end();
-            }
-
-            return it;
-        }
-
-        [[nodiscard]] ui64 LastLsn() const
-        {
-            if (Dirty) {
-                return Dirty.back().Lsn;
-            }
-
-            return Committed.Lsn;
-        }
-
-        [[nodiscard]] TBuffer LastContent() const
-        {
-            if (Dirty) {
-                return Dirty.back().Content;
-            }
-
-            return Committed.Content;
-        }
-    };
-
-    // TODO(#5895): eviction strategy + size limit
-    using TPageCache = THashMap<ui64, TPageVersions>;
     mutable TPageCache PageCache;
     mutable silk::FiberMutex Mutex;
 
@@ -99,15 +283,16 @@ private:
     ui64 LastLinkedLsn = 0;
 
 public:
-    TPageStore(IStorageGroupPtr storage, ui64 pageSize)
+    TPageStore(IStorageGroupPtr storage, const TPageStoreConfig& config)
         : Storage(std::move(storage))
-        , PageSize(pageSize)
+        , Config(config)
+        , PageCache(Config.PinnedPageCount, Config.MaxCachedPageCount)
     {}
 
 public:
     ui64 GetPageSize() const override
     {
-        return PageSize;
+        return Config.PageSize;
     }
 
     ui64 AllocateLsn() override;
@@ -123,11 +308,12 @@ public:
     NProto::TError ReadPageForLookup(ui64 pageNo, TBuffer* page) const override;
     NProto::TError
     ReadPageForUpdate(ui64 lsn, ui64 pageNo, TBuffer* page) const override;
-    void Clear() override;
+    NProto::TError Clear() override;
+    TPageStoreStats CollectStats() const override;
 
 private:
     NProto::TError DoReadPage(
-        TPageCache::iterator& cachedPage,
+        TPageCache::TSlot& cacheSlot,
         ui64 lsn,
         ui64 pageNo,
         TBuffer* page) const;
@@ -172,17 +358,20 @@ void TPageStore::CommitPages(ui64 lsn, const TVector<ui64>& pages)
 {
     std::lock_guard g(Mutex);
     for (const ui64 pageNo: pages) {
-        auto* pageVersions = PageCache.FindPtr(pageNo);
+        auto* cacheSlot = PageCache.Find(pageNo);
+        if (!cacheSlot) {
+            //
+            // Already evicted, do nothing.
+            //
 
-        //
-        // If we are trying to commit something, it should be pinned in cache.
-        //
+            continue;
+        }
 
-        Y_ABORT_UNLESS(pageVersions);
+        auto& pv = cacheSlot->AccessPV();
 
-        auto* it = pageVersions->FindAtLsn(lsn);
+        auto* it = pv.FindAtLsn(lsn);
 
-        if (lsn <= pageVersions->Committed.Lsn) {
+        if (lsn <= pv.Committed.Lsn) {
             //
             // We might have received a commit notification for a later log
             // record already - this version has been erased then. Or the page
@@ -191,8 +380,8 @@ void TPageStore::CommitPages(ui64 lsn, const TVector<ui64>& pages)
             // obsolete and has to be erased along with the older ones.
             //
 
-            if (it != pageVersions->Dirty.end()) {
-                pageVersions->Dirty.erase(pageVersions->Dirty.begin(), ++it);
+            if (it != pv.Dirty.end()) {
+                pv.Dirty.erase(pv.Dirty.begin(), ++it);
             }
 
             continue;
@@ -205,16 +394,16 @@ void TPageStore::CommitPages(ui64 lsn, const TVector<ui64>& pages)
         // reordering.
         //
 
-        Y_ABORT_UNLESS(it != pageVersions->Dirty.end());
+        Y_ABORT_UNLESS(it != pv.Dirty.end());
 
         //
         // Everything up to this lsn is committed. Reflecting this in the cache.
         //
 
-        pageVersions->Committed = std::move(*it);
-        pageVersions->Committed.Lsn = lsn;
-        pageVersions->State = EPageState::Loaded;
-        pageVersions->Dirty.erase(pageVersions->Dirty.begin(), ++it);
+        pv.Committed = std::move(*it);
+        pv.Committed.Lsn = lsn;
+        pv.State = EPageState::Loaded;
+        pv.Dirty.erase(pv.Dirty.begin(), ++it);
     }
 
     LastCommittedLsn = Max(LastCommittedLsn, lsn);
@@ -224,29 +413,36 @@ void TPageStore::RollbackPages(ui64 lsn, const TVector<ui64>& pages)
 {
     std::lock_guard g(Mutex);
     for (const ui64 pageNo: pages) {
-        auto* pageVersions = PageCache.FindPtr(pageNo);
+        auto* cacheSlot = PageCache.Find(pageNo);
+        if (!cacheSlot) {
+            //
+            // Already evicted, do nothing.
+            //
+
+            continue;
+        }
 
         //
-        // Commit failed. The page should be pinned and no later lsn should be
-        // marked as committed.
+        // Commit failed. No later lsn should be marked as committed.
         //
 
-        Y_ABORT_UNLESS(pageVersions);
-        Y_ABORT_UNLESS(pageVersions->Committed.Lsn < lsn);
+        auto& pv = cacheSlot->AccessPV();
+
+        Y_ABORT_UNLESS(pv.Committed.Lsn < lsn);
 
         //
         // For the same reason the page must be present among the dirty ones.
         //
 
-        auto* it = pageVersions->FindAtLsn(lsn);
-        Y_ABORT_UNLESS(it != pageVersions->Dirty.end());
+        auto* it = pv.FindAtLsn(lsn);
+        Y_ABORT_UNLESS(it != pv.Dirty.end());
 
         //
         // We'll probably trigger full shard reinit in such cases later but for
         // now let's simply delete the rolled back version.
         //
 
-        pageVersions->Dirty.erase(it);
+        pv.Dirty.erase(it);
     }
 }
 
@@ -257,7 +453,11 @@ NProto::TError TPageStore::WritePage(
     TVector<TPageGroup>& logRecord)
 {
     std::lock_guard g(Mutex);
-    auto& p = PageCache[pageNo];
+    TPageCache::TSlot* cacheSlot;
+    auto error = PageCache.Acquire(pageNo, &cacheSlot);
+    if (HasError(error)) {
+        return error;
+    }
 
     //
     // Linear search is ok because we don't expect to have more than a couple
@@ -295,84 +495,84 @@ NProto::TError TPageStore::WritePage(
     // Updating page cache.
     //
 
-    if (p.State == EPageState::Loaded) {
+    auto& pv = cacheSlot->AccessPV();
+    if (pv.State == EPageState::Loaded) {
         Y_ABORT_UNLESS(
-            p.Committed.Lsn < lsn,
+            pv.Committed.Lsn < lsn,
             "p.Committed.Lsn=%lu, lsn=%lu, pageNo=%lu",
-            p.Committed.Lsn,
+            pv.Committed.Lsn,
             lsn,
             pageNo);
     }
 
-    if (p.Dirty) {
+    if (pv.Dirty) {
         Y_ABORT_UNLESS(
-            p.Dirty.back().Lsn <= lsn,
+            pv.Dirty.back().Lsn <= lsn,
             "p.Dirty.back().Lsn=%lu, lsn=%lu, pageNo=%lu",
-            p.Dirty.back().Lsn,
+            pv.Dirty.back().Lsn,
             lsn,
             pageNo);
 
-        if (p.Dirty.back().Lsn == lsn) {
-            p.Dirty.back().Content = std::move(page);
+        if (pv.Dirty.back().Lsn == lsn) {
+            pv.Dirty.back().Content = std::move(page);
             return {};
         }
     }
 
-    p.Dirty.push_back({.Content = std::move(page), .Lsn = lsn});
+    pv.Dirty.push_back({.Content = std::move(page), .Lsn = lsn});
     return {};
 }
 
-void TPageStore::Clear()
+NProto::TError TPageStore::Clear()
 {
     std::lock_guard g(Mutex);
-    for ([[maybe_unused]] const auto& [pageNo, page]: PageCache) {
-        Y_ABORT_UNLESS(!page.Dirty, "dirty page in Clear: %lu", pageNo);
-    }
-    PageCache.clear();
+    return PageCache.Clear();
+}
+
+TPageStoreStats TPageStore::CollectStats() const
+{
+    std::lock_guard g(Mutex);
+    return PageCache.CollectStats();
 }
 
 NProto::TError TPageStore::ReadPageForLookup(ui64 pageNo, TBuffer* page) const
 {
     page->Clear();
 
-    TPageCache::iterator cachedPage;
+    TPageCache::TSlot* cacheSlot;
     {
         std::lock_guard g(Mutex);
 
-        TPageCache::insert_ctx insertCtx{};
-        cachedPage = PageCache.find(pageNo, insertCtx);
-        if (cachedPage != PageCache.end()) {
-            switch (cachedPage->second.State) {
-                case EPageState::NotLoaded: {
-                    cachedPage->second.State = EPageState::Loading;
-                    cachedPage->second.Committed.Lsn = LastCommittedLsn;
-                    break;
-                }
-
-                case EPageState::Loading: {
-                    return MakeError(E_REJECTED, TStringBuilder() << "page "
-                        << pageNo << " is loading");
-                }
-
-                case EPageState::Loaded: {
-                    *page = cachedPage->second.Committed.Content;
-                    return {};
-                }
-            }
-        } else {
-            cachedPage = PageCache.insert_direct(
-                std::make_pair(
-                    pageNo,
-                    TPageVersions{
-                        .Committed = {.Content = {}, .Lsn = LastCommittedLsn},
-                        .Dirty = {},
-                        .State = EPageState::Loading,
-                    }),
-                insertCtx);
+        auto error = PageCache.Acquire(pageNo, &cacheSlot);
+        if (HasError(error)) {
+            return error;
         }
+
+        Y_ABORT_UNLESS(cacheSlot);
+        auto& pv = cacheSlot->AccessPV();
+
+        switch (pv.State) {
+            case EPageState::NotLoaded: {
+                pv.State = EPageState::Loading;
+                pv.Committed.Lsn = LastCommittedLsn;
+                break;
+            }
+
+            case EPageState::Loading: {
+                return MakeError(E_REJECTED, TStringBuilder() << "page "
+                    << pageNo << " is loading");
+            }
+
+            case EPageState::Loaded: {
+                *page = pv.Committed.Content;
+                return {};
+            }
+        }
+
+        TPageCache::Lock(*cacheSlot);
     }
 
-    return DoReadPage(cachedPage, LastCommittedLsn, pageNo, page);
+    return DoReadPage(*cacheSlot, LastCommittedLsn, pageNo, page);
 }
 
 NProto::TError TPageStore::ReadPageForUpdate(
@@ -382,71 +582,67 @@ NProto::TError TPageStore::ReadPageForUpdate(
 {
     page->Clear();
 
-    TPageCache::iterator cachedPage;
+    TPageCache::TSlot* cacheSlot;
     {
         std::lock_guard g(Mutex);
 
-        TPageCache::insert_ctx insertCtx{};
-        cachedPage = PageCache.find(pageNo, insertCtx);
-        if (cachedPage != PageCache.end()) {
-            switch (cachedPage->second.State) {
-                case EPageState::NotLoaded: {
-                    if (cachedPage->second.Dirty.empty()) {
-                        //
-                        // Nothing to return, need to load the page.
-                        //
-
-                        cachedPage->second.State = EPageState::Loading;
-                        cachedPage->second.Committed.Lsn = LastCommittedLsn;
-                    }
-
-                    break;
-                }
-
-                case EPageState::Loading: {
-                    return MakeError(E_REJECTED, TStringBuilder() << "page "
-                        << pageNo << " is loading");
-                }
-
-                case EPageState::Loaded: {
-                    break;
-                }
-            }
-
-            if (cachedPage->second.State != EPageState::Loading) {
-                //
-                // We should not be trying to work with a page version older
-                // than the last dirty one.
-                //
-
-                Y_ABORT_UNLESS(
-                    cachedPage->second.LastLsn() <= lsn,
-                    "cachedPage->second.LastLsn()=%lu, lsn=%lu, pageNo=%lu",
-                    cachedPage->second.LastLsn(),
-                    lsn,
-                    pageNo);
-
-                *page = cachedPage->second.LastContent();
-                return {};
-            }
-        } else {
-            cachedPage = PageCache.insert_direct(
-                std::make_pair(
-                    pageNo,
-                    TPageVersions{
-                        .Committed = {.Content = {}, .Lsn = LastCommittedLsn},
-                        .Dirty = {},
-                        .State = EPageState::Loading,
-                    }),
-                insertCtx);
+        auto error = PageCache.Acquire(pageNo, &cacheSlot);
+        if (HasError(error)) {
+            return error;
         }
+
+        Y_ABORT_UNLESS(cacheSlot);
+        auto& pv = cacheSlot->AccessPV();
+
+        switch (pv.State) {
+            case EPageState::NotLoaded: {
+                if (pv.Dirty.empty()) {
+                    //
+                    // Nothing to return, need to load the page.
+                    //
+
+                    pv.State = EPageState::Loading;
+                    pv.Committed.Lsn = LastCommittedLsn;
+                }
+
+                break;
+            }
+
+            case EPageState::Loading: {
+                return MakeError(E_REJECTED, TStringBuilder() << "page "
+                    << pageNo << " is loading");
+            }
+
+            case EPageState::Loaded: {
+                break;
+            }
+        }
+
+        if (pv.State != EPageState::Loading) {
+            //
+            // We should not be trying to work with a page version older
+            // than the last dirty one.
+            //
+
+            Y_ABORT_UNLESS(
+                pv.LastLsn() <= lsn,
+                "cachedPage->second.LastLsn()=%lu, lsn=%lu, pageNo=%lu",
+                pv.LastLsn(),
+                lsn,
+                pageNo);
+
+            *page = pv.LastContent();
+            return {};
+        }
+
+        TPageCache::Lock(*cacheSlot);
     }
 
-    return DoReadPage(cachedPage, LastCommittedLsn, pageNo, page);
+    return DoReadPage(*cacheSlot, LastCommittedLsn, pageNo, page);
 }
 
 NProto::TError TPageStore::DoReadPage(
-    TPageCache::iterator& cachedPage,
+    TPageCache::TSlot& cacheSlot,
     ui64 lsn,
     ui64 pageNo,
     TBuffer* page) const
@@ -461,14 +657,17 @@ NProto::TError TPageStore::DoReadPage(
         // Otherwise we need to update the page.
         //
 
-        if (cachedPage->second.State != EPageState::Loaded) {
+        auto& pv = cacheSlot.AccessPV();
+        if (pv.State != EPageState::Loaded) {
             if (page->Empty()) {
-                cachedPage->second.State = EPageState::NotLoaded;
+                pv.State = EPageState::NotLoaded;
             } else {
-                cachedPage->second.Committed.Content = *page;
-                cachedPage->second.State = EPageState::Loaded;
+                pv.Committed.Content = *page;
+                pv.State = EPageState::Loaded;
             }
         }
+
+        TPageCache::Unlock(cacheSlot);
     };
 
     if (!Storage) {
@@ -503,7 +702,7 @@ NProto::TError TPageStore::DoReadPage(
                 << "unexpected page count: " << rpg.Content.size());
     }
 
-    if (rpg.Content[0].Size() < PageSize) {
+    if (rpg.Content[0].Size() < Config.PageSize) {
         return MakeError(
             E_BADMSG,
             TStringBuilder() << "lsn=" << lsn << ", pageNo=" << pageNo
@@ -519,8 +718,8 @@ NProto::TError TPageStore::DoReadPage(
 class TMemPageStore: public TPageStore
 {
 public:
-    explicit TMemPageStore(ui64 pageSize)
-        : TPageStore(nullptr /* storage */, pageSize)
+    explicit TMemPageStore(const TPageStoreConfig& config)
+        : TPageStore(nullptr /* storage */, config)
     {}
 
     NProto::TError
@@ -529,7 +728,7 @@ public:
         auto error = TPageStore::ReadPageForUpdate(lsn, pageNo, page);
         if (error.GetCode() == E_NOT_FOUND) {
             page->Clear();
-            page->Fill(0, PageSize);
+            page->Fill(0, GetPageSize());
             return {};
         }
 
@@ -541,7 +740,7 @@ public:
         auto error = TPageStore::ReadPageForLookup(pageNo, page);
         if (error.GetCode() == E_NOT_FOUND) {
             page->Clear();
-            page->Fill(0, PageSize);
+            page->Fill(0, GetPageSize());
             return {};
         }
 
@@ -553,14 +752,16 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IPageStorePtr CreatePageStore(IStorageGroupPtr storage, ui64 pageSize)
+IPageStorePtr CreatePageStore(
+    IStorageGroupPtr storage,
+    const TPageStoreConfig& config)
 {
-    return std::make_shared<TPageStore>(std::move(storage), pageSize);
+    return std::make_shared<TPageStore>(std::move(storage), config);
 }
 
-IPageStorePtr CreateMemPageStore(ui64 pageSize)
+IPageStorePtr CreateMemPageStore(const TPageStoreConfig& config)
 {
-    return std::make_shared<TMemPageStore>(pageSize);
+    return std::make_shared<TMemPageStore>(config);
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

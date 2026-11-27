@@ -31,7 +31,7 @@ private:
     IPageStorePtr PageStore;
 
 public:
-    ui64 Init(ui64 pageNo, IPageStorePtr pageStore);
+    void Init(ui64 pageNo, IPageStorePtr pageStore);
 
     NProto::TError RegisterStart(
         ui32 minVersion,

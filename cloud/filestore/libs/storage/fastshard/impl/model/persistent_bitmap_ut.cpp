@@ -18,6 +18,8 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr size_t PageSize = 4_KB;
+constexpr ui64 PinnedPageCount = 0;
+constexpr ui64 MaxCachedPageCount = 1024;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -54,7 +56,11 @@ struct TFixture
     const ui64 FirstPageNo = 10;
     const ui64 MaxBits;
 
-    IPageStorePtr PageStore = CreateMemPageStore(PageSize);
+    IPageStorePtr PageStore = CreateMemPageStore({
+        .PageSize = PageSize,
+        .PinnedPageCount = PinnedPageCount,
+        .MaxCachedPageCount = MaxCachedPageCount,
+    });
     std::unique_ptr<TPersistentBitmap> Bitmap;
 
     TFixture(ui64 maxBits = 60000)
@@ -251,7 +257,11 @@ TEST(PersistentBitmapTest, PageCountWithNonPowerOfTwoPageSize)
             10 /* firstPageNo */,
             maxBits,
             12_KB,
-            CreateMemPageStore(12_KB));
+            CreateMemPageStore({
+                .PageSize = 12_KB,
+                .PinnedPageCount = PinnedPageCount,
+                .MaxCachedPageCount = MaxCachedPageCount,
+            }));
         EXPECT_EQ(pageCount, bitmap.GetPageCount()) << maxBits;
     }
 }

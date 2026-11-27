@@ -33,6 +33,7 @@ namespace {
 constexpr ui32 ShardNo = 1U;
 constexpr ui64 NodesPerGroup = 1024U;
 constexpr ui64 GroupCapacity = 1_GB;
+constexpr ui64 MaxCachedDataPages = 64_MB / 4_KB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -126,6 +127,7 @@ IFileSystemShardPtr MakeHashTableIndexShard(const TMaybe<cpu_set_t>& cpuMask)
     NProtoPrivate::TPersistentFastShardConfig config;
     config.SetNodesPerGroup(NodesPerGroup);
     config.SetExpectedGroupCapacity(GroupCapacity);
+    config.SetMaxCachedDataPages(MaxCachedDataPages);
     config.SetPageSize(4_KB);
 
     auto delayPolicy = NCloud::NFastShard::CreateLognormalDelayPolicy(

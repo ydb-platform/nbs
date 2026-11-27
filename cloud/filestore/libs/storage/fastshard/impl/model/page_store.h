@@ -18,6 +18,17 @@ using NCloud::NFastShard::TPageGroupRef;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TPageStoreStats
+{
+    ui64 PinnedPageCount = 0;
+    ui64 CachedPageCount = 0;
+    ui64 CacheHits = 0;
+    ui64 CacheMisses = 0;
+    ui64 Evictions = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class IPageStore
 {
 public:
@@ -45,9 +56,12 @@ public:
 
     /**
      * Drops all cached pages. Only committed pages may be cached at the
-     * moment of the call.
+     * moment of the call, otherwise an error is returned and all page store
+     * contents are dropped.
      */
-    virtual void Clear() = 0;
+    virtual NProto::TError Clear() = 0;
+
+    [[nodiscard]] virtual TPageStoreStats CollectStats() const = 0;
 };
 
 using IPageStorePtr = std::shared_ptr<IPageStore>;
@@ -133,7 +147,16 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IPageStorePtr CreatePageStore(IStorageGroupPtr storage, ui64 pageSize);
-IPageStorePtr CreateMemPageStore(ui64 pageSize);
+struct TPageStoreConfig
+{
+    ui64 PageSize;
+    ui64 PinnedPageCount;
+    ui64 MaxCachedPageCount;
+};
+
+IPageStorePtr CreatePageStore(
+    IStorageGroupPtr storage,
+    const TPageStoreConfig& config);
+IPageStorePtr CreateMemPageStore(const TPageStoreConfig& config);
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

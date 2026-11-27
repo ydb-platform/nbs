@@ -49,6 +49,11 @@ private:
     std::unique_ptr<TNodeId2HandleCount> NodeId2HandleCount;
 
 public:
+    [[nodiscard]] static ui64 CalcRequiredPageCount(
+        ui64 nodesPerGroup,
+        ui64 handlesPerGroup,
+        ui32 pageSize);
+
     ui64 Init(
         ui64 nodesPerGroup,
         ui64 handlesPerGroup,

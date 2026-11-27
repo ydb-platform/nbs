@@ -40,6 +40,10 @@ private:
     std::unique_ptr<THt> Slots;
 
 public:
+    [[nodiscard]] static ui64 CalcRequiredPageCount(
+        ui64 nodesPerGroup,
+        ui32 pageSize);
+
     ui64 Init(ui64 nodesPerGroup, ui64 firstPageNo, IPageStorePtr pageStore);
 
     [[nodiscard]] ui64 GetSlotCount() const
