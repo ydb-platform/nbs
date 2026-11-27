@@ -39,8 +39,8 @@ TActorId TIndexTabletActor::RegisterFileSystemEventClient(
     //
     // The requests that come over RDMA are sent by the RDMA forwarder, which
     // is not the client of the pipe: the client is the sender of the pipe's
-    // registration (see HandleRegisterPipeClient). If the pipe has disconnected
-    // by now, it has no client and the request is not subscribed.
+    // registration (see HandleRegisterRdmaPipeClient). If the pipe has
+    // disconnected by now, it has no client and the request is not subscribed.
     //
 
     if (recipient == SelfId() ||

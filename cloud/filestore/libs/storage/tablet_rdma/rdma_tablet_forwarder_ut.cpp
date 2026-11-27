@@ -168,9 +168,9 @@ struct TEnv
         Runtime.SendToPipe(
             pipe.ClientId,
             pipe.Sender,
-            Tablet.CreateRegisterPipeClientRequest().release(),
+            Tablet.CreateRegisterRdmaPipeClientRequest().release(),
             NodeIdx);
-        using TEvResponse = TEvIndexTablet::TEvRegisterPipeClientResponse;
+        using TEvResponse = TEvIndexTablet::TEvRegisterRdmaPipeClientResponse;
         auto registered = Runtime.GrabEdgeEvent<TEvResponse>(pipe.Sender);
         UNIT_ASSERT_C(
             !HasError(registered->Get()->GetError()),
@@ -338,7 +338,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
             TEvIndexTablet::EvChangeStorageConfigRequest,
             TEvIndexTablet::EvUnsafeGetNodeRequest,
             TEvIndexTablet::EvRenameNodeInDestinationRequest,
-            TEvIndexTablet::EvRegisterPipeClientRequest,
+            TEvIndexTablet::EvRegisterRdmaPipeClientRequest,
         };
         for (const ui32 methodId: unsupported) {
             UNIT_ASSERT_C(!IsRdmaTabletMethod(methodId), methodId);

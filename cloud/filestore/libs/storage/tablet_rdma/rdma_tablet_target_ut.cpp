@@ -161,9 +161,9 @@ struct TEnv
         Runtime.SendToPipe(
             clientId,
             sender,
-            Tablet.CreateRegisterPipeClientRequest().release(),
+            Tablet.CreateRegisterRdmaPipeClientRequest().release(),
             NodeIdx);
-        using TEvResponse = TEvIndexTablet::TEvRegisterPipeClientResponse;
+        using TEvResponse = TEvIndexTablet::TEvRegisterRdmaPipeClientResponse;
         auto registered = Runtime.GrabEdgeEvent<TEvResponse>(sender);
         UNIT_ASSERT_C(
             !HasError(registered->Get()->GetError()),

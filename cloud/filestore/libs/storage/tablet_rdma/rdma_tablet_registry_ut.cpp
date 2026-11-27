@@ -188,7 +188,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
             TActorId(),
             env.Registry->FindTablet(pipeServerId));
 
-        tablet.RegisterPipeClient();
+        tablet.RegisterRdmaPipeClient();
         UNIT_ASSERT_VALUES_EQUAL(
             tabletActorId,
             env.Registry->FindTablet(pipeServerId));
@@ -220,7 +220,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
         const auto [pipeServerId, tabletActorId] = env.GetPipeServer();
         UNIT_ASSERT(tabletActorId);
 
-        auto response = tablet.AssertRegisterPipeClientFailed();
+        auto response = tablet.AssertRegisterRdmaPipeClientFailed();
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<ui32>(E_PRECONDITION_FAILED),
             response->GetStatus());
@@ -236,7 +236,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
         tablet.RebootTablet();
         tablet.WaitReady();
 
-        tablet.RegisterPipeClient();
+        tablet.RegisterRdmaPipeClient();
 
         const auto [nextPipeServerId, nextTabletActorId] = env.GetPipeServer();
         UNIT_ASSERT_VALUES_EQUAL(
@@ -246,7 +246,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
 
     Y_UNIT_TEST(ShouldNotRegisterPipeForRequestSentWithoutPipe)
     {
-        using TEvResponse = TEvIndexTablet::TEvRegisterPipeClientResponse;
+        using TEvResponse = TEvIndexTablet::TEvRegisterRdmaPipeClientResponse;
 
         TTabletEnv env;
         auto& runtime = env.GetRuntime();
@@ -258,7 +258,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
             new IEventHandle(
                 tabletActorId,
                 sender,
-                tablet.CreateRegisterPipeClientRequest().release()),
+                tablet.CreateRegisterRdmaPipeClientRequest().release()),
             env.NodeIdx);
 
         auto response = runtime.GrabEdgeEvent<TEvResponse>(sender);
@@ -276,7 +276,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
 
         TTabletEnv env;
         TIndexTabletClient tablet(env.GetRuntime(), env.NodeIdx, env.TabletId);
-        tablet.RegisterPipeClient();
+        tablet.RegisterRdmaPipeClient();
 
         const auto [pipeServerId, tabletActorId] = env.GetPipeServer();
         UNIT_ASSERT_VALUES_EQUAL(
@@ -301,7 +301,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletRegistryTest)
             TActorId(),
             env.Registry->FindTablet(pipeServerId));
 
-        tablet.RegisterPipeClient();
+        tablet.RegisterRdmaPipeClient();
 
         const auto [nextPipeServerId, nextTabletActorId] = env.GetPipeServer();
         UNIT_ASSERT_VALUES_UNEQUAL(tabletActorId, nextTabletActorId);
