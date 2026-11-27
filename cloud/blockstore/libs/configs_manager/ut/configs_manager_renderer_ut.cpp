@@ -2432,6 +2432,145 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
                 .EffectiveValue = "200",
             });
     }
+
+    // Verify partial runtime status, accepted values, and section rejection
+    // after an update and a repeat of the first delivery with the same cookie.
+    Y_UNIT_TEST_F(
+        ShouldRenderPartiallyAppliedRuntimeConfig,
+        TConfigsManagerFixture)
+    {
+        // Use distinct source values to make accepted updates visible.
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
+
+        // Apply storage settings while rejecting invalid dynamic throttling.
+        auto update =
+            std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300));
+        auto* rule = update->MutableVolumeThrottling()->AddRules();
+        rule->MutableFilter();
+        rule->MutableCoefficients()->SetMaxReadIops(2);
+
+        // Keep runtime attribution when the first delivery is repeated.
+        for (int i = 0; i < 2; i++) {
+            SendNotification(update, 1);
+            WaitForAck(1);
+
+            // Show the rejection together with the accepted runtime values.
+            const auto html = GetMonitoringPage();
+            UNIT_ASSERT_STRING_CONTAINS(html, ", runtime (partially applied)");
+            UNIT_ASSERT_STRING_CONTAINS(
+                html,
+                "Rejected invalid VolumeThrottling configuration");
+            UNIT_ASSERT_STRING_CONTAINS(
+                html,
+                "VolumeThrottling.Rules[0].Coefficients.MaxReadIops = 2");
+
+            AssertParameterRow(
+                html,
+                {
+                    .ParameterName = "StorageService.WriteBlobThreshold",
+                    .StaticValue = "100",
+                    .StartupDynamicValue = "200",
+                    .RuntimeDynamicValue = "300",
+                    .IcbValue = "—",
+                    .EffectiveValue = "300",
+                });
+        }
+    }
+
+    // Verify startup and runtime section rejection, then verify its removal
+    // after a fully accepted runtime delivery without changing accepted values.
+    Y_UNIT_TEST_F(
+        ShouldRenderSectionRejectionWithUnchangedAcceptedValues,
+        TConfigsManagerFixture)
+    {
+        // Keep accepted values unchanged while making their sources distinct.
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
+
+        auto update =
+            std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(200));
+        auto* rule = update->MutableVolumeThrottling()->AddRules();
+        rule->MutableFilter();
+        rule->MutableCoefficients()->SetMaxReadIops(2);
+
+        // Show 'startup (partially applied)' for the first delivery and its
+        // repeat.
+        for (int i = 0; i != 2; ++i) {
+            SendNotification(update, 1);
+            WaitForAck(1);
+
+            const auto html = GetMonitoringPage();
+            UNIT_ASSERT_STRING_CONTAINS(html, ", startup (partially applied)");
+            UNIT_ASSERT_STRING_CONTAINS(
+                html,
+                "Rejected invalid VolumeThrottling configuration");
+            UNIT_ASSERT_STRING_CONTAINS(
+                html,
+                "VolumeThrottling.Rules[0].Coefficients.MaxReadIops = 2");
+
+            AssertParameterRow(
+                html,
+                {
+                    .ParameterName = "StorageService.WriteBlobThreshold",
+                    .StaticValue = "100",
+                    .StartupDynamicValue = "200",
+                    .RuntimeDynamicValue = "—",
+                    .IcbValue = "—",
+                    .EffectiveValue = "200",
+                });
+        }
+
+        // Show the same accepted values as runtime after a new runtime delivery
+        // cookie.
+        SendNotification(update, 2);
+        WaitForAck(2);
+        const auto runtimeHtml = GetMonitoringPage();
+        UNIT_ASSERT_STRING_CONTAINS(
+            runtimeHtml,
+            ", runtime (partially applied)");
+        UNIT_ASSERT_STRING_CONTAINS(
+            runtimeHtml,
+            "Rejected invalid VolumeThrottling configuration");
+        UNIT_ASSERT_STRING_CONTAINS(
+            runtimeHtml,
+            "VolumeThrottling.Rules[0].Coefficients.MaxReadIops = 2");
+
+        AssertParameterRow(
+            runtimeHtml,
+            {
+                .ParameterName = "StorageService.WriteBlobThreshold",
+                .StaticValue = "100",
+                .StartupDynamicValue = "200",
+                .RuntimeDynamicValue = "200",
+                .IcbValue = "—",
+                .EffectiveValue = "200",
+            });
+
+        // Clear the rejection without changing any accepted values.
+        update->ClearVolumeThrottling();
+        SendNotification(update, 3);
+        WaitForAck(3);
+        const auto acceptedHtml = GetMonitoringPage();
+        UNIT_ASSERT_STRING_CONTAINS(acceptedHtml, ", runtime (unchanged)</td>");
+        UNIT_ASSERT(
+            !acceptedHtml.Contains("<span class='config-update-rejected'>"));
+        UNIT_ASSERT(
+            !acceptedHtml.Contains("Rejected invalid VolumeThrottling"));
+
+        AssertParameterRow(
+            acceptedHtml,
+            {
+                .ParameterName = "StorageService.WriteBlobThreshold",
+                .StaticValue = "100",
+                .StartupDynamicValue = "200",
+                .RuntimeDynamicValue = "200",
+                .IcbValue = "—",
+                .EffectiveValue = "200",
+            });
+    }
 }
 
 }   // namespace NCloud::NBlockStore

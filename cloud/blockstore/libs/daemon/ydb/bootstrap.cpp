@@ -495,6 +495,7 @@ void TBootstrapYdb::InitConfigs()
     ConfigInitializer->InitComputeClientConfig();
     ConfigInitializer->InitCellsConfig();
     ConfigInitializer->InitLocalNVMeConfig();
+    ConfigInitializer->InitVolumeThrottlingConfig();
 }
 
 void TBootstrapYdb::InitSpdk()

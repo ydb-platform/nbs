@@ -27,11 +27,7 @@ void TVolumeActor::HandleUpdateVolatileThrottlingConfig(
     const auto currentVersion =
         State->GetThrottlingPolicy().GetVolatileThrottlingVersion();
 
-    // Re-evaluate the rule for the previously accepted configuration version if
-    // volume parameters used for rule selection have changed (e.g. FolderId).
-    if (incomingVersion < currentVersion ||
-        (incomingVersion == currentVersion &&
-         !State->IsThrottlingRuleOutdated()))
+    if (incomingVersion < currentVersion)
     {
         LOG_WARN(
             ctx,
@@ -40,6 +36,13 @@ void TVolumeActor::HandleUpdateVolatileThrottlingConfig(
             LogTitle.GetWithTime().c_str(),
             incomingVersion,
             currentVersion);
+        return;
+    }
+
+    // Re-evaluate the rule for the previously accepted configuration version if
+    // volume parameters used for rule selection have changed (e.g. FolderId).
+    if (incomingVersion == currentVersion && !State->IsThrottlingRuleOutdated())
+    {
         return;
     }
 

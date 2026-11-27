@@ -19,6 +19,7 @@ import "cloud/blockstore/config/server.proto";
 import "cloud/blockstore/config/spdk.proto";
 import "cloud/blockstore/config/storage.proto";
 import "cloud/blockstore/config/ydbstats.proto";
+import "cloud/blockstore/config/volume_throttling.proto";
 import "cloud/storage/core/config/features.proto";
 import "cloud/storage/core/config/iam.proto";
 import "cloud/storage/core/config/markers.proto";
@@ -46,4 +47,5 @@ message TBlockstoreConfig
     optional TRootKmsConfig RootKms = 17;
     optional TCellsConfig Cells = 18;
     optional TLocalNVMeConfig LocalNVMe = 19;
+    optional TVolumeThrottlingServiceConfig VolumeThrottling = 20 [(NMarkers.AllowRuntimeUpdate) = true];
 }
