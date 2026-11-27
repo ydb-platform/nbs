@@ -10,7 +10,7 @@ responded (see "CRUD and Session Management" in [sharding.md](sharding.md)).
 `ResetSession` (vhost sends it upon FUSE init and destroy) and
 `DestroySession` are sent to all the shards the same way.
 
-So a mount costs two requests per shard (CreateSession and DestroySession).
+So a mount costs two requests per shard (CreateSession and ResetSession).
 If 1000 VMs start simultaneously and the filesystem has 25K shards, the main
 tablet sends 50M requests to the shards at once. It gets overloaded, the
 requests time out and the retries add more load.
