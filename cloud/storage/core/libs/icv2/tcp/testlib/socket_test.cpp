@@ -13,17 +13,17 @@ namespace NCloud::NIcV2::NTests {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TTestListenerClient::TTestListenerClient(
+TTestListenerHandler::TTestListenerHandler(
     std::function<void(TSocketResult)> callback)
     : Callback(std::move(callback))
 {}
 
-void TTestListenerClient::OnConnection(TSocketPtr socket)
+void TTestListenerHandler::OnSocketAccepted(TSocketPtr socket)
 {
     Callback(std::move(socket));
 }
 
-void TTestListenerClient::OnError(const NProto::TError& error)
+void TTestListenerHandler::OnError(const NProto::TError& error)
 {
     Callback(error);
 }
@@ -79,7 +79,7 @@ TTestListener::TTestListener(const char* host, int backlog)
               auto [listener, error] = NPrivate::CreateListener(
                   NInterconnect::TAddress(host, 0),
                   backlog,
-                  std::make_shared<TTestListenerClient>(
+                  std::make_shared<TTestListenerHandler>(
                       [this](TSocketResult result)
                       {
                           std::lock_guard guard(Mutex);

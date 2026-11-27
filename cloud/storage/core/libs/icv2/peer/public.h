@@ -9,7 +9,7 @@ namespace NCloud::NIcV2 {
 struct IPeer;
 using IPeerPtr = std::shared_ptr<IPeer>;
 
-struct IChannelFactory;
-using IChannelFactoryPtr = std::shared_ptr<IChannelFactory>;
+struct IRequestChannelFactory;
+using IRequestChannelFactoryPtr = std::shared_ptr<IRequestChannelFactory>;
 
 }   // namespace NCloud::NIcV2

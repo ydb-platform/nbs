@@ -51,6 +51,9 @@ TCommandPtr NewRemoveNodeXAttrCommand();
 TCommandPtr NewAcquireLockCommand();
 TCommandPtr NewReleaseLockCommand();
 TCommandPtr NewTestLockCommand();
+TCommandPtr NewSetQuotaCommand();
+TCommandPtr NewDeleteQuotaCommand();
+TCommandPtr NewListQuotasCommand();
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -63,6 +66,7 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "alter", NewAlterCommand },
     { "create", NewCreateCommand },
     { "createsession", NewCreateSessionCommand },
+    { "deletequota", NewDeleteQuotaCommand },
     { "describe", NewDescribeCommand },
     { "destroy", NewDestroyCommand },
     { "destroysession", NewDestroySessionCommand },
@@ -77,6 +81,7 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "listendpoints", NewListEndpointsCommand },
     { "listfilestores", NewListFileStoresCommand },
     { "listnodexattr", NewListNodeXAttrCommand },
+    { "listquotas", NewListQuotasCommand },
     { "ln", NewLnCommand },
     { "ls", NewLsCommand },
     { "mkdir", NewMkDirCommand },
@@ -92,6 +97,7 @@ static const TMap<TString, TFactoryFunc> Commands = {
     { "rm", NewRmCommand },
     { "setnodeattr", NewSetNodeAttrCommand },
     { "setnodexattr", NewSetNodeXAttrCommand },
+    { "setquota", NewSetQuotaCommand },
     { "startendpoint", NewStartEndpointCommand },
     { "stat", NewStatCommand },
     { "stopendpoint", NewStopEndpointCommand },

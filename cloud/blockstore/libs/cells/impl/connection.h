@@ -6,7 +6,6 @@
 #include <cloud/blockstore/libs/cells/iface/cell_manager.h>
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/cells/iface/connection.h>
-#include <cloud/blockstore/libs/client/public.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -23,7 +22,6 @@ TCellConnectionFuture CreateCellConnection(
     TCellHostPoolPtr pool,
     TCellHostConfig hostConfig,
     TBootstrap bootstrap,
-    NClient::TClientAppConfigPtr clientConfig,
     ICellConnectionObserverPtr observer);
 
 TCellConnectionRegistryPtr CreateCellConnectionRegistry();

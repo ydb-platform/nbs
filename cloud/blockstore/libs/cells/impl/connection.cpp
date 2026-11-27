@@ -6,7 +6,6 @@
 #include "transport_switcher.h"
 
 #include <cloud/blockstore/libs/client/client.h>
-#include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
@@ -35,12 +34,7 @@ using TCellConnectionPtr = std::shared_ptr<TCellConnection>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// How long a connection stays away from a host it has found no good - one
-// whose data transport would not come up, or one the pinger buried under it.
-// Long enough that a host with a real problem is not tried every few
-// seconds, short enough that one which recovers is picked up again while the
-// connection still lives. Not configurable: it only bounds how often a move
-// may be retried, and nothing downstream cares about the exact number.
+// How long a connection stays away from a host that could not serve it.
 constexpr TDuration AvoidCooldown = TDuration::Minutes(1);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -48,29 +42,22 @@ constexpr TDuration AvoidCooldown = TDuration::Minutes(1);
 // Everything that ties a connection to one host.
 struct THostBinding
 {
-    // Tells one binding from the next. Anything that was set in motion while
-    // an older binding was current - a data endpoint handler held by
-    // an endpoint being torn down - carries the generation it belongs to, so
-    // that its late arrival cannot be mistaken for news about the host we are
-    // on now.
+    // Late events carry the generation of the binding they are about, so that
+    // they cannot be taken for news about the current one.
     ui64 Generation = 0;
 
-    // Control requests remain valid across data transport changes on this host.
+    // Unlike Generation, kept across a data transport change on the same host.
     ui64 ControlGeneration = 0;
 
-    // The pool channel incarnation this binding was built on. A liveness
-    // verdict for our host is ours to act on only if it names this same
-    // incarnation - see OnHostUnavailable.
+    // The pool channel incarnation this binding was built on.
     ui64 ChannelEpoch = 0;
 
     TCellHostConfig HostConfig;
     IBlockStorePtr ControlService;
 
-    // the same service, wrapped so that whatever it answers is tagged with
-    // the control generation - see TBoundControlService
+    // ControlService tagged with ControlGeneration
     IBlockStorePtr BoundControlService;
-    // what arming installs into the data router - and, for the switching
-    // transport, what the switcher falls back to
+    // the gRPC endpoint, or the preferred one when there is no fallback
     IBlockStorePtr DataEndpoint;
     ITransportSwitcherPtr Switcher;
     IDetachableTargetPtr Sink;
@@ -80,26 +67,61 @@ struct THostBinding
 };
 using THostBindingPtr = std::shared_ptr<THostBinding>;
 
+IBlockStorePtr CreateGrpcDataEndpoint(
+    const TBootstrap& bootstrap,
+    const TCellHostConfig& hostConfig,
+    const IBlockStorePtr& controlService)
+{
+    // a separate connection: bulk I/O must not hold back the pings
+    const auto securePort = hostConfig.GetSecureGrpcPort();
+    auto endpoint = bootstrap.GrpcClient->CreateIOEndpoint(
+        hostConfig.GetFqdn(),
+        securePort ? securePort : hostConfig.GetGrpcPort(),
+        securePort != 0);
+
+    return endpoint ? std::move(endpoint) : controlService;
+}
+
+// The part of a binding that does not need the connection; the rest is
+// TCellConnection::PrepareBinding.
 TResultOrError<THostBindingPtr> BuildHostBinding(
     const TBootstrap& bootstrap,
     const TCellHostConfig& hostConfig,
     const IBlockStorePtr& controlService,
-    IBlockStorePtr grpcDataEndpoint);
+    IBlockStorePtr grpcDataEndpoint)
+{
+    auto binding = std::make_shared<THostBinding>();
+    binding->HostConfig = hostConfig;
+    binding->ControlService = controlService;
 
-IBlockStorePtr CreateGrpcDataEndpoint(
-    const TBootstrap& bootstrap,
-    const TCellHostConfig& hostConfig,
-    const IBlockStorePtr& controlService);
+    switch (hostConfig.GetTransport()) {
+        case NProto::CELL_DATA_TRANSPORT_RDMA:
+        case NProto::CELL_DATA_TRANSPORT_ICV2:
+            if (!hostConfig.GetGrpcDataFallbackEnabled()) {
+                return binding;
+            }
+            // the gRPC endpoint is the fallback
+            [[fallthrough]];
 
-void NoteMount(
-    TCellConnection& connection,
-    const TString& diskId,
-    const TString& clientId,
-    const TString& tabletHost);
+        case NProto::CELL_DATA_TRANSPORT_GRPC:
+            binding->DataEndpoint = grpcDataEndpoint
+                                        ? std::move(grpcDataEndpoint)
+                                        : CreateGrpcDataEndpoint(
+                                              bootstrap,
+                                              hostConfig,
+                                              controlService);
+            return binding;
 
-void NoteUnmount(TCellConnection& connection, const TString& diskId);
+        default:
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "Unsupported cell data transport "
+                    << NProto::ECellDataTransport_Name(
+                           hostConfig.GetTransport()));
+    }
+}
 
-// The selected data route.
 TString DescribeDataTransport(
     const THostBinding& binding,
     const ITransportSwitcherPtr& switcher)
@@ -124,8 +146,7 @@ TString DescribeDataTransport(
     }
 }
 
-// The endpoint of a transport that reports its state - see
-// UsesEndpointHandler. Handed back before it has connected.
+// Returns before the endpoint has connected.
 TResultOrError<IBlockStorePtr> SetupHostDataEndpoint(
     const TBootstrap& bootstrap,
     const TCellHostConfig& hostConfig,
@@ -178,138 +199,17 @@ TResultOrError<ITransportSwitcherPtr> PrepareBindingTransportSwitching(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Handed out by GetService(). Holds the connection alive - the caller above
-// may release its handle while requests are still in flight - and forwards
-// everything to the control router, which decides which host serves it.
-class TControlService final
-    : public TBlockStoreImpl<TControlService, IBlockStore>
-{
-private:
-    const IBlockStorePtr Impl;
-    const TCellConnectionPtr Connection;
-    const TString CellId;
-
-public:
-    TControlService(
-            IBlockStorePtr impl,
-            TCellConnectionPtr connection,
-            TString cellId)
-        : Impl(std::move(impl))
-        , Connection(std::move(connection))
-        , CellId(std::move(cellId))
-    {}
-
-    void Start() override
-    {}
-
-    void Stop() override
-    {}
-
-    TStorageBuffer AllocateBuffer(size_t bytesCount) override
-    {
-        return Impl->AllocateBuffer(bytesCount);
-    }
-
-    template <typename TMethod>
-    TFuture<typename TMethod::TResponse> Execute(
-        TCallContextPtr callContext,
-        std::shared_ptr<typename TMethod::TRequest> request)
-    {
-        return TMethod::Execute(
-            Impl.get(),
-            std::move(callContext),
-            std::move(request));
-    }
-
-    // the mounted disk is noted on the answer, not on the request: a mount
-    // that fails, or one that has since been unmounted, is not ours
-    TFuture<NProto::TMountVolumeResponse> MountVolume(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TMountVolumeRequest> request) override
-    {
-        // marks the request as an inter-cell forward, so the receiving host's
-        // forward service can let it past authorization - see the
-        // inter-cell-forward design. Describe carries its own cell id through
-        // the describe path already
-        request->MutableHeaders()->SetCellId(CellId);
-
-        // the data is encrypted on this side, before it leaves for the cell
-        request->MutableEncryptionSpec()->Clear();
-        request->SetForceDisableEncryption(true);
-
-        auto diskId = request->GetDiskId();
-        auto clientId = request->GetHeaders().GetClientId();
-        return Impl->MountVolume(std::move(callContext), std::move(request))
-            .Apply(
-                [connection = std::weak_ptr<TCellConnection>(Connection),
-                 diskId = std::move(diskId),
-                 clientId = std::move(clientId)](const auto& f)
-                {
-                    const auto& response = f.GetValue();
-                    if (!HasError(response)) {
-                        if (auto self = connection.lock()) {
-                            NoteMount(
-                                *self,
-                                diskId,
-                                clientId,
-                                response.GetTabletHost());
-                        }
-                    }
-                    return response;
-                });
-    }
-
-    TFuture<NProto::TUnmountVolumeResponse> UnmountVolume(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TUnmountVolumeRequest> request) override
-    {
-        request->MutableHeaders()->SetCellId(CellId);
-
-        auto diskId = request->GetDiskId();
-        return Impl->UnmountVolume(std::move(callContext), std::move(request))
-            .Apply(
-                [connection = std::weak_ptr<TCellConnection>(Connection),
-                 diskId = std::move(diskId)](const auto& f)
-                {
-                    const auto& response = f.GetValue();
-                    if (!HasError(response)) {
-                        if (auto self = connection.lock()) {
-                            NoteUnmount(*self, diskId);
-                        }
-                    }
-                    return response;
-                });
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 // A connection serves through one binding at a time and moves between them.
-// Everything asynchronous that reaches it - a ping verdict, a data endpoint
-// callback, a mount response - was set in motion under some binding, and
-// arrives under whichever is current by then. Three rules keep that from
-// going wrong, and every handler below is an instance of them:
+// Asynchronous events - a ping verdict, a data endpoint callback, a mount
+// response - arrive under whichever binding is current by then, so:
 //
-// 1. Every event carries the identity of the binding it is about: a
-//    generation, or a host name resolved to one under the lock. Nothing is
-//    read from the connection at the time the event was set in motion; the
-//    two are set in different steps, and a move can fall between them.
-//
-// 2. An event about a binding older than the current one is dropped: that
-//    binding's host stopped being ours when we left it. An event about the
-//    current binding, or one newer (still being prepared), is acted on only
-//    when the connection is whole and idle - and otherwise noted and acted on
-//    at the next settle point, by which time it is either about the binding
-//    we are on or about one we never kept.
-//
-// 3. There are exactly two settle points, the end of a move and the end of
-//    the initial setup, and both run the same code.
-//
-// A change that adds an event source, a settle point, or a piece of state
-// read by a handler should be checked against all three before anything
-// else.
-// A data transport change advances only the data binding generation; mount
-// responses keep their control generation until the connection changes host.
+// 1. Every event names the binding it is about: a generation, or a host name
+//    resolved to one under the lock.
+// 2. An event about an older binding is dropped. One about the current or a
+//    newer binding is acted on only when the connection is set up and no move
+//    is in flight; otherwise it waits for the next settle point.
+// 3. The settle points are the end of a move and the end of the initial
+//    setup; both run RunPendingMoveAway.
 class TCellConnection final
     : public ICellConnection
     , public ICellHostWatcher
@@ -319,7 +219,6 @@ private:
     const TString ConnectionId = CreateGuidAsString();
     const TCellHostPoolPtr Pool;
     const TBootstrap Bootstrap;
-    const NClient::TClientAppConfigPtr ClientConfig;
     const ICellConnectionObserverPtr Observer;
 
     // outlive any binding: this is what makes a move invisible from outside
@@ -333,15 +232,12 @@ private:
     ui64 LastGeneration = 0;
     std::optional<NProto::ECellDataTransport> TransportOverride;
 
-    // the disk mounted through this connection
     TString MountedDiskId;
     TString MountedClientId;
     TString MountedTabletHost;
 
-    // Why a host is no good for this connection. Kept apart because each
-    // is taken back by its own kind of news: the data link coming up says
-    // nothing about a control path the pinger found dead, and the pinger
-    // changing its mind says nothing about the data link.
+    // Ping and data verdicts are kept apart: each is taken back only by its
+    // own kind of news.
     struct TAvoidance
     {
         TInstant PingUntil;
@@ -353,63 +249,42 @@ private:
         }
     };
 
-    // Hosts this connection has found no good, and until when. The
-    // knowledge lives here rather than in the pool because the pool forgets
-    // a discovered host the moment nobody holds its channel, which is right
-    // after a move away from it. With a deadline rather than a plain set, a
-    // host that recovers is tried again instead of being written off for
-    // the life of the connection.
+    // Kept here and not in the pool: the pool forgets a discovered host as
+    // soon as nobody holds its channel.
     THashMap<TString, TAvoidance> Avoid;
 
-    // Set from the first hop of a move until a hop ends with nothing queued
-    // behind it: a move is a chain, not a single hop, and the flag stays up
-    // for the whole of it. That is what keeps the hops in the order the
-    // targets arrived, and keeps a move away from cutting in between them.
+    // Set for a whole chain of hops, so that queued targets are taken in
+    // order and a move away cannot cut in between them.
     bool MigrationInFlight = false;
     TString PendingTarget;
 
-    // The connection is built in steps, and the data endpoint is handed its
-    // handler before the last one. A callback arriving in between must not
-    // act: a move started then would race the rest of the setup and could
-    // leave the host, the control path and the data path disagreeing.
+    // Until the initial setup completes callbacks only record: a move
+    // started earlier would race the rest of the setup.
     bool BindingInstalled = false;
 
-    // The bindings that have said they cannot serve, awaiting a settle
-    // point - see RequestMoveAway. Generations rather than a flag, so that
-    // a request can be matched against the binding that is current when
-    // it is finally acted on; every one of them rather than the newest,
-    // because a newer binding can be abandoned, and the request about the
-    // one we are then still on must not have been pushed out by it. Why a
-    // binding cannot serve is not kept here: that is what Avoid says about
-    // the host, and a request stands exactly as long as Avoid still holds
-    // something against it.
+    // Generations of the bindings that asked to be left, awaiting a settle
+    // point. Not just the newest: a binding still being prepared can be
+    // abandoned, and the request about the current one must survive that.
     THashSet<ui64> MoveAwayRequests;
 
 public:
     TCellConnection(
             TCellHostPoolPtr pool,
             TBootstrap bootstrap,
-            NClient::TClientAppConfigPtr clientConfig,
             ICellConnectionObserverPtr observer,
-            IEndpointRouterPtr controlRouter,
-            IEndpointRouterPtr dataRouter,
             THostBindingPtr binding)
         : Pool(std::move(pool))
         , Bootstrap(std::move(bootstrap))
-        , ClientConfig(std::move(clientConfig))
         , Observer(std::move(observer))
-        , ControlRouter(std::move(controlRouter))
-        , DataRouter(std::move(dataRouter))
+        , ControlRouter(CreateEndpointRouter(binding->ControlService))
+        , DataRouter(CreateEndpointRouter(binding->ControlService))
         , Log(Bootstrap.Logging->CreateLog("BLOCKSTORE_CELLS"))
         , Binding(std::move(binding))
     {}
 
     ~TCellConnection() override
     {
-        // every writer of Binding keeps `self` (shared_from_this()) alive
-        // until after the write completes, so by the time nothing
-        // references this connection any more, no writer can be in
-        // flight - reading Binding here without the lock is safe
+        // no lock: every writer of Binding holds a strong reference to us
         Pool->ReleaseControlChannel(Binding->HostConfig.GetFqdn());
     }
 
@@ -461,8 +336,7 @@ public:
             status.TabletHost = MountedTabletHost;
         }
 
-        // the switcher is asked outside the lock, so its lock and ours are
-        // never held together
+        // outside the lock: the switcher has a lock of its own
         status.CellId = Pool->GetCellId();
         status.Host = binding->HostConfig.GetFqdn();
         status.DataTransport = DescribeDataTransport(*binding, switcher);
@@ -537,8 +411,7 @@ public:
         if (old->Sink) {
             old->Sink->Detach();
         }
-        // The control channel and pool subscription stay on the same host.
-        // Old endpoints remain alive through their in-flight router requests.
+        // same host: the control channel and the pool subscription stay
         InstallBinding(binding);
         STORAGE_INFO(
             "Cell data transport switched: cell="
@@ -554,27 +427,18 @@ public:
         return {};
     }
 
-    IBlockStorePtr GetService() override
-    {
-        return std::make_shared<TControlService>(
-            ControlRouter,
-            shared_from_this(),
-            Pool->GetCellId());
-    }
+    IBlockStorePtr GetService() override;
 
     IStoragePtr GetStorage() override
     {
         return CreateRemoteStorage(DataRouter, shared_from_this());
     }
 
-    // Builds whatever of the data path can still fail, and touches nothing
-    // the connection is currently serving through. A member rather than a
-    // free function because without a fallback the data endpoint reports
-    // "not coming up" to a handler that has to reach this connection.
-    NProto::TError PrepareDataPath(const THostBindingPtr& binding);
+    // Gives the binding its generation and the parts that need this
+    // connection. Touches nothing the connection is serving through.
+    NProto::TError PrepareBinding(const THostBindingPtr& binding);
 
-    // Points both routers at the prepared binding and, for the switching
-    // transport, starts the switcher. Runs only once the binding is current.
+    // Runs only once the binding is current.
     void InstallBinding(const THostBindingPtr& binding);
 
     [[nodiscard]] ui64 ReserveGeneration()
@@ -588,30 +452,51 @@ public:
         const NProto::TMountVolumeResponse& response,
         ui64 generation) noexcept
     {
-        const auto& fqdn = response.GetTabletHost();
+        auto fqdn = response.GetTabletHost();
         if (!fqdn) {
             // the serving cell is older than this field
             return;
         }
 
-        // the router holds a target until its request completes, so a mount
-        // issued before a move still lands on the host we left, and what it
-        // reports is news about that host's view of the world, not this one's
-        if (generation != CurrentControlGeneration()) {
-            return;
-        }
-
-        if (fqdn == GetHost()) {
-            return;
+        with_lock (Lock) {
+            // a mount issued before a move is answered by the host we left
+            if (generation != Binding->ControlGeneration ||
+                fqdn == Binding->HostConfig.GetFqdn())
+            {
+                return;
+            }
         }
 
         if (Observer) {
             Observer->OnTabletHostChanged(fqdn);
         }
 
-        // checked again inside, under the lock: the observer ran in between,
-        // and so may have a move the pinger asked for
-        MigrateTo(fqdn, "the volume tablet lives there", generation);
+        if (Pool->IsHostKnownDead(fqdn)) {
+            return;
+        }
+
+        with_lock (Lock) {
+            // again: the observer ran in between
+            if (generation != Binding->ControlGeneration ||
+                !IsWorthMovingToLocked(fqdn))
+            {
+                return;
+            }
+
+            if (MigrationInFlight) {
+                // the latest target wins
+                PendingTarget = std::move(fqdn);
+                return;
+            }
+
+            MigrationInFlight = true;
+        }
+
+        STORAGE_INFO(
+            "[" << GetHost() << "] moving to " << fqdn
+                << ": the volume tablet lives there");
+
+        StartMigration(std::move(fqdn));
     }
 
     void OnHostUnavailable(const TString& fqdn, ui64 epoch) noexcept override
@@ -620,23 +505,15 @@ public:
             const bool aboutCurrentHost =
                 fqdn == Binding->HostConfig.GetFqdn();
 
-            // a verdict about the host we are on, but the channel incarnation
-            // it names is not the one this binding was built on: a move has
-            // taken us off and back since, and this is stale news about the
-            // incarnation we left. Acting on it would move us off a host that
-            // is fine - drop it whole, cooldown included
+            // stale: about the channel incarnation we had before a move took
+            // us off this host and back
             if (aboutCurrentHost && epoch != Binding->ChannelEpoch) {
                 return;
             }
 
-            // remembered whatever else happens: a discovered host loses its
-            // channel - and with it the pool's verdict - as soon as a move
-            // releases it, and this connection may be told to go back there
+            // also for a host we have left: the tablet may call us back there
             Avoid[fqdn].PingUntil = Bootstrap.Timer->Now() + AvoidCooldown;
 
-            // the pool takes a strong reference to us before it drops its
-            // lock, so a move that happens in between still gets this call
-            // - about a host we have already left
             if (!aboutCurrentHost) {
                 return;
             }
@@ -647,91 +524,40 @@ public:
         RunPendingMoveAway();
     }
 
-    // Without a fallback this host serves nothing at all while its data link
-    // is down, so the reasoning that keeps a connection put when gRPC still
-    // carries data does not apply here.
+    // Only without a fallback: the host serves no data while the link is down.
     void OnDataLinkUnusable(ui64 generation, const TString& fqdn) noexcept
-    {
-        with_lock (Lock) {
-            // recorded here, by name, for the current binding and for one
-            // still being prepared alike: whether we move because of this
-            // is decided later, but what we learned about the host must not
-            // depend on that decision ever being reached - another move can
-            // carry the connection past it first
-            if (generation >= Binding->Generation) {
-                Avoid[fqdn].DataUntil = Bootstrap.Timer->Now() + AvoidCooldown;
-            }
-        }
-
-        RequestMoveAway(generation);
-    }
-
-    // The one way to say "the binding with this generation cannot serve".
-    // Both the pinger and the data endpoint come through here, so both get
-    // the same three-way treatment: a binding older than the current one is
-    // no longer ours and is ignored; anything else is noted and acted on at
-    // the next settle point - which is right now, if nothing is in flight.
-    void RequestMoveAway(ui64 generation)
     {
         with_lock (Lock) {
             if (generation < Binding->Generation) {
                 return;
             }
 
+            // the binding may be one still being prepared
+            Avoid[fqdn].DataUntil = Bootstrap.Timer->Now() + AvoidCooldown;
             MoveAwayRequests.insert(generation);
         }
 
         RunPendingMoveAway();
     }
 
-    // The settle point. Acts on what RequestMoveAway noted, provided the
-    // connection is whole and idle and the request is about the binding it
-    // serves through now; called from wherever those become true - the end
-    // of a move and the end of the initial setup - and from RequestMoveAway
-    // itself, for the case where they already are.
+    // The settle point: starts a move away if one is pending.
     void RunPendingMoveAway()
     {
         ui64 generation = 0;
         THashSet<TString> except;
 
         with_lock (Lock) {
-            if (!BindingInstalled || MigrationInFlight) {
+            if (!IsMoveAwayPendingLocked()) {
                 return;
             }
 
-            // with nothing in flight, no generation but the current one can
-            // ever become current: the others belonged to bindings we never
-            // ended up on, and what they said about those hosts was
-            // recorded when they said it
+            // the request stays until the move is committed to below: the
+            // data link coming up may take it back meanwhile
             generation = Binding->Generation;
-            EraseNodesIf(
-                MoveAwayRequests,
-                [&](ui64 requested) { return requested != generation; });
-
-            if (MoveAwayRequests.empty()) {
-                return;
-            }
-
-            // the request stands only as long as something is still held
-            // against the host, and the wait for a settle point can outlast
-            // that: a verdict that ran out meanwhile is nothing to act on
-            const auto* avoidance =
-                Avoid.FindPtr(Binding->HostConfig.GetFqdn());
-            if (!avoidance || !avoidance->InForce(Bootstrap.Timer->Now())) {
-                MoveAwayRequests.clear();
-                return;
-            }
-
-            // the request itself stays where it is until the move is
-            // committed to below: the lock is let go for the pick, and
-            // whatever happens meanwhile must still find it there - the
-            // data link coming up takes it back, a move the mount response
-            // starts leaves it waiting for its settle point
             except = HostsToAvoidLocked();
         }
 
-        // outside the lock: the pool has a lock of its own, and nothing
-        // here ever holds both
+        // outside the lock: the pool has a lock of its own
         auto picked = Pool->PickHostExcept(except);
         if (HasError(picked)) {
             Pool->GetCounters().NoMigrationTarget->Inc();
@@ -745,21 +571,10 @@ public:
         auto fqdn = picked.GetResult().GetFqdn();
 
         with_lock (Lock) {
-            // the same checks as at the top, repeated because the lock was
-            // let go for the pick. A request that is gone was taken back;
-            // a move that started meanwhile will either land - and the
-            // request is dropped at its settle point - or leave us right
-            // here, and the request is acted on then
-            if (generation != Binding->Generation || MigrationInFlight ||
-                !MoveAwayRequests.contains(generation))
+            // again: the lock was released for the pick
+            if (generation != Binding->Generation ||
+                !IsMoveAwayPendingLocked())
             {
-                return;
-            }
-
-            const auto* avoidance =
-                Avoid.FindPtr(Binding->HostConfig.GetFqdn());
-            if (!avoidance || !avoidance->InForce(Bootstrap.Timer->Now())) {
-                MoveAwayRequests.clear();
                 return;
             }
 
@@ -774,8 +589,6 @@ public:
         StartMigration(std::move(fqdn));
     }
 
-    // Data flows here again. That says nothing about the other hosts, so
-    // only this one is forgiven.
     void OnDataLinkUsable(ui64 generation, const TString& fqdn) noexcept
     {
         with_lock (Lock) {
@@ -783,15 +596,12 @@ public:
                 return;
             }
 
-            // by name, so that a host still being prepared is forgiven too
             auto* avoidance = Avoid.FindPtr(fqdn);
             if (!avoidance) {
                 return;
             }
 
-            // the data link takes back what it said, and nothing else: a
-            // request to leave stands as long as anything is still held
-            // against the host - the pinger's verdict, say
+            // the pinger's verdict, if any, still stands
             avoidance->DataUntil = {};
             if (!avoidance->InForce(Bootstrap.Timer->Now())) {
                 MoveAwayRequests.erase(generation);
@@ -799,13 +609,9 @@ public:
         }
     }
 
-    // Called once the first binding is in place and the connection is
-    // watched. Anything a data callback asked for while the connection was
-    // still being built happens now.
     void CompleteSetup()
     {
-        // before the flag goes up: until then no move can finish, so this
-        // cannot overtake the report a move makes
+        // before the flag goes up, so that no move reports its host first
         ReportServingHost(GetHost());
 
         with_lock (Lock) {
@@ -813,13 +619,6 @@ public:
         }
 
         RunPendingMoveAway();
-    }
-
-    [[nodiscard]] ui64 CurrentControlGeneration() const
-    {
-        with_lock (Lock) {
-            return Binding->ControlGeneration;
-        }
     }
 
 private:
@@ -877,12 +676,11 @@ private:
             }
             Binding = binding;
             TransportOverride = binding->HostConfig.GetTransport();
-            if (UsesEndpointHandler(*TransportOverride)) {
-                return {};
-            }
-            for (auto& [host, avoidance]: Avoid) {
-                Y_UNUSED(host);
-                avoidance.DataUntil = {};
+            if (!UsesEndpointHandler(*TransportOverride)) {
+                for (auto& [host, hostAvoidance]: Avoid) {
+                    Y_UNUSED(host);
+                    hostAvoidance.DataUntil = {};
+                }
             }
         }
         return {};
@@ -895,14 +693,42 @@ private:
         }
     }
 
-    // The hosts a move away must not land on. Under Lock.
+    [[nodiscard]] bool IsMoveAwayPendingLocked()
+    {
+        if (!BindingInstalled || MigrationInFlight) {
+            return false;
+        }
+
+        // nothing is in flight, so the others are about bindings we never
+        // ended up on
+        EraseNodesIf(
+            MoveAwayRequests,
+            [&](ui64 requested) { return requested != Binding->Generation; });
+
+        if (MoveAwayRequests.empty()) {
+            return false;
+        }
+
+        // the verdict may have run out while the request waited
+        if (!IsAvoidedLocked(Binding->HostConfig.GetFqdn())) {
+            MoveAwayRequests.clear();
+            return false;
+        }
+
+        return true;
+    }
+
+    [[nodiscard]] bool IsAvoidedLocked(const TString& fqdn) const
+    {
+        const auto* avoidance = Avoid.FindPtr(fqdn);
+        return avoidance && avoidance->InForce(Bootstrap.Timer->Now());
+    }
+
     THashSet<TString> HostsToAvoidLocked()
     {
         THashSet<TString> except;
 
-        // never back onto ourselves: the host we are leaving can be
-        // perfectly alive from the pool's point of view and still be
-        // unable to serve us
+        // the pool may still see the host we are leaving as alive
         except.insert(Binding->HostConfig.GetFqdn());
 
         const auto now = Bootstrap.Timer->Now();
@@ -918,45 +744,9 @@ private:
         return except;
     }
 
-    // A transport change preserves the control generation; a host migration
-    // invalidates responses from the host we left.
-    void MigrateTo(TString fqdn, TString reason, ui64 generation)
-    {
-        // outside the lock, and before anything else: the pinger may have
-        // buried this host already, and a tablet living there is not a
-        // reason to undo that
-        if (Pool->IsHostKnownDead(fqdn)) {
-            return;
-        }
-
-        with_lock (Lock) {
-            if (generation != Binding->ControlGeneration ||
-                !IsWorthMovingToLocked(fqdn))
-            {
-                return;
-            }
-
-            if (MigrationInFlight) {
-                // remembered rather than dropped: the reason that arrived
-                // last is the one that still holds
-                PendingTarget = std::move(fqdn);
-                return;
-            }
-
-            MigrationInFlight = true;
-        }
-
-        STORAGE_INFO(
-            "[" << GetHost() << "] moving to " << fqdn << ": " << reason);
-
-        StartMigration(std::move(fqdn));
-    }
-
     void StartMigration(TString fqdn)
     {
-        // a strong self, deliberately: from here on the migration owns a
-        // control channel for the host it is moving to, and only its own
-        // tail gives that channel back
+        // strong: the move owns a control channel that only its tail releases
         auto self = shared_from_this();
 
         TFuture<IBlockStorePtr> channel;
@@ -977,6 +767,35 @@ private:
             });
     }
 
+    // Builds the target binding while the old host is still serving requests.
+    // With gRPC fallback, InstallBinding starts the switcher after the move.
+    TResultOrError<THostBindingPtr> PrepareMigration(
+        const TString& fqdn,
+        const IBlockStorePtr& controlService)
+    {
+        auto hostConfig = Pool->MakeHostConfig(fqdn);
+        with_lock (Lock) {
+            if (TransportOverride) {
+                hostConfig.SetTransport(*TransportOverride);
+            }
+        }
+
+        auto built =
+            BuildHostBinding(Bootstrap, hostConfig, controlService, {});
+        if (HasError(built)) {
+            return built.GetError();
+        }
+
+        auto binding = built.ExtractResult();
+        binding->ChannelEpoch = Pool->GetChannelEpoch(fqdn);
+
+        auto error = PrepareBinding(binding);
+        if (HasError(error)) {
+            return error;
+        }
+        return binding;
+    }
+
     void OnChannelAcquired(
         TString fqdn,
         const IBlockStorePtr& controlService)
@@ -986,47 +805,22 @@ private:
             return;
         }
 
-        TResultOrError<THostBindingPtr> built = MakeError(E_FAIL);
+        TResultOrError<THostBindingPtr> prepared = MakeError(E_FAIL);
         try {
-            auto hostConfig = Pool->MakeHostConfig(fqdn);
-            with_lock (Lock) {
-                if (TransportOverride) {
-                    hostConfig.SetTransport(*TransportOverride);
-                }
-            }
-            built = BuildHostBinding(Bootstrap, hostConfig, controlService, {});
+            prepared = PrepareMigration(fqdn, controlService);
         } catch (...) {
             AbortMigration(fqdn, CurrentExceptionMessage(), true);
             return;
         }
 
-        if (HasError(built)) {
-            AbortMigration(fqdn, FormatError(built.GetError()), true);
+        if (HasError(prepared)) {
+            AbortMigration(fqdn, FormatError(prepared.GetError()), true);
             return;
         }
 
-        // everything that can fail happens here, while the connection is
-        // still serving through the host it has: a data path that cannot be
-        // built must not leave control on one host and data on another
-        auto binding = built.GetResult();
-        binding->ChannelEpoch = Pool->GetChannelEpoch(fqdn);
-        try {
-            auto error = PrepareDataPath(binding);
-            if (HasError(error)) {
-                AbortMigration(fqdn, FormatError(error), true);
-                return;
-            }
-        } catch (...) {
-            AbortMigration(fqdn, CurrentExceptionMessage(), true);
-            return;
-        }
-
-        FinishMigration(binding);
+        FinishMigration(prepared.GetResult());
     }
 
-    // The way out of a move that did not happen: the connection stays on the
-    // host it already has, gives back whatever it took for the host it never
-    // reached, and is free to try again on the next notification.
     void AbortMigration(
         const TString& fqdn,
         const TString& reason,
@@ -1053,22 +847,17 @@ private:
             Binding = binding;
         }
 
-        // detached before anything else can reach it: the switcher of
-        // the host we just left is still alive and would otherwise
-        // point the data back at a host nobody talks to
+        // before InstallBinding: the old switcher is still alive and could
+        // point the data back at the host we left
         if (old->Sink) {
             old->Sink->Detach();
         }
 
         try {
-            // only now that the old sink is cut off: the new switcher can
-            // point the router at the preferred transport from inside this
-            // call
             InstallBinding(binding);
         } catch (...) {
-            // both routers already point at the new host, so the connection
-            // is whole; what is missing is transport switching on it, and
-            // the next move will build it again
+            // the routers already point at the new host; only transport
+            // switching is missing
             STORAGE_ERROR(
                 "[" << binding->HostConfig.GetFqdn() << "] moved, but "
                     << "transport switching did not start: "
@@ -1085,11 +874,8 @@ private:
         Pool->ReleaseControlChannel(old->HostConfig.GetFqdn());
 
         if (targetDead) {
-            // the pinger buried the target between our picking it and
-            // WatchHost subscribing, so its death notification went to
-            // nobody. Replay it now: the settle point in EndMigration then
-            // moves us off again, instead of sitting on a dead host until
-            // the next sweep notices
+            // the death notification came before WatchHost subscribed;
+            // replayed so that EndMigration moves us off again
             OnHostUnavailable(
                 binding->HostConfig.GetFqdn(),
                 binding->ChannelEpoch);
@@ -1098,23 +884,15 @@ private:
         EndMigration();
     }
 
-    // Every path that set MigrationInFlight ends here: a flag left set sends
-    // every later notification into the pending branch and pins the
-    // connection to the host it failed to leave, for good.
+    // Every path that set MigrationInFlight must end here.
     void EndMigration()
     {
-        // cleared only after the tail above has fully run, so that an
-        // overlapping move queues behind this one instead of landing half of
-        // its outcome on top of half of ours
         TString next;
         with_lock (Lock) {
             next = std::move(PendingTarget);
             PendingTarget.clear();
 
-            // and not cleared at all while a target is queued: the move
-            // goes straight on to it under the same flag, so that a target
-            // arriving now queues behind it, as the later of the two, rather
-            // than starting ahead of it
+            // the flag stays up for a queued target
             if (!next) {
                 MigrationInFlight = false;
             }
@@ -1125,15 +903,12 @@ private:
             return;
         }
 
-        // here, and not only at the end of a move that really happened: a
-        // deferred request would otherwise hang until the next callback
-        // happened to arrive
+        // also after an aborted move: a deferred request would otherwise
+        // wait for the next callback
         RunPendingMoveAway();
     }
 
-    // Runs with MigrationInFlight still set by the move that just ended, and
-    // hands it on: to the move it starts, or back to EndMigration if the
-    // target is no good any more by now.
+    // Runs with MigrationInFlight still set.
     void ContinueMigration(TString fqdn)
     {
         bool worth = !Pool->IsHostKnownDead(fqdn);
@@ -1155,45 +930,120 @@ private:
         StartMigration(std::move(fqdn));
     }
 
-    // Whether the host is somewhere to go from where the connection is
-    // now. Under Lock.
     [[nodiscard]] bool IsWorthMovingToLocked(const TString& fqdn) const
     {
         if (Binding->HostConfig.GetFqdn() == fqdn) {
             return false;
         }
 
-        // a tablet living on a host whose transport will not come up is
-        // not a reason to go there: following it would undo the move
-        // that brought us away
-        const auto* avoidance = Avoid.FindPtr(fqdn);
-        return !avoidance || !avoidance->InForce(Bootstrap.Timer->Now());
+        // following the tablet there would undo the move that took us away
+        return !IsAvoidedLocked(fqdn);
     }
 };
 
-void NoteMount(
-    TCellConnection& connection,
-    const TString& diskId,
-    const TString& clientId,
-    const TString& tabletHost)
-{
-    connection.NoteMount(diskId, clientId, tabletHost);
-}
+////////////////////////////////////////////////////////////////////////////////
 
-void NoteUnmount(TCellConnection& connection, const TString& diskId)
+// Handed out by GetService(). Holds the connection alive: the caller may
+// release its handle while requests are still in flight.
+class TControlService final
+    : public TBlockStoreImpl<TControlService, IBlockStore>
 {
-    connection.NoteUnmount(diskId);
-}
+private:
+    const IBlockStorePtr Impl;
+    const TCellConnectionPtr Connection;
+    const TString CellId;
+
+public:
+    TControlService(
+            IBlockStorePtr impl,
+            TCellConnectionPtr connection,
+            TString cellId)
+        : Impl(std::move(impl))
+        , Connection(std::move(connection))
+        , CellId(std::move(cellId))
+    {}
+
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
+    TStorageBuffer AllocateBuffer(size_t bytesCount) override
+    {
+        return Impl->AllocateBuffer(bytesCount);
+    }
+
+    template <typename TMethod>
+    TFuture<typename TMethod::TResponse> Execute(
+        TCallContextPtr callContext,
+        std::shared_ptr<typename TMethod::TRequest> request)
+    {
+        return TMethod::Execute(
+            Impl.get(),
+            std::move(callContext),
+            std::move(request));
+    }
+
+    TFuture<NProto::TMountVolumeResponse> MountVolume(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TMountVolumeRequest> request) override
+    {
+        // marks an inter-cell forward for the receiving host's authorization
+        request->MutableHeaders()->SetCellId(CellId);
+
+        // the data is encrypted on this side, before it leaves for the cell
+        request->MutableEncryptionSpec()->Clear();
+        request->SetForceDisableEncryption(true);
+
+        auto diskId = request->GetDiskId();
+        auto clientId = request->GetHeaders().GetClientId();
+        return Impl->MountVolume(std::move(callContext), std::move(request))
+            .Apply(
+                [connection = std::weak_ptr<TCellConnection>(Connection),
+                 diskId = std::move(diskId),
+                 clientId = std::move(clientId)](const auto& f)
+                {
+                    const auto& response = f.GetValue();
+                    if (!HasError(response)) {
+                        if (auto self = connection.lock()) {
+                            self->NoteMount(
+                                diskId,
+                                clientId,
+                                response.GetTabletHost());
+                        }
+                    }
+                    return response;
+                });
+    }
+
+    TFuture<NProto::TUnmountVolumeResponse> UnmountVolume(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TUnmountVolumeRequest> request) override
+    {
+        request->MutableHeaders()->SetCellId(CellId);
+
+        auto diskId = request->GetDiskId();
+        return Impl->UnmountVolume(std::move(callContext), std::move(request))
+            .Apply(
+                [connection = std::weak_ptr<TCellConnection>(Connection),
+                 diskId = std::move(diskId)](const auto& f)
+                {
+                    const auto& response = f.GetValue();
+                    if (!HasError(response)) {
+                        if (auto self = connection.lock()) {
+                            self->NoteUnmount(diskId);
+                        }
+                    }
+                    return response;
+                });
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// One host's control service. Responses carry its control generation and are
-// identified by the object that actually served the request rather than by
-// what the connection pointed at when the request went out: those are two
-// different steps, and a move can fall between them.
-//
-// Holds the connection weakly - the connection owns the binding that owns
-// this - and a request in flight keeps this object alive through the router.
+// One host's control service. A mount response is attributed to the binding
+// that served the request, not to the one current when it was sent.
 class TBoundControlService final
     : public TBlockStoreImpl<TBoundControlService, IBlockStore>
 {
@@ -1254,9 +1104,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The only listener a data endpoint gets when there is no fallback: with no
-// second transport to fall back to, the one thing worth reacting to is the
-// link never coming up.
+// The data endpoint handler used when there is no fallback.
 class TNoFallbackHandler final: public NCloud::IClientEndpointHandler
 {
 private:
@@ -1286,8 +1134,7 @@ public:
 
     void HandleUnavailable() override
     {
-        // repeats on every reconnect attempt, which is what gives the move
-        // its retries for free
+        // repeats on every reconnect attempt, which retries the move
         if (auto connection = Connection.lock()) {
             connection->OnDataLinkUnusable(Generation, Host);
         }
@@ -1296,14 +1143,20 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError TCellConnection::PrepareDataPath(
+IBlockStorePtr TCellConnection::GetService()
+{
+    return std::make_shared<TControlService>(
+        ControlRouter,
+        shared_from_this(),
+        Pool->GetCellId());
+}
+
+NProto::TError TCellConnection::PrepareBinding(
     const THostBindingPtr& binding)
 {
     binding->Generation = ReserveGeneration();
     binding->ControlGeneration = binding->Generation;
 
-    // built here, with the generation, so that the router can only ever be
-    // pointed at a control service that knows which binding it belongs to
     binding->BoundControlService = std::make_shared<TBoundControlService>(
         binding->ControlService,
         weak_from_this(),
@@ -1314,8 +1167,7 @@ NProto::TError TCellConnection::PrepareDataPath(
                             !hostConfig.GetGrpcDataFallbackEnabled();
 
     if (!noFallback) {
-        // the other transports had their endpoint built along with the
-        // binding, and building it cannot fail here
+        // the endpoint was built by BuildHostBinding
         return {};
     }
 
@@ -1331,8 +1183,6 @@ NProto::TError TCellConnection::PrepareDataPath(
         return endpoint.GetError();
     }
 
-    // handed back before it has connected: until it does, data requests fail
-    // retriably and the handler above decides when to give up on this host
     binding->DataEndpoint = endpoint.GetResult();
     return {};
 }
@@ -1343,9 +1193,7 @@ void TCellConnection::InstallBinding(const THostBindingPtr& binding)
 
     ControlRouter->SetTarget(binding->BoundControlService);
 
-    // the target goes in before the switcher starts: the switcher may point
-    // the router at the preferred transport straight away, and installing
-    // the fallback afterwards would undo that
+    // before Activate: the switcher may retarget the router right away
     DataRouter->SetTarget(binding->DataEndpoint);
 
     if (!UsesEndpointHandler(hostConfig.GetTransport()) ||
@@ -1374,71 +1222,6 @@ void TCellConnection::InstallBinding(const THostBindingPtr& binding)
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-
-////////////////////////////////////////////////////////////////////////////////
-
-IBlockStorePtr CreateGrpcDataEndpoint(
-    const TBootstrap& bootstrap,
-    const TCellHostConfig& hostConfig,
-    const IBlockStorePtr& controlService)
-{
-    // The cell's ports are control ports, which take only the control
-    // service, so the data goes through that service too - but on a
-    // connection apart from the control one, so that bulk I/O cannot hold
-    // back the pings that judge whether the host is alive.
-    const auto securePort = hostConfig.GetSecureGrpcPort();
-    auto endpoint = bootstrap.GrpcClient->CreateIOEndpoint(
-        hostConfig.GetFqdn(),
-        securePort ? securePort : hostConfig.GetGrpcPort(),
-        securePort != 0);
-
-    return endpoint ? std::move(endpoint) : controlService;
-}
-
-// Builds everything that ties a connection to one host, EXCEPT the data path
-// - that is TCellConnection::PrepareDataPath, which needs a live connection
-// to hand the data endpoint a handler.
-TResultOrError<THostBindingPtr> BuildHostBinding(
-    const TBootstrap& bootstrap,
-    const TCellHostConfig& hostConfig,
-    const IBlockStorePtr& controlService,
-    IBlockStorePtr grpcDataEndpoint)
-{
-    auto binding = std::make_shared<THostBinding>();
-    binding->HostConfig = hostConfig;
-    binding->ControlService = controlService;
-
-    switch (hostConfig.GetTransport()) {
-        case NProto::CELL_DATA_TRANSPORT_RDMA:
-        case NProto::CELL_DATA_TRANSPORT_ICV2:
-            if (!hostConfig.GetGrpcDataFallbackEnabled()) {
-                return binding;
-            }
-            // The switcher uses the gRPC endpoint while the preferred
-            // transport is unavailable.
-            [[fallthrough]];
-
-        case NProto::CELL_DATA_TRANSPORT_GRPC:
-            binding->DataEndpoint = grpcDataEndpoint
-                                        ? std::move(grpcDataEndpoint)
-                                        : CreateGrpcDataEndpoint(
-                                              bootstrap,
-                                              hostConfig,
-                                              controlService);
-            return binding;
-
-        default:
-            return MakeError(
-                E_ARGUMENT,
-                TStringBuilder()
-                    << "Unsupported cell data transport "
-                    << NProto::ECellDataTransport_Name(
-                           hostConfig.GetTransport()));
-    }
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1453,8 +1236,7 @@ public:
     void Add(const TCellConnectionPtr& connection)
     {
         with_lock (Lock) {
-            // dropped here as well, so the list stays bounded even if the
-            // mon page is never opened
+            // keeps the list bounded when the mon page is never opened
             EraseIf(Connections, [] (const auto& c) { return c.expired(); });
             Connections.push_back(connection);
         }
@@ -1533,7 +1315,6 @@ TCellConnectionFuture CreateCellConnection(
     TCellHostPoolPtr pool,
     TCellHostConfig hostConfig,
     TBootstrap bootstrap,
-    NClient::TClientAppConfigPtr clientConfig,
     ICellConnectionObserverPtr observer)
 {
     auto fqdn = hostConfig.GetFqdn();
@@ -1543,53 +1324,44 @@ TCellConnectionFuture CreateCellConnection(
         [pool = std::move(pool),
          hostConfig = std::move(hostConfig),
          bootstrap = std::move(bootstrap),
-         clientConfig = std::move(clientConfig),
          observer = std::move(observer),
-         fqdn = std::move(fqdn)](const auto& f) mutable -> TCellConnectionFuture
+         fqdn = std::move(fqdn)](
+            const auto& f) mutable -> TResultOrError<ICellConnectionPtr>
         {
             auto controlService = f.GetValue();
             if (!controlService) {
                 pool->ReleaseControlChannel(fqdn);
-                return MakeFuture(TResultOrError<ICellConnectionPtr>(MakeError(
+                return MakeError(
                     E_REJECTED,
                     TStringBuilder()
-                        << "Can't set up a control channel to " << fqdn)));
+                        << "Can't set up a control channel to " << fqdn);
             }
-
-            auto controlRouter = CreateEndpointRouter(controlService);
-            auto dataRouter = CreateEndpointRouter(controlService);
 
             auto built =
                 BuildHostBinding(bootstrap, hostConfig, controlService, {});
             if (HasError(built)) {
                 pool->ReleaseControlChannel(fqdn);
-                return MakeFuture(
-                    TResultOrError<ICellConnectionPtr>(built.GetError()));
+                return built.GetError();
             }
-            built.GetResult()->ChannelEpoch = pool->GetChannelEpoch(fqdn);
+
+            auto binding = built.ExtractResult();
+            binding->ChannelEpoch = pool->GetChannelEpoch(fqdn);
 
             auto registry = bootstrap.Connections;
             auto connection = std::make_shared<TCellConnection>(
                 pool,
                 std::move(bootstrap),
-                std::move(clientConfig),
                 std::move(observer),
-                std::move(controlRouter),
-                std::move(dataRouter),
-                built.GetResult());
+                binding);
 
-            // The data endpoint handler needs the connection to exist first.
-            auto error = connection->PrepareDataPath(built.GetResult());
+            auto error = connection->PrepareBinding(binding);
             if (HasError(error)) {
-                // no explicit release here, unlike the branches above: the
-                // connection now exists and owns the channel, and its
-                // destructor releases it as it unwinds. Releasing here too
-                // would drop the channel a second time, out from under any
-                // other connection sharing a discovered host
-                return MakeFuture(TResultOrError<ICellConnectionPtr>(error));
+                // no release here: the connection owns the channel now, and
+                // its destructor releases it
+                return error;
             }
 
-            connection->InstallBinding(built.GetResult());
+            connection->InstallBinding(binding);
 
             if (pool->WatchHost(fqdn, connection)) {
                 connection->OnHostUnavailable(
@@ -1604,8 +1376,7 @@ TCellConnectionFuture CreateCellConnection(
                 registry->Add(connection);
             }
 
-            return MakeFuture(
-                TResultOrError<ICellConnectionPtr>(std::move(connection)));
+            return ICellConnectionPtr(std::move(connection));
         });
 }
 

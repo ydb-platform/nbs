@@ -13,14 +13,14 @@ namespace NCloud::NIcV2::NTests {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestListenerClient final: public IListenerClient
+class TTestListenerHandler final: public IListenerHandler
 {
     const std::function<void(TSocketResult)> Callback;
 
 public:
-    explicit TTestListenerClient(std::function<void(TSocketResult)> callback);
+    explicit TTestListenerHandler(std::function<void(TSocketResult)> callback);
 
-    void OnConnection(TSocketPtr socket) override;
+    void OnSocketAccepted(TSocketPtr socket) override;
     void OnError(const NProto::TError& error) override;
 };
 

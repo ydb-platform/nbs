@@ -1,4 +1,4 @@
-#include "peer_request_channel.h"
+#include "peer_request_sender.h"
 
 #include <util/generic/scope.h>
 #include <util/system/yassert.h>
@@ -44,9 +44,9 @@ TDataResponseResult ClassifyChannelResult(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPeerRequestChannel final
-    : public IDataRequestChannel
-    , public std::enable_shared_from_this<TPeerRequestChannel>
+class TPeerRequestSender final
+    : public IDataRequestSender
+    , public std::enable_shared_from_this<TPeerRequestSender>
 {
     enum class EPhase : ui32
     {
@@ -68,7 +68,7 @@ class TPeerRequestChannel final
     TPromise<void> Closed = NewPromise<void>();
 
 public:
-    explicit TPeerRequestChannel(IPeerPtr peer)
+    explicit TPeerRequestSender(IPeerPtr peer)
         : Peer(std::move(peer))
     {}
 
@@ -89,7 +89,7 @@ public:
 
         auto promise = NewPromise<TDataResponseResult>();
         auto response = promise.GetFuture();
-        const auto channelFuture = Peer->GetChannel();
+        const auto channelFuture = Peer->GetRequestChannel();
         if (!IsRunning()) {
             CompleteRequest(std::move(promise), MakeClosedError());
             return response;
@@ -211,11 +211,11 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IDataRequestChannelPtr CreatePeerRequestChannel(IPeerPtr peer)
+IDataRequestSenderPtr CreateDataRequestSender(IPeerPtr peer)
 {
     Y_DEBUG_ABORT_UNLESS(peer);
 
-    return std::make_shared<TPeerRequestChannel>(std::move(peer));
+    return std::make_shared<TPeerRequestSender>(std::move(peer));
 }
 
 }   // namespace NCloud::NBlockStore::NIcV2

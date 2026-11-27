@@ -71,7 +71,7 @@ TResultOrError<IPeerPtr> TPeerManager::CreatePeer(
             std::move(handler));
         Registry->Peers.emplace(id, peer);
     }
-    peer->GetChannel();
+    peer->GetRequestChannel();
     return IPeerPtr(std::move(peer));
 }
 
@@ -132,7 +132,7 @@ void TPeerManager::Stop()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IChannelFactory::~IChannelFactory() = default;
+IRequestChannelFactory::~IRequestChannelFactory() = default;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -144,7 +144,7 @@ TResultOrError<IPeerManagerPtr> CreatePeerManager(
     ISchedulerPtr scheduler,
     IAddressResolverPtr resolver,
     ITaskQueuePtr completions,
-    IChannelFactoryPtr channelFactory)
+    IRequestChannelFactoryPtr channelFactory)
 {
     if (!connector || !handshake || !timer || !scheduler || !resolver ||
         !completions || !channelFactory)

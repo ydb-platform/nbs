@@ -61,19 +61,19 @@ class TListener final
     NStorage::NServer::TSocketPoller SocketPoller;
     TSocketPtr Socket;
     const NInterconnect::TAddress Address;
-    const IListenerClientPtr Client;
+    const IListenerHandlerPtr Handler;
     const NPrivate::IListenerErrorInjectorPtr ErrorInjector;
 
 public:
     TListener(
         TSocketPtr socket,
         NInterconnect::TAddress address,
-        IListenerClientPtr client,
+        IListenerHandlerPtr handler,
         NPrivate::IListenerErrorInjectorPtr errorInjector)
         : Worker(*this)
         , Socket(std::move(socket))
         , Address(address)
-        , Client(std::move(client))
+        , Handler(std::move(handler))
         , ErrorInjector(std::move(errorInjector))
     {
         SocketPoller.WaitRead(*Socket, this);
@@ -161,7 +161,7 @@ private:
                     WaitBeforeAcceptRetry();
                     break;
                 }
-                Client->OnError(MakeSocketError(error, "accept"));
+                Handler->OnError(MakeSocketError(error, "accept"));
                 RequestStop();
                 break;
             }
@@ -171,7 +171,7 @@ private:
                 continue;
             }
             if (!Worker.IsStopping()) {
-                Client->OnConnection(result.ExtractResult());
+                Handler->OnSocketAccepted(result.ExtractResult());
             }
         }
     }
@@ -186,7 +186,7 @@ private:
         // Waiting on the listen socket would immediately wake with a backlog.
         const int result = Worker.Poll({&wake, 1}, AcceptRetryDelayMs);
         if (result < 0 && !Worker.IsStopping()) {
-            Client->OnError(MakeSocketError(-result, "wait to retry accept"));
+            Handler->OnError(MakeSocketError(-result, "wait to retry accept"));
             RequestStop();
         }
     }
@@ -210,20 +210,20 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IListenerClient::~IListenerClient() = default;
+IListenerHandler::~IListenerHandler() = default;
 
 NPrivate::IListenerErrorInjector::~IListenerErrorInjector() = default;
 
 TResultOrError<IListenerPtr> NPrivate::CreateListener(
     const NInterconnect::TAddress& address,
     int backlog,
-    IListenerClientPtr client,
+    IListenerHandlerPtr handler,
     IListenerErrorInjectorPtr errorInjector)
 {
-    if (!client || backlog <= 0) {
+    if (!handler || backlog <= 0) {
         return MakeError(
             E_ARGUMENT,
-            "listener requires a client and positive backlog");
+            "listener requires a handler and positive backlog");
     }
     auto [socket, error] = CreateSocket(address);
     if (HasError(error)) {
@@ -264,7 +264,7 @@ TResultOrError<IListenerPtr> NPrivate::CreateListener(
             std::make_shared<TListener>(
                 std::move(socket),
                 bound,
-                std::move(client),
+                std::move(handler),
                 std::move(errorInjector)));
     } catch (const TSystemError& error) {
         return MakeSocketError(error.Status(), "create listener resources");
@@ -273,12 +273,12 @@ TResultOrError<IListenerPtr> NPrivate::CreateListener(
 
 TResultOrError<IListenerPtr> CreateListener(
     const NInterconnect::TAddress& address,
-    IListenerClientPtr client)
+    IListenerHandlerPtr handler)
 {
     return NPrivate::CreateListener(
         address,
         SocketBacklog,
-        std::move(client),
+        std::move(handler),
         nullptr);
 }
 

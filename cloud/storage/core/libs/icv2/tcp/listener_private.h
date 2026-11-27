@@ -19,7 +19,7 @@ using IListenerErrorInjectorPtr = std::shared_ptr<IListenerErrorInjector>;
 TResultOrError<IListenerPtr> CreateListener(
     const NInterconnect::TAddress& address,
     int backlog,
-    IListenerClientPtr client,
+    IListenerHandlerPtr handler,
     IListenerErrorInjectorPtr errorInjector);
 
 }   // namespace NCloud::NIcV2::NPrivate

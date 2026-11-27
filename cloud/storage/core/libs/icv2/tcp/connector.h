@@ -8,18 +8,17 @@ namespace NCloud::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Connect asynchronously after Start(). Restart is not supported.
-// Stop() waits for completions. Completion callbacks must not throw,
-// call Stop(), or release the last reference to the connector.
+// Start once before Connect(). Stop() waits for result callbacks.
+// Callbacks must not throw, call Stop(), or destroy the connector.
 struct IConnector: public IStartable
 {
-    // Timeout starts at this call. Stop() does not close returned sockets.
-    // Calls before Start() or after shutdown are rejected.
+    // Timeout starts at this call. Calls before Start() or after shutdown are
+    // rejected. Returned sockets remain open after Stop().
     virtual TSocketFuture Connect(
         const NInterconnect::TAddress& address,
         TDuration timeout) = 0;
 
-    // Safe in completion callbacks; call Stop() afterwards to await shutdown.
+    // Safe in callbacks; call Stop() outside callbacks to finish shutdown.
     virtual void RequestStop() = 0;
 };
 

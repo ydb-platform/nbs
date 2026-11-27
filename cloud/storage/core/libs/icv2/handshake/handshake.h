@@ -34,31 +34,28 @@ using TAcceptHandshakeOutcome =
 using TAcceptHandshakeResult = TResultOrError<TAcceptHandshakeOutcome>;
 using TAcceptHandshakeFuture = NThreading::TFuture<TAcceptHandshakeResult>;
 
-// Start once before Connect/Accept; both may be called repeatedly and
-// concurrently. Stop cancels unfinished handshakes and waits for continuations;
-// handshakes already completing may succeed. Restart is not supported, and
-// completed connections survive Stop. Submit connected, nonblocking sockets
-// and do not use them elsewhere; a failed handshake closes its socket.
-// Each timeout starts at the call and includes queue time. After Start, the
-// owner must keep a strong reference until Stop returns. Call Stop outside a
-// continuation; RequestStop alone is not enough. Continuations must not throw.
+// Start once before Connect()/Accept(); concurrent calls are allowed.
+// Pass connected, nonblocking sockets and do not use them elsewhere.
+// Failure closes the submitted socket. Timeout covers the entire operation.
+// Stop() cancels pending handshakes and waits for callbacks; handshakes already
+// completing may succeed. Completed sockets remain open after Stop().
+// Keep the provider alive until Stop() returns. Call Stop() outside callbacks;
+// callbacks must not throw. Restart is unsupported.
 struct IHandshakeProvider: public IStartable
 {
-    // Use for outgoing sockets. If both peers enable XDC, opens a second socket
-    // to the same address and port within the timeout.
+    // Use for outgoing sockets; negotiates XDC when both peers enable it.
     virtual TConnectHandshakeFuture Connect(
         TSocketPtr socket,
         TDuration timeout) = 0;
 
-    // Submit every accepted socket to the same provider. Create a channel for
-    // THandshakeReady; ignore THandshakeIncomplete. Timeout includes
-    // waiting for the other socket when XDC is enabled on both peers.
+    // Submit all accepted sockets to the same provider. Create a channel only
+    // for THandshakeReady; ignore THandshakeIncomplete.
     virtual TAcceptHandshakeFuture Accept(
         TSocketPtr socket,
         TDuration timeout) = 0;
 
-    // Safe from continuations. Rejects new work without waiting for completion;
-    // call Stop elsewhere to wait.
+    // Rejects new work without waiting. Safe in callbacks; call Stop() outside
+    // callbacks to finish shutdown.
     virtual void RequestStop() = 0;
 };
 

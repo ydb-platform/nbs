@@ -252,13 +252,13 @@ private:
     }
 };
 
-class TTestDataRequestChannel final: public IDataRequestChannel
+class TTestDataRequestSender final: public IDataRequestSender
 {
     const IRequestChannelPtr Channel;
     const NThreading::TFuture<void> Closed;
 
 public:
-    explicit TTestDataRequestChannel(IRequestChannelPtr channel)
+    explicit TTestDataRequestSender(IRequestChannelPtr channel)
         : Channel(std::move(channel))
         , Closed(Channel->WhenClosed().IgnoreResult())
     {}
@@ -400,7 +400,7 @@ struct TFixture
         TDataConfig targetConfig = {})
     {
         Endpoint = CreateDataEndpoint(
-            std::make_shared<TTestDataRequestChannel>(Channel),
+            std::make_shared<TTestDataRequestSender>(Channel),
             endpointConfig);
         auto [target, targetError] =
             CreateDataTarget(Service, Executor, targetConfig);
@@ -589,7 +589,7 @@ struct TNetworkFixture
             UNIT_ASSERT_C(!HasError(error), FormatError(error));
             Channels[i] = std::move(channel);
             Endpoints[i] = CreateDataEndpoint(
-                std::make_shared<TTestDataRequestChannel>(Channels[i]),
+                std::make_shared<TTestDataRequestSender>(Channels[i]),
                 {});
             Peers[i].Data.resize(8 * 1024 * 1024, 'x');
         }

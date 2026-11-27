@@ -507,12 +507,7 @@ def test_set_node_attr_quota_id():
     result = json.dumps(__process_stat(stat))
     result += "\n"
 
-    client.execute_action("setquota", {
-        "FileSystemId": "fs0",
-        "QuotaId": 42,
-        "MaxBytes": 1024 * 1024 * 1024,
-        "MaxNodes": 100,
-    })
+    client.set_quota("fs0", 42, 1024 * 1024 * 1024, 100)
     client.set_node_attr("fs0", node_id, "--quota-id", 42)
 
     out = client.stat("fs0", "/aaa")
@@ -527,6 +522,29 @@ def test_set_node_attr_quota_id():
 
     ret = common.canonical_file(results_path, local=True)
     return ret
+
+
+def test_quotas():
+    client, _ = __init_test()
+    client.create("fs0", "test_cloud", "test_folder", BLOCK_SIZE, BLOCKS_COUNT)
+
+    quota = json.loads(client.set_quota("fs0", 42, 1024, 10))["Quota"]
+    assert quota["QuotaId"] == 42
+    assert int(quota["MaxBytes"]) == 1024
+
+    # same id: the limits are updated
+    client.set_quota("fs0", 42, 2048, 20)
+
+    quotas = json.loads(client.list_quotas("fs0")).get("Quotas", [])
+    assert len(quotas) == 1
+    assert quotas[0]["QuotaId"] == 42
+    assert int(quotas[0]["MaxBytes"]) == 2048
+    assert int(quotas[0]["MaxNodes"]) == 20
+
+    client.delete_quota("fs0", 42)
+    assert json.loads(client.list_quotas("fs0")).get("Quotas", []) == []
+
+    client.destroy("fs0")
 
 
 def test_partial_set_node_attr():

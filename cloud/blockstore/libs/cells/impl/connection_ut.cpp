@@ -375,7 +375,6 @@ struct TTestEnv
             Pool,
             Pool->MakeHostConfig(fqdn),
             Bootstrap,
-            std::make_shared<NClient::TClientAppConfig>(),
             Observer);
 
         return future;
