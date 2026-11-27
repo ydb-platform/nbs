@@ -738,6 +738,7 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("CMS configs initialized");
 
+    NStorage::TStorageConfigMutablePtr runtimeStorageConfig;
     NProto::TBlockstoreConfig startupBlockstoreConfigProto;
     NConfig::TConfigPreparationDiagnostics
         startupDynamicConfigNormalizationDiagnostics;
@@ -754,6 +755,7 @@ void TBootstrapYdb::InitKikimrService()
             std::move(extraParameters));
         startupBlockstoreConfigProto = std::move(startupConfig.Proto);
         StartupBlockstoreConfig = std::move(startupConfig.Config);
+        runtimeStorageConfig = std::move(startupConfig.StorageConfig);
         startupDynamicConfigNormalizationDiagnostics =
             std::move(startupConfig.NormalizationDiagnostics);
 
@@ -1076,6 +1078,7 @@ void TBootstrapYdb::InitKikimrService()
         std::move(startupRejectedSectionsReason);
     args.StartupBlockstoreConfigProto = std::move(startupBlockstoreConfigProto);
     args.StartupBlockstoreConfig = StartupBlockstoreConfig;
+    args.RuntimeStorageConfig = std::move(runtimeStorageConfig);
     args.ConfigHolder = std::move(configHolder);
     args.AsyncLogger = AsyncLogger;
     args.StatsAggregator = StatsAggregator;

@@ -166,8 +166,7 @@ public:
                             Args.StartupDynamicConfigNormalizationDiagnostics,
                         .StartupRejectedSectionsReason =
                             Args.StartupRejectedSectionsReason,
-                        .StorageConfigControls =
-                            storageConfig->GetControls(),
+                        .StorageConfig = Args.RuntimeStorageConfig,
                     }),
                     TMailboxType::Revolving,
                     appData->UserPoolId));

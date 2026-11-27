@@ -402,7 +402,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             staticConfig,
             startup.Proto,
             dynamicConfig,
-            controls,
+            startup.StorageConfig,
             /*extraParameters=*/{},
             renderer.Data.CurrentConfigPreparationDiagnostics);
         renderer.Data.UpdateStatus = EConfigUpdateStatus::Runtime;
@@ -506,7 +506,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             staticConfig,
             startup.Proto,
             dynamicConfig,
-            controls,
+            startup.StorageConfig,
             /*extraParameters=*/{},
             renderer.Data.CurrentConfigPreparationDiagnostics);
         const auto html = renderer.RenderHtml(
@@ -606,7 +606,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             staticConfig,
             startup.Proto,
             {},
-            controls,
+            startup.StorageConfig,
             /*extraParameters=*/{},
             renderer.Data.CurrentConfigPreparationDiagnostics);
         renderer.Data.UpdateStatus = EConfigUpdateStatus::Runtime;
@@ -883,7 +883,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
                     /*extraParameters=*/{})
                     .Config;
             controls->UpdateDefaults(
-                config->GetStorageConfig()->GetConfigProto());
+                *config->GetStorageServiceConfig());
             NKikimr::TControlBoard board;
             controls->Register(board);
 
@@ -936,15 +936,21 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         const auto startupConfig =
             MergeBlockstoreConfigSources(staticConfig, startupDynamicConfig);
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
+        const auto sharedStorageConfig =
+            MakeBlockstoreConfig(
+                startupConfig,
+                controls,
+                /*extraParameters=*/{})
+                ->GetStorageConfig();
         NConfig::TConfigPreparationDiagnostics diagnostics;
         const auto config = MakeRuntimeBlockstoreConfig(
             staticConfig,
             startupConfig,
             dynamicConfig,
-            controls,
+            sharedStorageConfig,
             /*extraParameters=*/{},
             diagnostics);
-        controls->UpdateDefaults(config->GetStorageConfig()->GetConfigProto());
+        controls->UpdateDefaults(*config->GetStorageServiceConfig());
         NKikimr::TControlBoard board;
         controls->Register(board);
         TAtomic previous = 0;
@@ -1029,7 +1035,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
                 controls,
                 /*extraParameters=*/{})
                 .Config;
-        controls->UpdateDefaults(config->GetStorageConfig()->GetConfigProto());
+        controls->UpdateDefaults(*config->GetStorageServiceConfig());
         NKikimr::TControlBoard controlBoard;
         controls->Register(controlBoard);
         TAtomic previous = 0;
@@ -1177,7 +1183,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
                 controls,
                 /*extraParameters=*/{})
                 .Config;
-        controls->UpdateDefaults(config->GetStorageConfig()->GetConfigProto());
+        controls->UpdateDefaults(*config->GetStorageServiceConfig());
         NKikimr::TControlBoard board;
         controls->Register(board);
         TAtomic previous = 0;
@@ -1362,7 +1368,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             staticConfig,
             startupConfig,
             dynamicConfig,
-            controls,
+            config->GetStorageConfig(),
             /*extraParameters=*/{},
             renderer.Data.CurrentConfigPreparationDiagnostics);
         renderer.Data.UpdateStatus = EConfigUpdateStatus::Runtime;
@@ -1409,6 +1415,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
         const auto startupConfig =
             MergeBlockstoreConfigSources(staticConfig, startupDynamicConfig);
+        const auto sharedStorageConfig =
+            MakeBlockstoreConfig(
+                startupConfig,
+                controls,
+                /*extraParameters=*/{})
+                ->GetStorageConfig();
         TBlockstoreConfigRenderer renderer{
             .Data =
                 {
@@ -1423,7 +1435,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             staticConfig,
             startupConfig,
             dynamicConfig,
-            controls,
+            sharedStorageConfig,
             /*extraParameters=*/{},
             renderer.Data.CurrentConfigPreparationDiagnostics);
         const auto html = renderer.RenderHtml(
@@ -1551,17 +1563,23 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         storage->AddKnownSpareNodes("node-a");
         storage->AddKnownSpareNodes("node-b");
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
+        const auto sharedStorageConfig =
+            MakeBlockstoreConfig(
+                startupConfig,
+                controls,
+                /*extraParameters=*/{})
+                ->GetStorageConfig();
         NConfig::TConfigPreparationDiagnostics diagnostics;
         auto config = MakeRuntimeBlockstoreConfig(
             staticConfig,
             startupConfig,
             dynamicConfig,
-            controls,
+            sharedStorageConfig,
             /*extraParameters=*/{},
             diagnostics);
 
         // Override a permitted field after publishing its configured default.
-        controls->UpdateDefaults(config->GetStorageConfig()->GetConfigProto());
+        controls->UpdateDefaults(*config->GetStorageServiceConfig());
         NKikimr::TControlBoard board;
         controls->Register(board);
         TAtomic previous = 0;
@@ -1703,7 +1721,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             staticConfig,
             startup.Proto,
             dynamicConfig,
-            controls,
+            startup.StorageConfig,
             /*extraParameters=*/{},
             diagnostics);
 

@@ -72,7 +72,7 @@ TConfigInitializerYdb::BuildCurrentBlockstoreConfig() const
     }
     if (StorageConfig) {
         config.MutableStorageService()->CopyFrom(
-            StorageConfig->GetEffectiveStorageConfigProto());
+            *StorageConfig->GetConfigProto());
     }
     if (DiskRegistryProxyConfig) {
         config.MutableDiskRegistryProxy()->CopyFrom(
@@ -415,7 +415,7 @@ void TConfigInitializerYdb::ApplyServerAppConfig(const TString& text)
     }
     if (StorageConfig) {
         ApplyStorageServiceConfig(
-            ProtoToText(StorageConfig->GetEffectiveStorageConfigProto()));
+            ProtoToText(*StorageConfig->GetConfigProto()));
     }
     ApplyRootKmsConfig(ProtoToText(RootKmsConfig));
 }

@@ -14,6 +14,9 @@ namespace NProto {
     class TStorageServiceConfig;
 }   // namespace NProto
 
+using TStorageServiceConfigPtr =
+    std::shared_ptr<const NProto::TStorageServiceConfig>;
+
 namespace NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////

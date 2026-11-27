@@ -73,6 +73,9 @@ struct TServerActorSystemArgs
     // In YAML mode, includes accepted PrivateDatabaseConfig overrides.
     IBlockstoreConfigMutablePtr StartupBlockstoreConfig;
 
+    // Writer for the startup Storage object when runtime YAML is enabled.
+    TStorageConfigMutablePtr RuntimeStorageConfig;
+
     // Configuration publication point initialized by bootstrap; non-null and
     // shared with its read-only getter and the process-wide provider.
     TBlockstoreConfigHolderPtr ConfigHolder;

@@ -1,11 +1,3 @@
-/*******************************************************************************
-
-Configuration construction owns immutable runtime wrappers for all merged
-sections. Storage configuration copies retain the shared ICB controls and use
-the features wrapper created from the merged protobuf configuration.
-
-*******************************************************************************/
-
 #include "blockstore_config_management.h"
 
 #include "sections_update.h"
@@ -22,19 +14,20 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 // The private IBlockstoreConfig implementation and owner of its runtime
-// wrappers and protobuf sections. Only MakeBlockstoreConfig() and
-// MakeStartupBlockstoreConfig() create instances.
+// wrappers and protobuf sections.
 class TBlockstoreConfigImpl final: public IBlockstoreConfig
 {
 public:
     TBlockstoreConfigImpl(
         const NProto::TBlockstoreConfig& config,
         NFeatures::TFeaturesConfigPtr featuresConfig,
+        TStorageServiceConfigPtr storageServiceConfig,
         NStorage::TStorageConfigPtr storageConfig,
         NStorage::TDiskAgentConfigPtr diskAgentConfig);
 
     const NServer::TServerAppConfigPtr& GetServerConfig() const override;
 
+    const TStorageServiceConfigPtr& GetStorageServiceConfig() const override;
     const NFeatures::TFeaturesConfigPtr&
     GetFeaturesConfig() const override;
 
@@ -83,6 +76,8 @@ public:
 
 private:
     const NServer::TServerAppConfigPtr ServerConfig;
+    // StorageServiceConfig section of this publication before ICB overrides.
+    const TStorageServiceConfigPtr StorageServiceConfig;
     const NFeatures::TFeaturesConfigPtr FeaturesConfig;
     const NStorage::TStorageConfigPtr StorageConfig;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
@@ -107,10 +102,12 @@ private:
 TBlockstoreConfigImpl::TBlockstoreConfigImpl(
     const NProto::TBlockstoreConfig& config,
     NFeatures::TFeaturesConfigPtr featuresConfig,
+    TStorageServiceConfigPtr storageServiceConfig,
     NStorage::TStorageConfigPtr storageConfig,
     NStorage::TDiskAgentConfigPtr diskAgentConfig)
     : ServerConfig(
           std::make_shared<NServer::TServerAppConfig>(config.GetServer()))
+    , StorageServiceConfig(std::move(storageServiceConfig))
     , FeaturesConfig(std::move(featuresConfig))
     , StorageConfig(std::move(storageConfig))
     , DiagnosticsConfig(
@@ -156,6 +153,12 @@ const NServer::TServerAppConfigPtr&
 TBlockstoreConfigImpl::GetServerConfig() const
 {
     return ServerConfig;
+}
+
+const TStorageServiceConfigPtr&
+TBlockstoreConfigImpl::GetStorageServiceConfig() const
+{
+    return StorageServiceConfig;
 }
 
 const NFeatures::TFeaturesConfigPtr&
@@ -416,28 +419,64 @@ TBlockstoreConfigExtraParameters GetBlockstoreConfigExtraParameters(
     };
 }
 
-IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
+namespace {
+
+// Build the DiskAgent wrapper from the proto and host settings, then assemble
+// the snapshot using the supplied storage and feature sections.
+IBlockstoreConfigMutablePtr BuildPublication(
+    const NProto::TBlockstoreConfig& config,
+    NFeatures::TFeaturesConfigPtr features,
+    TStorageServiceConfigPtr rawStorage,
+    NStorage::TStorageConfigPtr sharedStorageConfig,
+    TBlockstoreConfigExtraParameters extraParameters)
+{
+    auto diskAgent = std::make_shared<NStorage::TDiskAgentConfig>(
+        config.GetDiskAgent(),
+        std::move(extraParameters.DiskAgent.Rack),
+        extraParameters.DiskAgent.NetworkMbitThroughput);
+    return MakeIntrusive<TBlockstoreConfigImpl>(
+        config,
+        std::move(features),
+        std::move(rawStorage),
+        std::move(sharedStorageConfig),
+        std::move(diskAgent));
+}
+
+// Build a snapshot and return it with a mutable pointer to its new
+// TStorageConfig.
+auto BuildInitialPublication(
     const NProto::TBlockstoreConfig& config,
     NStorage::TStorageConfigControlsPtr controls,
     TBlockstoreConfigExtraParameters extraParameters)
 {
     Y_ABORT_UNLESS(controls);
-    auto featuresConfig =
+    auto features =
         std::make_shared<NFeatures::TFeaturesConfig>(config.GetFeatures());
-    auto storageConfig = std::make_shared<NStorage::TStorageConfig>(
+    auto storage = std::make_shared<NStorage::TStorageConfig>(
         config.GetStorageService(),
-        featuresConfig,
+        features,
         std::move(controls));
-    auto diskAgentConfig = std::make_shared<NStorage::TDiskAgentConfig>(
-        config.GetDiskAgent(),
-        std::move(extraParameters.DiskAgent.Rack),
-        extraParameters.DiskAgent.NetworkMbitThroughput);
-
-    return MakeIntrusive<TBlockstoreConfigImpl>(
+    auto publication = BuildPublication(
         config,
-        std::move(featuresConfig),
-        std::move(storageConfig),
-        std::move(diskAgentConfig));
+        std::move(features),
+        storage->GetConfigProto(),
+        storage,
+        std::move(extraParameters));
+    return std::pair(std::move(publication), std::move(storage));
+}
+
+}   // namespace
+
+IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
+    const NProto::TBlockstoreConfig& config,
+    NStorage::TStorageConfigControlsPtr controls,
+    TBlockstoreConfigExtraParameters extraParameters)
+{
+    return BuildInitialPublication(
+               config,
+               std::move(controls),
+               std::move(extraParameters))
+        .first;
 }
 
 IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
@@ -447,17 +486,34 @@ IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
 {
     auto featuresConfig =
         std::make_shared<NFeatures::TFeaturesConfig>(config.GetFeatures());
-    auto storageConfigCopy =
-        std::make_shared<NStorage::TStorageConfig>(storageConfig);
-    storageConfigCopy->SetFeaturesConfig(featuresConfig);
+    auto storageConfigCopy = std::make_shared<NStorage::TStorageConfig>(
+        *storageConfig.GetConfigProto(),
+        featuresConfig,
+        storageConfig.GetControls());
+    auto rawStorage = storageConfigCopy->GetConfigProto();
     auto diskAgentConfigCopy =
         std::make_shared<NStorage::TDiskAgentConfig>(diskAgentConfig);
 
     return MakeIntrusive<TBlockstoreConfigImpl>(
         config,
         std::move(featuresConfig),
+        std::move(rawStorage),
         std::move(storageConfigCopy),
         std::move(diskAgentConfigCopy));
+}
+
+IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
+    const NProto::TBlockstoreConfig& config,
+    NStorage::TStorageConfigPtr sharedStorageConfig,
+    TBlockstoreConfigExtraParameters extraParameters)
+{
+    return BuildPublication(
+        config,
+        std::make_shared<NFeatures::TFeaturesConfig>(config.GetFeatures()),
+        std::make_shared<const NProto::TStorageServiceConfig>(
+            config.GetStorageService()),
+        std::move(sharedStorageConfig),
+        std::move(extraParameters));
 }
 
 TBlockstoreConfigBuildResult MakeStartupBlockstoreConfig(
@@ -471,7 +527,7 @@ TBlockstoreConfigBuildResult MakeStartupBlockstoreConfig(
         NormalizeDynamicBlockstoreConfig(staticConfig, dynamicConfigCopy);
 
     auto proto = MergeBlockstoreConfigSources(staticConfig, dynamicConfigCopy);
-    auto config = MakeBlockstoreConfig(
+    auto [config, storage] = BuildInitialPublication(
         proto,
         std::move(controls),
         std::move(extraParameters));
@@ -479,6 +535,7 @@ TBlockstoreConfigBuildResult MakeStartupBlockstoreConfig(
     return {
         .Proto = std::move(proto),
         .Config = std::move(config),
+        .StorageConfig = std::move(storage),
         .HasDynamicOverrides = HasKnownFields(dynamicConfigCopy),
         .NormalizationDiagnostics = std::move(normalizationDiagnostics),
     };
@@ -501,7 +558,7 @@ IBlockstoreConfigMutablePtr MakeRuntimeBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& startupConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
-    NStorage::TStorageConfigControlsPtr controls,
+    NStorage::TStorageConfigPtr sharedStorageConfig,
     TBlockstoreConfigExtraParameters extraParameters,
     NConfig::TConfigPreparationDiagnostics& diagnostics)
 {
@@ -526,7 +583,7 @@ IBlockstoreConfigMutablePtr MakeRuntimeBlockstoreConfig(
     // throws; replace it only for a completed configuration.
     auto config = MakeBlockstoreConfig(
         runtimeConfig,
-        std::move(controls),
+        std::move(sharedStorageConfig),
         std::move(extraParameters));
     diagnostics = std::move(configDiagnostics);
     return config;

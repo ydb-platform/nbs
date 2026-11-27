@@ -107,6 +107,48 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_C(!HasError(error), FormatError(error));
     }
 
+    // Check exact scalar encoding, removal and feature updates on a retained
+    // copy.
+    Y_UNIT_TEST(ShouldReplaceRwFallbacksAndShareFeatureUpdates)
+    {
+        // Retain both a local working copy and the initial raw publication.
+        TStorageConfig server({},
+                              std::make_shared<NFeatures::TFeaturesConfig>());
+        TStorageConfig volume(server);
+        auto initial = server.GetConfigProto();
+        auto next = std::make_shared<TStorageProto>();
+        next->SetNonReplicatedAgentTimeoutGrowthFactor(2.75);
+        next->SetMaxReadWriteRangeSize(Max<ui64>());
+        next->SetHiveLockExpireTimeout(123);
+        server.ApplyRwConfig(next);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2.75, server.GetNonReplicatedAgentTimeoutGrowthFactor());
+        UNIT_ASSERT_VALUES_EQUAL(Max<ui64>(),
+                                 server.GetMaxReadWriteRangeSize());
+        UNIT_ASSERT_VALUES_EQUAL(TDuration::MilliSeconds(123),
+                                 server.GetHiveLockExpireTimeout());
+        UNIT_ASSERT(!initial->HasMaxReadWriteRangeSize());
+        UNIT_ASSERT_VALUES_UNEQUAL(Max<ui64>(),
+                                   volume.GetMaxReadWriteRangeSize());
+
+        // Advance shared feature rules independently of the local RW base.
+        NCloud::NProto::TFeaturesConfig rules;
+        auto* feature = rules.AddFeatures();
+        feature->SetName("UseRdma");
+        feature->MutableWhitelist()->AddEntityIds("volume");
+        server.SetFeaturesConfig(
+            std::make_shared<NFeatures::TFeaturesConfig>(rules));
+        UNIT_ASSERT(volume.IsUseRdmaFeatureEnabled({}, {}, "volume"));
+        UNIT_ASSERT(!volume.IsUseRdmaFeatureEnabled({}, {}, "other"));
+
+        // Restore compiled defaults by replacing the complete base with an
+        // empty proto.
+        server.ApplyRwConfig(initial);
+        UNIT_ASSERT_VALUES_EQUAL(volume.GetMaxReadWriteRangeSize(),
+                                 server.GetMaxReadWriteRangeSize());
+        UNIT_ASSERT(!server.GetConfigProto()->HasMaxReadWriteRangeSize());
+    }
+
     // Check changed and unchanged ui32 defaults, including an explicit zero.
     Y_UNIT_TEST(ShouldUpdateDefaultsForUint32)
     {

@@ -122,8 +122,8 @@ private:
     // Monitoring metadata owned by the renderer and changed only by this actor.
     TBlockstoreConfigRenderer ConfigRenderer;
 
-    // ICB overrides shared by every published StorageConfig; non-null.
-    const NStorage::TStorageConfigControlsPtr StorageConfigControls;
+    // Server configuration retained by existing consumers across publications.
+    const NStorage::TStorageConfigMutablePtr StorageConfig;
 
     // ConfigsDispatcher actor; zero selects the node-local service.
     const TActorId ConfigsDispatcherId;
@@ -208,7 +208,7 @@ TConfigsManagerActor::TConfigsManagerActor(TConfigsManagerArgs args)
     , StaticConfig(std::move(args.StaticConfig))
     , StartupConfig(std::move(args.StartupConfig))
     , DynamicConfig(std::move(args.InitialDynamicConfig))
-    , StorageConfigControls(std::move(args.StorageConfigControls))
+    , StorageConfig(std::move(args.StorageConfig))
     , ConfigsDispatcherId(args.ConfigsDispatcherId)
 {
     InitRenderer(
@@ -539,10 +539,13 @@ void TConfigsManagerActor::Handle(
             StaticConfig,
             StartupConfig,
             newDynamicConfig,
-            StorageConfigControls,
+            StorageConfig,
             GetBlockstoreConfigExtraParameters(*currentConfig),
             diagnostics);
         rejectedSectionsReason = ReportConfigSectionsIssues(report, ctx);
+        // Allocate the feature holder before changing any of the live RW
+        // values.
+        StorageConfig->SetFeaturesConfig(newConfig->GetFeaturesConfig());
     } catch (...) {
         ReportConfigUpdateError(
             TStringBuilder()
@@ -554,8 +557,10 @@ void TConfigsManagerActor::Handle(
 
     // Publish before notifying consumers and acknowledging the dispatcher
     // so the new configuration is already available to readers.
+    StorageConfig->ApplyRwConfig(newConfig->GetStorageServiceConfig());
+    StorageConfig->GetControls()->UpdateDefaults(
+        *newConfig->GetStorageServiceConfig());
     ConfigHolder->Set(newConfig);
-    newConfig->GetStorageConfig()->UpdateControlsDefaults();
     DynamicConfig = std::move(newDynamicConfig);
     UpdateRendererOnAppliedConfig(
         ev,

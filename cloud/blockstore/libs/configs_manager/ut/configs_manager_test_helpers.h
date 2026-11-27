@@ -113,6 +113,7 @@ protected:
 
 #define FORWARDED_CONFIG_GETTERS(xxx)                                          \
     xxx(GetServerConfig)                                                       \
+    xxx(GetStorageServiceConfig)                                               \
     xxx(GetFeaturesConfig)                                                     \
     xxx(GetStorageConfig)                                                      \
     xxx(GetDiagnosticsConfig)                                                  \

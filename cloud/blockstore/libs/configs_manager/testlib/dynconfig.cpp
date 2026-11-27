@@ -18,11 +18,9 @@ TTestBlockstoreConfigProvider::TTestBlockstoreConfigProvider(
     NProto::TBlockstoreConfig config,
     NStorage::TStorageConfigControlsPtr controls)
     : Config(std::move(config))
-    , Controls(
-          controls ? std::move(controls)
-                   : std::make_shared<NStorage::TStorageConfigControls>(
-                         Config.GetStorageService()))
-    , Holder(MakeBlockstoreConfig(Config, Controls, /*extraParameters=*/{}))
+    , StorageConfig(std::make_shared<NStorage::TStorageConfig>(
+          Config.GetStorageService(), nullptr, std::move(controls)))
+    , Holder(BuildPublication())
 {}
 
 IBlockstoreConfigPtr TTestBlockstoreConfigProvider::Get() const
@@ -32,7 +30,18 @@ IBlockstoreConfigPtr TTestBlockstoreConfigProvider::Get() const
 
 void TTestBlockstoreConfigProvider::Publish()
 {
-    Holder.Set(MakeBlockstoreConfig(Config, Controls, /*extraParameters=*/{}));
+    Holder.Set(BuildPublication());
+}
+
+IBlockstoreConfigMutablePtr TTestBlockstoreConfigProvider::BuildPublication()
+{
+    auto publication = MakeBlockstoreConfig(
+        Config,
+        StorageConfig,
+        /*extraParameters=*/{});
+    StorageConfig->SetFeaturesConfig(publication->GetFeaturesConfig());
+    StorageConfig->ApplyRwConfig(publication->GetStorageServiceConfig());
+    return publication;
 }
 
 void SendDynconfigTo(

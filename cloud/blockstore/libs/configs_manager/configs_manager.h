@@ -64,8 +64,9 @@ struct TConfigsManagerArgs
     // by bootstrap. Empty if no sections were rejected.
     TString StartupRejectedSectionsReason;
 
-    // The non-null ICB controls reused by every storage adapter.
-    NStorage::TStorageConfigControlsPtr StorageConfigControls;
+    // The working server object distributed by Bootstrap, updated by this
+    // actor.
+    NStorage::TStorageConfigMutablePtr StorageConfig;
 
     // The dispatcher override; zero selects the node-local service.
     // Required for tests

@@ -54,9 +54,12 @@ using TVolumeThrottlingConfigPtr =
 // sections. MakeBlockstoreConfig() creates implementations that own all
 // sections, see blockstore_config_management.h.
 // Getters return const owning pointers, so callers may retain the
-// whole configuration or an individual section. The Storage wrapper shares
-// live ICB controls: its effective values may change while its protobuf-backed
-// state remains immutable.
+// whole configuration or an individual section.
+// Each configuration snapshot retains its own StorageServiceConfig and
+// FeaturesConfig sections published with it.
+// Each new snapshot reuses the TStorageConfig created at server startup;
+// its RW getters and feature queries reflect later updates even when accessed
+// through an older snapshot or retained TStorageConfigPtr.
 class IBlockstoreConfig: public TAtomicRefCount<IBlockstoreConfig>
 {
 public:
@@ -72,14 +75,18 @@ public:
     [[nodiscard]] virtual const NServer::TServerAppConfigPtr&
     GetServerConfig() const = 0;
 
-    // Return the top-level Features section for configuration inspection and
-    // serialization. Storage decisions must use the typed feature accessors
-    // provided by TStorageConfig instead of reading this section directly.
+    // Return the StorageServiceConfig and FeaturesConfig sections of this exact
+    // publication.
+    [[nodiscard]] virtual const TStorageServiceConfigPtr&
+    GetStorageServiceConfig() const = 0;
     [[nodiscard]] virtual const NFeatures::TFeaturesConfigPtr&
     GetFeaturesConfig() const = 0;
 
+    // Return the TStorageConfig shared by all snapshots of this server
+    // (RW values and feature rules reflect later configuration updates).
     [[nodiscard]] virtual const NStorage::TStorageConfigPtr&
     GetStorageConfig() const = 0;
+
     [[nodiscard]] virtual const TDiagnosticsConfigPtr&
     GetDiagnosticsConfig() const = 0;
     [[nodiscard]] virtual const NDiscovery::TDiscoveryConfigPtr&

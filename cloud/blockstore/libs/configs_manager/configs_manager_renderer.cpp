@@ -46,8 +46,9 @@ NProto::TBlockstoreConfig BuildEffectiveConfig(
     NProto::TBlockstoreConfig config;
 
     *config.MutableServer() = currentConfig.GetServerConfig()->GetAppConfig();
-    *config.MutableStorageService() =
-        currentConfig.GetStorageConfig()->GetEffectiveStorageConfigProto();
+    auto& storage = *config.MutableStorageService();
+    storage = *currentConfig.GetStorageServiceConfig();
+    currentConfig.GetStorageConfig()->GetControls()->ApplyOverrides(storage);
     *config.MutableFeatures() =
         currentConfig.GetFeaturesConfig()->GetConfigProto();
     *config.MutableDiagnostics() =
