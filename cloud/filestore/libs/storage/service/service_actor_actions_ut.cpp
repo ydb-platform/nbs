@@ -7,7 +7,6 @@
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
-#include <cloud/filestore/public/api/protos/quota.pb.h>
 
 #include <cloud/storage/core/libs/features/features_config.h>
 
@@ -114,77 +113,6 @@ NProtoPrivate::TMarkNodeRefsExhaustiveResponse ExecuteMarkNodeRefsExhaustive(
             jsonResponse->Record.GetOutput(),
             &response)
             .ok());
-    return response;
-}
-
-NProto::TSetQuotaResponse ExecuteSetQuota(
-    TServiceClient& service,
-    const TString& fsId,
-    ui32 quotaId,
-    ui64 maxBytes,
-    ui64 maxNodes)
-{
-    NProto::TSetQuotaRequest request;
-    request.SetFileSystemId(fsId);
-    request.SetQuotaId(quotaId);
-    request.SetMaxBytes(maxBytes);
-    request.SetMaxNodes(maxNodes);
-
-    TString buf;
-    google::protobuf::util::MessageToJsonString(request, &buf);
-
-    auto jsonResponse = service.ExecuteAction("setquota", buf);
-    UNIT_ASSERT_VALUES_EQUAL(S_OK, jsonResponse->GetStatus());
-
-    NProto::TSetQuotaResponse response;
-    auto status = google::protobuf::util::JsonStringToMessage(
-        jsonResponse->Record.GetOutput(),
-        &response);
-    UNIT_ASSERT_C(status.ok(), ToString(status.message()));
-    return response;
-}
-
-NProto::TDeleteQuotaResponse ExecuteDeleteQuota(
-    TServiceClient& service,
-    const TString& fsId,
-    ui32 quotaId)
-{
-    NProto::TDeleteQuotaRequest request;
-    request.SetFileSystemId(fsId);
-    request.SetQuotaId(quotaId);
-
-    TString buf;
-    google::protobuf::util::MessageToJsonString(request, &buf);
-
-    auto jsonResponse = service.ExecuteAction("deletequota", buf);
-    UNIT_ASSERT_VALUES_EQUAL(S_OK, jsonResponse->GetStatus());
-
-    NProto::TDeleteQuotaResponse response;
-    auto status = google::protobuf::util::JsonStringToMessage(
-        jsonResponse->Record.GetOutput(),
-        &response);
-    UNIT_ASSERT_C(status.ok(), ToString(status.message()));
-    return response;
-}
-
-NProto::TListQuotasResponse ExecuteListQuotas(
-    TServiceClient& service,
-    const TString& fsId)
-{
-    NProto::TListQuotasRequest request;
-    request.SetFileSystemId(fsId);
-
-    TString buf;
-    google::protobuf::util::MessageToJsonString(request, &buf);
-
-    auto jsonResponse = service.ExecuteAction("listquotas", buf);
-    UNIT_ASSERT_VALUES_EQUAL(S_OK, jsonResponse->GetStatus());
-
-    NProto::TListQuotasResponse response;
-    auto status = google::protobuf::util::JsonStringToMessage(
-        jsonResponse->Record.GetOutput(),
-        &response);
-    UNIT_ASSERT_C(status.ok(), ToString(status.message()));
     return response;
 }
 
@@ -1860,38 +1788,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             static_cast<int>(
                 NKikimrHive::DRAIN_POLICY_KEEP_DOWN_UNTIL_RESTART),
             static_cast<int>(observedDownPolicy));
-    }
-
-    Y_UNIT_TEST(ShouldPerformQuotaActions)
-    {
-        TTestEnv env;
-
-        ui32 nodeIdx = env.AddDynamicNode();
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-
-        const TString fsId = "fs";
-        service.CreateFileStore(fsId, 1'000);
-
-        auto setResponse = ExecuteSetQuota(service, fsId, 42, 1_GB, 100);
-        UNIT_ASSERT_VALUES_EQUAL(42u, setResponse.GetQuota().GetQuotaId());
-        UNIT_ASSERT_VALUES_EQUAL(1_GB, setResponse.GetQuota().GetMaxBytes());
-        UNIT_ASSERT_VALUES_EQUAL(100u, setResponse.GetQuota().GetMaxNodes());
-
-        {
-            auto listResponse = ExecuteListQuotas(service, fsId);
-            UNIT_ASSERT_VALUES_EQUAL(1, listResponse.QuotasSize());
-            UNIT_ASSERT_VALUES_EQUAL(
-                42u,
-                listResponse.GetQuotas(0).GetQuotaId());
-        }
-
-        ExecuteDeleteQuota(service, fsId, 42);
-
-        {
-            auto listResponse = ExecuteListQuotas(service, fsId);
-            UNIT_ASSERT_VALUES_EQUAL(0, listResponse.QuotasSize());
-        }
     }
 }
 
