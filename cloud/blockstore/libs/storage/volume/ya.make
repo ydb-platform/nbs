@@ -12,6 +12,7 @@ SRCS(
     volume_actor_change_storage_config.cpp
     volume_actor_checkpoint.cpp
     volume_actor_cleanup_history.cpp
+    volume_actor_dynconfig.cpp
     volume_actor_follower.cpp
     volume_actor_forward.cpp
     volume_actor_forward_trackused.cpp
@@ -50,6 +51,7 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/libs/common
+    cloud/blockstore/libs/config
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/service
