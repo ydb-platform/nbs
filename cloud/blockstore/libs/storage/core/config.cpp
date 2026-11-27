@@ -2,8 +2,8 @@
 
 Storage configuration wrappers keep raw protobuf values and share live ICB
 controls. Read-write getters use ICB Value when it differs from Default and,
-for enums, matches a declared value. Otherwise they return their own raw value
-or the compiled fallback.
+for enums, matches a declared value. Otherwise they load their local atomic
+fallback, resolved from the latest accepted raw value or the compiled default.
 
 
 DOUBLE VALUES PROCESSING
@@ -43,6 +43,7 @@ resumes reading the raw value; it does not clamp the value returned by a getter.
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
+#include <library/cpp/threading/hot_swap/hot_swap.h>
 
 #include <util/generic/size_literals.h>
 #include <util/string/builder.h>
@@ -53,6 +54,8 @@ resumes reading the raw value; it does not clamp the value returned by a getter.
 #include <google/protobuf/text_format.h>
 #include <google/protobuf/util/message_differencer.h>
 
+#include <atomic>
+#include <bit>
 #include <cmath>
 #include <limits>
 #include <type_traits>
@@ -1328,51 +1331,122 @@ TStorageConfigControls::GetOverrideInfo(TStringBuf name) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace {
+
+// An immutable feature evaluator owned by THotSwap until its readers finish.
+struct TPublishedFeatures final: TAtomicRefCount<TPublishedFeatures>
+{
+    // Parsed rules for the publication, including the source protobuf.
+    const NFeatures::TFeaturesConfigPtr Config;
+
+    explicit TPublishedFeatures(NFeatures::TFeaturesConfigPtr config);
+};
+
+TPublishedFeatures::TPublishedFeatures(NFeatures::TFeaturesConfigPtr config)
+    : Config(std::move(config))
+{}
+
+// Preserve double bits and native duration precision in the same scalar cell.
+template <typename T>
+ui64 EncodeFallback(T value)
+{
+    if constexpr (std::is_same_v<T, double>) {
+        return std::bit_cast<ui64>(value);
+    } else if constexpr (std::is_same_v<T, TDuration>) {
+        return value.GetValue();
+    } else {
+        return static_cast<ui64>(value);
+    }
+}
+
+// Recover the getter type without scaling or truncating the stored value.
+template <typename T>
+T DecodeFallback(ui64 value)
+{
+    if constexpr (std::is_same_v<T, double>) {
+        return std::bit_cast<double>(value);
+    } else if constexpr (std::is_same_v<T, TDuration>) {
+        return TDuration::FromValue(value);
+    } else {
+        return static_cast<T>(value);
+    }
+}
+
+// RW fallback cells and the accepted raw configuration from which they were
+// resolved. Each working configuration owns its own values.
+struct TRwStorageConfig
+{
+    // Raw base including explicitly set fields, retained by cold readers.
+    TStorageServiceConfigPtr CurrentConfig;
+    // Lock protecting publication and acquisition of the raw base.
+    mutable TMutex ConfigLock;
+
+    // Each scalar contains the fully resolved fallback before operator
+    // overrides.
+#define BLOCKSTORE_DECLARE_FALLBACK(name, ...)                                 \
+    std::atomic<ui64> Fallback##name{0};
+    BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_DECLARE_FALLBACK)
+#undef BLOCKSTORE_DECLARE_FALLBACK
+
+    explicit TRwStorageConfig(TStorageServiceConfigPtr config);
+
+    // Resolve absent fields on every replacement, including removed YAML
+    // fields.
+    void StoreFallbacks(const NProto::TStorageServiceConfig& config);
+};
+
+TRwStorageConfig::TRwStorageConfig(TStorageServiceConfigPtr config)
+    : CurrentConfig(std::move(config))
+{
+    static_assert(std::atomic<ui64>::is_always_lock_free);
+    StoreFallbacks(*CurrentConfig);
+}
+
+void TRwStorageConfig::StoreFallbacks(
+    const NProto::TStorageServiceConfig& config)
+{
+#define BLOCKSTORE_STORE_FALLBACK(name, type, ...)                             \
+    {                                                                          \
+        const ui64 value =                                                     \
+            EncodeFallback<type>(BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(           \
+                config, name, type, Default##name));                           \
+        if (Fallback##name.load(std::memory_order_relaxed) != value) {         \
+            Fallback##name.store(value, std::memory_order_relaxed);            \
+        }                                                                      \
+    }
+
+    BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_STORE_FALLBACK)
+#undef BLOCKSTORE_STORE_FALLBACK
+}
+
+}   // namespace
+
+// Working storage settings with an immutable RO view, RW fallbacks owned by
+// the server or volume, and the server's shared ICB controls and feature rules.
 struct TStorageConfig::TImpl
 {
-    NProto::TStorageServiceConfig StorageServiceConfig;
-    NFeatures::TFeaturesConfigPtr FeaturesConfig;
-
-    // Non-null ICB controls shared by copies and Merge results.
+    // Construction-time proto used by RO getters throughout this lifetime.
+    TStorageServiceConfigPtr ReadOnlyConfig;
+    // RW fallback cells owned by this working configuration.
+    std::unique_ptr<TRwStorageConfig> Rw;
+    // Latest feature rules shared by the server and its volume configurations.
+    std::shared_ptr<THotSwap<TPublishedFeatures>> Features;
+    // Operator controls registered once for the server.
     TStorageConfigControlsPtr Controls;
-
-    TImpl(
-        NProto::TStorageServiceConfig storageServiceConfig,
-        NFeatures::TFeaturesConfigPtr featuresConfig,
-        TStorageConfigControlsPtr controls)
-        : StorageServiceConfig(std::move(storageServiceConfig))
-        , FeaturesConfig(std::move(featuresConfig))
-        , Controls(std::move(controls))
-    {
-        Y_ABORT_UNLESS(Controls);
-    }
-
-    void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig)
-    {
-        FeaturesConfig = std::move(featuresConfig);
-    }
-
-    NProto::TStorageServiceConfig GetEffectiveStorageConfigProto() const
-    {
-        NProto::TStorageServiceConfig proto = StorageServiceConfig;
-
-    // Apply current ICB overrides to the returned proto copy.
-#define BLOCKSTORE_CONFIG_COPY(name, type, ...)                                \
-    if (const auto value =                                                     \
-            Controls->Impl->ReadOverride<type>(Controls->Impl->Control##name)) \
-    {                                                                          \
-        using T = decltype(StorageServiceConfig.Get##name());                  \
-        proto.Set##name(ConvertValue<T>(*value));                              \
-    }                                                                          \
-    // BLOCKSTORE_CONFIG_COPY
-
-        BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_COPY)
-
-#undef BLOCKSTORE_CONFIG_COPY
-
-        return proto;
-    }
 };
+
+void TStorageConfigControls::ApplyOverrides(
+    NProto::TStorageServiceConfig& config) const
+{
+#define BLOCKSTORE_APPLY_OVERRIDE(name, type, ...)                             \
+    if (const auto value = Impl->ReadOverride<type>(Impl->Control##name)) {    \
+        using T = decltype(config.Get##name());                                \
+        config.Set##name(ConvertValue<T>(*value));                             \
+    }
+
+    BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_APPLY_OVERRIDE)
+#undef BLOCKSTORE_APPLY_OVERRIDE
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1446,17 +1520,25 @@ TStorageConfig::TStorageConfig(
             std::make_shared<TStorageConfigControls>(storageServiceConfig);
     }
 
+    auto raw = std::make_shared<const NProto::TStorageServiceConfig>(
+        std::move(storageServiceConfig));
     Impl = std::make_unique<TImpl>(
-        std::move(storageServiceConfig),
-        std::move(featuresConfig),
+        raw,
+        std::make_unique<TRwStorageConfig>(raw),
+        std::make_shared<THotSwap<TPublishedFeatures>>(
+            MakeIntrusive<TPublishedFeatures>(std::move(featuresConfig))),
         std::move(controls));
 }
 
-TStorageConfig::TStorageConfig(const TStorageConfig& other)
+TStorageConfig::TStorageConfig(const TStorageConfig& source,
+                               TStorageServiceConfigPtr rawConfig)
     : Impl(std::make_unique<TImpl>(
-          other.Impl->StorageServiceConfig,
-          other.Impl->FeaturesConfig,
-          other.Impl->Controls))
+          rawConfig, std::make_unique<TRwStorageConfig>(rawConfig),
+          source.Impl->Features, source.Impl->Controls))
+{}
+
+TStorageConfig::TStorageConfig(const TStorageConfig& other)
+    : TStorageConfig(other, other.GetConfigProto())
 {}
 
 TStorageConfig::~TStorageConfig() = default;
@@ -1473,20 +1555,29 @@ TStorageConfigControlsPtr TStorageConfig::GetControls() const
 
 void TStorageConfig::UpdateControlsDefaults() const
 {
-    Impl->Controls->UpdateDefaults(Impl->StorageServiceConfig);
+    Impl->Controls->UpdateDefaults(*GetConfigProto());
 }
 
 void TStorageConfig::SetFeaturesConfig(
     NFeatures::TFeaturesConfigPtr featuresConfig)
 {
-    Impl->SetFeaturesConfig(std::move(featuresConfig));
+    Impl->Features->AtomicStore(
+        MakeIntrusive<TPublishedFeatures>(std::move(featuresConfig)));
+}
+
+void TStorageConfig::ApplyRwConfig(TStorageServiceConfigPtr config)
+{
+    // Publish field values before exposing this base to new volume instances.
+    TGuard guard(Impl->Rw->ConfigLock);
+    Impl->Rw->StoreFallbacks(*config);
+    Impl->Rw->CurrentConfig = std::move(config);
 }
 
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
     type TStorageConfig::Get##name() const                                     \
     {                                                                          \
         return BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(                             \
-            Impl->StorageServiceConfig,                                        \
+            (*Impl->ReadOnlyConfig),                                           \
             name,                                                              \
             type,                                                              \
             Default##name);                                                    \
@@ -1506,11 +1597,8 @@ BLOCKSTORE_STORAGE_CONFIG_RO(BLOCKSTORE_CONFIG_GETTER)
         {                                                                      \
             return ConvertValue<type>(*value);                                 \
         }                                                                      \
-        return BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(                             \
-            Impl->StorageServiceConfig,                                        \
-            name,                                                              \
-            type,                                                              \
-            Default##name);                                                    \
+        return DecodeFallback<type>(                                           \
+            Impl->Rw->Fallback##name.load(std::memory_order_relaxed));         \
     }                                                                          \
     // BLOCKSTORE_CONFIG_GETTER
 
@@ -1557,7 +1645,7 @@ bool TStorageConfig::Is##name##FeatureEnabled(                                 \
     const TString& folderId,                                                   \
     const TString& diskId) const                                               \
 {                                                                              \
-    return Impl->FeaturesConfig->IsFeatureEnabled(                             \
+    return Impl->Features->AtomicLoad()->Config->IsFeatureEnabled(             \
         cloudId,                                                               \
         folderId,                                                              \
         diskId,                                                                \
@@ -1576,7 +1664,7 @@ TDuration TStorageConfig::Get##name##FeatureValue(                             \
     const TString& folderId,                                                   \
     const TString& diskId) const                                               \
 {                                                                              \
-    const auto v = Impl->FeaturesConfig->GetFeatureValue(                      \
+    const auto v = Impl->Features->AtomicLoad()->Config->GetFeatureValue(      \
         cloudId,                                                               \
         folderId,                                                              \
         diskId,                                                                \
@@ -1600,7 +1688,7 @@ TString TStorageConfig::Get##name##FeatureValue(                               \
     const TString& folderId,                                                   \
     const TString& diskId) const                                               \
 {                                                                              \
-    return Impl->FeaturesConfig->GetFeatureValue(                              \
+    return Impl->Features->AtomicLoad()->Config->GetFeatureValue(              \
         cloudId,                                                               \
         folderId,                                                              \
         diskId,                                                                \
@@ -1619,20 +1707,20 @@ TStorageConfigPtr TStorageConfig::Merge(
     TStorageConfigPtr config,
     const NProto::TStorageServiceConfig& patch)
 {
-    const auto& configProto = config->Impl->StorageServiceConfig;
-    auto patchedConfigProto = configProto;
+    const auto configProto = config->GetConfigProto();
+    auto patchedConfigProto = *configProto;
     patchedConfigProto.MergeFrom(patch);
     if (google::protobuf::util::MessageDifferencer::Equals(
             patchedConfigProto,
-            configProto))
+            *configProto))
     {
         return config;
     }
 
     return std::make_shared<TStorageConfig>(
-        std::move(patchedConfigProto),
-        config->Impl->FeaturesConfig,
-        config->Impl->Controls);
+        *config,
+        std::make_shared<const NProto::TStorageServiceConfig>(
+            std::move(patchedConfigProto)));
 }
 
 ui64 GetAllocationUnit(
@@ -1706,8 +1794,9 @@ ui32 GetFlushThreshold(
 TStorageConfig::TValueByName TStorageConfig::GetValueByName(
     const TString& name) const
 {
+    const auto config = GetConfigProto();
     auto descriptor =
-        Impl->StorageServiceConfig.GetDescriptor()->FindFieldByName(name);
+        config->GetDescriptor()->FindFieldByName(name);
     using TStatus = TStorageConfig::TValueByName::ENameStatus;
 
     if (descriptor == nullptr) {
@@ -1715,13 +1804,13 @@ TStorageConfig::TValueByName TStorageConfig::GetValueByName(
     }
 
     const auto* reflection = NProto::TStorageServiceConfig::GetReflection();
-    if (!reflection->HasField(Impl->StorageServiceConfig, descriptor)) {
+    if (!reflection->HasField(*config, descriptor)) {
         return TStorageConfig::TValueByName {TStatus::FoundInDefaults};
     }
 
     TString value;
     google::protobuf::TextFormat::PrintFieldValueToString(
-        Impl->StorageServiceConfig,
+        *config,
         descriptor,
         -1,
         &value
@@ -1730,15 +1819,18 @@ TStorageConfig::TValueByName TStorageConfig::GetValueByName(
     return {value};
 }
 
-const NProto::TStorageServiceConfig& TStorageConfig::GetConfigProto() const
+TStorageServiceConfigPtr TStorageConfig::GetConfigProto() const
 {
-    return Impl->StorageServiceConfig;
+    TGuard guard(Impl->Rw->ConfigLock);
+    return Impl->Rw->CurrentConfig;
 }
 
 NProto::TStorageServiceConfig
 TStorageConfig::GetEffectiveStorageConfigProto() const
 {
-    return Impl->GetEffectiveStorageConfigProto();
+    auto proto = *GetConfigProto();
+    Impl->Controls->ApplyOverrides(proto);
+    return proto;
 }
 
 void AdaptNodeRegistrationParams(

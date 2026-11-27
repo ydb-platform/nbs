@@ -84,6 +84,9 @@ public:
     // value even when ICB already shows the new default.
     void UpdateDefaults(const NProto::TStorageServiceConfig& config);
 
+    // Overlay the currently applicable ICB overrides on a raw configuration.
+    void ApplyOverrides(NProto::TStorageServiceConfig& config) const;
+
     // Return ICB override for a known read-write field with its validation
     // result, including invalid enum values; return empty for an unknown field
     // or no override.
@@ -126,7 +129,11 @@ public:
         NFeatures::TFeaturesConfigPtr featuresConfig,
         TStorageConfigControlsPtr controls);
 
-    // Create a raw-proto copy that shares Features and the live ICB controls.
+    // Create an independent RW fallback with the same live Features and ICB.
+    TStorageConfig(const TStorageConfig& source,
+                   TStorageServiceConfigPtr rawConfig);
+
+    // Create an independent fallback from the current configuration.
     TStorageConfig(const TStorageConfig& other);
     TStorageConfig& operator=(const TStorageConfig&) = delete;
 
@@ -139,7 +146,13 @@ public:
     // See TStorageConfigControls::UpdateDefaults().
     void UpdateControlsDefaults() const;
 
+    // Replace the shared feature rules for this configuration and its copies.
     void SetFeaturesConfig(NFeatures::TFeaturesConfigPtr featuresConfig);
+
+    // Replace all RW fallbacks from a complete accepted base before ICB.
+    // Keep RO settings unchanged and serialize writes for this server or
+    // volume. Absent fields use compiled defaults.
+    void ApplyRwConfig(TStorageServiceConfigPtr config);
 
     // Apply a patch to the raw proto while retaining the same live ICB
     // controls without changing their defaults.
@@ -168,9 +181,8 @@ public:
 
     TValueByName GetValueByName(const TString& name) const;
 
-    // Return the stored proto without ICB overrides; valid while this adapter
-    // lives and suitable for updating control defaults.
-    [[nodiscard]] const NProto::TStorageServiceConfig& GetConfigProto() const;
+    // Retain the complete raw base across subsequent RW updates.
+    [[nodiscard]] TStorageServiceConfigPtr GetConfigProto() const;
 
     // Return a proto copy with current ICB overrides applied.
     [[nodiscard]] NProto::TStorageServiceConfig

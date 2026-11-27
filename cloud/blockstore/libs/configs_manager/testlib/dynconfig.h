@@ -4,8 +4,8 @@ Test configuration publications and notifications for direct ConfigsManager
 subscribers. Edit the public TTestBlockstoreConfigProvider::Config protobuf
 draft, call TTestBlockstoreConfigProvider::Publish(), and use SendDynconfigTo()
 to send the current snapshot to a consumer. Published protobuf values remain
-independent of draft edits. Published storage configurations share the same
-live ICB controls.
+independent of draft edits. Each publication refers to the same working Storage
+object, including its live feature rules and ICB controls.
 
 *******************************************************************************/
 
@@ -48,12 +48,15 @@ public:
     void Publish();
 
 private:
-    // Live ICB controls shared by all publications; non-null for this lifetime.
-    const NStorage::TStorageConfigControlsPtr Controls;
+    // Working server configuration shared by all published aggregates.
+    const NStorage::TStorageConfigMutablePtr StorageConfig;
 
     // Latest publication retained by the provider; older configurations stay valid
     // while their readers retain them.
     TBlockstoreConfigHolder Holder;
+
+    // Capture the current draft and apply its values to the working object.
+    IBlockstoreConfigMutablePtr BuildPublication();
 };
 
 // Send a TEvConfigsManager::TEvConfigChanged configuration notice

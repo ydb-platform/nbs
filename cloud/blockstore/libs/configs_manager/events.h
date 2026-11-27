@@ -86,7 +86,8 @@ struct TEvConfigsManager
     // Notification of a configuration update, carrying the snapshot of one
     // configuration publication.
     // A newer configuration may be published before this event is processed.
-    // Later publications do not replace the snapshot carried by this event.
+    // GetStorageServiceConfig() and GetFeaturesConfig() retain their publication.
+    // GetStorageConfig() gives access to the current working server settings.
     // Within one subscription, notifications follow publication order.
     // The recipient sends no acknowledgement to ConfigsManager.
     struct TEvConfigChanged final

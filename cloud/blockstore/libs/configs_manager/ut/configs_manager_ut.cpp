@@ -196,8 +196,9 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
             300,
             updatedConfig->GetStorageConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(
-            200,
+            300,
             initialConfig->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(200, initialConfig->GetStorageServiceConfig()->GetWriteBlobThreshold());
 
         // Publish another field without overwriting the unchanged field's ICB.
         board.SetValue("BlockStore_WriteBlobThreshold", 500, previousValue);
@@ -217,10 +218,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
             500,
             initialConfig->GetStorageConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(
-            "200",
-            initialConfig->GetStorageConfig()
-                ->GetValueByName("WriteBlobThreshold")
-                .Value);
+            200,
+            initialConfig->GetStorageServiceConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(
             "300",
             publishedConfig->GetStorageConfig()
@@ -254,7 +253,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
             resetConfig->GetStorageConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(
             300,
-            publishedConfig->GetStorageConfig()->GetWriteBlobThreshold());
+            publishedConfig->GetStorageServiceConfig()
+                ->GetWriteBlobThreshold());
     }
 
     // Check initial delivery and independent updates without subscriber ACKs.
@@ -304,12 +304,70 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         UNIT_ASSERT_EQUAL(updated.Get(), delayedUpdate.Get());
         UNIT_ASSERT_VALUES_EQUAL(
             300,
-            delayedUpdate->GetStorageConfig()->GetWriteBlobThreshold());
+            delayedUpdate->GetStorageServiceConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_EQUAL(delayedUpdate->GetStorageConfig(),
+                          reset->GetStorageConfig());
+        UNIT_ASSERT_VALUES_EQUAL(
+            100, delayedUpdate->GetStorageConfig()->GetWriteBlobThreshold());
         const auto delayedReset = WaitForConfigChanged(second);
         UNIT_ASSERT_EQUAL(reset.Get(), delayedReset.Get());
         UNIT_ASSERT_VALUES_EQUAL(
             200,
-            initial->GetStorageConfig()->GetWriteBlobThreshold());
+            initial->GetStorageServiceConfig()->GetWriteBlobThreshold());
+    }
+
+    // Keep both published sections from A while the startup pointer follows B
+    // and ICB.
+    Y_UNIT_TEST_F(ShouldKeepStorageAndFeaturesOfDelayedPublication,
+                  TConfigsManagerFixture)
+    {
+        // Start with an absent threshold and a feature addressed to the first
+        // disk.
+        NProto::TBlockstoreConfig startup;
+        auto* feature = startup.MutableFeatures()->AddFeatures();
+        feature->SetName("UseRdma");
+        feature->MutableWhitelist()->AddEntityIds("first");
+        StartManager({}, startup);
+        const auto subscriber = Runtime.AllocateEdgeActor();
+        Subscribe(subscriber);
+        const auto first = WaitForConfigChanged(subscriber);
+        const auto storage = first->GetStorageConfig();
+        UNIT_ASSERT(!first->GetStorageServiceConfig()->HasWriteBlobThreshold());
+        UNIT_ASSERT(storage->IsUseRdmaFeatureEnabled({}, {}, "first"));
+
+        // Publish an explicit zero and replace the scope of the retained
+        // feature.
+        auto next = std::make_shared<NProto::TBlockstoreConfig>(startup);
+        next->MutableStorageService()->SetWriteBlobThreshold(0);
+        next->MutableFeatures()
+            ->MutableFeatures(0)
+            ->MutableWhitelist()
+            ->SetEntityIds(0, "second");
+        SendNotification(next, 110);
+        WaitForAck(110);
+        const auto second = WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_EQUAL(storage, second->GetStorageConfig());
+        UNIT_ASSERT(!first->GetStorageServiceConfig()->HasWriteBlobThreshold());
+        UNIT_ASSERT(second->GetStorageServiceConfig()->HasWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(0, storage->GetWriteBlobThreshold());
+        UNIT_ASSERT(first->GetFeaturesConfig()->IsFeatureEnabled({}, {},
+                                                                 "first",
+                                                                 "UseRdma"));
+        UNIT_ASSERT(!storage->IsUseRdmaFeatureEnabled({}, {}, "first"));
+        UNIT_ASSERT(storage->IsUseRdmaFeatureEnabled({}, {}, "second"));
+
+        // Operator changes affect the retained working pointer and preserve
+        // both raw sections.
+        auto& board = *Runtime.GetAppData().Icb;
+        Controls->Register(board);
+        TAtomic previous = 0;
+        board.SetValue("BlockStore_WriteBlobThreshold", 7, previous);
+        UNIT_ASSERT_VALUES_EQUAL(7, storage->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0, second->GetStorageServiceConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT(!first->GetStorageServiceConfig()->HasWriteBlobThreshold());
+        board.RestoreDefault("BlockStore_WriteBlobThreshold");
+        UNIT_ASSERT_VALUES_EQUAL(0, storage->GetWriteBlobThreshold());
     }
 
     // Check delegated registration, refresh, and removal without duplicate

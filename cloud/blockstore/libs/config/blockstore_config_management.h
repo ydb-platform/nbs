@@ -1,9 +1,20 @@
 /*******************************************************************************
 
-Blockstore configuration construction and source processing. Startup and runtime
-factories build independently owned configurations; runtime updates follow the
-field markers. Callers publish completed configurations and update live ICB
-defaults separately.
+Blockstore configuration construction and source processing.
+
+  * Startup and runtime factories retain the accepted sections of each
+    publication.
+
+  * Runtime updates follow field markers.
+
+  * Callers build the runtime snapshot, then apply the update in this order.
+
+    1. Apply the accepted RW values and feature rules to the shared
+       TStorageConfig.
+    2. Update the shared ICB defaults from the snapshot's StorageServiceConfig.
+       Use compiled-in defaults for unset fields. Reset ICB overrides for RW
+       parameters whose defaults changed.
+    3. Publish the new snapshot.
 
 *******************************************************************************/
 
@@ -91,7 +102,7 @@ IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
     NStorage::TStorageConfigControlsPtr controls,
     TBlockstoreConfigExtraParameters extraParameters);
 
-// Build a configuration.
+// Build a configuration with a TStorageConfig copy.
 //
 // config - Complete proto for Features and all sections except Storage and
 //      DiskAgent; used as supplied.
@@ -107,6 +118,19 @@ IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
     const NStorage::TStorageConfig& storageConfig,
     const NStorage::TDiskAgentConfig& diskAgentConfig);
 
+// Build a configuration with an existing TStorageConfig.
+//
+// config - Complete proto for the snapshot sections, including
+//      StorageServiceConfig and FeaturesConfig.
+// sharedStorageConfig - Non-null TStorageConfig shared between snapshots.
+// extraParameters - parameters not stored in the configuration proto.
+//
+// Returns - A new, non-null snapshot.
+IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
+    const NProto::TBlockstoreConfig& config,
+    NStorage::TStorageConfigPtr sharedStorageConfig,
+    TBlockstoreConfigExtraParameters extraParameters);
+
 // Blockstore configuration built from static and normalized dynamic sources.
 // The result owns the merged proto and independently constructed wrappers.
 struct TBlockstoreConfigBuildResult
@@ -117,6 +141,9 @@ struct TBlockstoreConfigBuildResult
     // Wrappers built from Proto, sharing the supplied ICB controls; non-null.
     // Later changes to Proto do not change these wrappers.
     IBlockstoreConfigMutablePtr Config;
+
+    // Storage configuration held by Config; non-null.
+    NStorage::TStorageConfigMutablePtr StorageConfig;
 
     // Presence of any known top-level field in the normalized dynamic source.
     bool HasDynamicOverrides = false;
@@ -175,8 +202,8 @@ NConfig::TConfigPreparationDiagnostics PrepareRuntimeBlockstoreConfig(
 // dynamicConfig - Dynamic configuration prepared with
 //      PrepareDynamicConfigSectionsUpdate() using the last accepted dynamic
 //      source.
-// controls - Shared live ICB controls for Storage; non-null. Defaults and
-//      operator overrides are left unchanged.
+// sharedStorageConfig - Non-null TStorageConfig retained by the returned
+//      snapshot.
 // extraParameters - parameters not stored in the configuration proto.
 // diagnostics - Combined report from normalization and runtime filtering.
 //      Replaced when a configuration is returned; preserved if creation fails.
@@ -186,7 +213,7 @@ IBlockstoreConfigMutablePtr MakeRuntimeBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& startupConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
-    NStorage::TStorageConfigControlsPtr controls,
+    NStorage::TStorageConfigPtr sharedStorageConfig,
     TBlockstoreConfigExtraParameters extraParameters,
     NConfig::TConfigPreparationDiagnostics& diagnostics);
 

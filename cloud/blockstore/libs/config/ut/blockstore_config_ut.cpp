@@ -268,8 +268,8 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
             staticStartup.Proto.SerializeAsString());
     }
 
-    // Verify that the runtime factory preserves its sources, filters overrides,
-    // returns combined diagnostics, and leaves live ICB defaults unchanged.
+    // Verify that the runtime factory retains the supplied storage object,
+    // filters overrides, and preserves sources and live ICB defaults.
     Y_UNIT_TEST(ShouldBuildRuntimeConfigWithoutChangingSourcesOrControls)
     {
         // Keep distinct static, startup, and operator values.
@@ -283,6 +283,11 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
         startupConfig.MutableStorageService()->SetListVolumesConcurrency(20);
         auto controls = std::make_shared<NStorage::TStorageConfigControls>(
             startupConfig.GetStorageService());
+        const auto sharedStorageConfig =
+            MakeBlockstoreConfig(
+                startupConfig,
+                controls,
+                /*extraParameters=*/{})->GetStorageConfig();
         NKikimr::TControlBoard board;
         controls->Register(board);
         NKikimr::TControlWrapper control;
@@ -309,15 +314,19 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
             staticConfig,
             startupConfig,
             dynamicConfig,
-            controls,
+            sharedStorageConfig,
             extraParameters,
             diagnostics);
 
         // Keep host restrictions and startup-only values in the ready adapters.
         const auto& storage = *config->GetStorageConfig();
+        UNIT_ASSERT_EQUAL(sharedStorageConfig, config->GetStorageConfig());
         UNIT_ASSERT_VALUES_EQUAL(
             300,
-            storage.GetConfigProto().GetWriteBlobThreshold());
+            config->GetStorageServiceConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            sharedStorageConfig->GetConfigProto()->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(20, storage.GetListVolumesConcurrency());
         UNIT_ASSERT_VALUES_EQUAL("/static", storage.GetSchemeShardDir());
         UNIT_ASSERT_VALUES_EQUAL(100, config->GetServerConfig()->GetPort());
@@ -364,14 +373,12 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
             staticConfig,
             startupConfig,
             {},
-            controls,
+            sharedStorageConfig,
             /*extraParameters=*/{},
             diagnostics);
         UNIT_ASSERT_VALUES_EQUAL(
             100,
-            removed->GetStorageConfig()
-                ->GetConfigProto()
-                .GetWriteBlobThreshold());
+            removed->GetStorageServiceConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(
             20,
             removed->GetStorageConfig()->GetListVolumesConcurrency());
@@ -382,13 +389,19 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
         // Make both stages report SchemeShardDir by changing its startup value.
         auto inconsistentStartup = startupConfig;
         inconsistentStartup.MutableStorageService()->SetSchemeShardDir("/old");
+        const auto rebuiltSharedStorageConfig =
+            MakeBlockstoreConfig(
+                inconsistentStartup,
+                controls,
+                /*extraParameters=*/{})
+                ->GetStorageConfig();
 
         // Build the configuration despite the diagnostic overlap.
         const auto rebuilt = MakeRuntimeBlockstoreConfig(
             staticConfig,
             inconsistentStartup,
             dynamicConfig,
-            controls,
+            rebuiltSharedStorageConfig,
             /*extraParameters=*/{},
             diagnostics);
 
@@ -396,7 +409,7 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
         const auto& rebuiltStorage = *rebuilt->GetStorageConfig();
         UNIT_ASSERT_VALUES_EQUAL(
             300,
-            rebuiltStorage.GetConfigProto().GetWriteBlobThreshold());
+            rebuilt->GetStorageServiceConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL("/old", rebuiltStorage.GetSchemeShardDir());
         UNIT_ASSERT_VALUES_EQUAL(5, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
@@ -817,9 +830,8 @@ root_kms: {address: kms}
             blockstoreConfig->GetStorageConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(
             100,
-            blockstoreConfig->GetStorageConfig()
-                ->GetConfigProto()
-                .GetWriteBlobThreshold());
+            blockstoreConfig->GetStorageServiceConfig()
+                ->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(
             "bootstrap-agent",
             blockstoreConfig->GetDiskAgentConfig()->GetAgentId());
@@ -1139,7 +1151,7 @@ root_kms: {address: kms}
             staticConfig,
             startup.Proto,
             dynamicConfig,
-            controls,
+            startup.StorageConfig,
             /*extraParameters=*/{},
             diagnostics);
         for (const auto& report:
@@ -1165,7 +1177,7 @@ root_kms: {address: kms}
             staticConfig,
             startup.Proto,
             {},
-            controls,
+            startup.StorageConfig,
             /*extraParameters=*/{},
             diagnostics);
         UNIT_ASSERT_VALUES_EQUAL(2, diagnostics.IgnoredPaths.size());

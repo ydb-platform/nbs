@@ -71,6 +71,7 @@ PEERDIR(
     library/cpp/protobuf/util
     library/cpp/string_utils/base64
     library/cpp/string_utils/quote
+    library/cpp/threading/hot_swap
 
     contrib/ydb/core/base
     contrib/ydb/core/control
