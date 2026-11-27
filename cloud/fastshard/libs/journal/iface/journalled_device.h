@@ -23,8 +23,10 @@ struct IJournalledDevice
 
     [[nodiscard]] virtual NThreading::TFuture<void> Stop() noexcept = 0;
 
-    [[nodiscard]] virtual auto ReadPages(TVector<TPageRangeRef> rangeRefs)
-        -> NThreading::TFuture<TResultOrError<TReadPagesResult>> = 0;
+    // Returns the last acked lsn that the pages correspond to.
+    // The buffers must stay valid until the returned future is set.
+    [[nodiscard]] virtual NThreading::TFuture<TResultOrError<ui64>> ReadPages(
+        TVector<TPageRangeView> rangeViews) = 0;
 
     [[nodiscard]] virtual NThreading::TFuture<NProto::TError> WriteLogRecord(
         TVector<TPageRange> ranges,

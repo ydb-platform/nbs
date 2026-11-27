@@ -135,48 +135,30 @@ public:
 
     // IDevice
 
-    TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
-        TVector<TPageRangeRef> rangeRefs) override
+    TFuture<NProto::TError> ReadPages(
+        TVector<TPageRangeView> rangeViews) override
     {
-        using TResult = TResultOrError<TVector<TBuffer>>;
-
-        ui64 pageCount = 0;
-        for (const auto& ref: rangeRefs) {
-            auto error = ValidatePageRange(ref.FirstPageNo, ref.PageCount);
+        for (const auto& view: rangeViews) {
+            auto error = ValidatePages(view.FirstPageNo, view.Pages);
             if (HasError(error)) {
-                return MakeFuture<TResult>(std::move(error));
+                return MakeFuture(std::move(error));
             }
-
-            pageCount += ref.PageCount;
         }
 
-        // the pages the data is copied into must outlive the requests
-        auto pages = std::make_shared<TVector<TBuffer>>(pageCount);
-
         TVector<TFuture<NProto::TError>> futures;
-        futures.reserve(rangeRefs.size());
+        futures.reserve(rangeViews.size());
 
-        ui64 pageIndex = 0;
-        for (const auto& ref: rangeRefs) {
-            if (ref.PageCount == 0) {
+        for (auto& view: rangeViews) {
+            if (view.Pages.empty()) {
                 continue;
             }
 
-            TVector<TArrayRef<char>> dst;
-            dst.reserve(ref.PageCount);
-
-            for (ui64 i = 0; i != ref.PageCount; ++i) {
-                TBuffer& page = (*pages)[pageIndex++];
-                page.Resize(PageSize);
-                dst.emplace_back(page.Data(), PageSize);
-            }
-
-            futures.push_back(Read(ref.FirstPageNo, std::move(dst)));
+            futures.push_back(Read(view.FirstPageNo, std::move(view.Pages)));
         }
 
         return WaitAll(futures).Apply(
-            [futures = std::move(futures), pages = std::move(pages)]
-            (const TFuture<void>&) mutable -> TResult
+            [futures =
+                 std::move(futures)](const TFuture<void>&) -> NProto::TError
             {
                 for (const auto& future: futures) {
                     const auto& error = future.GetValue();
@@ -185,7 +167,7 @@ public:
                     }
                 }
 
-                return std::move(*pages);
+                return {};
             });
     }
 
@@ -252,15 +234,16 @@ public:
     }
 
 private:
+    template <typename TPage>
     NProto::TError ValidatePages(
         ui64 firstPageNo,
-        const TVector<TBuffer>& pages) const
+        const TVector<TPage>& pages) const
     {
-        for (const TBuffer& page: pages) {
-            if (page.Size() != PageSize) {
+        for (const auto& page: pages) {
+            if (std::size(page) != PageSize) {
                 return MakeError(E_ARGUMENT, TStringBuilder()
                     << "page size mismatch: expected " << PageSize
-                    << ", got " << page.Size());
+                    << ", got " << std::size(page));
             }
         }
 
@@ -285,7 +268,8 @@ private:
     }
 
     // the pages are read into an aligned buffer, as O_DIRECT requires, and
-    // copied into the destination ones once the read succeeds
+    // copied into the destination ones, which the caller keeps valid, once the
+    // read succeeds
     TFuture<NProto::TError> Read(
         ui64 firstPageNo,
         TVector<TArrayRef<char>> pages)

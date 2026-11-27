@@ -28,14 +28,14 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui64 PageCountOf(const TPageRangeRef& ref)
-{
-    return ref.PageCount;
-}
-
 ui64 PageCountOf(const TPageRange& range)
 {
     return range.Pages.size();
+}
+
+ui64 PageCountOf(const TPageRangeView& view)
+{
+    return view.Pages.size();
 }
 
 ui64 PageCountOf(const TPageMapping& mapping)
@@ -43,14 +43,14 @@ ui64 PageCountOf(const TPageMapping& mapping)
     return mapping.Location.PageCount;
 }
 
-ui64 FirstPageNoOf(const TPageRangeRef& ref)
-{
-    return ref.FirstPageNo;
-}
-
 ui64 FirstPageNoOf(const TPageRange& range)
 {
     return range.FirstPageNo;
+}
+
+ui64 FirstPageNoOf(const TPageRangeView& view)
+{
+    return view.FirstPageNo;
 }
 
 ui64 FirstPageNoOf(const TPageMapping& mapping)
@@ -138,6 +138,57 @@ ui64 GetPageCount(const TVector<TPageMapping>& mappings)
     }
 
     return pageCount;
+}
+
+// Takes the buffers of the requested pages apart: the ones of the pages that
+// the journal holds become the views of their locations in the data store,
+// and the ones of the missing pages become the views of these pages. Both the
+// mappings and the missing ranges are in the order of the request, and each
+// of them lies within one requested range.
+void SplitPageRangeViews(
+    const TVector<TPageRangeView>& rangeViews,
+    const TLogPageIndex::TLookupResult& lookup,
+    TVector<TPageRangeView>* journalViews,
+    TVector<TPageRangeView>* missingViews)
+{
+    journalViews->reserve(lookup.Mappings.size());
+    missingViews->reserve(lookup.MissingRanges.size());
+
+    auto mapping = lookup.Mappings.begin();
+    auto missing = lookup.MissingRanges.begin();
+
+    for (const auto& view: rangeViews) {
+        const ui64 from = view.FirstPageNo;
+        const ui64 to = from + view.Pages.size();
+
+        auto slice = [&](ui64 pageNo, ui64 pageCount)
+        {
+            const auto first = view.Pages.begin() + (pageNo - from);
+            return TVector<TArrayRef<char>>(first, first + pageCount);
+        };
+
+        for (; mapping != lookup.Mappings.end() && from <= mapping->PageNo &&
+               mapping->PageNo < to;
+             ++mapping)
+        {
+            journalViews->push_back(
+                {.FirstPageNo = mapping->Location.FirstPageNo,
+                 .Pages = slice(mapping->PageNo, mapping->Location.PageCount)});
+        }
+
+        for (; missing != lookup.MissingRanges.end() &&
+               from <= missing->FirstPageNo && missing->FirstPageNo < to;
+             ++missing)
+        {
+            missingViews->push_back(
+                {.FirstPageNo = missing->FirstPageNo,
+                 .Pages = slice(missing->FirstPageNo, missing->PageCount)});
+        }
+    }
+
+    Y_ABORT_UNLESS(
+        mapping == lookup.Mappings.end() &&
+        missing == lookup.MissingRanges.end());
 }
 
 // Fills the page ranges of a record with the buffers read for its mappings -
@@ -315,6 +366,7 @@ private:
     const IDevicePageStorePtr DataStore;
     const TString DeviceUUID;
     const ui64 DevicePageCount;
+    const ui32 PageSize;
 
     TLog Log;
 
@@ -335,7 +387,8 @@ public:
         IKeyBufferStorePtr metaStore,
         IDevicePageStorePtr dataStore,
         TString deviceUUID,
-        ui64 devicePageCount);
+        ui64 devicePageCount,
+        ui32 pageSize);
 
     // Restores the journal state and returns lsn of the last indexed record
     [[nodiscard]] TResultOrError<ui64> Restore() override;
@@ -346,7 +399,7 @@ public:
         ui64 prevLsn) override;
 
     [[nodiscard]] TResultOrError<TJournalReadResult> Read(
-        TVector<TPageRangeRef> rangeRefs) const override;
+        TVector<TPageRangeView> rangeViews) const override;
 
     [[nodiscard]] TResultOrError<TJournalTail> ReadTail(
         ui64 afterLsn,
@@ -383,9 +436,10 @@ private:
 
     void IndexChainedRecords();
 
-    static TResultOrError<TReadPagesResult> OnRead(
-        const TLogPageIndex::TLookupResult& lookup,
-        TResultOrError<TVector<TBuffer>> buffersOrError);
+    // Reads the pages at |locations| of the data store into new buffers -
+    // one buffer per page, in the order of the locations. Waits for the read.
+    TResultOrError<TVector<TBuffer>> ReadLocations(
+        const TVector<TPageRangeRef>& locations) const;
 
     NProto::TError ReadPageRanges(
         const TVector<TPageMapping>& mappings,
@@ -400,13 +454,15 @@ TJournal::TJournal(
     IKeyBufferStorePtr metaStore,
     IDevicePageStorePtr dataStore,
     TString deviceUUID,
-    ui64 devicePageCount)
+    ui64 devicePageCount,
+    ui32 pageSize)
     : Logging(std::move(logging))
     , Executor(std::move(executor))
     , MetaStore(std::move(metaStore))
     , DataStore(std::move(dataStore))
     , DeviceUUID(std::move(deviceUUID))
     , DevicePageCount(devicePageCount)
+    , PageSize(pageSize)
     , Log(Logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
 {}
 
@@ -646,16 +702,29 @@ NProto::TError TJournal::ValidateRecordPages(
 
 TResultOrError<ui32> TJournal::ReadPagesCrc(const TLogRecord& record)
 {
-    auto locations = GetLocations(record.PageMappings);
-
-    auto future = DataStore->Read(locations);
-    const auto& response = Executor->WaitFor(future);
-
+    auto response = ReadLocations(GetLocations(record.PageMappings));
     if (HasError(response)) {
         return response.GetError();
     }
 
     return CalculatePagesCrc(response.GetResult());
+}
+
+TResultOrError<TVector<TBuffer>> TJournal::ReadLocations(
+    const TVector<TPageRangeRef>& locations) const
+{
+    // The buffers outlive the read: the fiber waits for it right here
+    TVector<TBuffer> buffers;
+
+    auto future =
+        DataStore->Read(MakePageRangeViews(locations, PageSize, &buffers));
+
+    const auto& error = Executor->WaitFor(future);
+    if (HasError(error)) {
+        return error;
+    }
+
+    return buffers;
 }
 
 TFuture<NProto::TError> TJournal::Write(
@@ -859,9 +928,11 @@ void TJournal::IndexChainedRecords()
 }
 
 TResultOrError<TJournalReadResult> TJournal::Read(
-    TVector<TPageRangeRef> rangeRefs) const
+    TVector<TPageRangeView> rangeViews) const
 {
-    auto err = ValidatePageRanges(rangeRefs, DevicePageCount);
+    using TResult = TResultOrError<ui64>;
+
+    auto err = ValidatePageRanges(rangeViews, DevicePageCount);
     if (HasError(err)) {
         return err;
     }
@@ -881,19 +952,30 @@ TResultOrError<TJournalReadResult> TJournal::Read(
     // flushed records - the reader takes their pages from the device
     //
 
-    auto lookup = LogPageIndex.Lookup(rangeRefs, lsnBarrierGuard->GetLsn());
+    auto lookup = LogPageIndex.Lookup(
+        MakePageRangeRefs(rangeViews),
+        lsnBarrierGuard->GetLsn());
+
+    //
+    // Hand the buffers of the missing pages back to the caller and keep the
+    // ones of the journalled pages
+    //
 
     TJournalReadResult result;
-    result.MissingRanges = std::move(lookup.MissingRanges);
+    TVector<TPageRangeView> journalViews;
+    SplitPageRangeViews(
+        rangeViews,
+        lookup,
+        &journalViews,
+        &result.MissingRanges);
 
     //
     // Answer at once when no requested page is in the journal - there is
     // nothing to read from the data store
     //
 
-    if (lookup.Mappings.empty()) {
-        result.Future = MakeFuture<TResultOrError<TReadPagesResult>>(
-            TReadPagesResult{.LastAckedLsn = lookup.LastIndexedLsn});
+    if (journalViews.empty()) {
+        result.Future = MakeFuture<TResult>(lookup.LastIndexedLsn);
         return result;
     }
 
@@ -902,48 +984,25 @@ TResultOrError<TJournalReadResult> TJournal::Read(
     // the caller can read the missing pages from the device at the same time
     //
 
-    auto future = DataStore->Read(GetLocations(lookup.Mappings));
+    auto future = DataStore->Read(std::move(journalViews));
 
     result.Future = future.Apply(
         [lsnBarrierGuard = std::move(lsnBarrierGuard),
-         lookup = std::move(lookup)](auto future)
+         lastIndexedLsn = lookup.LastIndexedLsn](const auto& future) -> TResult
         {
             // Release the flushed lsn when the read is done and not when the
             // callback object is destroyed, which can be much later
             auto guard = std::move(*lsnBarrierGuard);
 
-            return OnRead(lookup, future.ExtractValue());
+            const auto& error = future.GetValue();
+            if (HasError(error)) {
+                return error;
+            }
+
+            return lastIndexedLsn;
         });
 
     return result;
-}
-
-TResultOrError<TReadPagesResult> TJournal::OnRead(
-    const TLogPageIndex::TLookupResult& lookup,
-    TResultOrError<TVector<TBuffer>> buffersOrError)
-{
-    if (HasError(buffersOrError)) {
-        return buffersOrError.GetError();
-    }
-
-    //
-    // Return the journalled pages as they are: they are in the order of the
-    // mappings, and that is the order of the request
-    //
-
-    auto pages = buffersOrError.ExtractResult();
-
-    const ui64 pageCount = GetPageCount(lookup.Mappings);
-    if (pages.size() != pageCount) {
-        return MakeError(
-            E_INVALID_STATE,
-            TStringBuilder() << "the journal read " << pages.size()
-                             << " pages, expected " << pageCount);
-    }
-
-    return TReadPagesResult{
-        .LastAckedLsn = lookup.LastIndexedLsn,
-        .Pages = std::move(pages)};
 }
 
 TResultOrError<TJournalTail> TJournal::ReadTail(
@@ -1104,7 +1163,7 @@ TResultOrError<TJournalRecords> TJournal::GetRecordsToFlush(
     // for all the records, not one per record
     //
 
-    auto response = Executor->ExtractResponse(DataStore->Read(locations));
+    auto response = ReadLocations(locations);
     if (HasError(response)) {
         return response.GetError();
     }
@@ -1214,8 +1273,7 @@ NProto::TError TJournal::ReadPageRanges(
     const TVector<TPageMapping>& mappings,
     TVector<TPageRange>* ranges) const
 {
-    auto response =
-        Executor->ExtractResponse(DataStore->Read(GetLocations(mappings)));
+    auto response = ReadLocations(GetLocations(mappings));
     if (HasError(response)) {
         return response.GetError();
     }
@@ -1241,7 +1299,8 @@ IJournalPtr CreateJournal(
     IKeyBufferStorePtr metaStore,
     IDevicePageStorePtr dataStore,
     TString deviceUUID,
-    ui64 devicePageCount)
+    ui64 devicePageCount,
+    ui32 pageSize)
 {
     return std::make_shared<TJournal>(
         std::move(logging),
@@ -1249,7 +1308,8 @@ IJournalPtr CreateJournal(
         std::move(metaStore),
         std::move(dataStore),
         std::move(deviceUUID),
-        devicePageCount);
+        devicePageCount,
+        pageSize);
 }
 
 }   // namespace NCloud::NJournalled

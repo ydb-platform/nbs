@@ -19,8 +19,9 @@ struct IDevice
 {
     virtual ~IDevice() = default;
 
-    [[nodiscard]] virtual auto ReadPages(TVector<TPageRangeRef> rangeRefs)
-        -> NThreading::TFuture<TResultOrError<TVector<TBuffer>>> = 0;
+    // The buffers must stay valid until the returned future is set.
+    [[nodiscard]] virtual NThreading::TFuture<NProto::TError> ReadPages(
+        TVector<TPageRangeView> rangeViews) = 0;
 
     [[nodiscard]] virtual NThreading::TFuture<NProto::TError> WritePages(
         TVector<TPageRange> ranges) = 0;

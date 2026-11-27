@@ -244,12 +244,48 @@ public:
                 TErrorResponse(error));
         }
 
-        auto rangeRefs = MakePageRangeRefs(request);
+        //
+        // Reject a request with a wrong page size or one that can not fit
+        // the device before allocating the response for it
+        //
 
-        auto future = device->ReadPages(rangeRefs);
+        const auto& config = DeviceSpecs.at(request.GetDeviceUUID()).Config;
+
+        for (const auto& ref: request.GetPageGroupRefs()) {
+            if (ref.GetPageSize() != config.BlockSize) {
+                return MakeFuture<NProto::TReadPagesResponse>(TErrorResponse(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "pages " << ref.GetFirstPageNo() << "x"
+                        << ref.GetPageCount() << " are requested with page "
+                        << "size " << ref.GetPageSize() << ", device "
+                        << config.DeviceUUID.Quote() << " has block size "
+                        << config.BlockSize));
+            }
+        }
+
+        const ui64 pageCount = GetPageCount(request);
+        if (pageCount > config.BlocksCount) {
+            return MakeFuture<NProto::TReadPagesResponse>(TErrorResponse(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "the request reads " << pageCount << " pages, device "
+                    << config.DeviceUUID.Quote() << " has "
+                    << config.BlocksCount));
+        }
+
+        //
+        // Let the device read the pages straight into the response. The
+        // callback below owns the response, so its pages outlive the read
+        //
+
+        auto response = std::make_shared<NProto::TReadPagesResponse>();
+
+        auto future = device->ReadPages(
+            MakePageRangeViews(request, config.BlockSize, response.get()));
 
         return future.Apply(
-            [rangeRefs = std::move(rangeRefs)](
+            [response = std::move(response)](
                 const auto& future) -> NProto::TReadPagesResponse
             {
                 const auto& result = future.GetValue();
@@ -257,7 +293,8 @@ public:
                     return TErrorResponse(result.GetError());
                 }
 
-                return MakeReadPagesResponse(rangeRefs, result.GetResult());
+                response->SetLastAckedLogSequenceNumber(result.GetResult());
+                return std::move(*response);
             });
     }
 

@@ -3,7 +3,10 @@
 #include <cloud/fastshard/libs/journal/iface/device.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/utility.h>
+#include <util/string/builder.h>
 
+#include <cstring>
 #include <mutex>
 
 namespace NCloud::NJournalled {
@@ -27,29 +30,44 @@ public:
         : PageSize(pageSize)
     {}
 
-    TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
-        TVector<TPageRangeRef> rangeRefs) override
+    TFuture<NProto::TError> ReadPages(
+        TVector<TPageRangeView> rangeViews) override
     {
-        TVector<TBuffer> pages;
-
-        {
-            std::lock_guard lock(Lock);
-
-            for (const auto& ref: rangeRefs) {
-                for (ui64 i = 0; i < ref.PageCount; ++i) {
-                    auto it = Pages.find(ref.FirstPageNo + i);
-                    if (it != Pages.end()) {
-                        pages.push_back(it->second);
-                        continue;
-                    }
-
-                    // a page that has never been written reads as a zeroed one
-                    pages.emplace_back().Fill('\0', PageSize);
+        for (const auto& view: rangeViews) {
+            for (const auto& page: view.Pages) {
+                if (page.size() != PageSize) {
+                    return MakeFuture(MakeError(
+                        E_ARGUMENT,
+                        TStringBuilder()
+                            << "page size mismatch: expected " << PageSize
+                            << ", got " << page.size()));
                 }
             }
         }
 
-        return MakeFuture<TResultOrError<TVector<TBuffer>>>(std::move(pages));
+        {
+            std::lock_guard lock(Lock);
+
+            for (const auto& view: rangeViews) {
+                ui64 pageNo = view.FirstPageNo;
+                for (const auto& page: view.Pages) {
+                    auto it = Pages.find(pageNo++);
+
+                    // a page that has never been written reads as a zeroed
+                    // one, and so does a stored page past its size
+                    const size_t size =
+                        it != Pages.end() ? Min(it->second.Size(), page.size())
+                                          : 0;
+
+                    if (size) {
+                        std::memcpy(page.data(), it->second.Data(), size);
+                    }
+                    std::memset(page.data() + size, 0, page.size() - size);
+                }
+            }
+        }
+
+        return MakeFuture<NProto::TError>();
     }
 
     TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override

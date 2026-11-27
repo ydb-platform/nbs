@@ -1,6 +1,7 @@
 #include "journalled_device_v2.h"
 
 #include "journal.h"
+#include "ut_helpers.h"
 
 #include <cloud/fastshard/libs/journal/iface/device.h>
 #include <cloud/fastshard/libs/journal/iface/journalled_device.h>
@@ -19,6 +20,7 @@
 #include <util/system/event.h>
 #include <util/system/mutex.h>
 
+#include <cstring>
 #include <functional>
 
 namespace NCloud::NJournalled {
@@ -30,6 +32,9 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr TStringBuf DefaultDeviceUUID = "uuid";
+
+// Fits the longest page name of the tests, e.g. "D103"
+constexpr ui32 DefaultPageSize = 4;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -88,20 +93,36 @@ ui64 CountPages(const TJournalRecord& record)
     return pageCount;
 }
 
-// Serves every requested range ref with pages named after the device.
-TVector<TBuffer> ServePagesFromDevice(const TVector<TPageRangeRef>& rangeRefs)
+// Fills the page with its name, e.g. "D10", padded with zeroes.
+void FillPage(TArrayRef<char> page, TStringBuf prefix, ui64 pageNo)
 {
-    TVector<TBuffer> pages;
+    const TString name = TStringBuilder() << prefix << pageNo;
+    UNIT_ASSERT(name.size() <= page.size());
 
-    for (const auto& ref: rangeRefs) {
-        for (ui64 i = 0; i < ref.PageCount; ++i) {
-            const TString page = TStringBuilder() << "D" << ref.FirstPageNo + i;
-            pages.emplace_back(page.data(), page.size());
+    std::memset(page.data(), 0, page.size());
+    std::memcpy(page.data(), name.data(), name.size());
+}
+
+// Fills every requested page with its name after the device.
+NProto::TError ServePagesFromDevice(const TVector<TPageRangeView>& rangeViews)
+{
+    for (const auto& view: rangeViews) {
+        ui64 pageNo = view.FirstPageNo;
+        for (const auto& page: view.Pages) {
+            FillPage(page, "D", pageNo++);
         }
     }
 
-    return pages;
+    return {};
 }
+
+// What a read of the device gives: the lsn that it returns and the buffers
+// that it fills, one per requested page.
+struct TReadPagesResult
+{
+    ui64 LastAckedLsn = 0;
+    TVector<TBuffer> Pages;
+};
 
 // "10+2, 15+5"
 TString DescribeRefs(const TVector<TPageRangeRef>& rangeRefs)
@@ -135,15 +156,20 @@ TString DescribeRanges(const TVector<TPageRange>& ranges)
 }
 
 // "D10,D11,J12,J20"
-TString DescribePages(const TResultOrError<TReadPagesResult>& result)
+TString DescribePages(const TVector<TBuffer>& buffers)
 {
-    TVector<TStringBuf> pages;
+    TVector<TString> pages;
 
-    for (const auto& page: result.GetResult().Pages) {
-        pages.emplace_back(page.Data(), page.Size());
+    for (const auto& page: buffers) {
+        pages.push_back(TrimPage({page.Data(), page.Size()}));
     }
 
     return JoinSeq(",", pages);
+}
+
+TString DescribePages(const TResultOrError<TReadPagesResult>& result)
+{
+    return DescribePages(result.GetResult().Pages);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -194,14 +220,14 @@ struct TTestJournal final: public IJournal
         return MakeFuture<NProto::TError>();
     }
 
-    // Answers with the pages of the request that JournalRanges hold, named
-    // after the journal, and takes the other pages of the request as the
-    // missing ones.
+    // Fills the pages of the request that JournalRanges hold with their
+    // names after the journal, and takes the other pages of the request as
+    // the missing ones.
     TResultOrError<TJournalReadResult> Read(
-        TVector<TPageRangeRef> rangeRefs) const override
+        TVector<TPageRangeView> rangeViews) const override
     {
         with_lock (Mutex) {
-            ReadRequests.push_back(rangeRefs);
+            ReadRequests.push_back(MakePageRangeRefs(rangeViews));
         }
 
         if (HasError(ReadError)) {
@@ -216,36 +242,32 @@ struct TTestJournal final: public IJournal
         }
 
         TJournalReadResult result;
-        TReadPagesResult pages{.LastAckedLsn = LastAckedLsn};
 
         auto& missing = result.MissingRanges;
-        for (const auto& ref: rangeRefs) {
+        for (const auto& view: rangeViews) {
             bool extend = false;
 
-            for (ui64 i = 0; i < ref.PageCount; ++i) {
-                const ui64 pageNo = ref.FirstPageNo + i;
+            for (ui64 i = 0; i < view.Pages.size(); ++i) {
+                const ui64 pageNo = view.FirstPageNo + i;
                 if (journalled.contains(pageNo)) {
-                    const TString page = TStringBuilder() << "J" << pageNo;
-                    pages.Pages.emplace_back(page.data(), page.size());
+                    FillPage(view.Pages[i], "J", pageNo);
                     extend = false;
                     continue;
                 }
 
-                if (extend) {
-                    ++missing.back().PageCount;
-                } else {
-                    missing.push_back({.FirstPageNo = pageNo, .PageCount = 1});
+                if (!extend) {
+                    missing.push_back({.FirstPageNo = pageNo});
                     extend = true;
                 }
+                missing.back().Pages.push_back(view.Pages[i]);
             }
         }
 
         result.Future = ReadBarrier.Apply(
-            [pages = std::move(pages)](
-                const auto& future) -> TResultOrError<TReadPagesResult>
+            [lsn = LastAckedLsn](const auto& future) -> TResultOrError<ui64>
             {
                 Y_UNUSED(future);
-                return pages;
+                return lsn;
             });
 
         return result;
@@ -370,8 +392,8 @@ struct TTestJournal final: public IJournal
 
 struct TTestDevice final: public IDevice
 {
-    using TReadHandler = std::function<TResultOrError<TVector<TBuffer>>(
-        const TVector<TPageRangeRef>&)>;
+    using TReadHandler =
+        std::function<NProto::TError(const TVector<TPageRangeView>&)>;
     using TWriteHandler =
         std::function<NProto::TError(const TVector<TPageRange>&)>;
 
@@ -393,14 +415,14 @@ struct TTestDevice final: public IDevice
 
     // IDevice
 
-    TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
-        TVector<TPageRangeRef> rangeRefs) override
+    TFuture<NProto::TError> ReadPages(
+        TVector<TPageRangeView> rangeViews) override
     {
         with_lock (Mutex) {
-            ReadRequests.push_back(rangeRefs);
+            ReadRequests.push_back(MakePageRangeRefs(rangeViews));
         }
 
-        return MakeFuture(ReadHandler(rangeRefs));
+        return MakeFuture(ReadHandler(rangeViews));
     }
 
     TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
@@ -501,7 +523,11 @@ struct TFixture: public NUnitTest::TBaseFixture
         Device->Stop().Wait();
     }
 
-    TResultOrError<TReadPagesResult> ReadPages(const TPageRefs& refs)
+    // Starts a read into |pages|: one buffer per requested page, in the order
+    // of the request. The buffers must outlive the read.
+    TFuture<TResultOrError<ui64>> StartReadPages(
+        const TPageRefs& refs,
+        TVector<TBuffer>* pages)
     {
         TVector<TPageRangeRef> rangeRefs;
         for (const auto& [firstPageNo, pageCount]: refs) {
@@ -509,7 +535,22 @@ struct TFixture: public NUnitTest::TBaseFixture
                 {.FirstPageNo = firstPageNo, .PageCount = pageCount});
         }
 
-        return Device->ReadPages(std::move(rangeRefs)).GetValueSync();
+        return Device->ReadPages(
+            MakePageRangeViews(rangeRefs, DefaultPageSize, pages));
+    }
+
+    TResultOrError<TReadPagesResult> ReadPages(const TPageRefs& refs)
+    {
+        TVector<TBuffer> pages;
+
+        auto result = StartReadPages(refs, &pages).GetValueSync();
+        if (HasError(result)) {
+            return result.GetError();
+        }
+
+        return TReadPagesResult{
+            .LastAckedLsn = result.GetResult(),
+            .Pages = std::move(pages)};
     }
 
     NProto::TError WriteLogRecord()
@@ -733,44 +774,6 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetReadRequests().size());
     }
 
-    Y_UNIT_TEST_F(ShouldFailIfDataStoreReturnsMorePagesThanAsked, TFixture)
-    {
-        Journal->JournalRanges = {{12, 2}};
-
-        // the data store returns the pages the journal covers as well
-
-        DataStore->ReadHandler = [] (const auto& rangeRefs) {
-            Y_UNUSED(rangeRefs);
-            return ServePagesFromDevice({{.FirstPageNo = 10, .PageCount = 4}});
-        };
-
-        const auto response = ReadPages({{10, 4}});
-
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_INVALID_STATE,
-            response.GetError().GetCode(),
-            FormatError(response.GetError()));
-    }
-
-    Y_UNIT_TEST_F(ShouldFailIfDataStoreMissesPage, TFixture)
-    {
-        Journal->JournalRanges = {{10, 1}};
-
-        // the data store does not return the missing page
-
-        DataStore->ReadHandler = [] (const auto& rangeRefs) {
-            Y_UNUSED(rangeRefs);
-            return TVector<TBuffer>();
-        };
-
-        const auto response = ReadPages({{10, 2}});
-
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_INVALID_STATE,
-            response.GetError().GetCode(),
-            FormatError(response.GetError()));
-    }
-
     Y_UNIT_TEST_F(ShouldReadFromJournalAndDataStoreInParallel, TFixture)
     {
         Journal->JournalRanges = {{12, 2}};
@@ -782,12 +785,13 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         Journal->ReadBarrier = journalReadBarrier.GetFuture();
 
         TManualEvent dataStoreReadStarted;
-        DataStore->ReadHandler = [&] (const auto& rangeRefs) {
+        DataStore->ReadHandler = [&] (const auto& rangeViews) {
             dataStoreReadStarted.Signal();
-            return ServePagesFromDevice(rangeRefs);
+            return ServePagesFromDevice(rangeViews);
         };
 
-        auto future = Device->ReadPages({{.FirstPageNo = 10, .PageCount = 4}});
+        TVector<TBuffer> pages;
+        auto future = StartReadPages({{10, 4}}, &pages);
 
         // the data store is read while the journal read is still running
 
@@ -809,8 +813,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             "10+2",
             DescribeRefs(deviceRequests[0]));
 
-        UNIT_ASSERT_VALUES_EQUAL("D10,D11,J12,J13", DescribePages(response));
-        UNIT_ASSERT_VALUES_EQUAL(5, response.GetResult().LastAckedLsn);
+        UNIT_ASSERT_VALUES_EQUAL("D10,D11,J12,J13", DescribePages(pages));
+        UNIT_ASSERT_VALUES_EQUAL(5, response.GetResult());
     }
 
     Y_UNIT_TEST_F(ShouldHandleJournalReadError, TFixture)
@@ -828,10 +832,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
     Y_UNIT_TEST_F(ShouldHandleDataStoreReadError, TFixture)
     {
-        DataStore->ReadHandler = [] (const auto& rangeRefs)
-            -> TResultOrError<TVector<TBuffer>>
-        {
-            Y_UNUSED(rangeRefs);
+        DataStore->ReadHandler = [] (const auto& rangeViews) {
+            Y_UNUSED(rangeViews);
             return MakeError(E_IO, "device is broken");
         };
 

@@ -2,6 +2,8 @@
 
 #include <util/string/builder.h>
 
+#include <cstring>
+
 namespace NCloud::NJournalled {
 
 using namespace NThreading;
@@ -13,11 +15,17 @@ namespace {
 class TDeviceStub final: public IDevice
 {
 public:
-    TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
-        TVector<TPageRangeRef> rangeRefs) override
+    TFuture<NProto::TError> ReadPages(
+        TVector<TPageRangeView> rangeViews) override
     {
-        Y_UNUSED(rangeRefs);
-        return MakeFuture(TResultOrError(TVector<TBuffer>()));
+        // the stub holds no data, every page reads as a zeroed one
+        for (const auto& view: rangeViews) {
+            for (const auto& page: view.Pages) {
+                std::memset(page.data(), 0, page.size());
+            }
+        }
+
+        return MakeFuture<NProto::TError>();
     }
 
     TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
@@ -49,18 +57,17 @@ public:
 
     // IDevice
 
-    [[nodiscard]] TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
-        TVector<TPageRangeRef> rangeRefs) final
+    [[nodiscard]] TFuture<NProto::TError> ReadPages(
+        TVector<TPageRangeView> rangeViews) final
     {
-        for (auto& ref: rangeRefs) {
-            if (auto error = Translate(ref.FirstPageNo, ref.PageCount);
+        for (auto& view: rangeViews) {
+            if (auto error = Translate(view.FirstPageNo, view.Pages.size());
                 HasError(error))
             {
-                return MakeFuture<TResultOrError<TVector<TBuffer>>>(
-                    std::move(error));
+                return MakeFuture(std::move(error));
             }
         }
-        return Device->ReadPages(std::move(rangeRefs));
+        return Device->ReadPages(std::move(rangeViews));
     }
 
     [[nodiscard]] TFuture<NProto::TError> WritePages(

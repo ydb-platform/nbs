@@ -90,7 +90,8 @@ TJournalledStorageNode::TJournalledStorageNode(
             Layout.PageSize,
             EDevicePageStoreMode::Checked),
         DeviceUUID,
-        Layout.DataPageCount);
+        Layout.DataPageCount,
+        Layout.PageSize);
 
     Device = CreateJournalledDeviceV2(
         Logging,
@@ -173,14 +174,26 @@ NProto::TReadPagesResponse TJournalledStorageNode::ReadPages(
         return TErrorResponse(E_INVALID_STATE, "not started");
     }
 
-    auto rangeRefs = MakePageRangeRefs(request);
+    const ui64 pageCount = GetPageCount(request);
+    if (pageCount > Layout.DataPageCount) {
+        return TErrorResponse(
+            E_ARGUMENT,
+            TStringBuilder() << "the request reads " << pageCount
+                             << " pages, the device has "
+                             << Layout.DataPageCount);
+    }
 
-    auto result = WaitInFiber(Device->ReadPages(rangeRefs));
+    // the device reads the pages straight into the response
+    NProto::TReadPagesResponse response;
+
+    auto result = WaitInFiber(Device->ReadPages(
+        MakePageRangeViews(request, Layout.PageSize, &response)));
     if (HasError(result)) {
         return TErrorResponse(result.GetError());
     }
 
-    return MakeReadPagesResponse(rangeRefs, result.GetResult());
+    response.SetLastAckedLogSequenceNumber(result.GetResult());
+    return response;
 }
 
 NProto::TWriteLogRecordResponse TJournalledStorageNode::WriteLogRecord(

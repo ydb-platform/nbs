@@ -44,13 +44,13 @@ struct IDevicePageStore
     [[nodiscard]] virtual NProto::TError Free(
         const TVector<TPageRangeRef>& pageRanges) = 0;
 
-    [[nodiscard]] virtual auto Write(
+    [[nodiscard]] virtual NThreading::TFuture<NProto::TError> Write(
         const TVector<TPageRangeRef>& pageRanges,
-        const TVector<TBuffer>& pages)
-        -> NThreading::TFuture<NProto::TError> = 0;
+        const TVector<TBuffer>& pages) = 0;
 
-    [[nodiscard]] virtual auto Read(const TVector<TPageRangeRef>& pageRanges)
-        -> NThreading::TFuture<TResultOrError<TVector<TBuffer>>> = 0;
+    // The buffers must stay valid until the returned future is set.
+    [[nodiscard]] virtual NThreading::TFuture<NProto::TError> Read(
+        TVector<TPageRangeView> rangeViews) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

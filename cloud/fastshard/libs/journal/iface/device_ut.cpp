@@ -27,14 +27,14 @@ TPageRange MakeRange(ui64 firstPageNo, char fill)
 
 TString ReadPage(const IDevicePtr& device, ui64 pageNo)
 {
-    auto result = device->ReadPages({{pageNo, 1}}).GetValueSync();
-    UNIT_ASSERT_VALUES_EQUAL_C(
-        S_OK,
-        result.GetError().GetCode(),
-        FormatError(result.GetError()));
+    TVector<TBuffer> pages;
 
-    const auto& page = result.GetResult()[0];
-    return TString(page.Data(), page.Size());
+    auto error = device
+        ->ReadPages(MakePageRangeViews({{pageNo, 1}}, PageSize, &pages))
+        .GetValueSync();
+    UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+    return TString(pages[0].Data(), pages[0].Size());
 }
 
 }   // namespace
@@ -71,9 +71,12 @@ Y_UNIT_TEST_SUITE(TRegionDeviceTest)
         auto region =
             CreateRegionDevice(CreateInMemoryDevice(PageSize), {4, 8});
 
+        TVector<TBuffer> pages;
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
-            region->ReadPages({{7, 2}}).GetValueSync().GetError().GetCode());
+            region->ReadPages(MakePageRangeViews({{7, 2}}, PageSize, &pages))
+                .GetValueSync()
+                .GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             region->WritePages({MakeRange(8, 'a')}).GetValueSync().GetCode());

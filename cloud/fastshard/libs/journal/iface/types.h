@@ -1,5 +1,6 @@
 #pragma once
 
+#include <util/generic/array_ref.h>
 #include <util/generic/buffer.h>
 #include <util/generic/vector.h>
 #include <util/system/types.h>
@@ -20,14 +21,23 @@ struct TPageRange
     TVector<TBuffer> Pages;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-struct TReadPagesResult
+struct TPageRangeView
 {
-    ui64 LastAckedLsn = 0;
-
-    TVector<TBuffer> Pages;
+    ui64 FirstPageNo = 0;
+    TVector<TArrayRef<char>> Pages;
 };
+
+// Resizes |pages| to one buffer of |pageSize| bytes per page of |rangeRefs|
+// and returns the views of the buffers, in the order of the refs.
+TVector<TPageRangeView> MakePageRangeViews(
+    const TVector<TPageRangeRef>& rangeRefs,
+    ui32 pageSize,
+    TVector<TBuffer>* pages);
+
+TVector<TPageRangeRef> MakePageRangeRefs(
+    const TVector<TPageRangeView>& rangeViews);
+
+////////////////////////////////////////////////////////////////////////////////
 
 struct TJournalRecord
 {

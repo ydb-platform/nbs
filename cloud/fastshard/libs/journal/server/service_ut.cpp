@@ -71,8 +71,8 @@ struct TTestDevice final: public IDevice
         , ZeroPagesError(std::move(zeroPagesError))
     {}
 
-    [[nodiscard]] auto ReadPages(TVector<TPageRangeRef> /*rangeRefs*/)
-        -> TFuture<TResultOrError<TVector<TBuffer>>> final
+    [[nodiscard]] auto ReadPages(TVector<TPageRangeView> /*rangeViews*/)
+        -> TFuture<NProto::TError> final
     {
         UNIT_FAIL("unexpected ReadPages");
         return {};
@@ -198,6 +198,10 @@ struct TTestJournalledDevice final: public IJournalledDevice
     // The number of requests the device has served.
     std::atomic<ui32> RequestCount = 0;
 
+    // A read fills every requested page with this byte and returns this lsn.
+    char ReadFill = 'r';
+    ui64 LastAckedLsn = 0;
+
     explicit TTestJournalledDevice(TString name)
         : Name(std::move(name))
     {}
@@ -266,11 +270,18 @@ public:
         return MakeFuture();
     }
 
-    TFuture<TResultOrError<TReadPagesResult>> ReadPages(
-        TVector<TPageRangeRef> /*rangeRefs*/) final
+    TFuture<TResultOrError<ui64>> ReadPages(
+        TVector<TPageRangeView> rangeViews) final
     {
         ++RequestCount;
-        return MakeFuture<TResultOrError<TReadPagesResult>>(TReadPagesResult());
+
+        for (const auto& view: rangeViews) {
+            for (const auto& page: view.Pages) {
+                std::memset(page.data(), ReadFill, page.size());
+            }
+        }
+
+        return MakeFuture<TResultOrError<ui64>>(LastAckedLsn);
     }
 
     TFuture<NProto::TError> WriteLogRecord(
@@ -703,6 +714,112 @@ Y_UNIT_TEST_SUITE(TServiceTest)
                     i);
             }
         }
+    }
+
+    Y_UNIT_TEST_F(ShouldReadPagesIntoResponse, TFixture)
+    {
+        StartService();
+
+        Devices[0]->LastAckedLsn = 42;
+
+        auto request = MakeRequest<NProto::TReadPagesRequest>(
+            Configs[0].DeviceUUID,
+            ClientId);
+
+        for (const auto& [firstPageNo, pageCount]:
+             TVector<std::pair<ui64, ui64>>{{10, 2}, {20, 1}})
+        {
+            auto& ref = *request.AddPageGroupRefs();
+            ref.SetFirstPageNo(firstPageNo);
+            ref.SetPageCount(pageCount);
+            ref.SetPageSize(DefaultBlockSize);
+        }
+
+        const auto response =
+            Service->ReadPages(std::move(request)).GetValueSync();
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(42, response.GetLastAckedLogSequenceNumber());
+
+        // the device has filled a page of the block size per requested page
+
+        const TString page(DefaultBlockSize, 'r');
+
+        UNIT_ASSERT_VALUES_EQUAL(2, response.PageGroupsSize());
+
+        UNIT_ASSERT_VALUES_EQUAL(10, response.GetPageGroups(0).GetFirstPageNo());
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetPageGroups(0).ContentSize());
+        UNIT_ASSERT_VALUES_EQUAL(page, response.GetPageGroups(0).GetContent(0));
+        UNIT_ASSERT_VALUES_EQUAL(page, response.GetPageGroups(0).GetContent(1));
+
+        UNIT_ASSERT_VALUES_EQUAL(20, response.GetPageGroups(1).GetFirstPageNo());
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetPageGroups(1).ContentSize());
+        UNIT_ASSERT_VALUES_EQUAL(page, response.GetPageGroups(1).GetContent(0));
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectReadWithWrongPageSize, TFixture)
+    {
+        StartService();
+
+        for (const ui32 pageSize: {0u, DefaultBlockSize / 2, DefaultBlockSize * 2})
+        {
+            auto request = MakeRequest<NProto::TReadPagesRequest>(
+                Configs[0].DeviceUUID,
+                ClientId);
+
+            // a wrong page size in any ref fails the whole request
+            for (const ui32 size: {DefaultBlockSize, pageSize}) {
+                auto& ref = *request.AddPageGroupRefs();
+                ref.SetFirstPageNo(size == pageSize ? 20 : 10);
+                ref.SetPageCount(1);
+                ref.SetPageSize(size);
+            }
+
+            const auto response =
+                Service->ReadPages(std::move(request)).GetValueSync();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response.GetError().GetCode(),
+                pageSize << ": " << FormatError(response.GetError()));
+        }
+
+        // the requests have not reached the device
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[0]->RequestCount.load());
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectReadOfMorePagesThanDeviceHas, TFixture)
+    {
+        StartService();
+
+        const auto& config = Configs[0];
+
+        for (const ui64 pageCount: {config.BlocksCount / 2 + 1, Max<ui64>()}) {
+            auto request = MakeRequest<NProto::TReadPagesRequest>(
+                config.DeviceUUID,
+                ClientId);
+
+            // two refs that fit the device one by one, but not together
+            for (int i = 0; i != 2; ++i) {
+                auto& ref = *request.AddPageGroupRefs();
+                ref.SetPageCount(pageCount);
+                ref.SetPageSize(DefaultBlockSize);
+            }
+
+            const auto response =
+                Service->ReadPages(std::move(request)).GetValueSync();
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response.GetError().GetCode(),
+                FormatError(response.GetError()));
+        }
+
+        // the requests have not reached the device
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[0]->RequestCount.load());
     }
 
     Y_UNIT_TEST_F(ShouldRejectRequestsToDevicesThatAreNotStarted, TFixture)

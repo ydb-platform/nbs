@@ -230,7 +230,8 @@ TResultOrError<IJournalledDevicePtr> TJournalledDeviceV2Factory::Create(
         std::move(logMetaStore),
         std::move(logDataStore),
         uuid,
-        dataBlockCount);
+        dataBlockCount,
+        blockSize);
 
     auto journalledDevice = CreateJournalledDeviceV2(
         Logging,

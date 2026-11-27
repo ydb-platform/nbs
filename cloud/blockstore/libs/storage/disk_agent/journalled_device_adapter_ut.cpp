@@ -118,9 +118,28 @@ struct TFixture: public NUnitTest::TBaseFixture
         return Device->WritePages(std::move(ranges)).GetValueSync();
     }
 
-    auto ReadPages(TVector<TPageRangeRef> rangeRefs)
+    // Reads into new buffers of |blockSize| bytes: one per requested page, in
+    // the order of the refs.
+    static TResultOrError<TVector<TBuffer>> ReadPages(
+        IDevice& device,
+        const TVector<TPageRangeRef>& rangeRefs,
+        ui32 blockSize = DefaultBlockSize)
     {
-        return Device->ReadPages(std::move(rangeRefs)).GetValueSync();
+        TVector<TBuffer> pages;
+
+        auto error = device
+            .ReadPages(MakePageRangeViews(rangeRefs, blockSize, &pages))
+            .GetValueSync();
+        if (HasError(error)) {
+            return error;
+        }
+
+        return pages;
+    }
+
+    auto ReadPages(const TVector<TPageRangeRef>& rangeRefs)
+    {
+        return ReadPages(*Device, rangeRefs);
     }
 
     NProto::TError ZeroPages(TVector<TPageRangeRef> rangeRefs)
@@ -299,6 +318,21 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
         }
     }
 
+    Y_UNIT_TEST_F(ShouldRejectPageBufferOfWrongSizeOnRead, TFixture)
+    {
+        for (ui32 size: {DefaultBlockSize / 2, DefaultBlockSize * 2, 0u}) {
+            const auto result = ReadPages(
+                *Device,
+                {{.FirstPageNo = 0x10, .PageCount = 1}},
+                size);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                result.GetError().GetCode(),
+                FormatError(result.GetError()));
+        }
+    }
+
     Y_UNIT_TEST_F(ShouldServeADeviceRegion, TFixture)
     {
         constexpr ui64 firstBlock = 16;
@@ -315,8 +349,9 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
 
         const auto readPage = [&](ui64 pageNo)
         {
-            return region->ReadPages({{.FirstPageNo = pageNo, .PageCount = 1}})
-                .GetValueSync();
+            return ReadPages(
+                *region,
+                {{.FirstPageNo = pageNo, .PageCount = 1}});
         };
 
         const auto assertBlock = [&](const TBuffer& page, char expected)

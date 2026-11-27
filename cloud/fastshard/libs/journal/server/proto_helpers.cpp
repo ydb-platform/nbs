@@ -1,6 +1,6 @@
 #include "proto_helpers.h"
 
-#include <util/string/builder.h>
+#include <util/generic/ylimits.h>
 
 namespace NCloud::NJournalled {
 
@@ -48,19 +48,48 @@ void FillPageGroups(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVector<TPageRangeRef> MakePageRangeRefs(
-    const NProto::TReadPagesRequest& request)
+TVector<TPageRangeView> MakePageRangeViews(
+    const NProto::TReadPagesRequest& request,
+    ui32 pageSize,
+    NProto::TReadPagesResponse* response)
 {
-    TVector<TPageRangeRef> rangeRefs;
-    rangeRefs.reserve(request.PageGroupRefsSize());
+    TVector<TPageRangeView> rangeViews;
+    rangeViews.reserve(request.PageGroupRefsSize());
+
+    auto& groups = *response->MutablePageGroups();
+    groups.Reserve(request.PageGroupRefsSize());
 
     for (const auto& ref: request.GetPageGroupRefs()) {
-        rangeRefs.push_back(
-            {.FirstPageNo = ref.GetFirstPageNo(),
-             .PageCount = ref.GetPageCount()});
+        auto& group = *groups.Add();
+        group.SetFirstPageNo(ref.GetFirstPageNo());
+        group.MutableContent()->Reserve(ref.GetPageCount());
+
+        auto& view = rangeViews.emplace_back();
+        view.FirstPageNo = ref.GetFirstPageNo();
+        view.Pages.reserve(ref.GetPageCount());
+
+        for (ui64 i = 0; i != ref.GetPageCount(); ++i) {
+            auto& content = *group.AddContent();
+            content.ReserveAndResize(pageSize);
+            view.Pages.emplace_back(content.begin(), content.size());
+        }
     }
 
-    return rangeRefs;
+    return rangeViews;
+}
+
+ui64 GetPageCount(const NProto::TReadPagesRequest& request)
+{
+    ui64 pageCount = 0;
+    for (const auto& ref: request.GetPageGroupRefs()) {
+        if (ref.GetPageCount() > Max<ui64>() - pageCount) {
+            return Max<ui64>();
+        }
+
+        pageCount += ref.GetPageCount();
+    }
+
+    return pageCount;
 }
 
 TVector<TPageRange> MakePageRanges(const NProto::TWritePagesRequest& request)
@@ -86,53 +115,6 @@ NProto::TReadJournalTailResponse MakeReadJournalTailResponse(
         journalRecord.SetLogSequenceNumber(record.Lsn);
         journalRecord.SetPrevLogSequenceNumber(record.PrevLsn);
         FillPageGroups(record.Ranges, journalRecord.MutablePageGroups());
-    }
-
-    return response;
-}
-
-NProto::TReadPagesResponse MakeReadPagesResponse(
-    const TVector<TPageRangeRef>& rangeRefs,
-    const TVector<TBuffer>& pages)
-{
-    ui64 pageCount = 0;
-    for (const auto& ref: rangeRefs) {
-        pageCount += ref.PageCount;
-    }
-
-    if (pages.size() != pageCount) {
-        return TErrorResponse(
-            E_INVALID_STATE,
-            TStringBuilder() << "the device returned " << pages.size()
-                             << " pages, expected " << pageCount);
-    }
-
-    NProto::TReadPagesResponse response;
-
-    auto& groups = *response.MutablePageGroups();
-    groups.Reserve(rangeRefs.size());
-
-    ui64 pageIndex = 0;
-    for (const auto& ref: rangeRefs) {
-        auto& group = *groups.Add();
-        group.SetFirstPageNo(ref.FirstPageNo);
-
-        for (ui64 i = 0; i != ref.PageCount; ++i) {
-            const auto& page = pages[pageIndex++];
-            group.AddContent()->assign(page.Data(), page.Size());
-        }
-    }
-
-    return response;
-}
-
-NProto::TReadPagesResponse MakeReadPagesResponse(
-    const TVector<TPageRangeRef>& rangeRefs,
-    const TReadPagesResult& result)
-{
-    auto response = MakeReadPagesResponse(rangeRefs, result.Pages);
-    if (!HasError(response)) {
-        response.SetLastAckedLogSequenceNumber(result.LastAckedLsn);
     }
 
     return response;

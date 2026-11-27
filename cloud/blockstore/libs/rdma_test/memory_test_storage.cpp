@@ -131,7 +131,9 @@ TFuture<NProto::TReadBlocksLocalResponse> TMemoryTestStorage::DoReadBlocksLocal(
     auto guard = request->Sglist.Acquire();
     UNIT_ASSERT(guard);
     const TSgList& sgList = guard.Get();
-    UNIT_ASSERT_EQUAL(request->GetBlocksCount(), sgList.size());
+    UNIT_ASSERT_VALUES_EQUAL(
+        static_cast<ui64>(request->GetBlocksCount()) * request->GetBlockSize(),
+        SgListGetSize(sgList));
 
     auto range = TBlockRange32::WithLength(
         request->GetStartIndex(),

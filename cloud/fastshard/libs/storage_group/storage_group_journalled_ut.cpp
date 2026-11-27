@@ -148,16 +148,20 @@ struct TJournalledDevices
     // A device's own page, before the group's page shift.
     NProto::TError ReadPage(ui32 i, ui64 pageNo, TString& page)
     {
-        auto result =
-            Nodes[i]
-                ->Device->ReadPages({{.FirstPageNo = pageNo, .PageCount = 1}})
-                .GetValueSync();
+        TVector<TBuffer> pages;
+
+        auto result = Nodes[i]
+            ->Device
+            ->ReadPages(NJournalled::MakePageRangeViews(
+                {{.FirstPageNo = pageNo, .PageCount = 1}},
+                DefaultBlockSize,
+                &pages))
+            .GetValueSync();
         if (HasError(result)) {
             return result.GetError();
         }
 
-        const auto& buffer = result.GetResult().Pages[0];
-        page.assign(buffer.Data(), buffer.Size());
+        page.assign(pages[0].Data(), pages[0].Size());
         return {};
     }
 

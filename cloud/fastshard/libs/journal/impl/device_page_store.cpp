@@ -3,7 +3,6 @@
 #include <cloud/fastshard/libs/journal/iface/device.h>
 
 #include <cloud/storage/core/libs/common/disjoint_interval_map.h>
-#include <cloud/storage/core/libs/common/future_helper.h>
 
 #include <util/generic/utility.h>
 #include <util/generic/ylimits.h>
@@ -107,9 +106,9 @@ public:
         return MakeError(S_OK);
     }
 
-    auto Write(
+    TFuture<NProto::TError> Write(
         const TVector<TPageRangeRef>& pageRanges,
-        const TVector<TBuffer>& pages) -> TFuture<NProto::TError> override
+        const TVector<TBuffer>& pages) override
     {
         ui64 pageCount = 0;
         for (const auto& pageRange: pageRanges) {
@@ -158,49 +157,36 @@ public:
         return Device->WritePages(std::move(deviceRanges));
     }
 
-    auto Read(const TVector<TPageRangeRef>& pageRanges)
-        -> TFuture<TResultOrError<TVector<TBuffer>>> override
+    TFuture<NProto::TError> Read(TVector<TPageRangeView> rangeViews) override
     {
-        using TResult = TResultOrError<TVector<TBuffer>>;
-
         ui64 pageCount = 0;
 
+        for (const auto& view: rangeViews) {
+            for (const auto& page: view.Pages) {
+                if (page.size() != PageSize) {
+                    return MakeFuture(MakeError(
+                        E_ARGUMENT,
+                        TStringBuilder()
+                            << "a page buffer of " << page.size()
+                            << " bytes, the page size is " << PageSize));
+                }
+            }
+
+            pageCount += view.Pages.size();
+        }
+
         if (Mode == EDevicePageStoreMode::Checked) {
-            auto error = ValidateRanges(pageRanges);
+            auto error = ValidateRanges(MakePageRangeRefs(rangeViews));
             if (HasError(error)) {
-                return MakeFuture<TResult>(error);
+                return MakeFuture(error);
             }
         }
 
-        for (const auto& pageRange: pageRanges) {
-            pageCount += pageRange.PageCount;
-        }
-
         if (!pageCount) {
-            return MakeFuture<TResult>(TVector<TBuffer>());
+            return MakeFuture(MakeError(S_OK));
         }
 
-        return Device->ReadPages(pageRanges)
-            .Apply(
-                [pageCount](const auto& future) -> TResult
-                {
-                    auto result = UnsafeExtractValue(future);
-                    if (HasError(result)) {
-                        return result.GetError();
-                    }
-
-                    auto pages = result.ExtractResult();
-
-                    if (pages.size() != pageCount) {
-                        return MakeError(
-                            E_INVALID_STATE,
-                            TStringBuilder()
-                                << "the device returned " << pages.size()
-                                << " pages, expected " << pageCount);
-                    }
-
-                    return std::move(pages);
-                });
+        return Device->ReadPages(std::move(rangeViews));
     }
 
 private:

@@ -1,5 +1,7 @@
 #include "journalled_device.h"
 
+#include <cstring>
+
 namespace NCloud::NJournalled {
 
 using namespace NThreading;
@@ -23,19 +25,17 @@ public:
         return MakeFuture();
     }
 
-    TFuture<TResultOrError<TReadPagesResult>> ReadPages(
-        TVector<TPageRangeRef> rangeRefs) final
+    TFuture<TResultOrError<ui64>> ReadPages(
+        TVector<TPageRangeView> rangeViews) final
     {
-        // One buffer per requested page: the callers index the pages by
-        // their position in the request.
-        ui64 pageCount = 0;
-        for (const auto& ref: rangeRefs) {
-            pageCount += ref.PageCount;
+        // the stub holds no data, every page reads as a zeroed one
+        for (const auto& view: rangeViews) {
+            for (const auto& page: view.Pages) {
+                std::memset(page.data(), 0, page.size());
+            }
         }
 
-        TReadPagesResult result;
-        result.Pages.resize(pageCount);
-        return MakeFuture<TResultOrError<TReadPagesResult>>(std::move(result));
+        return MakeFuture<TResultOrError<ui64>>(0);
     }
 
     TFuture<NProto::TError> WriteLogRecord(

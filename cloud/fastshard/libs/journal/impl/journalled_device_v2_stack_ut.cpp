@@ -5,6 +5,7 @@
 #include "key_buffer_store.h"
 #include "log_record.h"
 #include "memory_device.h"
+#include "ut_helpers.h"
 
 #include <cloud/fastshard/libs/journal/iface/device.h>
 #include <cloud/fastshard/libs/journal/iface/journalled_device.h>
@@ -181,10 +182,10 @@ struct TRecordingDevice final: public IDevice
     mutable TMutex Mutex;
     TVector<TVector<TPageRange>> Writes;
 
-    TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
-        TVector<TPageRangeRef> rangeRefs) override
+    TFuture<NProto::TError> ReadPages(
+        TVector<TPageRangeView> rangeViews) override
     {
-        return Impl->ReadPages(std::move(rangeRefs));
+        return Impl->ReadPages(std::move(rangeViews));
     }
 
     TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
@@ -287,7 +288,8 @@ struct TFixture: public NUnitTest::TBaseFixture
             MetaStore,
             PageStore,
             TString{DeviceUUID},
-            DataDevicePageCount);
+            DataDevicePageCount,
+            DataPageSize);
         Device = CreateJournalledDeviceV2(
             Logging,
             Executor,
@@ -329,9 +331,20 @@ struct TFixture: public NUnitTest::TBaseFixture
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
     }
 
-    TResultOrError<TReadPagesResult> ReadPages(const TGroups& refs)
+    // The pages that the device has read, one buffer per requested page.
+    TResultOrError<TVector<TBuffer>> ReadPages(const TGroups& refs)
     {
-        return Device->ReadPages(MakeRangeRefs(refs)).GetValueSync();
+        TVector<TBuffer> pages;
+
+        const auto result = Device
+            ->ReadPages(
+                MakePageRangeViews(MakeRangeRefs(refs), DataPageSize, &pages))
+            .GetValueSync();
+        if (HasError(result)) {
+            return result.GetError();
+        }
+
+        return pages;
     }
 
     TString ReadPagesOrFail(const TGroups& refs)
@@ -343,7 +356,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             result.GetError().GetCode(),
             FormatError(result.GetError()));
 
-        return DescribePages(MakeRangeRefs(refs), result.GetResult().Pages);
+        return DescribePages(MakeRangeRefs(refs), result.GetResult());
     }
 
     TResultOrError<TJournalTail> ReadTail(
@@ -362,7 +375,8 @@ struct TFixture: public NUnitTest::TBaseFixture
     TString ReadDataDevice(const TGroups& refs)
     {
         const auto rangeRefs = MakeRangeRefs(refs);
-        const auto result = DataDevice->ReadPages(rangeRefs).GetValueSync();
+        const auto result =
+            NJournalled::ReadPages(*DataDevice, rangeRefs, DataPageSize);
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
@@ -818,7 +832,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2StackTest)
         WriteRecordOrFail(1, 0, 'A', {{12, 1}});
 
         // the same pages asked for twice - the journal would look them up
-        // twice and the merged response would take their content twice
+        // twice and read their content twice
         auto response = ReadPages({{10, 4}, {10, 4}});
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
 

@@ -4,6 +4,7 @@
 #include "key_buffer_store.h"
 #include "log_record.h"
 #include "memory_device.h"
+#include "ut_helpers.h"
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
@@ -136,8 +137,8 @@ TString DescribeRecords(const TResultOrError<TJournalTail>& tail)
     return JoinSeq("; ", records);
 }
 
-// What a journal read gives. The journal returns its pages as a plain list,
-// so the page numbers are worked out from the request and the missing ranges.
+// What a journal read gives. The journal fills the buffers of the pages that
+// it holds, the missing ranges tell which of the requested pages these are.
 struct TReadResponse
 {
     NProto::TError Error;
@@ -153,16 +154,16 @@ struct TReadResponse
     }
 };
 
+// |pages| holds one buffer per requested page, in the order of the request.
 TReadResponse DescribeRead(
     const TVector<TPageRangeRef>& rangeRefs,
     const TVector<TPageRangeRef>& missing,
-    const TResultOrError<TReadPagesResult>& result)
+    const TVector<TBuffer>& pages,
+    const TResultOrError<ui64>& result)
 {
     if (HasError(result)) {
         return {.Error = result.GetError()};
     }
-
-    const auto& pages = result.GetResult().Pages;
 
     TVector<TPageRange> ranges;
     size_t pageIndex = 0;
@@ -173,6 +174,9 @@ TReadResponse DescribeRead(
 
         for (ui64 i = 0; i != ref.PageCount; ++i) {
             const ui64 pageNo = ref.FirstPageNo + i;
+
+            UNIT_ASSERT(pageIndex < pages.size());
+            const auto& page = pages[pageIndex++];
 
             while (missingIndex < missing.size() &&
                    missing[missingIndex].FirstPageNo +
@@ -189,14 +193,11 @@ TReadResponse DescribeRead(
                 continue;
             }
 
-            UNIT_ASSERT(pageIndex < pages.size());
-
             if (!extend) {
                 ranges.push_back({.FirstPageNo = pageNo});
                 extend = true;
             }
 
-            const auto& page = pages[pageIndex++];
             ranges.back().Pages.emplace_back(page.Data(), page.Size());
         }
     }
@@ -204,7 +205,7 @@ TReadResponse DescribeRead(
     UNIT_ASSERT_VALUES_EQUAL(pages.size(), pageIndex);
 
     return {
-        .LastAckedLsn = result.GetResult().LastAckedLsn,
+        .LastAckedLsn = result.GetResult(),
         .Pages = DescribeRanges(ranges)};
 }
 
@@ -221,8 +222,8 @@ struct TTestDevice final: public IDevice
 
     struct TBlockedRead
     {
-        TVector<TPageRangeRef> RangeRefs;
-        TPromise<TResultOrError<TVector<TBuffer>>> Response;
+        TVector<TPageRangeView> RangeViews;
+        TPromise<NProto::TError> Response;
     };
 
     struct TBlockedWrite
@@ -239,26 +240,25 @@ struct TTestDevice final: public IDevice
     TManualEvent WriteBlocked;
     TVector<TBlockedWrite> BlockedWrites;
 
-    TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
-        TVector<TPageRangeRef> rangeRefs) override
+    TFuture<NProto::TError> ReadPages(
+        TVector<TPageRangeView> rangeViews) override
     {
         if (FailReads.load()) {
-            return MakeFuture<TResultOrError<TVector<TBuffer>>>(
-                MakeError(E_IO, "read failed"));
+            return MakeFuture(MakeError(E_IO, "read failed"));
         }
 
         with_lock (Mutex) {
             if (BlockReads) {
-                auto response =
-                    NewPromise<TResultOrError<TVector<TBuffer>>>();
+                auto response = NewPromise<NProto::TError>();
                 BlockedReads.push_back(
-                    {.RangeRefs = std::move(rangeRefs), .Response = response});
+                    {.RangeViews = std::move(rangeViews),
+                     .Response = response});
                 ReadBlocked.Signal();
                 return response.GetFuture();
             }
         }
 
-        return Impl->ReadPages(std::move(rangeRefs));
+        return Impl->ReadPages(std::move(rangeViews));
     }
 
     TFuture<NProto::TError> WritePages(TVector<TPageRange> ranges) override
@@ -308,7 +308,7 @@ struct TTestDevice final: public IDevice
 
         for (auto& read: blocked) {
             read.Response.SetValue(
-                Impl->ReadPages(std::move(read.RangeRefs)).GetValueSync());
+                Impl->ReadPages(std::move(read.RangeViews)).GetValueSync());
         }
     }
 
@@ -523,7 +523,8 @@ struct TFixture: public NUnitTest::TBaseFixture
             MetaStore,
             DataStore,
             "test-device",
-            DevicePageCount);
+            DevicePageCount,
+            DefaultPageSize);
     }
 
     // The number of times the journal has reported the given critical event
@@ -592,14 +593,27 @@ struct TFixture: public NUnitTest::TBaseFixture
         return Write(MakeRecord(lsn, prevLsn, tag, groups));
     }
 
-    TResultOrError<TJournalReadResult> StartRead(const TGroups& refs)
+    // Starts a read into |pages|: one buffer per requested page, in the order
+    // of the request. The buffers must outlive the read.
+    TResultOrError<TJournalReadResult> StartRead(
+        const TGroups& refs,
+        TVector<TBuffer>* pages)
     {
-        return Run([&] { return Journal->Read(MakeRangeRefs(refs)); });
+        return Run(
+            [&]
+            {
+                return Journal->Read(MakePageRangeViews(
+                    MakeRangeRefs(refs),
+                    DefaultPageSize,
+                    pages));
+            });
     }
 
     TReadResponse ReadPages(const TGroups& refs)
     {
-        auto result = StartRead(refs);
+        TVector<TBuffer> pages;
+
+        auto result = StartRead(refs, &pages);
         if (HasError(result)) {
             return {.Error = result.GetError()};
         }
@@ -607,20 +621,29 @@ struct TFixture: public NUnitTest::TBaseFixture
         const auto& [missing, future] = result.GetResult();
         return DescribeRead(
             MakeRangeRefs(refs),
-            missing,
+            MakePageRangeRefs(missing),
+            pages,
             future.GetValueSync());
     }
 
     // "5+2, 20+1" - the page ranges the reader has to take from the device
     TString MissingRanges(const TGroups& refs)
     {
-        auto result = StartRead(refs);
+        TVector<TBuffer> pages;
+
+        auto result = StartRead(refs, &pages);
         UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
 
+        const auto& [missing, future] = result.GetResult();
+
+        // the buffers are in use until the read is done
+        future.Wait();
+
         TVector<TString> ranges;
-        for (const auto& range: result.GetResult().MissingRanges) {
+        for (const auto& range: missing) {
             ranges.push_back(
-                TStringBuilder() << range.FirstPageNo << "+" << range.PageCount);
+                TStringBuilder()
+                << range.FirstPageNo << "+" << range.Pages.size());
         }
 
         return JoinSeq(", ", ranges);
@@ -630,14 +653,24 @@ struct TFixture: public NUnitTest::TBaseFixture
     // set while the device holds the read.
     TFuture<TReadResponse> ReadPagesAsync(const TGroups& refs)
     {
-        auto result = StartRead(refs);
+        TVector<TBuffer> pages;
+
+        auto result = StartRead(refs, &pages);
         UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
 
+        // the callback owns the buffers, so they outlive the read
         const auto& [missing, future] = result.GetResult();
         return future.Apply(
             [rangeRefs = MakeRangeRefs(refs),
-             missing = missing](const auto& future)
-            { return DescribeRead(rangeRefs, missing, future.GetValue()); });
+             missing = MakePageRangeRefs(missing),
+             pages = std::move(pages)](const auto& future)
+            {
+                return DescribeRead(
+                    rangeRefs,
+                    missing,
+                    pages,
+                    future.GetValue());
+            });
     }
 
     TResultOrError<TJournalTail> ReadTail(
@@ -718,7 +751,8 @@ struct TFixture: public NUnitTest::TBaseFixture
             locations.push_back(mapping.Location);
         }
 
-        auto response = Device->Impl->ReadPages(locations).GetValueSync();
+        auto response =
+            NJournalled::ReadPages(*Device->Impl, locations, DefaultPageSize);
         UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
         return CalculatePagesCrc(response.GetResult());
     }
@@ -1679,7 +1713,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
         Device->BlockReadsUntilReleased();
 
-        auto result = StartRead({{9, 4}});
+        TVector<TBuffer> pages;
+        auto result = StartRead({{9, 4}}, &pages);
         UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
 
         // the missing ranges are known while the journal pages are still
@@ -1689,12 +1724,22 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT(Device->ReadBlocked.WaitT(TDuration::Seconds(30)));
         UNIT_ASSERT(!future.HasValue());
 
+        // the missing ranges refer to the buffers of the request
+        UNIT_ASSERT_VALUES_EQUAL(9, missing[0].FirstPageNo);
+        UNIT_ASSERT_VALUES_EQUAL(1, missing[0].Pages.size());
+        UNIT_ASSERT_EQUAL(pages[0].Data(), missing[0].Pages[0].data());
+
+        UNIT_ASSERT_VALUES_EQUAL(12, missing[1].FirstPageNo);
+        UNIT_ASSERT_VALUES_EQUAL(1, missing[1].Pages.size());
+        UNIT_ASSERT_EQUAL(pages[3].Data(), missing[1].Pages[0].data());
+
         Device->ReleaseReads();
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010,A011]",
             DescribeRead(
                 MakeRangeRefs({{9, 4}}),
-                missing,
+                MakePageRangeRefs(missing),
+                pages,
                 future.GetValueSync())
                 .Pages);
     }

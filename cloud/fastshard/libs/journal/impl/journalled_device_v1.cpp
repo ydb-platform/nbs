@@ -44,19 +44,19 @@ public:
         return MakeFuture();
     }
 
-    TFuture<TResultOrError<TReadPagesResult>> ReadPages(
-        TVector<TPageRangeRef> rangeRefs) final
+    TFuture<TResultOrError<ui64>> ReadPages(
+        TVector<TPageRangeView> rangeViews) final
     {
-        return DataStore->ReadPages(std::move(rangeRefs))
+        return DataStore->ReadPages(std::move(rangeViews))
             .Apply(
-                [](auto future) -> TResultOrError<TReadPagesResult>
+                [](const auto& future) -> TResultOrError<ui64>
                 {
-                    auto result = future.ExtractValue();
-                    if (HasError(result)) {
-                        return result.GetError();
+                    const auto& error = future.GetValue();
+                    if (HasError(error)) {
+                        return error;
                     }
 
-                    return TReadPagesResult{.Pages = result.ExtractResult()};
+                    return 0;
                 });
     }
 

@@ -13,8 +13,17 @@ namespace NCloud::NJournalled {
 // Conversions between the device protocol messages and the arguments of
 // IDevice and IJournalledDevice.
 
-TVector<TPageRangeRef> MakePageRangeRefs(
-    const NProto::TReadPagesRequest& request);
+// Adds the page groups that |request| asks for to |response|, one content of
+// |pageSize| bytes per page, and returns the views of the contents. The
+// contents are not initialized. The views are valid until the response is
+// changed or destroyed.
+TVector<TPageRangeView> MakePageRangeViews(
+    const NProto::TReadPagesRequest& request,
+    ui32 pageSize,
+    NProto::TReadPagesResponse* response);
+
+// The number of pages that |request| asks for, Max<ui64>() if it overflows.
+ui64 GetPageCount(const NProto::TReadPagesRequest& request);
 
 TVector<TPageRange> MakePageRanges(const NProto::TWritePagesRequest& request);
 
@@ -23,13 +32,5 @@ TVector<TPageRange> MakePageRanges(
 
 NProto::TReadJournalTailResponse MakeReadJournalTailResponse(
     const TJournalTail& tail);
-
-NProto::TReadPagesResponse MakeReadPagesResponse(
-    const TVector<TPageRangeRef>& rangeRefs,
-    const TVector<TBuffer>& pages);
-
-NProto::TReadPagesResponse MakeReadPagesResponse(
-    const TVector<TPageRangeRef>& rangeRefs,
-    const TReadPagesResult& result);
 
 }   // namespace NCloud::NJournalled

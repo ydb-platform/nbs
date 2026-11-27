@@ -170,11 +170,13 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     // the pages read are grouped after the refs they have been read for
     TResultOrError<TVector<TPageGroup>> Read(
-        const TVector<std::pair<ui64, ui64>>& refs)
+        const TVector<std::pair<ui64, ui64>>& refs,
+        ui32 pageSize = DefaultPageSize)
     {
         const auto rangeRefs = MakeRangeRefs(refs);
 
-        const auto result = Device->ReadPages(rangeRefs).GetValueSync();
+        const auto result =
+            NJournalled::ReadPages(*Device, rangeRefs, pageSize);
         if (HasError(result)) {
             return result.GetError();
         }
@@ -412,6 +414,18 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(), response[0].Pages[0]);
     }
 
+    Y_UNIT_TEST_F(ShouldRejectPageBufferOfWrongSizeOnRead, TFixture)
+    {
+        for (ui32 size: {DefaultPageSize - 1, DefaultPageSize + 1, 0u}) {
+            const auto response = Read({{10, 1}}, size);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response.GetError().GetCode(),
+                FormatError(response.GetError()));
+        }
+    }
+
     Y_UNIT_TEST_F(ShouldRejectPagesBeyondDevice, TFixture)
     {
         // the last page is writable and readable
@@ -448,14 +462,18 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
                 pages.push_back(Page('a'));
             }
 
-            if (pages.size() == pageCount) {
-                const auto error = Write({{firstPageNo, pages}});
-
-                UNIT_ASSERT_VALUES_EQUAL_C(
-                    E_ARGUMENT,
-                    error.GetCode(),
-                    description << ": " << FormatError(error));
+            // the caller brings the pages of a write and the page buffers of
+            // a read, so a range that is too large to make them is skipped
+            if (pages.size() != pageCount) {
+                continue;
             }
+
+            const auto error = Write({{firstPageNo, pages}});
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                description << ": " << FormatError(error));
 
             const auto response = Read({{firstPageNo, pageCount}});
 

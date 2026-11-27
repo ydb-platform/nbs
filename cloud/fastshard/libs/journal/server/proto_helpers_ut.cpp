@@ -1,8 +1,8 @@
 #include "proto_helpers.h"
 
-#include <cloud/storage/core/libs/common/error.h>
-
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <util/generic/ylimits.h>
 
 namespace NCloud::NJournalled {
 
@@ -73,121 +73,88 @@ void CheckPageRangesOfRequest()
     UNIT_ASSERT_VALUES_EQUAL(0, MakePageRanges(TRequest()).size());
 }
 
+constexpr ui32 PageSize = 8;
+
+NProto::TReadPagesRequest MakeRequest(
+    const TVector<std::pair<ui64 /*firstPageNo*/, ui64 /*pageCount*/>>& refs)
+{
+    NProto::TReadPagesRequest request;
+
+    for (const auto& [firstPageNo, pageCount]: refs) {
+        auto& ref = *request.AddPageGroupRefs();
+        ref.SetFirstPageNo(firstPageNo);
+        ref.SetPageCount(pageCount);
+    }
+
+    return request;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TProtoHelpersTest)
 {
-    Y_UNIT_TEST(ShouldNotMakeResponseOfUnexpectedPageCount)
+    Y_UNIT_TEST(ShouldMakeViewsOfResponsePages)
     {
-        TVector<TBuffer> pages;
-        pages.emplace_back("a", 1);
+        const auto request = MakeRequest({{10, 2}, {20, 0}, {30, 1}});
 
-        const auto response =
-            MakeReadPagesResponse({{.FirstPageNo = 10, .PageCount = 2}}, pages);
+        NProto::TReadPagesResponse response;
+        const auto views = MakePageRangeViews(request, PageSize, &response);
 
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_INVALID_STATE,
-            response.GetError().GetCode(),
-            FormatError(response.GetError()));
-    }
+        // a page group and a view per ref, a page of the page size per page
 
-    Y_UNIT_TEST(ShouldSetLastAckedLsnInReadPagesResponse)
-    {
-        TReadPagesResult result{.LastAckedLsn = 42};
-        result.Pages.emplace_back("a", 1);
-        result.Pages.emplace_back("b", 1);
+        UNIT_ASSERT_VALUES_EQUAL(3, response.PageGroupsSize());
+        UNIT_ASSERT_VALUES_EQUAL(3, views.size());
 
-        const auto response = MakeReadPagesResponse(
-            {{.FirstPageNo = 10, .PageCount = 2}},
-            result);
+        for (size_t i = 0; i != views.size(); ++i) {
+            const auto& ref = request.GetPageGroupRefs(i);
+            const auto& group = response.GetPageGroups(i);
 
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            S_OK,
-            response.GetError().GetCode(),
-            FormatError(response.GetError()));
-        UNIT_ASSERT_VALUES_EQUAL(42, response.GetLastAckedLogSequenceNumber());
-        UNIT_ASSERT_VALUES_EQUAL(1, response.PageGroupsSize());
-        UNIT_ASSERT_VALUES_EQUAL(
-            10,
-            response.GetPageGroups(0).GetFirstPageNo());
-        UNIT_ASSERT_VALUES_EQUAL("a", response.GetPageGroups(0).GetContent(0));
-        UNIT_ASSERT_VALUES_EQUAL("b", response.GetPageGroups(0).GetContent(1));
-    }
+            UNIT_ASSERT_VALUES_EQUAL(ref.GetFirstPageNo(), views[i].FirstPageNo);
+            UNIT_ASSERT_VALUES_EQUAL(
+                ref.GetFirstPageNo(),
+                group.GetFirstPageNo());
+            UNIT_ASSERT_VALUES_EQUAL(ref.GetPageCount(), views[i].Pages.size());
+            UNIT_ASSERT_VALUES_EQUAL(ref.GetPageCount(), group.ContentSize());
 
-    Y_UNIT_TEST(ShouldSplitPagesBetweenGroupsOfReadPagesResponse)
-    {
-        TVector<TBuffer> pages;
-        for (const TStringBuf page: {"a", "b", "c", "d"}) {
-            pages.emplace_back(page.data(), page.size());
+            for (const auto& page: views[i].Pages) {
+                UNIT_ASSERT_VALUES_EQUAL(PageSize, page.size());
+            }
         }
 
-        const auto response = MakeReadPagesResponse(
-            {{.FirstPageNo = 10, .PageCount = 1},
-             {.FirstPageNo = 20, .PageCount = 0},
-             {.FirstPageNo = 30, .PageCount = 3}},
-            pages);
+        // what is written through the views lands in the response
 
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            S_OK,
-            response.GetError().GetCode(),
-            FormatError(response.GetError()));
-        UNIT_ASSERT_VALUES_EQUAL(3, response.PageGroupsSize());
+        char fill = 'a';
+        for (const auto& view: views) {
+            for (const auto& page: view.Pages) {
+                std::fill(page.begin(), page.end(), fill++);
+            }
+        }
+
         UNIT_ASSERT_VALUES_EQUAL(
-            10,
-            response.GetPageGroups(0).GetFirstPageNo());
+            TString(PageSize, 'a'),
+            response.GetPageGroups(0).GetContent(0));
         UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<TString>{"a"}),
-            GetContent(response.GetPageGroups(0)));
+            TString(PageSize, 'b'),
+            response.GetPageGroups(0).GetContent(1));
         UNIT_ASSERT_VALUES_EQUAL(
-            20,
-            response.GetPageGroups(1).GetFirstPageNo());
-        UNIT_ASSERT_VALUES_EQUAL(0, response.GetPageGroups(1).ContentSize());
-        UNIT_ASSERT_VALUES_EQUAL(
-            30,
-            response.GetPageGroups(2).GetFirstPageNo());
-        UNIT_ASSERT_VALUES_EQUAL(
-            (TVector<TString>{"b", "c", "d"}),
-            GetContent(response.GetPageGroups(2)));
+            TString(PageSize, 'c'),
+            response.GetPageGroups(2).GetContent(0));
     }
 
-    Y_UNIT_TEST(ShouldNotSetLastAckedLsnInFailedReadPagesResponse)
+    Y_UNIT_TEST(ShouldCountRequestedPages)
     {
-        TReadPagesResult result{.LastAckedLsn = 42};
-        result.Pages.emplace_back("a", 1);
+        UNIT_ASSERT_VALUES_EQUAL(0, GetPageCount(MakeRequest({})));
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            GetPageCount(MakeRequest({{10, 2}, {20, 0}, {30, 1}})));
 
-        const auto response = MakeReadPagesResponse(
-            {{.FirstPageNo = 10, .PageCount = 2}},
-            result);
+        // the count does not wrap around
 
-        UNIT_ASSERT_VALUES_EQUAL_C(
-            E_INVALID_STATE,
-            response.GetError().GetCode(),
-            FormatError(response.GetError()));
-        UNIT_ASSERT_VALUES_EQUAL(0, response.GetLastAckedLogSequenceNumber());
-        UNIT_ASSERT_VALUES_EQUAL(0, response.PageGroupsSize());
-    }
-
-    Y_UNIT_TEST(ShouldMakePageRangeRefsFromReadPagesRequest)
-    {
-        NProto::TReadPagesRequest request;
-        UNIT_ASSERT_VALUES_EQUAL(0, MakePageRangeRefs(request).size());
-
-        auto& first = *request.AddPageGroupRefs();
-        first.SetFirstPageNo(10);
-        first.SetPageCount(2);
-        auto& second = *request.AddPageGroupRefs();
-        second.SetFirstPageNo(1ull << 40);
-        second.SetPageCount(1ull << 33);
-
-        const auto refs = MakePageRangeRefs(request);
-
-        UNIT_ASSERT_VALUES_EQUAL(2, refs.size());
-        UNIT_ASSERT_VALUES_EQUAL(10, refs[0].FirstPageNo);
-        UNIT_ASSERT_VALUES_EQUAL(2, refs[0].PageCount);
-        UNIT_ASSERT_VALUES_EQUAL(1ull << 40, refs[1].FirstPageNo);
-        UNIT_ASSERT_VALUES_EQUAL(1ull << 33, refs[1].PageCount);
+        UNIT_ASSERT_VALUES_EQUAL(
+            Max<ui64>(),
+            GetPageCount(MakeRequest({{0, Max<ui64>()}, {0, 2}})));
     }
 
     Y_UNIT_TEST(ShouldMakePageRangesFromWritePagesRequest)

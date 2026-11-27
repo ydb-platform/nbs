@@ -167,19 +167,22 @@ TKeyBuffers Reopen(
     return Restore(CreateTestStore(device, pageCount, pageSize));
 }
 
-TString ReadFromDevice(const IDevicePtr& device, ui64 pageNo)
+TString ReadFromDevice(
+    const IDevicePtr& device,
+    ui64 pageNo,
+    ui32 pageSize = TestPageSize)
 {
-    const auto result =
-        device->ReadPages({{.FirstPageNo = pageNo, .PageCount = 1}})
-            .GetValueSync();
-    UNIT_ASSERT_VALUES_EQUAL_C(
-        S_OK,
-        result.GetError().GetCode(),
-        FormatError(result.GetError()));
-    UNIT_ASSERT_VALUES_EQUAL(1, result.GetResult().size());
+    TVector<TBuffer> pages;
 
-    const auto& page = result.GetResult()[0];
-    return TString(page.Data(), page.Size());
+    const auto error = device
+        ->ReadPages(MakePageRangeViews(
+            {{.FirstPageNo = pageNo, .PageCount = 1}},
+            pageSize,
+            &pages))
+        .GetValueSync();
+    UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+    return TString(pages[0].Data(), pages[0].Size());
 }
 
 void WriteToDevice(const IDevicePtr& device, ui64 pageNo, TString content)
@@ -196,10 +199,11 @@ void WriteToDevice(const IDevicePtr& device, ui64 pageNo, TString content)
 ui64 FindDevicePage(
     const IDevicePtr& device,
     TStringBuf payload,
-    ui64 pageCount = TestPageCount)
+    ui64 pageCount = TestPageCount,
+    ui32 pageSize = TestPageSize)
 {
     for (ui64 pageNo = 0; pageNo < pageCount; ++pageNo) {
-        if (ReadFromDevice(device, pageNo).Contains(payload)) {
+        if (ReadFromDevice(device, pageNo, pageSize).Contains(payload)) {
             return pageNo;
         }
     }
@@ -241,10 +245,10 @@ public:
     // Makes ReleaseAll fail the held writes and not do them.
     bool FailPending = false;
 
-    NThreading::TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
-        TVector<TPageRangeRef> rangeRefs) override
+    NThreading::TFuture<NProto::TError> ReadPages(
+        TVector<TPageRangeView> rangeViews) override
     {
-        return Device->ReadPages(std::move(rangeRefs));
+        return Device->ReadPages(std::move(rangeViews));
     }
 
     NThreading::TFuture<NProto::TError> WritePages(
@@ -740,7 +744,10 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         Write(store, 4, "ddd");
 
         const auto page =
-            ReadFromDevice(device, FindDevicePage(device, "ddd", pageCount));
+            ReadFromDevice(
+                device,
+                FindDevicePage(device, "ddd", pageCount, TestWidePageSize),
+                TestWidePageSize);
         UNIT_ASSERT(page.Contains("ccc"));
         UNIT_ASSERT(!page.Contains("aaa"));
         UNIT_ASSERT(!page.Contains("bbb"));
@@ -763,7 +770,10 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         // the rewrite appends to the page - the old copy stays in it until
         // an erase takes it out
         const auto page =
-            ReadFromDevice(device, FindDevicePage(device, "AAA", pageCount));
+            ReadFromDevice(
+                device,
+                FindDevicePage(device, "AAA", pageCount, TestWidePageSize),
+                TestWidePageSize);
         UNIT_ASSERT(page.Contains("aaa"));
         UNIT_ASSERT(page.Contains("bbb"));
 

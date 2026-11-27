@@ -21,6 +21,37 @@ struct TPageGroup
     TVector<TString> Pages;
 };
 
+// Reads the pages of |rangeRefs| into new buffers of |pageSize| bytes, one
+// buffer per page, in the order of the refs. Waits for the read.
+inline TResultOrError<TVector<TBuffer>> ReadPages(
+    IDevice& device,
+    const TVector<TPageRangeRef>& rangeRefs,
+    ui32 pageSize)
+{
+    TVector<TBuffer> pages;
+
+    auto future =
+        device.ReadPages(MakePageRangeViews(rangeRefs, pageSize, &pages));
+
+    auto error = future.GetValueSync();
+    if (HasError(error)) {
+        return error;
+    }
+
+    return pages;
+}
+
+// Drops the zeroes at the end of the page: a page that is written shorter
+// than the page size is read back padded with them.
+inline TString TrimPage(TStringBuf page)
+{
+    while (page.EndsWith('\0')) {
+        page.Chop(1);
+    }
+
+    return TString(page);
+}
+
 // Groups the pages by the range refs they were read for. Fails if the number
 // of pages is not what the refs ask for.
 inline TResultOrError<TVector<TPageGroup>> GroupPages(

@@ -3,11 +3,15 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 
+#include <cloud/storage/core/libs/common/aligned_buffer.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
 
 #include <util/generic/hash_set.h>
+#include <util/generic/ylimits.h>
 #include <util/string/builder.h>
+
+#include <cstring>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -15,6 +19,11 @@ using namespace NJournalled;
 using namespace NThreading;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// The alignment that the local storage uses for its own buffers
+constexpr ui32 ReadBufferAlignment = DefaultBlockSize;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -147,12 +156,15 @@ TResultOrError<ui32> ValidateWritePagesRequest(
 }
 
 NProto::TError ValidateReadPagesRequest(
-    const TVector<TPageRangeRef>& rangeRefs,
-    const TPageRangeRef& region)
+    const TVector<TPageRangeView>& rangeViews,
+    const TPageRangeRef& region,
+    ui32 blockSize)
 {
-    if (rangeRefs.empty()) {
+    if (rangeViews.empty()) {
         return MakeError(E_ARGUMENT, "nothing to read");
     }
+
+    const auto rangeRefs = MakePageRangeRefs(rangeViews);
 
     for (size_t i = 0; i != rangeRefs.size(); ++i) {
         const auto& rangeRef = rangeRefs[i];
@@ -163,6 +175,18 @@ NProto::TError ValidateReadPagesRequest(
                 TStringBuilder()
                     << "page group ref must contain at least one page: ref #"
                     << i << " of " << DumpRangeRefs(rangeRefs));
+        }
+
+        for (const auto& page: rangeViews[i].Pages) {
+            if (page.size() != blockSize) {
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "invalid page buffer: block size mismatch: "
+                        << "expected " << blockSize << ", got " << page.size()
+                        << " in ref #" << i << " of "
+                        << DumpRangeRefs(rangeRefs));
+            }
         }
 
         if (auto error = ValidatePagesInRegion(
@@ -237,63 +261,98 @@ public:
 
     // NJournalled::IDevice
 
-    [[nodiscard]] auto ReadPages(
-        TVector<TPageRangeRef> rangeRefs)
-        -> TFuture<TResultOrError<TVector<TBuffer>>> final
+    [[nodiscard]] auto ReadPages(TVector<TPageRangeView> rangeViews)
+        -> TFuture<NProto::TError> final
     {
-        using TResult = TResultOrError<TVector<TBuffer>>;
-
-        if (auto error = ValidateReadPagesRequest(rangeRefs, Region);
+        if (auto error =
+                ValidateReadPagesRequest(rangeViews, Region, BlockSize);
             HasError(error))
         {
-            return MakeFuture<TResult>(std::move(error));
+            return MakeFuture(std::move(error));
         }
 
         auto [storageAdapter, error] = DeviceClient->AccessDevice(DeviceUUID);
         if (HasError(error)) {
-            return MakeFuture<TResult>(std::move(error));
+            return MakeFuture(std::move(error));
+        }
+
+        //
+        // Read every range into a single aligned buffer: the storage reads
+        // straight into it and builds no response blocks. The pages of the
+        // caller are separate and not aligned, so the storage can not read
+        // into them
+        //
+
+        auto buffers = std::make_shared<TVector<TAlignedBuffer>>();
+        buffers->reserve(rangeViews.size());
+
+        for (const auto& view: rangeViews) {
+            const ui64 byteCount = view.Pages.size() * BlockSize;
+            if (byteCount > Max<ui32>()) {
+                return MakeFuture(MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "pages " << view.FirstPageNo << "x"
+                        << view.Pages.size() << " of " << BlockSize
+                        << " bytes are too large for a single read"));
+            }
+
+            buffers->emplace_back(
+                static_cast<ui32>(byteCount),
+                ReadBufferAlignment);
         }
 
         TVector<TFuture<NProto::TReadBlocksResponse>> futures;
-        futures.reserve(rangeRefs.size());
+        futures.reserve(rangeViews.size());
 
         auto now = Timer->Now();
-        for (const auto& rangeRef: rangeRefs) {
+        for (size_t i = 0; i != rangeViews.size(); ++i) {
+            const auto& view = rangeViews[i];
+
             futures.push_back(storageAdapter->ReadBlocks(
                 now,
                 CreateCallContext(),
                 CreateReadBlocksRequest(
-                    rangeRef,
+                    {.FirstPageNo = view.FirstPageNo,
+                     .PageCount = view.Pages.size()},
                     BlockSize,
                     Region.FirstPageNo),
                 BlockSize,
-                TStringBuf()   // dataBuffer
-                ));
+                TStringBuf((*buffers)[i].Begin(), (*buffers)[i].Size())));
         }
 
         auto all = WaitAll(futures);
 
-        return all.Apply([futures](const TFuture<void>& future) mutable
-            -> TResult
+        // The callback owns the buffers, so they outlive the reads. The pages
+        // are copied into the buffers of the caller only here, before the
+        // returned future is set
+        return all.Apply(
+            [futures,
+             rangeViews = std::move(rangeViews),
+             buffers = std::move(buffers),
+             blockSize = BlockSize](
+                const TFuture<void>& future) mutable -> NProto::TError
             {
                 if (future.HasException()) {
                     return ResultOrError(future).GetError();
                 }
-
-                TVector<TBuffer> pages;
 
                 for (auto& future: futures) {
                     NProto::TReadBlocksResponse sub = future.ExtractValue();
                     if (HasError(sub)) {
                         return sub.GetError();
                     }
+                }
 
-                    for (const auto& block: sub.GetBlocks().GetBuffers()) {
-                        pages.emplace_back(block.data(), block.size());
+                for (size_t i = 0; i != rangeViews.size(); ++i) {
+                    const char* src = (*buffers)[i].Begin();
+                    for (const auto& page: rangeViews[i].Pages) {
+                        std::memcpy(page.data(), src, blockSize);
+                        src += blockSize;
                     }
                 }
 
-                return std::move(pages);
+                return {};
             });
     }
 

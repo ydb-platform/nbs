@@ -21,12 +21,13 @@ using TJournalRecords = TVector<TJournalRecord>;
 struct TJournalReadResult
 {
     // The parts of the requested ranges that the journal does not hold, in
-    // the order of the request.
-    TVector<TPageRangeRef> MissingRanges;
+    // the order of the request. They refer to the buffers of the request, and
+    // the journal does not write into them.
+    TVector<TPageRangeView> MissingRanges;
 
-    // The pages that the journal holds: the requested pages without the
-    // missing ones, in the order of the request.
-    NThreading::TFuture<TResultOrError<TReadPagesResult>> Future;
+    // Set when the pages that the journal holds are read into their buffers.
+    // Holds the last acked lsn that the pages correspond to.
+    NThreading::TFuture<TResultOrError<ui64>> Future;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -52,8 +53,9 @@ struct IJournal
         ui64 lsn,
         ui64 prevLsn) = 0;
 
+    // The buffers must stay valid until the future of the result is set.
     [[nodiscard]] virtual TResultOrError<TJournalReadResult> Read(
-        TVector<TPageRangeRef> rangeRefs) const = 0;
+        TVector<TPageRangeView> rangeViews) const = 0;
 
     [[nodiscard]] virtual TResultOrError<TJournalTail> ReadTail(
         ui64 afterLsn,
@@ -83,6 +85,7 @@ IJournalPtr CreateJournal(
     IKeyBufferStorePtr metaStore,
     IDevicePageStorePtr dataStore,
     TString deviceUUID,
-    ui64 devicePageCount);
+    ui64 devicePageCount,
+    ui32 pageSize);
 
 }   // namespace NCloud::NJournalled

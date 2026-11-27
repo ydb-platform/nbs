@@ -476,7 +476,8 @@ public:
 
 private:
     TRestoreResult RestoreFromPages(
-        TVector<TFuture<TResultOrError<TVector<TBuffer>>>> futures);
+        const TVector<TFuture<NProto::TError>>& futures,
+        TVector<TBuffer> pages);
 
     using TSuperblockUpdate = std::function<bool(TSuperblock&)>;
 
@@ -538,20 +539,30 @@ TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
 
     // the scan goes straight to the device - the page store knows
     // nothing about the pages before the restore
-    TVector<TFuture<TResultOrError<TVector<TBuffer>>>> futures;
+    TVector<TPageRangeRef> refs;
 
     for (ui64 offset = 0; offset < PageCount; offset += MaxPagesPerReadRequest)
     {
-        TPageRangeRef ref{
-            .FirstPageNo = offset,
-            .PageCount = Min(MaxPagesPerReadRequest, PageCount - offset)};
+        refs.push_back(
+            {.FirstPageNo = offset,
+             .PageCount = Min(MaxPagesPerReadRequest, PageCount - offset)});
+    }
 
-        futures.push_back(Device->ReadPages({ref}));
+    // the callback below owns the pages, so they outlive the reads
+    TVector<TBuffer> pages;
+    auto views = MakePageRangeViews(refs, PageSize, &pages);
+
+    TVector<TFuture<NProto::TError>> futures;
+    futures.reserve(views.size());
+
+    for (auto& view: views) {
+        futures.push_back(Device->ReadPages({std::move(view)}));
     }
 
     return WaitAll(futures).Apply(
         [weakSelf = weak_from_this(),
-         futures = std::move(futures)](const TFuture<void>&) mutable
+         futures = std::move(futures),
+         pages = std::move(pages)](const TFuture<void>&) mutable
         {
             auto self = weakSelf.lock();
             if (!self) {
@@ -559,7 +570,7 @@ TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
                     MakeError(E_CANCELLED, "KeyBufferStore is destroyed"));
             }
 
-            return self->RestoreFromPages(std::move(futures));
+            return self->RestoreFromPages(futures, std::move(pages));
         });
 }
 
@@ -763,28 +774,14 @@ TFuture<NProto::TError> TDeviceKeyBufferStore::DoWriteSuperblock(
 }
 
 IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
-    TVector<TFuture<TResultOrError<TVector<TBuffer>>>> futures)
+    const TVector<TFuture<NProto::TError>>& futures,
+    TVector<TBuffer> pages)
 {
-    TVector<TBuffer> pages;
-    pages.reserve(PageCount);
-
-    for (auto& future: futures) {
-        auto result = UnsafeExtractValue(future);
-        if (HasError(result)) {
-            return TRestoreResult(result.GetError());
+    for (const auto& future: futures) {
+        const auto& error = future.GetValue();
+        if (HasError(error)) {
+            return TRestoreResult(error);
         }
-
-        auto readPages = result.ExtractResult();
-        for (auto& readPage: readPages) {
-            pages.emplace_back(std::move(readPage));
-        }
-    }
-
-    if (pages.size() != PageCount) {
-        return TRestoreResult(MakeError(
-            E_INVALID_STATE,
-            TStringBuilder() << "the device returned " << pages.size()
-                             << " pages, expected " << PageCount));
     }
 
     ui64 maxSeq = 0;

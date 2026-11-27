@@ -735,7 +735,8 @@ void TBench::Start()
             std::move(logMetaStore),
             std::move(logDataStore),
             TString(DeviceUUID),
-            dataPages);
+            dataPages,
+            pageSize);
 
         Device = CreateJournalledDeviceV2(
             Logging,
@@ -1021,25 +1022,18 @@ void TBench::ReadPages(TFastRng64& rng, TActionStats& stats)
 {
     const auto slot = PickSlot(rng);
 
+    // the device reads into the buffers of the caller, they outlive the wait
+    TVector<TBuffer> pages;
+    auto rangeViews = MakePageRangeViews({slot}, Options.PageSize, &pages);
+
     const ui64 startNs = NowNs();
 
-    auto future = Device->ReadPages({slot});
+    auto future = Device->ReadPages(std::move(rangeViews));
     const ui64 doneNs = WaitFor(future);
     const auto& response = future.GetValue();
 
     if (HasError(response)) {
         Fail("ReadPages", response.GetError());
-    }
-
-    const ui64 pageCount = response.GetResult().Pages.size();
-
-    if (pageCount != slot.PageCount) {
-        Fail(
-            "ReadPages",
-            MakeError(
-                E_INVALID_STATE,
-                TStringBuilder() << "got " << pageCount << " pages instead of "
-                                 << slot.PageCount));
     }
 
     stats.LatenciesNs.push_back(doneNs - startNs);

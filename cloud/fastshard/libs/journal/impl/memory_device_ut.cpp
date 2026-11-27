@@ -54,15 +54,20 @@ TString ZeroedPage(ui32 pageSize = DefaultPageSize)
     return TString(pageSize, '\0');
 }
 
-// "10:[a,b] 20:[c]"
+// "10:[a,b] 20:[c]", the pages are shown without the zeroes at their ends
 TString DescribeGroups(const TVector<TPageGroup>& response)
 {
     TVector<TString> groups;
 
     for (const auto& group: response) {
+        TVector<TString> pages;
+        for (const auto& page: group.Pages) {
+            pages.push_back(TrimPage(page));
+        }
+
         groups.push_back(
             TStringBuilder()
-            << group.FirstPageNo << ":[" << JoinSeq(",", group.Pages) << "]");
+            << group.FirstPageNo << ":[" << JoinSeq(",", pages) << "]");
     }
 
     return JoinSeq(" ", groups);
@@ -98,11 +103,13 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     // the pages read are grouped after the refs they have been read for
     TVector<TPageGroup> ReadPagesResponse(
-        const TVector<std::pair<ui64, ui64>>& refs)
+        const TVector<std::pair<ui64, ui64>>& refs,
+        ui32 pageSize = DefaultPageSize)
     {
         const auto rangeRefs = MakeRangeRefs(refs);
 
-        const auto result = Device->ReadPages(rangeRefs).GetValueSync();
+        const auto result =
+            NJournalled::ReadPages(*Device, rangeRefs, pageSize);
 
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
@@ -139,10 +146,8 @@ Y_UNIT_TEST_SUITE(TInMemoryDeviceTest)
 
         ZeroPages({{11, 2}, {21, 1}});
 
-        const auto z = ZeroedPage();
         UNIT_ASSERT_VALUES_EQUAL(
-            TStringBuilder() << "10:[a," << z << "," << z << ",d] 20:[e," << z
-                << "]",
+            "10:[a,,,d] 20:[e,]",
             ReadPages({{10, 4}, {20, 2}}));
 
         // zeroing the pages never written and empty ranges is fine
@@ -224,7 +229,7 @@ Y_UNIT_TEST_SUITE(TInMemoryDeviceTest)
             const auto& group = response[0];
             UNIT_ASSERT_VALUES_EQUAL(3, group.Pages.size());
             UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(), group.Pages[0]);
-            UNIT_ASSERT_VALUES_EQUAL("b", group.Pages[1]);
+            UNIT_ASSERT_VALUES_EQUAL("b", TrimPage(group.Pages[1]));
             UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(), group.Pages[2]);
         }
     }
@@ -233,7 +238,7 @@ Y_UNIT_TEST_SUITE(TInMemoryDeviceTest)
     {
         Device = CreateInMemoryDevice(512);
 
-        const auto response = ReadPagesResponse({{10, 1}});
+        const auto response = ReadPagesResponse({{10, 1}}, 512);
 
         UNIT_ASSERT_VALUES_EQUAL(1, response.size());
 
@@ -241,6 +246,19 @@ Y_UNIT_TEST_SUITE(TInMemoryDeviceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, group.Pages.size());
         UNIT_ASSERT_VALUES_EQUAL(512, group.Pages[0].size());
         UNIT_ASSERT_VALUES_EQUAL(ZeroedPage(512), group.Pages[0]);
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectPageBufferOfWrongSizeOnRead, TFixture)
+    {
+        for (ui32 size: {DefaultPageSize - 1, DefaultPageSize + 1, 0u}) {
+            const auto result =
+                NJournalled::ReadPages(*Device, {{10, 1}}, size);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                result.GetError().GetCode(),
+                FormatError(result.GetError()));
+        }
     }
 
     Y_UNIT_TEST_F(ShouldReturnPagePerRequestedPage, TFixture)

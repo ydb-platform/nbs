@@ -105,109 +105,6 @@ TVector<TPageRange> MergeRecordPages(TJournalRecords records)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Builds the pages of |rangeRefs| in the request order. The device holds the
-// |missing| pages and the journal holds all the other ones. Both |missing|
-// and the two page lists follow the request order.
-TResultOrError<TVector<TBuffer>> MergePages(
-    const TVector<TPageRangeRef>& rangeRefs,
-    const TVector<TPageRangeRef>& missing,
-    TVector<TBuffer> journalPages,
-    TVector<TBuffer> devicePages)
-{
-    ui64 missingPageCount = 0;
-    for (const auto& ref: missing) {
-        missingPageCount += ref.PageCount;
-    }
-
-    if (devicePages.size() != missingPageCount) {
-        return MakeError(
-            E_INVALID_STATE,
-            TStringBuilder() << "the device returned " << devicePages.size()
-                             << " pages, expected " << missingPageCount);
-    }
-
-    ui64 pageCount = 0;
-    for (const auto& ref: rangeRefs) {
-        pageCount += ref.PageCount;
-    }
-
-    //
-    // Skip the merge: one of the two sources holds the whole request
-    //
-
-    if (missing.empty() && journalPages.size() == pageCount) {
-        return journalPages;
-    }
-
-    if (journalPages.empty() && devicePages.size() == pageCount) {
-        return devicePages;
-    }
-
-    //
-    // Walk the requested pages and take each one from the device if the
-    // current missing range holds it, and from the journal if not
-    //
-
-    TVector<TBuffer> pages;
-    pages.reserve(pageCount);
-
-    size_t journalIndex = 0;
-    size_t deviceIndex = 0;
-    size_t missingIndex = 0;
-    ui64 missingOffset = 0;
-
-    auto skipEmptyMissing = [&]()
-    {
-        while (missingIndex < missing.size() &&
-               missingOffset == missing[missingIndex].PageCount)
-        {
-            ++missingIndex;
-            missingOffset = 0;
-        }
-    };
-
-    skipEmptyMissing();
-
-    for (const auto& ref: rangeRefs) {
-        for (ui64 i = 0; i != ref.PageCount; ++i) {
-            const ui64 pageNo = ref.FirstPageNo + i;
-
-            if (missingIndex < missing.size() &&
-                missing[missingIndex].FirstPageNo + missingOffset == pageNo)
-            {
-                pages.push_back(std::move(devicePages[deviceIndex++]));
-                ++missingOffset;
-                skipEmptyMissing();
-                continue;
-            }
-
-            if (journalIndex == journalPages.size()) {
-                return MakeError(
-                    E_INVALID_STATE,
-                    TStringBuilder()
-                        << "page " << pageNo
-                        << " is missing"
-                           " in both the journal and the device responses");
-            }
-
-            pages.push_back(std::move(journalPages[journalIndex++]));
-        }
-    }
-
-    if (missingIndex != missing.size() || journalIndex != journalPages.size()) {
-        return MakeError(
-            E_INVALID_STATE,
-            TStringBuilder()
-                << "the journal returned " << journalPages.size()
-                << " pages and " << missingPageCount
-                << " missing pages for a request of " << pageCount << " pages");
-    }
-
-    return pages;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TPagesInFlight
 {
 private:
@@ -341,8 +238,8 @@ public:
 
     TFuture<void> Stop() noexcept override;
 
-    TFuture<TResultOrError<TReadPagesResult>> ReadPages(
-        TVector<TPageRangeRef> rangeRefs) override;
+    TFuture<TResultOrError<ui64>> ReadPages(
+        TVector<TPageRangeView> rangeViews) override;
 
     TFuture<NProto::TError> WriteLogRecord(
         TVector<TPageRange> ranges,
@@ -370,14 +267,8 @@ private:
 
     NProto::TError DoStart();
 
-    TFuture<TResultOrError<TReadPagesResult>> DoReadPages(
-        TVector<TPageRangeRef> rangeRefs);
-
-    static TResultOrError<TReadPagesResult> OnReadPages(
-        TVector<TPageRangeRef> rangeRefs,
-        TVector<TPageRangeRef> missing,
-        TFuture<TResultOrError<TReadPagesResult>> journalFuture,
-        TFuture<TResultOrError<TVector<TBuffer>>> deviceFuture);
+    TFuture<TResultOrError<ui64>> DoReadPages(
+        TVector<TPageRangeView> rangeViews);
 
     TFuture<NProto::TError> DoWriteLogRecord(
         TVector<TPageRange> ranges,
@@ -450,16 +341,16 @@ TFuture<void> TJournalledDeviceV2::Stop() noexcept
     return WaitAll(drained, FlushCycleStopped.GetFuture());
 }
 
-TFuture<TResultOrError<TReadPagesResult>> TJournalledDeviceV2::ReadPages(
-    TVector<TPageRangeRef> rangeRefs)
+TFuture<TResultOrError<ui64>> TJournalledDeviceV2::ReadPages(
+    TVector<TPageRangeView> rangeViews)
 {
-    return RunRequest([&]() { return DoReadPages(std::move(rangeRefs)); });
+    return RunRequest([&]() { return DoReadPages(std::move(rangeViews)); });
 }
 
-TFuture<TResultOrError<TReadPagesResult>> TJournalledDeviceV2::DoReadPages(
-    TVector<TPageRangeRef> rangeRefs)
+TFuture<TResultOrError<ui64>> TJournalledDeviceV2::DoReadPages(
+    TVector<TPageRangeView> rangeViews)
 {
-    using TResult = TResultOrError<TReadPagesResult>;
+    using TResult = TResultOrError<ui64>;
 
     //
     // Pin the indexed lsn until the read is done: the flush cycle does
@@ -477,7 +368,7 @@ TFuture<TResultOrError<TReadPagesResult>> TJournalledDeviceV2::DoReadPages(
     // the journal does not hold and a future for the pages that it does
     //
 
-    auto journalResult = Journal->Read(rangeRefs);
+    auto journalResult = Journal->Read(std::move(rangeViews));
     if (HasError(journalResult)) {
         return MakeFuture<TResult>(journalResult.GetError());
     }
@@ -486,74 +377,41 @@ TFuture<TResultOrError<TReadPagesResult>> TJournalledDeviceV2::DoReadPages(
 
     //
     // Start the device read for the missing ranges before waiting for
-    // the journal, so that the two reads run in parallel
+    // the journal, so that the two reads run in parallel. Each of them
+    // fills its own buffers of the request, so there is nothing to merge
     //
 
     TVector<TFuture<void>> futures;
     futures.push_back(journalFuture.IgnoreResult());
 
-    TFuture<TResultOrError<TVector<TBuffer>>> deviceFuture;
+    auto deviceFuture = MakeFuture<NProto::TError>();
     if (missing) {
-        deviceFuture = DataStore->ReadPages(missing);
+        deviceFuture = DataStore->ReadPages(std::move(missing));
         futures.push_back(deviceFuture.IgnoreResult());
     }
 
     return WaitAll(std::move(futures))
         .Apply(
             [lsnBarrierGuard = std::move(lsnBarrierGuard),
-             rangeRefs = std::move(rangeRefs),
-             missing = std::move(missing),
              journalFuture = std::move(journalFuture),
-             deviceFuture = std::move(deviceFuture)](const auto&) mutable
+             deviceFuture = std::move(deviceFuture)](const auto&) -> TResult
             {
                 // Release the indexed lsn when the read is done and not when
                 // the callback object is destroyed, which can be much later
                 auto guard = std::move(*lsnBarrierGuard);
 
-                return OnReadPages(
-                    std::move(rangeRefs),
-                    std::move(missing),
-                    std::move(journalFuture),
-                    std::move(deviceFuture));
+                const auto& journalResult = journalFuture.GetValue();
+                if (HasError(journalResult)) {
+                    return journalResult.GetError();
+                }
+
+                const auto& error = deviceFuture.GetValue();
+                if (HasError(error)) {
+                    return error;
+                }
+
+                return journalResult.GetResult();
             });
-}
-
-TResultOrError<TReadPagesResult> TJournalledDeviceV2::OnReadPages(
-    TVector<TPageRangeRef> rangeRefs,
-    TVector<TPageRangeRef> missing,
-    TFuture<TResultOrError<TReadPagesResult>> journalFuture,
-    TFuture<TResultOrError<TVector<TBuffer>>> deviceFuture)
-{
-    auto journalResult = journalFuture.ExtractValue();
-    if (HasError(journalResult)) {
-        return journalResult.GetError();
-    }
-
-    auto [lastAckedLsn, journalPages] = journalResult.ExtractResult();
-
-    TVector<TBuffer> devicePages;
-
-    if (missing) {
-        auto result = deviceFuture.ExtractValue();
-        if (HasError(result)) {
-            return result.GetError();
-        }
-
-        devicePages = result.ExtractResult();
-    }
-
-    auto pages = MergePages(
-        rangeRefs,
-        missing,
-        std::move(journalPages),
-        std::move(devicePages));
-    if (HasError(pages)) {
-        return pages.GetError();
-    }
-
-    return TReadPagesResult{
-        .LastAckedLsn = lastAckedLsn,
-        .Pages = pages.ExtractResult()};
 }
 
 TFuture<NProto::TError> TJournalledDeviceV2::WriteLogRecord(

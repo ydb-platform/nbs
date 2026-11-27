@@ -1,6 +1,7 @@
 #include "device_page_store.h"
 
 #include "memory_device.h"
+#include "ut_helpers.h"
 
 #include <cloud/fastshard/libs/journal/iface/device.h>
 
@@ -66,13 +67,12 @@ TString Describe(const TVector<TPageRangeRef>& ranges)
 
 struct TBrokenDevice final: public IDevice
 {
-    NThreading::TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
-        TVector<TPageRangeRef> rangeRefs) override
+    NThreading::TFuture<NProto::TError> ReadPages(
+        TVector<TPageRangeView> rangeViews) override
     {
-        Y_UNUSED(rangeRefs);
+        Y_UNUSED(rangeViews);
 
-        return NThreading::MakeFuture<TResultOrError<TVector<TBuffer>>>(
-            MakeError(E_IO, "device is broken"));
+        return NThreading::MakeFuture(MakeError(E_IO, "device is broken"));
     }
 
     NThreading::TFuture<NProto::TError> WritePages(
@@ -110,15 +110,33 @@ TVector<TPageRangeRef> WriteRecord(
 TString
 ReadFromDevice(const IDevicePtr& device, ui64 firstPageNo, ui64 pageCount)
 {
-    const auto result = device
-        ->ReadPages({{.FirstPageNo = firstPageNo, .PageCount = pageCount}})
-        .GetValueSync();
+    const auto result = ReadPages(
+        *device,
+        {{.FirstPageNo = firstPageNo, .PageCount = pageCount}},
+        DefaultPageSize);
     UNIT_ASSERT_VALUES_EQUAL_C(
         S_OK,
         result.GetError().GetCode(),
         FormatError(result.GetError()));
 
     return Join(result.GetResult());
+}
+
+// reads the pages through the store into new buffers
+TResultOrError<TVector<TBuffer>> Read(
+    const IDevicePageStorePtr& store,
+    const TVector<TPageRangeRef>& ranges,
+    ui32 pageSize = DefaultPageSize)
+{
+    TVector<TBuffer> pages;
+
+    const auto error =
+        store->Read(MakePageRangeViews(ranges, pageSize, &pages)).GetValue();
+    if (HasError(error)) {
+        return error;
+    }
+
+    return pages;
 }
 
 }   // namespace
@@ -191,7 +209,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "aaaa|bbbb",
-            Join(store->Read(ranges).GetValue().GetResult()));
+            Join(Read(store, ranges).GetResult()));
     }
 
     Y_UNIT_TEST(ShouldRejectPagesOfWrongSize)
@@ -226,7 +244,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             "aaaa|bbbb",
-            Join(store->Read(ranges).GetValue().GetResult()));
+            Join(Read(store, ranges).GetResult()));
     }
 
     Y_UNIT_TEST(ShouldWriteIntoFragmentedRefs)
@@ -253,7 +271,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         // the pages follow the ranges, in order
         UNIT_ASSERT_VALUES_EQUAL(
             "aaaa|bbbb|cccc",
-            Join(store->Read(ranges).GetValue().GetResult()));
+            Join(Read(store, ranges).GetResult()));
     }
 
     Y_UNIT_TEST(ShouldRejectWriteWithWrongNumberOfPages)
@@ -312,14 +330,14 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         auto free = MakeRanges({{0, 2}});
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
-            store->Read(free).GetValue().GetError().GetCode());
+            Read(store, free).GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, store->Free(free).GetCode());
 
         // the ranges beyond the device are rejected as ill-formed
         auto beyond = MakeRanges({{DefaultPageCount - 1, 2}});
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
-            store->Read(beyond).GetValue().GetError().GetCode());
+            Read(store, beyond).GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             store->AllocateAt(beyond).GetCode());
@@ -349,7 +367,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
             store->Write(overlapping, pages).GetValue().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
-            store->Read(overlapping).GetValue().GetError().GetCode());
+            Read(store, overlapping).GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             store->Free(overlapping).GetCode());
@@ -358,7 +376,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         const auto repeated = MakeRanges({{1, 1}, {1, 1}});
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
-            store->Read(repeated).GetValue().GetError().GetCode());
+            Read(store, repeated).GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, store->Free(repeated).GetCode());
 
         // the ranges that only touch each other do not intersect
@@ -370,7 +388,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
             FormatError(written));
         UNIT_ASSERT_VALUES_EQUAL(
             "aaaa|bbbb|cccc|dddd",
-            Join(store->Read(adjacent).GetValue().GetResult()));
+            Join(Read(store, adjacent).GetResult()));
 
         // and nothing is freed by the rejected requests
         UNIT_ASSERT_VALUES_EQUAL(S_OK, store->Free(adjacent).GetCode());
@@ -432,7 +450,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         auto kept = MakeRanges({{2, 1}});
         UNIT_ASSERT_VALUES_EQUAL(
             "cccc",
-            Join(store->Read(kept).GetValue().GetResult()));
+            Join(Read(store, kept).GetResult()));
     }
 
     Y_UNIT_TEST(ShouldNotFreeAnythingWhenRefIsRejected)
@@ -453,7 +471,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         auto written = MakeRanges({{0, 2}});
         UNIT_ASSERT_VALUES_EQUAL(
             "aaaa|bbbb",
-            Join(store->Read(written).GetValue().GetResult()));
+            Join(Read(store, written).GetResult()));
     }
 
     Y_UNIT_TEST(ShouldReuseFreedPages)
@@ -556,7 +574,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         // the rejected call leaves the pages alone
         UNIT_ASSERT_VALUES_EQUAL(
             "aaaa|bbbb",
-            Join(store->Read(ranges).GetValue().GetResult()));
+            Join(Read(store, ranges).GetResult()));
     }
 
     Y_UNIT_TEST(ShouldAcceptEmptyRequest)
@@ -573,7 +591,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
             store->Write(none, {}).GetValue().GetCode());
-        UNIT_ASSERT(store->Read(none).GetValue().GetResult().empty());
+        UNIT_ASSERT(Read(store, none).GetResult().empty());
         UNIT_ASSERT_VALUES_EQUAL(S_OK, store->Free(none).GetCode());
         UNIT_ASSERT_VALUES_EQUAL(S_OK, store->AllocateAt(none).GetCode());
     }
@@ -613,7 +631,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
                 .GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             "aaaa|bbbb",
-            Join(store->Read(ranges).GetValue().GetResult()));
+            Join(Read(store, ranges).GetResult()));
 
         // and freed
         UNIT_ASSERT_VALUES_EQUAL(S_OK, store->Free(ranges).GetCode());
@@ -633,7 +651,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
                 .GetCode());
         UNIT_ASSERT_VALUES_EQUAL(
             "aaaa|bbbb",
-            Join(checked->Read(ranges).GetValue().GetResult()));
+            Join(Read(checked, ranges).GetResult()));
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
             checked->Free(ranges).GetCode());
@@ -707,6 +725,23 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
         UNIT_ASSERT_VALUES_EQUAL("2x1", Describe(store->Allocate(1)));
     }
 
+    Y_UNIT_TEST(ShouldRejectPageBufferOfWrongSizeOnRead)
+    {
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(DefaultPageSize),
+            DefaultPageCount,
+            DefaultPageSize,
+            EDevicePageStoreMode::Checked);
+
+        auto ranges = store->Allocate(1);
+
+        for (ui32 size: {DefaultPageSize - 1, DefaultPageSize + 1, 0u}) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_ARGUMENT,
+                Read(store, ranges, size).GetError().GetCode());
+        }
+    }
+
     Y_UNIT_TEST(ShouldReportDeviceReadError)
     {
         auto store = CreateDevicePageStore(
@@ -719,7 +754,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             E_IO,
-            store->Read(ranges).GetValue().GetError().GetCode());
+            Read(store, ranges).GetError().GetCode());
     }
 }
 

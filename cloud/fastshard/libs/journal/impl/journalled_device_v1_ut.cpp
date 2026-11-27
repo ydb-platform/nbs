@@ -21,13 +21,12 @@ struct TTestDevice final: public IDevice
     TVector<TPageRange> LastWrittenRanges;
     NProto::TError WritePagesError;
 
-    [[nodiscard]] auto ReadPages(TVector<TPageRangeRef> rangeRefs)
-        -> TFuture<TResultOrError<TVector<TBuffer>>> final
+    [[nodiscard]] auto ReadPages(TVector<TPageRangeView> rangeViews)
+        -> TFuture<NProto::TError> final
     {
-        Y_UNUSED(rangeRefs);
+        Y_UNUSED(rangeViews);
 
-        return MakeFuture<TResultOrError<TVector<TBuffer>>>(
-            TVector<TBuffer>());
+        return MakeFuture<NProto::TError>();
     }
 
     [[nodiscard]] auto WritePages(
