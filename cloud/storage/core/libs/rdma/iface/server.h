@@ -69,10 +69,32 @@ struct IServerConnectionHandler
 {
     virtual ~IServerConnectionHandler() = default;
 
+    // Ready for I/O.
+    virtual void HandleConnected() = 0;
+    // Follows HandleConnected. Not called for the connections closed by
+    // IServer::Stop.
+    virtual void HandleDisconnected() = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TServerConnection
+{
+    IServerHandlerPtr RequestHandler;
+    // may be empty
+    IServerConnectionHandlerPtr ConnectionHandler;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IServerEndpointHandler
+{
+    virtual ~IServerEndpointHandler() = default;
+
     // Called for every connect request with the data the client passed to
-    // IClient::StartEndpoint. The returned handler serves the connection. An
+    // IClient::StartEndpoint. The returned handlers serve the connection. An
     // error rejects the connection.
-    virtual TResultOrError<IServerHandlerPtr> HandleConnect(
+    virtual TResultOrError<TServerConnection> HandleConnect(
         TStringBuf externalData) = 0;
 };
 
@@ -101,7 +123,7 @@ struct IServer
     virtual IServerEndpointPtr StartEndpoint(
         TString host,
         ui32 port,
-        IServerConnectionHandlerPtr connectionHandler) = 0;
+        IServerEndpointHandlerPtr endpointHandler) = 0;
 
     virtual void DumpHtml(IOutputStream& out) const = 0;
 };

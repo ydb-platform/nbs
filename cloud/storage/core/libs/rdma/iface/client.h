@@ -4,7 +4,7 @@
 
 #include "buffer.h"
 
-#include <cloud/storage/core/libs/common/endpoint_handler.h>
+#include <cloud/storage/core/libs/common/connection_handler.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
@@ -153,7 +153,7 @@ struct IClient
     virtual TResultOrError<IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
-        IClientEndpointHandlerPtr handler,
+        IClientConnectionHandlerPtr handler,
         TBuffer externalData = {}) = 0;
 
     virtual void DumpHtml(IOutputStream& out) const = 0;

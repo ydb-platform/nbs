@@ -34,7 +34,7 @@ public:
 TResultOrError<THostDataEndpoint> CreateHostDataEndpoint(
     TString host,
     ui16 port,
-    IClientEndpointHandlerPtr handler,
+    IClientConnectionHandlerPtr handler,
     NCloud::NIcV2::IPeerManagerPtr peers,
     TDataConfig dataConfig);
 

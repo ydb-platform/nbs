@@ -111,13 +111,13 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
 
     // IC V2 is served the way rdma is below: the endpoint comes back before
     // it has connected and the handler is how its state is reported
-    NCloud::IClientEndpointHandlerPtr IcV2Handler;
+    NCloud::IClientConnectionHandlerPtr IcV2Handler;
     THashMap<TString, std::shared_ptr<TTestBlockStore>> IcV2Services;
 
     TResultOrError<IBlockStorePtr> SetupHostIcV2Endpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,
-        NCloud::IClientEndpointHandlerPtr handler) override
+        NCloud::IClientConnectionHandlerPtr handler) override
     {
         Y_UNUSED(bootstrap);
 
@@ -153,7 +153,7 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
                 false));
     }
 
-    NCloud::IClientEndpointHandlerPtr RdmaHandler;
+    NCloud::IClientConnectionHandlerPtr RdmaHandler;
 
     // one service per fqdn: a move can only be told apart from staying put
     // if the host it lands on answers through a different service
@@ -172,7 +172,7 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
     TRdmaEndpointBootstrapResult SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,
-        NCloud::IClientEndpointHandlerPtr handler) override
+        NCloud::IClientConnectionHandlerPtr handler) override
     {
         Y_UNUSED(bootstrap);
 

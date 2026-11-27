@@ -201,7 +201,7 @@ struct TThrowingScheduler final: IScheduler
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestHostHandler final: IClientEndpointHandler
+struct TTestHostHandler final: IClientConnectionHandler
 {
     std::atomic<size_t> Disconnects = 0;
     std::atomic<size_t> Connects = 0;
@@ -380,8 +380,10 @@ struct TFixture
         Peers->Stop();
     }
 
-    IPeerPtr
-    CreatePeer(TString host, ui16 port, IClientEndpointHandlerPtr handler) const
+    IPeerPtr CreatePeer(
+        TString host,
+        ui16 port,
+        IClientConnectionHandlerPtr handler) const
     {
         auto [peer, error] =
             Peers->CreatePeer(std::move(host), port, std::move(handler));

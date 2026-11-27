@@ -202,7 +202,7 @@ struct TTestRdmaClient: public NRdma::IClient
     TResultOrError<NRdma::IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
-        NCloud::IClientEndpointHandlerPtr handler,
+        NCloud::IClientConnectionHandlerPtr handler,
         TBuffer externalData) override
     {
         Y_UNUSED(host);

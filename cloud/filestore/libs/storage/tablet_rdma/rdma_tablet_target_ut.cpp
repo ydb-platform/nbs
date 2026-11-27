@@ -57,7 +57,7 @@ struct TTestServer final
     IServerEndpointPtr StartEndpoint(
         TString host,
         ui32 port,
-        IServerConnectionHandlerPtr connectionHandler) override
+        IServerEndpointHandlerPtr endpointHandler) override
     {
         if (!Server) {
             return nullptr;
@@ -65,7 +65,7 @@ struct TTestServer final
         return Server->StartEndpoint(
             std::move(host),
             port,
-            std::move(connectionHandler));
+            std::move(endpointHandler));
     }
 
     void Start() override

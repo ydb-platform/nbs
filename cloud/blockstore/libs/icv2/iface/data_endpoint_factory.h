@@ -4,7 +4,7 @@
 
 #include <cloud/blockstore/libs/service/public.h>
 
-#include <cloud/storage/core/libs/common/endpoint_handler.h>
+#include <cloud/storage/core/libs/common/connection_handler.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/icv2/peer/iface/status.h>
 
@@ -31,7 +31,7 @@ struct IDataEndpointFactory
     virtual TResultOrError<IBlockStorePtr> CreateDataEndpoint(
         const TString& cellId,
         const TString& host,
-        IClientEndpointHandlerPtr handler) = 0;
+        IClientConnectionHandlerPtr handler) = 0;
 
     // Pass an endpoint created by this factory.
     virtual NCloud::NIcV2::TPeerStatus GetDataEndpointStatus(

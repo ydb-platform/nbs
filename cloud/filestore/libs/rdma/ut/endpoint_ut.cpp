@@ -102,12 +102,12 @@ struct TEarlyRequestServer final
     IServerEndpointPtr StartEndpoint(
         TString host,
         ui32 port,
-        IServerConnectionHandlerPtr connectionHandler) override
+        IServerEndpointHandlerPtr endpointHandler) override
     {
         return Server->StartEndpoint(
             std::move(host),
             port,
-            std::move(connectionHandler));
+            std::move(endpointHandler));
     }
 
     void Join()
@@ -146,11 +146,11 @@ struct TNoEndpointServer final
     IServerEndpointPtr StartEndpoint(
         TString host,
         ui32 port,
-        IServerConnectionHandlerPtr connectionHandler) override
+        IServerEndpointHandlerPtr endpointHandler) override
     {
         Y_UNUSED(host);
         Y_UNUSED(port);
-        Y_UNUSED(connectionHandler);
+        Y_UNUSED(endpointHandler);
         return nullptr;
     }
 

@@ -48,7 +48,7 @@ void TPeerManager::Start()
 TResultOrError<IPeerPtr> TPeerManager::CreatePeer(
     TString host,
     ui16 port,
-    IClientEndpointHandlerPtr handler)
+    IClientConnectionHandlerPtr handler)
 {
     std::shared_ptr<TPeer> peer;
     {

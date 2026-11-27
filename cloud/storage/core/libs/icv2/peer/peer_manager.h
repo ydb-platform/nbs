@@ -4,7 +4,7 @@
 
 #include "peer.h"
 
-#include <cloud/storage/core/libs/common/endpoint_handler.h>
+#include <cloud/storage/core/libs/common/connection_handler.h>
 #include <cloud/storage/core/libs/icv2/handshake/handshake.h>
 #include <cloud/storage/core/libs/icv2/request_channel/request_channel.h>
 #include <cloud/storage/core/libs/icv2/tcp/address_resolver.h>
@@ -45,8 +45,10 @@ struct IPeerManager: public IStartable
     // Notifications are serialized per peer and may run on the caller's
     // thread before return. Handlers and future callbacks must not throw,
     // block or await shutdown.
-    virtual TResultOrError<IPeerPtr>
-    CreatePeer(TString host, ui16 port, IClientEndpointHandlerPtr handler) = 0;
+    virtual TResultOrError<IPeerPtr> CreatePeer(
+        TString host,
+        ui16 port,
+        IClientConnectionHandlerPtr handler) = 0;
 
     // Rejects new peers and channel requests without waiting. Safe in
     // callbacks; call Stop() outside callbacks to finish shutdown.

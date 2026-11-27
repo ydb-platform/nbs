@@ -89,7 +89,7 @@ struct TPeer::TActivity: TNonCopyable
 struct TPeer::TNotificationContext
 {
     std::shared_ptr<TActivity> Activity;
-    IClientEndpointHandlerPtr Handler;
+    IClientConnectionHandlerPtr Handler;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -127,7 +127,7 @@ TPeer::TPeer(
     TPeerDependencies dependencies,
     TString host,
     ui16 port,
-    IClientEndpointHandlerPtr handler)
+    IClientConnectionHandlerPtr handler)
     : Dependencies(std::move(dependencies))
     , Host(std::move(host))
     , Port(port)
@@ -213,7 +213,7 @@ void TPeer::Close(NProto::TError error)
     std::shared_ptr<TActivity> activity;
     IRequestChannelPtr channel;
     std::shared_ptr<TConnectionAttempt> attempt;
-    IClientEndpointHandlerPtr handler;
+    IClientConnectionHandlerPtr handler;
     {
         TGuard<TAdaptiveLock> guard(Lock);
         if (HasError(CloseError)) {

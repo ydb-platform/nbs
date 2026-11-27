@@ -80,7 +80,7 @@ public:
     TResultOrError<NCloud::NStorage::NRdma::IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
-        NCloud::IClientEndpointHandlerPtr handler,
+        NCloud::IClientConnectionHandlerPtr handler,
         TBuffer externalData) noexcept override
     {
         Y_UNUSED(handler);

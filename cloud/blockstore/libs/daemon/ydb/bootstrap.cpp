@@ -165,7 +165,7 @@ public:
     auto StartEndpoint(
         TString host,
         ui32 port,
-        NCloud::IClientEndpointHandlerPtr handler,
+        NCloud::IClientConnectionHandlerPtr handler,
         TBuffer externalData)
         -> TResultOrError<NCloud::NStorage::NRdma::IClientEndpointPtr> override
     {

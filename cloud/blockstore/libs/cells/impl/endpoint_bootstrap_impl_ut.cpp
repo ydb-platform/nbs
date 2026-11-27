@@ -26,7 +26,7 @@ TCellHostConfig MakeHostConfig()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TConnectionHandler final: public NCloud::IClientEndpointHandler
+class TConnectionHandler final: public NCloud::IClientConnectionHandler
 {
 public:
     ui32 Connections = 0;

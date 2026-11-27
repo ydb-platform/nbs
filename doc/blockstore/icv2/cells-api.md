@@ -8,7 +8,7 @@ Cells receives an `IDataEndpointFactory` at startup. It uses the factory to crea
 | --- | --- | --- |
 | [`IDataEndpointFactory`](../../../cloud/blockstore/libs/icv2/iface/data_endpoint_factory.h) | None | Creates an endpoint with `CreateDataEndpoint()` and provides a status snapshot through `GetDataEndpointStatus()`. |
 | [`IBlockStore`](../../../cloud/blockstore/libs/service/service.h) | [`IStartable`](../../../cloud/storage/core/libs/common/startable.h) | Sends the supported block I/O requests through the endpoint returned by the factory. |
-| [`IClientEndpointHandler`](../../../cloud/storage/core/libs/common/endpoint_handler.h) | None | Implements this optional callback interface to track endpoint readiness. |
+| [`IClientConnectionHandler`](../../../cloud/storage/core/libs/common/connection_handler.h) | None | Implements this optional callback interface to track endpoint readiness. |
 
 NBS owns the service lifecycle. Its `IService` extends both `IStartable` and `IDataEndpointFactory`. NBS starts the service before Cells creates endpoints and exposes the factory interface to Cells. [Service interface](../../../cloud/blockstore/libs/icv2/service/service.h), [NBS startup](../../../cloud/blockstore/libs/daemon/common/bootstrap.cpp).
 
@@ -16,7 +16,7 @@ NBS owns the service lifecycle. Its `IService` extends both `IStartable` and `ID
 
 Call `CreateDataEndpoint(cellId, host, handler)` with the remote cell ID and the hostname selected by Cells. The factory uses the port configured for that cell. Check the returned `TResultOrError<IBlockStorePtr>` for a creation error. The factory returns the endpoint while connection attempts run asynchronously. `HandleConnected()` signals readiness for I/O. [Factory contract](../../../cloud/blockstore/libs/icv2/iface/data_endpoint_factory.h), [port selection](../../../cloud/blockstore/libs/icv2/service/service.cpp).
 
-Pass a handler if Cells needs to react to connection changes. Initialize it before creating the endpoint because it may receive a callback before the factory call returns. Use weak references back to the endpoint or its owner. Keep callbacks nonblocking and non-throwing. [Callback contract](../../../cloud/storage/core/libs/common/endpoint_handler.h), [Cells transport switcher](../../../cloud/blockstore/libs/cells/impl/transport_switcher.cpp).
+Pass a handler if Cells needs to react to connection changes. Initialize it before creating the endpoint because it may receive a callback before the factory call returns. Use weak references back to the endpoint or its owner. Keep callbacks nonblocking and non-throwing. [Callback contract](../../../cloud/storage/core/libs/common/connection_handler.h), [Cells transport switcher](../../../cloud/blockstore/libs/cells/impl/transport_switcher.cpp).
 
 | Callback | Meaning |
 | --- | --- |

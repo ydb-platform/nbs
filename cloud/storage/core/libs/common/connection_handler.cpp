@@ -1,9 +1,9 @@
-#include "endpoint_handler.h"
+#include "connection_handler.h"
 
 namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IClientEndpointHandler::~IClientEndpointHandler() = default;
+IClientConnectionHandler::~IClientConnectionHandler() = default;
 
 }   // namespace NCloud

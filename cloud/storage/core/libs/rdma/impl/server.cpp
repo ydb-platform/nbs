@@ -268,6 +268,7 @@ private:
     NVerbs::TConnectionPtr Connection;
     TCompletionPoller* CompletionPoller = nullptr;
     IServerHandlerPtr Handler;
+    IServerConnectionHandlerPtr ConnectionHandler;
     TServerConfigPtr Config;
     TEndpointCountersPtr Counters;
     TLog Log;
@@ -314,6 +315,9 @@ private:
     // it doesn't really need to be atomic
     ui64 ExecutingRequests{0};
 
+    // This variable only gets accessed from the CM thread
+    bool Connected = false;
+
 public:
     static TServerSession* FromEvent(rdma_cm_event* event)
     {
@@ -326,6 +330,7 @@ public:
         NVerbs::TConnectionPtr connection,
         TCompletionPoller* completionPoller,
         IServerHandlerPtr handler,
+        IServerConnectionHandlerPtr connectionHandler,
         TServerConfigPtr config,
         TEndpointCountersPtr stats,
         TLog log,
@@ -378,6 +383,7 @@ TServerSession::TServerSession(
         NVerbs::TConnectionPtr connection,
         TCompletionPoller* completionPoller,
         IServerHandlerPtr handler,
+        IServerConnectionHandlerPtr connectionHandler,
         TServerConfigPtr config,
         TEndpointCountersPtr stats,
         TLog log,
@@ -386,6 +392,7 @@ TServerSession::TServerSession(
     , Connection(std::move(connection))
     , CompletionPoller(completionPoller)
     , Handler(std::move(handler))
+    , ConnectionHandler(std::move(connectionHandler))
     , Config(std::move(config))
     , Counters(std::move(stats))
     , Log(std::move(log))
@@ -1205,22 +1212,25 @@ void TServerSession::SendResponseCompleted(TSendWr* send) noexcept
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TSingleHandlerConnectionHandler final
-    : public IServerConnectionHandler
+class TSingleHandlerEndpointHandler final
+    : public IServerEndpointHandler
 {
 private:
     const IServerHandlerPtr Handler;
 
 public:
-    explicit TSingleHandlerConnectionHandler(IServerHandlerPtr handler)
+    explicit TSingleHandlerEndpointHandler(IServerHandlerPtr handler)
         : Handler(std::move(handler))
     {}
 
-    TResultOrError<IServerHandlerPtr> HandleConnect(
+    TResultOrError<TServerConnection> HandleConnect(
         TStringBuf externalData) override
     {
         Y_UNUSED(externalData);
-        return Handler;
+        return TServerConnection{
+            .RequestHandler = Handler,
+            .ConnectionHandler = nullptr,
+        };
     }
 };
 
@@ -1238,7 +1248,7 @@ private:
     NVerbs::TConnectionPtr Connection;
     TString Host;
     ui32 Port;
-    IServerConnectionHandlerPtr ConnectionHandler;
+    IServerEndpointHandlerPtr EndpointHandler;
 
 public:
     TServerEndpoint(
@@ -1246,12 +1256,12 @@ public:
             NVerbs::TConnectionPtr connection,
             TString host,
             ui32 port,
-            IServerConnectionHandlerPtr connectionHandler)
+            IServerEndpointHandlerPtr endpointHandler)
         : Verbs(std::move(verbs))
         , Connection(std::move(connection))
         , Host(std::move(host))
         , Port(port)
-        , ConnectionHandler(std::move(connectionHandler))
+        , EndpointHandler(std::move(endpointHandler))
     {
         Connection->context = this;
     }
@@ -1668,7 +1678,7 @@ public:
     IServerEndpointPtr StartEndpoint(
         TString host,
         ui32 port,
-        IServerConnectionHandlerPtr connectionHandler) override;
+        IServerEndpointHandlerPtr endpointHandler) override;
     void DumpHtml(IOutputStream& out) const override;
 
 private:
@@ -1681,7 +1691,7 @@ private:
         TServerEndpoint* endpoint, rdma_cm_event* event) noexcept;
     void Accept(
         rdma_cm_event* event,
-        IServerHandlerPtr handler,
+        TServerConnection connection,
         ui32 eagerBytes) noexcept;
     void HandleConnected(TServerSession* session) noexcept;
     void HandleDisconnected(TServerSession* session) noexcept;
@@ -1759,13 +1769,13 @@ IServerEndpointPtr TServer::StartEndpoint(
     return StartEndpoint(
         std::move(host),
         port,
-        std::make_shared<TSingleHandlerConnectionHandler>(std::move(handler)));
+        std::make_shared<TSingleHandlerEndpointHandler>(std::move(handler)));
 }
 
 IServerEndpointPtr TServer::StartEndpoint(
     TString host,
     ui32 port,
-    IServerConnectionHandlerPtr connectionHandler)
+    IServerEndpointHandlerPtr endpointHandler)
 {
     if (ConnectionPoller == nullptr) {
         RDMA_ERROR("unable to start endpoint: connection poller is down");
@@ -1778,7 +1788,7 @@ IServerEndpointPtr TServer::StartEndpoint(
             ConnectionPoller->CreateConnection(Config->IpTypeOfService),
             std::move(host),
             port,
-            std::move(connectionHandler));
+            std::move(endpointHandler));
 
         Listen(endpoint.get());
 
@@ -2030,11 +2040,10 @@ void TServer::HandleConnectRequest(
         return;
     }
 
-    auto [handler, error] = SafeExecute<TResultOrError<IServerHandlerPtr>>(
-        [&]
-        { return endpoint->ConnectionHandler->HandleConnect(externalData); });
+    auto [connection, error] = SafeExecute<TResultOrError<TServerConnection>>(
+        [&] { return endpoint->EndpointHandler->HandleConnect(externalData); });
 
-    if (!HasError(error) && !handler) {
+    if (!HasError(error) && !connection.RequestHandler) {
         error = MakeError(E_INVALID_STATE, "no handler for the connection");
     }
 
@@ -2051,19 +2060,20 @@ void TServer::HandleConnectRequest(
         connectMsg->MaxEagerRequestBytes,
         Config->MaxEagerRequestBytes);
 
-    Accept(event, std::move(handler), eagerBytes);
+    Accept(event, std::move(connection), eagerBytes);
 }
 
 void TServer::Accept(
     rdma_cm_event* event,
-    IServerHandlerPtr handler,
+    TServerConnection connection,
     ui32 eagerBytes) noexcept
 {
     auto session = std::make_shared<TServerSession>(
         Verbs,
         NVerbs::WrapPtr(event->id),
         PickPoller(),
-        std::move(handler),
+        std::move(connection.RequestHandler),
+        std::move(connection.ConnectionHandler),
         Config,
         Counters,
         Log,
@@ -2112,6 +2122,10 @@ void TServer::HandleConnected(TServerSession* session) noexcept
 {
     try {
         session->SetupQP();
+        if (session->ConnectionHandler) {
+            session->Connected = true;
+            session->ConnectionHandler->HandleConnected();
+        }
         session->Start();
         session->CompletionPoller->Attach(session);
         RDMA_INFO(session->Log, "connected");
@@ -2128,6 +2142,10 @@ void TServer::HandleDisconnected(TServerSession* session) noexcept
     RDMA_INFO(
         session->Log,
         "disconnect from " << Verbs->GetPeer(session->Connection.get()));
+    if (session->Connected) {
+        session->Connected = false;
+        session->ConnectionHandler->HandleDisconnected();
+    }
     session->Flush();
 }
 

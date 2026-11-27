@@ -607,7 +607,7 @@ private:
     TPromise<IClientEndpointPtr> StartResult;
     TPromise<void> StopResult = NewPromise<void>();
 
-    const IClientEndpointHandlerPtr EndpointHandler;
+    const IClientConnectionHandlerPtr EndpointHandler;
 
     std::atomic<ui64> FlushStartCycles = 0;
 
@@ -667,7 +667,7 @@ public:
         TClientConfigPtr config,
         TEndpointCountersPtr stats,
         TLog log,
-        IClientEndpointHandlerPtr handler);
+        IClientConnectionHandlerPtr handler);
     ~TClientEndpoint() override;
 
     // called from CM and CQ threads
@@ -760,7 +760,7 @@ TClientEndpoint::TClientEndpoint(
         TClientConfigPtr config,
         TEndpointCountersPtr stats,
         TLog log,
-        IClientEndpointHandlerPtr handler)
+        IClientConnectionHandlerPtr handler)
     : Verbs(std::move(verbs))
     , Connection(std::move(connection))
     , Host(std::move(host))
@@ -2566,7 +2566,7 @@ public:
     TResultOrError<IClientEndpointPtr> StartEndpoint(
         TString host,
         ui32 port,
-        IClientEndpointHandlerPtr handler,
+        IClientConnectionHandlerPtr handler,
         TBuffer externalData) noexcept override;
     void DumpHtml(IOutputStream& out) const override;
     bool IsAlignedDataEnabled() const override;
@@ -2658,7 +2658,7 @@ void TClient::Stop() noexcept
 TResultOrError<IClientEndpointPtr> TClient::StartEndpoint(
     TString host,
     ui32 port,
-    IClientEndpointHandlerPtr handler,
+    IClientConnectionHandlerPtr handler,
     TBuffer externalData) noexcept
 {
     if (ConnectionPoller == nullptr) {

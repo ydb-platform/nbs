@@ -41,7 +41,7 @@ class TTestDataEndpoint final
     ////////////////////////////////////////////////////////////////////////////////
 
     const IBlockStorePtr Service;
-    const IClientEndpointHandlerPtr Handler;
+    const IClientConnectionHandlerPtr Handler;
 
     mutable TMutex Mutex;
     TPeerStatus Status{
@@ -53,7 +53,9 @@ class TTestDataEndpoint final
     NThreading::TPromise<void> Drained = NThreading::NewPromise();
 
 public:
-    TTestDataEndpoint(IBlockStorePtr service, IClientEndpointHandlerPtr handler)
+    TTestDataEndpoint(
+            IBlockStorePtr service,
+            IClientConnectionHandlerPtr handler)
         : Service(std::move(service))
         , Handler(std::move(handler))
     {}
@@ -171,7 +173,7 @@ public:
 
     void NotifyDisconnected()
     {
-        IClientEndpointHandlerPtr handler;
+        IClientConnectionHandlerPtr handler;
         {
             TGuard<TMutex> guard(Mutex);
             if (Status.State != EPeerState::Connected) {
@@ -257,7 +259,7 @@ TVector<TDataEndpointRequest> TTestDataEndpointFactory::GetRequests() const
 TResultOrError<IBlockStorePtr> TTestDataEndpointFactory::CreateDataEndpoint(
     const TString& cellId,
     const TString& host,
-    IClientEndpointHandlerPtr handler)
+    IClientConnectionHandlerPtr handler)
 {
     IBlockStorePtr service;
     {

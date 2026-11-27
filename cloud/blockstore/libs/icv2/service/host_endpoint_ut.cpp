@@ -188,7 +188,7 @@ struct TTestPeers final
     TResultOrError<IPeerPtr> CreatePeer(
         TString host,
         ui16 port,
-        IClientEndpointHandlerPtr handler) override
+        IClientConnectionHandlerPtr handler) override
     {
         Y_UNUSED(host);
         Y_UNUSED(port);

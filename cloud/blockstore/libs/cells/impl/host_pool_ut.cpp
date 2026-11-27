@@ -102,7 +102,7 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
     TResultOrError<IBlockStorePtr> SetupHostIcV2Endpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,
-        NCloud::IClientEndpointHandlerPtr handler) override
+        NCloud::IClientConnectionHandlerPtr handler) override
     {
         Y_UNUSED(bootstrap);
         Y_UNUSED(config);
@@ -134,7 +134,7 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
     TRdmaEndpointBootstrapResult SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,
-        NCloud::IClientEndpointHandlerPtr handler) override
+        NCloud::IClientConnectionHandlerPtr handler) override
     {
         Y_UNUSED(bootstrap);
         Y_UNUSED(config);
