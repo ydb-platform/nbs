@@ -217,6 +217,8 @@ public:
     };
 
 private:
+    bool ShouldUseRdma(const TMap<TString, TString>& tags) const;
+
     TStorageConfigPtr StorageConfig;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     NProto::TVolumeMeta Meta;
@@ -413,6 +415,10 @@ public:
     void ResetThrottlingPolicy(
         const NProto::TVolumeThrottlingRule& throttlingRule,
         ui32 throttlingRuleVersion);
+    // Apply local storage settings and refresh the RDMA choice for child
+    // startup.
+    void SetStorageConfig(TStorageConfigPtr config);
+
     void Reset();
 
     //

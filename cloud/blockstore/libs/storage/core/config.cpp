@@ -1372,8 +1372,8 @@ T DecodeFallback(ui64 value)
     }
 }
 
-// RW fallback cells and the accepted raw configuration from which they were
-// resolved. Each working configuration owns its own values.
+// RW values and their complete raw source for one server or volume. A new RO
+// view of the same volume keeps this state for its already running readers.
 struct TRwStorageConfig
 {
     // Raw base including explicitly set fields, retained by cold readers.
@@ -1427,8 +1427,8 @@ struct TStorageConfig::TImpl
 {
     // Construction-time proto used by RO getters throughout this lifetime.
     TStorageServiceConfigPtr ReadOnlyConfig;
-    // RW fallback cells owned by this working configuration.
-    std::unique_ptr<TRwStorageConfig> Rw;
+    // RW settings shared across RO views of this particular server or volume.
+    std::shared_ptr<TRwStorageConfig> Rw;
     // Latest feature rules shared by the server and its volume configurations.
     std::shared_ptr<THotSwap<TPublishedFeatures>> Features;
     // Operator controls registered once for the server.
@@ -1524,7 +1524,7 @@ TStorageConfig::TStorageConfig(
         std::move(storageServiceConfig));
     Impl = std::make_unique<TImpl>(
         raw,
-        std::make_unique<TRwStorageConfig>(raw),
+        std::make_shared<TRwStorageConfig>(raw),
         std::make_shared<THotSwap<TPublishedFeatures>>(
             MakeIntrusive<TPublishedFeatures>(std::move(featuresConfig))),
         std::move(controls));
@@ -1533,13 +1533,28 @@ TStorageConfig::TStorageConfig(
 TStorageConfig::TStorageConfig(const TStorageConfig& source,
                                TStorageServiceConfigPtr rawConfig)
     : Impl(std::make_unique<TImpl>(
-          rawConfig, std::make_unique<TRwStorageConfig>(rawConfig),
+          rawConfig, std::make_shared<TRwStorageConfig>(rawConfig),
           source.Impl->Features, source.Impl->Controls))
 {}
 
 TStorageConfig::TStorageConfig(const TStorageConfig& other)
     : TStorageConfig(other, other.GetConfigProto())
 {}
+
+TStorageConfig::TStorageConfig(std::unique_ptr<TImpl> impl)
+    : Impl(std::move(impl))
+{}
+
+TStorageConfigMutablePtr TStorageConfig::ReplaceReadOnlyConfig(
+    TStorageServiceConfigPtr config)
+{
+    // Retain the same RW cells for outstanding readers of the previous RO view.
+    auto view = std::make_unique<TImpl>(*Impl);
+    view->ReadOnlyConfig = config;
+    TStorageConfigMutablePtr result(new TStorageConfig(std::move(view)));
+    result->ApplyRwConfig(std::move(config));
+    return result;
+}
 
 TStorageConfig::~TStorageConfig() = default;
 

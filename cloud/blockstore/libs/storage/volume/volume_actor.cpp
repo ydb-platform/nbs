@@ -2,6 +2,7 @@
 
 #include "volume_database.h"
 
+#include <cloud/blockstore/libs/configs_manager/public.h>
 #include <cloud/blockstore/libs/storage/api/bootstrapper.h>
 #include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/service.h>
@@ -101,8 +102,8 @@ TVolumeActor::TVolumeActor(
     TString diskId)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
-    , GlobalStorageConfig(config)
-    , Config(std::move(config))
+    , GlobalStorageConfig(config->GetConfigProto())
+    , Config(std::make_shared<TStorageConfig>(*config, GlobalStorageConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGeneratorFactory(std::move(blockDigestGeneratorFactory))
@@ -310,6 +311,8 @@ void TVolumeActor::OnActivateExecutor(const TActorContext& ctx)
         "%s Activated executor",
         LogTitle.GetWithTime().c_str());
 
+    ctx.Send(MakeConfigsManagerServiceId(),
+             new TEvConfigsManager::TEvSetConfigSubscriptionRequest());
     ScheduleRegularUpdates(ctx);
 
     if (!Executor()->GetStats().IsFollower()) {
@@ -362,6 +365,8 @@ void TVolumeActor::OnTabletDead(
 
 void TVolumeActor::BeforeDie(const TActorContext& ctx)
 {
+    ctx.Send(MakeConfigsManagerServiceId(),
+             new TEvConfigsManager::TEvRemoveConfigSubscriptionRequest());
     UnregisterVolume(ctx);
     StopPartitions(ctx, {});
     TerminateTransactions(ctx);
@@ -1051,6 +1056,10 @@ STFUNC(TVolumeActor::StateInit)
 {
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
+        IgnoreFunc(TEvConfigsManager::TEvSetConfigSubscriptionResponse);
+        IgnoreFunc(TEvConfigsManager::TEvRemoveConfigSubscriptionResponse);
+        HFunc(TEvConfigsManager::TEvConfigChanged, HandleStorageConfigChanged);
+
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
@@ -1113,6 +1122,10 @@ STFUNC(TVolumeActor::StateWork)
 {
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
+        IgnoreFunc(TEvConfigsManager::TEvSetConfigSubscriptionResponse);
+        IgnoreFunc(TEvConfigsManager::TEvRemoveConfigSubscriptionResponse);
+        HFunc(TEvConfigsManager::TEvConfigChanged, HandleStorageConfigChanged);
+
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
         HFunc(TEvents::TEvWakeup, HandleWakeup);
@@ -1293,6 +1306,10 @@ STFUNC(TVolumeActor::StateZombie)
 {
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
+        IgnoreFunc(TEvConfigsManager::TEvSetConfigSubscriptionResponse);
+        IgnoreFunc(TEvConfigsManager::TEvRemoveConfigSubscriptionResponse);
+        IgnoreFunc(TEvConfigsManager::TEvConfigChanged);
+
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 

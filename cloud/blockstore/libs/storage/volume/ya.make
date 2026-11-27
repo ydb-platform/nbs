@@ -49,6 +49,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/blockstore/libs/configs_manager
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/kikimr

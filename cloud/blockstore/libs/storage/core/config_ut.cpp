@@ -149,6 +149,33 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT(!server.GetConfigProto()->HasMaxReadWriteRangeSize());
     }
 
+    // Verify that a local RO replacement preserves RW updates for retained
+    // readers.
+    Y_UNIT_TEST(ShouldKeepLiveRwValuesAcrossLocalReadOnlyChanges)
+    {
+        // Retain the first view while replacing a construction-time RO field.
+        TStorageProto initial;
+        initial.SetNodeType("first");
+        TStorageConfig first(initial, nullptr);
+        auto next = std::make_shared<TStorageProto>(initial);
+        next->SetNodeType("second");
+        next->SetMaxReadWriteRangeSize(16_KB);
+        auto second = first.ReplaceReadOnlyConfig(next);
+
+        // Read each view's own RO value and their common RW value.
+        UNIT_ASSERT_VALUES_EQUAL("first", first.GetNodeType());
+        UNIT_ASSERT_VALUES_EQUAL("second", second->GetNodeType());
+        UNIT_ASSERT_VALUES_EQUAL(16_KB, first.GetMaxReadWriteRangeSize());
+
+        // Apply a later RW update through the new view and read it through
+        // both.
+        auto latest = std::make_shared<TStorageProto>(*next);
+        latest->SetMaxReadWriteRangeSize(32_KB);
+        second->ApplyRwConfig(latest);
+        UNIT_ASSERT_VALUES_EQUAL(32_KB, first.GetMaxReadWriteRangeSize());
+        UNIT_ASSERT_VALUES_EQUAL(32_KB, second->GetMaxReadWriteRangeSize());
+    }
+
     // Check changed and unchanged ui32 defaults, including an explicit zero.
     Y_UNIT_TEST(ShouldUpdateDefaultsForUint32)
     {

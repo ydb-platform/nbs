@@ -342,6 +342,25 @@ bool TVolumeState::ShouldTrackUsedBlocks() const
     return overlay;
 }
 
+bool TVolumeState::ShouldUseRdma(const TMap<TString, TString>& tags) const
+{
+    // Volume tags explicitly override the current configuration and feature
+    // rule.
+    if (tags.contains("disable-rdma")) {
+        return false;
+    }
+    return tags.contains("use-rdma") || StorageConfig->GetUseRdma() ||
+           StorageConfig->IsUseRdmaFeatureEnabled(
+               Meta.GetConfig().GetCloudId(), Meta.GetConfig().GetFolderId(),
+               Meta.GetConfig().GetDiskId());
+}
+
+void TVolumeState::SetStorageConfig(TStorageConfigPtr config)
+{
+    StorageConfig = std::move(config);
+    UseRdma = ShouldUseRdma(ParseTags(Meta.GetVolumeConfig().GetTagsStr()));
+}
+
 void TVolumeState::Reset()
 {
     Partitions.clear();
@@ -352,11 +371,6 @@ void TVolumeState::Reset()
     TrackUsedBlocks = ShouldTrackUsedBlocks();
     MaskUnusedBlocks = false;
     MaxTimedOutDeviceStateDuration = TDuration::Zero();
-    UseRdma = StorageConfig->GetUseRdma()
-        || StorageConfig->IsUseRdmaFeatureEnabled(
-            Meta.GetConfig().GetCloudId(),
-            Meta.GetConfig().GetFolderId(),
-            Meta.GetConfig().GetDiskId());
     UseFastPath = false;
     AcceptInvalidDiskAllocationResponse = false;
     UseIntermediateWriteBuffer = false;
@@ -407,12 +421,7 @@ void TVolumeState::Reset()
         TrackUsedBlocks = true;
         MaskUnusedBlocks = true;
     }
-    if (tags.contains("use-rdma")) {
-        UseRdma = true;
-    }
-    if (tags.contains("disable-rdma")) {
-        UseRdma = false;
-    }
+    UseRdma = ShouldUseRdma(tags);
     if (const auto* value = tags.FindPtr("max-timed-out-device-state-duration"))
     {
         TDuration::TryParse(*value, MaxTimedOutDeviceStateDuration);
