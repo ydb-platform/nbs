@@ -55,14 +55,15 @@ void Flush(TWriteContext& writeContext, IPageStore& pageStore)
 struct TFixture
 {
     const ui64 FirstPageNo = 10;
-    const ui64 PageCount = 1024;
+    const ui64 PageCount;
     const ui64 SlotSize = sizeof(TSlot);
 
     IPageStorePtr PageStore = CreateMemPageStore(PageSize);
     TPersistentHashTable<ui64, TSlot> Ht;
 
-    TFixture()
-        : Ht(
+    explicit TFixture(ui64 pageCount = 1024)
+        : PageCount(pageCount)
+        , Ht(
               FirstPageNo,
               PageCount,
               PageSize,
@@ -274,6 +275,65 @@ TEST(PersistentHashTableTest, Delete)
         EXPECT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
         error = fx.Ht.GetForLookup(102, &slot, &slotNo);
         EXPECT_EQ(E_FS_NOENT, error.GetCode()) << FormatError(error);
+    }
+}
+
+TEST(PersistentHashTableTest, PutReusesTombstoneInFullTable)
+{
+    TFixture fx(1 /* pageCount */);
+
+    const ui64 slotCount = fx.Ht.GetSlotCount();
+    for (ui64 key = 0; key < slotCount; ++key) {
+        TWriteContext writeContext;
+        writeContext.Lsn = fx.PageStore->AllocateLsn();
+        // An all-zero slot is an empty one, hence A.
+        const auto error = fx.Ht.Put(
+            writeContext.Lsn,
+            TSlot{.A = 1, .B = key},
+            writeContext.PageGroups);
+        ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+        Flush(writeContext, *fx.PageStore);
+    }
+
+    {
+        TWriteContext writeContext;
+        writeContext.Lsn = fx.PageStore->AllocateLsn();
+        const auto error = fx.Ht.Put(
+            writeContext.Lsn,
+            TSlot{.A = 1, .B = slotCount},
+            writeContext.PageGroups);
+        EXPECT_EQ(E_FS_OUT_OF_SPACE, error.GetCode()) << FormatError(error);
+    }
+
+    {
+        TWriteContext writeContext;
+        writeContext.Lsn = fx.PageStore->AllocateLsn();
+        TSlot slot;
+        const auto error = fx.Ht.Delete(
+            writeContext.Lsn,
+            7,
+            &slot,
+            writeContext.PageGroups);
+        ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+        Flush(writeContext, *fx.PageStore);
+    }
+
+    {
+        TWriteContext writeContext;
+        writeContext.Lsn = fx.PageStore->AllocateLsn();
+        const auto error = fx.Ht.Put(
+            writeContext.Lsn,
+            TSlot{.A = 1, .B = slotCount},
+            writeContext.PageGroups);
+        EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
+        Flush(writeContext, *fx.PageStore);
+    }
+
+    {
+        TSlot slot;
+        ui64 slotNo = 0;
+        const auto error = fx.Ht.GetForLookup(slotCount, &slot, &slotNo);
+        EXPECT_EQ(S_OK, error.GetCode()) << FormatError(error);
     }
 }
 
