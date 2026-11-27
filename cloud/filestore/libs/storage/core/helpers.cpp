@@ -116,6 +116,8 @@ void Convert(
     response.SetNodeCacheTTL(internalResponse.GetNodeCacheTTL());
     response.SetNodeRefCacheTTL(internalResponse.GetNodeRefCacheTTL());
     *response.MutableHeaders() = std::move(*internalResponse.MutableHeaders());
+    *response.MutableLockedNodeRefIndices() =
+        std::move(*internalResponse.MutableLockedNodeRefIndices());
 
     const ui32 nameCount = internalResponse.NameSizesSize();
     const ui32 externalRefCount = internalResponse.ExternalRefIndicesSize();

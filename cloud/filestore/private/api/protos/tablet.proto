@@ -1694,6 +1694,11 @@ message TListNodesInternalResponse
     // returned NodeRefs. Zero means that caching is not allowed.
     uint32 NodeRefCacheTTL = 11;
 
+    // Indices (in NameSizes) of the external NodeRefs which were locked by a
+    // running write operation (e.g. CreateNode, UnlinkNode or RenameNode) at
+    // the moment of listing.
+    repeated uint32 LockedNodeRefIndices = 12;
+
     // Optional response headers.
     NProto.TResponseHeaders Headers = 1000;
 }

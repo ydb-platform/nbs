@@ -10,6 +10,7 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <util/generic/is_in.h>
 #include <util/string/join.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -493,13 +494,15 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
     } else {
         const auto& attr = msg->Record.GetNode();
         exists = attr.GetShardNodeName() == node.GetShardNodeName();
-        locked = msg->Record.GetIsNodeRefLocked();
+        locked = msg->Record.GetIsNodeRefLocked()
+            || IsIn(Response.GetLockedNodeRefIndices(), ev->Cookie);
     }
 
     if (exists) {
         if (locked) {
             //
-            // NodeRef is being processed by a concurrent write operation - e.g.
+            // NodeRef is being processed by a concurrent write operation or
+            // was being processed when it was listed - e.g. CreateNode,
             // UnlinkNode or RenameNode. It's ok to temporarily have internal
             // inconsistency between the directory tablet and the shard in
             // charge of this node in this case.
@@ -534,11 +537,11 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
     }
 
     if (++CheckedNodeCount == MissingNodeIndices.size()) {
-        // If all response nodes are missing, we can't respond with an ok
-        // status because the client will think that it's the end of the
-        // directory stream (recall that directory listing is done in windows
-        // specified by an offset + size pair which is converted to a "Cookie"
-        // + size pair by our vfs_fuse layer)
+        // If all response nodes are missing and there are more nodes to list,
+        // we can't respond with an ok status because the client will think
+        // that it's the end of the directory stream (recall that directory
+        // listing is done in windows specified by an offset + size pair which
+        // is converted to a "Cookie" + size pair by our vfs_fuse layer)
         // If all missing nodes are permanently lost, retrying this ListNodes
         // request won't lead to a different result => E_IO
         // If some of the missing nodes are missing because they were supposedly
@@ -552,14 +555,16 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
                 error = MakeError(E_IO, TStringBuilder()
                     << "lost some nodes in shards for request: "
                     << ListNodesRequest.ShortDebugString().Quote());
-            } else {
+            } else if (Response.GetCookie()) {
                 error = MakeError(E_REJECTED, TStringBuilder()
                     << "concurrent directory modifications for request: "
                     << ListNodesRequest.ShortDebugString().Quote());
             }
 
-            HandleError(ctx, std::move(error));
-            return;
+            if (HasError(error)) {
+                HandleError(ctx, std::move(error));
+                return;
+            }
         }
 
         if (!Unsafe) {
@@ -607,6 +612,10 @@ void TListNodesActor::HandlePoisonPill(
 
 void TListNodesActor::ReplyAndDie(const TActorContext& ctx)
 {
+    if (!DisableMultiTabletForwarding) {
+        Response.ClearLockedNodeRefIndices();
+    }
+
     auto response = std::make_unique<TEvService::TEvListNodesResponse>();
     response->Record = std::move(Response);
 

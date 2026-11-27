@@ -157,6 +157,7 @@ auto MakeListNodesInternalResponse()
     internalResponse.SetCookie("cookie");
     internalResponse.MutableHeaders()->MutableBackendInfo()
         ->SetIsOverloaded(true);
+    internalResponse.AddLockedNodeRefIndices(3);
     UNIT_ASSERT(!builder.AddNodeRef("name6", "", ""));
     UNIT_ASSERT(!builder.AddNodeRef("", "shard3", "nodename3"));
     return internalResponse;
@@ -235,6 +236,9 @@ Y_UNIT_TEST_SUITE(THelpers)
 
         UNIT_ASSERT_VALUES_EQUAL("cookie", response.GetCookie());
         UNIT_ASSERT(response.GetHeaders().GetBackendInfo().GetIsOverloaded());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, response.LockedNodeRefIndicesSize());
+        UNIT_ASSERT_VALUES_EQUAL(3, response.GetLockedNodeRefIndices(0));
     }
 
     Y_UNIT_TEST(ShouldConvertListNodesInternalResponseError)
