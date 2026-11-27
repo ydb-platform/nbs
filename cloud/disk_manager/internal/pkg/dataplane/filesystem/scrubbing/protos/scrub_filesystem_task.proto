@@ -15,6 +15,11 @@ message ScrubFilesystemRequest {
 
 message ScrubFilesystemTaskState {
     bool RootNodeScheduled = 1;
+    // File size histogram, regular files only. Bucket i holds sizes in
+    // [2^(i-1), 2^i), bucket 0 holds empty files. Hard links are weighted
+    // 1/Links, hence double.
+    repeated double FileCountBySizeLog2 = 2;
+    repeated double FileBytesBySizeLog2 = 3;
 }
 
 message RegularScrubFilesystemsTaskState {
