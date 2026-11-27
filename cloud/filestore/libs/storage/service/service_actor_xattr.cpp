@@ -304,9 +304,12 @@ void TStorageServiceActor::HandleSetNodeXAttr(
         return;
     }
 
+    auto* msg = ev->Get();
+    msg->Record.MutableHeaders()->SetGuestPosixAclEnabled(
+        session->FileStore.GetFeatures().GetGuestPosixAclEnabled());
+
     if (StorageConfig->GetLazyXAttrsEnabled() && !session->FileStore.GetFeatures().GetHasXAttrs()) {
         // Send TSetHasXAttrsRequest to the index tablet
-        auto* msg = ev->Get();
         LOG_INFO(
             ctx,
             TFileStoreComponents::SERVICE,

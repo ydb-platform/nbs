@@ -2,6 +2,8 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/storage/tablet/model/xattr_acl_helpers.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -170,6 +172,34 @@ bool TIndexTabletActor::PrepareTx_SetNodeAttr(
     // TODO: AccessCheck
     TABLET_VERIFY(args.Node);
 
+    if (args.Request.GetHeaders().GetGuestPosixAclEnabled() &&
+        HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_MODE))
+    {
+        if (!ReadNodeAttr(
+                *db,
+                args.NodeId,
+                args.CommitId,
+                PosixAclAccessXAttr.data(),
+                args.AccessAclAttr))
+        {
+            return false;   // not ready
+        }
+
+        if (args.AccessAclAttr) {
+            auto result = RewriteXattrAclPermByMode(
+                args.AccessAclAttr->Value,
+                update.GetMode());
+            if (HasError(result.GetError())) {
+                args.Error = result.GetError();
+                return true;
+            }
+
+            if (result.GetResult().Type != EXattrAclType::HeaderOnly) {
+                args.UpdatedAccessAcl = result.ExtractResult();
+            }
+        }
+    }
+
     return true;
 }
 
@@ -204,7 +234,9 @@ void TIndexTabletActor::ExecuteTx_SetNodeAttr(
 
     NProto::TNode attrs = CopyAttrs(args.Node->Attrs, mode);
     if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_MODE)) {
-        attrs.SetMode(update.GetMode());
+        attrs.SetMode(
+            args.UpdatedAccessAcl ? args.UpdatedAccessAcl->Mode
+                                  : update.GetMode());
     }
     if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_UID)) {
         attrs.SetUid(update.GetUid());
@@ -238,6 +270,19 @@ void TIndexTabletActor::ExecuteTx_SetNodeAttr(
         }
 
         attrs.SetSize(update.GetSize());
+    }
+
+    if (args.UpdatedAccessAcl &&
+        args.UpdatedAccessAcl->Acl != args.AccessAclAttr->Value)
+    {
+        UpdateNodeAttr(
+            *db,
+            args.FileSystemEvents,
+            args.NodeId,
+            args.AccessAclAttr->MinCommitId,
+            args.CommitId,
+            *args.AccessAclAttr,
+            args.UpdatedAccessAcl->Acl);
     }
 
     UpdateNode(

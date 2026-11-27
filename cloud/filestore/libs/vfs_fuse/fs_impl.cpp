@@ -525,7 +525,7 @@ void TFileSystem::UpdateXAttrCache(
 void TFileSystem::UpdateXAttrCacheUponSetXAttr(
     ui64 ino,
     const TString& name,
-    const TString& value,
+    const TMaybe<TString>& value,
     ui64 version,
     const NProto::TError& error,
     ui64 cacheVersion,

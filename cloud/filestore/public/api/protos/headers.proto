@@ -104,6 +104,8 @@ message THeaders
     // interpret it and returns it as NodeCacheSourceId, NodeRefCacheSourceId
     // or XAttrCacheSourceId along with a nonzero TTL.
     uint64 FileSystemEventSourceId = 15;
+
+    bool GuestPosixAclEnabled = 16;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

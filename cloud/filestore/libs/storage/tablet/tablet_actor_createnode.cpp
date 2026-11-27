@@ -689,7 +689,7 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
     }
 
     if (!behaveAsShard &&
-        args.Request.GetGuestPosixAclEnabled() &&
+        args.Request.GetHeaders().GetGuestPosixAclEnabled() &&
         !args.Request.HasSymLink() &&
         args.TargetNodeId == InvalidNodeId)
     {

@@ -28,6 +28,7 @@ SRCS(
 
 PEERDIR(
     cloud/filestore/libs/storage/tablet/events
+    cloud/filestore/libs/storage/tablet/model/test_helpers
     cloud/filestore/libs/storage/testlib
     cloud/filestore/private/api/protos
 

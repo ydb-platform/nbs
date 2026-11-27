@@ -1,6 +1,12 @@
 #include "tablet_actor.h"
 
+#include "helpers.h"
+
+#include <cloud/filestore/libs/storage/tablet/model/xattr_acl_helpers.h>
+
 #include <cloud/storage/core/libs/common/helpers.h>
+
+#include <sys/stat.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -31,6 +37,38 @@ NProto::TError ValidateRequest(const NProto::TSetNodeXAttrRequest& request)
     return {};
 }
 
+// Classify an enabled POSIX ACL update and validate its value.
+NProto::TError ValidatePosixAcl(const NProto::TSetNodeXAttrRequest& request,
+    TTxIndexTablet::TXattrAcl& acl)
+{
+    if (!request.GetHeaders().GetGuestPosixAclEnabled()) {
+        return {};
+    }
+
+    const bool isAccessAcl = (request.GetName() == PosixAclAccessXAttr);
+    const bool isDefaultAcl = (request.GetName() == PosixAclDefaultXAttr);
+
+    if (isAccessAcl || isDefaultAcl) {
+        auto result = GetModeByXattrAcl(request.GetValue());
+        if (HasError(result.GetError())) {
+            return result.GetError();
+        }
+
+        const auto& xattrAcl = result.ExtractResult();
+        acl.Type = xattrAcl.Type;
+        acl.Mode = xattrAcl.Mode;
+
+        if (isAccessAcl) {
+            acl.Scope = TTxIndexTablet::TXattrAcl::EScope::Access;
+        }
+        if (isDefaultAcl) {
+            acl.Scope = TTxIndexTablet::TXattrAcl::EScope::Default;
+        }
+    }
+
+    return {};
+}
+
 }   // namespace
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -45,11 +83,21 @@ void TIndexTabletActor::HandleSetNodeXAttr(
         ev->Sender,
         msg->Record.GetHeaders());
 
-    const bool accepted = AcceptRequest<TEvService::TSetNodeXAttrMethod>(
+    const TSession* session = AcceptRequest<TEvService::TSetNodeXAttrMethod>(
         ev,
         ctx,
         ValidateRequest);
-    if (!accepted) {
+    if (!session) {
+        return;
+    }
+
+    TTxIndexTablet::TXattrAcl xattrAcl;
+    NProto::TError aclError = ValidatePosixAcl(msg->Record, xattrAcl);
+    if (HasError(aclError)) {
+        auto response =
+            std::make_unique<TEvService::TSetNodeXAttrMethod::TResponse>(
+                std::move(aclError));
+        NCloud::Reply(ctx, *ev, std::move(response));
         return;
     }
 
@@ -67,7 +115,8 @@ void TIndexTabletActor::HandleSetNodeXAttr(
     ExecuteTx<TSetNodeXAttr>(
         ctx,
         std::move(requestInfo),
-        msg->Record);
+        msg->Record,
+        std::move(xattrAcl));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -92,6 +141,16 @@ bool TIndexTabletActor::PrepareTx_SetNodeXAttr(
 
     if (!args.Node) {
         args.Error = ErrorInvalidTarget(args.NodeId);
+        return true;
+    }
+
+    if (args.Acl.Scope == TTxIndexTablet::TXattrAcl::EScope::Default &&
+        !args.Acl.IsToDropAcl() &&
+        args.Node->Attrs.GetType() != NProto::E_DIRECTORY_NODE)
+    {
+        args.Error = MakeError(
+            E_FS_ACCESS,
+            "Default POSIX ACLs can only be set on directories");
         return true;
     }
 
@@ -132,6 +191,54 @@ void TIndexTabletActor::ExecuteTx_SetNodeXAttr(
         return;
     }
 
+    // A header-only ACL clears the xattr. A minimal access ACL is represented
+    // by the mode bits, so it also clears any existing access ACL xattr.
+    const bool dropAcl = args.Acl.IsToDropAcl();
+    if (dropAcl && args.Attr) {
+        RemoveNodeAttr(
+            *db,
+            args.FileSystemEvents,
+            args.NodeId,
+            args.Attr->MinCommitId,
+            args.CommitId,
+            *args.Attr);
+    }
+
+    // Preserve the special mode bits and check whether the stored ACL changes
+    // independently of the permissions it implies.
+    const ui32 oldMode = args.Node->Attrs.GetMode();
+    const ui32 newMode = args.Acl.IsToSetMode()
+        ? (oldMode & ~(S_IRWXU | S_IRWXG | S_IRWXO)) | args.Acl.Mode
+        : oldMode;
+    bool aclChanged = false;
+    if (args.Acl.Scope != TTxIndexTablet::TXattrAcl::EScope::Absent) {
+        if (dropAcl) {
+            aclChanged = args.Attr.Defined();
+        } else {
+            aclChanged =
+                !args.Attr || args.Attr->Value != args.Request.GetValue();
+        }
+    }
+
+    // Update ctime in the same transaction as the ACL, even when the ACL
+    // changes without changing the mode.
+    if (aclChanged || newMode != oldMode) {
+        NProto::TNode attrs = CopyAttrs(args.Node->Attrs, E_CM_CTIME);
+        attrs.SetMode(newMode);
+        UpdateNode(
+            *db,
+            args.FileSystemEvents,
+            args.NodeId,
+            args.Node->MinCommitId,
+            args.CommitId,
+            attrs,
+            args.Node->Attrs);
+    }
+
+    if (dropAcl) {
+        return;
+    }
+
     if (args.Attr) {
         args.Version = UpdateNodeAttr(
             *db,
@@ -140,7 +247,7 @@ void TIndexTabletActor::ExecuteTx_SetNodeXAttr(
             args.Attr->MinCommitId,
             args.CommitId,
             *args.Attr,
-            args.Value);
+            args.Request.GetValue());
     } else {
         args.Version = CreateNodeAttr(
             *db,
@@ -148,7 +255,7 @@ void TIndexTabletActor::ExecuteTx_SetNodeXAttr(
             args.NodeId,
             args.CommitId,
             args.Name,
-            args.Value);
+            args.Request.GetValue());
     }
 }
 
@@ -161,6 +268,9 @@ void TIndexTabletActor::CompleteTx_SetNodeXAttr(
     auto response = std::make_unique<TEvService::TEvSetNodeXAttrResponse>(
         std::move(args.Error));
     response->Record.SetVersion(args.Version);
+    if (!HasError(response->Record.GetError()) && args.Acl.IsToDropAcl()) {
+        response->Record.SetXAttrAbsent(true);
+    }
 
     //
     // The client may cache the value it has set or, for F_REPLACE, the

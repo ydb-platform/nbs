@@ -81,7 +81,7 @@ message TCreateHandleRequest
     // durably persisted.
     bool AllowAsyncCreateHandle = 14;
 
-    bool GuestPosixAclEnabled = 15;
+    reserved 15;
 }
 
 message TCreateHandleResponse

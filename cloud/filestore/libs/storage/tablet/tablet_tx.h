@@ -17,6 +17,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/profile_log_events.h>
 #include <cloud/filestore/libs/storage/tablet/model/range_locks.h>
 #include <cloud/filestore/libs/storage/tablet/model/request_metrics.h>
+#include <cloud/filestore/libs/storage/tablet/model/xattr_acl_helpers.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
@@ -1691,6 +1692,8 @@ struct TTxIndexTablet
 
         ui64 CommitId = InvalidCommitId;
         TMaybe<INodeIndexTabletDatabase::TNode> Node;
+        TMaybe<TIndexTabletDatabase::TNodeAttr> AccessAclAttr;
+        TMaybe<TNodeXattrAcl> UpdatedAccessAcl;
 
         TSetNodeAttr(
                 TRequestInfoPtr requestInfo,
@@ -1708,6 +1711,8 @@ struct TTxIndexTablet
 
             CommitId = InvalidCommitId;
             Node.Clear();
+            AccessAclAttr.Clear();
+            UpdatedAccessAcl.Clear();
         }
     };
 
@@ -1811,6 +1816,32 @@ struct TTxIndexTablet
     // SetNodeXAttr
     //
 
+    struct TXattrAcl
+    {
+        enum class EScope
+        {
+            Absent,
+            Default,
+            Access
+        };
+
+        EScope Scope = EScope::Absent;
+        EXattrAclType Type = EXattrAclType::Undefined;
+        ui32 Mode = 0;
+
+        bool IsToDropAcl() const
+        {
+            return (Scope == EScope::Default &&
+                    Type == EXattrAclType::HeaderOnly) ||
+                   (Scope == EScope::Access && Type != EXattrAclType::Extended);
+        }
+
+        bool IsToSetMode() const
+        {
+            return Scope == EScope::Access && Type != EXattrAclType::HeaderOnly;
+        }
+    };
+
     struct TSetNodeXAttr
         : TTxIndexTabletBase
         , TErrorAware
@@ -1821,7 +1852,7 @@ struct TTxIndexTablet
         const NProto::TSetNodeXAttrRequest Request;
         const ui64 NodeId;
         const TString Name;
-        const TString Value;
+        const TXattrAcl Acl;
 
         ui64 Version = 0;
         ui64 CommitId = InvalidCommitId;
@@ -1830,13 +1861,14 @@ struct TTxIndexTablet
 
         TSetNodeXAttr(
                 TRequestInfoPtr requestInfo,
-                const NProto::TSetNodeXAttrRequest& request)
+                const NProto::TSetNodeXAttrRequest& request,
+                TXattrAcl acl)
             : TSessionAware(request)
             , RequestInfo(std::move(requestInfo))
             , Request(request)
             , NodeId(request.GetNodeId())
             , Name(request.GetName())
-            , Value(request.GetValue())
+            , Acl(std::move(acl))
         {}
 
         void Clear() override

@@ -1919,14 +1919,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 {
                     const auto* request =
                         event->Get<TEvService::TEvCreateNodeRequest>();
-                    UNIT_ASSERT(request->Record.GetGuestPosixAclEnabled());
+                    UNIT_ASSERT(
+                        request->Record.GetHeaders().GetGuestPosixAclEnabled());
                     createNodeRequestObserved = true;
                 } else if (event->GetTypeRewrite() ==
                            TEvService::EvCreateHandleRequest)
                 {
                     const auto* request =
                         event->Get<TEvService::TEvCreateHandleRequest>();
-                    UNIT_ASSERT(request->Record.GetGuestPosixAclEnabled());
+                    UNIT_ASSERT(
+                        request->Record.GetHeaders().GetGuestPosixAclEnabled());
                     createHandleRequestObserved = true;
                 }
 
