@@ -137,13 +137,7 @@ public:
         return !!Impl;
     }
 
-    /* Returns current mode of WriteBackCache with weak memory ordering.
-     * The common EWriteBackCacheMode::Normal and EWriteBackCacheMode::Drained
-     * cases are returned without mutex acquisition and are suitable for hot
-     * paths. In order to ensure that WriteBackCache has been drained,
-     * IsDrained() should be used, as drained mode detection may require
-     * additional synchronization.
-     */
+    // Returns current mode of WriteBackCache with weak memory ordering.
     EWriteBackCacheMode GetMode() const;
 
     /* Puts WriteBackCache into draining mode - it prevents new WriteData
@@ -171,7 +165,8 @@ public:
      *
      * The future completes once the cache is healthy and no pending or
      * unflushed writes remain, otherwise it will hang indefinitely and wait
-     * for manual resolution.
+     * for manual resolution. Once the cache drains, a later eviction failure
+     * leaves it drained and Shutdown() returns a ready future.
      */
     [[nodiscard]] NThreading::TFuture<void> Shutdown();
 

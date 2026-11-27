@@ -504,19 +504,19 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL(error, f1.GetValue());
     }
 
+    class TFailFreeStorage final: public TTestStorage
+    {
+    public:
+        using TTestStorage::TTestStorage;
+
+        NProto::TError Free(const void*) override
+        {
+            return MakeError(E_IO, "Injected Free failure");
+        }
+    };
+
     Y_UNIT_TEST(ShouldKeepShutdownPendingAfterEvictionFailure)
     {
-        class TFailFreeStorage final: public TTestStorage
-        {
-        public:
-            using TTestStorage::TTestStorage;
-
-            NProto::TError Free(const void*) override
-            {
-                return MakeError(E_IO, "Injected Free failure");
-            }
-        };
-
         TBootstrap b;
         b.Storage = std::make_shared<TFailFreeStorage>(
             b.Stats->GetPersistentStorageStats());
@@ -528,6 +528,26 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT(!shutdown.IsReady());
         UNIT_ASSERT(!b.State->IsDrained());
+    }
+
+    Y_UNIT_TEST(ShouldKeepDrainCompletionAfterDeferredEvictionFailure)
+    {
+        TBootstrap b;
+        b.Storage = std::make_shared<TFailFreeStorage>(
+            b.Stats->GetPersistentStorageStats());
+        UNIT_ASSERT(b.Recreate());
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+
+        const auto pin = b.State->PinCachedData(1);
+        b.State->Drain();
+        b.State->FlushSucceeded(1, 1);
+        UNIT_ASSERT(b.State->IsDrained());
+
+        b.State->UnpinCachedData(1, pin);
+
+        UNIT_ASSERT(b.State->IsDrained());
+        auto shutdown = b.State->Shutdown();
+        UNIT_ASSERT(shutdown.HasValue());
     }
 
     Y_UNIT_TEST(HandleReleaseFailures)

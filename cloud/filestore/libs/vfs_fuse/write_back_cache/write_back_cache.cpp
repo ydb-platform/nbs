@@ -16,8 +16,6 @@
 #include <cloud/filestore/libs/service/context.h>
 #include <cloud/filestore/libs/service/request.h>
 
-#include <atomic>
-
 namespace NCloud::NFileStore::NFuse {
 
 using namespace NThreading;
@@ -84,9 +82,6 @@ private:
     const ui64 MaxGuestWriteRequestSize;
 
     TWriteBackCacheState State;
-
-    std::atomic<bool> DrainRequested = false;
-    std::atomic<bool> DrainCompleted = false;
 
 public:
     explicit TImpl(TWriteBackCacheArgs args)
@@ -189,48 +184,27 @@ public:
     // Only transition Normal -> Draining -> Drained is possible
     EWriteBackCacheMode GetMode()
     {
-        // GetMode may lie in a hot path - we want to avoid unnecessary mutex
-        // acquisition and memory synchronization
-        //
-        // DrainRequested and DrainCompleted don't participate
-        // in data synchronization so relaxed memory ordering can be used
-        //
-        if (!DrainRequested.load(std::memory_order_relaxed)) {
+        if (!State.IsDrainRequested()) {
             return EWriteBackCacheMode::Normal;
         }
 
-        return IsDrained() ? EWriteBackCacheMode::Drained
-                           : EWriteBackCacheMode::Draining;
+        return State.IsDrained() ? EWriteBackCacheMode::Drained
+                                 : EWriteBackCacheMode::Draining;
     }
 
     void Drain()
     {
-        SetDrainRequested();
         State.Drain();
     }
 
     TFuture<void> Shutdown()
     {
-        SetDrainRequested();
         return State.Shutdown();
     }
 
-    bool IsDrained()
+    bool IsDrained() const
     {
-        if (DrainCompleted.load(std::memory_order_relaxed)) {
-            return true;
-        }
-
-        // This call acquires mutex
-        if (!State.IsDrained()) {
-            return false;
-        }
-
-        if (!DrainCompleted.exchange(true)) {
-            STORAGE_INFO(LogTag << " Complete WriteBackCache draining");
-        }
-
-        return true;
+        return State.IsDrained();
     }
 
     TFuture<NProto::TReadDataResponse> ReadData(
@@ -514,15 +488,6 @@ public:
     }
 
 private:
-    void SetDrainRequested()
-    {
-        // Setting DrainRequested flag is irreversible
-        if (!DrainRequested.exchange(true)) {
-            // Report entering draining mode once one
-            STORAGE_INFO(LogTag << " Request WriteBackCache draining");
-        }
-    }
-
     // Implementation of IQueuedOperationsProcessor
     void ScheduleFlushNode(ui64 nodeId) override
     {
