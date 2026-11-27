@@ -33,6 +33,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr TDuration WaitTimeout = TDuration::Seconds(60);
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TFixture: public NUnitTest::TBaseFixture
 {
     const TTempDir TempDir;
@@ -154,7 +158,35 @@ public:
 
         return response;
     }
+
+    bool WaitForData(TDuration timeout)
+    {
+        pollfd fd{.fd = Socket, .events = POLLIN, .revents = 0};
+        return poll(&fd, 1, static_cast<int>(timeout.MilliSeconds())) > 0;
+    }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Dispatches until the response arrives: the disk agent actor handles requests
+// only during a dispatch.
+auto ReceiveResponse(TTestBasicRuntime& runtime, TTestClient& client)
+    -> NProto::TDeviceProtocolResponse
+{
+    const TInstant deadline = TInstant::Now() + WaitTimeout;
+
+    for (;;) {
+        runtime.DispatchEvents(TDispatchOptions(), 10ms);
+
+        if (client.WaitForData(TDuration::MilliSeconds(10))) {
+            return client.Receive();
+        }
+
+        UNIT_ASSERT_C(
+            TInstant::Now() < deadline,
+            "no response from the journalled device TCP server");
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -180,9 +212,7 @@ void CheckServesOnlyClientsThatAcquiredDevice(TFixture& fixture)
         request.SetRequestId(++requestId);
         client.Send(request);
 
-        fixture.Runtime->DispatchEvents(TDispatchOptions(), 10ms);
-
-        auto response = client.Receive();
+        auto response = ReceiveResponse(*fixture.Runtime, client);
         UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
         return response;
     };
@@ -360,10 +390,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTcpServerTest)
             client.Send(request);
         }
 
-        Runtime->DispatchEvents(TDispatchOptions(), 10ms);
-
         {
-            auto response = client.Receive();
+            auto response = ReceiveResponse(*Runtime, client);
             UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
             UNIT_ASSERT_EQUAL(
                 NProto::TDeviceProtocolResponse::ResponseCase::kAcquireDevices,
@@ -384,10 +412,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTcpServerTest)
             client.Send(request);
         }
 
-        Runtime->DispatchEvents(TDispatchOptions(), 10ms);
-
         {
-            auto response = client.Receive();
+            auto response = ReceiveResponse(*Runtime, client);
             UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
             UNIT_ASSERT_EQUAL(
                 NProto::TDeviceProtocolResponse::ResponseCase::kAcquireDevices,
@@ -408,10 +434,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTcpServerTest)
             client.Send(request);
         }
 
-        Runtime->DispatchEvents(TDispatchOptions(), 10ms);
-
         {
-            auto response = client.Receive();
+            auto response = ReceiveResponse(*Runtime, client);
             UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
             UNIT_ASSERT_EQUAL(
                 NProto::TDeviceProtocolResponse::ResponseCase::kReleaseDevices,
