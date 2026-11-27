@@ -181,32 +181,46 @@ public:
         return Cache.IsDrained();
     }
 
-    TFuture<NProto::TReadDataResponse> ReadDataBuffered(
+    TFuture<NProto::TReadDataResponse> ReadData(
         TCallContextPtr callContext,
-        std::shared_ptr<NProto::TReadDataRequest> request)
+        std::shared_ptr<NProto::TReadDataRequest> request,
+        bool isDirect)
     {
         return Execute(
             [this,
              callContext = std::move(callContext),
-             request = std::move(request)]() mutable {
-                return Cache.ReadDataBuffered(
+             request = std::move(request),
+             isDirect]() mutable
+            {
+                return Cache.ReadData(
                     std::move(callContext),
-                    std::move(request));
+                    std::move(request),
+                    isDirect);
             });
     }
 
-    TFuture<NProto::TWriteDataResponse> WriteDataBuffered(
+    TFuture<NProto::TWriteDataResponse> WriteData(
         TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteDataRequest> request)
+        std::shared_ptr<NProto::TWriteDataRequest> request,
+        bool isDirect)
     {
         return Execute(
             [this,
              callContext = std::move(callContext),
-             request = std::move(request)]() mutable
+             request = std::move(request),
+             isDirect]() mutable
             {
-                return Cache.WriteDataBuffered(
+                struct TRegistration final: IFSyncQueueRegistration
+                {
+                    void Enqueue() override
+                    {}
+                } registration;
+
+                return Cache.WriteData(
                     std::move(callContext),
-                    std::move(request));
+                    std::move(request),
+                    registration,
+                    isDirect);
             });
     }
 
@@ -224,36 +238,6 @@ public:
     {
         return Execute([this, nodeId, handle]
                        { return Cache.ReleaseHandle(nodeId, handle); });
-    }
-
-    TFuture<NProto::TReadDataResponse> ReadDataDirect(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TReadDataRequest> request)
-    {
-        return Execute(
-            [this,
-             callContext = std::move(callContext),
-             request = std::move(request)]() mutable
-            {
-                return Cache.ReadDataDirect(
-                    std::move(callContext),
-                    std::move(request));
-            });
-    }
-
-    TFuture<NProto::TWriteDataResponse> WriteDataDirect(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteDataRequest> request)
-    {
-        return Execute(
-            [this,
-             callContext = std::move(callContext),
-             request = std::move(request)]() mutable
-            {
-                return Cache.WriteDataDirect(
-                    std::move(callContext),
-                    std::move(request));
-            });
     }
 
     TFuture<NProto::TSetNodeAttrResponse> SetNodeAttr(
@@ -330,18 +314,23 @@ bool TTestWriteBackCache::IsDrained() const
     return Impl->IsDrained();
 }
 
-TFuture<NProto::TReadDataResponse> TTestWriteBackCache::ReadDataBuffered(
+TFuture<NProto::TReadDataResponse> TTestWriteBackCache::ReadData(
     TCallContextPtr callContext,
-    std::shared_ptr<NProto::TReadDataRequest> request)
+    std::shared_ptr<NProto::TReadDataRequest> request,
+    bool isDirect)
 {
-    return Impl->ReadDataBuffered(std::move(callContext), std::move(request));
+    return Impl->ReadData(std::move(callContext), std::move(request), isDirect);
 }
 
-TFuture<NProto::TWriteDataResponse> TTestWriteBackCache::WriteDataBuffered(
+TFuture<NProto::TWriteDataResponse> TTestWriteBackCache::WriteData(
     TCallContextPtr callContext,
-    std::shared_ptr<NProto::TWriteDataRequest> request)
+    std::shared_ptr<NProto::TWriteDataRequest> request,
+    bool isDirect)
 {
-    return Impl->WriteDataBuffered(std::move(callContext), std::move(request));
+    return Impl->WriteData(
+        std::move(callContext),
+        std::move(request),
+        isDirect);
 }
 
 TFuture<NProto::TError> TTestWriteBackCache::FlushNodeData(ui64 nodeId)
@@ -359,20 +348,6 @@ TFuture<NProto::TError> TTestWriteBackCache::ReleaseHandle(
     ui64 handle)
 {
     return Impl->ReleaseHandle(nodeId, handle);
-}
-
-TFuture<NProto::TReadDataResponse> TTestWriteBackCache::ReadDataDirect(
-    TCallContextPtr callContext,
-    std::shared_ptr<NProto::TReadDataRequest> request)
-{
-    return Impl->ReadDataDirect(std::move(callContext), std::move(request));
-}
-
-TFuture<NProto::TWriteDataResponse> TTestWriteBackCache::WriteDataDirect(
-    TCallContextPtr callContext,
-    std::shared_ptr<NProto::TWriteDataRequest> request)
-{
-    return Impl->WriteDataDirect(std::move(callContext), std::move(request));
 }
 
 TFuture<NProto::TSetNodeAttrResponse> TTestWriteBackCache::SetNodeAttr(

@@ -97,24 +97,10 @@ struct TWriteBackCacheArgs
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Only transition Normal -> Draining -> Drained is possible
-enum class EWriteBackCacheMode
+struct IFSyncQueueRegistration
 {
-    // WriteBackCache is used normally
-    // New cached WriteData requests are accepted
-    Normal,
-
-    // WriteBackCache was requested to drain and it contains unflushed data
-    // New cached WriteData requests are not accepted and will return E_REJECTED
-    // Clients should continue working with WriteBackCache but use
-    // WriteDataDirect instead of WriteDataBuffered
-    Draining,
-
-    // WriteBackCache was requested to drain and no pending or unflushed writes
-    // remain
-    // New cached WriteData requests are not accepted and will return E_REJECTED
-    // New operations may bypass the cache
-    Drained
+    virtual ~IFSyncQueueRegistration() = default;
+    virtual void Enqueue() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -137,16 +123,12 @@ public:
         return !!Impl;
     }
 
-    // Returns current mode of WriteBackCache with weak memory ordering.
-    EWriteBackCacheMode GetMode() const;
-
     /* Puts WriteBackCache into draining mode - it prevents new WriteData
      * requests from being added to the cache and triggers flush
-     * (WriteDataDirect calls will still be allowed).
+     * (direct writes will still be allowed).
      *
-     * WriteBackCache will remain in EWriteBackCacheMode::Draining mode until
-     * all pending and unflushed are flushed - then it will become
-     * EWriteBackCacheMode::Drained.
+     * The cache finishes draining after it flushes all pending and
+     * unflushed writes.
      *
      * Does not drop cached data on flush errors except the scenario described
      * in ReleaseHandle().
@@ -157,7 +139,7 @@ public:
     void Drain();
 
     /* Irreversibly stops accepting cached writes and starts asynchronous
-     * flushing similar to Drain(). WriteDataDirect remains allowed.
+     * flushing similar to Drain(). Direct writes remain allowed.
      *
      * Unlike Drain(), cached data will be dropped on flush errors,
      * therefore completion does not guarantee persistence. Dropped requests
@@ -173,31 +155,31 @@ public:
     // A reliable way to check that WriteBackCache has been drained
     bool IsDrained() const;
 
-    /* Reads from storage and applies cached writes to the result. If cached
-     * writes cover the full range, it reads only from the cache.
-     *
-     * Pins the data it needs until the read ends, even if a flush completes.
-     *
-     * Reads can run during or after drain while the cache is healthy.
-     * If the cache fails, the read can stay pending.
+    /* After drain, reads go directly to the session. Before drain completes,
+     * a direct read runs under a barrier. A buffered read uses cached writes
+     * and reads from storage if the cache does not cover the full range.
+     * It pins the cached data it needs until the read ends.
+     * A cache failure before drain completes can leave the read pending.
      */
-    NThreading::TFuture<NProto::TReadDataResponse> ReadDataBuffered(
+    NThreading::TFuture<NProto::TReadDataResponse> ReadData(
         TCallContextPtr callContext,
-        std::shared_ptr<NProto::TReadDataRequest> request);
+        std::shared_ptr<NProto::TReadDataRequest> request,
+        bool isDirect);
 
-    /* The future succeeds once the write is stored in the cache and can be
-     * read by ReadDataBuffered().
+    /* Buffered writes complete once the data is stored in the cache.
+     * If drain starts before the cache accepts a buffered write, it can
+     * return E_REJECTED.
      *
-     * Use FlushNodeData() or FlushAllData() to wait for writes to reach the
-     * underlying storage.
-     *
-     * After Drain() or Shutdown(), the cache rejects new buffered writes with
-     * E_REJECTED. While draining, use WriteDataDirect(). It waits for earlier
-     * cached writes under a barrier before sending the write to storage.
+     * Before drain completes, direct writes and writes during drain enter the
+     * fsync queue and run under a barrier. The barrier waits for earlier
+     * cached writes and blocks flushes until the direct write ends.
+     * After drain, writes enter the fsync queue and go straight to the session.
      */
-    NThreading::TFuture<NProto::TWriteDataResponse> WriteDataBuffered(
+    NThreading::TFuture<NProto::TWriteDataResponse> WriteData(
         TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteDataRequest> request);
+        std::shared_ptr<NProto::TWriteDataRequest> request,
+        IFSyncQueueRegistration& fsyncQueueRegistration,
+        bool isDirect);
 
     /* The method returns a future that is fulfilled when all WriteData requests
      * associated with the node and started before the call are flushed - this
@@ -236,32 +218,6 @@ public:
     NThreading::TFuture<NProto::TError> ReleaseHandle(
         ui64 nodeId,
         ui64 handle);
-
-    /* Read directly from the underlying storage under a barrier.
-     * An acquired barrier ensures that operation will not interfere with cache:
-     * - All cached WriteData requests prior to barrier acquisition are flushed
-     *   and evicted.
-     * - No flush may take place until the barrier is released.
-     * Note: the sequence point is barrier acquisition, not the request itself.
-     * It means that newer WriteData requests may be reordered and flushed while
-     * the barrier is in pending state.
-     */
-    NThreading::TFuture<NProto::TReadDataResponse> ReadDataDirect(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TReadDataRequest> request);
-
-    /* Write directly to the underlying storage under a barrier.
-     * An acquired barrier ensures that operation will not interfere with cache:
-     * - All cached WriteData requests prior to barrier acquisition are flushed
-     *   and evicted.
-     * - No flush may take place until the barrier is released.
-     * Note: the sequence point is barrier acquisition, not the request itself.
-     * It means that newer WriteData requests may be reordered and flushed while
-     * the barrier is in pending state.
-     */
-    NThreading::TFuture<NProto::TWriteDataResponse> WriteDataDirect(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteDataRequest> request);
 
     /* Execute SetNodeAttr with taking awareness of changing node size under a
      * barrier.

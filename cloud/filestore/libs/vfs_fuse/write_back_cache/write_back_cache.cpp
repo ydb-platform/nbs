@@ -181,17 +181,6 @@ public:
         ScheduleAutomaticFlushIfNeeded();
     }
 
-    // Only transition Normal -> Draining -> Drained is possible
-    EWriteBackCacheMode GetMode()
-    {
-        if (!State.IsDrainRequested()) {
-            return EWriteBackCacheMode::Normal;
-        }
-
-        return State.IsDrained() ? EWriteBackCacheMode::Drained
-                                 : EWriteBackCacheMode::Draining;
-    }
-
     void Drain()
     {
         State.Drain();
@@ -205,6 +194,42 @@ public:
     bool IsDrained() const
     {
         return State.IsDrained();
+    }
+
+    TFuture<NProto::TReadDataResponse> ReadData(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TReadDataRequest> request,
+        bool isDirect)
+    {
+        if (State.IsDrained()) {
+            return Session->ReadData(
+                std::move(callContext),
+                std::move(request));
+        }
+        if (isDirect) {
+            return ReadDataDirect(std::move(callContext), std::move(request));
+        }
+        return ReadDataBuffered(std::move(callContext), std::move(request));
+    }
+
+    TFuture<NProto::TWriteDataResponse> WriteData(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDataRequest> request,
+        IFSyncQueueRegistration& fsyncQueueRegistration,
+        bool isDirect)
+    {
+        if (State.IsDrained()) {
+            fsyncQueueRegistration.Enqueue();
+            return Session->WriteData(
+                std::move(callContext),
+                std::move(request));
+        }
+        if (isDirect || State.IsDrainRequested()) {
+            fsyncQueueRegistration.Enqueue();
+            return WriteDataDirect(std::move(callContext), std::move(request));
+        }
+
+        return WriteDataBuffered(std::move(callContext), std::move(request));
     }
 
     TFuture<NProto::TReadDataResponse> ReadDataBuffered(
@@ -730,11 +755,6 @@ TWriteBackCache::TWriteBackCache(TWriteBackCacheArgs args)
 
 TWriteBackCache::~TWriteBackCache() = default;
 
-EWriteBackCacheMode TWriteBackCache::GetMode() const
-{
-    return Impl->GetMode();
-}
-
 void TWriteBackCache::Drain()
 {
     Impl->Drain();
@@ -750,18 +770,25 @@ bool TWriteBackCache::IsDrained() const
     return Impl->IsDrained();
 }
 
-TFuture<NProto::TReadDataResponse> TWriteBackCache::ReadDataBuffered(
+TFuture<NProto::TReadDataResponse> TWriteBackCache::ReadData(
     TCallContextPtr callContext,
-    std::shared_ptr<NProto::TReadDataRequest> request)
+    std::shared_ptr<NProto::TReadDataRequest> request,
+    bool isDirect)
 {
-    return Impl->ReadDataBuffered(std::move(callContext), std::move(request));
+    return Impl->ReadData(std::move(callContext), std::move(request), isDirect);
 }
 
-TFuture<NProto::TWriteDataResponse> TWriteBackCache::WriteDataBuffered(
+TFuture<NProto::TWriteDataResponse> TWriteBackCache::WriteData(
     TCallContextPtr callContext,
-    std::shared_ptr<NProto::TWriteDataRequest> request)
+    std::shared_ptr<NProto::TWriteDataRequest> request,
+    IFSyncQueueRegistration& fsyncQueueRegistration,
+    bool isDirect)
 {
-    return Impl->WriteDataBuffered(std::move(callContext), std::move(request));
+    return Impl->WriteData(
+        std::move(callContext),
+        std::move(request),
+        fsyncQueueRegistration,
+        isDirect);
 }
 
 TFuture<NProto::TError> TWriteBackCache::FlushNodeData(ui64 nodeId)
@@ -777,20 +804,6 @@ TFuture<NProto::TError> TWriteBackCache::FlushAllData()
 TFuture<NProto::TError> TWriteBackCache::ReleaseHandle(ui64 nodeId, ui64 handle)
 {
     return Impl->ReleaseHandle(nodeId, handle);
-}
-
-TFuture<NProto::TReadDataResponse> TWriteBackCache::ReadDataDirect(
-    TCallContextPtr callContext,
-    std::shared_ptr<NProto::TReadDataRequest> request)
-{
-    return Impl->ReadDataDirect(std::move(callContext), std::move(request));
-}
-
-TFuture<NProto::TWriteDataResponse> TWriteBackCache::WriteDataDirect(
-    TCallContextPtr callContext,
-    std::shared_ptr<NProto::TWriteDataRequest> request)
-{
-    return Impl->WriteDataDirect(std::move(callContext), std::move(request));
 }
 
 TFuture<NProto::TSetNodeAttrResponse> TWriteBackCache::SetNodeAttr(
