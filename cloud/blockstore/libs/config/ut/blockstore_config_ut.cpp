@@ -1155,7 +1155,7 @@ root_kms: {address: kms}
         currentConfig->GetStorageConfig()->UpdateControlsDefaults();
         UNIT_ASSERT_VALUES_EQUAL(300, control.GetDefault());
         UNIT_ASSERT_VALUES_EQUAL(300, static_cast<i64>(control));
-        UNIT_ASSERT(!controls->GetOverride("WriteBlobThreshold"));
+        UNIT_ASSERT(!controls->GetOverrideInfo("WriteBlobThreshold"));
         UNIT_ASSERT_VALUES_EQUAL(
             300,
             currentConfig->GetStorageConfig()->GetWriteBlobThreshold());

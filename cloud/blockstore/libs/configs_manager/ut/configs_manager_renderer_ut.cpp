@@ -1110,6 +1110,101 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         UNIT_ASSERT_STRING_CONTAINS(html, "&lt;static&amp;&gt;");
     }
 
+    // Check that scalar and repeated enum fields label unknown numeric values.
+    Y_UNIT_TEST(ShouldRenderUnknownEnumValues)
+    {
+        // Keep undeclared numbers in ordinary configuration fields.
+        // Use open proto3 enums so protobuf preserves undeclared numbers in
+        // the fields.
+        auto staticConfig = MakeConfig(100);
+        auto* server = staticConfig.MutableServer()->MutableServerConfig();
+        server->SetEncryptZeroPolicy(
+            static_cast<NProto::EEncryptZeroPolicy>(2));
+        server->MutableChecksumFlags()->AddMediaKindsToValidateDataIntegrity(
+            static_cast<NCloud::NProto::EStorageMediaKind>(123));
+        auto controls = std::make_shared<NStorage::TStorageConfigControls>();
+        const auto config =
+            MakeStartupBlockstoreConfig(
+                staticConfig,
+                {},
+                controls,
+                /*extraParameters=*/{})
+                .Config;
+
+        // Render the source and its unchanged effective protobuf values.
+        const TBlockstoreConfigRenderer renderer;
+        const auto html =
+            renderer.RenderHtml(*config, staticConfig, {});
+
+        // Mark unknown values without claiming they were ignored.
+        AssertParameterRow(
+            html,
+            {
+                .ParameterName = "Server.ServerConfig.EncryptZeroPolicy",
+                .StaticValue = "2 (unknown enum value)",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "2 (unknown enum value)",
+            });
+
+        AssertParameterRow(
+            html,
+            {
+                .ParameterName =
+                    "Server.ServerConfig.ChecksumFlags."
+                    "MediaKindsToValidateDataIntegrity[0]",
+                .StaticValue = "123 (unknown enum value)",
+                .StartupDynamicValue = "—",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = std::nullopt,
+                .EffectiveValue = "123 (unknown enum value)",
+            });
+    }
+
+    // Display invalid enum overrides without applying them to Effective.
+    Y_UNIT_TEST(ShouldRenderInvalidEnumOverrides)
+    {
+        // Keep an explicit valid enum as the fallback for an invalid override.
+        auto staticConfig = MakeConfig(100);
+        staticConfig.MutableStorageService()->SetSSDCompactionType(
+            NProto::CT_DEFAULT);
+        auto controls = std::make_shared<NStorage::TStorageConfigControls>();
+        const auto config =
+            MakeStartupBlockstoreConfig(
+                staticConfig,
+                {},
+                controls,
+                /*extraParameters=*/{})
+                .Config;
+        controls->UpdateDefaults(config->GetStorageConfig()->GetConfigProto());
+        NKikimr::TControlBoard board;
+        controls->Register(board);
+        TAtomic previous = 0;
+        const TBlockstoreConfigRenderer renderer;
+
+        // Cover an unknown number and one that would narrow to a known enum.
+        for (const i64 value: {i64{2}, (i64{1} << 32) + 1}) {
+            board.SetValue("BlockStore_SSDCompactionType", value, previous);
+            const auto html =
+                renderer.RenderHtml(*config, staticConfig, {});
+
+            // Keep the entered integer visible and retain the valid fallback.
+            AssertParameterRow(
+                html,
+                {
+                    .ParameterName = "StorageService.SSDCompactionType",
+                    .StaticValue = "CT_DEFAULT (0)",
+                    .StartupDynamicValue = "—",
+                    .RuntimeDynamicValue = "—",
+                    .IcbValue =
+                        ToString(value) + " (unknown enum value; ignored)",
+                    .EffectiveValue = "CT_DEFAULT (0)",
+                });
+            UNIT_ASSERT_STRING_CONTAINS(html, "class='config-icb'>1</span>");
+        }
+    }
+
     // Show ordinary security settings and file names while hiding token values.
     Y_UNIT_TEST(ShouldRenderPublicSecuritySettingsAndRedactTokenValues)
     {

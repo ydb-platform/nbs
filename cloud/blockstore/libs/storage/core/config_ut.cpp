@@ -23,6 +23,17 @@ namespace {
 
 using TStorageProto = NProto::TStorageServiceConfig;
 
+// Check that a field has an applicable override with the expected value.
+void AssertOverrideValue(
+    const TStorageConfigControls& controls,
+    TStringBuf name,
+    i64 expected)
+{
+    const auto info = controls.GetOverrideInfo(name);
+    UNIT_ASSERT_C(info && info->IsValid, name);
+    UNIT_ASSERT_VALUES_EQUAL_C(expected, info->Value, name);
+}
+
 // Check selective override reset through typed getters, including removal to
 // the compiled fallback and preservation on repeated or unrelated updates.
 template <typename TValue, typename TSetter, typename TGetter>
@@ -44,20 +55,14 @@ void CheckUpdateDefaults(
     const TString controlName = "BlockStore_" + name;
     TAtomic previousValue = {};
     board.SetValue(controlName, overrideValue, previousValue);
-    UNIT_ASSERT_VALUES_EQUAL(
-        overrideValue,
-        controls->GetOverride(name).value());
+    AssertOverrideValue(*controls, name, overrideValue);
 
     // Keep the override when this field's configured value does not change.
     controls->UpdateDefaults(proto);
-    UNIT_ASSERT_VALUES_EQUAL(
-        overrideValue,
-        controls->GetOverride(name).value());
+    AssertOverrideValue(*controls, name, overrideValue);
     proto.SetMaxMigrationIoDepth(7);
     controls->UpdateDefaults(proto);
-    UNIT_ASSERT_VALUES_EQUAL(
-        overrideValue,
-        controls->GetOverride(name).value());
+    AssertOverrideValue(*controls, name, overrideValue);
 
     // Replace or remove this field and expose each snapshot's own raw value.
     NProto::TStorageServiceConfig nextProto;
@@ -73,7 +78,7 @@ void CheckUpdateDefaults(
     } else {
         UNIT_ASSERT_VALUES_EQUAL(expectedValue, (updated.*getter)());
     }
-    UNIT_ASSERT(!controls->GetOverride(name));
+    UNIT_ASSERT(!controls->GetOverrideInfo(name));
     UNIT_ASSERT_EQUAL(initialValue, (retained.*getter)());
 
     // Preserve a new override on repetition of the last accepted baseline.
@@ -83,12 +88,9 @@ void CheckUpdateDefaults(
         nextOverrideValue = initialValue;
     }
     board.SetValue(controlName, nextOverrideValue, previousValue);
-    const auto nextOverride = controls->GetOverride(name);
-    UNIT_ASSERT(nextOverride);
+    AssertOverrideValue(*controls, name, nextOverrideValue);
     controls->UpdateDefaults(nextProto);
-    UNIT_ASSERT_VALUES_EQUAL(
-        *nextOverride,
-        controls->GetOverride(name).value());
+    AssertOverrideValue(*controls, name, nextOverrideValue);
 }
 
 }   // namespace
@@ -168,6 +170,68 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             NProto::PREEMPTION_MOVE_LEAST_HEAVY);
     }
 
+    // Ignore invalid enum overrides while preserving raw values and presence.
+    Y_UNIT_TEST(ShouldIgnoreInvalidEnumOverrides)
+    {
+        for (const bool hasRawValue: {false, true}) {
+            // Exercise both an explicit raw value and the compiled fallback.
+            TStorageProto proto;
+            if (hasRawValue) {
+                proto.SetSSDCompactionType(NProto::CT_LOAD);
+            }
+            auto controls = std::make_shared<TStorageConfigControls>(proto);
+            const TStorageConfig config(proto, nullptr, controls);
+            NKikimr::TControlBoard board;
+            controls->Register(board);
+            const auto fallback =
+                hasRawValue ? NProto::CT_LOAD : NProto::CT_DEFAULT;
+            TAtomic previous = 0;
+
+            // Reject unknown enum numbers before any narrowing conversion.
+            for (const i64 value:
+                 {
+                     i64{-1},
+                     i64{2},
+                     i64{std::numeric_limits<int>::min()} - 1,
+                     i64{std::numeric_limits<int>::max()} + 1,
+                     (i64{1} << 32) + 1,
+                     std::numeric_limits<i64>::min(),
+                     std::numeric_limits<i64>::max(),
+                 })
+            {
+                board.SetValue("BlockStore_SSDCompactionType", value, previous);
+                const auto info =
+                    controls->GetOverrideInfo("SSDCompactionType");
+                UNIT_ASSERT(info);
+                UNIT_ASSERT_VALUES_EQUAL(value, info->Value);
+                UNIT_ASSERT(!info->IsValid);
+                UNIT_ASSERT_EQUAL(fallback, config.GetSSDCompactionType());
+                const auto effective = config.GetEffectiveStorageConfigProto();
+                UNIT_ASSERT_EQUAL(
+                    hasRawValue,
+                    effective.HasSSDCompactionType());
+                UNIT_ASSERT_EQUAL(
+                    proto.GetSSDCompactionType(),
+                    effective.GetSSDCompactionType());
+            }
+
+            // Apply a valid override and recover the fallback after a reset.
+            const auto valid =
+                hasRawValue ? NProto::CT_DEFAULT : NProto::CT_LOAD;
+            board.SetValue("BlockStore_SSDCompactionType", valid, previous);
+            const auto info = controls->GetOverrideInfo("SSDCompactionType");
+            UNIT_ASSERT(info && info->IsValid);
+            UNIT_ASSERT_VALUES_EQUAL(static_cast<i64>(valid), info->Value);
+            UNIT_ASSERT_EQUAL(valid, config.GetSSDCompactionType());
+            UNIT_ASSERT_EQUAL(
+                valid,
+                config.GetEffectiveStorageConfigProto().GetSSDCompactionType());
+            board.RestoreDefault("BlockStore_SSDCompactionType");
+            UNIT_ASSERT(!controls->GetOverrideInfo("SSDCompactionType"));
+            UNIT_ASSERT_EQUAL(fallback, config.GetSSDCompactionType());
+        }
+    }
+
     // Check selective override reset for raw double defaults, including
     // fractional changes, saturation, NaN and compiled fallback.
     Y_UNIT_TEST(ShouldUpdateDefaultsForDouble)
@@ -232,15 +296,11 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         proto.SetNonReplicatedAgentTimeoutGrowthFactor(
             defaults.GetNonReplicatedAgentTimeoutGrowthFactor());
         controls->UpdateDefaults(proto);
-        UNIT_ASSERT_VALUES_EQUAL(
-            10,
-            controls->GetOverride(name).value());
+        AssertOverrideValue(*controls, name, 10);
 
         // Preserve it when removal returns to the same compiled fallback.
         controls->UpdateDefaults({});
-        UNIT_ASSERT_VALUES_EQUAL(
-            10,
-            controls->GetOverride(name).value());
+        AssertOverrideValue(*controls, name, 10);
 
         // Preserve an override on repeated NaN defaults, including a sign
         // change.
@@ -254,14 +314,13 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         proto.SetNonReplicatedAgentTimeoutGrowthFactor(
             -std::numeric_limits<double>::quiet_NaN());
         controls->UpdateDefaults(proto);
-        UNIT_ASSERT(controls->GetOverride(name));
-        UNIT_ASSERT_VALUES_EQUAL(10, controls->GetOverride(name).value());
+        AssertOverrideValue(*controls, name, 10);
 
         // Reset overrides on NaN-to-zero and zero-to-NaN transitions even
         // though both defaults have the same integer representation.
         proto.SetNonReplicatedAgentTimeoutGrowthFactor(0);
         controls->UpdateDefaults(proto);
-        UNIT_ASSERT(!controls->GetOverride(name));
+        UNIT_ASSERT(!controls->GetOverrideInfo(name));
         board.SetValue(
             "BlockStore_NonReplicatedAgentTimeoutGrowthFactor",
             10,
@@ -269,7 +328,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         proto.SetNonReplicatedAgentTimeoutGrowthFactor(
             std::numeric_limits<double>::quiet_NaN());
         controls->UpdateDefaults(proto);
-        UNIT_ASSERT(!controls->GetOverride(name));
+        UNIT_ASSERT(!controls->GetOverrideInfo(name));
 
         // Reset overrides for distinct raw values that saturate to one limit.
         CheckUpdateDefaults<double>(
@@ -350,7 +409,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
                     UNIT_ASSERT_VALUES_EQUAL(
                         nativeDefault,
                         static_cast<TAtomicBase>(control));
-                    UNIT_ASSERT(!controls->GetOverride(name));
+                    UNIT_ASSERT(!controls->GetOverrideInfo(name));
                     const double actual = (config.*getter)();
                     if (std::isnan(rawValue)) {
                         UNIT_ASSERT(std::isnan(actual));
@@ -375,7 +434,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
                     UNIT_ASSERT_VALUES_EQUAL(
                         nativeDefault,
                         static_cast<TAtomicBase>(control));
-                    UNIT_ASSERT(!controls->GetOverride(name));
+                    UNIT_ASSERT(!controls->GetOverrideInfo(name));
                     if (std::isnan(rawValue)) {
                         UNIT_ASSERT(std::isnan((config.*getter)()));
                     } else {
@@ -420,7 +479,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             "BlockStore_WriteBlobThreshold",
             defaultValue,
             previousValue);
-        UNIT_ASSERT(!controls->GetOverride("WriteBlobThreshold"));
+        UNIT_ASSERT(!controls->GetOverrideInfo("WriteBlobThreshold"));
         UNIT_ASSERT_VALUES_EQUAL(
             defaultValue + 1,
             config.GetWriteBlobThreshold());
@@ -462,7 +521,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         proto.SetWriteBlobThreshold(200);
         controls->UpdateDefaults(proto);
         UNIT_ASSERT_VALUES_EQUAL(200, threshold.GetDefault());
-        UNIT_ASSERT(!controls->GetOverride("WriteBlobThreshold"));
+        UNIT_ASSERT(!controls->GetOverrideInfo("WriteBlobThreshold"));
         UNIT_ASSERT_VALUES_EQUAL(100, retained.GetWriteBlobThreshold());
 
         // Preserve an override on an unchanged base, then restore only Value.
@@ -571,7 +630,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         // Verify that ICB overrides all configurations when one configuration
         // default equals the ICB value and the other two defaults differ.
         auto controls = std::make_shared<TStorageConfigControls>();
-        UNIT_ASSERT(!controls->GetOverride("WriteBlobThreshold"));
+        UNIT_ASSERT(!controls->GetOverrideInfo("WriteBlobThreshold"));
 
         NKikimr::TControlBoard controlBoard;
         controls->Register(controlBoard);
@@ -611,15 +670,13 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             200,
             previousValue));
 
-        const auto override = controls->GetOverride("WriteBlobThreshold");
-        UNIT_ASSERT(override);
-        UNIT_ASSERT_VALUES_EQUAL(200, *override);
+        AssertOverrideValue(*controls, "WriteBlobThreshold", 200);
         UNIT_ASSERT_VALUES_EQUAL(200, first->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(200, second->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(200, third->GetWriteBlobThreshold());
 
         controlBoard.RestoreDefault("BlockStore_WriteBlobThreshold");
-        UNIT_ASSERT(!controls->GetOverride("WriteBlobThreshold"));
+        UNIT_ASSERT(!controls->GetOverrideInfo("WriteBlobThreshold"));
         UNIT_ASSERT_VALUES_EQUAL(100, first->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(200, second->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(300, third->GetWriteBlobThreshold());
@@ -654,9 +711,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             100,
             previousValue));
 
-        const auto override = controls->GetOverride("WriteBlobThreshold");
-        UNIT_ASSERT(override);
-        UNIT_ASSERT_VALUES_EQUAL(100, *override);
+        AssertOverrideValue(*controls, "WriteBlobThreshold", 100);
     }
 
     // Check that copies keep live controls and independent raw protos after
