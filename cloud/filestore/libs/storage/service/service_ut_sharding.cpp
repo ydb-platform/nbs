@@ -2032,8 +2032,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file1"));
 
-        // removing the node directly from the shard leaves a NodeRef in the
-        // leader which points to a node missing in the shard
+        // removing the node directly from the shard leaves a NodeRef which
+        // points to a node missing in the shard
         {
             const auto node =
                 service
@@ -2053,8 +2053,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 node.GetShardNodeName());
         }
 
-        // the leader's response is patched to report the NodeRefs as locked
-        // and to report that there are more nodes to list
+        // the directory tablet's response is patched to report the NodeRefs
+        // as locked and to report that there are more nodes to list
 
         TVector<ui32> lockedNodeRefIndices;
         TString cookie;
@@ -2153,8 +2153,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
         }
 
-        // the leader's response is returned as is if the nodes are not
-        // fetched from the shards
+        // the directory tablet's response is returned as is if the nodes
+        // are not fetched from the shards
         {
             lockedNodeRefIndices = {0, 1};
             auto listing =
