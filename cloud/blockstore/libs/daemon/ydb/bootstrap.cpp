@@ -487,11 +487,11 @@ void TBootstrapYdb::InitRdmaClient()
             STORAGE_INFO("RDMA client initialized");
         }
     } catch (...) {
-        STORAGE_ERROR("Failed to initialize RDMA client: "
-            << CurrentExceptionMessage().c_str());
+        ReportRdmaError(
+            TStringBuilder() << "Failed to initialize RDMA client: "
+                             << CurrentExceptionMessage());
 
         RdmaClient = nullptr;
-        PostponedCriticalEvents.push_back(GetCriticalEventForRdmaError());
     }
 }
 
@@ -542,8 +542,7 @@ void TBootstrapYdb::InitKikimrService()
     if (!ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled()) {
         preemptedVolumes = NStorage::CreateManuallyPreemptedVolumes(
             ConfigInitializer->StorageConfig,
-            Log,
-            PostponedCriticalEvents);
+            Log);
     }
 
     const auto& cert = ConfigInitializer->StorageConfig->GetNodeRegistrationCert();
@@ -743,8 +742,7 @@ void TBootstrapYdb::InitKikimrService()
     if (ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled()) {
         preemptedVolumes = NStorage::CreateManuallyPreemptedVolumes(
             StartupBlockstoreConfig->GetStorageConfig(),
-            Log,
-            PostponedCriticalEvents);
+            Log);
         SetGrpcThreadsLimit(
             StartupBlockstoreConfig->GetServerConfig()->GetGrpcThreadsLimit());
     }

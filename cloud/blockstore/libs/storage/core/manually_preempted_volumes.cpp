@@ -155,8 +155,7 @@ NProto::TError TManuallyPreemptedVolumes::Deserialize(const TString& input)
 
 TManuallyPreemptedVolumesPtr CreateManuallyPreemptedVolumes(
     const TString& filePath,
-    TLog& log,
-    TVector<TString>& criticalEventsStorage)
+    TLog& log)
 {
     TManuallyPreemptedVolumesPtr result =
         std::make_shared<TManuallyPreemptedVolumes>();
@@ -166,9 +165,7 @@ TManuallyPreemptedVolumesPtr CreateManuallyPreemptedVolumes(
     auto status = InitializeFromFile(filePath, *result);
 
     if (FAILED(status.GetCode())) {
-        criticalEventsStorage.emplace_back(
-            GetCriticalEventForManuallyPreemptedVolumesFileError());
-        STORAGE_ERROR(
+        ReportManuallyPreemptedVolumesFileError(
             TStringBuilder()
                 << "Failed to load manually preempted volumes: "
                 << status.GetMessage());
@@ -194,15 +191,13 @@ TManuallyPreemptedVolumesPtr CreateManuallyPreemptedVolumes()
 
 TManuallyPreemptedVolumesPtr CreateManuallyPreemptedVolumes(
     const TStorageConfigPtr& storageConfig,
-    TLog& log,
-    TVector<TString>& criticalEventsStorage)
+    TLog& log)
 {
     return CreateManuallyPreemptedVolumes(
         !storageConfig->GetDisableManuallyPreemptedVolumesTracking() ?
             storageConfig->GetManuallyPreemptedVolumesFile() :
             "",
-        log,
-        criticalEventsStorage);
+        log);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

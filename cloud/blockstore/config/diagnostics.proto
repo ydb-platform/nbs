@@ -310,4 +310,8 @@ message TDiagnosticsConfig
     // Performance measurements coefficients used for YDB-based media types
     // load calculation in volume balancer.
     optional TVolumePerfSettings BalancerYDBBasedPerfSettings = 63;
+
+    // Use interval GAUGE instead of cumulative RATE counter type
+    // for AppCriticalEvents, AppImpossibleEvents and DiskAgentCriticalEvents.
+    optional bool EnableAppCriticalEventsGaugeCounters = 64;
 }

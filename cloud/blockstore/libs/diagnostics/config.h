@@ -202,6 +202,8 @@ public:
     [[nodiscard]] NProto::EVolumeCriticalEventsReportingMode
     GetVolumeCriticalEventsReportingMode() const;
 
+    [[nodiscard]] bool GetEnableAppCriticalEventsGaugeCounters() const;
+
     void Dump(IOutputStream& out) const;
     void DumpHtml(IOutputStream& out) const;
 };

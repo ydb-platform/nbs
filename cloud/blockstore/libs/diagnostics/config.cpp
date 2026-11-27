@@ -72,6 +72,7 @@ namespace {
     xxx(VolumeCriticalEventsReportingMode,                                                               \
                                         NProto::EVolumeCriticalEventsReportingMode,                      \
                                                                  NProto::EVolumeCriticalEventsReportingMode::APP_ONLY)\
+    xxx(EnableAppCriticalEventsGaugeCounters, bool,              false                                  )\
 
 // BLOCKSTORE_DIAGNOSTICS_CONFIG
 // clang-format on

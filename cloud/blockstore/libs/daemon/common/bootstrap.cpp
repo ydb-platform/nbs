@@ -246,6 +246,7 @@ void TBootstrapBase::SetBootstrapConfig(TBootstrapConfig config)
 
 void TBootstrapBase::Init()
 {
+    InitProcessCriticalEventsReporting();
     BootstrapLogging = CreateLoggingService("console", TLogSettings{});
     Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
     SetCriticalEventsLog(Log);
@@ -343,7 +344,9 @@ void TBootstrapBase::Init()
     InitVolumeCriticalEventsReportingMode(
         BootstrapConfig->DiagnosticsConfig
             ->GetVolumeCriticalEventsReportingMode());
-    InitCriticalEventsCounter(serverGroup);
+    InitCriticalEventsCounter(
+        serverGroup,
+        !diagnosticsConfig->GetEnableAppCriticalEventsGaugeCounters());
     InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
     STORAGE_INFO("CriticalEvents counters initialized");
@@ -387,14 +390,6 @@ void TBootstrapBase::Init()
             BootstrapConfig->ServerConfig->GetRootCertsFile(),
             std::move(certPathList));
     }
-
-    for (auto& event: PostponedCriticalEvents) {
-        ReportCriticalEvent(
-            event,
-            "",     // message
-            false); // verifyDebug
-    }
-    PostponedCriticalEvents.clear();
 
     RequestStats = CreateServerRequestStats(
         serverGroup,
