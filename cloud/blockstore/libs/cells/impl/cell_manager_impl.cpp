@@ -195,6 +195,8 @@ TCellConnectionFuture TCellManager::CreateConnection(
     const NClient::TClientAppConfigPtr& clientConfig,
     ICellConnectionObserverPtr observer)
 {
+    Y_UNUSED(clientConfig);
+
     auto* pool = Pools.FindPtr(cellId);
     if (!pool) {
         return MakeFuture(TResultOrError<ICellConnectionPtr>(MakeError(
@@ -218,7 +220,6 @@ TCellConnectionFuture TCellManager::CreateConnection(
         *pool,
         std::move(hostConfig),
         Bootstrap,
-        clientConfig,
         std::move(observer));
 }
 
