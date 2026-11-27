@@ -233,7 +233,7 @@ private:
     void InitBlockDigests();
 
     void ReadBlocks(const TActorContext& ctx);
-    NProto::TError CompressBlobsIfNeeded();
+    void CompressBlobsIfNeeded();
     void WriteBlobs(const TActorContext& ctx);
     void AddBlobs(const TActorContext& ctx);
     void MakeDiffs(TRangeCompactionInfo& rc);
@@ -709,10 +709,10 @@ void TCompactionActor::MakeDiffs(TRangeCompactionInfo& rc)
     }
 }
 
-NProto::TError TCompactionActor::CompressBlobsIfNeeded()
+void TCompactionActor::CompressBlobsIfNeeded()
 {
     if (!BlobCompressor) {
-        return {};
+        return;
     }
     for (auto& rc: RangeCompactionInfos) {
         if (rc.OriginalBlobId || !rc.DataBlobId ||
@@ -730,9 +730,26 @@ NProto::TError TCompactionActor::CompressBlobsIfNeeded()
             continue;
         }
         if (HasError(compressed.GetError())) {
-            return compressed.GetError();
+            ReportBlobCompressionError(
+                FormatError(compressed.GetError()),
+                {{"tabletId", TabletId}, {"blobId", ToString(rc.DataBlobId)}});
+            rc.CompressionFailed = true;
+            continue;
         }
         auto result = compressed.ExtractResult();
+        if (auto error = ValidateCompressionMetadata(
+                BlockSize,
+                result.Compression,
+                static_cast<ui32>(result.Data.size()),
+                rc.DataBlobId.BlobSize() / BlockSize);
+            HasError(error))
+        {
+            ReportInvalidBlobCompressionMetadata(
+                FormatError(error),
+                {{"tabletId", TabletId}, {"blobId", ToString(rc.DataBlobId)}});
+            rc.CompressionFailed = true;
+            continue;
+        }
         rc.DataBlobId = TPartialBlobId(
             rc.DataBlobId.Generation(),
             rc.DataBlobId.Step(),
@@ -743,7 +760,6 @@ NProto::TError TCompactionActor::CompressBlobsIfNeeded()
         rc.BlobContent = std::move(result.Data);
         rc.CompressionMetadata = std::move(result.Compression);
     }
-    return {};
 }
 
 void TCompactionActor::WriteBlobs(const TActorContext& ctx)
@@ -751,9 +767,7 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
     WriteBlobsStarted = ctx.Now();
 
     InitBlockDigests();
-    if (HandleError(ctx, CompressBlobsIfNeeded())) {
-        return;
-    }
+    CompressBlobsIfNeeded();
 
     const auto deadline = BlobStorageAsyncRequestTimeout
                               ? ctx.Now() + BlobStorageAsyncRequestTimeout
@@ -805,7 +819,7 @@ void TCompactionActor::WriteBlobs(const TActorContext& ctx)
                 std::move(content),
                 0,      // blockSizeForChecksums
                 true,   // async
-                !rc.CompressionMetadata &&
+                !rc.CompressionMetadata && !rc.CompressionFailed &&
                     rc.ChannelDataKind == EChannelDataKind::Merged,
                 deadline);   // deadline
 

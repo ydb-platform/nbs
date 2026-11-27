@@ -838,6 +838,152 @@ Y_UNIT_TEST_SUITE(TPartitionCompressionTest)
         DoShouldCompressCompactionBlobs(true, 100);
     }
 
+    void DoShouldCompactToPlainBlobOnCompressionFailure(
+        ECompressionFailure failure)
+    {
+        const auto abortGuard = DisableImpossibleEventsAbortForCurrentTest();
+
+        constexpr TStringBuf originalCodec = "partition-test-original-lz4";
+        NBlockCodecs::RegisterAlias(originalCodec, "lz4-fast14-safe");
+        Y_DEFER
+        {
+            NBlockCodecs::RegisterAlias("lz4-fast14-safe", originalCodec);
+        };
+        if (failure != ECompressionFailure::InvalidSettings) {
+            NBlockCodecs::RegisterCodec(MakeHolder<TFaultyCompressionCodec>(
+                failure == ECompressionFailure::CodecError));
+        }
+
+        for (const bool splitCompactionTx: {false, true}) {
+            NProto::TStorageServiceConfig config;
+            config.SetFlushBlobSizeThreshold(1_MB);
+            config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(1_GB);
+            config.SetMergedBlobsCompressionEnabled(true);
+            config.SetBlobCompressionRate(1);
+            config.SetMergedBlobsCompressionChunkSize(
+                failure == ECompressionFailure::InvalidSettings
+                    ? DefaultBlockSize + 1
+                    : 3 * DefaultBlockSize);
+            config.SetCheckBlockChecksumsInBlobsUponRead(true);
+            config.SetHDDMaxBlobsPerRange(100);
+            config.SetSSDMaxBlobsPerRange(100);
+            config.SetBlobPatchingEnabled(false);
+            config.SetSplitCompactionTxEnabled(splitCompactionTx);
+            auto env = SetupPartition(config);
+            auto& partition = *env.Partition;
+            const auto range = TBlockRange32::WithLength(0, 9);
+            for (const ui32 i: xrange(range)) {
+                partition.WriteBlocks(i, i + 1);
+            }
+            partition.Flush();
+            partition.WriteBlocks(0, 100);
+            partition.Flush();
+
+            auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+            InitCriticalEventsCounter(counters);
+            auto compressionErrors = counters->GetCounter(
+                GetCriticalEventForBlobCompressionError(),
+                true);
+            auto metadataErrors = counters->GetCounter(
+                GetCriticalEventForInvalidBlobCompressionMetadata(),
+                true);
+            ui32 writes = 0;
+            ui32 indexedBlobs = 0;
+            env.Runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    switch (event->GetTypeRewrite()) {
+                        case TEvPartitionCommonPrivate::EvWriteBlobRequest: {
+                            const auto* msg =
+                                event->Get<TEvPartitionCommonPrivate::
+                                               TEvWriteBlobRequest>();
+                            UNIT_ASSERT(std::holds_alternative<TGuardedSgList>(
+                                msg->Data));
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                range.Size() * DefaultBlockSize,
+                                msg->BlobId.BlobSize());
+                            UNIT_ASSERT(
+                                !msg->CompressedSizeEstimationCandidate);
+                            ++writes;
+                            break;
+                        }
+                        case TEvPartitionPrivate::EvAddBlobsRequest: {
+                            const auto* msg = event->Get<
+                                TEvPartitionPrivate::TEvAddBlobsRequest>();
+                            if (msg->Mode != ADD_COMPACTION_RESULT) {
+                                break;
+                            }
+                            UNIT_ASSERT(msg->MixedBlobs.empty());
+                            for (const auto& blob: msg->MergedBlobs) {
+                                UNIT_ASSERT(!blob.CompressionMetadata);
+                                UNIT_ASSERT_VALUES_EQUAL(
+                                    range.Size() * DefaultBlockSize,
+                                    blob.BlobId.BlobSize());
+                                UNIT_ASSERT_VALUES_EQUAL(
+                                    range.Size(),
+                                    blob.Checksums.size());
+                                for (const ui32 i: xrange(range)) {
+                                    const TString block(
+                                        DefaultBlockSize,
+                                        i == 0 ? 100 : i + 1);
+                                    UNIT_ASSERT_VALUES_EQUAL(
+                                        ComputeDefaultDigest(
+                                            {block.data(), block.size()}),
+                                        blob.Checksums[i]);
+                                }
+                                ++indexedBlobs;
+                            }
+                            break;
+                        }
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            partition.Compaction();
+            for (const bool reboot: {false, true}) {
+                if (reboot) {
+                    partition.RebootTablet();
+                    partition.WaitReady();
+                }
+                const auto response = partition.ReadBlocks(range);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    range.Size(),
+                    response->Record.GetBlocks().BuffersSize());
+                for (const ui32 i: xrange(range)) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        TString(DefaultBlockSize, i == 0 ? 100 : i + 1),
+                        response->Record.GetBlocks().GetBuffers(i));
+                }
+            }
+            UNIT_ASSERT_VALUES_EQUAL(
+                failure == ECompressionFailure::InvalidMetadata ? 0 : 1,
+                compressionErrors->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                failure == ECompressionFailure::InvalidMetadata ? 1 : 0,
+                metadataErrors->Val());
+            UNIT_ASSERT_VALUES_EQUAL(1, writes);
+            UNIT_ASSERT_VALUES_EQUAL(1, indexedBlobs);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCompactToPlainBlobWhenCompressionSettingsAreInvalid)
+    {
+        DoShouldCompactToPlainBlobOnCompressionFailure(
+            ECompressionFailure::InvalidSettings);
+    }
+
+    Y_UNIT_TEST(ShouldCompactToPlainBlobWhenCodecFails)
+    {
+        DoShouldCompactToPlainBlobOnCompressionFailure(
+            ECompressionFailure::CodecError);
+    }
+
+    Y_UNIT_TEST(ShouldCompactToPlainBlobWhenCompressionMetadataIsInvalid)
+    {
+        DoShouldCompactToPlainBlobOnCompressionFailure(
+            ECompressionFailure::InvalidMetadata);
+    }
+
     Y_UNIT_TEST(ShouldReadSingleBlocksFromCompressedChunks)
     {
         constexpr ui32 blocksPerChunk = 4;

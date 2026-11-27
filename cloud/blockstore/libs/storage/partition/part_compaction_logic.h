@@ -61,6 +61,7 @@ struct TRangeCompactionInfo
 
     std::variant<TGuardedBuffer<TBlockBuffer>, TString> BlobContent;
     std::optional<NProto::TCompressionMetadata> CompressionMetadata;
+    bool CompressionFailed = false;
     TVector<ui32> ZeroBlocks;
     TAffectedBlobs AffectedBlobs;
     TAffectedBlocks AffectedBlocks;
