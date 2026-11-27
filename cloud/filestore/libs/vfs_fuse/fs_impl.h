@@ -64,7 +64,7 @@ enum class EWriteBackCacheRequestStrategy
     // session
     DoNotUse,
 
-    // WriteBackCache should be used, with ReadData/WriteData
+    // WriteBackCache should be used, with ReadDataBuffered/WriteDataBuffered
     UseNonDirect,
 
     // WriteBackCache should be used, with ReadDataDirect/WriteDataDirect only

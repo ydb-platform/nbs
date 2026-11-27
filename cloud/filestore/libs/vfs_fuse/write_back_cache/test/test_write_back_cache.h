@@ -34,11 +34,11 @@ public:
     NThreading::TFuture<void> Shutdown();
     bool IsDrained() const;
 
-    NThreading::TFuture<NProto::TReadDataResponse> ReadData(
+    NThreading::TFuture<NProto::TReadDataResponse> ReadDataBuffered(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> request);
 
-    NThreading::TFuture<NProto::TWriteDataResponse> WriteData(
+    NThreading::TFuture<NProto::TWriteDataResponse> WriteDataBuffered(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> request);
 

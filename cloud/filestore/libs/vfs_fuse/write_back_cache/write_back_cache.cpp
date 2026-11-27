@@ -207,7 +207,7 @@ public:
         return State.IsDrained();
     }
 
-    TFuture<NProto::TReadDataResponse> ReadData(
+    TFuture<NProto::TReadDataResponse> ReadDataBuffered(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> request)
     {
@@ -305,7 +305,7 @@ public:
         return future;
     }
 
-    TFuture<NProto::TWriteDataResponse> WriteData(
+    TFuture<NProto::TWriteDataResponse> WriteDataBuffered(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> request)
     {
@@ -750,18 +750,18 @@ bool TWriteBackCache::IsDrained() const
     return Impl->IsDrained();
 }
 
-TFuture<NProto::TReadDataResponse> TWriteBackCache::ReadData(
+TFuture<NProto::TReadDataResponse> TWriteBackCache::ReadDataBuffered(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadDataRequest> request)
 {
-    return Impl->ReadData(std::move(callContext), std::move(request));
+    return Impl->ReadDataBuffered(std::move(callContext), std::move(request));
 }
 
-TFuture<NProto::TWriteDataResponse> TWriteBackCache::WriteData(
+TFuture<NProto::TWriteDataResponse> TWriteBackCache::WriteDataBuffered(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteDataRequest> request)
 {
-    return Impl->WriteData(std::move(callContext), std::move(request));
+    return Impl->WriteDataBuffered(std::move(callContext), std::move(request));
 }
 
 TFuture<NProto::TError> TWriteBackCache::FlushNodeData(ui64 nodeId)

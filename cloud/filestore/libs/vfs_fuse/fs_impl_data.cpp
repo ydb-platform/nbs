@@ -783,7 +783,7 @@ void TFileSystem::Read(
             break;
         }
         case EWriteBackCacheRequestStrategy::UseNonDirect: {
-            WriteBackCache.ReadData(callContext, std::move(request))
+            WriteBackCache.ReadDataBuffered(callContext, std::move(request))
                 .Subscribe(std::move(callback));
             break;
         }
@@ -875,7 +875,7 @@ void TFileSystem::DoWrite(
 
     switch (strategy) {
         case EWriteBackCacheRequestStrategy::UseNonDirect: {
-            WriteBackCache.WriteData(callContext, std::move(request))
+            WriteBackCache.WriteDataBuffered(callContext, std::move(request))
                 .Subscribe(std::move(callback));
             break;
         }

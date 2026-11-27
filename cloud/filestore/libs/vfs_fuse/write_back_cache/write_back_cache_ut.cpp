@@ -358,7 +358,7 @@ struct TBootstrap
         request->SetOffset(offset);
         request->SetLength(length);
 
-        return Cache.ReadData(CallContext, move(request));
+        return Cache.ReadDataBuffered(CallContext, move(request));
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(
@@ -456,7 +456,7 @@ struct TBootstrap
         }
 
         UnflushedData.Write(nodeId, offset, buffer);
-        auto future = Cache.WriteData(CallContext, std::move(request));
+        auto future = Cache.WriteDataBuffered(CallContext, std::move(request));
 
         return future.Apply([&, nodeId, offset, buffer](const auto& completed) {
             auto response = completed.GetValue();
@@ -1338,9 +1338,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                     request->SetOffset(0);
                     request->SetLength(333);
 
-                    auto future = b.Cache.ReadData(
-                        b.CallContext,
-                        move(request));
+                    auto future =
+                        b.Cache.ReadDataBuffered(b.CallContext, move(request));
                     auto response = future.GetValueSync();
                 }
             });
@@ -1834,7 +1833,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         iovec3->SetBase(base + 8);
         iovec3->SetLength(2);  // "ij"
 
-        b.Cache.WriteData(b.CallContext, request).GetValueSync();
+        b.Cache.WriteDataBuffered(b.CallContext, request).GetValueSync();
         b.Cache.FlushNodeData(1).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(1, writeAttempts.load());
@@ -1868,7 +1867,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             iovec2->SetLength(2);  // "cd"
 
             auto response =
-                b.Cache.ReadData(b.CallContext, request).GetValueSync();
+                b.Cache.ReadDataBuffered(b.CallContext, request).GetValueSync();
 
             UNIT_ASSERT(response.GetBuffer().empty());
             UNIT_ASSERT_VALUES_EQUAL(4, response.GetLength());
@@ -1891,7 +1890,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             iovec2->SetLength(3);  // "d\0\0"
 
             auto response =
-                b.Cache.ReadData(b.CallContext, request).GetValueSync();
+                b.Cache.ReadDataBuffered(b.CallContext, request).GetValueSync();
 
             UNIT_ASSERT(response.GetBuffer().empty());
             UNIT_ASSERT_VALUES_EQUAL(4, response.GetLength());
@@ -1928,7 +1927,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         iovec->SetLength(source->size());
 
         // Once WriteData resolves, the data must already be copied.
-        b.Cache.WriteData(b.CallContext, request).GetValueSync();
+        b.Cache.WriteDataBuffered(b.CallContext, request).GetValueSync();
 
         // Overwrite and free the source before flushing.
         for (auto& c: *source) {
@@ -2077,7 +2076,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         auto readFromCache = [&](ui64 offset, ui64 length)
         {
             auto request = makeReadRequest(offset, length);
-            auto future = b.Cache.ReadData(b.CallContext, request);
+            auto future = b.Cache.ReadDataBuffered(b.CallContext, request);
             const auto& response = future.GetValueSync();
             return response.GetBuffer().substr(response.GetBufferOffset());
         };
@@ -3197,7 +3196,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             request->SetLength(length);
 
             const auto response =
-                Cache.ReadData(CallContext, std::move(request))
+                Cache.ReadDataBuffered(CallContext, std::move(request))
                     .GetValue(WaitTimeout);
 
             // UNIT_ASSERT aborts on worker threads. Use a catchable exception
@@ -3239,7 +3238,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             iovec->SetLength(buffer.size());
 
             const auto response =
-                Cache.WriteData(CallContext, std::move(request))
+                Cache.WriteDataBuffered(CallContext, std::move(request))
                     .GetValue(WaitTimeout);
 
             Y_ENSURE(

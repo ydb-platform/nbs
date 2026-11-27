@@ -107,7 +107,7 @@ enum class EWriteBackCacheMode
     // WriteBackCache was requested to drain and it contains unflushed data
     // New cached WriteData requests are not accepted and will return E_REJECTED
     // Clients should continue working with WriteBackCache but use
-    // WriteDataDirect instead of WriteData
+    // WriteDataDirect instead of WriteDataBuffered
     Draining,
 
     // WriteBackCache was requested to drain and no pending or unflushed writes
@@ -173,11 +173,29 @@ public:
     // A reliable way to check that WriteBackCache has been drained
     bool IsDrained() const;
 
-    NThreading::TFuture<NProto::TReadDataResponse> ReadData(
+    /* Reads from storage and applies cached writes to the result. If cached
+     * writes cover the full range, it reads only from the cache.
+     *
+     * Pins the data it needs until the read ends, even if a flush completes.
+     *
+     * Reads can run during or after drain while the cache is healthy.
+     * If the cache fails, the read can stay pending.
+     */
+    NThreading::TFuture<NProto::TReadDataResponse> ReadDataBuffered(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> request);
 
-    NThreading::TFuture<NProto::TWriteDataResponse> WriteData(
+    /* The future succeeds once the write is stored in the cache and can be
+     * read by ReadDataBuffered().
+     *
+     * Use FlushNodeData() or FlushAllData() to wait for writes to reach the
+     * underlying storage.
+     *
+     * After Drain() or Shutdown(), the cache rejects new buffered writes with
+     * E_REJECTED. While draining, use WriteDataDirect(). It waits for earlier
+     * cached writes under a barrier before sending the write to storage.
+     */
+    NThreading::TFuture<NProto::TWriteDataResponse> WriteDataBuffered(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> request);
 

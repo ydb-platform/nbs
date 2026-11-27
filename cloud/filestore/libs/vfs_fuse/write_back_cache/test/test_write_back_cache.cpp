@@ -181,22 +181,21 @@ public:
         return Cache.IsDrained();
     }
 
-    TFuture<NProto::TReadDataResponse> ReadData(
+    TFuture<NProto::TReadDataResponse> ReadDataBuffered(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadDataRequest> request)
     {
         return Execute(
             [this,
              callContext = std::move(callContext),
-             request = std::move(request)]() mutable
-            {
-                return Cache.ReadData(
+             request = std::move(request)]() mutable {
+                return Cache.ReadDataBuffered(
                     std::move(callContext),
                     std::move(request));
             });
     }
 
-    TFuture<NProto::TWriteDataResponse> WriteData(
+    TFuture<NProto::TWriteDataResponse> WriteDataBuffered(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteDataRequest> request)
     {
@@ -205,7 +204,7 @@ public:
              callContext = std::move(callContext),
              request = std::move(request)]() mutable
             {
-                return Cache.WriteData(
+                return Cache.WriteDataBuffered(
                     std::move(callContext),
                     std::move(request));
             });
@@ -331,18 +330,18 @@ bool TTestWriteBackCache::IsDrained() const
     return Impl->IsDrained();
 }
 
-TFuture<NProto::TReadDataResponse> TTestWriteBackCache::ReadData(
+TFuture<NProto::TReadDataResponse> TTestWriteBackCache::ReadDataBuffered(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadDataRequest> request)
 {
-    return Impl->ReadData(std::move(callContext), std::move(request));
+    return Impl->ReadDataBuffered(std::move(callContext), std::move(request));
 }
 
-TFuture<NProto::TWriteDataResponse> TTestWriteBackCache::WriteData(
+TFuture<NProto::TWriteDataResponse> TTestWriteBackCache::WriteDataBuffered(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteDataRequest> request)
 {
-    return Impl->WriteData(std::move(callContext), std::move(request));
+    return Impl->WriteDataBuffered(std::move(callContext), std::move(request));
 }
 
 TFuture<NProto::TError> TTestWriteBackCache::FlushNodeData(ui64 nodeId)
