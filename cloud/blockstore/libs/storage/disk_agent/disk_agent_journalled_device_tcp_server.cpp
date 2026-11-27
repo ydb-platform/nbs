@@ -1,10 +1,9 @@
 #include "disk_agent_actor.h"
 
-#include "journalled_device_manager.h"
-
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
+#include <cloud/blockstore/libs/storage/disk_agent/fastshard/journalled_device_manager.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 #include <cloud/fastshard/libs/journal/server/builder.h>
 #include <cloud/storage/core/libs/common/format.h>
