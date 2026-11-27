@@ -48,6 +48,7 @@ func requireDisksAreEqual(t *testing.T, expected DiskMeta, actual DiskMeta) {
 	}
 	require.Equal(t, expected.CreatedBy, actual.CreatedBy)
 	require.Equal(t, expected.DeleteTaskID, actual.DeleteTaskID)
+	require.Equal(t, expected.Tombstone, actual.Tombstone)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -203,9 +204,131 @@ func TestDisksDeleteNonexistentDisk(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, actual)
 
+	actual, err = storage.GetDiskMeta(ctx, disk.ID)
+	require.NoError(t, err)
+	require.NotNil(t, actual)
+	require.True(t, actual.Tombstone)
+
 	_, err = storage.CreateDisk(ctx, disk)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+}
+
+func TestDisksCreateDiskTombstone(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+
+	expected := DiskMeta{
+		ID:           "disk",
+		ZoneID:       "zone",
+		DeleteTaskID: "delete",
+		Tombstone:    true,
+	}
+
+	err := storage.CreateDiskTombstone(ctx, "disk", "delete", "zone", time.Now())
+	require.NoError(t, err)
+
+	actual, err := storage.GetDiskMeta(ctx, "disk")
+	require.NoError(t, err)
+	require.NotNil(t, actual)
+	requireDisksAreEqual(t, expected, *actual)
+
+	// Tombstone reserves the disk ID.
+	disk := DiskMeta{
+		ID: "disk",
+		CreateRequest: &wrappers.UInt64Value{
+			Value: 1,
+		},
+		CreateTaskID: "create",
+		CreatingAt:   time.Now(),
+		CreatedBy:    "user",
+	}
+	_, err = storage.CreateDisk(ctx, disk)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	// Check idempotency. The existing tombstone is not changed.
+	err = storage.CreateDiskTombstone(ctx, "disk", "other", "other", time.Now())
+	require.NoError(t, err)
+
+	actual, err = storage.GetDiskMeta(ctx, "disk")
+	require.NoError(t, err)
+	require.NotNil(t, actual)
+	requireDisksAreEqual(t, expected, *actual)
+
+	// Tombstone is handled as a regular deleting disk.
+	actual, err = storage.DeleteDisk(ctx, "disk", "delete", time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, actual)
+	requireDisksAreEqual(t, expected, *actual)
+
+	deletedAt := time.Now()
+	err = storage.DiskDeleted(ctx, "disk", deletedAt)
+	require.NoError(t, err)
+
+	actual, err = storage.DeleteDisk(ctx, "disk", "delete", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, actual)
+
+	// Tombstone is not recreated over the deleted entry.
+	err = storage.CreateDiskTombstone(ctx, "disk", "delete", "zone", time.Now())
+	require.NoError(t, err)
+
+	actual, err = storage.DeleteDisk(ctx, "disk", "delete", time.Now())
+	require.NoError(t, err)
+	require.Nil(t, actual)
+
+	_, err = storage.CreateDisk(ctx, disk)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	// Deleted tombstone is collected as a regular deleted disk.
+	err = storage.ClearDeletedDisks(ctx, deletedAt.Add(time.Microsecond), 10)
+	require.NoError(t, err)
+
+	actual, err = storage.GetDiskMeta(ctx, "disk")
+	require.NoError(t, err)
+	require.Nil(t, actual)
+
+	actual, err = storage.CreateDisk(ctx, disk)
+	require.NoError(t, err)
+	require.NotNil(t, actual)
+}
+
+func TestDisksCreateDiskTombstoneForExistingDisk(t *testing.T) {
+	ctx, db, storage := setupTest(t)
+	defer db.Close(ctx)
+
+	disk := DiskMeta{
+		ID:     "disk",
+		ZoneID: "zone",
+		CreateRequest: &wrappers.UInt64Value{
+			Value: 1,
+		},
+		CreateTaskID: "create",
+		CreatingAt:   time.Now(),
+		CreatedBy:    "user",
+	}
+
+	_, err := storage.CreateDisk(ctx, disk)
+	require.NoError(t, err)
+
+	err = storage.CreateDiskTombstone(ctx, "disk", "delete", "other", time.Now())
+	require.NoError(t, err)
+
+	expected := disk
+	expected.CreateRequest = nil
+
+	actual, err := storage.GetDiskMeta(ctx, "disk")
+	require.NoError(t, err)
+	require.NotNil(t, actual)
+	requireDisksAreEqual(t, expected, *actual)
+
+	expected.DeleteTaskID = "delete"
+	actual, err = storage.DeleteDisk(ctx, "disk", "delete", time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, actual)
+	requireDisksAreEqual(t, expected, *actual)
 }
 
 func TestDisksClearDeletedDisks(t *testing.T) {

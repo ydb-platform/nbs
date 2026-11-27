@@ -127,6 +127,11 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			disabledZones: disabledZone, sync: true, errorAt: "GetDiskMeta",
 		},
 		{
+			name:        "tombstone creation error in disabled zone",
+			requestZone: "zone-d", disabledZones: disabledZone,
+			deleteIfNonExistent: true, errorAt: "CreateDiskTombstone",
+		},
+		{
 			name: "metadata deletion error in disabled zone", diskMeta: disabledDisk,
 			disabledZones: disabledZone, errorAt: "DeleteDisk",
 		},
@@ -207,6 +212,13 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 							Kind: types.DiskKind_DISK_KIND_SSD_LOCAL, BlocksCount: 100 * 256, BlockSize: 4096,
 						}, nil).Once()
 						execCtx.On("SetEstimatedInflightDuration", time.Second).Once()
+					}
+				}
+				if tc.deleteIfNonExistent && len(tc.requestZone) != 0 {
+					storage.On("CreateDiskTombstone", ctx, "disk", "toplevel_task_id", tc.requestZone, mock.Anything).
+						Return(errorFor("CreateDiskTombstone")).Once()
+					if tc.errorAt == "CreateDiskTombstone" {
+						return
 					}
 				}
 				storage.On("DeleteDisk", ctx, "disk", "toplevel_task_id", mock.Anything).

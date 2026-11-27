@@ -72,7 +72,8 @@ type diskState struct {
 	deletingAt    time.Time
 	deletedAt     time.Time
 
-	status diskStatus
+	status    diskStatus
+	tombstone bool
 
 	scannedAt            time.Time
 	scanFoundBrokenBlobs bool
@@ -101,6 +102,7 @@ func (s *diskState) toDiskMeta() *DiskMeta {
 		CreatedAt:    s.createdAt,
 		CreatedBy:    s.createdBy,
 		DeleteTaskID: s.deleteTaskID,
+		Tombstone:    s.tombstone,
 
 		ScannedAt:            s.scannedAt,
 		ScanFoundBrokenBlobs: s.scanFoundBrokenBlobs,
@@ -135,6 +137,7 @@ func (s *diskState) structValue() persistence.Value {
 		persistence.StructFieldValue("deleted_at", persistence.TimestampValue(s.deletedAt)),
 
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
+		persistence.StructFieldValue("tombstone", persistence.BoolValue(s.tombstone)),
 
 		persistence.StructFieldValue("scanned_at", persistence.TimestampValue(s.scannedAt)),
 		persistence.StructFieldValue("scan_found_broken_blobs", persistence.BoolValue(s.scanFoundBrokenBlobs)),
@@ -166,6 +169,7 @@ func scanDiskState(res persistence.Result) (state diskState, err error) {
 		persistence.OptionalWithDefault("deleting_at", &state.deletingAt),
 		persistence.OptionalWithDefault("deleted_at", &state.deletedAt),
 		persistence.OptionalWithDefault("status", &state.status),
+		persistence.OptionalWithDefault("tombstone", &state.tombstone),
 		persistence.OptionalWithDefault("scanned_at", &state.scannedAt),
 		persistence.OptionalWithDefault("scan_found_broken_blobs", &state.scanFoundBrokenBlobs),
 		persistence.OptionalWithDefault("fill_generation", &state.fillGeneration),
@@ -218,6 +222,7 @@ func diskStateStructTypeString() string {
 		deleting_at: Timestamp,
 		deleted_at: Timestamp,
 		status: Int64,
+		tombstone: Bool,
 
 		scanned_at: Timestamp,
 		scan_found_broken_blobs: Bool,
@@ -251,6 +256,7 @@ func diskStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
 
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
+		persistence.WithColumn("tombstone", persistence.Optional(persistence.TypeBool)),
 
 		persistence.WithColumn("scanned_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("scan_found_broken_blobs", persistence.Optional(persistence.TypeBool)),
@@ -539,6 +545,7 @@ func (s *storageYDB) deleteDisk(
 		// prevents new disk creation with the same ID.
 		state.status = diskStatusDeleted
 		state.deletedAt = deletingAt
+		state.tombstone = true
 	}
 
 	state.id = diskID
@@ -561,6 +568,66 @@ func (s *storageYDB) deleteDisk(
 	}
 
 	return state.toDiskMeta(), nil
+}
+
+func (s *storageYDB) createDiskTombstone(
+	ctx context.Context,
+	session *persistence.Session,
+	diskID string,
+	taskID string,
+	zoneID string,
+	deletingAt time.Time,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+
+		select *
+		from disks
+		where id = $id
+	`, s.disksPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(diskID)),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Close()
+
+	states, err := scanDiskStates(ctx, res)
+	if err != nil {
+		return err
+	}
+
+	if len(states) != 0 {
+		// Disk entry already exists, it is handled by DeleteDisk.
+		return tx.Commit(ctx)
+	}
+
+	// The tombstone has a zone, so it is handled as a regular deleting disk
+	// in this zone, including by binaries unaware of tombstones.
+	state := diskState{
+		id:           diskID,
+		zoneID:       zoneID,
+		deleteTaskID: taskID,
+		deletingAt:   deletingAt,
+		status:       diskStatusDeleting,
+		tombstone:    true,
+	}
+
+	err = s.updateDiskState(ctx, tx, state)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (s *storageYDB) diskDeleted(
@@ -993,6 +1060,29 @@ func (s *storageYDB) DeleteDisk(
 		},
 	)
 	return disk, err
+}
+
+func (s *storageYDB) CreateDiskTombstone(
+	ctx context.Context,
+	diskID string,
+	taskID string,
+	zoneID string,
+	deletingAt time.Time,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.createDiskTombstone(
+				ctx,
+				session,
+				diskID,
+				taskID,
+				zoneID,
+				deletingAt,
+			)
+		},
+	)
 }
 
 func (s *storageYDB) DiskDeleted(

@@ -53,6 +53,18 @@ func (s *StorageMock) DeleteDisk(
 	return args.Get(0).(*resources.DiskMeta), args.Error(1)
 }
 
+func (s *StorageMock) CreateDiskTombstone(
+	ctx context.Context,
+	diskID string,
+	taskID string,
+	zoneID string,
+	deletingAt time.Time,
+) error {
+
+	args := s.Called(ctx, diskID, taskID, zoneID, deletingAt)
+	return args.Error(0)
+}
+
 func (s *StorageMock) DiskDeleted(
 	ctx context.Context,
 	diskID string,

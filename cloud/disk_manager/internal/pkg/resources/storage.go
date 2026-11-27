@@ -34,6 +34,9 @@ type DiskMeta struct {
 	CreatedAt         time.Time `json:"created_at"`
 	CreatedBy         string    `json:"created_by"`
 	DeleteTaskID      string    `json:"delete_task_id"`
+	// Tombstone is an entry created on deletion of a disk that is missing in
+	// the database. It reserves the disk ID and has no create task ID.
+	Tombstone bool `json:"tombstone"`
 
 	ScannedAt            time.Time `json:"scanned_at"`
 	ScanFoundBrokenBlobs bool      `json:"scan_found_broken_blobs"`
@@ -185,6 +188,20 @@ type Storage interface {
 		taskID string,
 		deletingAt time.Time,
 	) (*DiskMeta, error)
+
+	// Creates a tombstone disk entry (see DiskMeta.Tombstone) in deleting
+	// status in |zoneID| if the disk is missing. Does nothing if the disk entry
+	// already exists.
+	// The tombstone prevents new disk creation with the same ID and is handled
+	// as a regular deleting disk: DeleteDisk returns it, DiskDeleted moves it
+	// to deleted status, after that it is collected as a regular deleted disk.
+	CreateDiskTombstone(
+		ctx context.Context,
+		diskID string,
+		taskID string,
+		zoneID string,
+		deletingAt time.Time,
+	) error
 
 	DiskDeleted(ctx context.Context, diskID string, deletedAt time.Time) error
 

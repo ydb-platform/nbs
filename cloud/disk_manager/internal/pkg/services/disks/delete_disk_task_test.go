@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/mocks"
+	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	storage_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
@@ -245,7 +246,20 @@ func testDeleteDiskTaskWithNonExistentDisk(
 		state:       &protos.DeleteDiskTaskState{},
 	}
 
-	// There is no such disk in the database, return nil.
+	if deleteIfNonExistent {
+		// The disk entry already exists in deleted status, so the tombstone
+		// is not created.
+		storage.On(
+			"CreateDiskTombstone",
+			ctx,
+			"disk",
+			"toplevel_task_id",
+			"zone",
+			mock.Anything,
+		).Return(nil).Once()
+	}
+
+	// The disk is already deleted from the database, return nil.
 	storage.On(
 		"DeleteDisk",
 		ctx,
@@ -285,6 +299,71 @@ func TestDeleteDiskTaskNonExistentDisk(t *testing.T) {
 
 func TestDeleteDiskTaskNonExistentDiskWithDeletionFromBlockstore(t *testing.T) {
 	testDeleteDiskTaskWithNonExistentDisk(t, true /* deleteIfNonExistent */)
+}
+
+func TestDeleteDiskTaskNonExistentDiskWithTombstone(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	poolService := pools_mocks.NewServiceMock()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	nbsClient := nbs_mocks.NewClientMock()
+	execCtx := newExecutionContextMock()
+
+	task := &deleteDiskTask{
+		storage:     storage,
+		scheduler:   scheduler,
+		poolService: poolService,
+		nbsFactory:  nbsFactory,
+		request: &protos.DeleteDiskRequest{
+			Disk:                &types.Disk{DiskId: "disk", ZoneId: "zone"},
+			DeleteIfNonExistent: true,
+		},
+		state: &protos.DeleteDiskTaskState{},
+	}
+
+	// The disk is missing in the database: a tombstone is created in the
+	// request zone and then deleted as a regular disk.
+	storage.On(
+		"CreateDiskTombstone",
+		ctx,
+		"disk",
+		"toplevel_task_id",
+		"zone",
+		mock.Anything,
+	).Return(nil).Once()
+	storage.On(
+		"DeleteDisk",
+		ctx,
+		"disk",
+		"toplevel_task_id",
+		mock.Anything,
+	).Return(&resources.DiskMeta{
+		ID:           "disk",
+		ZoneID:       "zone",
+		DeleteTaskID: "toplevel_task_id",
+		Tombstone:    true,
+	}, nil).Once()
+
+	scheduler.On(
+		"ScheduleTask",
+		headers.SetIncomingIdempotencyKey(ctx, "toplevel_task_id_delete_disk_from_incremental"),
+		"dataplane.DeleteDiskFromIncremental",
+		"",
+		&dataplane_protos.DeleteDiskFromIncrementalRequest{
+			Disk: &types.Disk{ZoneId: "zone", DiskId: "disk"},
+		},
+	).Return("deleteTask", nil).Once()
+	scheduler.On("WaitTask", ctx, execCtx, "deleteTask").Return(nil, nil).Once()
+
+	nbsFactory.On("GetClient", ctx, "zone").Return(nbsClient, nil).Once()
+	nbsClient.On("Delete", ctx, "disk").Return(nil).Once()
+
+	storage.On("DiskDeleted", ctx, "disk", mock.Anything).Return(nil).Once()
+
+	err := task.Run(ctx, execCtx)
+	require.NoError(t, err)
+	mock.AssertExpectationsForObjects(t, storage, scheduler, poolService, nbsFactory, nbsClient, execCtx)
 }
 
 func testDeleteDiskTaskEstimatedInflightDurationForLocalDisks(
