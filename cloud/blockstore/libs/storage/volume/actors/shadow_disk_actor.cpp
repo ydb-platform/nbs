@@ -802,12 +802,14 @@ void TShadowDiskActor::HandleShadowDiskAcquired(
     const TEvVolumePrivate::TEvShadowDiskAcquired::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    PoisonPillHelper.ReleaseOwnership(ctx, ev->Sender);
-    if (AcquireActorId == ev->Sender) {
-        AcquireActorId = {};
-    }
+    const auto* msg = ev->Get();
 
-    auto* msg = ev->Get();
+    PoisonPillHelper.ReleaseOwnership(ctx, ev->Sender);
+    if (AcquireActorId != ev->Sender) {
+        return;
+    }
+    AcquireActorId = {};
+
     auto acquireReason = static_cast<EAcquireReason>(ev->Cookie);
 
     if (acquireReason == EAcquireReason::ForcedReAcquire) {
@@ -819,16 +821,20 @@ void TShadowDiskActor::HandleShadowDiskAcquired(
     }
 
     if (HasError(msg->Error)) {
-        if (ReadOnlyMount()) {
-            if (acquireReason == EAcquireReason::FirstAcquire) {
-                SchedulePeriodicalReAcquire(ctx);
-            }
-            return;
-        }
-        if (msg->Error.GetCode() == E_NOT_FOUND ||
-            acquireReason != EAcquireReason::PeriodicalReAcquire)
-        {
+        const bool readOnly = ReadOnlyMount();
+        const bool isNotFound = msg->Error.GetCode() == E_NOT_FOUND;
+        const bool isNonPeriodicRwAcquire =
+            !readOnly && acquireReason != EAcquireReason::PeriodicalReAcquire;
+        const bool isFirstRoAcquire =
+            readOnly && acquireReason == EAcquireReason::FirstAcquire;
+        if (isNotFound || isNonPeriodicRwAcquire) {
+            // E_NOT_FOUND is terminal. If RW acquire fails, abandon the
+            // checkpoint so source writes can proceed.
             SetErrorState(ctx, FormatError(msg->Error));
+        } else if (isFirstRoAcquire) {
+            // Source writes can proceed while we retry acquire in the
+            // background.
+            SchedulePeriodicalReAcquire(ctx);
         }
         return;
     }
@@ -1265,17 +1271,16 @@ void TShadowDiskActor::HandleReacquireDisk(
         "%s Got TEvReacquireDisk for shadow disk",
         LogTitle.GetWithTime().c_str());
 
-    switch (State) {
-        case EActorState::WaitAcquireForPrepareStart:
-        case EActorState::WaitAcquireForPrepareContinue:
-        case EActorState::WaitAcquireForRead:
-        case EActorState::Error:
-            break;
-        case EActorState::Preparing:
-        case EActorState::CheckpointReady: {
-            AcquireShadowDisk(ctx, EAcquireReason::ForcedReAcquire);
-        } break;
+    if (!Acquired()) {
+        return;
     }
+
+    if (State == EActorState::CheckpointReady) {
+        // The lost session may affect any device. Wait for acquire to report
+        // which devices can serve reads.
+        ReadAvailability.UpdateDevices(ShadowDiskDevices, {});
+    }
+    AcquireShadowDisk(ctx, EAcquireReason::ForcedReAcquire);
 }
 
 bool TShadowDiskActor::HandleRWClientIdChanged(

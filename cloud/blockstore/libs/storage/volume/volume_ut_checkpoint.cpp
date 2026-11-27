@@ -3706,7 +3706,7 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
                     ++describes;
                     if (failDescribe) {
                         auto* msg = event->Get<TEvDiskRegistry::TEvDescribeDiskResponse>();
-                        *msg->Record.MutableError() = MakeError(E_NOT_FOUND);
+                        *msg->Record.MutableError() = MakeError(E_INVALID_STATE);
                     }
                 }
                 if (event->GetTypeRewrite() == TEvDiskRegistry::EvAcquireDiskRequest) {
@@ -3949,6 +3949,63 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
             volume.GetCheckpointStatus("c1")->Record.GetCheckpointStatus();
 
         UNIT_ASSERT_EQUAL(NProto::ECheckpointStatus::ERROR, status);
+    }
+
+    Y_UNIT_TEST(ShouldFailReadyCheckpointWhenShadowDiskIsMissing)
+    {
+        const auto remountPeriod = TDuration::Seconds(1);
+        NProto::TStorageServiceConfig config;
+        config.SetClientRemountPeriod(remountPeriod.MilliSeconds());
+        config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+
+        auto diskRegistryState = MakeIntrusive<TDiskRegistryState>();
+        auto runtime = PrepareTestActorRuntime(config, diskRegistryState);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0,
+            0,
+            0,
+            0,
+            false,
+            1,
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            32768);
+        volume.WaitReady();
+        const auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            0);
+        volume.AddClient(clientInfo);
+        volume.CreateCheckpoint("c1");
+        volume.ReconnectPipe();
+
+        auto checkpointStatus = [&]
+        {
+            return volume.GetCheckpointStatus("c1")
+                ->Record.GetCheckpointStatus();
+        };
+        for (ui32 attempt = 0; attempt < 80; ++attempt) {
+            if (checkpointStatus() == NProto::ECheckpointStatus::READY) {
+                break;
+            }
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(250));
+        }
+        UNIT_ASSERT_EQUAL(NProto::ECheckpointStatus::READY, checkpointStatus());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, diskRegistryState->Disks.erase("vol0-c1"));
+        runtime->AdvanceCurrentTime(remountPeriod);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT_EQUAL(NProto::ECheckpointStatus::ERROR, checkpointStatus());
+        volume.SendToPipe(volume.CreateReadBlocksRequest(
+            TBlockRange64::MakeOneBlock(0),
+            clientInfo.GetClientId(),
+            "c1"));
+        const auto response = volume.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, response->GetStatus());
+        UNIT_ASSERT_C(
+            response->GetErrorReason().Contains("E_NOT_FOUND"),
+            response->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldBlockWritesWhenReAcquire)
@@ -4979,21 +5036,37 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         const auto unavailableDevice = shadowDisk->Devices[1].GetDeviceUUID();
 
         bool failAcquire = true;
+        bool holdNextAcquireResult = false;
+        TActorId shadowActorId;
+        ui32 deliveredAcquireResults = 0;
+        std::unique_ptr<IEventHandle> delayedAcquireResult;
         runtime->SetEventFilter(
             [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
             {
                 if (failAcquire && event->GetTypeRewrite() ==
-                    TEvDiskRegistry::EvAcquireDiskResponse)
+                                       TEvDiskRegistry::EvAcquireDiskResponse)
                 {
                     auto* msg =
                         event->Get<TEvDiskRegistry::TEvAcquireDiskResponse>();
                     auto* devices = msg->Record.MutableDevices();
                     for (int i = 0; i < devices->size(); ++i) {
-                        if (devices->Get(i).GetDeviceUUID() == unavailableDevice) {
+                        if (devices->Get(i).GetDeviceUUID() ==
+                            unavailableDevice) {
                             devices->DeleteSubrange(i, 1);
                             break;
                         }
                     }
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvVolumePrivate::EvShadowDiskAcquired)
+                {
+                    shadowActorId = event->Recipient;
+                    if (holdNextAcquireResult) {
+                        holdNextAcquireResult = false;
+                        delayedAcquireResult.reset(event.Release());
+                        return true;
+                    }
+                    ++deliveredAcquireResults;
                 }
                 return false;
             });
@@ -5018,8 +5091,35 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, read(2 * blocksPerDevice)->GetStatus());
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, read(0)->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, read(blocksPerDevice)->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            read(blocksPerDevice)->GetStatus());
         UNIT_ASSERT_EQUAL(NProto::ECheckpointStatus::READY, checkpointStatus());
+
+        failAcquire = false;
+        holdNextAcquireResult = true;
+        advanceTime(remountPeriod);
+        UNIT_ASSERT(delayedAcquireResult);
+        const auto& delayedDevices =
+            delayedAcquireResult->Get<TEvVolumePrivate::TEvShadowDiskAcquired>()
+                ->AcquiredDevices;
+        UNIT_ASSERT_VALUES_EQUAL(3, delayedDevices.size());
+
+        failAcquire = true;
+        const auto resultsBeforeForcedAcquire = deliveredAcquireResults;
+        runtime->Send(new IEventHandle(
+            shadowActorId,
+            TActorId(),
+            new TEvVolume::TEvReacquireDisk));
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        UNIT_ASSERT_VALUES_EQUAL(
+            resultsBeforeForcedAcquire + 1,
+            deliveredAcquireResults);
+
+        runtime->Send(delayedAcquireResult.release());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            read(blocksPerDevice)->GetStatus());
 
         failAcquire = false;
         advanceTime(remountPeriod);
@@ -5660,6 +5760,119 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
         runtime->AdvanceCurrentTime(TDuration::Seconds(1));
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
         UNIT_ASSERT_VALUES_EQUAL(2, registerSourceCounter);
+    }
+
+    Y_UNIT_TEST(ShouldRejectShadowCheckpointReadsDuringDeletion)
+    {
+        for (const bool deleteDataOnly: {false, true}) {
+            NProto::TStorageServiceConfig config;
+            config.SetUseShadowDisksForNonreplDiskCheckpoints(true);
+            auto runtime = PrepareTestActorRuntime(config);
+            TVolumeClient volume(*runtime);
+            volume.UpdateVolumeConfig(
+                0,
+                0,
+                0,
+                0,
+                false,
+                1,
+                NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+                32768);
+            volume.WaitReady();
+
+            const auto clientInfo = CreateVolumeClientInfo(
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                NProto::VOLUME_MOUNT_LOCAL,
+                0);
+            const auto& clientId = clientInfo.GetClientId();
+            volume.AddClient(clientInfo);
+            const TString checkpointId = "c1";
+            const auto block = TBlockRange64::MakeOneBlock(0);
+            volume.WriteBlocks(block, clientId, GetBlockContent(1));
+            volume.CreateCheckpoint(checkpointId);
+            volume.ReconnectPipe();
+
+            auto checkpointStatus = [&]
+            {
+                return volume.GetCheckpointStatus(checkpointId)
+                    ->Record.GetCheckpointStatus();
+            };
+            for (ui32 attempt = 0; attempt < 80; ++attempt) {
+                if (checkpointStatus() == NProto::ECheckpointStatus::READY) {
+                    break;
+                }
+                runtime->DispatchEvents({}, TDuration::MilliSeconds(250));
+            }
+            UNIT_ASSERT_EQUAL(
+                NProto::ECheckpointStatus::READY,
+                checkpointStatus());
+
+            volume.WriteBlocks(block, clientId, GetBlockContent(2));
+            CheckBlockContent<__LINE__>(
+                volume,
+                clientId,
+                checkpointId,
+                block,
+                GetBlockContent(1));
+
+            std::unique_ptr<IEventHandle> heldDeallocateResponse;
+            auto previousFilter = runtime->SetEventFilter(
+                [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() !=
+                        TEvDiskRegistry::EvDeallocateCheckpointResponse)
+                    {
+                        return false;
+                    }
+
+                    heldDeallocateResponse.reset(event.Release());
+                    return true;
+                });
+
+            if (deleteDataOnly) {
+                volume.SendDeleteCheckpointDataRequest(checkpointId);
+            } else {
+                volume.SendDeleteCheckpointRequest(checkpointId);
+            }
+            runtime->DispatchEvents({}, TDuration::Seconds(1));
+            UNIT_ASSERT(heldDeallocateResponse);
+            volume.ReconnectPipe();
+
+            CheckBlockContent<__LINE__>(
+                volume,
+                clientId,
+                {},
+                block,
+                GetBlockContent(2));
+            auto readCheckpoint = [&]
+            {
+                volume.SendToPipe(volume.CreateReadBlocksRequest(
+                    block,
+                    clientId,
+                    checkpointId));
+                return volume.RecvReadBlocksResponse();
+            };
+            const auto response = readCheckpoint();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "Checkpoint \"c1\" is being deleted",
+                response->GetErrorReason());
+
+            runtime->SetEventFilter(std::move(previousFilter));
+            runtime->SendAsync(heldDeallocateResponse.release());
+            if (deleteDataOnly) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    S_OK,
+                    volume.RecvDeleteCheckpointDataResponse()->GetStatus());
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    S_OK,
+                    volume.RecvDeleteCheckpointResponse()->GetStatus());
+            }
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_NOT_FOUND,
+                readCheckpoint()->GetStatus());
+        }
     }
 
     Y_UNIT_TEST(ShouldDestroyShadowActorBeforeShadowDiskDeallocation)

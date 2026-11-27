@@ -212,20 +212,7 @@ bool TCheckpointStore::NeedShadowActor(const TString& checkpointId) const
         return false;
     }
 
-    // Do not need to create the shadow disk actor if the shadow disk is being
-    // deleted.
-    if (const TCheckpointRequest* checkpointRequest =
-            CheckpointRequests.FindPtr(CheckpointRequestInProgress))
-    {
-        if (checkpointRequest->CheckpointId == checkpointId &&
-            (checkpointRequest->ReqType == ECheckpointRequestType::Delete ||
-             checkpointRequest->ReqType == ECheckpointRequestType::DeleteData))
-        {
-            return false;
-        }
-    }
-
-    return true;
+    return !IsCheckpointBeingDeleted(checkpointId);
 }
 
 bool TCheckpointStore::IsRequestInProgress() const
@@ -236,6 +223,23 @@ bool TCheckpointStore::IsRequestInProgress() const
 bool TCheckpointStore::IsCheckpointBeingCreated() const
 {
     return CheckpointBeingCreated;
+}
+
+bool TCheckpointStore::IsCheckpointBeingDeleted(
+    const TString& checkpointId) const
+{
+    if (!IsRequestInProgress()) {
+        return false;
+    }
+
+    const auto* request =
+        CheckpointRequests.FindPtr(CheckpointRequestInProgress);
+    if (!request || request->CheckpointId != checkpointId) {
+        return false;
+    }
+
+    return request->ReqType == ECheckpointRequestType::Delete ||
+           request->ReqType == ECheckpointRequestType::DeleteData;
 }
 
 bool TCheckpointStore::HasCheckpointCreationRequest() const

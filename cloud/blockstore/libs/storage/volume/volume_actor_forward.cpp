@@ -344,8 +344,8 @@ NProto::TError TVolumeActor::ProcessAndValidateReadFromCheckpoint(
         return {};
     }
 
-    const auto checkpointInfo =
-        State->GetCheckpointStore().GetCheckpoint(checkpointId);
+    const auto& checkpointStore = State->GetCheckpointStore();
+    const auto checkpointInfo = checkpointStore.GetCheckpoint(checkpointId);
 
     auto makeError = [](TString message)
     {
@@ -383,9 +383,16 @@ NProto::TError TVolumeActor::ProcessAndValidateReadFromCheckpoint(
         } break;
     }
 
+    if (checkpointStore.IsCheckpointBeingDeleted(checkpointId)) {
+        return MakeError(
+            E_REJECTED,
+            TStringBuilder() << "Checkpoint " << checkpointId.Quote()
+                             << " is being deleted");
+    }
+
     if (checkpointInfo->ShadowDiskState == EShadowDiskState::Error) {
-        const auto& request = State->GetCheckpointStore().GetRequestById(
-            checkpointInfo->RequestId);
+        const auto& request =
+            checkpointStore.GetRequestById(checkpointInfo->RequestId);
         return MakeError(
             E_IO,
             TStringBuilder() << "Can't read from checkpoint "
