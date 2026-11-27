@@ -43,9 +43,7 @@ struct ITransportSwitcher
     // Enables router updates after the prepared binding has been installed.
     virtual void Activate() = 0;
 
-    // whether the data goes over the preferred transport now, rather than
-    // the fallback
-    virtual bool IsPreferredActive() = 0;
+    virtual IBlockStorePtr GetPreferredEndpoint() = 0;
 };
 
 using ITransportSwitcherPtr = std::shared_ptr<ITransportSwitcher>;

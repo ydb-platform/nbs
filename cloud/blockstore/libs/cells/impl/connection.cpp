@@ -6,6 +6,7 @@
 #include "transport_switcher.h"
 
 #include <cloud/blockstore/libs/client/client.h>
+#include <cloud/blockstore/libs/icv2/iface/data_endpoint_factory.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
@@ -123,19 +124,15 @@ TResultOrError<THostBindingPtr> BuildHostBinding(
 }
 
 TString DescribeDataTransport(
-    const THostBinding& binding,
-    const ITransportSwitcherPtr& switcher)
+    const TCellHostConfig& hostConfig,
+    bool preferredActive)
 {
-    const auto& hostConfig = binding.HostConfig;
     switch (hostConfig.GetTransport()) {
         case NProto::CELL_DATA_TRANSPORT_GRPC:
             return "grpc";
         case NProto::CELL_DATA_TRANSPORT_RDMA:
         case NProto::CELL_DATA_TRANSPORT_ICV2:
-            // until the switcher is in, the data goes the fallback way
-            if (hostConfig.GetGrpcDataFallbackEnabled() &&
-                (!switcher || !switcher->IsPreferredActive()))
-            {
+            if (hostConfig.GetGrpcDataFallbackEnabled() && !preferredActive) {
                 return "grpc fallback";
             }
             return hostConfig.GetTransport() == NProto::CELL_DATA_TRANSPORT_RDMA
@@ -327,10 +324,16 @@ public:
     {
         THostBindingPtr binding;
         ITransportSwitcherPtr switcher;
+        IEndpointRouter::TTargetSnapshot target;
         TCellMountStatus status;
         with_lock (Lock) {
+            if (MountedDiskId.empty()) {
+                return {};
+            }
+
             binding = Binding;
             switcher = binding->Switcher;
+            target = DataRouter->GetTargetSnapshot();
             status.DiskId = MountedDiskId;
             status.ClientId = MountedClientId;
             status.TabletHost = MountedTabletHost;
@@ -339,11 +342,27 @@ public:
         // outside the lock: the switcher has a lock of its own
         status.CellId = Pool->GetCellId();
         status.Host = binding->HostConfig.GetFqdn();
-        status.DataTransport = DescribeDataTransport(*binding, switcher);
+        const auto preferred =
+            switcher ? switcher->GetPreferredEndpoint() : nullptr;
+        status.DataTransport = DescribeDataTransport(
+            binding->HostConfig,
+            preferred == target.Endpoint);
         status.SelectedTransport = binding->HostConfig.GetTransport();
         status.ConnectionId = ConnectionId;
         status.GrpcDataFallbackEnabled =
             binding->HostConfig.GetGrpcDataFallbackEnabled();
+        status.Io = target.Io;
+        if (status.SelectedTransport == NProto::CELL_DATA_TRANSPORT_ICV2 &&
+            Bootstrap.IcV2EndpointFactory)
+        {
+            const auto& endpoint = status.GrpcDataFallbackEnabled
+                                       ? preferred
+                                       : binding->DataEndpoint;
+            if (endpoint) {
+                status.IcV2Channel =
+                    Bootstrap.IcV2EndpointFactory->GetDataEndpointStatus(endpoint);
+            }
+        }
         return status;
     }
 
@@ -408,11 +427,8 @@ public:
         if (HasError(error)) {
             return error;
         }
-        if (old->Sink) {
-            old->Sink->Detach();
-        }
         // same host: the control channel and the pool subscription stay
-        InstallBinding(binding);
+        ActivateTransportSwitching(binding);
         STORAGE_INFO(
             "Cell data transport switched: cell="
             << Pool->GetCellId() << " disk=" << diskId << " client=" << clientId
@@ -438,7 +454,7 @@ public:
     // connection. Touches nothing the connection is serving through.
     NProto::TError PrepareBinding(const THostBindingPtr& binding);
 
-    // Runs only once the binding is current.
+    // Installs the first binding before the connection is exposed.
     void InstallBinding(const THostBindingPtr& binding);
 
     [[nodiscard]] ui64 ReserveGeneration()
@@ -622,6 +638,9 @@ public:
     }
 
 private:
+    void SetBindingLocked(const THostBindingPtr& binding);
+    void ActivateTransportSwitching(const THostBindingPtr& binding);
+
     TResultOrError<THostBindingPtr> PrepareTransportChange(
         const THostBinding& old,
         NProto::ECellDataTransport transport)
@@ -674,7 +693,7 @@ private:
             {
                 MoveAwayRequests.insert(binding->Generation);
             }
-            Binding = binding;
+            SetBindingLocked(binding);
             TransportOverride = binding->HostConfig.GetTransport();
             if (!UsesEndpointHandler(*TransportOverride)) {
                 for (auto& [host, hostAvoidance]: Avoid) {
@@ -768,7 +787,7 @@ private:
     }
 
     // Builds the target binding while the old host is still serving requests.
-    // With gRPC fallback, InstallBinding starts the switcher after the move.
+    // With gRPC fallback, the switcher starts after the move.
     TResultOrError<THostBindingPtr> PrepareMigration(
         const TString& fqdn,
         const IBlockStorePtr& controlService)
@@ -843,18 +862,12 @@ private:
         THostBindingPtr old;
 
         with_lock (Lock) {
-            old = std::move(Binding);
-            Binding = binding;
-        }
-
-        // before InstallBinding: the old switcher is still alive and could
-        // point the data back at the host we left
-        if (old->Sink) {
-            old->Sink->Detach();
+            old = Binding;
+            SetBindingLocked(binding);
         }
 
         try {
-            InstallBinding(binding);
+            ActivateTransportSwitching(binding);
         } catch (...) {
             // the routers already point at the new host; only transport
             // switching is missing
@@ -1189,13 +1202,27 @@ NProto::TError TCellConnection::PrepareBinding(
 
 void TCellConnection::InstallBinding(const THostBindingPtr& binding)
 {
-    const auto& hostConfig = binding->HostConfig;
+    with_lock (Lock) {
+        SetBindingLocked(binding);
+    }
+    ActivateTransportSwitching(binding);
+}
 
+void TCellConnection::SetBindingLocked(const THostBindingPtr& binding)
+{
+    // The old switcher must stop retargeting the router before publication.
+    if (Binding->Sink) {
+        Binding->Sink->Detach();
+    }
     ControlRouter->SetTarget(binding->BoundControlService);
-
-    // before Activate: the switcher may retarget the router right away
+    // Keep the serving host and the data target together for GetMountStatus.
     DataRouter->SetTarget(binding->DataEndpoint);
+    Binding = binding;
+}
 
+void TCellConnection::ActivateTransportSwitching(const THostBindingPtr& binding)
+{
+    const auto& hostConfig = binding->HostConfig;
     if (!UsesEndpointHandler(hostConfig.GetTransport()) ||
         !hostConfig.GetGrpcDataFallbackEnabled())
     {
@@ -1213,13 +1240,12 @@ void TCellConnection::InstallBinding(const THostBindingPtr& binding)
             return;
         }
         switcher = prepared.ExtractResult();
+        // The router can start using the preferred endpoint during Activate.
+        with_lock (Lock) {
+            binding->Switcher = switcher;
+        }
     }
     switcher->Activate();
-
-    // the binding may already be current, and the mon page reads it
-    with_lock (Lock) {
-        binding->Switcher = std::move(switcher);
-    }
 }
 
 }   // namespace

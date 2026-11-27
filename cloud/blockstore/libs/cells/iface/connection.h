@@ -14,6 +14,22 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TIoOperationStats
+{
+    ui64 Requests = 0;
+    ui64 Errors = 0;
+    ui64 Bytes = 0;
+};
+
+struct TEndpointIoStats
+{
+    TIoOperationStats Read;
+    TIoOperationStats Write;
+    TIoOperationStats Zero;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct ICellConnectionObserver
 {
     virtual ~ICellConnectionObserver() = default;

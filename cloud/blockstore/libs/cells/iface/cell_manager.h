@@ -12,12 +12,15 @@
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service/service.h>
 
+#include <cloud/storage/core/libs/icv2/peer/iface/status.h>
 #include <cloud/storage/core/libs/rdma/iface/client.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
 #include <util/generic/maybe.h>
 #include <util/generic/vector.h>
+
+#include <optional>
 
 namespace NCloud::NBlockStore::NCells {
 
@@ -71,6 +74,8 @@ struct TCellMountStatus
         NProto::CELL_DATA_TRANSPORT_UNSET;
     // what a manual switch onto RDMA or IC V2 requires
     bool GrpcDataFallbackEnabled = false;
+    std::optional<NCloud::NIcV2::TPeerStatus> IcV2Channel;
+    TEndpointIoStats Io;
 };
 
 // A plain snapshot of the cell manager's live state for the mon page - no

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/blockstore/libs/cells/iface/connection.h>
 #include <cloud/blockstore/libs/service/service.h>
 
 #include <memory>
@@ -39,6 +40,15 @@ struct IEndpointRouter
     : public IBlockStore
     , public ITransportTarget
 {
+    struct TTargetSnapshot
+    {
+        IBlockStorePtr Endpoint;
+        TEndpointIoStats Io;
+    };
+
+    // The endpoint and counters come from the same target. SetTarget resets
+    // the counters even when it installs an endpoint previously used here.
+    virtual TTargetSnapshot GetTargetSnapshot() const = 0;
 };
 
 using IEndpointRouterPtr = std::shared_ptr<IEndpointRouter>;

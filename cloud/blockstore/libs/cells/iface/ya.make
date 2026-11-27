@@ -16,6 +16,7 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/service
 
+    cloud/storage/core/libs/icv2/peer/iface
     cloud/storage/core/libs/rdma/iface
 )
 
