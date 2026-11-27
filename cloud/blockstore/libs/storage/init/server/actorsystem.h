@@ -24,12 +24,15 @@
 #include <cloud/blockstore/libs/ydbstats/public.h>
 
 #include <cloud/storage/core/libs/actors/public.h>
+#include <cloud/storage/core/libs/config/config_preparation_diagnostics.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
 #include <cloud/storage/core/libs/kikimr/public.h>
 #include <cloud/storage/core/libs/rdma/iface/public.h>
 
 #include <contrib/ydb/core/driver_lib/run/factories.h>
 #include <contrib/ydb/library/actors/core/defs.h>
+
+#include <util/generic/vector.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -51,6 +54,11 @@ struct TServerActorSystemArgs
     // Empty in PROTO mode, for temporary servers, or without accepted
     // PrivateDatabaseConfig overrides.
     NProto::TBlockstoreConfig CmsBlockstoreConfig;
+
+    // Static-only fields removed from CmsBlockstoreConfig when building the
+    // startup snapshot.
+    NConfig::TConfigPreparationDiagnostics
+        StartupDynamicConfigNormalizationDiagnostics;
 
     // Complete startup proto after CMS and PrivateDatabaseConfig YAML
     // application. Retained unchanged as the source of startup-only runtime

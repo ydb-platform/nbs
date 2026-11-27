@@ -1,6 +1,8 @@
 UNITTEST_FOR(cloud/blockstore/libs/configs_manager)
 
 SRCS(
+    configs_manager_renderer_ut.cpp
+    configs_manager_test_helpers.cpp
     configs_manager_ut.cpp
 )
 
@@ -11,9 +13,11 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
 
     contrib/ydb/core/cms/console
+    contrib/ydb/core/control
     contrib/ydb/core/protos
     contrib/ydb/core/testlib
 
+    library/cpp/html/pcdata
     library/cpp/logger
 )
 

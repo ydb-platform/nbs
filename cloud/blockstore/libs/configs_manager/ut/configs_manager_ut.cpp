@@ -1,23 +1,16 @@
+#include "configs_manager_test_helpers.h"
+
 #include <cloud/blockstore/libs/config/blockstore_config_management.h>
 #include <cloud/blockstore/libs/config/opaque_config_parser.h>
-#include <cloud/blockstore/libs/configs_manager/configs_manager.h>
 #include <cloud/blockstore/libs/configs_manager/events.h>
-#include <cloud/blockstore/libs/kikimr/components.h>
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
-#include <contrib/ydb/core/cms/console/configs_dispatcher.h>
+#include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/cms/console/console.h>
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
-#include <contrib/ydb/core/testlib/tablet_helpers.h>
 
-#include <library/cpp/logger/log.h>
-#include <library/cpp/logger/stream.h>
 #include <library/cpp/testing/unittest/registar.h>
-
-#include <util/generic/yexception.h>
-#include <util/stream/str.h>
 
 #include <utility>
 
@@ -32,13 +25,6 @@ namespace {
 
 constexpr ui32 PrivateDatabaseConfigKind =
     NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem;
-
-NProto::TBlockstoreConfig MakeConfig(ui32 writeBlobThreshold)
-{
-    NProto::TBlockstoreConfig config;
-    config.MutableStorageService()->SetWriteBlobThreshold(writeBlobThreshold);
-    return config;
-}
 
 // A runtime-owned subscriber that discards notices and stops on PoisonPill
 // without unsubscribing. Register it to exercise failed notification delivery.
@@ -65,324 +51,6 @@ STFUNC(TSubscriberActor::StateWork)
     }
 }
 
-#define FORWARDED_CONFIG_GETTERS(xxx)                                          \
-    xxx(GetServerConfig)                                                       \
-    xxx(GetFeaturesConfig)                                                     \
-    xxx(GetStorageConfig)                                                      \
-    xxx(GetDiagnosticsConfig)                                                  \
-    xxx(GetDiscoveryServiceConfig)                                             \
-    xxx(GetEndpointConfig)                                                     \
-    xxx(GetDiskRegistryProxyConfig)                                            \
-    xxx(GetSpdkEnvConfig)                                                      \
-    xxx(GetRdmaConfig)                                                         \
-    xxx(GetYdbStatsConfig)                                                     \
-    xxx(GetLogbrokerConfig)                                                    \
-    xxx(GetNotifyConfig)                                                       \
-    xxx(GetIamClientConfig)                                                    \
-    xxx(GetKmsClientConfig)                                                    \
-    xxx(GetComputeClientConfig)                                                \
-    xxx(GetRootKmsConfig)                                                      \
-    xxx(GetCellsConfig)                                                        \
-    xxx(GetLocalNVMeConfig)
-
-// A configuration wrapper that fails once while the manager reads adapter
-// inputs. Publish it through the holder to exercise recovery without changing
-// the actor API. All other reads delegate to the owned configuration.
-class TFailingBlockstoreConfig final: public IBlockstoreConfig
-{
-public:
-    explicit TFailingBlockstoreConfig(IBlockstoreConfigPtr config);
-
-#define DECLARE_GETTER(name)                                                   \
-    decltype(std::declval<IBlockstoreConfig>().name()) name() const override;
-    FORWARDED_CONFIG_GETTERS(DECLARE_GETTER)
-#undef DECLARE_GETTER
-
-    // Fail on the first read, then allow the same update to be retried.
-    const NStorage::TDiskAgentConfigPtr&
-    GetDiskAgentConfig() const override;
-
-private:
-    // The retained configuration supplying every section and shared controls.
-    const IBlockstoreConfigPtr Config;
-
-    // A pending injected failure, consumed by the first DiskAgent getter call.
-    mutable bool FailNextRead = true;
-};
-
-TFailingBlockstoreConfig::TFailingBlockstoreConfig(
-    IBlockstoreConfigPtr config)
-    : Config(std::move(config))
-{}
-
-#define DEFINE_GETTER(name)                                                    \
-    decltype(std::declval<IBlockstoreConfig>().name())                         \
-    TFailingBlockstoreConfig::name() const                                     \
-    {                                                                          \
-        return Config->name();                                                 \
-    }
-FORWARDED_CONFIG_GETTERS(DEFINE_GETTER)
-#undef DEFINE_GETTER
-#undef FORWARDED_CONFIG_GETTERS
-
-// Throw once before adapter construction, leaving the retained data unchanged.
-const NStorage::TDiskAgentConfigPtr&
-TFailingBlockstoreConfig::GetDiskAgentConfig() const
-{
-    if (std::exchange(FailNextRead, false)) {
-        ythrow yexception() << "test configuration preparation failure";
-    }
-    return Config->GetDiskAgentConfig();
-}
-
-// A ConfigsManager fixture with an edge actor representing ConfigsDispatcher.
-// Each test receives the shared holder and ICB controls.
-class TFixture: public NUnitTest::TBaseFixture
-{
-protected:
-    // Critical-event messages captured until TearDown resets the global logger.
-    TStringStream CriticalEventsLog;
-
-    // Actor log messages captured while Runtime owns the logging backend.
-    TStringStream ConfigLog;
-
-    // The actor runtime under test.
-    TTestActorRuntime Runtime;
-
-    // The edge actor receiving subscription requests and acknowledgements.
-    TActorId Dispatcher;
-
-    // The ConfigsManager actor address registered for the current test.
-    TActorId Manager;
-
-    // The shared holder inspected after each delivered update.
-    TBlockstoreConfigHolderPtr ConfigHolder;
-
-    // The shared controls required when rebuilding storage adapters.
-    NStorage::TStorageConfigControlsPtr Controls;
-
-    // Initialize logging, the runtime, dispatcher, and shared controls.
-    void SetUp(NUnitTest::TTestContext&) override;
-
-    // Release the global logger before the captured output is destroyed.
-    void TearDown(NUnitTest::TTestContext&) override;
-
-    // Start one manager with the default static and dynamic configurations.
-    void StartManager();
-
-    // Build startup state, initialize ICB defaults, and start one manager.
-    // Call once per test; preserve the original dynamic source for comparison.
-    void StartManager(
-        NProto::TBlockstoreConfig staticConfig,
-        NProto::TBlockstoreConfig dynamicConfig);
-
-    // Send a dispatcher update; omit the section for a null payload.
-    void SendNotification(
-        std::shared_ptr<const google::protobuf::Message> config,
-        ui64 cookie);
-
-    // Wait for the dispatcher response and verify its cookie.
-    void WaitForAck(ui64 cookie);
-
-    // Wait for the actor logger to process the expected configuration message.
-    void WaitForConfigLog(const TString& message);
-
-    // Register the chosen subscriber and check the response to the requester.
-    void Subscribe(
-        TActorId requester,
-        TActorId subscriber = {});
-
-    // Verify that the manager sends a change notification to one subscriber.
-    IBlockstoreConfigPtr WaitForConfigChanged(TActorId subscriber);
-
-    // Check that a subscriber receives no change notification.
-    void AssertNoConfigChanged(TActorId subscriber);
-
-    // Remove the chosen subscriber and check the response to the requester.
-    void Unsubscribe(TActorId requester, TActorId subscriber = {});
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-// Initialize logging, the runtime, dispatcher, and shared controls.
-void TFixture::SetUp(NUnitTest::TTestContext&)
-{
-    SetCriticalEventsLog(
-        TLog(MakeHolder<TStreamLogBackend>(&CriticalEventsLog)));
-    Runtime.SetLogBackend(new TStreamLogBackend(&ConfigLog));
-    Runtime.AppendToLogSettings(
-        TBlockStoreComponents::START,
-        TBlockStoreComponents::END,
-        GetComponentName);
-    Runtime.SetLogPriority(
-        TBlockStoreComponents::CONFIGS_MANAGER,
-        NLog::PRI_INFO);
-    NKikimr::SetupTabletServices(Runtime);
-    Dispatcher = Runtime.AllocateEdgeActor();
-
-    Controls = std::make_shared<NStorage::TStorageConfigControls>();
-}
-
-// Release the global logger before the captured output is destroyed.
-void TFixture::TearDown(NUnitTest::TTestContext&)
-{
-    SetCriticalEventsLog(TLog());
-}
-
-void TFixture::StartManager()
-{
-    auto staticConfig = MakeConfig(100);
-    staticConfig.MutableStorageService()->SetListVolumesConcurrency(10);
-    staticConfig.MutableDiskAgent()->SetDedicatedDiskAgent(true);
-    staticConfig.MutableDiskAgent()->SetEnabled(false);
-    staticConfig.MutableStorageService()->SetNodeType("nbs");
-    staticConfig.MutableStorageService()->SetSchemeShardDir("/Root/nbs");
-    auto* settings =
-        staticConfig.MutableStorageService()->MutableConfigDispatcherSettings();
-    settings->MutableAllowList()->AddNames("PrivateDatabaseConfigItem");
-    auto* label = settings->AddAdditionalNodeLabels();
-    label->SetKey("zone");
-    label->SetValue("static");
-    StartManager(std::move(staticConfig), MakeConfig(200));
-}
-
-void TFixture::StartManager(
-    NProto::TBlockstoreConfig staticConfig,
-    NProto::TBlockstoreConfig dynamicConfig)
-{
-    UNIT_ASSERT(!Manager);
-
-    // Build the startup snapshot without changing the received dynamic source.
-    auto startupConfig = MakeStartupBlockstoreConfig(
-        staticConfig,
-        dynamicConfig,
-        Controls,
-        /*extraParameters=*/{});
-    ConfigHolder = std::make_shared<TBlockstoreConfigHolder>(
-        std::move(startupConfig.Config));
-
-    // Initialize shared controls before the manager can process notifications.
-    Controls->UpdateDefaults(startupConfig.Proto.GetStorageService());
-
-    // Register one manager and verify its subscription before sending updates.
-    Manager = Runtime.Register(CreateConfigsManager({
-        .ConfigHolder = ConfigHolder,
-        .StaticConfig = std::move(staticConfig),
-        .StartupConfig = std::move(startupConfig.Proto),
-        .InitialDynamicConfig = std::move(dynamicConfig),
-        .StorageConfigControls = Controls,
-        .ConfigsDispatcherId = Dispatcher,
-    }));
-
-    TAutoPtr<IEventHandle> handle;
-    auto* subscription = Runtime.GrabEdgeEventRethrow<
-        TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest>(handle);
-    UNIT_ASSERT(subscription);
-    UNIT_ASSERT_VALUES_EQUAL(Manager, handle->Sender);
-    UNIT_ASSERT_VALUES_EQUAL(1, subscription->ConfigItemKinds.size());
-    UNIT_ASSERT_VALUES_EQUAL(
-        PrivateDatabaseConfigKind,
-        subscription->ConfigItemKinds.front());
-}
-
-// Send a dispatcher update; omit the section for a null payload.
-void TFixture::SendNotification(
-    std::shared_ptr<const google::protobuf::Message> config,
-    ui64 cookie)
-{
-    auto event = std::make_unique<TEvConsole::TEvConfigNotificationRequest>();
-    if (config) {
-        event->OpaqueConfigs.emplace(
-            PrivateDatabaseConfigKind,
-            std::move(config));
-    }
-
-    Runtime.Send(
-        new IEventHandle(Manager, Dispatcher, event.release(), 0, cookie));
-}
-
-// Wait for the dispatcher response and verify its cookie.
-void TFixture::WaitForAck(ui64 cookie)
-{
-    TAutoPtr<IEventHandle> handle;
-    UNIT_ASSERT(
-        Runtime.GrabEdgeEventRethrow<TEvConsole::TEvConfigNotificationResponse>(
-            handle));
-    UNIT_ASSERT_VALUES_EQUAL(cookie, handle->Cookie);
-}
-
-// Wait for the actor logger to process the expected configuration message.
-void TFixture::WaitForConfigLog(const TString& message)
-{
-    TDispatchOptions options;
-    options.CustomFinalCondition = [&]
-    {
-        return ConfigLog.Str().Contains(message);
-    };
-    Runtime.DispatchEvents(options, TDuration::Seconds(1));
-    UNIT_ASSERT_STRING_CONTAINS(ConfigLog.Str(), message);
-    UNIT_ASSERT_STRING_CONTAINS(ConfigLog.Str(), "BLOCKSTORE_CONFIGS_MANAGER");
-}
-
-// Register the chosen subscriber and check the response to the requester.
-void TFixture::Subscribe(
-    TActorId requester,
-    TActorId subscriber)
-{
-    Runtime.Send(new IEventHandle(
-        Manager,
-        requester,
-        new TEvConfigsManager::TEvSetConfigSubscriptionRequest(subscriber),
-        0,
-        41));
-    auto response = Runtime.GrabEdgeEventRethrow<
-        TEvConfigsManager::TEvSetConfigSubscriptionResponse>(
-        requester,
-        TDuration::Seconds(1));
-    UNIT_ASSERT(response);
-    UNIT_ASSERT_VALUES_EQUAL(41, response->Cookie);
-}
-
-// Verify that the manager sends a change notification to one subscriber.
-IBlockstoreConfigPtr TFixture::WaitForConfigChanged(TActorId subscriber)
-{
-    auto event =
-        Runtime.GrabEdgeEventRethrow<TEvConfigsManager::TEvConfigChanged>(
-            subscriber,
-            TDuration::Seconds(1));
-    UNIT_ASSERT(event);
-    UNIT_ASSERT_VALUES_EQUAL(Manager, event->Sender);
-    const auto& config = event->Get()->Config;
-    UNIT_ASSERT(config);
-    return config;
-}
-
-// Check that a subscriber receives no change notification.
-void TFixture::AssertNoConfigChanged(TActorId subscriber)
-{
-    UNIT_ASSERT(
-        !Runtime.GrabEdgeEventRethrow<TEvConfigsManager::TEvConfigChanged>(
-            subscriber,
-            TDuration::MilliSeconds(10)));
-}
-
-// Remove the chosen subscriber and check the response to the requester.
-void TFixture::Unsubscribe(TActorId requester, TActorId subscriber)
-{
-    Runtime.Send(new IEventHandle(
-        Manager,
-        requester,
-        new TEvConfigsManager::TEvRemoveConfigSubscriptionRequest(subscriber),
-        0,
-        42));
-    auto response = Runtime.GrabEdgeEventRethrow<
-        TEvConfigsManager::TEvRemoveConfigSubscriptionResponse>(
-        requester,
-        TDuration::Seconds(1));
-    UNIT_ASSERT(response);
-    UNIT_ASSERT_VALUES_EQUAL(42, response->Cookie);
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -391,10 +59,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
 {
     // Check startup and runtime enum values, explicit zero, and static fallback
     // after replacing or removing the complete private configuration.
-    Y_UNIT_TEST_F(ShouldApplyEnumValuesFromPrivateConfig, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldApplyEnumValuesFromPrivateConfig,
+        TConfigsManagerFixture)
     {
         // Build the startup snapshot from a static enum and parsed private YAML.
-        auto staticConfig = MakeConfig(100);
+        NProto::TBlockstoreConfig staticConfig;
         staticConfig.MutableStorageService()->SetVolumePreemptionType(
             NProto::PREEMPTION_MOVE_MOST_HEAVY);
         const auto parser = CreateBlockstoreOpaqueConfigParser();
@@ -445,7 +115,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
 
     // Verify that runtime changes and removal preserve the startup RO value
     // while updating RW values and acknowledging the complete source.
-    Y_UNIT_TEST_F(ShouldPreserveStartupOnlyParameters, TFixture)
+    Y_UNIT_TEST_F(ShouldPreserveStartupOnlyParameters, TConfigsManagerFixture)
     {
         // Apply the startup RO value through the parsed private source.
         auto staticConfig = MakeConfig(100);
@@ -494,9 +164,11 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
 
     // Check that publication resets only changed ICB defaults and that removal
     // restores the static base without changing retained snapshot protos.
-    Y_UNIT_TEST_F(ShouldUpdateOnlyChangedIcbDefaults, TFixture)
+    Y_UNIT_TEST_F(ShouldUpdateOnlyChangedIcbDefaults, TConfigsManagerFixture)
     {
-        StartManager();
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
 
         // Retain the startup snapshot and install an operator override.
         auto& board = *Runtime.GetAppData().Icb;
@@ -588,9 +260,11 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
     // Check initial delivery and independent updates without subscriber ACKs.
     Y_UNIT_TEST_F(
         ShouldNotifySubscribersAfterPublicationWithoutWaitingForAck,
-        TFixture)
+        TConfigsManagerFixture)
     {
-        StartManager();
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
 
         // Register two consumers and leave the second initial notification
         // queued.
@@ -640,7 +314,9 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
 
     // Check delegated registration, refresh, and removal without duplicate
     // sends.
-    Y_UNIT_TEST_F(ShouldRegisterAndRemoveExplicitSubscriber, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldRegisterAndRemoveExplicitSubscriber,
+        TConfigsManagerFixture)
     {
         StartManager();
 
@@ -675,7 +351,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
 
     // Check that failed update and initial deliveries remove a dead subscriber
     // while publications continue for live subscribers with upstream ACKs.
-    Y_UNIT_TEST_F(ShouldRemoveUndeliveredSubscribers, TFixture)
+    Y_UNIT_TEST_F(ShouldRemoveUndeliveredSubscribers, TConfigsManagerFixture)
     {
         StartManager();
 
@@ -762,7 +438,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
     }
 
     // Check that re-registration after self-removal sends an initial notice.
-    Y_UNIT_TEST_F(ShouldNotifyAfterResubscription, TFixture)
+    Y_UNIT_TEST_F(ShouldNotifyAfterResubscription, TConfigsManagerFixture)
     {
         StartManager();
 
@@ -787,9 +463,13 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
 
     // Check that duplicate and rejected sources do not create publications or
     // notices.
-    Y_UNIT_TEST_F(ShouldNotNotifyOnDuplicateOrRejectedConfig, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldNotNotifyOnDuplicateOrRejectedConfig,
+        TConfigsManagerFixture)
     {
-        StartManager();
+        StartManager(
+            /*staticConfig=*/{},
+            /*dynamicConfig=*/MakeConfig(200));
 
         // Subscribe to the startup snapshot before sending unchanged input.
         const auto subscriber = Runtime.AllocateEdgeActor();
@@ -814,10 +494,56 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         WaitForConfigChanged(subscriber);
     }
 
+    // Verify that runtime updates log only ignored static-only paths without
+    // values or deferred changes. Do not repeat startup warnings in this actor.
+    Y_UNIT_TEST_F(ShouldLogStaticOnlyDynamicFields, TConfigsManagerFixture)
+    {
+        // Start with an ignored field whose warning belongs to bootstrap.
+        NProto::TBlockstoreConfig staticConfig;
+        staticConfig.MutableStorageService()->SetNodeType("static-node");
+        staticConfig.MutableStorageService()->SetListVolumesConcurrency(10);
+        NProto::TBlockstoreConfig dynamicConfig;
+        dynamicConfig.MutableStorageService()->SetNodeType("startup-secret");
+        dynamicConfig.MutableStorageService()->SetListVolumesConcurrency(20);
+        StartManager(staticConfig, dynamicConfig);
+
+        // Report a different path from an accepted runtime source, retaining
+        // the static value and keeping source values and deferred paths out
+        // of the warnings.
+        dynamicConfig.MutableStorageService()->ClearNodeType();
+        dynamicConfig.MutableStorageService()->SetListVolumesConcurrency(30);
+        dynamicConfig.MutableStorageService()->SetSchemeShardDir(
+            "runtime-secret");
+        SendNotification(
+            std::make_shared<NProto::TBlockstoreConfig>(dynamicConfig),
+            170);
+        WaitForAck(170);
+        WaitForConfigLog(
+            "Ignoring static-only field from dynamic PrivateDatabaseConfig: "
+            "StorageService.SchemeShardDir");
+        UNIT_ASSERT(!ConfigLog.Str().Contains(
+            "Ignoring static-only field from dynamic PrivateDatabaseConfig: "
+            "StorageService.NodeType"));
+        UNIT_ASSERT(!ConfigLog.Str().Contains("startup-secret"));
+        UNIT_ASSERT(!ConfigLog.Str().Contains("runtime-secret"));
+        UNIT_ASSERT(!ConfigLog.Str().Contains(
+            "Ignoring static-only field from dynamic PrivateDatabaseConfig: "
+            "StorageService.ListVolumesConcurrency"));
+        UNIT_ASSERT(CriticalEventsLog.Str().empty());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "static-node",
+            ConfigHolder->Get()->GetStorageConfig()->GetNodeType());
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            ConfigHolder->Get()
+                ->GetStorageConfig()
+                ->GetListVolumesConcurrency());
+    }
+
     // Check that an accepted update is published before it is acknowledged.
     Y_UNIT_TEST_F(
         ShouldPublishValidConfigAndAcknowledgeAfterPublication,
-        TFixture)
+        TConfigsManagerFixture)
     {
         StartManager();
 
@@ -840,7 +566,9 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
 
     // Check that a large double from YAML is published and acknowledged with
     // a saturated ICB default while the storage getter retains the raw value.
-    Y_UNIT_TEST_F(ShouldPublishDoubleWithSaturatedIcbDefault, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldPublishDoubleWithSaturatedIcbDefault,
+        TConfigsManagerFixture)
     {
         StartManager();
 
@@ -883,9 +611,11 @@ storage_service:
     // Check that a changed configuration from ConfigsDispatcher causes a new
     // publication while static-only fields keep their startup values.
     // Repeated delivery of the same input must not cause another publication.
-    Y_UNIT_TEST_F(ShouldPublishUpdatesWhilePreservingStaticOnlyFields, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldPublishUpdatesWhilePreservingStaticOnlyFields,
+        TConfigsManagerFixture)
     {
-        StartManager();
+        StartManagerDefault();
 
         // Observe publications and retain the original dispatcher settings.
         const auto subscriber = Runtime.AllocateEdgeActor();
@@ -956,9 +686,11 @@ storage_service:
     // Removing a dynamic override must restore the corresponding static value.
     Y_UNIT_TEST_F(
         ShouldPublishUpdatesEvenWhenEffectiveConfigIsUnchanged,
-        TFixture)
+        TConfigsManagerFixture)
     {
-        StartManager();
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
 
         // Observe the snapshot built from the initial private configuration.
         const auto subscriber = Runtime.AllocateEdgeActor();
@@ -1045,9 +777,9 @@ storage_service:
     // effect.
     Y_UNIT_TEST_F(
         ShouldPublishUpdatesWhilePreservingStartupOnlyDiskAgentSettings,
-        TFixture)
+        TConfigsManagerFixture)
     {
-        StartManager();
+        StartManagerDefault();
 
         // Retain the startup snapshot and observe subsequent publications.
         const auto startupConfig = ConfigHolder->Get();
@@ -1089,7 +821,9 @@ storage_service:
 
     // Verify that runtime updates preserve startup discovery ports while
     // changed sources publish even when normalization makes them equivalent.
-    Y_UNIT_TEST_F(ShouldPreserveStartupDiscoveryPortsAcrossUpdates, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldPreserveStartupDiscoveryPortsAcrossUpdates,
+        TConfigsManagerFixture)
     {
         StartManager();
 
@@ -1155,10 +889,12 @@ storage_service:
     // not cause a new publication. Removing fields ignored by normalization
     // from the next input must cause a publication despite unchanged effective
     // values.
-    Y_UNIT_TEST_F(ShouldNotRepublishUnchangedStartupCmsConfig, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldNotRepublishUnchangedStartupCmsConfig,
+        TConfigsManagerFixture)
     {
         // Start a manager with ignored fields present in its received source.
-        auto staticConfig = MakeConfig(100);
+        NProto::TBlockstoreConfig staticConfig;
         staticConfig.MutableStorageService()->SetSchemeShardDir("/static");
         auto dynamicConfig = MakeConfig(200);
         dynamicConfig.MutableStorageService()->SetSchemeShardDir("/cms");
@@ -1194,7 +930,7 @@ storage_service:
 
     // Verify that reordered map entries are duplicates while a changed map
     // value is accepted even when its runtime override is forbidden.
-    Y_UNIT_TEST_F(ShouldCompareCmsMapsWithoutEntryOrder, TFixture)
+    Y_UNIT_TEST_F(ShouldCompareCmsMapsWithoutEntryOrder, TConfigsManagerFixture)
     {
         StartManager();
 
@@ -1204,16 +940,15 @@ storage_service:
         WaitForConfigChanged(subscriber);
         const auto makeConfig = [](bool reverse, ui32 writeThreshold)
         {
-            auto config = std::make_shared<NProto::TBlockstoreConfig>(
-                MakeConfig(300));
+            auto config =
+                std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300));
             auto* threshold =
                 config->MutableDiagnostics()->AddRequestThresholds();
             const auto* field =
                 threshold->GetDescriptor()->FindFieldByName("ByRequestType");
             for (const TString name: {"ReadBlocks", "WriteBlocks"}) {
-                auto* entry = threshold->GetReflection()->AddMessage(
-                    threshold,
-                    field);
+                auto* entry =
+                    threshold->GetReflection()->AddMessage(threshold, field);
                 entry->GetReflection()->SetString(
                     entry,
                     entry->GetDescriptor()->FindFieldByName("key"),
@@ -1224,11 +959,8 @@ storage_service:
                     name == "ReadBlocks" ? 10 : writeThreshold);
             }
             if (reverse) {
-                threshold->GetReflection()->SwapElements(
-                    threshold,
-                    field,
-                    0,
-                    1);
+                threshold->GetReflection()
+                    ->SwapElements(threshold, field, 0, 1);
             }
             const auto& entry = threshold->GetReflection()->GetRepeatedMessage(
                 *threshold,
@@ -1262,9 +994,13 @@ storage_service:
     }
 
     // Check that a duplicate is acknowledged without replacing the config.
-    Y_UNIT_TEST_F(ShouldAcknowledgeDuplicateWithoutRepublishing, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldAcknowledgeDuplicateWithoutRepublishing,
+        TConfigsManagerFixture)
     {
-        StartManager();
+        StartManager(
+            /*staticConfig=*/{},
+            /*dynamicConfig=*/MakeConfig(200));
 
         const auto previousConfig = ConfigHolder->Get();
         SendNotification(
@@ -1277,9 +1013,13 @@ storage_service:
 
     // Check that empty and missing configs restore static values once and then
     // receive ACKs without publishing or notifying again.
-    Y_UNIT_TEST_F(ShouldTreatEmptyAndMissingConfigAsDuplicates, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldTreatEmptyAndMissingConfigAsDuplicates,
+        TConfigsManagerFixture)
     {
-        StartManager();
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
 
         // Observe publications while replacing a non-empty startup config.
         const auto subscriber = Runtime.AllocateEdgeActor();
@@ -1312,9 +1052,13 @@ storage_service:
     }
 
     // Check that a parser failure preserves the config and receives no ACK.
-    Y_UNIT_TEST_F(ShouldRetainConfigAndHoldAckOnParserFailure, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldRetainConfigAndHoldAckOnParserFailure,
+        TConfigsManagerFixture)
     {
-        StartManager();
+        StartManager(
+            /*staticConfig=*/{},
+            /*dynamicConfig=*/MakeConfig(200));
 
         const auto previousConfig = ConfigHolder->Get();
         const auto parser = CreateBlockstoreOpaqueConfigParser();
@@ -1361,9 +1105,13 @@ storage_service:
 
     // Verify that preparation exceptions preserve the publication and controls,
     // emit a critical event, withhold ACK, and allow retrying the same update.
-    Y_UNIT_TEST_F(ShouldRetainConfigOnPreparationException, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldRetainConfigOnPreparationException,
+        TConfigsManagerFixture)
     {
-        StartManager();
+        StartManager(
+            /*staticConfig=*/{},
+            /*dynamicConfig=*/MakeConfig(200));
 
         // Inject one failure before construction and observe publications.
         ConfigHolder->Set(
@@ -1410,7 +1158,7 @@ storage_service:
 
     // Check that missing required fields report a critical event without
     // publication or ACK, and a corrected update is accepted.
-    Y_UNIT_TEST_F(ShouldRejectMissingRequiredFields, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectMissingRequiredFields, TConfigsManagerFixture)
     {
         StartManager();
 
@@ -1456,9 +1204,11 @@ storage_service:
     }
 
     // Check that removing PrivateDatabaseConfig restores the static value.
-    Y_UNIT_TEST_F(ShouldTreatMissingPayloadAsRemoval, TFixture)
+    Y_UNIT_TEST_F(ShouldTreatMissingPayloadAsRemoval, TConfigsManagerFixture)
     {
-        StartManager();
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
 
         // Observe the initial private value before removing its source.
         UNIT_ASSERT_VALUES_EQUAL(
@@ -1478,7 +1228,9 @@ storage_service:
     }
 
     // Check that a wrong message type preserves the config and receives no ACK.
-    Y_UNIT_TEST_F(ShouldRejectUnexpectedOpaqueMessageType, TFixture)
+    Y_UNIT_TEST_F(
+        ShouldRejectUnexpectedOpaqueMessageType,
+        TConfigsManagerFixture)
     {
         StartManager();
 
@@ -1519,7 +1271,7 @@ storage_service:
 
     // Check that a null payload reports a critical event without removal or
     // ACK.
-    Y_UNIT_TEST_F(ShouldRejectNullOpaquePayload, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectNullOpaquePayload, TConfigsManagerFixture)
     {
         StartManager();
 

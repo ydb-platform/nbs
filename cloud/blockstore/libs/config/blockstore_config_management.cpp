@@ -8,6 +8,8 @@ the features wrapper created from the merged protobuf configuration.
 
 #include "blockstore_config_management.h"
 
+#include <cloud/storage/core/libs/config/runtime_config.h>
+
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
@@ -316,11 +318,18 @@ void MergeFeatures(
 
 }   // namespace
 
-void RemoveStaticOnlyBlockstoreFields(NProto::TBlockstoreConfig& config)
+NConfig::TConfigPreparationDiagnostics RemoveStaticOnlyBlockstoreFields(
+    NProto::TBlockstoreConfig& config)
 {
+    NConfig::TConfigPreparationDiagnostics diagnostics;
     if (config.HasServer() && config.GetServer().HasServerConfig()) {
         auto* serverConfig = config.MutableServer()->MutableServerConfig();
-        serverConfig->ClearDynamicYamlConfigurationEnabled();
+        if (serverConfig->HasDynamicYamlConfigurationEnabled()) {
+            diagnostics.IgnoredPaths.emplace(
+                "Server.ServerConfig.DynamicYamlConfigurationEnabled",
+                NConfig::EConfigIgnoreReason::StaticOnly);
+            serverConfig->ClearDynamicYamlConfigurationEnabled();
+        }
         if (serverConfig->ByteSizeLong() == 0) {
             config.MutableServer()->ClearServerConfig();
         }
@@ -332,9 +341,24 @@ void RemoveStaticOnlyBlockstoreFields(NProto::TBlockstoreConfig& config)
 
     if (config.HasStorageService()) {
         auto* storageConfig = config.MutableStorageService();
-        storageConfig->ClearConfigDispatcherSettings();
-        storageConfig->ClearSchemeShardDir();
-        storageConfig->ClearNodeType();
+        if (storageConfig->HasConfigDispatcherSettings()) {
+            diagnostics.IgnoredPaths.emplace(
+                "StorageService.ConfigDispatcherSettings",
+                NConfig::EConfigIgnoreReason::StaticOnly);
+            storageConfig->ClearConfigDispatcherSettings();
+        }
+        if (storageConfig->HasSchemeShardDir()) {
+            diagnostics.IgnoredPaths.emplace(
+                "StorageService.SchemeShardDir",
+                NConfig::EConfigIgnoreReason::StaticOnly);
+            storageConfig->ClearSchemeShardDir();
+        }
+        if (storageConfig->HasNodeType()) {
+            diagnostics.IgnoredPaths.emplace(
+                "StorageService.NodeType",
+                NConfig::EConfigIgnoreReason::StaticOnly);
+            storageConfig->ClearNodeType();
+        }
         if (storageConfig->ByteSizeLong() == 0) {
             config.ClearStorageService();
         }
@@ -342,18 +366,24 @@ void RemoveStaticOnlyBlockstoreFields(NProto::TBlockstoreConfig& config)
 
     if (config.HasDiskAgent()) {
         auto* diskAgentConfig = config.MutableDiskAgent();
-        diskAgentConfig->ClearDedicatedDiskAgent();
+        if (diskAgentConfig->HasDedicatedDiskAgent()) {
+            diagnostics.IgnoredPaths.emplace(
+                "DiskAgent.DedicatedDiskAgent",
+                NConfig::EConfigIgnoreReason::StaticOnly);
+            diskAgentConfig->ClearDedicatedDiskAgent();
+        }
         if (diskAgentConfig->ByteSizeLong() == 0) {
             config.ClearDiskAgent();
         }
     }
+    return diagnostics;
 }
 
-void NormalizeDynamicBlockstoreConfig(
+NConfig::TConfigPreparationDiagnostics NormalizeDynamicBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     NProto::TBlockstoreConfig& dynamicConfig)
 {
-    RemoveStaticOnlyBlockstoreFields(dynamicConfig);
+    auto diagnostics = RemoveStaticOnlyBlockstoreFields(dynamicConfig);
 
     // DiskAgent: preserve the static Enabled value when DedicatedDiskAgent is
     // set.
@@ -361,7 +391,12 @@ void NormalizeDynamicBlockstoreConfig(
         staticConfig.GetDiskAgent().GetDedicatedDiskAgent())
     {
         auto* diskAgentConfig = dynamicConfig.MutableDiskAgent();
-        diskAgentConfig->ClearEnabled();
+        if (diskAgentConfig->HasEnabled()) {
+            diagnostics.IgnoredPaths.emplace(
+                "DiskAgent.Enabled",
+                NConfig::EConfigIgnoreReason::StaticOnly);
+            diskAgentConfig->ClearEnabled();
+        }
         if (diskAgentConfig->ByteSizeLong() == 0) {
             dynamicConfig.ClearDiskAgent();
         }
@@ -393,6 +428,7 @@ void NormalizeDynamicBlockstoreConfig(
                 ->SetConductorSecureInstancePort(dynamicServer.GetSecurePort());
         }
     }
+    return diagnostics;
 }
 
 bool IsPrivateDatabaseConfigEnabled(
@@ -484,7 +520,8 @@ TBlockstoreConfigBuildResult MakeStartupBlockstoreConfig(
     TBlockstoreConfigExtraParameters extraParameters)
 {
     auto dynamicConfigCopy = dynamicConfig;
-    NormalizeDynamicBlockstoreConfig(staticConfig, dynamicConfigCopy);
+    auto normalizationDiagnostics =
+        NormalizeDynamicBlockstoreConfig(staticConfig, dynamicConfigCopy);
 
     auto proto = MergeBlockstoreConfigSources(staticConfig, dynamicConfigCopy);
     auto config = MakeBlockstoreConfig(
@@ -496,10 +533,11 @@ TBlockstoreConfigBuildResult MakeStartupBlockstoreConfig(
         .Proto = std::move(proto),
         .Config = std::move(config),
         .HasDynamicOverrides = dynamicConfigCopy.ByteSizeLong() != 0,
+        .NormalizationDiagnostics = std::move(normalizationDiagnostics),
     };
 }
 
-NConfig::TRuntimeConfigDiagnostics PrepareRuntimeBlockstoreConfig(
+NConfig::TConfigPreparationDiagnostics PrepareRuntimeBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& startupConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
@@ -518,17 +556,24 @@ IBlockstoreConfigMutablePtr MakeRuntimeBlockstoreConfig(
     const NProto::TBlockstoreConfig& dynamicConfig,
     NStorage::TStorageConfigControlsPtr controls,
     TBlockstoreConfigExtraParameters extraParameters,
-    NConfig::TRuntimeConfigDiagnostics& diagnostics)
+    NConfig::TConfigPreparationDiagnostics& diagnostics)
 {
     // Preserve the received CMS proto for comparison with later notifications.
     auto dynamicConfigCopy = dynamicConfig;
-    NormalizeDynamicBlockstoreConfig(staticConfig, dynamicConfigCopy);
+    auto configDiagnostics =
+        NormalizeDynamicBlockstoreConfig(staticConfig, dynamicConfigCopy);
     NProto::TBlockstoreConfig runtimeConfig;
-    auto runtimeDiagnostics = PrepareRuntimeBlockstoreConfig(
+    const auto runtimeDiagnostics = PrepareRuntimeBlockstoreConfig(
         staticConfig,
         startupConfig,
         dynamicConfigCopy,
         runtimeConfig);
+
+    // Keep normalization's StaticOnly reason for shared paths: those dynamic
+    // values remain ignored after restart.
+    for (const auto& [path, reason]: runtimeDiagnostics.IgnoredPaths) {
+        configDiagnostics.IgnoredPaths.emplace(path, reason);
+    }
 
     // Keep the caller's previous report if preparation or adapter construction
     // throws; replace it only for a completed configuration.
@@ -536,7 +581,7 @@ IBlockstoreConfigMutablePtr MakeRuntimeBlockstoreConfig(
         runtimeConfig,
         std::move(controls),
         std::move(extraParameters));
-    diagnostics = std::move(runtimeDiagnostics);
+    diagnostics = std::move(configDiagnostics);
     return config;
 }
 

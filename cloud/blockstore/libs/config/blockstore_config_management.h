@@ -13,7 +13,7 @@ defaults separately.
 
 #include <cloud/blockstore/config/blockstore.pb.h>
 
-#include <cloud/storage/core/libs/config/runtime_config.h>
+#include <cloud/storage/core/libs/config/config_preparation_diagnostics.h>
 
 #include <util/generic/string.h>
 
@@ -39,14 +39,15 @@ struct TBlockstoreConfigExtraParameters
 ////////////////////////////////////////////////////////////////////////////////
 
 // Remove fields reserved for static-only configuration and sections left empty.
-void RemoveStaticOnlyBlockstoreFields(NProto::TBlockstoreConfig& config);
+NConfig::TConfigPreparationDiagnostics RemoveStaticOnlyBlockstoreFields(
+    NProto::TBlockstoreConfig& config);
 
 // Normalize dynamic overrides against static configuration before merging
 // sources.
 //
 // staticConfig - Static configuration used as the normalization base.
 // dynamicConfig - Dynamic overrides to modify in place.
-void NormalizeDynamicBlockstoreConfig(
+NConfig::TConfigPreparationDiagnostics NormalizeDynamicBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     NProto::TBlockstoreConfig& dynamicConfig);
 
@@ -120,6 +121,10 @@ struct TBlockstoreConfigBuildResult
     // Whether the normalized dynamic source contains serialized fields,
     // including unknown fields.
     bool HasDynamicOverrides = false;
+
+    // Static-only fields removed from the supplied dynamic source; owned by
+    // this result and independent of the merged proto.
+    NConfig::TConfigPreparationDiagnostics NormalizationDiagnostics;
 };
 
 // Build a startup configuration by merging static and dynamic sources.
@@ -155,13 +160,14 @@ TBlockstoreConfigBuildResult MakeStartupBlockstoreConfig(
 //
 // Returns - A report of rejected runtime changes and their reasons. Rejections
 //      do not fail preparation; permitted changes remain in runtimeConfig.
-NConfig::TRuntimeConfigDiagnostics PrepareRuntimeBlockstoreConfig(
+NConfig::TConfigPreparationDiagnostics PrepareRuntimeBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& startupConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
     NProto::TBlockstoreConfig& runtimeConfig);
 
-// Build a runtime configuration and report rejected runtime changes.
+// Build a runtime configuration and report ignored dynamic values and rejected
+// runtime changes. Prefer StaticOnly for paths reported by both stages.
 //
 // staticConfig - Static configuration used as the merge base and fallback
 //      when dynamic overrides are removed.
@@ -173,8 +179,8 @@ NConfig::TRuntimeConfigDiagnostics PrepareRuntimeBlockstoreConfig(
 // controls - Shared live ICB controls for Storage; non-null. Defaults and
 //      operator overrides are left unchanged.
 // extraParameters - parameters not stored in the configuration proto.
-// diagnostics - Report of rejected runtime changes. Replaced when a
-//      configuration is returned; preserved if configuration creation fails.
+// diagnostics - Combined report from normalization and runtime filtering.
+//      Replaced when a configuration is returned; preserved if creation fails.
 //
 // Returns - A new, non-null configuration.
 IBlockstoreConfigMutablePtr MakeRuntimeBlockstoreConfig(
@@ -183,6 +189,6 @@ IBlockstoreConfigMutablePtr MakeRuntimeBlockstoreConfig(
     const NProto::TBlockstoreConfig& dynamicConfig,
     NStorage::TStorageConfigControlsPtr controls,
     TBlockstoreConfigExtraParameters extraParameters,
-    NConfig::TRuntimeConfigDiagnostics& diagnostics);
+    NConfig::TConfigPreparationDiagnostics& diagnostics);
 
 }   // namespace NCloud::NBlockStore

@@ -9,6 +9,7 @@ section clears dynamic overrides; equivalent inputs do not republish.
 
 #include "configs_manager.h"
 
+#include "configs_manager_renderer.h"
 #include "events.h"
 
 #include <cloud/blockstore/libs/config/blockstore_config_management.h>
@@ -17,11 +18,13 @@ section clears dynamic overrides; equivalent inputs do not republish.
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/config/runtime_config.h>
+#include <cloud/storage/core/libs/config/config_preparation_diagnostics.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
+#include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/cms/console/configs_dispatcher.h>
 #include <contrib/ydb/core/cms/console/console.h>
+#include <contrib/ydb/core/mon/mon.h>
 #include <contrib/ydb/core/protos/console_config.pb.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -32,6 +35,8 @@ section clears dynamic overrides; equivalent inputs do not republish.
 #include <util/string/builder.h>
 
 #include <google/protobuf/util/message_differencer.h>
+
+#include <optional>
 
 namespace NCloud::NBlockStore {
 
@@ -45,9 +50,30 @@ namespace {
 constexpr ui32 PrivateDatabaseConfigKind =
     NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem;
 
-// Report a rejected runtime update with its reason and the restart risk.
-void ReportConfigUpdateError(const TString& reason, bool rollbackShallHelp)
+// Log static-only paths from an accepted source without exposing field values.
+void LogIgnoredDynamicFields(
+    const TActorContext& ctx,
+    const NConfig::TConfigPreparationDiagnostics& diagnostics)
 {
+    for (const auto& [path, reason]: diagnostics.IgnoredPaths) {
+        if (reason == NConfig::EConfigIgnoreReason::StaticOnly) {
+            LOG_WARN_S(
+                ctx,
+                TBlockStoreComponents::CONFIGS_MANAGER,
+                "Ignoring static-only field from dynamic "
+                "PrivateDatabaseConfig: "
+                    << path);
+        }
+    }
+}
+
+// Report a rejected runtime update with its reason and the restart risk.
+void ReportConfigUpdateError(
+    TBlockstoreConfigRendererData& rendererData,
+    const TString& reason,
+    bool rollbackShallHelp)
+{
+    rendererData.RejectedUpdateReason = reason;
     ReportDynamicConfigError(
         TStringBuilder()
         << reason
@@ -82,13 +108,12 @@ private:
     // and shared ICB controls, and never replaced by a runtime notification.
     const NProto::TBlockstoreConfig StartupConfig;
 
-    // All rejected schema paths and reasons from the last accepted runtime
-    // merge; parameter values and collection keys are excluded.
-    NConfig::TRuntimeConfigDiagnostics RuntimeDiagnostics;
-
     // Last accepted PrivateDatabaseConfig before normalization or merging;
     // empty without a dynamic source.
     NProto::TBlockstoreConfig DynamicConfig;
+
+    // Monitoring metadata owned by the renderer and changed only by this actor.
+    TBlockstoreConfigRenderer ConfigRenderer;
 
     // ICB overrides shared by every published StorageConfig; non-null.
     const NStorage::TStorageConfigControlsPtr StorageConfigControls;
@@ -96,11 +121,22 @@ private:
     // ConfigsDispatcher actor; zero selects the node-local service.
     const TActorId ConfigsDispatcherId;
 
+    // Cookie of the first dispatcher notification, even if it is rejected.
+    // Empty until the first notification. Use it to preserve the startup label
+    // and time when that notification is repeated.
+    std::optional<ui64> StartupDeliveryCookie;
+
     // Local recipients of publication notices; consumers remove their own
     // subscriptions before stopping.
     THashSet<TActorId> Subscribers;
 
     STFUNC(StateWork);
+
+    // Register the read-only configuration page when monitoring is available.
+    void RegisterPages(const TActorContext& ctx);
+
+    // Reply with the sources and the current publication, including live ICB.
+    void Handle(const NMon::TEvHttpInfo::TPtr& ev, const TActorContext& ctx);
 
     // Register one recipient and send an initial notice on every request.
     void Handle(
@@ -136,10 +172,21 @@ TConfigsManagerActor::TConfigsManagerActor(TConfigsManagerArgs args)
     , DynamicConfig(std::move(args.InitialDynamicConfig))
     , StorageConfigControls(std::move(args.StorageConfigControls))
     , ConfigsDispatcherId(args.ConfigsDispatcherId)
-{}
+{
+    ConfigRenderer.Data.StartupDynamicConfig = DynamicConfig;
+    ConfigRenderer.Data.DynamicConfigPresent =
+        DynamicConfig.ByteSizeLong() != 0;
+    ConfigRenderer.Data.StartupDynamicConfigNormalizationDiagnostics =
+        std::move(args.StartupDynamicConfigNormalizationDiagnostics);
+    ConfigRenderer.Data.CurrentConfigPreparationDiagnostics =
+        ConfigRenderer.Data.StartupDynamicConfigNormalizationDiagnostics;
+}
 
 void TConfigsManagerActor::Bootstrap(const TActorContext& ctx)
 {
+    ConfigRenderer.Data.LastUpdateTime = ctx.Now();
+    RegisterPages(ctx);
+
     ctx.Send(
         ConfigsDispatcherId ? ConfigsDispatcherId
                             : MakeConfigsDispatcherID(ctx.SelfID.NodeId()),
@@ -156,6 +203,7 @@ STFUNC(TConfigsManagerActor::StateWork)
         HFunc(TEvConfigsManager::TEvSetConfigSubscriptionRequest, Handle);
         HFunc(TEvConfigsManager::TEvRemoveConfigSubscriptionRequest, Handle);
         HFunc(TEvConsole::TEvConfigNotificationRequest, Handle);
+        HFunc(NMon::TEvHttpInfo, Handle);
         hFunc(TEvents::TEvUndelivered, Handle);
         IgnoreFunc(TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse);
 
@@ -166,6 +214,41 @@ STFUNC(TConfigsManagerActor::StateWork)
                 __PRETTY_FUNCTION__);
             break;
     }
+}
+
+// Register the read-only page on the existing BlockStore monitoring root.
+void TConfigsManagerActor::RegisterPages(const TActorContext& ctx)
+{
+    auto* mon = NKikimr::AppData(ctx)->Mon;
+    if (!mon) {
+        return;
+    }
+
+    auto* rootPage = mon->RegisterIndexPage("blockstore", "BlockStore");
+    mon->RegisterActorPage(
+        rootPage,
+        "configs_manager",
+        "ConfigsManager",
+        false,
+        ctx.ActorSystem(),
+        SelfId());
+}
+
+// Reply with the accepted sources and live effective values from one snapshot.
+void TConfigsManagerActor::Handle(
+    const NMon::TEvHttpInfo::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto html = ConfigRenderer.RenderHtml(
+        *ConfigHolder->Get(),
+        StaticConfig,
+        DynamicConfig);
+
+    ctx.Send(
+        ev->Sender,
+        new NMon::TEvHttpInfoRes(std::move(html)),
+        0,
+        ev->Cookie);
 }
 
 // Register one recipient and send an initial notice on every request.
@@ -231,8 +314,11 @@ void TConfigsManagerActor::Handle(
         "Received YAML configuration from ConfigsDispatcher");
 
     const auto* message = ev->Get();
+    if (!StartupDeliveryCookie) {
+        StartupDeliveryCookie = ev->Cookie;
+    }
     NProto::TBlockstoreConfig newDynamicConfig;
-    NConfig::TRuntimeConfigDiagnostics diagnostics;
+    NConfig::TConfigPreparationDiagnostics diagnostics;
     IBlockstoreConfigMutablePtr newConfig;
 
     // Prepare the complete update before changing the publication or live
@@ -244,6 +330,7 @@ void TConfigsManagerActor::Handle(
             const auto payload = it->second;
             if (!payload) {
                 ReportConfigUpdateError(
+                    ConfigRenderer.Data,
                     "Internal error: received a null PrivateDatabaseConfig "
                     "payload from ConfigsDispatcher",
                     /*rollbackShallHelp=*/false);
@@ -253,6 +340,7 @@ void TConfigsManagerActor::Handle(
             auto [config, error] = ExtractBlockstoreConfig(*payload);
             if (HasError(error)) {
                 ReportConfigUpdateError(
+                    ConfigRenderer.Data,
                     error.GetMessage(),
                     /*rollbackShallHelp=*/error.GetCode() == E_ARGUMENT);
                 return;
@@ -269,11 +357,26 @@ void TConfigsManagerActor::Handle(
                 ctx,
                 TBlockStoreComponents::CONFIGS_MANAGER,
                 "PrivateDatabaseConfig is unchanged; skipping publication");
+            ConfigRenderer.Data.DynamicConfigPresent =
+                message->OpaqueConfigs.contains(PrivateDatabaseConfigKind);
+            // Treat an identical first delivery as startup even if the CMS
+            // version is newer. This is acceptable: the label still describes
+            // the configuration values applied at startup.
+            if (ConfigRenderer.Data.UpdateStatus !=
+                    EConfigUpdateStatus::Startup ||
+                ev->Cookie != *StartupDeliveryCookie)
+            {
+                ConfigRenderer.Data.LastUpdateTime = ctx.Now();
+                ConfigRenderer.Data.UpdateStatus =
+                    EConfigUpdateStatus::RuntimeUnchanged;
+            }
+            ConfigRenderer.Data.RejectedUpdateReason.clear();
             ReplyConfigNotificationResponse(ev, ctx);
             return;
         }
     } catch (...) {
         ReportConfigUpdateError(
+            ConfigRenderer.Data,
             TStringBuilder()
                 << "Failed to process PrivateDatabaseConfig notification: "
                 << CurrentExceptionMessage(),
@@ -292,6 +395,7 @@ void TConfigsManagerActor::Handle(
             diagnostics);
     } catch (...) {
         ReportConfigUpdateError(
+            ConfigRenderer.Data,
             TStringBuilder()
                 << "Failed to apply PrivateDatabaseConfig from CMS: "
                 << CurrentExceptionMessage(),
@@ -304,15 +408,22 @@ void TConfigsManagerActor::Handle(
     ConfigHolder->Set(newConfig);
     newConfig->GetStorageConfig()->UpdateControlsDefaults();
     DynamicConfig = std::move(newDynamicConfig);
-    // TODO: to be used for mon page
-    RuntimeDiagnostics = std::move(diagnostics);
+    ConfigRenderer.Data.DynamicConfigPresent =
+        message->OpaqueConfigs.contains(PrivateDatabaseConfigKind);
+    ConfigRenderer.Data.LastUpdateTime = ctx.Now();
+    ConfigRenderer.Data.UpdateStatus = EConfigUpdateStatus::Runtime;
+    ConfigRenderer.Data.RejectedUpdateReason.clear();
+    ConfigRenderer.Data.CurrentConfigPreparationDiagnostics =
+        std::move(diagnostics);
+    LogIgnoredDynamicFields(
+        ctx,
+        ConfigRenderer.Data.CurrentConfigPreparationDiagnostics);
 
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::CONFIGS_MANAGER,
-        (DynamicConfig.ByteSizeLong()
-             ? "Accepted PrivateDatabaseConfig"
-             : "Reset PrivateDatabaseConfig"));
+        (DynamicConfig.ByteSizeLong() ? "Accepted PrivateDatabaseConfig"
+                                      : "Reset PrivateDatabaseConfig"));
 
     // Do not wait for consumers: they process the snapshot carried by each
     // notification at their safe point.

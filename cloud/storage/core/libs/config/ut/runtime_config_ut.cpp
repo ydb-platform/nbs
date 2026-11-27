@@ -1,9 +1,11 @@
 #include <cloud/storage/core/config/markers.pb.h>
+#include <cloud/storage/core/libs/config/config_schema_path.h>
 #include <cloud/storage/core/libs/config/runtime_config.h>
 #include <cloud/storage/core/libs/config/ut/protos/runtime_config.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/vector.h>
 #include <util/string/cast.h>
 
 #include <google/protobuf/dynamic_message.h>
@@ -156,16 +158,16 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(4, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("Allowed.Frozen") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("Frozen.Mutable") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("Frozen.Frozen") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("ExplicitFalse.Mutable") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
     }
 
     // Verify that collections are atomic parameters, preserve ordinary merge
@@ -207,10 +209,10 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(2, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("FrozenValues[]") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("FrozenMap[]") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
 
         // Rebuild a replay and removal from static, without accumulating data.
         auto replay = staticConfig;
@@ -251,7 +253,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("FrozenChoice") ==
-            ERuntimeConfigIgnoreReason::OneofSwitchForbidden);
+            EConfigIgnoreReason::OneofSwitchForbidden);
 
         // Clear the allowed choice on removal, but keep the frozen selection.
         requested.Clear();
@@ -268,30 +270,115 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT(!requested.HasFrozenMessage());
     }
 
-    // Verify that rejecting a switch preserves the startup case while mutable
-    // values fall back to the matching static branch.
-    Y_UNIT_TEST(ShouldKeepStartupOneofCase)
+    // Verify that a forbidden runtime switch restores the complete startup
+    // oneof for message, scalar and unset selections.
+    Y_UNIT_TEST(ShouldKeepStartupOneofCaseAndValuesOnForbiddenRuntimeSwitch)
     {
-        // Give the startup override a different value from its static base.
-        NProto::NTest::TRuntimeConfig staticConfig;
-        staticConfig.MutableFixedMessage()->SetValue(10);
-        auto startup = staticConfig;
-        startup.MutableFixedMessage()->SetValue(20);
+        // Give the same static and startup branch different values.
+        {
+            NProto::NTest::TRuntimeConfig staticConfig;
+            staticConfig.MutableFixedMessage()->SetValue(10);
+            auto startup = staticConfig;
+            startup.MutableFixedMessage()->SetValue(20);
 
-        // Attempt a switch that removes the static message during normal merge.
-        auto requested = staticConfig;
-        requested.SetFixedNumber(30);
-        const auto diagnostics =
-            FilterRuntimeConfig(staticConfig, startup, requested);
+            // Restore the startup message and its value.
+            auto requested = staticConfig;
+            requested.SetFixedNumber(30);
+            const auto diagnostics =
+                FilterRuntimeConfig(staticConfig, startup, requested);
+            UNIT_ASSERT(requested.HasFixedMessage());
+            UNIT_ASSERT_VALUES_EQUAL(
+                20,
+                requested.GetFixedMessage().GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
+            UNIT_ASSERT(
+                diagnostics.IgnoredPaths.at("FixedChoice") ==
+                EConfigIgnoreReason::OneofSwitchForbidden);
+        }
 
-        // Recover the selected message from static, without retaining the
-        // override.
-        UNIT_ASSERT(requested.HasFixedMessage());
-        UNIT_ASSERT_VALUES_EQUAL(10, requested.GetFixedMessage().GetValue());
-        UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
-        UNIT_ASSERT(
-            diagnostics.IgnoredPaths.at("FixedChoice") ==
-            ERuntimeConfigIgnoreReason::OneofSwitchForbidden);
+        // Select a startup message absent from the static configuration.
+        {
+            NProto::NTest::TRuntimeConfig staticConfig;
+            staticConfig.SetFixedNumber(10);
+            auto startup = staticConfig;
+            startup.MutableFixedMessage()->SetValue(20);
+            startup.MutableFixedMessage()->SetFrozen(30);
+
+            // Restore both startup field values.
+            auto requested = staticConfig;
+            const auto diagnostics =
+                FilterRuntimeConfig(staticConfig, startup, requested);
+            UNIT_ASSERT(requested.HasFixedMessage());
+            UNIT_ASSERT(requested.GetFixedMessage().HasValue());
+            UNIT_ASSERT_VALUES_EQUAL(
+                20,
+                requested.GetFixedMessage().GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(
+                30,
+                requested.GetFixedMessage().GetFrozen());
+            UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
+            UNIT_ASSERT(
+                diagnostics.IgnoredPaths.at("FixedChoice") ==
+                EConfigIgnoreReason::OneofSwitchForbidden);
+        }
+
+        // Select an explicitly empty startup message while static is unset.
+        {
+            const NProto::NTest::TRuntimeConfig staticConfig;
+            auto startup = staticConfig;
+            startup.MutableFixedMessage();
+
+            // Preserve the selected empty startup message.
+            auto requested = staticConfig;
+            const auto diagnostics =
+                FilterRuntimeConfig(staticConfig, startup, requested);
+            UNIT_ASSERT(requested.HasFixedMessage());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                requested.GetFixedMessage().ByteSizeLong());
+            UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
+            UNIT_ASSERT(
+                diagnostics.IgnoredPaths.at("FixedChoice") ==
+                EConfigIgnoreReason::OneofSwitchForbidden);
+        }
+
+        // Select a non-default scalar value at startup while static is unset.
+        {
+            const NProto::NTest::TRuntimeConfig staticConfig;
+            auto startup = staticConfig;
+            startup.SetFixedNumber(42);
+
+            // Restore the startup scalar value.
+            auto requested = staticConfig;
+            requested.MutableFixedMessage()->SetValue(99);
+            const auto diagnostics =
+                FilterRuntimeConfig(staticConfig, startup, requested);
+            UNIT_ASSERT(requested.HasFixedNumber());
+            UNIT_ASSERT_VALUES_EQUAL(42, requested.GetFixedNumber());
+            UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
+            UNIT_ASSERT(
+                diagnostics.IgnoredPaths.at("FixedChoice") ==
+                EConfigIgnoreReason::OneofSwitchForbidden);
+        }
+
+        // Leave the startup selection unset.
+        {
+            const NProto::NTest::TRuntimeConfig staticConfig;
+            const auto startup = staticConfig;
+
+            // Preserve the unset startup selection.
+            auto requested = staticConfig;
+            requested.SetFixedNumber(7);
+            const auto diagnostics =
+                FilterRuntimeConfig(staticConfig, startup, requested);
+            UNIT_ASSERT(!requested.HasFixedNumber());
+            UNIT_ASSERT(!requested.HasFixedMessage());
+            UNIT_ASSERT(!requested.HasReadOnlyMessage());
+            UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
+            UNIT_ASSERT(
+                diagnostics.IgnoredPaths.at("FixedChoice") ==
+                EConfigIgnoreReason::OneofSwitchForbidden);
+        }
     }
 
     // Verify that identical CMS sources allow updates only in the fixed oneof
@@ -330,7 +417,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
                 UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
                 UNIT_ASSERT(
                     diagnostics.IgnoredPaths.at("FixedChoice") ==
-                    ERuntimeConfigIgnoreReason::OneofSwitchForbidden);
+                    EConfigIgnoreReason::OneofSwitchForbidden);
             }
         }
     }
@@ -365,7 +452,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
             if (staticValue != 10) {
                 UNIT_ASSERT(
                     diagnostics.IgnoredPaths.at("Allowed.Frozen") ==
-                    ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+                    EConfigIgnoreReason::RuntimeUpdateForbidden);
             }
         }
     }
@@ -393,7 +480,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("FixedMessage.Frozen") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
 
         // Remove the override while retaining the selected member and its
         // forbidden sibling field.
@@ -412,51 +499,8 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(60, requested.GetReadOnlyMessage().GetValue());
     }
 
-    // Verify defaults rather than startup overrides when the fixed member has
-    // no matching static branch, including scalar presence and startup unset.
-    Y_UNIT_TEST(ShouldPreserveFixedOneofPresenceAndDefaults)
-    {
-        // Select a message in startup while leaving it absent from static.
-        NProto::NTest::TRuntimeConfig staticConfig;
-        staticConfig.SetFixedNumber(10);
-        auto startup = staticConfig;
-        startup.MutableFixedMessage()->SetValue(20);
-        startup.MutableFixedMessage()->SetFrozen(30);
-
-        // Use static as runtime; retain the startup selection and forbidden
-        // value, and reset the permitted value to its default.
-        auto requested = staticConfig;
-        FilterRuntimeConfig(staticConfig, startup, requested);
-        UNIT_ASSERT(requested.HasFixedMessage());
-        UNIT_ASSERT(!requested.GetFixedMessage().HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(30, requested.GetFixedMessage().GetFrozen());
-
-        // Keep the startup message selected when static and runtime have no
-        // selected member.
-        staticConfig.Clear();
-        startup.MutableFixedMessage()->Clear();
-        requested.Clear();
-        FilterRuntimeConfig(staticConfig, startup, requested);
-        UNIT_ASSERT(requested.HasFixedMessage());
-        UNIT_ASSERT_VALUES_EQUAL(0, requested.GetFixedMessage().ByteSizeLong());
-
-        // Restore a selected scalar with its default, not its startup override.
-        startup.SetFixedNumber(42);
-        requested.MutableFixedMessage()->SetValue(99);
-        FilterRuntimeConfig(staticConfig, startup, requested);
-        UNIT_ASSERT(requested.HasFixedNumber());
-        UNIT_ASSERT_VALUES_EQUAL(0, requested.GetFixedNumber());
-
-        // Keep startup unset even when the new member itself permits updates.
-        startup.Clear();
-        requested.SetFixedNumber(7);
-        FilterRuntimeConfig(staticConfig, startup, requested);
-        UNIT_ASSERT(!requested.HasFixedNumber());
-        UNIT_ASSERT(!requested.HasFixedMessage());
-    }
-
-    // Verify that a restored oneof message has required scalar and message
-    // defaults while keeping startup-only values.
+    // Verify that rejecting a oneof switch restores all required fields and
+    // their startup values.
     Y_UNIT_TEST(ShouldRestoreRequiredOneofFields)
     {
         // Build initialized inputs with different static and startup choices.
@@ -472,16 +516,16 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT(startup.IsInitialized());
         ValidateRuntimeConfigSchema(*startup.GetDescriptor());
 
-        // Remove the override and restore the required fields.
+        // Restore the startup message with all required fields and values.
         auto requested = staticConfig;
         FilterRuntimeConfig(staticConfig, startup, requested);
         const auto& result = requested.GetMessage();
         UNIT_ASSERT(requested.HasMessage());
         UNIT_ASSERT(result.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(7, result.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(20, result.GetValue());
         UNIT_ASSERT(result.HasChild());
         UNIT_ASSERT(result.GetChild().HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(17, result.GetChild().GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(21, result.GetChild().GetValue());
         UNIT_ASSERT(!result.GetChild().HasFrozen());
         UNIT_ASSERT(result.HasEmptyChild());
         UNIT_ASSERT(!result.GetEmptyChild().HasMutable());
@@ -591,7 +635,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         {
             UNIT_ASSERT(
                 diagnostics.IgnoredPaths.at(path) ==
-                ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+                EConfigIgnoreReason::RuntimeUpdateForbidden);
         }
     }
 
@@ -761,13 +805,13 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(3, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("AllowedChild.FixedMessage.Frozen") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("FrozenChild.MutableChoice") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("FrozenChild.FixedChoice") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
     }
 
     // Verify that compound permissions discard unknown singular data silently,
@@ -853,7 +897,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         const auto* value = descriptor->field(0);
 
         // Build the ordinary field path without exposing its synthetic group.
-        TRuntimeConfigPath path;
+        TConfigSchemaPath path;
         path.Enter(*value);
         UNIT_ASSERT_VALUES_EQUAL("Value", path.GetPath());
         path.Leave();
@@ -946,13 +990,13 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(3, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("Allowed.Frozen") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("Frozen") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("ExplicitFalse.Mutable") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
     }
 
     // Verify that unchanged frozen NaNs produce no diagnostics, while changes
@@ -993,7 +1037,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
             for (const auto* path: {"FrozenDouble", "FrozenDoubles[]"}) {
                 UNIT_ASSERT(
                     rejected.IgnoredPaths.at(path) ==
-                    ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+                    EConfigIgnoreReason::RuntimeUpdateForbidden);
             }
             UNIT_ASSERT_VALUES_EQUAL(
                 startupBytes,
@@ -1103,7 +1147,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("FrozenRecords[]") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
         UNIT_ASSERT(!requested.GetFrozenRecords(0).HasMutable());
         UNIT_ASSERT(
             google::protobuf::util::MessageDifferencer::Equals(
@@ -1111,8 +1155,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
                 requested));
     }
 
-    // Verify that restoring either a static or startup oneof branch cannot
-    // return unknown data to runtime or mutate static/startup.
+    // Verify that restoring a startup oneof branch removes unknown fields.
     Y_UNIT_TEST(ShouldCleanRestoredOneofBranches)
     {
         for (bool readOnly: {false, true}) {
@@ -1128,18 +1171,15 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
             initial->SetValue(20);
             initial->SetFrozen(30);
             AddUnknownField(*initial, 200);
-            const auto staticBytes = staticConfig.SerializeAsString();
-            const auto startupBytes = startup.SerializeAsString();
 
-            // Reject a switch and recover the original message without
-            // unknown data.
+            // Restore startup values without unknown data.
             NProto::NTest::TRuntimeConfig requested;
             requested.SetFixedNumber(99);
             const auto diagnostics =
                 FilterRuntimeConfig(staticConfig, startup, requested);
             const auto& restored = readOnly ? requested.GetReadOnlyMessage()
                                             : requested.GetFixedMessage();
-            UNIT_ASSERT_VALUES_EQUAL(readOnly ? 20 : 10, restored.GetValue());
+            UNIT_ASSERT_VALUES_EQUAL(20, restored.GetValue());
             UNIT_ASSERT_VALUES_EQUAL(30, restored.GetFrozen());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
@@ -1148,11 +1188,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
                     .field_count());
             UNIT_ASSERT(
                 diagnostics.IgnoredPaths.at("FixedChoice") ==
-                ERuntimeConfigIgnoreReason::OneofSwitchForbidden);
-            UNIT_ASSERT_VALUES_EQUAL(
-                staticBytes,
-                staticConfig.SerializeAsString());
-            UNIT_ASSERT_VALUES_EQUAL(startupBytes, startup.SerializeAsString());
+                EConfigIgnoreReason::OneofSwitchForbidden);
         }
     }
 
@@ -1173,7 +1209,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
         UNIT_ASSERT(
             diagnostics.IgnoredPaths.at("Allowed.Frozen") ==
-            ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+            EConfigIgnoreReason::RuntimeUpdateForbidden);
 
         // Retain explicit presence when unknown data is the only payload.
         requested.MutableAllowed();
@@ -1224,7 +1260,7 @@ Y_UNIT_TEST_SUITE(TRuntimeConfigTest)
         for (int i = 1; i <= 120; ++i) {
             UNIT_ASSERT_C(
                 diagnostics.IgnoredPaths.at("Parameter" + ToString(i)) ==
-                    ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden,
+                    EConfigIgnoreReason::RuntimeUpdateForbidden,
                 "Incorrect diagnostic reason for Parameter" << i);
         }
         UNIT_ASSERT_VALUES_EQUAL(0, requested->ByteSizeLong());

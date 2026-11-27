@@ -67,6 +67,7 @@
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
+#include <cloud/storage/core/libs/config/config_preparation_diagnostics.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
@@ -93,6 +94,7 @@
 
 #include <util/digest/city.h>
 #include <util/generic/algorithm.h>
+#include <util/generic/vector.h>
 #include <util/system/hostname.h>
 
 #include <ranges>
@@ -112,6 +114,23 @@ using namespace NCloud::NStorage;
 using namespace NActors;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Log static-only paths from startup without exposing field values.
+void LogIgnoredDynamicFields(
+    TLog& Log,
+    const NConfig::TConfigPreparationDiagnostics& diagnostics)
+{
+    for (const auto& [path, reason]: diagnostics.IgnoredPaths) {
+        if (reason == NConfig::EConfigIgnoreReason::StaticOnly) {
+            STORAGE_WARN(
+                "Ignoring static-only field from dynamic "
+                "PrivateDatabaseConfig: "
+                << path);
+        }
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -686,6 +705,8 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("CMS configs initialized");
 
     NProto::TBlockstoreConfig startupBlockstoreConfigProto;
+    NConfig::TConfigPreparationDiagnostics
+        startupDynamicConfigNormalizationDiagnostics;
     if (ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled()) {
         TBlockstoreConfigExtraParameters extraParameters;
         extraParameters.DiskAgent.Rack = ConfigInitializer->DiskAgentConfig->GetRack();
@@ -699,6 +720,12 @@ void TBootstrapYdb::InitKikimrService()
             std::move(extraParameters));
         startupBlockstoreConfigProto = std::move(startupConfig.Proto);
         StartupBlockstoreConfig = std::move(startupConfig.Config);
+        startupDynamicConfigNormalizationDiagnostics =
+            std::move(startupConfig.NormalizationDiagnostics);
+
+        LogIgnoredDynamicFields(
+            Log,
+            startupDynamicConfigNormalizationDiagnostics);
 
         StartupBlockstoreConfig->GetStorageConfig()->UpdateControlsDefaults();
 
@@ -1009,6 +1036,8 @@ void TBootstrapYdb::InitKikimrService()
     args.AppConfig = ConfigInitializer->KikimrConfig;
     args.StaticBlockstoreConfigProto = std::move(staticBlockstoreConfig);
     args.CmsBlockstoreConfig = std::move(cmsBlockstoreConfig);
+    args.StartupDynamicConfigNormalizationDiagnostics =
+        std::move(startupDynamicConfigNormalizationDiagnostics);
     args.StartupBlockstoreConfigProto = std::move(startupBlockstoreConfigProto);
     args.StartupBlockstoreConfig = StartupBlockstoreConfig;
     args.ConfigHolder = std::move(configHolder);
