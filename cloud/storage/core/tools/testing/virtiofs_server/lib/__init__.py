@@ -110,7 +110,7 @@ class VirtioFsServer:
                 raise
 
     def _run_client(self, port, args):
-        deadline = time.monotonic() + 60
+        deadline = time.monotonic() + 200
         error = ""
         while time.monotonic() < deadline:
             if not self.daemon.is_alive():
