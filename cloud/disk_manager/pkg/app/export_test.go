@@ -151,7 +151,7 @@ func TestControlplaneExportDoesNotInitializeExecutor(t *testing.T) {
 				GrpcConfig:   &server_config.GrpcConfig{},
 				ExportConfig: exportConfig,
 			},
-			nil, nil, registry, nil, nil,
+			nil, nil, nil, registry, nil, nil,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -184,6 +184,7 @@ func TestExportDisabledDoesNotInitializeOrRegister(t *testing.T) {
 			context.Background(),
 			&server_config.ServerConfig{GrpcConfig: grpcConfig},
 			nil, // exportRegistry
+			nil, // ydbClientRegistry
 			nil, // creds
 			registry,
 			nil, // backupS3
@@ -238,7 +239,7 @@ func TestExportExecutorRejectsInvalidCheckpointConfig(t *testing.T) {
 		_, err := initSnapshotExport(
 			context.Background(),
 			&server_config.ServerConfig{ExportConfig: test.config},
-			nil, nil, tasks.NewRegistry(), nil, nil,
+			nil, nil, nil, tasks.NewRegistry(), nil, nil,
 		)
 		if err == nil || !strings.Contains(err.Error(), test.message) {
 			t.Fatalf("expected checkpoint validation, got %v", err)
@@ -250,7 +251,7 @@ func TestExportExecutorRequiresFullConfig(t *testing.T) {
 	_, err := initSnapshotExport(
 		context.Background(),
 		&server_config.ServerConfig{ExportConfig: &server_config.ExportConfig{}},
-		nil, nil, tasks.NewRegistry(), nil, nil,
+		nil, nil, nil, tasks.NewRegistry(), nil, nil,
 	)
 	if err == nil {
 		t.Fatal("executor without Compute settings must not start")

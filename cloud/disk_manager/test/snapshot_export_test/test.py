@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import re
 import signal
 import subprocess
 import threading
@@ -16,6 +17,8 @@ from typing import NamedTuple
 
 import pytest
 import boto3
+import lz4.frame
+import ydb
 
 import contrib.ydb.tests.library.common.yatest_common as yatest_common
 
@@ -25,6 +28,7 @@ from contrib.ydb.tests.library.harness.kikimr_runner import (
 )
 
 from cloud.disk_manager.test.recipe.common import get_ydb_binary_path
+from cloud.disk_manager.test.recipe.compute_launcher import ComputeLauncher
 from cloud.disk_manager.test.recipe.disk_manager_launcher import DiskManagerLauncher
 from cloud.disk_manager.test.recipe.metadata_service_launcher import (
     MetadataServiceLauncher,
@@ -45,6 +49,19 @@ def compute_checksum(file_path: Path) -> str:
     return hash_sha256.hexdigest()
 
 
+def part_key(number: int, compression: str = "lz4") -> str:
+    key = f"part-{number:08d}.raw"
+    if compression == "lz4":
+        key += ".lz4"
+
+    return key
+
+
+def part_keys_stored_without_second(prefix: str) -> list[str]:
+    """Objects that fail_second_part_proxy leaves under the prefix."""
+    return [f"{prefix}/{part_key(number)}" for number in (1, 3)]
+
+
 class _SnapshotExportTestSetup:
 
     class _Disk(NamedTuple):
@@ -52,7 +69,8 @@ class _SnapshotExportTestSetup:
         blocks_count: int
         id: str
 
-    def __init__(self, use_s3: bool, enable_backup: bool = False):
+    # export_credentials enables export tasks, see ComputeLauncher.
+    def __init__(self, use_s3: bool, enable_backup: bool = False, export_credentials=None):
         self.use_s3 = use_s3
         self.services_stopped = False
 
@@ -68,6 +86,9 @@ class _SnapshotExportTestSetup:
         self.blockstore_client_binary_path = yatest_common.binary_path("cloud/blockstore/apps/client/blockstore-client")
         self.disk_manager_admin_binary_path = yatest_common.binary_path(
             "cloud/disk_manager/cmd/disk-manager-admin/disk-manager-admin"
+        )
+        disk_manager_init_db_binary_path = yatest_common.binary_path(
+            "cloud/disk_manager/cmd/disk-manager-init-db/disk-manager-init-db"
         )
 
         self.working_dir = Path(
@@ -140,6 +161,9 @@ class _SnapshotExportTestSetup:
             s3_credentials_file=(str(self.s3_credentials_file) if self.s3_credentials_file is not None else None),
         )
 
+        controlplane_config = ""
+        dataplane_config = ""
+
         self.backup_s3 = None
         if enable_backup:
             self.backup_s3 = S3Launcher()
@@ -169,17 +193,8 @@ SnapshotStorageBackupConfig {{
     S3KeyPrefix: "source"
 }}
 """
-            for launcher in [self.controlplane_disk_manager, self.dataplane_disk_manager]:
-                path = Path(launcher.config_file)
-                config = path.read_text().replace(
-                    "SnapshotsConfig: <",
-                    'SnapshotsConfig: <\n    ScheduleBackupSnapshotTasksScheduleInterval: "1s"',
-                )
-                config = config.replace(
-                    "ImagesConfig: <",
-                    'ImagesConfig: <\n    ScheduleBackupImageTasksScheduleInterval: "1s"',
-                )
-                path.write_text(config + backup_config)
+            controlplane_config += backup_config
+            dataplane_config += backup_config
             # Required server protobuf fields remain inert. No snapshot
             # persistence config is present; service endpoints are unreachable.
             self.backup_export_config = self.working_dir / "backup_export_config.txt"
@@ -190,6 +205,50 @@ MonitoringConfig { Revision: 1 Version: "test" }
 AuthConfig { MetadataUrl: "http://localhost:1" }
 PersistenceConfig { Endpoint: "localhost:1" Database: "/unavailable" }
 ''')
+
+        self.compute = None
+        if export_credentials:
+            self.compute = ComputeLauncher(export_credentials)
+            self.compute.start()
+            # Controlplane schedules export tasks, dataplane executes them.
+            controlplane_config += "ExportConfig {}\n"
+            # The default source needs SnapshotStorageBackupConfig.
+            dataplane_config += f"""
+ExportConfig {{
+    DiskServiceClientConfig {{
+        Endpoint: "localhost:{self.compute.port}"
+        Insecure: true
+    }}
+    SourceStorage: PRIMARY
+    PartSize: {4 * 1024 * 1024}
+    ReadWorkerCount: 4
+    UploadWorkerCount: 2
+    MaxRetries: 1
+}}
+"""
+
+        for launcher, extra_config in [
+            (self.controlplane_disk_manager, controlplane_config),
+            (self.dataplane_disk_manager, dataplane_config),
+        ]:
+            if not extra_config:
+                continue
+
+            path = Path(launcher.config_file)
+            config = path.read_text()
+            if enable_backup:
+                config = config.replace(
+                    "SnapshotsConfig: <",
+                    'SnapshotsConfig: <\n    ScheduleBackupSnapshotTasksScheduleInterval: "1s"',
+                )
+                config = config.replace(
+                    "ImagesConfig: <",
+                    'ImagesConfig: <\n    ScheduleBackupImageTasksScheduleInterval: "1s"',
+                )
+            path.write_text(config + extra_config)
+            # The launcher has initialized the database before these configs
+            # were added, and their tables are created only with them.
+            subprocess.check_call([disk_manager_init_db_binary_path, "--config", str(path)])
 
         self.controlplane_disk_manager.start()
         self.dataplane_disk_manager.start()
@@ -228,6 +287,8 @@ PersistenceConfig { Endpoint: "localhost:1" Database: "/unavailable" }
             return
         self.controlplane_disk_manager.stop_daemon()
         self.dataplane_disk_manager.stop_daemon()
+        if self.compute is not None:
+            self.compute.stop_service()
         self.metadata_service.stop_service()
         self.nbs.stop_service()
         self.ydb.stop_service()
@@ -420,7 +481,12 @@ PersistenceConfig { Endpoint: "localhost:1" Database: "/unavailable" }
         server_config=None,
         source_args=(),
         resource_group="snapshots",
+        compression=None,
     ):
+        compression_args = []
+        if compression is not None:
+            compression_args = ["--s3-compression", compression]
+
         return [
             self.disk_manager_admin_binary_path,
             "--server-config",
@@ -445,9 +511,13 @@ PersistenceConfig { Endpoint: "localhost:1" Database: "/unavailable" }
             "1",
             "--s3-request-timeout",
             "10s",
+            # fail_second_part_proxy needs a second worker to store the other
+            # parts while the second one is held.
+            "--s3-upload-workers",
+            "2",
             "--read-workers",
             "4",
-        ] + list(source_args)
+        ] + compression_args + list(source_args)
 
     def export_snapshot_to_s3(
         self,
@@ -458,14 +528,93 @@ PersistenceConfig { Endpoint: "localhost:1" Database: "/unavailable" }
         server_config=None,
         source_args=(),
         resource_group="snapshots",
+        compression=None,
     ):
         return subprocess.run(
-            self.s3_export_command(snapshot_id, prefix, endpoint, server_config, source_args, resource_group),
+            self.s3_export_command(
+                snapshot_id, prefix, endpoint, server_config, source_args, resource_group, compression
+            ),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=check,
             timeout=120,
         )
+
+    def api_export_command(
+        self,
+        resource_group: str,
+        resource_id: str,
+        prefix: str,
+        compute_task_id: str,
+        endpoint=None,
+    ):
+        # Schedules export tasks through the Disk Manager API and waits for the
+        # operation. Transfer settings come from the server's ExportConfig.
+        return [
+            self.disk_manager_admin_binary_path,
+            "--config",
+            self.client_config_path,
+            resource_group,
+            "export",
+            "--async",
+            "--wait",
+            "--id",
+            resource_id,
+            "--folder-id",
+            "folder",
+            "--compute-task-id",
+            compute_task_id,
+            "--s3-endpoint",
+            endpoint or self.destination_endpoint,
+            "--s3-bucket",
+            self.destination_bucket,
+            "--s3-prefix",
+            prefix,
+            "--s3-region",
+            "destination-region",
+        ]
+
+    def export_through_api(
+        self,
+        resource_group: str,
+        resource_id: str,
+        prefix: str,
+        compute_task_id: str,
+        endpoint=None,
+        check=True,
+    ):
+        return subprocess.run(
+            self.api_export_command(resource_group, resource_id, prefix, compute_task_id, endpoint),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=check,
+            timeout=180,
+        )
+
+    def export_part_numbers(self) -> list[int]:
+        """Parts that export tasks have confirmed in the task database."""
+
+        def read(session):
+            result_sets = session.transaction().execute(
+                "select part_number from `disk_manager/recipe/tasks/export_parts` order by part_number",
+                commit_tx=True,
+            )
+            return [row.part_number for row in result_sets[0].rows]
+
+        with ydb.Driver(endpoint=f"localhost:{self.ydb.port}", database="/Root") as driver:
+            driver.wait(timeout=30)
+            with ydb.SessionPool(driver) as pool:
+                return pool.retry_operation_sync(read)
+
+    def wait_for_export_parts(self, expected: list[int]):
+        deadline = time.monotonic() + 60
+        while True:
+            parts = self.export_part_numbers()
+            if parts == expected:
+                return
+            if time.monotonic() > deadline:
+                raise AssertionError(f"export_parts has parts {parts}, expected {expected}")
+            time.sleep(0.5)
 
     def backup_snapshot(self, snapshot_id: str):
         self.backup_resource("snapshots", snapshot_id)
@@ -495,7 +644,12 @@ PersistenceConfig { Endpoint: "localhost:1" Database: "/unavailable" }
         return [obj["Key"] for obj in result.get("Contents", [])]
 
     def verify_s3_backup(
-        self, manifest_key: str, expected_checksum: str, disk_size: int, expected_prefix: str
+        self,
+        manifest_key: str,
+        expected_checksum: str,
+        disk_size: int,
+        expected_prefix: str,
+        compression: str = "lz4",
     ):
         response = self.destination_client.get_object(Bucket=self.destination_bucket, Key=manifest_key)
         assert response["ContentType"] == "application/json"
@@ -504,6 +658,7 @@ PersistenceConfig { Endpoint: "localhost:1" Database: "/unavailable" }
             manifest = json.loads(body.read())
         assert manifest["format_version"] == 1
         assert manifest["format"] == "partitioned-raw-image"
+        assert manifest["compression"] == compression
         assert manifest["size"] == disk_size
         assert manifest["part_count"] == len(manifest["parts"]) == 3
         assert manifest["max_part_size"] == 4 * 1024 * 1024
@@ -515,6 +670,7 @@ PersistenceConfig { Endpoint: "localhost:1" Database: "/unavailable" }
         checksum = hashlib.sha256()
         for number, part in enumerate(manifest["parts"], 1):
             assert part["number"] == number
+            assert part["key"] == part_key(number, compression)
             assert part["offset"] == offset
             response = self.destination_client.get_object(
                 Bucket=self.destination_bucket, Key=backup_prefix + part["key"]
@@ -522,9 +678,15 @@ PersistenceConfig { Endpoint: "localhost:1" Database: "/unavailable" }
             assert response["ContentType"] == "application/octet-stream"
             assert "ContentEncoding" not in response
             with response["Body"] as body:
-                data = body.read()
+                stored = body.read()
+            # stored_length and sha256 describe the object, offset and length
+            # describe the raw image.
+            assert len(stored) == part["stored_length"]
+            assert hashlib.sha256(stored).hexdigest() == part["sha256"]
+            data = stored
+            if compression == "lz4":
+                data = lz4.frame.decompress(stored)
             assert len(data) == part["length"] <= manifest["max_part_size"]
-            assert hashlib.sha256(data).hexdigest() == part["sha256"]
             checksum.update(data)
             offset += len(data)
         assert offset == disk_size
@@ -532,13 +694,50 @@ PersistenceConfig { Endpoint: "localhost:1" Database: "/unavailable" }
         return manifest
 
 
+class _FailSecondPartProxy(NamedTuple):
+    endpoint: str
+    # Object keys of the PUT requests stored in the destination, in order.
+    stored_keys: list[str]
+    # Access key IDs that signed the requests.
+    access_key_ids: set[str]
+
+
 @contextmanager
-def fail_second_part_proxy(destination_endpoint: str, started=None, release=None):
-    """Forward to the S3 launcher but reject the second raw object."""
+def fail_second_part_proxy(destination_endpoint: str, started=None, release=None, failures=None):
+    """Forward to the S3 launcher but reject the second part.
+
+    Parts are assembled and uploaded concurrently, in no particular order. The
+    second part is rejected only after the other two are stored, so the objects
+    left in the destination do not depend on timing. With failures set, only
+    that many requests for the second part are rejected.
+    """
+
+    failed_key = part_key(2)
+    other_keys = {part_key(1), part_key(3)}
+    stored_keys = []
+    access_key_ids = set()
+    rejected = 0
+    lock = threading.Lock()
+    others_stored = threading.Event()
+
+    def reject_second_part() -> bool:
+        nonlocal rejected
+        with lock:
+            if failures is not None and rejected >= failures:
+                return False
+            rejected += 1
+            return True
 
     class Handler(BaseHTTPRequestHandler):
         def forward(self):
-            if self.command == "PUT" and self.path.endswith("part-00000002.raw"):
+            data = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            object_key = self.path.split("?", 1)[0].rsplit("/", 1)[-1]
+            credential = re.search("Credential=([^/]+)/", self.headers.get("Authorization", ""))
+            if credential is not None:
+                with lock:
+                    access_key_ids.add(credential.group(1))
+            if self.command == "PUT" and object_key == failed_key and reject_second_part():
+                others_stored.wait(timeout=30)
                 if started is not None:
                     started.set()
                     release.wait(timeout=30)
@@ -548,7 +747,6 @@ def fail_second_part_proxy(destination_endpoint: str, started=None, release=None
                 self.end_headers()
                 self.wfile.write(body)
                 return
-            data = self.rfile.read(int(self.headers.get("Content-Length", "0")))
             request = urllib.request.Request(
                 destination_endpoint + self.path,
                 data=data if self.command == "PUT" else None,
@@ -561,6 +759,11 @@ def fail_second_part_proxy(destination_endpoint: str, started=None, release=None
                 response = error
             with response:
                 body = response.read()
+                if self.command == "PUT" and response.status == 200:
+                    with lock:
+                        stored_keys.append(object_key)
+                        if other_keys <= set(stored_keys):
+                            others_stored.set()
                 self.send_response(response.status)
                 for key, value in response.headers.items():
                     if key.lower() not in {"connection", "transfer-encoding", "content-length"}:
@@ -577,7 +780,7 @@ def fail_second_part_proxy(destination_endpoint: str, started=None, release=None
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        yield f"http://localhost:{server.server_port}"
+        yield _FailSecondPartProxy(f"http://localhost:{server.server_port}", stored_keys, access_key_ids)
     finally:
         server.shutdown()
         server.server_close()
@@ -586,10 +789,6 @@ def fail_second_part_proxy(destination_endpoint: str, started=None, release=None
 
 @pytest.mark.parametrize("use_s3", [False, True], ids=["ydb", "s3"])
 def test_snapshot_export_downloads_snapshot_and_preserves_data(use_s3):
-    # TODO(https://github.com/ydb-platform/nbs/issues/7930):
-    # Fix LZ4 validation and parallel upload checks before re-enabling.
-    return
-
     with _SnapshotExportTestSetup(use_s3=use_s3) as setup:
         disk_size = 12 * 1024 * 1024
         disk_id = "export-source"
@@ -665,23 +864,32 @@ def test_snapshot_export_downloads_snapshot_and_preserves_data(use_s3):
             backup_uuids.add(manifest["backup_uuid"])
         assert len(setup.destination_keys("successful/")) == 4
 
-        with fail_second_part_proxy(setup.destination_endpoint) as endpoint:
-            result = setup.export_snapshot_to_s3(incremental_snapshot_id, "failed", endpoint=endpoint, check=False)
+        result = setup.export_snapshot_to_s3(incremental_snapshot_id, "uncompressed", compression="none")
+        assert result.stdout == b""
+        assert len(setup.destination_keys("uncompressed/")) == 4
+        setup.verify_s3_backup(
+            "uncompressed/manifest.json",
+            incremental_checksum,
+            disk_size,
+            "uncompressed",
+            compression="none",
+        )
+
+        with fail_second_part_proxy(setup.destination_endpoint) as proxy:
+            result = setup.export_snapshot_to_s3(
+                incremental_snapshot_id,
+                "failed",
+                endpoint=proxy.endpoint,
+                check=False,
+            )
         assert result.returncode != 0
         assert result.stdout == b""
         assert b"part 2/3" in result.stderr
-        failed_keys = setup.destination_keys("failed/")
-        assert len(failed_keys) == 1
-        assert failed_keys[0].endswith("part-00000001.raw")
-        assert not any(key.endswith("manifest.json") for key in failed_keys)
+        assert setup.destination_keys("failed/") == part_keys_stored_without_second("failed")
 
 
 @pytest.mark.parametrize("use_s3", [False, True], ids=["ydb", "s3"])
 def test_snapshot_export_reads_real_backup_without_disk_services(use_s3):
-    # TODO(https://github.com/ydb-platform/nbs/issues/7930):
-    # Fix LZ4 validation and parallel upload checks before re-enabling.
-    return
-
     with _SnapshotExportTestSetup(use_s3=use_s3, enable_backup=True) as setup:
         disk_size = 12 * 1024 * 1024
         disk_id = "backup-export-source"
@@ -757,27 +965,25 @@ def test_snapshot_export_reads_real_backup_without_disk_services(use_s3):
             assert result.returncode != 0
         assert setup.destination_keys("backup-missing/") == []
 
-        with fail_second_part_proxy(setup.destination_endpoint) as endpoint:
+        with fail_second_part_proxy(setup.destination_endpoint) as proxy:
             result = setup.export_snapshot_to_s3(
                 incremental_id,
                 "backup-failed",
-                endpoint=endpoint,
+                endpoint=proxy.endpoint,
                 check=False,
                 server_config=setup.backup_export_config,
                 source_args=source_args,
             )
         assert result.returncode != 0
-        failed_keys = setup.destination_keys("backup-failed/")
-        assert len(failed_keys) == 1
-        assert failed_keys[0].endswith("part-00000001.raw")
+        assert setup.destination_keys("backup-failed/") == part_keys_stored_without_second("backup-failed")
 
         started, release = threading.Event(), threading.Event()
-        with fail_second_part_proxy(setup.destination_endpoint, started, release) as endpoint:
+        with fail_second_part_proxy(setup.destination_endpoint, started, release) as proxy:
             process = subprocess.Popen(
                 setup.s3_export_command(
                     incremental_id,
                     "backup-cancelled",
-                    endpoint,
+                    proxy.endpoint,
                     setup.backup_export_config,
                     source_args,
                 ),
@@ -795,18 +1001,12 @@ def test_snapshot_export_reads_real_backup_without_disk_services(use_s3):
                 if process.poll() is None:
                     process.kill()
                     process.communicate(timeout=10)
-        cancelled_keys = setup.destination_keys("backup-cancelled/")
-        assert len(cancelled_keys) == 1
-        assert cancelled_keys[0].endswith("part-00000001.raw")
+        assert setup.destination_keys("backup-cancelled/") == part_keys_stored_without_second("backup-cancelled")
         assert setup.backup_fingerprint() == original_source
 
 
 @pytest.mark.parametrize("use_s3", [False, True], ids=["ydb", "s3"])
 def test_image_export_reads_own_data_and_real_backup_without_disk_services(use_s3):
-    # TODO(https://github.com/ydb-platform/nbs/issues/7930):
-    # Fix LZ4 validation and parallel upload checks before re-enabling.
-    return
-
     with _SnapshotExportTestSetup(use_s3=use_s3, enable_backup=True) as setup:
         disk_size = 12 * 1024 * 1024
         disk_id = "image-export-source"
@@ -895,28 +1095,26 @@ def test_image_export_reads_own_data_and_real_backup_without_disk_services(use_s
         assert result.returncode != 0
         assert setup.destination_keys("image-missing/") == []
 
-        with fail_second_part_proxy(setup.destination_endpoint) as endpoint:
+        with fail_second_part_proxy(setup.destination_endpoint) as proxy:
             result = setup.export_snapshot_to_s3(
                 snapshot_image_id,
                 "image-failed",
-                endpoint=endpoint,
+                endpoint=proxy.endpoint,
                 check=False,
                 server_config=setup.backup_export_config,
                 source_args=source_args,
                 resource_group="images",
             )
         assert result.returncode != 0
-        failed_keys = setup.destination_keys("image-failed/")
-        assert len(failed_keys) == 1 and failed_keys[0].endswith("part-00000001.raw")
-        assert not any(key.endswith("manifest.json") for key in failed_keys)
+        assert setup.destination_keys("image-failed/") == part_keys_stored_without_second("image-failed")
 
         started, release = threading.Event(), threading.Event()
-        with fail_second_part_proxy(setup.destination_endpoint, started, release) as endpoint:
+        with fail_second_part_proxy(setup.destination_endpoint, started, release) as proxy:
             process = subprocess.Popen(
                 setup.s3_export_command(
                     snapshot_image_id,
                     "image-cancelled",
-                    endpoint,
+                    proxy.endpoint,
                     setup.backup_export_config,
                     source_args,
                     resource_group="images",
@@ -934,8 +1132,101 @@ def test_image_export_reads_own_data_and_real_backup_without_disk_services(use_s
                 if process.poll() is None:
                     process.kill()
                     process.communicate(timeout=10)
-        cancelled_keys = setup.destination_keys("image-cancelled/")
-        assert len(cancelled_keys) == 1
-        assert cancelled_keys[0].endswith("part-00000001.raw")
-        assert not any(key.endswith("manifest.json") for key in cancelled_keys)
+        assert setup.destination_keys("image-cancelled/") == part_keys_stored_without_second("image-cancelled")
         assert setup.backup_fingerprint() == original_source
+
+
+def parse_api_export_output(stdout: bytes) -> tuple[str, dict]:
+    """Operation ID and ExportResponse printed by export --async --wait."""
+    operation, response = stdout.decode().splitlines()
+    return operation.removeprefix("Operation: "), json.loads(response)
+
+
+@pytest.mark.parametrize("use_s3", [False, True], ids=["ydb", "s3"])
+def test_export_tasks_use_compute_credentials_and_resume_after_restart(use_s3):
+    snapshot_id = "task-export-snapshot"
+    image_id = "task-export-image"
+    export_credentials = {
+        ("snapshot", snapshot_id): ("snapshot-key", "snapshot-secret"),
+        ("image", image_id): ("image-key", "image-secret"),
+    }
+    with _SnapshotExportTestSetup(use_s3=use_s3, export_credentials=export_credentials) as setup:
+        disk_size = 12 * 1024 * 1024
+        disk_id = "task-export-source"
+        disk = setup.create_new_disk(disk_id, disk_size)
+        mib_blocks = 1024 * 1024 // disk.block_size
+        setup.write_random_blocks(disk_id, 0, mib_blocks)
+        setup.write_random_blocks(disk_id, disk.blocks_count - mib_blocks, mib_blocks)
+        checksum = setup.checksum_disk(disk_id)
+        setup.create_snapshot(disk_id, snapshot_id)
+        setup.admin("images", "create", "--id", image_id, "--src-snapshot-id", snapshot_id, "--folder-id=folder")
+
+        for resource_group, resource_id in [("snapshots", snapshot_id), ("images", image_id)]:
+            prefix = f"task-success/{resource_id}"
+            operation_ids = set()
+            backup_uuids = set()
+            # The second request repeats the Compute task and gets its operation.
+            for _ in range(2):
+                result = setup.export_through_api(resource_group, resource_id, prefix, f"success-{resource_id}")
+                operation_id, response = parse_api_export_output(result.stdout)
+                assert response == {"bucket": setup.destination_bucket, "manifest_key": f"{prefix}/manifest.json"}
+                assert len(setup.destination_keys(prefix)) == 4
+                manifest = setup.verify_s3_backup(response["manifest_key"], checksum, disk_size, prefix)
+                assert manifest["snapshot_id"] == resource_id
+                operation_ids.add(operation_id)
+                backup_uuids.add(manifest["backup_uuid"])
+            assert len(operation_ids) == 1 and len(backup_uuids) == 1
+            setup.wait_for_export_parts([])
+
+        # A rejected part fails the tasks. Stored parts stay in the bucket,
+        # their confirmations are removed from the task database.
+        with fail_second_part_proxy(setup.destination_endpoint) as proxy:
+            result = setup.export_through_api(
+                "images",
+                image_id,
+                "task-failed",
+                "failed-image",
+                endpoint=proxy.endpoint,
+                check=False,
+            )
+        assert result.returncode != 0
+        assert setup.destination_keys("task-failed/") == part_keys_stored_without_second("task-failed")
+        # Destination credentials come from Compute.
+        assert proxy.access_key_ids == {"image-key"}
+        setup.wait_for_export_parts([])
+
+        # Dataplane dies with two parts confirmed and the second one in flight.
+        # After the restart the task uploads only the missing part.
+        started, release = threading.Event(), threading.Event()
+        with fail_second_part_proxy(setup.destination_endpoint, started, release, failures=1) as proxy:
+            process = subprocess.Popen(
+                setup.api_export_command(
+                    "snapshots",
+                    snapshot_id,
+                    "task-resumed",
+                    "resumed-snapshot",
+                    proxy.endpoint,
+                ),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            try:
+                assert started.wait(timeout=60), "Export did not reach the second part"
+                setup.wait_for_export_parts([1, 3])
+                setup.dataplane_disk_manager.disk_manager.kill()
+                release.set()
+                setup.dataplane_disk_manager.start()
+                stdout, _ = process.communicate(timeout=180)
+                assert process.returncode == 0
+            finally:
+                release.set()
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate(timeout=10)
+        _, response = parse_api_export_output(stdout)
+        assert response["manifest_key"] == "task-resumed/manifest.json"
+        assert sorted(proxy.stored_keys) == sorted([part_key(1), part_key(2), part_key(3), "manifest.json"])
+        assert proxy.access_key_ids == {"snapshot-key"}
+        manifest = setup.verify_s3_backup(response["manifest_key"], checksum, disk_size, "task-resumed")
+        assert manifest["snapshot_id"] == snapshot_id
+        setup.wait_for_export_parts([])

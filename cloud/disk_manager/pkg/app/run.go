@@ -493,7 +493,8 @@ func run(
 	}
 
 	closeExport, err := initSnapshotExport(
-		ctx, config, exportRegistry, creds, taskRegistry, backupS3, db,
+		ctx, config, exportRegistry, ydbClientRegistry, creds, taskRegistry,
+		backupS3, db,
 	)
 	if err != nil {
 		return err

@@ -22,12 +22,14 @@ type Storage interface {
 		after uint32,
 		limit uint64,
 	) ([]exporter.S3ManifestPart, error)
+
 	UpsertPartsTx(
 		ctx context.Context,
 		tx *persistence.Transaction,
 		taskID string,
 		parts []exporter.S3ManifestPart,
 	) error
+
 	DeletePartsTx(
 		ctx context.Context,
 		tx *persistence.Transaction,
