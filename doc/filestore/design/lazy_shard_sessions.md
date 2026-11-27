@@ -1,4 +1,4 @@
-# Shard sessions sync: session requests in batches
+# Lazy shard sessions
 
 Status: proposal.
 
@@ -18,36 +18,35 @@ requests time out and the retries add more load.
 ## Idea
 
 The main tablet remains the only owner of the sessions, the shards keep the
-copies. A request per session per shard is replaced with the shard sessions
-sync: a single place which sends one batched request per shard with
-everything that all the clients are waiting for. What the clients see doesn't
-change: a session request is acknowledged only after all the shards have
-processed it.
+copies. `CreateSession` becomes lazy: the main tablet responds without
+waiting for the shards. A shard gets the session in the background from the
+shard sessions sync or, if a client comes to the shard earlier, upon the
+request of this client.
 
-1. The sync works in rounds. A round sends one `SyncShardSessions` request
-   per shard at most and processes a limited number of shards at a time.
-2. `CreateSession`, `ResetSession` and `DestroySession` become pending in the
-   main tablet and start a round right away. The client gets the response
-   when all the shards have processed the request. Any number of simultaneous
-   requests share the same round.
-3. Everything that the shards should get has a version. The main tablet
-   remembers which version each shard has been synced at and sends only what
-   is newer. A regular round (the existing schedule, `IdleSessionTimeout / 3`)
-   asks each shard for its sessions and fixes any discrepancy.
-4. A request has no timeout: it waits for as long as some of the shards are
-   unavailable. Request is completed as soon as each shard has been processed
-   it.
-5. The requests are idempotent: a client may retry a request at any moment.
-   A retry is recognized by the request id.
-6. An independent improvement: a shard which has no active session for a
-   request of a client (e.g. after its restart) requests the session from
-   the main tablet instead of failing the request. This is called on-demand
-   shard session recovery.
+1. `CreateSession` runs its transaction in the main tablet, starts the shard
+   sessions sync and responds. No shard is contacted before the response.
+2. The sync works in rounds. A round sends one `SyncShardSessions` request
+   per shard at most and processes a limited number of shards at a time. Any
+   number of simultaneous `CreateSession` requests share the same round.
+3. Each session has a version. The main tablet remembers which version each
+   shard has been synced at and sends only what is newer. A regular round
+   (the existing schedule, `IdleSessionTimeout / 3`) asks each shard for its
+   sessions and fixes any discrepancy.
+4. A client may come to a shard which doesn't have its session yet or has
+   been restarted: the request fails with `E_FS_INVALID_SESSION`. The client
+   sends `CreateSession` to the main tablet again, as it does now, but names
+   the shard in the request. The main tablet sends the session to this shard
+   only - there is no fan-out to all the shards - and the client retries the
+   request.
+5. `ResetSession` and `DestroySession` keep their semantics: the main tablet
+   sends them to all the shards and responds after all the shards have
+   responded. They are to be handled later.
 
 | 1000 simultaneous mounts, 25K shards | Current | Proposed |
 | --- | --- | --- |
-| requests to shards | 25M `CreateSession` + 25M `ResetSession` | a few rounds, 25K small requests each at most |
-| duration of a mount | two fan-outs to all the shards | at least two rounds |
+| `CreateSession`: requests to shards | 25M, the clients wait for all of them | a few rounds in the background, 25K small requests each at most; one request per shard which a client comes to before the sync does |
+| `CreateSession`: duration | a fan-out to all the shards | a transaction of the main tablet |
+| `ResetSession`, `DestroySession` | 25M requests to shards each | not changed |
 
 The regular rounds stay expensive (a shard returns all its sessions), but
 they run once in 20 minutes by default, not upon each change.
@@ -59,17 +58,18 @@ flowchart LR
     Shard["Shard tablets<br/>keep the copies of the sessions"]
     Fast["Shards in adapter mode<br/>(fast shards)"]
 
-    Client -->|"CreateSession<br/>ResetSession<br/>DestroySession"| Main
+    Client -->|"CreateSession<br/>(may name a shard)<br/>ResetSession<br/>DestroySession"| Main
     Client -->|"requests for the nodes<br/>of the shard"| Shard
     Main -->|"shard sessions sync:<br/>DescribeShardSessions<br/>SyncShardSessions"| Shard
-    Shard -->|"on demand:<br/>RecoverShardSessions"| Main
+    Main -->|"per-session requests:<br/>ResetSession<br/>DestroySession"| Shard
     Main -->|"the old way:<br/>per-session requests"| Fast
 ```
 
 The shards which work in adapter mode can't process the requests of the
-sync: their sessions are still managed by the per-session requests.
+sync: their sessions are still managed by the per-session requests, and
+`CreateSession` waits for these shards the way it does now.
 
-## Session requests
+## CreateSession
 
 ```mermaid
 sequenceDiagram
@@ -77,51 +77,79 @@ sequenceDiagram
     participant C as Client (vhost)
     participant M as Main tablet
     participant A as Shard sessions sync
-    participant S as Shards 1..M
+    participant S as Shard K
 
     C->>M: CreateSession
     M->>M: Tx_CreateSession (creates or recovers the session)
-    M->>A: keep the response, start a round
-    A->>S: SyncShardSessions (the session, Interrupted if it has been recovered)
-    S->>S: create the session or recover the copy, drop its unconfirmed writes if Interrupted
-    S-->>A: response
-    A->>M: all the shards have been synced
     M-->>C: CreateSessionResponse
+    M->>A: start a round
+    Note over A,S: The round delivers the session to the shards in the background
 
-    C->>M: ResetSession / DestroySession (SessionSeqNo = N)
-    M->>A: keep the request, don't touch the session, start a round
-    A->>S: SyncShardSessions (the request + the session the way the main tablet sees it)
-    S->>S: make the subsessions the same, Tx_ResetSession / Tx_DestroySession (the regular check of N)
-    S-->>A: response
-    A->>M: all the shards have been synced
-    M->>M: Tx_ResetSession / Tx_DestroySession
-    M-->>C: response
+    C->>S: a request for a node of shard K
+    S-->>C: E_FS_INVALID_SESSION (ShardFileSystemId = shard K)
+    C->>M: CreateSession (ShardFileSystemId = shard K)
+    M->>M: Tx_CreateSession
+    M->>S: SyncShardSessions (this session only)
+    S->>S: create the session or recover the copy
+    S-->>M: response
+    M-->>C: CreateSessionResponse
+    C->>S: the same request
+    S-->>C: response
 
-    Note over M,S: A round has failed for some of the shards: the request stays pending,<br/>the next round delivers it to them. There is no timeout:<br/>the request waits for as long as a shard is unavailable.<br/>A retry (the same RequestId) takes the place of the request and keeps what has been done
+    Note over C,S: Steps 6-14 happen only if the client comes to shard K before the round does<br/>or after shard K has been restarted
 ```
 
 * **CreateSession.** The transaction of the main tablet creates or recovers
-  the session, the response waits until the round delivers the session to
-  all the shards: a shard creates the session or makes its copy active with
-  the same subsessions. If the transaction has recovered an existing session
-  and the request is not a retry (the client has started anew: vhost has
-  been restarted, a VM is being migrated), the session is marked as
-  `Interrupted` and the shard drops its unconfirmed writes before it
-  responds - the same thing a tablet does when it recovers a session upon
-  `CreateSession` itself. One more `CreateSession` for the same session takes
-  the place of the pending one.
-* **Why CreateSession is not lazy.** Replying before the shards have got the
-  session would save a round per mount. But a client which recovers its
-  session repeats the requests which its previous incarnation hasn't
-  completed and goes on, while a shard may still keep an unconfirmed write of
-  that incarnation: the blobs are written, the write is not confirmed. A
-  shard which gets restarted applies all the unconfirmed writes which it
-  finds, so that write would be applied over the data which the new
-  incarnation has written to the same range later - an acknowledged write
-  would be lost. So each shard has to drop these writes before the client
-  gets the session back, and only the main tablet knows that the session has
-  been recovered. A write of a client which is still there is not lost: its
-  confirmation fails and it falls back to a regular write.
+  the session the way it does now, the response is sent right after it. If
+  the transaction has created the session or has recovered it for a client
+  which has started anew (vhost has been restarted, a VM is being migrated),
+  the session gets a new version and a round is started.
+* **CreateSession for a shard.** A response of a shard with
+  `E_FS_INVALID_SESSION` carries the filesystem id of the shard. The client
+  does what it does now upon this error - establishes the session via the main
+  tablet and retries the request - but passes the id of the shard in
+  `CreateSession` (`ShardFileSystemId`). The main tablet runs the same
+  transaction and sends the session to this shard only: a `SyncShardSessions`
+  request with a single session, out of the rounds. The shard creates the
+  session or makes its copy active with the same subsessions that the main
+  tablet has. The response waits for this shard only. It's the same client,
+  so the transaction normally changes nothing and no round is started.
+* **Requests of the tablets.** The requests which a tablet sends to a shard
+  on behalf of a client (`CreateNode`, `UnlinkNode`, `GetNodeAttr`,
+  `RenameNodeInDestination` and the like) are processed by the shard without
+  a session, so they don't depend on whether the shard has got the session.
+  The requests which need a session in a shard come from the client, so it's
+  the client that gets `E_FS_INVALID_SESSION`.
+* **Unconfirmed writes.** A tablet which recovers a session upon
+  `CreateSession` drops the unconfirmed writes of this session: the previous
+  incarnation of the client will not confirm them, and a tablet which gets
+  restarted applies all the unconfirmed writes which it finds. Now the client
+  gets the response before the shards do it: a shard drops these writes when
+  it gets the recovered session (it's marked as `Interrupted`) from a round
+  or from a `CreateSession` for this shard. Until then the shard gets rid of
+  such a write on its own - when the pipe of the previous incarnation gets
+  disconnected or when `GenerateBlobIdsReleaseCollectBarrierTimeout` (10 s)
+  expires. If the shard is restarted before any of this happens, it may apply
+  the write over the data which the new incarnation has already written to
+  the same range. This needs the unconfirmed writes to be enabled
+  (`AddingUnconfirmedDataEnabled`, off by default). A write of a client which
+  is still there is not lost: its confirmation fails and it falls back to a
+  regular write.
+
+## ResetSession and DestroySession
+
+They are processed the way they are now: the transaction of the main tablet,
+then a per-session request to each shard, the response after all the shards
+have responded.
+
+One thing is added. A shard which doesn't have the session fails
+`ResetSession` with `E_FS_INVALID_SESSION` and that fails the whole request,
+and a shard which gets the session from a round after `DestroySession` keeps
+it until a regular round. So the main tablet rejects `ResetSession` and
+`DestroySession` (`E_REJECTED`, the client retries) while the sync still has
+to deliver this session to some of the shards. It means that a mount (vhost
+sends `ResetSession` upon FUSE init) still waits until the session is in all
+the shards, unlike `CreateSession`.
 
 ## Sync rounds
 
@@ -138,10 +166,10 @@ sequenceDiagram
             A->>S: DescribeShardSessions
             S-->>A: its sessions, Generation
             A->>M: BuildShardSessionsDiff (the sessions of the shard)
-            M-->>A: what differs + the pending requests which the shard hasn't processed
-        else a round which is started by a request, the shard has been synced at version V
+            M-->>A: what differs
+        else a round which is started by CreateSession, the shard has been synced at version V
             A->>M: BuildShardSessionsDiff (ChangesOnly)
-            M-->>A: the sessions and the pending requests with versions after V and up to W
+            M-->>A: the sessions with versions after V and up to W
         end
         opt there is something to send
             A->>S: SyncShardSessions (a single request)
@@ -150,20 +178,15 @@ sequenceDiagram
     end
     A->>M: SyncSessionsCompleted (the synced shards and their generations)
     M->>M: remember version W and the generation of each synced shard
-    M->>M: complete the pending requests which all the shards have processed
 ```
 
-* **When a round is started.** By the regular schedule; right away when a
-  request becomes pending; `ShardSessionsSyncDelay` after a round which
-  hasn't delivered a pending request to some of the shards or after a request
-  has released its session and has left it alive. Only one round runs at a
-  time.
-* **What a shard gets from a round which is started by a request.** The
-  sessions and the pending requests which are newer than the version of the
-  shard. The main tablet doesn't know which shards have a session, so each
-  shard gets each request: `ResetSession` / `DestroySession` for a session
-  which the shard doesn't have do nothing there. A shard which has nothing
-  to get is not contacted at all.
+* **When a round is started.** By the regular schedule; right away when
+  `CreateSession` has created a session or has changed its subsessions;
+  `ShardSessionsSyncDelay` after a round which hasn't delivered a session to
+  some of the shards. Only one round runs at a time.
+* **What a shard gets from a round which is started by CreateSession.** The
+  sessions which are newer than the version of the shard. A shard which has
+  nothing to get is not contacted at all.
 * **When a shard is compared in full.** By each regular round. By any round
   if the main tablet knows nothing about the shard (the main tablet has been
   restarted) or if the shard has been restarted - the generation in its
@@ -171,15 +194,3 @@ sequenceDiagram
   until the main tablet recovers them. The comparison sends the sessions
   which are missing, not active or have other subsessions, and destroys the
   sessions which are unknown to the main tablet.
-
-## Session recovery on demand
-
-A session is in all the shards by the time its client gets it, so a shard
-lacks an active session only if something has gone wrong - usually the shard
-has been restarted. Without this mechanism the client gets
-`E_FS_INVALID_SESSION` and establishes the session anew. With it the shard
-postpones the request, asks the main tablet for the session
-(`RecoverShardSessions`, one request per session), recovers it and processes
-the postponed requests in the order of their arrival. If the session is not
-active in the main tablet, the requests fail with `E_FS_INVALID_SESSION`; if
-it's being destroyed or the main tablet is unavailable - with `E_REJECTED`.
