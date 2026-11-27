@@ -182,8 +182,9 @@ func TestDisksDeleteNonexistentDisk(t *testing.T) {
 	defer db.Close(ctx)
 
 	disk := DiskMeta{
-		ID:           "disk",
-		DeleteTaskID: "delete",
+		ID:            "disk",
+		CreateRequest: &wrappers.UInt64Value{Value: 1},
+		DeleteTaskID:  "delete",
 	}
 
 	deletingAt := time.Now()
@@ -198,14 +199,23 @@ func TestDisksDeleteNonexistentDisk(t *testing.T) {
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
 	// Check idempotency.
-	deletingAt = deletingAt.Add(time.Second)
-	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt)
+	actual, err = storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt.Add(time.Hour))
 	require.NoError(t, err)
 	require.Nil(t, actual)
+
+	err = storage.ClearDeletedDisks(ctx, deletingAt.Add(-time.Second), 10)
+	require.NoError(t, err)
 
 	_, err = storage.CreateDisk(ctx, disk)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	err = storage.ClearDeletedDisks(ctx, deletingAt.Add(time.Second), 10)
+	require.NoError(t, err)
+
+	actual, err = storage.CreateDisk(ctx, disk)
+	require.NoError(t, err)
+	require.NotNil(t, actual)
 }
 
 func TestDisksClearDeletedDisks(t *testing.T) {

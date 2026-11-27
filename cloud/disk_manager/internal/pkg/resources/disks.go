@@ -539,6 +539,11 @@ func (s *storageYDB) deleteDisk(
 		// prevents new disk creation with the same ID.
 		state.status = diskStatusDeleted
 		state.deletedAt = deletingAt
+
+		err = s.enqueueDiskForGC(ctx, tx, diskID, deletingAt)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	state.id = diskID
@@ -630,7 +635,22 @@ func (s *storageYDB) diskDeleted(
 		return err
 	}
 
-	_, err = tx.Execute(ctx, fmt.Sprintf(`
+	err = s.enqueueDiskForGC(ctx, tx, diskID, deletedAt)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (s *storageYDB) enqueueDiskForGC(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	diskID string,
+	deletedAt time.Time,
+) error {
+
+	_, err := tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $deleted_at as Timestamp;
@@ -642,11 +662,7 @@ func (s *storageYDB) diskDeleted(
 		persistence.ValueParam("$deleted_at", persistence.TimestampValue(deletedAt)),
 		persistence.ValueParam("$disk_id", persistence.UTF8Value(diskID)),
 	)
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
+	return err
 }
 
 func (s *storageYDB) clearDeletedDisks(
