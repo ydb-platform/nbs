@@ -16,13 +16,14 @@ namespace NCloud::NIcV2 {
 
 // Supply the request types and handler for the application using the peer.
 // Calls may overlap. Return errors through the result.
-struct IChannelFactory
+struct IRequestChannelFactory
 {
-    virtual ~IChannelFactory();
+    virtual ~IRequestChannelFactory();
 
     // Create a channel from the connected sockets. XdcSocket may be empty.
     // Return it inactive for the manager to activate.
-    virtual TChannelResult CreateChannel(const THandshakeReady& connection) = 0;
+    virtual TRequestChannelResult CreateRequestChannel(
+        const THandshakeReady& connection) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -38,7 +39,7 @@ struct TPeerManagerConfig
 
 // Call Start() once before creating peers. Keep an owning reference to the
 // manager until Stop() returns. Stop() closes its connections and waits for
-// connection callbacks and continuations of pending GetChannel() futures.
+// connection callbacks and continuations of pending GetRequestChannel() futures.
 // Call Stop() outside those callbacks. Restart is unsupported.
 struct IPeerManager: public IStartable
 {
@@ -46,7 +47,7 @@ struct IPeerManager: public IStartable
     // creates an independent peer and starts connecting asynchronously.
     // Retries rotate their starting address within the latest DNS result.
     // Pass a handler for connection, disconnection and failed-attempt events,
-    // or an empty pointer if you only need GetChannel(). Calls for this peer
+    // or an empty pointer if you only need GetRequestChannel(). Calls for this peer
     // are serialized and run inline on worker threads or the caller's thread.
     // They may begin before CreatePeer() returns. Keep handlers short and
     // non-blocking. Handlers and future continuations must not throw or wait
@@ -73,6 +74,6 @@ TResultOrError<IPeerManagerPtr> CreatePeerManager(
     ISchedulerPtr scheduler,
     IAddressResolverPtr resolver,
     ITaskQueuePtr completions,
-    IChannelFactoryPtr channelFactory);
+    IRequestChannelFactoryPtr channelFactory);
 
 }   // namespace NCloud::NIcV2

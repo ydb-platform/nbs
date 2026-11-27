@@ -2,7 +2,7 @@ LIBRARY()
 
 SRCS(
     host_endpoint.cpp
-    peer_request_channel.cpp
+    peer_request_sender.cpp
     service.cpp
 )
 

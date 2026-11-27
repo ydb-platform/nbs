@@ -37,12 +37,12 @@ using namespace NThreading;
 
 using NCloud::NIcV2::CreatePeerManager;
 using NCloud::NIcV2::EPeerState;
-using NCloud::NIcV2::IChannelFactory;
 using NCloud::NIcV2::IPeer;
 using NCloud::NIcV2::IPeerManagerPtr;
 using NCloud::NIcV2::IPeerPtr;
-using NCloud::NIcV2::TChannelResult;
+using NCloud::NIcV2::IRequestChannelFactory;
 using NCloud::NIcV2::TPeerStatus;
+using NCloud::NIcV2::TRequestChannelResult;
 
 using NCloud::NIcV2::CreateRequestChannel;
 using NCloud::NIcV2::IRequestChannel;
@@ -288,7 +288,7 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
         }
     }
 
-    TChannelResult MakeChannel(
+    TRequestChannelResult MakeChannel(
         const THandshakeReady& connection,
         bool sendPings)
     {
@@ -311,17 +311,18 @@ struct TServiceState: public std::enable_shared_from_this<TServiceState>
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServiceChannelFactory final: public IChannelFactory
+class TServiceRequestChannelFactory final: public IRequestChannelFactory
 {
 private:
     const std::weak_ptr<TServiceState> State;
 
 public:
-    explicit TServiceChannelFactory(std::weak_ptr<TServiceState> state)
+    explicit TServiceRequestChannelFactory(std::weak_ptr<TServiceState> state)
         : State(std::move(state))
     {}
 
-    TChannelResult CreateChannel(const THandshakeReady& connection) override
+    TRequestChannelResult CreateRequestChannel(
+        const THandshakeReady& connection) override
     {
         if (auto state = State.lock()) {
             return state->MakeChannel(connection, true);
@@ -332,16 +333,16 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TListenerClient final: public NCloud::NIcV2::IListenerClient
+class TListenerHandler final: public NCloud::NIcV2::IListenerHandler
 {
     const std::weak_ptr<TServiceState> State;
 
 public:
-    explicit TListenerClient(std::weak_ptr<TServiceState> state)
+    explicit TListenerHandler(std::weak_ptr<TServiceState> state)
         : State(std::move(state))
     {}
 
-    void OnConnection(TSocketPtr socket) override
+    void OnSocketAccepted(TSocketPtr socket) override
     {
         if (auto state = State.lock()) {
             state->Accept(std::move(socket));
@@ -655,15 +656,15 @@ TResultOrError<IServicePtr> NPrivate::CreateService(
     state->DataTarget = std::move(target);
     state->Handshake = std::move(hello);
     const std::weak_ptr<TServiceState> weak = state;
-    auto listenerClient = std::make_shared<TListenerClient>(weak);
+    auto listenerHandler = std::make_shared<TListenerHandler>(weak);
     auto [listener, listenError] =
         listenerErrorInjector
             ? NCloud::NIcV2::NPrivate::CreateListener(
                   address,
                   TestListenerBacklog,
-                  std::move(listenerClient),
+                  std::move(listenerHandler),
                   std::move(listenerErrorInjector))
-            : NCloud::NIcV2::CreateListener(address, std::move(listenerClient));
+            : NCloud::NIcV2::CreateListener(address, std::move(listenerHandler));
     if (HasError(listenError)) {
         return listenError;
     }
@@ -696,7 +697,7 @@ TResultOrError<IServicePtr> NPrivate::CreateService(
         state->Scheduler,
         std::move(resolver),
         state->Completions,
-        std::make_shared<TServiceChannelFactory>(weak));
+        std::make_shared<TServiceRequestChannelFactory>(weak));
     if (HasError(peersError)) {
         return peersError;
     }

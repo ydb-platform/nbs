@@ -38,26 +38,25 @@ using namespace NThreading;
 
 using NCloud::NIcV2::CreateHandshakeProvider;
 using NCloud::NIcV2::CreatePeerManager;
-using NCloud::NIcV2::CreateRequestChannel;
 using NCloud::NIcV2::CreateTransport;
 using NCloud::NIcV2::EPeerState;
 using NCloud::NIcV2::IAddressResolver;
-using NCloud::NIcV2::IChannelFactory;
 using NCloud::NIcV2::IHandshakeProviderPtr;
 using NCloud::NIcV2::IIncomingRequestPtr;
 using NCloud::NIcV2::IPeerManagerPtr;
+using NCloud::NIcV2::IRequestChannelFactory;
 using NCloud::NIcV2::IRequestChannelHandler;
 using NCloud::NIcV2::IRequestChannelHandlerPtr;
 using NCloud::NIcV2::IRequestChannelPtr;
 using NCloud::NIcV2::ITransportPtr;
-using NCloud::NIcV2::TChannelResult;
+using NCloud::NIcV2::NTests::CreateTestConnector;
+using NCloud::NIcV2::NTests::TTestListener;
 using NCloud::NIcV2::THandshakeIncomplete;
 using NCloud::NIcV2::THandshakeReady;
 using NCloud::NIcV2::TRequestChannelConfig;
+using NCloud::NIcV2::TRequestChannelResult;
 using NCloud::NIcV2::TResolveFuture;
 using NCloud::NIcV2::TResolveResult;
-using NCloud::NIcV2::NTests::CreateTestConnector;
-using NCloud::NIcV2::NTests::TTestListener;
 
 constexpr ui32 BlockSize = 4_KB;
 constexpr ui64 MaxOutputQueueBytes = 64_MB;
@@ -118,7 +117,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestChannelFactory final: public IChannelFactory
+class TTestRequestChannelFactory final: public IRequestChannelFactory
 {
     const ITransportPtr Transport;
     const ITimerPtr Timer;
@@ -126,7 +125,7 @@ class TTestChannelFactory final: public IChannelFactory
     const ITaskQueuePtr Completions;
 
 public:
-    TTestChannelFactory(
+    TTestRequestChannelFactory(
         ITransportPtr transport,
         ITimerPtr timer,
         ISchedulerPtr scheduler,
@@ -137,21 +136,22 @@ public:
         , Completions(std::move(completions))
     {}
 
-    TChannelResult CreateChannel(const THandshakeReady& connection) override
+    TRequestChannelResult CreateRequestChannel(
+        const THandshakeReady& connection) override
     {
-        return CreateChannel(
+        return CreateRequestChannel(
             connection,
             std::make_shared<TTestRequestHandler>(
                 [](IIncomingRequestPtr request) { Y_UNUSED(request); }));
     }
 
-    [[nodiscard]] TChannelResult CreateChannel(
+    [[nodiscard]] TRequestChannelResult CreateRequestChannel(
         const THandshakeReady& connection,
         IRequestChannelHandlerPtr handler) const
     {
         TRequestChannelConfig config;
         config.EventTypes.assign(DataEventTypes.begin(), DataEventTypes.end());
-        return CreateRequestChannel(
+        return NCloud::NIcV2::CreateRequestChannel(
             Transport,
             connection.Socket,
             connection.XdcSocket,
@@ -173,8 +173,8 @@ struct TNetworkFixture
     const ISchedulerPtr Scheduler = CreateScheduler(Timer);
     const ITaskQueuePtr Completions = CreateThreadPool("ICV2HostTest", 2);
     const ITransportPtr Transport = CreateTestTransport();
-    const std::shared_ptr<TTestChannelFactory> ChannelFactory =
-        std::make_shared<TTestChannelFactory>(
+    const std::shared_ptr<TTestRequestChannelFactory> ChannelFactory =
+        std::make_shared<TTestRequestChannelFactory>(
             Transport,
             Timer,
             Scheduler,
@@ -306,7 +306,7 @@ struct TNetworkFixture
         }
         const auto accepted = Wait(hello);
         UNIT_ASSERT_C(!HasError(accepted), FormatError(accepted.GetError()));
-        auto [channel, error] = ChannelFactory->CreateChannel(
+        auto [channel, error] = ChannelFactory->CreateRequestChannel(
             std::get<THandshakeReady>(accepted.GetResult()),
             std::make_shared<TTestRequestHandler>(
                 [this](IIncomingRequestPtr request)

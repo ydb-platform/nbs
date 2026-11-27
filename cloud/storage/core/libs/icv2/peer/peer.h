@@ -9,8 +9,8 @@ namespace NCloud::NIcV2 {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TChannelResult = TResultOrError<IRequestChannelPtr>;
-using TChannelFuture = NThreading::TFuture<TChannelResult>;
+using TRequestChannelResult = TResultOrError<IRequestChannelPtr>;
+using TRequestChannelFuture = NThreading::TFuture<TRequestChannelResult>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -28,7 +28,7 @@ struct IPeer
     // a disconnect. A channel obtained earlier does not follow reconnections.
     // Close() on an open peer rejects channel acquisition with E_REJECTED;
     // retry through a replacement peer or another transport.
-    virtual TChannelFuture GetChannel() = 0;
+    virtual TRequestChannelFuture GetRequestChannel() = 0;
 
     // Read a snapshot for monitoring without starting a connection. A closed
     // peer reports Disconnected with zero counters.

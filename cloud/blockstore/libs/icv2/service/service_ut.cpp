@@ -45,10 +45,10 @@ namespace NCloud::NBlockStore::NIcV2 {
 
 using NCloud::NIcV2::CreatePeerManager;
 using NCloud::NIcV2::EPeerState;
-using NCloud::NIcV2::IChannelFactory;
 using NCloud::NIcV2::IPeerManagerPtr;
-using NCloud::NIcV2::TChannelFuture;
-using NCloud::NIcV2::TChannelResult;
+using NCloud::NIcV2::IRequestChannelFactory;
+using NCloud::NIcV2::TRequestChannelFuture;
+using NCloud::NIcV2::TRequestChannelResult;
 
 using NCloud::NIcV2::IConnectorPtr;
 using NCloud::NIcV2::TSocketResult;
@@ -69,7 +69,7 @@ using NCloud::NIcV2::ITransportPtr;
 using NCloud::NIcV2::TSocketPtr;
 
 using NCloud::NIcV2::CreateListener;
-using NCloud::NIcV2::NTests::TTestListenerClient;
+using NCloud::NIcV2::NTests::TTestListenerHandler;
 
 namespace {
 
@@ -86,7 +86,7 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TTestChannelFactory final: public IChannelFactory
+class TTestRequestChannelFactory final: public IRequestChannelFactory
 {
 private:
     const ITransportPtr Transport;
@@ -94,7 +94,7 @@ private:
     const ISchedulerPtr Scheduler;
 
 public:
-    TTestChannelFactory(
+    TTestRequestChannelFactory(
         ITransportPtr transport,
         ITimerPtr timer,
         ISchedulerPtr scheduler)
@@ -103,9 +103,10 @@ public:
         , Scheduler(std::move(scheduler))
     {}
 
-    TChannelResult CreateChannel(const THandshakeReady& connection) override
+    TRequestChannelResult CreateRequestChannel(
+        const THandshakeReady& connection) override
     {
-        return CreateRequestChannel(
+        return NCloud::NIcV2::CreateRequestChannel(
             Transport,
             connection.Socket,
             {},
@@ -912,7 +913,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
             fixture.Scheduler,
             fixture.Resolver,
             CreateTaskQueueStub(),
-            std::make_shared<TTestChannelFactory>(
+            std::make_shared<TTestRequestChannelFactory>(
                 fixture.Transport,
                 fixture.Timer,
                 fixture.Scheduler));
@@ -922,9 +923,9 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         const auto [peer, createError] =
             fixture.Peers->CreatePeer("127.0.0.1", port, {});
         UNIT_ASSERT_C(!HasError(createError), FormatError(createError));
-        TVector<TChannelFuture> connections;
+        TVector<TRequestChannelFuture> connections;
         for (size_t i = 0; i < 32; ++i) {
-            connections.push_back(peer->GetChannel());
+            connections.push_back(peer->GetRequestChannel());
         }
         UNIT_ASSERT(connections[0].Wait(TDuration::Seconds(5)));
         auto [first, connectError] = connections[0].GetValue();
@@ -957,7 +958,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
             1);
         fixture.Service->Stop();
         UNIT_ASSERT(first->WhenClosed().Wait(TDuration::Seconds(5)));
-        auto failed = peer->GetChannel();
+        auto failed = peer->GetRequestChannel();
         UNIT_ASSERT(failed.Wait(TDuration::Seconds(5)));
         UNIT_ASSERT(HasError(failed.GetValue().GetError()));
         auto restarted = MakeConfig();
@@ -966,10 +967,10 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         UNIT_ASSERT_C(!HasError(serviceError), FormatError(serviceError));
         fixture.Service = std::move(service);
         fixture.Service->Start();
-        TChannelResult connected = MakeError(E_UNAVAILABLE);
+        TRequestChannelResult connected = MakeError(E_UNAVAILABLE);
         const auto deadline = std::chrono::steady_clock::now() + 5s;
         do {
-            auto future = peer->GetChannel();
+            auto future = peer->GetRequestChannel();
             UNIT_ASSERT(future.Wait(TDuration::Seconds(5)));
             connected = future.GetValue();
             if (!HasError(connected.GetError())) {
@@ -1062,7 +1063,7 @@ Y_UNIT_TEST_SUITE(TIcV2ServiceTest)
         service->Stop();
         auto [listener, listenError] = CreateListener(
             address,
-            std::make_shared<TTestListenerClient>([](TSocketResult) {}));
+            std::make_shared<TTestListenerHandler>([](TSocketResult) {}));
         UNIT_ASSERT_C(!HasError(listenError), FormatError(listenError));
         listener->Stop();
     }
