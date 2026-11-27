@@ -44,18 +44,16 @@ message TBlobCompressionInfo
         repeated uint32 UncompressedChunkSizes = 1;
     }
 
-    reserved 2, 4, 5;
-
     ECompressionCodec Codec = 1;
 
     // Compressed sizes of the chunks in blob order. Zero means that the chunk
     // is stored raw and occupies its uncompressed size.
-    repeated uint32 CompressedChunkSizes = 3;
+    repeated uint32 CompressedChunkSizes = 2;
 
     // Uncompressed sizes are nonzero multiples of the block size in bytes.
     oneof UncompressedChunkLayout
     {
-        TRegularChunks RegularChunks = 6;
-        TExplicitChunks ExplicitChunks = 7;
+        TRegularChunks RegularChunks = 3;
+        TExplicitChunks ExplicitChunks = 4;
     }
 }
