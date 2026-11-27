@@ -2127,9 +2127,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 E_REJECTED,
                 response->GetStatus(),
                 response->GetErrorReason());
-            UNIT_ASSERT(HasProtoFlag(
-                response->GetError().GetFlags(),
-                NCloud::NProto::EF_INSTANT_RETRIABLE));
             UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
         }
 

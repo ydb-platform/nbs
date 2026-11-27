@@ -8,8 +8,6 @@
 #include <cloud/filestore/libs/storage/core/helpers.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 
-#include <cloud/storage/core/libs/common/helpers.h>
-
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/generic/is_in.h>
@@ -558,14 +556,9 @@ void TListNodesActor::HandleGetNodeAttrResponseCheck(
                     << "lost some nodes in shards for request: "
                     << ListNodesRequest.ShortDebugString().Quote());
             } else if (Response.GetCookie()) {
-                ui32 flags = 0;
-                SetProtoFlag(flags, NCloud::NProto::EF_INSTANT_RETRIABLE);
-                error = MakeError(
-                    E_REJECTED,
-                    TStringBuilder()
-                        << "concurrent directory modifications for request: "
-                        << ListNodesRequest.ShortDebugString().Quote(),
-                    flags);
+                error = MakeError(E_REJECTED, TStringBuilder()
+                    << "concurrent directory modifications for request: "
+                    << ListNodesRequest.ShortDebugString().Quote());
             }
 
             if (HasError(error)) {
