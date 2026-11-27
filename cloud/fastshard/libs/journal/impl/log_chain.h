@@ -32,8 +32,6 @@ private:
     ui64 LastChainedLsn = 0;
     THashMap<ui64 /*prevLsn*/, TEntry> Records;
 
-    TLogRecordPtr GetNextImpl(ui64 lsn) const;
-
 public:
     // Call before any Insert; |lsn| is the PrevLsn of the oldest record.
     void InitLastErasedLsn(ui64 lsn);
@@ -58,9 +56,6 @@ public:
     // starting below the new watermark; failing their promises is up to the
     // caller. Fails without changing anything when |lsn| > LastChainedLsn + 1.
     TResultOrError<TErasedRecords> EraseBelow(ui64 lsn);
-
-    // The head of the chained run, nullptr when the run is empty.
-    TLogRecordPtr GetOldest() const;
 
     // The ready record following |lsn|, nullptr when missing or not ready.
     TLogRecordPtr GetNext(ui64 lsn) const;
