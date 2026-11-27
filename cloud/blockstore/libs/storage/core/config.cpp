@@ -33,6 +33,8 @@ resumes reading the raw value; it does not clamp the value returned by a getter.
 
 #include "config.h"
 
+#include <cloud/storage/core/config/markers.pb.h>
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/protos/certificate.pb.h>
@@ -42,6 +44,7 @@ resumes reading the raw value; it does not clamp the value returned by a getter.
 #include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/size_literals.h>
+#include <util/string/builder.h>
 #include <util/system/mutex.h>
 
 #include <google/protobuf/text_format.h>
@@ -204,6 +207,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ConfigDispatcherSettings,                                              \
         NCloud::NProto::TConfigDispatcherSettings,                             \
         {}                                                                    )\
+    xxx(ConfigsDispatcherServiceEnabled,           bool,      false           )\
     xxx(YdbViewerServiceEnabled,              bool,                  false    )\
     xxx(LinkedDiskFillBandwidth,                                               \
         TVector<NProto::TLinkedDiskFillBandwidth>,                             \
@@ -655,7 +659,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(DiskPrefixLengthWithBlockChecksumsInBlobs, ui64,      0               )\
     xxx(CheckBlockChecksumsInBlobsUponRead,        bool,      false           )\
-    xxx(ConfigsDispatcherServiceEnabled,           bool,      false           )\
     xxx(CachedAcquireRequestLifetime,              TDuration, Seconds(40)     )\
                                                                                \
     xxx(UnconfirmedBlobCountHardLimit,             ui32,      1000            )\
@@ -1331,6 +1334,57 @@ struct TStorageConfig::TImpl
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Verify in tests that every RW parameter allows runtime updates.
+// Require RO parameters to have no AllowRuntimeUpdate=true marker.
+NCloud::NProto::TError TStorageConfig::VerifyParameterMarkers()
+{
+    const auto* descriptor = NProto::TStorageServiceConfig::descriptor();
+    const auto check = [descriptor](
+                           const char* name,
+                           bool runtimeUpdate) -> NCloud::NProto::TError
+    {
+        const auto* field = descriptor->FindFieldByName(name);
+        if (!field) {
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder() << "Storage parameter '" << name
+                                 << "' has no field in protobuf type '"
+                                 << descriptor->full_name() << "'");
+        }
+
+        const auto& options = field->options();
+        const bool allowed =
+            options.GetExtension(NCloud::NMarkers::AllowRuntimeUpdate);
+        if (allowed != runtimeUpdate) {
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << (runtimeUpdate ? "RW" : "RO") << " storage parameter '"
+                    << field->full_name() << "' "
+                    << (runtimeUpdate ? "requires " : "must not have ")
+                    << "NMarkers.AllowRuntimeUpdate=true");
+        }
+
+        return {};
+    };
+
+#define CHECK_RW(name, type, value)                                            \
+    if (auto error = check(#name, true); HasError(error)) {                    \
+        return error;                                                          \
+    }
+    BLOCKSTORE_STORAGE_CONFIG_RW(CHECK_RW)
+#undef CHECK_RW
+
+#define CHECK_RO(name, type, value)                                            \
+    if (auto error = check(#name, false); HasError(error)) {                   \
+        return error;                                                          \
+    }
+    BLOCKSTORE_STORAGE_CONFIG_RO(CHECK_RO)
+#undef CHECK_RO
+
+    return {};
+}
+
 TStorageConfig::TStorageConfig(
     NProto::TStorageServiceConfig storageServiceConfig,
     NFeatures::TFeaturesConfigPtr featuresConfig)
@@ -1632,6 +1686,11 @@ TStorageConfig::TValueByName TStorageConfig::GetValueByName(
     );
 
     return {value};
+}
+
+const NProto::TStorageServiceConfig& TStorageConfig::GetConfigProto() const
+{
+    return Impl->StorageServiceConfig;
 }
 
 NProto::TStorageServiceConfig

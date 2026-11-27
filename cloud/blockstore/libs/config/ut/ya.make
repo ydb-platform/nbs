@@ -5,11 +5,12 @@ UNITTEST_FOR(cloud/blockstore/libs/config)
 
 SRCS(
     blockstore_config_ut.cpp
-    helpers_ut.cpp
     opaque_config_parser_ut.cpp
 )
 
 PEERDIR(
+    cloud/storage/core/libs/config
+
     contrib/ydb/core/control
 )
 

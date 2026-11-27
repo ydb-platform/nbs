@@ -6,7 +6,7 @@ the features wrapper created from the merged protobuf configuration.
 
 *******************************************************************************/
 
-#include "blockstore_config.h"
+#include "blockstore_config_management.h"
 
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
@@ -20,8 +20,8 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 // The private IBlockstoreConfig implementation and owner of its runtime
-// wrappers and protobuf sections. Only MakeBlockstoreConfig() creates
-// instances.
+// wrappers and protobuf sections. Only MakeBlockstoreConfig() and
+// MakeStartupBlockstoreConfig() create instances.
 class TBlockstoreConfigImpl final: public IBlockstoreConfig
 {
 public:
@@ -257,6 +257,15 @@ TBlockstoreConfigImpl::GetLocalNVMeConfig() const
 
 // Merge feature definitions by name so an overridden feature has one runtime
 // record. Preserve the existing first-wins behavior within each source layer.
+//
+// staticFeatures - Feature definitions used as the merge base.
+// dynamicFeatures - Overrides that replace complete static records with the
+//      same names.
+// result - Non-null output message. Replace its repeated Features field;
+//      preserve all other fields. Discard its contents if the operation throws.
+//
+// Result - Keep each static feature's position and append dynamic-only
+//      features in source order.
 void MergeFeatures(
     const NCloud::NProto::TFeaturesConfig& staticFeatures,
     const NCloud::NProto::TFeaturesConfig& dynamicFeatures,
@@ -307,7 +316,93 @@ void MergeFeatures(
 
 }   // namespace
 
-NProto::TBlockstoreConfig MergeBlockstoreConfig(
+void RemoveStaticOnlyBlockstoreFields(NProto::TBlockstoreConfig& config)
+{
+    if (config.HasServer() && config.GetServer().HasServerConfig()) {
+        auto* serverConfig = config.MutableServer()->MutableServerConfig();
+        serverConfig->ClearDynamicYamlConfigurationEnabled();
+        if (serverConfig->ByteSizeLong() == 0) {
+            config.MutableServer()->ClearServerConfig();
+        }
+    }
+
+    if (config.HasServer() && config.GetServer().ByteSizeLong() == 0) {
+        config.ClearServer();
+    }
+
+    if (config.HasStorageService()) {
+        auto* storageConfig = config.MutableStorageService();
+        storageConfig->ClearConfigDispatcherSettings();
+        storageConfig->ClearSchemeShardDir();
+        storageConfig->ClearNodeType();
+        if (storageConfig->ByteSizeLong() == 0) {
+            config.ClearStorageService();
+        }
+    }
+
+    if (config.HasDiskAgent()) {
+        auto* diskAgentConfig = config.MutableDiskAgent();
+        diskAgentConfig->ClearDedicatedDiskAgent();
+        if (diskAgentConfig->ByteSizeLong() == 0) {
+            config.ClearDiskAgent();
+        }
+    }
+}
+
+void NormalizeDynamicBlockstoreConfig(
+    const NProto::TBlockstoreConfig& staticConfig,
+    NProto::TBlockstoreConfig& dynamicConfig)
+{
+    RemoveStaticOnlyBlockstoreFields(dynamicConfig);
+
+    // DiskAgent: preserve the static Enabled value when DedicatedDiskAgent is
+    // set.
+    if (dynamicConfig.HasDiskAgent() &&
+        staticConfig.GetDiskAgent().GetDedicatedDiskAgent())
+    {
+        auto* diskAgentConfig = dynamicConfig.MutableDiskAgent();
+        diskAgentConfig->ClearEnabled();
+        if (diskAgentConfig->ByteSizeLong() == 0) {
+            dynamicConfig.ClearDiskAgent();
+        }
+    }
+
+    // Discovery: preserve a link expressed by equal static ports, unless a
+    // dynamic discovery port is explicitly supplied.
+    const auto& dynamicServer = dynamicConfig.GetServer().GetServerConfig();
+    if (dynamicServer.HasPort() || dynamicServer.HasSecurePort()) {
+        const NServer::TServerAppConfig staticServer(staticConfig.GetServer());
+        const NDiscovery::TDiscoveryConfig staticDiscovery(
+            staticConfig.GetDiscoveryService());
+
+        if (dynamicServer.HasPort() &&
+            !dynamicConfig.GetDiscoveryService().HasConductorInstancePort() &&
+            staticDiscovery.GetConductorInstancePort() == staticServer.GetPort())
+        {
+            dynamicConfig.MutableDiscoveryService()->SetConductorInstancePort(
+                dynamicServer.GetPort());
+        }
+
+        if (dynamicServer.HasSecurePort() &&
+            !dynamicConfig.GetDiscoveryService()
+                 .HasConductorSecureInstancePort() &&
+            staticDiscovery.GetConductorSecureInstancePort() ==
+                staticServer.GetSecurePort())
+        {
+            dynamicConfig.MutableDiscoveryService()
+                ->SetConductorSecureInstancePort(dynamicServer.GetSecurePort());
+        }
+    }
+}
+
+bool IsPrivateDatabaseConfigEnabled(
+    bool dynamicYamlConfigurationEnabled,
+    bool temporaryServer)
+{
+    return dynamicYamlConfigurationEnabled && !temporaryServer;
+}
+
+NProto::TBlockstoreConfig MergeBlockstoreConfigSources(
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& dynamicConfig)
 {
@@ -324,28 +419,26 @@ NProto::TBlockstoreConfig MergeBlockstoreConfig(
     return result;
 }
 
-// Preserve non-protobuf parameters when rebuilding the configuration.
 TBlockstoreConfigExtraParameters GetBlockstoreConfigExtraParameters(
     const IBlockstoreConfig& currentConfig)
 {
     const auto& diskAgentConfig = currentConfig.GetDiskAgentConfig();
     return {
-        .DiskAgent = {
-            .Rack = diskAgentConfig->GetRack(),
-            .NetworkMbitThroughput = diskAgentConfig->GetNetworkMbitThroughput(),
-        },
+        .DiskAgent =
+            {
+                .Rack = diskAgentConfig->GetRack(),
+                .NetworkMbitThroughput =
+                    diskAgentConfig->GetNetworkMbitThroughput(),
+            },
     };
 }
 
 IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
-    const NProto::TBlockstoreConfig& staticConfig,
-    const NProto::TBlockstoreConfig& dynamicConfig,
+    const NProto::TBlockstoreConfig& config,
     NStorage::TStorageConfigControlsPtr controls,
     TBlockstoreConfigExtraParameters extraParameters)
 {
     Y_ABORT_UNLESS(controls);
-
-    auto config = MergeBlockstoreConfig(staticConfig, dynamicConfig);
     auto featuresConfig =
         std::make_shared<NFeatures::TFeaturesConfig>(config.GetFeatures());
     auto storageConfig = std::make_shared<NStorage::TStorageConfig>(
@@ -365,12 +458,10 @@ IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
 }
 
 IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
-    const NProto::TBlockstoreConfig& staticConfig,
-    const NProto::TBlockstoreConfig& dynamicConfig,
+    const NProto::TBlockstoreConfig& config,
     const NStorage::TStorageConfig& storageConfig,
     const NStorage::TDiskAgentConfig& diskAgentConfig)
 {
-    const auto config = MergeBlockstoreConfig(staticConfig, dynamicConfig);
     auto featuresConfig =
         std::make_shared<NFeatures::TFeaturesConfig>(config.GetFeatures());
     auto storageConfigCopy =
@@ -384,6 +475,69 @@ IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
         std::move(featuresConfig),
         std::move(storageConfigCopy),
         std::move(diskAgentConfigCopy));
+}
+
+TBlockstoreConfigBuildResult MakeStartupBlockstoreConfig(
+    const NProto::TBlockstoreConfig& staticConfig,
+    const NProto::TBlockstoreConfig& dynamicConfig,
+    NStorage::TStorageConfigControlsPtr controls,
+    TBlockstoreConfigExtraParameters extraParameters)
+{
+    auto dynamicConfigCopy = dynamicConfig;
+    NormalizeDynamicBlockstoreConfig(staticConfig, dynamicConfigCopy);
+
+    auto proto = MergeBlockstoreConfigSources(staticConfig, dynamicConfigCopy);
+    auto config = MakeBlockstoreConfig(
+        proto,
+        std::move(controls),
+        std::move(extraParameters));
+
+    return {
+        .Proto = std::move(proto),
+        .Config = std::move(config),
+        .HasDynamicOverrides = dynamicConfigCopy.ByteSizeLong() != 0,
+    };
+}
+
+NConfig::TRuntimeConfigDiagnostics PrepareRuntimeBlockstoreConfig(
+    const NProto::TBlockstoreConfig& staticConfig,
+    const NProto::TBlockstoreConfig& startupConfig,
+    const NProto::TBlockstoreConfig& dynamicConfig,
+    NProto::TBlockstoreConfig& runtimeConfig)
+{
+    auto config = MergeBlockstoreConfigSources(staticConfig, dynamicConfig);
+    auto diagnostics =
+        NConfig::FilterRuntimeConfig(staticConfig, startupConfig, config);
+    runtimeConfig = std::move(config);
+    return diagnostics;
+}
+
+IBlockstoreConfigMutablePtr MakeRuntimeBlockstoreConfig(
+    const NProto::TBlockstoreConfig& staticConfig,
+    const NProto::TBlockstoreConfig& startupConfig,
+    const NProto::TBlockstoreConfig& dynamicConfig,
+    NStorage::TStorageConfigControlsPtr controls,
+    TBlockstoreConfigExtraParameters extraParameters,
+    NConfig::TRuntimeConfigDiagnostics& diagnostics)
+{
+    // Preserve the received CMS proto for comparison with later notifications.
+    auto dynamicConfigCopy = dynamicConfig;
+    NormalizeDynamicBlockstoreConfig(staticConfig, dynamicConfigCopy);
+    NProto::TBlockstoreConfig runtimeConfig;
+    auto runtimeDiagnostics = PrepareRuntimeBlockstoreConfig(
+        staticConfig,
+        startupConfig,
+        dynamicConfigCopy,
+        runtimeConfig);
+
+    // Keep the caller's previous report if preparation or adapter construction
+    // throws; replace it only for a completed configuration.
+    auto config = MakeBlockstoreConfig(
+        runtimeConfig,
+        std::move(controls),
+        std::move(extraParameters));
+    diagnostics = std::move(runtimeDiagnostics);
+    return config;
 }
 
 }   // namespace NCloud::NBlockStore

@@ -4,7 +4,7 @@
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
-#include <cloud/blockstore/libs/config/blockstore_config.h>
+#include <cloud/blockstore/libs/config/blockstore_config_management.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/discovery/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
@@ -507,7 +507,6 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
                 .GetDynamicYamlConfigurationEnabled());
         const auto aggregate = MakeBlockstoreConfig(
             current,
-            {},
             *ci.StorageConfig,
             *ci.DiskAgentConfig);
         UNIT_ASSERT_VALUES_EQUAL(
@@ -586,10 +585,11 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             {
                 dynamicConfig.MutableStorageService()->SetWriteBlobThreshold(
                     300);
-                const auto config = MakeBlockstoreConfig(
+                const auto config = MakeStartupBlockstoreConfig(
                     staticConfig,
                     dynamicConfig,
-                    ci.StorageConfigControls);
+                    ci.StorageConfigControls,
+                    /*extraParameters=*/{}).Config;
                 UNIT_ASSERT_VALUES_EQUAL(
                     localRdma.DebugString(),
                     config->GetRdmaConfig()->GetConfigProto().DebugString());
@@ -606,10 +606,11 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
                 rdma->SetServerEnabled(useRdmaFile);
                 rdma->MutableClient()->SetQueueSize(512);
                 rdma->MutableServer()->SetQueueSize(384);
-                const auto config = MakeBlockstoreConfig(
+                const auto config = MakeStartupBlockstoreConfig(
                     staticConfig,
                     dynamicConfig,
-                    ci.StorageConfigControls);
+                    ci.StorageConfigControls,
+                    /*extraParameters=*/{}).Config;
                 UNIT_ASSERT_VALUES_EQUAL(
                     dynamicConfig.GetRdma().DebugString(),
                     config->GetRdmaConfig()->GetConfigProto().DebugString());
@@ -621,10 +622,11 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             // Restore local settings after removing the entire dynamic source.
             {
                 dynamicConfig.Clear();
-                const auto config = MakeBlockstoreConfig(
+                const auto config = MakeStartupBlockstoreConfig(
                     staticConfig,
                     dynamicConfig,
-                    ci.StorageConfigControls);
+                    ci.StorageConfigControls,
+                    /*extraParameters=*/{}).Config;
                 UNIT_ASSERT_VALUES_EQUAL(
                     localRdma.DebugString(),
                     config->GetRdmaConfig()->GetConfigProto().DebugString());

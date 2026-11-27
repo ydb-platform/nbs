@@ -1,5 +1,7 @@
 #include "config.h"
 
+#include <cloud/storage/core/libs/common/error.h>
+
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -95,6 +97,14 @@ void CheckUpdateDefaults(
 
 Y_UNIT_TEST_SUITE(TConfigTest)
 {
+    // Verify that every RW parameter in the schema allows runtime updates.
+    // Check that RO parameters have no AllowRuntimeUpdate=true marker.
+    Y_UNIT_TEST(ShouldVerifyParameterMarkers)
+    {
+        const auto error = TStorageConfig::VerifyParameterMarkers();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+    }
+
     // Check changed and unchanged ui32 defaults, including an explicit zero.
     Y_UNIT_TEST(ShouldUpdateDefaultsForUint32)
     {
