@@ -6,6 +6,8 @@
 #include <cloud/blockstore/libs/storage/core/compaction_options.h>
 #include <cloud/blockstore/libs/storage/testlib/part_client.h>
 
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
+
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_events.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -1478,6 +1480,8 @@ Y_UNIT_TEST_SUITE(TPartitionCompactionTest)
 
     Y_UNIT_TEST(ShouldOnlyKillTabletOnBlobStoragePatchErrors)
     {
+        const auto abortGuard = DisableImpossibleEventsAbortForCurrentTest();
+
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1_MB);
         config.SetBlobPatchingEnabled(true);

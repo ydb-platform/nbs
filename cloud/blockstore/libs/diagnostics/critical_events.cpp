@@ -310,6 +310,7 @@ void ResetVolumeCriticalEventsCounter()
         BLOCKSTORE_DEFINE_DISK_AGENT_CRITICAL_EVENT_ROUTINE)
 #undef BLOCKSTORE_DEFINE_CRITICAL_EVENT_ROUTINE
 
+    /* clang-format off */
 #define BLOCKSTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE(name)                       \
     TString Report##name(const TString& message)                               \
     {                                                                          \
@@ -324,7 +325,7 @@ void ResetVolumeCriticalEventsCounter()
     {                                                                          \
         TString msg =                                                          \
             ComposeMessageWithSuffix(message, PrintParams(keyValues));         \
-        return ReportCriticalEvent(GetCriticalEventFor##name(), msg, false);   \
+        return ReportCriticalEvent(GetCriticalEventFor##name(), msg, true);    \
     }                                                                          \
     TString Report##name(                                                      \
         const TCritEventParams& keyValues)                                     \
@@ -339,6 +340,7 @@ void ResetVolumeCriticalEventsCounter()
         return "AppImpossibleEvents/"#name;                                    \
     }                                                                          \
 // BLOCKSTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE
+    /* clang-format on */
 
     BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE)
 #undef BLOCKSTORE_DEFINE_IMPOSSIBLE_EVENT_ROUTINE

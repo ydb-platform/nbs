@@ -1,4 +1,5 @@
 #include "critical_events.h"
+
 #include "public.h"
 
 #include <library/cpp/logger/log.h>
@@ -14,12 +15,31 @@ using namespace NMonitoring;
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 NMonitoring::TDynamicCountersPtr CriticalEvents;
 TLog Log;
 
 }  // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+std::atomic<ui32> TImpossibleEventsAbortGuard::ActiveGuardCount{0};
+
+TImpossibleEventsAbortGuard::TImpossibleEventsAbortGuard()
+{
+    ActiveGuardCount.fetch_add(1, std::memory_order_relaxed);
+}
+
+TImpossibleEventsAbortGuard::~TImpossibleEventsAbortGuard()
+{
+    ActiveGuardCount.fetch_sub(1, std::memory_order_relaxed);
+}
+
+TImpossibleEventsAbortGuard DisableImpossibleEventsAbortForCurrentTest()
+{
+    return TImpossibleEventsAbortGuard();
+}
 
 void SetCriticalEventsLog(TLog log)
 {
@@ -60,7 +80,9 @@ TString ReportCriticalEvent(
     const TString& message,
     bool verifyDebug)
 {
-    if (verifyDebug) {
+    if (verifyDebug && TImpossibleEventsAbortGuard::ActiveGuardCount.load(
+                           std::memory_order_relaxed) == 0)
+    {
         Y_DEBUG_ABORT_UNLESS(
             false,
             "sensorName: \"%s\"; message: \"%s\"",
