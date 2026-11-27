@@ -189,7 +189,8 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvGetNodeAttrResponse>(args.Error);
+    auto response =
+        std::make_unique<TEvService::TEvGetNodeAttrResponse>(args.Error);
     if (SUCCEEDED(args.Error.GetCode())) {
         //
         // The client may cache the NodeRef (lookup) and the Node attrs. The
@@ -226,15 +227,23 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
         }
 
         auto* node = response->Record.MutableNode();
+        // For parentId/name lookups, attribute stats to the parent when
+        // the target is on another shard, and to the target when it is local.
+        ui64 statsNodeId = args.NodeId;
+        NProto::ENodeType statsNodeType = NProto::E_INVALID_NODE;
         if (args.ShardId) {
             node->SetShardFileSystemId(args.ShardId);
             node->SetShardNodeName(args.ShardNodeName);
+            statsNodeType = NProto::E_DIRECTORY_NODE;
         } else {
             TABLET_VERIFY(args.TargetNode);
             ConvertNodeFromAttrs(
                 *node,
                 args.TargetNodeId,
                 args.TargetNode->Attrs);
+            statsNodeId = args.TargetNodeId;
+            statsNodeType = static_cast<NProto::ENodeType>(
+                args.TargetNode->Attrs.GetType());
         }
         response->Record.SetIsNodeRefLocked(args.IsNodeRefLocked);
 
@@ -243,13 +252,18 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
             0,
             ctx.Now() - args.RequestInfo->StartedTs);
 
-        if (!UpdateAccessStats(args.NodeId, ctx.Now()) ||
-            !UpdateLatencyStats(
-                args.NodeId,
-                EFileStoreRequest::GetNodeAttr,
-                ctx.Now(),
-                ctx.Now() - args.RequestInfo->StartedTs))
-        {
+        const bool accessUpdated = UpdateAccessStats(
+            statsNodeId,
+            statsNodeType,
+            ctx.Now());
+        const bool latencyUpdated = UpdateLatencyStats(
+            statsNodeId,
+            statsNodeType,
+            EFileStoreRequest::GetNodeAttr,
+            ctx.Now(),
+            ctx.Now() - args.RequestInfo->StartedTs);
+
+        if (!accessUpdated || !latencyUpdated) {
             ReportDiagnosticStatsInsertFailed();
         }
     }
