@@ -1,6 +1,6 @@
 DEPENDS(
     cloud/storage/core/tests/recipes/virtiofs-server
-    cloud/storage/core/tools/testing/virtiofs_server/bin
+    cloud/storage/core/tools/testing/virtiofs_server/filestore-bin
 )
 
 USE_RECIPE(

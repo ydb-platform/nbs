@@ -28,11 +28,16 @@ def _iter_profile_log_lines(profile_tool_bin_path,
              "--fs-id", fs_name],
             stdout=output)
 
-        # Continue reading through the descriptor without keeping an artifact.
-        os.unlink(output.name)
-        output.seek(0)
-        for line in output:
-            yield line.decode("utf-8", errors="replace")
+        # Keep the name while reading: some virtiofs backends cannot access
+        # open files after unlink. Preserve failed command output as before.
+        # https://github.com/ydb-platform/nbs/issues/7928
+        try:
+            output.seek(0)
+            for line in output:
+                yield line.decode("utf-8", errors="replace")
+        finally:
+            output.close()
+            os.unlink(output.name)
 
 
 def _split_profile_log_event(line):
