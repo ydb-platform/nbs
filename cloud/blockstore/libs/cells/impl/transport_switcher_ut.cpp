@@ -142,18 +142,18 @@ Y_UNIT_TEST_SUITE(TTransportSwitcherTest)
         Read(env.Router);
         UNIT_ASSERT_VALUES_EQUAL(env.Initial->ReadCount, 1);
         UNIT_ASSERT_VALUES_EQUAL(env.Better->ReadCount, 0);
-        UNIT_ASSERT(!env.Switcher->IsPreferredActive());
+        UNIT_ASSERT(!env.Switcher->GetPreferredState().Active);
 
         env.Switcher->Activate();
         Read(env.Router);
         UNIT_ASSERT_VALUES_EQUAL(env.Initial->ReadCount, 1);
         UNIT_ASSERT_VALUES_EQUAL(env.Better->ReadCount, 1);
-        UNIT_ASSERT(env.Switcher->IsPreferredActive());
+        UNIT_ASSERT(env.Switcher->GetPreferredState().Active);
 
         handler->HandleDisconnected();
         Read(env.Router);
         UNIT_ASSERT_VALUES_EQUAL(env.Initial->ReadCount, 2);
-        UNIT_ASSERT(!env.Switcher->IsPreferredActive());
+        UNIT_ASSERT(!env.Switcher->GetPreferredState().Active);
     }
 
     Y_UNIT_TEST(ShouldUseLatestConnectionStateWhenActivated)

@@ -61,10 +61,10 @@ public:
 
     NCloud::IClientEndpointHandlerPtr GetEndpointHandler() override;
 
-    bool IsPreferredActive() override
+    TPreferredState GetPreferredState() override
     {
         with_lock (Lock) {
-            return PreferredActive;
+            return {.Endpoint = Preferred, .Active = PreferredActive};
         }
     }
 

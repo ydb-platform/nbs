@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/blockstore/libs/cells/iface/connection.h>
 #include <cloud/blockstore/libs/service/service.h>
 
 #include <memory>
@@ -39,6 +40,8 @@ struct IEndpointRouter
     : public IBlockStore
     , public ITransportTarget
 {
+    // Stats belong to the current target and reset on SetTarget.
+    virtual TEndpointIoStats GetIoStats() const = 0;
 };
 
 using IEndpointRouterPtr = std::shared_ptr<IEndpointRouter>;

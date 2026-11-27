@@ -7,6 +7,7 @@
 
 #include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/format.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/mon/mon.h>
@@ -340,6 +341,7 @@ void RenderCell(
                     TABLEH() { out << "gRPC"; }
                     TABLEH() { out << "Secure gRPC"; }
                     TABLEH() { out << "RDMA"; }
+                    TABLEH() { out << "IC V2"; }
                 }
             }
             TABLEBODY() {
@@ -385,6 +387,9 @@ void RenderCell(
                             out << FormatPort(host.GetSecureGrpcPort());
                         }
                         TABLED() { out << FormatPort(host.GetRdmaPort()); }
+                        TABLED() {
+                            out << FormatPort(host.GetIcV2Port());
+                        }
                     }
                 }
             }
@@ -460,6 +465,29 @@ void RenderTransportControl(IOutputStream& out, const TCellMountStatus& mount)
         << "Apply</button></form>";
 }
 
+void RenderIcV2Channel(
+    IOutputStream& out,
+    const NCloud::NIcV2::TPeerStatus& channel)
+{
+    using NCloud::NIcV2::EPeerState;
+    switch (channel.State) {
+        case EPeerState::Idle:
+            RenderLabel(out, "default", "idle");
+            break;
+        case EPeerState::Connecting:
+            RenderLabel(out, "default", "connecting");
+            break;
+        case EPeerState::Connected:
+            RenderLabel(out, "success", "connected");
+            break;
+        case EPeerState::Disconnected:
+            RenderLabel(out, "warning", "disconnected");
+            break;
+    }
+    out << " <small>attempts: " << channel.ConnectionAttempts
+        << ", failures: " << channel.ConnectionFailures << "</small>";
+}
+
 void RenderMounts(
     IOutputStream& out,
     const TVector<TCellMountStatus>& mounts,
@@ -469,8 +497,11 @@ void RenderMounts(
            "cells</small></h3>"
         << "<p class='text-muted'>Transport selection applies to this "
            "disk/client "
-           "on this node until the connection closes. RDMA and IC V2 keep "
-           "the configured gRPC fallback policy.</p>";
+           "on this node until the connection closes. RDMA and IC V2 keep their "
+           "configured "
+           "gRPC fallback policy. The transport badge shows the selected "
+           "route; the IC V2 channel column shows its live TCP state. "
+           "Idle means no connection has been attempted yet.</p>";
     if (mounts.empty()) {
         out << "<p class='text-muted'>None.</p>";
         return;
@@ -485,6 +516,8 @@ void RenderMounts(
                     TABLEH() { out << "Cell"; }
                     TABLEH() { out << "Host"; }
                     TABLEH() { out << "Transport"; }
+                    TABLEH() { out << "IC V2 channel"; }
+                    TABLEH() { out << "I/O (current transport)"; }
                     TABLEH() { out << "Tablet"; }
                 }
             }
@@ -509,6 +542,20 @@ void RenderMounts(
                                 TransportLabelKind(mount.DataTransport),
                                 mount.DataTransport);
                             RenderTransportControl(out, mount);
+                        }
+                        TABLED() {
+                            if (mount.IcV2Channel) {
+                                RenderIcV2Channel(out, *mount.IcV2Channel);
+                            }
+                        }
+                        TABLED() {
+                            const auto& [read, write, zero] = mount.Io;
+                            out << "R: " << read.Requests << "/" << read.Errors
+                                << " (" << FormatByteSize(read.Bytes)
+                                << ")<br>W: " << write.Requests << "/"
+                                << write.Errors << " ("
+                                << FormatByteSize(write.Bytes) << ")<br>Z: "
+                                << zero.Requests << "/" << zero.Errors;
                         }
                         TABLED () {
                             // empty when the cell is older than the field

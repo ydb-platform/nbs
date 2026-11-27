@@ -6,6 +6,7 @@
 #include "transport_switcher.h"
 
 #include <cloud/blockstore/libs/client/client.h>
+#include <cloud/blockstore/libs/icv2/iface/data_endpoint_factory.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
@@ -124,7 +125,7 @@ TResultOrError<THostBindingPtr> BuildHostBinding(
 
 TString DescribeDataTransport(
     const THostBinding& binding,
-    const ITransportSwitcherPtr& switcher)
+    bool preferredActive)
 {
     const auto& hostConfig = binding.HostConfig;
     switch (hostConfig.GetTransport()) {
@@ -134,7 +135,7 @@ TString DescribeDataTransport(
         case NProto::CELL_DATA_TRANSPORT_ICV2:
             // until the switcher is in, the data goes the fallback way
             if (hostConfig.GetGrpcDataFallbackEnabled() &&
-                (!switcher || !switcher->IsPreferredActive()))
+                !preferredActive)
             {
                 return "grpc fallback";
             }
@@ -339,11 +340,25 @@ public:
         // outside the lock: the switcher has a lock of its own
         status.CellId = Pool->GetCellId();
         status.Host = binding->HostConfig.GetFqdn();
-        status.DataTransport = DescribeDataTransport(*binding, switcher);
+        const auto preferred = switcher ? switcher->GetPreferredState()
+                                        : ITransportSwitcher::TPreferredState{};
+        status.DataTransport = DescribeDataTransport(*binding, preferred.Active);
         status.SelectedTransport = binding->HostConfig.GetTransport();
         status.ConnectionId = ConnectionId;
         status.GrpcDataFallbackEnabled =
             binding->HostConfig.GetGrpcDataFallbackEnabled();
+        status.Io = DataRouter->GetIoStats();
+        if (status.SelectedTransport == NProto::CELL_DATA_TRANSPORT_ICV2 &&
+            Bootstrap.IcV2EndpointFactory)
+        {
+            const auto& endpoint = status.GrpcDataFallbackEnabled
+                                       ? preferred.Endpoint
+                                       : binding->DataEndpoint;
+            if (endpoint) {
+                status.IcV2Channel =
+                    Bootstrap.IcV2EndpointFactory->GetDataEndpointStatus(endpoint);
+            }
+        }
         return status;
     }
 

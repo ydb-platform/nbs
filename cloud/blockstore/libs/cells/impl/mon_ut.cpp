@@ -10,6 +10,24 @@ namespace NCloud::NBlockStore::NCells {
 
 Y_UNIT_TEST_SUITE(TCellsMonTest)
 {
+    Y_UNIT_TEST(ShouldRenderIcV2PortForPeerHost)
+    {
+        NProto::TCellsConfig proto;
+        proto.SetCellId("local");
+        auto* peer = proto.AddCells();
+        peer->SetCellId("remote");
+        peer->SetIcV2Port(39602);
+        peer->AddHosts()->SetFqdn("peer-host");
+        const TCellsConfig config(std::move(proto));
+        TCellsSnapshot snapshot;
+        snapshot.HostStatuses["remote"].push_back({.Fqdn = "peer-host"});
+        TStringStream out;
+        RenderCellsPage(out, config, snapshot, TDiagnosticsConfig());
+        const auto html = out.Str();
+        UNIT_ASSERT_STRING_CONTAINS(html, ">39602</td>");
+        UNIT_ASSERT(html.find("IC V2 XDC") == TString::npos);
+    }
+
     Y_UNIT_TEST(ShouldRenderTransportSelectionForEachMount)
     {
         NProto::TCellsConfig proto;
@@ -43,10 +61,51 @@ Y_UNIT_TEST_SUITE(TCellsMonTest)
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "value='CELL_DATA_TRANSPORT_RDMA' selected>RDMA</option>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "value='CELL_DATA_TRANSPORT_ICV2'>IC V2</option>");
         UNIT_ASSERT_STRING_CONTAINS(html, "grpc fallback</span>");
         UNIT_ASSERT_STRING_CONTAINS(html, "disk&lt;&amp;&quot;&#39;");
         UNIT_ASSERT_STRING_CONTAINS(html, "client&lt;&amp;&quot;&#39;");
         UNIT_ASSERT_STRING_CONTAINS(html, "remote&lt;&amp;&quot;&#39;");
+    }
+
+    Y_UNIT_TEST(ShouldDistinguishSelectedIcV2FromConnectedChannel)
+    {
+        NProto::TCellsConfig proto;
+        proto.SetCellId("local");
+        const TCellsConfig config(std::move(proto));
+        TCellsSnapshot snapshot;
+        snapshot.Mounts.push_back(
+            {.DiskId = "disk",
+             .ClientId = "client",
+             .CellId = "remote",
+             .Host = "localhost",
+             .DataTransport = "icv2",
+             .SelectedTransport = NProto::CELL_DATA_TRANSPORT_ICV2,
+             .IcV2Channel = NCloud::NIcV2::TPeerStatus{
+                 .State = NCloud::NIcV2::EPeerState::Disconnected,
+                 .ConnectionAttempts = 2,
+                 .ConnectionFailures = 1,
+             },
+             .Io = {
+                 .Read = {.Requests = 3, .Errors = 1, .Bytes = 12288},
+                 .Write = {.Requests = 2, .Errors = 2, .Bytes = 8192},
+                 .Zero = {.Requests = 1, .Errors = 1},
+             }});
+        TStringStream out;
+        RenderCellsPage(out, config, snapshot, TDiagnosticsConfig());
+        const auto html = out.Str();
+        UNIT_ASSERT_STRING_CONTAINS(html, "IC V2 channel</th>");
+        UNIT_ASSERT_STRING_CONTAINS(html, "icv2</span>");
+        UNIT_ASSERT_STRING_CONTAINS(html, "disconnected</span>");
+        UNIT_ASSERT_STRING_CONTAINS(html, "attempts: 2, failures: 1");
+        UNIT_ASSERT_STRING_CONTAINS(html, "I/O (current transport)</th>");
+        UNIT_ASSERT_STRING_CONTAINS(html, "R: 3/1 (12.00 KiB)");
+        UNIT_ASSERT_STRING_CONTAINS(html, "W: 2/2 (8.00 KiB)");
+        UNIT_ASSERT_STRING_CONTAINS(html, "Z: 1/1");
+        UNIT_ASSERT_STRING_CONTAINS(html, "label-success'>icv2</span>");
+        UNIT_ASSERT_STRING_CONTAINS(html, "label-warning'>disconnected</span>");
     }
     Y_UNIT_TEST(ShouldDisableManualRdmaSelectionWithoutFallback)
     {
