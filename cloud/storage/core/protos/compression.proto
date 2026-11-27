@@ -21,3 +21,39 @@ enum ECompressionCodec
     COMPRESSION_CODEC_ZSTD_3 = 3;
     COMPRESSION_CODEC_ZSTD_1 = 4;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Layout of a compressed blob.
+//
+// The uncompressed blob is split into chunks, each chunk is compressed
+// independently with Codec or is kept raw, and the chunks are stored one
+// after another. The message is stored in the blob metadata.
+
+message TBlobCompressionInfo
+{
+    // Every chunk except the last one has MaxUncompressedChunkSize bytes.
+    message TRegularChunks
+    {
+        uint32 MaxUncompressedChunkSize = 1;
+        uint32 LastUncompressedChunkSize = 2;
+    }
+
+    message TExplicitChunks
+    {
+        // One uncompressed size per chunk, in blob order.
+        repeated uint32 UncompressedChunkSizes = 1;
+    }
+
+    ECompressionCodec Codec = 1;
+
+    // Compressed sizes of the chunks in blob order. Zero means that the chunk
+    // is stored raw and occupies its uncompressed size.
+    repeated uint32 CompressedChunkSizes = 2;
+
+    // Uncompressed sizes are nonzero multiples of the block size in bytes.
+    oneof UncompressedChunkLayout
+    {
+        TRegularChunks RegularChunks = 3;
+        TExplicitChunks ExplicitChunks = 4;
+    }
+}
