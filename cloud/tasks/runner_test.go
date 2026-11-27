@@ -100,6 +100,17 @@ func (r *mockRunner) lockAndExecuteTask(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type mockTaskWithRetryPolicy struct {
+	Task
+	ignoreRetryLimit bool
+}
+
+func (t *mockTaskWithRetryPolicy) IgnoreRetryLimit() bool {
+	return t.ignoreRetryLimit
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newContext() context.Context {
 	return logging.SetLogger(
 		context.Background(),
@@ -1990,4 +2001,112 @@ func TestHeartbeats(t *testing.T) {
 	go startHeartbeats(ctx, 10*time.Millisecond, host, taskStorage, inflightTasksReporter)
 	wg.Wait()
 	mock.AssertExpectationsForObjects(t, taskStorage)
+}
+
+func TestRunnerForRunTaskRetryPolicy(t *testing.T) {
+	retriableErr := errors.NewRetriableError(assert.AnError)
+	unlimitedErr := errors.NewRetriableErrorWithIgnoreRetryLimit(
+		assert.AnError,
+	)
+
+	for _, test := range []struct {
+		name        string
+		ignoreLimit bool
+		err         error
+		status      storage.TaskStatus
+		count       uint64
+		exceeded    bool
+	}{
+		{
+			name:        "enabled",
+			ignoreLimit: true,
+			err:         retriableErr,
+			status:      storage.TaskStatusRunning,
+			count:       2,
+		},
+		{
+			name:     "disabled",
+			err:      retriableErr,
+			status:   storage.TaskStatusReadyToCancel,
+			count:    1,
+			exceeded: true,
+		},
+		{
+			name:   "error_flag",
+			err:    unlimitedErr,
+			status: storage.TaskStatusRunning,
+			count:  2,
+		},
+		{
+			name:        "non_retriable",
+			ignoreLimit: true,
+			err:         errors.NewNonRetriableError(retriableErr),
+			status:      storage.TaskStatusReadyToCancel,
+			count:       1,
+		},
+		{
+			name:        "non_cancellable",
+			ignoreLimit: true,
+			err: errors.NewNonCancellableError(
+				retriableErr,
+			),
+			status: storage.TaskStatusCancelled,
+			count:  1,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := newContext()
+			taskStorage := mocks.NewStorageMock()
+			task := NewTaskMock()
+			policyTask := &mockTaskWithRetryPolicy{
+				Task:             task,
+				ignoreRetryLimit: test.ignoreLimit,
+			}
+
+			state := storage.TaskState{
+				ID:                  taskID,
+				Status:              storage.TaskStatusRunning,
+				RetriableErrorCount: 1,
+			}
+			execCtx := newTestExecutionContext(
+				policyTask, taskStorage, state,
+			)
+			task.On(
+				"Run", mock.Anything, execCtx,
+			).Return(test.err).Once()
+
+			state.Status = test.status
+			state.RetriableErrorCount = test.count
+			if test.status != storage.TaskStatusRunning {
+				state.ErrorCode = grpc_codes.Unknown
+				state.ErrorMessage = test.err.Error()
+			}
+
+			task.On("Save").Return(state.State, nil).Once()
+			taskStorage.On(
+				"UpdateTask",
+				ctx,
+				mock.MatchedBy(matchesState(t, state)),
+			).Return(state, nil).Once()
+
+			runnerMetrics := &mockRunnerMetrics{}
+			runnerMetrics.On(
+				"OnExecutionError", test.err,
+			).Return().Once()
+			if test.exceeded {
+				runnerMetrics.On(
+					"OnExecutionError", mock.Anything,
+				).Return().Once()
+			}
+
+			runner := runnerForRun{
+				metrics:                       runnerMetrics,
+				maxRetriableErrorCountDefault: 1,
+			}
+			runner.executeTask(ctx, execCtx, policyTask)
+			mock.AssertExpectationsForObjects(
+				t, task, taskStorage, runnerMetrics,
+			)
+		})
+	}
 }
