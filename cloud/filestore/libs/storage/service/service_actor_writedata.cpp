@@ -1170,7 +1170,7 @@ private:
         const TEvService::TEvWriteDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        if (ev->Cookie != RequestGeneration) {
+        if (ShouldSkipOutdatedResponse(ev->Cookie, "WriteDataResponse", ctx)) {
             return;
         }
 
