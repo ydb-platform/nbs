@@ -398,6 +398,27 @@ private:
 
     STFUNC(StateWork)
     {
+        std::optional<ui64> replyGeneration;
+        switch (ev->GetTypeRewrite()) {
+            case TEvType::TEvents::HandleWakeup:
+                replyGeneration = ev->Get()->Tag;
+                break;
+            case TEvType::TEvIndexTablet::TEvGenerateBlobIdsResponse:
+            case TEvType::TEvBlobStorage::TEvPutResult:
+            case TEvType::TEvIndexTablet::TEvAddDataResponse:
+            case TEvType::TEvIndexTablet::TEvConfirmAddDataResponse:
+            case TEvType::TEvIndexTablet::TEvCancelAddDataResponse:
+            case TEvType::TEvService::TEvWriteDataResponse:
+                replyGeneration = ev->Cookie();
+        }
+        if (replyGeneration && ShouldSkipOutdatedResponse(
+                                   *replyGeneration,
+                                   ev->GetTypeName(),
+                                   ctx))
+        {
+            return;
+        }
+
         switch (ev->GetTypeRewrite()) {
             HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
             HFunc(TEvents::TEvWakeup, HandleWakeup);
@@ -453,14 +474,6 @@ private:
         const TEvIndexTablet::TEvGenerateBlobIdsResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        if (ShouldSkipOutdatedResponse(
-                ev->Cookie,
-                "GenerateBlobIdsResponse",
-                ctx))
-        {
-            return;
-        }
-
         auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
@@ -645,10 +658,6 @@ private:
         const TEvBlobStorage::TEvPutResult::TPtr& ev,
         const TActorContext& ctx)
     {
-        if (ShouldSkipOutdatedResponse(ev->Cookie, "WriteBlobResponse", ctx)) {
-            return;
-        }
-
         auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
@@ -844,11 +853,6 @@ private:
         const TEvIndexTablet::TEvAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        if (ShouldSkipOutdatedResponse(ev->Cookie, "AddDataResponse", ctx))
-        {
-            return;
-        }
-
         auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
@@ -958,14 +962,6 @@ private:
         const TEvIndexTablet::TEvConfirmAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        if (ShouldSkipOutdatedResponse(
-                ev->Cookie,
-                "ConfirmAddDataResponse",
-                ctx))
-        {
-            return;
-        }
-
         auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
@@ -1001,14 +997,6 @@ private:
         const TEvIndexTablet::TEvCancelAddDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        if (ShouldSkipOutdatedResponse(
-                ev->Cookie,
-                "CancelAddDataResponse",
-                ctx))
-        {
-            return;
-        }
-
         auto& state = GetState();
         const auto& LogTag = state.RequestContext.LogTag;
 
@@ -1041,11 +1029,6 @@ private:
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx)
     {
-        if (ShouldSkipOutdatedResponse(ev->Get()->Tag, "HandleWakeup", ctx))
-        {
-            return;
-        }
-
         auto& state = GetState();
 
         if (state.TabletRetryRequest == ETabletRetryRequest::None) {
@@ -1170,10 +1153,6 @@ private:
         const TEvService::TEvWriteDataResponse::TPtr& ev,
         const TActorContext& ctx)
     {
-        if (ev->Cookie != RequestGeneration) {
-            return;
-        }
-
         auto& state = GetState();
 
         auto* msg = ev->Get();
