@@ -18,6 +18,7 @@ namespace {
 constexpr ui64 PageSize = 16;
 constexpr ui64 PinnedPageCount = 128;
 constexpr ui64 MaxCachedPageCount = 1024;
+constexpr ui64 DefaultPageCount = 2048;
 constexpr ui64 P = 1;
 constexpr ui64 Q = 2;
 
@@ -130,6 +131,13 @@ struct TEnv
     }
 };
 
+void Fill(TEnv& env)
+{
+    for (ui64 pageNo = 0; pageNo < DefaultPageCount; ++pageNo) {
+        env.Storage->Pages[pageNo] = 'a' + pageNo % ('z' - 'a' + 1);
+    }
+}
+
 #define ASSERT_PAGE(expected, actual)                                          \
     {                                                                          \
         auto result = actual;                                                  \
@@ -141,6 +149,10 @@ struct TEnv
 #define ASSERT_REJECTED(actual)                                                \
     ASSERT_EQ(E_REJECTED, (actual).GetError().GetCode())                       \
 // ASSERT_REJECTED
+
+#define ASSERT_OK(error)                                                       \
+    ASSERT_FALSE(HasError(error)) << FormatError(error);                       \
+// ASSERT_OK
 
 }   // namespace
 
@@ -242,7 +254,7 @@ TEST(PageStoreTest, ShouldRollbackDirtyVersion)
     env.Store->RollbackPages(1, {P});
     ASSERT_PAGE('a', env.Update(3, P));
     ASSERT_PAGE('a', env.Lookup(P));
-    env.Store->Clear();
+    ASSERT_OK(env.Store->Clear());
 }
 
 TEST(PageStoreTest, ShouldHandleReorderedCommits)
@@ -264,7 +276,7 @@ TEST(PageStoreTest, ShouldHandleReorderedCommits)
     env.Store->CommitPages(1, {P});
     ASSERT_PAGE('c', env.Lookup(P));
     ASSERT_PAGE('c', env.Update(3, P));
-    env.Store->Clear();
+    ASSERT_OK(env.Store->Clear());
 }
 
 TEST(PageStoreTest, ShouldRejectReadsWhileLoading)
@@ -338,7 +350,7 @@ TEST(PageStoreTest, ShouldDropDirtyVersionIncludedInLoadedOne)
     // No dirty versions are left.
     //
 
-    env.Store->Clear();
+    ASSERT_OK(env.Store->Clear());
     ASSERT_PAGE('b', env.Lookup(P));
     ASSERT_EQ(2U, env.Storage->ReadCount);
 }
@@ -346,11 +358,7 @@ TEST(PageStoreTest, ShouldDropDirtyVersionIncludedInLoadedOne)
 TEST(PageStoreTest, ShouldPinAndEvict)
 {
     TEnv env;
-
-    const ui64 pageCount = 2048;
-    for (ui64 pageNo = 0; pageNo < pageCount; ++pageNo) {
-        env.Storage->Pages[pageNo] = 'a' + pageNo % ('z' - 'a' + 1);
-    }
+    Fill(env);
 
     for (ui64 pageNo = 0; pageNo < MaxCachedPageCount; ++pageNo) {
         ASSERT_PAGE(env.Storage->Pages[pageNo], env.Lookup(pageNo));
@@ -378,7 +386,9 @@ TEST(PageStoreTest, ShouldPinAndEvict)
     ASSERT_EQ(MaxCachedPageCount, stats.CacheMisses);
     ASSERT_EQ(0U, stats.Evictions);
 
-    for (ui64 pageNo = MaxCachedPageCount; pageNo < pageCount; ++pageNo) {
+    for (ui64 pageNo = MaxCachedPageCount;
+            pageNo < DefaultPageCount; ++pageNo)
+    {
         ASSERT_PAGE(env.Storage->Pages[pageNo], env.Lookup(pageNo));
     }
 
@@ -399,4 +409,117 @@ TEST(PageStoreTest, ShouldPinAndEvict)
     ASSERT_EQ(MaxCachedPageCount + PinnedPageCount, stats.CacheHits);
     ASSERT_EQ(2 * MaxCachedPageCount, stats.CacheMisses);
     ASSERT_EQ(MaxCachedPageCount, stats.Evictions);
+}
+
+TEST(PageStoreTest, ShouldTrackPinLoadsUponEviction)
+{
+    TEnv env;
+    Fill(env);
+
+    for (ui64 pageNo = PinnedPageCount;
+            pageNo < MaxCachedPageCount + PinnedPageCount; ++pageNo)
+    {
+        ASSERT_PAGE(env.Storage->Pages[pageNo], env.Lookup(pageNo));
+    }
+
+    for (ui64 pageNo = 0; pageNo < PinnedPageCount; ++pageNo) {
+        ASSERT_PAGE(env.Storage->Pages[pageNo], env.Lookup(pageNo));
+    }
+
+    auto stats = env.Store->CollectStats();
+    ASSERT_EQ(MaxCachedPageCount, stats.CachedPageCount);
+    ASSERT_EQ(PinnedPageCount, stats.PinnedPageCount);
+    ASSERT_EQ(0U, stats.CacheHits);
+    ASSERT_EQ(MaxCachedPageCount + PinnedPageCount, stats.CacheMisses);
+    ASSERT_EQ(PinnedPageCount, stats.Evictions);
+}
+
+TEST(PageStoreTest, ShouldNotEvictDirtyPages)
+{
+    TEnv env;
+    Fill(env);
+
+    for (ui64 pageNo = 0; pageNo < DefaultPageCount; ++pageNo) {
+        ASSERT_PAGE(env.Storage->Pages[pageNo], env.Lookup(pageNo));
+    }
+
+    auto stats = env.Store->CollectStats();
+    ASSERT_EQ(MaxCachedPageCount, stats.CachedPageCount);
+    ASSERT_EQ(PinnedPageCount, stats.PinnedPageCount);
+    ASSERT_EQ(0U, stats.CacheHits);
+    ASSERT_EQ(DefaultPageCount, stats.CacheMisses);
+    ASSERT_EQ(DefaultPageCount - MaxCachedPageCount, stats.Evictions);
+
+    //
+    // Write 2 dirty pages.
+    //
+
+    const ui64 pageNo1 = PinnedPageCount;
+    const ui64 pageNo2 = PinnedPageCount + 1;
+    env.Write(1, pageNo1, '+');
+    env.Write(2, pageNo2, '-');
+
+    //
+    // Trigger mass evictions.
+    //
+
+    for (ui64 pageNo = 0; pageNo < DefaultPageCount; ++pageNo) {
+        if (pageNo == pageNo1 || pageNo == pageNo2) {
+            continue;
+        }
+
+        ASSERT_PAGE(env.Storage->Pages[pageNo], env.Lookup(pageNo));
+    }
+
+    stats = env.Store->CollectStats();
+    ASSERT_EQ(MaxCachedPageCount, stats.CachedPageCount);
+    ASSERT_EQ(PinnedPageCount, stats.PinnedPageCount);
+    ASSERT_EQ(PinnedPageCount, stats.CacheHits);
+    ASSERT_EQ(2 * DefaultPageCount - PinnedPageCount, stats.CacheMisses);
+    ASSERT_EQ(
+        2 * DefaultPageCount - MaxCachedPageCount - PinnedPageCount,
+        stats.Evictions);
+
+    //
+    // Dirty pages should stay in cache.
+    //
+
+    ASSERT_PAGE('+', env.Update(3, pageNo1));
+    ASSERT_PAGE('-', env.Update(3, pageNo2));
+
+    stats = env.Store->CollectStats();
+    ASSERT_EQ(MaxCachedPageCount, stats.CachedPageCount);
+    ASSERT_EQ(PinnedPageCount, stats.PinnedPageCount);
+    ASSERT_EQ(PinnedPageCount + 2, stats.CacheHits);
+    ASSERT_EQ(2 * DefaultPageCount - PinnedPageCount, stats.CacheMisses);
+    ASSERT_EQ(
+        2 * DefaultPageCount - MaxCachedPageCount - PinnedPageCount,
+        stats.Evictions);
+}
+
+TEST(PageStoreTest, ShouldReportErrorIfFailedToAcquireCacheSlot)
+{
+    TEnv env;
+    Fill(env);
+
+    for (ui64 pageNo = 0; pageNo < PinnedPageCount; ++pageNo) {
+        ASSERT_PAGE(env.Storage->Pages[pageNo], env.Lookup(pageNo));
+    }
+
+    //
+    // Dirtying all slots to run out of evictable slots.
+    //
+
+    for (ui64 pageNo = PinnedPageCount; pageNo < MaxCachedPageCount; ++pageNo) {
+        env.Write(1, pageNo, '+');
+    }
+
+    auto stats = env.Store->CollectStats();
+    ASSERT_EQ(MaxCachedPageCount, stats.CachedPageCount);
+    ASSERT_EQ(PinnedPageCount, stats.PinnedPageCount);
+    ASSERT_EQ(0U, stats.CacheHits);
+    ASSERT_EQ(MaxCachedPageCount, stats.CacheMisses);
+    ASSERT_EQ(0U, stats.Evictions);
+
+    ASSERT_REJECTED(env.Lookup(MaxCachedPageCount));
 }

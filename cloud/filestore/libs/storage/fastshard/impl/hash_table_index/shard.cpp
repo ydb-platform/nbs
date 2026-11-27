@@ -43,7 +43,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui64 DefaultMaxCachedPageCount = 1_GB / DefaultBlockSize;
+constexpr ui64 DefaultMaxCachedDataSize = 1_GB;
 
 ////////////////////////////////////////////////////////////////////////////////
 // page index layout
@@ -105,7 +105,7 @@ private:
     std::unique_ptr<THt> Slots;
 
 public:
-    static ui32 CalcRequiredPageCount(
+    static ui64 CalcRequiredPageCount(
         const NProtoPrivate::TPersistentFastShardConfig& config,
         ui32 pageSize)
     {
@@ -339,7 +339,7 @@ private:
     ui64 MetadataSize = 0;
 
 public:
-    static ui32 CalcRequiredPageCount(
+    static ui64 CalcRequiredPageCount(
         const NProtoPrivate::TPersistentFastShardConfig& config,
         ui32 pageSize)
     {
@@ -404,7 +404,7 @@ public:
 
             const ui64 pageCount = Bitmap->GetPageCount()
                 + (FirstStoragePageClusterId * PageClusterPageCount
-                        - firstPageNo)
+                        - bitmapEndPageNo)
                 + pageClusterCount * PageClusterPageCount;
 
             totalPageCount += pageCount;
@@ -769,7 +769,8 @@ public:
         }
 
         const ui64 maxCachedDataPageCount = Config.GetMaxCachedDataPages()
-            ? Config.GetMaxCachedDataPages() : DefaultMaxCachedPageCount;
+            ? Config.GetMaxCachedDataPages()
+            : DefaultMaxCachedDataSize / PageSize;
         if (!Config.GetMaxCachedDataPages()) {
             SILK_WARN("[%s] max cached data pages configuration is missing",
                 FileSystemId.c_str());
@@ -2683,7 +2684,14 @@ public:
             // the wipe.
             //
 
-            PageStore->Clear();
+            error = PageStore->Clear();
+            if (HasError(error)) {
+                SILK_ERROR(
+                    "[F=%s] Format::PageStore.Clear error=%s",
+                    FileSystemId.c_str(),
+                    FormatError(error).c_str());
+                return error;
+            }
         }
 
         //

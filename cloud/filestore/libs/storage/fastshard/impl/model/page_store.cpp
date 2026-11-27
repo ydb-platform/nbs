@@ -3,8 +3,6 @@
 #include <silk/fibers/mutex.h>
 #include <silk/util/logger.h>
 
-#include <library/cpp/cache/cache.h>
-
 #include <util/generic/scope.h>
 #include <util/string/builder.h>
 
@@ -143,13 +141,17 @@ public:
         if (it == PageNo2Slot.end()) {
             ++Misses;
 
-            auto error = AcquireSlot(pageNo, slot);
+            auto error = AcquireSlot(slot);
             if (HasError(error)) {
                 return error;
             }
 
             (*slot)->PageNo = pageNo;
             PageNo2Slot.insert_direct(std::make_pair(pageNo, *slot), insertCtx);
+
+            if (pageNo < PinnedPageCount) {
+                ++Pins;
+            }
         } else {
             ++Hits;
 
@@ -171,18 +173,30 @@ public:
         slot.Locked = false;
     }
 
-    void Clear()
+    NProto::TError Clear()
     {
-        for (auto& s: Slots) {
-            if (s.Locked) {
+        TLookupMap rep;
+
+        for (auto& [p, s]: PageNo2Slot) {
+            if (s->Locked) {
+                rep[p] = s;
                 continue;
             }
 
-            PageNo2Slot.erase(s.PageNo);
-            s = {};
+            if (s->PV.Dirty) {
+                PageNo2Slot.clear();
+                Slots = TDeque<TSlot>(Slots.size());
+
+                return MakeError(
+                    E_INVALID_STATE,
+                    TStringBuilder() << "Dirty page found upon clear: " << p);
+            }
+
+            *s = {};
         }
 
-        PageNo2Slot.clear();
+        PageNo2Slot.swap(rep);
+        return {};
     }
 
     [[nodiscard]] TPageStoreStats CollectStats() const
@@ -197,24 +211,28 @@ public:
     }
 
 private:
-    NProto::TError AcquireSlot(ui64 pageNo, TSlot** slot)
+    NProto::TError AcquireSlot(TSlot** slot)
     {
-        for (;;) {
+        for (ui64 i = 0; i < 2 * Slots.size(); ++i) {
             const ui64 j = ClockHand++ % Slots.size();
             auto& s = Slots[j];
 
-            const bool isPinnedPage = pageNo < PinnedPageCount;
             const bool isPinnedSlot = s.PageNo < PinnedPageCount;
 
             if (s.PageNo == InvalidPageNo) {
-                Pins += isPinnedPage ? 1 : 0;
-
                 Y_ABORT_UNLESS(!s.Locked);
                 *slot = &s;
                 return {};
             }
 
-            if (s.Locked || isPinnedSlot) {
+            //
+            // Skipping:
+            // * pinned pages
+            // * the pages that are being read right now (Locked)
+            // * the pages with dirty versions
+            //
+
+            if (s.Locked || isPinnedSlot || s.PV.Dirty) {
                 continue;
             }
 
@@ -279,7 +297,7 @@ public:
     NProto::TError ReadPageForLookup(ui64 pageNo, TBuffer* page) const override;
     NProto::TError
     ReadPageForUpdate(ui64 lsn, ui64 pageNo, TBuffer* page) const override;
-    void Clear() override;
+    NProto::TError Clear() override;
     TPageStoreStats CollectStats() const override;
 
 private:
@@ -494,10 +512,10 @@ NProto::TError TPageStore::WritePage(
     return {};
 }
 
-void TPageStore::Clear()
+NProto::TError TPageStore::Clear()
 {
     std::lock_guard g(Mutex);
-    PageCache.Clear();
+    return PageCache.Clear();
 }
 
 TPageStoreStats TPageStore::CollectStats() const

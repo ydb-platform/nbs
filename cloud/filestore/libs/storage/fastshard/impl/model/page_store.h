@@ -56,9 +56,10 @@ public:
 
     /**
      * Drops all cached pages. Only committed pages may be cached at the
-     * moment of the call.
+     * moment of the call, otherwise an error is returned and all page store
+     * contents are dropped.
      */
-    virtual void Clear() = 0;
+    virtual NProto::TError Clear() = 0;
 
     [[nodiscard]] virtual TPageStoreStats CollectStats() const = 0;
 };

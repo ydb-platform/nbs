@@ -8,7 +8,7 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/* static */ ui32 THandleTable::CalcRequiredPageCount(
+/* static */ ui64 THandleTable::CalcRequiredPageCount(
     ui64 nodesPerGroup,
     ui64 handlesPerGroup,
     ui32 pageSize)

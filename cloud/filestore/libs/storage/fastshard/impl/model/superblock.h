@@ -37,7 +37,7 @@ private:
     IPageStorePtr PageStore;
 
 public:
-    [[nodiscard]] static ui32 CalcRequiredPageCount();
+    [[nodiscard]] static ui64 CalcRequiredPageCount();
 
     ui64 Init(ui64 firstPageNo, IPageStorePtr pageStore);
 

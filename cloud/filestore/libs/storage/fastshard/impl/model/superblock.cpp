@@ -6,7 +6,7 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/* static */ ui32 TSuperBlock::CalcRequiredPageCount()
+/* static */ ui64 TSuperBlock::CalcRequiredPageCount()
 {
     ui64 totalPageCount = 0;
 

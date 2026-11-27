@@ -43,7 +43,7 @@ TNodeTableSlot Convert(const NProto::TNodeAttr& attr)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/* static */ ui32 TNodeTable::CalcRequiredPageCount(
+/* static */ ui64 TNodeTable::CalcRequiredPageCount(
     ui64 nodesPerGroup,
     ui32 pageSize)
 {
