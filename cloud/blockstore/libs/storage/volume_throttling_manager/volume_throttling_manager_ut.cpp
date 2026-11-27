@@ -11,6 +11,9 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <limits>
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -74,6 +77,28 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime()
     SetupTabletServices(*runtime);
 
     return runtime;
+}
+
+// Submit one manual replacement and return the manager's acceptance result.
+NProto::TError SetManualConfig(
+    TTestActorRuntime& runtime,
+    ui32 version,
+    std::optional<double> coefficient = {})
+{
+    auto request = std::make_unique<
+        TEvVolumeThrottlingManager::TEvUpdateVolumeThrottlingConfigRequest>();
+    request->ThrottlingConfig.SetVersion(version);
+    if (coefficient) {
+        request->ThrottlingConfig.AddRules()->MutableCoefficients()
+            ->SetMaxReadBandwidth(*coefficient);
+    }
+
+    const auto sender = runtime.AllocateEdgeActor();
+    runtime.Send(new IEventHandle(
+        MakeVolumeThrottlingManagerServiceId(), sender, request.release()));
+    return runtime.GrabEdgeEvent<TEvVolumeThrottlingManager::
+                                     TEvUpdateVolumeThrottlingConfigResponse>(
+        sender)->Get()->Error;
 }
 
 }   // namespace
@@ -262,6 +287,10 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingManagerTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 E_ARGUMENT,
                 response.Get()->Error.GetCode());
+            // Check that the manager returns diagnostics to the caller.
+            UNIT_ASSERT_STRING_CONTAINS(
+                response.Get()->Error.GetMessage(),
+                ".Coefficients.");
         };
 
         // Test negative coefficient
@@ -304,6 +333,28 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingManagerTest)
                 rule.MutableDisks()->AddDiskIds("vol2");
                 rule.MutableCoefficients()->SetMaxReadBandwidth(-0.1);
             });
+    }
+
+    // Verify that VolumeThrottling rejects NaN and infinity but accepts a valid
+    // CLI update with the same version.
+    Y_UNIT_TEST(ShouldRejectNonFiniteCoefficients)
+    {
+        auto runtime = PrepareTestActorRuntime();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            SetManualConfig(
+                *runtime,
+                1,
+                std::numeric_limits<double>::quiet_NaN())
+                .GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            SetManualConfig(
+                *runtime,
+                1,
+                std::numeric_limits<double>::infinity())
+                .GetCode());
+        UNIT_ASSERT(!HasError(SetManualConfig(*runtime, 1, 0.5)));
     }
 }
 

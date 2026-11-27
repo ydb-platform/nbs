@@ -41,6 +41,13 @@ message TSpecificDiskFilter {
 ////////////////////////////////////////////////////////////////////////////////
 // Config
 
+// A volume throttling rule with a selector and performance coefficients.
+//
+// Select a rule from an ordered Rules list for a volume using the following
+// precedence:
+//  - apply the first matching Disks rule in list order
+//  - if no Disks rule matches, apply the first matching Filter rule
+//  - if neither matches, no rule applies
 message TVolumeThrottlingRule {
     oneof Selector {
         TDiskFilter Filter = 1;

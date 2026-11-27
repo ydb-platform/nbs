@@ -1,6 +1,7 @@
 UNITTEST_FOR(cloud/blockstore/libs/storage/volume_throttling_manager)
 
 SRCS(
+    model/helpers_ut.cpp
     volume_throttling_manager_ut.cpp
 )
 
