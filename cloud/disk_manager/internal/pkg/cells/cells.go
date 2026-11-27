@@ -134,7 +134,7 @@ func (s *cellSelector) SelectCellForLocalDisk(
 
 	cells := s.getCells(zoneID)
 	if len(cells) == 0 {
-		if s.IsCell(zoneID) {
+		if s.isCell(zoneID) {
 			return s.nbsFactory.GetClient(ctx, zoneID)
 		}
 
@@ -284,8 +284,8 @@ func (s *cellSelector) isFolderAllowed(folderID string) bool {
 		slices.Contains(s.config.GetFolderAllowList(), folderID)
 }
 
-func (s *cellSelector) IsCell(cellID string) bool {
-	for zoneID := range s.config.GetCells() {
+func (s *cellSelector) isCell(cellID string) bool {
+	for zoneID := range s.config.Cells {
 		if s.ZoneContainsCell(zoneID, cellID) {
 			return true
 		}
@@ -317,7 +317,7 @@ func (s *cellSelector) resolveCells(zoneID string) ([]string, error) {
 	cells := s.getCells(zoneID)
 
 	if len(cells) == 0 {
-		if s.IsCell(zoneID) {
+		if s.isCell(zoneID) {
 			return []string{zoneID}, nil
 		}
 
@@ -363,7 +363,7 @@ func (s *cellSelector) selectCellForDisk(
 	cells := s.getCells(zoneID)
 
 	if len(cells) == 0 {
-		if s.IsCell(zoneID) {
+		if s.isCell(zoneID) {
 			return zoneID, nil
 		}
 
@@ -536,7 +536,7 @@ func (s *cellSelector) selectCellForFilesystem(
 	cells := s.getCells(zoneID)
 
 	if len(cells) == 0 {
-		if s.IsCell(zoneID) {
+		if s.isCell(zoneID) {
 			return zoneID, nil
 		}
 

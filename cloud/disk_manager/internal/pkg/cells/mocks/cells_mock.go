@@ -74,10 +74,6 @@ func (s *CellSelectorMock) SelectCellForFilesystem(
 	return args.Get(0).(nfs.Client), args.Error(1)
 }
 
-func (s *CellSelectorMock) IsCell(cellID string) bool {
-	return s.Called(cellID).Bool(0)
-}
-
 func (s *CellSelectorMock) ZoneContainsCell(zoneID string, cellID string) bool {
 	args := s.Called(zoneID, cellID)
 	return args.Bool(0)

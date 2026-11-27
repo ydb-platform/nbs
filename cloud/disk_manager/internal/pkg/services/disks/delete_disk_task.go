@@ -7,7 +7,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
@@ -32,7 +31,6 @@ type deleteDiskTask struct {
 	scheduler         tasks.Scheduler
 	poolService       pools.Service
 	nbsFactory        nbs.Factory
-	cellSelector      cells.CellSelector
 	disabledZones     *common.DisabledZones
 	request           *protos.DeleteDiskRequest
 	state             *protos.DeleteDiskTaskState
@@ -61,7 +59,6 @@ func (t *deleteDiskTask) deleteDisk(
 	selfTaskID := execCtx.GetTaskID()
 	diskID := t.request.Disk.DiskId
 	sync := t.request.Sync
-	requestZoneID := t.request.Disk.ZoneId
 
 	meta, err := t.storage.GetDiskMeta(ctx, diskID)
 	if err != nil {
@@ -76,7 +73,7 @@ func (t *deleteDiskTask) deleteDisk(
 	// with no zone.
 	zoneID := meta.ZoneID
 	if len(zoneID) == 0 {
-		zoneID = requestZoneID
+		zoneID = t.request.Disk.ZoneId
 	}
 	if len(zoneID) == 0 {
 		return errors.NewNonCancellableErrorf("zone is unknown for disk %v", diskID)
@@ -95,18 +92,6 @@ func (t *deleteDiskTask) deleteDisk(
 			return err
 		}
 		return t.storage.DiskDeleted(ctx, diskID, time.Now())
-	}
-
-	// If the disk is in a configured cell, validate the requested zone against
-	// that cell before marking the disk as deleting.
-	if requestZoneID != "" && zoneID != requestZoneID &&
-		t.cellSelector.IsCell(zoneID) &&
-		!t.cellSelector.ZoneContainsCell(requestZoneID, zoneID) {
-
-		return errors.NewNonCancellableErrorf(
-			"zone %q of disk %v from meta does not match request zone %q",
-			zoneID, diskID, requestZoneID,
-		)
 	}
 
 	diskMeta, err := t.storage.DeleteDisk(ctx, diskID, selfTaskID, time.Now())

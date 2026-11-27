@@ -52,9 +52,6 @@ type CellSelector interface {
 		folderID string,
 	) (nfs.Client, error)
 
-	// IsCell reports whether the ID is a configured cell in any zone.
-	IsCell(cellID string) bool
-
 	ZoneContainsCell(zoneID string, cellID string) bool
 
 	// Returns all cell IDs that belong to the given zone.
