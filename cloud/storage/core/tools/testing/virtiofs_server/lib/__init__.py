@@ -18,8 +18,13 @@ logger = logging.getLogger(__name__)
 
 
 def get_virtiofs_server_binary():
-    return common.binary_path(os.getenv(
-        "VIRTIOFS_SERVER_BINARY", "cloud/filestore/apps/vhost/filestore-vhost"))
+    return common.binary_path(
+        "cloud/storage/core/tools/testing/virtiofs_server/filestore-bin/filestore-vhost")
+
+
+def get_virtiofs_client_binary():
+    return common.binary_path(
+        "cloud/storage/core/tools/testing/virtiofs_server/filestore-bin/filestore-client")
 
 
 def daemon_log_files(prefix, cwd):
@@ -117,9 +122,7 @@ class VirtioFsServer:
                 raise RuntimeError("filestore-vhost exited during startup")
             try:
                 result = subprocess.run(
-                    [common.binary_path(os.getenv(
-                        "VIRTIOFS_CLIENT_BINARY",
-                        "cloud/filestore/apps/client/filestore-client")),
+                    [get_virtiofs_client_binary(),
                      *args, "--server-port", str(port)],
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=5)
                 if result.returncode == 0:

@@ -5,8 +5,7 @@ TEST_SRCS(
 )
 
 DEPENDS(
-    cloud/filestore/apps/client
-    cloud/filestore/apps/vhost
+    cloud/storage/core/tools/testing/virtiofs_server/filestore-bin
 )
 
 PEERDIR(

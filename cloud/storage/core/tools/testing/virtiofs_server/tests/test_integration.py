@@ -5,12 +5,16 @@ from pathlib import Path
 import pytest
 import yatest.common as common
 
-from cloud.storage.core.tools.testing.virtiofs_server.lib import VirtioFsServer
+from cloud.storage.core.tools.testing.virtiofs_server.lib import (
+    VirtioFsServer,
+    get_virtiofs_client_binary,
+    get_virtiofs_server_binary,
+)
 
 
 def test_local_vhost_restart():
-    binary = common.binary_path("cloud/filestore/apps/vhost/filestore-vhost")
-    client = common.binary_path("cloud/filestore/apps/client/filestore-client")
+    binary = get_virtiofs_server_binary()
+    client = get_virtiofs_client_binary()
     with tempfile.TemporaryDirectory(prefix="local-vfs-") as temp:
         root = Path(temp)
         shared = root / 'shared "directory'
@@ -38,7 +42,7 @@ def test_local_vhost_restart():
 
 
 def test_start_failure_stops_daemon():
-    binary = common.binary_path("cloud/filestore/apps/vhost/filestore-vhost")
+    binary = get_virtiofs_server_binary()
     with tempfile.TemporaryDirectory(prefix="local-vfs-") as temp:
         server = VirtioFsServer(binary, str(Path(temp) / "vhost.sock"), temp)
 
