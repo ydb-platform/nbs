@@ -34,25 +34,23 @@ struct IConnection
 {
     virtual ~IConnection() = default;
 
-    // Callbacks may start before this method returns, but never before
-    // activation. Repeated activation returns false.
-    // Registration failure returns false and invokes HandleDisconnect().
+    // Enables callbacks, which may start before return. Returns false if
+    // already activated, closed or stopping. A connection setup failure also
+    // calls HandleDisconnect().
     virtual bool Activate() = 0;
 
-    // Consumes a non-null ev on every result. Accepted does not guarantee
-    // delivery. NotActive includes calls before activation and after closure.
-    // QueueFull means the shared output byte limit would be exceeded.
+    // Consumes a non-null event even on failure. Accepted does not guarantee
+    // delivery. NotActive means not activated or closed; QueueFull means the
+    // transport's output limit would be exceeded.
     virtual ESendResult Send(std::unique_ptr<NActors::IEventHandle> ev) = 0;
 
-    // Does not wait for callbacks; use WhenClosed() to await completion.
-    // Safe from callbacks. Local closure does not invoke HandleDisconnect().
+    // Begins closure without waiting; safe in callbacks. Local closure does
+    // not call HandleDisconnect(). Await WhenClosed() outside callbacks.
     virtual void Close() = 0;
 
-    // Ready after closure and completion of all admitted operations and
-    // callbacks. Outgoing events may still be retained after this future is
-    // ready. Do not wait for this future from a callback of this connection.
-    // Subscribers run inline when the future becomes ready, or when subscribing
-    // to an already ready future, and must not throw exceptions.
+    // Ready after closure, pending operations and callbacks. Does not guarantee
+    // release of outgoing events. Wait outside this connection's callbacks;
+    // subscribers run inline and must not throw.
     virtual NThreading::TFuture<void> WhenClosed() const = 0;
 };
 
