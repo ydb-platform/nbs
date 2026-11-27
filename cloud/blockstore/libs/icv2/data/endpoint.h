@@ -1,7 +1,7 @@
 #pragma once
 
 #include "config.h"
-#include "request_channel.h"
+#include "request_sender.h"
 
 #include <cloud/blockstore/libs/service/service.h>
 
@@ -27,7 +27,7 @@ using IDataEndpointPtr = std::shared_ptr<IDataEndpoint>;
 
 // Keep the channel's dependencies running until shutdown finishes.
 IDataEndpointPtr CreateDataEndpoint(
-    IDataRequestChannelPtr channel,
+    IDataRequestSenderPtr sender,
     TDataConfig config);
 
 }   // namespace NCloud::NBlockStore::NIcV2

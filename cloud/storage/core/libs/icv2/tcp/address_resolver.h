@@ -20,8 +20,7 @@ namespace NCloud::NIcV2 {
 using TResolveResult = TResultOrError<TVector<NInterconnect::TAddress>>;
 using TResolveFuture = NThreading::TFuture<TResolveResult>;
 
-// Resolve through the interconnect DNS service without waiting on the calling
-// thread. Destroying the resolver cancels pending futures.
+// Resolves addresses asynchronously. Destruction cancels pending requests.
 struct IAddressResolver
 {
     virtual ~IAddressResolver();
@@ -35,10 +34,10 @@ using IAddressResolverPtr = std::shared_ptr<IAddressResolver>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Supply a running actor system with its DNS service and an asynchronous
-// completion executor. Keep both running until all results and continuations
-// finish, including after destroying the resolver. Continuations must not
-// throw. Finish concurrent Resolve calls before destroying the resolver.
+// Pass a running actor system with DNS and an executor that never runs tasks
+// inline. Keep both running until all result callbacks finish, even after
+// destroying the resolver. Callbacks must not throw. Finish concurrent
+// Resolve() calls before destroying the resolver.
 IAddressResolverPtr CreateAddressResolver(
     NActors::TActorSystem* actorSystem,
     ITaskQueuePtr completions);

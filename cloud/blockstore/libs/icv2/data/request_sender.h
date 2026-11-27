@@ -17,9 +17,9 @@ using TDataResponseFuture = NThreading::TFuture<TDataResponseResult>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IDataRequestChannel
+struct IDataRequestSender
 {
-    virtual ~IDataRequestChannel();
+    virtual ~IDataRequestSender();
 
     // Consume the reply once with ExtractValue(). On a protocol error, close
     // the channel from the reply if it is still alive.
@@ -32,6 +32,6 @@ struct IDataRequestChannel
     virtual NThreading::TFuture<void> Close() = 0;
 };
 
-using IDataRequestChannelPtr = std::shared_ptr<IDataRequestChannel>;
+using IDataRequestSenderPtr = std::shared_ptr<IDataRequestSender>;
 
 }   // namespace NCloud::NBlockStore::NIcV2

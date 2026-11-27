@@ -29,7 +29,7 @@ struct TPeerDependencies
     ISchedulerPtr Scheduler;
     IAddressResolverPtr Resolver;
     ITaskQueuePtr Completions;
-    IChannelFactoryPtr ChannelFactory;
+    IRequestChannelFactoryPtr ChannelFactory;
     TDuration ConnectTimeout;
 };
 
@@ -75,7 +75,7 @@ public:
     ~TPeer() override;
 
     // IPeer implementation
-    TChannelFuture GetChannel() override;
+    TRequestChannelFuture GetRequestChannel() override;
     TPeerStatus GetStatus() override;
     void Close() override;
 
@@ -113,11 +113,11 @@ private:
         const TConnectHandshakeResult& result);
     void FinishAttempt(
         std::shared_ptr<TConnectionAttempt> attempt,
-        TChannelResult result);
+        TRequestChannelResult result);
     void OnClosed(ui64 generation);
     void DeliverAttemptResult(
         std::shared_ptr<TConnectionAttempt> attempt,
-        TChannelResult result,
+        TRequestChannelResult result,
         std::shared_ptr<TActivity> activity);
 };
 

@@ -100,7 +100,8 @@ struct TPeer::TConnectionAttempt
     TInstant Deadline;
     TVector<NInterconnect::TAddress> Addresses;
     size_t AddressesTried = 0;
-    TPromise<TChannelResult> Promise = NewPromise<TChannelResult>();
+    TPromise<TRequestChannelResult> Promise =
+        NewPromise<TRequestChannelResult>();
     EConnectState ConnectState = EConnectState::Idle;
     NProto::TError RetryError;
 };
@@ -139,10 +140,10 @@ TPeer::~TPeer()
     Close();
 }
 
-TChannelFuture TPeer::GetChannel()
+TRequestChannelFuture TPeer::GetRequestChannel()
 {
     if (auto channel = GetReadyChannel()) {
-        return MakeFuture<TChannelResult>(std::move(channel));
+        return MakeFuture<TRequestChannelResult>(std::move(channel));
     }
     const auto keepAlive = shared_from_this();
     std::shared_ptr<TConnectionAttempt> attempt;
@@ -151,16 +152,16 @@ TChannelFuture TPeer::GetChannel()
     {
         TGuard<TAdaptiveLock> guard(Lock);
         if (HasError(CloseError)) {
-            return MakeFuture<TChannelResult>(CloseError);
+            return MakeFuture<TRequestChannelResult>(CloseError);
         }
         if (Attempt) {
             return Attempt->Promise.GetFuture();
         }
         if (auto channel = GetReadyChannel()) {
-            return MakeFuture<TChannelResult>(std::move(channel));
+            return MakeFuture<TRequestChannelResult>(std::move(channel));
         }
         if (RetryAt > Dependencies.Timer->Now()) {
-            return MakeFuture<TChannelResult>(
+            return MakeFuture<TRequestChannelResult>(
                 MakeError(E_UNAVAILABLE, "IC V2 peer is waiting to reconnect"));
         }
         if (Channel) {
@@ -301,7 +302,7 @@ void TPeer::StartConnectionAttempt(ui64 generation)
         }
         RetryAt = {};
     }
-    GetChannel();
+    GetRequestChannel();
 }
 
 void TPeer::ScheduleRetry(
@@ -503,7 +504,7 @@ void TPeer::HandleConnectionResult(
         return;
     }
     auto [channel, error] =
-        Dependencies.ChannelFactory->CreateChannel(result.GetResult());
+        Dependencies.ChannelFactory->CreateRequestChannel(result.GetResult());
     if (HasError(error)) {
         FinishAttempt(std::move(attempt), std::move(error));
         return;
@@ -541,7 +542,7 @@ void TPeer::HandleConnectionResult(
 
 void TPeer::FinishAttempt(
     std::shared_ptr<TConnectionAttempt> attempt,
-    TChannelResult result)
+    TRequestChannelResult result)
 {
     const auto ready = HasError(result.GetError())
                            ? nullptr
@@ -622,7 +623,7 @@ void TPeer::OnClosed(ui64 generation)
 
 void TPeer::DeliverAttemptResult(
     std::shared_ptr<TConnectionAttempt> attempt,
-    TChannelResult result,
+    TRequestChannelResult result,
     std::shared_ptr<TActivity> activity)
 {
     auto complete = [activity = std::move(activity),

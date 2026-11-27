@@ -15,7 +15,8 @@ namespace NCloud::NBlockStore::NIcV2 {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Start the transport first. Its owner drains retired endpoints at shutdown.
-// Endpoints support ReadBlocksLocal, WriteBlocksLocal and ZeroBlocks only.
+// Endpoints support ReadBlocks, ReadBlocksLocal, WriteBlocks, WriteBlocksLocal,
+// and ZeroBlocks.
 struct IDataEndpointFactory
 {
     virtual ~IDataEndpointFactory();

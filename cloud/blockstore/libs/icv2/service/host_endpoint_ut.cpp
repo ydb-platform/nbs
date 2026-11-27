@@ -1,6 +1,6 @@
 #include "host_endpoint.h"
 
-#include "peer_request_channel.h"
+#include "peer_request_sender.h"
 
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
@@ -33,9 +33,9 @@ using NCloud::NIcV2::IPeerManagerPtr;
 using NCloud::NIcV2::IPeerPtr;
 using NCloud::NIcV2::IRequestChannel;
 using NCloud::NIcV2::IRequestChannelPtr;
-using NCloud::NIcV2::TChannelFuture;
-using NCloud::NIcV2::TChannelResult;
 using NCloud::NIcV2::TPeerStatus;
+using NCloud::NIcV2::TRequestChannelFuture;
+using NCloud::NIcV2::TRequestChannelResult;
 using NCloud::NIcV2::TResponseFuture;
 using NCloud::NIcV2::TResponseResult;
 
@@ -173,8 +173,8 @@ struct TTestPeers final
     size_t Unregistered = 0;
     bool WaitForConnect = false;
     NProto::TError ConnectError;
-    NThreading::TPromise<TChannelResult> Connected =
-        NThreading::NewPromise<TChannelResult>();
+    NThreading::TPromise<TRequestChannelResult> Connected =
+        NThreading::NewPromise<TRequestChannelResult>();
 
     void Start() override
     {}
@@ -198,20 +198,20 @@ struct TTestPeers final
         return IPeerPtr(shared_from_this());
     }
 
-    TChannelFuture GetChannel() override
+    TRequestChannelFuture GetRequestChannel() override
     {
         ++Calls;
         if (Unregistered) {
-            return NThreading::MakeFuture<TChannelResult>(
+            return NThreading::MakeFuture<TRequestChannelResult>(
                 MakeError(E_REJECTED, "test peer is closed"));
         }
         if (WaitForConnect) {
             return Connected.GetFuture();
         }
         if (HasError(ConnectError)) {
-            return NThreading::MakeFuture<TChannelResult>(ConnectError);
+            return NThreading::MakeFuture<TRequestChannelResult>(ConnectError);
         }
-        return NThreading::MakeFuture<TChannelResult>(
+        return NThreading::MakeFuture<TRequestChannelResult>(
             IRequestChannelPtr(Channel));
     }
 
@@ -823,12 +823,12 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
             response.GetValue().GetError().GetCode());
     }
 
-    Y_UNIT_TEST(CloseCallbackCanReleaseLastChannelOwner)
+    Y_UNIT_TEST(CloseCallbackCanReleaseLastSenderOwner)
     {
         auto peer = std::make_shared<TTestPeers>();
         const std::weak_ptr<TTestPeers> weakPeer = peer;
-        auto channel = CreatePeerRequestChannel(std::move(peer));
-        auto response = channel->Request(
+        auto sender = CreateDataRequestSender(std::move(peer));
+        auto response = sender->Request(
             std::make_unique<TEvService::TEvZeroBlocksRequest>(),
             TDuration::Seconds(1));
         NThreading::TFuture<void> closedInsideCallback;
@@ -837,14 +837,14 @@ Y_UNIT_TEST_SUITE(TIcV2HostDataEndpointTest)
             [&](const TDataResponseFuture& future)
             {
                 Y_UNUSED(future);
-                closedInsideCallback = channel->Close();
+                closedInsideCallback = sender->Close();
                 closedBeforeCallbackReturned = closedInsideCallback.IsReady();
-                channel.reset();
+                sender.reset();
             });
 
-        const auto closed = channel->Close();
+        const auto closed = sender->Close();
 
-        UNIT_ASSERT(!channel);
+        UNIT_ASSERT(!sender);
         UNIT_ASSERT(weakPeer.expired());
         UNIT_ASSERT(!closedBeforeCallbackReturned);
         UNIT_ASSERT(closed.StateId() == closedInsideCallback.StateId());
