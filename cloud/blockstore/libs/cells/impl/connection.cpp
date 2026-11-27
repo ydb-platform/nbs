@@ -323,7 +323,12 @@ public:
     void NoteUnmount(const TString& diskId, const TString& clientId)
     {
         with_lock (Lock) {
-            if (MountedDiskId == diskId && MountedClientId == clientId) {
+            // an empty id is filled in below us, by the gRPC client, and is
+            // not known here - it matches any client
+            const bool sameClient = clientId.empty() ||
+                                    MountedClientId.empty() ||
+                                    MountedClientId == clientId;
+            if (MountedDiskId == diskId && sameClient) {
                 MountedDiskId.clear();
                 MountedClientId.clear();
                 MountedTabletHost.clear();
@@ -1332,9 +1337,14 @@ TCellConnectionFuture CreateCellConnection(
     ICellConnectionObserverPtr observer)
 {
     auto fqdn = hostConfig.GetFqdn();
-    auto controlFuture = pool->AcquireControlChannel(fqdn);
+    auto controlFuture = SafeExecute<TResultOrError<TFuture<IBlockStorePtr>>>(
+        [&] { return pool->AcquireControlChannel(fqdn); });
+    if (HasError(controlFuture)) {
+        return MakeFuture(
+            TResultOrError<ICellConnectionPtr>(controlFuture.GetError()));
+    }
 
-    return controlFuture.Apply(
+    return controlFuture.GetResult().Apply(
         [pool = std::move(pool),
          hostConfig = std::move(hostConfig),
          bootstrap = std::move(bootstrap),

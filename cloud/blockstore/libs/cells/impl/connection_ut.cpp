@@ -650,7 +650,6 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
 
         auto request = std::make_shared<NProto::TUnmountVolumeRequest>();
         request->SetDiskId("new-disk");
-        request->MutableHeaders()->SetClientId("new-client");
         const auto unmounted = connection->GetService()
                                    ->UnmountVolume(
                                        MakeIntrusive<TCallContext>(),
@@ -2309,6 +2308,20 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         const auto mounts = GetCellMounts(*env.Bootstrap.Connections);
         UNIT_ASSERT_VALUES_EQUAL(1, mounts.size());
         UNIT_ASSERT_VALUES_EQUAL("new-client", mounts[0].ClientId);
+    }
+
+    Y_UNIT_TEST(ShouldFailTheConnectionWhenTheChannelSetupThrows)
+    {
+        TTestEnv env;
+        env.EndpointsSetup->ThrowForFqdn = "host-a";
+
+        auto future = env.ConnectAsync("host-a");
+
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT(HasError(future.GetValue()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            env.Pool->GetCounters().Connections->Val());
     }
 }
 
