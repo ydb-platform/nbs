@@ -6776,7 +6776,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         const ui32 lastCreatedShardIndex = 5;
         const auto shardCreationStateUpdateError =
-            MakeError(E_REJECTED, "failed to update shard creation state");
+            MakeError(E_ARGUMENT, "invalid shard creation state");
 
         bool shardCreationStateUpdateErrorInjected = false;
         auto prevFilter = env.GetRuntime().SetEventFilter(
@@ -6811,9 +6811,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.SendResizeFileStoreRequest(fsId, newBlockCount);
         {
             auto response = service.RecvResizeFileStoreResponse();
-            UNIT_ASSERT_VALUES_EQUAL(
-                FormatError(shardCreationStateUpdateError),
-                FormatError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
         }
 
         env.GetRuntime().SetEventFilter(prevFilter);
@@ -6845,6 +6846,90 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         DoTestShardedFileSystemConfigured(fsId, service, expected);
 
         topology = GetFileSystemTopology(service, fsId);
+        UNIT_ASSERT_VALUES_EQUAL(6, topology.ShardFileSystemIdsSize());
+    }
+
+    SERVICE_TEST(ShouldRejectResizeWithoutNewShardsUponUnfinishedShardCreation)
+    {
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(1_GB);
+        config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetMaxShardManagementRequestsInFlight(1);
+        TTestEnv env({}, config);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId = "test";
+
+        // A filesystem with two shards.
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, 2_GB / 4_KB);
+
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
+
+        // A resize to six shards fails after it has created the shards.
+        const ui32 lastCreatedShardIndex = 5;
+        bool errorInjected = false;
+        auto prevFilter = env.GetRuntime().SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() !=
+                    TEvIndexTablet::EvUnsafeChangeTabletStateResponse)
+                {
+                    return false;
+                }
+
+                using TResponse =
+                    TEvIndexTablet::TEvUnsafeChangeTabletStateResponse;
+
+                auto* msg = ev->Get<TResponse>();
+                if (errorInjected || HasError(msg->GetError()) ||
+                    !msg->Record.HasShardCreationState() ||
+                    !IsShardCreatedInShardCreationState(
+                        msg->Record.GetShardCreationState(),
+                        lastCreatedShardIndex))
+                {
+                    return false;
+                }
+
+                *msg->Record.MutableError() = MakeError(E_REJECTED, "error");
+                errorInjected = true;
+                return false;
+            });
+
+        service.SendResizeFileStoreRequest(fsId, 6_GB / 4_KB);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            service.RecvResizeFileStoreResponse()->GetStatus());
+
+        env.GetRuntime().SetEventFilter(prevFilter);
+        UNIT_ASSERT(errorInjected);
+
+        // A resize that keeps the two shards should be rejected: the created
+        // shards are not in use yet.
+        service.SendResizeFileStoreRequest(
+            fsId,
+            8_GB / 4_KB,
+            false,   // force
+            2);      // shardCount
+        {
+            auto response = service.RecvResizeFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_INVALID_STATE,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // The retry of the failed resize should succeed.
+        service.ResizeFileStore(fsId, 6_GB / 4_KB);
+
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
+
+        const auto topology = GetFileSystemTopology(service, fsId);
         UNIT_ASSERT_VALUES_EQUAL(6, topology.ShardFileSystemIdsSize());
     }
 

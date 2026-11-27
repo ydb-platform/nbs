@@ -1,7 +1,7 @@
 #include "service_actor.h"
 
 #include "service_actor_fastshard.h"
-#include "shard_creation_state_companion.h"
+#include "service_actor_multishard_create.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
@@ -168,7 +168,6 @@ NProto::TError ValidateCreateFileSystemRequest(
 
 class TCreateFileStoreActor final
     : public TActorBootstrapped<TCreateFileStoreActor>
-    , public IShardCreationOwner
 {
 private:
     const TStorageConfigPtr StorageConfig;
@@ -179,12 +178,10 @@ private:
     TMultiShardFileStoreConfig FileStoreConfig;
     NProtoPrivate::TShardTopology ShardTopology;
 
-    bool MainFileSystemCreated = false;
     ui32 NextShardToConfigure = 0;
     ui32 ShardsToConfigure = 0;
-    bool ShardConfigurationStarted = false;
 
-    TShardCreationStateCompanion ShardCreationState;
+    TMultiShardCreateConfig CreateConfig;
 
 public:
     TCreateFileStoreActor(
@@ -199,10 +196,6 @@ private:
 
     void CreateMainFileStore(const TActorContext& ctx);
     void CreateShards(const TActorContext& ctx);
-    void CreateShard(
-        const TActorContext& ctx,
-        ui32 shardIndex) override;
-    void AllocateFastShards(const TActorContext& ctx);
     void ConfigureShards(const TActorContext& ctx);
     void ConfigureShard(const TActorContext& ctx, const ui32 shardIndex);
     void ConfigureMainFileStore(const TActorContext& ctx);
@@ -215,8 +208,8 @@ private:
         const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleFastShardsAllocated(
-        const TEvServicePrivate::TEvFastShardsAllocated::TPtr& ev,
+    void HandleMultiShardCreateResponse(
+        const TEvServicePrivate::TEvMultiShardCreateResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleConfigureShardResponse(
@@ -251,10 +244,6 @@ TCreateFileStoreActor::TCreateFileStoreActor(
     , Request(std::move(request))
     , LogTag(Request.GetFileSystemId())
     , FastShardCount(GetFastShardCount(*StorageConfig, Request))
-    , ShardCreationState(
-          Request.GetFileSystemId(),
-          TShardCreationStateCompanion::EMode::Create,
-          this)
 {}
 
 void TCreateFileStoreActor::Bootstrap(const TActorContext& ctx)
@@ -285,23 +274,29 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
             config,
             Request.GetPerformanceProfile(),
             Request.GetShardCount() + FastShardCount);
-        const auto error = ShardCreationState.InitializeShardCreation(
-            0,
-            FileStoreConfig.ShardConfigs.size(),
-            StorageConfig->GetMaxShardManagementRequestsInFlight());
-        // InitializeShardCreation can't return an error here,
-        // current shard count is zero while creating new FS.
-        Y_DEBUG_ABORT_UNLESS(!HasError(error));
-
         ShardsToConfigure = FileStoreConfig.ShardConfigs.size();
         config = FileStoreConfig.MainFileSystemConfig;
 
+        using TShardTopology = NProtoPrivate::TShardTopology;
+
+        CreateConfig.FileSystemId = Request.GetFileSystemId();
+
         // TODO(#8034): use the main filestore config topology once it is there
-        // The fast shards are last, their entries come after allocation.
+        // The fast shards are the last ones.
         const auto& shardConfigs = FileStoreConfig.ShardConfigs;
         ui32 fastShardsBegin = shardConfigs.size() - FastShardCount;
-        for (ui32 i = 0; i < fastShardsBegin; ++i) {
-            AddOrdinaryShard(shardConfigs[i].GetFileSystemId(), ShardTopology);
+        for (ui32 i = 0; i < shardConfigs.size(); ++i) {
+            auto& shard = CreateConfig.ShardsToCreate.emplace_back();
+            shard.Config = shardConfigs[i];
+            if (i < fastShardsBegin) {
+                shard.Type = TShardTopology::E_ORDINARY;
+                shard.RoleMask = ProtoFlag(TShardTopology::E_FILE) |
+                    ProtoFlag(TShardTopology::E_DIRECTORY);
+            } else {
+                shard.Type = TShardTopology::E_FASTSHARD;
+                shard.RoleMask = ProtoFlag(TShardTopology::E_FILE);
+                shard.FastShardStorageKind = Request.GetFastShardStorageKind();
+            }
         }
 
         LOG_INFO(
@@ -328,66 +323,12 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
 
 void TCreateFileStoreActor::CreateShards(const TActorContext& ctx)
 {
-    if (ShardCreationState.IsPersistentStateSupported()) {
-        // Unlike resize, create has no existing shards to load from topology.
-        // The target configs are already known when shard creation starts.
-        const auto error = ShardCreationState.SetupCreatedShardBitmap(
-            0,
-            FileStoreConfig.ShardConfigs);
-        if (HasError(error)) {
-            ReplyAndDie(ctx, error);
-            return;
-        }
-    }
-
-    ShardCreationState.StartShardCreation(ctx);
-
-    if (!ShardCreationState.HasShardsToCreate()) {
-        AllocateFastShards(ctx);
-    }
-}
-
-void TCreateFileStoreActor::CreateShard(
-    const TActorContext& ctx,
-    const ui32 shardIndex)
-{
-    auto request = std::make_unique<TEvSSProxy::TEvCreateFileStoreRequest>(
-        FileStoreConfig.ShardConfigs[shardIndex]);
-
-    LOG_INFO(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "[%s] Creating shard %s",
-        LogTag.c_str(),
-        request->Config.GetFileSystemId().c_str());
-
-    NCloud::Send(
-        ctx,
-        MakeSSProxyServiceId(),
-        std::move(request),
-        shardIndex   // cookie
-    );
-}
-
-void TCreateFileStoreActor::AllocateFastShards(const TActorContext& ctx)
-{
-    ShardConfigurationStarted = true;
-
-    if (!FastShardCount) {
-        ConfigureShards(ctx);
-        return;
-    }
-
     NCloud::Register(
         ctx,
-        CreateAllocateFastShardsActor(
+        CreateMultiShardCreateActor(
             StorageConfig,
             SelfId(),
-            LogTag,
-            FileStoreConfig.MainFileSystemConfig,
-            FileStoreConfig.ShardConfigs,
-            FastShardCount,
-            Request.GetFastShardStorageKind()));
+            std::move(CreateConfig)));
 }
 
 void TCreateFileStoreActor::ConfigureShards(const TActorContext& ctx)
@@ -500,49 +441,23 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
         return;
     }
 
-    if (MainFileSystemCreated) {
-        const auto shardIndex = ev->Cookie;
-        Y_ABORT_UNLESS(shardIndex < FileStoreConfig.ShardConfigs.size());
-
-        LOG_INFO(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] Created shard %s",
-            LogTag.c_str(),
-            FileStoreConfig.ShardConfigs[shardIndex].GetFileSystemId().c_str());
-
-        const auto error = ShardCreationState.OnShardCreated(
-            ctx,
-            shardIndex);
-        if (HasError(error)) {
-            ReplyAndDie(ctx, error);
-            return;
-        }
-
-        if (ShardCreationState.HasCreatedShardBitmap()) {
-            // Wait for HandleShardCreationStateResponse to call ConfigureShards
-            // after all shards are created and their bits are persisted in the
-            // Tablet's shard creation bitmap.
-            return;
-        }
-
-        if (!ShardCreationState.HasShardsToCreate()) {
-            AllocateFastShards(ctx);
-        }
-
-        return;
-    }
-
     LOG_INFO(
         ctx,
         TFileStoreComponents::SERVICE,
         "[%s] Created main filesystem",
         LogTag.c_str());
 
-    MainFileSystemCreated = true;
-    if (ShardCreationState.HasShardsToCreate()) {
+    if (!CreateConfig.ShardsToCreate.empty()) {
         if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
-            ShardCreationState.ReadShardCreationState(ctx);
+            auto request = std::make_unique<
+                TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
+            request->Record.SetFileSystemId(Request.GetFileSystemId());
+            // Without a version the tablet only returns the state.
+            request->Record.MutableShardCreationState();
+            NCloud::Send(
+                ctx,
+                MakeIndexTabletProxyServiceId(),
+                std::move(request));
         } else {
             CreateShards(ctx);
         }
@@ -568,41 +483,35 @@ void TCreateFileStoreActor::HandleShardCreationStateResponse(
     const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto result = ShardCreationState.HandleShardCreationStateResponse(
-        ev->Get()->Record,
-        ctx);
-    if (HasError(result)) {
-        ReplyAndDie(ctx, result.GetError());
+    const auto& record = ev->Get()->Record;
+    if (HasError(record.GetError())) {
+        ReplyAndDie(
+            ctx,
+            MakeError(
+                E_REJECTED,
+                TStringBuilder()
+                    << "failed to read shard creation state: "
+                    << FormatError(record.GetError())));
         return;
     }
 
-    switch (result.GetResult()) {
-        case TShardCreationStateCompanion::
-            EChangeTabletStateResponseAction::StartWithoutPersistentState:
-        case TShardCreationStateCompanion::EChangeTabletStateResponseAction::InitialStateLoaded:
-            CreateShards(ctx);
+    // A tablet of the previous version returns no state.
+    if (record.HasShardCreationState()) {
+        auto state = InitShardCreationState(
+            record.GetShardCreationState(),
+            CreateConfig);
+        if (HasError(state)) {
+            ReplyAndDie(ctx, state.GetError());
             return;
-        case TShardCreationStateCompanion::EChangeTabletStateResponseAction::IgnoreStaleResponse:
-            // A newer state is already saved. Discarding this stale response
-            // does not stall the operation.
-            return;
-        case TShardCreationStateCompanion::EChangeTabletStateResponseAction::PersistLocalProgress:
-            // The returned bitmap lacks local progress. The update response
-            // will resume the operation after the merged bits are persisted.
-            ShardCreationState.UpdateShardCreationState(ctx);
-            return;
-        case TShardCreationStateCompanion::EChangeTabletStateResponseAction::Continue:
-            if (!ShardCreationState.HasShardsToCreate() &&
-                !ShardConfigurationStarted)
-            {
-                AllocateFastShards(ctx);
-            }
-            return;
+        }
+        CreateConfig.State = state.ExtractResult();
     }
+
+    CreateShards(ctx);
 }
 
-void TCreateFileStoreActor::HandleFastShardsAllocated(
-    const TEvServicePrivate::TEvFastShardsAllocated::TPtr& ev,
+void TCreateFileStoreActor::HandleMultiShardCreateResponse(
+    const TEvServicePrivate::TEvMultiShardCreateResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
@@ -712,8 +621,8 @@ STFUNC(TCreateFileStoreActor::StateWork)
             TEvSSProxy::TEvCreateFileStoreResponse,
             HandleCreateFileStoreResponse);
         HFunc(
-            TEvServicePrivate::TEvFastShardsAllocated,
-            HandleFastShardsAllocated);
+            TEvServicePrivate::TEvMultiShardCreateResponse,
+            HandleMultiShardCreateResponse);
         HFunc(
             TEvIndexTablet::TEvConfigureAsShardResponse,
             HandleConfigureShardResponse);
