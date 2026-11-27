@@ -667,8 +667,7 @@ func (s *service) DeleteDisk(
 				ZoneId: req.DiskId.ZoneId,
 				DiskId: req.DiskId.DiskId,
 			},
-			Sync:                req.Sync,
-			DeleteIfNonExistent: s.config.GetDeleteNonExistentDisks(),
+			Sync: req.Sync,
 		},
 	)
 }

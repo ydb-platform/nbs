@@ -56,39 +56,56 @@ func (t *deleteDiskTask) deleteDisk(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	err := t.setEstimate(ctx, execCtx)
-	if err != nil {
-		return err
-	}
-
 	selfTaskID := execCtx.GetTaskID()
 	diskID := t.request.Disk.DiskId
 	sync := t.request.Sync
 
-	diskMeta, err := t.storage.DeleteDisk(
-		ctx,
-		diskID,
-		selfTaskID,
-		time.Now(),
-	)
+	meta, err := t.storage.GetDiskMeta(ctx, diskID)
 	if err != nil {
 		return err
 	}
 
-	zoneID := ""
-	if diskMeta == nil {
-		// Disk does not exist in the database.
-		if !t.request.DeleteIfNonExistent {
-			return nil
-		}
+	if meta == nil {
+		return nil
+	}
 
+	// Cancelling disk creation before its metadata exists leaves a tombstone
+	// with no zone.
+	zoneID := meta.ZoneID
+	if len(zoneID) == 0 {
 		zoneID = t.request.Disk.ZoneId
-		if len(zoneID) == 0 {
-			// Zone was not specified in the request.
-			return t.storage.DiskDeleted(ctx, diskID, time.Now())
+	}
+	if len(zoneID) == 0 {
+		return errors.NewNonCancellableErrorf("zone is unknown for disk %v", diskID)
+	}
+
+	if t.disabledZones.IsDisabled(zoneID) {
+		logging.Warn(
+			ctx,
+			"Skipping NBS deletion of disk %v: zone %v is disabled",
+			diskID,
+			zoneID,
+		)
+		// In a disabled zone, finish deletion in metadata. DiskDeleted requires DeleteDisk to mark the disk as deleting first.
+		_, err = t.storage.DeleteDisk(ctx, diskID, selfTaskID, time.Now())
+		if err != nil {
+			return err
 		}
-	} else {
-		zoneID = diskMeta.ZoneID
+		return t.storage.DiskDeleted(ctx, diskID, time.Now())
+	}
+
+	diskMeta, err := t.storage.DeleteDisk(ctx, diskID, selfTaskID, time.Now())
+	if err != nil {
+		return err
+	}
+	if diskMeta == nil {
+		return nil
+	}
+	if sync {
+		err = t.setEstimate(ctx, execCtx, diskID, zoneID)
+		if err != nil {
+			return err
+		}
 	}
 
 	taskID, err := t.scheduler.ScheduleTask(
@@ -114,31 +131,22 @@ func (t *deleteDiskTask) deleteDisk(
 		return err
 	}
 
-	if t.disabledZones.IsDisabled(zoneID) {
-		logging.Warn(
-			ctx,
-			"Skipping NBS deletion of disk %v: zone %v is disabled",
-			diskID,
-			zoneID,
-		)
-	} else {
-		client, err := t.nbsFactory.GetClient(ctx, zoneID)
-		if err != nil {
-			return err
-		}
+	client, err := t.nbsFactory.GetClient(ctx, zoneID)
+	if err != nil {
+		return err
+	}
 
-		if sync {
-			err = client.DeleteSync(ctx, diskID)
-		} else {
-			err = client.Delete(ctx, diskID)
-		}
-		if err != nil {
-			return err
-		}
+	if sync {
+		err = client.DeleteSync(ctx, diskID)
+	} else {
+		err = client.Delete(ctx, diskID)
+	}
+	if err != nil {
+		return err
 	}
 
 	// Only overlay disks (created from image) should be released.
-	if diskMeta != nil && len(diskMeta.SrcImageID) != 0 {
+	if len(diskMeta.SrcImageID) != 0 {
 		taskID, err = t.poolService.ReleaseBaseDisk(
 			headers.SetIncomingIdempotencyKey(
 				ctx,
@@ -206,36 +214,11 @@ func (t *deleteDiskTask) GetResponse() proto.Message {
 func (t *deleteDiskTask) setEstimate(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
+	diskID string,
+	zoneID string,
 ) error {
 
-	// Only sync requests are blocking.
-	if !t.request.Sync {
-		return nil
-	}
-
-	diskID := t.request.Disk.DiskId
-
-	diskMeta, err := t.storage.GetDiskMeta(ctx, diskID)
-	if err != nil {
-		return err
-	}
-
-	if diskMeta == nil || len(diskMeta.ZoneID) == 0 {
-		// Should be idempotent.
-		return nil
-	}
-
-	if t.disabledZones.IsDisabled(diskMeta.ZoneID) {
-		logging.Warn(
-			ctx,
-			"Skipping deletion time estimate for disk %v: zone %v is disabled",
-			diskID,
-			diskMeta.ZoneID,
-		)
-		return nil
-	}
-
-	client, err := t.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
+	client, err := t.nbsFactory.GetClient(ctx, zoneID)
 	if err != nil {
 		return err
 	}
