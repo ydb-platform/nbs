@@ -2189,11 +2189,11 @@ void TIndexTabletActor::UnregisterFileStore(const NActors::TActorContext& ctx)
     ctx.Send(MakeStorageServiceId(), request.release());
 }
 
-void TIndexTabletActor::HandleRegisterRdmaPipe(
-    const TEvIndexTablet::TEvRegisterRdmaPipeRequest::TPtr& ev,
+void TIndexTabletActor::HandleRegisterPipeClient(
+    const TEvIndexTablet::TEvRegisterPipeClientRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    using TResponse = TEvIndexTablet::TEvRegisterRdmaPipeResponse;
+    using TResponse = TEvIndexTablet::TEvRegisterPipeClientResponse;
 
     const auto& pipeServerId = ev->Recipient;
 

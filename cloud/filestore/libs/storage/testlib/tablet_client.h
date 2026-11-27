@@ -329,9 +329,9 @@ public:
         return std::make_unique<TEvService::TEvListQuotasRequest>();
     }
 
-    auto CreateRegisterRdmaPipeRequest()
+    auto CreateRegisterPipeClientRequest()
     {
-        return std::make_unique<TEvIndexTablet::TEvRegisterRdmaPipeRequest>();
+        return std::make_unique<TEvIndexTablet::TEvRegisterPipeClientRequest>();
     }
 
     auto CreateGenerateFileSystemEventRequest(
