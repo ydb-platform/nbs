@@ -7,8 +7,6 @@
 
 #include <util/string/builder.h>
 
-#include <atomic>
-
 namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -17,7 +15,8 @@ using namespace NMonitoring;
 
 namespace {
 
-std::atomic<bool> ImpossibleEventsAbortDisabledForTests{false};
+////////////////////////////////////////////////////////////////////////////////
+
 NMonitoring::TDynamicCountersPtr CriticalEvents;
 TLog Log;
 
@@ -25,19 +24,21 @@ TLog Log;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TImpossibleEventsAbortGuard::TImpossibleEventsAbortGuard(bool wasAbortDisabled)
-    : WasAbortDisabled(wasAbortDisabled)
-{}
+std::atomic<ui32> TImpossibleEventsAbortGuard::ActiveGuardCount{0};
+
+TImpossibleEventsAbortGuard::TImpossibleEventsAbortGuard()
+{
+    ActiveGuardCount.fetch_add(1, std::memory_order_relaxed);
+}
 
 TImpossibleEventsAbortGuard::~TImpossibleEventsAbortGuard()
 {
-    ImpossibleEventsAbortDisabledForTests.store(WasAbortDisabled);
+    ActiveGuardCount.fetch_sub(1, std::memory_order_relaxed);
 }
 
 TImpossibleEventsAbortGuard DisableImpossibleEventsAbortForCurrentTest()
 {
-    return TImpossibleEventsAbortGuard(
-        ImpossibleEventsAbortDisabledForTests.exchange(true));
+    return TImpossibleEventsAbortGuard();
 }
 
 void SetCriticalEventsLog(TLog log)
@@ -79,7 +80,9 @@ TString ReportCriticalEvent(
     const TString& message,
     bool verifyDebug)
 {
-    if (verifyDebug && !ImpossibleEventsAbortDisabledForTests.load()) {
+    if (verifyDebug && TImpossibleEventsAbortGuard::ActiveGuardCount.load(
+                           std::memory_order_relaxed) == 0)
+    {
         Y_DEBUG_ABORT_UNLESS(
             false,
             "sensorName: \"%s\"; message: \"%s\"",

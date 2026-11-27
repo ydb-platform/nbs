@@ -8,6 +8,8 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <memory>
+
 #if defined(_unix_) && !defined(NDEBUG)
 #include <sys/resource.h>
 #include <sys/wait.h>
@@ -152,6 +154,23 @@ Y_UNIT_TEST_SUITE(TCriticalEventsTest)
                 2,
                 counters->GetCounter(GetCriticalEventForBug(), true)->Val());
         }
+    }
+
+    Y_UNIT_TEST(ShouldKeepAbortsDisabledUntilLastGuardIsDestroyed)
+    {
+        auto counters = MakeIntrusive<TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
+        auto firstGuard = std::unique_ptr<TImpossibleEventsAbortGuard>(
+            new TImpossibleEventsAbortGuard(
+                DisableImpossibleEventsAbortForCurrentTest()));
+        const auto secondGuard = DisableImpossibleEventsAbortForCurrentTest();
+
+        firstGuard.reset();
+        ReportBug("Expected event while second guard is active");
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            counters->GetCounter(GetCriticalEventForBug(), true)->Val());
     }
 
 #if defined(_unix_) && !defined(NDEBUG)
