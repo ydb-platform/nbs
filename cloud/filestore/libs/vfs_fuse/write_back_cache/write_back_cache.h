@@ -167,13 +167,13 @@ public:
         bool isDirect);
 
     /* Buffered writes complete once the data is stored in the cache.
-     * If drain starts before the cache accepts a buffered write, it can
-     * return E_REJECTED.
+     * If drain starts before the cache accepts a buffered write, the write
+     * falls back to the direct path.
      *
-     * Before drain completes, direct writes and writes during drain enter the
-     * fsync queue and run under a barrier. The barrier waits for earlier
-     * cached writes and blocks flushes until the direct write ends.
-     * After drain, writes enter the fsync queue and go straight to the session.
+     * Direct writes enter the fsync queue and run under a barrier. The
+     * barrier waits for earlier cached writes and blocks flushes until the
+     * direct write ends. If the cache is already drained at the initial
+     * check, the write enters the fsync queue and goes straight to the session.
      */
     NThreading::TFuture<NProto::TWriteDataResponse> WriteData(
         TCallContextPtr callContext,

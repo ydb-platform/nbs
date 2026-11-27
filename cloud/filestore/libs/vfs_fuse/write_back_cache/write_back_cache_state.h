@@ -24,6 +24,7 @@
 #include <util/generic/intrlist.h>
 
 #include <atomic>
+#include <optional>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -143,10 +144,13 @@ public:
     // Lock-free check for drain completion
     bool IsDrained() const;
 
-    // Add a WriteData request to the pending queue and completes the future
-    // when the request is stored in the persistent storage and becomes cached
-    NThreading::TFuture<NProto::TWriteDataResponse> AddWriteDataRequest(
-        std::shared_ptr<NProto::TWriteDataRequest> request);
+    // Queues a write and returns a future that completes when the persistent
+    // cache stores the write.
+    //
+    // During drain, returns std::nullopt without reporting a critical event.
+    // The request remains available for direct execution.
+    std::optional<NThreading::TFuture<NProto::TWriteDataResponse>>
+    TryAddWriteDataRequest(std::shared_ptr<NProto::TWriteDataRequest>& request);
 
     NThreading::TFuture<NCloud::NProto::TError> AddFlushRequest(ui64 nodeId);
 

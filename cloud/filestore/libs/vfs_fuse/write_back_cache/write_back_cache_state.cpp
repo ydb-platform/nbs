@@ -91,28 +91,14 @@ bool TWriteBackCacheState::IsDrained() const
     return Drained.load(std::memory_order_relaxed);
 }
 
-TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
-    std::shared_ptr<TWriteDataRequest> request)
+std::optional<TFuture<TWriteDataResponse>>
+TWriteBackCacheState::TryAddWriteDataRequest(
+    std::shared_ptr<TWriteDataRequest>& request)
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
     if (IsDrainRequested()) {
-        // This may happen due to race condition that is valid scenario:
-        // - TWriteBackCache::Drain is called in one thread;
-        // - WriteData request is being processed in another thread.
-        //
-        // But currently, draining is requested only at session creation
-        // or destruction where WriteData requests are not expected.
-        // Therefore, we report an error.
-        ReportWriteBackCacheWritingNotAllowedInDrainingMode(
-            LogTag +
-            " Cached WriteData request received while WriteBackCache is "
-            "in draining mode");
-
-        return MakeFuture(
-            ErrorResponse<TWriteDataResponse>(
-                E_REJECTED,
-                "WriteBackCache doesn't accept new WriteData requests"));
+        return std::nullopt;
     }
 
     if (IsFailed) {

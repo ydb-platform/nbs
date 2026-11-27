@@ -123,9 +123,10 @@ private:
         request->SetOffset(offset);
         request->SetBuffer(std::move(data));
 
-        auto future = State.AddWriteDataRequest(std::move(request));
+        auto future = State.TryAddWriteDataRequest(request);
 
-        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT(future);
+        UNIT_ASSERT(future->HasValue());
     }
 
     void Flush()

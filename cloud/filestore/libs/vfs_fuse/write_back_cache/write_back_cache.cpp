@@ -229,7 +229,23 @@ public:
             return WriteDataDirect(std::move(callContext), std::move(request));
         }
 
-        return WriteDataBuffered(std::move(callContext), std::move(request));
+        if (request->GetFileSystemId().empty()) {
+            request->SetFileSystemId(callContext->FileSystemId);
+        }
+
+        auto error = TUtils::ValidateWriteDataRequest(*request, FileSystemId);
+        if (HasError(error)) {
+            Y_DEBUG_ABORT_UNLESS(false, "%s", error.GetMessage().c_str());
+            return MakeFuture<NProto::TWriteDataResponse>(
+                TErrorResponse(std::move(error)));
+        }
+
+        if (auto future = State.TryAddWriteDataRequest(request)) {
+            return std::move(*future);
+        }
+
+        fsyncQueueRegistration.Enqueue();
+        return WriteDataDirect(std::move(callContext), std::move(request));
     }
 
     TFuture<NProto::TReadDataResponse> ReadDataBuffered(
@@ -330,25 +346,6 @@ public:
         return future;
     }
 
-    TFuture<NProto::TWriteDataResponse> WriteDataBuffered(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteDataRequest> request)
-    {
-        if (request->GetFileSystemId().empty()) {
-            request->SetFileSystemId(callContext->FileSystemId);
-        }
-
-        auto error = TUtils::ValidateWriteDataRequest(*request, FileSystemId);
-        if (HasError(error)) {
-            Y_DEBUG_ABORT_UNLESS(false, "%s", error.GetMessage().c_str());
-            NProto::TWriteDataResponse response;
-            *response.MutableError() = std::move(error);
-            return MakeFuture(std::move(response));
-        }
-
-        return State.AddWriteDataRequest(std::move(request));
-    }
-
     TFuture<NProto::TError> FlushNodeData(ui64 nodeId)
     {
         return State.AddFlushRequest(nodeId);
@@ -375,22 +372,6 @@ public:
              request = std::move(request)]() mutable
             {
                 return Session->ReadData(
-                    std::move(callContext),
-                    std::move(request));
-            });
-    }
-
-    TFuture<NProto::TWriteDataResponse> WriteDataDirect(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteDataRequest> request)
-    {
-        return ExecuteRequestUnderBarrier<NProto::TWriteDataResponse>(
-            request->GetNodeId(),
-            [this,
-             callContext = std::move(callContext),
-             request = std::move(request)]() mutable
-            {
-                return Session->WriteData(
                     std::move(callContext),
                     std::move(request));
             });
@@ -513,6 +494,21 @@ public:
     }
 
 private:
+    TFuture<NProto::TWriteDataResponse> WriteDataDirect(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TWriteDataRequest> request)
+    {
+        return ExecuteRequestUnderBarrier<NProto::TWriteDataResponse>(
+            request->GetNodeId(),
+            [this,
+             callContext = std::move(callContext),
+             request = std::move(request)]() mutable {
+                return Session->WriteData(
+                    std::move(callContext),
+                    std::move(request));
+            });
+    }
+
     // Implementation of IQueuedOperationsProcessor
     void ScheduleFlushNode(ui64 nodeId) override
     {
