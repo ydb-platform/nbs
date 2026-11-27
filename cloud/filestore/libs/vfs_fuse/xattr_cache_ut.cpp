@@ -72,7 +72,6 @@ Y_UNIT_TEST_SUITE(TXAttrCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(2, env.Cache.GetEntryCount());
     }
 
-
     Y_UNIT_TEST(ShouldNotReplaceNewerValues)
     {
         TEnv env(100 /* maxEntryCount */);
@@ -100,8 +99,6 @@ Y_UNIT_TEST_SUITE(TXAttrCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(1, env.Cache.GetEntryCount());
     }
 
-
-
     Y_UNIT_TEST(ShouldReplaceStaleValueOfReusedNode)
     {
         TEnv env(100 /* maxEntryCount */);
@@ -124,9 +121,6 @@ Y_UNIT_TEST_SUITE(TXAttrCacheTest)
             CacheTTL);
         UNIT_ASSERT_VALUES_EQUAL("new", *env.GetValue("a"));
     }
-
-
-
 }
 
 }   // namespace NCloud::NFileStore::NFuse
