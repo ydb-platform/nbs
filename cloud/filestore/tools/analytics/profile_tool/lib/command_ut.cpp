@@ -202,6 +202,8 @@ Y_UNIT_TEST_SUITE(TCommandTest)
                 "2000-01-01T00:41:40Z"};
             if (TStringBuf(name) == "findbytesaccess") {
                 args.insert(args.end(), {"--start", "0", "--count", "1"});
+            } else {
+                args.push_back("--ignore-disk-space");
             }
             // Default pruning skips the old, truncated log.
             UNIT_ASSERT_VALUES_EQUAL(
@@ -213,6 +215,19 @@ Y_UNIT_TEST_SUITE(TCommandTest)
                 GetCommand(name)->Run(args.size(), args.data()),
                 1);
         }
+    }
+
+    Y_UNIT_TEST(ShouldAcceptEmptyProfileLog)
+    {
+        TTempFileHandle input;
+        const char* args[] = {
+            "dumpevents",
+            "--profile-log",
+            input.Name().c_str()};
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            GetCommand("dumpevents")->Run(std::size(args), args),
+            0);
     }
 
     Y_UNIT_TEST(ShouldProcessLogsWithoutCommonFilterParams)
