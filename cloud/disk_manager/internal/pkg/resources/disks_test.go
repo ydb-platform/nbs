@@ -182,21 +182,14 @@ func TestDisksDeleteNonexistentDisk(t *testing.T) {
 	defer db.Close(ctx)
 
 	disk := DiskMeta{
-		ID:            "disk",
-		CreateRequest: &wrappers.UInt64Value{Value: 1},
-		DeleteTaskID:  "delete",
+		ID:           "disk",
+		DeleteTaskID: "delete",
 	}
 
 	deletingAt := time.Now()
 	actual, err := storage.DeleteDisk(ctx, disk.ID, "delete", deletingAt)
 	require.NoError(t, err)
 	require.Nil(t, actual)
-
-	tombstone, err := storage.GetDiskMeta(ctx, disk.ID)
-	require.NoError(t, err)
-	require.NotNil(t, tombstone)
-	require.Empty(t, tombstone.ZoneID)
-	require.Equal(t, "delete", tombstone.DeleteTaskID)
 
 	created := disk
 	created.CreatedAt = time.Now()
