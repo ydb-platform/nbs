@@ -4,8 +4,8 @@
 #include "fs_ut_bootstrap.h"
 #include "log.h"
 #include "loop.h"
-#include "node_cache.h"
 #include "persistent_state_manager.h"
+#include "xattr_cache.h"
 
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/session.h>
@@ -2843,14 +2843,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     Y_UNIT_TEST(ShouldApplyXAttrCacheLimitFromFeatures)
     {
         //
-        // "a", then "b", then "a" again. The time is advanced before each
-        // request so that the eviction order is deterministic.
+        // "a", then "b", then "a" again - all of the same node, i.e. in the
+        // same shard.
         //
 
         const TVector<std::pair<TString, TDuration>> getXAttrs = {
             {"a", TDuration::Zero()},
-            {"b", TDuration::Seconds(1)},
-            {"a", TDuration::Seconds(1)},
+            {"b", TDuration::Zero()},
+            {"a", TDuration::Zero()},
         };
 
         //
@@ -2861,7 +2861,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(2, CountXAttrRequests({}, getXAttrs));
 
         //
-        // With the limit of 1 entry "b" evicts "a".
+        // With the limit of 1 entry (1 entry per shard) "b" evicts "a".
         //
 
         NProto::TFileStoreFeatures features;

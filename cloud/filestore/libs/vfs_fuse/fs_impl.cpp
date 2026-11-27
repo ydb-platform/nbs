@@ -72,9 +72,10 @@ TFileSystem::TFileSystem(
           DirectoryEntryVersionCache,
           Config->GetDirectoryHandlesPersistentHandleMaxSize()))
     , XAttrCache(
-        Timer,
-        Config->GetXAttrCacheLimit(),
-        Config->GetXAttrCacheTimeout())
+          Timer,
+          Config->GetXAttrCacheLimit(),
+          CACHE_SHARD_COUNT,
+          Config->GetXAttrCacheTimeout())
     , HandleOpsQueue(std::move(handleOpsQueue))
     , WriteBackCache(std::move(writeBackCache))
 {
@@ -411,22 +412,16 @@ void TFileSystem::InvalidateCachedXAttr(ui64 nodeId, const TString& name)
         << " " << name.Quote()
         << ", version: " << version);
 
-    TGuard g{XAttrCacheLock};
     XAttrCache.Invalidate(nodeId, name, version);
 }
 
 TMetadataCacheSizes TFileSystem::GetMetadataCacheSizes()
 {
-    TMetadataCacheSizes sizes{
+    return TMetadataCacheSizes{
         .NodeAttrsCacheSize = NodeAttrsCache.GetEntryCount(),
         .NodeRefCacheSize = NodeRefCache.GetEntryCount(),
+        .XAttrCacheSize = XAttrCache.GetEntryCount(),
     };
-
-    with_lock (XAttrCacheLock) {
-        sizes.XAttrCacheSize = XAttrCache.GetEntryCount();
-    }
-
-    return sizes;
 }
 
 void TFileSystem::InvalidateCachedMetadataOfSource(ui64 sourceId)
@@ -440,8 +435,6 @@ void TFileSystem::InvalidateCachedMetadataOfSource(ui64 sourceId)
 
     NodeAttrsCache.InvalidateSource(sourceId, version);
     NodeRefCache.InvalidateSource(sourceId, version);
-
-    TGuard g{XAttrCacheLock};
     XAttrCache.InvalidateSource(sourceId, version);
 }
 
@@ -490,7 +483,6 @@ void TFileSystem::InvalidateXAttrCache(ui64 ino)
     STORAGE_TRACE("invalidating cached xattrs: " << ino
         << ", version: " << version);
 
-    TGuard g{XAttrCacheLock};
     XAttrCache.Invalidate(ino, version);
 }
 
@@ -504,7 +496,6 @@ void TFileSystem::UpdateXAttrCache(
     ui64 sourceId,
     TDuration cacheTTL)
 {
-    TGuard g{XAttrCacheLock};
     if (HasError(error)) {
         if (STATUS_FROM_CODE(error.GetCode()) == NProto::E_FS_NOXATTR) {
             XAttrCache.AddAbsent(ino, name, cacheVersion, sourceId, cacheTTL);
@@ -556,7 +547,6 @@ void TFileSystem::UpdateXAttrCacheUponSetXAttr(
         << ", absent: " << !ownValue
         << ", invalidation version: " << invalidationVersion);
 
-    TGuard g{XAttrCacheLock};
     XAttrCache.AddOwn(
         ino,
         name,

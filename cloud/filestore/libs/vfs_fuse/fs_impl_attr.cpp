@@ -284,21 +284,19 @@ void TFileSystem::GetXAttr(
         return;
     }
 
-    with_lock (XAttrCacheLock) {
-        const auto* xattr = XAttrCache.Get(ino, name);
-        MetadataCacheStats->CountGetXAttr(xattr != nullptr);
-        if (xattr) {
-            if (xattr->Value) {
-                ReplyXAttrInt(*callContext, {}, req, *xattr->Value, size);
-            } else {
-                ReplyError(
-                    *callContext,
-                    ErrorAttributeDoesNotExist(name),
-                    req,
-                    ENODATA);
-            }
-            return;
+    const auto xattr = XAttrCache.Get(ino, name);
+    MetadataCacheStats->CountGetXAttr(xattr.Defined());
+    if (xattr) {
+        if (xattr->Value) {
+            ReplyXAttrInt(*callContext, {}, req, *xattr->Value, size);
+        } else {
+            ReplyError(
+                *callContext,
+                ErrorAttributeDoesNotExist(name),
+                req,
+                ENODATA);
         }
+        return;
     }
 
     auto request = StartRequest<NProto::TGetNodeXAttrRequest>(ino);
