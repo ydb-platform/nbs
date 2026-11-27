@@ -500,6 +500,54 @@ func checkIncremental(
 	require.Equal(t, expectedCheckpointID, checkpointID)
 }
 
+type incrementalEntry struct {
+	zoneID       string
+	diskID       string
+	snapshotID   string
+	checkpointID string
+}
+
+func readIncremental(f *fixture) []incrementalEntry {
+	var result []incrementalEntry
+
+	err := f.db.Execute(
+		f.ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			result = nil
+
+			res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+
+				select *
+				from incremental
+			`, f.db.AbsolutePath(f.config.GetStorageFolder())))
+			if err != nil {
+				return err
+			}
+			defer res.Close()
+
+			for res.NextResultSet(ctx) {
+				for res.NextRow() {
+					var entry incrementalEntry
+					err = res.ScanNamed(
+						persistence.OptionalWithDefault("zone_id", &entry.zoneID),
+						persistence.OptionalWithDefault("disk_id", &entry.diskID),
+						persistence.OptionalWithDefault("snapshot_id", &entry.snapshotID),
+						persistence.OptionalWithDefault("checkpoint_id", &entry.checkpointID),
+					)
+					require.NoError(f.t, err)
+					result = append(result, entry)
+				}
+			}
+			return nil
+		},
+	)
+	require.NoError(f.t, err)
+
+	return result
+}
+
 func checkBaseSnapshot(
 	t *testing.T,
 	ctx context.Context,
@@ -678,11 +726,11 @@ func TestCreateSnapshot(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil, true)
 			require.NoError(t, err)
 
 			// Check idempotency.
-			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil, true)
 			require.NoError(t, err)
 
 			// Check idempotency.
@@ -737,7 +785,7 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 			require.Empty(t, created.BaseSnapshotID)
 			require.Empty(t, created.BaseCheckpointID)
 
-			err = f.storage.SnapshotCreated(f.ctx, snapshot1.ID, 0, 0, 0, nil)
+			err = f.storage.SnapshotCreated(f.ctx, snapshot1.ID, 0, 0, 0, nil, true)
 			require.NoError(t, err)
 			checkIncremental(t, f, &disk, "snapshot1", "checkpoint1")
 
@@ -758,7 +806,7 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 			require.Equal(t, snapshot1.CheckpointID, created.BaseCheckpointID)
 			checkBaseSnapshot(t, f.ctx, f.storage, snapshot3.ID, snapshot1.ID)
 
-			err = f.storage.SnapshotCreated(f.ctx, snapshot3.ID, 0, 0, 0, nil)
+			err = f.storage.SnapshotCreated(f.ctx, snapshot3.ID, 0, 0, 0, nil, true)
 			require.NoError(t, err)
 			checkIncremental(t, f, &disk, "snapshot3", "checkpoint3")
 
@@ -779,7 +827,7 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 			require.Equal(t, snapshot3.CheckpointID, created.BaseCheckpointID)
 			checkBaseSnapshot(t, f.ctx, f.storage, snapshot4.ID, snapshot3.ID)
 
-			err = f.storage.SnapshotCreated(f.ctx, snapshot4.ID, 0, 0, 0, nil)
+			err = f.storage.SnapshotCreated(f.ctx, snapshot4.ID, 0, 0, 0, nil, true)
 			require.NoError(t, err)
 			checkIncremental(t, f, &disk, "snapshot4", "checkpoint4")
 
@@ -793,6 +841,120 @@ func TestSnapshotsCreateIncrementalSnapshot(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestSnapshotWithoutDiskIsNotWrittenToIncremental(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+		ID:           "snapshot_without_disk",
+		CreateTaskID: "create1",
+	})
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(f.ctx, "snapshot_without_disk", 0, 0, 0, nil, true)
+	require.NoError(t, err)
+	require.Empty(t, readIncremental(f))
+
+	_, err = f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+		ID: "snapshot_with_disk",
+		Disk: &types.Disk{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+		CheckpointID: "checkpoint",
+		CreateTaskID: "create2",
+	})
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(f.ctx, "snapshot_with_disk", 0, 0, 0, nil, true)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		[]incrementalEntry{
+			{
+				zoneID:       "zone",
+				diskID:       "disk",
+				snapshotID:   "snapshot_with_disk",
+				checkpointID: "checkpoint",
+			},
+		},
+		readIncremental(f),
+	)
+}
+
+func TestSnapshotCreatedWithoutUpdatingIncremental(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	disk := types.Disk{
+		ZoneId: "zone",
+		DiskId: "disk",
+	}
+
+	// A snapshot that keeps its disk and checkpoint, but stays out of the
+	// incremental chain of the disk, e.g. a snapshot copied from another
+	// database.
+	created, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+		ID:           "copied1",
+		Disk:         &disk,
+		CheckpointID: "checkpoint1",
+		CreateTaskID: "create1",
+	})
+	require.NoError(t, err)
+	require.Empty(t, created.BaseSnapshotID)
+	require.Empty(t, created.BaseCheckpointID)
+
+	err = f.storage.SnapshotCreated(f.ctx, "copied1", 0, 0, 0, nil, false)
+	require.NoError(t, err)
+	require.Empty(t, readIncremental(f))
+
+	meta, err := f.storage.GetSnapshotMeta(f.ctx, "copied1")
+	require.NoError(t, err)
+	require.True(t, meta.Ready)
+	require.Equal(t, disk.ZoneId, meta.Disk.ZoneId)
+	require.Equal(t, disk.DiskId, meta.Disk.DiskId)
+	require.Equal(t, "checkpoint1", meta.CheckpointID)
+
+	// It is not a base for the next snapshot of the disk.
+	created, err = f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+		ID:           "snapshot2",
+		Disk:         &disk,
+		CheckpointID: "checkpoint2",
+		CreateTaskID: "create2",
+	})
+	require.NoError(t, err)
+	require.Empty(t, created.BaseSnapshotID)
+	require.Empty(t, created.BaseCheckpointID)
+
+	err = f.storage.SnapshotCreated(f.ctx, "snapshot2", 0, 0, 0, nil, true)
+	require.NoError(t, err)
+
+	base := []incrementalEntry{
+		{
+			zoneID:       "zone",
+			diskID:       "disk",
+			snapshotID:   "snapshot2",
+			checkpointID: "checkpoint2",
+		},
+	}
+	require.Equal(t, base, readIncremental(f))
+
+	// Even if it has got a base, it neither replaces the base nor removes it.
+	created, err = f.storage.CreateSnapshot(f.ctx, SnapshotMeta{
+		ID:           "copied3",
+		Disk:         &disk,
+		CheckpointID: "checkpoint3",
+		CreateTaskID: "create3",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "snapshot2", created.BaseSnapshotID)
+	require.Equal(t, "checkpoint2", created.BaseCheckpointID)
+
+	err = f.storage.SnapshotCreated(f.ctx, "copied3", 0, 0, 0, nil, false)
+	require.NoError(t, err)
+	require.Equal(t, base, readIncremental(f))
 }
 
 func TestSnapshotsLocks(t *testing.T) {
@@ -815,7 +977,7 @@ func TestSnapshotsLocks(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, created)
 
-			err = f.storage.SnapshotCreated(f.ctx, snapshot1.ID, 0, 0, 0, nil)
+			err = f.storage.SnapshotCreated(f.ctx, snapshot1.ID, 0, 0, 0, nil, true)
 			require.NoError(t, err)
 
 			snapshot2 := SnapshotMeta{
@@ -837,7 +999,7 @@ func TestSnapshotsLocks(t *testing.T) {
 			require.True(t, locked)
 			checkLockTaskID(t, f.ctx, f.storage, snapshot1.ID, created.CreateTaskID)
 
-			err = f.storage.SnapshotCreated(f.ctx, snapshot2.ID, 0, 0, 0, nil)
+			err = f.storage.SnapshotCreated(f.ctx, snapshot2.ID, 0, 0, 0, nil, true)
 			require.NoError(t, err)
 
 			err = f.storage.UnlockSnapshot(f.ctx, snapshot1.ID, created.CreateTaskID)
@@ -866,7 +1028,7 @@ func TestSnapshotsLocks(t *testing.T) {
 			require.False(t, locked)
 			checkLockTaskID(t, f.ctx, f.storage, snapshot2.ID, "")
 
-			err = f.storage.SnapshotCreated(f.ctx, snapshot3.ID, 0, 0, 0, nil)
+			err = f.storage.SnapshotCreated(f.ctx, snapshot3.ID, 0, 0, 0, nil, true)
 			require.NoError(t, err)
 
 			err = f.storage.UnlockSnapshot(f.ctx, snapshot2.ID, created.CreateTaskID)
@@ -912,7 +1074,7 @@ func TestSnapshotBackupHoldIsIdempotentAndOwnedByOneCopy(t *testing.T) {
 
 	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snapshot", CreateTaskID: "create"})
 	require.NoError(t, err)
-	require.NoError(t, f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil))
+	require.NoError(t, f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil, true))
 
 	// The backup hold is independent of the lock of incremental snapshots.
 	locked, err := f.storage.LockSnapshot(f.ctx, "snapshot", "incremental")
@@ -956,7 +1118,7 @@ func TestSnapshotBackupHoldPreservesInheritedChunks(t *testing.T) {
 			require.NoError(t, err)
 			err = f.storage.ShallowCopySnapshot(f.ctx, "source", "copy", 0, nil)
 			require.NoError(t, err)
-			err = f.storage.SnapshotCreated(f.ctx, "copy", 3, 3, 1, nil)
+			err = f.storage.SnapshotCreated(f.ctx, "copy", 3, 3, 1, nil, true)
 			require.NoError(t, err)
 			requireHeldForBackup(t, f, "copy", "backup")
 
@@ -994,7 +1156,7 @@ func TestSnapshotBackupHoldRejectsUnavailableSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	requireNotHeldForBackup(t, f, "snapshot", "backup")
 
-	err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+	err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil, true)
 	require.NoError(t, err)
 	_, err = f.storage.HoldSnapshotForBackup(f.ctx, "snapshot", "")
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -1014,7 +1176,7 @@ func TestSnapshotBackupHoldRacesWithDeletion(t *testing.T) {
 			CreateTaskID: "create",
 		})
 		require.NoError(t, err)
-		err = f.storage.SnapshotCreated(f.ctx, snapshotID, 0, 0, 0, nil)
+		err = f.storage.SnapshotCreated(f.ctx, snapshotID, 0, 0, 0, nil, true)
 		require.NoError(t, err)
 
 		start := make(chan struct{})
@@ -1074,7 +1236,7 @@ func TestDeletingSnapshot(t *testing.T) {
 			_, err = f.storage.DeletingSnapshot(f.ctx, "snapshot", "task")
 			require.NoError(t, err)
 
-			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil, true)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
@@ -1104,7 +1266,7 @@ func TestDeletingSnapshot(t *testing.T) {
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
-			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil, true)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 		})
@@ -1166,7 +1328,7 @@ func TestDeleteNonexistentSnapshot(t *testing.T) {
 			_, err := f.storage.DeletingSnapshot(f.ctx, "snapshot", "task")
 			require.NoError(t, err)
 
-			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil)
+			err = f.storage.SnapshotCreated(f.ctx, "snapshot", 0, 0, 0, nil, true)
 			require.Error(t, err)
 			require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
@@ -1821,7 +1983,7 @@ func TestCheckSnapshotReady(t *testing.T) {
 			diskSize := uint64(2 * 1024 * 1024)
 			chunkCount := uint32(2)
 
-			err = f.storage.SnapshotCreated(f.ctx, "snapshot", diskSize, diskSize, chunkCount, nil)
+			err = f.storage.SnapshotCreated(f.ctx, "snapshot", diskSize, diskSize, chunkCount, nil, true)
 			require.NoError(t, err)
 
 			resource, err := f.storage.CheckSnapshotReady(f.ctx, "snapshot")
@@ -2582,6 +2744,7 @@ func createSnapshotWithChunk(
 		4096, // storageSize
 		1,    // chunkCount
 		nil,  // encryption
+		true, // updateIncremental
 	)
 	require.NoError(f.t, err)
 

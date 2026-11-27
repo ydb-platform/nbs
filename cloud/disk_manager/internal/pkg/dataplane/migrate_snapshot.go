@@ -58,6 +58,12 @@ func (t *migrateSnapshotTask) Run(
 
 	t.state.ChunkCount = srcMeta.ChunkCount
 
+	// The migrated snapshot keeps its disk and checkpoint, so that deleting it
+	// deletes the checkpoint. Incrementality is not preserved: the snapshot is
+	// an independent full one. Migrated snapshots are not written to the
+	// incremental table (see SnapshotCreated below), so CreateSnapshot finds
+	// no base here and the snapshot never becomes a base for the next snapshot
+	// of the disk.
 	_, err = t.dstStorage.CreateSnapshot(
 		ctx,
 		storage.SnapshotMeta{
@@ -156,6 +162,7 @@ func (t *migrateSnapshotTask) Run(
 		storageSize,
 		t.state.ChunkCount,
 		srcMeta.Encryption,
+		false, // updateIncremental
 	)
 }
 

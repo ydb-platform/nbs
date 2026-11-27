@@ -67,6 +67,10 @@ type Storage interface {
 		snapshotMeta SnapshotMeta,
 	) (*SnapshotMeta, error)
 
+	// If updateIncremental is set, the snapshot replaces its base snapshot as
+	// the base for the next snapshot of its disk. Otherwise the incremental
+	// table is left as is: the snapshot keeps its disk and checkpoint, but
+	// does not take part in the incremental chain of the disk.
 	SnapshotCreated(
 		ctx context.Context,
 		snapshotID string,
@@ -74,6 +78,7 @@ type Storage interface {
 		storageSize uint64,
 		chunkCount uint32,
 		encryption *types.EncryptionDesc,
+		updateIncremental bool,
 	) error
 
 	DeletingSnapshot(

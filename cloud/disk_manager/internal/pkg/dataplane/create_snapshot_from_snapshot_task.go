@@ -103,6 +103,7 @@ func (t *createSnapshotFromSnapshotTask) Run(
 		srcMeta.StorageSize,
 		srcMeta.ChunkCount,
 		srcMeta.Encryption,
+		false, // updateIncremental
 	)
 }
 

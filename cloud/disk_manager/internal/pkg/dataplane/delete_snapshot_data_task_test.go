@@ -124,6 +124,7 @@ func TestDeleteSnapshotDataTask(t *testing.T) {
 		storageSize,                   // storageSize
 		uint32(storageSize/chunkSize), // chunkCount
 		nil,                           // encryption
+		true,                          // updateIncremental
 	)
 	require.NoError(t, err)
 

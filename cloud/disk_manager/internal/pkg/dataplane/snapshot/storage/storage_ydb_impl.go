@@ -244,6 +244,12 @@ func (s *storageYDB) updateIncrementalTableAndSnapshotState(
 	state snapshotState,
 ) error {
 
+	if len(state.diskID) == 0 {
+		// A snapshot that has no disk (e.g. one created from a URL) can't be a
+		// base of an incremental snapshot.
+		return nil
+	}
+
 	if len(state.baseSnapshotID) == 0 {
 		_, err := tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
@@ -307,6 +313,7 @@ func (s *storageYDB) snapshotCreated(
 	storageSize uint64,
 	chunkCount uint32,
 	encryption *types.EncryptionDesc,
+	updateIncremental bool,
 ) (err error) {
 
 	defer s.metrics.StatOperation("snapshotCreated")(&err)
@@ -396,9 +403,11 @@ func (s *storageYDB) snapshotCreated(
 		return err
 	}
 
-	err = s.updateIncrementalTableAndSnapshotState(ctx, tx, state)
-	if err != nil {
-		return err
+	if updateIncremental {
+		err = s.updateIncrementalTableAndSnapshotState(ctx, tx, state)
+		if err != nil {
+			return err
+		}
 	}
 
 	return tx.Commit(ctx)
