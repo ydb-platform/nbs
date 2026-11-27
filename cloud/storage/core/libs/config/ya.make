@@ -7,6 +7,7 @@ SRCS(
 
 PEERDIR(
     cloud/storage/core/config
+    cloud/storage/core/libs/common
 )
 
 END()

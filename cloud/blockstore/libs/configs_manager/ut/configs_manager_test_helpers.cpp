@@ -113,6 +113,7 @@ void TConfigsManagerFixture::StartManager(
         .InitialDynamicConfig = std::move(dynamicConfig),
         .StartupDynamicConfigNormalizationDiagnostics =
             std::move(startupConfig.NormalizationDiagnostics),
+        .StartupRejectedSectionsReason = StartupRejectedSectionsReason,
         .StorageConfigControls = Controls,
         .ConfigsDispatcherId = Dispatcher,
     }));

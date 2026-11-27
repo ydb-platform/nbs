@@ -2217,7 +2217,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             ", startup <span class='config-update-rejected'>- rejected: "
-            "Failed to apply PrivateDatabaseConfig from CMS: ");
+            "Failed to apply dynamic PrivateDatabaseConfig: ");
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "test configuration preparation failure");
@@ -2289,6 +2289,148 @@ Y_UNIT_TEST_SUITE(TConfigsManagerRendererTest)
             "<span class='config-update-rejected'>- rejected: "
             "Internal error: received a null PrivateDatabaseConfig "
             "payload from ConfigsDispatcher</span>");
+    }
+
+    // Verify that startup section rejection is visible before dispatcher
+    // delivery, with escaped details and no runtime source.
+    Y_UNIT_TEST_F(
+        ShouldRenderPartiallyAppliedStartupBeforeFirstDelivery,
+        TConfigsManagerFixture)
+    {
+        // Set the startup rejection before reading the initial monitoring page.
+        StartupRejectedSectionsReason =
+            "Rejected TestSection configuration: invalid value <&>";
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
+
+        // Read the initial state without delivering a runtime configuration.
+        const auto startupTime = Runtime.GetCurrentTime().ToString();
+        const auto html = GetMonitoringPage();
+
+        // Attribute the rejected section and accepted values to startup.
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            startupTime +
+                ", startup (partially applied) "
+                "<span class='config-update-rejected'>- section fallback: "
+                "Rejected TestSection configuration: invalid value "
+                "&lt;&amp;&gt;</span>");
+
+        AssertParameterRow(
+            html,
+            {
+                .ParameterName = "StorageService.WriteBlobThreshold",
+                .StaticValue = "100",
+                .StartupDynamicValue = "200",
+                .RuntimeDynamicValue = "—",
+                .IcbValue = "—",
+                .EffectiveValue = "200",
+            });
+    }
+
+    // Verify that monitoring tracks section rejections for the accepted
+    // configuration independently of the latest delivery failure.
+    Y_UNIT_TEST_F(
+        ShouldRenderSectionAndDeliveryRejectionsIndependently,
+        TConfigsManagerFixture)
+    {
+        // Start with accepted values and a rejected section.
+        StartupRejectedSectionsReason =
+            "Rejected TestSection configuration: invalid value";
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
+
+        // Reject a delivery with a present private section and a null payload.
+        auto event =
+            std::make_unique<TEvConsole::TEvConfigNotificationRequest>();
+        event->OpaqueConfigs.emplace(PrivateDatabaseConfigKind, nullptr);
+        Runtime.Send(
+            new IEventHandle(Manager, Dispatcher, event.release(), 0, 1));
+
+        // Show both reasons alongside the retained startup status.
+        const auto rejectedHtml = GetMonitoringPage();
+        UNIT_ASSERT_STRING_CONTAINS(
+            rejectedHtml,
+            ", startup (partially applied)");
+        UNIT_ASSERT_STRING_CONTAINS(rejectedHtml, StartupRejectedSectionsReason);
+        UNIT_ASSERT_STRING_CONTAINS(
+            rejectedHtml,
+            "received a null PrivateDatabaseConfig payload");
+
+        // Clear both reasons even when a valid delivery leaves values unchanged.
+        SendNotification(
+            std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(200)),
+            2);
+        WaitForAck(2);
+        UNIT_ASSERT_STRING_CONTAINS(
+            GetMonitoringPage(),
+            ", runtime (unchanged)</td>");
+    }
+
+    // Verify that clean initial deliveries clear startup rejection and a new
+    // delivery cookie switches unchanged values to runtime.
+    Y_UNIT_TEST_F(
+        ShouldClearStartupSectionRejectionOnAcceptedDelivery,
+        TConfigsManagerFixture)
+    {
+        // Start with a rejection that the first accepted delivery must clear.
+        StartupRejectedSectionsReason =
+            "Rejected TestSection configuration: invalid value <&>";
+        StartManager(
+            /*staticConfig=*/MakeConfig(100),
+            /*dynamicConfig=*/MakeConfig(200));
+
+        const auto startupTime = Runtime.GetCurrentTime().ToString();
+
+        // Clear the rejection without changing startup time or values, and
+        // preserve that state when the dispatcher repeats its first delivery.
+        for (int i = 0; i != 2; ++i) {
+            Runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+            SendNotification(
+                std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(200)),
+                1);
+            WaitForAck(1);
+
+            const auto html = GetMonitoringPage();
+            UNIT_ASSERT_STRING_CONTAINS(html, startupTime + ", startup</td>");
+
+            AssertParameterRow(
+                html,
+                {
+                    .ParameterName = "StorageService.WriteBlobThreshold",
+                    .StaticValue = "100",
+                    .StartupDynamicValue = "200",
+                    .RuntimeDynamicValue = "—",
+                    .IcbValue = "—",
+                    .EffectiveValue = "200",
+                });
+        }
+
+        // Treat a new delivery with the same values as a runtime update.
+        Runtime.AdvanceCurrentTime(TDuration::Seconds(1));
+        const auto receiptTime = Runtime.GetCurrentTime().ToString();
+        SendNotification(
+            std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(200)),
+            2);
+        WaitForAck(2);
+
+        const auto html = GetMonitoringPage();
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            receiptTime + ", runtime (unchanged)</td>");
+
+        AssertParameterRow(
+            html,
+            {
+                .ParameterName = "StorageService.WriteBlobThreshold",
+                .StaticValue = "100",
+                .StartupDynamicValue = "200",
+                .RuntimeDynamicValue = "200",
+                .IcbValue = "—",
+                .EffectiveValue = "200",
+            });
     }
 }
 

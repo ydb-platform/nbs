@@ -118,8 +118,7 @@ struct TBlockstoreConfigBuildResult
     // Later changes to Proto do not change these wrappers.
     IBlockstoreConfigMutablePtr Config;
 
-    // Whether the normalized dynamic source contains serialized fields,
-    // including unknown fields.
+    // Presence of any known top-level field in the normalized dynamic source.
     bool HasDynamicOverrides = false;
 
     // Static-only fields removed from the supplied dynamic source; owned by

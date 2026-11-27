@@ -60,6 +60,10 @@ struct TServerActorSystemArgs
     NConfig::TConfigPreparationDiagnostics
         StartupDynamicConfigNormalizationDiagnostics;
 
+    // Reasons for rejecting dynamic sections at startup.
+    // Empty if no sections were rejected.
+    TString StartupRejectedSectionsReason;
+
     // Complete startup proto after CMS and PrivateDatabaseConfig YAML
     // application. Retained unchanged as the source of startup-only runtime
     // parameters.

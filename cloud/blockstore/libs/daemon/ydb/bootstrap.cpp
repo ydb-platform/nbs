@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/config/blockstore_config_management.h>
 #include <cloud/blockstore/libs/config/blockstore_config_provider_private.h>
 #include <cloud/blockstore/libs/config/opaque_config_parser.h>
+#include <cloud/blockstore/libs/config/sections_update.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -133,6 +134,34 @@ void LogIgnoredDynamicFields(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// Report startup section issues through the bootstrap log, describe each
+// rejected section's static fallback, and return the rejection reasons.
+TString ReportStartupConfigSectionsIssues(
+    const TConfigSectionsUpdateReport& report,
+    TLog& Log)
+{
+    TString rejectedSectionsReason;
+    for (const auto& section: report.Sections) {
+        // Log compatible skips independently of a possible section rejection.
+        for (const auto& issue: section.Issues) {
+            STORAGE_WARN(issue);
+        }
+        if (HasError(section.RejectionError)) {
+            const auto reason = FormatConfigSectionRejection(section);
+            if (!rejectedSectionsReason.empty()) {
+                rejectedSectionsReason += "; ";
+            }
+            rejectedSectionsReason += reason;
+
+            ReportDynamicConfigError(
+                TStringBuilder() << reason
+                                 << ". Using static configuration for section "
+                                 << section.Path << ".");
+        }
+    }
+    return rejectedSectionsReason;
+}
 
 NCloud::NStorage::NRdma::TClientConfigPtr CreateRdmaClientConfig(
     const NRdma::TRdmaConfig& config)
@@ -663,6 +692,7 @@ void TBootstrapYdb::InitKikimrService()
         Log);
 
     NProto::TBlockstoreConfig cmsBlockstoreConfig;
+    TString startupRejectedSectionsReason;
 
     if (cmsConfig) {
         if (ConfigInitializer->GetDynamicYamlConfigurationStaticallyEnabled()) {
@@ -679,9 +709,21 @@ void TBootstrapYdb::InitKikimrService()
                 ReportGetConfigsFromCmsYamlParseError(
                     TStringBuilder()
                     << error.GetMessage()
-                    << ". Starting without PrivateDatabaseConfig.");
+                    << ". Starting without dynamic PrivateDatabaseConfig.");
             } else {
-                cmsBlockstoreConfig = std::move(config);
+                try {
+                    const auto report =
+                        PrepareDynamicConfigSectionsUpdate(config, nullptr);
+                    startupRejectedSectionsReason =
+                        ReportStartupConfigSectionsIssues(report, Log);
+                    cmsBlockstoreConfig = std::move(config);
+                } catch (...) {
+                    ReportDynamicConfigError(
+                        TStringBuilder()
+                        << "Failed to prepare startup PrivateDatabaseConfig: "
+                        << CurrentExceptionMessage()
+                        << ". Starting without dynamic PrivateDatabaseConfig.");
+                }
             }
         }
 
@@ -1038,6 +1080,8 @@ void TBootstrapYdb::InitKikimrService()
     args.CmsBlockstoreConfig = std::move(cmsBlockstoreConfig);
     args.StartupDynamicConfigNormalizationDiagnostics =
         std::move(startupDynamicConfigNormalizationDiagnostics);
+    args.StartupRejectedSectionsReason =
+        std::move(startupRejectedSectionsReason);
     args.StartupBlockstoreConfigProto = std::move(startupBlockstoreConfigProto);
     args.StartupBlockstoreConfig = StartupBlockstoreConfig;
     args.ConfigHolder = std::move(configHolder);

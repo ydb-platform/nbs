@@ -164,6 +164,8 @@ public:
                         .InitialDynamicConfig = Args.CmsBlockstoreConfig,
                         .StartupDynamicConfigNormalizationDiagnostics =
                             Args.StartupDynamicConfigNormalizationDiagnostics,
+                        .StartupRejectedSectionsReason =
+                            Args.StartupRejectedSectionsReason,
                         .StorageConfigControls =
                             storageConfig->GetControls(),
                     }),
