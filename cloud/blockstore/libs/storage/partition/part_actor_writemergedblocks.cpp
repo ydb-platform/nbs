@@ -1,6 +1,7 @@
 #include "part_actor.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/partition_common/blob_compressor.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -45,6 +46,7 @@ public:
         TVector<ui32> Checksums;
         std::variant<TGuardedSgList, TString> Content;
         std::optional<NProto::TCompressionMetadata> CompressionMetadata;
+        bool CompressionFailed = false;
 
         TWriteBlobRequest(
                 const TPartialBlobId& blobId,
@@ -52,6 +54,11 @@ public:
             : BlobId(blobId)
             , WriteRange(writeRange)
         {}
+
+        bool WriteCompressedBlob() const
+        {
+            return CompressionMetadata.has_value() && !CompressionFailed;
+        }
     };
 
 private:
@@ -225,10 +232,33 @@ NProto::TError TWriteMergedBlocksActor::PrepareBlob(TWriteBlobRequest& request)
         return {};
     }
     if (HasError(compressedBlob.GetError())) {
-        return compressedBlob.GetError();
+        ReportBlobCompressionError(
+            FormatError(compressedBlob.GetError()),
+            {{"tabletId", TabletId}, {"blobId", ToString(request.BlobId)}});
+        request.CompressionFailed = true;
+        request.Content = std::move(guardedSgList);
+        return {};
     }
 
     auto result = compressedBlob.ExtractResult();
+    // The blob ID still describes the original, uncompressed payload.
+    const ui32 blockSize =
+        request.BlobId.BlobSize() / request.WriteRange.Size();
+    if (auto error = ValidateCompressionMetadata(
+            blockSize,
+            result.Compression,
+            static_cast<ui32>(result.Data.size()),
+            request.WriteRange.Size());
+        HasError(error))
+    {
+        ReportInvalidBlobCompressionMetadata(
+            FormatError(error),
+            {{"tabletId", TabletId}, {"blobId", ToString(request.BlobId)}});
+        request.CompressionFailed = true;
+        request.Content = std::move(guardedSgList);
+        return {};
+    }
+
     request.BlobId = TPartialBlobId(
         request.BlobId.Generation(),
         request.BlobId.Step(),
@@ -251,11 +281,14 @@ void TWriteMergedBlocksActor::WriteBlobs(const TActorContext& ctx)
             TEvPartitionCommonPrivate::TEvWriteBlobRequest>(
             req.BlobId,
             std::move(req.Content),
-            req.CompressionMetadata ? 0 : BlockSizeForChecksums,
-            false,                       // async
-            !req.CompressionMetadata);   // compressedSizeEstimationCandidate
+            req.WriteCompressedBlob() ? 0 : BlockSizeForChecksums,
+            false,   // async
+            !req.WriteCompressedBlob() &&
+                !req.CompressionFailed);   // compressedSizeEstimationCandidate
 
-        if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
+        if (!RequestInfo->CallContext->LWOrbit.Fork(
+                request->CallContext->LWOrbit))
+        {
             LWTRACK(
                 ForkFailed,
                 RequestInfo->CallContext->LWOrbit,
@@ -433,20 +466,21 @@ void TWriteMergedBlocksActor::HandleWriteBlobResponse(
         TabletId);
 
     auto& request = WriteBlobRequests[ev->Cookie];
-    if (BlobsToConfirm.empty()) {
-        if (!request.CompressionMetadata) {
-            request.Checksums = std::move(msg->BlockChecksums);
-        }
-    } else {
+
+    const bool hasBlobsToConfirm = !BlobsToConfirm.empty();
+
+    if (hasBlobsToConfirm) {
         STORAGE_VERIFY(
             BlobsToConfirm.size() == WriteBlobRequests.size(),
             TWellKnownEntityTypes::TABLET,
             TabletId);
+    }
 
-        if (!request.CompressionMetadata) {
-            BlobsToConfirm[ev->Cookie].Checksums =
-                std::move(msg->BlockChecksums);
-        }
+    if (!request.WriteCompressedBlob()) {
+        auto& checksumsDestination = hasBlobsToConfirm
+                                         ? BlobsToConfirm[ev->Cookie].Checksums
+                                         : request.Checksums;
+        checksumsDestination = std::move(msg->BlockChecksums);
     }
 
     STORAGE_VERIFY(

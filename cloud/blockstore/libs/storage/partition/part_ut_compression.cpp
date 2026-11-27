@@ -3,16 +3,22 @@
 #include "part_events_private.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/storage/partition_common/blob_compressor.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/testlib/part_client.h>
 
 #include <cloud/storage/core/libs/common/sglist_test.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 
+#include <library/cpp/blockcodecs/core/register.h>
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/algorithm.h>
+#include <util/generic/scope.h>
 #include <util/generic/size_literals.h>
 #include <util/random/fast.h>
 
@@ -21,6 +27,52 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 using namespace NActors;
 
 namespace {
+
+enum class ECompressionFailure
+{
+    InvalidSettings,
+    CodecError,
+    InvalidMetadata,
+};
+
+class TFaultyCompressionCodec final: public NBlockCodecs::ICodec
+{
+private:
+    const bool ThrowOnCompress;
+
+public:
+    explicit TFaultyCompressionCodec(bool throwOnCompress)
+        : ThrowOnCompress(throwOnCompress)
+    {}
+
+    size_t DecompressedLength(const NBlockCodecs::TData&) const override
+    {
+        return 0;
+    }
+
+    size_t MaxCompressedLength(const NBlockCodecs::TData&) const override
+    {
+        return 0;
+    }
+
+    size_t Compress(const NBlockCodecs::TData&, void*) const override
+    {
+        if (ThrowOnCompress) {
+            ythrow NBlockCodecs::TCodecError() << "Injected compression error";
+        }
+        return 0;
+    }
+
+    size_t Decompress(const NBlockCodecs::TData&, void*) const override
+    {
+        return 0;
+    }
+
+    TStringBuf Name() const noexcept override
+    {
+        return "lz4-fast14-safe";
+    }
+};
 
 struct TPartitionWithRuntime
 {
@@ -467,43 +519,171 @@ Y_UNIT_TEST_SUITE(TPartitionCompressionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldRejectUserWriteWhenCompressionFails)
+    void DoShouldWritePlainBlobOnCompressionFailure(ECompressionFailure failure)
     {
-        for (const bool deferred: {false, true}) {
-            NProto::TStorageServiceConfig config;
-            config.SetWriteBlobThreshold(1);
-            config.SetAddingUnconfirmedBlobsEnabled(deferred);
-            config.SetMergedBlobsCompressionEnabled(true);
-            config.SetMergedBlobsCompressionChunkSize(DefaultBlockSize + 1);
-            auto env = SetupPartition(config);
-            auto& partition = *env.Partition;
-            ui32 writes = 0;
-            env.Runtime->SetObserverFunc(
-                [&](TAutoPtr<IEventHandle>& event)
-                {
-                    if (event->GetTypeRewrite() ==
-                            TEvPartitionCommonPrivate::EvWriteBlobRequest ||
-                        event->GetTypeRewrite() ==
-                            TEvPartitionPrivate::EvAddUnconfirmedBlobsRequest)
-                    {
-                        ++writes;
-                    }
-                    return TTestActorRuntime::DefaultObserverFunc(event);
-                });
-            partition.SendWriteBlocksRequest(
-                TBlockRange32::WithLength(0, 9),
-                'a');
-            const auto response = partition.RecvWriteBlocksResponse();
-            UNIT_ASSERT_VALUES_EQUAL(
-                E_ARGUMENT,
-                response->GetError().GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(0, writes);
-            partition.Drain();
-            const auto stats = partition.StatPartition()->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetConfirmedBlobCount());
-            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlobsCount());
+        // These tests deliberately trigger impossible events to verify
+        // fallback.
+        const auto abortGuard = DisableImpossibleEventsAbortForCurrentTest();
+
+        constexpr TStringBuf originalCodec = "partition-test-original-lz4";
+        NBlockCodecs::RegisterAlias(originalCodec, "lz4-fast14-safe");
+        Y_DEFER
+        {
+            NBlockCodecs::RegisterAlias("lz4-fast14-safe", originalCodec);
+        };
+        if (failure != ECompressionFailure::InvalidSettings) {
+            NBlockCodecs::RegisterCodec(MakeHolder<TFaultyCompressionCodec>(
+                failure == ECompressionFailure::CodecError));
         }
+
+        for (const bool local: {false, true}) {
+            for (const bool deferred: {false, true}) {
+                NProto::TStorageServiceConfig config;
+                config.SetWriteBlobThreshold(1);
+                config.SetWriteBlobThresholdSSD(1);
+                config.SetAddingUnconfirmedBlobsEnabled(deferred);
+                config.SetMergedBlobsCompressionEnabled(true);
+                config.SetBlobCompressionRate(1);
+                config.SetMergedBlobsCompressionChunkSize(
+                    failure == ECompressionFailure::InvalidSettings
+                        ? DefaultBlockSize + 1
+                        : 3 * DefaultBlockSize);
+                config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(1_GB);
+                config.SetCheckBlockChecksumsInBlobsUponRead(true);
+                auto env = SetupPartition(config);
+                auto& partition = *env.Partition;
+                const auto range = TBlockRange32::WithLength(0, 9);
+                const TString block(DefaultBlockSize, 'a');
+                const ui32 checksum =
+                    ComputeDefaultDigest({block.data(), block.size()});
+                auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+                InitCriticalEventsCounter(counters);
+                auto compressionErrors = counters->GetCounter(
+                    GetCriticalEventForBlobCompressionError(),
+                    true);
+                auto metadataErrors = counters->GetCounter(
+                    GetCriticalEventForInvalidBlobCompressionMetadata(),
+                    true);
+                ui32 writes = 0;
+                ui32 indexedBlobs = 0;
+                ui32 unconfirmedBlobs = 0;
+                env.Runtime->SetObserverFunc(
+                    [&](TAutoPtr<IEventHandle>& event)
+                    {
+                        switch (event->GetTypeRewrite()) {
+                            case TEvPartitionCommonPrivate::
+                                EvWriteBlobRequest: {
+                                const auto* msg =
+                                    event->Get<TEvPartitionCommonPrivate::
+                                                   TEvWriteBlobRequest>();
+                                UNIT_ASSERT(
+                                    std::holds_alternative<TGuardedSgList>(
+                                        msg->Data));
+                                UNIT_ASSERT_VALUES_EQUAL(
+                                    range.Size() * DefaultBlockSize,
+                                    msg->BlobId.BlobSize());
+                                UNIT_ASSERT_VALUES_EQUAL(
+                                    DefaultBlockSize,
+                                    msg->BlockSizeForChecksums);
+                                UNIT_ASSERT(
+                                    !msg->CompressedSizeEstimationCandidate);
+                                ++writes;
+                                break;
+                            }
+                            case TEvPartitionPrivate::
+                                EvAddUnconfirmedBlobsRequest: {
+                                const auto* msg = event->Get<
+                                    TEvPartitionPrivate::
+                                        TEvAddUnconfirmedBlobsRequest>();
+                                for (const auto& blob: msg->Blobs) {
+                                    UNIT_ASSERT(!blob.CompressionMetadata);
+                                    ++unconfirmedBlobs;
+                                }
+                                break;
+                            }
+                            case TEvPartitionPrivate::EvAddBlobsRequest: {
+                                const auto* msg = event->Get<
+                                    TEvPartitionPrivate::TEvAddBlobsRequest>();
+                                if (msg->Mode != ADD_WRITE_RESULT) {
+                                    break;
+                                }
+                                for (const auto& blob: msg->MergedBlobs) {
+                                    UNIT_ASSERT(!blob.CompressionMetadata);
+                                    UNIT_ASSERT_VALUES_EQUAL(
+                                        range.Size(),
+                                        blob.Checksums.size());
+                                    for (const ui32 value: blob.Checksums) {
+                                        UNIT_ASSERT_VALUES_EQUAL(
+                                            checksum,
+                                            value);
+                                    }
+                                    ++indexedBlobs;
+                                }
+                                break;
+                            }
+                        }
+                        return TTestActorRuntime::DefaultObserverFunc(event);
+                    });
+
+                if (local) {
+                    auto request =
+                        partition.CreateWriteBlocksLocalRequest(range, block);
+                    request->Record.SetBlockSize(DefaultBlockSize);
+                    partition.SendToPipe(std::move(request));
+                    UNIT_ASSERT(!HasError(
+                        partition.RecvWriteBlocksLocalResponse()->GetError()));
+                } else {
+                    partition.WriteBlocks(range, 'a');
+                }
+                for (const bool reboot: {false, true}) {
+                    if (reboot) {
+                        partition.RebootTablet();
+                        partition.WaitReady();
+                    }
+                    const auto response = partition.ReadBlocks(range);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        range.Size(),
+                        response->Record.GetBlocks().BuffersSize());
+                    for (const auto& content:
+                         response->Record.GetBlocks().GetBuffers())
+                    {
+                        UNIT_ASSERT_VALUES_EQUAL(block, content);
+                    }
+                }
+                UNIT_ASSERT_VALUES_EQUAL(
+                    failure == ECompressionFailure::InvalidMetadata ? 0 : 1,
+                    compressionErrors->Val());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    failure == ECompressionFailure::InvalidMetadata ? 1 : 0,
+                    metadataErrors->Val());
+                UNIT_ASSERT_VALUES_EQUAL(1, writes);
+                UNIT_ASSERT_VALUES_EQUAL(deferred ? 1 : 0, unconfirmedBlobs);
+                UNIT_ASSERT_VALUES_EQUAL(1, indexedBlobs);
+                partition.Drain();
+                const auto stats = partition.StatPartition()->Record.GetStats();
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUnconfirmedBlobCount());
+                UNIT_ASSERT_VALUES_EQUAL(0, stats.GetConfirmedBlobCount());
+                UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMergedBlobsCount());
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldWritePlainBlobWhenCompressionSettingsAreInvalid)
+    {
+        DoShouldWritePlainBlobOnCompressionFailure(
+            ECompressionFailure::InvalidSettings);
+    }
+
+    Y_UNIT_TEST(ShouldWritePlainBlobWhenCodecFails)
+    {
+        DoShouldWritePlainBlobOnCompressionFailure(
+            ECompressionFailure::CodecError);
+    }
+
+    Y_UNIT_TEST(ShouldWritePlainBlobWhenCompressionMetadataIsInvalid)
+    {
+        DoShouldWritePlainBlobOnCompressionFailure(
+            ECompressionFailure::InvalidMetadata);
     }
 }
 
