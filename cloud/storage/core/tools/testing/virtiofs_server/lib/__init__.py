@@ -69,6 +69,9 @@ class VirtioFsServer:
         paths = ("root", "sessions", "endpoints", "handles", "cache", "directories")
         for name in paths:
             (statePath / name).mkdir(parents=True, exist_ok=True)
+
+        # The local service opens RootPath / (PathPrefix + filesystemId).
+        # Symlink root/nfs_shared to the existing directory we want to share.
         export = statePath / "root" / "nfs_shared"
         if export.is_symlink():
             if export.resolve() != sharedPath:
