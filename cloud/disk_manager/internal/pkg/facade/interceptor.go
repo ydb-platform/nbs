@@ -92,6 +92,7 @@ var (
 		{name: "QuotaService.Delete", permission: "disk-manager.filesystems.update"},
 		{name: "QuotaService.Update", permission: "disk-manager.filesystems.update"},
 		{name: "QuotaService.Attach", permission: "disk-manager.filesystems.update"},
+		{name: "QuotaService.Get", permission: "disk-manager.filesystems.list"},
 		{name: "QuotaService.List", permission: "disk-manager.filesystems.list"},
 
 		{name: "FilesystemSnapshotService.Create", permission: "disk-manager.filesystem_snapshots.create"},
