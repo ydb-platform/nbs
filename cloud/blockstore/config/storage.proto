@@ -1848,6 +1848,10 @@ message TStorageServiceConfig
     // keep compression only when this slot becomes smaller and the blob remains
     // huge. Order and duplicates do not matter. Empty lists or encoded parts
     // exceeding every slot keep the original huge blob payload.
+    // Copy the target VDisk's "Slot Size" column from the monitoring page:
+    // "Huge Blob Keeper" -> "Heap Usage". To calculate these sizes, follow
+    // NHuge::TAllChains::BuildChains in BlobStorage's
+    // vdisk/huge/blobstorage_hullhugeheap.cpp.
     repeated uint32 HugeBlobSlotSizes = 569;
 
     // Minimum encoded part size in bytes classified as huge for compression
@@ -1855,10 +1859,16 @@ message TStorageServiceConfig
     // excludes slot rounding. The HDD value also applies to hybrid volumes.
     // Zero applies the huge-slot policy to every blob for that media kind.
     // Defaults: 64 KiB for SSD, 512 KiB for HDD.
+    // Match the target VDisk's TVDiskConfig::MinHugeBlobInBytes; defaults are
+    // set by SetupHugeBytes in BlobStorage's vdisk/common/vdisk_config.cpp.
     optional uint32 MinHugeBlobPartSizeSSD = 570;
     optional uint32 MinHugeBlobPartSizeHDD = 571;
 
     // On-disk header bytes added to each encoded part after erasure alignment
     // and CRC, before huge-blob classification and slot lookup. Default: 5.
+    // Match NKikimr::TDiskBlob::HeaderSize in BlobStorage's
+    // vdisk/hulldb/base/blobstorage_blob.h: sizeof(ui32) for FullDataSize plus
+    // sizeof(ui8) for the LocalParts mask = 5 bytes. Use 0 if the target
+    // VDisk's TVDiskConfig::AddHeader is disabled (enabled by default).
     optional uint32 HugeBlobHeaderSize = 572;
 }
