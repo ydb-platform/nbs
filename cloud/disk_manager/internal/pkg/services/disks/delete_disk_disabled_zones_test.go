@@ -121,11 +121,11 @@ func TestDeleteDiskTaskDisabledZones(t *testing.T) {
 			disabledZones: disabledZone, expectedZone: "zone-d",
 		},
 		{
-			name: "missing disk", requestZone: "zone-a", disabledZones: disabledZone, nonCancellable: true,
+			name: "missing disk", requestZone: "zone-a", disabledZones: disabledZone,
 		},
 		{
 			name:        "missing disk with sync and disabled request zone",
-			requestZone: "zone-d", disabledZones: disabledZone, sync: true, nonCancellable: true,
+			requestZone: "zone-d", disabledZones: disabledZone, sync: true,
 		},
 		{
 			name: "empty metadata zone uses request", diskMeta: &resources.DiskMeta{},

@@ -69,7 +69,7 @@ func (t *deleteDiskTask) deleteDisk(
 	}
 
 	if meta == nil {
-		return errors.NewNonCancellableErrorf("disk %v does not exist", diskID)
+		return nil
 	}
 
 	// Cancelling disk creation before its metadata exists leaves a tombstone
