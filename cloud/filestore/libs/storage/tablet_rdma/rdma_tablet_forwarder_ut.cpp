@@ -165,7 +165,17 @@ struct TEnv
         pipe.ServerId = connected->Get()->ServerId;
         UNIT_ASSERT(pipe.ServerId);
 
-        WaitUntil([&] { return !!Registry->FindTablet(pipe.ServerId); });
+        Runtime.SendToPipe(
+            pipe.ClientId,
+            pipe.Sender,
+            Tablet.CreateRegisterRdmaPipeClientRequest().release(),
+            NodeIdx);
+        using TEvResponse = TEvIndexTablet::TEvRegisterRdmaPipeClientResponse;
+        auto registered = Runtime.GrabEdgeEvent<TEvResponse>(pipe.Sender);
+        UNIT_ASSERT_C(
+            !HasError(registered->Get()->GetError()),
+            FormatError(registered->Get()->GetError()));
+        UNIT_ASSERT(Registry->FindTablet(pipe.ServerId));
         return pipe;
     }
 
@@ -328,6 +338,7 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
             TEvIndexTablet::EvChangeStorageConfigRequest,
             TEvIndexTablet::EvUnsafeGetNodeRequest,
             TEvIndexTablet::EvRenameNodeInDestinationRequest,
+            TEvIndexTablet::EvRegisterRdmaPipeClientRequest,
         };
         for (const ui32 methodId: unsupported) {
             UNIT_ASSERT_C(!IsRdmaTabletMethod(methodId), methodId);
@@ -496,8 +507,10 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
             response.Error.GetCode());
     }
 
-    Y_UNIT_TEST(ShouldKeepFileSystemEventsOfClientPipe)
+    Y_UNIT_TEST(ShouldSubscribeClientOfPipeToFileSystemEvents)
     {
+        const ui64 cacheTTL = TDuration::Minutes(9).MilliSeconds();
+
         NProto::TStorageConfig storageConfig;
         storageConfig.SetFileSystemEventsEnabled(true);
         storageConfig.SetFileSystemEventSubscriptionsSealPeriod(
@@ -510,17 +523,48 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         const ui64 nodeId =
             CreateNode(env.Tablet, TCreateNodeArgs::File(RootNodeId, "file"));
 
-        env.Runtime.SendToPipe(
-            env.Pipe.ClientId,
-            env.Pipe.Sender,
-            env.Tablet.CreateGetNodeAttrRequest(RootNodeId, "file").release(),
-            env.NodeIdx);
-        auto viaPipe =
-            env.Runtime.GrabEdgeEvent<TEvService::TEvGetNodeAttrResponse>(
-                env.Pipe.Sender);
+        // nothing but the registration has been sent through the pipe
+        auto attr = env.Wait(env.Send(
+            env.Tablet.CreateGetNodeAttrRequest(RootNodeId, "file")));
+        const auto& record = env.Record<NProto::TGetNodeAttrResponse>(attr);
+        UNIT_ASSERT_VALUES_EQUAL(nodeId, record.GetNode().GetId());
+        UNIT_ASSERT_VALUES_EQUAL(cacheTTL, record.GetNodeCacheTTL());
+        UNIT_ASSERT_VALUES_EQUAL(cacheTTL, record.GetNodeRefCacheTTL());
+
+        // the event goes to the client of the pipe, not to the forwarder
+        NProto::TFileSystemEvent event;
+        event.MutableInvalidateNode()->SetNodeId(nodeId);
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::Minutes(9).MilliSeconds(),
-            viaPipe->Get()->Record.GetNodeCacheTTL());
+            1,
+            env.Tablet.GenerateFileSystemEvent(event)->Record.GetClientCount());
+        auto received =
+            env.Runtime.GrabEdgeEvent<TEvIndexTabletProxy::TEvFileSystemEvent>(
+                env.Pipe.Sender,
+                TDuration::Seconds(5));
+        UNIT_ASSERT(received);
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId,
+            received->Get()->Record.GetInvalidateNode().GetNodeId());
+    }
+
+    Y_UNIT_TEST(ShouldNotSubscribeRequestsOfDisconnectedPipe)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetFileSystemEventsEnabled(true);
+
+        TEnv env(TDuration::Zero(), std::move(storageConfig));
+
+        const ui64 nodeId =
+            CreateNode(env.Tablet, TCreateNodeArgs::File(RootNodeId, "file"));
+
+        const auto tabletActorId = env.Registry->FindTablet(env.Pipe.ServerId);
+        env.Runtime.ClosePipe(env.Pipe.ClientId, env.Pipe.Sender, env.NodeIdx);
+        env.WaitUntil(
+            [&] { return !env.Registry->FindTablet(env.Pipe.ServerId); });
+
+        // a request that has passed the registry lookup before the disconnect
+        // reaches the tablet after it
+        env.Registry->RegisterPipe(env.Pipe.ServerId, tabletActorId);
 
         auto attr = env.Wait(env.Send(
             env.Tablet.CreateGetNodeAttrRequest(RootNodeId, "file")));
@@ -532,12 +576,8 @@ Y_UNIT_TEST_SUITE(TRdmaTabletForwarderTest)
         NProto::TFileSystemEvent event;
         event.MutableInvalidateNode()->SetNodeId(nodeId);
         UNIT_ASSERT_VALUES_EQUAL(
-            1,
+            0,
             env.Tablet.GenerateFileSystemEvent(event)->Record.GetClientCount());
-        UNIT_ASSERT(
-            env.Runtime.GrabEdgeEvent<TEvIndexTabletProxy::TEvFileSystemEvent>(
-                env.Pipe.Sender,
-                TDuration::Seconds(5)));
     }
 
     Y_UNIT_TEST(ShouldDeleteUnconfirmedDataOnPipeDisconnection)

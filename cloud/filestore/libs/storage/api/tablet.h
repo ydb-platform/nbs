@@ -71,6 +71,8 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(GenerateFileSystemEvent,    __VA_ARGS__)                               \
                                                                                \
+    xxx(RegisterRdmaPipeClient,     __VA_ARGS__)                               \
+                                                                               \
     FILESTORE_UNSAFE_TABLET_REQUESTS(xxx, __VA_ARGS__)                         \
 // FILESTORE_TABLET_REQUESTS
 
@@ -257,6 +259,9 @@ struct TEvIndexTablet
 
         EvGenerateFileSystemEventRequest = EvBegin + 97,
         EvGenerateFileSystemEventResponse,
+
+        EvRegisterRdmaPipeClientRequest = EvBegin + 99,
+        EvRegisterRdmaPipeClientResponse,
 
         EvEnd
     };

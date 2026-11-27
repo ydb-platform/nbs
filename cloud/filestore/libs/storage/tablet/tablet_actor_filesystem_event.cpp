@@ -37,6 +37,11 @@ TActorId TIndexTabletActor::RegisterFileSystemEventClient(
     // so the returned pipe server id is used by the request instead of
     // checking the registration of the pipe.
     //
+    // The requests that come over RDMA are sent by the RDMA forwarder, which
+    // is not the client of the pipe: the client is the sender of the pipe's
+    // registration (see HandleRegisterRdmaPipeClient). If the pipe has
+    // disconnected by now, it has no client and the request is not subscribed.
+    //
 
     if (recipient == SelfId() ||
         headers.GetFileSystemEventSubscriptionDisabled())
@@ -44,7 +49,10 @@ TActorId TIndexTabletActor::RegisterFileSystemEventClient(
         return {};
     }
 
-    FileSystemEventClients[recipient] = clientId;
+    if (!headers.GetFileSystemEventClientRegistrationDisabled()) {
+        FileSystemEventClients[recipient] = clientId;
+    }
+
     return recipient;
 }
 

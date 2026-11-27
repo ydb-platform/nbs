@@ -104,6 +104,12 @@ message THeaders
     // interpret it and returns it as NodeCacheSourceId, NodeRefCacheSourceId
     // or XAttrCacheSourceId along with a nonzero TTL.
     uint64 FileSystemEventSourceId = 15;
+
+    // The sender of the request is not the client of its pipe: the request is
+    // delivered on behalf of the pipe by a forwarder, which sets this flag.
+    // The tablet subscribes the client registered for the pipe and
+    // doesn't register the sender.
+    bool FileSystemEventClientRegistrationDisabled = 16;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
