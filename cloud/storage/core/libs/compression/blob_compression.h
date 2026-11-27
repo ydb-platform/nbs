@@ -42,8 +42,6 @@ TResultOrError<TCompressedBlob> CompressChunks(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool IsCompressed(const NProto::TBlobCompressionInfo& info);
-
 // Offsets of the chunks of a compressed blob.
 class TBlobChunkLayout
 {

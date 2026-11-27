@@ -145,13 +145,6 @@ TResultOrError<TCompressedBlob> CompressChunks(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool IsCompressed(const NProto::TBlobCompressionInfo& info)
-{
-    return info.CompressedChunkSizesSize() != 0;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 TResultOrError<TBlobChunkLayout> TBlobChunkLayout::Create(
     const NProto::TBlobCompressionInfo& info,
     ui64 blobSize,

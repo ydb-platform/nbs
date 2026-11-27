@@ -154,7 +154,6 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
             SplitIntoChunks(TVector<ui32>{1_MB + 24_KB}, 64_KB);
         const auto blob = CompressOrFail(Lz4, 64_KB, 12, data, chunkSizes);
 
-        UNIT_ASSERT(IsCompressed(blob.Info));
         UNIT_ASSERT(Lz4 == blob.Info.GetCodec());
         UNIT_ASSERT(blob.Info.HasRegularChunks());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -513,7 +512,6 @@ Y_UNIT_TEST_SUITE(TBlobCompressionTest)
             3,
             blob.Info.GetExplicitChunks().UncompressedChunkSizesSize());
 
-        UNIT_ASSERT(!IsCompressed(NProto::TBlobCompressionInfo()));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, ValidationCode(blob.Info, blobSize));
 
         UNIT_ASSERT_VALUES_EQUAL(
