@@ -220,7 +220,8 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
         const auto startup = MakeStartupBlockstoreConfig(
             staticConfig,
             dynamicConfig,
-            std::make_shared<NStorage::TStorageConfigControls>());
+            std::make_shared<NStorage::TStorageConfigControls>(),
+            /*extraParameters=*/{});
         const auto& config = startup.Config;
         const auto& proto = startup.Proto;
 
@@ -258,7 +259,8 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
         const auto staticStartup = MakeStartupBlockstoreConfig(
             staticConfig,
             staticOnlyOverrides,
-            std::make_shared<NStorage::TStorageConfigControls>());
+            std::make_shared<NStorage::TStorageConfigControls>(),
+            /*extraParameters=*/{});
         UNIT_ASSERT(!staticStartup.HasDynamicOverrides);
         UNIT_ASSERT_VALUES_EQUAL(
             staticBytes,
@@ -307,8 +309,8 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
             startupConfig,
             dynamicConfig,
             controls,
-            diagnostics,
-            extraParameters);
+            extraParameters,
+            diagnostics);
 
         // Keep host restrictions and startup-only values in the ready adapters.
         const auto& storage = *config->GetStorageConfig();
@@ -350,6 +352,7 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
             startupConfig,
             {},
             controls,
+            /*extraParameters=*/{},
             diagnostics);
         UNIT_ASSERT_VALUES_EQUAL(
             100,
@@ -472,7 +475,8 @@ root_kms: {address: kms}
                 const auto startup = MakeStartupBlockstoreConfig(
                     staticConfig,
                     parse(applyOverride ? yamlConfigs[dynamicValue] : "{}"),
-                    std::make_shared<NStorage::TStorageConfigControls>());
+                    std::make_shared<NStorage::TStorageConfigControls>(),
+                    /*extraParameters=*/{});
                 const auto& config = startup.Config;
                 UNIT_ASSERT_VALUES_EQUAL(
                     applyOverride,
@@ -605,7 +609,8 @@ root_kms: {address: kms}
             MakeStartupBlockstoreConfig(
                 staticConfig,
                 dynamicConfig,
-                std::make_shared<NStorage::TStorageConfigControls>())
+                std::make_shared<NStorage::TStorageConfigControls>(),
+                /*extraParameters=*/{})
                 .Config;
         const auto& runtimeFeatures = *config->GetFeaturesConfig();
 
@@ -654,7 +659,8 @@ root_kms: {address: kms}
         auto first = MakeStartupBlockstoreConfig(
                          MakeConfig(100),
                          MakeConfig(200),
-                         controls)
+                         controls,
+                         /*extraParameters=*/{})
                          .Config;
         TBlockstoreConfigHolder holder(first);
 
@@ -682,7 +688,8 @@ root_kms: {address: kms}
         auto second = MakeStartupBlockstoreConfig(
                           MakeConfig(100),
                           MakeConfig(300),
-                          controls)
+                          controls,
+                          /*extraParameters=*/{})
                           .Config;
 
         UNIT_ASSERT_VALUES_EQUAL(nativeDefault, control.GetDefault());
@@ -734,8 +741,12 @@ root_kms: {address: kms}
 
         // Build without dynamic overrides and read the static configuration
         // value.
-        auto third =
-            MakeStartupBlockstoreConfig(MakeConfig(100), {}, controls).Config;
+        auto third = MakeStartupBlockstoreConfig(
+                         MakeConfig(100),
+                         {},
+                         controls,
+                         /*extraParameters=*/{})
+                         .Config;
 
         UNIT_ASSERT_VALUES_EQUAL(
             100,
@@ -758,7 +769,8 @@ root_kms: {address: kms}
             MakeStartupBlockstoreConfig(
                 staticConfig,
                 dynamicConfig,
-                std::make_shared<NStorage::TStorageConfigControls>())
+                std::make_shared<NStorage::TStorageConfigControls>(),
+                /*extraParameters=*/{})
                 .Config;
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -880,7 +892,8 @@ root_kms: {address: kms}
         {
             const auto config = MakeBlockstoreConfig(
                 MakeConfig(100),
-                std::make_shared<NStorage::TStorageConfigControls>());
+                std::make_shared<NStorage::TStorageConfigControls>(),
+                /*extraParameters=*/{});
             serverConfig = config->GetServerConfig();
         }
 
@@ -920,7 +933,10 @@ root_kms: {address: kms}
     Y_UNIT_TEST(ShouldPublishConfigsAtomically)
     {
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
-        auto initial = MakeBlockstoreConfig(MakeConfig(1), controls);
+        auto initial = MakeBlockstoreConfig(
+            MakeConfig(1),
+            controls,
+            /*extraParameters=*/{});
         auto retained = IBlockstoreConfigPtr(initial);
         auto holder =
             std::make_shared<TBlockstoreConfigHolder>(std::move(initial));
@@ -946,7 +962,10 @@ root_kms: {address: kms}
         }
 
         for (ui32 value = 2; value != 100; ++value) {
-            holder->Set(MakeBlockstoreConfig(MakeConfig(value), controls));
+            holder->Set(MakeBlockstoreConfig(
+                MakeConfig(value),
+                controls,
+                /*extraParameters=*/{}));
         }
 
         stop.store(true);
@@ -975,16 +994,25 @@ root_kms: {address: kms}
         auto secondControls =
             std::make_shared<NStorage::TStorageConfigControls>();
         auto firstHolder = std::make_shared<TBlockstoreConfigHolder>(
-            MakeBlockstoreConfig(MakeConfig(100), firstControls));
+            MakeBlockstoreConfig(
+                MakeConfig(100),
+                firstControls,
+                /*extraParameters=*/{}));
         auto secondHolder = std::make_shared<TBlockstoreConfigHolder>(
-            MakeBlockstoreConfig(MakeConfig(200), secondControls));
+            MakeBlockstoreConfig(
+                MakeConfig(200),
+                secondControls,
+                /*extraParameters=*/{}));
         IBlockstoreConfigGetterPtr firstGetter = firstHolder;
         const IBlockstoreConfigGetterPtr secondGetter = secondHolder;
         const auto retained = firstGetter->Get();
 
         // Publish through one holder and preserve the other holder's
         // configuration and the retained snapshot.
-        firstHolder->Set(MakeBlockstoreConfig(MakeConfig(300), firstControls));
+        firstHolder->Set(MakeBlockstoreConfig(
+            MakeConfig(300),
+            firstControls,
+            /*extraParameters=*/{}));
         UNIT_ASSERT_VALUES_EQUAL(
             300,
             firstGetter->Get()->GetServerConfig()->GetPort());
@@ -1001,7 +1029,10 @@ root_kms: {address: kms}
     {
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
         auto holder = InitializeBlockstoreConfigProvider(
-            MakeBlockstoreConfig(MakeConfig(100), controls));
+            MakeBlockstoreConfig(
+                MakeConfig(100),
+                controls,
+                /*extraParameters=*/{}));
         const IBlockstoreConfigGetterPtr getter = holder;
         Y_DEFER
         {
@@ -1012,7 +1043,10 @@ root_kms: {address: kms}
         UNIT_ASSERT_EQUAL(initial.Get(), getter->Get().Get());
         UNIT_ASSERT_VALUES_EQUAL(100, initial->GetServerConfig()->GetPort());
 
-        holder->Set(MakeBlockstoreConfig(MakeConfig(200), controls));
+        holder->Set(MakeBlockstoreConfig(
+            MakeConfig(200),
+            controls,
+            /*extraParameters=*/{}));
 
         const auto current = GetCurrentBlockstoreConfig();
         UNIT_ASSERT_EQUAL(current.Get(), getter->Get().Get());
@@ -1030,7 +1064,8 @@ root_kms: {address: kms}
         const auto initialConfig = MakeStartupBlockstoreConfig(
                                        MakeConfig(100),
                                        MakeConfig(200),
-                                       controls)
+                                       controls,
+                                       /*extraParameters=*/{})
                                        .Config;
         initialConfig->GetStorageConfig()->UpdateControlsDefaults();
         TBlockstoreConfigHolder holder(initialConfig);
@@ -1056,7 +1091,8 @@ root_kms: {address: kms}
         auto newConfig = MakeStartupBlockstoreConfig(
                              MakeConfig(100),
                              MakeConfig(300),
-                             controls)
+                             controls,
+                             /*extraParameters=*/{})
                              .Config;
         UNIT_ASSERT_VALUES_EQUAL(200, control.GetDefault());
         UNIT_ASSERT_VALUES_EQUAL(500, static_cast<i64>(control));

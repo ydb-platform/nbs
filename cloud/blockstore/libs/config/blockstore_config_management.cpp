@@ -517,8 +517,8 @@ IBlockstoreConfigMutablePtr MakeRuntimeBlockstoreConfig(
     const NProto::TBlockstoreConfig& startupConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
     NStorage::TStorageConfigControlsPtr controls,
-    NConfig::TRuntimeConfigDiagnostics& diagnostics,
-    TBlockstoreConfigExtraParameters extraParameters)
+    TBlockstoreConfigExtraParameters extraParameters,
+    NConfig::TRuntimeConfigDiagnostics& diagnostics)
 {
     // Preserve the received CMS proto for comparison with later notifications.
     auto dynamicConfigCopy = dynamicConfig;

@@ -253,8 +253,11 @@ void TFixture::StartManager(
     UNIT_ASSERT(!Manager);
 
     // Build the startup snapshot without changing the received dynamic source.
-    auto startupConfig =
-        MakeStartupBlockstoreConfig(staticConfig, dynamicConfig, Controls);
+    auto startupConfig = MakeStartupBlockstoreConfig(
+        staticConfig,
+        dynamicConfig,
+        Controls,
+        /*extraParameters=*/{});
     ConfigHolder = std::make_shared<TBlockstoreConfigHolder>(
         std::move(startupConfig.Config));
 

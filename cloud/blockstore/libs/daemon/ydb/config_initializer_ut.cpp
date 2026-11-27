@@ -588,7 +588,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
                 const auto config = MakeStartupBlockstoreConfig(
                     staticConfig,
                     dynamicConfig,
-                    ci.StorageConfigControls).Config;
+                    ci.StorageConfigControls,
+                    /*extraParameters=*/{}).Config;
                 UNIT_ASSERT_VALUES_EQUAL(
                     localRdma.DebugString(),
                     config->GetRdmaConfig()->GetConfigProto().DebugString());
@@ -608,7 +609,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
                 const auto config = MakeStartupBlockstoreConfig(
                     staticConfig,
                     dynamicConfig,
-                    ci.StorageConfigControls).Config;
+                    ci.StorageConfigControls,
+                    /*extraParameters=*/{}).Config;
                 UNIT_ASSERT_VALUES_EQUAL(
                     dynamicConfig.GetRdma().DebugString(),
                     config->GetRdmaConfig()->GetConfigProto().DebugString());
@@ -623,7 +625,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
                 const auto config = MakeStartupBlockstoreConfig(
                     staticConfig,
                     dynamicConfig,
-                    ci.StorageConfigControls).Config;
+                    ci.StorageConfigControls,
+                    /*extraParameters=*/{}).Config;
                 UNIT_ASSERT_VALUES_EQUAL(
                     localRdma.DebugString(),
                     config->GetRdmaConfig()->GetConfigProto().DebugString());

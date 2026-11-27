@@ -288,8 +288,8 @@ void TConfigsManagerActor::Handle(
             StartupConfig,
             newDynamicConfig,
             StorageConfigControls,
-            diagnostics,
-            GetBlockstoreConfigExtraParameters(*currentConfig));
+            GetBlockstoreConfigExtraParameters(*currentConfig),
+            diagnostics);
     } catch (...) {
         ReportConfigUpdateError(
             TStringBuilder()

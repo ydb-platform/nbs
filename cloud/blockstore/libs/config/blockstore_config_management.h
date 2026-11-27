@@ -88,7 +88,7 @@ TBlockstoreConfigExtraParameters GetBlockstoreConfigExtraParameters(
 IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
     const NProto::TBlockstoreConfig& config,
     NStorage::TStorageConfigControlsPtr controls,
-    TBlockstoreConfigExtraParameters extraParameters = {});
+    TBlockstoreConfigExtraParameters extraParameters);
 
 // Build a configuration.
 //
@@ -138,7 +138,7 @@ TBlockstoreConfigBuildResult MakeStartupBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
     NStorage::TStorageConfigControlsPtr controls,
-    TBlockstoreConfigExtraParameters extraParameters = {});
+    TBlockstoreConfigExtraParameters extraParameters);
 
 // Merge configuration sources and enforce runtime-update markers.
 //
@@ -172,9 +172,9 @@ NConfig::TRuntimeConfigDiagnostics PrepareRuntimeBlockstoreConfig(
 //      source.
 // controls - Shared live ICB controls for Storage; non-null. Defaults and
 //      operator overrides are left unchanged.
+// extraParameters - parameters not stored in the configuration proto.
 // diagnostics - Report of rejected runtime changes. Replaced when a
 //      configuration is returned; preserved if configuration creation fails.
-// extraParameters - parameters not stored in the configuration proto.
 //
 // Returns - A new, non-null configuration.
 IBlockstoreConfigMutablePtr MakeRuntimeBlockstoreConfig(
@@ -182,7 +182,7 @@ IBlockstoreConfigMutablePtr MakeRuntimeBlockstoreConfig(
     const NProto::TBlockstoreConfig& startupConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
     NStorage::TStorageConfigControlsPtr controls,
-    NConfig::TRuntimeConfigDiagnostics& diagnostics,
-    TBlockstoreConfigExtraParameters extraParameters = {});
+    TBlockstoreConfigExtraParameters extraParameters,
+    NConfig::TRuntimeConfigDiagnostics& diagnostics);
 
 }   // namespace NCloud::NBlockStore
