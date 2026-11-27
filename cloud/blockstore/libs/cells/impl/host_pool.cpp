@@ -226,13 +226,16 @@ bool TCellHostPool::ApplyLiveness(
             channel->Watchers,
             [&](const auto& w)
             {
+                // no strong reference may die under Lock: if it were the
+                // last one, the watcher's destructor would take Lock again
+                if (alive) {
+                    return w.expired();
+                }
                 auto watcher = w.lock();
                 if (!watcher) {
                     return true;
                 }
-                if (!alive) {
-                    watchers.push_back(std::move(watcher));
-                }
+                watchers.push_back(std::move(watcher));
                 return false;
             });
 
@@ -339,9 +342,15 @@ void TCellHostPool::UnwatchHost(
 {
     with_lock (Lock) {
         if (auto* channel = Channels.FindPtr(fqdn)) {
+            // compared by owner: w.lock() would make a strong reference to
+            // another watcher that could die under Lock
             EraseIf(
                 channel->Watchers,
-                [&](const auto& w) { return w.lock() == watcher; });
+                [&](const auto& w)
+                {
+                    return !w.owner_before(watcher) &&
+                           !watcher.owner_before(w);
+                });
         }
     }
 }
