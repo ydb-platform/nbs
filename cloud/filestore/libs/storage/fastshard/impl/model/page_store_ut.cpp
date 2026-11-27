@@ -523,3 +523,46 @@ TEST(PageStoreTest, ShouldReportErrorIfFailedToAcquireCacheSlot)
 
     ASSERT_REJECTED(env.Lookup(MaxCachedPageCount));
 }
+
+TEST(PageStoreTest, ShouldDetectDirtyClear)
+{
+    TEnv env;
+    Fill(env);
+
+    for (ui64 pageNo = 0; pageNo < MaxCachedPageCount; ++pageNo) {
+        ASSERT_PAGE(env.Storage->Pages[pageNo], env.Lookup(pageNo));
+    }
+
+    auto stats = env.Store->CollectStats();
+    ASSERT_EQ(MaxCachedPageCount, stats.CachedPageCount);
+    ASSERT_EQ(PinnedPageCount, stats.PinnedPageCount);
+    ASSERT_EQ(0U, stats.CacheHits);
+    ASSERT_EQ(MaxCachedPageCount, stats.CacheMisses);
+    ASSERT_EQ(0U, stats.Evictions);
+
+    env.Write(1, 10, '+');
+    env.Write(1, 11, '+');
+    env.Write(1, 12, '+');
+
+    auto e = env.Store->Clear();
+    ASSERT_EQ(E_INVALID_STATE, e.GetCode()) << FormatError(e);
+
+    stats = env.Store->CollectStats();
+    ASSERT_EQ(MaxCachedPageCount, stats.CachedPageCount);
+    ASSERT_EQ(PinnedPageCount, stats.PinnedPageCount);
+    ASSERT_EQ(3U, stats.CacheHits);
+    ASSERT_EQ(MaxCachedPageCount, stats.CacheMisses);
+    ASSERT_EQ(0U, stats.Evictions);
+
+    env.Store->CommitPages(1, {10, 11, 12});
+
+    e = env.Store->Clear();
+    ASSERT_EQ(S_OK, e.GetCode()) << FormatError(e);
+
+    stats = env.Store->CollectStats();
+    ASSERT_EQ(0U, stats.CachedPageCount);
+    ASSERT_EQ(0U, stats.PinnedPageCount);
+    ASSERT_EQ(3U, stats.CacheHits);
+    ASSERT_EQ(MaxCachedPageCount, stats.CacheMisses);
+    ASSERT_EQ(0U, stats.Evictions);
+}

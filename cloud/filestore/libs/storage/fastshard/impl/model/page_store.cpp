@@ -175,6 +175,22 @@ public:
 
     NProto::TError Clear()
     {
+        //
+        // Check for invalid usage.
+        //
+
+        for (auto& [p, s]: PageNo2Slot) {
+            if (s->PV.Dirty) {
+                return MakeError(
+                    E_INVALID_STATE,
+                    TStringBuilder() << "Dirty page found upon clear: " << p);
+            }
+        }
+
+        //
+        // We're fine, clearing.
+        //
+
         TLookupMap rep;
 
         for (auto& [p, s]: PageNo2Slot) {
@@ -183,13 +199,8 @@ public:
                 continue;
             }
 
-            if (s->PV.Dirty) {
-                PageNo2Slot.clear();
-                Slots = TDeque<TSlot>(Slots.size());
-
-                return MakeError(
-                    E_INVALID_STATE,
-                    TStringBuilder() << "Dirty page found upon clear: " << p);
+            if (s->PageNo < PinnedPageCount) {
+                --Pins;
             }
 
             *s = {};
