@@ -12,6 +12,16 @@ namespace NCloud::NFileStore::NFuse {
 
 using namespace NCloud::NFileStore::NVFS;
 
+namespace {
+
+bool IsPosixAclXAttr(TStringBuf name)
+{
+    return name == "system.posix_acl_access" ||
+           name == "system.posix_acl_default";
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 // node attributes
 
@@ -100,6 +110,10 @@ void TFileSystem::SetAttr(
         self->FSyncQueue->Dequeue(reqId, error, TNodeId{ino});
 
         if (self->CheckNodeError(*callContext, req, error)) {
+            if (to_set & FUSE_SET_ATTR_MODE) {
+                self->InvalidateCachedXAttr(ino, "system.posix_acl_access");
+            }
+
             const bool cacheable =
                 self->InvalidateCachedNodeAttrsUponOwnChange(ino, version);
 
@@ -254,13 +268,16 @@ void TFileSystem::SetXAttr(
             self->UpdateXAttrCacheUponSetXAttr(
                 ino,
                 name,
-                value,
+                response.GetXAttrAbsent() ? Nothing() : MakeMaybe(value),
                 response.GetVersion(),
                 error,
                 cacheVersion,
                 response.GetXAttrCacheSourceId(),
                 self->GetCacheTTL(response.GetXAttrCacheTTL()));
             if (self->CheckNodeError(*callContext, req, error)) {
+                if (IsPosixAclXAttr(name)) {
+                    self->InvalidateCachedNodeAttrs(ino);
+                }
                 self->ReplyError(*callContext, error, req, 0);
             }
         });

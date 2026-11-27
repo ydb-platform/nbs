@@ -71,11 +71,13 @@ def __run_test_suite(target_path, suite, tests, verbose=False):
     return output
 
 
-def run_compliance_suite(target_dir, suite, tests=[]):
+def run_compliance_suite(target_dir, suite, tests=[], *, directory_mode=None):
     tmp_dir = None
 
     try:
         tmp_dir = tempfile.mkdtemp(dir=target_dir)
+        if directory_mode is not None:
+            os.chmod(tmp_dir, directory_mode)
         return __run_test_suite(tmp_dir, suite, tests)
     finally:
         if tmp_dir is not None:

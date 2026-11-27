@@ -212,7 +212,7 @@ message TCreateNodeRequest
     // owns the real parent and carried along for the cross-shard operation.
     uint32 QuotaId = 20;
 
-    bool GuestPosixAclEnabled = 21;
+    reserved 21;
 
     // POSIX ACLs inherited from the parent. These fields are resolved by the
     // tablet that owns the parent directory and carried to the shard that
@@ -654,6 +654,11 @@ message TSetNodeXAttrResponse
     // identifier: the invalidations may have been lost. Set only along with a
     // nonzero XAttrCacheTTL.
     uint64 XAttrCacheSourceId = 4;
+
+    // True if the set succeeded and the xattr is absent afterward. A
+    // header-only POSIX ACL clears the xattr, and a minimal access ACL
+    // is represented by the file's mode bits.
+    bool XAttrAbsent = 5;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

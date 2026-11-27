@@ -8,6 +8,7 @@
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
+#include <cloud/filestore/libs/storage/tablet/model/test_helpers/acl_test_helpers.h>
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
@@ -23,67 +24,18 @@
 
 #include <contrib/ydb/core/base/hive.h>
 
-#include <contrib/libs/linux-headers/linux/posix_acl.h>
-#include <contrib/libs/linux-headers/linux/posix_acl_xattr.h>
-
 #include <google/protobuf/util/json_util.h>
 #include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
+using namespace NAclTest;
 using namespace NKikimr;
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-using TPosixAcl = TVector<posix_acl_xattr_entry>;
-
-ui32 Permissions(const TString& value)
-{
-    UNIT_ASSERT_C(
-        value.size() == 3 || value.size() == 9,
-        "Permission string must describe one ACL entry or a complete mode");
-
-    ui32 result = 0;
-    constexpr TStringBuf permissionChars = "rwx";
-    for (size_t i = 0; i < value.size(); ++i) {
-        UNIT_ASSERT_C(
-            value[i] == '-' || value[i] == permissionChars[i % 3],
-            "Invalid permission string: " << value);
-        if (value[i] != '-') {
-            result |= 1U << (value.size() - i - 1);
-        }
-    }
-    return result;
-}
-
-posix_acl_xattr_entry MakeAclEntry(
-    ui16 tag,
-    const TString& permissions,
-    ui32 id = ACL_UNDEFINED_ID)
-{
-    return {
-        .e_tag = tag,
-        .e_perm = static_cast<ui16>(Permissions(permissions)),
-        .e_id = id,
-    };
-}
-
-TString SerializeAcl(const TPosixAcl& acl)
-{
-    const posix_acl_xattr_header header = {POSIX_ACL_XATTR_VERSION};
-
-    TString value;
-    value.resize(sizeof(header) + acl.size() * sizeof(acl.front()));
-    std::memcpy(value.Detach(), &header, sizeof(header));
-    std::memcpy(
-        value.Detach() + sizeof(header),
-        acl.data(),
-        acl.size() * sizeof(acl.front()));
-    return value;
-}
 
 void SetFacl(
     TServiceClient& service,
@@ -113,22 +65,7 @@ TPosixAcl GetFacl(
         fileSystemId,
         nodeId,
         xattrName);
-    const TString& value = response->Record.GetValue();
-
-    UNIT_ASSERT_GE(value.size(), sizeof(posix_acl_xattr_header));
-    posix_acl_xattr_header header;
-    std::memcpy(&header, value.data(), sizeof(header));
-    UNIT_ASSERT_VALUES_EQUAL(POSIX_ACL_XATTR_VERSION, header.a_version);
-
-    const size_t entriesSize = value.size() - sizeof(header);
-    UNIT_ASSERT_VALUES_EQUAL(0, entriesSize % sizeof(posix_acl_xattr_entry));
-
-    TPosixAcl acl(entriesSize / sizeof(posix_acl_xattr_entry));
-    std::memcpy(
-        acl.data(),
-        value.data() + sizeof(header),
-        entriesSize);
-    return acl;
+    return DeserializeAcl(response->Record.GetValue());
 }
 
 void AssertFacl(const TPosixAcl& expected, const TPosixAcl& actual)
@@ -287,7 +224,7 @@ void DoShouldApplyUmaskAndInheritDefaultAcl(
         headers,
         fileSystemId,
         testDir.GetId(),
-        "system.posix_acl_default",
+        DefaultAcl,
         defaultAcl);
 
     const auto childFile = CreateNodeWithUmask(
@@ -331,7 +268,7 @@ void DoShouldApplyUmaskAndInheritDefaultAcl(
             headers,
             fileSystemId,
             childFile.GetId(),
-            "system.posix_acl_access"));
+            AccessAcl));
     UNIT_ASSERT_VALUES_EQUAL(Permissions("rw-rw----"), childHandle.GetMode());
     AssertFacl(
         fileAccessAcl,
@@ -340,7 +277,7 @@ void DoShouldApplyUmaskAndInheritDefaultAcl(
             headers,
             fileSystemId,
             childHandle.GetId(),
-            "system.posix_acl_access"));
+            AccessAcl));
     UNIT_ASSERT_VALUES_EQUAL(Permissions("rwxrwx---"), childDir.GetMode());
     AssertFacl(
         defaultAcl,
@@ -349,7 +286,7 @@ void DoShouldApplyUmaskAndInheritDefaultAcl(
             headers,
             fileSystemId,
             childDir.GetId(),
-            "system.posix_acl_access"));
+            AccessAcl));
     AssertFacl(
         defaultAcl,
         GetFacl(
@@ -357,7 +294,7 @@ void DoShouldApplyUmaskAndInheritDefaultAcl(
             headers,
             fileSystemId,
             childDir.GetId(),
-            "system.posix_acl_default"));
+            DefaultAcl));
 
     const auto nestedFile = CreateNodeWithUmask(
         service,
@@ -383,7 +320,7 @@ void DoShouldApplyUmaskAndInheritDefaultAcl(
             headers,
             fileSystemId,
             nestedFile.GetId(),
-            "system.posix_acl_access"));
+            AccessAcl));
     UNIT_ASSERT_VALUES_EQUAL(
         Permissions("rw-rw----"),
         nestedHandle.GetMode());
@@ -394,7 +331,7 @@ void DoShouldApplyUmaskAndInheritDefaultAcl(
             headers,
             fileSystemId,
             nestedHandle.GetId(),
-            "system.posix_acl_access"));
+            AccessAcl));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1996,6 +1933,225 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
             UNIT_ASSERT_VALUES_EQUAL(3, getCount("ListNodeXAttr"));
         }
+    }
+
+    Y_UNIT_TEST(ShouldSetAndClearPosixAcls)
+    {
+        auto config = MakeStorageConfig();
+        config.SetGuestPosixAclEnabled(true);
+
+        TTestEnv env({}, config);
+        const ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TString fsId = "test";
+        service.CreateFileStore(fsId, 1'000);
+
+        const auto headers = service.InitSession(fsId, "client");
+
+        const auto id = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir", 01700))
+            ->Record.GetNode().GetId();
+
+        const TPosixAcl minimal = {
+            MakeAclEntry(ACL_USER_OBJ, "rw-"),
+            MakeAclEntry(ACL_GROUP_OBJ, "r--"),
+            MakeAclEntry(ACL_OTHER, "---"),
+        };
+        const TPosixAcl extended = {
+            MakeAclEntry(ACL_USER_OBJ, "rwx"),
+            MakeAclEntry(ACL_USER, "rw-", 12345),
+            MakeAclEntry(ACL_GROUP_OBJ, "---"),
+            MakeAclEntry(ACL_MASK, "r-x"),
+            MakeAclEntry(ACL_OTHER, "--x"),
+        };
+
+        const auto mode = [&] {
+            return service.GetNodeAttr(headers, fsId, id, "")
+                ->Record.GetNode().GetMode();
+        };
+        constexpr ui64 initialCTime = 333333;
+        const auto resetCTime = [&] {
+            service.SetNodeAttr(
+                headers,
+                fsId,
+                TSetNodeAttrArgs(id).SetCTime(initialCTime));
+        };
+        const auto ctime = [&] {
+            return service.GetNodeAttr(headers, fsId, id, "")
+                ->Record.GetNode().GetCTime();
+        };
+
+        const auto assertNoXattr = [&](const TString& name) {
+            auto missing =
+                service.AssertGetNodeXAttrFailed(headers, fsId, id, name);
+            UNIT_ASSERT_VALUES_EQUAL(
+                ui32(NProto::E_FS_NOXATTR),
+                STATUS_FROM_CODE(missing->GetStatus()));
+        };
+
+        // Clear the ACL with a header-only xattr.
+        const auto clearAcl = [&](const TString& name) {
+            auto response = service.SetNodeXAttr(
+                headers, fsId, id, name, SerializeAcl({}));
+            UNIT_ASSERT(response->Record.GetXAttrAbsent());
+            assertNoXattr(name);
+        };
+
+        const auto setAccessAclWithFlag = [&]
+            (const TString& value, NProto::TSetNodeXAttrRequest::EFlags flag)
+        {
+            auto request = service.CreateSetNodeXAttrRequest(
+                headers,
+                fsId,
+                id,
+                AccessAcl,
+                value);
+            request->Record.SetFlags(ProtoFlag(flag));
+            service.SendSetNodeXAttrRequest(std::move(request));
+            return service.RecvSetNodeXAttrResponse();
+        };
+
+        // Clearing access and default ACLs preserves the mode.
+        resetCTime();
+        clearAcl(AccessAcl);
+        clearAcl(DefaultAcl);
+        UNIT_ASSERT_VALUES_EQUAL(01700, mode());
+        UNIT_ASSERT_VALUES_EQUAL(initialCTime, ctime());
+
+        // F_REPLACE should fail when access ACL does not exist and should leave
+        // the mode intact.
+        const auto replaceMissing = setAccessAclWithFlag(
+            SerializeAcl(minimal),
+            NProto::TSetNodeXAttrRequest::F_REPLACE);
+        UNIT_ASSERT_VALUES_EQUAL(
+            MAKE_FILESTORE_ERROR(NProto::E_FS_NOXATTR),
+            replaceMissing->GetStatus());
+        UNIT_ASSERT(!replaceMissing->Record.GetXAttrAbsent());
+        assertNoXattr(AccessAcl);
+        UNIT_ASSERT_VALUES_EQUAL(01700, mode());
+
+        // A minimal default ACL is stored without changing the directory mode.
+        resetCTime();
+        SetFacl(service, headers, fsId, id, DefaultAcl, minimal);
+        AssertFacl(minimal, GetFacl(service, headers, fsId, id, DefaultAcl));
+        UNIT_ASSERT_VALUES_EQUAL(01700, mode());
+        UNIT_ASSERT_GT(ctime(), initialCTime);
+
+        // An extended access ACL is stored and sets the mode's permission bits.
+        SetFacl(service, headers, fsId, id, AccessAcl, extended);
+        AssertFacl(extended, GetFacl(service, headers, fsId, id, AccessAcl));
+        UNIT_ASSERT_VALUES_EQUAL(01751, mode());
+
+        // F_CREATE fails on an existing ACL, preserving the ACL and mode.
+        const auto createExisting = setAccessAclWithFlag(
+            SerializeAcl(minimal),
+            NProto::TSetNodeXAttrRequest::F_CREATE);
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_EXIST, createExisting->GetStatus());
+        UNIT_ASSERT(!createExisting->Record.GetXAttrAbsent());
+        AssertFacl(extended, GetFacl(service, headers, fsId, id, AccessAcl));
+        UNIT_ASSERT_VALUES_EQUAL(01751, mode());
+
+        // A malformed replacement leaves the stored ACL and mode intact.
+        const auto replaceMalformed = setAccessAclWithFlag(
+            "bad",
+            NProto::TSetNodeXAttrRequest::F_REPLACE);
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_INVAL, replaceMalformed->GetStatus());
+        AssertFacl(extended, GetFacl(service, headers, fsId, id, AccessAcl));
+        UNIT_ASSERT_VALUES_EQUAL(01751, mode());
+
+        // Clearing the default ACL preserves the access ACL.
+        resetCTime();
+        clearAcl(DefaultAcl);
+        AssertFacl(extended, GetFacl(service, headers, fsId, id, AccessAcl));
+        UNIT_ASSERT_GT(ctime(), initialCTime);
+
+        // Changing a named ACL entry preserves the mode and updates ctime.
+        auto changedAcl = extended;
+        changedAcl[1] = MakeAclEntry(ACL_USER, "r--", 12345);
+        resetCTime();
+        SetFacl(service, headers, fsId, id, AccessAcl, changedAcl);
+        AssertFacl(changedAcl, GetFacl(service, headers, fsId, id, AccessAcl));
+        UNIT_ASSERT_VALUES_EQUAL(01751, mode());
+        UNIT_ASSERT_GT(ctime(), initialCTime);
+
+        // Chmod updates the access ACL's mask and other permissions.
+        service.SetNodeAttr(headers, fsId, TSetNodeAttrArgs(id).SetMode(01740));
+        UNIT_ASSERT_VALUES_EQUAL(01740, mode());
+        auto updatedAcl = changedAcl;
+        updatedAcl[3] = MakeAclEntry(ACL_MASK, "r--");
+        updatedAcl[4] = MakeAclEntry(ACL_OTHER, "---");
+        AssertFacl(updatedAcl, GetFacl(service, headers, fsId, id, AccessAcl));
+
+        // Repeating chmod preserves the access ACL value and version.
+        const auto aclAfterChmod =
+            service.GetNodeXAttr(headers, fsId, id, AccessAcl);
+        service.SetNodeAttr(headers, fsId, TSetNodeAttrArgs(id).SetMode(01740));
+        const auto aclAfterRepeatedChmod =
+            service.GetNodeXAttr(headers, fsId, id, AccessAcl);
+        UNIT_ASSERT_VALUES_EQUAL(
+            aclAfterChmod->Record.GetVersion(),
+            aclAfterRepeatedChmod->Record.GetVersion());
+        UNIT_ASSERT_VALUES_EQUAL(
+            aclAfterChmod->Record.GetValue(),
+            aclAfterRepeatedChmod->Record.GetValue());
+
+        // A minimal access ACL updates the mode and removes the stored xattr.
+        auto response = service.SetNodeXAttr(
+            headers,
+            fsId,
+            id,
+            AccessAcl,
+            SerializeAcl(minimal));
+        UNIT_ASSERT(response->Record.GetXAttrAbsent());
+        assertNoXattr(AccessAcl);
+        UNIT_ASSERT_VALUES_EQUAL(01640, mode());
+
+        // A header-only access ACL removes the xattr and preserves the mode.
+        SetFacl(service, headers, fsId, id, AccessAcl, extended);
+        AssertFacl(extended, GetFacl(service, headers, fsId, id, AccessAcl));
+        resetCTime();
+        clearAcl(AccessAcl);
+        UNIT_ASSERT_VALUES_EQUAL(01751, mode());
+        UNIT_ASSERT_GT(ctime(), initialCTime);
+    }
+
+    Y_UNIT_TEST(ShouldStoreMalformedPosixAclXAttrWithPosixAclDisabled)
+    {
+        auto config = MakeStorageConfig();
+        config.SetGuestPosixAclEnabled(false);
+
+        TTestEnv env({}, config);
+        const ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TString fsId = "test";
+        service.CreateFileStore(fsId, 1'000);
+
+        const auto headers = service.InitSession(fsId, "client");
+        const auto id = service
+                            .CreateNode(
+                                headers,
+                                TCreateNodeArgs::File(RootNodeId, "file", 0600))
+                            ->Record.GetNode().GetId();
+
+        // With ACL processing disabled, a malformed access ACL can be stored.
+        const TString malformedValue = "malformed value";
+        const auto setXAttr =
+            service.SetNodeXAttr(headers, fsId, id, AccessAcl, malformedValue);
+        UNIT_ASSERT(!setXAttr->Record.GetXAttrAbsent());
+
+        // Chmod changes the mode and preserves the malformed ACL bytes.
+        const auto setAttr = service.SetNodeAttr(
+            headers,
+            fsId,
+            TSetNodeAttrArgs(id).SetMode(0640));
+        UNIT_ASSERT_VALUES_EQUAL(0640, setAttr->Record.GetNode().GetMode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            malformedValue,
+            service.GetNodeXAttr(headers, fsId, id, AccessAcl)
+                ->Record.GetValue());
     }
 
     Y_UNIT_TEST(ShouldApplyUmaskAndInheritDefaultAclWithoutShards)

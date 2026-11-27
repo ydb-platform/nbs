@@ -671,6 +671,22 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
             env.GetCounter("InvalidateNodeXAttrEventCount"));
     }
 
+    Y_UNIT_TEST(ShouldCacheAbsenceWhenSetXAttrClearsTheAttribute)
+    {
+        TMetadataCachingEnv env;
+        env.SetXAttr("previous");
+        env.Bootstrap.Service->SetHandlerSetNodeXAttr(
+            [] (auto, auto) {
+                NProto::TSetNodeXAttrResponse response;
+                response.SetXAttrAbsent(true);
+                return MakeFuture(response);
+            });
+
+        env.SetXAttr("header");
+        env.AssertXAttrAbsent();
+        UNIT_ASSERT_VALUES_EQUAL(0, env.GetCounter("GetXAttrCacheMissCount"));
+    }
+
     Y_UNIT_TEST(ShouldCacheXAttrsForXAttrCacheTTLOrXAttrCacheTimeout)
     {
         TMetadataCachingEnv env;
@@ -1255,6 +1271,85 @@ Y_UNIT_TEST_SUITE(TFileSystemMetadataCachingTest)
         env.GetAttr(RootNodeId);
         env.GetAttr(RootNodeId);
         UNIT_ASSERT_VALUES_EQUAL(1, env.GetCounter("GetAttrCacheMissCount"));
+    }
+
+    Y_UNIT_TEST(ShouldInvalidateAccessAclUponChmod)
+    {
+        TMetadataCachingEnv env({}, false /* fileSystemEventsEnabled */);
+        env.Bootstrap.Service->SetHandlerSetNodeAttr(
+            [] (auto, auto request)
+            {
+                NProto::TSetNodeAttrResponse response;
+                *response.MutableNode() = MakeFileAttr(request->GetNodeId());
+                return MakeFuture(response);
+            });
+
+        const auto getAcl = [&] {
+            return env.Bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(
+                "system.posix_acl_access",
+                FileNodeId).GetValue(WaitTimeout);
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL("1", getAcl());
+        UNIT_ASSERT_VALUES_EQUAL("1", getAcl());
+        env.SetXAttr("unrelated");
+
+        auto setAttr =
+            std::make_shared<TSetAttrRequest>(FileNodeId, 0 /* fh */);
+        UNIT_ASSERT_NO_EXCEPTION(
+            env.Bootstrap.Fuse->SendRequest(setAttr).GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL("1", getAcl());
+
+        setAttr = std::make_shared<TSetAttrRequest>(FileNodeId, 0 /* fh */);
+        setAttr->In->Body.valid = FUSE_SET_ATTR_MODE;
+        setAttr->In->Body.mode = S_IFREG | 0611;
+        UNIT_ASSERT_NO_EXCEPTION(
+            env.Bootstrap.Fuse->SendRequest(setAttr).GetValue(WaitTimeout));
+
+        UNIT_ASSERT_VALUES_EQUAL("2", getAcl());
+        UNIT_ASSERT_VALUES_EQUAL("2", getAcl());
+        UNIT_ASSERT_VALUES_EQUAL("unrelated", env.GetXAttr());
+    }
+
+    Y_UNIT_TEST(ShouldInvalidateNodeAttrsUponSetPosixAcl)
+    {
+        std::atomic<ui64> ctime = 1;
+        TMetadataCachingEnv env;
+        const auto getCTime = [&] {
+            auto request = std::make_shared<TGetAttrRequest>(RootNodeId);
+            env.Bootstrap.Fuse->SendRequest(request).GetValue(WaitTimeout);
+            return request->Out->Body.attr.ctime;
+        };
+        const auto setXAttr = [&](const TString& name) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                env.Bootstrap.Fuse
+                    ->SendRequest<TSetXAttrValueRequest>(name, "acl", RootNodeId)
+                    .GetValue(WaitTimeout));
+        };
+
+        env.Bootstrap.Service->SetHandlerGetNodeAttr(
+            [&] (auto, auto request)
+            {
+                auto response = env.HandleGetNodeAttr(*request);
+                response.MutableNode()->SetCTime(
+                    TDuration::Seconds(ctime.load()).MicroSeconds());
+                return MakeFuture(response);
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(1, getCTime());
+        ++ctime;
+        setXAttr("user.a");
+        UNIT_ASSERT_VALUES_EQUAL(1, getCTime());
+
+        for (const TString name:
+             {"system.posix_acl_access", "system.posix_acl_default"})
+        {
+            ++ctime;
+            setXAttr(name);
+            UNIT_ASSERT_VALUES_EQUAL(ctime.load(), getCTime());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(3, env.GetCounter("GetAttrCacheMissCount"));
     }
 
     Y_UNIT_TEST(ShouldInvalidateCachesUponLocalChanges)

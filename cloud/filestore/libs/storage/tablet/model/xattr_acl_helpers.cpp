@@ -1,9 +1,12 @@
 //
-// Convert a parent's system.posix_acl_default xattr value into the
-// system.posix_acl_access value inherited by a newly created child.
+// Reconcile POSIX ACL xattrs with file mode bits to:
+// - Derive a child's access ACL and mode from its parent's default ACL.
+// - Update an existing access ACL when chmod changes the file mode.
+// - Derive file mode bits from a POSIX ACL xattr.
 //
 // This is a userspace adaptation of posix_acl_from_xattr(),
-// posix_acl_create_masq(), and posix_acl_to_xattr() from fs/posix_acl.c.
+// posix_acl_create_masq(), and posix_acl_to_xattr(), __posix_acl_chmod_masq()
+// from fs/posix_acl.c.
 // The xattr representation and the host are assumed to be little-endian.
 //
 
@@ -14,8 +17,6 @@
 
 #include <util/string/builder.h>
 #include <util/system/types.h>
-
-#include <sys/stat.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -107,11 +108,33 @@ void PosixAclToXattr(const TVector<posix_acl_xattr_entry>& acls, TString& value)
     }
 }
 
-TResultOrError<TNodeXattrAcl> PosixAclCreateMasq(
+}   // namespace
+
+// Validate the POSIX ACL xattr and reconcile its permissions with the file
+// mode. In overwrite mode, copy the requested mode bits into the corresponding
+// ACL entries. Otherwise, intersect the corresponding permissions.
+TResultOrError<TNodeXattrAcl> ReconcilePosixAclWithMode(
     const TString& xattrAcl,
-    TVector<posix_acl_xattr_entry>& acls,
-    const ui32& srcMode)
+    const ui32& srcMode,
+    const bool overwriteAclPermsFromMode,
+    const bool dontCalculateXattrAcl)
 {
+    TVector<posix_acl_xattr_entry> acls;
+
+    NProto::TError error = PosixAclFromXattr(xattrAcl, acls);
+    if (HasError(error)) {
+        return error;
+    }
+
+    // Treat a header-only ACL as absent. During child creation, the caller
+    // applies the umask.
+    if (!acls) {
+        return TNodeXattrAcl{
+            .Acl = "",
+            .Mode = srcMode,
+            .Type = EXattrAclType::HeaderOnly};
+    }
+
     posix_acl_xattr_entry* groupObj = nullptr;
     posix_acl_xattr_entry* maskObj = nullptr;
 
@@ -137,6 +160,9 @@ TResultOrError<TNodeXattrAcl> PosixAclCreateMasq(
                 }
                 state = ACL_USER;
 
+                if (overwriteAclPermsFromMode) {
+                    acl.e_perm = s_irwxo_16;
+                }
                 acl.e_perm &= static_cast<__le16>(mode >> 6) | ~s_irwxo_16;
                 mode &= static_cast<ui32>(acl.e_perm << 6) | ~s_irwxu_32;
                 break;
@@ -185,6 +211,9 @@ TResultOrError<TNodeXattrAcl> PosixAclCreateMasq(
                 }
                 state = 0;
 
+                if (overwriteAclPermsFromMode) {
+                    acl.e_perm = s_irwxo_16;
+                }
                 acl.e_perm &= static_cast<__le16>(mode) | ~s_irwxo_16;
                 mode &= static_cast<ui32>(acl.e_perm) | ~s_irwxo_32;
                 break;
@@ -199,11 +228,16 @@ TResultOrError<TNodeXattrAcl> PosixAclCreateMasq(
 
     if (maskObj) {
         // Extended ACL: group mode bits come from ACL_MASK.
+        if (overwriteAclPermsFromMode) {
+            maskObj->e_perm = s_irwxo_16;
+        }
         maskObj->e_perm &= static_cast<__le16>(mode >> 3) | ~s_irwxo_16;
         mode &= static_cast<ui32>(maskObj->e_perm << 3) | ~s_irwxg_32;
 
         result.Type = EXattrAclType::Extended;
-        PosixAclToXattr(acls, result.Acl);
+        if (!dontCalculateXattrAcl) {
+            PosixAclToXattr(acls, result.Acl);
+        }
     } else {
         // Minimal ACL: group mode bits come from ACL_GROUP_OBJ.
         if (!groupObj) {
@@ -212,37 +246,23 @@ TResultOrError<TNodeXattrAcl> PosixAclCreateMasq(
                 "Minimal ACL requires ACL_GROUP_OBJ");
         }
         result.Type = EXattrAclType::Minimal;
+
+        if (overwriteAclPermsFromMode && !dontCalculateXattrAcl) {
+            groupObj->e_perm = s_irwxo_16;
+        }
         groupObj->e_perm &= static_cast<__le16>(mode >> 3) | ~s_irwxo_16;
         mode &= static_cast<ui32>(groupObj->e_perm << 3) | ~s_irwxg_32;
+
+        // Preserve the existing access ACL when updating its permissions, even
+        // if the ACL is minimal
+        if (overwriteAclPermsFromMode && !dontCalculateXattrAcl) {
+            PosixAclToXattr(acls, result.Acl);
+        }
     }
 
     result.Mode = (srcMode & ~(s_irwxo_32 | s_irwxu_32 | s_irwxg_32)) | mode;
 
     return result;
-}
-
-}   // namespace
-
-TResultOrError<TNodeXattrAcl> GetChildXattrAcl(
-    const TString& xattrAcl,
-    const ui32 mode)
-{
-    TVector<posix_acl_xattr_entry> acls;
-
-    NProto::TError error = PosixAclFromXattr(xattrAcl, acls);
-    if (HasError(error)) {
-        return error;
-    }
-
-    // Treat a header-only ACL as absent. The caller should apply the umask.
-    if (!acls) {
-        return TNodeXattrAcl{
-            .Acl = "",
-            .Mode = mode,
-            .Type = EXattrAclType::HeaderOnly};
-    }
-
-    return PosixAclCreateMasq(xattrAcl, acls, mode);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -35,6 +35,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/filestore/libs/storage/tablet/model/test_helpers
     cloud/filestore/libs/storage/testlib
     contrib/ydb/core/testlib
 )

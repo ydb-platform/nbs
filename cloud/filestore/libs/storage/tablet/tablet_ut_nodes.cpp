@@ -1,5 +1,7 @@
 #include "tablet.h"
 
+#include "model/test_helpers/acl_test_helpers.h"
+
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -12,6 +14,8 @@ namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
+using NAclTest::AccessAcl;
+using NAclTest::DefaultAcl;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -982,6 +986,103 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
 
         tablet.AssertGetNodeAttrFailed(RootNodeId, "xxxx");
         tablet.AssertGetNodeAttrFailed(id + 100500);
+    }
+
+    Y_UNIT_TEST(ShouldValidateStoredAccessAclOnlyWhenSettingMode)
+    {
+        TTestEnv env;
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        const auto id = CreateNode(
+            tablet,
+            TCreateNodeArgs::File(RootNodeId, "test", 0600));
+        const TString malformedAcl = "bad";
+        // Store a malformed ACL while ACL processing is disabled.
+        tablet.SetNodeXAttr(id, AccessAcl, malformedAcl);
+
+        const auto setNodeAttrWithAcl = [&](const TSetNodeAttrArgs& args) {
+            auto request = tablet.CreateSetNodeAttrRequest(args);
+            request->Record.MutableHeaders()->SetGuestPosixAclEnabled(true);
+            tablet.SendRequest(std::move(request));
+            return tablet.RecvSetNodeAttrResponse();
+        };
+
+        // Chmod rejects the malformed ACL and preserves the mode and ACL bytes.
+        const auto setMode =
+            setNodeAttrWithAcl(TSetNodeAttrArgs(id).SetMode(0640));
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_INVAL, setMode->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0600,
+            tablet.GetNodeAttr(id)->Record.GetNode().GetMode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            malformedAcl,
+            tablet.GetNodeXAttr(id, AccessAcl)->Record.GetValue());
+
+        // A UID-only update skips ACL validation and preserves the stored ACL.
+        const auto setUid =
+            setNodeAttrWithAcl(TSetNodeAttrArgs(id).SetUid(1234));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, setUid->GetStatus());
+        const auto node = tablet.GetNodeAttr(id)->Record.GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(1234, node.GetUid());
+        UNIT_ASSERT_VALUES_EQUAL(0600, node.GetMode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            malformedAcl,
+            tablet.GetNodeXAttr(id, AccessAcl)->Record.GetValue());
+    }
+
+    Y_UNIT_TEST(ShouldOnlySetDefaultPosixAclOnDirectories)
+    {
+        TTestEnv env;
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        const auto fileId = CreateNode(
+            tablet,
+            TCreateNodeArgs::File(RootNodeId, "file"));
+        const auto dirId = CreateNode(
+            tablet,
+            TCreateNodeArgs::Directory(RootNodeId, "dir"));
+
+        const TString acl = NAclTest::SerializeAcl({
+            NAclTest::MakeAclEntry(ACL_USER_OBJ, "rwx"),
+            NAclTest::MakeAclEntry(ACL_GROUP_OBJ, "r-x"),
+            NAclTest::MakeAclEntry(ACL_OTHER, "---"),
+        });
+        const TString headerOnly = NAclTest::SerializeAcl({});
+
+        const auto setDefaultAcl = [&](ui64 nodeId, const TString& value) {
+            auto request =
+                tablet.CreateSetNodeXAttrRequest(nodeId, DefaultAcl, value);
+            request->Record.MutableHeaders()->SetGuestPosixAclEnabled(true);
+            tablet.SendRequest(std::move(request));
+            return tablet.RecvSetNodeXAttrResponse();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_FS_ACCESS,
+            setDefaultAcl(fileId, acl)->GetStatus());
+        tablet.AssertGetNodeXAttrFailed(fileId, DefaultAcl);
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, setDefaultAcl(dirId, acl)->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            acl,
+            tablet.GetNodeXAttr(dirId, DefaultAcl)->Record.GetValue());
+
+        // Store a legacy default ACL through the generic xattr path.
+        tablet.SetNodeXAttr(fileId, DefaultAcl, acl);
+        const auto clear = setDefaultAcl(fileId, headerOnly);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, clear->GetStatus());
+        UNIT_ASSERT(clear->Record.GetXAttrAbsent());
+        UNIT_ASSERT_VALUES_EQUAL(
+            MAKE_FILESTORE_ERROR(NProto::E_FS_NOXATTR),
+            tablet.AssertGetNodeXAttrFailed(fileId, DefaultAcl)->GetStatus());
     }
 
     Y_UNIT_TEST(ShouldStoreNodeXAttrs)

@@ -9,6 +9,8 @@
 
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 
+#include <type_traits>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -315,6 +317,11 @@ void TStorageServiceActor::ForwardRequestToShard(
     }
 
     const NProto::TFileStore& filestore = session->FileStore;
+
+    if constexpr (std::is_same_v<TMethod, TEvService::TSetNodeAttrMethod>) {
+        msg->Record.MutableHeaders()->SetGuestPosixAclEnabled(
+            filestore.GetFeatures().GetGuestPosixAclEnabled());
+    }
 
     if (!forceBehaveAsShard) {
         msg->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(

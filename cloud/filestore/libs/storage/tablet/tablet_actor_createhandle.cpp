@@ -296,7 +296,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
             }
 
             if (!behaveAsShard &&
-                args.Request.GetGuestPosixAclEnabled())
+                args.Request.GetHeaders().GetGuestPosixAclEnabled())
             {
                 TMaybe<INodeIndexTabletDatabase::TNodeAttr> parentDefaultAcl;
                 if (!ReadNodeAttr(

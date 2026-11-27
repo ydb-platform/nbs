@@ -30,4 +30,6 @@ SRCS(
     xattr_acl_helpers_ut.cpp
 )
 
+PEERDIR(cloud/filestore/libs/storage/tablet/model/test_helpers)
+
 END()

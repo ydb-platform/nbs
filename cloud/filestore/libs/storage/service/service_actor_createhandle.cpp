@@ -286,7 +286,7 @@ void TStorageServiceActor::HandleCreateHandle(
         return;
     }
 
-    msg->Record.SetGuestPosixAclEnabled(
+    msg->Record.MutableHeaders()->SetGuestPosixAclEnabled(
         session->FileStore.GetFeatures().GetGuestPosixAclEnabled());
 
     if (TryHandleControlNamespaceCreateHandle(ctx, ev, session)) {

@@ -373,7 +373,7 @@ void TStorageServiceActor::HandleCreateNode(
         return;
     }
 
-    msg->Record.SetGuestPosixAclEnabled(
+    msg->Record.MutableHeaders()->SetGuestPosixAclEnabled(
         session->FileStore.GetFeatures().GetGuestPosixAclEnabled());
     msg->Record.ClearParentDefaultAcl();
     msg->Record.ClearChildAccessAcl();
