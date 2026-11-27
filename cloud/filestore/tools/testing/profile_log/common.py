@@ -30,6 +30,7 @@ def _iter_profile_log_lines(profile_tool_bin_path,
 
         # Keep the name while reading: some virtiofs backends cannot access
         # open files after unlink. Preserve failed command output as before.
+        # https://github.com/ydb-platform/nbs/issues/7928
         try:
             output.seek(0)
             for line in output:
