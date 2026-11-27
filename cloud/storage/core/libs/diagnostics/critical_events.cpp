@@ -1,10 +1,13 @@
 #include "critical_events.h"
+
 #include "public.h"
 
 #include <library/cpp/logger/log.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/string/builder.h>
+
+#include <atomic>
 
 namespace NCloud {
 
@@ -14,12 +17,28 @@ using namespace NMonitoring;
 
 namespace {
 
+std::atomic<bool> ImpossibleEventsAbortDisabledForTests{false};
 NMonitoring::TDynamicCountersPtr CriticalEvents;
 TLog Log;
 
 }  // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TImpossibleEventsAbortGuard::TImpossibleEventsAbortGuard(bool wasAbortDisabled)
+    : WasAbortDisabled(wasAbortDisabled)
+{}
+
+TImpossibleEventsAbortGuard::~TImpossibleEventsAbortGuard()
+{
+    ImpossibleEventsAbortDisabledForTests.store(WasAbortDisabled);
+}
+
+TImpossibleEventsAbortGuard DisableImpossibleEventsAbortForCurrentTest()
+{
+    return TImpossibleEventsAbortGuard(
+        ImpossibleEventsAbortDisabledForTests.exchange(true));
+}
 
 void SetCriticalEventsLog(TLog log)
 {
@@ -60,7 +79,7 @@ TString ReportCriticalEvent(
     const TString& message,
     bool verifyDebug)
 {
-    if (verifyDebug) {
+    if (verifyDebug && !ImpossibleEventsAbortDisabledForTests.load()) {
         Y_DEBUG_ABORT_UNLESS(
             false,
             "sensorName: \"%s\"; message: \"%s\"",

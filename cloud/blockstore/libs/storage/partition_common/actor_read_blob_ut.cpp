@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/storage/api/public.h>
 
 #include <cloud/storage/core/libs/common/sglist_test.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <contrib/ydb/library/actors/testlib/test_runtime.h>
 
@@ -209,6 +210,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         ShouldReturnCompressedReadPlanningError,
         TCompressedReadEnvironment)
     {
+        const auto abortGuard = DisableImpossibleEventsAbortForCurrentTest();
+
         ui32 readRequests = 0;
         ActorSystem.SetEventFilter(
             [&](NActors::TTestActorRuntimeBase&,
@@ -464,6 +467,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         ShouldRejectCompressedBlobResponseWithWrongBlobId,
         TCompressedReadEnvironment)
     {
+        const auto abortGuard = DisableImpossibleEventsAbortForCurrentTest();
+
         for (const auto codec:
              {NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
               NCloud::NProto::COMPRESSION_CODEC_ZSTD_3})
@@ -500,6 +505,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         ShouldRejectInvalidCompressedBlobResponseSize,
         TCompressedReadEnvironment)
     {
+        const auto abortGuard = DisableImpossibleEventsAbortForCurrentTest();
+
         ui64 expectedCriticalEvents = 0;
         for (const auto mode:
              {EStorageAccessMode::Default, EStorageAccessMode::Repair})
@@ -566,6 +573,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         ShouldRejectInvalidCompressedBlobResponseOffset,
         TCompressedReadEnvironment)
     {
+        const auto abortGuard = DisableImpossibleEventsAbortForCurrentTest();
+
         for (const auto mode:
              {EStorageAccessMode::Default, EStorageAccessMode::Repair})
         {
@@ -609,6 +618,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         ShouldRejectCorruptCompressedChunk,
         TCompressedReadEnvironment)
     {
+        const auto abortGuard = DisableImpossibleEventsAbortForCurrentTest();
+
         ui64 expectedCriticalEvents = 0;
         for (const auto codec:
              {NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
@@ -923,6 +934,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
 
     Y_UNIT_TEST_F(ShouldRejectInvalidBlobOffsets, TSetupEnvironment)
     {
+        const auto abortGuard = DisableImpossibleEventsAbortForCurrentTest();
+
         auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
         InitCriticalEventsCounter(counters);
         auto invalidOffsets = counters->GetCounter(
@@ -1176,6 +1189,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         ShouldNotCountInvalidResponsesAsBlobStorageErrors,
         TSetupEnvironment)
     {
+        const auto abortGuard = DisableImpossibleEventsAbortForCurrentTest();
+
         const ui32 blockSize = 512;
         const NKikimr::TLogoBlobID blobId(142, 1, 2, 3, 2 * blockSize, 4);
 

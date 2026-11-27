@@ -2,10 +2,20 @@
 
 #include "critical_events_init.h"
 
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/stats_handler.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
+
+#if defined(_unix_) && !defined(NDEBUG)
+#include <sys/resource.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <cerrno>
+#include <csignal>
+#endif
 
 namespace NCloud::NBlockStore {
 
@@ -110,6 +120,70 @@ Y_UNIT_TEST_SUITE(TCriticalEventsTest)
         DoShouldEagerlyInitCriticalEventsCounters(
             NProto::EVolumeCriticalEventsReportingMode::VOLUME_ONLY);
     }
+
+    Y_UNIT_TEST(ShouldDisableImpossibleEventCrashesOnlyWithinTestScope)
+    {
+        auto counters = MakeIntrusive<TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        {
+            const auto outerAbortGuard =
+                DisableImpossibleEventsAbortForCurrentTest();
+            {
+                const auto abortGuard =
+                    DisableImpossibleEventsAbortForCurrentTest();
+
+                const auto message = ReportBug(
+                    "Expected impossible event",
+                    {{"test", "expected"}});
+                UNIT_ASSERT_STRING_CONTAINS(message, GetCriticalEventForBug());
+                UNIT_ASSERT_STRING_CONTAINS(
+                    message,
+                    "Expected impossible event");
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    counters->GetCounter(GetCriticalEventForBug(), true)
+                        ->Val());
+            }
+
+            ReportBug(
+                "Expected event after nested guard",
+                {{"test", "expected"}});
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                counters->GetCounter(GetCriticalEventForBug(), true)->Val());
+        }
+    }
+
+#if defined(_unix_) && !defined(NDEBUG)
+    Y_UNIT_TEST(ShouldAbortOnImpossibleEventWithMessageAndParams)
+    {
+        const pid_t child = fork();
+        UNIT_ASSERT(child >= 0);
+        if (!child) {
+            const rlimit coreLimit = {0, 0};
+            if (setrlimit(RLIMIT_CORE, &coreLimit) != 0) {
+                _exit(1);
+            }
+            std::signal(SIGABRT, SIG_DFL);
+            {
+                const auto abortGuard =
+                    DisableImpossibleEventsAbortForCurrentTest();
+                ReportBug("Expected impossible event", {{"test", "expected"}});
+            }
+            ReportBug("Impossible event", {{"key", "value"}});
+            _exit(0);
+        }
+
+        int status = 0;
+        pid_t waited;
+        do {
+            waited = waitpid(child, &status, 0);
+        } while (waited == -1 && errno == EINTR);
+        UNIT_ASSERT_VALUES_EQUAL(child, waited);
+        UNIT_ASSERT(WIFSIGNALED(status));
+        UNIT_ASSERT_VALUES_EQUAL(SIGABRT, WTERMSIG(status));
+    }
+#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -35,6 +35,32 @@ namespace NCloud {
 void SetCriticalEventsLog(TLog log);
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
+// Test-only guard for tests that intentionally trigger impossible events.
+// Suppresses aborts while logging and counters remain active.
+// Restores the previous abort setting when it leaves scope.
+// The override affects the whole process; tests must run sequentially within
+// it.
+class TImpossibleEventsAbortGuard
+{
+private:
+    const bool WasAbortDisabled;
+
+    explicit TImpossibleEventsAbortGuard(bool wasAbortDisabled);
+
+    friend TImpossibleEventsAbortGuard
+    DisableImpossibleEventsAbortForCurrentTest();
+
+public:
+    TImpossibleEventsAbortGuard(const TImpossibleEventsAbortGuard&) = delete;
+    TImpossibleEventsAbortGuard& operator=(
+        const TImpossibleEventsAbortGuard&) = delete;
+
+    ~TImpossibleEventsAbortGuard();
+};
+
+[[nodiscard]] TImpossibleEventsAbortGuard
+DisableImpossibleEventsAbortForCurrentTest();
+
 TString GetCriticalEventFullName(const TString& name);
 TString GetImpossibleEventFullName(const TString& name);
 
