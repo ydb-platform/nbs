@@ -401,8 +401,7 @@ public:
             Args.VolumeStats,
             Args.StatsFetcher,
             Args.VolumeBalancerSwitch,
-            MakeStorageServiceId(),
-            Args.Logging);
+            MakeStorageServiceId());
 
         setup->LocalServices.emplace_back(
             MakeVolumeBalancerServiceId(),

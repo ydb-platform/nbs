@@ -29,16 +29,16 @@ void TVolumeBalancerActor::HandleHttpInfo(
         if (request.GetMethod() == HTTP_METHOD_POST) {
             const auto& params = request.GetPostParams();
 
-            NPrivateProto::EBalancerOpStatus status(
-                NPrivateProto::EBalancerOpStatus::DONT_CHANGE);
+            NPrivateProto::EBalancerOpStatus status(State->GetStatus());
 
             if (params.Get("action") == "setStatus" &&
+                params.Get("fromStatus") ==
+                    NPrivateProto::EBalancerOpStatus_Name(status) &&
                 NPrivateProto::EBalancerOpStatus_Parse(
                     params.Get("status"),
-                    &status) &&
-                status != NPrivateProto::EBalancerOpStatus::DONT_CHANGE)
+                    &status))
             {
-                State->SetStatus(status);
+                SetStatus(status);
             }
         }
         State->RenderHtml(out, ctx.Now());

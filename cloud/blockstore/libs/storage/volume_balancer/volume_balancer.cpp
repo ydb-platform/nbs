@@ -14,8 +14,7 @@ IActorPtr CreateVolumeBalancerActor(
     IVolumeStatsPtr volumeStats,
     NCloud::NStorage::IStatsFetcherPtr statFetcher,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch,
-    NActors::TActorId serviceActorId,
-    ILoggingServicePtr logging)
+    NActors::TActorId serviceActorId)
 {
     return std::make_unique<TVolumeBalancerActor>(
         std::move(storageConfig),
@@ -23,8 +22,7 @@ IActorPtr CreateVolumeBalancerActor(
         std::move(volumeStats),
         std::move(statFetcher),
         std::move(volumeBalancerSwitch),
-        serviceActorId,
-        std::move(logging));
+        serviceActorId);
 }
 
 IActorPtr CreateVolumeBalancerActorStub()

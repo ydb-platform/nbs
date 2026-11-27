@@ -8,7 +8,7 @@
 #include <cloud/blockstore/private/api/protos/balancer.pb.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
-#include <cloud/storage/core/libs/diagnostics/public.h>
+
 #include <cloud/storage/core/libs/features/features_config.h>
 
 #include <contrib/ydb/core/tablet/tablet_metrics.h>
@@ -28,15 +28,14 @@ class TVolumeBalancerState
     class TSufferStatistics
     {
         TQueue<ui32> Values;
-
-        ui32 Sum = 0;
         ui32 NumSamples = 0;
+        ui32 Sum = 0;
 
     public:
-        explicit TSufferStatistics(ui32 numSamples);
-
         void Add(ui32 sufferCount);
         void Reset();
+
+        void SetNumSamples(ui32 numSamples);
 
         // Returns 0 if samples count is less than NumSamples
         [[nodiscard]] ui32 GetMeanValue() const;
@@ -65,7 +64,7 @@ class TVolumeBalancerState
 
         TSufferStatistics SufferStatistics;
 
-        TVolumeInfo(TDuration pullInterval, ui32 sufferCountSamples);
+        TVolumeInfo(TDuration pullInterval);
     };
 
 public:
@@ -91,14 +90,12 @@ private:
     TDuration PullDelayResetTimespan;
 
     IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
-    const ILoggingServicePtr Logging;
 
 public:
     TVolumeBalancerState(
         TStorageConfigPtr storageConfig,
         TDiagnosticsConfigPtr diagnosticsConfig,
-        IVolumeBalancerSwitchPtr volumeBalancerSwitch,
-        ILoggingServicePtr logging);
+        IVolumeBalancerSwitchPtr volumeBalancerSwitch);
 
     TString GetVolumeToPush() const;
     TString GetVolumeToPull() const;
@@ -111,10 +108,7 @@ public:
 
     void RenderHtml(TStringStream& out, TInstant now) const;
 
-    void SetStatus(NPrivateProto::EBalancerOpStatus status)
-    {
-        Status = status;
-    }
+    void SetStatus(NPrivateProto::EBalancerOpStatus status);
 
     NPrivateProto::EBalancerOpStatus GetStatus() const
     {

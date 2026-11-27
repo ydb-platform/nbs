@@ -5,7 +5,7 @@ package NCloud.NBlockStore.NPrivateProto;
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/private/api/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
-// Balancer state (Enabled/Diabled)
+// Balancer state
 
 enum EBalancerOpStatus {
     DONT_CHANGE = 0;

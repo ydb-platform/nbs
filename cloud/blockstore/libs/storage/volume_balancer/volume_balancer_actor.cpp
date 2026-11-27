@@ -145,8 +145,7 @@ TVolumeBalancerActor::TVolumeBalancerActor(
     IVolumeStatsPtr volumeStats,
     NCloud::NStorage::IStatsFetcherPtr statsFetcher,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch,
-    TActorId serviceActorId,
-    ILoggingServicePtr logging)
+    TActorId serviceActorId)
     : StorageConfig(std::move(storageConfig))
     , VolumeStats(std::move(volumeStats))
     , StatsFetcher(std::move(statsFetcher))
@@ -155,8 +154,7 @@ TVolumeBalancerActor::TVolumeBalancerActor(
           std::make_unique<TVolumeBalancerState>(
               StorageConfig,
               std::move(diagnosticsConfig),
-              std::move(volumeBalancerSwitch),
-              std::move(logging)))
+              std::move(volumeBalancerSwitch)))
 {}
 
 void TVolumeBalancerActor::Bootstrap(const TActorContext& ctx)
@@ -321,11 +319,24 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
         auto status = VolumeStats->GatherVolumePerfStatuses();
         THashMap<TString, ui32> statusMap(status.begin(), status.end());
 
+        const auto prevStatus = State->GetStatus();
+
         State->UpdateVolumeStats(
             std::move(msg->VolumeStats),
             std::move(statusMap),
             *CpuWaitCounter,
             ctx.Now());
+
+        if (prevStatus == NPrivateProto::EBalancerOpStatus::ENABLE &&
+            State->GetStatus() == NPrivateProto::EBalancerOpStatus::WARNING)
+        {
+            *VolumeBalancerInWarning = 1;
+            LOG_WARN_S(
+                ctx,
+                TBlockStoreComponents::VOLUME_BALANCER,
+                "Some of preempted volumes suffers: Volume balancer has been "
+                "switched to WARNING state");
+        }
 
         if (!IsMaxInProgressLimitReached()) {
             if (auto vol = State->GetVolumeToPush()) {
@@ -382,19 +393,14 @@ void TVolumeBalancerActor::HandleConfigureVolumeBalancerRequest(
     response->Record.SetOpStatus(State->GetStatus());
 
     NCloud::Send(ctx, ev->Sender, std::move(response));
+    SetStatus(ev->Get()->Record.GetOpStatus());
+}
 
-    const auto newStatus = ev->Get()->Record.GetOpStatus();
-    switch (newStatus) {
-        case NPrivateProto::EBalancerOpStatus::ENABLE:
-        case NPrivateProto::EBalancerOpStatus::DISABLE:
-        case NPrivateProto::EBalancerOpStatus::WARNING: {
-            State->SetStatus(newStatus);
-            break;
-        }
-        default: {
-            // remain the same
-        }
-    }
+void TVolumeBalancerActor::SetStatus(NPrivateProto::EBalancerOpStatus status)
+{
+    State->SetStatus(status);
+    *VolumeBalancerInWarning =
+        State->GetStatus() == NPrivateProto::EBalancerOpStatus::WARNING;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -417,10 +423,6 @@ STFUNC(TVolumeBalancerActor::StateWork)
                 __PRETTY_FUNCTION__);
             break;
     }
-
-    *VolumeBalancerInWarning =
-        State &&
-        State->GetStatus() == NPrivateProto::EBalancerOpStatus::WARNING;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

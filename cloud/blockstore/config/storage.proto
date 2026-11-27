@@ -1835,11 +1835,11 @@ message TStorageServiceConfig
     // preempted volumes suffers.
     optional bool VolumeBalancerAutoWarningEnabled = 566;
 
-    // The maximum value of SufferCount used to determine that preempted
-    // volume suffers to make a decision about an automatic warning.
+    // If SufferCount of preempted volume is greater or equal to this threshold
+    // then an automatic warning is enabled. Requires a nonzero
     optional uint32 VolumeBalancerSufferCountThreshold = 567;
 
     // The number of SufferCount measurements required to make a decision
-    // about an automatic warning.
+    // about an automatic warning. Requires a nonzero
     optional uint32 VolumeBalancerWarningSampleCount = 568;
 }

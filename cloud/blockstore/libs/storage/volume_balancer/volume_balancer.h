@@ -23,8 +23,7 @@ NActors::IActorPtr CreateVolumeBalancerActor(
     IVolumeStatsPtr volumeStats,
     NCloud::NStorage::IStatsFetcherPtr cgroupStatFetcher,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch,
-    NActors::TActorId serviceActorId,
-    ILoggingServicePtr logging);
+    NActors::TActorId serviceActorId);
 
 NActors::IActorPtr CreateVolumeBalancerActorStub();
 

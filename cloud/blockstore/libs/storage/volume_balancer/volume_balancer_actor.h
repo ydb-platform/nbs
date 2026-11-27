@@ -55,8 +55,7 @@ public:
         IVolumeStatsPtr volumeStats,
         NCloud::NStorage::IStatsFetcherPtr statsFetcher,
         IVolumeBalancerSwitchPtr volumeBalancerSwitch,
-        NActors::TActorId serviceActorId,
-        ILoggingServicePtr logging);
+        NActors::TActorId serviceActorId);
 
     TVolumeBalancerActor() = default;
 
@@ -65,6 +64,7 @@ public:
 private:
     void RegisterPages(const NActors::TActorContext& ctx);
     void RegisterCounters(const NActors::TActorContext& ctx);
+    void SetStatus(NPrivateProto::EBalancerOpStatus status);
 
     void PullVolumeFromHive(
         const NActors::TActorContext& ctx,

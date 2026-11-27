@@ -12,7 +12,6 @@
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
-#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/features/features_config.h>
@@ -426,8 +425,7 @@ IActorPtr CreateVolumeBalancerActor(
         std::move(volumeStats),
         std::move(statsFetcher),
         std::move(volumeBalancerSwitch),
-        std::move(serviceActorId),
-        CreateLoggingService("null"));
+        std::move(serviceActorId));
 }
 
 TString RunState(
@@ -820,8 +818,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             testEnv.VolumeStats,
             testEnv.Fetcher,
             CreateVolumeBalancerSwitch(),
-            testEnv.GetEdgeActor(),
-            CreateLoggingService("null")));
+            testEnv.GetEdgeActor()));
 
         testEnv.DispatchEvents();
 
@@ -1057,7 +1054,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         config.StorageConfig.SetVolumeBalancerAutoWarningEnabled(true);
         config.StorageConfig.SetVolumeBalancerWarningSampleCount(2);
 
-        const auto initialPullDelay = UpdateCountersInterval * 2;
+        const auto initialPullDelay = UpdateCountersInterval * 3;
 
         auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
             config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY)
@@ -1132,6 +1129,9 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             response->Record.GetOpStatus());
         UNIT_ASSERT_VALUES_EQUAL(0, warningCounter->Val());
 
+        pollPreemptedVolume(/*cpuWait=*/0, {});
+        UNIT_ASSERT_VALUES_EQUAL(0, warningCounter->Val());
+
         auto diskId2 = pollPreemptedVolume(
             /*cpuWait=*/1,
             EChangeBindingOp::ACQUIRE_FROM_HIVE);
@@ -1166,11 +1166,3 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
-
-template <>
-inline void Out<NCloud::NBlockStore::NPrivateProto::EBalancerOpStatus>(
-    IOutputStream& out,
-    const NCloud::NBlockStore::NPrivateProto::EBalancerOpStatus status)
-{
-    out << NCloud::NBlockStore::NPrivateProto::EBalancerOpStatus(status);
-}

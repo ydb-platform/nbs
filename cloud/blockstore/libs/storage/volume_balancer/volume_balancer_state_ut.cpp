@@ -7,7 +7,6 @@
 #include <cloud/blockstore/libs/diagnostics/volume_balancer_switch.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
-#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -151,8 +150,7 @@ TVolumeBalancerStateTestEnv::TVolumeBalancerStateTestEnv(
     : State(
           std::move(storageConfig),
           std::move(diagnosticsConfig),
-          std::move(volumeBalancerSwitch),
-          CreateLoggingService("null"))
+          std::move(volumeBalancerSwitch))
     , Now(TInstant::Zero())
 {
     for (const auto& recipe: volumes) {
@@ -612,8 +610,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 CreateFeatureConfig("Balancer", {}, true)
             ),
             CreateDiagnosticsConfig(),
-            CreateSwitch(true),
-            CreateLoggingService("null")
+            CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
 
@@ -672,8 +669,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 DefaultCpuThreshold,
                 /*featuresConfig=*/nullptr),
             CreateDiagnosticsConfig(),
-            CreateSwitch(true),
-            CreateLoggingService("null"));
+            CreateSwitch(true));
         TInstant now = TInstant::Seconds(0);
 
         TVector<NProto::TVolumeBalancerDiskStats> vols{
@@ -701,8 +697,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         TVolumeBalancerState state(
             storageConfig,
             CreateDiagnosticsConfig(),
-            CreateSwitch(false),
-            CreateLoggingService("null"));
+            CreateSwitch(false));
         TInstant now = TInstant::Seconds(0);
 
         TVolumeBalancerState::TPerfGuaranteesMap perfMap;
@@ -751,8 +746,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
                 CreateFeatureConfig("Balancer", {}, true)
             ),
             CreateDiagnosticsConfig(),
-            CreateSwitch(true),
-            CreateLoggingService("null")
+            CreateSwitch(true)
         );
 
         for (ui32 i = 0; i < kinds.size(); ++i) {
@@ -774,22 +768,16 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 
     Y_UNIT_TEST(ShouldOnlyPullVolumesInWarningState)
     {
-        NProto::TStorageServiceConfig config;
-        config.SetVolumeBalancerAutoWarningEnabled(true);
-        config.SetVolumeBalancerWarningSampleCount(2);
         auto storageConfig = CreateStorageConfig(
             NProto::PREEMPTION_MOVE_MOST_HEAVY,
             /*volumeBalancerEnabled=*/true,
             70,
-            /*featuresConfig=*/nullptr,
-            InitialPullDelay,
-            std::move(config));
+            /*featuresConfig=*/nullptr);
 
         TVolumeBalancerState state(
             storageConfig,
             CreateDiagnosticsConfig(),
-            CreateSwitch(true),
-            CreateLoggingService("null"));
+            CreateSwitch(true));
 
         state.SetStatus(NPrivateProto::EBalancerOpStatus::WARNING);
         TInstant now = TInstant::Seconds(0);
@@ -825,6 +813,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             UNIT_ASSERT(!state.GetVolumeToPush());
             UNIT_ASSERT_VALUES_EQUAL("vol0", state.GetVolumeToPull());
         }
+        UNIT_ASSERT_VALUES_EQUAL(NPrivateProto::WARNING, state.GetStatus());
     }
 
     Y_UNIT_TEST(ShouldTurnIntoWarningStateIfPreemptedVolumeSuffers)
@@ -843,8 +832,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         TVolumeBalancerState state(
             storageConfig,
             CreateDiagnosticsConfig(),
-            CreateSwitch(true),
-            CreateLoggingService("null"));
+            CreateSwitch(true));
         TInstant now = TInstant::Seconds(0);
 
         TVolumeBalancerState::TPerfGuaranteesMap perfMap;
@@ -868,11 +856,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         {
             TVector<NProto::TVolumeBalancerDiskStats> vols{
                 CreateVolumeStats({.DiskId = "vol0", .IsLocal = false}),
-                CreateVolumeStats({.DiskId = "vol1", .IsLocal = false})};
+                CreateVolumeStats({.DiskId = "vol1"})};
 
             state.UpdateVolumeStats(vols, perfMap, 80, now);
 
-            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT_VALUES_EQUAL("vol1", state.GetVolumeToPush());
             UNIT_ASSERT(!state.GetVolumeToPull());
             UNIT_ASSERT_VALUES_EQUAL(
                 state.GetStatus(),
@@ -882,7 +870,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
 
             UNIT_ASSERT(!state.GetVolumeToPush());
-            UNIT_ASSERT(!state.GetVolumeToPull().empty());
+            UNIT_ASSERT_VALUES_EQUAL("vol0", state.GetVolumeToPull());
             UNIT_ASSERT_VALUES_EQUAL(
                 state.GetStatus(),
                 NPrivateProto::EBalancerOpStatus::WARNING);
@@ -891,11 +879,3 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
-
-template <>
-inline void Out<NCloud::NBlockStore::NPrivateProto::EBalancerOpStatus>(
-    IOutputStream& out,
-    const NCloud::NBlockStore::NPrivateProto::EBalancerOpStatus status)
-{
-    out << EBalancerOpStatus_Name(status);
-}

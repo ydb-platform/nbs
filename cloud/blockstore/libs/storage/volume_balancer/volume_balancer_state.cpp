@@ -4,7 +4,6 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 
 #include <cloud/storage/core/libs/common/media.h>
-#include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/throttling/helpers.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -23,29 +22,10 @@ constexpr TDuration MaxPullDelay = TDuration::Hours(24);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVolumeBalancerState::TVolumeInfo::TVolumeInfo(
-    TDuration pullInterval,
-    ui32 sufferCountSamples)
-    : BackoffDelayProvider(pullInterval, MaxPullDelay)
-    , LastSuccessfulPull(TInstant::Now())
-    , SufferStatistics(sufferCountSamples)
-{}
-
-TVolumeBalancerState::TSufferStatistics::TSufferStatistics(ui32 numSamples)
-    : NumSamples(numSamples)
-{
-}
-
 void TVolumeBalancerState::TSufferStatistics::Add(ui32 sufferCount)
 {
     Values.push(sufferCount);
     Sum += sufferCount;
-
-    if (Values.size() > NumSamples)
-    {
-        Sum -= Values.front();
-        Values.pop();
-    }
 }
 
 void TVolumeBalancerState::TSufferStatistics::Reset()
@@ -54,22 +34,34 @@ void TVolumeBalancerState::TSufferStatistics::Reset()
     Values.clear();
 }
 
+void TVolumeBalancerState::TSufferStatistics::SetNumSamples(ui32 numSamples)
+{
+    NumSamples = numSamples;
+    while (Values.size() > NumSamples) {
+        Sum -= Values.front();
+        Values.pop();
+    }
+}
+
 ui32 TVolumeBalancerState::TSufferStatistics::GetMeanValue() const
 {
     return (Values.empty() || Values.size() != NumSamples) ? 0
                                                            : Sum / NumSamples;
 }
 
+TVolumeBalancerState::TVolumeInfo::TVolumeInfo(TDuration pullInterval)
+    : BackoffDelayProvider(pullInterval, MaxPullDelay)
+    , LastSuccessfulPull(TInstant::Now())
+{}
+
 TVolumeBalancerState::TVolumeBalancerState(
     TStorageConfigPtr storageConfig,
     TDiagnosticsConfigPtr diagnosticsConfig,
-    IVolumeBalancerSwitchPtr volumeBalancerSwitch,
-    ILoggingServicePtr logging)
+    IVolumeBalancerSwitchPtr volumeBalancerSwitch)
     : StorageConfig(std::move(storageConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , PullDelayResetTimespan(StorageConfig->GetInitialPullDelay())
     , VolumeBalancerSwitch(std::move(volumeBalancerSwitch))
-    , Logging(std::move(logging))
 {}
 
 void TVolumeBalancerState::UpdateVolumeStats(
@@ -85,11 +77,7 @@ void TVolumeBalancerState::UpdateVolumeStats(
     }
 
     for (auto& v: stats) {
-        TVolumeInfo volumeInfo(
-            StorageConfig->GetInitialPullDelay(),
-            StorageConfig->GetVolumeBalancerWarningSampleCount());
-
-        auto it = Volumes.emplace(v.GetDiskId(), std::move(volumeInfo)).first;
+        auto it = Volumes.emplace(v.GetDiskId(), TVolumeInfo(StorageConfig->GetInitialPullDelay())).first;
 
         auto& info = it->second;
 
@@ -129,6 +117,8 @@ void TVolumeBalancerState::UpdateVolumeStats(
         if (!isPreemptedByBalancer) {
             info.SufferStatistics.Reset();
         }
+        info.SufferStatistics.SetNumSamples(
+            StorageConfig->GetVolumeBalancerWarningSampleCount());
 
         if (info.IsLocal) {
             info.Cost = CalculateCostPerIO(v);
@@ -149,10 +139,11 @@ void TVolumeBalancerState::UpdateVolumeStats(
     {
         Status = NPrivateProto::EBalancerOpStatus::WARNING;
 
-        auto Log = Logging->CreateLog("BLOCKSTORE_VOLUME_BALANCER");
-        STORAGE_WARN(
-            "Some of preempted volumes suffers: Volume balancer has been "
-            "switched to WARNING state");
+        // Reset suffer statistics, otherwise the next UpdateVolumeStats after
+        // SetStatus(ENABLE) switches straight back to WARNING
+        for (auto& v: Volumes) {
+            v.second.SufferStatistics.Reset();
+        }
     }
 
     // Push the volume, if balancer is in ENABLE state and if the CPU is in
@@ -167,6 +158,19 @@ void TVolumeBalancerState::UpdateVolumeStats(
     } else {
         VolumeToPush = {};
         UpdateVolumeToPull(now);
+    }
+}
+
+void TVolumeBalancerState::SetStatus(NPrivateProto::EBalancerOpStatus status)
+{
+    switch (status) {
+        case NPrivateProto::EBalancerOpStatus::ENABLE:
+        case NPrivateProto::EBalancerOpStatus::DISABLE:
+        case NPrivateProto::EBalancerOpStatus::WARNING:
+            Status = status;
+            break;
+        default:
+            break;
     }
 }
 
@@ -338,16 +342,20 @@ void TVolumeBalancerState::RenderHtml(TStringStream& out, TInstant now) const
 
 bool TVolumeBalancerState::HasSufferingPreemptedVolume() const
 {
+    const ui32 threshold =
+        StorageConfig->GetVolumeBalancerSufferCountThreshold();
+
     return AnyOf(
         Volumes,
-        [this](const auto& v)
+        [threshold](const auto& v)
         {
-            const ui32 threshold =
-                StorageConfig->GetVolumeBalancerSufferCountThreshold();
-            if (threshold == 0) {
-                return false;
-            }
-            return v.second.SufferStatistics.GetMeanValue() >= threshold;
+            const auto& info = v.second;
+            const bool preemptedByBalancer =
+                !info.IsLocal && info.PreemptionSource ==
+                                     NProto::EPreemptionSource::SOURCE_BALANCER;
+
+            return threshold != 0 && preemptedByBalancer &&
+                   info.SufferStatistics.GetMeanValue() >= threshold;
         });
 }
 
