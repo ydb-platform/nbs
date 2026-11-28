@@ -11,6 +11,7 @@ DEPENDS(
     cloud/disk_manager/cmd/disk-manager
     cloud/disk_manager/cmd/disk-manager-init-db
     cloud/disk_manager/cmd/disk-manager-admin
+    cloud/disk_manager/test/mocks/compute
     cloud/disk_manager/test/mocks/metadata
     contrib/python/moto/bin
 )
@@ -22,8 +23,10 @@ DATA(
 
 PEERDIR(
     contrib/python/boto3
+    contrib/python/lz4
     cloud/disk_manager/test/recipe
     cloud/tasks/test/common
+    contrib/ydb/public/sdk/python
     contrib/ydb/tests/library
     library/python/testing/recipe
 )

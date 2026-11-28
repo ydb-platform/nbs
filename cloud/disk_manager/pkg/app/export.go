@@ -35,6 +35,7 @@ func initSnapshotExport(
 	ctx context.Context,
 	config *server_config.ServerConfig,
 	exportRegistry metrics.Registry,
+	ydbClientRegistry metrics.Registry,
 	creds auth.Credentials,
 	registry *tasks.Registry,
 	backupS3 *backup.S3,
@@ -162,7 +163,7 @@ func initSnapshotExport(
 		snapshotDB, err := persistence.NewYDBClient(
 			ctx,
 			snapshotConfig.GetPersistenceConfig(),
-			sourceRegistry,
+			ydbClientRegistry,
 			persistence.WithCredentials(creds),
 		)
 		if err != nil {
