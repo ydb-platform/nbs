@@ -1,4 +1,9 @@
-PACKAGE()
+IF(USE_BUNDLED_YDBD)
+    # This file contrib/ydb/apps/ydbd/ya.make should contain SRCDIR(contrib/ydb/apps/ydbd) inside PROGRAM()
+    # It can be removed by code sync
+    INCLUDE(${ARCADIA_ROOT}/contrib/ydb/apps/ydbd/ya.make)
+ELSE()
+    PACKAGE()
 
 IF(ARCH_X86_64)
     FROM_SANDBOX(
@@ -19,3 +24,4 @@ ELSE()
 ENDIF()
 
 END()
+ENDIF()
