@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <atomic>
+
 namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -34,6 +36,37 @@ namespace NCloud {
 
 void SetCriticalEventsLog(TLog log);
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
+
+// Test-only guard for tests that intentionally trigger impossible events.
+// Suppresses aborts while logging and counters remain active.
+// Reenables aborts when the last guard is destroyed.
+// The override affects the whole process; tests must run sequentially within
+// it.
+class TImpossibleEventsAbortGuard
+{
+private:
+    static std::atomic<ui32> ActiveGuardCount;
+
+    TImpossibleEventsAbortGuard();
+
+    friend TImpossibleEventsAbortGuard
+    DisableImpossibleEventsAbortForCurrentTest();
+
+    friend TString ReportCriticalEvent(
+        const TString& sensorName,
+        const TString& message,
+        bool verifyDebug);
+
+public:
+    TImpossibleEventsAbortGuard(const TImpossibleEventsAbortGuard&) = delete;
+    TImpossibleEventsAbortGuard& operator=(
+        const TImpossibleEventsAbortGuard&) = delete;
+
+    ~TImpossibleEventsAbortGuard();
+};
+
+[[nodiscard]] TImpossibleEventsAbortGuard
+DisableImpossibleEventsAbortForCurrentTest();
 
 TString GetCriticalEventFullName(const TString& name);
 TString GetImpossibleEventFullName(const TString& name);

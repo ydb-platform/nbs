@@ -94,6 +94,8 @@ using TCritEventParams =
     xxx(DiskRegistryUnexpectedAffectedDisks)                                   \
     xxx(ReadBlockCountMismatch)                                                \
     xxx(InvalidReadBlobOffsets)                                                \
+    xxx(BlobCompressionError)                                                  \
+    xxx(InvalidBlobCompressionMetadata)                                        \
     xxx(ContractViolationReadBlobError)                                        \
     xxx(ContractViolationWriteBlobError)                                       \
     xxx(ContractViolationPatchBlobError)                                       \

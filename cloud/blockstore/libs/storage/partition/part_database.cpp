@@ -1550,11 +1550,15 @@ void TPartitionDatabaseImpl<TCounters>::WriteUnconfirmedBlob(
     using TTable = TPartitionSchema::UnconfirmedBlobs;
 
     // TODO: persist blob checksums (issue-122)
-    Table<TTable>()
-        .Key(blobId.CommitId(), blobId.UniqueId())
-        .Update(
-            NIceDb::TUpdate<TTable::RangeStart>(blob.BlockRange.Start),
-            NIceDb::TUpdate<TTable::RangeEnd>(blob.BlockRange.End));
+    auto key = Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId());
+    key.Update(
+        NIceDb::TUpdate<TTable::RangeStart>(blob.BlockRange.Start),
+        NIceDb::TUpdate<TTable::RangeEnd>(blob.BlockRange.End));
+
+    if (blob.CompressionMetadata) {
+        key.Update(NIceDb::TUpdate<TTable::CompressionMetadata>(
+            *blob.CompressionMetadata));
+    }
 }
 
 template <typename TCounters>
@@ -1585,11 +1589,17 @@ bool TPartitionDatabaseImpl<TCounters>::ReadUnconfirmedBlobs(
             it.template GetValue<TTable::RangeStart>(),
             it.template GetValue<TTable::RangeEnd>());
 
+        std::optional<NProto::TCompressionMetadata> compressionMetadata;
+        if (it.template HaveValue<TTable::CompressionMetadata>()) {
+            compressionMetadata =
+                it.template GetValue<TTable::CompressionMetadata>();
+        }
+
         blobs[commitId].emplace_back(
             uniqueId,
             blockRange,
-            TVector<ui32>() /* TODO: checksums */
-        );
+            TVector<ui32>(), /* TODO: checksums */
+            std::move(compressionMetadata));
 
         if (!it.Next()) {
             return false;   // not ready
