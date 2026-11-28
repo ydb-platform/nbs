@@ -11,6 +11,7 @@ SRCS(
 PEERDIR(
     cloud/blockstore/libs/cells/iface
     cloud/blockstore/libs/client
+    cloud/blockstore/libs/cms
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/discovery

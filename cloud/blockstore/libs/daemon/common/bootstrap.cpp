@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
+#include <cloud/blockstore/libs/cms/cms_service.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -751,6 +752,8 @@ void TBootstrapBase::Init()
 
         STORAGE_INFO("ThrottlingService initialized");
     }
+
+    Service = CreateCmsService(std::move(Service));
 
     // Wrapped by the auth service below, so over gRPC the actions need admin
     // rights. The unix socket rejects them unless AllowAllRequestsViaUDS is set.

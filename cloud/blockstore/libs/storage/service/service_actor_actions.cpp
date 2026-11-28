@@ -86,7 +86,6 @@ void TServiceActor::HandleExecuteAction(
         {"updatediskregistryagentlistparams", &TServiceActor::CreateUpdateDiskRegistryAgentListParamsActor },
         {"changestorageconfig",               &TServiceActor::CreateChangeStorageConfigActionActor         },
         {"getnameservernodes",                &TServiceActor::CreateGetNameserverNodesActionActor          },
-        {"cms",                               &TServiceActor::CreateCmsActionActor                         },
         {"flushprofilelog",                   &TServiceActor::CreateFlushProfileLogActor                   },
         {"getdiskagentnodeid",                &TServiceActor::CreateGetDiskAgentNodeIdActor                },
         {"waitdependentdiskstoswitchnode",    &TServiceActor::CreateWaitDependentDisksToSwitchNodeActor    },

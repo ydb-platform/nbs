@@ -4,6 +4,7 @@ RECURSE(
     client/bench
     client_rdma
     client_spdk
+    cms
     common
     config
     configs_manager
