@@ -91,6 +91,7 @@ bool TWriteBackCacheState::IsDrained() const
 TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
     std::shared_ptr<TWriteDataRequest> request)
 {
+    auto promise = NewPromise<TWriteDataResponse>();
     auto guard = LockStateAndPostponeQueuedOperations();
 
     if (DrainRequested) {
@@ -116,7 +117,9 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
         return HangingRequests.CreateWriteDataResponse();
     }
 
-    auto pendingRequest = RequestManager.AddRequest(std::move(request));
+    auto pendingRequest = RequestManager.AddRequest(
+        std::move(request),
+        std::move(promise));
 
     auto future = pendingRequest->AccessPromise().GetFuture();
 
@@ -858,7 +861,9 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
             break;
         }
         auto cachedRequest = nodeState.Cache.DequeueFlushedRequest();
-        if (!RequestManager.Evict(std::move(cachedRequest))) {
+        const bool evicted = RequestManager.Evict(cachedRequest.get());
+        QueuedOperations.DestroyCachedWriteDataRequest(std::move(cachedRequest));
+        if (!evicted) {
             SetFailedFlag();
             return;
         }

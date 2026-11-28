@@ -91,7 +91,8 @@ public:
      * AllocatedPendingRequests.
      */
     [[nodiscard]] std::unique_ptr<TPendingWriteDataRequest> AddRequest(
-        std::shared_ptr<NProto::TWriteDataRequest> request);
+        std::shared_ptr<NProto::TWriteDataRequest> request,
+        NThreading::TPromise<NProto::TWriteDataResponse> promise);
 
     /**
      * Tries to allocate buffer in the persistent storage for the front
@@ -106,7 +107,7 @@ public:
      * Examines the lowest-sequence allocated request awaiting commit.
      *
      * If serialization is complete, commits its allocation, removes the pending
-     * request from its lifecycle queue, creates a cached request, registers it
+     * request from its lifecycle queue, registers its prepared cached request
      * in the unflushed queue, and returns it.
      *
      * Returns an empty result if there are no allocated requests or the first
@@ -143,11 +144,12 @@ public:
 
     /**
      * Removes previously flushed request from the persistent storage
+     * The caller retains ownership of the request.
      *
      * Returns true on success
      * Returns false on invalid argument or corrupted state
      */
-    [[nodiscard]] bool Evict(std::unique_ptr<TCachedWriteDataRequest> request);
+    [[nodiscard]] bool Evict(TCachedWriteDataRequest* request);
 
     // Prevent from adding new requests to the unflushed queue for the node
     // Returns true if backpressure was not previously set, false otherwise

@@ -166,7 +166,8 @@ ui64 TWriteDataRequestManager::GetMaxUnflushedSequenceId() const
 }
 
 std::unique_ptr<TPendingWriteDataRequest> TWriteDataRequestManager::AddRequest(
-    std::shared_ptr<NProto::TWriteDataRequest> request)
+    std::shared_ptr<NProto::TWriteDataRequest> request,
+    NThreading::TPromise<NProto::TWriteDataResponse> promise)
 {
     const ui64 sequenceId = SequenceIdGenerator->GenerateId();
     const auto now = Timer->Now();
@@ -174,7 +175,8 @@ std::unique_ptr<TPendingWriteDataRequest> TWriteDataRequestManager::AddRequest(
     auto pendingRequest = std::make_unique<TPendingWriteDataRequest>(
         sequenceId,
         now,
-        std::move(request));
+        std::move(request),
+        std::move(promise));
 
     UnallocatedPendingRequestsPushBack(pendingRequest.get());
     return pendingRequest;
@@ -241,12 +243,8 @@ TWriteDataRequestManager::GetNextReadyCachedRequest()
         return {.Failed = true};
     }
 
-    auto cachedRequest = TCachedWriteDataRequest::CreateFromAllocation(
-        pendingRequest->GetSequenceId(),
-        Timer->Now(),
-        {pendingRequest->AllocationPtr, pendingRequest->AllocationByteCount});
-
-    Y_ABORT_UNLESS(cachedRequest != nullptr);
+    auto cachedRequest = std::move(pendingRequest->CachedRequest);
+    cachedRequest->Time = Timer->Now();
 
     AllocatedPendingRequestsRemove(pendingRequest);
     UnflushedRequestsPushBack(cachedRequest.get());
@@ -294,10 +292,9 @@ bool TWriteDataRequestManager::SetHandleReleased(
     return !HasError(setTagResult);
 }
 
-bool TWriteDataRequestManager::Evict(
-    std::unique_ptr<TCachedWriteDataRequest> request)
+bool TWriteDataRequestManager::Evict(TCachedWriteDataRequest* request)
 {
-    FlushedRequestsRemove(request.get());
+    FlushedRequestsRemove(request);
     auto freeResult = PersistentStorage->Free(request->GetAllocationPtr());
 
     return !HasError(freeResult);
