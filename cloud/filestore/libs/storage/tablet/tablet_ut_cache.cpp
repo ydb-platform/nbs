@@ -438,7 +438,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesCache)
         // as the localDB
         tablet.ResetSession("");
 
-        tablet.InitSession("client", "session2");
+        tablet.InitSession("client2", "session2");
 
         UNIT_ASSERT_VALUES_EQUAL(
             E_FS_NOENT,

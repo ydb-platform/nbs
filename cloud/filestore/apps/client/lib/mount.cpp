@@ -53,6 +53,7 @@ public:
         NProto::TSessionConfig sessionConfig;
         sessionConfig.SetFileSystemId(FileSystemId);
         sessionConfig.SetClientId(ClientId);
+        sessionConfig.SetRestoreSession(RestoreSession);
         auto session = NClient::CreateSession(
             Logging,
             Timer,

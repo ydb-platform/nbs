@@ -170,6 +170,8 @@ public:
     void Stop() override;
 
 protected:
+    bool RestoreSession = false;
+
     template <typename T>
     std::shared_ptr<T> CreateRequest()
     {

@@ -1,6 +1,7 @@
 #include "session.h"
 
 #include "config.h"
+#include "durable.h"
 #include "session_introspection.h"
 
 #include <cloud/filestore/libs/service/context.h>
@@ -42,7 +43,7 @@ struct TBootstrap
     std::shared_ptr<TFileStoreTest> FileStore;
     ISessionPtr Session;
 
-    TBootstrap()
+    TBootstrap(bool restoreSession = true)
     {
         Logging = CreateLoggingService("console", { TLOG_RESOURCES });
         Timer = CreateWallClockTimer();
@@ -79,7 +80,7 @@ struct TBootstrap
             Timer,
             Scheduler,
             FileStore,
-            CreateSessionConfig());
+            CreateSessionConfig(restoreSession));
     }
 
     ~TBootstrap()
@@ -109,11 +110,12 @@ struct TBootstrap
         }
     }
 
-    static TSessionConfigPtr CreateSessionConfig()
+    static TSessionConfigPtr CreateSessionConfig(bool restoreSession = true)
     {
         NProto::TSessionConfig proto;
         proto.SetFileSystemId(FileSystemId);
         proto.SetClientId(ClientId);
+        proto.SetRestoreSession(restoreSession);
         proto.SetSessionPingTimeout(PingTimeout.MilliSeconds());
 
         return std::make_shared<TSessionConfig>(proto);
@@ -142,6 +144,100 @@ Y_UNIT_TEST_SUITE(TSessionTest)
             const auto& response = future.GetValue(WaitTimeout);
             UNIT_ASSERT(!HasError(response));
         }
+    }
+
+    Y_UNIT_TEST(ShouldSetRestoreClientSession)
+    {
+        UNIT_ASSERT(
+            TSessionConfig(NProto::TSessionConfig()).GetRestoreSession());
+
+        for (bool restoreSession: {false, true}) {
+            TBootstrap bootstrap(restoreSession);
+            bootstrap.Start();
+
+            bool called = false;
+            bootstrap.FileStore->CreateSessionHandler = [&](auto, auto request)
+            {
+                called = true;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    request->GetRestoreClientSession(),
+                    restoreSession);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    GetSessionId(*request).empty(),
+                    restoreSession);
+
+                NProto::TCreateSessionResponse response;
+                response.MutableSession()->SetSessionId(SessionId);
+                return MakeFuture(response);
+            };
+
+            const auto response =
+                bootstrap.Session->CreateSession().GetValue(WaitTimeout);
+            UNIT_ASSERT(!HasError(response));
+            UNIT_ASSERT(called);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRetryCreationWithSameSessionIdAfterLostResponse)
+    {
+        TBootstrap bootstrap(false);
+        bootstrap.Start();
+
+        auto durable = CreateDurableClient(
+            bootstrap.Logging,
+            bootstrap.Timer,
+            bootstrap.Scheduler,
+            CreateRetryPolicy(std::make_shared<TClientConfig>(
+                NProto::TClientConfig())),
+            bootstrap.FileStore);
+        bootstrap.Session = CreateSession(
+            bootstrap.Logging,
+            bootstrap.Timer,
+            bootstrap.Scheduler,
+            durable,
+            TBootstrap::CreateSessionConfig(false));
+
+        TString createdSessionId;
+        ui32 createCalls = 0;
+        bootstrap.FileStore->CreateSessionHandler = [&](auto, auto request) {
+            UNIT_ASSERT(!request->GetRestoreClientSession());
+            const auto& sessionId = GetSessionId(*request);
+            UNIT_ASSERT(!sessionId.empty());
+
+            if (++createCalls == 1) {
+                // The server committed creation, but the response was lost.
+                createdSessionId = sessionId;
+                return MakeFuture<NProto::TCreateSessionResponse>(
+                    TErrorResponse(E_TIMEOUT, "creation response lost"));
+            }
+
+            // The server can recover the committed session by its exact id.
+            UNIT_ASSERT_VALUES_EQUAL(sessionId, createdSessionId);
+            NProto::TCreateSessionResponse response;
+            response.MutableSession()->SetSessionId(createdSessionId);
+            return MakeFuture(response);
+        };
+        bootstrap.FileStore->DestroySessionHandler = [&](auto, auto request) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetSessionId(*request),
+                createdSessionId);
+            return MakeFuture(NProto::TDestroySessionResponse());
+        };
+
+        auto future = bootstrap.Session->CreateSession();
+        UNIT_ASSERT_VALUES_EQUAL(createCalls, 1);
+        UNIT_ASSERT(!future.HasValue());
+
+        bootstrap.Scheduler->RunAllScheduledTasks();
+
+        const auto response = future.GetValue(WaitTimeout);
+        UNIT_ASSERT(!HasError(response));
+        UNIT_ASSERT_VALUES_EQUAL(createCalls, 2);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response.GetSession().GetSessionId(),
+            createdSessionId);
+        UNIT_ASSERT(!HasError(
+            bootstrap.Session->DestroySession().GetValue(WaitTimeout)));
     }
 
     Y_UNIT_TEST(ShouldRestoreSession)

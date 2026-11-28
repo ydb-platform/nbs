@@ -1116,7 +1116,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             headers,
             "" /* checkpointId */,
             false /* restoreClientSession */,
-            0 /* sessionSeqNo */,
             false /* readOnly */);
 
         //
@@ -1862,9 +1861,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             };
 
             // Create initial session
-            THeaders headers;
+            THeaders headers{fsConfig.FsId, "client"};
             auto session =
-                service.InitSession(headers, fsConfig.FsId, "client");
+                service.InitSession(headers);
             if (lazyXAttrsEnabled) {
                 // There should be no XAttrs at the begining if
                 // lazyXAttrsEnabled is true
@@ -9329,7 +9328,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             false /* forceDirectoryCreationInShards */);
         WaitForTabletStart(service);
 
-        headers = service.InitSession(fsId, "client");
+        service.InitSession(
+            headers,
+            "" /* checkpointId */,
+            true /* restoreClientSession */,
+            false /* readOnly */
+        );
 
         //
         // Creating a dir directly in shard - it's not possible to create it
@@ -9340,7 +9344,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // the recent changes - that's why we have this test.
         //
         const auto shardId = fsId + "_s1";
-        auto shardHeaders = service.InitSession(shardId, "client");
+        THeaders shardHeaders{shardId, "client", headers.SessionId};
+        service.InitSession(
+            shardHeaders,
+            "" /* checkpointId */,
+            true /* restoreClientSession */,
+            false /* readOnly */);
         const auto uuid = CreateGuidAsString();
 
         const auto dir2Id =service.CreateNode(

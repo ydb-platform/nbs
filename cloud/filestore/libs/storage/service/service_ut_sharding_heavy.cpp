@@ -248,7 +248,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingHeavyTest)
             true,
             fsToActor);
 
-        headers = service.InitSession(fsId, "client");
+        service.InitSession(headers);
 
         updateCounters();
 
