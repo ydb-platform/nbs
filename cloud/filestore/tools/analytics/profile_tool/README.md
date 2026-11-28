@@ -86,9 +86,22 @@ boundary frames could make the estimated ranges incomplete:
 
 ### DumpEvents
 
+For piped output with the disk-space check enabled, `dumpevents` estimates the
+dump size as 20 times the total compressed size of the selected logs. It uses
+the file sizes from filesystem metadata. Request filters apply during the
+dump.
+
+The check reads available space on `/` once before writing the dump and
+reports it on standard error. If the current directory is on a different
+filesystem, its free space is reported too. The command aborts if the
+estimated dump would leave less than 1 GiB free on `/` or if the dump size
+or free space on `/` is unknown. Terminal output and direct file redirection
+skip the estimate and the check. Logs with no input bytes exit successfully.
+
 | Command line parameter | Data type | Description |
 |:----------------------:|:---------:|-------------|
 | ```--request-type```   | ui32      | Request type id, used to output requests only specified requests |
+| ```--ignore-disk-space``` | Flag   | Skip the size estimate, free-space reporting, and the check on `/` |
 
 #### Possible event types
 

@@ -1,7 +1,8 @@
-#include "command.h"
-
-#include "common_filter_params.h"
 #include "public.h"
+
+#include "command.h"
+#include "common_filter_params.h"
+#include "dump_events.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/service/request.h>
@@ -9,18 +10,33 @@
 #include <cloud/filestore/tools/analytics/libs/event-log/dump.h>
 #include <cloud/filestore/tools/analytics/libs/event-log/request_filter.h>
 
+#include <cloud/storage/core/libs/common/format.h>
+
 #include <library/cpp/eventlog/dumper/evlogdump.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/vector.h>
 #include <util/generic/xrange.h>
 #include <util/string/join.h>
+#include <util/system/fstat.h>
+#include <util/system/platform.h>
+
+#include <sys/stat.h>
+
+#include <cstdint>
+#include <filesystem>
+#include <limits>
+#if defined(_unix_)
+#include <unistd.h>
+#endif
 
 namespace NCloud::NFileStore::NProfileTool {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+constexpr ui64 DumpSizeMultiplier = 20;
 
 class TEventProcessor
     : public TProtobufEventProcessor
@@ -52,6 +68,18 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool IsStdoutPipe() noexcept
+{
+#if defined(_unix_)
+    struct stat info;
+    return ::fstat(STDOUT_FILENO, &info) == 0 && S_ISFIFO(info.st_mode);
+#else
+    return false;
+#endif
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TDumpEventsCommand final
     : public TCommand
 {
@@ -65,6 +93,7 @@ private:
     TVector<ui32> FilterRequestTypes;
     bool FilterSystemRequests = false;
     bool FilterExternalRequests = false;
+    bool IgnoreDiskSpace = false;
 
 public:
     TDumpEventsCommand()
@@ -109,6 +138,12 @@ public:
                 "show external requests events")
             .NoArgument()
             .SetFlag(&FilterExternalRequests);
+
+        Opts.AddLongOption(
+                "ignore-disk-space",
+                "Skip the size estimate and free space check for piped output")
+            .NoArgument()
+            .SetFlag(&IgnoreDiskSpace);
     }
 
     bool Init(NLastGetopt::TOptsParseResultException& parseResult) override
@@ -191,14 +226,115 @@ public:
 
     int Execute() override
     {
+        if (!IgnoreDiskSpace && IsStdoutPipe() && !CheckDiskSpace()) {
+            Cerr << "Dump aborted. Use --ignore-disk-space to bypass the disk "
+                    "space check."
+                 << Endl;
+            return 1;
+        }
+
         TEventProcessor processor(Filter);
-        return ProcessProfileLogs(processor);
+        const int result = ProcessProfileLogs(processor);
+        Cout.Flush();
+        return result;
+    }
+
+private:
+    static TMaybe<ui64> ReportAvailableSpace(const char* path)
+    {
+        std::error_code error;
+        const auto space = std::filesystem::space(path, error);
+        if (error) {
+            Cerr << "Cannot check free space on " << path << ": "
+                 << error.message() << Endl;
+            return {};
+        }
+
+        // libc++ can report the unknown-size sentinel for zero free blocks.
+        const ui64 availableBytes =
+            space.available == std::numeric_limits<std::uintmax_t>::max()
+                ? 0
+                : space.available;
+        Cerr << "Free space on " << path << " is "
+             << FormatByteSize(availableBytes) << " (" << availableBytes
+             << " bytes)." << Endl;
+        return availableBytes;
+    }
+
+    bool CheckDiskSpace()
+    {
+        const auto estimatedBytes =
+            EstimateDumpSize(ProfileLogFiles, IgnoreErrors);
+        if (!estimatedBytes) {
+            return false;
+        }
+        if (*estimatedBytes == 0) {
+            return true;
+        }
+
+        Cerr << "Estimated dump size is about "
+             << FormatByteSize(*estimatedBytes) << " (" << *estimatedBytes
+             << " bytes) at " << DumpSizeMultiplier
+             << " times the compressed input size ("
+             << FormatByteSize(*estimatedBytes / DumpSizeMultiplier) << ")."
+             << Endl;
+
+        const auto availableBytes = ReportAvailableSpace("/");
+        struct stat rootStat;
+        struct stat cwdStat;
+        if (::stat("/", &rootStat) == 0 && ::stat(".", &cwdStat) == 0 &&
+            rootStat.st_dev != cwdStat.st_dev)
+        {
+            ReportAvailableSpace(".");
+        }
+
+        if (!availableBytes) {
+            return false;
+        }
+
+        if (!HasSpaceForDump(*availableBytes, *estimatedBytes)) {
+            Cerr << "Insufficient free space on / for the dump. "
+                    "1 GiB must remain after writing."
+                 << Endl;
+            return false;
+        }
+        return true;
     }
 };
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TMaybe<ui64> EstimateDumpSize(
+    TVector<TProfileLogFile>& profileLogFiles,
+    bool ignoreErrors)
+{
+    constexpr ui64 MaxInputBytes =
+        std::numeric_limits<ui64>::max() / DumpSizeMultiplier;
+
+    ui64 inputBytes = 0;
+    TVector<TProfileLogFile> files;
+    files.reserve(profileLogFiles.size());
+    for (const auto& file: profileLogFiles) {
+        const TFileStat stat(file.Path);
+        const bool isFile = stat.IsFile();
+        if (!isFile && ignoreErrors) {
+            Cerr << "Skipping profile log " << file.Path
+                 << " because its file size is unavailable." << Endl;
+            continue;
+        }
+        if (!isFile || stat.Size > MaxInputBytes - inputBytes) {
+            Cerr << "Cannot estimate dump size from profile log "
+                 << file.Path << Endl;
+            return {};
+        }
+        inputBytes += stat.Size;
+        files.push_back(file);
+    }
+    profileLogFiles = std::move(files);
+    return inputBytes * DumpSizeMultiplier;
+}
 
 TCommandPtr NewDumpEventsCommand()
 {
