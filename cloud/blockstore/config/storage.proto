@@ -1504,7 +1504,7 @@ message TStorageServiceConfig
     optional bool OptimizeFastPathReadsOnResync = 476;
 
     // VolumeProxy to Volume inactive (with no requests from client) connection
-    // reset timeout (in milliseconds).
+    // reset timeout (in milliseconds). Zero: inactive connections are kept.
     optional uint32 VolumeProxyPipeInactivityTimeout = 477;
 
     // Enables fresh channel zero requests.

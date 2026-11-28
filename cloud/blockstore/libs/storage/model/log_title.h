@@ -33,7 +33,6 @@ public:
     {
         TString DiskId;
         bool TemporaryServer = false;
-        ui32 Generation = 0;
         ui64 TabletId = 0;
     };
 
