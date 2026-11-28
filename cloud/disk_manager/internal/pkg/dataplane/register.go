@@ -134,6 +134,20 @@ func RegisterForExecution(
 		return err
 	}
 
+	err = taskRegistry.RegisterForExecution(
+		"dataplane.ComputeSnapshotChecksum",
+		func() tasks.Task {
+			return &computeSnapshotChecksumTask{
+				config:            config,
+				performanceConfig: performanceConfig,
+				storage:           storage,
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
 	err = taskRegistry.RegisterForExecution("dataplane.TransferFromDiskToDisk", func() tasks.Task {
 		return &transferFromDiskToDiskTask{
 			config:            config,

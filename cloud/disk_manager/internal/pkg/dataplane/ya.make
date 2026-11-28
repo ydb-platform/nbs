@@ -5,6 +5,7 @@ SRCS(
     backup_snapshot_data_task.go
     collect_snapshot_metrics_task.go
     collect_snapshots_task.go
+    compute_snapshot_checksum_task.go
     consts.go
     export_snapshot_checkpoint.go
     export_snapshot_task.go
@@ -49,6 +50,7 @@ END()
 
 RECURSE(
     backup
+    checksum
     common
     config
     filesystem
