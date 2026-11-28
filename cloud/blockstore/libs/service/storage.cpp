@@ -305,6 +305,19 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
     TStorageBuffer buffer;
 
     if (dataBuffer) {
+        if (Y_UNLIKELY(
+                dataBuffer.size() <
+                static_cast<size_t>(request->GetBlocksCount()) *
+                    requestBlockSize))
+        {
+            return MakeFuture<NProto::TReadBlocksResponse>(TErrorResponse(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "data buffer is too small: " << dataBuffer.size()
+                    << " < "
+                    << static_cast<size_t>(request->GetBlocksCount()) *
+                           requestBlockSize));
+        }
         sgList = {{dataBuffer.data(), dataBuffer.size()}};
     } else {
         // We are trying to allocate memory for request using Storage. If the memory
@@ -320,7 +333,6 @@ TFuture<NProto::TReadBlocksResponse> TStorageAdapter::TImpl::ReadBlocks(
                 request->GetBlocksCount(),
                 requestBlockSize);
         }
-
     }
 
     if (Normalize) {
