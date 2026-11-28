@@ -108,10 +108,11 @@ struct TBootstrap
         request->SetOffset(offset);
         *request->MutableBuffer() = std::move(data);
 
-        auto future = State->AddWriteDataRequest(std::move(request));
+        auto future = State->TryAddWriteDataRequest(request);
+        UNIT_ASSERT(future);
 
-        return future.Apply([](const auto& result)
-                            { return !HasError(result.GetValue()); });
+        return future->Apply([](const auto& result)
+                             { return !HasError(result.GetValue()); });
     }
 
     auto AddAndGetError(ui64 nodeId, ui64 handle, ui64 offset, TString data)
@@ -123,10 +124,11 @@ struct TBootstrap
         request->SetOffset(offset);
         *request->MutableBuffer() = std::move(data);
 
-        auto future = State->AddWriteDataRequest(std::move(request));
+        auto future = State->TryAddWriteDataRequest(request);
+        UNIT_ASSERT(future);
 
-        return future.Apply([](const auto& result)
-                            { return result.GetValue().GetError(); });
+        return future->Apply([](const auto& result)
+                             { return result.GetValue().GetError(); });
     }
 
     bool Recreate()
@@ -504,19 +506,19 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL(error, f1.GetValue());
     }
 
+    class TFailFreeStorage final: public TTestStorage
+    {
+    public:
+        using TTestStorage::TTestStorage;
+
+        NProto::TError Free(const void*) override
+        {
+            return MakeError(E_IO, "Injected Free failure");
+        }
+    };
+
     Y_UNIT_TEST(ShouldKeepShutdownPendingAfterEvictionFailure)
     {
-        class TFailFreeStorage final: public TTestStorage
-        {
-        public:
-            using TTestStorage::TTestStorage;
-
-            NProto::TError Free(const void*) override
-            {
-                return MakeError(E_IO, "Injected Free failure");
-            }
-        };
-
         TBootstrap b;
         b.Storage = std::make_shared<TFailFreeStorage>(
             b.Stats->GetPersistentStorageStats());
@@ -528,6 +530,26 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT(!shutdown.IsReady());
         UNIT_ASSERT(!b.State->IsDrained());
+    }
+
+    Y_UNIT_TEST(ShouldKeepDrainCompletionAfterDeferredEvictionFailure)
+    {
+        TBootstrap b;
+        b.Storage = std::make_shared<TFailFreeStorage>(
+            b.Stats->GetPersistentStorageStats());
+        UNIT_ASSERT(b.Recreate());
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+
+        const auto pin = b.State->PinCachedData(1);
+        b.State->Drain();
+        b.State->FlushSucceeded(1, 1);
+        UNIT_ASSERT(b.State->IsDrained());
+
+        b.State->UnpinCachedData(1, pin);
+
+        UNIT_ASSERT(b.State->IsDrained());
+        auto shutdown = b.State->Shutdown();
+        UNIT_ASSERT(shutdown.HasValue());
     }
 
     Y_UNIT_TEST(HandleReleaseFailures)
@@ -1387,10 +1409,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         request->SetNodeId(2);
         request->SetHandle(202);
         request->SetBuffer("def");
-        auto future = b.State->AddWriteDataRequest(std::move(request));
-        b.ObserveCompletion(future);
+        auto future = b.State->TryAddWriteDataRequest(request);
+        UNIT_ASSERT(future);
+        b.ObserveCompletion(*future);
         b.State->FlushSucceeded(1, 1);
-        b.CheckCompletion(future, S_OK);
+        b.CheckCompletion(*future, S_OK);
     }
 
     Y_UNIT_TEST(ShouldDestroyFailedWriteOutsideLock)
@@ -1402,10 +1425,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         request->SetNodeId(2);
         request->SetHandle(202);
         request->SetBuffer("def");
-        auto future = b.State->AddWriteDataRequest(std::move(request));
-        b.ObserveCompletion(future);
+        auto future = b.State->TryAddWriteDataRequest(request);
+        UNIT_ASSERT(future);
+        b.ObserveCompletion(*future);
         b.State->FlushFailed(1, MakeError(E_FS_NOSPC, "No space left"));
-        b.CheckCompletion(future, E_FS_NOSPC);
+        b.CheckCompletion(*future, E_FS_NOSPC);
     }
 
     Y_UNIT_TEST(ShouldFailPendingRequestsOnFlushFailure)

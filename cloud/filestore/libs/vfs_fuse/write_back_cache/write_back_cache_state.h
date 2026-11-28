@@ -23,6 +23,9 @@
 #include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
 
+#include <atomic>
+#include <optional>
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -92,7 +95,7 @@ private:
 
     // Set by Drain() or Shutdown() and never cleared: reject new cached writes
     // and flush existing data.
-    bool DrainRequested = false;
+    std::atomic<bool> DrainRequested = false;
 
     // Set by Shutdown() and never cleared: permits dropping cached data on
     // flush errors even with live handles.
@@ -101,9 +104,13 @@ private:
     // Counts all shutdown drops, including those without live handles.
     ui64 ShutdownDroppedRequestCount = 0;
 
-    // Prevents queuing shutdown completion more than once
-    bool ShutdownCompleted = false;
-    NThreading::TPromise<void> ShutdownPromise = NThreading::NewPromise<void>();
+    // Published once the cache is healthy and no pending or unflushed writes
+    // remain.
+    std::atomic<bool> Drained = false;
+
+    // Completed by the first successful drain, whether requested by Drain()
+    // or Shutdown().
+    NThreading::TPromise<void> DrainedPromise = NThreading::NewPromise<void>();
 
 public:
     using TEntryVisitor = TFunctionRef<void(const TCachedWriteDataRequest*)>;
@@ -127,20 +134,23 @@ public:
     // WriteData requests will fail with E_REJECTED error.
     void Drain();
 
-    // Similar to Drain() but drops cached data on flush errors.
-    // The future completes once the cache is healthy and no pending or
-    // unflushed writes remain.
+    // Shutdown() is a variation of Drain() that allows dropping cached data on
+    // flush errors. The future completes once the cache is drained.
     NThreading::TFuture<void> Shutdown();
 
-    // Returns true if the cache is in draining mode and there are no more
-    // unflushed requests.
-    // Note: only transition from false to true is possible.
+    // Lock-free check for drain/shutdown requests
+    bool IsDrainRequested() const;
+
+    // Lock-free check for drain completion
     bool IsDrained() const;
 
-    // Add a WriteData request to the pending queue and completes the future
-    // when the request is stored in the persistent storage and becomes cached
-    NThreading::TFuture<NProto::TWriteDataResponse> AddWriteDataRequest(
-        std::shared_ptr<NProto::TWriteDataRequest> request);
+    // Queues a write and returns a future that completes when the persistent
+    // cache stores the write.
+    //
+    // During drain, returns std::nullopt without reporting a critical event.
+    // The request remains available for direct execution.
+    std::optional<NThreading::TFuture<NProto::TWriteDataResponse>>
+    TryAddWriteDataRequest(std::shared_ptr<NProto::TWriteDataRequest>& request);
 
     NThreading::TFuture<NCloud::NProto::TError> AddFlushRequest(ui64 nodeId);
 
@@ -242,7 +252,7 @@ private:
     bool GetBackpressureStatus(const TNodeState& nodeState) const;
     void UpdateFlushStatus(ui64 nodeId, TNodeState& nodeState);
     void TriggerFlushCompletions(TNodeState& nodeState);
-    void CompleteShutdownIfNeeded();
+    void CompleteDrainIfNeeded();
 
     void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
     void CheckAndAcquireBarriers(TNodeState& nodeState);
@@ -294,7 +304,7 @@ private:
 
     void FailAllUnallocatedPendingRequests(const NCloud::NProto::TError& error);
 
-    void SetDrainRequestedFlag();
+    void RequestDrain();
     void SetFailedFlag();
 };
 

@@ -36,24 +36,18 @@ public:
 
     NThreading::TFuture<NProto::TReadDataResponse> ReadData(
         TCallContextPtr callContext,
-        std::shared_ptr<NProto::TReadDataRequest> request);
+        std::shared_ptr<NProto::TReadDataRequest> request,
+        bool isDirect);
 
     NThreading::TFuture<NProto::TWriteDataResponse> WriteData(
         TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteDataRequest> request);
+        std::shared_ptr<NProto::TWriteDataRequest> request,
+        bool isDirect);
 
     NThreading::TFuture<NProto::TError> FlushNodeData(ui64 nodeId);
     NThreading::TFuture<NProto::TError> FlushAllData();
 
     NThreading::TFuture<NProto::TError> ReleaseHandle(ui64 nodeId, ui64 handle);
-
-    NThreading::TFuture<NProto::TReadDataResponse> ReadDataDirect(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TReadDataRequest> request);
-
-    NThreading::TFuture<NProto::TWriteDataResponse> WriteDataDirect(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TWriteDataRequest> request);
 
     NThreading::TFuture<NProto::TSetNodeAttrResponse> SetNodeAttr(
         TCallContextPtr callContext,

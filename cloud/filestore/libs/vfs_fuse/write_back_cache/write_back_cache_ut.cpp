@@ -358,7 +358,7 @@ struct TBootstrap
         request->SetOffset(offset);
         request->SetLength(length);
 
-        return Cache.ReadData(CallContext, move(request));
+        return Cache.ReadData(CallContext, move(request), false /* isDirect */);
     }
 
     TFuture<NProto::TReadDataResponse> ReadFromCache(
@@ -456,7 +456,10 @@ struct TBootstrap
         }
 
         UnflushedData.Write(nodeId, offset, buffer);
-        auto future = Cache.WriteData(CallContext, std::move(request));
+        auto future = Cache.WriteData(
+            CallContext,
+            std::move(request),
+            false /* isDirect */);
 
         return future.Apply([&, nodeId, offset, buffer](const auto& completed) {
             auto response = completed.GetValue();
@@ -1340,7 +1343,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
                     auto future = b.Cache.ReadData(
                         b.CallContext,
-                        move(request));
+                        move(request),
+                        false /* isDirect */);
                     auto response = future.GetValueSync();
                 }
             });
@@ -1834,7 +1838,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         iovec3->SetBase(base + 8);
         iovec3->SetLength(2);  // "ij"
 
-        b.Cache.WriteData(b.CallContext, request).GetValueSync();
+        b.Cache.WriteData(b.CallContext, request, false /* isDirect */)
+            .GetValueSync();
         b.Cache.FlushNodeData(1).GetValueSync();
 
         UNIT_ASSERT_VALUES_EQUAL(1, writeAttempts.load());
@@ -1868,7 +1873,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             iovec2->SetLength(2);  // "cd"
 
             auto response =
-                b.Cache.ReadData(b.CallContext, request).GetValueSync();
+                b.Cache.ReadData(b.CallContext, request, false /* isDirect */)
+                    .GetValueSync();
 
             UNIT_ASSERT(response.GetBuffer().empty());
             UNIT_ASSERT_VALUES_EQUAL(4, response.GetLength());
@@ -1891,7 +1897,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             iovec2->SetLength(3);  // "d\0\0"
 
             auto response =
-                b.Cache.ReadData(b.CallContext, request).GetValueSync();
+                b.Cache.ReadData(b.CallContext, request, false /* isDirect */)
+                    .GetValueSync();
 
             UNIT_ASSERT(response.GetBuffer().empty());
             UNIT_ASSERT_VALUES_EQUAL(4, response.GetLength());
@@ -1928,7 +1935,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         iovec->SetLength(source->size());
 
         // Once WriteData resolves, the data must already be copied.
-        b.Cache.WriteData(b.CallContext, request).GetValueSync();
+        b.Cache.WriteData(b.CallContext, request, false /* isDirect */)
+            .GetValueSync();
 
         // Overwrite and free the source before flushing.
         for (auto& c: *source) {
@@ -1969,7 +1977,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         iovec->SetBase(base);
         iovec->SetLength(source->size());
 
-        b.Cache.WriteDataDirect(b.CallContext, request).GetValueSync();
+        b.Cache.WriteData(b.CallContext, request, true /* isDirect */)
+            .GetValueSync();
 
         // The source may be released once the direct write resolves.
         source.reset();
@@ -2077,7 +2086,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         auto readFromCache = [&](ui64 offset, ui64 length)
         {
             auto request = makeReadRequest(offset, length);
-            auto future = b.Cache.ReadData(b.CallContext, request);
+            auto future =
+                b.Cache.ReadData(b.CallContext, request, false /* isDirect */);
             const auto& response = future.GetValueSync();
             return response.GetBuffer().substr(response.GetBufferOffset());
         };
@@ -2182,21 +2192,86 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             persistentStorageMetrics.Storage.EntryMaxCount->Get());
     }
 
-    Y_UNIT_TEST(ShouldNotWriteToCacheInDrainingMode)
+    Y_UNIT_TEST(ShouldRouteBufferedIOWhileDraining)
     {
+        struct TRegistration final: IFSyncQueueRegistration
+        {
+            int Count = 0;
+
+            void Enqueue() override
+            {
+                ++Count;
+            }
+        } registration;
+
         TBootstrap b;
+        TTempFileHandle file;
+        const auto layout =
+            TFileRingBufferLayout::FromCapacity(DefaultCacheCapacityBytes, 0);
+        UNIT_ASSERT(layout);
+        TWriteBackCache cache(
+            {.Session = b.Session,
+             .Scheduler = b.Scheduler,
+             .Timer = b.Timer,
+             .Stats = CreateWriteBackCacheStats(),
+             .Log = b.Log,
+             .FileSystemId = "FileSystemId",
+             .FilePath = file.GetName(),
+             .StateFileSize = layout->StateFileSize});
 
-        b.WriteToCacheSync(1, 0, "abc");
-        b.Cache.Drain();
+        auto flushResponse = NewPromise<NProto::TWriteDataResponse>();
+        int directWrites = 0;
+        b.Session->WriteDataHandler = [&](auto, const auto& request)
+        {
+            if (request->GetOffset() == 0) {
+                return flushResponse.GetFuture();
+            }
+            UNIT_ASSERT_VALUES_EQUAL(++directWrites, registration.Count);
+            return MakeFuture(NProto::TWriteDataResponse{});
+        };
 
-        auto future = b.WriteToCache(1, 1, "def");
-        UNIT_ASSERT(future.HasValue());
-        auto error = future.GetValue().GetError();
-        UNIT_ASSERT(HasError(error));
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
-        UNIT_ASSERT(b.Cache.IsDrained());
-        b.Cache.Shutdown().GetValue();
-        b.Cache.Shutdown().GetValue();
+        auto write = [&](ui64 offset)
+        {
+            auto request = std::make_shared<NProto::TWriteDataRequest>();
+            request->SetNodeId(1);
+            request->SetHandle(101);
+            request->SetOffset(offset);
+            request->SetBuffer("abc");
+            return cache.WriteData(
+                b.CallContext,
+                std::move(request),
+                registration,
+                false /* isDirect */);
+        };
+
+        UNIT_ASSERT(!HasError(write(0).GetValue()));
+        UNIT_ASSERT_VALUES_EQUAL(0, registration.Count);
+
+        cache.Drain();
+        UNIT_ASSERT(!cache.IsDrained());
+        auto request = std::make_shared<NProto::TReadDataRequest>();
+        request->SetNodeId(1);
+        request->SetHandle(101);
+        request->SetLength(3);
+        const auto response = cache
+                                  .ReadData(
+                                      b.CallContext,
+                                      std::move(request),
+                                      false /* isDirect */)
+                                  .GetValue();
+        UNIT_ASSERT_VALUES_EQUAL("abc", response.GetBuffer());
+
+        auto direct = write(3);
+        UNIT_ASSERT_VALUES_EQUAL(1, registration.Count);
+        UNIT_ASSERT(!direct.IsReady());
+        flushResponse.SetValue({});
+        UNIT_ASSERT(!HasError(direct.GetValue()));
+        UNIT_ASSERT(cache.IsDrained());
+
+        UNIT_ASSERT(!HasError(write(6).GetValue()));
+        UNIT_ASSERT_VALUES_EQUAL(2, directWrites);
+        cache.Shutdown().GetValue();
+        cache.Shutdown().GetValue();
     }
 
     Y_UNIT_TEST(ShouldCompleteShutdownAfterFlushAllFailure)
@@ -2824,8 +2899,10 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         request->SetOffset(12);
         request->SetBuffer("+++");
 
-        auto directWriteFuture =
-            b.Cache.WriteDataDirect(b.CallContext, std::move(request));
+        auto directWriteFuture = b.Cache.WriteData(
+            b.CallContext,
+            std::move(request),
+            true /* isDirect */);
 
         UNIT_ASSERT(b.WriteToCache(1, 10, "ghi").HasValue());
         UNIT_ASSERT(b.WriteToCache(1, 14, "jkl").HasValue());
@@ -2949,8 +3026,10 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         writeRequest->SetOffset(0);
         writeRequest->SetBuffer("abc");
 
-        auto directWriteFuture =
-            b.Cache.WriteDataDirect(b.CallContext, std::move(writeRequest));
+        auto directWriteFuture = b.Cache.WriteData(
+            b.CallContext,
+            std::move(writeRequest),
+            true /* isDirect */);
 
         auto readRequest = std::make_shared<NProto::TReadDataRequest>();
         readRequest->SetNodeId(1);
@@ -2958,8 +3037,10 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         readRequest->SetOffset(0);
         readRequest->SetLength(3);
 
-        auto directReadFuture =
-            b.Cache.ReadDataDirect(b.CallContext, std::move(readRequest));
+        auto directReadFuture = b.Cache.ReadData(
+            b.CallContext,
+            std::move(readRequest),
+            true /* isDirect */);
 
         auto setNodeAttrRequest =
             std::make_shared<NProto::TSetNodeAttrRequest>();
@@ -3196,9 +3277,12 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             request->SetOffset(offset);
             request->SetLength(length);
 
-            const auto response =
-                Cache.ReadData(CallContext, std::move(request))
-                    .GetValue(WaitTimeout);
+            const auto response = Cache
+                                      .ReadData(
+                                          CallContext,
+                                          std::move(request),
+                                          false /* isDirect */)
+                                      .GetValue(WaitTimeout);
 
             // UNIT_ASSERT aborts on worker threads. Use a catchable exception
             // so Run() can report the failure on the main test thread.
@@ -3238,9 +3322,12 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             iovec->SetBase(reinterpret_cast<ui64>(buffer.data()));
             iovec->SetLength(buffer.size());
 
-            const auto response =
-                Cache.WriteData(CallContext, std::move(request))
-                    .GetValue(WaitTimeout);
+            const auto response = Cache
+                                      .WriteData(
+                                          CallContext,
+                                          std::move(request),
+                                          false /* isDirect */)
+                                      .GetValue(WaitTimeout);
 
             Y_ENSURE(
                 !HasError(response),
@@ -3454,23 +3541,3 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 }
 
 }   // namespace NCloud::NFileStore::NFuse
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <>
-void Out<NCloud::NFileStore::NFuse::EWriteBackCacheMode>(
-    IOutputStream& out,
-    NCloud::NFileStore::NFuse::EWriteBackCacheMode value)
-{
-    switch (value) {
-        case NCloud::NFileStore::NFuse::EWriteBackCacheMode::Normal:
-            out << "Normal";
-            break;
-        case NCloud::NFileStore::NFuse::EWriteBackCacheMode::Draining:
-            out << "Draining";
-            break;
-        case NCloud::NFileStore::NFuse::EWriteBackCacheMode::Drained:
-            out << "Drained";
-            break;
-    }
-}

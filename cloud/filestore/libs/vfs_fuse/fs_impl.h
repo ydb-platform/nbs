@@ -58,21 +58,6 @@ struct TReleaseRequest
 
 ////////////////////////////////////////////////////////////////////////////////
 
-enum class EWriteBackCacheRequestStrategy
-{
-    // WriteBackCache should not be used, the requests should go directly to the
-    // session
-    DoNotUse,
-
-    // WriteBackCache should be used, with ReadData/WriteData
-    UseNonDirect,
-
-    // WriteBackCache should be used, with ReadDataDirect/WriteDataDirect only
-    UseDirect
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TFileSystem final
     : public IFileSystem
     , public std::enable_shared_from_this<TFileSystem>
@@ -452,9 +437,6 @@ private:
         fuse_req_t req,
         fuse_ino_t ino,
         uint64_t fh);
-
-    EWriteBackCacheRequestStrategy GetWriteBackCacheRequestStrategy(
-        const fuse_file_info* fi) const;
 
     TDuration GetEntryCacheTimeout(const NProto::TNodeAttr& attrs) const;
 
