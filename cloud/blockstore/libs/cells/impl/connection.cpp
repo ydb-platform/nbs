@@ -431,7 +431,10 @@ public:
 
     IStoragePtr GetStorage() override
     {
-        return CreateRemoteStorage(DataRouter, shared_from_this());
+        return CreateRemoteStorage(
+            DataRouter,
+            shared_from_this(),
+            Pool->GetCellId());
     }
 
     // Gives the binding its generation and the parts that need this
