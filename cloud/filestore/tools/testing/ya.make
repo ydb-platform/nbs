@@ -7,4 +7,5 @@ RECURSE(
     open_close_bench
     profile_log
     readtag
+    stale_read_loop
 )

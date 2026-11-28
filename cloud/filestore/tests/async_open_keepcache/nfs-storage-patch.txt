@@ -1,0 +1,14 @@
+AsyncCreateHandleEnabled: true
+AsyncDestroyReadOnlyHandleEnabled: true
+GuestKeepCacheAllowed: true
+GuestCachingType: GCT_ANY_READ
+# the capacities default to 0, i.e. nothing is cached and RO txs fall back to
+# LocalDB, which already sees the uncommitted write - the bug needs GetNodeAttr
+# and ReadData to be served from the stale in-memory index
+InMemoryIndexCacheEnabled: true
+InMemoryIndexCacheNodesCapacity: 1000
+InMemoryIndexCacheNodeAttrsCapacity: 1000
+InMemoryIndexCacheNodeRefsCapacity: 1000
+# with the default capacity of 0 the mixed blocks range is dropped after every
+# read, so ReadData is never served from the in-memory index
+MixedBlocksOffloadedRangesCapacity: 1024
