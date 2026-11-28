@@ -411,6 +411,7 @@ public:
 
     ui32 GetMinShardCount() const;
     ui32 GetMaxShardCount() const;
+    bool GetOneByteShardCountCapEnabled() const;
 
     bool GetReadBlobDisabled() const;
     bool GetWriteBlobDisabled() const;

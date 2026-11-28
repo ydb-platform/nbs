@@ -54,7 +54,6 @@ namespace NCloud::NFileStore{
     xxx(LocalFsFailedToRefreshSnapshotsDir)                                    \
     xxx(LocalFsFailedToLoadSnapshotDir)                                        \
     xxx(IsNotDirectory)                                                        \
-    xxx(TryingToUseTwoBytesShardNoWithObsoleteHandles)                         \
     xxx(CounterIsNegative)                                                     \
     xxx(InvalidResponseLogEntry)                                               \
     xxx(InvalidateTimedOutRegionsError)                                        \

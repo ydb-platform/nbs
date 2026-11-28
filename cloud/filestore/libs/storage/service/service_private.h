@@ -5,12 +5,15 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/api/events.h>
+#include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/core/public.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <contrib/ydb/library/actors/core/event_local.h>
 
 #include <util/generic/string.h>
+
+#include <optional>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -54,8 +57,15 @@ struct TEvServicePrivate
     };
 
     //
-    // Fast shard device allocation
+    // Multi-shard filesystem create and resize steps
     //
+
+    struct TMultiShardDescribeResponse
+    {
+        TMultiShardFileStoreConfig Config;
+        NProtoPrivate::TGetFileSystemTopologyResponse Topology;
+        std::optional<NProtoPrivate::TFileSystemShardCreationState> ShardCreationState;
+    };
 
     struct TMultiShardCreateResponse
     {
@@ -77,10 +87,14 @@ struct TEvServicePrivate
         EvUpdateStats,
         EvStartReadData,
         EvReleaseReadDataActor,
-        EvMultiShardCreateResponse,
         EvFastShardsDeallocated,
         EvStartWriteData,
         EvReleaseWriteDataActor,
+
+        EvMultiShardDescribeResponse,
+        EvMultiShardAlterResponse,
+        EvMultiShardCreateResponse,
+        EvMultiShardConfigureResponse,
 
         EvEnd
     };
@@ -93,8 +107,6 @@ struct TEvServicePrivate
     using TEvSessionCreated = TResponseEvent<TSessionCreated, EvSessionCreated>;
     using TEvSessionDestroyed = TResponseEvent<TSessionDestroyed, EvSessionDestroyed>;
     using TEvUpdateStats = TRequestEvent<TEmpty, EvUpdateStats>;
-    using TEvMultiShardCreateResponse =
-        TResponseEvent<TMultiShardCreateResponse, EvMultiShardCreateResponse>;
     using TEvFastShardsDeallocated =
         TResponseEvent<TEmpty, EvFastShardsDeallocated>;
 
@@ -110,6 +122,11 @@ struct TEvServicePrivate
               TEventLocal<TEvReleaseWriteDataActor, EvReleaseWriteDataActor>
     {
     };
+
+    using TEvMultiShardDescribeResponse = TResponseEvent<TMultiShardDescribeResponse, EvMultiShardDescribeResponse>;
+    using TEvMultiShardAlterResponse = TResponseEvent<TEmpty, EvMultiShardAlterResponse>;
+    using TEvMultiShardCreateResponse = TResponseEvent<TMultiShardCreateResponse, EvMultiShardCreateResponse>;
+    using TEvMultiShardConfigureResponse = TResponseEvent<TEmpty, EvMultiShardConfigureResponse>;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

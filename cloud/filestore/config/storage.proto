@@ -1046,4 +1046,8 @@ message TStorageConfig
 
     // Device space kept for the journal, the storage group and shard metadata.
     optional uint64 FastShardReservedSize = 570;
+
+    // A resize does not grow a filesystem beyond 255 shards: the handles of
+    // the old code keep the shard number in one byte.
+    optional bool OneByteShardCountCapEnabled = 571;
 }

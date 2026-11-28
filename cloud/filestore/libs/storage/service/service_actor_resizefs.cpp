@@ -2,195 +2,115 @@
 
 #include "helpers.h"
 #include "service_actor_fastshard.h"
+#include "service_actor_multishard_alter.h"
+#include "service_actor_multishard_configure.h"
 #include "service_actor_multishard_create.h"
+#include "service_actor_multishard_describe.h"
+#include "service_private.h"
 
-#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
-#include <cloud/filestore/libs/storage/api/ss_proxy.h>
-#include <cloud/filestore/libs/storage/api/tablet.h>
-#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
-#include <cloud/filestore/libs/storage/core/helpers.h>
+#include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
+#include <cloud/filestore/libs/storage/model/utils.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 #include <util/string/builder.h>
 
-#include <algorithm>
 #include <optional>
 
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 
-using namespace NKikimr;
-
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-// The steps of the resize:
-// 1. Describe main filestore. Store NKikimrFileStore::TConfig of the main
-// filesystem for later use.
-// 2. Get storage statistics to determine SevenBytesHandlesCount.
-// We need this to prohibit a user from creating more than 255 shards
-// if the filesystem has obsolete handles (with a non-zero seventh byte).
-// 3. Get filesystem topology. Using the topology and the config from the
-// previous step, calculate all parameters of the transformation performed by
-// resize action: ShardsToCreate, ShardsToConfigure, ShardsToAlter,
-// ShouldConfigureMainFileStore.
-// 4. Describe shards. We need this step to get config version of shards in case
-// we need to resize them. If MaxShardManagementRequestsInFlight is non-zero, we
-// cap number of in-flight requests, emitting new requests on each response.
-// If MaxShardManagementRequestsInFlight is zero, we send requests for all
-// shards at once.
-// 5. Alter (actually resize) main filestore.
-// 6. Alter shards (if we resize them). If MaxShardManagementRequestsInFlight is
-// non-zero, we cap number of in-flight requests.
-// 7. Create shards if needed. If MaxShardManagementRequestsInFlight is
-// non-zero, we cap number of in-flight requests.
-// 8. Allocate devices for the new fast shards if needed.
-// 9. Configure shards if we created some new ones. Done in two phases: the
-// newly created shards first, the pre-existing shards next.
-// If MaxShardManagementRequestsInFlight is non-zero, we cap number of in-flight
-// requests within each phase.
-// 10. Configure main filestore if new shards were created.
-// The end!
+
+struct TResizePlan
+{
+    // The filesystem and the shards that are resized with it.
+    TMultiShardFileStoreConfig Alter;
+    std::optional<TMultiShardCreateConfig> Create;
+    std::optional<TMultiShardConfigureConfig> Configure;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TResizeFileStoreActor final
     : public TActorBootstrapped<TResizeFileStoreActor>
 {
 private:
-    static const ui64 MainFileStoreCookie = Max<ui64>();
-
+    // A copy: the filesystem state patches it for this request only.
     const TStorageConfigPtr StorageConfig;
     const TRequestInfoPtr RequestInfo;
-    const TString FileSystemId;
-    const NProto::TFileStorePerformanceProfile PerformanceProfile;
-    const bool Force;
-    const bool EnableDirectoryCreationInShards;
-    const bool ForceDirectoryCreationInShards;
-    const bool EnableStrictFileSystemSizeEnforcement;
-
+    const NProto::TResizeFileStoreRequest Request;
     const ui32 ExplicitOrdinaryShardCount;
     const ui32 ExplicitFastShardCount;
 
-    NKikimrFileStore::TConfig TargetConfig;
-    NKikimrFileStore::TConfig MainFileStoreOriginalConfig;
-
-    TMultiShardFileStoreConfig FileStoreConfig;
-
+    TEvServicePrivate::TMultiShardDescribeResponse Described;
+    // The shards of the filesystem. A shard has none of its own.
     NProtoPrivate::TShardTopology ShardTopology;
-
     ui32 ExistingOrdinaryShardCount = 0;
     ui32 ExistingFastShardCount = 0;
     ui64 ExistingFastShardCapacity = 0;
     ui32 ExistingTotalShardCount = 0;
-
-    ui64 NewFastShardCount = 0;
+    // The new fast shards get the storage kind of the existing ones.
     std::optional<NProto::EFastShardStorageKind> FastShardStorageKind;
+    ui64 NewFastShardCount = 0;
 
-    ui32 NextShardToConfigure = 0;
-    ui32 ShardsToConfigure = 0;
-    ui32 EndShardToConfigure = 0;
-
-    enum class EShardConfigPhase {
-        NewShards,
-        OldShards,
-    };
-    EShardConfigPhase ShardConfigPhase = EShardConfigPhase::NewShards;
-
-    ui32 NextShardToAlter = 0;
-    ui32 ShardsToAlter = 0;
-
-    ui32 NextShardToDescribe = 0;
-    ui32 ShardsToDescribe = 0;
-
-    ui32 MaxShardCount = 0;
-    ui64 SevenBytesHandlesCount = 0;
-
-    std::optional<NProtoPrivate::TFileSystemShardCreationState>
-        ShardCreationState;
-    TMultiShardCreateConfig CreateConfig;
-
-    // These flags are set by HandleGetFileSystemTopologyResponse.
-    bool DirectoryCreationInShardsEnabled = false;
-    bool DirectoryCreationInShardsForced = false;
-    bool StrictFileSystemSizeEnforcementEnabled = false;
-    bool ShouldConfigureMainFileStore = false;
+    TResizePlan Plan;
+    // The step actor in flight.
+    TActorId Worker;
 
 public:
     TResizeFileStoreActor(
-        TStorageConfigPtr storageConfig,
+        const TStorageConfig& storageConfig,
         TRequestInfoPtr requestInfo,
-        const NProto::TResizeFileStoreRequest& request);
+        NProto::TResizeFileStoreRequest request);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    STFUNC(ResizeStateWork);
+    STFUNC(StateWork);
 
-    void DescribeMainFileStore(const TActorContext& ctx);
-    void DescribeShards(const TActorContext& ctx);
-    void DescribeShard(const TActorContext& ctx, const ui32 shardIndex);
-    void GetStorageStats(const TActorContext& ctx);
-    void AlterFileStore(const TActorContext& ctx);
-    void AlterShards(const TActorContext& ctx);
-    void AlterShard(const TActorContext& ctx, const ui32 shardIndex);
-    void GetFileSystemTopology(const TActorContext& ctx);
-    void CreateShards(const TActorContext& ctx);
     void ConfigureShards(const TActorContext& ctx);
-    void ConfigureShardRange(
-        const TActorContext& ctx,
-        ui32 beginShardIndex,
-        ui32 endShardIndex,
-        EShardConfigPhase phase);
-    void ConfigureShard(const TActorContext& ctx, const ui32 shardIndex);
-    void ConfigureMainFileStore(const TActorContext& ctx);
-
     void PatchStorageConfig();
+
+    NProto::TError BuildPlan();
+    NProto::TError BuildShardPlan();
     NProto::TError CollectFastShardStats();
     NProto::TError ValidateOrdinaryShards() const;
     NProto::TError ValidateFastShards() const;
     NProto::TError ValidateTotalShards(ui64 totalShardCount) const;
-    NProto::TError FillMultiShardFileStoreConfig(ui32 shardCount);
-
     ui64 CalculateRequiredNewFastShardCount() const;
+    ui64 GetNewFastShardCount() const;
+    TResultOrError<TMultiShardFileStoreConfig> BuildFileStoreConfig(
+        ui64 totalShardCount) const;
 
-    void HandleDescribeFileStoreResponse(
-        const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
+    TResultOrError<TMultiShardFileStoreConfig> SetupFileStoreConfig(
+        ui32 explicitShardCount) const;
+    TVector<NKikimrFileStore::TConfig> BuildShardConfigs() const;
+    TResultOrError<TMultiShardCreateConfig> MakeCreateConfig(
+        const TVector<NKikimrFileStore::TConfig>& shardConfigs) const;
+
+    TMultiShardConfigureConfig MakeConfigureConfig() const;
+
+    void HandleMultiShardDescribeResponse(
+        const TEvServicePrivate::TEvMultiShardDescribeResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleMultiShardAlterResponse(
+        const TEvServicePrivate::TEvMultiShardAlterResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandleMultiShardCreateResponse(
         const TEvServicePrivate::TEvMultiShardCreateResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleGetStorageStatsResponse(
-        const TEvIndexTablet::TEvGetStorageStatsResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleGetFileSystemTopologyResponse(
-        const TEvIndexTablet::TEvGetFileSystemTopologyResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleConfigureShardResponse(
-        const TEvIndexTablet::TEvConfigureAsShardResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleConfigureMainFileStoreResponse(
-        const TEvIndexTablet::TEvConfigureShardsResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleAlterFileStoreResponse(
-        const TEvSSProxy::TEvAlterFileStoreResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleResizeFileStoreResponse(
-        const TEvSSProxy::TEvAlterFileStoreResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleShardCreationStateResponse(
-        const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
+    void HandleMultiShardConfigureResponse(
+        const TEvServicePrivate::TEvMultiShardConfigureResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -200,249 +120,183 @@ private:
     void ReplyAndDie(
         const TActorContext& ctx,
         const NProto::TError& error = {});
-
-    void ReportInvalidCookieAndDie(const TActorContext& ctx, ui64 cookie);
-
-    bool IsCookieValid(const ui64 cookie) const
-    {
-        return cookie == MainFileStoreCookie ||
-               cookie < FileStoreConfig.ShardConfigs.size();
-    }
-
-    TString GetFileSystemIdForLogByCookie(const ui64 cookie) const
-    {
-        if (!IsCookieValid(cookie)) {
-            return "UNKNOWN";
-        }
-
-        if (cookie == MainFileStoreCookie) {
-            return FileSystemId;
-        }
-
-        return FileStoreConfig.ShardConfigs[cookie].GetFileSystemId();
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 TResizeFileStoreActor::TResizeFileStoreActor(
-        TStorageConfigPtr storageConfig,
+        const TStorageConfig& storageConfig,
         TRequestInfoPtr requestInfo,
-        const NProto::TResizeFileStoreRequest& request)
-    // Copying is important: the config is shared by the whole service, and
-    // some functions here change it in place (e.g. PatchStorageConfig()).
-    // Without the copy, a change made for one filesystem would apply to all
-    // the filesystems on this host.
-    : StorageConfig(std::make_shared<TStorageConfig>(*storageConfig))
+        NProto::TResizeFileStoreRequest request)
+    : StorageConfig(std::make_shared<TStorageConfig>(storageConfig))
     , RequestInfo(std::move(requestInfo))
-    , FileSystemId(request.GetFileSystemId())
-    , PerformanceProfile(request.GetPerformanceProfile())
-    , Force(request.GetForce())
-    , EnableDirectoryCreationInShards(
-          request.GetEnableDirectoryCreationInShards())
-    , ForceDirectoryCreationInShards(
-        request.GetForceDirectoryCreationInShards())
-    , EnableStrictFileSystemSizeEnforcement(
-          request.GetEnableStrictFileSystemSizeEnforcement())
-    , ExplicitOrdinaryShardCount(request.GetShardCount())
-    , ExplicitFastShardCount(request.GetFastShardCount())
-{
-    TargetConfig.SetBlocksCount(request.GetBlocksCount());
-    TargetConfig.SetVersion(request.GetConfigVersion());
-}
+    , Request(std::move(request))
+    , ExplicitOrdinaryShardCount(Request.GetShardCount())
+    , ExplicitFastShardCount(Request.GetFastShardCount())
+{}
 
 void TResizeFileStoreActor::Bootstrap(const TActorContext& ctx)
 {
-    Become(&TThis::ResizeStateWork);
-    DescribeMainFileStore(ctx);
+    Become(&TThis::StateWork);
+
+    auto actor = CreateMultiShardDescribeActor(
+        StorageConfig,
+        SelfId(),
+        Request.GetFileSystemId());
+    Worker = NCloud::Register(ctx, std::move(actor));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TResizeFileStoreActor::DescribeMainFileStore(const TActorContext& ctx)
-{
-    auto request = std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(
-        FileSystemId);
-    NCloud::Send(
-        ctx,
-        MakeSSProxyServiceId(),
-        std::move(request),
-        MainFileStoreCookie);
-}
-
-void TResizeFileStoreActor::DescribeShards(const TActorContext& ctx)
-{
-    if (ShardsToDescribe == 0) {
-        AlterFileStore(ctx);
-        return;
-    }
-
-    NextShardToDescribe = 0;
-    const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
-    const ui32 endShardIndex =
-        (limit == 0)
-            ? ShardsToDescribe
-            : std::min<ui32>(NextShardToDescribe + limit, ShardsToDescribe);
-
-    for (ui32 i = 0; i < endShardIndex; ++i) {
-        DescribeShard(ctx, i);
-        NextShardToDescribe = i + 1;
-    }
-}
-
-void TResizeFileStoreActor::DescribeShard(
-    const TActorContext& ctx,
-    const ui32 shardIndex)
-{
-    auto request = std::make_unique<TEvSSProxy::TEvDescribeFileStoreRequest>(
-        FileStoreConfig.ShardConfigs[shardIndex].GetFileSystemId());
-
-    NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request), shardIndex);
-}
-
-void TResizeFileStoreActor::HandleDescribeFileStoreResponse(
-    const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
+void TResizeFileStoreActor::HandleMultiShardDescribeResponse(
+    const TEvServicePrivate::TEvMultiShardDescribeResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-
-    const bool isCookieValid = IsCookieValid(ev->Cookie);
     if (HasError(msg->GetError())) {
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] Describing filestore %s (cookie: %lu) failed: %s",
-            FileSystemId.c_str(),
-            GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str(),
-            ev->Cookie,
-            FormatError(msg->GetError()).c_str());
-
         ReplyAndDie(ctx, msg->GetError());
         return;
     }
 
-    if (!isCookieValid) {
-        ReportInvalidCookieAndDie(ctx, ev->Cookie);
+    Described = *msg;
+    PatchStorageConfig();
+
+    if (const auto error = BuildPlan(); HasError(error)) {
+        ReplyAndDie(ctx, error);
         return;
     }
 
-    const auto& fileStore = msg->PathDescription.GetFileStoreDescription();
-    NKikimrFileStore::TConfig currentConfig = fileStore.GetConfig();
-
-    // A shard is described
-    if (ev->Cookie != MainFileStoreCookie) {
-        const ui64 shardNo = ev->Cookie;
-        const ui64 blocksCount = FileStoreConfig.ShardConfigs[shardNo]
-            .GetBlocksCount();
-
-        FileStoreConfig.ShardConfigs[shardNo] = currentConfig;
-        FileStoreConfig.ShardConfigs[shardNo].SetBlocksCount(blocksCount);
-        // We need to reconfigure the shard, as only at this point do we know
-        // the original number of channels, and the calculated number of
-        // channels may be less than the real.
-        SetupFileStorePerformanceAndChannels(
-            false /* allocateMixed0Channel */,
-            *StorageConfig,
-            FileStoreConfig.ShardConfigs[shardNo],
-            PerformanceProfile);
-
-        FileStoreConfig.ShardConfigs[shardNo].SetVersion(
-            fileStore.GetConfig().GetVersion());
-
-        Y_ABORT_UNLESS(ShardsToDescribe);
-        if (--ShardsToDescribe == 0) {
-            AlterFileStore(ctx);
-        } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
-            if (NextShardToDescribe < ExistingTotalShardCount) {
-                DescribeShard(ctx, NextShardToDescribe);
-                ++NextShardToDescribe;
-            }
-        }
-        return;
+    ui64 totalShardCount = ExistingTotalShardCount;
+    if (Plan.Create) {
+        totalShardCount += Plan.Create->ShardsToCreate.size();
     }
 
-    MainFileStoreOriginalConfig = currentConfig;
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] Will resize filesystem to have %lu shards",
+        Request.GetFileSystemId().c_str(),
+        totalShardCount);
 
-    if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
-        auto request =
-            std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
-        request->Record.SetFileSystemId(FileSystemId);
-        // Without a version the tablet only returns the state.
-        request->Record.MutableShardCreationState();
-        NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
-    } else {
-        GetStorageStats(ctx);
-    }
+    auto actor =
+        CreateMultiShardAlterActor(StorageConfig, SelfId(), Plan.Alter);
+    Worker = NCloud::Register(ctx, std::move(actor));
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TResizeFileStoreActor::HandleShardCreationStateResponse(
-    const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto& record = ev->Get()->Record;
-    if (HasError(record.GetError())) {
-        ReplyAndDie(
-            ctx,
-            MakeError(
-                E_REJECTED,
-                TStringBuilder()
-                    << "failed to read shard creation state: "
-                    << FormatError(record.GetError())));
-        return;
-    }
-
-    // A tablet of the previous version returns no state.
-    if (record.HasShardCreationState()) {
-        ShardCreationState = record.GetShardCreationState();
-    }
-
-    GetStorageStats(ctx);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TResizeFileStoreActor::GetStorageStats(const TActorContext& ctx)
-{
-    auto request =
-        std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
-    request->Record.SetFileSystemId(FileSystemId);
-
-    NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
-}
-
-void TResizeFileStoreActor::HandleGetStorageStatsResponse(
-    const TEvIndexTablet::TEvGetStorageStatsResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto* msg = ev->Get();
-    if (HasError(msg->GetError())) {
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] Getting file system statistics failed: %s",
-            FileSystemId.c_str(),
-            FormatError(msg->GetError()).Quote().c_str());
-
-        ReplyAndDie(ctx, msg->GetError());
-        return;
-    }
-
-    SevenBytesHandlesCount = msg->Record.GetStats().GetSevenBytesHandlesCount();
-
-    GetFileSystemTopology(ctx);
-}
-
-////////////////////////////////////////////////////////////////////////////////
 
 void TResizeFileStoreActor::PatchStorageConfig()
 {
-    NProto::TStorageConfig protoConfig;
-    protoConfig.SetStrictFileSystemSizeEnforcementEnabled(
-        StrictFileSystemSizeEnforcementEnabled);
-    protoConfig.SetMaxShardCount(MaxShardCount);
-    StorageConfig->Merge(protoConfig);
+    const auto& state = Described.Topology;
+
+    NProto::TStorageConfig patch;
+    patch.SetStrictFileSystemSizeEnforcementEnabled(
+        Request.GetEnableStrictFileSystemSizeEnforcement() ||
+        state.GetStrictFileSystemSizeEnforcementEnabled());
+    patch.SetMaxShardCount(state.GetMaxShardCount());
+    StorageConfig->Merge(patch);
+}
+
+NProto::TError TResizeFileStoreActor::BuildPlan()
+{
+    if (Described.Topology.GetShardNo()) {
+        return BuildShardPlan();
+    }
+
+    ShardTopology = GetShardTopology(Described.Topology);
+    ExistingTotalShardCount = ShardTopology.ShardsSize();
+    if (const auto error = CollectFastShardStats(); HasError(error)) {
+        return error;
+    }
+    ExistingOrdinaryShardCount =
+        ExistingTotalShardCount - ExistingFastShardCount;
+
+    if (const auto error = ValidateOrdinaryShards(); HasError(error)) {
+        return error;
+    }
+
+    if (const auto error = ValidateFastShards(); HasError(error)) {
+        return error;
+    }
+
+    NewFastShardCount = GetNewFastShardCount();
+
+    ui64 totalShardCount = ExistingTotalShardCount + NewFastShardCount;
+    if (ExplicitOrdinaryShardCount) {
+        totalShardCount +=
+            ExplicitOrdinaryShardCount - ExistingOrdinaryShardCount;
+    }
+
+    if (const auto error = ValidateTotalShards(totalShardCount);
+        HasError(error))
+    {
+        return error;
+    }
+
+    auto fileStoreConfig = BuildFileStoreConfig(totalShardCount);
+    if (HasError(fileStoreConfig)) {
+        return fileStoreConfig.GetError();
+    }
+    const auto& shardConfigs = fileStoreConfig.GetResult().ShardConfigs;
+
+    Plan.Alter.MainFileSystemConfig =
+        fileStoreConfig.GetResult().MainFileSystemConfig;
+
+    if (StorageConfig->GetStrictFileSystemSizeEnforcementEnabled()) {
+        Plan.Alter.ShardConfigs = BuildShardConfigs();
+    }
+
+    // A resize without new shards is checked against the saved state too: it
+    // should not get ahead of an unfinished shard creation.
+    auto createConfig = MakeCreateConfig(shardConfigs);
+    if (HasError(createConfig)) {
+        return createConfig.GetError();
+    }
+
+    const bool newShards = shardConfigs.size() > ExistingTotalShardCount;
+    if (newShards) {
+        Plan.Create = createConfig.ExtractResult();
+    }
+
+    if (newShards || Request.GetEnableStrictFileSystemSizeEnforcement() ||
+        Request.GetEnableDirectoryCreationInShards())
+    {
+        Plan.Configure = MakeConfigureConfig();
+    }
+
+    return {};
+}
+
+// A shard is resized alone: it has no shards of its own.
+NProto::TError TResizeFileStoreActor::BuildShardPlan()
+{
+    if (ExplicitOrdinaryShardCount || ExplicitFastShardCount) {
+        return MakeError(E_ARGUMENT, "Cannot add shards to a shard");
+    }
+
+    auto fileStoreConfig = SetupFileStoreConfig(0);
+    if (HasError(fileStoreConfig)) {
+        return fileStoreConfig.GetError();
+    }
+
+    if (StorageConfig->GetStrictFileSystemSizeEnforcementEnabled()) {
+        return MakeError(
+            E_ARGUMENT,
+            "Cannot change shard size if "
+            "'StrictFileSystemSizeEnforcementEnabled'");
+    }
+
+    // A fast shard keeps the size its devices were allocated for.
+    const auto siblings = GetShardTopology(Described.Topology);
+    const ui32 shardIndex = Described.Topology.GetShardNo() - 1;
+    if (shardIndex < siblings.ShardsSize() &&
+        siblings.GetShards(shardIndex).GetType() ==
+            NProtoPrivate::TShardTopology::E_FASTSHARD)
+    {
+        return MakeError(E_ARGUMENT, "Cannot resize fast shard");
+    }
+
+    Plan.Alter.MainFileSystemConfig =
+        fileStoreConfig.GetResult().MainFileSystemConfig;
+    return {};
 }
 
 NProto::TError TResizeFileStoreActor::CollectFastShardStats()
@@ -464,7 +318,6 @@ NProto::TError TResizeFileStoreActor::CollectFastShardStats()
         ++ExistingFastShardCount;
         ExistingFastShardCapacity += config.GetExpectedGroupCapacity();
 
-        // The new fast shards get the storage kind of the existing ones.
         for (const auto& storageGroup: config.GetStorageGroups()) {
             const auto storageKind = storageGroup.GetType();
             if (FastShardStorageKind && storageKind != *FastShardStorageKind) {
@@ -494,8 +347,8 @@ NProto::TError TResizeFileStoreActor::ValidateOrdinaryShards() const
             E_ARGUMENT,
             TStringBuilder()
                 << "Cannot decrease number of shards: current="
-                << ExistingOrdinaryShardCount << ", requested="
-                << ExplicitOrdinaryShardCount);
+                << ExistingOrdinaryShardCount
+                << ", requested=" << ExplicitOrdinaryShardCount);
     }
 
     return {};
@@ -510,25 +363,25 @@ NProto::TError TResizeFileStoreActor::ValidateFastShards() const
                 "Cannot add fast shards to a filesystem created without them");
         }
 
-        // nothing to do
         return {};
     }
 
-    if (ExplicitFastShardCount &&
-        ExplicitFastShardCount < ExistingFastShardCount)
-    {
+    if (!ExplicitFastShardCount) {
+        return {};
+    }
+
+    if (ExplicitFastShardCount < ExistingFastShardCount) {
         return MakeError(
             E_ARGUMENT,
             TStringBuilder()
                 << "Cannot decrease number of fast shards: current="
-                << ExistingFastShardCount << ", requested="
-                << ExplicitFastShardCount);
+                << ExistingFastShardCount
+                << ", requested=" << ExplicitFastShardCount);
     }
 
     const ui64 requiredNewFastShardCount = CalculateRequiredNewFastShardCount();
-    if (ExplicitFastShardCount &&
-        ExplicitFastShardCount - ExistingFastShardCount <
-            requiredNewFastShardCount)
+    if (ExplicitFastShardCount - ExistingFastShardCount <
+        requiredNewFastShardCount)
     {
         return MakeError(
             E_ARGUMENT,
@@ -542,720 +395,306 @@ NProto::TError TResizeFileStoreActor::ValidateFastShards() const
     return {};
 }
 
+// Only the shards that the request adds are checked against the limit.
+NProto::TError TResizeFileStoreActor::ValidateTotalShards(
+    ui64 totalShardCount) const
+{
+    const ui32 maxShardCount = Described.Topology.GetMaxShardCount();
+    if (totalShardCount > ExistingTotalShardCount &&
+        totalShardCount > maxShardCount)
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "shard count " << totalShardCount
+                << " should not be bigger than " << maxShardCount);
+    }
+
+    return {};
+}
+
+// The fast shards that the part of the filesystem over the existing fast shard
+// capacity needs.
 ui64 TResizeFileStoreActor::CalculateRequiredNewFastShardCount() const
 {
-    const ui32 blockSize = MainFileStoreOriginalConfig.GetBlockSize();
-    const ui64 blocksCount = TargetConfig.GetBlocksCount();
+    const ui32 blockSize = Described.Config.MainFileSystemConfig.GetBlockSize();
+    const ui64 blocksCount = Request.GetBlocksCount();
     const ui64 missingBlocksCount =
         blocksCount - Min(blocksCount, ExistingFastShardCapacity / blockSize);
-
     return CalculateFastShardCount(
         *StorageConfig,
         missingBlocksCount,
         blockSize);
 }
 
-NProto::TError TResizeFileStoreActor::ValidateTotalShards(
-    ui64 totalShardCount) const
+ui64 TResizeFileStoreActor::GetNewFastShardCount() const
 {
-    // Only the shards that the request adds are checked against the limit.
-    if (totalShardCount > ExistingTotalShardCount &&
-        totalShardCount > MaxShardCount)
-    {
-        return MakeError(
-            E_ARGUMENT,
-            TStringBuilder()
-                << "shard count " << totalShardCount
-                << " should not be bigger than " << MaxShardCount);
+    if (!ExistingFastShardCount) {
+        return 0;
     }
 
-    return {};
+    if (ExplicitFastShardCount) {
+        return ExplicitFastShardCount - ExistingFastShardCount;
+    }
+
+    return CalculateRequiredNewFastShardCount();
 }
 
-NProto::TError TResizeFileStoreActor::FillMultiShardFileStoreConfig(
-    ui32 shardCount)
+auto TResizeFileStoreActor::BuildFileStoreConfig(ui64 totalShardCount) const
+    -> TResultOrError<TMultiShardFileStoreConfig>
 {
-    NKikimrFileStore::TConfig currentConfig = MainFileStoreOriginalConfig;
-
-    // Allocate legacy mixed0 channel in case it was already present
-    Y_ABORT_UNLESS(currentConfig.ExplicitChannelProfilesSize() >= 4);
-    const auto thirdChannelDataKind = static_cast<EChannelDataKind>(
-        currentConfig.GetExplicitChannelProfiles(3)
-            .GetDataKind());
-    const bool allocateMixed0 =
-        thirdChannelDataKind == EChannelDataKind::Mixed0;
-
-    if (currentConfig.GetBlocksCount() > TargetConfig.GetBlocksCount() &&
-        !Force)
-    {
-        return MakeError(E_ARGUMENT, "Cannot decrease filestore size");
-    }
-
-    Y_ABORT_UNLESS(
-        TargetConfig.GetCloudId().empty() &&
-        TargetConfig.GetFolderId().empty() &&
-        TargetConfig.GetProjectId().empty());
-
-    currentConfig.SetBlocksCount(TargetConfig.GetBlocksCount());
-    // The filesystem is sharded if automatic shard creation is enabled or if
-    // it was created with an explicitly specified shard count
-    const bool isSharded = StorageConfig->GetAutomaticShardCreationEnabled() ||
-                           shardCount > 0;
-    if (!allocateMixed0 && isSharded) {
-        FileStoreConfig = SetupMultiShardFileStorePerformanceAndChannels(
-            *StorageConfig,
-            currentConfig,
-            PerformanceProfile,
-            shardCount);
-    } else {
-        SetupFileStorePerformanceAndChannels(
-            allocateMixed0,
-            *StorageConfig,
-            currentConfig,
-            PerformanceProfile);
-
-        FileStoreConfig.MainFileSystemConfig = currentConfig;
-    }
-
-    if (const auto version = TargetConfig.GetVersion()) {
-        FileStoreConfig.MainFileSystemConfig.SetVersion(version);
-    }
-
-    return {};
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TResizeFileStoreActor::AlterFileStore(const TActorContext& ctx)
-{
-    FileStoreConfig.MainFileSystemConfig.ClearBlockSize();
-    FileStoreConfig.MainFileSystemConfig.SetAlterTs(ctx.Now().MicroSeconds());
-    auto request = std::make_unique<TEvSSProxy::TEvAlterFileStoreRequest>(
-        FileStoreConfig.MainFileSystemConfig);
-
-    NCloud::Send(
-        ctx,
-        MakeSSProxyServiceId(),
-        std::move(request),
-        MainFileStoreCookie);
-}
-
-void TResizeFileStoreActor::AlterShards(const TActorContext& ctx)
-{
-    if (ShardsToAlter == 0) {
-        CreateShards(ctx);
-        return;
-    }
-
-    NextShardToAlter = 0;
-    const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
-    const ui32 endShardIndex =
-        (limit == 0) ? ShardsToAlter
-                     : std::min<ui32>(NextShardToAlter + limit, ShardsToAlter);
-
-    for (ui32 i = 0; i < endShardIndex; ++i) {
-        AlterShard(ctx, i);
-        NextShardToAlter = i + 1;
-    }
-}
-
-void TResizeFileStoreActor::AlterShard(
-    const TActorContext& ctx,
-    const ui32 shardIndex)
-{
-    FileStoreConfig.ShardConfigs[shardIndex].ClearBlockSize();
-    FileStoreConfig.ShardConfigs[shardIndex].SetAlterTs(
-        ctx.Now().MicroSeconds());
-    auto request = std::make_unique<TEvSSProxy::TEvAlterFileStoreRequest>(
-        FileStoreConfig.ShardConfigs[shardIndex]);
-    NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request), shardIndex);
-}
-
-void TResizeFileStoreActor::HandleAlterFileStoreResponse(
-    const TEvSSProxy::TEvAlterFileStoreResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-
-    const bool isCookieValid = IsCookieValid(ev->Cookie);
-    if (HasError(msg->GetError())) {
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] Altering of filestore %s (cookie: %lu) failed: %s",
-            FileSystemId.c_str(),
-            GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str(),
-            ev->Cookie,
-            FormatError(msg->GetError()).Quote().c_str());
-
-        ReplyAndDie(ctx, msg->GetError());
-        return;
-    }
-
-    if (!isCookieValid) {
-        ReportInvalidCookieAndDie(ctx, ev->Cookie);
-        return;
-    }
-
-    if (ev->Cookie == MainFileStoreCookie) {
-        AlterShards(ctx);
-        return;
-    }
-
-    Y_ABORT_UNLESS(ShardsToAlter);
-    if (--ShardsToAlter == 0) {
-        CreateShards(ctx);
-    } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
-        if (NextShardToAlter < ExistingTotalShardCount) {
-            AlterShard(ctx, NextShardToAlter);
-            ++NextShardToAlter;
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TResizeFileStoreActor::GetFileSystemTopology(const TActorContext& ctx)
-{
-    auto request =
-        std::make_unique<TEvIndexTablet::TEvGetFileSystemTopologyRequest>();
-    request->Record.SetFileSystemId(FileSystemId);
-
-    NCloud::Send(
-        ctx,
-        MakeIndexTabletProxyServiceId(),
-        std::move(request));
-}
-
-void TResizeFileStoreActor::HandleGetFileSystemTopologyResponse(
-    const TEvIndexTablet::TEvGetFileSystemTopologyResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    auto* msg = ev->Get();
-    if (HasError(msg->GetError())) {
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] Getting file system topology failed: %s",
-            FileSystemId.c_str(),
-            FormatError(msg->GetError()).Quote().c_str());
-
-        ReplyAndDie(ctx, msg->GetError());
-        return;
-    }
-
-    DirectoryCreationInShardsEnabled =
-        EnableDirectoryCreationInShards ||
-        msg->Record.GetDirectoryCreationInShardsEnabled();
-    DirectoryCreationInShardsForced =
-        ForceDirectoryCreationInShards ||
-        msg->Record.GetForceDirectoryCreationInShards();
-    StrictFileSystemSizeEnforcementEnabled =
-        EnableStrictFileSystemSizeEnforcement ||
-        msg->Record.GetStrictFileSystemSizeEnforcementEnabled();
-    MaxShardCount = msg->Record.GetMaxShardCount();
-
-    // A shard has no shards of its own, its topology lists the sibling shards.
-    if (!msg->Record.GetShardNo()) {
-        ShardTopology = GetShardTopology(msg->Record);
-        ExistingTotalShardCount = ShardTopology.ShardsSize();
-        if (auto error = CollectFastShardStats(); HasError(error)) {
-            ReplyAndDie(ctx, error);
-            return;
-        }
-
-        ExistingOrdinaryShardCount =
-            ExistingTotalShardCount - ExistingFastShardCount;
-    }
-
-    if (auto error = ValidateOrdinaryShards(); HasError(error)) {
-        ReplyAndDie(ctx, error);
-        return;
-    }
-
-    if (auto error = ValidateFastShards(); HasError(error)) {
-        ReplyAndDie(ctx, error);
-        return;
-    }
-
-    ui64 totalShardCount = ExistingTotalShardCount;
-    if (ExplicitOrdinaryShardCount) {
-        totalShardCount += ExplicitOrdinaryShardCount - ExistingOrdinaryShardCount;
-    }
-
-    if (ExistingFastShardCount) {
-        if (ExplicitFastShardCount) {
-            NewFastShardCount = ExplicitFastShardCount - ExistingFastShardCount;
-        } else {
-            NewFastShardCount = CalculateRequiredNewFastShardCount();
-        }
-
-        totalShardCount += NewFastShardCount;
-    }
-
-    if (auto error = ValidateTotalShards(totalShardCount); HasError(error)) {
-        ReplyAndDie(ctx, error);
-        return;
-    }
-
-    // Automatic shard creation chooses the shard count by the size. It does
-    // not apply to explicit counts and to a filesystem with fast shards.
-    ui32 shardCount = totalShardCount;
+    // Without an explicit count automatic shard creation chooses it by the
+    // size. Requested counts and fast shards make the count explicit.
+    ui32 explicitShardCount = totalShardCount;
     if (StorageConfig->GetAutomaticShardCreationEnabled() &&
         !ExplicitOrdinaryShardCount && !ExplicitFastShardCount &&
         !ExistingFastShardCount)
     {
-        shardCount = 0;
+        explicitShardCount = 0;
     }
 
-    PatchStorageConfig();
-    if (auto error = FillMultiShardFileStoreConfig(shardCount); HasError(error)) {
-        ReplyAndDie(ctx, error);
-        return;
+    auto result = SetupFileStoreConfig(explicitShardCount);
+    if (HasError(result)) {
+        return result.GetError();
     }
+    auto fileStoreConfig = result.ExtractResult();
 
-    if (SevenBytesHandlesCount > 0 &&
+    if (StorageConfig->GetOneByteShardCountCapEnabled() &&
         ExistingTotalShardCount <= MaxOneByteShardCount &&
-        FileStoreConfig.ShardConfigs.size() > MaxOneByteShardCount)
+        fileStoreConfig.ShardConfigs.size() > MaxOneByteShardCount)
     {
         // The capped shard count cannot hold the new fast shards.
         if (NewFastShardCount) {
-            ReplyAndDie(
-                ctx,
-                MakeError(
-                    E_PRECONDITION_FAILED,
-                    "Cannot add fast shards if the shard count is capped"));
-            return;
+            return MakeError(
+                E_PRECONDITION_FAILED,
+                "Cannot add fast shards if the shard count is capped");
         }
 
-        ReportTryingToUseTwoBytesShardNoWithObsoleteHandles(
-            TStringBuilder()
-            << "Filesystem: " << FileSystemId
-            << ". Cannot increase the shard count to more than 255 if there "
-               "are handles with the non-zero 7th byte.");
-
-        if (auto error = FillMultiShardFileStoreConfig(MaxOneByteShardCount);
-            HasError(error))
-        {
-            ReplyAndDie(ctx, error);
-            return;
+        auto capped = SetupFileStoreConfig(MaxOneByteShardCount);
+        if (HasError(capped)) {
+            return capped.GetError();
         }
+        fileStoreConfig = capped.ExtractResult();
     }
 
-    if (FileStoreConfig.ShardConfigs.size() < ExistingTotalShardCount) {
-        if (!StrictFileSystemSizeEnforcementEnabled ||
+    if (fileStoreConfig.ShardConfigs.size() < ExistingTotalShardCount) {
+        if (!StorageConfig->GetStrictFileSystemSizeEnforcementEnabled() ||
             ExplicitOrdinaryShardCount)
         {
-            ReplyAndDie(
-                ctx,
-                MakeError(
-                    E_ARGUMENT,
-                    TStringBuilder()
-                        << "Cannot decrease number of shards: current="
-                        << ExistingTotalShardCount
-                        << ", requested="
-                        << FileStoreConfig.ShardConfigs.size()));
-            return;
-        } else {
-            // We can't reduce shards count but in strict mode we should resize
-            // all the shards to have the same size as the main filesystem.
-            // So, FileStoreConfig.ShardConfigs should have the same size as
-            // ExistingTotalShardCount.
-            FileStoreConfig.ShardConfigs.clear();
-            FileStoreConfig = SetupMultiShardFileStorePerformanceAndChannels(
-                *StorageConfig,
-                FileStoreConfig.MainFileSystemConfig,
-                PerformanceProfile,
-                ExistingTotalShardCount);
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "Cannot decrease number of shards: current="
+                    << ExistingTotalShardCount << ", requested="
+                    << fileStoreConfig.ShardConfigs.size());
+        }
+
+        // A strict filesystem keeps its shards, each of the filesystem size.
+        fileStoreConfig = SetupMultiShardFileStorePerformanceAndChannels(
+            *StorageConfig,
+            fileStoreConfig.MainFileSystemConfig,
+            Request.GetPerformanceProfile(),
+            ExistingTotalShardCount);
+    }
+
+    for (ui32 i = 0; i < ExistingTotalShardCount; ++i) {
+        const auto& shardId = ShardTopology.GetShards(i).GetShardId();
+        const auto& targetShardId =
+            fileStoreConfig.ShardConfigs[i].GetFileSystemId();
+        if (shardId != targetShardId) {
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "Shard FileSystemId mismatch at pos " << i << ": "
+                    << shardId << " != " << targetShardId);
         }
     }
 
-    LOG_INFO(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "[%s] Will resize filesystem to have %u shards",
-        FileSystemId.c_str(),
-        FileStoreConfig.ShardConfigs.size());
+    return fileStoreConfig;
+}
 
-    const ui32 shardsToCheck = msg->Record.GetShardNo()
-                                   ? 0
-                                   : Min<ui32>(
-                                         ExistingTotalShardCount,
-                                         FileStoreConfig.ShardConfigs.size());
-    for (ui32 i = 0; i < shardsToCheck; ++i) {
-        if (ShardTopology.GetShards(i).GetShardId() !=
-            FileStoreConfig.ShardConfigs[i].GetFileSystemId())
-        {
-            ReplyAndDie(
-                ctx,
-                MakeError(
-                    E_INVALID_STATE,
-                    TStringBuilder()
-                        << "Shard FileSystemId mismatch at pos " << i << ": "
-                        << ShardTopology.GetShards(i).GetShardId() << " != "
-                        << FileStoreConfig.ShardConfigs[i].GetFileSystemId()));
-            return;
-        }
+auto TResizeFileStoreActor::SetupFileStoreConfig(ui32 explicitShardCount) const
+    -> TResultOrError<TMultiShardFileStoreConfig>
+{
+    const auto& mainConfig = Described.Config.MainFileSystemConfig;
+    if (mainConfig.GetBlocksCount() > Request.GetBlocksCount() &&
+        !Request.GetForce())
+    {
+        return MakeError(E_ARGUMENT, "Cannot decrease filestore size");
     }
 
-    // Set shards size equal to the file system size in case of
-    // StrictFileSystemSizeEnforcement
-    if (StrictFileSystemSizeEnforcementEnabled) {
-        for (auto& shard: FileStoreConfig.ShardConfigs) {
-            shard.SetBlocksCount(TargetConfig.GetBlocksCount());
-        }
-    }
+    // Allocate legacy mixed0 channel in case it was already present
+    Y_ABORT_UNLESS(mainConfig.ExplicitChannelProfilesSize() >= 4);
+    const auto thirdChannelDataKind = static_cast<EChannelDataKind>(
+        mainConfig.GetExplicitChannelProfiles(3).GetDataKind());
+    const bool allocateMixed0 =
+        thirdChannelDataKind == EChannelDataKind::Mixed0;
 
-    if (msg->Record.GetShardNo()) {
-        LOG_WARN(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] GetFileSystemTopology - resized a shard (%u), no subshards"
-            " will be added",
-            FileSystemId.c_str(),
-            msg->Record.GetShardNo());
-        Y_ABORT_UNLESS(
-            CreateConfig.ShardsToCreate.empty() &&
-            ShardsToConfigure == 0 &&
-            ShardsToAlter == 0 && ShardsToDescribe == 0 &&
-            !ShouldConfigureMainFileStore);
+    auto targetConfig = mainConfig;
+    targetConfig.SetBlocksCount(Request.GetBlocksCount());
 
-        if (StrictFileSystemSizeEnforcementEnabled) {
-            ReplyAndDie(
-                ctx,
-                MakeError(
-                    E_ARGUMENT,
-                    "Cannot change shard size if "
-                    "'StrictFileSystemSizeEnforcementEnabled'"));
-            return;
-        }
+    // The filesystem is sharded if automatic shard creation is enabled or if
+    // it was created with an explicitly specified shard count. A shard is not.
+    const bool sharded = !Described.Topology.GetShardNo() &&
+        (StorageConfig->GetAutomaticShardCreationEnabled() ||
+            explicitShardCount > 0);
 
-        // A fast shard keeps the size its devices were allocated for.
-        const auto topology = GetShardTopology(msg->Record);
-        const ui32 shardIndex = msg->Record.GetShardNo() - 1;
-        if (shardIndex < topology.ShardsSize() &&
-            topology.GetShards(shardIndex).GetType() ==
-                NProtoPrivate::TShardTopology::E_FASTSHARD)
-        {
-            ReplyAndDie(
-                ctx,
-                MakeError(E_ARGUMENT, "Cannot resize fast shard"));
-            return;
-        }
-
-        FileStoreConfig.ShardConfigs.clear();
-
+    TMultiShardFileStoreConfig result;
+    if (!allocateMixed0 && sharded) {
+        result = SetupMultiShardFileStorePerformanceAndChannels(
+            *StorageConfig,
+            targetConfig,
+            Request.GetPerformanceProfile(),
+            explicitShardCount);
     } else {
-        LOG_INFO(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] Will resize filesystem to have %u shards",
-            FileSystemId.c_str(),
-            FileStoreConfig.ShardConfigs.size());
+        SetupFileStorePerformanceAndChannels(
+            allocateMixed0,
+            *StorageConfig,
+            targetConfig,
+            Request.GetPerformanceProfile());
+        result.MainFileSystemConfig = targetConfig;
+    }
 
-        using TShardTopology = NProtoPrivate::TShardTopology;
+    if (const auto version = Request.GetConfigVersion()) {
+        result.MainFileSystemConfig.SetVersion(version);
+    }
 
-        CreateConfig.FileSystemId = FileSystemId;
-        CreateConfig.ExistingShardCount = ExistingTotalShardCount;
+    return result;
+}
 
-        // TODO(#8034): use the main filestore config topology once it is there
-        // The new fast shards are the last ones.
-        const auto& shardConfigs = FileStoreConfig.ShardConfigs;
-        const ui32 fastShardsBegin = shardConfigs.size() - NewFastShardCount;
-        for (ui32 i = ExistingTotalShardCount; i < shardConfigs.size(); ++i) {
-            auto& shard = CreateConfig.ShardsToCreate.emplace_back();
-            shard.Config = shardConfigs[i];
-            if (i < fastShardsBegin) {
-                shard.Type = TShardTopology::E_ORDINARY;
-                shard.RoleMask = ProtoFlag(TShardTopology::E_FILE) |
-                    ProtoFlag(TShardTopology::E_DIRECTORY);
-            } else {
-                shard.Type = TShardTopology::E_FASTSHARD;
-                shard.RoleMask = ProtoFlag(TShardTopology::E_FILE);
-                shard.FastShardStorageKind = FastShardStorageKind;
-            }
-        }
+// The shards of a strict filesystem have the filesystem size.
+TVector<NKikimrFileStore::TConfig> TResizeFileStoreActor::BuildShardConfigs() const
+{
+    TVector<NKikimrFileStore::TConfig> result;
+    for (auto shardConfig: Described.Config.ShardConfigs) {
+        const ui64 version = shardConfig.GetVersion();
+        shardConfig.SetBlocksCount(Request.GetBlocksCount());
+        // A described shard can have more channels than the calculated ones.
+        SetupFileStorePerformanceAndChannels(
+            false,   // allocateMixed0Channel
+            *StorageConfig,
+            shardConfig,
+            Request.GetPerformanceProfile());
+        shardConfig.SetVersion(version);
+        result.push_back(std::move(shardConfig));
+    }
 
-        // A resize without new shards is checked against the saved state too.
-        if (ShardCreationState) {
-            auto state =
-                InitShardCreationState(*ShardCreationState, CreateConfig);
-            if (HasError(state)) {
-                ReplyAndDie(ctx, state.GetError());
-                return;
-            }
-            CreateConfig.State = state.ExtractResult();
-        }
+    return result;
+}
 
-        if (!CreateConfig.ShardsToCreate.empty() ||
-            EnableStrictFileSystemSizeEnforcement ||
-            EnableDirectoryCreationInShards)
-        {
-            ShouldConfigureMainFileStore = true;
-            ShardsToConfigure = FileStoreConfig.ShardConfigs.size();
-        }
+TResultOrError<TMultiShardCreateConfig> TResizeFileStoreActor::MakeCreateConfig(
+    const TVector<NKikimrFileStore::TConfig>& shardConfigs) const
+{
+    using TShardTopology = NProtoPrivate::TShardTopology;
 
-        // The shards are resized only if
-        // StrictFileSystemSizeEnforcementEnabled, otherwise the shards don't
-        // change their size.
-        if (StrictFileSystemSizeEnforcementEnabled) {
-            ShardsToDescribe = ExistingTotalShardCount;
-            ShardsToAlter = ExistingTotalShardCount;
+    TMultiShardCreateConfig config;
+    config.FileSystemId = Request.GetFileSystemId();
+    config.ExistingShardCount = ExistingTotalShardCount;
+
+    // The new fast shards are the last ones.
+    const ui32 fastShardsBegin = shardConfigs.size() - NewFastShardCount;
+    for (ui32 i = ExistingTotalShardCount; i < shardConfigs.size(); ++i) {
+        auto& shard = config.ShardsToCreate.emplace_back();
+        shard.Config = shardConfigs[i];
+        if (i < fastShardsBegin) {
+            shard.Type = TShardTopology::E_ORDINARY;
+            shard.RoleMask = ProtoFlag(TShardTopology::E_FILE) |
+                ProtoFlag(TShardTopology::E_DIRECTORY);
+        } else {
+            shard.Type = TShardTopology::E_FASTSHARD;
+            shard.RoleMask = ProtoFlag(TShardTopology::E_FILE);
+            shard.FastShardStorageKind = FastShardStorageKind;
         }
     }
 
-    DescribeShards(ctx);
+    if (Described.ShardCreationState) {
+        auto state =
+            InitShardCreationState(*Described.ShardCreationState, config);
+        if (HasError(state)) {
+            return state.GetError();
+        }
+        config.State = state.ExtractResult();
+    }
+
+    return config;
+}
+
+TMultiShardConfigureConfig TResizeFileStoreActor::MakeConfigureConfig() const
+{
+    const auto& state = Described.Topology;
+
+    TMultiShardConfigureConfig config;
+    config.FileSystemId = Request.GetFileSystemId();
+    config.Topology = ShardTopology;
+    config.ExistingShardCount = ExistingTotalShardCount;
+    config.DirectoryCreationInShardsEnabled =
+        Request.GetEnableDirectoryCreationInShards() ||
+        state.GetDirectoryCreationInShardsEnabled();
+    config.ForceDirectoryCreationInShards =
+        Request.GetForceDirectoryCreationInShards() ||
+        state.GetForceDirectoryCreationInShards();
+    config.StrictFileSystemSizeEnforcementEnabled =
+        StorageConfig->GetStrictFileSystemSizeEnforcementEnabled();
+    return config;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TResizeFileStoreActor::CreateShards(const TActorContext& ctx)
+void TResizeFileStoreActor::HandleMultiShardAlterResponse(
+    const TEvServicePrivate::TEvMultiShardAlterResponse::TPtr& ev,
+    const TActorContext& ctx)
 {
-    if (CreateConfig.ShardsToCreate.empty()) {
+    const auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+
+    if (!Plan.Create) {
         ConfigureShards(ctx);
         return;
     }
 
-    NCloud::Register(
-        ctx,
-        CreateMultiShardCreateActor(
-            StorageConfig,
-            SelfId(),
-            std::move(CreateConfig)));
+    auto actor = CreateMultiShardCreateActor(
+        StorageConfig,
+        SelfId(),
+        std::move(*Plan.Create));
+    Worker = NCloud::Register(ctx, std::move(actor));
 }
 
 void TResizeFileStoreActor::HandleMultiShardCreateResponse(
     const TEvServicePrivate::TEvMultiShardCreateResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* msg = ev->Get();
+    const auto* msg = ev->Get();
     if (HasError(msg->GetError())) {
         ReplyAndDie(ctx, msg->GetError());
         return;
     }
 
-    ShardTopology.MergeFrom(msg->Topology);
-
+    Plan.Configure->Topology.MergeFrom(msg->Topology);
     ConfigureShards(ctx);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
 void TResizeFileStoreActor::ConfigureShards(const TActorContext& ctx)
 {
-    if (ShardsToConfigure == 0) {
-        ConfigureMainFileStore(ctx);
-        return;
-    }
-
-    const ui32 totalShardCount = FileStoreConfig.ShardConfigs.size();
-
-    if (ExistingTotalShardCount < totalShardCount) {
-        ConfigureShardRange(
-            ctx,
-            ExistingTotalShardCount,
-            totalShardCount,
-            EShardConfigPhase::NewShards);
-    } else {
-        // No new shards (e.g. a resize that only toggles strict-size /
-        // directory-creation-in-shards) - configure the existing shards now.
-        ConfigureShardRange(
-            ctx,
-            0,
-            ExistingTotalShardCount,
-            EShardConfigPhase::OldShards);
-    }
-}
-
-void TResizeFileStoreActor::ConfigureShardRange(
-    const TActorContext& ctx,
-    const ui32 beginShardIndex,
-    const ui32 endShardIndex,
-    const EShardConfigPhase phase)
-{
-    ShardConfigPhase = phase;
-    EndShardToConfigure = endShardIndex;
-    NextShardToConfigure = beginShardIndex;
-    ShardsToConfigure = endShardIndex - beginShardIndex;
-
-    const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
-    const ui32 cappedEndIndex =
-        (limit == 0)
-            ? endShardIndex
-            : std::min<ui32>(beginShardIndex + limit, endShardIndex);
-
-    for (ui32 i = beginShardIndex; i < cappedEndIndex; ++i) {
-        ConfigureShard(ctx, i);
-        NextShardToConfigure = i + 1;
-    }
-}
-
-void TResizeFileStoreActor::ConfigureShard(
-    const TActorContext& ctx,
-    const ui32 shardIndex)
-{
-    auto request =
-        std::make_unique<TEvIndexTablet::TEvConfigureAsShardRequest>();
-    request->Record.SetFileSystemId(
-        FileStoreConfig.ShardConfigs[shardIndex].GetFileSystemId());
-    request->Record.SetShardNo(shardIndex + 1);
-    request->Record.SetMainFileSystemId(FileSystemId);
-    request->Record.SetDirectoryCreationInShardsEnabled(
-        DirectoryCreationInShardsEnabled);
-    request->Record.SetForceDirectoryCreationInShards(
-        DirectoryCreationInShardsForced);
-    request->Record.SetStrictFileSystemSizeEnforcementEnabled(
-        StrictFileSystemSizeEnforcementEnabled);
-
-    if (DirectoryCreationInShardsEnabled ||
-        StrictFileSystemSizeEnforcementEnabled)
-    {
-        for (const auto& shard: FileStoreConfig.ShardConfigs) {
-            request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
-        }
-        *request->Record.MutableShardTopology() = ShardTopology;
-    }
-
-    // Only a new fast shard gets its config, the existing ones keep theirs.
-    const auto& shard = ShardTopology.GetShards(shardIndex);
-    if (shardIndex >= ExistingTotalShardCount && shard.HasFastShardConfig()) {
-        request->Record.SetIsFastShard(true);
-        *request->Record.MutableFastShardConfig() = shard.GetFastShardConfig();
-    }
-
-    LOG_INFO(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "[%s] Configuring shard %s",
-        FileSystemId.c_str(),
-        request->Record.Utf8DebugString().Quote().c_str());
-
-    NCloud::Send(
-        ctx,
-        MakeIndexTabletProxyServiceId(),
-        std::move(request),
-        shardIndex   // cookie
-    );
-}
-
-void TResizeFileStoreActor::HandleConfigureShardResponse(
-    const TEvIndexTablet::TEvConfigureAsShardResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-    const bool isCookieValid = ev->Cookie < FileStoreConfig.ShardConfigs.size();
-    if (HasError(msg->GetError())) {
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] Shard %s (cookie: %lu) configuration failed: %s",
-            FileSystemId.c_str(),
-            GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str(),
-            ev->Cookie,
-            FormatError(msg->GetError()).Quote().c_str());
-
-        ReplyAndDie(ctx, msg->GetError());
-        return;
-    }
-
-    if (!isCookieValid) {
-        ReportInvalidCookieAndDie(ctx, ev->Cookie);
-        return;
-    }
-
-    LOG_INFO(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "[%s] Configured shard %s",
-        FileSystemId.c_str(),
-        FileStoreConfig.ShardConfigs[ev->Cookie].GetFileSystemId().c_str());
-
-    Y_DEBUG_ABORT_UNLESS(ShardsToConfigure);
-    if (--ShardsToConfigure == 0) {
-        if (ShardConfigPhase == EShardConfigPhase::NewShards
-                && ExistingTotalShardCount > 0)
-        {
-            // The newly created shards are all configured now - configure the
-            // pre-existing shards so that they pick up the new shard list.
-            ConfigureShardRange(
-                ctx,
-                0,
-                ExistingTotalShardCount,
-                EShardConfigPhase::OldShards);
-        } else {
-            ConfigureMainFileStore(ctx);
-        }
-    } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
-        if (NextShardToConfigure < EndShardToConfigure) {
-            ConfigureShard(ctx, NextShardToConfigure);
-            ++NextShardToConfigure;
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void TResizeFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
-{
-    // As a shard is being resized, we can't send ConfigureShardsRequest to it
-    if (!ShouldConfigureMainFileStore) {
+    if (!Plan.Configure) {
         ReplyAndDie(ctx);
         return;
     }
 
-    auto request =
-        std::make_unique<TEvIndexTablet::TEvConfigureShardsRequest>();
-    request->Record.SetFileSystemId(
-        FileStoreConfig.MainFileSystemConfig.GetFileSystemId());
-    request->Record.SetDirectoryCreationInShardsEnabled(
-        DirectoryCreationInShardsEnabled);
-    request->Record.SetForceDirectoryCreationInShards(
-        DirectoryCreationInShardsForced);
-    request->Record.SetStrictFileSystemSizeEnforcementEnabled(
-        StrictFileSystemSizeEnforcementEnabled);
-
-    for (const auto& shard: FileStoreConfig.ShardConfigs) {
-        request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
-    }
-    *request->Record.MutableShardTopology() = ShardTopology;
-
-    LOG_INFO(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "[%s] Configuring main filesystem %s",
-        FileSystemId.c_str(),
-        request->Record.Utf8DebugString().Quote().c_str());
-
-    NCloud::Send(
-        ctx,
-        MakeIndexTabletProxyServiceId(),
-        std::move(request));
+    auto actor = CreateMultiShardConfigureActor(
+        StorageConfig,
+        SelfId(),
+        std::move(*Plan.Configure));
+    Worker = NCloud::Register(ctx, std::move(actor));
 }
 
-void TResizeFileStoreActor::HandleConfigureMainFileStoreResponse(
-    const TEvIndexTablet::TEvConfigureShardsResponse::TPtr& ev,
+void TResizeFileStoreActor::HandleMultiShardConfigureResponse(
+    const TEvServicePrivate::TEvMultiShardConfigureResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
-    if (HasError(msg->GetError())) {
-        LOG_ERROR(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] Configuring main filesystem failed: %s",
-            FileSystemId.c_str(),
-            FormatError(msg->GetError()).Quote().c_str());
-
-        ReplyAndDie(ctx, msg->GetError());
-        return;
-    }
-
-    LOG_INFO(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "[%s] Configured main filesystem",
-        FileSystemId.c_str());
-
-    ReplyAndDie(ctx);
+    ReplyAndDie(ctx, ev->Get()->GetError());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1265,6 +704,7 @@ void TResizeFileStoreActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
+    NCloud::Send(ctx, Worker, std::make_unique<TEvents::TEvPoisonPill>());
     ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"));
 }
 
@@ -1272,51 +712,45 @@ void TResizeFileStoreActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvResizeFileStoreResponse>(
-        error);
+    if (HasError(error)) {
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] Resizing filesystem failed: %s",
+            Request.GetFileSystemId().c_str(),
+            FormatError(error).c_str());
+    } else {
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] Resized filesystem",
+            Request.GetFileSystemId().c_str());
+    }
 
-    NCloud::Reply(ctx, *RequestInfo, std::move(response));
+    NCloud::Reply(
+        ctx,
+        *RequestInfo,
+        std::make_unique<TEvService::TEvResizeFileStoreResponse>(error));
     Die(ctx);
 }
 
-void TResizeFileStoreActor::ReportInvalidCookieAndDie(const TActorContext& ctx, ui64 cookie)
-{
-    ReplyAndDie(
-        ctx,
-        MakeError(
-            E_INVALID_STATE,
-            TStringBuilder() << "invalid cookie: " << cookie));
-}
-
-STFUNC(TResizeFileStoreActor::ResizeStateWork)
+STFUNC(TResizeFileStoreActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(
-            TEvSSProxy::TEvDescribeFileStoreResponse,
-            HandleDescribeFileStoreResponse);
+            TEvServicePrivate::TEvMultiShardDescribeResponse,
+            HandleMultiShardDescribeResponse);
         HFunc(
-            TEvSSProxy::TEvAlterFileStoreResponse,
-            HandleAlterFileStoreResponse);
-        HFunc(
-            TEvIndexTablet::TEvGetFileSystemTopologyResponse,
-            HandleGetFileSystemTopologyResponse);
-        HFunc(
-            TEvIndexTablet::TEvGetStorageStatsResponse,
-            HandleGetStorageStatsResponse);
+            TEvServicePrivate::TEvMultiShardAlterResponse,
+            HandleMultiShardAlterResponse);
         HFunc(
             TEvServicePrivate::TEvMultiShardCreateResponse,
             HandleMultiShardCreateResponse);
         HFunc(
-            TEvIndexTablet::TEvConfigureAsShardResponse,
-            HandleConfigureShardResponse);
-        HFunc(
-            TEvIndexTablet::TEvConfigureShardsResponse,
-            HandleConfigureMainFileStoreResponse);
-        HFunc(
-            TEvIndexTablet::TEvUnsafeChangeTabletStateResponse,
-            HandleShardCreationStateResponse);
+            TEvServicePrivate::TEvMultiShardConfigureResponse,
+            HandleMultiShardConfigureResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -1344,17 +778,14 @@ void TStorageServiceActor::HandleResizeFileStore(
 
     InitProfileLogRequestInfo(inflight->AccessProfileLogRequest(), msg->Record);
 
-    auto requestInfo = CreateRequestInfo(
-        SelfId(),
-        cookie,
-        msg->CallContext);
+    auto requestInfo = CreateRequestInfo(SelfId(), cookie, msg->CallContext);
 
-    auto actor = std::make_unique<TResizeFileStoreActor>(
-        StorageConfig,
-        std::move(requestInfo),
-        msg->Record);
-
-    NCloud::Register(ctx, std::move(actor));
+    NCloud::Register(
+        ctx,
+        std::make_unique<TResizeFileStoreActor>(
+            *StorageConfig,
+            std::move(requestInfo),
+            msg->Record));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -11446,6 +11446,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(shardAllocationUnit);
         config.SetMaxShardCount(1024);
+        config.SetOneByteShardCountCapEnabled(true);
 
         const TString fsId = "test";
 
@@ -11541,15 +11542,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         WaitForTabletStart(service);
 
         // The filesystem should be resized to have 255 (MaxOneByteShardCount)
-        // shards and a critical event should be raised.
-        const auto counters =
-            env.GetCounters()->FindSubgroup("component", "service");
-        UNIT_ASSERT(counters);
-        const auto counter = counters->GetCounter(
-            "AppCriticalEvents/TryingToUseTwoBytesShardNoWithObsoleteHandles");
-
-        UNIT_ASSERT_EQUAL(1, counter->GetAtomic());
-
+        // shards.
         const auto response = GetStorageStats(service, fsId);
         const auto& stats = response.GetStats();
         UNIT_ASSERT_EQUAL(MaxOneByteShardCount, stats.GetShardStats().size());

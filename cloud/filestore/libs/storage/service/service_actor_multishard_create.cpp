@@ -549,6 +549,7 @@ void TMultiShardCreateActor::HandleSaveStateResponse(
     UpdateInFlight = false;
     ReplyIfAllDone(ctx);
 }
+
 NProto::TError TMultiShardCreateActor::CheckCookie(ui64 cookie) const
 {
     if (cookie < Config.ShardsToCreate.size()) {

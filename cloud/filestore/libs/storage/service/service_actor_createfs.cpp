@@ -1,7 +1,9 @@
 #include "service_actor.h"
 
 #include "service_actor_fastshard.h"
+#include "service_actor_multishard_configure.h"
 #include "service_actor_multishard_create.h"
+#include "service_private.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
@@ -173,15 +175,10 @@ private:
     const TStorageConfigPtr StorageConfig;
     const TRequestInfoPtr RequestInfo;
     const NProto::TCreateFileStoreRequest Request;
-    const TString& LogTag;
-    const ui32 FastShardCount;
-    TMultiShardFileStoreConfig FileStoreConfig;
-    NProtoPrivate::TShardTopology ShardTopology;
 
-    ui32 NextShardToConfigure = 0;
-    ui32 ShardsToConfigure = 0;
-
-    TMultiShardCreateConfig CreateConfig;
+    TMultiShardCreateConfig ShardsConfig;
+    // The step actor in flight.
+    TActorId Worker;
 
 public:
     TCreateFileStoreActor(
@@ -196,9 +193,9 @@ private:
 
     void CreateMainFileStore(const TActorContext& ctx);
     void CreateShards(const TActorContext& ctx);
-    void ConfigureShards(const TActorContext& ctx);
-    void ConfigureShard(const TActorContext& ctx, const ui32 shardIndex);
-    void ConfigureMainFileStore(const TActorContext& ctx);
+    void ConfigureShards(
+        const TActorContext& ctx,
+        NProtoPrivate::TShardTopology topology);
 
     void HandleCreateFileStoreResponse(
         const TEvSSProxy::TEvCreateFileStoreResponse::TPtr& ev,
@@ -212,12 +209,8 @@ private:
         const TEvServicePrivate::TEvMultiShardCreateResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleConfigureShardResponse(
-        const TEvIndexTablet::TEvConfigureAsShardResponse::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleConfigureMainFileStoreResponse(
-        const TEvIndexTablet::TEvConfigureShardsResponse::TPtr& ev,
+    void HandleMultiShardConfigureResponse(
+        const TEvServicePrivate::TEvMultiShardConfigureResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void HandlePoisonPill(
@@ -227,10 +220,6 @@ private:
     void ReplyAndDie(
         const TActorContext& ctx,
         const NProto::TError& error = {});
-
-    void ReplyAndDie(
-        const TActorContext& ctx,
-        std::unique_ptr<TEvService::TEvCreateFileStoreResponse> response);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -242,14 +231,12 @@ TCreateFileStoreActor::TCreateFileStoreActor(
     : StorageConfig(std::move(storageConfig))
     , RequestInfo(std::move(requestInfo))
     , Request(std::move(request))
-    , LogTag(Request.GetFileSystemId())
-    , FastShardCount(GetFastShardCount(*StorageConfig, Request))
 {}
 
 void TCreateFileStoreActor::Bootstrap(const TActorContext& ctx)
 {
-    CreateMainFileStore(ctx);
     Become(&TThis::StateWork);
+    CreateMainFileStore(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -269,25 +256,22 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
     if (StorageConfig->GetAutomaticShardCreationEnabled() ||
         Request.GetShardCount() > 0)
     {
-        FileStoreConfig = SetupMultiShardFileStorePerformanceAndChannels(
+        const ui32 fastShardCount = GetFastShardCount(*StorageConfig, Request);
+        auto fileStoreConfig = SetupMultiShardFileStorePerformanceAndChannels(
             *StorageConfig,
             config,
             Request.GetPerformanceProfile(),
-            Request.GetShardCount() + FastShardCount);
-        ShardsToConfigure = FileStoreConfig.ShardConfigs.size();
-        config = FileStoreConfig.MainFileSystemConfig;
+            Request.GetShardCount() + fastShardCount);
+        config = fileStoreConfig.MainFileSystemConfig;
 
         using TShardTopology = NProtoPrivate::TShardTopology;
 
-        CreateConfig.FileSystemId = Request.GetFileSystemId();
-
-        // TODO(#8034): use the main filestore config topology once it is there
         // The fast shards are the last ones.
-        const auto& shardConfigs = FileStoreConfig.ShardConfigs;
-        ui32 fastShardsBegin = shardConfigs.size() - FastShardCount;
+        auto& shardConfigs = fileStoreConfig.ShardConfigs;
+        const ui32 fastShardsBegin = shardConfigs.size() - fastShardCount;
         for (ui32 i = 0; i < shardConfigs.size(); ++i) {
-            auto& shard = CreateConfig.ShardsToCreate.emplace_back();
-            shard.Config = shardConfigs[i];
+            auto& shard = ShardsConfig.ShardsToCreate.emplace_back();
+            shard.Config = std::move(shardConfigs[i]);
             if (i < fastShardsBegin) {
                 shard.Type = TShardTopology::E_ORDINARY;
                 shard.RoleMask = ProtoFlag(TShardTopology::E_FILE) |
@@ -302,18 +286,18 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
         LOG_INFO(
             ctx,
             TFileStoreComponents::SERVICE,
-            "[%s] Will create filesystem with %u shards",
-            LogTag.c_str(),
-            FileStoreConfig.ShardConfigs.size());
+            "[%s] Will create filesystem with %lu shards",
+            Request.GetFileSystemId().c_str(),
+            ShardsConfig.ShardsToCreate.size());
     } else {
         SetupFileStorePerformanceAndChannels(
             false,  // do not allocate mixed0 channel
             *StorageConfig,
             config,
             Request.GetPerformanceProfile());
-
-        FileStoreConfig.MainFileSystemConfig = config;
     }
+
+    ShardsConfig.FileSystemId = Request.GetFileSystemId();
 
     auto request = std::make_unique<TEvSSProxy::TEvCreateFileStoreRequest>(
         std::move(config));
@@ -323,102 +307,30 @@ void TCreateFileStoreActor::CreateMainFileStore(const TActorContext& ctx)
 
 void TCreateFileStoreActor::CreateShards(const TActorContext& ctx)
 {
-    NCloud::Register(
-        ctx,
-        CreateMultiShardCreateActor(
-            StorageConfig,
-            SelfId(),
-            std::move(CreateConfig)));
+    auto actor = CreateMultiShardCreateActor(
+        StorageConfig,
+        SelfId(),
+        std::move(ShardsConfig));
+    Worker = NCloud::Register(ctx, std::move(actor));
 }
 
-void TCreateFileStoreActor::ConfigureShards(const TActorContext& ctx)
-{
-    NextShardToConfigure = 0;
-    const ui32 limit = StorageConfig->GetMaxShardManagementRequestsInFlight();
-    const ui32 endShardIndex = (limit == 0)
-                                   ? FileStoreConfig.ShardConfigs.size()
-                                   : std::min<ui32>(
-                                         NextShardToConfigure + limit,
-                                         FileStoreConfig.ShardConfigs.size());
-    for (ui32 i = 0; i < endShardIndex; ++i) {
-        ConfigureShard(ctx, i);
-        NextShardToConfigure = i + 1;
-    }
-}
-
-void TCreateFileStoreActor::ConfigureShard(
+void TCreateFileStoreActor::ConfigureShards(
     const TActorContext& ctx,
-    const ui32 shardIndex)
+    NProtoPrivate::TShardTopology topology)
 {
-    auto request =
-        std::make_unique<TEvIndexTablet::TEvConfigureAsShardRequest>();
-    request->Record.SetFileSystemId(
-        FileStoreConfig.ShardConfigs[shardIndex].GetFileSystemId());
-    request->Record.SetShardNo(shardIndex + 1);
-    request->Record.SetMainFileSystemId(Request.GetFileSystemId());
-    request->Record.SetDirectoryCreationInShardsEnabled(
-        StorageConfig->GetDirectoryCreationInShardsEnabled());
-    request->Record.SetStrictFileSystemSizeEnforcementEnabled(
-        StorageConfig->GetStrictFileSystemSizeEnforcementEnabled());
+    TMultiShardConfigureConfig config;
+    config.FileSystemId = Request.GetFileSystemId();
+    config.Topology = std::move(topology);
+    config.DirectoryCreationInShardsEnabled =
+        StorageConfig->GetDirectoryCreationInShardsEnabled();
+    config.StrictFileSystemSizeEnforcementEnabled =
+        StorageConfig->GetStrictFileSystemSizeEnforcementEnabled();
 
-    if (StorageConfig->GetDirectoryCreationInShardsEnabled() ||
-        StorageConfig->GetStrictFileSystemSizeEnforcementEnabled())
-    {
-        for (const auto& shard: FileStoreConfig.ShardConfigs) {
-            request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
-        }
-        *request->Record.MutableShardTopology() = ShardTopology;
-    }
-
-    const auto& shard = ShardTopology.GetShards(shardIndex);
-    if (shard.HasFastShardConfig()) {
-        request->Record.SetIsFastShard(true);
-        *request->Record.MutableFastShardConfig() = shard.GetFastShardConfig();
-    }
-
-    LOG_INFO(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "[%s] Configuring shard %s",
-        LogTag.c_str(),
-        request->Record.Utf8DebugString().Quote().c_str());
-
-    NCloud::Send(
-        ctx,
-        MakeIndexTabletProxyServiceId(),
-        std::move(request),
-        shardIndex   // cookie
-    );
-}
-
-void TCreateFileStoreActor::ConfigureMainFileStore(const TActorContext& ctx)
-{
-    auto request =
-        std::make_unique<TEvIndexTablet::TEvConfigureShardsRequest>();
-    request->Record.SetFileSystemId(
-        FileStoreConfig.MainFileSystemConfig.GetFileSystemId());
-    request->Record.SetDirectoryCreationInShardsEnabled(
-        StorageConfig->GetDirectoryCreationInShardsEnabled());
-    request->Record.SetStrictFileSystemSizeEnforcementEnabled(
-        StorageConfig->GetStrictFileSystemSizeEnforcementEnabled());
-
-    request->Record.MutableShardFileSystemIds()->Reserve(FileStoreConfig.ShardConfigs.size());
-    for (const auto& shard: FileStoreConfig.ShardConfigs) {
-        request->Record.AddShardFileSystemIds(shard.GetFileSystemId());
-    }
-    *request->Record.MutableShardTopology() = ShardTopology;
-
-    LOG_INFO(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "[%s] Configuring main filesystem %s",
-        LogTag.c_str(),
-        request->Record.Utf8DebugString().Quote().c_str());
-
-    NCloud::Send(
-        ctx,
-        MakeIndexTabletProxyServiceId(),
-        std::move(request));
+    auto actor = CreateMultiShardConfigureActor(
+        StorageConfig,
+        SelfId(),
+        std::move(config));
+    Worker = NCloud::Register(ctx, std::move(actor));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -430,13 +342,6 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
     const auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
-        LOG_WARN(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] Filesystem creation error: %s",
-            LogTag.c_str(),
-            FormatError(msg->GetError()).Quote().c_str());
-
         ReplyAndDie(ctx, msg->GetError());
         return;
     }
@@ -445,38 +350,39 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
         ctx,
         TFileStoreComponents::SERVICE,
         "[%s] Created main filesystem",
-        LogTag.c_str());
+        Request.GetFileSystemId().c_str());
 
-    if (!CreateConfig.ShardsToCreate.empty()) {
-        if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
-            auto request = std::make_unique<
-                TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
-            request->Record.SetFileSystemId(Request.GetFileSystemId());
-            // Without a version the tablet only returns the state.
-            request->Record.MutableShardCreationState();
-            NCloud::Send(
-                ctx,
-                MakeIndexTabletProxyServiceId(),
-                std::move(request));
-        } else {
-            CreateShards(ctx);
+    if (ShardsConfig.ShardsToCreate.empty()) {
+        // A filesystem without shards still gets the flags.
+        if (StorageConfig->GetDirectoryCreationInShardsEnabled() ||
+            StorageConfig->GetStrictFileSystemSizeEnforcementEnabled())
+        {
+            ConfigureShards(ctx, {});
+            return;
         }
-        return;
-    }
-    if (StorageConfig->GetDirectoryCreationInShardsEnabled() ||
-        StorageConfig->GetStrictFileSystemSizeEnforcementEnabled())
-    {
-        // If no shards are to be created, but directory sharding or allocation
-        // of shards of filesystem size is enabled, we need to configure the
-        // main filestore in order to set the flags in the main filestore
-        ConfigureMainFileStore(ctx);
+
+        // TODO: fill filestore info
+        ReplyAndDie(ctx);
         return;
     }
 
-    auto response = std::make_unique<TEvService::TEvCreateFileStoreResponse>();
-    // TODO: fill filestore info
+    if (!StorageConfig->GetMaxShardManagementRequestsInFlight()) {
+        CreateShards(ctx);
+        return;
+    }
 
-    ReplyAndDie(ctx, std::move(response));
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] Reading shard creation state",
+        Request.GetFileSystemId().c_str());
+
+    auto request =
+        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
+    request->Record.SetFileSystemId(Request.GetFileSystemId());
+    // Without a version the tablet only returns the state.
+    request->Record.MutableShardCreationState();
+    NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
 }
 
 void TCreateFileStoreActor::HandleShardCreationStateResponse(
@@ -495,16 +401,29 @@ void TCreateFileStoreActor::HandleShardCreationStateResponse(
         return;
     }
 
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] Read shard creation state",
+        Request.GetFileSystemId().c_str());
+
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] Shard creation state: %s",
+        Request.GetFileSystemId().c_str(),
+        TProtoMessagePrinter().ToString(record).c_str());
+
     // A tablet of the previous version returns no state.
     if (record.HasShardCreationState()) {
         auto state = InitShardCreationState(
             record.GetShardCreationState(),
-            CreateConfig);
+            ShardsConfig);
         if (HasError(state)) {
             ReplyAndDie(ctx, state.GetError());
             return;
         }
-        CreateConfig.State = state.ExtractResult();
+        ShardsConfig.State = state.ExtractResult();
     }
 
     CreateShards(ctx);
@@ -514,74 +433,21 @@ void TCreateFileStoreActor::HandleMultiShardCreateResponse(
     const TEvServicePrivate::TEvMultiShardCreateResponse::TPtr& ev,
     const TActorContext& ctx)
 {
-    auto* msg = ev->Get();
-    if (HasError(msg->GetError())) {
-        ReplyAndDie(ctx, msg->GetError());
-        return;
-    }
-
-    ShardTopology.MergeFrom(msg->Topology);
-
-    ConfigureShards(ctx);
-}
-
-void TCreateFileStoreActor::HandleConfigureShardResponse(
-    const TEvIndexTablet::TEvConfigureAsShardResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto* msg = ev->Get();
-    if (HasError(msg->GetError())) {
-        LOG_WARN(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] Shard configuration error: %s",
-            LogTag.c_str(),
-            FormatError(msg->GetError()).Quote().c_str());
-
-        ReplyAndDie(ctx, msg->GetError());
-        return;
-    }
-
-    Y_ABORT_UNLESS(ev->Cookie < FileStoreConfig.ShardConfigs.size());
-
-    LOG_INFO(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "[%s] Configured shard %s",
-        LogTag.c_str(),
-        FileStoreConfig.ShardConfigs[ev->Cookie].GetFileSystemId().c_str());
-
-    Y_DEBUG_ABORT_UNLESS(ShardsToConfigure);
-    if (--ShardsToConfigure == 0) {
-        ConfigureMainFileStore(ctx);
-    } else if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
-        if (NextShardToConfigure < FileStoreConfig.ShardConfigs.size()) {
-            ConfigureShard(ctx, NextShardToConfigure);
-            ++NextShardToConfigure;
-        }
-    }
-}
-
-void TCreateFileStoreActor::HandleConfigureMainFileStoreResponse(
-    const TEvIndexTablet::TEvConfigureShardsResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
     const auto* msg = ev->Get();
     if (HasError(msg->GetError())) {
         ReplyAndDie(ctx, msg->GetError());
         return;
     }
 
-    LOG_INFO(
-        ctx,
-        TFileStoreComponents::SERVICE,
-        "[%s] Configured main filesystem",
-        LogTag.c_str());
+    ConfigureShards(ctx, msg->Topology);
+}
 
-    auto response = std::make_unique<TEvService::TEvCreateFileStoreResponse>();
+void TCreateFileStoreActor::HandleMultiShardConfigureResponse(
+    const TEvServicePrivate::TEvMultiShardConfigureResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
     // TODO: fill filestore info
-
-    ReplyAndDie(ctx, std::move(response));
+    ReplyAndDie(ctx, ev->Get()->GetError());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -591,6 +457,7 @@ void TCreateFileStoreActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
+    NCloud::Send(ctx, Worker, std::make_unique<TEvents::TEvPoisonPill>());
     ReplyAndDie(ctx, MakeError(E_REJECTED, "request cancelled"));
 }
 
@@ -598,16 +465,23 @@ void TCreateFileStoreActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    auto response = std::make_unique<TEvService::TEvCreateFileStoreResponse>(
-        error);
+    if (HasError(error)) {
+        LOG_ERROR(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] Creating filesystem failed: %s",
+            Request.GetFileSystemId().c_str(),
+            FormatError(error).c_str());
+    } else {
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] Created filesystem",
+            Request.GetFileSystemId().c_str());
+    }
 
-    ReplyAndDie(ctx, std::move(response));
-}
-
-void TCreateFileStoreActor::ReplyAndDie(
-    const TActorContext& ctx,
-    std::unique_ptr<TEvService::TEvCreateFileStoreResponse> response)
-{
+    auto response =
+        std::make_unique<TEvService::TEvCreateFileStoreResponse>(error);
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
 }
@@ -621,17 +495,14 @@ STFUNC(TCreateFileStoreActor::StateWork)
             TEvSSProxy::TEvCreateFileStoreResponse,
             HandleCreateFileStoreResponse);
         HFunc(
+            TEvIndexTablet::TEvUnsafeChangeTabletStateResponse,
+            HandleShardCreationStateResponse);
+        HFunc(
             TEvServicePrivate::TEvMultiShardCreateResponse,
             HandleMultiShardCreateResponse);
         HFunc(
-            TEvIndexTablet::TEvConfigureAsShardResponse,
-            HandleConfigureShardResponse);
-        HFunc(
-            TEvIndexTablet::TEvConfigureShardsResponse,
-            HandleConfigureMainFileStoreResponse);
-        HFunc(
-            TEvIndexTablet::TEvUnsafeChangeTabletStateResponse,
-            HandleShardCreationStateResponse);
+            TEvServicePrivate::TEvMultiShardConfigureResponse,
+            HandleMultiShardConfigureResponse);
 
         default:
             HandleUnexpectedEvent(
