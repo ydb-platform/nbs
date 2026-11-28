@@ -2035,7 +2035,7 @@ func TestRunnerForRunTaskRetryPolicy(t *testing.T) {
 			name:   "error_flag",
 			err:    unlimitedErr,
 			status: storage.TaskStatusRunning,
-			count:  2,
+			count:  1,
 		},
 		{
 			name:        "non_retriable",
