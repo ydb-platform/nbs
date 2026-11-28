@@ -223,6 +223,18 @@ build {
     inline          = ["${local.tmp_directory}/etc/nvme-loop/install.sh"]
   }
 
+  # soft-roce
+
+  provisioner "file" {
+    source      = "${path.cwd}/soft-roce"
+    destination = "${local.tmp_directory}/etc/soft-roce"
+  }
+
+  provisioner "shell" {
+    execute_command = "sudo {{ .Vars }} bash '{{ .Path }}'"
+    inline          = ["${local.tmp_directory}/etc/soft-roce/install.sh"]
+  }
+
   # tmpfs for tests
 
   provisioner "shell" {
