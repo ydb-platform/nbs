@@ -8,6 +8,8 @@ SET_APPEND(RECIPE_ARGS --regular-filesystem-scrubbing-config=cloud/disk_manager/
 
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/internal/pkg/facade/testcommon/common.inc)
 
+SPLIT_FACTOR(2)
+
 GO_XTEST_SRCS(
     ../filesystem_scrubbing_test/filesystem_scrubbing_test.go
 )
