@@ -214,11 +214,13 @@ bool PrepareCleanupTransaction(
     bool ready = true;
 
     for (const auto& item: args.CleanupQueue) {
+        const auto& recreatedBlobMeta = item.AdditionalFields.GetBlobMeta();
         // no need to read blob meta for blobs with already known blocks
         const bool hasValidMetaInCleanupQueue =
-            item.BlobMeta.HasMixedBlocks() || item.BlobMeta.HasMergedBlocks();
+            recreatedBlobMeta.HasMixedBlocks() ||
+            recreatedBlobMeta.HasMergedBlocks();
         if (hasValidMetaInCleanupQueue && args.UseRecreatedBlobMeta) {
-            blobMetas[item.BlobId] = item.BlobMeta;
+            blobMetas[item.BlobId] = recreatedBlobMeta;
             continue;
         }
 
@@ -238,8 +240,11 @@ bool PrepareCleanupTransaction(
                 continue;
             }
 
-            auto verifyResult =
-                VerifyRecreatedBlobMeta(db, item.BlobId, meta, item.BlobMeta);
+            auto verifyResult = VerifyRecreatedBlobMeta(
+                db,
+                item.BlobId,
+                meta,
+                recreatedBlobMeta);
             if (!verifyResult.Ready) {
                 ready = false;
                 continue;
@@ -252,7 +257,7 @@ bool PrepareCleanupTransaction(
                      {"tabletId", tabletId},
                      {"blobId", ToString(MakeBlobId(tabletId, item.BlobId))},
                      {"recreatedBlobMeta",
-                      item.BlobMeta.ShortUtf8DebugString()},
+                      recreatedBlobMeta.ShortUtf8DebugString()},
                      {"originalBlobMeta", meta.ShortUtf8DebugString()},
                      {"error", FormatError(verifyResult.Error)}});
             }
