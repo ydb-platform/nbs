@@ -470,7 +470,7 @@ void TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
     const TPartialBlobId& blobId,
     const TBlockRange32& blockRange,
     const TBlockMask& skipMask,
-    const std::optional<NProto::TCompressionMetadata>& compressionMetadata)
+    const std::optional<NProto::TBlobCompressionInfo>& compressionMetadata)
 {
     using TTable = TPartitionSchema::MergedBlocksIndex;
 
@@ -564,7 +564,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                 const auto skipMask = BlockMaskFromString(
                     it.template GetValueOrDefault<TTable::SkipMask>());
 
-                std::optional<NProto::TCompressionMetadata> compressionMetadata;
+                std::optional<NProto::TBlobCompressionInfo> compressionMetadata;
                 if (needsCompressionMetadata &&
                     it.template HaveValue<TTable::CompressionMetadata>())
                 {
@@ -673,7 +673,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                     const auto skipMask = BlockMaskFromString(
                         it.template GetValueOrDefault<TTable::SkipMask>());
 
-                    std::optional<NProto::TCompressionMetadata>
+                    std::optional<NProto::TBlobCompressionInfo>
                         compressionMetadata;
                     if (needsCompressionMetadata &&
                         it.template HaveValue<TTable::CompressionMetadata>())

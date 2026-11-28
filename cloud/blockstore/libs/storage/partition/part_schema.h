@@ -163,7 +163,7 @@ struct TPartitionSchema
         struct CompressionMetadata
             : public Column<7, NKikimr::NScheme::NTypeIds::String>
         {
-            using Type = NProto::TCompressionMetadata;
+            using Type = NCloud::NProto::TBlobCompressionInfo;
         };
 
         using TKey = TableKey<RangeEnd, CommitId>;

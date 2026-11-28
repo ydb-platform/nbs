@@ -232,12 +232,14 @@ Y_UNIT_TEST_SUITE(TPartitionRebuildMetadataTest)
                             blobId.BlobSize());
                         // Simulate compression without changing the
                         // logical blocks described by the blob.
-                        NProto::TCompressionMetadata compression;
+                        NProto::TBlobCompressionInfo compression;
                         compression.SetCodec(
                             NCloud::NProto::COMPRESSION_CODEC_SNAPPY);
-                        compression.SetChunkSize(blobId.BlobSize());
-                        compression.SetLastChunkSize(blobId.BlobSize());
-                        compression.MutablePlainChunks();
+                        compression.AddCompressedChunkSizes(
+                            replacementBlobSize);
+                        auto* chunks = compression.MutableRegularChunks();
+                        chunks->SetMaxUncompressedChunkSize(blobId.BlobSize());
+                        chunks->SetLastUncompressedChunkSize(blobId.BlobSize());
                         TVector<TAddMergedBlob> replacementBlobs;
                         replacementBlobs.emplace_back(
                             TPartialBlobId(

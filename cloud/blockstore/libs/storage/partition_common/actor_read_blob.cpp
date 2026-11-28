@@ -131,7 +131,6 @@ TReadPlan TReadBlobActor::GetQueries() const
         return PlanReadBlob(
             *ValidatedCompressedRead,
             Request->BlobId,
-            *Request->CompressionMetadata,
             Request->BlobOffsets);
     }
 
@@ -389,7 +388,6 @@ TResultOrError<TVector<ui32>> TReadBlobActor::DecompressReadResultToSglist(
     auto error = DecompressBlob(
         *ValidatedCompressedRead,
         compressedData,
-        *Request->CompressionMetadata,
         blockOffsets,
         sglist,
         ShouldCalculateChecksums ? &blockChecksums : nullptr);

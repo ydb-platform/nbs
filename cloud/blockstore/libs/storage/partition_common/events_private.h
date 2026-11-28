@@ -120,7 +120,7 @@ struct TEvPartitionCommonPrivate
         bool Async = false;
         TInstant Deadline;
         bool ShouldCalculateChecksums = false;
-        std::optional<NProto::TCompressionMetadata> CompressionMetadata;
+        std::optional<NProto::TBlobCompressionInfo> CompressionMetadata;
 
         TReadBlobRequest() = default;
 
@@ -133,7 +133,7 @@ struct TEvPartitionCommonPrivate
             bool async,
             TInstant deadline,
             bool shouldCalculateChecksums,
-            std::optional<NProto::TCompressionMetadata> compressionMetadata)
+            std::optional<NProto::TBlobCompressionInfo> compressionMetadata)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))

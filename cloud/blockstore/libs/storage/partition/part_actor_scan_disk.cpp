@@ -70,7 +70,7 @@ public:
                 MakeBlobId(TabletInfo.TabletID, Args.LastVisitedBlobId),
                 group);
 
-            std::optional<NProto::TCompressionMetadata> compressionMetadata;
+            std::optional<NProto::TBlobCompressionInfo> compressionMetadata;
             if (blobMeta.HasMergedBlocks() &&
                 blobMeta.GetMergedBlocks().HasCompressionMetadata())
             {

@@ -1166,13 +1166,15 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             TPartitionClient partition(*runtime);
             partition.WaitReady();
 
-            NProto::TCompressionMetadata compressionMetadata;
+            NProto::TBlobCompressionInfo compressionMetadata;
             compressionMetadata.SetCodec(
                 NCloud::NProto::COMPRESSION_CODEC_ZSTD_3);
-            compressionMetadata.SetChunkSize(2 * DefaultBlockSize);
-            compressionMetadata.SetLastChunkSize(2 * DefaultBlockSize);
-            compressionMetadata.MutablePlainChunks()->AddCompressedChunkSize(
-                123);
+            // The writer stores plain data: two raw chunks of two blocks.
+            compressionMetadata.AddCompressedChunkSizes(0);
+            compressionMetadata.AddCompressedChunkSizes(0);
+            auto* chunks = compressionMetadata.MutableRegularChunks();
+            chunks->SetMaxUncompressedChunkSize(2 * DefaultBlockSize);
+            chunks->SetLastUncompressedChunkSize(2 * DefaultBlockSize);
             ui32 readsWithCompressionMetadata = 0;
             bool patchSeen = false;
             runtime->SetObserverFunc(
