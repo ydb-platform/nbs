@@ -9,6 +9,7 @@
 #include <util/datetime/base.h>
 #include <util/generic/flags.h>
 
+#include <optional>
 #include <span>
 
 namespace NCloud {
@@ -39,6 +40,7 @@ public:
         OnlyStartEndpointRequests        = (1 << 5),
         ThrottlingHistogramsDisabled     = (1 << 6),
         DisaggregatedCountersDisabled    = (1 << 7),
+        ReportIoSize = (1 << 8),
     };
 
     using TRequestType = TDiagnosticsRequestType;
@@ -92,7 +94,8 @@ public:
         ui32 errorFlags,
         bool unaligned,
         ECalcMaxTime calcMaxTime,
-        ui64 responseSent);
+        ui64 responseSent,
+        std::optional<ui64> logicalRequestBytes = std::nullopt);
 
     void AddRetryStats(
         TRequestType requestType,
@@ -143,7 +146,8 @@ private:
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,
-        ECalcMaxTime calcMaxTime);
+        ECalcMaxTime calcMaxTime,
+        std::optional<ui64> logicalRequestBytes);
 
     bool ShouldReport(TRequestType requestType) const;
 

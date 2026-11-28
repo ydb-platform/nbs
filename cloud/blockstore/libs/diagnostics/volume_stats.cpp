@@ -314,7 +314,8 @@ private:
         const TVolumeInfoBase& volumeBase)
     {
         TRequestCounters::EOptions options =
-            TRequestCounters::EOption::OnlyReadWriteRequests;
+            TRequestCounters::EOption::OnlyReadWriteRequests |
+            TRequestCounters::EOption::ReportIoSize;
 
         auto mediaKind = volumeBase.Volume.GetStorageMediaKind();
         if (IsDiskRegistryMediaKind(mediaKind)) {
@@ -433,7 +434,8 @@ public:
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,
-        ui64 responseSent) override
+        ui64 responseSent,
+        std::optional<ui64> logicalRequestBytes) override
     {
         VolumeBase->BusyIdleCalc.OnRequestCompleted();
         VolumeBase->PerfCalc.OnRequestCompleted(
@@ -469,7 +471,8 @@ public:
             errorFlags,
             unaligned,
             ECalcMaxTime::ENABLE,
-            responseSent).Time;
+            responseSent,
+            logicalRequestBytes).Time;
     }
 
     void AddIncompleteStats(
