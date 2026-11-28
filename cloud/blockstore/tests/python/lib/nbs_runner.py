@@ -67,6 +67,7 @@ class LocalNbs(Daemon):
             access_service_type=AccessService,
             log_config=None,
             bs_failure_probability=None,
+            diagnostics_config_patch=None,
     ):
 
         if dynamic_storage_pools is not None:
@@ -122,6 +123,7 @@ class LocalNbs(Daemon):
         self.features_config_patch = features_config_patch
         self.client_config_patch = client_config_patch
         self.tracking_enabled = tracking_enabled
+        self.diagnostics_config_patch = diagnostics_config_patch
         self.ydbstats_config = ydbstats_config
         self.compute_config = compute_config
         self.kms_config = kms_config
@@ -344,6 +346,8 @@ ModifyScheme {
         diag = TDiagnosticsConfig()
         diag.ProfileLogTimeThreshold = 100
         diag.SlowRequestSamplingRate = int(self.tracking_enabled)
+        if self.diagnostics_config_patch is not None:
+            diag.MergeFrom(self.diagnostics_config_patch)
         return diag
 
     def __init_storage_txt(self, storage):

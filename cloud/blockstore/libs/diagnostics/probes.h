@@ -17,14 +17,19 @@
             "diskId"))                                                         \
     PROBE(RequestStarted,                                                      \
         GROUPS("NBSRequest"),                                                  \
-        TYPES(TString, ui32, ui64, TString, ui64, ui64),                       \
+        TYPES(TString, ui32, ui64, TString, ui64, ui64, ui64),                 \
         NAMES(                                                                 \
             NCloud::NProbeParam::RequestType,                                  \
             NCloud::NProbeParam::MediaKind,                                    \
             NCloud::NProbeParam::RequestId,                                    \
             NCloud::NProbeParam::DiskId,                                       \
             NCloud::NProbeParam::StartBlock,                                   \
-            NCloud::NProbeParam::RequestSize))                                 \
+            NCloud::NProbeParam::RequestSize,                                  \
+            "requestStartTimeUs"))                                             \
+    PROBE(RequestClockSync,                                                    \
+        GROUPS("NBSRequest"),                                                  \
+        TYPES(ui64),                                                           \
+        NAMES("wallTimeUs"))                                                   \
     PROBE(RequestAcquired,                                                     \
         GROUPS("NBSRequest"),                                                  \
         TYPES(TString, ui64, TString),                                         \

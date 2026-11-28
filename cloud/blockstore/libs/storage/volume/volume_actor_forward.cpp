@@ -625,13 +625,17 @@ void TVolumeActor::ForwardRequest(
 
     bool isTraced = false;
 
+    // A local tablet pipe preserves the caller's orbit. Importing a serialized
+    // copy into that orbit on reply would record the same probes twice.
     if (IsForwardedEvent(*ev)) {
-        if (TraceSerializer->IsTraced(msg->CallContext->LWOrbit)) {
+        auto& orbit = msg->CallContext->LWOrbit;
+        if (TraceSerializer->IsTraced(orbit)) {
             isTraced = true;
             now = msg->Record.GetHeaders().GetInternal().GetTraceTs();
-        } else if (TraceSerializer->HandleTraceRequest(
-            msg->Record.GetHeaders().GetInternal().GetTrace(),
-            msg->CallContext->LWOrbit))
+        } else if (
+            !orbit.HasShuttles() &&
+            TraceSerializer->HandleTraceRequest(
+                msg->Record.GetHeaders().GetInternal().GetTrace(), orbit))
         {
             isTraced = true;
             msg->Record.MutableHeaders()->MutableInternal()->SetTraceTs(now);

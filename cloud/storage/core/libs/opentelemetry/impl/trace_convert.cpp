@@ -1,6 +1,7 @@
 #include "trace_convert.h"
 
 #include "helpers.h"
+#include "trace_spans.h"
 
 #include <contrib/proto/opentelemetry/opentelemetry/proto/common/v1/common.pb.h>
 #include <contrib/proto/opentelemetry/opentelemetry/proto/trace/v1/trace.pb.h>
@@ -68,11 +69,12 @@ struct TReferenceTimeCycle
 {
     TInstant ReferenceTimeStamp;
     ui64 ReferenceTimeCycle = 0;
+    const NLWTrace::TTrackLog::TItem* RequestStarted = nullptr;
+    ui64 RequestStartTimeNs = 0;
 };
 
 TInstant GetTimestampFromCycle(
-    TReferenceTimeCycle referenceTimeCycle,
-    ui64 timeCycles)
+    const TReferenceTimeCycle& referenceTimeCycle, ui64 timeCycles)
 {
     if (referenceTimeCycle.ReferenceTimeCycle >= timeCycles) {
         return referenceTimeCycle.ReferenceTimeStamp -
@@ -86,20 +88,25 @@ TInstant GetTimestampFromCycle(
 }
 
 ui64 GetTimestampInNanoSeconds(
-    TReferenceTimeCycle referenceTimeCycle,
-    ui64 timeCycles)
+    const TReferenceTimeCycle& referenceTimeCycle,
+    const NLWTrace::TTrackLog::TItem& item)
 {
-    return GetTimestampFromCycle(referenceTimeCycle, timeCycles).NanoSeconds();
+    // RequestStarted also supplies the exact start recorded in the profile log.
+    if (&item == referenceTimeCycle.RequestStarted) {
+        return referenceTimeCycle.RequestStartTimeNs;
+    }
+    return GetTimestampFromCycle(referenceTimeCycle, item.TimestampCycles)
+        .NanoSeconds();
 }
 
 Span_Event ProcessRegularItem(
     const NLWTrace::TTrackLog::TItem& item,
-    TReferenceTimeCycle referenceTimeCycle)
+    const TReferenceTimeCycle& referenceTimeCycle)
 {
     Span_Event event;
     event.set_name(item.Probe->Event.Name);
     event.set_time_unix_nano(
-        GetTimestampInNanoSeconds(referenceTimeCycle, item.TimestampCycles));
+        GetTimestampInNanoSeconds(referenceTimeCycle, item));
 
     Y_ABORT_UNLESS(
         item.SavedParamsCount <= LWTRACE_MAX_PARAMS,
@@ -163,7 +170,15 @@ T FindFirst(
                     item.Probe->Event.Signature.ParamNames[paramIdx],
                     fieldName) == 0)
             {
-                return item.Params.Param[paramIdx].Get<T>();
+                using TStore = typename NLWTrace::TParamTraits<T>::TStoreType;
+                if (strcmp(
+                        item.Probe->Event.Signature.ParamTypes[paramIdx],
+                        NLWTrace::TParamType<TStore>::NameString) != 0)
+                {
+                    continue;
+                }
+                return static_cast<T>(
+                    item.Params.Param[paramIdx].Get<TStore>());
             }
         }
     }
@@ -231,7 +246,7 @@ private:
     const TReferenceTimeCycle ReferenceTimeCycle;
     const bool HasConflicts;
 
-    ui64 NextSpanId = 0;
+    THashSet<ui64> ReservedSpanIds;
 
 public:
     TTraceConverter(
@@ -245,6 +260,14 @@ public:
 
     TSpanTree ProcessItemsToSpanTree(const NLWTrace::TTrackLog& tl)
     {
+        // Reserve source ids so exported spans do not alias pooled shuttles.
+        for (const auto& item: tl.Items) {
+            if (item.Probe && (TStringBuf(item.Probe->Event.Name) == "Fork" ||
+                               TStringBuf(item.Probe->Event.Name) == "Join"))
+            {
+                ReservedSpanIds.insert(item.Params.Param[0].Get<ui64>());
+            }
+        }
         return ProcessItemsToSpanTreeImpl(
             tl,
             TakeSpanId(),
@@ -266,8 +289,8 @@ private:
 
         THashMap<ui64, ui64> spanIdToStartTime;
 
-        ui64 startTimeCycles = tl.Items[iterationContext.Idx].TimestampCycles;
-        ui64 endTimeCycles = 0;
+        const auto& firstItem = tl.Items[iterationContext.Idx];
+        const auto* lastItem = &firstItem;
 
         auto operationName = FindOperationName(tl, iterationContext);
         spanTree.GetParentSpan().Setname(operationName);
@@ -275,11 +298,11 @@ private:
         for (; iterationContext; iterationContext.Next()) {
             const auto& item = tl.Items[iterationContext.Idx];
             const auto& name = item.Probe->Event.Name;
-            auto timeCycles = item.TimestampCycles;
-
-            endTimeCycles = Max(endTimeCycles, timeCycles);
+            if (lastItem->TimestampCycles < item.TimestampCycles) {
+                lastItem = &item;
+            }
             auto curTimeStampNano =
-                GetTimestampInNanoSeconds(ReferenceTimeCycle, timeCycles);
+                GetTimestampInNanoSeconds(ReferenceTimeCycle, item);
 
             if (TStringBuf(name) == "Fork") {
                 const auto childSpanId = item.Params.Param[0].Get<ui64>();
@@ -288,9 +311,8 @@ private:
             }
 
             if (TStringBuf(name) == "Join") {
-                const auto childSpanId = HasConflicts
-                                             ? TakeSpanId()
-                                             : item.Params.Param[0].Get<ui64>();
+                const auto sourceSpanId = item.Params.Param[0].Get<ui64>();
+                const auto childSpanId = TakeSpanId();
                 const auto itemsCount = item.Params.Param[1].Get<ui64>();
 
                 // recursively process child spans
@@ -302,7 +324,7 @@ private:
 
                 if (!HasConflicts) {
                     subSpans.GetParentSpan().set_start_time_unix_nano(
-                        spanIdToStartTime[childSpanId]);
+                        spanIdToStartTime[sourceSpanId]);
                 }
                 subSpans.GetParentSpan().set_end_time_unix_nano(
                     curTimeStampNano);
@@ -316,21 +338,68 @@ private:
         }
 
         spanTree.GetParentSpan().set_start_time_unix_nano(
-            GetTimestampInNanoSeconds(ReferenceTimeCycle, startTimeCycles));
+            GetTimestampInNanoSeconds(ReferenceTimeCycle, firstItem));
         spanTree.GetParentSpan().set_end_time_unix_nano(
-            GetTimestampInNanoSeconds(ReferenceTimeCycle, endTimeCycles));
+            GetTimestampInNanoSeconds(ReferenceTimeCycle, *lastItem));
 
         return spanTree;
     }
 
     ui64 TakeSpanId()
     {
-        return NextSpanId++;
+        for (;;) {
+            const ui64 id = RandomNumber<ui64>();
+            if (id && ReservedSpanIds.insert(id).second) {
+                return id;
+            }
+        }
     }
 };
 
-TReferenceTimeCycle GetReferenceTimeCycle()
+TReferenceTimeCycle GetReferenceTimeCycle(const NLWTrace::TTrackLog& tl)
 {
+    TReferenceTimeCycle requestStart;
+    for (TLogItemsIterationContext ctx{0, tl.Items.size()}; ctx; ctx.Next()) {
+        const auto& item = tl.Items[ctx.Idx];
+        const TStringBuf name = item.Probe->Event.Name;
+        if (name == "Join") {
+            // A joined request can carry an independent wall clock.
+            ctx.ConstructSubSpanIterationContext(
+                item.Params.Param[1].Get<ui64>());
+            continue;
+        }
+
+        const bool sync = name == "RequestClockSync";
+        if (sync ||
+            (name == "RequestStarted" && !requestStart.ReferenceTimeCycle))
+        {
+            const auto value =
+                item.GetParam(sync ? "wallTimeUs" : "requestStartTimeUs");
+            if (value.GetType() == NLWTrace::PT_Ui64) {
+                const ui64 us = value.GetParam().Get<ui64>();
+                if (us && us <= Max<ui64>() / 1000) {
+                    TReferenceTimeCycle anchor{
+                        TInstant::MicroSeconds(us),
+                        item.TimestampCycles};
+                    if (sync) {
+                        anchor.RequestStarted = requestStart.RequestStarted;
+                        anchor.RequestStartTimeNs =
+                            requestStart.RequestStartTimeNs;
+                        return anchor;
+                    }
+                    requestStart = anchor;
+                    requestStart.RequestStarted = &item;
+                    requestStart.RequestStartTimeNs = us * 1000;
+                }
+            }
+        }
+    }
+
+    if (requestStart.ReferenceTimeCycle) {
+        return requestStart;
+    }
+
+    // Tracks without either clock sample retain the reader-time fallback.
     return {
         .ReferenceTimeStamp = TInstant::Now(),
         .ReferenceTimeCycle = GetCycleCount()};
@@ -338,15 +407,14 @@ TReferenceTimeCycle GetReferenceTimeCycle()
 
 struct TConflictDetecter
 {
-    THashSet<ui64> SpanIdsParents;
+    THashSet<ui64> SeenSpanIds;
     THashSet<ui64> SpanIdsDeclaredAndNotJoinedYet;
 
     bool HasConflict(
         const NLWTrace::TTrackLog& tl,
-        TLogItemsIterationContext iCtx,
-        ui64 currentSpanId)
+        TLogItemsIterationContext iCtx, ui64 currentSpanId)
     {
-        auto [_, inserted] = SpanIdsParents.insert(currentSpanId);
+        auto [_, inserted] = SeenSpanIds.insert(currentSpanId);
         if (!inserted) {
             return true;
         }
@@ -383,7 +451,6 @@ struct TConflictDetecter
             }
         }
 
-        SpanIdsParents.erase(currentSpanId);
         return false;
     }
 };
@@ -400,18 +467,25 @@ TTraceInfo ConvertToOpenTelemetrySpans(const NLWTrace::TTrackLog& tl)
 
     traceInfo.RequestId = FindRequestId(tl, traceItCtx);
     traceInfo.DiskId = FindFirst<TString>(tl, "diskId", traceItCtx);
-    traceInfo.MediaKind =
-        FindFirst<NProto::EStorageMediaKind>(tl, "mediaKind", traceItCtx);
+    // Storage media probes use ui32, whose LWTrace storage type is ui64.
+    traceInfo.MediaKind = static_cast<NProto::EStorageMediaKind>(
+        FindFirst<ui64>(tl, "mediaKind", traceItCtx));
     traceInfo.RequestSize = FindFirst<ui64>(tl, "requestSize", traceItCtx);
 
+    ui64 traceId = traceInfo.RequestId;
+    while (!traceId) {
+        // An uncorrelated track still needs a valid, independent OTel id.
+        traceId = RandomNumber<ui64>();
+    }
     auto converter = TTraceConverter(
-        {traceInfo.RequestId, 0},   // traceId
-        GetReferenceTimeCycle(),
+        {traceId, 0},   // traceId
+        GetReferenceTimeCycle(tl),
         TConflictDetecter().HasConflict(tl, traceItCtx, 0));
 
     traceInfo.Spans =
         TSpanTree::ExtractSpans(converter.ProcessItemsToSpanTree(tl));
 
+    AddDiagnosticSpans(traceInfo.Spans);
     return traceInfo;
 }
 

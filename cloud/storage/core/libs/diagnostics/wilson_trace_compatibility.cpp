@@ -46,4 +46,17 @@ NWilson::TTraceId GetTraceIdForRequestId(
         NWilson::TTraceId::MAX_TIME_TO_LIVE};
 }
 
+NWilson::TTraceId CreateTraceIdForRequestId(
+    NLWTrace::TOrbit& orbit, ui64 requestId)
+{
+    if (!requestId || !orbit.HasShuttles()) {
+        return {};
+    }
+    return {
+        {requestId, 0},
+        GenerateSpanId(),
+        NWilson::TTraceId::MAX_VERBOSITY,
+        NWilson::TTraceId::MAX_TIME_TO_LIVE};
+}
+
 }   // namespace NCloud

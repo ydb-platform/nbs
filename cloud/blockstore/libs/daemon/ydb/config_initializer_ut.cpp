@@ -863,6 +863,39 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT_NO_EXCEPTION(ci.ApplyCMSConfigs(appCfg));
     }
 
+    Y_UNIT_TEST(ShouldApplyWilsonTracingConfigurationFromCms)
+    {
+        auto ci = TConfigInitializerYdb(CreateOptions());
+        InitStaticConfigs(ci);
+        ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
+        NKikimrConfig::TAppConfig cms;
+
+        ci.ApplyCMSConfigs(cms);
+        UNIT_ASSERT(!ci.KikimrConfig->HasTracingConfig());
+
+        auto* tracing = cms.MutableTracingConfig();
+        auto* backend = tracing->MutableBackend()->MutableOpentelemetry();
+        backend->SetCollectorUrl("grpc://localhost:4317");
+        backend->SetServiceName("nbs-blobstorage");
+        tracing->MutableUploader()->SetMaxSpansInBatch(17);
+        ci.ApplyCMSConfigs(cms);
+        UNIT_ASSERT_VALUES_EQUAL(
+            ci.KikimrConfig->GetTracingConfig().SerializeAsString(),
+            tracing->SerializeAsString());
+
+        cms.ClearTracingConfig();
+        ci.ApplyCMSConfigs(cms);
+        UNIT_ASSERT_VALUES_EQUAL(
+            ci.KikimrConfig->GetTracingConfig()
+                .GetBackend()
+                .GetOpentelemetry()
+                .GetServiceName(), "nbs-blobstorage");
+
+        cms.MutableTracingConfig();
+        ci.ApplyCMSConfigs(cms);
+        UNIT_ASSERT(!ci.KikimrConfig->GetTracingConfig().HasBackend());
+    }
+
     Y_UNIT_TEST(ShouldApplyCmsConfigsInAnyOrder)
     {
         auto configStr = "";

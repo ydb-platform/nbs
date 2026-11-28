@@ -6723,34 +6723,103 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 .size());
     }
 
-    Y_UNIT_TEST(ShouldCollectTracesForSinglePartitionVolumesIfRequestWasPostponedByVolume)
+    Y_UNIT_TEST(ShouldTraceThrottlerDecisionForDataOperations)
+    {
+        for (const auto media:
+             {NProto::STORAGE_MEDIA_SSD, NProto::STORAGE_MEDIA_HDD})
+        {
+            for (ui32 operation = 0; operation != 3; ++operation) {
+                TThrottledVolumeTestEnv env(5, media);
+                auto& volume = *env.Volume;
+                auto client = CreateVolumeClientInfo(
+                    NProto::VOLUME_ACCESS_READ_WRITE,
+                    NProto::VOLUME_MOUNT_LOCAL, 0);
+                volume.AddClient(client);
+                const auto range = TBlockRange64::MakeOneBlock(0);
+                auto prepare = [&](auto request)
+                {
+                    request->CallContext->RequestId = 7311;
+                    request->Record.MutableHeaders()->SetRequestId(7311);
+                    request->Record.MutableHeaders()
+                        ->MutableInternal()
+                        ->MutableTrace()
+                        ->SetIsTraced(true);
+                    volume.SendToPipe(std::move(request));
+                };
+                auto check = [&](const auto& response, TStringBuf operationName)
+                {
+                    UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), S_OK);
+                    const auto& trace = response->Record.GetHeaders()
+                                            .GetTrace()
+                                            .GetLWTrace()
+                                            .GetTrace();
+                    ui32 begins = 0;
+                    ui32 ends = 0;
+                    for (const auto& event: trace.GetEvents()) {
+                        if (event.GetName() == "RequestReceived_Throttler") {
+                            ++begins;
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                event.GetParams(0).GetStrValue(),
+                                operationName);
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                event.GetParams(1).GetUintValue(), 7311);
+                        } else if (
+                            event.GetName() == "RequestCompleted_Throttler")
+                        {
+                            ++ends;
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                event.GetParams(0).GetStrValue(),
+                                operationName);
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                event.GetParams(1).GetUintValue(), 7311);
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                event.GetParams(2).GetUintValue(), S_OK);
+                        }
+                        UNIT_ASSERT(ends <= begins);
+                    }
+                    UNIT_ASSERT(begins);
+                    UNIT_ASSERT_VALUES_EQUAL(begins, ends);
+                };
+                if (operation == 0) {
+                    prepare(volume.CreateWriteBlocksRequest(
+                        range, client.GetClientId(), 1));
+                    check(volume.RecvWriteBlocksResponse(), "WriteBlocks");
+                } else if (operation == 1) {
+                    prepare(volume.CreateReadBlocksRequest(
+                        range, client.GetClientId()));
+                    check(volume.RecvReadBlocksResponse(), "ReadBlocks");
+                } else {
+                    prepare(volume.CreateZeroBlocksRequest(
+                        range, client.GetClientId()));
+                    check(volume.RecvZeroBlocksResponse(), "ZeroBlocks");
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(
+        ShouldCollectTracesForSinglePartitionVolumesIfRequestWasPostponedByVolume)
     {
         TThrottledVolumeTestEnv env(5, NCloud::NProto::STORAGE_MEDIA_SSD);
         auto& runtime = env.Runtime;
         auto& volume = *env.Volume;
 
         auto clientInfo = CreateVolumeClientInfo(
-            NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL,
-            0
-        );
+            NProto::VOLUME_ACCESS_READ_WRITE, NProto::VOLUME_MOUNT_LOCAL, 0);
         volume.AddClient(clientInfo);
 
         const auto oneBlock = TBlockRange64::MakeOneBlock(0);
 
         volume.SendDescribeBlocksRequest(oneBlock, clientInfo.GetClientId(), 1);
-        TEST_QUICK_RESPONSE_VOLUME_EVENT(
-            runtime,
-            DescribeBlocks,
-            S_OK
-        );
+        TEST_QUICK_RESPONSE_VOLUME_EVENT(runtime, DescribeBlocks, S_OK);
 
         for (ui32 i = 0; i < 19; ++i) {
             auto request = volume.CreateReadBlocksRequest(
-                oneBlock,
-                clientInfo.GetClientId()
-            );
-            request->Record.MutableHeaders()->MutableInternal()->MutableTrace()->SetIsTraced(true);
+                oneBlock, clientInfo.GetClientId());
+            request->Record.MutableHeaders()
+                ->MutableInternal()
+                ->MutableTrace()
+                ->SetIsTraced(true);
 
             volume.SendToPipe(std::move(request));
 
@@ -6759,9 +6828,19 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         for (ui32 i = 0; i < 19; ++i) {
             auto response =
-                volume.TryRecvResponse<TEvService::TEvReadBlocksResponse>(WaitTimeout);
+                volume.TryRecvResponse<TEvService::TEvReadBlocksResponse>(
+                    WaitTimeout);
             UNIT_ASSERT(response);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+            const auto& trace = response->Record.GetHeaders()
+                                    .GetTrace()
+                                    .GetLWTrace()
+                                    .GetTrace();
+            UNIT_ASSERT(HasProbe(trace, "RequestReceived_Throttler"));
+            UNIT_ASSERT(HasProbe(trace, "RequestCompleted_Throttler"));
+            UNIT_ASSERT(HasProbe(trace, "RequestPostponed_Volume"));
+            UNIT_ASSERT(HasProbe(trace, "RequestAdvanced_Volume"));
 
             UNIT_ASSERT_VALUES_UNEQUAL(
                 0,

@@ -350,12 +350,13 @@ void TWriteFreshBlocksActor::HandleWriteBlobResponse(
         r.RequestInfo->AddExecCycles(msg->ExecCycles);
     }
 
-    if (HandleError(ctx, msg->GetError())) {
-        return;
-    }
-
+    // The BlobStorage attempt is finished even when it returned an error.
     for (const auto& r: Requests) {
         r.RequestInfo->CallContext->LWOrbit.Join(CombinedContext->LWOrbit);
+    }
+
+    if (HandleError(ctx, msg->GetError())) {
+        return;
     }
 
     // WARNING: Don't swap AddBlocks and Reply. This order ensures that the

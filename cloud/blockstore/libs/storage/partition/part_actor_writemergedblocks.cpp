@@ -371,6 +371,12 @@ void TWriteMergedBlocksActor::HandleWriteBlobResponse(
 
     RequestInfo->AddExecCycles(msg->ExecCycles);
 
+    STORAGE_VERIFY(
+        ev->Cookie < ForkedCallContexts.size(),
+        TWellKnownEntityTypes::TABLET, TabletId);
+    RequestInfo->CallContext->LWOrbit.Join(
+        ForkedCallContexts[ev->Cookie]->LWOrbit);
+
     if (HandleError(ctx, msg->GetError())) {
         return;
     }
@@ -399,10 +405,6 @@ void TWriteMergedBlocksActor::HandleWriteBlobResponse(
 
     if (++WriteBlobRequestsCompleted < WriteBlobRequests.size()) {
         return;
-    }
-
-    for (const auto& context: ForkedCallContexts) {
-        RequestInfo->CallContext->LWOrbit.Join(context->LWOrbit);
     }
 
     if (ShouldAddUnconfirmedBlobs) {

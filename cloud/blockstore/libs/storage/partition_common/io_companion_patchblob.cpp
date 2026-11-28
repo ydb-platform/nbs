@@ -146,10 +146,20 @@ void TPatchBlobActor::SendPatchRequest(const TActorContext& ctx)
 
     NWilson::TTraceId traceId;
     if (PassTraceIdToBlobstorage) {
-        traceId = GetTraceIdForRequestId(
+        traceId = CreateTraceIdForRequestId(
             RequestInfo->CallContext->LWOrbit,
             RequestInfo->CallContext->RequestId);
     }
+    ui64 parentSpanId = 0;
+    if (traceId) {
+        memcpy(&parentSpanId, traceId.GetSpanIdPtr(), sizeof(parentSpanId));
+    }
+    LWTRACK(
+        RequestSent_PartitionWorker_DSProxy,
+        RequestInfo->CallContext->LWOrbit,
+        "PatchBlob",
+        RequestInfo->CallContext->RequestId, OriginalGroupId, parentSpanId);
+
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
     RequestSent = ctx.Now();
@@ -202,10 +212,16 @@ void TPatchBlobActor::ReplyAndDie(
     NotifyCompleted(ctx, *response);
 
     LWTRACK(
-        ResponseSent_Partition,
+        ResponseSent_PartitionWorker_DSProxy,
         RequestInfo->CallContext->LWOrbit,
         "PatchBlob",
-        RequestInfo->CallContext->RequestId);
+        RequestInfo->CallContext->RequestId,
+        OriginalGroupId, response->GetError().GetCode());
+
+    LWTRACK(
+        ResponseSent_Partition,
+        RequestInfo->CallContext->LWOrbit,
+        "PatchBlob", RequestInfo->CallContext->RequestId);
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);

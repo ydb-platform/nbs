@@ -209,10 +209,20 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
 
     NWilson::TTraceId traceId;
     if (PassTraceIdToBlobstorage) {
-        traceId = GetTraceIdForRequestId(
+        traceId = CreateTraceIdForRequestId(
             RequestInfo->CallContext->LWOrbit,
             RequestInfo->CallContext->RequestId);
     }
+
+    ui64 parentSpanId = 0;
+    if (traceId) {
+        memcpy(&parentSpanId, traceId.GetSpanIdPtr(), sizeof(parentSpanId));
+    }
+    LWTRACK(
+        RequestSent_PartitionWorker_DSProxy,
+        RequestInfo->CallContext->LWOrbit,
+        "WriteBlob",
+        RequestInfo->CallContext->RequestId, GroupId, parentSpanId);
 
     request->Orbit = std::move(RequestInfo->CallContext->LWOrbit);
 
@@ -260,6 +270,13 @@ void TWriteBlobActor::ReplyAndDie(
     }
 
     NotifyCompleted(ctx, *response);
+
+    LWTRACK(
+        ResponseSent_PartitionWorker_DSProxy,
+        RequestInfo->CallContext->LWOrbit,
+        "WriteBlob",
+        RequestInfo->CallContext->RequestId,
+        GroupId, response->GetError().GetCode());
 
     if (ResponseReceived) {
         LWTRACK(

@@ -319,8 +319,12 @@ void TBootstrapBase::Init()
                 BackgroundScheduler,
                 Logging,
                 std::move(traceProcessorConfig),
-                NLwTraceMonPage::TraceManager(diagnosticsConfig->GetUnsafeLWTrace()),
-                TraceReaders));
+                NLwTraceMonPage::TraceManager(
+                    diagnosticsConfig->GetUnsafeLWTrace()), TraceReaders),
+            diagnosticsConfig->GetOpentelemetryTraceConfig().GetServiceName()
+                ? diagnosticsConfig->GetOpentelemetryTraceConfig()
+                      .GetTraceViewerUrlTemplate()
+                : TString{});
 
         STORAGE_INFO("TraceProcessor initialized");
     }

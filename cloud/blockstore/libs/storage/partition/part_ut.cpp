@@ -28,6 +28,8 @@
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
 
+#include <util/generic/hash_set.h>
+
 // TODO: invalid reference
 #include <cloud/blockstore/libs/storage/service/service_events_private.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
@@ -865,13 +867,29 @@ void SendUndeliverableRequest(
 class TMockShuttle: public IShuttle
 {
 public:
-    TMockShuttle(ui64 traceIdx, ui64 spanId)
+    TMockShuttle(
+        ui64 traceIdx,
+        ui64 spanId,
+        std::shared_ptr<TShuttleTrace> events = {},
+        std::shared_ptr<ui64> nextSpanId = {})
         : IShuttle(traceIdx, spanId)
+        , Events(std::move(events))
+        , NextSpanId(std::move(nextSpanId))
     {}
 
+private:
+    const std::shared_ptr<TShuttleTrace> Events;
+    const std::shared_ptr<ui64> NextSpanId;
+
 protected:
-    bool DoAddProbe(TProbe*, const TParams&, ui64) override
+    bool DoAddProbe(TProbe* probe, const TParams& params, ui64) override
     {
+        if (Events) {
+            auto* event = Events->AddEvents();
+            event->SetName(probe->Event.Name);
+            probe->Event.Signature.SerializeToPb(
+                params, *event->MutableParams());
+        }
         return true;
     }
 
@@ -886,15 +904,22 @@ protected:
 
     bool DoFork(TShuttlePtr& child) override
     {
-        auto shuttle = MakeIntrusive<TMockShuttle>(GetTraceIdx(), GetSpanId());
+        auto shuttle = MakeIntrusive<TMockShuttle>(
+            GetTraceIdx(),
+            NextSpanId ? ++*NextSpanId : GetSpanId(),
+            Events ? std::make_shared<TShuttleTrace>() : nullptr, NextSpanId);
         shuttle->SetNext(child);
         child = shuttle;
         child->SetParentSpanId(GetSpanId());
         return true;
     }
 
-    bool DoJoin(const TShuttlePtr&) override
+    bool DoJoin(const TShuttlePtr& child) override
     {
+        const auto* shuttle = static_cast<const TMockShuttle*>(child.Get());
+        if (Events && shuttle->Events) {
+            Events->MergeFrom(*shuttle->Events);
+        }
         return true;
     }
 };
@@ -9397,6 +9422,299 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             expectedTraceId.GetTimeToLive(),
             traceId->GetTimeToLive());
+    }
+
+    void TestCorrelateDataPathTraces(bool mergedWrite)
+    {
+        for (const auto media:
+             {NProto::STORAGE_MEDIA_SSD, NProto::STORAGE_MEDIA_HDD})
+        {
+            for (ui32 operation = 0; operation != (mergedWrite ? 1U : 3U);
+                 ++operation)
+            {
+                // No orbit, traced success, zero request id, traced failure.
+                for (ui32 scenario = 0; scenario != 4; ++scenario) {
+                    const bool traced = scenario != 0;
+                    const bool fail = scenario == 3;
+                    auto config = DefaultConfig();
+                    config.SetFreshChannelWriteRequestsEnabled(true);
+                    config.SetFreshChannelZeroRequestsEnabled(true);
+                    config.SetMaxWriteBlobErrorsBeforeSuicide(100);
+                    if (mergedWrite) {
+                        // Force the actual WriteMergedBlocks actor even for one
+                        // block, keeping the failure scenario to one blob.
+                        config.SetWriteBlobThreshold(1);
+                        config.SetWriteBlobThresholdSSD(1);
+                    }
+                    TTestPartitionInfo info;
+                    info.MediaKind = media;
+                    auto runtime =
+                        PrepareTestActorRuntime(config, 1024, {}, info);
+                    TPartitionClient partition(*runtime);
+                    partition.WaitReady();
+                    partition.WriteBlocks(0, 7);
+                    if (!mergedWrite) {
+                        partition.Flush();
+                    }
+
+                    const ui64 requestId =
+                        scenario == 2 ? 0 : 10000 + 10 * media + operation;
+                    auto events = std::make_shared<TShuttleTrace>();
+                    auto nextSpanId = std::make_shared<ui64>(100);
+                    TVector<NWilson::TTraceId> blobTraceIds;
+                    ui32 blobRequests = 0;
+                    ui32 failures = 0;
+                    runtime->SetObserverFunc(
+                        [&](TAutoPtr<IEventHandle>& event)
+                        {
+                            if (event->GetTypeRewrite() ==
+                                    TEvBlobStorage::EvPut ||
+                                event->GetTypeRewrite() ==
+                                    TEvBlobStorage::EvGet)
+                            {
+                                ++blobRequests;
+                                if (event->TraceId) {
+                                    blobTraceIds.emplace_back(event->TraceId);
+                                }
+                            }
+                            if (fail && event->GetTypeRewrite() ==
+                                            TEvBlobStorage::EvPutResult)
+                            {
+                                auto* result =
+                                    event->Get<TEvBlobStorage::TEvPutResult>();
+                                if (result->Id.Channel() >= DataChannelOffset) {
+                                    result->Status = NKikimrProto::ERROR;
+                                    ++failures;
+                                }
+                            }
+                            if (fail && event->GetTypeRewrite() ==
+                                            TEvBlobStorage::EvGetResult)
+                            {
+                                auto* result =
+                                    event->Get<TEvBlobStorage::TEvGetResult>();
+                                if (result->ResponseSz &&
+                                    result->Responses[0].Id.Channel() >=
+                                        DataChannelOffset)
+                                {
+                                    result->Status = NKikimrProto::ERROR;
+                                    ++failures;
+                                }
+                            }
+                            return TTestActorRuntime::DefaultObserverFunc(
+                                event);
+                        });
+
+                    auto prepare = [&](auto request)
+                    {
+                        request->CallContext->RequestId = requestId;
+                        if (traced) {
+                            request->CallContext->LWOrbit.AddShuttle(
+                                MakeIntrusive<TMockShuttle>(
+                                    ui64{10}, ui64{100}, events, nextSpanId));
+                        }
+                        partition.SendToPipe(std::move(request));
+                    };
+                    ui32 status = S_OK;
+                    if (operation == 0) {
+                        prepare(partition.CreateWriteBlocksRequest(0, 9));
+                        status =
+                            partition.RecvWriteBlocksResponse()->GetStatus();
+                    } else if (operation == 1) {
+                        prepare(partition.CreateReadBlocksRequest(0));
+                        auto response = partition.RecvReadBlocksResponse();
+                        status = response->GetStatus();
+                        if (!fail) {
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                GetBlockContent(response), GetBlockContent(7));
+                        }
+                    } else {
+                        prepare(partition.CreateZeroBlocksRequest(0));
+                        status =
+                            partition.RecvZeroBlocksResponse()->GetStatus();
+                    }
+                    UNIT_ASSERT_VALUES_EQUAL(FAILED(status), fail);
+                    if (fail) {
+                        UNIT_ASSERT(failures);
+                    }
+                    UNIT_ASSERT_C(
+                        blobRequests,
+                        "No BlobStorage request for operation " << operation);
+                    if (!traced || !requestId) {
+                        UNIT_ASSERT(blobTraceIds.empty());
+                        continue;
+                    }
+
+                    UNIT_ASSERT_C(
+                        !blobTraceIds.empty(), "Missing Wilson context");
+                    const NWilson::TTraceId expected(
+                        {requestId, 0},
+                        100,
+                        NWilson::TTraceId::MAX_VERBOSITY,
+                        NWilson::TTraceId::MAX_TIME_TO_LIVE);
+                    THashSet<ui64> wireParents;
+                    for (const auto& traceId: blobTraceIds) {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            traceId.GetHexTraceId(), expected.GetHexTraceId());
+                        ui64 parent = 0;
+                        memcpy(&parent, traceId.GetSpanIdPtr(), sizeof(parent));
+                        UNIT_ASSERT(parent);
+                        UNIT_ASSERT(wireParents.insert(parent).second);
+                    }
+                    THashSet<ui64> probeParents;
+                    ui32 ends = 0;
+                    for (const auto& event: events->GetEvents()) {
+                        if (event.GetName() ==
+                            "RequestSent_PartitionWorker_DSProxy")
+                        {
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                event.GetParams(1).GetUintValue(), requestId);
+                            UNIT_ASSERT(
+                                probeParents
+                                    .insert(event.GetParams(3).GetUintValue())
+                                    .second);
+                        } else if (
+                            event.GetName() ==
+                            "ResponseSent_PartitionWorker_DSProxy")
+                        {
+                            ++ends;
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                event.GetParams(1).GetUintValue(), requestId);
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                FAILED(static_cast<ui32>(
+                                    event.GetParams(3).GetUintValue())), fail);
+                        }
+                    }
+                    UNIT_ASSERT(!probeParents.empty());
+                    UNIT_ASSERT_VALUES_EQUAL(probeParents.size(), ends);
+                    UNIT_ASSERT(wireParents == probeParents);
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCorrelateDataPathTraces)
+    {
+        TestCorrelateDataPathTraces(false);
+    }
+
+    Y_UNIT_TEST(ShouldCorrelateMergedWriteTraces)
+    {
+        TestCorrelateDataPathTraces(true);
+    }
+
+    Y_UNIT_TEST(ShouldKeepConcurrentRequestsAndRetryAttemptsSeparate)
+    {
+        for (const bool retry: {false, true}) {
+            auto config = DefaultConfig();
+            config.SetFreshChannelWriteRequestsEnabled(true);
+            config.SetFreshChannelZeroRequestsEnabled(true);
+            config.SetMaxWriteBlobErrorsBeforeSuicide(100);
+            auto runtime = PrepareTestActorRuntime(config);
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+            const ui64 requestIds[] = {101, retry ? 101U : 202U};
+            std::shared_ptr<TShuttleTrace> events[] = {
+                std::make_shared<TShuttleTrace>(),
+                std::make_shared<TShuttleTrace>()};
+            TVector<NWilson::TTraceId> wire;
+            bool injectFailure = retry;
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() == TEvBlobStorage::EvPut &&
+                        event->TraceId)
+                    {
+                        wire.emplace_back(event->TraceId);
+                    }
+                    if (injectFailure &&
+                        event->GetTypeRewrite() == TEvBlobStorage::EvPutResult)
+                    {
+                        auto* result =
+                            event->Get<TEvBlobStorage::TEvPutResult>();
+                        if (result->Id.Channel() >= DataChannelOffset) {
+                            result->Status = NKikimrProto::ERROR;
+                        }
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+            auto send = [&](auto request, ui32 index)
+            {
+                request->CallContext->RequestId = requestIds[index];
+                // Reuse the same original LWTrace id, as the real shuttle pool
+                // does.
+                request->CallContext->LWOrbit.AddShuttle(
+                    MakeIntrusive<TMockShuttle>(
+                        ui64{10},
+                        ui64{100}, events[index], std::make_shared<ui64>(100)));
+                partition.SendToPipe(std::move(request));
+            };
+            if (retry) {
+                send(partition.CreateWriteBlocksRequest(0, 1), 0);
+                UNIT_ASSERT(
+                    FAILED(partition.RecvWriteBlocksResponse()->GetStatus()));
+                injectFailure = false;
+                send(partition.CreateWriteBlocksRequest(0, 1), 1);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    partition.RecvWriteBlocksResponse()->GetStatus(), S_OK);
+            } else {
+                send(partition.CreateWriteBlocksRequest(0, 1), 0);
+                send(partition.CreateZeroBlocksRequest(1), 1);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    partition.RecvWriteBlocksResponse()->GetStatus(), S_OK);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    partition.RecvZeroBlocksResponse()->GetStatus(), S_OK);
+            }
+            UNIT_ASSERT_VALUES_EQUAL(wire.size(), 2);
+            THashMap<ui64, TString> wireParents;
+            for (const auto& trace: wire) {
+                ui64 parent = 0;
+                memcpy(&parent, trace.GetSpanIdPtr(), sizeof(parent));
+                UNIT_ASSERT(parent);
+                UNIT_ASSERT(
+                    wireParents.emplace(parent, trace.GetHexTraceId()).second);
+            }
+            THashSet<ui64> seen;
+            for (ui32 index = 0; index != 2; ++index) {
+                ui32 begins = 0;
+                ui32 ends = 0;
+                const NWilson::TTraceId expected(
+                    {requestIds[index], 0},
+                    1,
+                    NWilson::TTraceId::MAX_VERBOSITY,
+                    NWilson::TTraceId::MAX_TIME_TO_LIVE);
+                for (const auto& event: events[index]->GetEvents()) {
+                    if (event.GetName() ==
+                        "RequestSent_PartitionWorker_DSProxy")
+                    {
+                        ++begins;
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            event.GetParams(1).GetUintValue(),
+                            requestIds[index]);
+                        const ui64 parent = event.GetParams(3).GetUintValue();
+                        UNIT_ASSERT(seen.insert(parent).second);
+                        const auto it = wireParents.find(parent);
+                        UNIT_ASSERT(it != wireParents.end());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            it->second, expected.GetHexTraceId());
+                    } else if (
+                        event.GetName() ==
+                        "ResponseSent_PartitionWorker_DSProxy")
+                    {
+                        ++ends;
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            event.GetParams(1).GetUintValue(),
+                            requestIds[index]);
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            FAILED(static_cast<ui32>(
+                                event.GetParams(3).GetUintValue())),
+                            retry && index == 0);
+                    }
+                }
+                UNIT_ASSERT_VALUES_EQUAL(begins, 1);
+                UNIT_ASSERT_VALUES_EQUAL(ends, 1);
+            }
+            UNIT_ASSERT_VALUES_EQUAL(seen.size(), wireParents.size());
+        }
     }
 
     Y_UNIT_TEST(ShouldZeroFreshBlocks)
