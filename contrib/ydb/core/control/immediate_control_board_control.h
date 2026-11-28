@@ -26,6 +26,9 @@ public:
 
     void RestoreDefault();
 
+    // Restore the default and report the value transition made by this call.
+    void RestoreDefault(TAtomicBase& outPrevValue, TAtomicBase& outNewValue);
+
     bool IsDefault() const;
 
     TString RangeAsString() const;
