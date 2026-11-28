@@ -36,22 +36,35 @@ using TPartialBlobId2CompressionMetadataMap = THashMap<
 using TBlobId2CompressionMetadataMap =
     THashMap<NKikimr::TLogoBlobID, std::optional<NProto::TCompressionMetadata>>;
 
-template <typename TMap>
-std::optional<NProto::TCompressionMetadata> ExtractCompressionMetadata(
-    TMap& metadata,
-    const typename TMap::key_type& blobId)
+enum class ECompressionMetadataAccess
 {
-    auto it = metadata.find(blobId);
-    if (it == metadata.end()) {
-        return std::nullopt;
-    }
+    Copy,
+    Extract,
+};
 
-    auto result = std::move(it->second);
-    metadata.erase(it);
-    return result;
-}
+// Extracting consumes the entry, including an explicit uncompressed entry.
+[[nodiscard]] TResultOrError<std::optional<NProto::TCompressionMetadata>>
+GetBlobCompressionMetadata(
+    TBlobId2CompressionMetadataMap& metadata,
+    const NKikimr::TLogoBlobID& blobId,
+    bool verify,
+    ECompressionMetadataAccess access);
+
+[[nodiscard]] TResultOrError<std::optional<NProto::TCompressionMetadata>>
+GetBlobCompressionMetadata(
+    TPartialBlobId2CompressionMetadataMap& metadata,
+    const NKikimr::TLogoBlobID& blobId,
+    bool verify,
+    ECompressionMetadataAccess access);
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// A metadata entry with no compression value explicitly identifies an
+// uncompressed blob. Only a missing entry is rejected when verification is on.
+NProto::TError ValidateBlobCompressionMetadata(
+    bool verify,
+    const NKikimr::TLogoBlobID& blobId,
+    bool metadataKnown);
 
 // Checks that chunkSize is a positive multiple of a nonzero blockSize.
 [[nodiscard]] NProto::TError ValidateCompressionSettings(

@@ -245,6 +245,7 @@ public:
         TVector<ui64> Requests; // block indices, ui64 needed for integration
                                 // with sglist-related code
         ui32 GroupId = 0;
+        std::optional<NProto::TCompressionMetadata> CompressionMetadata;
 
         TBatchRequest() = default;
 
@@ -281,6 +282,7 @@ private:
     const bool ReplyLocal;
     const bool ChecksumsEnabled;
     const bool ReportBlobIdsOnFailure;
+    const bool VerifyBlobCompressionMetadata;
 
     const ui64 CommitId;
     TBlobId2CompressionMetadataMap BlobId2CompressionMetadata;
@@ -316,7 +318,8 @@ public:
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
         TBlobId2CompressionMetadataMap blobId2CompressionMetadata,
-        bool waitBaseDiskRequests);
+        bool waitBaseDiskRequests,
+        bool verifyBlobCompressionMetadata);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -382,7 +385,8 @@ TReadBlocksActor::TReadBlocksActor(
     TReadBlocksRequests ownRequests,
     TVector<IProfileLog::TBlockInfo> blockInfos,
     TBlobId2CompressionMetadataMap blobId2CompressionMetadata,
-    bool waitBaseDiskRequests)
+    bool waitBaseDiskRequests,
+    bool verifyBlobCompressionMetadata)
     : VolumeLabels(std::move(volumeLabels))
     , RequestInfo(std::move(requestInfo))
     , BlockDigestGenerator(blockDigestGenerator)
@@ -395,6 +399,7 @@ TReadBlocksActor::TReadBlocksActor(
     , ReplyLocal(replyLocal)
     , ChecksumsEnabled(checksumsEnabled)
     , ReportBlobIdsOnFailure(reportBlobIdsOnFailure)
+    , VerifyBlobCompressionMetadata(verifyBlobCompressionMetadata)
     , CommitId(commitId)
     , BlobId2CompressionMetadata(std::move(blobId2CompressionMetadata))
     , OwnRequests(std::move(ownRequests))
@@ -463,11 +468,31 @@ void TReadBlocksActor::ReadBlocks(
             current.GroupId);
     }
 
+    // A local caller can reuse its sglist as soon as we report missing
+    // metadata. Resolve every new batch before giving any read access to that
+    // sglist.
     for (ui32 batchIndex = batchRequestsOldSize;
             batchIndex < BatchRequests.size(); ++batchIndex)
     {
         auto& batch = BatchRequests[batchIndex];
 
+        auto [compressionMetadata, error] = GetBlobCompressionMetadata(
+            BlobId2CompressionMetadata,
+            batch.BlobId,
+            VerifyBlobCompressionMetadata,
+            ECompressionMetadataAccess::Extract);
+        if (HandleError(ctx, error)) {
+            return;
+        }
+
+        batch.CompressionMetadata = std::move(compressionMetadata);
+    }
+
+    for (ui32 batchIndex = batchRequestsOldSize;
+         batchIndex < BatchRequests.size();
+         ++batchIndex)
+    {
+        auto& batch = BatchRequests[batchIndex];
         RequestsScheduled += batch.Requests.size();
 
         auto request =
@@ -480,9 +505,7 @@ void TReadBlocksActor::ReadBlocks(
                 false,             // async
                 TInstant::Max(),   // deadline
                 ChecksumsEnabled,
-                ExtractCompressionMetadata(
-                    BlobId2CompressionMetadata,
-                    batch.BlobId));
+                std::move(batch.CompressionMetadata));
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -1324,7 +1347,8 @@ void TPartitionActor::CompleteReadBlocks(
             std::move(requests),
             std::move(args.BlockInfos),
             std::move(fullBlobId2CompressionMetadata),
-            describeBlocksRange.Defined());
+            describeBlocksRange.Defined(),
+            Config->GetVerifyBlobCompressionMetadata());
         Actors.Insert(readBlocksActorId);
 
         if (describeBlocksRange.Defined()) {
@@ -1343,6 +1367,7 @@ void TPartitionActor::CompleteReadBlocks(
                     *describeBlocksRange,
                     std::move(args.BlockMarks),
                     State->GetBlockSize(),
+                    Config->GetVerifyBlobCompressionMetadata(),
                     SelfId());
 
             Actors.Insert(describeBlocksActorId);

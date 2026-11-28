@@ -115,6 +115,7 @@ using TCritEventParams =
     xxx(DiskDevicesSizeViolation)                                              \
     xxx(RdmaMessageTypeMismatch)                                               \
     xxx(BlockChecksumAbsent)                                                   \
+    xxx(BlobCompressionMetadataAbsent)                                         \
     xxx(CleanupBlobMetaBlocksMismatch)                                         \
     xxx(ServiceProxyReceivedUnknownCookie)                                     \
     xxx(CellProxyEmptyService)                                                 \

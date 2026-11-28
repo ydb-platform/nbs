@@ -2,6 +2,7 @@
 
 #include "part_events_private.h"
 #include "part_ut.h"
+#include "part_ut_overlay.h"
 
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -46,7 +47,6 @@
 
 #include <util/generic/bitmap.h>
 #include <util/generic/size_literals.h>
-#include <util/generic/variant.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
@@ -61,6 +61,13 @@ using namespace NLWTrace;
 using namespace std::chrono_literals;
 
 namespace {
+
+using NOverlayTest::SetupOverlayPartition;
+using NOverlayTest::TBlob;
+using NOverlayTest::TEmpty;
+using NOverlayTest::TFresh;
+using NOverlayTest::TPartitionContent;
+using NOverlayTest::TPartitionWithRuntime;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -383,54 +390,6 @@ TTestActorRuntime::TEventObserver PartitionBatchWriteCollector(TTestActorRuntime
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEmpty {};
-
-struct TBlob
-{
-    TBlob(
-        ui32 number,
-        ui8 offset,
-        ui8 blockCount = 1,
-        ui32 channel = 0,
-        ui32 generation = 0
-    )
-        : Number(number)
-        , Offset(offset)
-        , BlockCount(blockCount)
-        , Channel(channel)
-        , Generation(generation)
-    {}
-
-    ui32 Number;
-    ui8 Offset;
-    ui8 BlockCount;
-    ui32 Channel;
-    ui32 Generation;
-};
-
-struct TFresh
-{
-    TFresh(ui8 value)
-        : Value(value)
-    {}
-
-    ui8 Value;
-};
-
-using TBlockDescription = std::variant<TEmpty, TBlob, TFresh>;
-
-using TPartitionContent = TVector<TBlockDescription>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TPartitionWithRuntime
-{
-    std::unique_ptr<TTestActorRuntime> Runtime;
-    std::unique_ptr<TPartitionClient> Partition;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TTestVolumeProxyActor final
     : public TActorBootstrapped<TTestVolumeProxyActor>
 {
@@ -745,15 +704,17 @@ bool EventHandler(
     return result;
 }
 
-TPartitionWithRuntime SetupOverlayPartition(
+}   // namespace
+
+TPartitionWithRuntime NOverlayTest::SetupOverlayPartition(
     ui64 overlayTabletId,
     ui64 baseTabletId,
-    const TPartitionContent& basePartitionContent = {},
-    TMaybe<ui32> channelsCount = {},
-    ui32 blockSize = DefaultBlockSize,
-    ui32 blockCount = 1024,
-    const NProto::TStorageServiceConfig& config = DefaultConfig(),
-    TMaybe<ui32> MaxBlocksInBlob = {})
+    const TPartitionContent& basePartitionContent,
+    TMaybe<ui32> channelsCount,
+    ui32 blockSize,
+    ui32 blockCount,
+    const NProto::TStorageServiceConfig& config,
+    TMaybe<ui32> MaxBlocksInBlob)
 {
     TPartitionWithRuntime result;
 
@@ -815,6 +776,8 @@ TPartitionWithRuntime SetupOverlayPartition(
 
     return result;
 }
+
+namespace {
 
 TString GetBlocksContent(
     const TPartitionContent& content,

@@ -27,19 +27,20 @@ bool operator < (const TRequest& lsv, const TRequest& rsv)
 
 template <ReadRequest TMethod>
 TReadDiskRegistryBasedOverlayActor<TMethod>::TReadDiskRegistryBasedOverlayActor(
-        TRequestInfoPtr requestInfo,
-        TRequest originalRequest,
-        const TCompressedBitmap& usedBlocks,
-        TActorId volumeActorId,
-        TActorId partActorId,
-        ui64 volumeTabletId,
-        TString baseDiskId,
-        TString baseDiskCheckpointId,
-        ui32 blockSize,
-        EStorageAccessMode mode,
-        TDuration longRunningThreshold,
-        TChildLogTitle logTitle,
-        bool enableDataIntegrityValidation)
+    TRequestInfoPtr requestInfo,
+    TRequest originalRequest,
+    const TCompressedBitmap& usedBlocks,
+    TActorId volumeActorId,
+    TActorId partActorId,
+    ui64 volumeTabletId,
+    TString baseDiskId,
+    TString baseDiskCheckpointId,
+    ui32 blockSize,
+    EStorageAccessMode mode,
+    TDuration longRunningThreshold,
+    TChildLogTitle logTitle,
+    bool enableDataIntegrityValidation,
+    bool verifyBlobCompressionMetadata)
     : RequestInfo(std::move(requestInfo))
     , OriginalRequest(std::move(originalRequest))
     , VolumeActorId(volumeActorId)
@@ -51,6 +52,7 @@ TReadDiskRegistryBasedOverlayActor<TMethod>::TReadDiskRegistryBasedOverlayActor(
     , LongRunningThreshold(longRunningThreshold)
     , LogTitle(std::move(logTitle))
     , EnableDataIntegrityValidation(enableDataIntegrityValidation)
+    , VerifyBlobCompressionMetadata(verifyBlobCompressionMetadata)
     , Mode(mode)
     , BlockMarks(MakeUsedBlockMarks(
           usedBlocks,
@@ -222,7 +224,8 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::SendBaseDiskRequest(
             BaseDiskRequest.GetStartIndex(),
             BaseDiskRequest.GetBlocksCount()),
         std::move(BlockMarks),
-        BlockSize);
+        BlockSize,
+        VerifyBlobCompressionMetadata);
 }
 
 template <ReadRequest TMethod>
@@ -403,10 +406,17 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
             currentRequest->BlobId = requestRef.BlobId;
             currentRequest->Proxy = NKikimr::MakeBlobStorageProxyID(requestRef.BSGroupId);
             currentRequest->GroupId = requestRef.BSGroupId;
-            const auto* compressionMetadata =
-                blobId2CompressionMetadata.FindPtr(requestRef.BlobId);
+            auto [compressionMetadata, error] = GetBlobCompressionMetadata(
+                blobId2CompressionMetadata,
+                requestRef.BlobId,
+                VerifyBlobCompressionMetadata,
+                ECompressionMetadataAccess::Extract);
+            if (HasError(error)) {
+                ReplyAndDie(ctx, error);
+                return;
+            }
             currentRequest->CompressionMetadata =
-                compressionMetadata ? *compressionMetadata : std::nullopt;
+                std::move(compressionMetadata);
         }
 
         currentRequest->BlobOffsets.push_back(requestRef.BlobOffset);

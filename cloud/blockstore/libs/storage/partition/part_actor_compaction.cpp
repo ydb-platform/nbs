@@ -120,6 +120,7 @@ public:
         TRangeCompactionInfo* RangeCompactionInfo = nullptr;
         ui32 GroupId = 0;
         TVector<ui32> BlockChecksums;
+        std::optional<NProto::TCompressionMetadata> CompressionMetadata;
 
         TBatchRequest() = default;
 
@@ -164,6 +165,7 @@ private:
     // read into a separate transaction issued by TCompactionActor instead of
     // doing it inside the main TCompaction prepare phase.
     const bool SplitCompactionTxEnabled;
+    const bool VerifyBlobCompressionMetadata;
 
     TVector<TPartialBlobId> BlobsToReadBlockMasks;
     TVector<TPartialBlobId> BlobsToReadBlobMetas;
@@ -219,7 +221,8 @@ public:
         bool splitTxEnabled,
         TVector<TPartialBlobId> blobsToReadBlockMasks,
         TVector<TPartialBlobId> blobsToReadBlobMetas,
-        TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata);
+        TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata,
+        bool verifyBlobCompressionMetadata);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -297,7 +300,8 @@ TCompactionActor::TCompactionActor(
     bool splitTxEnabled,
     TVector<TPartialBlobId> blobsToReadBlockMasks,
     TVector<TPartialBlobId> blobsToReadBlobMetas,
-    TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata)
+    TPartialBlobId2CompressionMetadataMap blobId2CompressionMetadata,
+    bool verifyBlobCompressionMetadata)
     : RequestInfo(std::move(requestInfo))
     , TabletId(tabletId)
     , VolumeLabels(std::move(volumeLabels))
@@ -314,6 +318,7 @@ TCompactionActor::TCompactionActor(
     , RangeCompactionInfos(std::move(rangeCompactionInfos))
     , Requests(std::move(requests))
     , SplitCompactionTxEnabled(splitTxEnabled)
+    , VerifyBlobCompressionMetadata(verifyBlobCompressionMetadata)
     , BlobsToReadBlockMasks(std::move(blobsToReadBlockMasks))
     , BlobsToReadBlobMetas(std::move(blobsToReadBlobMetas))
     , BlobId2CompressionMetadata(std::move(blobId2CompressionMetadata))
@@ -585,6 +590,24 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
             current.GroupId);
     }
 
+    for (ui32 batchIndex = 0; batchIndex < BatchRequests.size(); ++batchIndex) {
+        auto& batch = BatchRequests[batchIndex];
+        // Batches for the same blob are adjacent, one per compaction range.
+        const bool lastBatchForBlob =
+            batchIndex + 1 == BatchRequests.size() ||
+            BatchRequests[batchIndex + 1].BlobId != batch.BlobId;
+        auto [compressionMetadata, error] = GetBlobCompressionMetadata(
+            BlobId2CompressionMetadata,
+            MakeBlobId(TabletId, batch.BlobId),
+            VerifyBlobCompressionMetadata,
+            lastBatchForBlob ? ECompressionMetadataAccess::Extract
+                             : ECompressionMetadataAccess::Copy);
+        if (HandleError(ctx, error)) {
+            return;
+        }
+        batch.CompressionMetadata = std::move(compressionMetadata);
+    }
+
     const auto readBlobDeadline =
         BlobStorageAsyncRequestTimeout
             ? ctx.Now() + BlobStorageAsyncRequestTimeout
@@ -619,16 +642,6 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
 
         const bool shouldCalculateChecksums =
             !batch.RangeCompactionInfo->BlockChecksums.empty();
-        // Batches for the same blob are adjacent, one per compaction range.
-        const bool lastBatchForBlob =
-            batchIndex + 1 == BatchRequests.size() ||
-            BatchRequests[batchIndex + 1].BlobId != batch.BlobId;
-        auto compressionMetadata =
-            lastBatchForBlob
-                ? ExtractCompressionMetadata(
-                      BlobId2CompressionMetadata,
-                      batch.BlobId)
-                : BlobId2CompressionMetadata.Value(batch.BlobId, std::nullopt);
         auto request =
             std::make_unique<TEvPartitionCommonPrivate::TEvReadBlobRequest>(
                 MakeBlobId(TabletId, batch.BlobId),
@@ -639,7 +652,7 @@ void TCompactionActor::ReadBlocks(const TActorContext& ctx)
                 true,               // async
                 readBlobDeadline,   // deadline
                 shouldCalculateChecksums,
-                std::move(compressionMetadata));
+                std::move(batch.CompressionMetadata));
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -2499,7 +2512,8 @@ void TPartitionActor::CompleteCompaction(
         TVector<TPartialBlobId>(
             args.BlobsToReadBlobMetas.begin(),
             args.BlobsToReadBlobMetas.end()),
-        std::move(args.BlobId2CompressionMetadata));
+        std::move(args.BlobId2CompressionMetadata),
+        Config->GetVerifyBlobCompressionMetadata());
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::PARTITION,

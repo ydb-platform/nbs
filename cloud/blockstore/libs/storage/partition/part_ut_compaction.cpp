@@ -550,7 +550,9 @@ Y_UNIT_TEST_SUITE(TPartitionCompactionTest)
 
     Y_UNIT_TEST(CompactionShouldTakeCareOfFreshBlocks)
     {
-        auto runtime = PrepareTestActorRuntime();
+        auto config = DefaultConfig();
+        config.SetVerifyBlobCompressionMetadata(true);
+        auto runtime = PrepareTestActorRuntime(config);
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();

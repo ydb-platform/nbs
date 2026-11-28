@@ -5,6 +5,7 @@
 
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/zeroes.h>
+#include <cloud/storage/core/libs/tablet/blob_id.h>
 
 #include <library/cpp/blockcodecs/codecs.h>
 
@@ -215,9 +216,76 @@ ui64 EstimateCompressedSize(
     return Min(compressedSize, uncompressedSize);
 }
 
+template <typename TMap>
+TResultOrError<std::optional<TCompressionMetadata>> GetBlobCompressionMetadata(
+    TMap& metadata,
+    typename TMap::iterator it,
+    const NKikimr::TLogoBlobID& blobId,
+    bool verify,
+    ECompressionMetadataAccess access)
+{
+    if (it == metadata.end()) {
+        return ValidateBlobCompressionMetadata(verify, blobId, false);
+    }
+
+    if (access == ECompressionMetadataAccess::Copy) {
+        return it->second;
+    }
+
+    auto result = std::move(it->second);
+    metadata.erase(it);
+    return result;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError ValidateBlobCompressionMetadata(
+    bool verify,
+    const NKikimr::TLogoBlobID& blobId,
+    bool metadataKnown)
+{
+    if (verify && !metadataKnown) {
+        auto error = MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << "Compression metadata not found for blob " << blobId);
+        ReportBlobCompressionMetadataAbsent(
+            error.GetMessage(),
+            {{"tabletId", blobId.TabletID()}});
+        return error;
+    }
+    return {};
+}
+
+TResultOrError<std::optional<TCompressionMetadata>> GetBlobCompressionMetadata(
+    TBlobId2CompressionMetadataMap& metadata,
+    const NKikimr::TLogoBlobID& blobId,
+    bool verify,
+    ECompressionMetadataAccess access)
+{
+    return GetBlobCompressionMetadata(
+        metadata,
+        metadata.find(blobId),
+        blobId,
+        verify,
+        access);
+}
+
+TResultOrError<std::optional<TCompressionMetadata>> GetBlobCompressionMetadata(
+    TPartialBlobId2CompressionMetadataMap& metadata,
+    const NKikimr::TLogoBlobID& blobId,
+    bool verify,
+    ECompressionMetadataAccess access)
+{
+    return GetBlobCompressionMetadata(
+        metadata,
+        metadata.find(MakePartialBlobId(blobId)),
+        blobId,
+        verify,
+        access);
+}
 
 TError ValidateCompressionSettings(ui32 blockSize, ui32 chunkSize)
 {
