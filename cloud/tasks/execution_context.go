@@ -43,8 +43,30 @@ type ExecutionContext interface {
 
 	HasEvent(ctx context.Context, event int64) bool
 
+	// Commits successful completion and preparation in one transaction.
+	// External work must finish first; preparation may be retried.
+	// Repeated completion after a successful commit is a no-op.
 	FinishWithPreparation(
 		ctx context.Context,
+		preparation func(context.Context, *persistence.Transaction) error,
+	) error
+
+	// Completes Task.Cancel and preserves the saved task error.
+	// External cleanup must finish first; preparation may be retried.
+	// On failure, keep cancellation retryable. Propagate generation and
+	// interrupt errors unchanged.
+	FinishCancellationWithPreparation(
+		ctx context.Context,
+		preparation func(context.Context, *persistence.Transaction) error,
+	) error
+
+	// Completes Run with NonCancellableError without calling Task.Cancel.
+	// Commits taskError and preparation in the same transaction.
+	// Return taskError to the runner only after this call succeeds.
+	// Preparation may be retried; external cleanup must finish first.
+	FinishWithNonCancellableErrorAndPreparation(
+		ctx context.Context,
+		taskError error,
 		preparation func(context.Context, *persistence.Transaction) error,
 	) error
 }
@@ -187,6 +209,47 @@ func (c *executionContext) FinishWithPreparation(
 	preparation func(context.Context, *persistence.Transaction) error,
 ) error {
 
+	return c.finishWithPreparation(
+		ctx, storage.TaskStatusFinished, nil, preparation,
+	)
+}
+
+func (c *executionContext) FinishCancellationWithPreparation(
+	ctx context.Context,
+	preparation func(context.Context, *persistence.Transaction) error,
+) error {
+
+	return c.finishWithPreparation(
+		ctx, storage.TaskStatusCancelled, nil, preparation,
+	)
+}
+
+func (c *executionContext) FinishWithNonCancellableErrorAndPreparation(
+	ctx context.Context,
+	taskError error,
+	preparation func(context.Context, *persistence.Transaction) error,
+) error {
+
+	return c.finishWithPreparation(
+		ctx, storage.TaskStatusCancelled, taskError, preparation,
+	)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (c *executionContext) getRetriableErrorCount() uint64 {
+	c.taskStateMutex.Lock()
+	defer c.taskStateMutex.Unlock()
+	return c.taskState.RetriableErrorCount
+}
+
+func (c *executionContext) finishWithPreparation(
+	ctx context.Context,
+	status storage.TaskStatus,
+	taskError error,
+	preparation func(context.Context, *persistence.Transaction) error,
+) error {
+
 	if c.finished {
 		return nil
 	}
@@ -200,7 +263,11 @@ func (c *executionContext) FinishWithPreparation(
 		ctx,
 		func(taskState storage.TaskState) storage.TaskState {
 			taskState.State = state
-			taskState.Status = storage.TaskStatusFinished
+			taskState.Status = status
+			if taskError != nil {
+				taskState.SetError(taskError)
+			}
+
 			return taskState
 		},
 		preparation,
@@ -211,14 +278,6 @@ func (c *executionContext) FinishWithPreparation(
 
 	c.finished = true
 	return nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func (c *executionContext) getRetriableErrorCount() uint64 {
-	c.taskStateMutex.Lock()
-	defer c.taskStateMutex.Unlock()
-	return c.taskState.RetriableErrorCount
 }
 
 func (c *executionContext) updateStateWithPreparation(
@@ -345,17 +404,9 @@ func (c *executionContext) setNonCancellableError(
 	e error,
 ) error {
 
-	state, err := c.task.Save()
-	if err != nil {
-		return err
-	}
-
-	return c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
-		taskState.State = state
-		taskState.Status = storage.TaskStatusCancelled
-		taskState.SetError(e)
-		return taskState
-	})
+	return c.FinishWithNonCancellableErrorAndPreparation(
+		ctx, e, nil, // Preparation.
+	)
 }
 
 func (c *executionContext) finish(ctx context.Context) error {
@@ -363,16 +414,7 @@ func (c *executionContext) finish(ctx context.Context) error {
 }
 
 func (c *executionContext) setCancelled(ctx context.Context) error {
-	state, err := c.task.Save()
-	if err != nil {
-		return err
-	}
-
-	return c.updateState(ctx, func(taskState storage.TaskState) storage.TaskState {
-		taskState.State = state
-		taskState.Status = storage.TaskStatusCancelled
-		return taskState
-	})
+	return c.FinishCancellationWithPreparation(ctx, nil /* preparation */)
 }
 
 func (c *executionContext) ping(ctx context.Context) error {

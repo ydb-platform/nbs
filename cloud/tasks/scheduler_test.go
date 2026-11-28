@@ -119,6 +119,25 @@ func (c *executionContextMock) FinishWithPreparation(
 	return args.Error(0)
 }
 
+func (c *executionContextMock) FinishCancellationWithPreparation(
+	ctx context.Context,
+	preparation func(context.Context, *persistence.Transaction) error,
+) error {
+
+	args := c.Called(ctx, preparation)
+	return args.Error(0)
+}
+
+func (c *executionContextMock) FinishWithNonCancellableErrorAndPreparation(
+	ctx context.Context,
+	taskError error,
+	preparation func(context.Context, *persistence.Transaction) error,
+) error {
+
+	args := c.Called(ctx, taskError, preparation)
+	return args.Error(0)
+}
+
 func newExecutionContextMock() ExecutionContext {
 	execCtx := &executionContextMock{}
 	execCtx.On("GetTaskID").Return("toplevel_task_id")
