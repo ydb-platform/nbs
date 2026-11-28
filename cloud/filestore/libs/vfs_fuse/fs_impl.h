@@ -626,7 +626,8 @@ private:
         fuse_ino_t ino,
         const TRangeLock& range,
         bool sleep,
-        NProto::ELockOrigin origin);
+        NProto::ELockOrigin origin,
+        TInstant deadline);
     void ScheduleAcquireLock(
         TCallContextPtr callContext,
         const NCloud::NProto::TError& error,
@@ -634,7 +635,8 @@ private:
         fuse_ino_t ino,
         const TRangeLock& range,
         bool sleep,
-        NProto::ELockOrigin origin);
+        NProto::ELockOrigin origin,
+        TInstant deadline);
     void ReleaseLock(
         TCallContextPtr callContext,
         fuse_req_t req,
