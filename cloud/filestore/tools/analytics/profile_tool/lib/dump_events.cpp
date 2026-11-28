@@ -2,6 +2,7 @@
 
 #include "command.h"
 #include "common_filter_params.h"
+#include "dump_events.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/filestore/libs/service/request.h>
@@ -34,6 +35,8 @@ namespace NCloud::NFileStore::NProfileTool {
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+constexpr ui64 DumpSizeMultiplier = 20;
 
 class TEventProcessor
     : public TProtobufEventProcessor
@@ -260,41 +263,21 @@ private:
 
     bool CheckDiskSpace()
     {
-        constexpr ui64 DumpSizeMultiplier = 20;
-        constexpr ui64 MaxInputBytes =
-            std::numeric_limits<ui64>::max() / DumpSizeMultiplier;
-        constexpr ui64 MinRemainingBytes = 1ULL << 30;
-
-        ui64 inputBytes = 0;
-        TVector<TProfileLogFile> files;
-        files.reserve(ProfileLogFiles.size());
-        for (const auto& file: ProfileLogFiles) {
-            const TFileStat stat(file.Path);
-            const bool isFile = stat.IsFile();
-            if (!isFile && IgnoreErrors) {
-                Cerr << "Skipping profile log " << file.Path
-                     << " because its file size is unavailable." << Endl;
-                continue;
-            }
-            if (!isFile || stat.Size > MaxInputBytes - inputBytes) {
-                Cerr << "Cannot estimate dump size from profile log "
-                     << file.Path << Endl;
-                return false;
-            }
-            inputBytes += stat.Size;
-            files.push_back(file);
+        const auto estimatedBytes =
+            EstimateDumpSize(ProfileLogFiles, IgnoreErrors);
+        if (!estimatedBytes) {
+            return false;
         }
-        ProfileLogFiles = std::move(files);
-        if (inputBytes == 0) {
+        if (*estimatedBytes == 0) {
             return true;
         }
 
-        const ui64 estimatedBytes = inputBytes * DumpSizeMultiplier;
         Cerr << "Estimated dump size is about "
-             << FormatByteSize(estimatedBytes) << " (" << estimatedBytes
+             << FormatByteSize(*estimatedBytes) << " (" << *estimatedBytes
              << " bytes) at " << DumpSizeMultiplier
              << " times the compressed input size ("
-             << FormatByteSize(inputBytes) << ")." << Endl;
+             << FormatByteSize(*estimatedBytes / DumpSizeMultiplier) << ")."
+             << Endl;
 
         const auto availableBytes = ReportAvailableSpace("/");
         struct stat rootStat;
@@ -309,9 +292,7 @@ private:
             return false;
         }
 
-        if (*availableBytes < MinRemainingBytes ||
-            estimatedBytes > *availableBytes - MinRemainingBytes)
-        {
+        if (!HasSpaceForDump(*availableBytes, *estimatedBytes)) {
             Cerr << "Insufficient free space on / for the dump. "
                     "1 GiB must remain after writing."
                  << Endl;
@@ -324,6 +305,36 @@ private:
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TMaybe<ui64> EstimateDumpSize(
+    TVector<TProfileLogFile>& profileLogFiles,
+    bool ignoreErrors)
+{
+    constexpr ui64 MaxInputBytes =
+        std::numeric_limits<ui64>::max() / DumpSizeMultiplier;
+
+    ui64 inputBytes = 0;
+    TVector<TProfileLogFile> files;
+    files.reserve(profileLogFiles.size());
+    for (const auto& file: profileLogFiles) {
+        const TFileStat stat(file.Path);
+        const bool isFile = stat.IsFile();
+        if (!isFile && ignoreErrors) {
+            Cerr << "Skipping profile log " << file.Path
+                 << " because its file size is unavailable." << Endl;
+            continue;
+        }
+        if (!isFile || stat.Size > MaxInputBytes - inputBytes) {
+            Cerr << "Cannot estimate dump size from profile log "
+                 << file.Path << Endl;
+            return {};
+        }
+        inputBytes += stat.Size;
+        files.push_back(file);
+    }
+    profileLogFiles = std::move(files);
+    return inputBytes * DumpSizeMultiplier;
+}
 
 TCommandPtr NewDumpEventsCommand()
 {

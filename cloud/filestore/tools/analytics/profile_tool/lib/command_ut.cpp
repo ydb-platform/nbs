@@ -1,6 +1,7 @@
 #include "command.h"
 
 #include "common_filter_params.h"
+#include "dump_events.h"
 #include "factory.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
@@ -228,6 +229,39 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         UNIT_ASSERT_VALUES_EQUAL(
             GetCommand("dumpevents")->Run(std::size(args), args),
             0);
+    }
+
+    Y_UNIT_TEST(ShouldRequireOneGiBOfFreeSpaceAfterDump)
+    {
+        constexpr ui64 Reserve = 1ULL << 30;
+        constexpr ui64 EstimatedBytes = 1024;
+
+        UNIT_ASSERT(!HasSpaceForDump(Reserve - 1, EstimatedBytes));
+        UNIT_ASSERT(
+            !HasSpaceForDump(Reserve + EstimatedBytes - 1, EstimatedBytes));
+        UNIT_ASSERT(HasSpaceForDump(Reserve + EstimatedBytes, EstimatedBytes));
+    }
+
+    Y_UNIT_TEST(ShouldSkipInvalidInputWhenEstimatingDumpSize)
+    {
+        TTempFileHandle input;
+        WriteProfileLog(input.Name());
+        TTempDir directory;
+
+        TVector<TProfileLogFile> files = {
+            {directory.Name(), {}, {}},
+            {input.Name(), {}, {}}};
+
+        UNIT_ASSERT(!EstimateDumpSize(files, false));
+        UNIT_ASSERT_VALUES_EQUAL(files.size(), 2);
+
+        const auto estimatedBytes = EstimateDumpSize(files, true);
+        UNIT_ASSERT(estimatedBytes);
+        UNIT_ASSERT_VALUES_EQUAL(
+            *estimatedBytes,
+            20 * static_cast<ui64>(input.GetLength()));
+        UNIT_ASSERT_VALUES_EQUAL(files.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(files.front().Path, input.Name());
     }
 
     Y_UNIT_TEST(ShouldProcessLogsWithoutCommonFilterParams)
