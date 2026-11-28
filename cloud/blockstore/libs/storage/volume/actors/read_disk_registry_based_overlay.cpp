@@ -368,6 +368,13 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
     currentRequest->Deadline = TInstant::Max();
     TSgList currentSgList;
 
+    TBlobId2CompressionMetadataMap blobId2CompressionMetadata;
+    for (auto& entry: msg->BlobId2CompressionMetadata) {
+        blobId2CompressionMetadata.emplace(
+            entry.BlobId,
+            std::move(entry.CompressionMetadata));
+    }
+
     for (const auto& request: requests) {
         const auto& requestRef = request.BlobMark;
         const auto& dataRef = request.DataRef;
@@ -396,6 +403,10 @@ void TReadDiskRegistryBasedOverlayActor<TMethod>::HandleDescribeBlocksCompleted(
             currentRequest->BlobId = requestRef.BlobId;
             currentRequest->Proxy = NKikimr::MakeBlobStorageProxyID(requestRef.BSGroupId);
             currentRequest->GroupId = requestRef.BSGroupId;
+            const auto* compressionMetadata =
+                blobId2CompressionMetadata.FindPtr(requestRef.BlobId);
+            currentRequest->CompressionMetadata =
+                compressionMetadata ? *compressionMetadata : std::nullopt;
         }
 
         currentRequest->BlobOffsets.push_back(requestRef.BlobOffset);

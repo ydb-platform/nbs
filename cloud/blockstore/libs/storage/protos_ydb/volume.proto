@@ -154,6 +154,14 @@ message TDescribeBlocksResponse
     repeated TFreshBlockRange FreshBlockRanges = 2;
     repeated TBlobPiece BlobPieces = 3;
 
+    message TBlobIdToCompressionMetadata
+    {
+        NKikimrProto.TLogoBlobID BlobId = 1;
+        optional TCompressionMetadata CompressionMetadata = 2;
+    }
+
+    repeated TBlobIdToCompressionMetadata BlobId2CompressionMetadata = 6;
+
     // Optional response headers.
     TResponseHeaders Headers = 1000;
 }

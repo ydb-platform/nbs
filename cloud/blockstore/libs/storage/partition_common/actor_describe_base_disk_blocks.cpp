@@ -75,7 +75,8 @@ void TDescribeBaseDiskBlocksActor::ReplyAndDie(
 
     auto response = std::make_unique<TEvent>(
         std::move(error),
-        std::move(BlockMarks));
+        std::move(BlockMarks),
+        std::move(BlobId2CompressionMetadata));
 
     NCloud::Reply(ctx, *RequestInfo, std::move(response));
     Die(ctx);
@@ -157,6 +158,14 @@ void TDescribeBaseDiskBlocksActor::ProcessDescribeBlocksResponse(
 {
     const ui64 startIndex = BlocksRange.Start;
     auto& record = response.Record;
+
+    for (const auto& entry: record.GetBlobId2CompressionMetadata()) {
+        BlobId2CompressionMetadata.push_back(
+            {LogoBlobIDFromLogoBlobID(entry.GetBlobId()),
+             entry.HasCompressionMetadata()
+                 ? std::make_optional(entry.GetCompressionMetadata())
+                 : std::nullopt});
+    }
 
     for (auto&& range : std::move(*record.MutableFreshBlockRanges())) {
         auto sharedRange = std::make_shared<NProto::TFreshBlockRange>(std::move(range));
