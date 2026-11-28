@@ -503,6 +503,7 @@ public:
         if (!ok) {
             auto prevState = AtomicSwap(&RequestState, RequestCompleted);
             if (prevState != WaitingForRequest) {
+                MetricRequest.ResponseDeliveryUncertain = true;
                 CompleteRequest();
             }
         }
@@ -698,13 +699,31 @@ private:
         OnRequestPreparation(*Request, DataHolder);
     }
 
-    void ValidateRequest()
+    TMaybe<NProto::ERequestSource> PrepareRequestSource()
     {
         auto authContext = Context->auth_context();
         Y_ABORT_UNLESS(authContext);
 
-        auto source = GetRequestSource(*authContext, RequestSourceKinds);
+        const auto source = GetRequestSource(*authContext, RequestSourceKinds);
+        if constexpr (IsReadWriteRequest(TMethod::Request) && !IsDataService<TService>()) {
+            const auto& headers = Request->GetHeaders();
+            MetricRequest.ForwardedRequest =
+                !headers.GetCellId().empty() &&
+                headers.GetCellId() == AppCtx.CellId &&
+                source && *source == NProto::SOURCE_SECURE_CONTROL_CHANNEL &&
+                !headers.HasInternal() &&
+                IsCellPeer(*authContext, AppCtx.CellPeerNames);
+            ReturnThrottleDelay = MetricRequest.ForwardedRequest &&
+                                  headers.GetLatencyTimingRequested();
+            if (ReturnThrottleDelay) {
+                CallContext->EnableLatencyTiming();
+            }
+        }
+        return source;
+    }
 
+    void ValidateRequest(TMaybe<NProto::ERequestSource> source)
+    {
         if (!source) {
             ui32 fd = 0;
             auto peer = Context->peer();
@@ -735,6 +754,7 @@ private:
         }
 
         if (Request->GetHeaders().HasInternal()) {
+            MetricRequest.ClientFault = true;
             STORAGE_THROW_SERVICE_ERROR(E_ARGUMENT)
                 << "internal field should not be set by client";
         }
@@ -757,20 +777,6 @@ private:
             Context->peer(),
             authToken,
             *Request->MutableHeaders());
-
-        if constexpr (IsReadWriteRequest(TMethod::Request)) {
-            const auto& headers = Request->GetHeaders();
-            MetricRequest.ForwardedRequest =
-                !headers.GetCellId().empty() &&
-                headers.GetCellId() == AppCtx.CellId &&
-                *source == NProto::SOURCE_SECURE_CONTROL_CHANNEL &&
-                IsCellPeer(*authContext, AppCtx.CellPeerNames);
-            ReturnThrottleDelay = MetricRequest.ForwardedRequest &&
-                                  headers.GetLatencyTimingRequested();
-            if (ReturnThrottleDelay) {
-                CallContext->EnableLatencyTiming();
-            }
-        }
 
         if constexpr (std::is_same<TMethod, TDescribeVolumeMethod>()) {
             const auto& cellId = Request->GetHeaders().GetCellId();
@@ -807,6 +813,7 @@ private:
 
         MetricRequest.Peer = UrlUnescapeRet(Context->peer());
 
+        const auto source = PrepareRequestSource();
         AppCtx.ServerStats->RequestStarted(
             AppCtx.Log,
             MetricRequest,
@@ -814,7 +821,7 @@ private:
             message);
 
         try {
-            ValidateRequest();
+            ValidateRequest(source);
 
             Response = TMethod::Execute(
                 SessionService ? *SessionService : *AppCtx.Service,

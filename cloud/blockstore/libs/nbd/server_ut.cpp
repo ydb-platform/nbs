@@ -941,11 +941,11 @@ Y_UNIT_TEST_SUITE(TServerTest)
         auto storage = std::make_shared<TTestStorage>();
 
         TManualEvent event;
-        auto trigger = NewPromise<NProto::TZeroBlocksResponse>();
+        auto trigger = NewPromise<NProto::TReadBlocksLocalResponse>();
 
-        storage->ZeroBlocksHandler = [&] (
+        storage->ReadBlocksLocalHandler = [&] (
             TCallContextPtr callContext,
-            std::shared_ptr<NProto::TZeroBlocksRequest> request)
+            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
         {
             Y_UNUSED(callContext);
 
@@ -960,32 +960,54 @@ Y_UNIT_TEST_SUITE(TServerTest)
         auto port = portManager.GetPort(9001);
         TNetworkAddress connectAddress(port);
 
-        auto bootstrap = CreateBootstrap(connectAddress, storage);
+        auto completion = NewPromise<std::pair<ui32, bool>>();
+        auto stats = std::make_shared<TTestServerStats>();
+        stats->RequestCompletedHandler =
+            [&](auto&, auto& metric, auto&, const auto& result) {
+                if (metric.RequestType == EBlockStoreRequest::ReadBlocks) {
+                    completion.SetValue(
+                        {result.GetCode(), metric.ResponseDeliveryUncertain});
+                }
+            };
+        auto bootstrap = CreateBootstrap(
+            connectAddress, storage, DefaultStorageOptions, {}, nullptr,
+            nullptr, stats);
 
         auto error = bootstrap->Start();
         UNIT_ASSERT_C(!HasError(error), error);
 
-        TFuture<NProto::TZeroBlocksResponse> firstFuture;
+        TVector<TString> blocks;
+        TFuture<NProto::TReadBlocksLocalResponse> firstFuture;
         {
-            auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+            auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
             request->SetStartIndex(startIndex);
             request->SetBlocksCount(blocksCount);
 
-            firstFuture = bootstrap->GetClientEndpoint()->ZeroBlocks(
+            request->SetBlockSize(DefaultBlockSize);
+            request->Sglist = TGuardedSgList(ResizeBlocks(
+                blocks, blocksCount, TString::TUninitialized(DefaultBlockSize)));
+
+            firstFuture = bootstrap->GetClientEndpoint()->ReadBlocksLocal(
                 MakeIntrusive<TCallContext>(),
                 std::move(request));
 
-            event.Wait();
+            UNIT_ASSERT(event.WaitT(TDuration::Seconds(5)));
             UNIT_ASSERT(!firstFuture.HasValue());
         }
 
         auto stopFuture = bootstrap->StopEndpointAsync();
-        UNIT_ASSERT(!stopFuture.Wait(TDuration::MilliSeconds(100)));
+        // The endpoint has closed the connection while the backend read is pending.
+        UNIT_ASSERT(firstFuture.Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT(!stopFuture.HasValue());
 
         trigger.SetValue(TErrorResponse(E_INVALID_STATE, "Any fatal error"));
 
         error = stopFuture.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(error), error);
+        const auto [code, uncertain] =
+            completion.GetFuture().GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, code);
+        UNIT_ASSERT(uncertain);
 
         {
             auto request = std::make_shared<NProto::TZeroBlocksRequest>();
@@ -1177,9 +1199,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TManualEvent undelivered;
         auto stats = std::make_shared<TTestServerStats>();
         stats->RequestCompletedHandler =
-            [&](auto&, auto&, auto&, const auto& error)
+            [&](auto&, auto& metric, auto&, const auto&)
         {
-            if (error.GetCode() == E_CANCELLED) {
+            if (metric.ResponseDeliveryUncertain) {
                 undelivered.Signal();
             }
         };
