@@ -7,6 +7,7 @@
 #include <library/cpp/coroutine/engine/impl.h>
 
 #include <util/system/event.h>
+#include <util/system/mutex.h>
 #include <util/system/thread.h>
 
 namespace NCloud {
@@ -54,6 +55,8 @@ class TDispatcher
 {
 private:
     TContLockFreeQueue<ITask*> Queue;
+    TMutex StopLock;
+    bool Stopping = false;
 
 public:
     TDispatcher(TContExecutor* e)
@@ -67,7 +70,22 @@ public:
 
     void Stop()
     {
-        Queue.Enqueue(nullptr);
+        with_lock (StopLock) {
+            if (!Stopping) {
+                Stopping = true;
+                Queue.Enqueue(nullptr);
+            }
+        }
+    }
+
+    bool TryEnqueue(ITaskPtr task)
+    {
+        TGuard guard(StopLock);
+        if (Stopping) {
+            return false;
+        }
+        Enqueue(std::move(task));
+        return true;
     }
 
     void Enqueue(ITaskPtr task)
@@ -185,6 +203,11 @@ void TExecutor::Enqueue(ITaskPtr task)
     Thread->Dispatcher->Enqueue(std::move(task));
 }
 
+bool TExecutor::TryEnqueue(ITaskPtr task)
+{
+    return Thread->Dispatcher && Thread->Dispatcher->TryEnqueue(std::move(task));
+}
+
 TContExecutor* TExecutor::GetContExecutor()
 {
     Y_ABORT_UNLESS(Thread->Executor);
@@ -201,4 +224,3 @@ TExecutorPtr TExecutor::Create(
 }
 
 }   // namespace NCloud
-

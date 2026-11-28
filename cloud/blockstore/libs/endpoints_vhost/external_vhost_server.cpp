@@ -1,7 +1,7 @@
 #include "external_vhost_server.h"
 
 #include "cont_io_with_timeout.h"
-#include "external_endpoint_stats.h"
+#include "external_vhost_process.h"
 
 #include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/common/device_path.h>
@@ -57,14 +57,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// When the process starts, there may be a delay until it can process the
-// signals. Therefore, it is possible that the child process will miss our first
-// SIGUSR1 signal. When requesting the first block of statistics, it is
-// necessary to make a reasonable number of repetitions.
-constexpr ui64 ReadFirstStatRetryCount = 10;
+constexpr ui64 StatsErrorLogPeriod = 60;
 
-// It doesn't make sense to make the delay less than
-// COMPLETION_STATS_WAIT_DURATION.
 constexpr auto StatReadDuration = TDuration::Seconds(1);
 
 // Backoff delays for external-vhost server restart.
@@ -169,88 +163,6 @@ bool PrefetchBinaryToCache(const TString& binaryPath)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TChild
-{
-    pid_t Pid = 0;
-    TFileHandle StdOut;
-    TFileHandle StdErr;
-
-public:
-    explicit TChild(pid_t pid)
-        : Pid{pid}
-    {}
-
-    TChild(pid_t pid, TFileHandle stdOut, TFileHandle stdErr)
-        : Pid{pid}
-        , StdOut{std::move(stdOut)}
-        , StdErr{std::move(stdErr)}
-    {}
-
-    TChild(const TChild&) = delete;
-    TChild& operator=(const TChild&) = delete;
-
-    TChild(TChild&& rhs) noexcept
-    {
-        Swap(rhs);
-    }
-
-    TChild& operator=(TChild&& rhs) noexcept
-    {
-        Swap(rhs);
-
-        return *this;
-    }
-
-    void Swap(TChild& rhs) noexcept
-    {
-        std::swap(Pid, rhs.Pid);
-        StdOut.Swap(rhs.StdOut);
-        StdErr.Swap(rhs.StdErr);
-    }
-
-    int SendSignal(int sig) const noexcept
-    {
-        return ::kill(Pid, sig);
-    }
-
-    void Terminate() const noexcept
-    {
-        SendSignal(SIGTERM);
-    }
-
-    void Kill() const noexcept
-    {
-        SendSignal(SIGKILL);
-    }
-
-    NProto::TError Wait() const
-    {
-        int status = 0;
-
-        if (::waitpid(Pid, &status, 0) == -1) {
-            int err = errno;
-            return MakeError(
-                MAKE_SYSTEM_ERROR(err),
-                TStringBuilder() << "waitpid: " << ::strerror(err));
-        }
-
-        if (WIFSIGNALED(status)) {
-            const char* message =
-                WCOREDUMP(status) ? "core dump" : "terminated by a signal";
-
-            return MakeError(MAKE_SYSTEM_ERROR(WTERMSIG(status)), message);
-        }
-
-        if (WIFEXITED(status) && WEXITSTATUS(status)) {
-            return MakeError(MAKE_SYSTEM_ERROR(WEXITSTATUS(status)));
-        }
-
-        return {};
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TPipe
 {
     TFileHandle R;
@@ -280,10 +192,74 @@ struct TPipe
 
 ////////////////////////////////////////////////////////////////////////////////
 
+}   // namespace
+
+namespace NPrivate {
+
+int TChild::SendSignal(int sig) const noexcept
+{
+    return ::kill(Pid, sig);
+}
+
+void TChild::Terminate() const noexcept
+{
+    SendSignal(SIGTERM);
+}
+
+void TChild::Kill() const noexcept
+{
+    SendSignal(SIGKILL);
+}
+
+NProto::TError TChild::Wait() const
+{
+    int status = 0;
+
+    pid_t waited;
+    do {
+        waited = ::waitpid(Pid, &status, 0);
+    } while (waited == -1 && errno == EINTR);
+
+    if (waited == -1) {
+        int err = errno;
+        return MakeError(
+            MAKE_SYSTEM_ERROR(err),
+            TStringBuilder() << "waitpid: " << ::strerror(err));
+    }
+
+    if (WIFSIGNALED(status)) {
+        const char* message =
+            WCOREDUMP(status) ? "core dump" : "terminated by a signal";
+
+        return MakeError(MAKE_SYSTEM_ERROR(WTERMSIG(status)), message);
+    }
+
+    if (WIFEXITED(status) && WEXITSTATUS(status)) {
+        return MakeError(MAKE_SYSTEM_ERROR(WEXITSTATUS(status)));
+    }
+
+    return {};
+}
+
 TChild SpawnChild(
     const TString& binaryPath,
-    TVector<TString> args)
+    TVector<TString> args,
+    const TString& latencySli)
 {
+    // Use an environment extension so older external binaries can still run:
+    // they ignore the setting and their operations are reported as Unknown.
+    TString latencySliEnv = "NBS_LATENCY_SLI_CONFIG=" + latencySli;
+    TVector<char*> qenv;
+    for (char** entry = environ; *entry; ++entry) {
+        if (!TStringBuf(*entry).StartsWith("NBS_LATENCY_SLI_CONFIG=")) {
+            qenv.push_back(*entry);
+        }
+    }
+    const size_t latencySliIndex = qenv.size();
+    qenv.push_back(latencySliEnv.Detach());
+    qenv.push_back(nullptr);
+    char disabledLatencySli[] = "NBS_LATENCY_SLI_CONFIG=";
+
     args.push_back("--blockstore-service-pid=" + ToString(::getpid()));
 
     TPipe stdOut;
@@ -330,7 +306,17 @@ TChild SpawnChild(
         }
         qargs.emplace_back();
 
-        ::execvp(binaryPath.c_str(), qargs.data());
+        ::execvpe(binaryPath.c_str(), qargs.data(), qenv.data());
+        if (errno == E2BIG && !latencySli.empty()) {
+            // Both the per-string and aggregate exec limits can be exceeded.
+            // This optional metric must not prevent the endpoint from starting.
+            constexpr char warning[] =
+                "{\"priority\":4,\"message\":\"Latency SLI config exceeds exec limits; "
+                "starting with SLI disabled\"}\n";
+            (void)::write(STDERR_FILENO, warning, sizeof(warning) - 1);
+            qenv[latencySliIndex] = disabledLatencySli;
+            ::execvpe(binaryPath.c_str(), qargs.data(), qenv.data());
+        }
     }
 
     int err = errno;
@@ -340,8 +326,10 @@ TChild SpawnChild(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+namespace {
+
 class TEndpointProcess final
-    : public TThrRefBase
+    : public IEndpointProcess
 {
 private:
     const ILoggingServicePtr Logging;
@@ -354,6 +342,8 @@ private:
     const TString LogPrefix;
 
     std::atomic_bool ShouldStop = false;
+    std::atomic_bool Exited = false;
+    TPromise<void> StatsReadFinished = NewPromise<void>();
 
 public:
     TEndpointProcess(
@@ -373,101 +363,122 @@ public:
 
     ~TEndpointProcess() override
     {
-        if (!ShouldStop) {
+        if (!ShouldStop && !Exited) {
             Process.Terminate();
         }
     }
 
-    void Start(TContExecutor* e)
+    void StartReaders(TExecutor& executor, EEndpointStartMode mode)
     {
-        e->Create<TEndpointProcess, &TEndpointProcess::ReadStats>(this, "stats");
-        e->Create<TEndpointProcess, &TEndpointProcess::ReadStdErr>(this, "err");
+        auto start = [self = TIntrusivePtr<TEndpointProcess>(this)] {
+            auto* e = RunningCont()->Executor();
+            e->CreateOwned([self](TCont* c) { self->ReadStats(c); }, "stats");
+            e->CreateOwned([self](TCont* c) { self->ReadStdErr(c); }, "err");
+        };
+        if (!executor.TryEnqueue(
+                std::make_unique<TSimpleTask<decltype(start)>>(std::move(start))))
+        {
+            FinishStats();
+            if (mode == EEndpointStartMode::Restart) {
+                // The VM can still use the replacement during NBS shutdown.
+                return;
+            }
+            // The initial start can fall back to the in-process endpoint.
+            Process.Kill();
+            Process.Wait();
+            Exited = true;
+            ythrow TServiceError(E_REJECTED) << "endpoint executor is stopped";
+        }
     }
 
-    void Stop()
+    void Stop() override
     {
         ShouldStop = true;
-        Process.SendSignal(SIGINT);
+        if (!Exited) {
+            Process.SendSignal(SIGINT);
+        }
     }
 
-    NProto::TError Wait()
+    NProto::TError Wait() override
     {
-        return Process.Wait();
+        auto error = Process.Wait();
+        Exited = true;
+        StatsReadFinished.GetFuture().Wait();
+        return error;
     }
 
 private:
+    void FinishStats()
+    {
+        Stats.FinishExternalStats();
+        StatsReadFinished.TrySetValue();
+    }
+
     void ReadStats(TCont* c)
     {
-        TIntrusivePtr<TEndpointProcess> holder{this};
+        Y_DEFER
+        {
+            FinishStats();
+        };
         // Since it is not guaranteed that the vhost-server will receive first
         // signal to generate statistics, we need to read the response with a
         // timeout.
         TContIOWithTimeout io{Process.StdOut, c, StatReadDuration * 2};
 
-        bool firstRead = true;
-        for (ui64 i = 0; !ShouldStop; ++i) {
+        ui64 failures = 0;
+        while (!c->Cancelled()) {
             const auto startReadStatAt = TInstant::Now();
 
             try {
-                ReadStatsImpl(io);
-                firstRead = false;
-            } catch (...) {
-                const bool shouldContinue = HandleReadStatsError(firstRead, i);
-                if (!shouldContinue) {
+                if (ReadStatsImpl(io)) {
                     break;
+                }
+                failures = 0;
+            } catch (...) {
+                if (c->Cancelled() || Exited) {
+                    break;
+                }
+                // The child can keep serving I/O through pipe timeouts or
+                // malformed lines. Its next snapshot holds cumulative counts.
+                if (++failures == 1 || failures % StatsErrorLogPeriod == 0) {
+                    STORAGE_WARN(
+                        LogPrefix
+                        << "Retrying stats read after " << failures
+                        << " failures: " << CurrentExceptionMessage());
                 }
             }
 
             auto elapsedTime = TInstant::Now() - startReadStatAt;
-            if (elapsedTime < StatReadDuration) {
+            if (!Exited && elapsedTime < StatReadDuration) {
                 c->SleepT(StatReadDuration - elapsedTime);
             }
         }
     }
 
-    bool HandleReadStatsError(bool firstRead, ui64 i)
+    bool ReadStatsImpl(TContIOWithTimeout& io)
     {
-        if (ShouldStop) {
-            STORAGE_INFO(
-                LogPrefix << "Read stats error: " << CurrentExceptionMessage());
-            return false;
+        if (!ShouldStop && !Exited) {
+            Process.SendSignal(SIGUSR1);
         }
 
-        if (firstRead) {
-            if (i < ReadFirstStatRetryCount) {
-                STORAGE_WARN(
-                    LogPrefix << "Retrying read first stat #" << i + 1
-                              << ". Error: " << CurrentExceptionMessage());
-                return true;
-            }
-            STORAGE_ERROR(
-                LogPrefix << "Stop retrying read first stat. Error: "
-                          << CurrentExceptionMessage());
-            return false;
-        }
-
-        STORAGE_ERROR(
-            LogPrefix << "Stop read stat. On #" << i
-                      << ". Error: " << CurrentExceptionMessage());
-        return false;
-    }
-
-    void ReadStatsImpl(TContIOWithTimeout& io)
-    {
-        Process.SendSignal(SIGUSR1);
-
+        const auto line = io.ReadLine();
         NJson::TJsonValue stats;
-        NJson::ReadJsonTree(io.ReadLine(), &stats, true);
+        if (!NJson::ReadJsonTree(line, &stats)) {
+            if (Exited) {
+                // The pipe can still contain the child's final frame.
+                return false;
+            }
+            ythrow yexception() << "malformed stats JSON";
+        }
 
         STORAGE_DEBUG(LogPrefix << stats);
 
         Stats.Update(stats);
+        return stats["final"].GetUInteger() == 1;
     }
 
     void ReadStdErr(TCont* c)
     {
-        TIntrusivePtr<TEndpointProcess> holder{this};
-
         try {
             ReadStdErrImpl(c);
         } catch (...) {
@@ -534,6 +545,35 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+}   // namespace
+
+TIntrusivePtr<IEndpointProcess> CreateEndpointProcess(
+    TExecutor& executor,
+    TString clientId,
+    ILoggingServicePtr logging,
+    TEndpointStats stats,
+    TChild child,
+    EEndpointStartMode mode)
+{
+    auto process = MakeIntrusive<TEndpointProcess>(
+        std::move(clientId),
+        std::move(logging),
+        std::move(stats),
+        std::move(child));
+    process->StartReaders(executor, mode);
+    return process;
+}
+
+}   // namespace NPrivate
+
+namespace {
+
+using NPrivate::CreateEndpointProcess;
+using NPrivate::EEndpointStartMode;
+using NPrivate::IEndpointProcess;
+using NPrivate::SpawnChild;
+using NPrivate::TChild;
+
 void AddToCGroups(pid_t pid, const TVector<TString>& cgroups)
 {
     const auto flags =
@@ -563,6 +603,7 @@ private:
     const TString BinaryPath;
     const TVector<TString> Args;
     const TVector<TString> Cgroups;
+    const TString LatencySli;
 
     TLog Log;
 
@@ -571,7 +612,7 @@ private:
 
     TMutex Mutex;
 
-    TIntrusivePtr<TEndpointProcess> Process;
+    TIntrusivePtr<IEndpointProcess> Process;
     std::atomic_bool ShouldStop = false;
     TInstant LastRestartAt;
     TBackoffDelayProvider RestartBackoff{RestartMinDelay, RestartMaxDelay};
@@ -586,13 +627,15 @@ public:
             TEndpointStats stats,
             TString binaryPath,
             TVector<TString> args,
-            TVector<TString> cgroups)
+            TVector<TString> cgroups,
+            TString latencySli)
         : Logging{std::move(logging)}
         , Executor{std::move(executor)}
         , ClientId{std::move(clientId)}
         , BinaryPath{std::move(binaryPath)}
         , Args{std::move(args)}
         , Cgroups{std::move(cgroups)}
+        , LatencySli{std::move(latencySli)}
         , Log{Logging->CreateLog("BLOCKSTORE_EXTERNAL_ENDPOINT")}
         , Stats{std::move(stats)}
         , LogPrefix{
@@ -620,7 +663,10 @@ public:
 
     void Start() override
     {
-        Process = StartProcess();
+        if (Stats.SocketPath) {
+            Stats.RegisterExternalStats();
+        }
+        Process = StartProcess(EEndpointStartMode::Initial);
         std::thread(&TEndpoint::ThreadProc, shared_from_this()).detach();
     }
 
@@ -678,9 +724,9 @@ private:
                                 { promise.SetValue(error); });
     }
 
-    TIntrusivePtr<TEndpointProcess> StartProcess()
+    TIntrusivePtr<IEndpointProcess> StartProcess(EEndpointStartMode mode)
     {
-        auto process = SpawnChild(BinaryPath, Args);
+        auto process = SpawnChild(BinaryPath, Args, LatencySli);
 
         STORAGE_INFO(
             LogPrefix << "Endpoint process has been started, PID:"
@@ -694,26 +740,15 @@ private:
 
         try {
             AddToCGroups(process.Pid, Cgroups);
+            return CreateEndpointProcess(
+                *Executor, ClientId, Logging, Stats, std::move(process), mode);
         } catch (...) {
             ShouldStop = true;
             throw;
         }
-
-        auto ep = MakeIntrusive<TEndpointProcess>(
-            ClientId,
-            Logging,
-            Stats,
-            std::move(process));
-        process = TChild{0};
-
-        Executor->ExecuteSimple([=, this] {
-            ep->Start(Executor->GetContExecutor());
-        });
-
-        return ep;
     }
 
-    TIntrusivePtr<TEndpointProcess> RestartProcess()
+    TIntrusivePtr<IEndpointProcess> RestartProcess()
     {
         if (TInstant::Now() - LastRestartAt > RestartWasTooLongAgo) {
             // The last restart happened a long time ago, restart immediately.
@@ -734,7 +769,7 @@ private:
 
         try {
             LastRestartAt = TInstant::Now();
-            return StartProcess();
+            return StartProcess(EEndpointStartMode::Restart);
         } catch (...) {
             STORAGE_ERROR(
                 LogPrefix << "Can't restart external endpoint: "
@@ -1071,6 +1106,9 @@ private:
             ToString(VhostServerTimeoutAfterParentExit.Seconds()).c_str()
         };
 
+        const auto latencySli = ServerStats->GetLatencySliConfig(
+            volume.GetStorageMediaKind());
+
         if (epType == EEndpointType::Rdma) {
             args.emplace_back("--client-id");
             args.emplace_back(clientId);
@@ -1139,12 +1177,22 @@ private:
             request.GetClientCGroups().begin(),
             request.GetClientCGroups().end());
 
-        auto ep = EndpointFactory(
-            clientId,
-            request.GetDiskId(),
-            std::move(args),
-            std::move(cgroups)
-        );
+        auto ep = EndpointFactory
+                      ? EndpointFactory(clientId, request.GetDiskId(),
+                                        std::move(args), std::move(cgroups),
+                                        latencySli.Serialize())
+                      : std::make_shared<TEndpoint>(
+                            clientId,
+                            Logging,
+                            Executor,
+                            TEndpointStats{
+                                .ClientId = clientId,
+                                .DiskId = request.GetDiskId(),
+                                .ServerStats = ServerStats,
+                                .SocketPath = latencySli.Enabled ? socketPath
+                                                                 : TString{}},
+                            ServerConfig->GetVhostServerPath(), std::move(args),
+                            std::move(cgroups), latencySli.Serialize());
 
         ep->PrepareToStart();
         ShutdownOldEndpoint(request.GetDiskId());
@@ -1264,36 +1312,11 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     bool isAlignedDataEnabled,
     IEndpointListenerPtr fallbackListener)
 {
-    auto defaultFactory = [=] (
-        const TString& clientId,
-        const TString& diskId,
-        TVector<TString> args,
-        TVector<TString> cgroups)
-    {
-        return std::make_shared<TEndpoint>(
-            clientId,
-            logging,
-            executor,
-            TEndpointStats {
-                .ClientId = clientId,
-                .DiskId = diskId,
-                .ServerStats = serverStats
-            },
-            serverConfig->GetVhostServerPath(),
-            std::move(args),
-            std::move(cgroups)
-        );
-    };
-
     return std::make_shared<TExternalVhostEndpointListener>(
-        std::move(serverConfig),
-        std::move(logging),
-        std::move(serverStats),
-        std::move(executor),
-        std::move(localAgentId),
-        isAlignedDataEnabled,
+        std::move(serverConfig), std::move(logging), std::move(serverStats),
+        std::move(executor), std::move(localAgentId), isAlignedDataEnabled,
         std::move(fallbackListener),
-        std::move(defaultFactory));
+        TExternalEndpointFactory{});
 }
 
 IEndpointListenerPtr CreateExternalVhostEndpointListener(

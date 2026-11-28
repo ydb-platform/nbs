@@ -38,6 +38,9 @@ public:
     void Stop() override;
 
     void Enqueue(ITaskPtr task) override;
+
+    // Accepted tasks are dispatched before Stop cancels the coroutines.
+    bool TryEnqueue(ITaskPtr task);
     TContExecutor* GetContExecutor();
 
     template <typename T>

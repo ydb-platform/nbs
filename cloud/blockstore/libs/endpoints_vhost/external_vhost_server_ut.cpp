@@ -1,24 +1,43 @@
 #include "external_vhost_server.h"
 
+#include "external_vhost_process.h"
+
 #include <cloud/blockstore/libs/client/session_test.h>
 #include <cloud/blockstore/libs/common/constants.h>
+#include <cloud/blockstore/libs/diagnostics/config.h>
+#include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
+#include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
+#include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/endpoints/endpoint_listener.h>
 #include <cloud/blockstore/libs/server/config.h>
 
 #include <cloud/storage/core/libs/common/random.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
+#include <library/cpp/json/json_reader.h>
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/scope.h>
+#include <util/string/builder.h>
 #include <util/string/vector.h>
+#include <util/system/env.h>
 
+#include <poll.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <cerrno>
+#include <thread>
 #include <variant>
 
 namespace NCloud::NBlockStore::NServer {
 
 using namespace NThreading;
+using NPrivate::CreateEndpointProcess;
+using NPrivate::SpawnChild;
 
 namespace {
 
@@ -53,6 +72,7 @@ struct TCreateExternalEndpoint
     TString DiskId;
     TVector<TString> CmdArgs;
     TVector<TString> Cgroups;
+    TString LatencySli;
 };
 
 struct TPrepareStartExternalEndpoint
@@ -266,7 +286,8 @@ struct TFixture
 public:
     IEndpointListenerPtr CreateEndpointListener(
         bool isAlignedDataEnabled,
-        const NProto::TServerConfig& configPatch)
+        const NProto::TServerConfig& configPatch,
+        IServerStatsPtr serverStats = {})
     {
         TServerAppConfigPtr serverConfigPtr;
         NProto::TServerAppConfig config;
@@ -280,7 +301,7 @@ public:
         return CreateExternalVhostEndpointListener(
             std::make_shared<TServerAppConfig>(config),
             Logging,
-            ServerStats,
+            serverStats ? std::move(serverStats) : ServerStats,
             Executor,
             LocalAgentId,
             isAlignedDataEnabled,
@@ -411,6 +432,325 @@ TVector<TString> GetArgN(const TVector<TString>& args, TStringBuf name)
 
 Y_UNIT_TEST_SUITE(TExternalEndpointTest)
 {
+    Y_UNIT_TEST_F(ShouldPassVolumeLatencyConfigSeparatelyFromArguments, TFixture)
+    {
+        NProto::TDiagnosticsConfig proto;
+        proto.SetEnableLatencySli(true);
+        auto* row = proto.AddLatencySliThresholds();
+        row->SetMediaKind(Volume.GetStorageMediaKind());
+        row->SetStartBytes(1);
+        row->SetEndBytes(8193);
+        row->SetThresholdUs(1000);
+        auto stats = CreateServerStats(
+            nullptr, std::make_shared<TDiagnosticsConfig>(proto),
+            CreateMonitoringServiceStub(), nullptr, CreateRequestStatsStub(),
+            CreateVolumeStatsStub());
+        auto listener = CreateEndpointListener(false, {}, stats);
+        const auto error = listener->StartEndpoint(
+            CreateDefaultStartEndpointRequest(), Volume, Session).GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), error);
+        UNIT_ASSERT_VALUES_EQUAL(3, History.size());
+        const auto* create = std::get_if<TCreateExternalEndpoint>(&History[0]);
+        UNIT_ASSERT(create);
+        UNIT_ASSERT_VALUES_EQUAL("1;0:1:8193:1000", create->LatencySli);
+        UNIT_ASSERT(GetArgN(create->CmdArgs, "--latency-sli").empty());
+    }
+
+    Y_UNIT_TEST(ShouldRejectEndpointProcessWhenExecutorStopped)
+    {
+        auto executor = TExecutor::Create("stats-test");
+        executor->Start();
+        executor->Stop();
+
+        auto child = SpawnChild("/bin/true", {}, "");
+        const auto pid = child.Pid;
+        int status = 0;
+        Y_DEFER {
+            ::waitpid(pid, &status, 0);
+        };
+        auto stats = std::make_shared<TTestServerStats>();
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            CreateEndpointProcess(
+                *executor,
+                "client",
+                CreateLoggingService("console"),
+                TEndpointStats{"client", "disk", stats},
+                std::move(child)),
+            TServiceError,
+            "endpoint executor is stopped");
+        const auto waited = ::waitpid(pid, &status, WNOHANG);
+        const auto waitError = errno;
+        UNIT_ASSERT_VALUES_EQUAL(-1, waited);
+        UNIT_ASSERT_VALUES_EQUAL(ECHILD, waitError);
+    }
+
+    Y_UNIT_TEST(ShouldKeepRestartedEndpointRunningWhenExecutorStopped)
+    {
+        auto executor = TExecutor::Create("stats-test");
+        executor->Start();
+        executor->Stop();
+
+        auto child = SpawnChild(
+            "/bin/sh",
+            {"-c", "trap 'exit 0' INT; echo ready >&2; while :; do sleep 0.1; done"},
+            "");
+        Y_DEFER {
+            if (child.Pid) {
+                child.Kill();
+                child.Wait();
+            }
+        };
+        pollfd ready{child.StdErr, POLLIN, 0};
+        UNIT_ASSERT(poll(&ready, 1, 5000) > 0 && (ready.revents & POLLIN));
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        auto gaps = counters->GetCounter("LatencyIncompleteStreams", true);
+        TEndpointStats stats{"client", "disk", std::make_shared<TTestServerStats>()};
+        stats.IncompleteStreams = gaps;
+        const auto pid = child.Pid;
+        auto process = CreateEndpointProcess(
+            *executor,
+            "client",
+            CreateLoggingService("console"),
+            std::move(stats),
+            std::move(child),
+            NPrivate::EEndpointStartMode::Restart);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, ::waitpid(pid, nullptr, WNOHANG));
+        process->Stop();
+        auto stopped = NewPromise<NProto::TError>();
+        std::thread([process, stopped]() mutable {
+            stopped.SetValue(process->Wait());
+        }).detach();
+        const auto error = stopped.GetFuture().GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(error), error);
+        UNIT_ASSERT_VALUES_EQUAL(1, gaps->Val());
+    }
+
+    Y_UNIT_TEST(ShouldDrainFinalStatsWhenChildExitsBeforeReadersStart)
+    {
+        auto executor = TExecutor::Create("stats-test");
+        executor->Start();
+        auto release = NewPromise<void>();
+        executor->ExecuteSimple([release] {
+            release.GetFuture().Wait(TDuration::Seconds(15));
+        });
+        Y_DEFER {
+            release.TrySetValue();
+            executor->Stop();
+        };
+
+        auto child = SpawnChild(
+            "/bin/sh",
+            {"-c", R"(echo '{"final":1,"read":{"errors":3},"write":{}}')"},
+            "");
+        pollfd stderrPipe{child.StdErr, POLLIN, 0};
+        UNIT_ASSERT(poll(&stderrPipe, 1, 5000) > 0);
+        UNIT_ASSERT(stderrPipe.revents & POLLHUP);
+
+        auto stats = std::make_shared<TTestServerStats>();
+        auto finalRead = NewPromise<void>();
+        stats->BatchCompletedHandler =
+            [finalRead](auto&, ui64, ui64, ui64 failed, auto, auto) mutable
+        {
+            if (failed == 3) {
+                finalRead.TrySetValue();
+            }
+        };
+        const auto pid = child.Pid;
+        auto process = CreateEndpointProcess(
+            *executor,
+            "client",
+            CreateLoggingService("console"),
+            TEndpointStats{"client", "disk", stats},
+            std::move(child));
+
+        auto drained = NewPromise<bool>();
+        std::thread([process, finalRead, drained]() mutable {
+            drained.SetValue(!HasError(process->Wait()) && finalRead.HasValue());
+        }).detach();
+
+        // Wait until the waiter has reaped the child, leaving its frame in
+        // the pipe. The executor still holds the reader's start in its queue.
+        siginfo_t info{};
+        const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        int result;
+        do {
+            result = ::waitid(P_PID, pid, &info, WEXITED | WNOHANG | WNOWAIT);
+            if (result == -1) {
+                break;
+            }
+            std::this_thread::yield();
+        } while (TInstant::Now() < deadline);
+        const auto waitError = errno;
+        UNIT_ASSERT_VALUES_EQUAL(-1, result);
+        UNIT_ASSERT_VALUES_EQUAL(ECHILD, waitError);
+
+        release.SetValue();
+        UNIT_ASSERT(drained.GetFuture().GetValue(TDuration::Seconds(5)));
+    }
+
+    Y_UNIT_TEST(ShouldDrainFinalStatsOrStopOnExecutorCancellation)
+    {
+        enum EShutdown { WithoutFinal, WithFinal, CancelCollector };
+        for (auto mode: {WithoutFinal, WithFinal, CancelCollector}) {
+            const bool finalRecord = mode == WithFinal;
+            auto stats = std::make_shared<TTestServerStats>();
+            auto baseline = NewPromise<void>();
+            auto recovered = NewPromise<void>();
+            ui64 errors = 0;
+            stats->BatchCompletedHandler =
+                [&](auto&, ui64 count, ui64, ui64 failed, auto, auto)
+            {
+                errors += failed;
+                if (count == 2) {
+                    recovered.TrySetValue();
+                }
+                baseline.TrySetValue();
+            };
+            const TString script =
+                TStringBuilder()
+                << R"(n=0
+stats() {
+    n=$((n+1))
+    case $n in
+        1) echo '{"read":{"count":1},"write":{}}' ;;
+        2) : ;;
+        3) echo 'malformed' ;;
+        *) echo '{"read":{"count":2},"write":{}}' ;;
+    esac
+}
+trap stats USR1
+)"
+                << "trap 'sleep 3; "
+                << (finalRecord ? "echo "
+                                  "\"{\\\"final\\\":1,\\\"read\\\":{"
+                                  "\\\"errors\\\":3},\\\"write\\\":{}}\"; "
+                                : "")
+                << "exit 0' INT\n"
+                << "echo ready >&2\n"
+                << "while :; do sleep 0.1; done\n";
+            auto child = SpawnChild("/bin/sh", {"-c", script}, "");
+            Y_DEFER
+            {
+                if (child.Pid) {
+                    child.Terminate();
+                    child.Wait();
+                }
+            };
+            // Wait until signal handlers exist before starting the stats
+            // poller.
+            pollfd descriptor{child.StdErr, POLLIN, 0};
+            UNIT_ASSERT_C(
+                poll(&descriptor, 1, 5000) > 0, "child did not start");
+            char ready[16];
+            UNIT_ASSERT(child.StdErr.Read(ready, sizeof(ready)) > 0);
+            auto executor = TExecutor::Create("stats-test");
+            executor->Start();
+            auto process = CreateEndpointProcess(
+                *executor,
+                "client",
+                CreateLoggingService("console"),
+                TEndpointStats{"client", "disk", stats}, std::move(child));
+            auto stopped = NewPromise<NProto::TError>();
+            std::thread stopExecutor;
+            std::thread waiter([=]() mutable
+                               { stopped.SetValue(process->Wait()); });
+            Y_DEFER
+            {
+                if (!stopped.HasValue()) {
+                    process->Stop();
+                }
+                waiter.join();
+                if (stopExecutor.joinable()) {
+                    stopExecutor.join();
+                } else {
+                    executor->Stop();
+                }
+            };
+            baseline.GetFuture().GetValue(TDuration::Seconds(5));
+            if (mode == CancelCollector) {
+                auto executorStopped = NewPromise<void>();
+                stopExecutor = std::thread([executor, executorStopped]() mutable {
+                    executor->Stop();
+                    executorStopped.SetValue();
+                });
+                // Stop must return while the child is still serving requests.
+                executorStopped.GetFuture().GetValue(TDuration::Seconds(5));
+            }
+            if (finalRecord) {
+                recovered.GetFuture().GetValue(TDuration::Seconds(15));
+            }
+            process->Stop();
+            const auto error =
+                stopped.GetFuture().GetValue(TDuration::Seconds(10));
+            UNIT_ASSERT_C(!HasError(error), error);
+            UNIT_ASSERT_VALUES_EQUAL(finalRecord ? 3 : 0, errors);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldPassLatencyConfigThroughExecEnvironment)
+    {
+        const auto previous = TryGetEnv("NBS_LATENCY_SLI_CONFIG");
+        const auto inherited = TryGetEnv("NBS_SLI_TEST_INHERITED");
+        Y_DEFER {
+            if (previous) {
+                SetEnv("NBS_LATENCY_SLI_CONFIG", *previous);
+            } else {
+                UnsetEnv("NBS_LATENCY_SLI_CONFIG");
+            }
+            if (inherited) {
+                SetEnv("NBS_SLI_TEST_INHERITED", *inherited);
+            } else {
+                UnsetEnv("NBS_SLI_TEST_INHERITED");
+            }
+        };
+        const TString parentConfig = "1;1:1:8193:2000";
+        SetEnv("NBS_LATENCY_SLI_CONFIG", parentConfig);
+        SetEnv("NBS_SLI_TEST_INHERITED", "preserved value");
+
+        // An older child must not receive --latency-sli in argv. The real
+        // exec path must replace only this environment variable and preserve
+        // unrelated arguments, inherited variables and the parent PID option.
+        TLatencySliConfig oversized;
+        oversized.Enabled = true;
+        // Exceed Linux's per-string exec limit with a valid threshold table.
+        const auto execStringLimit = static_cast<size_t>(sysconf(_SC_PAGESIZE)) * 32;
+        for (size_t i = 0; i < execStringLimit; ++i) {
+            oversized.Thresholds[0].push_back({i, i + 1, 1000});
+        }
+        UNIT_ASSERT(oversized.Validate());
+        const auto serialized = oversized.Serialize();
+        UNIT_ASSERT(serialized.size() > execStringLimit);
+        const TVector<TString> configs{"1;0:1:8193:1000", "", serialized};
+        for (const auto& config: configs) {
+            const TString expected = config.size() > execStringLimit ? "" : config;
+            TString script = TStringBuilder()
+                << "set -eu\n"
+                << "test \"$NBS_LATENCY_SLI_CONFIG\" = '" << expected << "'\n"
+                << "test \"$NBS_SLI_TEST_INHERITED\" = 'preserved value'\n"
+                << "test \"$#\" = 3\n"
+                << "test \"$1\" = '--existing-option'\n"
+                << "test \"$2\" = 'value with spaces'\n"
+                << "test \"$3\" = '--blockstore-service-pid=" << getpid() << "'\n";
+            TVector<TString> args{
+                "-c", script, "child", "--existing-option", "value with spaces"};
+            auto child = SpawnChild("/bin/sh", std::move(args), config);
+            const auto error = child.Wait();
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+            if (config.size() > execStringLimit) {
+                char message[512];
+                const auto size = child.StdErr.Read(message, sizeof(message));
+                UNIT_ASSERT(size > 0);
+                NJson::TJsonValue warning;
+                UNIT_ASSERT(NJson::ReadJsonTree(TStringBuf(message, size), &warning));
+                UNIT_ASSERT_VALUES_EQUAL(TLOG_WARNING, warning["priority"].GetInteger());
+                UNIT_ASSERT_STRING_CONTAINS(warning["message"].GetString(), "SLI disabled");
+            }
+            UNIT_ASSERT_VALUES_EQUAL(parentConfig, GetEnv("NBS_LATENCY_SLI_CONFIG"));
+        }
+    }
+
     Y_UNIT_TEST_F(ShouldStartAioExternalEndpoint, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(0, History.size());
