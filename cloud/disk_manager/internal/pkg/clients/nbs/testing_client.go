@@ -577,14 +577,6 @@ func (c *testingClient) Write(
 	return nil
 }
 
-func (c *testingClient) GetCheckpoints(
-	ctx context.Context,
-	diskID string,
-) ([]string, error) {
-
-	return c.client.nbs.GetCheckpoints(ctx, diskID)
-}
-
 func (c *testingClient) List(ctx context.Context) ([]string, error) {
 	return c.client.nbs.ListVolumes(ctx)
 }

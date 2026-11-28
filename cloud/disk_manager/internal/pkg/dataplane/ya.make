@@ -3,6 +3,7 @@ GO_LIBRARY()
 SRCS(
     backup_chunks_task.go
     backup_snapshot_data_task.go
+    check_incremental_snapshots_task.go
     collect_snapshot_metrics_task.go
     collect_snapshots_task.go
     consts.go
@@ -35,6 +36,7 @@ GO_TEST_SRCS(
     export_snapshot_errors_test.go
     export_image_task_test.go
     export_snapshot_retry_test.go
+    check_incremental_snapshots_task_test.go
     collect_snapshots_task_test.go
     create_dr_based_disk_checkpoint_task_test.go
     create_dr_based_disk_checkpoint_disabled_zones_test.go

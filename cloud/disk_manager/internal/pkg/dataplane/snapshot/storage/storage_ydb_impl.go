@@ -105,6 +105,73 @@ func (s *storageYDB) getIncrementalTx(
 	return
 }
 
+func (s *storageYDB) listIncremental(
+	ctx context.Context,
+	session *persistence.Session,
+	after *types.Disk,
+	limit int,
+) ([]IncrementalEntry, error) {
+
+	// The cursor is the disk read last. The rows of snapshots that are not
+	// created from a disk have empty zone ID and disk ID, so they are before
+	// the initial cursor and are never returned.
+	afterZoneID := ""
+	afterDiskID := ""
+	if after != nil {
+		afterZoneID = after.ZoneId
+		afterDiskID = after.DiskId
+	}
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $after_zone_id as Utf8;
+		declare $after_disk_id as Utf8;
+		declare $limit as Uint64;
+
+		select zone_id, disk_id, snapshot_id, checkpoint_id, created_at
+		from incremental
+		where zone_id >= $after_zone_id and (
+			zone_id > $after_zone_id or disk_id > $after_disk_id
+		)
+		order by zone_id, disk_id, snapshot_id, created_at
+		limit $limit
+	`, s.tablesPath),
+		persistence.ValueParam("$after_zone_id", persistence.UTF8Value(afterZoneID)),
+		persistence.ValueParam("$after_disk_id", persistence.UTF8Value(afterDiskID)),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	var entries []IncrementalEntry
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			entry := IncrementalEntry{Disk: &types.Disk{}}
+			err = res.ScanNamed(
+				persistence.OptionalWithDefault("zone_id", &entry.Disk.ZoneId),
+				persistence.OptionalWithDefault("disk_id", &entry.Disk.DiskId),
+				persistence.OptionalWithDefault("snapshot_id", &entry.SnapshotID),
+				persistence.OptionalWithDefault("checkpoint_id", &entry.CheckpointID),
+				persistence.OptionalWithDefault("created_at", &entry.CreatedAt),
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			entries = append(entries, entry)
+		}
+	}
+
+	if res.Err() != nil {
+		return nil, task_errors.NewRetriableError(res.Err())
+	}
+
+	return entries, nil
+}
+
 func (s *storageYDB) createSnapshot(
 	ctx context.Context,
 	session *persistence.Session,

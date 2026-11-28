@@ -268,6 +268,40 @@ func RegisterForExecution(
 	}
 
 	err = taskRegistry.RegisterForExecution(
+		"dataplane.CheckIncrementalSnapshots",
+		func() tasks.Task {
+			return &checkIncrementalSnapshotsTask{
+				storage:       storage,
+				nbsFactory:    nbsFactory,
+				disabledZones: disabledZones,
+				registry:      metricsRegistry,
+				pageSize:      checkIncrementalSnapshotsPageSize,
+			}
+		},
+	)
+	if err != nil {
+		return err
+	}
+
+	if config.GetRegularIncrementalSnapshotsCheckEnabled() {
+		checkIncrementalSnapshotsTaskScheduleInterval, err := time.ParseDuration(
+			config.GetCheckIncrementalSnapshotsTaskScheduleInterval(),
+		)
+		if err != nil {
+			return err
+		}
+
+		taskScheduler.ScheduleRegularTasks(
+			ctx,
+			"dataplane.CheckIncrementalSnapshots",
+			tasks.TaskSchedule{
+				ScheduleInterval: checkIncrementalSnapshotsTaskScheduleInterval,
+				MaxTasksInflight: 1,
+			},
+		)
+	}
+
+	err = taskRegistry.RegisterForExecution(
 		"dataplane.CreateDRBasedDiskCheckpoint",
 		func() tasks.Task {
 			return &createDRBasedDiskCheckpointTask{
@@ -441,6 +475,7 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.DeleteSnapshot":              func() tasks.Task { return &deleteSnapshotTask{} },
 	"dataplane.DeleteSnapshotData":          func() tasks.Task { return &deleteSnapshotDataTask{} },
 	"dataplane.DeleteDiskFromIncremental":   func() tasks.Task { return &deleteDiskFromIncrementalTask{} },
+	"dataplane.CheckIncrementalSnapshots":   func() tasks.Task { return &checkIncrementalSnapshotsTask{} },
 	"dataplane.CreateDRBasedDiskCheckpoint": func() tasks.Task { return &createDRBasedDiskCheckpointTask{} },
 	"dataplane.BackupSnapshotData":          func() tasks.Task { return &backupSnapshotDataTask{} },
 	"dataplane.BackupChunks":                func() tasks.Task { return &backupChunksTask{} },

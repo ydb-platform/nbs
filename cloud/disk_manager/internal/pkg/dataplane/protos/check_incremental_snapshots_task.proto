@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package dataplane;
+
+import "cloud/disk_manager/internal/pkg/types/types.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message DiskIncrementalSnapshotsProblems {
+    types.Disk Disk = 1;
+    // The snapshot the next snapshot of the disk is based on, and its
+    // checkpoint.
+    string BaseSnapshotId = 2;
+    string BaseCheckpointId = 3;
+    repeated string Problems = 4;
+}
+
+message CheckIncrementalSnapshotsTaskState {
+    // Disks are checked in the key order of the incremental table, this is the
+    // disk checked last.
+    types.Disk LastCheckedDisk = 1;
+    uint64 CheckedDiskCount = 2;
+    // Disks whose checkpoints could not be checked: the zone is disabled or the
+    // NBS request failed.
+    uint64 SkippedDiskCount = 3;
+    // Number of disks by problem.
+    map<string, uint64> ProblemCounts = 4;
+    // The first disks with problems, all of them are reported to the log.
+    repeated DiskIncrementalSnapshotsProblems DisksWithProblems = 5;
+}
