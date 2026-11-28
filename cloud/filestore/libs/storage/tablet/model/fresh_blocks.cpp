@@ -64,24 +64,6 @@ bool TFreshBlocks::AddBlock(
         maxCommitId);
 }
 
-ui64 TFreshBlocks::MarkBlockDeleted(ui64 nodeId, ui32 blockIndex, ui64 commitId)
-{
-    auto it = Blocks.lower_bound(BlockKey(nodeId, blockIndex, commitId));
-    if (it != Blocks.end()) {
-        auto& block = const_cast<TBlock&>(it->first);
-
-        if (block.NodeId == nodeId && block.BlockIndex == blockIndex) {
-            Y_ABORT_UNLESS(block.MinCommitId <= commitId);
-            if (block.MaxCommitId == InvalidCommitId) {
-                block.MaxCommitId = commitId;
-                return block.MinCommitId;
-            }
-        }
-    }
-
-    return InvalidCommitId;
-}
-
 TVector<TFreshBlocks::TVersionedBlock> TFreshBlocks::MarkBlocksDeleted(
     ui64 nodeId,
     ui32 blockIndex,
@@ -96,9 +78,7 @@ TVector<TFreshBlocks::TVersionedBlock> TFreshBlocks::MarkBlocksDeleted(
     for (auto it = start; it != end; ++it) {
         auto& block = const_cast<TBlock&>(it->first);
 
-        if (block.MinCommitId <= commitId &&
-            block.MaxCommitId == InvalidCommitId)
-        {
+        if (block.MinCommitId <= commitId && commitId < block.MaxCommitId) {
             block.MaxCommitId = commitId;
             result.emplace_back(block.BlockIndex, block.MinCommitId);
         }
