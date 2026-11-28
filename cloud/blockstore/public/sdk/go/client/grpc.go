@@ -70,18 +70,20 @@ func (client *grpcClient) setupHeaders(ctx context.Context, req request) {
 		}
 	}
 
-	var timeout time.Duration
-	if val := ctx.Value(RequestTimeoutHeaderKey); val != nil {
-		if d, ok := val.(time.Duration); ok {
-			timeout = d
+	if headers.RequestTimeout == 0 {
+		var timeout time.Duration
+		if val := ctx.Value(RequestTimeoutHeaderKey); val != nil {
+			if d, ok := val.(time.Duration); ok {
+				timeout = d
+			}
 		}
-	}
 
-	if timeout == 0 {
-		timeout = client.timeout
-	}
+		if timeout == 0 {
+			timeout = client.timeout
+		}
 
-	headers.RequestTimeout = uint32(durationToMsec(timeout))
+		headers.RequestTimeout = uint32(durationToMsec(timeout))
+	}
 
 	clientId := ""
 	if val := ctx.Value(ClientIdHeaderKey); val != nil {
