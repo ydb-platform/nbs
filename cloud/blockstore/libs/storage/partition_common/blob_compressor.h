@@ -87,6 +87,9 @@ struct TCompressedBlob
 
     // Codec, uncompressed chunk and last chunk sizes, and N-1 compressed sizes.
     NProto::TCompressionMetadata Compression;
+
+    // Optional checksums of the copied uncompressed blocks, in blob order.
+    TVector<ui32> BlockChecksums;
 };
 
 struct TReadPlan
@@ -114,6 +117,8 @@ struct TReadPlan
  * @param blobPayload - Nonempty list of uncompressed blocks in blob order,
  *  with one buffer of exactly blockSize bytes per block. Null data represents
  *  a zero block.
+ * @param calculateChecksums - Calculate checksums from the copied chunk
+ *  buffers before compression and return them in BlockChecksums.
  *
  * @return - Concatenated compressed chunks and their metadata, or an error.
  *  Invalid arguments return E_ARGUMENT; codec failures return E_FAIL.
@@ -122,7 +127,8 @@ struct TReadPlan
     ui32 blockSize,
     ui32 chunkSize,
     NCloud::NProto::ECompressionCodec compressionType,
-    std::span<const TBlockDataRef> blobPayload);
+    std::span<const TBlockDataRef> blobPayload,
+    bool calculateChecksums = false);
 
 /**
  * Restores requested blocks using the blob's codec and chunk size. Each
@@ -270,13 +276,15 @@ public:
     // compression is disabled or the applicable policy rejects compression. A
     // missing fitting slot rejects compression for huge blobs. Metadata size is
     // not included. Check for S_ALREADY before extracting the result: it is a
-    // success status.
+    // success status. calculateChecksums includes checksums of the copied
+    // uncompressed blocks in the result when compression is kept.
     [[nodiscard]] TResultOrError<TCompressedBlob> CompressBlobIfNeeded(
         std::span<const TBlockDataRef> blobPayload,
         bool isSsd,
         const NKikimr::TBlobStorageGroupType& groupType,
         NKikimr::TErasureType::ECrcMode crcMode =
-            NKikimr::TErasureType::CrcModeNone) const;
+            NKikimr::TErasureType::CrcModeNone,
+        bool calculateChecksums = false) const;
 
     /**
      * Calculates compression metrics for the given blob.

@@ -293,7 +293,8 @@ TResultOrError<TCompressedBlob> CompressBlob(
     ui32 blockSize,
     ui32 chunkSize,
     NCloud::NProto::ECompressionCodec compressionType,
-    std::span<const TBlockDataRef> blobPayload)
+    std::span<const TBlockDataRef> blobPayload,
+    bool calculateChecksums)
 {
     if (auto error =
             ValidateCompressBlobInput(blockSize, chunkSize, blobPayload);
@@ -311,6 +312,9 @@ TResultOrError<TCompressedBlob> CompressBlob(
     result.Compression.SetCodec(compressionType);
     result.Compression.SetChunkSize(chunkSize);
     auto* chunks = result.Compression.MutablePlainChunks();
+    if (calculateChecksums) {
+        result.BlockChecksums.reserve(blobPayload.size());
+    }
 
     const size_t blocksPerChunk = chunkSize / blockSize;
     TString chunk;
@@ -323,6 +327,14 @@ TResultOrError<TCompressedBlob> CompressBlob(
 
         chunk.ReserveAndResize(blockCount * blockSize);
         SgListCopy(subList, TBlockDataRef(chunk.data(), chunk.size()));
+
+        if (calculateChecksums) {
+            for (size_t offset = 0; offset < chunk.size(); offset += blockSize)
+            {
+                result.BlockChecksums.push_back(
+                    ComputeDefaultDigest({chunk.data() + offset, blockSize}));
+            }
+        }
 
         try {
             codec->Encode(chunk, compressedChunk);
@@ -604,7 +616,8 @@ TResultOrError<TCompressedBlob> TBlobCompressor::CompressBlobIfNeeded(
     std::span<const TBlockDataRef> blobPayload,
     bool isSsd,
     const NKikimr::TBlobStorageGroupType& groupType,
-    NKikimr::TErasureType::ECrcMode crcMode) const
+    NKikimr::TErasureType::ECrcMode crcMode,
+    bool calculateChecksums) const
 {
     if (!CompressionConfig) {
         return MakeError(S_ALREADY);
@@ -638,7 +651,8 @@ TResultOrError<TCompressedBlob> TBlobCompressor::CompressBlobIfNeeded(
         config.BlockSize,
         static_cast<ui32>(config.ChunkSize),
         Codec,
-        blobPayload);
+        blobPayload,
+        calculateChecksums);
     if (HasError(compressed.GetError())) {
         return compressed.GetError();
     }

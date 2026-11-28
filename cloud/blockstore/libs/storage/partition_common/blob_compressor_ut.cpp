@@ -765,12 +765,14 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
             const TString payload = TString(chunkSize, 'a') +
                                     TString(chunkSize, 'b') +
                                     TString(BlockSize, 'c');
-            const auto [compressed, compression] = GetResultOrFail(CompressBlob(
-                BlockSize,
-                chunkSize,
-                NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
-                MakeSgList(payload)));
+            const auto [compressed, compression, checksums] =
+                GetResultOrFail(CompressBlob(
+                    BlockSize,
+                    chunkSize,
+                    NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+                    MakeSgList(payload)));
 
+            UNIT_ASSERT(checksums.empty());
             UNIT_ASSERT(
                 NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE ==
                 compression.GetCodec());
@@ -920,6 +922,51 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldReturnChecksumsOfCompressedBlocks)
+    {
+        constexpr ui32 blockCount = 2 * ChunkSize / BlockSize + 1;
+        TVector<TString> blocks(blockCount);
+        TSgList input;
+        TString payload;
+        for (ui32 i = 0; i < blockCount; ++i) {
+            blocks[i] = TString(BlockSize, i % 3 ? 'a' + i : '\0');
+            input.push_back(
+                i % 3 ? TBlockDataRef(blocks[i].data(), BlockSize)
+                      : TBlockDataRef::CreateZeroBlock(BlockSize));
+            payload.append(blocks[i]);
+        }
+
+        const TBlobCompressor compressor(
+            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+            std::nullopt,
+            TBlobCompressor::TCompressionConfig{
+                .BlockSize = BlockSize,
+                .ChunkSize = ChunkSize,
+                .HugeBlobSlotSizes = {BlockSize, 3 * ChunkSize}});
+        for (const bool calculateChecksums: {false, true}) {
+            const auto blob = GetResultOrFail(compressor.CompressBlobIfNeeded(
+                input,
+                true /* isSsd */,
+                NKikimr::TBlobStorageGroupType(),
+                NKikimr::TErasureType::CrcModeNone,
+                calculateChecksums));
+            const auto restored = DecompressWholeBlob(
+                blob.Compression,
+                blob.Data,
+                payload.size());
+            UNIT_ASSERT_VALUES_EQUAL(payload, restored);
+            UNIT_ASSERT_VALUES_EQUAL(
+                calculateChecksums ? blockCount : 0,
+                blob.BlockChecksums.size());
+            for (size_t i = 0; i < blob.BlockChecksums.size(); ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    ComputeDefaultDigest(
+                        {restored.data() + i * BlockSize, BlockSize}),
+                    blob.BlockChecksums[i]);
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldRequireOneBufferPerBlock)
     {
         const TString payload(2 * BlockSize, 'a');
@@ -993,12 +1040,14 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
             byte = static_cast<char>(rng.GenRand());
         }
 
-        const auto [compressed, compression] = GetResultOrFail(CompressBlob(
-            BlockSize,
-            ChunkSize,
-            NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
-            MakeSgList(payload)));
+        const auto [compressed, compression, checksums] =
+            GetResultOrFail(CompressBlob(
+                BlockSize,
+                ChunkSize,
+                NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
+                MakeSgList(payload)));
 
+        UNIT_ASSERT(checksums.empty());
         UNIT_ASSERT_VALUES_EQUAL(
             2,
             compression.GetPlainChunks().CompressedChunkSizeSize());
@@ -1067,12 +1116,13 @@ Y_UNIT_TEST_SUITE(TBlobCompressorTest)
                 for (ui32 i = 0; i < 32; ++i) {
                     payload.append(TString(blockSize, 'a' + i));
                 }
-                const auto [compressed, compression] =
+                const auto [compressed, compression, checksums] =
                     GetResultOrFail(CompressBlob(
                         blockSize,
                         chunkSize,
                         NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
                         MakeSgList(payload, blockSize)));
+                UNIT_ASSERT(checksums.empty());
                 const TVector<ui16> blocks = {0, 17, 18, 31};
                 const auto [queries, blockRangesForEachRequest] =
                     GetResultOrFail(PlanReadBlob(
