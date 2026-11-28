@@ -5,7 +5,6 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -15,12 +14,18 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const backupChunkDeleteRequestSize = 100
+
+type backupChunkDeleter interface {
+	DeleteChunks(ctx context.Context, chunkIDs []string) ([]string, error)
+}
+
 // Deletes the follower objects of chunks deleted from chunk_blobs. A chunk is
 // queued by its last unref; chunk IDs are never reused, so deleting the object
 // later cannot hit a live chunk.
 type deleteBackupChunksTask struct {
 	storage       storage.Storage
-	backupS3      *backup.S3
+	backupS3      backupChunkDeleter
 	batchSize     int
 	inflightLimit int
 	registry      metrics.Registry
@@ -50,11 +55,6 @@ func (t *deleteBackupChunksTask) Run(
 		}
 
 		err = t.deleteChunks(ctx, chunkIDs)
-		if err != nil {
-			return err
-		}
-
-		err = t.storage.BackupChunksDeleted(ctx, chunkIDs)
 		if err != nil {
 			return err
 		}
@@ -88,21 +88,40 @@ func (t *deleteBackupChunksTask) deleteChunks(
 	chunkIDs []string,
 ) error {
 
-	group, groupCtx := errgroup.WithContext(ctx)
+	if t.inflightLimit < 1 {
+		return errors.NewNonRetriableErrorf("DeleteBackupChunksInflightLimit must be positive")
+	}
+
+	// Each S3 request reports once, including on partial failure.
+	requests := (len(chunkIDs) + backupChunkDeleteRequestSize - 1) / backupChunkDeleteRequestSize
+	completed := make(chan []string, requests)
+	var group errgroup.Group
 	group.SetLimit(t.inflightLimit)
-
-	for _, chunkID := range chunkIDs {
-		chunkID := chunkID
+	for i := 0; i < len(chunkIDs); i += backupChunkDeleteRequestSize {
+		end := min(i+backupChunkDeleteRequestSize, len(chunkIDs))
+		batch := chunkIDs[i:end]
 		group.Go(func() error {
-			err := t.backupS3.DeleteChunk(groupCtx, chunkID)
-			if err != nil {
-				return err
-			}
+			ids, err := t.backupS3.DeleteChunks(ctx, batch)
+			t.registry.Counter("backup/deletedChunks").Add(int64(len(ids)))
 
-			t.registry.Counter("backup/deletedChunks").Inc()
-			return nil
+			completed <- ids
+			return err
 		})
 	}
 
-	return group.Wait()
+	err := group.Wait()
+	close(completed)
+	var deleted []string
+	for ids := range completed {
+		deleted = append(deleted, ids...)
+	}
+	if len(deleted) == 0 {
+		return err
+	}
+	// Acknowledge successful deletes even if another key or request failed.
+	if err := t.storage.BackupChunksDeleted(ctx, deleted); err != nil {
+		return err
+	}
+	t.registry.Counter("backup/dequeuedChunks").Add(int64(len(deleted)))
+	return err
 }

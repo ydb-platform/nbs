@@ -274,8 +274,9 @@ func (s *S3) DeleteImageMeta(ctx context.Context, imageID string) error {
 	return s.DeleteObject(ctx, ImageMetaKey(imageID))
 }
 
-func (s *S3) DeleteChunk(ctx context.Context, chunkID string) error {
-	return s.DeleteObject(ctx, ChunkKey(chunkID))
+// DeleteChunks returns the confirmed chunk IDs even when some deletions fail.
+func (s *S3) DeleteChunks(ctx context.Context, chunkIDs []string) ([]string, error) {
+	return s.s3.DeleteObjects(ctx, s.bucket, s.Key(chunkKeyPrefix), chunkIDs)
 }
 
 func (s *S3) DeleteChunkMap(ctx context.Context, snapshotID string) error {

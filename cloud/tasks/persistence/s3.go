@@ -791,18 +791,69 @@ func (c *S3Client) DeleteObject(
 			Key:    &key,
 		},
 	)
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case aws_s3.ErrCodeNoSuchBucket:
-				return errors.NewNonRetriableError(err)
-			}
-		}
+	return wrapError(err)
+}
 
-		return errors.NewRetriableError(err)
+// DeleteObjects deletes keys relative to prefix and returns the confirmed keys
+// in the same namespace, including on partial failure.
+func (c *S3Client) DeleteObjects(
+	ctx context.Context,
+	bucket string,
+	prefix string,
+	keys []string,
+) (deleted []string, err error) {
+
+	ctx = withComponentLoggingField(ctx)
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
+	defer cancel()
+
+	defer c.metrics.StatCall(ctx, "DeleteObjects", bucket, "")(&err)
+
+	objects := make([]*aws_s3.ObjectIdentifier, len(keys))
+	for i, key := range keys {
+		objects[i] = &aws_s3.ObjectIdentifier{Key: aws.String(prefix + key)}
+	}
+	result, err := c.s3.DeleteObjectsWithContext(ctx, &aws_s3.DeleteObjectsInput{
+		Bucket: aws.String(bucket),
+		Delete: &aws_s3.Delete{Objects: objects},
+	})
+	if err != nil {
+		return nil, wrapError(err)
 	}
 
-	return nil
+	return confirmedDeleteKeys(result, prefix, keys)
+}
+
+func confirmedDeleteKeys(
+	result *aws_s3.DeleteObjectsOutput,
+	prefix string,
+	keys []string,
+) ([]string, error) {
+
+	confirmed := make(map[string]bool, len(result.Deleted))
+	for _, object := range result.Deleted {
+		confirmed[aws.StringValue(object.Key)] = true
+	}
+	for _, failure := range result.Errors {
+		delete(confirmed, aws.StringValue(failure.Key))
+	}
+
+	var deleted []string
+	for _, key := range keys {
+		if confirmed[prefix+key] {
+			deleted = append(deleted, key)
+		}
+	}
+
+	if len(result.Errors) != 0 {
+		failure := result.Errors[0]
+		return deleted, errors.NewRetriableErrorf("delete %q: %s: %s",
+			aws.StringValue(failure.Key), aws.StringValue(failure.Code), aws.StringValue(failure.Message))
+	}
+	if len(deleted) != len(keys) {
+		return deleted, errors.NewRetriableErrorf("S3 confirmed deletion of %d of %d keys", len(deleted), len(keys))
+	}
+	return deleted, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
