@@ -685,6 +685,423 @@ Y_UNIT_TEST_SUITE(TPartitionCompressionTest)
         DoShouldWritePlainBlobOnCompressionFailure(
             ECompressionFailure::InvalidMetadata);
     }
+
+    void DoShouldCompressCompactionBlobs(
+        bool compressionEnabled,
+        ui64 minSavingsPercent = 0)
+    {
+        constexpr ui32 dataChannelOffset = 3;
+        constexpr ui32 blocksPerChunk = 4;
+        constexpr ui32 blockCount = 2 * blocksPerChunk + 1;
+        constexpr ui32 chunkSize = blocksPerChunk * DefaultBlockSize;
+        const auto range = TBlockRange32::WithLength(0, blockCount);
+        const bool expectCompression =
+            compressionEnabled && minSavingsPercent < 100;
+
+        NProto::TStorageServiceConfig config;
+        config.SetFlushBlobSizeThreshold(1_MB);
+        config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(1_GB);
+        config.SetMergedBlobsCompressionEnabled(compressionEnabled);
+        config.SetMergedBlobsCompressionMinSavingsPercent(minSavingsPercent);
+        config.SetMergedBlobsCompressionChunkSize(chunkSize);
+        config.SetCheckBlockChecksumsInBlobsUponRead(true);
+        config.SetHDDMaxBlobsPerRange(100);
+        config.SetSSDMaxBlobsPerRange(100);
+        auto partitionWithRuntime = SetupPartition(config);
+        auto& partition = *partitionWithRuntime.Partition;
+        auto& runtime = *partitionWithRuntime.Runtime;
+
+        for (ui32 i = 0; i < blockCount; ++i) {
+            partition.WriteBlocks(i, i + 1);
+        }
+        partition.Flush();
+        partition.WriteBlocks(0, 100);
+        partition.Flush();
+
+        TVector<NKikimr::TLogoBlobID> writtenBlobs;
+        TPartialBlobId compactedBlobId;
+        std::optional<NProto::TCompressionMetadata> compressionMetadata;
+        ui32 compactionResults = 0;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case NKikimr::TEvBlobStorage::EvPut: {
+                        const auto* msg =
+                            event->Get<NKikimr::TEvBlobStorage::TEvPut>();
+                        if (msg->Id.Channel() >= dataChannelOffset) {
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                msg->Id.BlobSize(),
+                                msg->Buffer.size());
+                            writtenBlobs.push_back(msg->Id);
+                        }
+                        break;
+                    }
+                    case TEvPartitionPrivate::EvAddBlobsRequest: {
+                        const auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvAddBlobsRequest>();
+                        if (msg->Mode == ADD_COMPACTION_RESULT) {
+                            UNIT_ASSERT(msg->MixedBlobs.empty());
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                1,
+                                msg->MergedBlobs.size());
+                            const auto& blob = msg->MergedBlobs.front();
+                            compactedBlobId = blob.BlobId;
+                            compressionMetadata = blob.CompressionMetadata;
+                            ++compactionResults;
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto statsBefore = partition.StatPartition()->Record.GetStats();
+        partition.Compaction();
+        const auto statsAfter = partition.StatPartition()->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(
+            blockCount,
+            statsAfter.GetSysWriteCounters().GetBlocksCount() -
+                statsBefore.GetSysWriteCounters().GetBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            blockCount,
+            statsAfter.GetRealSysWriteCounters().GetBlocksCount() -
+                statsBefore.GetRealSysWriteCounters().GetBlocksCount());
+
+        UNIT_ASSERT_VALUES_EQUAL(1, compactionResults);
+        UNIT_ASSERT_VALUES_EQUAL(1, writtenBlobs.size());
+        UNIT_ASSERT(
+            writtenBlobs.front() == MakeBlobId(TestTabletId, compactedBlobId));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expectCompression,
+            compressionMetadata.has_value(),
+            "Compaction blob compression metadata must match "
+            "MergedBlobsCompressionEnabled");
+        if (expectCompression) {
+            UNIT_ASSERT(
+                compactedBlobId.BlobSize() < blockCount * DefaultBlockSize);
+            UNIT_ASSERT(
+                NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE ==
+                compressionMetadata->GetCodec());
+            UNIT_ASSERT_VALUES_EQUAL(
+                chunkSize,
+                compressionMetadata->GetChunkSize());
+            UNIT_ASSERT(compressionMetadata->HasPlainChunks());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2,
+                compressionMetadata->GetPlainChunks()
+                    .CompressedChunkSizeSize());
+            ui32 totalSize = 0;
+            for (const auto size:
+                 compressionMetadata->GetPlainChunks().GetCompressedChunkSize())
+            {
+                UNIT_ASSERT_GT(size, 0);
+                totalSize += size;
+                UNIT_ASSERT_LT(totalSize, compactedBlobId.BlobSize());
+            }
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL(
+                blockCount * DefaultBlockSize,
+                compactedBlobId.BlobSize());
+        }
+
+        for (const bool reboot: {false, true}) {
+            if (reboot) {
+                partition.RebootTablet();
+                partition.WaitReady();
+                // Read the persisted blob again through compaction.
+                partition.WriteBlocks(0, 100);
+                partition.Flush();
+                writtenBlobs.clear();
+                compactionResults = 0;
+                partition.Compaction();
+                UNIT_ASSERT_VALUES_EQUAL(1, compactionResults);
+                UNIT_ASSERT_VALUES_EQUAL(1, writtenBlobs.size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectCompression,
+                    compressionMetadata.has_value());
+                partition.Cleanup();
+            }
+            const auto response = partition.ReadBlocks(range);
+            for (ui32 i = 0; i < blockCount; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TString(DefaultBlockSize, i == 0 ? 100 : i + 1),
+                    response->Record.GetBlocks().GetBuffers(i));
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCompressCompactionBlobs)
+    {
+        DoShouldCompressCompactionBlobs(false);
+        DoShouldCompressCompactionBlobs(true);
+        DoShouldCompressCompactionBlobs(true, 100);
+    }
+
+    void DoShouldCompactToPlainBlobOnCompressionFailure(
+        ECompressionFailure failure)
+    {
+        const auto abortGuard = DisableImpossibleEventsAbortForCurrentTest();
+
+        constexpr TStringBuf originalCodec = "partition-test-original-lz4";
+        NBlockCodecs::RegisterAlias(originalCodec, "lz4-fast14-safe");
+        Y_DEFER
+        {
+            NBlockCodecs::RegisterAlias("lz4-fast14-safe", originalCodec);
+        };
+        if (failure != ECompressionFailure::InvalidSettings) {
+            NBlockCodecs::RegisterCodec(MakeHolder<TFaultyCompressionCodec>(
+                failure == ECompressionFailure::CodecError));
+        }
+
+        for (const bool splitCompactionTx: {false, true}) {
+            NProto::TStorageServiceConfig config;
+            config.SetFlushBlobSizeThreshold(1_MB);
+            config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(1_GB);
+            config.SetMergedBlobsCompressionEnabled(true);
+            config.SetBlobCompressionRate(1);
+            config.SetMergedBlobsCompressionChunkSize(
+                failure == ECompressionFailure::InvalidSettings
+                    ? DefaultBlockSize + 1
+                    : 3 * DefaultBlockSize);
+            config.SetCheckBlockChecksumsInBlobsUponRead(true);
+            config.SetHDDMaxBlobsPerRange(100);
+            config.SetSSDMaxBlobsPerRange(100);
+            config.SetBlobPatchingEnabled(false);
+            config.SetSplitCompactionTxEnabled(splitCompactionTx);
+            auto env = SetupPartition(config);
+            auto& partition = *env.Partition;
+            const auto range = TBlockRange32::WithLength(0, 9);
+            for (const ui32 i: xrange(range)) {
+                partition.WriteBlocks(i, i + 1);
+            }
+            partition.Flush();
+            partition.WriteBlocks(0, 100);
+            partition.Flush();
+
+            auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+            InitCriticalEventsCounter(counters);
+            auto compressionErrors = counters->GetCounter(
+                GetCriticalEventForBlobCompressionError(),
+                true);
+            auto metadataErrors = counters->GetCounter(
+                GetCriticalEventForInvalidBlobCompressionMetadata(),
+                true);
+            ui32 writes = 0;
+            ui32 indexedBlobs = 0;
+            env.Runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    switch (event->GetTypeRewrite()) {
+                        case TEvPartitionCommonPrivate::EvWriteBlobRequest: {
+                            const auto* msg =
+                                event->Get<TEvPartitionCommonPrivate::
+                                               TEvWriteBlobRequest>();
+                            UNIT_ASSERT(std::holds_alternative<TGuardedSgList>(
+                                msg->Data));
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                range.Size() * DefaultBlockSize,
+                                msg->BlobId.BlobSize());
+                            UNIT_ASSERT(
+                                !msg->CompressedSizeEstimationCandidate);
+                            ++writes;
+                            break;
+                        }
+                        case TEvPartitionPrivate::EvAddBlobsRequest: {
+                            const auto* msg = event->Get<
+                                TEvPartitionPrivate::TEvAddBlobsRequest>();
+                            if (msg->Mode != ADD_COMPACTION_RESULT) {
+                                break;
+                            }
+                            UNIT_ASSERT(msg->MixedBlobs.empty());
+                            for (const auto& blob: msg->MergedBlobs) {
+                                UNIT_ASSERT(!blob.CompressionMetadata);
+                                UNIT_ASSERT_VALUES_EQUAL(
+                                    range.Size() * DefaultBlockSize,
+                                    blob.BlobId.BlobSize());
+                                UNIT_ASSERT_VALUES_EQUAL(
+                                    range.Size(),
+                                    blob.Checksums.size());
+                                for (const ui32 i: xrange(range)) {
+                                    const TString block(
+                                        DefaultBlockSize,
+                                        i == 0 ? 100 : i + 1);
+                                    UNIT_ASSERT_VALUES_EQUAL(
+                                        ComputeDefaultDigest(
+                                            {block.data(), block.size()}),
+                                        blob.Checksums[i]);
+                                }
+                                ++indexedBlobs;
+                            }
+                            break;
+                        }
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            partition.Compaction();
+            for (const bool reboot: {false, true}) {
+                if (reboot) {
+                    partition.RebootTablet();
+                    partition.WaitReady();
+                }
+                const auto response = partition.ReadBlocks(range);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    range.Size(),
+                    response->Record.GetBlocks().BuffersSize());
+                for (const ui32 i: xrange(range)) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        TString(DefaultBlockSize, i == 0 ? 100 : i + 1),
+                        response->Record.GetBlocks().GetBuffers(i));
+                }
+            }
+            UNIT_ASSERT_VALUES_EQUAL(
+                failure == ECompressionFailure::InvalidMetadata ? 0 : 1,
+                compressionErrors->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                failure == ECompressionFailure::InvalidMetadata ? 1 : 0,
+                metadataErrors->Val());
+            UNIT_ASSERT_VALUES_EQUAL(1, writes);
+            UNIT_ASSERT_VALUES_EQUAL(1, indexedBlobs);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCompactToPlainBlobWhenCompressionSettingsAreInvalid)
+    {
+        DoShouldCompactToPlainBlobOnCompressionFailure(
+            ECompressionFailure::InvalidSettings);
+    }
+
+    Y_UNIT_TEST(ShouldCompactToPlainBlobWhenCodecFails)
+    {
+        DoShouldCompactToPlainBlobOnCompressionFailure(
+            ECompressionFailure::CodecError);
+    }
+
+    Y_UNIT_TEST(ShouldCompactToPlainBlobWhenCompressionMetadataIsInvalid)
+    {
+        DoShouldCompactToPlainBlobOnCompressionFailure(
+            ECompressionFailure::InvalidMetadata);
+    }
+
+    Y_UNIT_TEST(ShouldReadSingleBlocksFromCompressedChunks)
+    {
+        constexpr ui32 blocksPerChunk = 4;
+        constexpr ui32 blockCount = 2 * blocksPerChunk + 1;
+        constexpr ui32 chunkSize = blocksPerChunk * DefaultBlockSize;
+
+        NProto::TStorageServiceConfig config;
+        config.SetFlushBlobSizeThreshold(1_MB);
+        config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(1_GB);
+        config.SetMergedBlobsCompressionEnabled(true);
+        config.SetMergedBlobsCompressionChunkSize(chunkSize);
+        config.SetCheckBlockChecksumsInBlobsUponRead(true);
+        config.SetHDDMaxBlobsPerRange(100);
+        config.SetSSDMaxBlobsPerRange(100);
+        auto partitionWithRuntime = SetupPartition(config);
+        auto& partition = *partitionWithRuntime.Partition;
+        auto& runtime = *partitionWithRuntime.Runtime;
+
+        for (ui32 i = 0; i < blockCount; ++i) {
+            partition.WriteBlocks(i, 'a' + i);
+            if (i + 1 == blocksPerChunk) {
+                partition.Flush();
+            }
+        }
+        partition.Flush();
+
+        TPartialBlobId compactedBlobId;
+        NProto::TCompressionMetadata compressionMetadata;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvAddBlobsRequest)
+                {
+                    const auto* msg =
+                        event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>();
+                    if (msg->Mode == ADD_COMPACTION_RESULT) {
+                        UNIT_ASSERT_VALUES_EQUAL(1, msg->MergedBlobs.size());
+                        const auto& blob = msg->MergedBlobs.front();
+                        UNIT_ASSERT(blob.CompressionMetadata);
+                        compactedBlobId = blob.BlobId;
+                        compressionMetadata = *blob.CompressionMetadata;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        partition.Compaction();
+
+        UNIT_ASSERT(compactedBlobId);
+        UNIT_ASSERT_VALUES_EQUAL(chunkSize, compressionMetadata.GetChunkSize());
+        UNIT_ASSERT(compressionMetadata.HasPlainChunks());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            compressionMetadata.GetPlainChunks().CompressedChunkSizeSize());
+        const auto blobId = MakeBlobId(TestTabletId, compactedBlobId);
+        TVector<ui32> chunkOffsets = {0};
+        for (const auto size:
+             compressionMetadata.GetPlainChunks().GetCompressedChunkSize())
+        {
+            UNIT_ASSERT_GT(size, 0);
+            chunkOffsets.push_back(chunkOffsets.back() + size);
+            UNIT_ASSERT_LT(chunkOffsets.back(), blobId.BlobSize());
+        }
+        chunkOffsets.push_back(blobId.BlobSize());
+
+        ui32 expectedChunk = 0;
+        ui32 blobReads = 0;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == NKikimr::TEvBlobStorage::EvGet) {
+                    const auto* msg =
+                        event->Get<NKikimr::TEvBlobStorage::TEvGet>();
+                    for (ui32 i = 0; i < msg->QuerySize; ++i) {
+                        const auto& query = msg->Queries[i];
+                        if (query.Id == blobId) {
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                chunkOffsets[expectedChunk],
+                                query.Shift);
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                chunkOffsets[expectedChunk + 1] -
+                                    chunkOffsets[expectedChunk],
+                                query.Size);
+                            ++blobReads;
+                        }
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        for (const bool reboot: {false, true}) {
+            if (reboot) {
+                partition.RebootTablet();
+                partition.WaitReady();
+            }
+            // Read every position within each chunk, including its boundaries
+            // and the single block in the partial final chunk.
+            for (ui32 i = 0; i < blockCount; ++i) {
+                expectedChunk = i / blocksPerChunk;
+                const TString expected(DefaultBlockSize, 'a' + i);
+                blobReads = 0;
+                const auto response = partition.ReadBlocks(i);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    response->Record.GetBlocks().BuffersSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expected,
+                    response->Record.GetBlocks().GetBuffers(0));
+                UNIT_ASSERT_VALUES_EQUAL(1, blobReads);
+
+                TString buffer(DefaultBlockSize, '?');
+                blobReads = 0;
+                partition.ReadBlocksLocal(i, TStringBuf(buffer));
+                UNIT_ASSERT_VALUES_EQUAL(expected, buffer);
+                UNIT_ASSERT_VALUES_EQUAL(1, blobReads);
+            }
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -67,7 +67,7 @@ TRangeCompactionInfo::TRangeCompactionInfo(
     , MixedBlockCountSkippedByCompaction(mixedBlockCountSkippedByCompaction)
     , BlockChecksums(std::move(blockChecksums))
     , ChannelDataKind(channelDataKind)
-    , BlobContent(std::move(blobContent))
+    , BlobContent(TGuardedBuffer<TBlockBuffer>(std::move(blobContent)))
     , ZeroBlocks(std::move(zeroBlocks))
     , AffectedBlobs(std::move(affectedBlobs))
     , AffectedBlocks(std::move(affectedBlocks))
