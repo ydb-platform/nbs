@@ -9,8 +9,8 @@
 #include "handle_ops_queue.h"
 #include "metadata_cache_stats.h"
 #include "node_attrs_cache.h"
-#include "node_cache.h"
 #include "node_ref_cache.h"
+#include "xattr_cache.h"
 
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
@@ -100,7 +100,6 @@ private:
     std::unique_ptr<TDirectoryHandleCache> DirectoryHandleCache;
 
     TXAttrCache XAttrCache;
-    TMutex XAttrCacheLock;
 
     THandleOpsQueuePtr HandleOpsQueue;
     TMutex HandleOpsQueueLock;

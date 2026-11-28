@@ -8,11 +8,15 @@
 
 #include <cloud/storage/core/libs/common/timer.h>
 
-#include <library/cpp/cache/cache.h>
-
+#include <util/datetime/base.h>
 #include <util/digest/multi.h>
 #include <util/generic/hash.h>
+#include <util/generic/maybe.h>
 #include <util/generic/string.h>
+#include <util/generic/vector.h>
+#include <util/system/spinlock.h>
+
+#include <memory>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -44,55 +48,57 @@ namespace NCloud::NFileStore::NFuse {
 
 struct TXAttr
 {
-    TString Name;
+    // Xattr value, Nothing() for the absence of the xattr.
     TMaybe<TString> Value;
-    ui64 Version;
-    // Cache version at which the request that has fetched the entry started.
-    ui64 CacheVersion;
-    ui64 SourceId;
-    TInstant Deadline;
+    // Xattr version returned by the backend, zero for the absence.
+    ui64 Version = 0;
 };
 
 /*
  * Caches the xattr values and absences for XAttrCacheTTL returned by the
  * backend or, if it is zero (FileSystemEvents are not supported), for
- * XAttrCacheTimeout. The xattrs are invalidated upon the local changes and
- * upon the FileSystemEvents, all the xattrs of a node are invalidated upon
- * the node id reuse. The values fetched by the requests started before an
- * invalidation are not cached, see TInvalidations.
+ * XAttrCacheTimeout, see TTTLCache. The xattrs are invalidated upon the local
+ * changes and upon the FileSystemEvents, all the xattrs of a node are
+ * invalidated upon the node id reuse. The values fetched by the requests
+ * started before an invalidation are not cached, see TInvalidations.
  *
- * Not thread-safe.
+ * The xattrs are sharded by node id, each shard has its own lock.
  */
 class TXAttrCache
 {
 private:
-    struct TWeighter {
-        static TInstant Weight(const TXAttr& value)
-        {
-            return value.Deadline;
-        }
-    };
-    using TKey = std::pair<ui64, TString>;
-    using TCache = TLWCache<TKey, TXAttr, TInstant, TWeighter>;
+    struct TShard
+    {
+        TTTLCache<TXAttrCacheKey, TXAttr> Cache;
+        // Invalidations of all the xattrs of a node, see
+        // Invalidate(ino, version).
+        TInvalidations<ui64> NodeInvalidations;
+        TAdaptiveLock Lock;
 
-private:
-    ITimerPtr Timer;
-    TCache Cache;
-    TDuration Timeout;
-    TInvalidations<TXAttrCacheKey> Invalidations;
-    TInvalidations<ui64> NodeInvalidations;
+        explicit TShard(ui32 maxEntryCount)
+            : Cache(maxEntryCount)
+            , NodeInvalidations(maxEntryCount)
+        {}
+    };
+
+    const ITimerPtr Timer;
+    const TDuration Timeout;
+    TVector<std::unique_ptr<TShard>> Shards;
 
 public:
+    /**
+     * @param timer - Timer.
+     * @param maxEntryCount - Max number of the cached xattrs (and of the
+     *  remembered invalidations), split evenly between the shards.
+     * @param shardCount - Number of shards.
+     * @param timeout - XAttrCacheTimeout, used if the backend returns zero
+     *  XAttrCacheTTL.
+     */
     TXAttrCache(
-            ITimerPtr timer,
-            ui32 maxSize,
-            TDuration timeout)
-        : Timer{std::move(timer)}
-        , Cache{maxSize}
-        , Timeout{timeout}
-        , Invalidations{maxSize}
-        , NodeInvalidations{maxSize}
-    {}
+        ITimerPtr timer,
+        ui32 maxEntryCount,
+        ui32 shardCount,
+        TDuration timeout);
 
     /**
      * Caches an xattr value unless the xattr has been invalidated after
@@ -173,14 +179,14 @@ public:
      *
      * @param ino - Node id.
      * @param name - Xattr name.
-     * @return - The cached entry or nullptr if there is no valid entry.
+     * @return - The cached xattr or Nothing() if there is no valid entry.
      */
-    const TXAttr* Get(ui64 ino, const TString& name);
+    TMaybe<TXAttr> Get(ui64 ino, const TString& name);
 
     /**
      * Invalidates all the cached xattrs of a node (e.g. upon the node id
      * reuse) and prevents caching them by the requests started before
-     * version.
+     * version. The entries are erased lazily, upon access or eviction.
      *
      * @param ino - Node id.
      * @param version - Cache version of the invalidation.
@@ -210,16 +216,36 @@ public:
     /**
      * @return - Number of the cached xattrs (values and absences).
      */
-    size_t GetEntryCount() const;
+    size_t GetEntryCount();
 
 private:
-    bool IsCacheable(
-        ui64 ino,
-        const TString& name,
+    TShard& GetShard(ui64 ino);
+    TInstant GetDeadline(TInstant now, TDuration cacheTTL) const;
+
+    static bool IsCacheable(
+        const TShard& shard,
+        const TXAttrCacheKey& key,
         ui64 cacheVersion,
-        ui64 sourceId) const;
-    void Erase(ui64 ino, const TString& name);
-    TInstant GetDeadline(TDuration cacheTTL) const;
+        ui64 sourceId);
+    static const TXAttr* GetValid(
+        TShard& shard,
+        const TXAttrCacheKey& key,
+        TInstant now);
+    static void AddValue(
+        TShard& shard,
+        const TXAttrCacheKey& key,
+        const TString& value,
+        ui64 version,
+        ui64 cacheVersion,
+        ui64 sourceId,
+        TInstant now,
+        TInstant deadline);
+    static void AddAbsentValue(
+        TShard& shard,
+        const TXAttrCacheKey& key,
+        ui64 cacheVersion,
+        ui64 sourceId,
+        TInstant deadline);
 };
 
 }   // namespace NCloud::NFileStore::NFuse

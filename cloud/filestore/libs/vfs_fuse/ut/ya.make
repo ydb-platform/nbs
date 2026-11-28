@@ -14,6 +14,7 @@ SRCS(
     fs_ut_bootstrap.cpp
     fs_ut_metadata_caching.cpp
     persistent_state_manager_ut.cpp
+    xattr_cache_ut.cpp
 )
 
 PEERDIR(

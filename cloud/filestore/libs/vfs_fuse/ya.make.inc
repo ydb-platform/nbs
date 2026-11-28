@@ -22,10 +22,10 @@ SRCS(
     loop.cpp
     metadata_cache_stats.cpp
     node_attrs_cache.cpp
-    node_cache.cpp
     node_ref_cache.cpp
     persistent_state_manager.cpp
     ttl_cache.cpp
+    xattr_cache.cpp
 )
 
 PEERDIR(

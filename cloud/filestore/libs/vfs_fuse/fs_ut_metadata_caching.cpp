@@ -1,8 +1,8 @@
 #include "fs_ut_bootstrap.h"
 #include "node_attrs_cache.h"
-#include "node_cache.h"
 #include "node_ref_cache.h"
 #include "ttl_cache.h"
+#include "xattr_cache.h"
 
 #include <cloud/filestore/libs/service/error.h>
 #include <cloud/filestore/libs/service/filesystem_event.h>
@@ -1578,7 +1578,8 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
     {
         TXAttrCache cache(
             std::make_shared<TTestTimer>(),
-            10 /* maxSize */,
+            10 /* maxEntryCount */,
+            1 /* shardCount */,
             TDuration::Seconds(15));
 
         cache.Add(
@@ -1614,7 +1615,11 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
     Y_UNIT_TEST(ShouldExpireXAttrsUponCacheTTLOrTimeout)
     {
         auto timer = std::make_shared<TTestTimer>();
-        TXAttrCache cache(timer, 10 /* maxSize */, TDuration::Seconds(15));
+        TXAttrCache cache(
+            timer,
+            10 /* maxEntryCount */,
+            1 /* shardCount */,
+            TDuration::Seconds(15));
 
         cache.Add(
             1,
@@ -1645,7 +1650,8 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
     {
         TXAttrCache cache(
             std::make_shared<TTestTimer>(),
-            10 /* maxSize */,
+            10 /* maxEntryCount */,
+            1 /* shardCount */,
             TDuration::Seconds(15));
 
         cache.AddOwn(
@@ -1686,7 +1692,7 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             5 /* cacheVersion */,
             SourceId,
             {} /* cacheTTL */);
-        const auto* xattr = cache.Get(1, "a");
+        auto xattr = cache.Get(1, "a");
         UNIT_ASSERT(xattr && !xattr->Value);
 
         //
@@ -1748,7 +1754,8 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
     {
         TXAttrCache cache(
             std::make_shared<TTestTimer>(),
-            10 /* maxSize */,
+            10 /* maxEntryCount */,
+            1 /* shardCount */,
             TDuration::Seconds(15));
 
         cache.Add(
@@ -1821,7 +1828,8 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
     {
         TXAttrCache cache(
             std::make_shared<TTestTimer>(),
-            10 /* maxSize */,
+            10 /* maxEntryCount */,
+            1 /* shardCount */,
             TDuration::Seconds(15));
 
         cache.Add(
@@ -1864,7 +1872,7 @@ Y_UNIT_TEST_SUITE(TXAttrCacheInvalidationTest)
             6 /* cacheVersion */,
             SourceId,
             {} /* cacheTTL */);
-        const auto* xattr = cache.Get(1, "a");
+        auto xattr = cache.Get(1, "a");
         UNIT_ASSERT(xattr && !xattr->Value);
 
         //
