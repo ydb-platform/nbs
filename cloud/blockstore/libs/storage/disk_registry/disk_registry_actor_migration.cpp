@@ -323,7 +323,7 @@ void TDiskRegistryActor::StartMigration(const NActors::TActorContext& ctx)
         return;
     }
 
-    if (State->IsMigrationListEmpty()) {
+    if (!State->HasMigrationsToStart()) {
         return;
     }
 

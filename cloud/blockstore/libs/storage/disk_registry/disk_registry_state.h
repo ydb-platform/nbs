@@ -797,6 +797,8 @@ public:
 
     TVector<TDeviceMigration> BuildMigrationList() const;
 
+    bool HasMigrationsToStart() const;
+
     bool IsMigrationListEmpty() const
     {
         return Migrations.empty();
@@ -1037,6 +1039,8 @@ private:
         const TString& diskId,
         const TString& sourceDeviceId);
     void FillMigrations();
+    const NProto::TDeviceConfig* FindMigrationSource(
+        const TDeviceId& sourceDeviceId) const;
 
     const TDiskState* FindDiskState(const TDiskId& diskId) const;
     TDiskState* AccessDiskState(const TDiskId& diskId);
@@ -1180,6 +1184,9 @@ private:
         TVector<TDiskId>& affectedDisks);
 
     bool HasDependentSsdDisks(const NProto::TAgentConfig& agent) const;
+    bool IsPathDetached(
+        const NProto::TAgentConfig& agent,
+        const TString& path) const;
     ui32 CountBrokenHddPlacementGroupPartitionsAfterAgentRemoval(
         const NProto::TAgentConfig& agent) const;
     ui32 CountBrokenHddPlacementGroupPartitionsAfterDeviceRemoval(

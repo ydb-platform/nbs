@@ -180,6 +180,115 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
         });
     }
 
+    Y_UNIT_TEST(ShouldRespectPathStateForCmsRemovalAndMigration)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        auto agent = AgentConfig(
+            1,
+            NProto::AGENT_STATE_WARNING,
+            {Device("dev-1", "uuid-1")});
+        const auto disk =
+            Disk("disk-1", {"uuid-1"}, NProto::DISK_STATE_WARNING);
+        auto& pathStates = *agent.MutablePathAttachStates();
+        auto addDevice = [&](TDiskRegistryState& state)
+        {
+            executor.WriteTx(
+                [&](TDiskRegistryDatabase db)
+                {
+                    const auto result = state.UpdateCmsDeviceState(
+                        db,
+                        agent.GetAgentId(),
+                        "dev-1",
+                        NProto::DEVICE_STATE_ONLINE,
+                        {},
+                        Now(),
+                        false,    // shouldResumeDevice
+                        false);   // dryRun
+                    UNIT_ASSERT_SUCCESS(result.Error);
+                });
+        };
+        auto check = [&](bool attachDetachEnabled,
+                         ui32 expectedCmsStatus,
+                         size_t expectedMigrations)
+        {
+            auto config = CreateDefaultStorageConfigProto();
+            config.SetAttachDetachPathsEnabled(attachDetachEnabled);
+            auto state = TDiskRegistryStateBuilder()
+                             .WithStorageConfig(std::move(config))
+                             .WithKnownAgents({agent})
+                             .WithDisks({disk})
+                             .Build();
+
+            executor.WriteTx(
+                [&](TDiskRegistryDatabase db)
+                {
+                    TVector<TString> affectedDisks;
+                    TDuration timeout;
+                    const auto host = state->UpdateCmsHostState(
+                        db,
+                        agent.GetAgentId(),
+                        NProto::AGENT_STATE_WARNING,
+                        {},
+                        Now(),
+                        true,   // dryRun
+                        affectedDisks,
+                        timeout);
+                    UNIT_ASSERT_VALUES_EQUAL(expectedCmsStatus, host.GetCode());
+
+                    const auto device = state->UpdateCmsDeviceState(
+                        db,
+                        agent.GetAgentId(),
+                        "dev-1",
+                        NProto::DEVICE_STATE_WARNING,
+                        {},
+                        Now(),
+                        false,   // shouldResumeDevice
+                        true);   // dryRun
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        expectedCmsStatus,
+                        device.Error.GetCode());
+                });
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedMigrations != 0,
+                state->HasMigrationsToStart());
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedMigrations,
+                state->BuildMigrationList().size());
+            return state;
+        };
+
+        check(true, E_TRY_AGAIN, 0);   // No path state in the database.
+        pathStates["dev-1"] = NProto::PATH_ATTACH_STATE_DETACHED;
+        check(true, S_OK, 0);
+        auto stateWithoutPathTracking = check(false, E_TRY_AGAIN, 1);
+        addDevice(*stateWithoutPathTracking);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            stateWithoutPathTracking->BuildMigrationList().size());
+
+        pathStates["dev-1"] = NProto::PATH_ATTACH_STATE_ATTACHING;
+        auto state = check(true, E_TRY_AGAIN, 0);
+        addDevice(*state);
+        UNIT_ASSERT(!state->HasMigrationsToStart());
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                UNIT_ASSERT_SUCCESS(state->UpdatePathAttachState(
+                    db,
+                    agent.GetAgentId(),
+                    "dev-1",
+                    NProto::PATH_ATTACH_STATE_ATTACHED));
+            });
+        UNIT_ASSERT(state->HasMigrationsToStart());
+        // Retry ADD_DEVICE after attach while the migration is still queued.
+        addDevice(*state);
+        const auto migrations = state->BuildMigrationList();
+        UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1", migrations[0].SourceDeviceId);
+    }
+
     Y_UNIT_TEST(ShouldPurgeDevice)
     {
         TTestExecutor executor;

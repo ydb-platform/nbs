@@ -705,6 +705,12 @@ void TDiskRegistryActor::CompleteUpdatePathAttachState(
         args.Path.c_str(),
         FormatError(args.Error).c_str());
 
+    if (!HasError(args.Error) &&
+        args.NewState == NProto::PATH_ATTACH_STATE_ATTACHED)
+    {
+        StartMigration(ctx);
+    }
+
     auto response = std::make_unique<
         TEvDiskRegistryPrivate::TEvUpdatePathAttachStateResponse>(
         std::move(args.Error));
