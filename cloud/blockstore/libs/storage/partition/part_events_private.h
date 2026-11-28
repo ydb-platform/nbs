@@ -79,14 +79,14 @@ struct TAddMergedBlob
     const TBlockRange32 BlockRange;
     const TBlockMask SkipMask;
     const TVector<ui32> Checksums;
-    const std::optional<NProto::TCompressionMetadata> CompressionMetadata;
+    const std::optional<NProto::TBlobCompressionInfo> CompressionMetadata;
 
     TAddMergedBlob(
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange,
         const TBlockMask& skipMask,
         TVector<ui32> checksums,
-        std::optional<NProto::TCompressionMetadata> compressionMetadata)
+        std::optional<NProto::TBlobCompressionInfo> compressionMetadata)
         : BlobId(blobId)
         , BlockRange(blockRange)
         , SkipMask(skipMask)

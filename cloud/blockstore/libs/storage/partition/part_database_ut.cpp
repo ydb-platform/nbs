@@ -33,7 +33,7 @@ struct TTestBlockVisitor final
     THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash> BlobToRange;
     THashMap<
         TPartialBlobId,
-        std::optional<NProto::TCompressionMetadata>,
+        std::optional<NProto::TBlobCompressionInfo>,
         TPartialBlobIdHash>
         BlobToCompressionMetadata;
     bool InterruptOnBlob = false;
@@ -48,7 +48,7 @@ struct TTestBlockVisitor final
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
         const TBlockMask& skipMask,
-        const std::optional<NProto::TCompressionMetadata>& compressionMetadata)
+        const std::optional<NProto::TBlobCompressionInfo>& compressionMetadata)
         override
     {
         Y_UNUSED(skipMask);
@@ -609,7 +609,7 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         TTestExecutor executor;
         executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
 
-        TVector<std::optional<NProto::TCompressionMetadata>>
+        TVector<std::optional<NProto::TBlobCompressionInfo>>
             compressionMetadataEntries = {
                 std::nullopt,
             };
@@ -617,11 +617,13 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
              {NCloud::NProto::COMPRESSION_CODEC_LZ4_FAST14_SAFE,
               NCloud::NProto::COMPRESSION_CODEC_ZSTD_3})
         {
-            NProto::TCompressionMetadata info;
+            NProto::TBlobCompressionInfo info;
             info.SetCodec(codec);
-            info.SetChunkSize(2 * DefaultBlockSize);
-            info.SetLastChunkSize(DefaultBlockSize);
-            info.MutablePlainChunks()->AddCompressedChunkSize(123);
+            info.AddCompressedChunkSizes(123);
+            info.AddCompressedChunkSizes(45);
+            auto* chunks = info.MutableRegularChunks();
+            chunks->SetMaxUncompressedChunkSize(2 * DefaultBlockSize);
+            chunks->SetLastUncompressedChunkSize(DefaultBlockSize);
             compressionMetadataEntries.push_back(std::move(info));
         }
 

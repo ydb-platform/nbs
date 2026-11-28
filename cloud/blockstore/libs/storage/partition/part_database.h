@@ -132,7 +132,7 @@ public:
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange,
         const TBlockMask& skipMask,
-        const std::optional<NProto::TCompressionMetadata>& compressionMetadata);
+        const std::optional<NProto::TBlobCompressionInfo>& compressionMetadata);
 
     void DeleteMergedBlocks(
         const TPartialBlobId& blobId,

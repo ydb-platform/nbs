@@ -3,11 +3,10 @@
 #include "part_counters_wrapper.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
-#include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/sglist.h>
-#include <cloud/storage/core/libs/compression/codec.h>
+#include <cloud/storage/core/libs/compression/blob_compression.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
@@ -31,13 +30,13 @@ namespace NCloud::NBlockStore::NStorage {
 
 using TPartialBlobId2CompressionMetadataMap = THashMap<
     TPartialBlobId,
-    std::optional<NProto::TCompressionMetadata>,
+    std::optional<NProto::TBlobCompressionInfo>,
     TPartialBlobIdHash>;
 using TBlobId2CompressionMetadataMap =
-    THashMap<NKikimr::TLogoBlobID, std::optional<NProto::TCompressionMetadata>>;
+    THashMap<NKikimr::TLogoBlobID, std::optional<NProto::TBlobCompressionInfo>>;
 
 template <typename TMap>
-std::optional<NProto::TCompressionMetadata> ExtractCompressionMetadata(
+std::optional<NProto::TBlobCompressionInfo> ExtractCompressionMetadata(
     TMap& metadata,
     const typename TMap::key_type& blobId)
 {
@@ -53,41 +52,26 @@ std::optional<NProto::TCompressionMetadata> ExtractCompressionMetadata(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Checks that chunkSize is a positive multiple of a nonzero blockSize.
-[[nodiscard]] NProto::TError ValidateCompressionSettings(
-    ui32 blockSize,
-    ui32 chunkSize);
-
 // Checks the codec and chunk layout against the compressed blob size in bytes
 // and the exact number of blocks in the original payload.
 [[nodiscard]] NProto::TError ValidateCompressionMetadata(
     ui32 blockSize,
-    const NProto::TCompressionMetadata& compression,
+    const NProto::TBlobCompressionInfo& compression,
     ui32 blobSize,
     ui32 expectedBlockCount);
 
 struct TValidatedBlobRead
 {
     ui32 BlockSize;
-    ui32 LastCompressedChunkSize;
-    const NBlockCodecs::ICodec* Codec;
+    TBlobChunkLayout Layout;
 };
 
 // Validates the codec, chunk layout and bounds of strictly increasing offsets.
 [[nodiscard]] TResultOrError<TValidatedBlobRead> ValidateReadBlobInput(
     ui32 blockSize,
-    const NProto::TCompressionMetadata& compression,
+    const NProto::TBlobCompressionInfo& compression,
     ui32 blobSize,
     std::span<const ui16> blockOffsets);
-
-struct TCompressedBlob
-{
-    // Compressed chunks concatenated in their original order.
-    TString Data;
-
-    // Codec, uncompressed chunk and last chunk sizes, and N-1 compressed sizes.
-    NProto::TCompressionMetadata Compression;
-};
 
 struct TReadPlan
 {
@@ -103,8 +87,9 @@ struct TReadPlan
  * Compresses a blob in independently decodable chunks using the codec resolved
  * from the given compression type.
  * Chunks contain whole blocks; only the final chunk may be shorter than
- * chunkSize. Compressed chunks are concatenated in blob order. Returns an
- * error if the settings or payload are invalid, or compression fails.
+ * chunkSize. A chunk which is not smaller after compression is stored raw.
+ * Chunks are concatenated in blob order. Returns an error if the settings or
+ * payload are invalid, or compression fails.
  *
  * @param blockSize - Nonzero size of one uncompressed block in bytes.
  * @param chunkSize - Uncompressed chunk size in bytes; must be a multiple
@@ -115,7 +100,7 @@ struct TReadPlan
  *  with one buffer of exactly blockSize bytes per block. Null data represents
  *  a zero block.
  *
- * @return - Concatenated compressed chunks and their metadata, or an error.
+ * @return - Concatenated chunks and their metadata, or an error.
  *  Invalid arguments return E_ARGUMENT; codec failures return E_FAIL.
  */
 [[nodiscard]] TResultOrError<TCompressedBlob> CompressBlob(
@@ -133,8 +118,8 @@ struct TReadPlan
  * @param blockSize - Block size used for compression.
  * @param compressedData - Data from the ranges returned by PlanReadBlob
  *  for these block offsets, concatenated in query order. Compressed chunks
- *  may span rope segments. Each compressed chunk is extracted into a reusable
- *  buffer before decoding.
+ *  may span rope segments. Such a chunk is copied into a reusable buffer
+ *  before decoding.
  * @param compression - Metadata describing the compressed blob.
  * @param blobSize - Total compressed blob size, including unread chunks.
  * @param blockOffsets - Block positions within the original blob, sorted
@@ -153,7 +138,7 @@ struct TReadPlan
 [[nodiscard]] NProto::TError DecompressBlob(
     ui32 blockSize,
     const TRope& compressedData,
-    const NProto::TCompressionMetadata& compression,
+    const NProto::TBlobCompressionInfo& compression,
     ui32 blobSize,
     std::span<const ui16> blockOffsets,
     std::span<const TBlockDataRef> outputBuffers,
@@ -163,7 +148,6 @@ struct TReadPlan
  * Plans reads of the complete compressed chunks needed for the requested
  * blocks, using the chunk size from the blob's metadata. Each requested
  * chunk is read once and adjacent chunks are coalesced into a single range.
- * Cumulative chunk offsets are rebuilt from sizes for each read plan.
  * Returns E_ARGUMENT for invalid chunk metadata, unsupported or unavailable
  * codecs, offsets outside the uncompressed blob or read ranges extending beyond
  * the compressed blob. Codec lookup failures return E_FAIL.
@@ -182,21 +166,19 @@ struct TReadPlan
 [[nodiscard]] TResultOrError<TReadPlan> PlanReadBlob(
     ui32 blockSize,
     const NKikimr::TLogoBlobID& blobId,
-    const NProto::TCompressionMetadata& compression,
+    const NProto::TBlobCompressionInfo& compression,
     std::span<const ui16> blockOffsets);
 
-// These overloads reuse the result of ValidateReadBlobInput for the same blob
-// and metadata. The offsets may be a sorted subset of the validated offsets.
+// These overloads reuse the result of ValidateReadBlobInput for the same blob.
+// The offsets may be a sorted subset of the validated offsets.
 [[nodiscard]] TReadPlan PlanReadBlob(
     const TValidatedBlobRead& read,
     const NKikimr::TLogoBlobID& blobId,
-    const NProto::TCompressionMetadata& compression,
     std::span<const ui16> blockOffsets);
 
 [[nodiscard]] NProto::TError DecompressBlob(
     const TValidatedBlobRead& read,
     const TRope& compressedData,
-    const NProto::TCompressionMetadata& compression,
     std::span<const ui16> blockOffsets,
     std::span<const TBlockDataRef> outputBuffers,
     TVector<ui32>* blockChecksums);

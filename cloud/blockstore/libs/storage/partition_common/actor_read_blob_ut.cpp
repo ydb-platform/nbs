@@ -76,6 +76,18 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
         NActors::TActorId ReadActor;
         THolder<NKikimr::TEvBlobStorage::TEvGet> ReadRequest;
 
+        TBlobChunkLayout GetLayout() const
+        {
+            auto layout = TBlobChunkLayout::Create(
+                Blob.Info,
+                Blob.Content.size(),
+                BlockSize);
+            UNIT_ASSERT_C(
+                !HasError(layout.GetError()),
+                FormatError(layout.GetError()));
+            return layout.ExtractResult();
+        }
+
         void StartCompressedRead(
             NCloud::NProto::ECompressionCodec codec,
             bool shouldCalculateChecksums,
@@ -112,7 +124,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 1,
                 2,
                 3,
-                SafeIntegerCast<ui32>(Blob.Data.size()),
+                SafeIntegerCast<ui32>(Blob.Content.size()),
                 4);
             GuardedSglist = TGuardedSgList(ResizeBlocks(
                 Blocks,
@@ -129,7 +141,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                     false,             // async
                     TInstant::Max(),   // deadline
                     shouldCalculateChecksums,
-                    Blob.Compression);
+                    Blob.Info);
 
             ReadActor = ActorSystem.Register(new TReadBlobActor(
                 MakeIntrusive<TRequestInfo>(
@@ -168,7 +180,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 response.Shift = query.Shift;
                 response.RequestedSize = query.Size;
                 response.Buffer = TRope(TString(
-                    TStringBuf(Blob.Data).SubStr(query.Shift, query.Size)));
+                    TStringBuf(Blob.Content).SubStr(query.Shift, query.Size)));
             }
             return result;
         }
@@ -268,9 +280,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
 
                 UNIT_ASSERT_VALUES_EQUAL(1, ReadRequest->QuerySize);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    sparse ? Blob.Compression.GetPlainChunks()
-                                 .GetCompressedChunkSize(1)
-                           : Blob.Data.size(),
+                    sparse ? GetLayout().GetStoredChunkLength(1)
+                           : Blob.Content.size(),
                     ReadRequest->Queries[0].Size);
                 const auto logicalBytes = BlobOffsets.size() * BlockSize;
                 if (incompressible && sparse) {
@@ -301,26 +312,19 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 UNIT_ASSERT_VALUES_EQUAL(2, ReadRequest->QuerySize);
                 UNIT_ASSERT(ReadRequest->Queries[0].Id == BlobId);
                 UNIT_ASSERT(ReadRequest->Queries[1].Id == BlobId);
+                const auto layout = GetLayout();
+                UNIT_ASSERT_VALUES_EQUAL(5, layout.GetChunkCount());
                 UNIT_ASSERT_VALUES_EQUAL(
-                    Blob.Compression.GetPlainChunks().GetCompressedChunkSize(0),
+                    layout.GetStoredChunkOffset(1),
                     ReadRequest->Queries[0].Shift);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    Blob.Compression.GetPlainChunks().GetCompressedChunkSize(
-                        1) +
-                        Blob.Compression.GetPlainChunks()
-                            .GetCompressedChunkSize(2),
+                    layout.GetStoredSpanLength(1, 2),
                     ReadRequest->Queries[0].Size);
-                ui32 lastChunkOffset = 0;
-                for (const auto size:
-                     Blob.Compression.GetPlainChunks().GetCompressedChunkSize())
-                {
-                    lastChunkOffset += size;
-                }
                 UNIT_ASSERT_VALUES_EQUAL(
-                    lastChunkOffset,
+                    layout.GetStoredChunkOffset(4),
                     ReadRequest->Queries[1].Shift);
                 UNIT_ASSERT_VALUES_EQUAL(
-                    BlobId.BlobSize() - lastChunkOffset,
+                    BlobId.BlobSize() - layout.GetStoredChunkOffset(4),
                     ReadRequest->Queries[1].Size);
 
                 const auto response = FinishRead(MakeReadResult());
@@ -516,8 +520,8 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                     auto result = MakeReadResult();
                     const auto& query = ReadRequest->Queries[responseIndex];
                     const ui32 size = delta ? query.Size + delta : 0;
-                    TString data(
-                        TStringBuf(Blob.Data).SubStr(query.Shift, query.Size));
+                    TString data(TStringBuf(Blob.Content)
+                                     .SubStr(query.Shift, query.Size));
                     data.resize(size, '?');
                     result->Responses[responseIndex].Buffer = TRope(data);
                     if (mode == EStorageAccessMode::Repair) {
@@ -531,7 +535,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                             result->Responses[1].Buffer.Begin(),
                             TRope(TString(
                                 1,
-                                Blob.Data[query.Shift + query.Size - 1])));
+                                Blob.Content[query.Shift + query.Size - 1])));
                     }
 
                     const auto response = FinishRead(std::move(result));
@@ -626,7 +630,7 @@ Y_UNIT_TEST_SUITE(TReadBlobTests)
                 response->GetError().GetCode());
             UNIT_ASSERT_STRING_CONTAINS(
                 response->GetError().GetMessage(),
-                "Failed to decompress chunk");
+                "decompression failed");
             UNIT_ASSERT(response->BlockChecksums.empty());
             for (const auto& block: Blocks) {
                 UNIT_ASSERT_VALUES_EQUAL(TString(BlockSize, '?'), block);

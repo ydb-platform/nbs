@@ -32,7 +32,7 @@ struct IBlobsVisitor
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
         const TBlockMask& skipMask,
-        const std::optional<NProto::TCompressionMetadata>&
+        const std::optional<NProto::TBlobCompressionInfo>&
             compressionMetadata) = 0;
 };
 
@@ -48,7 +48,7 @@ struct TIndexOnlyBlobsVisitor final: IBlobsVisitor
         const TPartialBlobId& /*blobId*/,
         const TBlockMask& /*skipMask*/,
         const std::optional<
-            NProto::TCompressionMetadata>& /*compressionMetadata*/) override
+            NProto::TBlobCompressionInfo>& /*compressionMetadata*/) override
     {
         return true;
     }

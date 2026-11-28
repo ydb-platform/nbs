@@ -42,7 +42,7 @@ public:
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
         const TBlockMask& skipMask,
-        const std::optional<NProto::TCompressionMetadata>& compressionMetadata)
+        const std::optional<NProto::TBlobCompressionInfo>& compressionMetadata)
         override
     {
         Y_UNUSED(blockRange, blobId, skipMask, compressionMetadata);
